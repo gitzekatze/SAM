@@ -36,7 +36,7 @@ impl DbusProxy {
         for name in &perms.own {
             args.push(format!("--own={name}"));
         }
-        args.extend(tray_own_names(perms).into_iter().map(|n| format!("--own={n}")));
+        args.extend(perms.tray_own_names().into_iter().map(|n| format!("--own={n}")));
         // Let the app own names under its own id, like Flatpak does.
         args.push(format!("--own=io.github.gitzekatze.SAM.{}.*", app_id.replace('-', "_")));
         let mut cmd = Command::new(&tool.path);
@@ -72,37 +72,17 @@ impl Drop for DbusProxy {
     }
 }
 
-/// Bus names a tray icon registers under (`org.kde.StatusNotifierItem-<pid>-<n>`,
-/// used by libappindicator, Qt and Electron). xdg-dbus-proxy cannot wildcard
-/// the suffix, so, like Flatpak, grant the concrete names. The app runs in its
-/// own PID namespace, so its PID is small (2 when AppRun execs the binary).
-pub fn tray_own_names(perms: &DbusBusPerms) -> Vec<String> {
-    if !perms.allow.iter().any(|n| n == "org.kde.StatusNotifierWatcher") {
-        return vec![];
-    }
-    let mut names = Vec::new();
-    for prefix in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
-        for pid in 2..=12 {
-            for n in 1..=2 {
-                names.push(format!("{prefix}-{pid}-{n}"));
-            }
-        }
-    }
-    names
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
     use sam_core::permissions::DbusPerms;
 
     #[test]
     fn tray_names_follow_watcher_permission() {
         let mut p = DbusPerms::default().session;
-        let names = tray_own_names(&p);
+        let names = p.tray_own_names();
         assert!(names.contains(&"org.kde.StatusNotifierItem-2-1".to_string()));
         assert!(names.contains(&"org.freedesktop.StatusNotifierItem-2-1".to_string()));
         p.allow.retain(|n| n != "org.kde.StatusNotifierWatcher");
-        assert!(tray_own_names(&p).is_empty());
+        assert!(p.tray_own_names().is_empty());
     }
 }

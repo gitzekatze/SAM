@@ -2,6 +2,11 @@
 //!
 //! Firejail is a setuid-root program; SAM only uses it when the user has
 //! enabled it in settings *and* confirmed it for the app (§2.13.2).
+//!
+//! Firejail runs the **original AppImage** with `--appimage`: it mounts the
+//! image read-only itself. SAM's extracted copy cannot be used, because it
+//! lives under the home directory (or /tmp), which `--private` and
+//! `--private-tmp` replace inside the sandbox.
 
 use anyhow::{Context, Result};
 use sam_core::permissions::*;
@@ -28,12 +33,16 @@ impl Backend for Firejail {
             usable: tool.is_some(),
             recommended: false,
             risks: vec![FIREJAIL_RISK.into()],
-            notes: vec!["Disabled by default. Enable it in Settings -> Security to use it as a compatibility backend.".into()],
+            notes: vec!["Compatibility backend: runs the original AppImage file (firejail --appimage). SAM's Landlock layer and minimal /usr view are not used.".into()],
         }
     }
 
     fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
         let tool = ctx.host.tools.firejail.as_ref().context("firejail is not installed")?;
+        let appimage = ctx
+            .appimage_path
+            .as_ref()
+            .context("the Firejail backend runs the original AppImage file, which is missing; relocate it or use Bubblewrap")?;
         let p = &ctx.permissions;
         let home = &ctx.host.home;
         let mut a: Vec<String> = vec![
@@ -42,12 +51,15 @@ impl Backend for Firejail {
             "--caps.drop=all".into(),
             "--nonewprivs".into(),
             "--noroot".into(),
-            "--seccomp".into(),
             "--private-tmp".into(),
             "--private-dev".into(),
             "--disable-mnt".into(),
         ];
         let mut notes = Vec::new();
+        // Firejail's default seccomp filter blocks chroot, which Chromium's own
+        // sandbox (Electron apps) needs; the zygote then dies at start. Exempt
+        // only that syscall when nested sandboxes are allowed.
+        a.push(if p.advanced.allow_userns { "--seccomp=!chroot".into() } else { "--seccomp".into() });
 
         match p.network.mode {
             NetworkMode::Full => {}
@@ -84,7 +96,7 @@ impl Backend for Firejail {
             for n in &p.dbus.session.allow {
                 a.push(format!("--dbus-user.talk={n}"));
             }
-            for n in &p.dbus.session.own {
+            for n in p.dbus.session.own.iter().cloned().chain(p.dbus.session.tray_own_names()) {
                 a.push(format!("--dbus-user.own={n}"));
             }
         }
@@ -138,21 +150,22 @@ impl Backend for Firejail {
                 a.push(format!("--private={}", ctx.private_home.display()));
             }
         }
-        a.push(format!("--read-only={}", ctx.appdir.display()));
-
-        let appdir = ctx.appdir.to_string_lossy().into_owned();
-        for (k, v) in ctx.resolved_app_env(&appdir) {
-            a.push(format!("--env={k}={v}"));
+        // Firejail sets APPDIR/APPIMAGE for the mounted image itself; only
+        // pass variables that do not point into SAM's extracted copy.
+        for (k, v) in &ctx.app_env {
+            if !v.contains("@APPDIR@") && k != "APPIMAGE" {
+                a.push(format!("--env={k}={v}"));
+            }
         }
         for (k, v) in &p.environment.set {
             a.push(format!("--env={k}={v}"));
         }
         a.extend(p.advanced.extra_backend_args.iter().cloned());
-        a.push("--".into());
-        if let Some(tr) = &ctx.tracer {
-            a.extend(tr.iter().cloned());
+        if ctx.tracer.is_some() {
+            notes.push("diagnostic tracing is not supported with the firejail backend".into());
         }
-        a.push(format!("{appdir}/{}", ctx.entry));
+        a.push("--appimage".into());
+        a.push(appimage.to_string_lossy().into_owned());
         a.extend(ctx.args.iter().cloned());
         if ctx.helper.is_some() {
             notes.push("Landlock helper is not used with the firejail backend".into());
@@ -178,10 +191,26 @@ mod tests {
     fn strict_mapping() {
         let cmd = Firejail.build(&sample_context()).unwrap();
         let a = &cmd.args;
-        for f in ["--net=none", "--no3d", "--nosound", "--x11=none", "--dbus-system=none", "--dbus-user=filter"] {
+        for f in ["--net=none", "--no3d", "--nosound", "--x11=none", "--dbus-system=none", "--dbus-user=filter", "--seccomp=!chroot"] {
             assert!(a.iter().any(|x| x == f), "missing {f}");
         }
         assert!(a.iter().any(|x| x.starts_with("--private=")));
-        assert!(a.last().unwrap().ends_with("/AppDir/AppRun"));
+        let i = a.iter().position(|x| x == "--appimage").expect("runs the AppImage itself");
+        assert!(a[i + 1].ends_with("Hello.AppImage"));
+        assert!(!a.iter().any(|x| x.contains("/AppDir")), "no paths into the extracted copy: {a:?}");
+    }
+
+    #[test]
+    fn full_seccomp_without_nested_sandboxes() {
+        let mut ctx = sample_context();
+        ctx.permissions.advanced.allow_userns = false;
+        assert!(Firejail.build(&ctx).unwrap().args.iter().any(|x| x == "--seccomp"));
+    }
+
+    #[test]
+    fn needs_the_original_file() {
+        let mut ctx = sample_context();
+        ctx.appimage_path = None;
+        assert!(Firejail.build(&ctx).is_err());
     }
 }

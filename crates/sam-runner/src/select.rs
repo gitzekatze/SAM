@@ -30,7 +30,7 @@ pub fn statuses(host: &HostInfo, cfg: &Config) -> Vec<BackendStatus> {
         if s.kind == BackendKind::Firejail && !cfg.security.allow_firejail {
             s.usable = false;
             if s.installed {
-                s.notes.insert(0, "Installed but disabled by default.".into());
+                s.notes.insert(0, "Installed but disabled in settings. Enable it in Settings -> Security (security.allow_firejail).".into());
             }
         }
     }

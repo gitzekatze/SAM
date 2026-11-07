@@ -220,11 +220,43 @@ pub struct DbusPerms {
     pub system: DbusBusPerms,
 }
 
+impl DbusBusPerms {
+    /// Bus names a tray icon registers under (`org.kde.StatusNotifierItem-<pid>-<n>`,
+    /// used by libappindicator, Qt and Electron). D-Bus filters cannot
+    /// wildcard the suffix, so, like Flatpak, grant the concrete names. The app
+    /// runs in its own PID namespace, so its PID is small (2 when AppRun execs
+    /// the binary). Empty unless the tray watcher is allowed.
+    pub fn tray_own_names(&self) -> Vec<String> {
+        if !self.allow.iter().any(|n| n == "org.kde.StatusNotifierWatcher") {
+            return vec![];
+        }
+        let mut names = Vec::new();
+        for prefix in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
+            for pid in 2..=12 {
+                for n in 1..=2 {
+                    names.push(format!("{prefix}-{pid}-{n}"));
+                }
+            }
+        }
+        names
+    }
+}
+
 /// Names a filtered session bus allows by default: desktop portals,
 /// notifications and the system tray. Mirrors common Flatpak defaults.
+///
+/// Portals are listed one by one instead of `org.freedesktop.portal.*`: the
+/// wildcard also exposed `portal.Flatpak` (sandbox spawning API) and
+/// `portal.Tracker` (file index search), which AppImages do not need.
 pub fn default_session_allow() -> Vec<String> {
     vec![
-        "org.freedesktop.portal.*".into(),
+        // File chooser, open-with, screenshots, notifications via portal, ...
+        "org.freedesktop.portal.Desktop".into(),
+        // Document portal: access to files the user picks in a dialog.
+        "org.freedesktop.portal.Documents".into(),
+        // Input methods (typing in other scripts, emoji pickers).
+        "org.freedesktop.portal.IBus".into(),
+        "org.freedesktop.portal.Fcitx".into(),
         "org.freedesktop.Notifications".into(),
         "org.kde.StatusNotifierWatcher".into(),
     ]

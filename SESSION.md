@@ -287,3 +287,23 @@ Contrast, CachyOS Neon) were checked through screenshots.
   - `remove` restores them exactly. `sam-jail menu list|hide|restore <app>`
     does the same by hand.
 - The GUI's ScanDialog was removed; the overview replaces it.
+
+## 11. Session 4 (2026-11-07): Firejail tested for real, D-Bus tightened
+
+- **Firejail backend** (firejail 0.9.82 now installed):
+  - It now runs the original file with `firejail --appimage`. The extracted
+    copy under `~/.local/share/sam` (or /tmp) is hidden by `--private` /
+    `--private-tmp`, so the old command could never start an app.
+  - Electron: the default `--seccomp` filter blocks `chroot`, which kills
+    Chromium's zygote. When `advanced.allow_userns` is on, SAM uses
+    `--seccomp=!chroot` (only that syscall is exempted).
+  - Tray names are also granted via `--dbus-user.own`.
+  - Verified with `firejail --join` on ZFontManager and Tuta: private home,
+    `~/.ssh` hidden, network per profile, filtered bus, tray icon works.
+  - Known limit: the synthetic testkit fixture's AppRun is reported "not
+    executable" under firejail's AppImage mount. Real AppImages are fine.
+  - Firejail starts programs through the login shell from /etc/passwd
+    (here fish), not `$SHELL`.
+- **D-Bus:** the default filtered list now names portals explicitly
+  (Desktop, Documents, IBus, Fcitx) instead of `org.freedesktop.portal.*`,
+  so `portal.Flatpak` and `portal.Tracker` are no longer reachable.
