@@ -45,6 +45,7 @@ pub struct Prepared {
     pub landlock: bool,
     pub seccomp: bool,
     proxy: Option<DbusProxy>,
+    portal_instance: Option<crate::portal_identity::Instance>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -183,6 +184,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
         appdir_overlay: None,
+        portal_identity: None,
     };
     if perms.advanced.writable_appdir && kind == BackendKind::Bubblewrap {
         let base = paths.data_dir.join("overlays").join(&app.id);
@@ -196,13 +198,37 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             .with_context(|| format!("creating private home {}", ctx.private_home.display()))?;
     }
 
+    // Portal identity (Bubblewrap with a filtered session bus). Not with
+    // 'Local network only': pasta does not pass bwrap's --info-fd on.
+    let mut portal_instance = None;
+    if kind == BackendKind::Bubblewrap
+        && cfg.security.portal_identity
+        && perms.dbus.session.mode == DbusMode::Filtered
+        && perms.network.mode != sam_core::permissions::NetworkMode::Localhost
+        && host.tools.xdg_dbus_proxy.is_some()
+    {
+        match crate::portal_identity::Instance::create(&runtime_dir, host.uid, &app.id) {
+            Ok(inst) => {
+                ctx.portal_identity = Some(inst.identity.clone());
+                portal_instance = Some(inst);
+            }
+            Err(e) => warnings.push(Warning::info("portal-identity", "Portal identity unavailable", format!("{e:#}"))),
+        }
+    }
+
     let mut proxy = None;
     let mut landlock = false;
     let mut seccomp = false;
     if kind == BackendKind::Bubblewrap {
         sam_backend_bubblewrap::write_identity_files(&ctx)?;
         if perms.dbus.session.mode == DbusMode::Filtered && host.tools.xdg_dbus_proxy.is_some() && host.sockets.dbus_session.is_some() {
-            match DbusProxy::start(host, &perms.effective_session_bus(), &runtime_dir, &app.id) {
+            let mut bus = perms.effective_session_bus();
+            if ctx.portal_identity.is_some() {
+                // With an identity the document portal applies per-app rules.
+                bus.allow.push("org.freedesktop.portal.Documents".into());
+            }
+            let identity_file = ctx.portal_identity.as_ref().map(|i| i.info_file.clone());
+            match DbusProxy::start(host, &bus, &runtime_dir, &app.id, identity_file.as_deref()) {
                 Ok(p) => {
                     ctx.dbus_proxy_socket = Some(p.socket.clone());
                     proxy = Some(p);
@@ -210,30 +236,31 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                 Err(e) => warnings.push(Warning::warn("dbus-proxy-failed", "D-Bus proxy failed", format!("{e:#}; session bus disabled"))),
             }
         }
-        let want_landlock = perms.advanced.landlock.unwrap_or(cfg.security.experimental_landlock);
-        if want_landlock && host.landlock_abi.is_some() {
-            if let Some(helper) = crate::find_helper() {
-                let spec = kernel::SandboxSpec {
-                    landlock: Some(kernel::landlock_spec(perms, host, &format!("/run/user/{}", host.uid), &launch_writable_paths(&ctx))),
-                };
-                let spec_path = runtime_dir.join("sandbox.json");
-                fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
-                ctx.helper = Some(sam_core::backend::SandboxHelper { binary: helper, spec: spec_path });
-                landlock = true;
-            }
+        // Landlock and seccomp are applied by SAM's helper inside the sandbox.
+        let want_landlock = perms.advanced.landlock.unwrap_or(cfg.security.experimental_landlock) && host.landlock_abi.is_some();
+        let strict = perms.advanced.seccomp_strict && cfg.security.experimental_seccomp;
+        if perms.advanced.seccomp_strict && !cfg.security.experimental_seccomp {
+            warnings.push(Warning::info(
+                "seccomp-disabled",
+                "Seccomp strict mode ignored",
+                "Enable experimental seccomp in Settings -> Security to use the strict filter.",
+            ));
         }
-        let localhost = perms.network.mode == sam_core::permissions::NetworkMode::Localhost;
-        // pasta (local network only) does not pass extra fds on to bwrap.
-        if perms.advanced.seccomp_strict && !localhost {
-            if cfg.security.experimental_seccomp {
-                ctx.seccomp_fd = Some(kernel::seccomp_fd(perms.advanced.allow_userns)?);
-                seccomp = true;
-            } else {
-                warnings.push(Warning::info(
-                    "seccomp-disabled",
-                    "Seccomp strict mode ignored",
-                    "Enable experimental seccomp in Settings -> Security to use the strict filter.",
-                ));
+        let want_seccomp = (cfg.security.baseline_seccomp && perms.advanced.seccomp_baseline) || strict;
+        if want_landlock || want_seccomp {
+            match crate::find_helper() {
+                Some(helper) => {
+                    let spec = kernel::SandboxSpec {
+                        landlock: want_landlock.then(|| kernel::landlock_spec(perms, host, &format!("/run/user/{}", host.uid), &launch_writable_paths(&ctx))),
+                        seccomp: want_seccomp.then_some(kernel::SeccompSpec { strict, allow_userns: perms.advanced.allow_userns }),
+                    };
+                    let spec_path = runtime_dir.join("sandbox.json");
+                    fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
+                    ctx.helper = Some(sam_core::backend::SandboxHelper { binary: helper, spec: spec_path });
+                    landlock = want_landlock;
+                    seccomp = want_seccomp;
+                }
+                None => warnings.push(Warning::warn("helper-missing", "Kernel restrictions unavailable", "sam-jail-run was not found next to sam-jail; Landlock and seccomp are not applied.")),
             }
         }
     }
@@ -243,16 +270,13 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         k => crate::backend_for(k).unwrap().build(&ctx)?,
     };
     if kind == BackendKind::Bubblewrap && perms.network.mode == sam_core::permissions::NetworkMode::Localhost {
-        if let Err(e) = crate::netns::wrap_localhost(&mut command) {
+        if let Err(e) = crate::netns::wrap_localhost(&mut command, &perms.network.valid_host_ports()) {
             // Without pasta, fall back to no network at all.
             command.args.insert(0, "--unshare-net".into());
             warnings.push(Warning::warn("localhost-unavailable", "Local network unavailable", format!("{e:#}. The app has no network.")));
         }
-        if perms.advanced.seccomp_strict {
-            warnings.push(Warning::info("localhost-seccomp", "Strict seccomp skipped", "The strict syscall filter cannot be combined with 'Local network only'."));
-        }
     }
-    Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy })
+    Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy, portal_instance })
 }
 
 /// Paths mounted writable only for this launch: files passed on the command
@@ -369,6 +393,11 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let mut child = cmd.spawn().with_context(|| format!("starting {}", prepared.command.program.display()))?;
     if let Some(fd) = prepared.context.seccomp_fd {
         unsafe { libc::close(fd) };
+    }
+    let mut prepared = prepared;
+    if let Some(inst) = prepared.portal_instance.as_mut() {
+        inst.started();
+        writeln!(log, "# portal identity: {}", inst.identity.app_id)?;
     }
 
 

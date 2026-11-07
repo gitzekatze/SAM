@@ -619,6 +619,11 @@ impl Sam {
                 }
                 e.profile.auto_backend = Some(LearnedBackend { kind: *backend, reason: format!("chosen by the repair step “{}”", sug.title) });
             }
+            FixAction::AddArg { value } => {
+                if !e.profile.args.contains(value) {
+                    e.profile.args.push(value.clone());
+                }
+            }
             FixAction::None => bail!("“{}” is an explanation only; there is nothing to apply", sug.title),
         }
         e.profile.preset = None;

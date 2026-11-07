@@ -14,12 +14,13 @@ fn set(key: &str, value: &str) -> FixAction {
 }
 
 /// Does applying `action` change anything for this profile?
-pub fn changes_something(p: &PermissionSet, compat: bool, auto: Option<BackendKind>, action: &FixAction) -> bool {
+pub fn changes_something(p: &PermissionSet, compat: bool, auto: Option<BackendKind>, args: &[String], action: &FixAction) -> bool {
     match action {
         FixAction::Set { key, value } => p.get_key(key).ok().map(|v| v.to_string().trim_matches('"').to_string()) != Some(value.clone()),
         FixAction::Add { key, value } => !p.get_key(key).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default().iter().any(|x| x.as_str() == Some(value)),
         FixAction::Compat => !compat,
         FixAction::Backend { backend } => auto != Some(*backend),
+        FixAction::AddArg { value } => !args.contains(value),
         FixAction::None => true,
     }
 }
@@ -46,11 +47,23 @@ pub fn first_run_hints(e: &AppEntry) -> Vec<Suggestion> {
     if !p.devices.gpu && !req.wayland && !req.x11 && matches!(toolkit, "Unknown" | "") && e.detection.as_ref().is_some_and(|d| d.elf_count > 0) {
         out.push(s("gpu", "Graphics may not work", "SAM found no graphics libraries in this app, which usually means it loads them at start (common for Rust and game engines). If it fails to start or draw, turn on GPU acceleration.", set("devices.gpu", "true"), RiskLevel::Medium));
     }
-        let signs_in = matches!(e.category.as_str(), "communication" | "browser") || req.electron;
+        if req.electron && apparmor_restricts_userns() && !e.profile.args.iter().any(|a| a == "--no-sandbox") {
+        out.push(no_sandbox("This system (AppArmor) does not let apps inside a sandbox create their own sandbox, so Electron apps usually fail to start. Starting it without Chromium's internal sandbox fixes that; SAM's sandbox still protects your system."));
+    }
+    let signs_in = matches!(e.category.as_str(), "communication" | "browser") || req.electron;
     if signs_in && !p.integrations.keyring && p.dbus.session.mode != DbusMode::None {
         out.push(s("keyring", "Logins may not be remembered", "Apps that sign in usually store the login in your keyring or KWallet, which is blocked. Allowing it lets the app read every password stored there.", set("integrations.keyring", "true"), RiskLevel::High));
     }
     out
+}
+
+/// Ubuntu 23.10+ style restriction of unprivileged user namespaces.
+fn apparmor_restricts_userns() -> bool {
+    std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns").is_ok_and(|s| s.trim() == "1")
+}
+
+fn no_sandbox(why: &str) -> Suggestion {
+    s("chromium-no-sandbox", "Start without Chromium's own sandbox", why, FixAction::AddArg { value: "--no-sandbox".into() }, RiskLevel::Medium)
 }
 
 // ------------------------------------------------------------- analyzer
@@ -87,6 +100,7 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
         } else if p.advanced.seccomp_strict {
             push(s("seccomp", "The strict syscall filter blocks the app", "Turn off the strict syscall filter for this app.", set("advanced.seccomp_strict", "false"), RiskLevel::Low));
         } else {
+            push(no_sandbox("Chromium's internal sandbox could not start inside SAM's sandbox (common on systems that restrict user namespaces). Starting without it fixes that; SAM's sandbox still protects your system."));
             push(s("backend-bubblejail", "Try another sandbox backend", "Chromium's sandbox fails in this backend. Bubblejail sets up namespaces differently.", FixAction::Backend { backend: BackendKind::Bubblejail }, RiskLevel::Low));
         }
     }
@@ -171,10 +185,14 @@ pub fn ladder(e: &AppEntry, cfg: &Config) -> Vec<Suggestion> {
         s("x11", "Turn on X11", "For apps without Wayland support, or whose window does not appear.", set("display.x11", "true"), RiskLevel::High),
         s("gpu", "Turn on GPU acceleration", "Some apps refuse to start without hardware graphics.", set("devices.gpu", "true"), RiskLevel::Medium),
         s("userns", "Allow nested namespaces", "Needed by apps that start their own sandbox (Chromium, Electron, WebKit).", set("advanced.allow_userns", "true"), RiskLevel::Low),
+        s("seccomp-baseline", "Turn off the baseline syscall filter", "Rarely needed: some apps use kernel interfaces the filter blocks.", set("advanced.seccomp_baseline", "false"), RiskLevel::Medium),
         s("writable-appdir", "Writable app folder", "For apps that save next to themselves.", set("advanced.writable_appdir", "true"), RiskLevel::Low),
         s("compat", "Compatibility mode", "Grants broad access (network, full session bus, all of /usr, X11, GPU, sound). Use when nothing else helps.", FixAction::Compat, RiskLevel::High),
         s("backend-bubblejail", "Try Bubblejail", "A different way of building the sandbox.", FixAction::Backend { backend: BackendKind::Bubblejail }, RiskLevel::Low),
     ]);
+    if e.detection.as_ref().is_some_and(|d| d.requirements.electron) {
+        steps.insert(steps.len().saturating_sub(2), no_sandbox("For Electron apps whose internal Chromium sandbox fails inside SAM's sandbox. SAM's sandbox still protects your system."));
+    }
     if cfg.security.allow_firejail {
         steps.push(s("backend-firejail", "Try Firejail", "Runs the original AppImage with Firejail (setuid). Last resort.", FixAction::Backend { backend: BackendKind::Firejail }, RiskLevel::High));
     }
@@ -185,7 +203,7 @@ pub fn ladder(e: &AppEntry, cfg: &Config) -> Vec<Suggestion> {
             && !e.repairs_applied.contains(&st.id)
             && !matches!(st.action, FixAction::None)
             && (e.profile.backend == sam_core::BackendChoice::Auto || !matches!(st.action, FixAction::Backend { .. }))
-            && changes_something(p, e.profile.compatibility_mode, auto, &st.action);
+            && changes_something(p, e.profile.compatibility_mode, auto, &e.profile.args, &st.action);
         seen.push(st.id.clone());
         keep
     });
@@ -211,6 +229,8 @@ mod tests {
         assert_eq!(ids("ERROR eframe::native::run] Exiting because of error: WGPU error: Failed to create surface for any enabled backend"), vec!["gpu"]);
         assert!(ids("all good").is_empty());
         assert_eq!(analyze("", &p, Some(11))[0].id, "crash");
+        let ids_userns: Vec<String> = analyze("Zygote process exited prematurely", &p, None).into_iter().map(|s| s.id).collect();
+        assert_eq!(ids_userns, vec!["chromium-no-sandbox", "backend-bubblejail"]);
     }
 
     #[test]

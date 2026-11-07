@@ -309,6 +309,8 @@ pub enum FixAction {
     Compat,
     /// Let the automatic backend choice use this backend for the app.
     Backend { backend: BackendKind },
+    /// Always pass this argument to the app (e.g. `--no-sandbox`).
+    AddArg { value: String },
     /// Nothing SAM can change (explanation only).
     None,
 }

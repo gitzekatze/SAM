@@ -210,6 +210,18 @@ Kirigami.ScrollablePage {
             }
         }
 
+        // What the chosen backend does not enforce for this app.
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            Layout.leftMargin: Kirigami.Units.largeSpacing * 2
+            Layout.rightMargin: Kirigami.Units.largeSpacing * 2
+            visible: page.info !== null && page.info.selection !== null && (page.info.selection.limitations || []).length > 0
+            type: Kirigami.MessageType.Warning
+            text: page.info && page.info.selection
+                ? qsTr("With %1 some settings are not enforced:\n• %2").arg(Util.backendLabels[page.info.selection.kind]).arg((page.info.selection.limitations || []).join("\n• "))
+                : ""
+        }
+
         // Review / unsafe banners.
         Kirigami.InlineMessage {
             Layout.fillWidth: true

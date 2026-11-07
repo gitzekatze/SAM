@@ -50,6 +50,9 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `advanced.host_runtime` | `minimal` / `full` |
 | `advanced.persistent_home`, `advanced.seccomp_strict`, `advanced.allow_userns`, `advanced.host_themes` | `true` / `false` |
 | `advanced.landlock` | `true` / `false` (unset = follow the global setting) |
+| `network.host_ports` | list of host ports reachable with `localhost`, e.g. `"11434"` |
+| `integrations.screen_sharing` | `true` / `false`: screen sharing through the portal (asks each time) |
+| `advanced.seccomp_baseline` | `true` / `false`: baseline syscall filter for this app |
 | `advanced.writable_appdir` | `true` / `false`: overlay on the app folder, changes kept per app (Bubblewrap only) |
 | `integrations.keyring` | `true` / `false`: Secret Service / KWallet (exposes every stored password) |
 | `integrations.media_controls` | `true` / `false`: MPRIS media keys, screen-saver inhibit |

@@ -169,6 +169,13 @@ ColumnLayout {
                 : [{ value: "none", text: qsTr("No network") }, { value: "localhost", text: qsTr("Local network only (no internet)") },
                    { value: "full", text: qsTr("Full network") }]
         }
+        PathListEditor {
+            key: "network.host_ports"; editor: editor; folders: false
+            Layout.fillWidth: true
+            visible: editor.value("network.mode") === "localhost"
+            addText: qsTr("Allow a local port…")
+            promptTitle: qsTr("Port on this computer (e.g. 11434 for Ollama)")
+        }
     }
 
     // ------------------------------------------------------------ display
@@ -215,6 +222,7 @@ ColumnLayout {
     FormCard.FormCard {
         PermSwitch { key: "integrations.file_manager"; editor: editor }
         PermSwitch { key: "integrations.media_controls"; editor: editor }
+        PermSwitch { key: "integrations.screen_sharing"; editor: editor }
         PermSwitch { key: "integrations.keyring"; editor: editor }
     }
 
@@ -245,6 +253,7 @@ ColumnLayout {
             key: "advanced.landlock"; editor: editor
             options: [{ value: undefined, text: qsTr("Follow global setting") }, { value: true, text: qsTr("Enforce") }, { value: false, text: qsTr("Off") }]
         }
+        PermSwitch { key: "advanced.seccomp_baseline"; editor: editor }
         PermSwitch { key: "advanced.seccomp_strict"; editor: editor }
         PermSwitch { key: "advanced.allow_userns"; editor: editor }
         PermSwitch { key: "advanced.host_themes"; editor: editor }

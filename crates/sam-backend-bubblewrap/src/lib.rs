@@ -42,6 +42,8 @@ const ETC_BASE: &[&str] = &[
     "ld.so.cache", "ld.so.conf", "ld.so.conf.d", "fonts", "ssl", "ca-certificates", "pki", "crypto-policies",
     "localtime", "locale.conf", "locale.alias", "os-release", "xdg", "mime.types", "nsswitch.conf",
     "gtk-2.0", "gtk-3.0", "gtk-4.0", "timezone", "drirc", "glvnd",
+    // Debian/Ubuntu: /usr/bin/java etc. are symlinks into /etc/alternatives.
+    "alternatives",
 ];
 const ETC_NETWORK: &[&str] = &["resolv.conf", "hosts", "gai.conf", "services", "protocols", "host.conf"];
 const ETC_GPU: &[&str] = &["vulkan", "OpenCL", "nvidia"];
@@ -535,7 +537,9 @@ impl Backend for Bubblewrap {
         if p.devices.bluetooth && p.dbus.system.mode == DbusMode::None {
             notes.push("Bluetooth needs the system D-Bus; not granted".into());
         }
-        a.op2("--dev-bind-try", "/dev/shm", "/dev/shm");
+        // Private shared memory: the host's /dev/shm would be a side channel
+        // to other programs' segments.
+        a.push("--tmpfs").push("/dev/shm");
 
         // D-Bus.
         match p.dbus.session.mode {
@@ -612,6 +616,19 @@ impl Backend for Bubblewrap {
         // Working directory.
         let chdir = if visible_in_sandbox(&ctx.owd, ctx) { ctx.owd.clone() } else { home.clone() };
         a.push("--chdir").push(chdir.to_string_lossy());
+
+        // Portal identity: the portal then treats the app as sandboxed and
+        // hands picked files over through the document portal.
+        if let Some(id) = &ctx.portal_identity {
+            a.op2("--ro-bind", &id.info_file, "/.flatpak-info");
+            if let Some(view) = &id.doc_view {
+                a.op2("--bind-try", view, format!("{run}/doc"));
+            }
+            if let Some(fd) = id.info_fd {
+                a.push("--info-fd").push(fd.to_string());
+                keep_fds.push(fd);
+            }
+        }
 
         // Seccomp.
         if let Some(fd) = ctx.seccomp_fd {

@@ -111,6 +111,19 @@ pub struct LaunchContext {
     /// Per-app folder holding `upper/` and `work/` for the writable app
     /// folder overlay (`advanced.writable_appdir`).
     pub appdir_overlay: Option<PathBuf>,
+    /// Portal identity (see sam-runner `portal_identity`): bind the identity
+    /// file and the app's document view, and write bwrap's instance info.
+    pub portal_identity: Option<PortalIdentity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortalIdentity {
+    pub app_id: String,
+    pub info_file: PathBuf,
+    /// Inherited fd for `bwrap --info-fd`.
+    pub info_fd: Option<i32>,
+    /// `/run/user/<uid>/doc/by-app/<app id>` when the document portal runs.
+    pub doc_view: Option<PathBuf>,
 }
 
 impl LaunchContext {
@@ -223,5 +236,6 @@ pub fn sample_context() -> LaunchContext {
         tracer: None,
         extra_binds: vec![],
         appdir_overlay: None,
+        portal_identity: None,
     }
 }

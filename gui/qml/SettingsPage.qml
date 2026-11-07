@@ -173,7 +173,17 @@ FormCard.FormCardPage {
         ConfigSwitch { cfg: page.cfg; owner: page;
             key: "security.experimental_landlock"
             text: qsTr("Landlock write protection")
-            description: qsTr("Kernel-enforced write restrictions inside the sandbox as an extra layer of defense. Automatically skipped on kernels without Landlock.")
+            description: qsTr("Kernel-enforced write restrictions inside the sandbox as an extra layer of defense. Also blocks connections to abstract sockets outside the sandbox (such as XWayland's). Automatically skipped on kernels without Landlock.")
+        }
+        ConfigSwitch { cfg: page.cfg; owner: page;
+            key: "security.baseline_seccomp"
+            text: qsTr("Baseline syscall filter")
+            description: qsTr("Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, terminal injection), like Flatpak does. Individual apps can turn it off in their repair steps.")
+        }
+        ConfigSwitch { cfg: page.cfg; owner: page;
+            key: "security.portal_identity"
+            text: qsTr("Portal identity for sandboxed apps")
+            description: qsTr("Desktop portals treat SAM apps as sandboxed: files picked in a file dialog are handed over safely, and portals apply their own per-app prompts. Some apps may ask once which application to open links with.")
         }
         ConfigSwitch { cfg: page.cfg; owner: page;
             key: "security.experimental_seccomp"

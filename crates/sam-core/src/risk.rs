@@ -139,6 +139,9 @@ pub fn assess(p: &PermissionSet, backend: Option<BackendKind>) -> RiskAssessment
     if p.integrations.media_controls {
         item(&mut items, "integrations.media_controls", "Media controls", RiskLevel::Low);
     }
+    if p.integrations.screen_sharing {
+        item(&mut items, "integrations.screen_sharing", "Screen sharing (asks each time)", RiskLevel::Medium);
+    }
     if p.integrations.file_manager {
         item(&mut items, "integrations.file_manager", "Show in folder", RiskLevel::Low);
     }

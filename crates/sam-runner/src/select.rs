@@ -8,6 +8,7 @@
 
 use anyhow::{bail, Result};
 use sam_core::permissions::DbusMode;
+use sam_core::permissions::PermissionSet;
 use sam_core::{BackendChoice, BackendKind, BackendStatus, Config, HostInfo, SandboxProfile};
 use serde::Serialize;
 
@@ -18,6 +19,54 @@ pub struct Selection {
     pub kind: BackendKind,
     pub reason: String,
     pub risks: Vec<String>,
+    /// Settings of this app that the chosen backend does not enforce or
+    /// provide (empty for Bubblewrap with the default settings).
+    pub limitations: Vec<String>,
+}
+
+/// What the chosen backend leaves out compared with Bubblewrap, for this
+/// app's settings. Shown on the app page so a manual backend choice never
+/// silently weakens the sandbox.
+pub fn limitations(p: &PermissionSet, kind: BackendKind, cfg: &Config) -> Vec<String> {
+    use sam_core::permissions::{DbusMode, NetworkMode};
+    let mut v: Vec<String> = Vec::new();
+    let other = matches!(kind, BackendKind::Bubblejail | BackendKind::Firejail);
+    if !other {
+        return v;
+    }
+    let name = kind.label();
+    if cfg.security.experimental_landlock {
+        v.push(format!("{name} does not apply SAM's Landlock layer (extra write protection and blocking of abstract sockets such as XWayland's)."));
+    }
+    if cfg.security.baseline_seccomp && p.advanced.seccomp_baseline && kind == BackendKind::Bubblejail {
+        v.push("Bubblejail uses its own syscall filter instead of SAM's baseline filter.".into());
+    }
+    if p.network.mode == NetworkMode::Localhost {
+        v.push(format!("'Local network only' needs Bubblewrap; with {name} the app has no network."));
+    }
+    if p.advanced.writable_appdir {
+        v.push(format!("The writable app folder needs Bubblewrap; with {name} the app folder is read-only."));
+    }
+    if p.dbus.session.mode != DbusMode::None {
+        v.push(format!("Links open through xdg-open inside the sandbox instead of SAM's portal opener with {name}."));
+        if kind == BackendKind::Bubblejail {
+            v.push("Bubblejail grants the desktop portal with its own rules, not SAM's per-method portal filter.".into());
+        }
+    }
+    if cfg.security.portal_identity && p.dbus.session.mode == DbusMode::Filtered {
+        v.push(format!("Portal file dialogs cannot hand files to the app through the document portal with {name}; only granted folders are reachable."));
+    }
+    if p.filesystem.home && !p.filesystem.hidden_files {
+        v.push(format!("{name} cannot hide individual sensitive dotfiles under full home access."));
+    }
+    if kind == BackendKind::Firejail {
+        let folders = sam_core::permissions::XDG_DIR_KEYS.iter().any(|k| p.filesystem.xdg_access(k).is_granted());
+        if folders && !p.filesystem.home {
+            v.push("With folders granted, Firejail gives the app a temporary home: its settings are not kept between runs.".into());
+        }
+        v.push("Firejail runs the original AppImage file; it must stay where it is.".into());
+    }
+    v
 }
 
 pub fn statuses(host: &HostInfo, cfg: &Config) -> Vec<BackendStatus> {
@@ -52,6 +101,12 @@ fn status_of(all: &[BackendStatus], k: BackendKind) -> Option<&BackendStatus> {
 }
 
 pub fn select(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result<Selection> {
+    let mut s = choose(profile, cfg, host)?;
+    s.limitations = limitations(&profile.permissions, s.kind, cfg);
+    Ok(s)
+}
+
+fn choose(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result<Selection> {
     let all = statuses(host, cfg);
     let usable = |k| status_of(&all, k).is_some_and(|s| s.usable);
     let risks_of = |k| status_of(&all, k).map(|s| s.risks.clone()).unwrap_or_default();
@@ -62,7 +117,7 @@ pub fn select(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result
                 if !profile.unsandboxed_confirmed {
                     bail!("running unsandboxed requires explicit confirmation (sam-jail backend <app> unsandboxed --confirm)");
                 }
-                return Ok(Selection { kind: k, reason: "chosen by you (explicitly confirmed)".into(), risks: risks_of(k) });
+                return Ok(Selection { kind: k, reason: "chosen by you (explicitly confirmed)".into(), risks: risks_of(k), limitations: vec![] });
             }
             BackendKind::Firejail => {
                 if !cfg.security.allow_firejail {
@@ -82,7 +137,7 @@ pub fn select(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result
             let why = status.map(|s| s.notes.join(" ")).unwrap_or_default();
             bail!("the {} backend is not available: {why}", k.label());
         }
-        return Ok(Selection { kind: k, reason: "chosen by you for this app".into(), risks: risks_of(k) });
+        return Ok(Selection { kind: k, reason: "chosen by you for this app".into(), risks: risks_of(k), limitations: vec![] });
     }
 
     // Automatic choice, per app, for best compatibility.
@@ -98,13 +153,13 @@ pub fn select(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result
             None
         };
         if let Some(why) = need {
-            return Ok(Selection { kind: BackendKind::Bubblewrap, reason: why.into(), risks: risks_of(BackendKind::Bubblewrap) });
+            return Ok(Selection { kind: BackendKind::Bubblewrap, reason: why.into(), risks: risks_of(BackendKind::Bubblewrap), limitations: vec![] });
         }
     }
     // 2. What worked for this app before.
     if let Some(l) = &profile.auto_backend {
         if allowed(l.kind) {
-            return Ok(Selection { kind: l.kind, reason: format!("picked for this app: {}", l.reason), risks: risks_of(l.kind) });
+            return Ok(Selection { kind: l.kind, reason: format!("picked for this app: {}", l.reason), risks: risks_of(l.kind), limitations: vec![] });
         }
     }
 
@@ -113,7 +168,7 @@ pub fn select(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result
         return Ok(Selection {
             kind: BackendKind::Bubblejail,
             reason: "D-Bus filtering is required, xdg-dbus-proxy is missing and Bubblejail is installed".into(),
-            risks: risks_of(BackendKind::Bubblejail),
+            risks: risks_of(BackendKind::Bubblejail), limitations: vec![],
         });
     }
     let default = match cfg.general.default_backend {
@@ -126,7 +181,7 @@ pub fn select(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result
         } else {
             format!("{} is your configured default backend", default.label())
         };
-        return Ok(Selection { kind: default, reason, risks: risks_of(default) });
+        return Ok(Selection { kind: default, reason, risks: risks_of(default), limitations: vec![] });
     }
     for k in [BackendKind::Bubblewrap, BackendKind::Bubblejail, BackendKind::Firejail] {
         if allowed(k) {
@@ -134,6 +189,7 @@ pub fn select(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result
                 kind: k,
                 reason: format!("{} is the first available backend", k.label()),
                 risks: risks_of(k),
+                limitations: vec![],
             });
         }
     }

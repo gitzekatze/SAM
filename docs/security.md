@@ -43,11 +43,31 @@ Process isolation:
   applies a Landlock ruleset *inside* the sandbox before it starts the app.
   Writes are then allowed only in the locations the profile grants read/write.
   If a mount is ever more permissive than intended, the kernel still blocks
-  the write.
-- **Strict seccomp** (experimental, opt-in): blocks module loading, kexec,
-  mount, ptrace, bpf, perf, keyring and similar system calls. Nested user
-  namespaces can be blocked as well. Electron and Chromium need those for
-  their own sandbox, which is why this is a separate toggle.
+  the write. On kernels with Landlock ABI 6 (6.12+) it also blocks
+  connections to abstract UNIX sockets created outside the sandbox, such as
+  XWayland's `@/tmp/.X11-unix/X0`, which would otherwise be reachable
+  whenever the app shares the network namespace.
+- **Baseline seccomp** (on by default, `security.baseline_seccomp`): blocks
+  module loading, kexec, BPF, perf, keyrings, userfaultfd, handle-based
+  opens, `syslog` and terminal injection (`TIOCSTI`, `TIOCLINUX`). Without
+  nested sandboxes it also blocks namespaces and mounts. Loaded by
+  `sam-jail-run` right before the app starts, so it also applies under
+  *Local network only*.
+- **Strict seccomp** (experimental, opt-in) adds ptrace, process memory
+  access, `personality` and NUMA memory calls.
+- **Private `/dev/shm`** per sandbox.
+- **Portal filter:** the desktop portal is reachable only for opening links,
+  notifications, appearance settings, file dialogs, printing, email,
+  inhibit and system monitors. Camera needs the webcam permission and screen
+  sharing its own permission. Screenshot, Background (autostart),
+  DynamicLauncher, Trash, Wallpaper, RemoteDesktop, InputCapture,
+  GlobalShortcuts, Location, Usb, Clipboard and Secret are blocked.
+- **Portal identity** (on by default, `security.portal_identity`): portals
+  see SAM apps as sandboxed apps (`/.flatpak-info`, document portal view
+  at `/run/user/<uid>/doc`). Files picked in portal file dialogs are handed
+  over through the document portal; portals apply per-app prompts.
+- **Local network only** forwards only the host ports listed in
+  `network.host_ports`; DNS is never forwarded.
 - **Full home access** stays guarded even when you grant it:
   - `~/.ssh`, `~/.gnupg` and other credential stores (keyrings, password
     stores, cloud credentials, browser profiles) stay hidden unless you
@@ -87,11 +107,17 @@ The score shown in the app is a weighted sum, capped at 100.
 
 - **D-Bus filtering** needs `xdg-dbus-proxy` (or the Bubblejail backend).
   Without it, "filtered" falls back to *no* session bus.
-- **Abstract X11 sockets** (e.g. XWayland on `@/tmp/.X11-unix/X0`) can be
-  reached through the shared network namespace when network access is
-  "full", even with X11 off. Flatpak has the same limitation.
-- **Localhost-only and domain-filtered network modes** are experimental and
-  not enforced. Bubblewrap falls back to "none".
+- **Abstract sockets** are blocked only with Landlock ABI 6 (kernel 6.12+)
+  and only by the Bubblewrap backend. On older kernels, or with Bubblejail
+  or Firejail, XWayland's abstract socket is reachable with full network
+  (X11 authorization still applies).
+- **Bubblejail and Firejail** do not apply SAM's Landlock layer, portal
+  identity, link opener, writable app folder or *Local network only*. The
+  app page lists what is not enforced for the chosen backend.
+- **Domain-filtered network** is experimental and not enforced (falls back
+  to no network).
+- **Portal identity** relies on Flatpak's instance files and is not used
+  with *Local network only*.
 - **Firejail** is setuid-root. Use it only as a compatibility backend.
 - **Hostname:** the sandbox keeps the host's hostname. Changing it is blocked
   on some hardened hosts.

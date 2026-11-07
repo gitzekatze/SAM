@@ -353,3 +353,46 @@ Contrast, CachyOS Neon) were checked through screenshots.
   - Localhost forwarding works both ways, with no internet and no DNS.
   - The overlay, saving opened files and the backend fallback chain all
     work.
+
+## 13. Session 6 (2026-11-07): risk review fixes (priorities 1 + 2)
+
+- **S1 portal filter:** `org.freedesktop.portal.Desktop` is translated to
+  xdg-dbus-proxy `--call` rules for selected interfaces
+  (`permissions::portal_interfaces`; Firejail `--dbus-user.call`).
+  - Verified: Screenshot, Background, DynamicLauncher, Trash and Location
+    are blocked; Settings, Properties and NetworkMonitor are allowed.
+  - `portal.Documents` was removed from the defaults (it comes back only
+    with a portal identity).
+- **S2 localhost:** `network.host_ports` is the only ns→host forwarding
+  (`-T` list, otherwise `none`); the app's own ports are still `-t auto`.
+  Verified: a listed port is reachable, an unlisted one is blocked.
+- **S3 seccomp:** baseline filter on by default (`security.baseline_seccomp`,
+  per-app `advanced.seccomp_baseline`). Strict filter = baseline + more.
+  Both are loaded by `sam-jail-run --sandbox-exec` (no more bwrap fd), so
+  they also work under pasta.
+- **S4:** private `/dev/shm` (tmpfs).
+- **S5:** Landlock `Scope::AbstractUnixSocket`. Verified: XWayland's
+  abstract socket gets EPERM even with full network.
+- **Electron:** `FixAction::AddArg` and repair step `chromium-no-sandbox`.
+  It's suggested by the analyzer after Chromium sandbox failures, and as a
+  first-run hint when `/proc/sys/kernel/apparmor_restrict_unprivileged_userns`
+  is 1.
+- **`/etc/alternatives`** is in the minimal `/etc` set.
+- **Backend parity:** `select::limitations()`. The GUI shows a warning
+  listing what the chosen backend does not enforce.
+  `tests/parity.rs` checks network, X11, GPU, sound, home and portal
+  across all three backends.
+- **Portal identity** (`portal_identity.rs`, `security.portal_identity`):
+  - `/.flatpak-info` + `/run/user/<uid>/.flatpak/<instance>/{info,
+    bwrapinfo.json}` (bwrap `--info-fd`).
+  - The proxy runs inside a minimal bwrap with the same info file (the
+    portal identifies the D-Bus peer).
+  - The doc view `/run/user/<uid>/doc/by-app/<id>` is bound at
+    `/run/user/<uid>/doc`.
+  - Verified: Documents.Add from the app, and the file is visible in the
+    sandbox. Instance dirs are cleaned up.
+  - Not used with localhost mode (pasta drops `--info-fd`).
+  - Documents.Add of files whose sandbox path differs from the host path
+    (private home) is rejected by the portal; portal file dialogs are not
+    affected.
+- Regression: ZFontManager and Tuta pass `selftest` with all of the above.

@@ -104,6 +104,12 @@ impl Backend for Firejail {
             for n in &bus.own {
                 a.push(format!("--dbus-user.own={n}"));
             }
+            for r in &bus.calls {
+                a.push(format!("--dbus-user.call={r}"));
+            }
+            for r in &bus.broadcasts {
+                a.push(format!("--dbus-user.broadcast={r}"));
+            }
         }
         a.push(if p.dbus.system.mode == DbusMode::Full { "--dbus-system=allow".into() } else { "--dbus-system=none".into() });
 

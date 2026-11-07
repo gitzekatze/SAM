@@ -154,6 +154,19 @@ pub struct NetworkPerms {
     pub mode: NetworkMode,
     /// Hosts for the experimental `filtered` mode.
     pub allowed_hosts: Vec<String>,
+    /// `localhost` mode: TCP ports on the host's loopback the app may reach,
+    /// e.g. "11434" for Ollama. Nothing else on the host is reachable.
+    pub host_ports: Vec<String>,
+}
+
+impl NetworkPerms {
+    /// Valid ports from `host_ports` (DNS, port 53, is never forwarded).
+    pub fn valid_host_ports(&self) -> Vec<u16> {
+        let mut v: Vec<u16> = self.host_ports.iter().filter_map(|p| p.trim().parse().ok()).filter(|p| *p != 0 && *p != 53).collect();
+        v.sort();
+        v.dedup();
+        v
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -212,6 +225,33 @@ pub struct DbusBusPerms {
     pub deny: Vec<String>,
     /// Bus names the app may own (filtered mode).
     pub own: Vec<String>,
+    /// Method-level rules `NAME=[METHOD][@PATH]` (xdg-dbus-proxy `--call`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub calls: Vec<String>,
+    /// Signal rules `NAME=[METHOD][@PATH]` (xdg-dbus-proxy `--broadcast`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub broadcasts: Vec<String>,
+}
+
+pub const PORTAL_NAME: &str = "org.freedesktop.portal.Desktop";
+
+/// Portal interfaces a sandboxed app may use. Portals see SAM apps as
+/// ordinary (unsandboxed) programs, so interfaces that would act on the
+/// host without asking are left out: Screenshot, Background (autostart),
+/// DynamicLauncher (menu entries), Trash, Wallpaper, RemoteDesktop,
+/// InputCapture, GlobalShortcuts, Location, Usb, Clipboard, Secret, Account.
+pub fn portal_interfaces(p: &PermissionSet) -> Vec<&'static str> {
+    let mut v = vec![
+        "OpenURI", "Notification", "Settings", "FileChooser", "Print", "Email", "Inhibit",
+        "NetworkMonitor", "ProxyResolver", "MemoryMonitor", "PowerProfileMonitor",
+    ];
+    if p.devices.webcam {
+        v.push("Camera");
+    }
+    if p.integrations.screen_sharing {
+        v.push("ScreenCast");
+    }
+    v
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -251,10 +291,8 @@ impl DbusBusPerms {
 /// `portal.Tracker` (file index search), which AppImages do not need.
 pub fn default_session_allow() -> Vec<String> {
     vec![
-        // File chooser, open-with, screenshots, notifications via portal, ...
+        // Desktop portal, restricted to selected interfaces (see portal_interfaces).
         "org.freedesktop.portal.Desktop".into(),
-        // Document portal: access to files the user picks in a dialog.
-        "org.freedesktop.portal.Documents".into(),
         // Input methods (typing in other scripts, emoji pickers).
         "org.freedesktop.portal.IBus".into(),
         "org.freedesktop.portal.Fcitx".into(),
@@ -271,6 +309,8 @@ impl Default for DbusPerms {
                 allow: default_session_allow(),
                 deny: vec![],
                 own: vec![],
+                calls: vec![],
+                broadcasts: vec![],
             },
             system: DbusBusPerms::default(),
         }
@@ -318,6 +358,9 @@ pub struct AdvancedPerms {
     pub landlock: Option<bool>,
     /// Experimental strict seccomp filter.
     pub seccomp_strict: bool,
+    /// Baseline syscall filter (follows the global setting when on; a
+    /// repair step can turn it off for one app).
+    pub seccomp_baseline: bool,
     /// Allow nested user namespaces (required by Chromium/Electron's own sandbox).
     pub allow_userns: bool,
     /// Expose host theme configuration (GTK/Qt/KDE settings, read-only).
@@ -341,6 +384,9 @@ pub struct IntegrationPerms {
     pub media_controls: bool,
     /// "Show in folder" through the file manager.
     pub file_manager: bool,
+    /// Screen sharing through the portal (the desktop always asks which
+    /// screen or window). For video calls and streaming.
+    pub screen_sharing: bool,
 }
 
 impl IntegrationPerms {
@@ -368,6 +414,7 @@ impl Default for AdvancedPerms {
             persistent_home: true,
             landlock: None,
             seccomp_strict: false,
+            seccomp_baseline: true,
             allow_userns: true,
             host_themes: true,
             writable_appdir: false,
@@ -411,6 +458,23 @@ impl PermissionSet {
         }
         b.own.extend(own.into_iter().map(String::from));
         b.own.extend(b.tray_own_names());
+        // The portal: only selected interfaces, method by method.
+        if let Some(i) = b.allow.iter().position(|n| n == PORTAL_NAME) {
+            b.allow.remove(i);
+            let obj = "/org/freedesktop/portal/desktop";
+            for iface in portal_interfaces(self) {
+                b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.portal.{iface}.*@{obj}"));
+            }
+            b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.portal.Request.*@{obj}/request/*"));
+            if self.integrations.screen_sharing {
+                b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.portal.Session.*@{obj}/session/*"));
+            }
+            // Version checks and introspection (read-only).
+            b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.DBus.Properties.Get@{obj}"));
+            b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.DBus.Properties.GetAll@{obj}"));
+            b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.DBus.Introspectable.*@{obj}"));
+            b.broadcasts.push(format!("{PORTAL_NAME}=@/org/freedesktop/portal/*"));
+        }
         b
     }
 
@@ -523,6 +587,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Additional folders the app can read and change.", High, advanced),
         perm!("network.mode", "Network", "Network access",
             "'full' shares your internet connection with the app. 'localhost' blocks the internet but keeps local servers reachable (e.g. a local AI model or the app's own web page). 'none' places it in an isolated network with no connectivity.", High),
+        perm!("network.host_ports", "Network", "Local services the app may reach",
+            "With 'Local network only': ports on this computer the app may connect to, e.g. 11434 for Ollama or 1234 for LM Studio. Nothing else on your computer is reachable.", Medium),
         perm!("devices.gpu", "Devices", "GPU acceleration",
             "Hardware-accelerated graphics through /dev/dri and host graphics drivers. Needed by most games, browsers and editors.", Medium),
         perm!("devices.webcam", "Devices", "Webcam",
@@ -551,6 +617,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Lets the app store logins in your keyring or KWallet. The keyring does not separate apps: the app can read every password stored there.", High),
         perm!("integrations.media_controls", "Desktop integration", "Media controls",
             "Media keys and 'now playing' in the panel, and keeping the screen awake during playback.", Low),
+        perm!("integrations.screen_sharing", "Desktop integration", "Screen sharing",
+            "Lets the app ask to share your screen or a window (video calls, streaming). Your desktop always asks which screen or window first.", Medium),
         perm!("integrations.file_manager", "Desktop integration", "Show in folder",
             "Lets the app open your file manager at a file it saved.", Low),
         perm!("sockets.ssh_agent", "Sockets", "SSH agent",
@@ -567,6 +635,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Kernel-enforced write restrictions as an extra layer. Unset follows the global setting.", Low, advanced),
         perm!("advanced.seccomp_strict", "Advanced", "Strict syscall filter",
             "Experimental: blocks rarely needed, dangerous system calls. Can break apps.", Low, advanced),
+        perm!("advanced.seccomp_baseline", "Advanced", "Baseline syscall filter",
+            "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, terminal injection). Turn off only if an app fails because of it.", Low, advanced),
         perm!("advanced.allow_userns", "Advanced", "Nested namespaces",
             "Lets Chromium/Electron apps start their own internal sandbox.", Low, advanced),
         perm!("advanced.host_themes", "Advanced", "Host theme settings",

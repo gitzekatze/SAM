@@ -5,12 +5,17 @@
 //!   Reads stay allowed everywhere the mounts allow; writes are limited to the
 //!   locations the profile grants read/write. This is defense in depth for the
 //!   bind-mount layout, not a complete sandbox.
-//! * The strict seccomp filter is compiled with seccompiler and handed to
-//!   bwrap through `--seccomp <fd>`.
+//!   It also scopes abstract UNIX sockets (Landlock ABI 6): the app cannot
+//!   connect to abstract sockets created outside the sandbox, e.g. XWayland's
+//!   `@/tmp/.X11-unix/X0`, which is reachable whenever the app shares the
+//!   host network namespace.
+//! * Seccomp filters are compiled with seccompiler and loaded by the same
+//!   helper right before exec: a baseline filter (on by default, similar to
+//!   Flatpak's) and an optional strict one. Loading them in the helper rather
+//!   than via `bwrap --seccomp <fd>` also works when bwrap runs under pasta,
+//!   which does not pass extra file descriptors on.
 
 use std::collections::BTreeMap;
-use std::io::{Seek, SeekFrom, Write};
-use std::os::fd::{FromRawFd, IntoRawFd};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -24,6 +29,17 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SandboxSpec {
     pub landlock: Option<LandlockSpec>,
+    #[serde(default)]
+    pub seccomp: Option<SeccompSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SeccompSpec {
+    /// Also apply the strict filter on top of the baseline.
+    pub strict: bool,
+    /// Nested sandboxes allowed (Chromium, Electron, WebKit's bwrap):
+    /// keep unshare/setns and the mount family.
+    pub allow_userns: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -79,20 +95,28 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
             Err(e) => eprintln!("sam-jail: landlock not applied: {e:#}"),
         }
     }
+    if let Some(sc) = &spec.seccomp {
+        // A filter that fails to load must stop the launch: running without
+        // it while the UI says it is on would be false confidence.
+        apply_seccomp(sc).context("loading the seccomp filter")?;
+    }
     let err = Command::new(prog).args(rest).exec();
     bail!("exec {prog}: {err}")
 }
 
 fn apply_landlock(spec: &LandlockSpec) -> Result<String> {
     use landlock::{
-        path_beneath_rules, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI,
+        path_beneath_rules, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, Scope, ABI,
     };
     let abi = ABI::V3;
     let read = AccessFs::from_read(abi);
     let all = AccessFs::from_all(abi);
     let write_existing: Vec<&PathBuf> = spec.write.iter().filter(|p| p.exists()).collect();
+    // Best effort: kernels before 6.12 (ABI 6) ignore the scope.
     let status = Ruleset::default()
         .handle_access(all)
+        .map_err(|e| anyhow!("{e}"))?
+        .scope(Scope::AbstractUnixSocket)
         .map_err(|e| anyhow!("{e}"))?
         .create()
         .map_err(|e| anyhow!("{e}"))?
@@ -110,8 +134,10 @@ fn apply_landlock(spec: &LandlockSpec) -> Result<String> {
     .into())
 }
 
-/// Syscalls blocked (EPERM) by the strict filter.
-fn strict_syscalls(allow_userns: bool) -> Vec<i64> {
+/// Syscalls blocked (EPERM) by the baseline filter, on by default. Kernel
+/// interfaces no desktop app needs and that have a history of exploits:
+/// modules, kexec, BPF, perf, keyrings, userfaultfd, handle-based opens.
+fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
     let mut v: Vec<i64> = vec![
         libc::SYS_kexec_load,
         libc::SYS_init_module,
@@ -131,61 +157,68 @@ fn strict_syscalls(allow_userns: bool) -> Vec<i64> {
         libc::SYS_keyctl,
         libc::SYS_add_key,
         libc::SYS_request_key,
-        libc::SYS_ptrace,
-        libc::SYS_process_vm_writev,
         libc::SYS_open_by_handle_at,
         libc::SYS_name_to_handle_at,
         libc::SYS_vhangup,
         libc::SYS_syslog,
-        libc::SYS_mount,
-        libc::SYS_umount2,
-        libc::SYS_pivot_root,
-        libc::SYS_open_tree,
-        libc::SYS_move_mount,
-        libc::SYS_fsopen,
-        libc::SYS_fsmount,
-        libc::SYS_fsconfig,
     ];
     #[cfg(target_arch = "x86_64")]
     v.extend([libc::SYS_kexec_file_load, libc::SYS_iopl, libc::SYS_ioperm, libc::SYS_uselib]);
     if !allow_userns {
-        v.extend([libc::SYS_unshare, libc::SYS_setns]);
+        // Without nested sandboxes nothing inside needs namespaces or mounts.
+        v.extend([
+            libc::SYS_unshare,
+            libc::SYS_setns,
+            libc::SYS_mount,
+            libc::SYS_umount2,
+            libc::SYS_pivot_root,
+            libc::SYS_open_tree,
+            libc::SYS_move_mount,
+            libc::SYS_fsopen,
+            libc::SYS_fsmount,
+            libc::SYS_fsconfig,
+        ]);
     }
     v
 }
 
-/// Compile the strict filter and store it in an inheritable memfd.
-/// Returns the raw fd to pass to `bwrap --seccomp`.
-pub fn seccomp_fd(allow_userns: bool) -> Result<i32> {
-    use seccompiler::{BpfProgram, SeccompAction, SeccompFilter, SeccompRule, TargetArch};
+/// Additionally blocked by the strict filter.
+fn strict_extra_syscalls() -> Vec<i64> {
+    vec![libc::SYS_ptrace, libc::SYS_process_vm_writev, libc::SYS_process_vm_readv, libc::SYS_personality, libc::SYS_mbind, libc::SYS_move_pages, libc::SYS_migrate_pages]
+}
+
+/// The compiled BPF program for a filter spec.
+pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
+    use seccompiler::{SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter, SeccompRule, TargetArch};
     let arch = if cfg!(target_arch = "x86_64") {
         TargetArch::x86_64
     } else if cfg!(target_arch = "aarch64") {
         TargetArch::aarch64
     } else {
-        bail!("seccomp strict mode is not supported on this architecture");
+        bail!("seccomp filters are not supported on this architecture");
     };
-    let rules: BTreeMap<i64, Vec<SeccompRule>> = strict_syscalls(allow_userns).into_iter().map(|s| (s, vec![])).collect();
-    let filter = SeccompFilter::new(rules, SeccompAction::Allow, SeccompAction::Errno(libc::EPERM as u32), arch)
-        .map_err(|e| anyhow!("{e}"))?;
-    let prog: BpfProgram = filter.try_into().map_err(|e: seccompiler::BackendError| anyhow!("{e}"))?;
-    let mut bytes = Vec::with_capacity(prog.len() * 8);
-    for ins in &prog {
-        bytes.extend_from_slice(&ins.code.to_ne_bytes());
-        bytes.push(ins.jt);
-        bytes.push(ins.jf);
-        bytes.extend_from_slice(&ins.k.to_ne_bytes());
+    let mut list = baseline_syscalls(spec.allow_userns);
+    if spec.strict {
+        list.extend(strict_extra_syscalls());
     }
-    // memfd without MFD_CLOEXEC so bwrap inherits it.
-    let name = std::ffi::CString::new("sam-seccomp").unwrap();
-    let fd = unsafe { libc::memfd_create(name.as_ptr(), 0) };
-    if fd < 0 {
-        bail!("memfd_create failed: {}", std::io::Error::last_os_error());
+    let mut rules: BTreeMap<i64, Vec<SeccompRule>> = list.into_iter().map(|s| (s, vec![])).collect();
+    // Terminal input injection into the parent's tty (TIOCSTI, TIOCLINUX).
+    let ioctl_rule = |req: u64| -> Result<SeccompRule> {
+        let c = SeccompCondition::new(1, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, req).map_err(|e| anyhow!("{e}"))?;
+        SeccompRule::new(vec![c]).map_err(|e| anyhow!("{e}"))
+    };
+    rules.insert(libc::SYS_ioctl, vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?]);
+    let filter = SeccompFilter::new(rules, SeccompAction::Allow, SeccompAction::Errno(libc::EPERM as u32), arch).map_err(|e| anyhow!("{e}"))?;
+    filter.try_into().map_err(|e: seccompiler::BackendError| anyhow!("{e}"))
+}
+
+fn apply_seccomp(spec: &SeccompSpec) -> Result<()> {
+    let prog = seccomp_program(spec)?;
+    // Required for unprivileged filters (bwrap sets it too).
+    if unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } != 0 {
+        bail!("PR_SET_NO_NEW_PRIVS: {}", std::io::Error::last_os_error());
     }
-    let mut f = unsafe { std::fs::File::from_raw_fd(fd) };
-    f.write_all(&bytes)?;
-    f.seek(SeekFrom::Start(0))?;
-    Ok(f.into_raw_fd())
+    seccompiler::apply_filter(&prog).map_err(|e| anyhow!("{e}"))
 }
 
 #[cfg(test)]
@@ -211,8 +244,10 @@ mod tests {
 
     #[test]
     fn seccomp_compiles() {
-        let fd = seccomp_fd(true).unwrap();
-        assert!(fd >= 0);
-        unsafe { libc::close(fd) };
+        for (strict, allow_userns) in [(false, true), (false, false), (true, true)] {
+            assert!(!seccomp_program(&SeccompSpec { strict, allow_userns }).unwrap().is_empty());
+        }
+        assert!(baseline_syscalls(false).contains(&libc::SYS_mount));
+        assert!(!baseline_syscalls(true).contains(&libc::SYS_mount), "nested sandboxes need mount");
     }
 }

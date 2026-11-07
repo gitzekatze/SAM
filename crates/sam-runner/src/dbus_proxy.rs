@@ -16,7 +16,9 @@ pub struct DbusProxy {
 }
 
 impl DbusProxy {
-    pub fn start(host: &HostInfo, perms: &DbusBusPerms, runtime_dir: &Path, app_id: &str) -> Result<DbusProxy> {
+    /// `identity_file`: run the proxy inside a minimal Bubblewrap sandbox that
+    /// carries this file at `/.flatpak-info` (portal identity).
+    pub fn start(host: &HostInfo, perms: &DbusBusPerms, runtime_dir: &Path, app_id: &str, identity_file: Option<&Path>) -> Result<DbusProxy> {
         let tool = host.tools.xdg_dbus_proxy.as_ref().context("xdg-dbus-proxy is not installed")?;
         let address = host
             .sockets
@@ -36,10 +38,23 @@ impl DbusProxy {
         for name in &perms.own {
             args.push(format!("--own={name}"));
         }
+        for rule in &perms.calls {
+            args.push(format!("--call={rule}"));
+        }
+        for rule in &perms.broadcasts {
+            args.push(format!("--broadcast={rule}"));
+        }
         // Let the app own names under its own id, like Flatpak does.
         args.push(format!("--own=io.github.gitzekatze.SAM.{}.*", app_id.replace('-', "_")));
-        let mut cmd = Command::new(&tool.path);
-        cmd.args(&args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        let (program, argv) = match (identity_file, host.tools.bwrap.as_ref()) {
+            (Some(info), Some(bwrap)) => {
+                let bus_socket = host.sockets.dbus_session.as_deref();
+                crate::portal_identity::wrap_proxy(&bwrap.path, info, runtime_dir, bus_socket, &tool.path, &args)
+            }
+            _ => (tool.path.clone(), args.clone()),
+        };
+        let mut cmd = Command::new(&program);
+        cmd.args(&argv).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         unsafe {
             cmd.pre_exec(|| {
                 // Die together with sam-jail-run.
