@@ -74,10 +74,36 @@ function iconUrl(path) {
     return path ? "file://" + path : ""
 }
 
+/// Text from AppImages, apps or file names, made safe for Qt's AutoText
+/// (which renders HTML, including remote images): no markup characters.
+function plain(s) {
+    if (s === undefined || s === null)
+        return ""
+    return String(s).replace(/</g, "\u2039").replace(/>/g, "\u203A")
+}
+
+/// Escape for places that intentionally use rich text.
+function esc(s) {
+    return String(s === undefined || s === null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+/// Session-bus names that can act outside the sandbox (mirrors
+/// sam-core permissions::dangerous_bus_name; the core check is authoritative).
+function dangerousBus(name) {
+    const n = String(name).trim()
+    if (n === "*" || n === "org.*" || n === "org.freedesktop.*" || n.indexOf("org.freedesktop.portal.*") === 0)
+        return true
+    const bad = ["org.freedesktop.systemd1", "org.freedesktop.Flatpak", "org.freedesktop.portal.Flatpak", "org.freedesktop.impl.portal.",
+                 "org.kde.KWin", "org.kde.plasmashell", "org.kde.klauncher", "org.kde.kded", "org.kde.krunner", "org.kde.ksmserver",
+                 "org.kde.kglobalaccel", "org.gnome.Shell", "org.gnome.SessionManager", "ca.desrt.dconf"]
+    const prefix = n.endsWith("*") ? n.replace(/\.?\*$/, "") : null
+    return bad.some(b => prefix !== null ? (b.indexOf(prefix) === 0 || prefix.indexOf(b.replace(/\.$/, "")) === 0) : n.indexOf(b) === 0)
+}
+
 function tildify(path, home) {
     if (!path)
         return ""
     if (home && path.indexOf(home) === 0)
-        return "~" + path.slice(home.length)
-    return path
+        return plain("~" + path.slice(home.length))
+    return plain(path)
 }

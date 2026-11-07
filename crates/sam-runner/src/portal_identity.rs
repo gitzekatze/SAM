@@ -44,15 +44,32 @@ impl Instance {
     pub fn create(runtime_dir: &Path, uid: u32, sam_id: &str) -> Result<Instance> {
         let app_id = portal_app_id(sam_id);
         let instance_id = instance_number();
-        let info = format!(
+        let info_for = |instance_id: u64| format!(
             "[Application]\nname={app_id}\nruntime=runtime/{APP_ID_PREFIX}.Host/{arch}/host\n\n[Instance]\ninstance-id={instance_id}\nsession-bus-proxy=true\n",
             arch = std::env::consts::ARCH
         );
+        // Never reuse a directory: a real Flatpak instance may own it. Only a
+        // directory created here is ever written to or deleted.
+        let base = PathBuf::from(format!("/run/user/{uid}/.flatpak"));
+        fs::create_dir_all(&base).with_context(|| format!("creating {}", base.display()))?;
+        let mut instance_id = instance_id;
+        let mut dir = base.join(instance_id.to_string());
+        let mut tries = 0;
+        loop {
+            match fs::create_dir(&dir) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && tries < 16 => {
+                    tries += 1;
+                    instance_id = instance_number().wrapping_add(tries * 7919);
+                    dir = base.join(instance_id.to_string());
+                }
+                Err(e) => return Err(e).with_context(|| format!("creating {}", dir.display())),
+            }
+        }
+        let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
+        let info = info_for(instance_id);
         let info_file = runtime_dir.join("flatpak-info");
         fs::write(&info_file, &info)?;
-        let dir = PathBuf::from(format!("/run/user/{uid}/.flatpak/{instance_id}"));
-        fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
-        let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
         fs::write(dir.join("info"), &info)?;
         let out = File::create(dir.join("bwrapinfo.json"))?;
         // bwrap must inherit it.

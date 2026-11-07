@@ -295,6 +295,18 @@ enum DevCmd {
         #[arg(long)]
         apprun: Option<PathBuf>,
     },
+    /// Built-in SquashFS reader, run by SAM inside a sandbox during extraction.
+    ExtractSquashfs {
+        source: PathBuf,
+        offset: u64,
+        dest: PathBuf,
+        #[arg(long)]
+        max_files: u64,
+        #[arg(long)]
+        max_bytes: u64,
+        #[arg(long)]
+        max_seconds: u64,
+    },
 }
 
 /// Output: human text plus the JSON value.
@@ -579,8 +591,8 @@ fn real_main(cli: Cli) -> Result<()> {
                 apps.retain(|a| a.category == c);
             }
             match sort.as_str() {
-                "recent" => apps.sort_by(|a, b| b.last_launched.cmp(&a.last_launched)),
-                "added" => apps.sort_by(|a, b| b.added_at.cmp(&a.added_at)),
+                "recent" => apps.sort_by_key(|a| std::cmp::Reverse(a.last_launched)),
+                "added" => apps.sort_by_key(|a| std::cmp::Reverse(a.added_at)),
                 _ => {}
             }
             out.emit(&apps, || {
@@ -620,8 +632,13 @@ fn real_main(cli: Cli) -> Result<()> {
             );
         }
         Cmd::Remove { app: q, keep_data } => {
-            let e = app.remove(&q, keep_data)?;
-            out.emit(&json!({"removed": e.id}), || println!("Removed {} ({}){}", e.display_name(), e.id, if keep_data { "; private data kept" } else { "" }));
+            let (e, problems) = app.remove(&q, keep_data)?;
+            out.emit(&json!({"removed": e.id, "warnings": problems}), || {
+                println!("Removed {} ({}){}", e.display_name(), e.id, if keep_data { "; private data kept" } else { "" });
+                for p in &problems {
+                    eprintln!("{} {p}", paint("warning:", "33"));
+                }
+            });
         }
         Cmd::Run { app: q, args } => {
             let mut e = app.resolve(&q)?;
@@ -904,6 +921,10 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             let done = marker.exists();
             out.emit(&json!({"done": done}), || println!("onboarding {}", if done { "completed" } else { "pending" }));
+        }
+        Cmd::Dev { cmd: DevCmd::ExtractSquashfs { source, offset, dest, max_files, max_bytes, max_seconds } } => {
+            let limits = sam_intake::normalize::Limits { max_files, max_bytes, max_seconds };
+            sam_intake::extract::builtin_squashfs_entry(&source, offset, &dest, &limits)?;
         }
         Cmd::Dev { cmd: DevCmd::MakeFixture { path, name, categories, apprun } } => {
             let mut spec = sam_intake::testkit::FixtureSpec::hello(&name);

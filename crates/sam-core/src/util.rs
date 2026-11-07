@@ -114,6 +114,28 @@ where
 }
 
 /// Lowercase ASCII slug: `Krita 5.2 (x86_64)` -> `krita-5-2-x86-64`.
+/// Text from an untrusted source (an AppImage's desktop file, an app's
+/// output, a file name) made safe to show: control characters removed,
+/// length capped, and `<`/`>` replaced by look-alikes so no UI toolkit can
+/// mistake it for markup (Qt's AutoText renders HTML, including remote
+/// images).
+pub fn display_safe(s: &str, max_chars: usize) -> String {
+    let mut out: String = s
+        .chars()
+        .filter(|c| !c.is_control())
+        .map(|c| match c {
+            '<' => '‹',
+            '>' => '›',
+            c => c,
+        })
+        .take(max_chars)
+        .collect();
+    if s.chars().filter(|c| !c.is_control()).count() > max_chars {
+        out.push('…');
+    }
+    out
+}
+
 pub fn slugify(s: &str) -> String {
     let mut out = String::new();
     let mut dash = false;
@@ -167,5 +189,16 @@ mod tests {
         assert_eq!(shell_quote("a b"), "'a b'");
         assert_eq!(shell_quote("it's"), "'it'\\''s'");
         assert_eq!(shell_quote(""), "''");
+    }
+}
+
+#[cfg(test)]
+mod display_safe_tests {
+    use super::display_safe;
+
+    #[test]
+    fn neutralizes_markup_and_controls() {
+        assert_eq!(display_safe("<b>X</b>\u{7}", 100), "‹b›X‹/b›");
+        assert_eq!(display_safe("abcdef", 3), "abc…");
     }
 }

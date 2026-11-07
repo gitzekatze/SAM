@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(info.compression.as_deref(), Some("zstd"));
 
         let root = d.path().join("extracted/hello");
-        let req = ExtractRequest { source: &img, info: &info, root: &root, limits: Limits::default(), allow_fallback: false };
+        let req = ExtractRequest { source: &img, info: &info, root: &root, limits: Limits::default(), allow_fallback: false, isolation: None };
         let mut log = Vec::new();
         let out = extract(&req, &mut log).unwrap();
         assert_eq!(out.method, "builtin-squashfs");
@@ -188,7 +188,7 @@ mod tests {
             build(&img, &spec).unwrap();
             let info = sam_detect::inspect(&img).unwrap();
             let root = d.path().join("x");
-            let req = ExtractRequest { source: &img, info: &info, root: &root, limits: Limits::default(), allow_fallback: false };
+            let req = ExtractRequest { source: &img, info: &info, root: &root, limits: Limits::default(), allow_fallback: false, isolation: None };
             extract(&req, &mut Vec::new()).unwrap();
             assert!(root.join("AppDir/AppRun").exists());
         }
@@ -204,7 +204,7 @@ mod tests {
         let info = sam_detect::inspect(&img).unwrap();
         let root = d.path().join("x");
         let limits = Limits { max_bytes: 64 * 1024, ..Default::default() };
-        let req = ExtractRequest { source: &img, info: &info, root: &root, limits, allow_fallback: false };
+        let req = ExtractRequest { source: &img, info: &info, root: &root, limits, allow_fallback: false, isolation: None };
         let err = extract(&req, &mut Vec::new()).unwrap_err();
         assert!(format!("{err:#}").contains("limit"), "{err:#}");
         assert!(!root.join("AppDir").exists());

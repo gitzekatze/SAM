@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import "Util.js" as Util
 
 /// Plain-language warnings (whitepaper §2.19.3), most severe first.
 ColumnLayout {
@@ -26,7 +27,7 @@ ColumnLayout {
             type: modelData.severity === "danger" ? Kirigami.MessageType.Error
                 : modelData.severity === "warning" ? Kirigami.MessageType.Warning
                 : Kirigami.MessageType.Information
-            text: "<b>" + modelData.title + "</b> — " + modelData.message
+            text: "<b>" + Util.esc(modelData.title) + "</b> — " + Util.esc(modelData.message)
         }
     }
 }

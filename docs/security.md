@@ -77,9 +77,37 @@ Process isolation:
     `~/.local/share/applications` stay read-only. These are common ways for
     malware to persist.
 
+## What SAM never trusts
+
+The sandboxed app controls its own output, and an AppImage controls its own
+metadata and file name. SAM treats both as untrusted:
+
+- **Automatic backend changes** happen only when Bubblewrap itself reports
+  that the sandbox could not be built (`--json-status-fd`), never because of
+  text the app printed. The only automatic fallback is Bubblejail; Firejail
+  is never chosen without you.
+- **Repair suggestions** derived from the app's output are labelled as such
+  and always need confirmation. They never offer services that can act
+  outside the sandbox (systemd, Flatpak, KWin/Plasma scripting, dconf, …)
+  or protected locations (`~/.ssh`, keyrings, the whole home). Adding such a
+  D-Bus service by hand is rated Dangerous and asks first.
+- **Names, comments and file names** are cleaned (no markup, no control
+  characters, capped length) and shown as plain text, so an AppImage cannot
+  inject HTML (remote images, fake formatting) into SAM's windows or
+  notifications.
+- **MimeType** declarations are filtered: a sandboxed launcher never
+  registers URL schemes (`https`, `mailto`, …), directories, executables or
+  generic types.
+- **What was enforced** (Landlock, seccomp) is reported by SAM's helper on a
+  private channel that is closed before the app starts, and shown in the
+  launch log and on the app page.
+
 ## Extraction safety (§2.11.4)
 
-Extraction never executes the AppImage by default.
+Extraction runs inside a minimal Bubblewrap sandbox (source read-only, only
+the target writable, no network, no capabilities) whenever Bubblewrap is
+usable; the extraction log says whether it was isolated. Extraction never
+executes the AppImage by default. Additionally:
 
 - **Archive paths:** entries containing `..` are refused. Parent directories
   are checked so that writes can't be redirected through symlinks.
@@ -116,8 +144,15 @@ The score shown in the app is a weighted sum, capped at 100.
   app page lists what is not enforced for the chosen backend.
 - **Domain-filtered network** is experimental and not enforced (falls back
   to no network).
-- **Portal identity** relies on Flatpak's instance files and is not used
-  with *Local network only*.
+- **Portal identity** imitates Flatpak's instance files
+  (`/.flatpak-info`, `/run/user/<uid>/.flatpak/<id>/`). This relies on
+  undocumented xdg-desktop-portal behavior (tested with 1.22.1) and may break
+  with future versions; SAM then falls back to the portal treating the app
+  as an ordinary program (the method filter still applies). SAM apps appear
+  in `flatpak ps` while they run. It is not used with *Local network only*.
+- **Local network only** forwards the app's ports to this computer
+  automatically, except privileged ports and well-known local services;
+  list `network.app_ports` to restrict it further.
 - **Firejail** is setuid-root. Use it only as a compatibility backend.
 - **Hostname:** the sandbox keeps the host's hostname. Changing it is blocked
   on some hardened hosts.

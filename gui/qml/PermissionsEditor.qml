@@ -81,6 +81,16 @@ ColumnLayout {
         edited(p)
     }
     function request(key, v) {
+        if (key === "dbus.session.allow") {
+            const before = value(key) || []
+            const added = (v || []).filter(n => before.indexOf(n) < 0 && Util.dangerousBus(n))
+            if (added.length) {
+                applicationWindow().confirmDialog.ask(qsTr("Allow “%1”?").arg(Util.plain(added.join(", "))),
+                    qsTr("This service can act outside the sandbox: start programs, run scripts in the desktop shell or change any setting. An app with access to it can escape the sandbox."),
+                    function () { editor.apply(key, v) }, qsTr("Allow anyway"))
+                return
+            }
+        }
         if (needsConfirm(key, v)) {
             const i = info(key)
             applicationWindow().confirmDialog.ask(
@@ -149,6 +159,7 @@ ColumnLayout {
         PermChoice { key: "filesystem.music"; editor: editor; options: editor.accessOptions }
         PermChoice { key: "filesystem.videos"; editor: editor; options: editor.accessOptions }
         PermChoice { key: "filesystem.desktop"; editor: editor; options: editor.accessOptions }
+        PermChoice { key: "filesystem.opened_files"; editor: editor; options: [{ value: "ro", text: qsTr("Read-only") }, { value: "rw", text: qsTr("Read & write") }] }
         FormCard.FormDelegateSeparator { visible: editor.advanced && editor.value("filesystem.home") === true }
         PermSwitch { key: "filesystem.ssh"; editor: editor; visible: editor.advanced && editor.value("filesystem.home") === true }
         PermSwitch { key: "filesystem.gnupg"; editor: editor; visible: editor.advanced && editor.value("filesystem.home") === true }
@@ -175,6 +186,13 @@ ColumnLayout {
             visible: editor.value("network.mode") === "localhost"
             addText: qsTr("Allow a local port…")
             promptTitle: qsTr("Port on this computer (e.g. 11434 for Ollama)")
+        }
+        PathListEditor {
+            key: "network.app_ports"; editor: editor; folders: false
+            Layout.fillWidth: true
+            visible: editor.advanced && editor.value("network.mode") === "localhost"
+            addText: qsTr("Only make these app ports reachable…")
+            promptTitle: qsTr("Port of the app (e.g. its web page)")
         }
     }
 

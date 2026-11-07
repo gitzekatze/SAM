@@ -46,6 +46,15 @@ pub struct Prepared {
     pub seccomp: bool,
     proxy: Option<DbusProxy>,
     portal_instance: Option<crate::portal_identity::Instance>,
+    _runtime: RuntimeDir,
+}
+
+/// Removes a per-launch runtime directory when the launch is over.
+struct RuntimeDir(PathBuf);
+impl Drop for RuntimeDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,7 +127,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     if let Some(e) = errors.first() {
         bail!("{e}");
     }
-    let x = app.extraction.as_ref().unwrap();
+    let x = app.extraction.as_ref().context("the AppImage has not been extracted")?;
     let selection = select(&app.profile, cfg, host)?;
     let kind = selection.kind;
     let perms = &app.profile.permissions;
@@ -133,8 +142,11 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     };
     warnings.extend(evaluate(perms, &ctx_w));
 
-    let runtime_dir = paths.runtime_dir(&app.id);
+    // One runtime directory per launch (two instances of an app never share
+    // proxy sockets or spec files); removed when `Prepared` is dropped.
+    let runtime_dir = paths.runtime_dir(&app.id).join(format!("launch-{}-{}", std::process::id(), now()));
     fs::create_dir_all(&runtime_dir)?;
+    let runtime_guard = RuntimeDir(runtime_dir.clone());
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(&runtime_dir, fs::Permissions::from_mode(0o700));
@@ -267,22 +279,26 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
 
     let mut command = match kind {
         BackendKind::Unsandboxed => unsandboxed_command(&ctx),
-        k => crate::backend_for(k).unwrap().build(&ctx)?,
+        k => crate::backend_for(k).context("unknown backend")?.build(&ctx)?,
     };
     if kind == BackendKind::Bubblewrap && perms.network.mode == sam_core::permissions::NetworkMode::Localhost {
-        if let Err(e) = crate::netns::wrap_localhost(&mut command, &perms.network.valid_host_ports()) {
+        if let Err(e) = crate::netns::wrap_localhost(&mut command, &perms.network.valid_host_ports(), &perms.network.valid_app_ports()) {
             // Without pasta, fall back to no network at all.
             command.args.insert(0, "--unshare-net".into());
             warnings.push(Warning::warn("localhost-unavailable", "Local network unavailable", format!("{e:#}. The app has no network.")));
         }
     }
-    Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy, portal_instance })
+    Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy, portal_instance, _runtime: runtime_guard })
 }
 
 /// Paths mounted writable only for this launch: files passed on the command
 /// line ("Open with") and writable extra binds.
 fn launch_writable_paths(ctx: &LaunchContext) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = ctx.args.iter().map(PathBuf::from).filter(|p| p.is_absolute() && p.is_file()).collect();
+    let mut out: Vec<PathBuf> = if ctx.permissions.filesystem.opened_files == sam_core::permissions::Access::Rw {
+        ctx.args.iter().map(PathBuf::from).filter(|p| p.is_absolute() && p.is_file()).collect()
+    } else {
+        vec![]
+    };
     out.extend(ctx.extra_binds.iter().filter(|(_, _, rw)| *rw).map(|(_, dest, _)| dest.clone()));
     if ctx.permissions.advanced.writable_appdir {
         out.push(ctx.sandbox_appdir.clone());
@@ -319,8 +335,8 @@ fn classify_failure(code: Option<i32>, stderr_head: &str, kind: BackendKind) -> 
         _ => None,
     };
     match (code, kind) {
-        (Some(_), BackendKind::Bubblewrap) if first_bwrap.is_some() => (true, format!("sandbox setup failed: {}", first_bwrap.unwrap())),
-        (Some(c), _) if c != 0 && backend_error.is_some() => (true, format!("sandbox setup failed: {}", backend_error.unwrap())),
+        (Some(_), BackendKind::Bubblewrap) if first_bwrap.is_some() => (true, format!("sandbox setup failed: {}", first_bwrap.unwrap_or_default())),
+        (Some(c), _) if c != 0 && backend_error.is_some() => (true, format!("sandbox setup failed: {}", backend_error.unwrap_or_default())),
         (Some(126), _) => (true, "the entry point could not be executed (permission denied or wrong format)".into()),
         (Some(127), _) => (true, "the entry point or one of its interpreters was not found inside the sandbox".into()),
         _ => (false, String::new()),
@@ -390,7 +406,48 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     } else {
         cmd.current_dir(&prepared.context.owd);
     }
+    // Status channels the app cannot write to (H1/M3 in the audit):
+    // bwrap's --json-status-fd announces "child-pid" once the sandbox exists,
+    // and SAM's helper reports what it enforced before it execs the app.
+    // pasta (local network only) does not pass extra fds, so these exist
+    // only when bwrap is started directly.
+    let direct_bwrap = kind == BackendKind::Bubblewrap && host.tools.bwrap.as_ref().is_some_and(|b| b.path == prepared.command.program);
+    let mut bwrap_status = None;
+    let mut helper_status = None;
+    if direct_bwrap {
+        let (r, w) = status_pipe()?;
+        let mut args = vec!["--json-status-fd".to_string(), w.to_string()];
+        args.extend(prepared.command.args.iter().cloned());
+        let mut helper_w = None;
+        if prepared.context.helper.is_some() {
+            let (hr, hw) = status_pipe()?;
+            // After --clearenv: right before bwrap's "--" separator.
+            let sep = args.iter().position(|a| a == "--").unwrap_or(args.len());
+            args.splice(sep..sep, ["--setenv".to_string(), "SAM_STATUS_FD".into(), hw.to_string()]);
+            helper_status = Some(hr);
+            helper_w = Some(hw);
+        }
+        cmd = Command::new(&prepared.command.program);
+        cmd.args(&args).stdin(Stdio::inherit()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        if prepared.command.clear_env {
+            cmd.env_clear();
+        }
+        for (k, v) in &prepared.command.env {
+            cmd.env(k, v);
+        }
+        cmd.current_dir(&host.home);
+        bwrap_status = Some((r, w, helper_w));
+    }
     let mut child = cmd.spawn().with_context(|| format!("starting {}", prepared.command.program.display()))?;
+    // Close our copies of the write ends so the readers see EOF.
+    let bwrap_status_reader = bwrap_status.map(|(r, w, hw)| {
+        unsafe { libc::close(w) };
+        if let Some(hw) = hw {
+            unsafe { libc::close(hw) };
+        }
+        read_fd_in_thread(r)
+    });
+    let helper_status_reader = helper_status.map(read_fd_in_thread);
     if let Some(fd) = prepared.context.seccomp_fd {
         unsafe { libc::close(fd) };
     }
@@ -430,8 +487,8 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             }
         })
     };
-    let t1 = pump(Box::new(child.stdout.take().unwrap()), false, log.clone(), head.clone(), opts.quiet);
-    let t2 = pump(Box::new(child.stderr.take().unwrap()), true, log.clone(), head.clone(), opts.quiet);
+    let t1 = pump(Box::new(child.stdout.take().context("no stdout pipe")?), false, log.clone(), head.clone(), opts.quiet);
+    let t2 = pump(Box::new(child.stderr.take().context("no stderr pipe")?), true, log.clone(), head.clone(), opts.quiet);
 
     let status = match opts.timeout_secs {
         None => child.wait()?,
@@ -456,7 +513,22 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let code = status.code();
     let signal = status.signal();
     let head = head.lock().map(|h| h.clone()).unwrap_or_default();
-    let (sandbox_failure, mut summary) = classify_failure(code, &head, kind);
+    let bwrap_json = bwrap_status_reader.and_then(|t| t.join().ok());
+    let enforcement = helper_status_reader.and_then(|t| t.join().ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let (mut sandbox_failure, mut summary) = classify_failure(code, &head, kind);
+    // Verified setup failure: bwrap never announced the app's process.
+    let setup_failed = bwrap_json.as_ref().is_some_and(|j| !j.contains("\"child-pid\""));
+    if bwrap_json.is_some() && summary.starts_with("sandbox setup failed") && !setup_failed {
+        // The sandbox was built; "bwrap:" lines came from the app itself.
+        sandbox_failure = false;
+        summary.clear();
+    }
+    if setup_failed {
+        sandbox_failure = true;
+        if !summary.starts_with("sandbox setup failed") {
+            summary = "sandbox setup failed (Bubblewrap could not build the sandbox)".into();
+        }
+    }
     let success = status.success();
     if summary.is_empty() {
         summary = match (code, signal) {
@@ -466,8 +538,12 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             _ => "finished".into(),
         };
     }
-    {
-        let mut l = log.lock().unwrap();
+    if let Ok(mut l) = log.lock() {
+        if let Some(e) = &enforcement {
+            writeln!(l, "# enforced: {e}")?;
+        } else if prepared.landlock || prepared.seccomp {
+            writeln!(l, "# enforced: unknown (no status from SAM's helper)")?;
+        }
         writeln!(l, "# ---- end ----\n# finished: {}\n# result: {summary}", format_ts(now()))?;
     }
 
@@ -479,6 +555,8 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         signal,
         success,
         sandbox_failure,
+        setup_failed,
+        enforcement,
         log_file: Some(log_path),
         findings: if success { vec![] } else { crate::repair::analyze(&head, &app.profile.permissions, signal) },
         summary,
@@ -498,7 +576,8 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         fresh.last_launch = app.last_launch.clone();
         fresh.last_error = app.last_error.clone();
         fresh.state = app.state;
-        fresh.profile.auto_backend = app.profile.auto_backend.clone();
+        // auto_backend is saved by run_auto only, so a change the user made
+        // while the app ran is never overwritten here.
         reg.save(&mut fresh)?;
     }
     let _ = logs.prune(&app.id, LogKind::Launch, cfg.diagnostics.keep_logs);
@@ -516,7 +595,9 @@ pub fn run_auto(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &
     }
     let mut tried: Vec<BackendKind> = first.backend.into_iter().collect();
     let first_reason = first.summary.clone();
-    let candidates = [BackendKind::Bubblewrap, BackendKind::Bubblejail, BackendKind::Firejail];
+    // Only Bubblejail is tried automatically. Firejail (setuid, fewer of
+    // SAM's layers) is never chosen without the user.
+    let candidates = [BackendKind::Bubblejail];
     let previous = app.profile.auto_backend.clone();
     let mut last = first;
     for k in candidates {
@@ -534,7 +615,12 @@ pub fn run_auto(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &
             eprintln!("sam-jail: {} failed to set up the sandbox; trying {}", failed, k.label());
         }
         last = run(app, opts, cfg, paths, host)?;
-        if !is_setup_failure(&last) {
+        // Bubblejail has no status channel: keep it only if nothing failed.
+        if !is_setup_failure(&last) && !last.sandbox_failure {
+            if let Some(mut fresh) = Registry::new(paths).get(&app.id)? {
+                fresh.profile.auto_backend = app.profile.auto_backend.clone();
+                Registry::new(paths).save(&mut fresh)?;
+            }
             return Ok(last);
         }
     }
@@ -547,9 +633,30 @@ pub fn run_auto(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &
     Ok(last)
 }
 
-/// The sandbox itself could not be built (the app never ran).
+/// The sandbox itself could not be built (the app never ran), as reported
+/// by Bubblewrap's status channel. App output can never cause this.
 fn is_setup_failure(rec: &LaunchRecord) -> bool {
-    rec.sandbox_failure && rec.summary.starts_with("sandbox setup failed")
+    rec.setup_failed
+}
+
+/// A pipe whose write end is inherited by child processes.
+fn status_pipe() -> Result<(i32, i32)> {
+    let mut fds = [0i32; 2];
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        bail!("pipe: {}", std::io::Error::last_os_error());
+    }
+    unsafe { libc::fcntl(fds[1], libc::F_SETFD, 0) };
+    Ok((fds[0], fds[1]))
+}
+
+fn read_fd_in_thread(fd: i32) -> std::thread::JoinHandle<String> {
+    use std::os::fd::FromRawFd;
+    std::thread::spawn(move || {
+        let f = unsafe { fs::File::from_raw_fd(fd) };
+        let mut s = String::new();
+        let _ = f.take(64 * 1024).read_to_string(&mut s);
+        s
+    })
 }
 
 /// Last lines of a log file (for reports and the GUI).

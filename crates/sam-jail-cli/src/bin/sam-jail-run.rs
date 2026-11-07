@@ -21,7 +21,10 @@ fn notify(title: &str, body: &str) {
         return;
     }
     if let Some(n) = which("notify-send") {
-        let _ = Command::new(n).args(["--app-name=SAM", "--icon=dialog-warning", title, body]).status();
+        // App names and messages are untrusted; notification bodies render
+        // markup, so neutralize it.
+        let clean = |s: &str| sam_core::util::display_safe(s, 400).replace('&', "&amp;");
+        let _ = Command::new(n).args(["--app-name=SAM", "--icon=dialog-warning", &clean(title), &clean(body)]).status();
     }
 }
 

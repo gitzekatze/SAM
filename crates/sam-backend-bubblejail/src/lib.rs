@@ -21,11 +21,20 @@ pub fn instance_name(app_id: &str) -> String {
 }
 
 pub fn instances_dir() -> PathBuf {
-    let data = std::env::var_os("XDG_DATA_HOME")
+    data_home().join("bubblejail/instances")
+}
+
+/// Bubblejail keeps its state under `$XDG_DATA_HOME`. When SAM runs with its
+/// own data directory (`SAM_DATA_DIR`, e.g. tests), Bubblejail is pointed
+/// there too, so nothing is written to the real home.
+fn data_home() -> PathBuf {
+    if let Some(d) = std::env::var_os("SAM_DATA_DIR").filter(|v| !v.is_empty()) {
+        return PathBuf::from(d).join("bubblejail-data");
+    }
+    std::env::var_os("XDG_DATA_HOME")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| sam_core::util::home_dir().join(".local/share"));
-    data.join("bubblejail/instances")
+        .unwrap_or_else(|| sam_core::util::home_dir().join(".local/share"))
 }
 
 fn strs<I: IntoIterator<Item = S>, S: Into<String>>(v: I) -> Value {
@@ -209,7 +218,7 @@ impl Backend for Bubblejail {
         Ok(SandboxCommand {
             program: tool.path.clone(),
             args,
-            env: vec![],
+            env: std::env::var_os("SAM_DATA_DIR").filter(|v| !v.is_empty()).map(|_| vec![("XDG_DATA_HOME".to_string(), data_home().display().to_string())]).unwrap_or_default(),
             clear_env: false,
             keep_fds: vec![],
             notes,

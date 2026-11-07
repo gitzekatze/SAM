@@ -277,6 +277,8 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
     }
     // Desktop integrations.
     if category == Category::MediaPlayer {
+        // Players only need to read the files they are given.
+        p.filesystem.opened_files = Access::Ro;
         p.integrations.media_controls = true;
         notes.push("Media controls enabled: media keys, 'now playing' and keeping the screen awake".into());
     }

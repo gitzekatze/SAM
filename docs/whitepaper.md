@@ -1,5 +1,7 @@
 # SAM — Corrected Whitepaper and Build Plan
 
+> **Status note (2026-11-07):** this is the original design document. Not everything in it is implemented: eBPF network filtering and the domain-filtered network mode are not; other parts changed during implementation. `README.md` and `docs/security.md` describe the current state.
+
 Version: 3.0
 Date: 2026-11-07
 Status: Implementation-ready draft

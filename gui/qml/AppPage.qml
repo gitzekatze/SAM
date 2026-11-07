@@ -29,7 +29,7 @@ Kirigami.ScrollablePage {
     readonly property bool advanced: win ? win.advanced : false
     readonly property var win: QQC2.ApplicationWindow.window
 
-    title: summary ? summary.name : qsTr("Application")
+    title: summary ? Util.plain(summary.name) : qsTr("Application")
 
     function reload() {
         Backend.call(["info", appId], function (r) {
@@ -89,7 +89,12 @@ Kirigami.ScrollablePage {
             if (r.ok && thenRun)
                 win.launch(appId)
         }, qsTr("Applied: %1").arg(sug.title))
-        if (sug.risk === "high" || sug.risk === "dangerous" || sug.action.kind === "compat")
+        if (sug.from_app_output)
+            // The app controls its own output: always confirm, and say so.
+            win.confirmDialog.ask(qsTr("Apply “%1”?").arg(sug.title),
+                qsTr("This suggestion is based on messages the app printed itself. A malicious app can print messages to get more access.") + "\n\n" + sug.explanation,
+                run, qsTr("Apply"))
+        else if (sug.risk === "high" || sug.risk === "dangerous" || sug.action.kind === "compat")
             win.confirmDialog.ask(qsTr("Apply “%1”?").arg(sug.title), sug.explanation, run, qsTr("Apply"))
         else
             run()
@@ -144,7 +149,7 @@ Kirigami.ScrollablePage {
                 qsTr("The extracted copy, SAM's menu entry, logs and the app's private settings are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again. %1 moves back to “Not sandboxed”.").arg(page.title),
                 () => Backend.call(["remove", page.appId], function (r) {
                     if (!r.ok) { win.reportError(r); return }
-                    win.notify(qsTr("Removed the sandbox for %1").arg(page.title))
+                    win.notify((r.data.warnings || []).length ? qsTr("Removed the sandbox for %1, but: %2").arg(page.title).arg(Util.plain(r.data.warnings.join("; "))) : qsTr("Removed the sandbox for %1").arg(page.title))
                     win.refreshApps()
                     win.showSection("apps")
                 }), qsTr("Remove sandbox"))
@@ -180,7 +185,8 @@ Kirigami.ScrollablePage {
                 spacing: Kirigami.Units.smallSpacing
                 Kirigami.Heading { text: page.title; level: 1; Layout.fillWidth: true; elide: Text.ElideRight }
                 QQC2.Label {
-                    text: page.entry ? (page.entry.metadata.comment || Util.categoryLabel(page.entry.category)) : ""
+                    text: page.entry ? (Util.plain(page.entry.metadata.comment) || Util.categoryLabel(page.entry.category)) : ""
+                    textFormat: Text.PlainText
                     opacity: 0.75
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
@@ -432,7 +438,7 @@ Kirigami.ScrollablePage {
                 }
                 FormCard.FormTextDelegate {
                     text: qsTr("Last launch")
-                    description: page.entry && page.entry.last_launch ? Backend.formatTime(page.entry.last_launch.started_at) + " — " + page.entry.last_launch.summary : qsTr("Never")
+                    description: page.entry && page.entry.last_launch ? Backend.formatTime(page.entry.last_launch.started_at) + " — " + Util.plain(page.entry.last_launch.summary) + (page.entry.last_launch.enforcement ? "\n" + qsTr("Enforced: %1").arg(Util.plain(page.entry.last_launch.enforcement)) : "") : qsTr("Never")
                 }
             }
 

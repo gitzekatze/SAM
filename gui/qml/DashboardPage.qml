@@ -209,14 +209,16 @@ Kirigami.ScrollablePage {
                     RowLayout {
                         Kirigami.Heading {
                             level: 3
-                            text: card.modelData.name
+                            text: Util.plain(card.modelData.name)
+                            textFormat: Text.PlainText
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                         }
                     }
                     QQC2.Label {
                         Layout.fillWidth: true
-                        text: card.modelData.comment || Util.categoryLabel(card.modelData.category)
+                        text: Util.plain(card.modelData.comment) || Util.categoryLabel(card.modelData.category)
+                        textFormat: Text.PlainText
                         elide: Text.ElideRight
                         opacity: 0.75
                     }
@@ -236,7 +238,7 @@ Kirigami.ScrollablePage {
                                     applicationWindow().pageStack.currentItem.tab = 1
                             }
                             QQC2.ToolTip.visible: hovered
-                            QQC2.ToolTip.text: qsTr("%1. Click for fixes.").arg(card.modelData.last_problem || "")
+                            QQC2.ToolTip.text: qsTr("%1. Click for fixes.").arg(Util.plain(card.modelData.last_problem))
                         }
                         RiskChip { level: card.modelData.risk.level; compact: false }
                         QQC2.Label {
@@ -254,7 +256,7 @@ Kirigami.ScrollablePage {
                     enabled: card.modelData.badge !== "missing"
                     onClicked: applicationWindow().launch(card.modelData.id)
                     QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: qsTr("Start %1 in its sandbox").arg(card.modelData.name)
+                    QQC2.ToolTip.text: qsTr("Start %1 in its sandbox").arg(Util.plain(card.modelData.name))
                 }
                 QQC2.ToolButton {
                     icon.name: "configure"
@@ -296,13 +298,15 @@ Kirigami.ScrollablePage {
                         spacing: 2
                         Kirigami.Heading {
                             level: 3
-                            text: fcard.modelData.name || ""
+                            text: Util.plain(fcard.modelData.name)
+                            textFormat: Text.PlainText
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                         }
                         QQC2.Label {
                             Layout.fillWidth: true
-                            text: fcard.modelData.comment || fcard.modelData.category_label || ""
+                            text: Util.plain(fcard.modelData.comment || fcard.modelData.category_label)
+                            textFormat: Text.PlainText
                             elide: Text.ElideRight
                             opacity: 0.75
                         }
@@ -340,7 +344,7 @@ Kirigami.ScrollablePage {
                         QQC2.ToolTip.visible: hovered
                         QQC2.ToolTip.text: fcard.modelData.moved_from
                             ? qsTr("Point the existing sandbox at this file")
-                            : qsTr("Unpack %1 (without running it), recommend permissions and add a sandboxed menu entry").arg(fcard.modelData.name)
+                            : qsTr("Unpack %1 (without running it), recommend permissions and add a sandboxed menu entry").arg(Util.plain(fcard.modelData.name))
                     }
                 }
             }

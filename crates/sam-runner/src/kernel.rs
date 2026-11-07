@@ -85,22 +85,32 @@ pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox:
 pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
     let spec: SandboxSpec = serde_json::from_slice(&std::fs::read(spec_path).context("reading sandbox spec")?)?;
     let (prog, rest) = argv.split_first().context("no command given")?;
+    let mut report: Vec<String> = Vec::new();
     if let Some(ll) = &spec.landlock {
         match apply_landlock(ll) {
-            Ok(status) => {
-                if std::env::var_os("SAM_DEBUG").is_some() {
-                    eprintln!("sam-jail: landlock {status}");
-                }
+            Ok(status) => report.push(format!("landlock: {status}")),
+            Err(e) => {
+                eprintln!("sam-jail: landlock not applied: {e:#}");
+                report.push(format!("landlock: NOT applied ({e})"));
             }
-            Err(e) => eprintln!("sam-jail: landlock not applied: {e:#}"),
         }
     }
     if let Some(sc) = &spec.seccomp {
         // A filter that fails to load must stop the launch: running without
         // it while the UI says it is on would be false confidence.
         apply_seccomp(sc).context("loading the seccomp filter")?;
+        report.push(format!("seccomp: {} loaded", if sc.strict { "strict" } else { "baseline" }));
     }
-    let err = Command::new(prog).args(rest).exec();
+    // Report to SAM on a private fd, then close it before the app runs, so
+    // the app cannot forge or read the report.
+    if let Some(fd) = std::env::var("SAM_STATUS_FD").ok().and_then(|v| v.parse::<i32>().ok()) {
+        let line = format!("{}\n", report.join("; "));
+        unsafe {
+            libc::write(fd, line.as_ptr().cast(), line.len());
+            libc::close(fd);
+        }
+    }
+    let err = Command::new(prog).args(rest).env_remove("SAM_STATUS_FD").exec();
     bail!("exec {prog}: {err}")
 }
 

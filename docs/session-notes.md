@@ -396,3 +396,23 @@ Contrast, CachyOS Neon) were checked through screenshots.
     (private home) is rejected by the portal; portal file dialogs are not
     affected.
 - Regression: ZFontManager and Tuta pass `selftest` with all of the above.
+
+## 14. Session 7 (2026-11-07): audit and fixes
+
+- Audit: `docs/review-2026-11-07.md` (3 high, 7 medium, 7 low findings).
+  All fixed the same day; see its "Resolution" table.
+- **Key mechanisms:**
+  - bwrap `--json-status-fd` for verified setup failures.
+  - A helper status fd (`SAM_STATUS_FD`, closed before exec) reports what
+    was enforced.
+  - `dangerous_bus_name`; `Suggestion.from_app_output`.
+  - `display_safe` for untrusted text, `Util.plain`/`esc` in QML.
+  - Launcher MIME filter; `OpenFile` with fd in the shim.
+  - App-port exclusions for pasta.
+  - Collision-safe Flatpak instance dirs.
+  - Sandboxed extraction (`dev extract-squashfs`).
+  - Per-launch runtime dirs; `filesystem.opened_files`.
+- `tests/adversarial.rs` covers: the fake bwrap error, malicious repair
+  output, markup in metadata, the MIME filter, and garbage input to the
+  parsers.
+- 93 tests, clippy clean. ZFontManager, Tuta and ArtCraft pass `selftest`.

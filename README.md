@@ -27,8 +27,11 @@ plain-language explanation and a risk level, and risky choices show a warning.
 - **Intake:** Type 1 and Type 2 AppImages. Type 2 payloads (gzip, xz or zstd)
   are unpacked by a built-in SquashFS reader. Extraction strips setuid bits,
   removes symlinks that point outside the payload, and enforces size, file-count
-  and time limits. Running the AppImage's own `--appimage-extract` is a fallback
-  that needs your consent and runs inside a sandbox.
+  and time limits. Extraction itself runs inside a minimal Bubblewrap sandbox.
+  Running the AppImage's own `--appimage-extract` is a fallback that needs your
+  consent and also runs inside a sandbox. Names, descriptions and file names
+  from AppImages are shown as plain text, and launchers never register URL
+  schemes or other broad file types.
 - **Dependency detection:** static ELF analysis (`DT_NEEDED`, glibc version
   requirements, CPU architecture, toolkit, Electron/Java markers). An optional
   diagnostic run under `strace` finds missing resources.
@@ -76,6 +79,12 @@ plain-language explanation and a risk level, and risky choices show a warning.
     autostart, menu-entry installation, trash, location and remote desktop
     are blocked.
   - Portal identity, so portals treat SAM apps as sandboxed.
+  - Nothing the app prints can change its backend or grant it access: an
+    automatic backend change needs Bubblewrap's own failure report, and
+    repair suggestions based on app output always ask first and never offer
+    services that could escape the sandbox.
+  - Files you open with an app can be given read-only (the default for media
+    players) or read/write.
 - **Desktop integration:** menu launchers that always start the app through
   `sam-jail-run`, plus cached icons.
 - **Usability:** onboarding, simple and advanced modes, status badges,

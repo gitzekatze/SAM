@@ -156,6 +156,11 @@ pub fn assess(p: &PermissionSet, backend: Option<BackendKind>) -> RiskAssessment
         DbusMode::Filtered => item(&mut items, "dbus.session.mode", "Filtered session D-Bus (portals)", RiskLevel::Low),
         DbusMode::Full => item(&mut items, "dbus.session.mode", "Full session D-Bus", RiskLevel::High),
     }
+    for name in &p.dbus.session.allow {
+        if crate::permissions::dangerous_bus_name(name).is_some() {
+            item(&mut items, "dbus.session.allow", &format!("Session service {name}"), RiskLevel::Dangerous);
+        }
+    }
     match p.dbus.system.mode {
         DbusMode::None => {}
         DbusMode::Filtered => item(&mut items, "dbus.system.mode", "Filtered system D-Bus", RiskLevel::High),

@@ -64,9 +64,9 @@ pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "application-x-executable".into());
     let comment = if entry.metadata.comment.is_empty() {
-        format!("{name} (sandboxed by Sam)")
+        format!("{name} (sandboxed by SAM)")
     } else {
-        format!("{} (sandboxed by Sam)", entry.metadata.comment)
+        format!("{} (sandboxed by SAM)", entry.metadata.comment)
     };
     let mut s = String::from("[Desktop Entry]\nType=Application\n");
     s += &format!("Name={}\n", value(&name));
@@ -76,8 +76,9 @@ pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
     if !entry.metadata.categories.is_empty() {
         s += &format!("Categories={};\n", entry.metadata.categories.join(";"));
     }
-    if !entry.metadata.mime_types.is_empty() {
-        s += &format!("MimeType={};\n", entry.metadata.mime_types.join(";"));
+    let mimes = launcher_mime_types(&entry.metadata.mime_types);
+    if !mimes.is_empty() {
+        s += &format!("MimeType={};\n", mimes.join(";"));
     }
     if !entry.metadata.startup_wm_class.is_empty() {
         s += &format!("StartupWMClass={}\n", value(&entry.metadata.startup_wm_class));
@@ -86,6 +87,26 @@ pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
     s += &format!("X-SAM-AppId={}\n", entry.id);
     s += "X-SAM-Managed=true\n";
     s
+}
+
+/// File types a sandboxed launcher may register for. The list comes from the
+/// (untrusted) AppImage, so URL schemes (`x-scheme-handler/https`, `mailto`),
+/// directories, executables, desktop files and AppImages are dropped: an app
+/// must not make itself the handler for web links or the file manager, or
+/// receive the user's files by declaring broad types.
+pub fn launcher_mime_types(declared: &[String]) -> Vec<String> {
+    const BLOCKED_PREFIX: &[&str] = &["x-scheme-handler/", "inode/", "x-content/"];
+    const BLOCKED: &[&str] = &[
+        "application/x-desktop", "application/x-executable", "application/x-sharedlib", "application/x-shellscript",
+        "application/x-sh", "application/vnd.appimage", "application/x-iso9660-appimage", "application/octet-stream",
+        "text/plain", "text/html", "application/xhtml+xml",
+    ];
+    declared
+        .iter()
+        .filter(|t| !BLOCKED_PREFIX.iter().any(|p| t.starts_with(p)) && !BLOCKED.contains(&t.as_str()) && !t.contains('*'))
+        .take(64)
+        .cloned()
+        .collect()
 }
 
 /// Install (or update) the launcher. Returns its path.
@@ -190,4 +211,11 @@ mod tests {
         assert!(remove_launcher(&paths, &e.id).unwrap());
         assert!(!p.exists());
     }
+
+    #[test]
+    fn launcher_mime_types_drop_hijack_targets() {
+        let d: Vec<String> = ["x-scheme-handler/https", "inode/directory", "text/html", "application/pdf", "image/png", "application/x-desktop"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(launcher_mime_types(&d), vec!["application/pdf", "image/png"]);
+    }
+
 }

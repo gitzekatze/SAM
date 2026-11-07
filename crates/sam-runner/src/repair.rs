@@ -3,11 +3,13 @@
 //! one fix at a time.
 
 use sam_core::permissions::*;
+use sam_core::permissions::dangerous_bus_name;
+use sam_core::util::display_safe;
 use sam_core::risk::RiskLevel;
 use sam_core::{AppEntry, BackendKind, Config, FixAction, Suggestion};
 
 fn s(id: &str, title: &str, explanation: impl Into<String>, action: FixAction, risk: RiskLevel) -> Suggestion {
-    Suggestion { id: id.into(), title: title.into(), explanation: explanation.into(), action, risk }
+    Suggestion { id: id.into(), title: title.into(), explanation: explanation.into(), action, risk, from_app_output: false }
 }
 fn set(key: &str, value: &str) -> FixAction {
     FixAction::Set { key: key.into(), value: value.into() }
@@ -79,7 +81,7 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
         }
     };
 
-    if let Some(lib) = after(output, "error while loading shared libraries: ").map(|r| r.split(':').next().unwrap_or("").trim().to_string()) {
+    if let Some(lib) = after(output, "error while loading shared libraries: ").map(|r| display_safe(r.split(':').next().unwrap_or("").trim(), 120)) {
         if p.advanced.host_runtime == HostRuntime::Minimal {
             push(s("libs-missing", "A library is not visible", format!("The app needs {lib}, which SAM's minimal system view may hide. Show all of /usr."), set("advanced.host_runtime", "full"), RiskLevel::Medium));
         } else {
@@ -115,11 +117,18 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
     for line in output.lines() {
         if let Some(path) = denied_home_path(line) {
             let dir = std::path::Path::new(&path).parent().map(|d| d.display().to_string()).unwrap_or(path.clone());
-            push(s("grant-folder", "Access to a folder was denied", format!("The app could not open {path}. Grant read/write access to {dir}."), FixAction::Add { key: "filesystem.custom_write".into(), value: dir }, RiskLevel::High));
+            let (shown_path, shown_dir) = (display_safe(&path, 200), display_safe(&dir, 200));
+            let home = sam_core::util::home_dir();
+            let too_broad = std::path::Path::new(&dir) == home || !std::path::Path::new(&dir).starts_with(&home);
+            if sam_core::risk::is_sensitive_path(&dir) || sam_core::risk::is_sensitive_path(&path) || too_broad {
+                push(s("grant-folder-refused", "The app asked for a protected location", format!("The app reported that it could not open {shown_path}. SAM does not offer access to {shown_dir}: it holds keys, passwords or your whole home."), FixAction::None, RiskLevel::Dangerous));
+            } else {
+                push(s("grant-folder", "Access to a folder was denied", format!("The app reported that it could not open {shown_path}. Grant read/write access to {shown_dir}."), FixAction::Add { key: "filesystem.custom_write".into(), value: dir }, RiskLevel::High));
+            }
             break;
         }
     }
-    if let Some(v) = after(output, "version `GLIBC_").map(|r| r.split('\'').next().unwrap_or("").to_string()) {
+    if let Some(v) = after(output, "version `GLIBC_").map(|r| display_safe(r.split('\'').next().unwrap_or(""), 16)) {
         push(s("glibc", "The app needs a newer system", format!("The app needs glibc {v}, newer than this system's. Update the system or use an older version of the app."), FixAction::None, RiskLevel::Low));
     }
     if has(&[
@@ -135,10 +144,13 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
     }
     if let Some(name) = after(output, "The name ").and_then(|r| r.split_whitespace().next()).filter(|_| low.contains("was not provided") || low.contains("serviceunknown")) {
         let name = name.trim_matches(|c| c == '\'' || c == '"' || c == ',').to_string();
+        let name = if name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) { name } else { display_safe(&name, 80) };
         if name.contains("secrets") || name.contains("kwallet") {
             push(s("keyring", "The app wants your keyring", "The app tried to store or read a login. Allowing the keyring lets it read every password stored there.", set("integrations.keyring", "true"), RiskLevel::High));
         } else if name.contains("ScreenSaver") || name.contains("PowerManagement") || name.contains("mpris") {
             push(s("media", "The app wants media controls", "Allow media keys and keeping the screen awake.", set("integrations.media_controls", "true"), RiskLevel::Low));
+        } else if let Some(why) = dangerous_bus_name(&name) {
+            push(s("dbus-name-refused", "The app asked for a dangerous service", format!("The app tried to use {why}. SAM does not offer this: it would let the app escape the sandbox."), FixAction::None, RiskLevel::Dangerous));
         } else if name.contains('.') && !name.starts_with(':') {
             push(s("dbus-name", "A desktop service is blocked", format!("The app tried to use {name}, which the D-Bus filter blocks. Allow just this service."), FixAction::Add { key: "dbus.session.allow".into(), value: name }, RiskLevel::Medium));
         }
@@ -150,6 +162,9 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
         push(s("fuse", "The app starts another AppImage", "It tried to mount an AppImage with FUSE, which is not available in a sandbox. SAM already asks AppImages to extract instead; if this still fails, the inner app needs its own sandbox.", FixAction::None, RiskLevel::Low));
     }
     drop(push);
+    for x in &mut out {
+        x.from_app_output = true;
+    }
     if signal == Some(11) && out.is_empty() {
         out.push(s("crash", "The app crashed", "A crash right at start is often a missing system file. Showing all of /usr is the safest first step.", set("advanced.host_runtime", "full"), RiskLevel::Medium));
     }
@@ -222,7 +237,12 @@ mod tests {
         assert_eq!(ids("(app:2): Gdk-ERROR **: Failed to create XKB keymap"), vec!["system-data"]);
         assert_eq!(ids("Error: Missing X server or $DISPLAY"), vec!["x11"]);
         assert_eq!(ids("Error: getaddrinfo ENOTFOUND api.example.com"), vec!["network"]);
-        assert_eq!(ids("EACCES: permission denied, open '/home/u/Projects/x.txt'"), vec!["grant-folder"]);
+        let home = sam_core::util::home_dir().display().to_string();
+        assert_eq!(ids(&format!("EACCES: permission denied, open '{home}/Projects/x.txt'")), vec!["grant-folder"]);
+        assert_eq!(ids(&format!("EACCES: permission denied, open '{home}/.ssh/id_ed25519'")), vec!["grant-folder-refused"]);
+        assert_eq!(ids("ServiceUnknown: The name org.freedesktop.systemd1 was not provided"), vec!["dbus-name-refused"]);
+        assert!(analyze("Error: getaddrinfo ENOTFOUND x", &p, None).iter().all(|s| s.from_app_output));
+        assert!(analyze("error while loading shared libraries: <img src=x>: cannot open", &p, None)[0].explanation.contains("‹img"));
         assert_eq!(ids("org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.secrets was not provided"), vec!["keyring"]);
         assert_eq!(ids("touch: cannot touch '/opt/app/settings.ini': Read-only file system"), vec!["writable-appdir"]);
         assert_eq!(ids("/lib/libc.so.6: version `GLIBC_2.99' not found"), vec!["glibc"]);

@@ -63,6 +63,9 @@ impl<'de> Deserialize<'de> for Access {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FilesystemPerms {
+    /// Files passed to the app ("Open with"): `rw` lets it save them, `ro`
+    /// only view them.
+    pub opened_files: Access,
     /// Full home directory access. High risk.
     pub home: bool,
     /// Access level used when `home` is true.
@@ -87,6 +90,7 @@ pub struct FilesystemPerms {
 impl Default for FilesystemPerms {
     fn default() -> Self {
         FilesystemPerms {
+            opened_files: Access::Rw,
             home: false,
             home_access: Access::Rw,
             documents: Access::None,
@@ -157,10 +161,21 @@ pub struct NetworkPerms {
     /// `localhost` mode: TCP ports on the host's loopback the app may reach,
     /// e.g. "11434" for Ollama. Nothing else on the host is reachable.
     pub host_ports: Vec<String>,
+    /// `localhost` mode: the app's own ports to make reachable from this
+    /// computer (e.g. its web page). Empty = detected automatically, except
+    /// privileged ports and well-known local services.
+    pub app_ports: Vec<String>,
 }
 
 impl NetworkPerms {
     /// Valid ports from `host_ports` (DNS, port 53, is never forwarded).
+    pub fn valid_app_ports(&self) -> Vec<u16> {
+        let mut v: Vec<u16> = self.app_ports.iter().filter_map(|p| p.trim().parse().ok()).filter(|p| *p != 0).collect();
+        v.sort();
+        v.dedup();
+        v
+    }
+
     pub fn valid_host_ports(&self) -> Vec<u16> {
         let mut v: Vec<u16> = self.host_ports.iter().filter_map(|p| p.trim().parse().ok()).filter(|p| *p != 0 && *p != 53).collect();
         v.sort();
@@ -234,6 +249,47 @@ pub struct DbusBusPerms {
 }
 
 pub const PORTAL_NAME: &str = "org.freedesktop.portal.Desktop";
+
+/// Session-bus services that can act outside the sandbox (start programs,
+/// run scripts in the desktop shell, change any setting, bypass the portal
+/// filter), with the reason. Exact names and prefixes ending in `.`.
+const DANGEROUS_BUS_NAMES: &[(&str, &str)] = &[
+    ("org.freedesktop.systemd1", "can start any program outside the sandbox"),
+    ("org.freedesktop.Flatpak", "can start programs outside the sandbox"),
+    ("org.freedesktop.portal.Flatpak", "can start new sandboxes and programs"),
+    ("org.freedesktop.impl.portal.", "bypasses the portal and its prompts"),
+    ("org.kde.KWin", "can run scripts in the window manager"),
+    ("org.kde.plasmashell", "can run scripts in the desktop shell"),
+    ("org.kde.klauncher", "can start programs outside the sandbox"),
+    ("org.kde.kded", "controls desktop background services"),
+    ("org.kde.krunner", "can run commands"),
+    ("org.kde.ksmserver", "controls the session (log out, restore programs)"),
+    ("org.kde.kglobalaccel", "can register global shortcuts and observe key presses"),
+    ("org.gnome.Shell", "can run scripts in the desktop shell"),
+    ("org.gnome.SessionManager", "controls the session"),
+    ("ca.desrt.dconf", "can change any desktop setting, including autostart"),
+];
+
+/// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
+/// Wildcards (`org.kde.*`, `*`) count when they cover a dangerous name, and
+/// any wildcard over the portal namespace would bypass SAM's portal filter.
+pub fn dangerous_bus_name(name: &str) -> Option<String> {
+    let name = name.trim();
+    if name == "*" || name == "org.*" || name == "org.freedesktop.*" || name.starts_with("org.freedesktop.portal.*") {
+        return Some(format!("{name} covers services that can act outside the sandbox"));
+    }
+    let wildcard = name.strip_suffix(".*").or_else(|| name.strip_suffix('*'));
+    for (d, why) in DANGEROUS_BUS_NAMES {
+        let hit = match wildcard {
+            Some(prefix) => d.starts_with(prefix) || prefix.starts_with(d.trim_end_matches('.')),
+            None => if d.ends_with('.') { name.starts_with(d) } else { name == *d || name.starts_with(&format!("{d}.")) || name.starts_with(&format!("{d}5")) || name.starts_with(&format!("{d}6")) },
+        };
+        if hit {
+            return Some(format!("{name} {why}"));
+        }
+    }
+    None
+}
 
 /// Portal interfaces a sandboxed app may use. Portals see SAM apps as
 /// ordinary (unsandboxed) programs, so interfaces that would act on the
@@ -581,6 +637,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "With full home access, also exposes ~/.gnupg. Your PGP private keys could be stolen.", Dangerous, advanced),
         perm!("filesystem.hidden_files", "Filesystem", "Sensitive dotfiles",
             "With full home access, also exposes keyrings, password stores and cloud credentials.", Dangerous, advanced),
+        perm!("filesystem.opened_files", "Filesystem", "Files you open with the app",
+            "Files you open with this app (e.g. 'Open with' in the file manager). Read & write lets it save them; read-only lets it only view them.", Low),
         perm!("filesystem.custom_read", "Filesystem", "Extra read-only folders",
             "Additional folders the app can read but not change.", Medium, advanced),
         perm!("filesystem.custom_write", "Filesystem", "Extra read/write folders",
@@ -589,6 +647,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "'full' shares your internet connection with the app. 'localhost' blocks the internet but keeps local servers reachable (e.g. a local AI model or the app's own web page). 'none' places it in an isolated network with no connectivity.", High),
         perm!("network.host_ports", "Network", "Local services the app may reach",
             "With 'Local network only': ports on this computer the app may connect to, e.g. 11434 for Ollama or 1234 for LM Studio. Nothing else on your computer is reachable.", Medium),
+        perm!("network.app_ports", "Network", "The app's own ports",
+            "With 'Local network only': ports of the app (e.g. its web page) reachable from this computer. Empty = detected automatically, except privileged ports and well-known local services.", Low, advanced),
         perm!("devices.gpu", "Devices", "GPU acceleration",
             "Hardware-accelerated graphics through /dev/dri and host graphics drivers. Needed by most games, browsers and editors.", Medium),
         perm!("devices.webcam", "Devices", "Webcam",

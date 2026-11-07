@@ -179,6 +179,11 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
         );
     }
     if p.dbus.session.mode == DbusMode::Filtered {
+        for name in &p.dbus.session.allow {
+            if let Some(why) = crate::permissions::dangerous_bus_name(name) {
+                w.push(Warning::danger("dbus-dangerous-name", "Dangerous D-Bus access", format!("Allowed session service: {why}. This can let the app escape the sandbox.")).with_key("dbus.session.allow"));
+            }
+        }
         if let Some(host) = ctx.host {
             if host.tools.xdg_dbus_proxy.is_none() && ctx.backend == Some(BackendKind::Bubblewrap) {
                 w.push(Warning::info(

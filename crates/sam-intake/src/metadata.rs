@@ -1,5 +1,6 @@
 //! Desktop metadata and icon discovery (§2.11.6).
 
+use sam_core::util::display_safe;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -89,19 +90,29 @@ pub fn read_metadata(appdir: &Path) -> Result<AppImageMetadata> {
 }
 
 /// Metadata from the text of an AppImage's top-level desktop file.
+/// `type/subtype` made of safe characters only.
+fn valid_mime(t: &str) -> bool {
+    let ok = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "+-._".contains(c));
+    t.split_once('/').is_some_and(|(a, b)| ok(a) && ok(b))
+}
+
 pub fn metadata_from_desktop(text: &str, rel: &str) -> AppImageMetadata {
     let mut md = AppImageMetadata::default();
     let m = parse_desktop(text);
     md.desktop_file = Some(rel.to_string());
-    md.name = m.get("Name").cloned().unwrap_or_default();
-    md.comment = m.get("Comment").or_else(|| m.get("GenericName")).cloned().unwrap_or_default();
-    md.icon_name = m.get("Icon").cloned().unwrap_or_default();
-    md.categories = split_list(m.get("Categories"));
-    md.mime_types = split_list(m.get("MimeType"));
-    md.exec = m.get("Exec").cloned().unwrap_or_default();
-    md.version = m.get("X-AppImage-Version").cloned().unwrap_or_default();
+    // Everything here comes from the (untrusted) AppImage: neutralize
+    // markup and control characters and cap lengths before it is stored or
+    // shown anywhere.
+    let safe = |k: &str, max: usize| m.get(k).map(|v| display_safe(v, max)).unwrap_or_default();
+    md.name = safe("Name", 128);
+    md.comment = m.get("Comment").or_else(|| m.get("GenericName")).map(|v| display_safe(v, 300)).unwrap_or_default();
+    md.icon_name = m.get("Icon").map(|v| v.chars().filter(|c| !c.is_control()).take(256).collect()).unwrap_or_default();
+    md.categories = split_list(m.get("Categories")).iter().take(32).map(|c| display_safe(c, 64)).collect();
+    md.mime_types = split_list(m.get("MimeType")).into_iter().take(256).filter(|t| valid_mime(t)).collect();
+    md.exec = safe("Exec", 512);
+    md.version = safe("X-AppImage-Version", 64);
     md.terminal = m.get("Terminal").is_some_and(|v| v.eq_ignore_ascii_case("true"));
-    md.startup_wm_class = m.get("StartupWMClass").cloned().unwrap_or_default();
+    md.startup_wm_class = safe("StartupWMClass", 128);
     md
 }
 

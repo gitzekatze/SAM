@@ -29,6 +29,38 @@ pub struct ExtractRequest<'a> {
     pub limits: Limits,
     /// The user consented to running the AppImage's own extractor.
     pub allow_fallback: bool,
+    /// Run the extractors inside a minimal Bubblewrap sandbox (source
+    /// read-only, only the target writable, no network, no capabilities).
+    /// `None` extracts in-process (tests, or Bubblewrap unavailable).
+    pub isolation: Option<Isolation>,
+}
+
+/// How to isolate extraction: the bwrap binary and SAM's own CLI binary,
+/// which provides the built-in SquashFS reader as `sam-jail dev extract-squashfs`.
+#[derive(Debug, Clone)]
+pub struct Isolation {
+    pub bwrap: PathBuf,
+    pub self_exe: PathBuf,
+}
+
+/// `bwrap … --` prefix for running an extractor on untrusted input.
+fn isolated(iso: &Isolation, source: &Path, writable: &Path) -> Command {
+    let mut c = Command::new(&iso.bwrap);
+    c.args(["--die-with-parent", "--new-session", "--unshare-all", "--cap-drop", "ALL", "--clearenv", "--tmpfs", "/", "--ro-bind", "/usr", "/usr"]);
+    for d in ["/lib", "/lib64", "/bin", "/sbin"] {
+        c.args(["--ro-bind-try", d, d]);
+    }
+    c.args(["--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]);
+    c.arg("--ro-bind").arg(source).arg(source);
+    c.arg("--bind").arg(writable).arg(writable);
+    c.arg("--ro-bind").arg(&iso.self_exe).arg(&iso.self_exe);
+    c.args(["--setenv", "PATH", "/usr/bin:/bin", "--remount-ro", "/", "--"]);
+    c
+}
+
+/// Entry point of `sam-jail dev extract-squashfs` (runs inside the sandbox).
+pub fn builtin_squashfs_entry(src: &Path, offset: u64, dst: &Path, limits: &Limits) -> Result<()> {
+    builtin_squashfs(src, offset, dst, limits, Instant::now(), &mut io::stderr())
 }
 
 #[derive(Debug)]
@@ -70,13 +102,27 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     match req.info.kind {
         AppImageType::Type2 => {
             let off = req.info.payload_offset.context("no payload offset")?;
-            methods.push(("builtin-squashfs", Box::new(move |dst: &Path, log: &mut dyn Write| {
-                builtin_squashfs(req.source, off, dst, &req.limits, started, log)
+            methods.push(("builtin-squashfs", Box::new(move |dst: &Path, log: &mut dyn Write| match &req.isolation {
+                Some(iso) => {
+                    let mut c = isolated(iso, req.source, req.root);
+                    c.arg(&iso.self_exe).args(["dev", "extract-squashfs"]).arg(req.source).arg(off.to_string()).arg(dst);
+                    c.args(["--max-files", &req.limits.max_files.to_string(), "--max-bytes", &req.limits.max_bytes.to_string(), "--max-seconds", &req.limits.max_seconds.to_string()]);
+                    run_tool(&mut c, &req.limits, started, log)
+                }
+                None => builtin_squashfs(req.source, off, dst, &req.limits, started, log),
             })));
             if let Some(u) = which("unsquashfs") {
                 methods.push(("unsquashfs", Box::new(move |dst: &Path, log: &mut dyn Write| {
+                    let mut c = match &req.isolation {
+                        Some(iso) => {
+                            let mut c = isolated(iso, req.source, req.root);
+                            c.arg(&u);
+                            c
+                        }
+                        None => Command::new(&u),
+                    };
                     run_tool(
-                        Command::new(&u)
+                        c
                             .arg("-o").arg(off.to_string())
                             .arg("-d").arg(dst)
                             .args(["-f", "-no-xattrs", "-no-progress", "-quiet"])
@@ -90,8 +136,16 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             if let Some(b) = which("bsdtar") {
                 methods.push(("bsdtar", Box::new(move |dst: &Path, log: &mut dyn Write| {
                     fs::create_dir_all(dst)?;
+                    let mut c = match &req.isolation {
+                        Some(iso) => {
+                            let mut c = isolated(iso, req.source, req.root);
+                            c.arg(&b);
+                            c
+                        }
+                        None => Command::new(&b),
+                    };
                     run_tool(
-                        Command::new(&b).arg("-xf").arg(req.source).arg("-C").arg(dst).args(["--no-same-owner", "--no-xattrs", "--no-acls"]),
+                        c.arg("-xf").arg(req.source).arg("-C").arg(dst).args(["--no-same-owner", "--no-xattrs", "--no-acls"]),
                         &req.limits, started, log,
                     )
                 })));
@@ -102,6 +156,10 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         AppImageType::Unknown => bail!("{} is not a recognized AppImage", req.source.display()),
     }
 
+    match &req.isolation {
+        Some(iso) => writeln!(log, "[extract] isolated: extractors run inside {} (no network, read-only source)", iso.bwrap.display())?,
+        None => writeln!(log, "[extract] not isolated: extracting in-process (Bubblewrap unavailable)")?,
+    }
     let mut method_used = None;
     for (name, f) in &methods {
         writeln!(log, "[extract] trying {name}")?;

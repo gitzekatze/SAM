@@ -203,7 +203,7 @@ impl Sam {
             fs::remove_dir_all(&incoming)?;
         }
         let mut log = Vec::new();
-        let req = ExtractRequest { source: &source, info: &info, root: &incoming, limits: self.limits(), allow_fallback: opts.consent_fallback && self.config.extraction.allow_fallback };
+        let req = ExtractRequest { source: &source, info: &info, root: &incoming, limits: self.limits(), allow_fallback: opts.consent_fallback && self.config.extraction.allow_fallback, isolation: self.extract_isolation() };
         let extracted = extract(&req, &mut log);
         let md = match &extracted {
             Ok(out) => metadata::read_metadata(&out.appdir).unwrap_or_default(),
@@ -399,7 +399,7 @@ impl Sam {
         let fp = fingerprint::compute(&entry.source_path)?;
         let root = self.extracted_root().join(&entry.id);
         let mut log = Vec::new();
-        let req = ExtractRequest { source: &entry.source_path, info: &info, root: &root, limits: self.limits(), allow_fallback: consent_fallback && self.config.extraction.allow_fallback };
+        let req = ExtractRequest { source: &entry.source_path, info: &info, root: &root, limits: self.limits(), allow_fallback: consent_fallback && self.config.extraction.allow_fallback, isolation: self.extract_isolation() };
         match extract(&req, &mut log) {
             Ok(out) => {
                 entry.appimage_type = info.kind;
@@ -499,12 +499,15 @@ impl Sam {
         Ok(entry)
     }
 
-    pub fn remove(&self, query: &str, keep_data: bool) -> Result<AppEntry> {
+    /// Remove the sandbox. Returns the removed entry and problems that did
+    /// not stop the removal (e.g. a hidden menu entry that could not be put back).
+    pub fn remove(&self, query: &str, keep_data: bool) -> Result<(AppEntry, Vec<String>)> {
         let entry = self.resolve(query)?;
+        let mut problems = Vec::new();
         desktop::remove_launcher(&self.paths, &entry.id)?;
         for h in &entry.hidden_entries {
             if let Err(e) = menu::restore(h, &entry.id) {
-                eprintln!("sam-jail: could not restore menu entry {}: {e:#}", h.original.display());
+                problems.push(format!("could not restore the menu entry {}: {e:#}", h.original.display()));
             }
         }
         if let Some(x) = &entry.extraction {
@@ -525,7 +528,7 @@ impl Sam {
             Logs::new(&self.paths).remove_all(&entry.id)?;
         }
         self.registry().remove(&entry.id)?;
-        Ok(entry)
+        Ok((entry, problems))
     }
 
     /// Remove extraction leftovers that no registered app references.
@@ -766,6 +769,16 @@ impl Sam {
             w.push(Warning::warn("compat-mode", "Compatibility mode", sam_profile::COMPAT_WARNING));
         }
         w
+    }
+
+    /// Extraction runs inside Bubblewrap when it is usable and this process
+    /// is SAM's CLI (which provides the built-in reader as a subcommand).
+    fn extract_isolation(&self) -> Option<sam_intake::extract::Isolation> {
+        let exe = std::env::current_exe().ok()?;
+        let is_cli = exe.file_name().is_some_and(|n| n == "sam-jail");
+        let host = self.host();
+        let bwrap = host.tools.bwrap.as_ref()?;
+        (is_cli && host.userns.usable()).then(|| sam_intake::extract::Isolation { bwrap: bwrap.path.clone(), self_exe: exe })
     }
 
     // ---------------------------------------------------------- overview

@@ -153,17 +153,34 @@ fn ro_follow(a: &mut Args, path: &Path) {
 /// starting a second, empty browser inside it.
 pub const OPEN_SHIM: &str = r#"#!/bin/sh
 # SAM: open URLs and files outside the sandbox via the desktop portal.
-uri="$1"
-[ -n "$uri" ] || { echo "usage: $(basename "$0") URL|FILE" >&2; exit 1; }
-case "$uri" in
-  /*) uri="file://$uri" ;;
-  *://*|mailto:*|tel:*) ;;
-  *) [ -e "$uri" ] && uri="file://$(cd "$(dirname "$uri")" && pwd)/$(basename "$uri")" ;;
+# Local files go through OpenURI.OpenFile with a file descriptor, so the
+# host opens exactly this file (a path inside the sandbox means something
+# else on the host). URLs go through OpenURI.OpenURI.
+target="$1"
+[ -n "$target" ] || { echo "usage: $(basename "$0") URL|FILE" >&2; exit 1; }
+case "$target" in
+  file://*) target="${target#file://}" ;;
 esac
-if [ "$(basename "$0")" = xdg-email ] && [ "${uri#mailto:}" = "$uri" ]; then uri="mailto:$uri"; fi
-if command -v gdbus >/dev/null 2>&1 && gdbus call --session --dest org.freedesktop.portal.Desktop      --object-path /org/freedesktop/portal/desktop --method org.freedesktop.portal.OpenURI.OpenURI      "" "$uri" "@a{sv} {}" >/dev/null 2>&1; then exit 0; fi
-if command -v busctl >/dev/null 2>&1 && busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop      org.freedesktop.portal.OpenURI OpenURI 'ssa{sv}' "" "$uri" 0 >/dev/null 2>&1; then exit 0; fi
-echo "sam: could not open $uri: the desktop portal is not reachable (session D-Bus off?)" >&2
+if [ "$(basename "$0")" = xdg-email ] && [ "${target#mailto:}" = "$target" ] && [ ! -e "$target" ]; then target="mailto:$target"; fi
+if [ -e "$target" ]; then
+  if command -v python3 >/dev/null 2>&1 && python3 - "$target" <<'PY' 2>/dev/null; then exit 0; fi
+import os, sys
+from gi.repository import Gio, GLib
+fd = os.open(sys.argv[1], os.O_RDONLY | os.O_CLOEXEC)
+bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+bus.call_with_unix_fd_list_sync("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+    "org.freedesktop.portal.OpenURI", "OpenFile", GLib.Variant("(sha{sv})", ("", 0, {})), None, 0, -1,
+    Gio.UnixFDList.new_from_array([fd]), None)
+PY
+  echo "sam: cannot open $target outside the sandbox (needs python3-gobject in the host system)" >&2
+  exit 3
+fi
+if command -v gdbus >/dev/null 2>&1 && gdbus call --session --dest org.freedesktop.portal.Desktop \
+     --object-path /org/freedesktop/portal/desktop --method org.freedesktop.portal.OpenURI.OpenURI \
+     "" "$target" "@a{sv} {}" >/dev/null 2>&1; then exit 0; fi
+if command -v busctl >/dev/null 2>&1 && busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop \
+     org.freedesktop.portal.OpenURI OpenURI 'ssa{sv}' "" "$target" 0 >/dev/null 2>&1; then exit 0; fi
+echo "sam: could not open $target: the desktop portal is not reachable (session D-Bus off?)" >&2
 exit 3
 "#;
 pub const OPEN_SHIM_NAMES: &[&str] =
@@ -435,7 +452,8 @@ impl Backend for Bubblewrap {
         for arg in &ctx.args {
             let ap = Path::new(arg);
             if ap.is_absolute() && ap.is_file() && !visible_in_sandbox(ap, ctx) && !sam_core::risk::is_sensitive_path(arg) {
-                a.op2("--bind-try", ap, ap);
+                let op = if fsp.opened_files == Access::Rw { "--bind-try" } else { "--ro-bind-try" };
+                a.op2(op, ap, ap);
                 notes.push(format!("granted access to the opened file {arg}"));
             }
         }

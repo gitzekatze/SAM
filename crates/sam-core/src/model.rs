@@ -296,6 +296,10 @@ pub struct Suggestion {
     pub explanation: String,
     pub action: FixAction,
     pub risk: crate::risk::RiskLevel,
+    /// Derived from the app's own output (which the app controls): always
+    /// needs confirmation and is labelled as the app's request.
+    #[serde(default)]
+    pub from_app_output: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -332,6 +336,13 @@ pub struct LaunchRecord {
     pub success: bool,
     /// Failure looked like a sandbox setup problem rather than the app exiting.
     pub sandbox_failure: bool,
+    /// Bubblewrap reported that the sandbox could not be built (its status
+    /// channel never announced the app's process). Only this verified signal
+    /// may trigger an automatic backend change; app output never does.
+    pub setup_failed: bool,
+    /// What SAM's helper actually enforced inside the sandbox, e.g.
+    /// "landlock: fully enforced; seccomp: baseline loaded".
+    pub enforcement: Option<String>,
     pub log_file: Option<PathBuf>,
     pub summary: String,
     /// What the app's output suggests went wrong, with fixes.

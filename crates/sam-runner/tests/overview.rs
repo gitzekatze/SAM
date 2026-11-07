@@ -48,7 +48,7 @@ fn discover_sandbox_hide_and_restore() {
     assert!(d.menu_entries.is_empty(), "hidden entry no longer reported");
 
     // Remove the sandbox: launcher gone, original entry restored exactly.
-    sam.remove(&id, false).unwrap();
+    sam.remove(&id, false).unwrap().0;
     assert!(!added.entry.desktop_entry.unwrap().exists());
     assert_eq!(fs::read_to_string(&foreign).unwrap(), foreign_text);
     assert!(sam.discover().unwrap().iter().any(|d| d.path == img && d.sandboxed.is_none()));
