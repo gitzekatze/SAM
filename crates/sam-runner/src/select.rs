@@ -85,6 +85,29 @@ pub fn select(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result
         return Ok(Selection { kind: k, reason: "chosen by you for this app".into(), risks: risks_of(k) });
     }
 
+    // Automatic choice, per app, for best compatibility.
+    let allowed = |k: BackendKind| usable(k) && (k != BackendKind::Firejail || cfg.security.allow_firejail);
+    // 1. Features only Bubblewrap implements.
+    let p = &profile.permissions;
+    if usable(BackendKind::Bubblewrap) {
+        let need = if p.network.mode == sam_core::permissions::NetworkMode::Localhost {
+            Some("'Local network only' is implemented by Bubblewrap")
+        } else if p.advanced.writable_appdir {
+            Some("the writable app folder is implemented by Bubblewrap")
+        } else {
+            None
+        };
+        if let Some(why) = need {
+            return Ok(Selection { kind: BackendKind::Bubblewrap, reason: why.into(), risks: risks_of(BackendKind::Bubblewrap) });
+        }
+    }
+    // 2. What worked for this app before.
+    if let Some(l) = &profile.auto_backend {
+        if allowed(l.kind) {
+            return Ok(Selection { kind: l.kind, reason: format!("picked for this app: {}", l.reason), risks: risks_of(l.kind) });
+        }
+    }
+
     let wants_filtering = profile.permissions.dbus.session.mode == DbusMode::Filtered;
     if wants_filtering && host.tools.xdg_dbus_proxy.is_none() && usable(BackendKind::Bubblejail) {
         return Ok(Selection {
@@ -105,8 +128,8 @@ pub fn select(profile: &SandboxProfile, cfg: &Config, host: &HostInfo) -> Result
         };
         return Ok(Selection { kind: default, reason, risks: risks_of(default) });
     }
-    for k in [BackendKind::Bubblewrap, BackendKind::Bubblejail] {
-        if usable(k) {
+    for k in [BackendKind::Bubblewrap, BackendKind::Bubblejail, BackendKind::Firejail] {
+        if allowed(k) {
             return Ok(Selection {
                 kind: k,
                 reason: format!("{} is the first available backend", k.label()),
@@ -166,5 +189,29 @@ mod tests {
         host.tools.bubblejail = None;
         let err = select(&SandboxProfile::default(), &Config::default(), &host).unwrap_err();
         assert!(err.to_string().contains("Bubblewrap is not installed"));
+    }
+
+    #[test]
+    fn automatic_choice_is_per_app() {
+        let host = sample_context().host;
+        let cfg = Config::default();
+        let mut p = SandboxProfile::default();
+        p.auto_backend = Some(sam_core::LearnedBackend { kind: BackendKind::Bubblejail, reason: "Bubblewrap failed".into() });
+        let s = select(&p, &cfg, &host).unwrap();
+        assert_eq!(s.kind, BackendKind::Bubblejail);
+        assert!(s.reason.contains("Bubblewrap failed"));
+        // Features only Bubblewrap implements win over the learned choice.
+        p.permissions.network.mode = sam_core::permissions::NetworkMode::Localhost;
+        assert_eq!(select(&p, &cfg, &host).unwrap().kind, BackendKind::Bubblewrap);
+        // A learned Firejail choice is only used while Firejail is allowed.
+        p.permissions.network.mode = sam_core::permissions::NetworkMode::None;
+        p.auto_backend = Some(sam_core::LearnedBackend { kind: BackendKind::Firejail, reason: "x".into() });
+        assert_eq!(select(&p, &cfg, &host).unwrap().kind, BackendKind::Bubblewrap);
+        let mut cfg2 = Config::default();
+        cfg2.security.allow_firejail = true;
+        assert_eq!(select(&p, &cfg2, &host).unwrap().kind, BackendKind::Firejail);
+        // A backend the user picked always wins.
+        p.backend = sam_core::BackendChoice::Bubblejail;
+        assert_eq!(select(&p, &cfg2, &host).unwrap().kind, BackendKind::Bubblejail);
     }
 }

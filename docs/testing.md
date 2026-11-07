@@ -97,7 +97,20 @@ Electron app, Qt app, GTK app):
 - [ ] Applying the "Untrusted Utility" preset to a browser warns that it removes network access.
 - [ ] *Copy bug report* produces a report without your username or home path.
 
-## 10. Packaging
+## 10. Compatibility helpers
+
+- [ ] A link clicked in a sandboxed app opens in the normal browser.
+- [ ] *Local network only*: the app reaches a host server on 127.0.0.1, the
+      host browser reaches the app's own port, websites do not load.
+- [ ] *Writable app folder*: a portable app keeps its settings; the extracted
+      copy under `extracted/` is unchanged.
+- [ ] An app that fails at start shows a notification with the likely cause,
+      and *Details & Repair → Try the next fix and start* fixes it.
+- [ ] *Automatic* backend: if Bubblewrap cannot set up an app's sandbox, the
+      app starts with Bubblejail and the header says "picked for this app".
+- [ ] `sam-jail selftest` lists every sandboxed app as ✓ or ✗.
+
+## 11. Packaging
 
 - [ ] `cd packaging/arch && makepkg -si` builds and installs both packages.
 - [ ] SAM starts from the application menu.

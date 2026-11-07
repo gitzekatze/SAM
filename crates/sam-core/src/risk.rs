@@ -104,9 +104,8 @@ pub fn assess(p: &PermissionSet, backend: Option<BackendKind>) -> RiskAssessment
 
     match p.network.mode {
         NetworkMode::Full => item(&mut items, "network.mode", "Network", RiskLevel::High),
-        NetworkMode::Localhost | NetworkMode::Filtered => {
-            item(&mut items, "network.mode", "Restricted network (experimental)", RiskLevel::Medium)
-        }
+        NetworkMode::Localhost => item(&mut items, "network.mode", "Local network only (no internet)", RiskLevel::Low),
+        NetworkMode::Filtered => item(&mut items, "network.mode", "Filtered network (experimental)", RiskLevel::Medium),
         NetworkMode::None => {}
     }
 
@@ -133,6 +132,18 @@ pub fn assess(p: &PermissionSet, backend: Option<BackendKind>) -> RiskAssessment
     }
     if p.display.wayland {
         item(&mut items, "display.wayland", "Wayland", RiskLevel::Low);
+    }
+    if p.integrations.keyring {
+        item(&mut items, "integrations.keyring", "Passwords & keyring", RiskLevel::High);
+    }
+    if p.integrations.media_controls {
+        item(&mut items, "integrations.media_controls", "Media controls", RiskLevel::Low);
+    }
+    if p.integrations.file_manager {
+        item(&mut items, "integrations.file_manager", "Show in folder", RiskLevel::Low);
+    }
+    if p.advanced.writable_appdir {
+        item(&mut items, "advanced.writable_appdir", "Writable app folder", RiskLevel::Low);
     }
     if p.display.x11 {
         item(&mut items, "display.x11", "X11", RiskLevel::High);

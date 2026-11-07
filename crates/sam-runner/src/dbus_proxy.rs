@@ -36,7 +36,6 @@ impl DbusProxy {
         for name in &perms.own {
             args.push(format!("--own={name}"));
         }
-        args.extend(perms.tray_own_names().into_iter().map(|n| format!("--own={n}")));
         // Let the app own names under its own id, like Flatpak does.
         args.push(format!("--own=io.github.gitzekatze.SAM.{}.*", app_id.replace('-', "_")));
         let mut cmd = Command::new(&tool.path);

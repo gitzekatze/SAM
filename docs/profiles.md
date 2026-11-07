@@ -38,7 +38,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `filesystem.documents` … `downloads`, `music`, `pictures`, `videos`, `desktop` | `none` / `ro` / `rw` |
 | `filesystem.ssh`, `filesystem.gnupg`, `filesystem.hidden_files` | `true` / `false` (only apply with full home) |
 | `filesystem.custom_read`, `filesystem.custom_write` | list, e.g. `"~/Projects, /mnt/data"` |
-| `network.mode` | `none` / `full` (`localhost` / `filtered` are experimental) |
+| `network.mode` | `none` / `localhost` (no internet; loopback ports forwarded by pasta, Bubblewrap only) / `full` (`filtered` is experimental) |
 | `devices.gpu`, `devices.webcam`, `devices.input`, `devices.usb`, `devices.bluetooth` | `true` / `false` |
 | `audio.enabled`, `audio.alsa_raw` | `true` / `false` |
 | `display.wayland`, `display.x11` | `true` / `false` |
@@ -50,6 +50,10 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `advanced.host_runtime` | `minimal` / `full` |
 | `advanced.persistent_home`, `advanced.seccomp_strict`, `advanced.allow_userns`, `advanced.host_themes` | `true` / `false` |
 | `advanced.landlock` | `true` / `false` (unset = follow the global setting) |
+| `advanced.writable_appdir` | `true` / `false`: overlay on the app folder, changes kept per app (Bubblewrap only) |
+| `integrations.keyring` | `true` / `false`: Secret Service / KWallet (exposes every stored password) |
+| `integrations.media_controls` | `true` / `false`: MPRIS media keys, screen-saver inhibit |
+| `integrations.file_manager` | `true` / `false`: "Show in folder" |
 | `advanced.extra_backend_args` | list of raw backend arguments |
 
 `sam-jail permissions` prints the same list with plain-language explanations and risk levels.

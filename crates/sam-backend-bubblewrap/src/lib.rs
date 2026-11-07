@@ -112,6 +112,61 @@ impl Args {
     }
 }
 
+/// Bind a whitelisted host path read-only, plus the targets of symlinks
+/// that point outside it (the path itself, or entries one level inside).
+/// Example: `/usr/share/X11/xkb -> /usr/share/xkeyboard-config-2`; without
+/// the target, xkbcommon finds no keymaps and GTK/Electron abort.
+fn ro_follow(a: &mut Args, path: &Path) {
+    a.ro(path);
+    let Ok(md) = fs::symlink_metadata(path) else { return };
+    let mut targets = Vec::new();
+    if md.file_type().is_symlink() {
+        targets.extend(fs::canonicalize(path).ok());
+    } else if md.is_dir() {
+        if let Ok(rd) = fs::read_dir(path) {
+            for e in rd.flatten() {
+                if e.file_type().is_ok_and(|t| t.is_symlink()) {
+                    if let Ok(t) = fs::canonicalize(e.path()) {
+                        if !t.starts_with(path) {
+                            targets.push(t);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for t in targets {
+        // /usr/lib and /usr/bin are bound already; skip anything else outside
+        // the shared-data and configuration trees.
+        let interesting = (t.starts_with("/usr/share") || t.starts_with("/etc") || t.starts_with("/run")) && t.exists();
+        if interesting && !a.v.windows(2).any(|w| w[0] == "--ro-bind-try" && Path::new(&w[1]) == t) {
+            a.ro(&t);
+        }
+    }
+}
+
+/// Small helper scripts placed at `/run/sam/bin` (first on `$PATH`):
+/// `xdg-open` and friends ask the desktop portal to open links and files
+/// **outside** the sandbox, in the user's normal browser or app, instead of
+/// starting a second, empty browser inside it.
+pub const OPEN_SHIM: &str = r#"#!/bin/sh
+# SAM: open URLs and files outside the sandbox via the desktop portal.
+uri="$1"
+[ -n "$uri" ] || { echo "usage: $(basename "$0") URL|FILE" >&2; exit 1; }
+case "$uri" in
+  /*) uri="file://$uri" ;;
+  *://*|mailto:*|tel:*) ;;
+  *) [ -e "$uri" ] && uri="file://$(cd "$(dirname "$uri")" && pwd)/$(basename "$uri")" ;;
+esac
+if [ "$(basename "$0")" = xdg-email ] && [ "${uri#mailto:}" = "$uri" ]; then uri="mailto:$uri"; fi
+if command -v gdbus >/dev/null 2>&1 && gdbus call --session --dest org.freedesktop.portal.Desktop      --object-path /org/freedesktop/portal/desktop --method org.freedesktop.portal.OpenURI.OpenURI      "" "$uri" "@a{sv} {}" >/dev/null 2>&1; then exit 0; fi
+if command -v busctl >/dev/null 2>&1 && busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop      org.freedesktop.portal.OpenURI OpenURI 'ssa{sv}' "" "$uri" 0 >/dev/null 2>&1; then exit 0; fi
+echo "sam: could not open $uri: the desktop portal is not reachable (session D-Bus off?)" >&2
+exit 3
+"#;
+pub const OPEN_SHIM_NAMES: &[&str] =
+    &["xdg-open", "xdg-email", "kde-open", "kde-open5", "kde-open6", "gnome-open", "sensible-browser", "x-www-browser", "www-browser"];
+
 /// Replicate a top-level path from the host: symlink stays a symlink,
 /// a real directory is bound read-only.
 fn mirror(a: &mut Args, path: &str) {
@@ -198,6 +253,10 @@ impl Backend for Bubblewrap {
             NetworkMode::None => {
                 a.push("--unshare-net");
             }
+            NetworkMode::Localhost => {
+                // The launcher starts bwrap inside a pasta loopback-only
+                // namespace (sam-runner netns.rs), so no --unshare-net here.
+            }
             m => {
                 a.push("--unshare-net");
                 notes.push(format!("network mode '{}' is experimental and not supported by bubblewrap; network disabled", m.as_str()));
@@ -238,7 +297,7 @@ impl Backend for Bubblewrap {
                     share.extend(SHARE_DBUS);
                 }
                 for s in share {
-                    a.ro(format!("/usr/share/{s}"));
+                    ro_follow(&mut a, &Path::new("/usr/share").join(s));
                 }
             }
         }
@@ -252,6 +311,8 @@ impl Backend for Bubblewrap {
             etc.extend(ETC_NETWORK);
             a.ro("/run/systemd/resolve");
         }
+        // ro_follow below also binds symlink targets, e.g. resolv.conf ->
+        // /run/NetworkManager/resolv.conf on NetworkManager systems.
         if p.devices.gpu {
             etc.extend(ETC_GPU);
         }
@@ -262,7 +323,7 @@ impl Backend for Bubblewrap {
             etc.push("machine-id");
         }
         for e in etc {
-            a.ro(format!("/etc/{e}"));
+            ro_follow(&mut a, &Path::new("/etc").join(e));
         }
         // Synthetic passwd/group with only the current user.
         let passwd = ctx.runtime_dir.join("passwd");
@@ -270,8 +331,15 @@ impl Backend for Bubblewrap {
         a.op2("--ro-bind-try", &passwd, "/etc/passwd");
         a.op2("--ro-bind-try", &group, "/etc/group");
 
-        // The app payload.
-        a.op2("--ro-bind", &ctx.appdir, &ctx.sandbox_appdir);
+        // The app payload: read-only, or an overlay that keeps the app's own
+        // changes in a separate per-app layer.
+        match &ctx.appdir_overlay {
+            Some(base) if p.advanced.writable_appdir => {
+                a.push("--overlay-src").push(ctx.appdir.to_string_lossy());
+                a.push("--overlay").push(base.join("upper").to_string_lossy()).push(base.join("work").to_string_lossy()).push(ctx.sandbox_appdir.to_string_lossy());
+            }
+            _ => a.op2("--ro-bind", &ctx.appdir, &ctx.sandbox_appdir),
+        }
         if let Some(img) = &ctx.appimage_path {
             if let Some(name) = img.file_name() {
                 a.op2("--ro-bind-try", img, Path::new("/run/sam").join(name));
@@ -520,7 +588,13 @@ impl Backend for Bubblewrap {
         a.setenv("USER", &h.user);
         a.setenv("LOGNAME", &h.user);
         a.setenv("SHELL", "/bin/sh");
-        a.setenv("PATH", "/usr/local/bin:/usr/bin:/bin");
+        if p.dbus.session.mode != DbusMode::None {
+            // Link opener shims (see OPEN_SHIM), written by write_identity_files.
+            a.op2("--ro-bind-try", ctx.runtime_dir.join("bin"), "/run/sam/bin");
+            a.setenv("PATH", "/run/sam/bin:/usr/local/bin:/usr/bin:/bin");
+        } else {
+            a.setenv("PATH", "/usr/local/bin:/usr/bin:/bin");
+        }
         a.setenv("XDG_RUNTIME_DIR", &run);
         a.setenv("SAM_SANDBOX", "bubblewrap");
         for k in ENV_FORWARD.iter().map(|s| s.to_string()).chain(p.environment.passthrough.iter().cloned()) {
@@ -587,6 +661,19 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
         format!("{u}:x:{uid}:{gid}:{u}:{home}:/bin/sh\nnobody:x:65534:65534:Nobody:/:/usr/bin/nologin\n", u = h.user, uid = h.uid, gid = h.gid, home = h.home.display()),
     )?;
     fs::write(ctx.runtime_dir.join("group"), format!("{u}:x:{gid}:\nnobody:x:65534:\n", u = h.user, gid = h.gid))?;
+    let bin = ctx.runtime_dir.join("bin");
+    fs::create_dir_all(&bin)?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let shim = bin.join("sam-open");
+        fs::write(&shim, OPEN_SHIM)?;
+        fs::set_permissions(&shim, fs::Permissions::from_mode(0o755))?;
+        for name in OPEN_SHIM_NAMES {
+            let link = bin.join(name);
+            let _ = fs::remove_file(&link);
+            std::os::unix::fs::symlink("sam-open", &link)?;
+        }
+    }
     Ok(())
 }
 
@@ -659,10 +746,22 @@ mod tests {
     #[test]
     fn experimental_network_falls_back_to_none() {
         let mut ctx = sample_context();
-        ctx.permissions.network.mode = NetworkMode::Localhost;
+        ctx.permissions.network.mode = NetworkMode::Filtered;
         let cmd = Bubblewrap.build(&ctx).unwrap();
         assert!(cmd.args.contains(&"--unshare-net".to_string()));
         assert!(!cmd.notes.is_empty());
+        // Localhost: the launcher wraps bwrap in pasta, which owns the netns.
+        ctx.permissions.network.mode = NetworkMode::Localhost;
+        assert!(!Bubblewrap.build(&ctx).unwrap().args.contains(&"--unshare-net".to_string()));
+    }
+
+    #[test]
+    fn writable_appdir_uses_overlay() {
+        let mut ctx = sample_context();
+        ctx.permissions.advanced.writable_appdir = true;
+        ctx.appdir_overlay = Some("/data/overlays/x".into());
+        let a = Bubblewrap.build(&ctx).unwrap().args;
+        assert!(has_seq(&a, &["--overlay-src", "/data/extracted/appimage-hello-1234/AppDir", "--overlay", "/data/overlays/x/upper", "/data/overlays/x/work", "/opt/app"]));
     }
 
     #[test]

@@ -224,6 +224,20 @@ Kirigami.ScrollablePage {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
                         StatusBadge { badge: card.modelData.badge }
+                        Kirigami.Chip {
+                            visible: !!card.modelData.last_problem
+                            text: qsTr("Didn't work last time")
+                            icon.name: "tools-wizard"
+                            closable: false
+                            checkable: false
+                            onClicked: {
+                                applicationWindow().openApp(card.modelData.id)
+                                if (applicationWindow().pageStack.currentItem)
+                                    applicationWindow().pageStack.currentItem.tab = 1
+                            }
+                            QQC2.ToolTip.visible: hovered
+                            QQC2.ToolTip.text: qsTr("%1. Click for fixes.").arg(card.modelData.last_problem || "")
+                        }
                         RiskChip { level: card.modelData.risk.level; compact: false }
                         QQC2.Label {
                             text: Util.categoryLabel(card.modelData.category) + " · " + qsTr("Last run: %1").arg(Backend.formatTime(card.modelData.last_launched || 0))

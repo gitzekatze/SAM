@@ -591,6 +591,63 @@ impl Sam {
         Ok(e)
     }
 
+    // ------------------------------------------------------------ repair
+
+    /// Apply a first-run hint, log finding or repair step. Repair steps
+    /// (`as_repair`) are remembered so "Undo repairs" can revert them all.
+    pub fn apply_suggestion(&self, query: &str, sug: &Suggestion, as_repair: bool) -> Result<AppEntry> {
+        let mut e = self.resolve(query)?;
+        if as_repair && e.repair_backup.is_none() {
+            e.repair_backup = Some(e.profile.clone());
+        }
+        match &sug.action {
+            FixAction::Set { key, value } => e.profile.permissions.set_key(key, value)?,
+            FixAction::Add { key, value } => {
+                let mut list: Vec<String> = serde_json::from_value(e.profile.permissions.get_key(key)?).with_context(|| format!("{key} is not a list"))?;
+                if !list.contains(value) {
+                    list.push(value.clone());
+                }
+                e.profile.permissions.set_key(key, &serde_json::to_string(&list)?)?;
+            }
+            FixAction::Compat => {
+                e.profile.compatibility_mode = true;
+                e.profile.permissions = compatibility_profile(&e.profile.permissions);
+            }
+            FixAction::Backend { backend } => {
+                if e.profile.backend != BackendChoice::Auto {
+                    bail!("{} uses a backend you picked ({}); set it to Automatic first", e.display_name(), e.profile.backend.fixed().map(|k| k.label()).unwrap_or("auto"));
+                }
+                e.profile.auto_backend = Some(LearnedBackend { kind: *backend, reason: format!("chosen by the repair step “{}”", sug.title) });
+            }
+            FixAction::None => bail!("“{}” is an explanation only; there is nothing to apply", sug.title),
+        }
+        e.profile.preset = None;
+        if as_repair && !e.repairs_applied.contains(&sug.id) {
+            e.repairs_applied.push(sug.id.clone());
+        }
+        self.save_profile(&mut e)?;
+        Ok(e)
+    }
+
+    /// Find a suggestion by id among the app's hints, findings and repair steps.
+    pub fn find_suggestion(&self, e: &AppEntry, id: &str) -> Option<Suggestion> {
+        crate::repair::first_run_hints(e)
+            .into_iter()
+            .chain(crate::repair::ladder(e, &self.config))
+            .chain(e.last_launch.iter().flat_map(|l| l.findings.clone()))
+            .find(|s| s.id == id)
+    }
+
+    /// Restore the profile from before the first repair step.
+    pub fn undo_repairs(&self, query: &str) -> Result<AppEntry> {
+        let mut e = self.resolve(query)?;
+        let Some(backup) = e.repair_backup.take() else { bail!("no repairs to undo for {}", e.display_name()) };
+        e.profile = backup;
+        e.repairs_applied.clear();
+        self.save_profile(&mut e)?;
+        Ok(e)
+    }
+
     pub fn mark_reviewed(&self, query: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         e.reviewed = true;
@@ -614,6 +671,10 @@ impl Sam {
         e.profile.unsandboxed_confirmed = choice == BackendChoice::Unsandboxed;
         e.profile.firejail_confirmed = choice == BackendChoice::Firejail;
         e.profile.backend = choice;
+        if choice == BackendChoice::Auto {
+            // Let SAM decide afresh for this app.
+            e.profile.auto_backend = None;
+        }
         e.clear_launch_failure();
         self.registry().save(&mut e)?;
         Ok(e)
@@ -869,7 +930,8 @@ impl Sam {
 pub fn app_needs_network(a: &AppEntry) -> bool {
     let by_category = sam_profile::Category::parse(&a.category).is_some_and(|c| c.needs_network());
     let game_online = a.category == "game" && a.detection.as_ref().is_some_and(|d| d.requirements.network);
-    by_category || game_online
+    let file_name = a.source_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    by_category || game_online || sam_profile::needs_network_by_purpose(&a.metadata, &file_name)
 }
 
 /// Permissions the new recommendation wants that the user's profile lacks.

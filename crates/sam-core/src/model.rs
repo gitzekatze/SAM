@@ -281,6 +281,42 @@ pub struct SandboxProfile {
     pub args: Vec<String>,
     /// The profile differs from the recommendation because the user changed it.
     pub user_modified: bool,
+    /// With `backend = auto`: the backend SAM found to work best for this app
+    /// (after a failed sandbox setup or a repair step), and why.
+    pub auto_backend: Option<LearnedBackend>,
+}
+
+/// A suggested change that may make an app work (first-run hint, log
+/// finding or repair step), with what applying it does.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Suggestion {
+    /// Stable id, e.g. `x11`, `network`, `libs-missing`.
+    pub id: String,
+    pub title: String,
+    pub explanation: String,
+    pub action: FixAction,
+    pub risk: crate::risk::RiskLevel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum FixAction {
+    /// Set one permission key.
+    Set { key: String, value: String },
+    /// Add a value to a list permission (folder, bus name).
+    Add { key: String, value: String },
+    /// Turn on compatibility mode.
+    Compat,
+    /// Let the automatic backend choice use this backend for the app.
+    Backend { backend: BackendKind },
+    /// Nothing SAM can change (explanation only).
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LearnedBackend {
+    pub kind: BackendKind,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -296,6 +332,8 @@ pub struct LaunchRecord {
     pub sandbox_failure: bool,
     pub log_file: Option<PathBuf>,
     pub summary: String,
+    /// What the app's output suggests went wrong, with fixes.
+    pub findings: Vec<Suggestion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -324,6 +362,10 @@ pub struct AppEntry {
     pub last_launch: Option<LaunchRecord>,
     pub desktop_entry: Option<PathBuf>,
     pub last_error: Option<String>,
+    /// Profile before the first repair step, for "Undo repairs".
+    pub repair_backup: Option<SandboxProfile>,
+    /// Repair step ids already applied (the ladder skips them).
+    pub repairs_applied: Vec<String>,
     /// Unsandboxed menu entries for this AppImage (made by AppImageLauncher,
     /// Gear Lever, ...) that SAM hid when the sandbox was created.
     pub hidden_entries: Vec<HiddenEntry>,
@@ -471,6 +513,8 @@ pub struct AppSummary {
     pub risk: RiskAssessment,
     pub last_launched: Option<i64>,
     pub added_at: i64,
+    /// The last start failed: the likely cause, or the exit summary.
+    pub last_problem: Option<String>,
 }
 
 impl AppSummary {
@@ -490,6 +534,9 @@ impl AppSummary {
             risk: crate::risk::assess(&e.profile.permissions, e.profile.backend.fixed()),
             last_launched: e.last_launched,
             added_at: e.added_at,
+            last_problem: e.last_launch.as_ref().filter(|l| !l.success && !matches!(l.signal, Some(9) | Some(15))).map(|l| {
+                l.findings.first().map(|f| f.title.clone()).unwrap_or_else(|| l.summary.clone())
+            }),
         }
     }
 }

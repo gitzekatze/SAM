@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use sam_core::util::{format_ts, human_size, tildify};
 use sam_core::*;
-use sam_runner::launch::{prepare, run, LaunchOptions};
+use sam_runner::launch::{prepare, run_auto, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
 use sam_storage::{parse_preset_toml, preset_to_toml, read_preset_file, LogKind, Logs, PresetStore};
 use clap::{Parser, Subcommand};
@@ -69,6 +69,35 @@ enum Cmd {
         /// Hide other menu entries that start this AppImage without a sandbox.
         #[arg(long)]
         hide_duplicates: bool,
+    },
+    /// Things to check right after creating a sandbox, with one-click fixes.
+    Hints {
+        app: String,
+        /// Apply the hint with this id.
+        #[arg(long)]
+        apply: Option<String>,
+    },
+    /// Repair an app that does not start or misbehaves: list steps, apply one, or undo.
+    Repair {
+        app: String,
+        /// Apply the step with this id (see the list).
+        #[arg(long)]
+        apply: Option<String>,
+        /// Apply the first step in the list.
+        #[arg(long, conflicts_with = "apply")]
+        next: bool,
+        /// Restore the profile from before the first repair step.
+        #[arg(long, conflicts_with_all = ["apply", "next"])]
+        undo: bool,
+    },
+    /// Start sandboxed apps briefly and report which ones keep running.
+    /// Opens their windows for a few seconds.
+    Selftest {
+        /// Apps to test (default: all sandboxed apps).
+        apps: Vec<String>,
+        /// Seconds to let each app run.
+        #[arg(long, default_value_t = 8)]
+        seconds: u64,
     },
     /// Show, hide or restore unsandboxed menu entries for a sandboxed app.
     Menu {
@@ -402,6 +431,91 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
+        Cmd::Hints { app: query, apply } => {
+            let e = app.resolve(&query)?;
+            let e = match apply {
+                Some(id) => {
+                    let sug = sam_runner::repair::first_run_hints(&e).into_iter().find(|s| s.id == id).with_context(|| format!("no hint '{id}' for {}", e.display_name()))?;
+                    app.apply_suggestion(&query, &sug, false)?
+                }
+                None => e,
+            };
+            let hints = sam_runner::repair::first_run_hints(&e);
+            out.emit(&json!({"hints": hints}), || {
+                if hints.is_empty() {
+                    println!("Nothing to check for {}.", e.display_name());
+                }
+                for h in &hints {
+                    println!("{}  {}\n    {}\n    fix: sam-jail hints {} --apply {}", paint(&h.id, "1"), h.title, h.explanation, e.id, h.id);
+                }
+            });
+        }
+        Cmd::Repair { app: query, apply, next, undo } => {
+            let e = app.resolve(&query)?;
+            let applied = if undo {
+                app.undo_repairs(&query)?;
+                Some("undo".to_string())
+            } else if let Some(id) = apply.or_else(|| next.then(|| sam_runner::repair::ladder(&e, &app.config).first().map(|s| s.id.clone())).flatten()) {
+                let sug = app.find_suggestion(&e, &id).with_context(|| format!("no repair step '{id}' for {}", e.display_name()))?;
+                app.apply_suggestion(&query, &sug, true)?;
+                Some(sug.title)
+            } else {
+                None
+            };
+            let e = app.resolve(&query)?;
+            let steps = sam_runner::repair::ladder(&e, &app.config);
+            let findings = e.last_launch.as_ref().map(|l| l.findings.clone()).unwrap_or_default();
+            out.emit(&json!({"applied": applied, "findings": findings, "steps": steps, "applied_steps": e.repairs_applied, "can_undo": e.repair_backup.is_some()}), || {
+                if let Some(a) = &applied {
+                    println!("Applied: {a}. Start the app again to test it.");
+                }
+                for f in &findings {
+                    println!("{} {}: {}", paint("found", "33"), f.title, f.explanation);
+                }
+                for (i, st) in steps.iter().enumerate() {
+                    println!("{}. {} ({})\n   {}", i + 1, st.title, st.id, st.explanation);
+                }
+                if steps.is_empty() {
+                    println!("No more repair steps. Check the logs (sam-jail logs {}).", e.id);
+                }
+                if e.repair_backup.is_some() {
+                    println!("Undo all repairs: sam-jail repair {} --undo", e.id);
+                }
+            });
+        }
+        Cmd::Selftest { apps, seconds } => {
+            let list: Vec<AppEntry> = if apps.is_empty() { app.registry().list()? } else { apps.iter().map(|q| app.resolve(q)).collect::<Result<_>>()? };
+            let mut results = Vec::new();
+            for mut e in list {
+                if !out.json {
+                    eprintln!("testing {} for {seconds}s…", e.display_name());
+                }
+                let opts = LaunchOptions { timeout_secs: Some(seconds), quiet: true, ..Default::default() };
+                let (status, detail, findings) = match run_auto(&mut e, &opts, &app.config, &app.paths, &app.host()) {
+                    Ok(rec) => {
+                        let ran = rec.finished_at - rec.started_at;
+                        if rec.sandbox_failure {
+                            ("fail", rec.summary.clone(), rec.findings.clone())
+                        } else if rec.success || (rec.signal == Some(9) && ran + 1 >= seconds as i64) {
+                            ("ok", if rec.success { "exited normally".into() } else { format!("kept running for {seconds}s") }, vec![])
+                        } else {
+                            ("fail", rec.summary.clone(), rec.findings.clone())
+                        }
+                    }
+                    Err(err) => ("fail", format!("{err:#}"), vec![]),
+                };
+                results.push(json!({"id": e.id, "name": e.display_name(), "status": status, "detail": detail, "findings": findings}));
+            }
+            out.emit(&json!({"results": results}), || {
+                for r in &results {
+                    let ok = r["status"] == "ok";
+                    println!("{} {:<28} {}", if ok { paint("✓", "32") } else { paint("✗", "31") }, r["name"].as_str().unwrap_or_default(), r["detail"].as_str().unwrap_or_default());
+                    for f in r["findings"].as_array().into_iter().flatten() {
+                        println!("    likely: {}", f["title"].as_str().unwrap_or_default());
+                    }
+                }
+            });
+        }
         Cmd::Menu { action, app: query } => {
             let e = match action {
                 MenuAction::List => app.resolve(&query)?,
@@ -498,7 +612,12 @@ fn real_main(cli: Cli) -> Result<()> {
             let warnings = app.app_warnings(&e, &host);
             let summary = AppSummary::from_entry(&e);
             let selection = sam_runner::select::select(&e.profile, &app.config, &host).ok();
-            out.emit(&json!({"app": summary, "entry": e, "warnings": warnings, "selection": selection}), || print_info(&e, &summary, &warnings, selection.as_ref()));
+            let hints = sam_runner::repair::first_run_hints(&e);
+            let steps = sam_runner::repair::ladder(&e, &app.config);
+            out.emit(
+                &json!({"app": summary, "entry": e, "warnings": warnings, "selection": selection, "hints": hints, "repair_steps": steps, "private_home": app.paths.app_home(&e.id)}),
+                || print_info(&e, &summary, &warnings, selection.as_ref()),
+            );
         }
         Cmd::Remove { app: q, keep_data } => {
             let e = app.remove(&q, keep_data)?;
@@ -506,7 +625,7 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         Cmd::Run { app: q, args } => {
             let mut e = app.resolve(&q)?;
-            let rec = run(&mut e, &LaunchOptions { args, ..Default::default() }, &app.config, &app.paths, &app.host())?;
+            let rec = run_auto(&mut e, &LaunchOptions { args, ..Default::default() }, &app.config, &app.paths, &app.host())?;
             out.emit(&rec, || {
                 if rec.sandbox_failure {
                     eprintln!("{} {}", paint("sam-jail:", "1;31"), rec.summary);

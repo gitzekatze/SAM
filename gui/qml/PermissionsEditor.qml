@@ -73,7 +73,7 @@ ColumnLayout {
         return false
     }
     function needsConfirm(key, v) {
-        return isEnabling(key, v) && (riskOf(key) === "dangerous" || key === "dbus.session.mode")
+        return isEnabling(key, v) && (riskOf(key) === "dangerous" || key === "dbus.session.mode" || key === "integrations.keyring")
     }
     function apply(key, v) {
         const p = Util.clone(perms)
@@ -164,9 +164,10 @@ ColumnLayout {
         PermChoice {
             key: "network.mode"; editor: editor
             options: editor.advanced
-                ? [{ value: "none", text: qsTr("No network") }, { value: "full", text: qsTr("Full network") },
-                   { value: "localhost", text: qsTr("Localhost only (experimental)") }, { value: "filtered", text: qsTr("Filtered (experimental)") }]
-                : [{ value: "none", text: qsTr("No network") }, { value: "full", text: qsTr("Full network") }]
+                ? [{ value: "none", text: qsTr("No network") }, { value: "localhost", text: qsTr("Local network only (no internet)") },
+                   { value: "full", text: qsTr("Full network") }, { value: "filtered", text: qsTr("Filtered (experimental)") }]
+                : [{ value: "none", text: qsTr("No network") }, { value: "localhost", text: qsTr("Local network only (no internet)") },
+                   { value: "full", text: qsTr("Full network") }]
         }
     }
 
@@ -209,6 +210,14 @@ ColumnLayout {
         }
     }
 
+    // ------------------------------------------------------------ desktop integration
+    FormCard.FormHeader { title: qsTr("Desktop integration") }
+    FormCard.FormCard {
+        PermSwitch { key: "integrations.file_manager"; editor: editor }
+        PermSwitch { key: "integrations.media_controls"; editor: editor }
+        PermSwitch { key: "integrations.keyring"; editor: editor }
+    }
+
     // ------------------------------------------------------------ sockets & env
     FormCard.FormHeader { title: qsTr("Sockets & Environment"); visible: editor.advanced }
     FormCard.FormCard {
@@ -239,6 +248,7 @@ ColumnLayout {
         PermSwitch { key: "advanced.seccomp_strict"; editor: editor }
         PermSwitch { key: "advanced.allow_userns"; editor: editor }
         PermSwitch { key: "advanced.host_themes"; editor: editor }
+        PermSwitch { key: "advanced.writable_appdir"; editor: editor }
         PathListEditor {
             key: "advanced.extra_backend_args"; editor: editor; folders: false
             Layout.fillWidth: true

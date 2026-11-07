@@ -307,3 +307,49 @@ Contrast, CachyOS Neon) were checked through screenshots.
 - **D-Bus:** the default filtered list now names portals explicitly
   (Desktop, Documents, IBus, Fcitx) instead of `org.freedesktop.portal.*`,
   so `portal.Flatpak` and `portal.Tracker` are no longer reachable.
+
+## 12. Session 5 (2026-11-07): compatibility work (plan phases 1–4)
+
+- **Backends, per app:** `SandboxProfile.auto_backend` (kind + reason).
+  The order on Automatic:
+  1. Bubblewrap-only features (localhost, writable app folder).
+  2. The backend learned for this app.
+  3. Bubblejail when D-Bus filtering is needed and xdg-dbus-proxy is missing.
+  4. The default backend.
+  5. Bubblewrap → Bubblejail → Firejail (Firejail only if allowed).
+  `launch::run_auto` retries the next backend after a sandbox *setup*
+  failure (bwrap errors; bubblejail tracebacks; firejail `Error:`) and
+  remembers the one that works. Setting a backend back to Automatic clears
+  the learned choice.
+- **Phase 1:**
+  - Landlock allows writing to opened files and rw binds.
+  - `/run/sam/bin/xdg-open` (and kde-open, …) call the portal's OpenURI.
+  - `APPIMAGE_EXTRACT_AND_RUN=1`.
+  - `ro_follow` also binds the targets of symlinks in whitelisted
+    `/usr/share` and `/etc` entries (covers resolv.conf too).
+- **Phase 2:**
+  - `needs_network_by_purpose` (AI/web-UI/server/client/sync names) turns
+    the network on.
+  - `integrations.{keyring,media_controls,file_manager}`.
+  - First-run hints (`sam-jail hints`, GUI dialog after Create sandbox).
+  - "Files this app saved" opens the private home.
+- **Phase 3:**
+  - `repair.rs`: `analyze()` maps about 15 error patterns to fixes, stored
+    as `LaunchRecord.findings`.
+  - `ladder()` (`sam-jail repair --next/--apply/--undo`; GUI "Make it work").
+  - `advanced.writable_appdir` (bwrap `--overlay`, upper dir in
+    `<data>/overlays/<id>`).
+  - Crash-at-start notification with the likely cause.
+  - Overview chip "Didn't work last time".
+- **Phase 4:**
+  - `network.mode = localhost`: pasta `--splice-only -t auto -T auto,~53`
+    wraps bwrap. Attaching pasta to bwrap's netns fails with EPERM.
+    Strict seccomp is skipped in this mode, because pasta doesn't pass
+    the fd on.
+  - `sam-jail selftest`.
+- **Verified on real apps:**
+  - ArtCraft (wgpu) failed. The analyzer said "Graphics acceleration is
+    off", and `repair --next` fixed it.
+  - Localhost forwarding works both ways, with no internet and no DNS.
+  - The overlay, saving opened files and the backend fallback chain all
+    work.

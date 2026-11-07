@@ -146,8 +146,9 @@ pub fn services_toml(ctx: &LaunchContext) -> (Table, Vec<String>) {
     let mut raw_dbus: Vec<String> = Vec::new();
     match p.dbus.session.mode {
         DbusMode::Filtered => {
-            raw_dbus.extend(p.dbus.session.allow.iter().filter(|n| !n.starts_with("org.freedesktop.portal")).map(|n| format!("--talk={n}")));
-            raw_dbus.extend(p.dbus.session.own.iter().map(|n| format!("--own={n}")));
+            let bus = p.effective_session_bus();
+            raw_dbus.extend(bus.allow.iter().filter(|n| !n.starts_with("org.freedesktop.portal")).map(|n| format!("--talk={n}")));
+            raw_dbus.extend(bus.own.iter().map(|n| format!("--own={n}")));
         }
         DbusMode::Full => notes.push("bubblejail always filters the session bus; 'full' is treated as filtered".into()),
         DbusMode::None => {}

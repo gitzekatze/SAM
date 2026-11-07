@@ -127,7 +127,8 @@ pub enum NetworkMode {
     Full,
     #[default]
     None,
-    /// Experimental: loopback only. Not part of the MVP.
+    /// Loopback only: no internet, but local servers on both sides stay
+    /// reachable (forwarded by `pasta`). For local AI/web-UI apps.
     Localhost,
     /// Experimental: domain filtered. Not part of the MVP.
     Filtered,
@@ -135,7 +136,7 @@ pub enum NetworkMode {
 
 impl NetworkMode {
     pub fn is_experimental(self) -> bool {
-        matches!(self, NetworkMode::Localhost | NetworkMode::Filtered)
+        matches!(self, NetworkMode::Filtered)
     }
     pub fn as_str(self) -> &'static str {
         match self {
@@ -321,8 +322,43 @@ pub struct AdvancedPerms {
     pub allow_userns: bool,
     /// Expose host theme configuration (GTK/Qt/KDE settings, read-only).
     pub host_themes: bool,
+    /// Writable app folder: changes the app makes to its own files go to a
+    /// separate per-app layer (Bubblewrap overlay); the extracted copy stays
+    /// untouched. For portable apps that save next to themselves.
+    pub writable_appdir: bool,
     /// Extra raw backend arguments (power users only).
     pub extra_backend_args: Vec<String>,
+}
+
+/// Desktop services an app may use through the filtered session bus.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct IntegrationPerms {
+    /// Password storage (Secret Service / KWallet). The keyring does not
+    /// separate apps: the app can read every stored password.
+    pub keyring: bool,
+    /// Media keys and "now playing" (MPRIS), and keeping the screen awake.
+    pub media_controls: bool,
+    /// "Show in folder" through the file manager.
+    pub file_manager: bool,
+}
+
+impl IntegrationPerms {
+    /// Bus names to talk to and to own for the enabled integrations.
+    pub fn bus_names(&self) -> (Vec<&'static str>, Vec<&'static str>) {
+        let (mut talk, mut own) = (Vec::new(), Vec::new());
+        if self.keyring {
+            talk.extend(["org.freedesktop.secrets", "org.kde.kwalletd6", "org.kde.kwalletd5"]);
+        }
+        if self.media_controls {
+            talk.extend(["org.freedesktop.ScreenSaver", "org.freedesktop.PowerManagement"]);
+            own.push("org.mpris.MediaPlayer2.*");
+        }
+        if self.file_manager {
+            talk.push("org.freedesktop.FileManager1");
+        }
+        (talk, own)
+    }
 }
 
 impl Default for AdvancedPerms {
@@ -334,6 +370,7 @@ impl Default for AdvancedPerms {
             seccomp_strict: false,
             allow_userns: true,
             host_themes: true,
+            writable_appdir: false,
             extra_backend_args: vec![],
         }
     }
@@ -351,6 +388,7 @@ pub struct PermissionSet {
     pub sockets: SocketPerms,
     pub environment: EnvPerms,
     pub advanced: AdvancedPerms,
+    pub integrations: IntegrationPerms,
 }
 
 impl PermissionSet {
@@ -359,6 +397,21 @@ impl PermissionSet {
         let mut p = PermissionSet::default();
         p.display.wayland = true;
         p
+    }
+
+    /// The filtered session bus as it is enforced: the explicit lists plus
+    /// the enabled integrations and tray item names.
+    pub fn effective_session_bus(&self) -> DbusBusPerms {
+        let mut b = self.dbus.session.clone();
+        let (talk, own) = self.integrations.bus_names();
+        for n in talk {
+            if !b.allow.iter().any(|x| x == n) {
+                b.allow.push(n.into());
+            }
+        }
+        b.own.extend(own.into_iter().map(String::from));
+        b.own.extend(b.tray_own_names());
+        b
     }
 
     /// Read a value by dotted key, e.g. `network.mode`.
@@ -469,7 +522,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("filesystem.custom_write", "Filesystem", "Extra read/write folders",
             "Additional folders the app can read and change.", High, advanced),
         perm!("network.mode", "Network", "Network access",
-            "'full' shares your internet connection with the app. 'none' places it in an isolated network with no connectivity.", High),
+            "'full' shares your internet connection with the app. 'localhost' blocks the internet but keeps local servers reachable (e.g. a local AI model or the app's own web page). 'none' places it in an isolated network with no connectivity.", High),
         perm!("devices.gpu", "Devices", "GPU acceleration",
             "Hardware-accelerated graphics through /dev/dri and host graphics drivers. Needed by most games, browsers and editors.", Medium),
         perm!("devices.webcam", "Devices", "Webcam",
@@ -494,6 +547,12 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Bus names reachable in filtered mode.", Medium, advanced),
         perm!("dbus.system.mode", "D-Bus", "System bus",
             "The system bus controls hardware, networking and power. Denied by default.", Dangerous, advanced),
+        perm!("integrations.keyring", "Desktop integration", "Passwords & keyring",
+            "Lets the app store logins in your keyring or KWallet. The keyring does not separate apps: the app can read every password stored there.", High),
+        perm!("integrations.media_controls", "Desktop integration", "Media controls",
+            "Media keys and 'now playing' in the panel, and keeping the screen awake during playback.", Low),
+        perm!("integrations.file_manager", "Desktop integration", "Show in folder",
+            "Lets the app open your file manager at a file it saved.", Low),
         perm!("sockets.ssh_agent", "Sockets", "SSH agent",
             "Lets the app use keys loaded in your SSH agent.", High, advanced),
         perm!("sockets.cups", "Sockets", "Printing",
@@ -512,6 +571,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Lets Chromium/Electron apps start their own internal sandbox.", Low, advanced),
         perm!("advanced.host_themes", "Advanced", "Host theme settings",
             "Read-only access to GTK/Qt/KDE theme configuration so apps match your desktop.", Low, advanced),
+        perm!("advanced.writable_appdir", "Advanced", "Writable app folder",
+            "For portable apps that save settings next to themselves. Changes go to a separate layer; the extracted app stays untouched. Bubblewrap only.", Low, advanced),
         perm!("advanced.extra_backend_args", "Advanced", "Raw backend arguments",
             "Arguments passed verbatim to the sandbox backend. Can weaken the sandbox.", High, advanced),
     ]

@@ -115,7 +115,7 @@ Kirigami.ApplicationWindow {
                 return
             }
             notify(qsTr("Sandbox created for %1. Review its permissions.").arg(e.name))
-            openApp(e.id)
+            openApp(e.id, true)
         })
     }
 
@@ -186,12 +186,12 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    function openApp(id) {
+    function openApp(id, firstRun) {
         if (currentSection !== "apps")
             showSection("apps")
         while (pageStack.depth > 1)
             pageStack.pop()
-        pageStack.push(Qt.resolvedUrl("AppPage.qml"), { appId: id })
+        pageStack.push(Qt.resolvedUrl("AppPage.qml"), { appId: id, firstRun: firstRun === true })
     }
 
     // -------------------------------------------------------- startup
@@ -207,8 +207,11 @@ Kirigami.ApplicationWindow {
         loadConfig(function () {
             refreshApps(function () {
                 const page = Backend.startupPage
-                if (page === "app" && Backend.startupApp)
+                if ((page === "app" || page === "app-repair") && Backend.startupApp) {
                     openApp(Backend.startupApp)
+                    if (page === "app-repair")
+                        pageStack.currentItem.tab = 1
+                }
                 else if (page === "app" && root.apps.length)
                     openApp(root.apps[0].id)
                 else if (page === "presets" || page === "settings" || page === "diagnostics")
@@ -390,7 +393,11 @@ Kirigami.ApplicationWindow {
         function onAppFinished(appId, code) {
             root.refreshApps()
             if (code !== 0)
-                root.notify(qsTr("The app exited with code %1. Open it in SAM → Details → Logs to see why.").arg(code))
+                showPassiveNotification(qsTr("The app stopped with an error (code %1).").arg(code), 8000, qsTr("Fix it"), function () {
+                    root.openApp(appId)
+                    if (pageStack.currentItem && pageStack.currentItem.tab !== undefined)
+                        pageStack.currentItem.tab = 1
+                })
         }
     }
 }

@@ -15,7 +15,9 @@ Kirigami.ScrollablePage {
     id: page
 
     required property string appId
-    property var info: null          // { app, entry, warnings, selection }
+    /// Opened right after "Create sandbox": show the first-run check once.
+    property bool firstRun: false
+    property var info: null          // { app, entry, warnings, selection, hints, repair_steps, private_home }
     property var evaluation: null
     property string commandText: ""
     property string logText: ""
@@ -37,6 +39,10 @@ Kirigami.ScrollablePage {
             }
             page.info = r.data
             evaluate(r.data.entry.profile.permissions)
+            if (page.firstRun && r.data.hints.length) {
+                page.firstRun = false
+                hintsDialog.open()
+            }
             if (page.advanced)
                 loadCommand()
         })
@@ -77,6 +83,22 @@ Kirigami.ScrollablePage {
                 done(r)
         })
     }
+    /// Apply a hint (`hints --apply`) or a repair step / finding (`repair --apply`).
+    function applySuggestion(sug, asRepair, thenRun) {
+        const run = () => page.simple(asRepair ? ["repair", appId, "--apply", sug.id] : ["hints", appId, "--apply", sug.id], function (r) {
+            if (r.ok && thenRun)
+                win.launch(appId)
+        }, qsTr("Applied: %1").arg(sug.title))
+        if (sug.risk === "high" || sug.risk === "dangerous" || sug.action.kind === "compat")
+            win.confirmDialog.ask(qsTr("Apply “%1”?").arg(sug.title), sug.explanation, run, qsTr("Apply"))
+        else
+            run()
+    }
+    function openPrivateFolder() {
+        if (page.info && page.info.private_home)
+            Qt.openUrlExternally(Backend.pathToUrl(page.info.private_home))
+    }
+
     function setBackend(choice) {
         const go = confirm => page.simple(["backend", appId, choice].concat(confirm ? ["--confirm"] : []), null, qsTr("Backend set to %1").arg(Util.backendLabels[choice]))
         if (choice === "unsandboxed") {
@@ -101,6 +123,12 @@ Kirigami.ScrollablePage {
             icon.name: "media-playback-start"
             enabled: page.summary !== null && page.summary.badge !== "missing"
             onTriggered: win.launch(page.appId)
+        },
+        Kirigami.Action {
+            text: qsTr("Files this app saved")
+            icon.name: "folder-open"
+            displayHint: Kirigami.DisplayHint.AlwaysHide
+            onTriggered: page.openPrivateFolder()
         },
         Kirigami.Action {
             text: qsTr("Reset to recommended")
@@ -166,9 +194,17 @@ Kirigami.ScrollablePage {
                         score: page.evaluation ? page.evaluation.risk.score : -1
                     }
                     QQC2.Label {
-                        text: page.info && page.info.selection ? qsTr("Sandbox: %1").arg(Util.backendLabels[page.info.selection.kind]) : qsTr("No sandbox backend available")
+                        id: backendLabel
+                        text: page.info && page.info.selection
+                            ? (page.entry && page.entry.profile.backend === "auto" && page.entry.profile.auto_backend
+                                ? qsTr("Sandbox: %1 (picked for this app)").arg(Util.backendLabels[page.info.selection.kind])
+                                : qsTr("Sandbox: %1").arg(Util.backendLabels[page.info.selection.kind]))
+                            : qsTr("No sandbox backend available")
                         opacity: 0.7
                         font.pointSize: Math.max(7, Qt.application.font.pointSize - 1)
+                        HoverHandler { id: backendHover }
+                        QQC2.ToolTip.visible: backendHover.hovered && page.info !== null && page.info.selection !== null
+                        QQC2.ToolTip.text: page.info && page.info.selection ? page.info.selection.reason : ""
                     }
                 }
             }
@@ -344,6 +380,7 @@ Kirigami.ScrollablePage {
 
         // ---------------------------------------------------- details tab
         ColumnLayout {
+            id: details
             visible: page.tab === 1
             Layout.fillWidth: true
             spacing: 0
@@ -428,8 +465,60 @@ Kirigami.ScrollablePage {
                 }
             }
 
+            readonly property var findings: page.entry && page.entry.last_launch ? (page.entry.last_launch.findings || []) : []
+            readonly property var steps: page.info ? (page.info.repair_steps || []) : []
+
+            FormCard.FormHeader { title: qsTr("What went wrong last time"); visible: details.findings.length > 0 }
+            FormCard.FormCard {
+                visible: details.findings.length > 0
+                Repeater {
+                    model: details.findings
+                    delegate: FormCard.FormButtonDelegate {
+                        required property var modelData
+                        icon.name: modelData.action.kind === "none" ? "dialog-information" : "tools-wizard"
+                        text: modelData.title
+                        description: modelData.explanation
+                        enabled: modelData.action.kind !== "none"
+                        onClicked: page.applySuggestion(modelData, true, true)
+                    }
+                }
+            }
+
+            FormCard.FormHeader { title: qsTr("Make it work") }
+            FormCard.FormCard {
+                FormCard.FormButtonDelegate {
+                    text: qsTr("Try the next fix and start")
+                    icon.name: "media-playback-start"
+                    visible: details.steps.length > 0
+                    description: details.steps.length ? qsTr("Next: %1. %2").arg(details.steps[0].title).arg(details.steps[0].explanation) : ""
+                    onClicked: page.applySuggestion(details.steps[0], true, true)
+                }
+                Repeater {
+                    model: details.steps.slice(1)
+                    delegate: FormCard.FormButtonDelegate {
+                        required property var modelData
+                        icon.name: "tools"
+                        text: modelData.title
+                        description: modelData.explanation
+                        onClicked: page.applySuggestion(modelData, true, false)
+                    }
+                }
+                FormCard.FormButtonDelegate {
+                    text: qsTr("Undo all repairs")
+                    icon.name: "edit-undo"
+                    visible: page.entry !== null && page.entry.repair_backup !== null && page.entry.repair_backup !== undefined
+                    description: page.entry ? qsTr("Applied: %1").arg((page.entry.repairs_applied || []).join(", ")) : ""
+                    onClicked: page.simple(["repair", page.appId, "--undo"], null, qsTr("Repairs undone"))
+                }
+                FormCard.FormTextDelegate {
+                    visible: details.steps.length === 0
+                    text: qsTr("No more automatic fixes. The logs show the app's own messages.")
+                }
+            }
+
             FormCard.FormHeader { title: qsTr("Repair") }
             FormCard.FormCard {
+                FormCard.FormButtonDelegate { text: qsTr("Files this app saved"); icon.name: "folder-open"; description: qsTr("The app's private folder, where it keeps settings and files it saved outside your granted folders."); onClicked: page.openPrivateFolder() }
                 FormCard.FormButtonDelegate { text: qsTr("View logs"); icon.name: "view-list-text"; onClicked: page.tab = 2 }
                 FormCard.FormButtonDelegate {
                     text: qsTr("Re-extract AppImage"); icon.name: "view-refresh"
@@ -534,6 +623,43 @@ Kirigami.ScrollablePage {
     }
 
     PresetPickerDialog { id: presetPicker }
+
+    // First-run check: shown once after "Create sandbox".
+    Kirigami.Dialog {
+        id: hintsDialog
+        title: qsTr("Before you start %1").arg(page.title)
+        preferredWidth: Kirigami.Units.gridUnit * 28
+        standardButtons: Kirigami.Dialog.NoButton
+        customFooterActions: [
+            Kirigami.Action { text: qsTr("Done"); icon.name: "dialog-ok"; onTriggered: hintsDialog.close() }
+        ]
+        ColumnLayout {
+            spacing: Kirigami.Units.largeSpacing
+            QQC2.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: qsTr("SAM picked strict permissions. These are the ones most likely to matter for this app. You can change everything later.")
+            }
+            Repeater {
+                model: page.info ? page.info.hints : []
+                delegate: RowLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        QQC2.Label { text: modelData.title; font.bold: true; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        QQC2.Label { text: modelData.explanation; opacity: 0.75; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                    }
+                    QQC2.Button {
+                        text: modelData.id === "files" ? qsTr("Allow Downloads") : qsTr("Allow")
+                        onClicked: page.applySuggestion(modelData, false, false)
+                    }
+                }
+            }
+        }
+    }
 
     Dialogs.FileDialog {
         id: relocateDialog

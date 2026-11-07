@@ -64,6 +64,10 @@ impl Backend for Firejail {
         match p.network.mode {
             NetworkMode::Full => {}
             NetworkMode::None => a.push("--net=none".into()),
+            NetworkMode::Localhost => {
+                a.push("--net=none".into());
+                notes.push("'Local network only' is implemented by the Bubblewrap backend; with Firejail the app has no network".into());
+            }
             m => {
                 a.push("--net=none".into());
                 notes.push(format!("network mode '{}' is experimental; network disabled", m.as_str()));
@@ -93,10 +97,11 @@ impl Backend for Firejail {
             DbusMode::Full => "--dbus-user=allow".into(),
         });
         if p.dbus.session.mode == DbusMode::Filtered {
-            for n in &p.dbus.session.allow {
+            let bus = p.effective_session_bus();
+            for n in &bus.allow {
                 a.push(format!("--dbus-user.talk={n}"));
             }
-            for n in p.dbus.session.own.iter().cloned().chain(p.dbus.session.tray_own_names()) {
+            for n in &bus.own {
                 a.push(format!("--dbus-user.own={n}"));
             }
         }

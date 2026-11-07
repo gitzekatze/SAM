@@ -7,7 +7,7 @@ use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use sam_core::util::which;
-use sam_runner::launch::{run, LaunchOptions};
+use sam_runner::launch::{run_auto, LaunchOptions};
 use sam_runner::ops::Sam;
 
 fn usage() -> ! {
@@ -63,10 +63,16 @@ fn launch(args: Vec<String>) -> Result<i32> {
     let app = Sam::open()?;
     let mut entry = app.registry().get(&id)?.or_else(|| app.resolve(&id).ok()).with_context(|| format!("no registered app '{id}'"))?;
     let host = sam_core::HostInfo::probe();
-    let rec = run(&mut entry, &LaunchOptions { args: rest, ..Default::default() }, &app.config, &app.paths, &host)?;
+    let rec = run_auto(&mut entry, &LaunchOptions { args: rest, ..Default::default() }, &app.config, &app.paths, &host)?;
     if rec.sandbox_failure {
-        notify(&format!("{} failed to start", entry.display_name()), &format!("{}\nOpen SAM → {} → Repair.", rec.summary, entry.display_name()));
+        notify(&format!("{} failed to start", entry.display_name()), &format!("{}\nOpen SAM → {} → Details & Repair.", rec.summary, entry.display_name()));
         bail!("{}", rec.summary);
+    }
+    // A crash within the first seconds usually means the sandbox is missing
+    // something: say what the output suggests.
+    if !rec.success && rec.finished_at - rec.started_at <= 10 {
+        let hint = rec.findings.first().map(|f| format!("Likely cause: {}.", f.title)).unwrap_or_else(|| "Try the repair steps.".into());
+        notify(&format!("{} stopped right after starting", entry.display_name()), &format!("{} {hint}\nOpen SAM → {} → Details & Repair.", rec.summary, entry.display_name()));
     }
     Ok(rec.exit_code.unwrap_or(if rec.success { 0 } else { 1 }))
 }

@@ -108,6 +108,9 @@ pub struct LaunchContext {
     pub tracer: Option<Vec<String>>,
     /// Extra bind mounts requested by the runner: (host, sandbox, writable).
     pub extra_binds: Vec<(PathBuf, PathBuf, bool)>,
+    /// Per-app folder holding `upper/` and `work/` for the writable app
+    /// folder overlay (`advanced.writable_appdir`).
+    pub appdir_overlay: Option<PathBuf>,
 }
 
 impl LaunchContext {
@@ -219,5 +222,6 @@ pub fn sample_context() -> LaunchContext {
         compatibility_mode: false,
         tracer: None,
         extra_binds: vec![],
+        appdir_overlay: None,
     }
 }

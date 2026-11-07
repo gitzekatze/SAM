@@ -35,7 +35,9 @@ pub struct LandlockSpec {
 }
 
 /// Writable locations implied by a permission set (sandbox paths).
-pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox: &str) -> LandlockSpec {
+/// `extra_write`: paths mounted writable for this launch only, e.g. files
+/// passed with "Open with" (else the app could open but not save them).
+pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox: &str, extra_write: &[PathBuf]) -> LandlockSpec {
     let mut write: Vec<PathBuf> = ["/tmp", "/var/tmp", "/dev", "/proc", runtime_dir_in_sandbox]
         .iter()
         .map(PathBuf::from)
@@ -58,6 +60,7 @@ pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox:
     for s in &p.sockets.custom {
         write.push(expand_home(s));
     }
+    write.extend(extra_write.iter().cloned());
     LandlockSpec { read: vec![PathBuf::from("/")], write }
 }
 
@@ -196,13 +199,13 @@ mod tests {
         let mut p = PermissionSet::strict_gui();
         p.filesystem.documents = Access::Rw;
         p.filesystem.music = Access::Ro;
-        let s = landlock_spec(&p, &ctx.host, "/run/user/1000");
+        let s = landlock_spec(&p, &ctx.host, "/run/user/1000", &[]);
         assert!(s.write.contains(&PathBuf::from("/home/tester/Documents")));
         assert!(!s.write.contains(&PathBuf::from("/home/tester/Music")));
         assert!(s.write.contains(&PathBuf::from("/home/tester")), "private home is writable");
         p.filesystem.home = true;
         p.filesystem.home_access = Access::Ro;
-        let s = landlock_spec(&p, &ctx.host, "/run/user/1000");
+        let s = landlock_spec(&p, &ctx.host, "/run/user/1000", &[]);
         assert!(!s.write.contains(&PathBuf::from("/home/tester")), "read-only full home");
     }
 

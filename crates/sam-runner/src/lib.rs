@@ -14,7 +14,9 @@ pub mod diagnose;
 pub mod doctor;
 pub mod kernel;
 pub mod launch;
+pub mod netns;
 pub mod ops;
+pub mod repair;
 pub mod select;
 
 use sam_core::{Backend, BackendKind};

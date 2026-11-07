@@ -259,7 +259,7 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
             if category == Category::Game {
                 p.network.mode = NetworkMode::Full;
                 notes.push("Network enabled: game links networking libraries (multiplayer is likely)".into());
-            } else {
+            } else if !needs_network_by_purpose(md, file_name) {
                 notes.push("The app links networking libraries but its category does not need the network; network stays off".into());
             }
         }
@@ -271,7 +271,37 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
             notes.push("Compatibility issues were detected; see the dependency report".into());
         }
     }
+    if p.network.mode == NetworkMode::None && needs_network_by_purpose(md, file_name) {
+        p.network.mode = NetworkMode::Full;
+        notes.push("Network enabled: this looks like an AI, web-UI or server app, which talks to models or services over the network. If it only uses local models, 'Local network only' blocks the internet but keeps local servers reachable.".into());
+    }
+    // Desktop integrations.
+    if category == Category::MediaPlayer {
+        p.integrations.media_controls = true;
+        notes.push("Media controls enabled: media keys, 'now playing' and keeping the screen awake".into());
+    }
+    if XDG_DIR_KEYS.iter().any(|k| p.filesystem.xdg_access(k).is_granted()) {
+        p.integrations.file_manager = true;
+    }
     Recommendation { category, permissions: p, notes, backend: BackendChoice::Auto }
+}
+
+/// Apps whose purpose is talking to models, servers or services: local AI
+/// tools, web UIs, API routers, sync clients. Their category is often just
+/// "Utility", so without this they would start offline and seem broken.
+pub fn needs_network_by_purpose(md: &AppImageMetadata, file_name: &str) -> bool {
+    let text = format!(" {} {} {} {} ", md.name, md.comment, md.exec, file_name).to_lowercase();
+    let text: String = text.chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+    let words = [
+        " llm", " llms ", " ai ", " gpt", " ollama", " openai", " webui ", " web ui ", " comfy", " comfyui",
+        " stable diffusion", " diffusion ", " server ", " api ", " router ", " proxy ", " sync ", " cloud ",
+        " client ", " chat ", " assistant ", " model ", " models ", " inference ", " unsloth", " anythingllm",
+    ];
+    if words.iter().any(|w| text.contains(w)) {
+        return true;
+    }
+    // Compound names: "FreeLLMAPI", "OpenWebUI", "LocalGPT".
+    text.split_whitespace().any(|t| (t.contains("llm") && !t.contains("ullm")) || t.ends_with("api") || t.ends_with("gpt") || t.ends_with("webui"))
 }
 
 /// Compatibility mode (§2.16.4): broader access for apps that otherwise break.
@@ -419,6 +449,10 @@ mod tests {
         assert_eq!(infer_category(&md("Thing", &[]), "SuperTux-0.6.AppImage", None), Category::Utility);
         assert_eq!(infer_category(&md("SuperTux", &["Game"]), "", None), Category::Game);
         assert_eq!(infer_category(&md("Tuta", &["Network"]), "", None), Category::Communication);
+        assert!(needs_network_by_purpose(&md("Open WebUI", &[]), "open-webui_x86_64.AppImage"));
+        assert!(needs_network_by_purpose(&md("FreeLLMAPI", &[]), ""), "LLM in name");
+        assert!(!needs_network_by_purpose(&md("ZFontManager", &[]), "ZFontManager_0.9.0_amd64.AppImage"));
+        assert!(!needs_network_by_purpose(&md("Krita", &["Graphics"]), "krita-5.2.AppImage"));
         assert_eq!(infer_category(&md("Comfy Desktop", &["AudioVideo", "Graphics", "3DGraphics"]), "", None), Category::ImageEditor);
         assert_eq!(infer_category(&md("Obsidian", &[]), "", None), Category::Office);
     }

@@ -38,8 +38,22 @@ plain-language explanation and a risk level, and risky choices show a warning.
   custom paths), network (full or none), GPU, audio, webcam, input devices, USB,
   Wayland and X11, session and system D-Bus (filtered through `xdg-dbus-proxy`),
   sockets, environment variables, and advanced options.
-- **Backends:** Bubblewrap (default), Bubblejail (optional), Firejail (optional,
-  disabled by default), and unsandboxed (needs explicit confirmation).
+- **Backends, picked per app:** Bubblewrap (default), Bubblejail, Firejail
+  (allowed in settings first; runs the original AppImage) and unsandboxed
+  (explicit confirmation). On *Automatic*, SAM chooses for each app: features
+  only Bubblewrap has force it; if the sandbox cannot be set up, the next
+  backend is tried and the one that works is remembered for that app, with
+  the reason shown. A backend you pick yourself is never changed.
+- **Making apps work:** a first-run check after *Create sandbox* (no internet,
+  files stay in the sandbox, window/GPU, logins); a log analyzer that turns
+  common error messages into one-click fixes; a repair ladder ("Try the next
+  fix and start", undo all); `sam-jail selftest` to try apps briefly.
+- **Compatibility helpers:** links open in your normal browser through the
+  desktop portal; AppImages started from inside a sandbox extract instead of
+  using FUSE; DNS works with any resolv.conf setup; symlinked system data is
+  followed; *Local network only* for local AI/web-UI apps; a writable app
+  folder for portable apps; keyring, media controls and "show in folder" as
+  separate permissions.
 - **Kernel features:** Landlock write restrictions (defense in depth) and an
   optional strict seccomp filter.
 - **Desktop integration:** menu launchers that always start the app through

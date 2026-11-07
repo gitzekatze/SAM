@@ -154,6 +154,9 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         ("XDG_DATA_DIRS".into(), "@APPDIR@/usr/share:/usr/local/share:/usr/share".into()),
         ("XDG_CONFIG_DIRS".into(), "@APPDIR@/etc/xdg:/etc/xdg".into()),
         ("SAM_APP_ID".into(), app.id.clone()),
+        // AppImages started from inside the sandbox (launchers, self-restarts)
+        // cannot use FUSE there; let their runtime extract to /tmp instead.
+        ("APPIMAGE_EXTRACT_AND_RUN".into(), "1".into()),
     ];
     if let Some(v) = appimage_env {
         app_env.push(("APPIMAGE".into(), v));
@@ -179,7 +182,14 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         compatibility_mode: app.profile.compatibility_mode,
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
+        appdir_overlay: None,
     };
+    if perms.advanced.writable_appdir && kind == BackendKind::Bubblewrap {
+        let base = paths.data_dir.join("overlays").join(&app.id);
+        fs::create_dir_all(base.join("upper"))?;
+        fs::create_dir_all(base.join("work"))?;
+        ctx.appdir_overlay = Some(base);
+    }
 
     if perms.advanced.persistent_home {
         fs::create_dir_all(&ctx.private_home)
@@ -192,7 +202,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     if kind == BackendKind::Bubblewrap {
         sam_backend_bubblewrap::write_identity_files(&ctx)?;
         if perms.dbus.session.mode == DbusMode::Filtered && host.tools.xdg_dbus_proxy.is_some() && host.sockets.dbus_session.is_some() {
-            match DbusProxy::start(host, &perms.dbus.session, &runtime_dir, &app.id) {
+            match DbusProxy::start(host, &perms.effective_session_bus(), &runtime_dir, &app.id) {
                 Ok(p) => {
                     ctx.dbus_proxy_socket = Some(p.socket.clone());
                     proxy = Some(p);
@@ -204,7 +214,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         if want_landlock && host.landlock_abi.is_some() {
             if let Some(helper) = crate::find_helper() {
                 let spec = kernel::SandboxSpec {
-                    landlock: Some(kernel::landlock_spec(perms, host, &format!("/run/user/{}", host.uid))),
+                    landlock: Some(kernel::landlock_spec(perms, host, &format!("/run/user/{}", host.uid), &launch_writable_paths(&ctx))),
                 };
                 let spec_path = runtime_dir.join("sandbox.json");
                 fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
@@ -212,7 +222,9 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                 landlock = true;
             }
         }
-        if perms.advanced.seccomp_strict {
+        let localhost = perms.network.mode == sam_core::permissions::NetworkMode::Localhost;
+        // pasta (local network only) does not pass extra fds on to bwrap.
+        if perms.advanced.seccomp_strict && !localhost {
             if cfg.security.experimental_seccomp {
                 ctx.seccomp_fd = Some(kernel::seccomp_fd(perms.advanced.allow_userns)?);
                 seccomp = true;
@@ -226,11 +238,32 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         }
     }
 
-    let command = match kind {
+    let mut command = match kind {
         BackendKind::Unsandboxed => unsandboxed_command(&ctx),
         k => crate::backend_for(k).unwrap().build(&ctx)?,
     };
+    if kind == BackendKind::Bubblewrap && perms.network.mode == sam_core::permissions::NetworkMode::Localhost {
+        if let Err(e) = crate::netns::wrap_localhost(&mut command) {
+            // Without pasta, fall back to no network at all.
+            command.args.insert(0, "--unshare-net".into());
+            warnings.push(Warning::warn("localhost-unavailable", "Local network unavailable", format!("{e:#}. The app has no network.")));
+        }
+        if perms.advanced.seccomp_strict {
+            warnings.push(Warning::info("localhost-seccomp", "Strict seccomp skipped", "The strict syscall filter cannot be combined with 'Local network only'."));
+        }
+    }
     Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy })
+}
+
+/// Paths mounted writable only for this launch: files passed on the command
+/// line ("Open with") and writable extra binds.
+fn launch_writable_paths(ctx: &LaunchContext) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = ctx.args.iter().map(PathBuf::from).filter(|p| p.is_absolute() && p.is_file()).collect();
+    out.extend(ctx.extra_binds.iter().filter(|(_, _, rw)| *rw).map(|(_, dest, _)| dest.clone()));
+    if ctx.permissions.advanced.writable_appdir {
+        out.push(ctx.sandbox_appdir.clone());
+    }
+    out
 }
 
 fn unsandboxed_command(ctx: &LaunchContext) -> SandboxCommand {
@@ -251,8 +284,19 @@ fn unsandboxed_command(ctx: &LaunchContext) -> SandboxCommand {
 /// Did the failure come from the sandbox setup rather than the app?
 fn classify_failure(code: Option<i32>, stderr_head: &str, kind: BackendKind) -> (bool, String) {
     let first_bwrap = stderr_head.lines().find(|l| l.starts_with("bwrap:")).map(str::to_string);
+    // Errors of the other backends themselves (not of the app).
+    let backend_error = match kind {
+        BackendKind::Bubblejail if stderr_head.contains("Traceback (most recent call last)") => {
+            let last = stderr_head.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("Python error");
+            Some(format!("bubblejail: {}", last.trim()))
+        }
+        BackendKind::Bubblejail => stderr_head.lines().find(|l| l.starts_with("bubblejail:") || l.starts_with("bwrap:")).map(str::to_string),
+        BackendKind::Firejail => stderr_head.lines().find(|l| l.starts_with("Error:") || l.starts_with("Error ")).map(|l| format!("firejail: {l}")),
+        _ => None,
+    };
     match (code, kind) {
         (Some(_), BackendKind::Bubblewrap) if first_bwrap.is_some() => (true, format!("sandbox setup failed: {}", first_bwrap.unwrap())),
+        (Some(c), _) if c != 0 && backend_error.is_some() => (true, format!("sandbox setup failed: {}", backend_error.unwrap())),
         (Some(126), _) => (true, "the entry point could not be executed (permission denied or wrong format)".into()),
         (Some(127), _) => (true, "the entry point or one of its interpreters was not found inside the sandbox".into()),
         _ => (false, String::new()),
@@ -326,6 +370,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     if let Some(fd) = prepared.context.seccomp_fd {
         unsafe { libc::close(fd) };
     }
+
 
     let log = Arc::new(Mutex::new(log));
     let head = Arc::new(Mutex::new(String::new()));
@@ -406,6 +451,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         success,
         sandbox_failure,
         log_file: Some(log_path),
+        findings: if success { vec![] } else { crate::repair::analyze(&head, &app.profile.permissions, signal) },
         summary,
     };
     app.last_launched = Some(started_at);
@@ -423,10 +469,58 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         fresh.last_launch = app.last_launch.clone();
         fresh.last_error = app.last_error.clone();
         fresh.state = app.state;
+        fresh.profile.auto_backend = app.profile.auto_backend.clone();
         reg.save(&mut fresh)?;
     }
     let _ = logs.prune(&app.id, LogKind::Launch, cfg.diagnostics.keep_logs);
     Ok(rec)
+}
+
+/// [`run`], plus the automatic per-app backend choice: when an app on
+/// "Automatic" fails while the sandbox is being set up (before the app
+/// itself starts), try the next available backend and remember the one
+/// that works. A backend the user picked is never changed.
+pub fn run_auto(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths, host: &HostInfo) -> Result<LaunchRecord> {
+    let first = run(app, opts, cfg, paths, host)?;
+    if app.profile.backend != sam_core::BackendChoice::Auto || !is_setup_failure(&first) {
+        return Ok(first);
+    }
+    let mut tried: Vec<BackendKind> = first.backend.into_iter().collect();
+    let first_reason = first.summary.clone();
+    let candidates = [BackendKind::Bubblewrap, BackendKind::Bubblejail, BackendKind::Firejail];
+    let previous = app.profile.auto_backend.clone();
+    let mut last = first;
+    for k in candidates {
+        if tried.contains(&k) {
+            continue;
+        }
+        let failed = tried.iter().map(|b| b.label()).collect::<Vec<_>>().join(", ");
+        app.profile.auto_backend = Some(sam_core::LearnedBackend { kind: k, reason: format!("{failed} could not set up the sandbox ({first_reason})") });
+        let Ok(sel) = select(&app.profile, cfg, host) else { continue };
+        if sel.kind != k {
+            continue; // not usable or not allowed here
+        }
+        tried.push(k);
+        if !opts.quiet {
+            eprintln!("sam-jail: {} failed to set up the sandbox; trying {}", failed, k.label());
+        }
+        last = run(app, opts, cfg, paths, host)?;
+        if !is_setup_failure(&last) {
+            return Ok(last);
+        }
+    }
+    // Nothing worked: keep the previous choice.
+    app.profile.auto_backend = previous;
+    if let Some(mut fresh) = Registry::new(paths).get(&app.id)? {
+        fresh.profile.auto_backend = app.profile.auto_backend.clone();
+        Registry::new(paths).save(&mut fresh)?;
+    }
+    Ok(last)
+}
+
+/// The sandbox itself could not be built (the app never ran).
+fn is_setup_failure(rec: &LaunchRecord) -> bool {
+    rec.sandbox_failure && rec.summary.starts_with("sandbox setup failed")
 }
 
 /// Last lines of a log file (for reports and the GUI).
@@ -439,6 +533,16 @@ pub fn tail(path: &Path, max_lines: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backend_errors_are_setup_failures() {
+        let (f, m) = classify_failure(Some(1), "Traceback (most recent call last):\n  File x\njson.decoder.JSONDecodeError: Expecting value\n", BackendKind::Bubblejail);
+        assert!(f && m.contains("JSONDecodeError"), "{m}");
+        let (f, _) = classify_failure(Some(1), "Error: invalid --x command line option\n", BackendKind::Firejail);
+        assert!(f);
+        let (f, _) = classify_failure(Some(1), "app: some app error\n", BackendKind::Bubblejail);
+        assert!(!f, "app errors are not setup failures");
+    }
 
     #[test]
     fn failure_classification() {
