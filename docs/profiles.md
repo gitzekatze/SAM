@@ -2,7 +2,7 @@
 
 ## Recommended profiles (§2.17)
 
-Appseal infers a category from the desktop file's `Categories`, then the app
+SAM infers a category from the desktop file's `Categories`, then the app
 name, then the toolkit. It then adjusts the result with what dependency
 detection found:
 
@@ -29,7 +29,7 @@ Every profile starts with a private home, Wayland, a filtered session bus
 
 ## Permission keys
 
-Use these keys with `appseal set <app> <key> <value>`, or edit the `[permissions]` table of a preset.
+Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permissions]` table of a preset.
 
 | Key | Values |
 |---|---|
@@ -52,7 +52,7 @@ Use these keys with `appseal set <app> <key> <value>`, or edit the `[permissions
 | `advanced.landlock` | `true` / `false` (unset = follow the global setting) |
 | `advanced.extra_backend_args` | list of raw backend arguments |
 
-`appseal permissions` prints the same list with plain-language explanations and risk levels.
+`sam-jail permissions` prints the same list with plain-language explanations and risk levels.
 
 ## Preset file format (§2.18)
 
@@ -76,7 +76,7 @@ x11 = true
 The flat form from the whitepaper (`network = "full"`, `gpu = true`,
 `dbus_session = "filtered"`, …) is also accepted on import.
 
-When you apply a preset, Appseal compares it with what the app likely needs
+When you apply a preset, SAM compares it with what the app likely needs
 and with your current profile. It asks for confirmation if the preset removes
 something the app needs (e.g. the network for a browser) or adds high-risk
 permissions.

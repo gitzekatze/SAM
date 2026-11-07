@@ -6,7 +6,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.kirigamiaddons.formcard as FormCard
 
-import Appseal.Native
+import SAM.Native
 import "Util.js" as Util
 
 /// Edits a string list permission (custom folders, D-Bus names, ...).

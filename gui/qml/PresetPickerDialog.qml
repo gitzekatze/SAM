@@ -4,7 +4,7 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-import Appseal.Native
+import SAM.Native
 
 /// Pick a preset for an app. Applying checks compatibility first and asks
 /// for confirmation when the preset removes needed or adds risky permissions

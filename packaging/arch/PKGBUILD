@@ -1,20 +1,20 @@
-# Maintainer: Appseal contributors
+# Maintainer: SAM contributors
 #
 # Split package for CachyOS / Arch Linux (whitepaper §2.22.3):
-#   appseal      the Qt/Kirigami GUI
-#   appseal-cli  the command line tools and sandbox runner (required by appseal)
+#   sam      the Qt/Kirigami GUI
+#   sam-jail-cli  the command line tools and sandbox runner (required by sam)
 #
 # This PKGBUILD builds the source tree it lives in:
 #   cd packaging/arch && makepkg -si
 # For the AUR, replace `source=()` with the release tarball and its checksum.
 
-pkgbase=appseal
-pkgname=(appseal-cli appseal)
+pkgbase=sam
+pkgname=(sam-jail-cli sam)
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Flatseal-style permission manager and sandbox launcher for AppImages"
 arch=(x86_64 aarch64)
-url="https://example.invalid/appseal"
+url="https://github.com/gitzekatze/SAM"
 license=(GPL-3.0-or-later)
 makedepends=(cargo cmake extra-cmake-modules qt6-base qt6-declarative kirigami kirigami-addons kcolorscheme kconfig)
 options=(!lto)
@@ -33,7 +33,7 @@ build() {
   cd "$(_srcroot)"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR="$srcdir/target"
-  cargo build --frozen --release -p appseal-cli
+  cargo build --frozen --release -p sam-jail-cli
   cmake -S gui -B "$srcdir/gui-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
   cmake --build "$srcdir/gui-build"
 }
@@ -46,8 +46,8 @@ check() {
   cargo test --frozen --workspace
 }
 
-package_appseal-cli() {
-  pkgdesc="Command line tools and sandbox runner for Appseal"
+package_sam-jail-cli() {
+  pkgdesc="Command line tools and sandbox runner for SAM"
   depends=(bubblewrap glibc gcc-libs libarchive)
   optdepends=(
     'xdg-dbus-proxy: filtered session D-Bus for sandboxed apps (recommended)'
@@ -58,19 +58,19 @@ package_appseal-cli() {
     'libnotify: launch error notifications'
   )
   cd "$(_srcroot)"
-  install -Dm755 "$srcdir/target/release/appseal"     "$pkgdir/usr/bin/appseal"
-  install -Dm755 "$srcdir/target/release/appseal-run" "$pkgdir/usr/bin/appseal-run"
-  install -Dm644 README.md          "$pkgdir/usr/share/doc/appseal/README.md"
-  install -Dm644 docs/security.md   "$pkgdir/usr/share/doc/appseal/security.md"
-  install -Dm644 docs/profiles.md   "$pkgdir/usr/share/doc/appseal/profiles.md"
+  install -Dm755 "$srcdir/target/release/sam-jail"     "$pkgdir/usr/bin/sam-jail"
+  install -Dm755 "$srcdir/target/release/sam-jail-run" "$pkgdir/usr/bin/sam-jail-run"
+  install -Dm644 README.md          "$pkgdir/usr/share/doc/sam/README.md"
+  install -Dm644 docs/security.md   "$pkgdir/usr/share/doc/sam/security.md"
+  install -Dm644 docs/profiles.md   "$pkgdir/usr/share/doc/sam/profiles.md"
 }
 
-package_appseal() {
+package_sam() {
   pkgdesc="Flatseal-style permission manager for AppImages (Qt/Kirigami GUI)"
-  depends=(appseal-cli qt6-base qt6-declarative kirigami kirigami-addons kcolorscheme kconfig qqc2-desktop-style hicolor-icon-theme)
+  depends=(sam-jail-cli qt6-base qt6-declarative kirigami kirigami-addons kcolorscheme kconfig qqc2-desktop-style hicolor-icon-theme)
   cd "$(_srcroot)"
-  install -Dm755 "$srcdir/gui-build/appseal-gui" "$pkgdir/usr/bin/appseal-gui"
-  install -Dm644 data/org.appseal.Appseal.desktop      "$pkgdir/usr/share/applications/org.appseal.Appseal.desktop"
-  install -Dm644 data/org.appseal.Appseal.metainfo.xml "$pkgdir/usr/share/metainfo/org.appseal.Appseal.metainfo.xml"
-  install -Dm644 data/org.appseal.Appseal.svg          "$pkgdir/usr/share/icons/hicolor/scalable/apps/org.appseal.Appseal.svg"
+  install -Dm755 "$srcdir/gui-build/sam-jail-gui" "$pkgdir/usr/bin/sam-jail-gui"
+  install -Dm644 data/io.github.gitzekatze.SAM.desktop      "$pkgdir/usr/share/applications/io.github.gitzekatze.SAM.desktop"
+  install -Dm644 data/io.github.gitzekatze.SAM.metainfo.xml "$pkgdir/usr/share/metainfo/io.github.gitzekatze.SAM.metainfo.xml"
+  install -Dm644 data/io.github.gitzekatze.SAM.svg          "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg"
 }

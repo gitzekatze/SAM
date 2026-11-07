@@ -4,7 +4,7 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-import Appseal.Native
+import SAM.Native
 
 /// Short, skippable first-run explanation (whitepaper §2.20.1).
 Kirigami.Dialog {
@@ -12,18 +12,18 @@ Kirigami.Dialog {
     property int step: 0
 
     readonly property var steps: [
-        { icon: "qrc:/qt/qml/Appseal/icons/appseal.svg", title: qsTr("Welcome to Appseal"),
-          text: qsTr("Appseal runs your AppImages inside a sandbox and lets you decide what each one may access, like Flatseal does for Flatpak.") },
+        { icon: "qrc:/qt/qml/SAM/icons/sam.svg", title: qsTr("Welcome to SAM"),
+          text: qsTr("SAM runs your AppImages inside a sandbox and lets you decide what each one may access, like Flatseal does for Flatpak.") },
         { icon: "security-high", title: qsTr("What sandboxing means"),
           text: qsTr("A sandboxed app only sees what you allow: it gets its own private settings folder instead of your home directory, and cannot reach your other files, the network or devices unless you grant them.") },
         { icon: "preferences-system-privacy", title: qsTr("Permissions"),
-          text: qsTr("When you add an AppImage, Appseal looks at it without running it and suggests safe permissions: a browser gets the network and Downloads, an image editor gets Pictures. Every toggle explains what it allows and how risky it is.") },
+          text: qsTr("When you add an AppImage, SAM looks at it without running it and suggests safe permissions: a browser gets the network and Downloads, an image editor gets Pictures. Every toggle explains what it allows and how risky it is.") },
         { icon: "tools-wizard", title: qsTr("Compatibility mode"),
-          text: qsTr("Some AppImages need more access to work. If an app breaks, Appseal's repair options can grant broader access, always with a clear warning about what you give up.") },
+          text: qsTr("Some AppImages need more access to work. If an app breaks, SAM's repair options can grant broader access, always with a clear warning about what you give up.") },
         { icon: "video-display", title: qsTr("Wayland is safer than X11"),
-          text: qsTr("On X11, any app can watch your keyboard and other windows. Wayland isolates apps from each other. Appseal warns you whenever an app gets X11 access.") },
+          text: qsTr("On X11, any app can watch your keyboard and other windows. Wayland isolates apps from each other. SAM warns you whenever an app gets X11 access.") },
         { icon: "dialog-warning", title: qsTr("No perfect security"),
-          text: qsTr("Appseal makes AppImages much safer, but it cannot protect against kernel exploits or apps you grant broad access. Only run software you have reason to trust.") }
+          text: qsTr("SAM makes AppImages much safer, but it cannot protect against kernel exploits or apps you grant broad access. Only run software you have reason to trust.") }
     ]
 
     title: ""

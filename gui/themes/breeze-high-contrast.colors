@@ -131,8 +131,8 @@ ForegroundPositive=0,255,140
 ForegroundVisited=230,150,255
 
 [General]
-ColorScheme=AppsealBreezeHighContrast
-Name=Appseal Breeze High Contrast
+ColorScheme=SAMBreezeHighContrast
+Name=SAM Breeze High Contrast
 shadeSortColumn=true
 
 [KDE]

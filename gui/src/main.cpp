@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Appseal GUI entry point.
+// SAM GUI entry point.
 //
-//   appseal-gui [--page dashboard|app|presets|settings|diagnostics] [--app <id>]
-//   appseal-gui --screenshot out.png [--page ...] [--app <id>] [--size 1200x800]
+//   sam-jail-gui [--page dashboard|app|presets|settings|diagnostics] [--app <id>]
+//   sam-jail-gui --screenshot out.png [--page ...] [--app <id>] [--size 1200x800]
 //
 // --screenshot renders the window (works with QT_QPA_PLATFORM=offscreen),
 // saves it and exits; used for documentation and UI checks.
@@ -23,12 +23,12 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    QApplication::setApplicationName(QStringLiteral("appseal"));
-    QApplication::setApplicationDisplayName(QStringLiteral("Appseal"));
-    QApplication::setOrganizationDomain(QStringLiteral("appseal.org"));
+    QApplication::setApplicationName(QStringLiteral("sam"));
+    QApplication::setApplicationDisplayName(QStringLiteral("SAM"));
+    QApplication::setOrganizationDomain(QStringLiteral("gitzekatze.github.io"));
     QApplication::setApplicationVersion(QStringLiteral("0.1.0"));
-    QApplication::setDesktopFileName(QStringLiteral("org.appseal.Appseal"));
-    QApplication::setWindowIcon(QIcon(QStringLiteral(":/qt/qml/Appseal/icons/appseal.svg")));
+    QApplication::setDesktopFileName(QStringLiteral("io.github.gitzekatze.SAM"));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/qt/qml/SAM/icons/sam.svg")));
 
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE"))
         QQuickStyle::setStyle(QStringLiteral("org.kde.desktop"));
@@ -53,10 +53,10 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     backend.setEngine(&engine);
-    qmlRegisterSingletonInstance("Appseal.Native", 1, 0, "Backend", &backend);
-    qmlRegisterSingletonInstance("Appseal.Native", 1, 0, "Themes", &themes);
+    qmlRegisterSingletonInstance("SAM.Native", 1, 0, "Backend", &backend);
+    qmlRegisterSingletonInstance("SAM.Native", 1, 0, "Themes", &themes);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
-    engine.loadFromModule("Appseal", "Main");
+    engine.loadFromModule("SAM", "Main");
     if (engine.rootObjects().isEmpty())
         return 1;
 

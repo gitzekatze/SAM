@@ -131,8 +131,8 @@ ForegroundPositive=39,174,96
 ForegroundVisited=155,89,182
 
 [General]
-ColorScheme=AppsealBreezeLight
-Name=Appseal Breeze Light
+ColorScheme=SAMBreezeLight
+Name=SAM Breeze Light
 shadeSortColumn=true
 
 [KDE]

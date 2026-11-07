@@ -4,7 +4,7 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-import Appseal.Native
+import SAM.Native
 import "Util.js" as Util
 
 /// Dashboard (whitepaper §2.21.2): app list with search, filters and badges.
@@ -226,7 +226,7 @@ Kirigami.ScrollablePage {
             visible: (page.win !== null && page.win.appsLoaded) && list.count === 0
             icon.name: page.allApps.length ? "edit-find" : "application-x-executable"
             text: page.allApps.length ? qsTr("No apps match your filters") : qsTr("No AppImages yet")
-            explanation: page.allApps.length ? "" : qsTr("Drag an AppImage into this window, add one from disk, or scan your folders. Appseal unpacks it without running it and recommends safe permissions.")
+            explanation: page.allApps.length ? "" : qsTr("Drag an AppImage into this window, add one from disk, or scan your folders. SAM unpacks it without running it and recommends safe permissions.")
             helpfulAction: Kirigami.Action {
                 text: qsTr("Add AppImage…")
                 icon.name: "list-add"

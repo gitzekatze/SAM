@@ -1,17 +1,17 @@
-# Appseal — session handover
+# SAM — session handover
 
 Session date: 2026-11-07. This file sums up the first build session so work
 can continue on another machine or platform. It is written for whoever picks
 up next, human or agent.
 
-- **Source plan:** `../Appseal-Plan.md`, also copied to `docs/whitepaper.md`.
-- **Project root:** `Claude/appseal/`, the folder this file is in.
+- **Source plan:** `../SAM-Plan.md`, also copied to `docs/whitepaper.md`.
+- **Project root:** `Claude/sam/`, the folder this file is in.
 
 ## 1. Status at a glance
 
 | Area | State |
 |---|---|
-| Rust core and CLI (`appseal`, `appseal-run`) | Done. 64 tests pass. Clippy is clean apart from 2 cosmetic `sort_by_key` hints. |
+| Rust core and CLI (`sam-jail`, `sam-jail-run`) | Done. 64 tests pass. Clippy is clean apart from 2 cosmetic `sort_by_key` hints. |
 | Bubblewrap backend | Done. The end-to-end security test passes (see §5). |
 | Bubblejail and Firejail adapters | Written and unit-tested; **never run against real tools** |
 | Extraction (Type 2: zstd, gzip, xz) | Done and tested |
@@ -20,7 +20,7 @@ up next, human or agent.
 | Landlock (in-sandbox helper) | Done; verified manually |
 | Strict seccomp | Done. An app launches with it on; the blocking itself was not exercised. |
 | Filtered D-Bus via `xdg-dbus-proxy` | Written; **unverified** (see §6) |
-| strace diagnostic fallback (`appseal diagnose`) | Written and unit-tested; **never run** (no strace was installed) |
+| strace diagnostic fallback (`sam-jail diagnose`) | Written and unit-tested; **never run** (no strace was installed) |
 | Qt6/QML/Kirigami GUI | Done. Every page checked through offscreen screenshots. |
 | Packaging (PKGBUILD, Makefile, desktop file, metainfo, icon) | Done. `make all` and a staged install work. **`makepkg` was not run.** |
 | Docs | `README.md`, plus `security.md`, `profiles.md`, `packaging.md`, `architecture.md` and `testing.md` in `docs/` |
@@ -44,33 +44,33 @@ up next, human or agent.
   KConfig), bubblewrap 0.13.1, bubblejail 0.10.4, xdg-dbus-proxy and bsdtar.
   `unsquashfs` is not installed.
 - Tests always used **isolated directories**, to stay out of the real home:
-  `APPSEAL_CONFIG_DIR`, `APPSEAL_DATA_DIR` and `APPSEAL_APPLICATIONS_DIR`,
+  `SAM_CONFIG_DIR`, `SAM_DATA_DIR` and `SAM_APPLICATIONS_DIR`,
   pointed into a scratch directory.
-- One early run did write `~/.local/share/appseal/` because of a bug. The bug
+- One early run did write `~/.local/share/sam/` because of a bug. The bug
   is fixed (§7) and the directory was deleted.
 
 ## 3. Architecture (decisions made)
 
 - **Rust workspace**, crate layout per plan §3.2:
-  - `appseal-core`: model, permission model, risk, warnings, config, paths,
+  - `sam-core`: model, permission model, risk, warnings, config, paths,
     host probing, `Backend` trait
-  - `appseal-storage`: registry (`apps/<id>.json`), TOML presets, logs
-  - `appseal-detect`: AppImage magic/type/payload offset; ELF analysis with
+  - `sam-storage`: registry (`apps/<id>.json`), TOML presets, logs
+  - `sam-detect`: AppImage magic/type/payload offset; ELF analysis with
     goblin (`DT_NEEDED`, glibc version needs, arch, toolkit, Electron/Java)
-  - `appseal-intake`: extraction, normalization, metadata/icons, launchers,
+  - `sam-intake`: extraction, normalization, metadata/icons, launchers,
     fingerprints/staleness, ids, `testkit` (synthetic AppImage builder)
-  - `appseal-profile`: categories, recommendations, 6 built-in presets,
+  - `sam-profile`: categories, recommendations, 6 built-in presets,
     preset compatibility check
-  - `appseal-backend-{bubblewrap,bubblejail,firejail}`
-  - `appseal-runner`: the `Appseal` ops facade, backend selection, launch
+  - `sam-backend-{bubblewrap,bubblejail,firejail}`
+  - `sam-runner`: the `SAM` ops facade, backend selection, launch
     with logging and crash capture, xdg-dbus-proxy, Landlock and seccomp,
     doctor and bug report, strace diagnosis
-  - `appseal-cli`: the `appseal` and `appseal-run` binaries
+  - `sam-jail-cli`: the `sam-jail` and `sam-jail-run` binaries
 - **GUI:** a thin C++ Qt shell plus QML with Kirigami and Kirigami Addons
-  FormCard. It talks to the core **only through `appseal --json …`**
+  FormCard. It talks to the core **only through `sam-jail --json …`**
   (asynchronous QProcess; payloads go in as JSON on stdin). This is the
   plan's "thin C++ shell" fallback, chosen deliberately to avoid Rust↔Qt
-  bindings. Apps are launched detached through `appseal-run --app-id`.
+  bindings. Apps are launched detached through `sam-jail-run --app-id`.
 - **Extraction is static by default.** backhand, a pure-Rust SquashFS
   reader, handles Type 2. `unsquashfs` is used if present. Type 1 uses
   `bsdtar`. The AppImage's own `--appimage-extract` runs only with explicit
@@ -80,14 +80,14 @@ up next, human or agent.
   - **Host runtime:** in minimal mode, `/usr/lib`, `/usr/bin` and a
     whitelist of `/usr/share` and `/etc` entries; all of `/usr` in
     compatibility mode.
-  - **Home:** a private per-app `$HOME` (`~/.local/share/appseal/homes/<id>`)
+  - **Home:** a private per-app `$HOME` (`~/.local/share/sam/homes/<id>`)
     plus only the granted folders.
   - **Synthetic files:** a generated `passwd`/`group` containing only the user.
   - **Private mounts:** tmpfs for `/tmp`, `/var/tmp` and `$XDG_RUNTIME_DIR`.
   - **Root:** `--remount-ro /` after setup.
   - **Process:** `--cap-drop ALL`, `--new-session`, `--clearenv`.
 - **Landlock** runs inside the sandbox: bwrap execs
-  `/run/appseal/appseal-run --sandbox-exec spec.json -- AppRun`. A Landlock
+  `/run/sam/sam-jail-run --sandbox-exec spec.json -- AppRun`. A Landlock
   domain can't create mounts, so it has to be applied after bwrap's setup.
 - **Files passed as arguments** (e.g. "Open with") are bind-mounted one by
   one, like a document portal.
@@ -100,7 +100,7 @@ up next, human or agent.
 
 ```sh
 source Claude/.toolchain/env.sh          # or use system cargo
-cd Claude/appseal
+cd Claude/sam
 make            # release build of CLI and GUI (gui/build-release)
 make test       # cargo test --workspace
 make install DESTDIR=/tmp/stage PREFIX=/usr
@@ -108,21 +108,21 @@ cd packaging/arch && makepkg -si         # NOT yet tried
 
 # development
 cargo build && cmake -S gui -B gui/build && cmake --build gui/build
-gui/build/appseal-gui      # finds target/debug/appseal by itself
+gui/build/sam-jail-gui      # finds target/debug/sam-jail by itself
 
 # headless GUI check (used for all UI verification in this session)
-QT_QPA_PLATFORM=offscreen gui/build/appseal-gui --screenshot out.png \
+QT_QPA_PLATFORM=offscreen gui/build/sam-jail-gui --screenshot out.png \
     --page dashboard|app|presets|settings|diagnostics|onboarding [--app <id>] [--size WxH]
 QT_FORCE_STDERR_LOGGING=1   # needed to see QML warnings and console.log output
 
 # synthetic AppImages for manual tests
-target/debug/appseal dev make-fixture /tmp/Hello.AppImage --name Hello \
+target/debug/sam-jail dev make-fixture /tmp/Hello.AppImage --name Hello \
     --categories "Graphics;" [--apprun script.sh]
 ```
 
 ## 5. What was verified
 
-The end-to-end test, `crates/appseal-runner/tests/sandbox.rs`, uses a fake
+The end-to-end test, `crates/sam-runner/tests/sandbox.rs`, uses a fake
 `$HOME` and a probe AppImage. Across its profiles it checks the following.
 
 **Strict profile:**
@@ -163,8 +163,8 @@ Contrast, CachyOS Neon) were checked through screenshots.
    `extra-cmake-modules`). Check them with `makepkg` or `namcap`. `source=()`
    builds the local tree; switch it to a tarball for the AUR.
 4. **Bubblejail adapter:** it writes
-   `~/.local/share/bubblejail/instances/appseal-<id>/services.toml` and runs
-   `bubblejail run appseal-<id> -- <AppDir>/AppRun`. Env vars go through
+   `~/.local/share/bubblejail/instances/sam-<id>/services.toml` and runs
+   `bubblejail run sam-<id> -- <AppDir>/AppRun`. Env vars go through
    `[debug] raw_bwrap_args`. Confirm against real bubblejail 0.10.x
    behaviour, especially that it accepts a command after `--`.
 5. **Firejail adapter** is untested. Check the flags (`--noinput`,
@@ -190,7 +190,7 @@ Contrast, CachyOS Neon) were checked through screenshots.
 - **`/usr` writes:** in minimal mode `/usr` sat on the writable root tmpfs.
   Fixed with `--remount-ro /`, after making `$XDG_RUNTIME_DIR` its own tmpfs.
 - **Extraction location:** the default `extraction.location` was a literal
-  `~/.local/share/appseal/extracted`, which ignored `APPSEAL_DATA_DIR`. The
+  `~/.local/share/sam/extracted`, which ignored `SAM_DATA_DIR`. The
   default is now empty, meaning `<data dir>/extracted`.
 - **QML window bindings:** `applicationWindow()` used in property bindings is
   evaluated before the page is attached and never updates. Pages now use
@@ -207,15 +207,15 @@ Contrast, CachyOS Neon) were checked through screenshots.
 
 ## 8. Key files
 
-- `crates/appseal-backend-bubblewrap/src/lib.rs`: the sandbox layout
+- `crates/sam-backend-bubblewrap/src/lib.rs`: the sandbox layout
   (security-critical)
-- `crates/appseal-runner/src/launch.rs`: launch pipeline, logs, failure
+- `crates/sam-runner/src/launch.rs`: launch pipeline, logs, failure
   classification
-- `crates/appseal-runner/src/ops.rs`: add, re-extract, refresh, presets,
+- `crates/sam-runner/src/ops.rs`: add, re-extract, refresh, presets,
   scan
-- `crates/appseal-intake/src/extract.rs` and `normalize.rs`: extraction
+- `crates/sam-intake/src/extract.rs` and `normalize.rs`: extraction
   safety
-- `crates/appseal-core/src/permissions.rs`, `risk.rs` and `warnings.rs`:
+- `crates/sam-core/src/permissions.rs`, `risk.rs` and `warnings.rs`:
   the policy
 - `gui/src/backend.cpp`: the CLI bridge
 - `gui/qml/PermissionsEditor.qml`: the Flatseal-style editor
@@ -224,13 +224,13 @@ Contrast, CachyOS Neon) were checked through screenshots.
 ## 9. Session 2 (2026-11-07): tested on the real desktop, outside the sandbox
 
 **Verified on the host** (KDE Wayland, NVIDIA, PipeWire). Isolated
-`APPSEAL_*` directories were used throughout.
-- `appseal doctor` is all ok.
+`SAM_*` directories were used throughout.
+- `sam-jail doctor` is all ok.
 - Filtered D-Bus works: only portals, Notifications and the tray are visible,
   and notifications arrive. Session bus `none` leaves the address unset.
 - Audio, GPU and network each work when granted.
-- Landlock and strict seccomp are applied (`appseal logs`).
-- Bubblejail backend: runs, and `appseal remove` deletes its instance.
+- Landlock and strict seccomp are applied (`sam-jail logs`).
+- Bubblejail backend: runs, and `sam-jail remove` deletes its instance.
 - Firejail gating works.
 - 8 real AppImages from `~/Downloads` extract. ZFontManager (GTK3) and Tuta
   (Electron) run.
@@ -249,7 +249,7 @@ Contrast, CachyOS Neon) were checked through screenshots.
   - `$ORIGIN/...` DT_NEEDED paths are resolved.
   - A missing library needed only by bundled libraries is rated Risk, not
     LikelyBroken.
-- `appseal logs` now picks the newest log when there are several in one
+- `sam-jail logs` now picks the newest log when there are several in one
   second (the `-N` suffix).
 - The Firejail error says "not installed" when it is enabled but not
   installed.

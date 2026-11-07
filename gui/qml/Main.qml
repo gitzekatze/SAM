@@ -5,13 +5,13 @@ import QtQuick.Dialogs as Dialogs
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-import Appseal.Native
+import SAM.Native
 import "Util.js" as Util
 
 Kirigami.ApplicationWindow {
     id: root
 
-    title: "Appseal"
+    title: "SAM"
     width: Kirigami.Units.gridUnit * 64
     height: Kirigami.Units.gridUnit * 42
     minimumWidth: Kirigami.Units.gridUnit * 22
@@ -82,7 +82,7 @@ Kirigami.ApplicationWindow {
             const e = r.data.entry
             if (r.data.needs_fallback_consent) {
                 confirm.ask(qsTr("Static extraction failed"),
-                    qsTr("Appseal could not unpack %1 without running it. It can try the AppImage's own extractor instead. That runs code from the AppImage, inside a sandbox with no network and no access to your files.\n\nOnly continue if you trust where this file came from.").arg(e.name),
+                    qsTr("SAM could not unpack %1 without running it. It can try the AppImage's own extractor instead. That runs code from the AppImage, inside a sandbox with no network and no access to your files.\n\nOnly continue if you trust where this file came from.").arg(e.name),
                     function () { reextract(e.id, true) }, qsTr("Use the AppImage's extractor"))
                 return
             }
@@ -148,7 +148,7 @@ Kirigami.ApplicationWindow {
         if (Backend.launch(id))
             notify(qsTr("Starting in sandbox…"))
         else
-            notify(qsTr("Could not start appseal-run"))
+            notify(qsTr("Could not start sam-jail-run"))
     }
 
     function showSection(section) {
@@ -218,13 +218,13 @@ Kirigami.ApplicationWindow {
                 anchors.leftMargin: Kirigami.Units.largeSpacing
                 spacing: Kirigami.Units.smallSpacing
                 Kirigami.Icon {
-                    source: "qrc:/qt/qml/Appseal/icons/appseal.svg"
+                    source: "qrc:/qt/qml/SAM/icons/sam.svg"
                     implicitWidth: Kirigami.Units.iconSizes.medium
                     implicitHeight: implicitWidth
                 }
                 Kirigami.Heading {
                     level: 2
-                    text: "Appseal"
+                    text: "SAM"
                     visible: !drawer.collapsed
                     Layout.fillWidth: true
                 }
@@ -354,7 +354,7 @@ Kirigami.ApplicationWindow {
                 anchors.centerIn: parent
                 icon.name: "document-import"
                 text: qsTr("Drop an AppImage to add it")
-                explanation: qsTr("Appseal will unpack it without running it and suggest safe permissions.")
+                explanation: qsTr("SAM will unpack it without running it and suggest safe permissions.")
             }
         }
     }
@@ -373,7 +373,7 @@ Kirigami.ApplicationWindow {
         function onAppFinished(appId, code) {
             root.refreshApps()
             if (code !== 0)
-                root.notify(qsTr("The app exited with code %1. Open it in Appseal → Details → Logs to see why.").arg(code))
+                root.notify(qsTr("The app exited with code %1. Open it in SAM → Details → Logs to see why.").arg(code))
         }
     }
 }

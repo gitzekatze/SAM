@@ -1,14 +1,14 @@
-# Appseal
+# SAM
 
 Flatseal-style permission manager and sandbox launcher for AppImages.
 Built in Rust and Qt6/Kirigami. Targets CachyOS first and works on other Linux distributions too.
 
-Appseal unpacks an AppImage **without running it** and inspects its binaries
+SAM unpacks an AppImage **without running it** and inspects its binaries
 and libraries. It recommends a safe permission profile and then launches the
 app inside a **Bubblewrap** sandbox. Every permission comes with a
 plain-language explanation and a risk level, and risky choices show a warning.
 
-> Appseal makes AppImages safer. It cannot make every AppImage perfectly
+> SAM makes AppImages safer. It cannot make every AppImage perfectly
 > secure or compatible without some involvement from you. See
 > [docs/security.md](docs/security.md) for what it protects against and what it does not.
 
@@ -34,7 +34,7 @@ plain-language explanation and a risk level, and risky choices show a warning.
 - **Kernel features:** Landlock write restrictions (defense in depth) and an
   optional strict seccomp filter.
 - **Desktop integration:** menu launchers that always start the app through
-  `appseal-run`, plus cached icons.
+  `sam-jail-run`, plus cached icons.
 - **Usability:** onboarding, simple and advanced modes, status badges,
   drag-and-drop, a repair workflow, logs, a diagnostics screen, redacted bug
   reports, and four themes (Breeze Light, Breeze Dark, Breeze High Contrast,
@@ -47,8 +47,8 @@ cd packaging/arch
 makepkg -si
 ```
 
-The packages are `appseal-cli` (`appseal`, `appseal-run`) and `appseal` (the
-GUI, `appseal-gui`). Recommended extras: `xdg-dbus-proxy`, and `strace` for
+The packages are `sam-jail-cli` (`sam-jail`, `sam-jail-run`) and `sam` (the
+GUI, `sam-jail-gui`). Recommended extras: `xdg-dbus-proxy`, and `strace` for
 diagnostic runs.
 
 ## Build from source
@@ -63,38 +63,38 @@ sudo make install PREFIX=/usr
 ```
 
 For development: `cargo build`, then `cmake -S gui -B gui/build && cmake --build gui/build`.
-Started from a source checkout, the GUI finds `target/debug/appseal` on its
-own. You can also point it at a binary with `APPSEAL_CLI` / `APPSEAL_RUN`.
+Started from a source checkout, the GUI finds `target/debug/sam-jail` on its
+own. You can also point it at a binary with `SAM_CLI` / `SAM_RUN`.
 
 ## Quick start
 
 ```sh
-appseal add ~/Applications/Krita-5.2.6-x86_64.AppImage
-appseal info krita                      # profile, warnings, dependencies
-appseal set krita network.mode none     # change one permission
-appseal preset apply "Image Editor" krita
-appseal review krita                    # accept the profile
-appseal run krita                       # or use the menu launcher
-appseal doctor                          # check the system
+sam-jail add ~/Applications/Krita-5.2.6-x86_64.AppImage
+sam-jail info krita                      # profile, warnings, dependencies
+sam-jail set krita network.mode none     # change one permission
+sam-jail preset apply "Image Editor" krita
+sam-jail review krita                    # accept the profile
+sam-jail run krita                       # or use the menu launcher
+sam-jail doctor                          # check the system
 ```
 
-Run `appseal --help` to see every command. Each command also accepts `--json`.
+Run `sam-jail --help` to see every command. Each command also accepts `--json`.
 
 ## Layout
 
 ```
 crates/
-  appseal-core                core types, permission model, risk, warnings, config, host probing, backend trait
-  appseal-storage             app registry, presets, logs
-  appseal-detect              AppImage type/payload detection, ELF dependency analysis
-  appseal-intake              extraction, normalization, metadata, icons, launchers, staleness
-  appseal-profile             categories, recommendations, presets, preset compatibility checks
-  appseal-backend-bubblewrap  default backend
-  appseal-backend-bubblejail  optional backend
-  appseal-backend-firejail    optional compatibility backend
-  appseal-runner              orchestration: add/update/launch, backend selection, D-Bus proxy, Landlock/seccomp, diagnostics
-  appseal-cli                 appseal and appseal-run binaries
-gui/                          Qt6/QML/Kirigami GUI (thin C++ shell; talks to the core via `appseal --json`)
+  sam-core                core types, permission model, risk, warnings, config, host probing, backend trait
+  sam-storage             app registry, presets, logs
+  sam-detect              AppImage type/payload detection, ELF dependency analysis
+  sam-intake              extraction, normalization, metadata, icons, launchers, staleness
+  sam-profile             categories, recommendations, presets, preset compatibility checks
+  sam-backend-bubblewrap  default backend
+  sam-backend-bubblejail  optional backend
+  sam-backend-firejail    optional compatibility backend
+  sam-runner              orchestration: add/update/launch, backend selection, D-Bus proxy, Landlock/seccomp, diagnostics
+  sam-jail-cli                 sam-jail and sam-jail-run binaries
+gui/                          Qt6/QML/Kirigami GUI (thin C++ shell; talks to the core via `sam-jail --json`)
 data/                         desktop entry, AppStream metainfo, icon
 packaging/                    Arch/CachyOS PKGBUILD, notes for other distributions
 docs/                         whitepaper, security, profiles, packaging, architecture, testing
@@ -103,12 +103,12 @@ docs/                         whitepaper, security, profiles, packaging, archite
 ## Storage
 
 ```
-~/.config/appseal/            config.toml, presets/, logs/
-~/.local/share/appseal/       apps/, extracted/, icons/, desktop/, homes/ (private per-app homes)
-~/.local/share/applications/  appseal-<app-id>.desktop
+~/.config/sam/            config.toml, presets/, logs/
+~/.local/share/sam/       apps/, extracted/, icons/, desktop/, homes/ (private per-app homes)
+~/.local/share/applications/  sam-<app-id>.desktop
 ```
 
-Set `APPSEAL_CONFIG_DIR`, `APPSEAL_DATA_DIR` and `APPSEAL_APPLICATIONS_DIR` to
+Set `SAM_CONFIG_DIR`, `SAM_DATA_DIR` and `SAM_APPLICATIONS_DIR` to
 use different locations, for example for testing.
 
 ## License

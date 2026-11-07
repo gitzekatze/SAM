@@ -4,7 +4,7 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-import Appseal.Native
+import SAM.Native
 import "Util.js" as Util
 
 /// Shows AppImages found in the scan directories that are not registered yet.

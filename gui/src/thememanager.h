@@ -4,7 +4,7 @@
 #include <QObject>
 #include <QString>
 
-/// Applies one of Appseal's four KDE color schemes (Breeze Light, Breeze
+/// Applies one of SAM's four KDE color schemes (Breeze Light, Breeze
 /// Dark, Breeze High Contrast, CachyOS Neon) to the whole application,
 /// the same way KColorSchemeManager does.
 class ThemeManager : public QObject

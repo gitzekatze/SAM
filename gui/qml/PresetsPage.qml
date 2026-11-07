@@ -5,7 +5,7 @@ import QtQuick.Dialogs as Dialogs
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-import Appseal.Native
+import SAM.Native
 
 /// Preset manager (whitepaper §2.21.5): create, edit, duplicate, delete,
 /// apply, import and export.
@@ -150,7 +150,7 @@ Kirigami.ScrollablePage {
     Dialogs.FileDialog {
         id: importDialog
         title: qsTr("Import preset")
-        nameFilters: [qsTr("Appseal presets (*.toml)"), qsTr("All files (*)")]
+        nameFilters: [qsTr("SAM presets (*.toml)"), qsTr("All files (*)")]
         onAccepted: Backend.call(["preset", "import", Backend.urlToPath(selectedFile)], function (r) {
             if (r.ok) page.win.notify(qsTr("Imported “%1”").arg(r.data.name))
             else page.win.reportError(r)
@@ -164,7 +164,7 @@ Kirigami.ScrollablePage {
         title: qsTr("Export preset")
         fileMode: Dialogs.FileDialog.SaveFile
         defaultSuffix: "toml"
-        nameFilters: [qsTr("Appseal presets (*.toml)")]
+        nameFilters: [qsTr("SAM presets (*.toml)")]
         currentFolder: Backend.pathToUrl(Backend.homeDir())
         onAccepted: Backend.call(["preset", "export", presetName, Backend.urlToPath(selectedFile)], function (r) {
             if (r.ok) page.win.notify(qsTr("Exported"))

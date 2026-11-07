@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.kirigamiaddons.formcard as FormCard
 
-import Appseal.Native
+import SAM.Native
 
 /// Diagnostics screen (whitepaper §2.26).
 FormCard.FormCardPage {

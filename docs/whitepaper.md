@@ -1,4 +1,4 @@
-# Appseal — Corrected Whitepaper and Build Plan
+# SAM — Corrected Whitepaper and Build Plan
 
 Version: 3.0
 Date: 2026-11-07
@@ -10,7 +10,7 @@ Secondary platforms: Arch Linux, Fedora, openSUSE, Ubuntu, Linux Mint, Debian-ba
 
 ## 1. Revision Notes
 
-This document corrects and improves earlier drafts of the Appseal whitepaper.
+This document corrects and improves earlier drafts of the SAM whitepaper.
 
 ### Major corrections
 
@@ -19,14 +19,14 @@ This document corrects and improves earlier drafts of the Appseal whitepaper.
    - Localhost-only and domain-filtered networking are moved to experimental/advanced features.
 
 2. AppImage compatibility has been expanded.
-   - Appseal must handle Type 1 and Type 2 AppImages.
-   - Appseal must support SquashFS, Zstd, gzip, and xz where practical.
+   - SAM must handle Type 1 and Type 2 AppImages.
+   - SAM must support SquashFS, Zstd, gzip, and xz where practical.
    - Extraction must normalize permissions while preserving executability.
-   - Appseal must set common AppImage runtime environment variables.
+   - SAM must set common AppImage runtime environment variables.
 
 3. GPU and graphics support has been clarified.
    - GPU support requires more than exposing /dev/dri.
-   - Appseal may need read-only access to host Vulkan ICD files, DRI drivers, and related driver metadata.
+   - SAM may need read-only access to host Vulkan ICD files, DRI drivers, and related driver metadata.
 
 4. D-Bus sandboxing has been clarified.
    - Bubblewrap alone does not provide strong D-Bus filtering.
@@ -34,7 +34,7 @@ This document corrects and improves earlier drafts of the Appseal whitepaper.
    - Session D-Bus access is high risk.
 
 5. Usability has been strengthened.
-   - Appseal needs onboarding, plain-language permission explanations, repair tools, logs, and app status badges.
+   - SAM needs onboarding, plain-language permission explanations, repair tools, logs, and app status badges.
    - The UI should support both simple mode and advanced mode.
 
 6. Firejail support is optional.
@@ -43,7 +43,7 @@ This document corrects and improves earlier drafts of the Appseal whitepaper.
 
 7. Packaging has been narrowed.
    - The first release target is a native pacman package for CachyOS/Arch.
-   - AppImage or Flatpak distribution of Appseal itself is secondary because Appseal needs host sandbox tools.
+   - AppImage or Flatpak distribution of SAM itself is secondary because SAM needs host sandbox tools.
 
 ---
 
@@ -53,7 +53,7 @@ This document corrects and improves earlier drafts of the Appseal whitepaper.
 
 ## 2.1 Executive Summary
 
-Appseal is a Linux desktop application that provides Flatseal-style permission management for AppImages.
+SAM is a Linux desktop application that provides Flatseal-style permission management for AppImages.
 
 It allows users to:
 
@@ -65,7 +65,7 @@ It allows users to:
 6. See clear warnings when permissions are risky.
 7. Understand when an AppImage cannot be safely or functionally sandboxed.
 
-Appseal is written in Rust and uses a KDE Breeze-inspired interface. It is developed with CachyOS as the primary platform, but designed to remain portable across mainstream Linux desktop distributions.
+SAM is written in Rust and uses a KDE Breeze-inspired interface. It is developed with CachyOS as the primary platform, but designed to remain portable across mainstream Linux desktop distributions.
 
 ---
 
@@ -87,13 +87,13 @@ A typical AppImage can access:
 
 Flatpak provides a permission model and tools such as Flatseal. AppImage does not currently have a comparable mainstream permission manager.
 
-Appseal fills this gap.
+SAM fills this gap.
 
 ---
 
 ## 2.3 Goals
 
-Appseal should:
+SAM should:
 
 1. Make AppImages safer by default.
 2. Remain easy to use for normal desktop users.
@@ -110,7 +110,7 @@ Appseal should:
 
 ## 2.4 Non-Goals
 
-Appseal is not intended to:
+SAM is not intended to:
 
 1. Replace Flatpak, Snap, or native package managers.
 2. Become a full app store.
@@ -124,9 +124,9 @@ Appseal is not intended to:
 
 ## 2.5 Threat Model
 
-Appseal assumes the user is trusted, but individual AppImages may be untrusted, poorly packaged, or overly demanding.
+SAM assumes the user is trusted, but individual AppImages may be untrusted, poorly packaged, or overly demanding.
 
-### Threats Appseal should mitigate
+### Threats SAM should mitigate
 
 1. Accidental access to unrelated user files.
 2. Broad home directory access when only one folder is needed.
@@ -137,7 +137,7 @@ Appseal assumes the user is trusted, but individual AppImages may be untrusted, 
 7. Users unknowingly granting dangerous permissions.
 8. Broken sandbox profiles causing silent failures.
 
-### Threats Appseal cannot fully mitigate
+### Threats SAM cannot fully mitigate
 
 1. X11 keylogging or screen capture by other X11 clients.
 2. Kernel exploits.
@@ -146,7 +146,7 @@ Appseal assumes the user is trusted, but individual AppImages may be untrusted, 
 5. Social engineering.
 6. Apps that require privileged host access to function.
 
-Appseal must communicate these limitations clearly.
+SAM must communicate these limitations clearly.
 
 ---
 
@@ -154,7 +154,7 @@ Appseal must communicate these limitations clearly.
 
 ### 2.6.1 Secure by default, compatible by guided exception
 
-Appseal should recommend safe defaults. If compatibility requires relaxing permissions, Appseal should explain why.
+SAM should recommend safe defaults. If compatibility requires relaxing permissions, SAM should explain why.
 
 ### 2.6.2 User control is mandatory
 
@@ -168,11 +168,11 @@ Advanced users must be able to override:
 
 ### 2.6.3 Compatibility is a first-class feature
 
-Many AppImages are imperfect. Appseal should not silently fail. It should explain what is broken and offer safe fallbacks.
+Many AppImages are imperfect. SAM should not silently fail. It should explain what is broken and offer safe fallbacks.
 
 ### 2.6.4 Prefer existing sandbox primitives
 
-Appseal should orchestrate existing tools instead of inventing a new sandbox.
+SAM should orchestrate existing tools instead of inventing a new sandbox.
 
 ### 2.6.5 Make risk visible
 
@@ -180,7 +180,7 @@ Every risky permission should have a visible warning and a plain-language explan
 
 ### 2.6.6 Simple mode and advanced mode
 
-Appseal should be usable by non-experts while still exposing detailed controls for power users.
+SAM should be usable by non-experts while still exposing detailed controls for power users.
 
 ---
 
@@ -208,7 +208,7 @@ A user who wants to:
 
 ## 2.8 High-Level Architecture
 
-Appseal consists of the following components:
+SAM consists of the following components:
 
 1. GUI
 2. CLI
@@ -225,7 +225,7 @@ Conceptual structure:
 
     GUI / CLI
         |
-    appseal-core
+    sam-core
         |
     +---+----------------+----------------+
     |                    |                |
@@ -279,16 +279,16 @@ A CLI is required for debugging, scripting, packaging, and QA.
 
 Example commands:
 
-    appseal scan
-    appseal add /home/user/Applications/krita.AppImage
-    appseal list
-    appseal info krita
-    appseal run krita
-    appseal preset list
-    appseal preset apply "Media Player Safe" krita
-    appseal backend krita bubblewrap
-    appseal doctor
-    appseal logs krita
+    sam-jail scan
+    sam-jail add /home/user/Applications/krita.AppImage
+    sam-jail list
+    sam-jail info krita
+    sam-jail run krita
+    sam-jail preset list
+    sam-jail preset apply "Media Player Safe" krita
+    sam-jail backend krita bubblewrap
+    sam-jail doctor
+    sam-jail logs krita
 
 ---
 
@@ -302,7 +302,7 @@ Possible states:
    - Found on disk but not yet added.
 
 2. Registered
-   - Added to Appseal database.
+   - Added to SAM database.
 
 3. Extracted
    - Payload extracted successfully.
@@ -320,7 +320,7 @@ Possible states:
    - Extraction, dependency detection, or launch failed.
 
 8. Unsafe
-   - Appseal believes the app cannot be safely sandboxed.
+   - SAM believes the app cannot be safely sandboxed.
 
 9. Missing
    - Source AppImage no longer exists.
@@ -333,11 +333,11 @@ The GUI should display these states with badges.
 
 This section corrects a major weakness in the previous draft.
 
-AppImage compatibility is not trivial. Appseal must support the practical diversity of AppImages in the wild.
+AppImage compatibility is not trivial. SAM must support the practical diversity of AppImages in the wild.
 
 ### 2.11.1 AppImage types
 
-Appseal should support:
+SAM should support:
 
 1. Type 1 AppImages
    - Usually ISO 9660 based.
@@ -370,7 +370,7 @@ Preferred order:
 
 Default:
 
-    ~/.local/share/appseal/extracted/<app-id>/
+    ~/.local/share/sam/extracted/<app-id>/
 
 Each extracted app should have:
 
@@ -382,7 +382,7 @@ Each extracted app should have:
 
 ### 2.11.4 Extraction safety rules
 
-During extraction, Appseal must:
+During extraction, SAM must:
 
 1. Preserve normal executable bits.
 2. Remove setuid and setgid bits.
@@ -395,7 +395,7 @@ During extraction, Appseal must:
 
 ### 2.11.5 Runtime environment
 
-When launching an extracted AppImage, Appseal should set common environment variables where appropriate:
+When launching an extracted AppImage, SAM should set common environment variables where appropriate:
 
 - APPDIR
 - APPIMAGE
@@ -415,7 +415,7 @@ Recommended behavior:
 
 ### 2.11.6 Desktop metadata
 
-Appseal should locate and parse:
+SAM should locate and parse:
 
 - .desktop files inside the AppImage.
 - Icon files.
@@ -433,7 +433,7 @@ Search locations may include:
 
 ### 2.11.7 Update and staleness handling
 
-Appseal should detect when the source AppImage changes.
+SAM should detect when the source AppImage changes.
 
 Detection methods:
 
@@ -451,29 +451,29 @@ When a change is detected:
 4. Recalculate recommended profile.
 5. Warn if new permissions are required.
 
-Appseal should not automatically replace a user-tuned profile without confirmation.
+SAM should not automatically replace a user-tuned profile without confirmation.
 
 ---
 
 ## 2.12 Desktop Integration
 
-Appseal should create desktop launchers for registered apps.
+SAM should create desktop launchers for registered apps.
 
 Example desktop entry:
 
     [Desktop Entry]
     Type=Application
     Name=Krita
-    Exec=appseal-run --app-id appimage-krita-9f3c %F
-    Icon=appseal-appimage-krita-9f3c
+    Exec=sam-jail-run --app-id appimage-krita-9f3c %F
+    Icon=sam-appimage-krita-9f3c
     Categories=Graphics;
     Terminal=false
 
 Important rule:
 
-The desktop entry should launch the app through Appseal, not directly through the original AppImage.
+The desktop entry should launch the app through SAM, not directly through the original AppImage.
 
-Appseal should also:
+SAM should also:
 
 - Extract icons.
 - Install icons into its own cache.
@@ -502,7 +502,7 @@ Bubblewrap is selected as the default because it is:
 
 ### 2.13.2 Backend choices
 
-Appseal supports:
+SAM supports:
 
 1. Bubblewrap
    - Default.
@@ -534,7 +534,7 @@ Automatic selection should prefer:
 
 Users can override the backend per app.
 
-Appseal should display:
+SAM should display:
 
 - Why the backend was chosen.
 - Whether the backend is installed.
@@ -543,7 +543,7 @@ Appseal should display:
 
 ### 2.13.4 Environment checks
 
-Before launching, Appseal should check:
+Before launching, SAM should check:
 
 - Bubblewrap is installed.
 - User namespaces are available.
@@ -554,7 +554,7 @@ Before launching, Appseal should check:
 - Desktop entry is valid.
 - Required sockets exist.
 
-If a check fails, Appseal should show actionable guidance.
+If a check fails, SAM should show actionable guidance.
 
 Examples:
 
@@ -568,7 +568,7 @@ Examples:
 
 ## 2.14 Filesystem Model
 
-Appseal should expose a minimal runtime filesystem.
+SAM should expose a minimal runtime filesystem.
 
 Example sandbox view:
 
@@ -586,7 +586,7 @@ Example sandbox view:
     /run/user/1000        selected sockets only
     /home/user/...        user-selected directories only
 
-Appseal should not expose the full host filesystem by default.
+SAM should not expose the full host filesystem by default.
 
 ---
 
@@ -691,7 +691,7 @@ Example:
     wayland = true
     x11 = true
 
-Appseal should warn:
+SAM should warn:
 
     X11 access allows the app to observe input and other windows.
     Wayland is safer, but some apps may require XWayland.
@@ -740,11 +740,11 @@ Bubblewrap alone cannot strongly filter D-Bus. Bubblejail or other tooling may b
 
 This section improves previous dependency handling.
 
-Appseal must detect required host resources without blindly exposing the host system.
+SAM must detect required host resources without blindly exposing the host system.
 
 ### 2.16.1 Primary method: static analysis
 
-Appseal should scan ELF binaries inside the extracted AppImage.
+SAM should scan ELF binaries inside the extracted AppImage.
 
 It should inspect:
 
@@ -803,7 +803,7 @@ Medium risk, often required:
 - /etc/vulkan
 - Selected host graphics libraries if required
 
-Appseal should prefer exposing driver directories over exposing arbitrary host libraries.
+SAM should prefer exposing driver directories over exposing arbitrary host libraries.
 
 #### Dangerous host libraries
 
@@ -819,11 +819,11 @@ Should not be silently exposed:
 - polkit libraries
 - host graphical stack core libraries if ABI-sensitive
 
-If these are missing, Appseal should warn that the AppImage may be incompatible.
+If these are missing, SAM should warn that the AppImage may be incompatible.
 
 ### 2.16.3 Dynamic fallback
 
-If static analysis is insufficient, Appseal may use a controlled diagnostic run.
+If static analysis is insufficient, SAM may use a controlled diagnostic run.
 
 Possible tools:
 
@@ -846,7 +846,7 @@ Dynamic tracing should not run with full home access by default.
 
 ### 2.16.4 Compatibility mode
 
-If Appseal cannot safely detect all dependencies, it may offer compatibility mode.
+If SAM cannot safely detect all dependencies, it may offer compatibility mode.
 
 Compatibility mode may include:
 
@@ -862,13 +862,13 @@ Compatibility mode must display warnings.
 Example:
 
     This AppImage may require broader host access to function correctly.
-    Appseal can grant additional permissions, but this reduces isolation.
+    SAM can grant additional permissions, but this reduces isolation.
 
 ---
 
 ## 2.17 Recommended Profiles
 
-When an AppImage is added, Appseal should generate a recommended profile.
+When an AppImage is added, SAM should generate a recommended profile.
 
 Recommendation sources:
 
@@ -951,7 +951,7 @@ The user can modify a recommended profile and save it as a preset.
 
 Workflow:
 
-1. Appseal recommends profile.
+1. SAM recommends profile.
 2. User adjusts permissions.
 3. User clicks Save as Preset.
 4. User names preset.
@@ -993,7 +993,7 @@ Example preset:
     dbus_session = "filtered"
     dbus_system = "none"
 
-When applying a preset, Appseal should:
+When applying a preset, SAM should:
 
 1. Check compatibility.
 2. Warn if the preset removes permissions the app likely needs.
@@ -1006,7 +1006,7 @@ When applying a preset, Appseal should:
 
 ### 2.19.1 Default posture
 
-For a newly added AppImage, Appseal should prefer:
+For a newly added AppImage, SAM should prefer:
 
 - No full home access.
 - No system D-Bus.
@@ -1043,7 +1043,7 @@ Examples:
 
 ### 2.19.3 Required warnings
 
-Appseal must warn when:
+SAM must warn when:
 
 1. X11 is enabled.
 2. Full home access is enabled.
@@ -1058,7 +1058,7 @@ Appseal must warn when:
 
 ### 2.19.4 Unsafe AppImage handling
 
-If Appseal determines an AppImage cannot be safely sandboxed, it should show one of these states:
+If SAM determines an AppImage cannot be safely sandboxed, it should show one of these states:
 
 1. Functional but weakly isolated
 
@@ -1083,20 +1083,20 @@ This section was underdeveloped in previous drafts and is now mandatory.
 
 ### 2.20.1 First-run onboarding
 
-On first launch, Appseal should explain:
+On first launch, SAM should explain:
 
-- What Appseal does.
+- What SAM does.
 - What sandboxing means.
 - What permissions mean.
 - That some apps may require compatibility mode.
 - That X11 is less secure than Wayland.
-- That Appseal cannot guarantee perfect security.
+- That SAM cannot guarantee perfect security.
 
 The onboarding should be short and skippable.
 
 ### 2.20.2 Simple mode and advanced mode
 
-Appseal should offer:
+SAM should offer:
 
 1. Simple mode
    - Large toggles.
@@ -1114,7 +1114,7 @@ Appseal should offer:
 
 ### 2.20.3 Drag-and-drop
 
-Users should be able to drag an AppImage into the Appseal window to add it.
+Users should be able to drag an AppImage into the SAM window to add it.
 
 ### 2.20.4 App status badges
 
@@ -1140,7 +1140,7 @@ Example:
 
 ### 2.20.6 Repair workflow
 
-If an app fails to launch, Appseal should offer:
+If an app fails to launch, SAM should offer:
 
 1. View logs.
 2. Re-extract AppImage.
@@ -1152,7 +1152,7 @@ If an app fails to launch, Appseal should offer:
 
 ### 2.20.7 Logs and diagnostics
 
-Appseal should provide:
+SAM should provide:
 
 - Launch logs.
 - Sandbox command used.
@@ -1180,7 +1180,7 @@ The app list should support:
 
 ### 2.21.1 Main screens
 
-Appseal should have:
+SAM should have:
 
 1. Dashboard
 2. App Details
@@ -1270,7 +1270,7 @@ Settings should include:
 
 ### 2.21.7 Themes
 
-Appseal should include four themes:
+SAM should include four themes:
 
 1. Breeze Light
 2. Breeze Dark
@@ -1287,7 +1287,7 @@ Theme selection should follow KDE styling conventions where possible.
 
 CachyOS is the lead development platform.
 
-Appseal should be optimized for:
+SAM should be optimized for:
 
 - Latest Linux kernels.
 - KDE Plasma desktop.
@@ -1298,7 +1298,7 @@ Appseal should be optimized for:
 
 ### 2.22.2 Kernel security features
 
-Appseal should detect and optionally use:
+SAM should detect and optionally use:
 
 #### Landlock
 
@@ -1339,8 +1339,8 @@ eBPF features should be behind an experimental toggle and may require a privileg
 
 Initial packaging:
 
-- appseal
-- appseal-cli
+- sam-jail
+- sam-jail-cli
 
 Dependencies:
 
@@ -1370,7 +1370,7 @@ Primary distribution:
 - pacman package for CachyOS / Arch
 - AUR package
 
-This is the most reliable method because Appseal needs host access to sandboxing tools.
+This is the most reliable method because SAM needs host access to sandboxing tools.
 
 ### Phase 2
 
@@ -1387,7 +1387,7 @@ Universal distribution may be added, but with caution.
 Possible forms:
 
 - Native static-ish binary with desktop assets.
-- AppImage of Appseal for advanced users.
+- AppImage of SAM for advanced users.
 - Flatpak only if host sandbox tools are accessible and the design supports it.
 
 The recommended primary distribution remains native packaging.
@@ -1398,12 +1398,12 @@ The recommended primary distribution remains native packaging.
 
 Suggested filesystem layout:
 
-    ~/.config/appseal/
+    ~/.config/sam/
         config.toml
         presets/
         logs/
 
-    ~/.local/share/appseal/
+    ~/.local/share/sam/
         apps/
             app-id.json
         extracted/
@@ -1412,7 +1412,7 @@ Suggested filesystem layout:
         desktop/
 
     ~/.local/share/applications/
-        appseal-app-id.desktop
+        sam-app-id.desktop
 
 ---
 
@@ -1440,14 +1440,14 @@ Suggested filesystem layout:
     automatic_low_risk_fixes = true
 
     [extraction]
-    location = "~/.local/share/appseal/extracted"
+    location = "~/.local/share/sam/extracted"
     cleanup_stale = true
 
 ---
 
 ## 2.26 Error Handling and Diagnostics
 
-Appseal should provide a diagnostics screen.
+SAM should provide a diagnostics screen.
 
 It should show:
 
@@ -1493,7 +1493,7 @@ Example diagnostic output:
 
 ## 2.28 Success Criteria
 
-Appseal v1.0 should meet these criteria:
+SAM v1.0 should meet these criteria:
 
 1. Add popular AppImages successfully.
 2. Extract and launch them with Bubblewrap.
@@ -1537,7 +1537,7 @@ If one person is doing all roles, multiply timeline by roughly 2x to 3x.
 
 Recommended workspace:
 
-    appseal/
+    sam-jail/
         Cargo.toml
         README.md
         LICENSE
@@ -1547,14 +1547,14 @@ Recommended workspace:
             packaging.md
             profiles.md
         crates/
-            appseal-core/
-            appseal-backend-bubblewrap/
-            appseal-backend-bubblejail/
-            appseal-backend-firejail/
-            appseal-detect/
-            appseal-profile/
-            appseal-storage/
-            appseal-cli/
+            sam-core/
+            sam-backend-bubblewrap/
+            sam-backend-bubblejail/
+            sam-backend-firejail/
+            sam-detect/
+            sam-profile/
+            sam-storage/
+            sam-jail-cli/
         gui/
             src/
             qml/
@@ -1682,29 +1682,29 @@ Build the foundation used by both GUI and CLI.
 
 4. Implement CLI commands:
 
-   - appseal scan
-   - appseal add <path>
-   - appseal list
-   - appseal info <id>
-   - appseal remove <id>
-   - appseal run <id>
-   - appseal doctor
-   - appseal logs <id>
+   - sam-jail scan
+   - sam-jail add <path>
+   - sam-jail list
+   - sam-jail info <id>
+   - sam-jail remove <id>
+   - sam-jail run <id>
+   - sam-jail doctor
+   - sam-jail logs <id>
 
 5. Implement basic logging and error reporting.
 
 ### Exit Criteria
 
-- Appseal can add an AppImage by path.
-- Appseal stores app metadata.
-- Appseal can list registered apps.
-- Appseal can remove registered apps.
+- SAM can add an AppImage by path.
+- SAM stores app metadata.
+- SAM can list registered apps.
+- SAM can remove registered apps.
 - CLI can read and write configuration.
 
 ### Deliverables
 
-- appseal-core
-- appseal-cli
+- sam-core
+- sam-jail-cli
 - Initial configuration schema
 - Initial storage schema
 
@@ -1773,8 +1773,8 @@ Make AppImage ingestion reliable.
 
 ### Exit Criteria
 
-- Appseal can reliably extract common AppImages.
-- Desktop entries launch through Appseal.
+- SAM can reliably extract common AppImages.
+- Desktop entries launch through SAM.
 - Changed AppImages are detected.
 - Removed AppImages are cleaned up safely.
 - Extraction failures produce useful errors.
@@ -1841,7 +1841,7 @@ Implement the default sandbox backend.
 
 ### Exit Criteria
 
-- Appseal can launch most test AppImages with Bubblewrap.
+- SAM can launch most test AppImages with Bubblewrap.
 - Permission toggles affect generated command.
 - Warnings appear for risky permissions.
 - Logs are useful for debugging.
@@ -1849,7 +1849,7 @@ Implement the default sandbox backend.
 
 ### Deliverables
 
-- appseal-backend-bubblewrap
+- sam-backend-bubblewrap
 - Sandbox policy generator
 - Launch diagnostics
 
@@ -1909,7 +1909,7 @@ Detect required host resources without weakening security unnecessarily.
 
 ### Exit Criteria
 
-- Appseal detects common missing resources.
+- SAM detects common missing resources.
 - Safe fixes are applied automatically.
 - Dangerous fixes require user confirmation.
 - Dynamic fallback can diagnose basic failures.
@@ -1917,7 +1917,7 @@ Detect required host resources without weakening security unnecessarily.
 
 ### Deliverables
 
-- appseal-detect
+- sam-detect
 - Dependency classification engine
 - Diagnostic fallback runner
 
@@ -1969,7 +1969,7 @@ Implement profile recommendation and user presets.
 
 ### Deliverables
 
-- appseal-profile
+- sam-profile
 - Preset manager logic
 - Recommendation engine
 
@@ -2070,7 +2070,7 @@ Build the Flatseal-like GUI with strong usability.
 
 ### Deliverables
 
-- appseal-gui
+- sam-jail-gui
 - QML components
 - Theme assets
 - Onboarding flow
@@ -2108,12 +2108,12 @@ Add optional backend support.
 - User can choose backend per app.
 - Bubblejail works where installed.
 - Firejail is optional and clearly warned.
-- Appseal explains why a backend was chosen.
+- SAM explains why a backend was chosen.
 
 ### Deliverables
 
-- appseal-backend-bubblejail
-- appseal-backend-firejail
+- sam-backend-bubblejail
+- sam-backend-firejail
 - Backend selection engine
 
 ---
@@ -2148,7 +2148,7 @@ Add CachyOS-oriented kernel security enhancements.
 
 - Landlock can strengthen filesystem restrictions.
 - Experimental features are disabled by default.
-- Appseal does not break on kernels without optional features.
+- SAM does not break on kernels without optional features.
 
 ### Deliverables
 
@@ -2166,7 +2166,7 @@ Add CachyOS-oriented kernel security enhancements.
 
 ### Objectives
 
-Package Appseal for real users.
+Package SAM for real users.
 
 ### Tasks
 
@@ -2174,7 +2174,7 @@ Package Appseal for real users.
 
 2. Create AUR package.
 
-3. Add desktop entry for Appseal itself.
+3. Add desktop entry for SAM itself.
 
 4. Add icons and metainfo.
 
@@ -2192,7 +2192,7 @@ Package Appseal for real users.
 
 - pacman package works on CachyOS or test repository.
 - AUR package builds cleanly.
-- Appseal launches from application menu.
+- SAM launches from application menu.
 - Backend dependencies are detected correctly.
 
 ### Deliverables
@@ -2211,7 +2211,7 @@ Package Appseal for real users.
 
 ### Objectives
 
-Stabilize Appseal for v1.0.
+Stabilize SAM for v1.0.
 
 ### Tasks
 
@@ -2252,7 +2252,7 @@ Stabilize Appseal for v1.0.
 
 - Common AppImages work reliably.
 - Warnings are accurate.
-- No known sandbox escape due to Appseal configuration.
+- No known sandbox escape due to SAM configuration.
 - GUI is stable.
 - Packaging is reliable.
 
@@ -2269,7 +2269,7 @@ Stabilize Appseal for v1.0.
 
 ## Milestone M0: Prototype Validated
 
-Goal: Prove Appseal is technically feasible.
+Goal: Prove SAM is technically feasible.
 
 Deliverables:
 
@@ -2285,11 +2285,11 @@ Goal: Establish core data model and CLI.
 
 Deliverables:
 
-- appseal add
-- appseal list
-- appseal info
-- appseal remove
-- appseal doctor
+- sam-jail add
+- sam-jail list
+- sam-jail info
+- sam-jail remove
+- sam-jail doctor
 
 ---
 
@@ -2344,7 +2344,7 @@ Deliverables:
 
 ---
 
-## Milestone M6: Appseal 1.0
+## Milestone M6: SAM 1.0
 
 Goal: Stable initial release.
 
@@ -2458,7 +2458,7 @@ Test:
 - Dangerous permissions generate warnings.
 - Extraction removes setuid bits.
 - Symlink traversal does not escape sandbox.
-- Desktop launcher uses Appseal runner.
+- Desktop launcher uses SAM runner.
 
 ## 6.5 Usability tests
 
@@ -2490,11 +2490,11 @@ Secondary:
 
 # 7. Documentation Plan
 
-Appseal needs clear documentation.
+SAM needs clear documentation.
 
 ## User documentation
 
-1. Installing Appseal.
+1. Installing SAM.
 2. Adding an AppImage.
 3. Understanding permissions.
 4. Using presets.
@@ -2551,7 +2551,7 @@ Support:
 
 ## 8.5 AppImage execution
 
-Use extraction into Appseal-managed storage as the primary execution method.
+Use extraction into SAM-managed storage as the primary execution method.
 
 ## 8.6 Dependency detection
 
@@ -2586,7 +2586,7 @@ Then expand to other distros.
 
 Duration: 2 weeks
 
-Prove that Appseal can extract and run common AppImages inside Bubblewrap and validate the UI direction.
+Prove that SAM can extract and run common AppImages inside Bubblewrap and validate the UI direction.
 
 ---
 
@@ -2648,9 +2648,9 @@ Package for CachyOS, test broadly, and release v1.0.
 
 # 10. Final Summary
 
-Appseal should become a practical permissions manager for AppImages.
+SAM should become a practical permissions manager for AppImages.
 
-The corrected plan positions Appseal as:
+The corrected plan positions SAM as:
 
 - A Rust-based desktop tool.
 - A Flatseal-like permissions manager for AppImages.
@@ -2661,6 +2661,6 @@ The corrected plan positions Appseal as:
 
 The most important implementation principle is:
 
-    Appseal should make AppImages safer without pretending that every AppImage can be made perfectly secure or compatible with zero user involvement.
+    SAM should make AppImages safer without pretending that every AppImage can be made perfectly secure or compatible with zero user involvement.
 
-With this corrected scope, Appseal is technically more realistic, more compatible with real-world AppImages, and significantly more usable for everyday Linux users.
+With this corrected scope, SAM is technically more realistic, more compatible with real-world AppImages, and significantly more usable for everyday Linux users.

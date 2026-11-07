@@ -6,7 +6,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.kirigamiaddons.formcard as FormCard
 
-import Appseal.Native
+import SAM.Native
 import "Util.js" as Util
 
 /// App details, permissions editor, repair workflow and logs
@@ -183,7 +183,7 @@ Kirigami.ScrollablePage {
             type: Kirigami.MessageType.Information
             text: page.entry && page.entry.pending_changes.length
                 ? qsTr("The updated AppImage likely needs: %1. Your customized profile was kept. Review it, then confirm.").arg(page.entry.pending_changes.join(", "))
-                : qsTr("Appseal picked these permissions from the app's metadata and libraries. Review them, then confirm.")
+                : qsTr("SAM picked these permissions from the app's metadata and libraries. Review them, then confirm.")
             actions: [
                 Kirigami.Action {
                     text: qsTr("Looks good")
@@ -205,7 +205,7 @@ Kirigami.ScrollablePage {
             visible: page.summary !== null && (page.summary.badge === "stale" || page.summary.badge === "broken" || page.summary.badge === "missing")
             type: page.summary && page.summary.badge === "stale" ? Kirigami.MessageType.Warning : Kirigami.MessageType.Error
             text: page.summary === null ? "" : page.summary.badge === "stale" ? qsTr("The AppImage changed since it was extracted.")
-                : page.summary.badge === "missing" ? qsTr("The AppImage file is missing. You can still run the extracted copy, point Appseal at the new location, or remove the app.")
+                : page.summary.badge === "missing" ? qsTr("The AppImage file is missing. You can still run the extracted copy, point SAM at the new location, or remove the app.")
                 : (page.entry && page.entry.last_error ? page.entry.last_error : qsTr("This app cannot start."))
             actions: [
                 Kirigami.Action {
@@ -270,7 +270,7 @@ Kirigami.ScrollablePage {
                 }
                 FormCard.FormSwitchDelegate {
                     text: qsTr("Compatibility mode")
-                    description: qsTr("This AppImage may require broader host access to function correctly. Appseal can grant additional permissions, but this reduces isolation.")
+                    description: qsTr("This AppImage may require broader host access to function correctly. SAM can grant additional permissions, but this reduces isolation.")
                     checked: page.entry ? page.entry.profile.compatibility_mode : false
                     visible: win.config === null || win.config.compatibility.behavior !== "never"
                     onToggled: {
@@ -453,7 +453,7 @@ Kirigami.ScrollablePage {
                 FormCard.FormButtonDelegate {
                     text: qsTr("Apply compatibility mode"); icon.name: "tools-wizard"
                     visible: page.entry !== null && !page.entry.profile.compatibility_mode && (win.config === null || win.config.compatibility.behavior !== "never")
-                    onClicked: win.confirmDialog.ask(qsTr("Enable compatibility mode?"), qsTr("This AppImage may require broader host access to function correctly. Appseal can grant additional permissions, but this reduces isolation."), () => page.simple(["compat", page.appId, "on"], null, qsTr("Compatibility mode on")), qsTr("Enable"))
+                    onClicked: win.confirmDialog.ask(qsTr("Enable compatibility mode?"), qsTr("This AppImage may require broader host access to function correctly. SAM can grant additional permissions, but this reduces isolation."), () => page.simple(["compat", page.appId, "on"], null, qsTr("Compatibility mode on")), qsTr("Enable"))
                 }
                 FormCard.FormComboBoxDelegate {
                     text: qsTr("Switch backend")

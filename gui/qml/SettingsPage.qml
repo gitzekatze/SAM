@@ -6,7 +6,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.kirigamiaddons.formcard as FormCard
 
-import Appseal.Native
+import SAM.Native
 import "Util.js" as Util
 
 /// Settings (whitepaper §2.21.6).
@@ -102,7 +102,7 @@ FormCard.FormCardPage {
 
     FormCard.FormHeader { title: qsTr("Finding AppImages") }
     FormCard.FormCard {
-        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.automatic_scanning"; text: qsTr("Scan automatically on start"); description: qsTr("Look for new AppImages in the folders below when Appseal opens.") }
+        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.automatic_scanning"; text: qsTr("Scan automatically on start"); description: qsTr("Look for new AppImages in the folders below when SAM opens.") }
         Repeater {
             model: page.cfg ? page.cfg.general.scan_directories : []
             delegate: FormCard.FormTextDelegate {
@@ -125,7 +125,7 @@ FormCard.FormCardPage {
             icon.name: "list-add"
             onClicked: folderDialog.open()
         }
-        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.desktop_integration"; text: qsTr("Create menu launchers"); description: qsTr("Registered apps appear in your application menu and always start through Appseal.") }
+        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.desktop_integration"; text: qsTr("Create menu launchers"); description: qsTr("Registered apps appear in your application menu and always start through SAM.") }
     }
 
     FormCard.FormHeader { title: qsTr("Sandbox") }
@@ -193,7 +193,7 @@ FormCard.FormCardPage {
     FormCard.FormCard {
         FormCard.FormTextDelegate {
             text: qsTr("Location")
-            description: page.cfg && page.cfg.extraction.location ? page.cfg.extraction.location : qsTr("Default (~/.local/share/appseal/extracted)")
+            description: page.cfg && page.cfg.extraction.location ? page.cfg.extraction.location : qsTr("Default (~/.local/share/sam/extracted)")
         }
         ConfigSwitch { cfg: page.cfg; owner: page; key: "extraction.cleanup_stale"; text: qsTr("Clean up stale extractions") }
         ConfigSwitch { cfg: page.cfg; owner: page;

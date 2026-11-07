@@ -18,8 +18,8 @@
 Backend::Backend(QObject *parent)
     : QObject(parent)
 {
-    m_cli = findTool(QStringLiteral("appseal"));
-    m_runner = findTool(QStringLiteral("appseal-run"));
+    m_cli = findTool(QStringLiteral("sam-jail"));
+    m_runner = findTool(QStringLiteral("sam-jail-run"));
 }
 
 QString Backend::version() const
@@ -27,11 +27,11 @@ QString Backend::version() const
     return QCoreApplication::applicationVersion();
 }
 
-/// Lookup order: $APPSEAL_CLI / $APPSEAL_RUN, next to this binary,
+/// Lookup order: $SAM_CLI / $SAM_RUN, next to this binary,
 /// the cargo target dir of a source checkout, then $PATH.
 QString Backend::findTool(const QString &name) const
 {
-    const QByteArray envName = name == QLatin1String("appseal") ? "APPSEAL_CLI" : "APPSEAL_RUN";
+    const QByteArray envName = name == QLatin1String("sam-jail") ? "SAM_CLI" : "SAM_RUN";
     const QString fromEnv = qEnvironmentVariable(envName.constData());
     if (!fromEnv.isEmpty())
         return fromEnv;
@@ -87,7 +87,7 @@ void Backend::call(const QStringList &args, const QJSValue &callback, const QStr
         if (envelope.isEmpty()) {
             envelope.insert(QStringLiteral("ok"), false);
             const QString e = QString::fromUtf8(err).trimmed();
-            envelope.insert(QStringLiteral("error"), e.isEmpty() ? QStringLiteral("No response from the appseal command line tool.") : e);
+            envelope.insert(QStringLiteral("error"), e.isEmpty() ? QStringLiteral("No response from the sam-jail command line tool.") : e);
         }
         finish(envelope);
     });
@@ -96,7 +96,7 @@ void Backend::call(const QStringList &args, const QJSValue &callback, const QStr
             return;
         QJsonObject envelope;
         envelope.insert(QStringLiteral("ok"), false);
-        envelope.insert(QStringLiteral("error"), QStringLiteral("Could not start '%1'. Is Appseal installed correctly?").arg(m_cli));
+        envelope.insert(QStringLiteral("error"), QStringLiteral("Could not start '%1'. Is SAM installed correctly?").arg(m_cli));
         finish(envelope);
     });
 

@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
-project(appseal-gui VERSION 0.1.0 LANGUAGES CXX)
+project(sam-jail-gui VERSION 0.1.0 LANGUAGES CXX)
 
-# Appseal GUI: a thin Qt6/QML/Kirigami shell over the Rust core.
-# The shell talks to the core through `appseal --json ...` (see src/backend.cpp).
+# SAM GUI: a thin Qt6/QML/Kirigami shell over the Rust core.
+# The shell talks to the core through `sam-jail --json ...` (see src/backend.cpp).
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,14 +18,14 @@ if(QT_KNOWN_POLICY_QTP0004)
     qt_policy(SET QTP0004 NEW)
 endif()
 
-qt_add_executable(appseal-gui
+qt_add_executable(sam-jail-gui
     src/main.cpp
     src/backend.cpp src/backend.h
     src/thememanager.cpp src/thememanager.h
 )
 
-qt_add_qml_module(appseal-gui
-    URI Appseal
+qt_add_qml_module(sam-jail-gui
+    URI SAM
     VERSION 1.0
     QML_FILES
         qml/Main.qml
@@ -54,12 +54,12 @@ qt_add_qml_module(appseal-gui
         themes/breeze-dark.colors
         themes/breeze-high-contrast.colors
         themes/cachyos-neon.colors
-        icons/appseal.svg
+        icons/sam.svg
 )
 
-target_link_libraries(appseal-gui PRIVATE
+target_link_libraries(sam-jail-gui PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickControls2
     KF6::ConfigCore KF6::ColorScheme
 )
 
-install(TARGETS appseal-gui RUNTIME DESTINATION bin)
+install(TARGETS sam-jail-gui RUNTIME DESTINATION bin)

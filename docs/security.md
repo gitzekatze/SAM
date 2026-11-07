@@ -1,8 +1,8 @@
-# Appseal security model
+# SAM security model
 
 ## Threat model (whitepaper §2.5)
 
-Appseal assumes that **you are trusted** and that **individual AppImages may not be**.
+SAM assumes that **you are trusted** and that **individual AppImages may not be**.
 
 **What it mitigates:** accidental access to unrelated files, broad home access,
 unneeded network access, unnecessary devices, excessive D-Bus access,
@@ -22,11 +22,11 @@ by mistake.
 | Path | Contents |
 |---|---|
 | `/opt/app` | extracted payload, read-only |
-| `/usr/lib`, `/usr/bin` | host runtime, read-only. All of `/usr` with `appseal set <id> advanced.host_runtime full`, or with compatibility mode (`appseal compat <id> on`) |
+| `/usr/lib`, `/usr/bin` | host runtime, read-only. All of `/usr` with `sam-jail set <id> advanced.host_runtime full`, or with compatibility mode (`sam-jail compat <id> on`) |
 | `/usr/share/<x>` | whitelisted shared data (fonts, icons, locale, themes, …), read-only |
 | `/etc/<x>` | whitelisted configuration; `passwd` and `group` are generated and contain only your user |
 | `/tmp`, `/var/tmp`, `$XDG_RUNTIME_DIR` | private tmpfs |
-| `$HOME` | **private per-app home** (`~/.local/share/appseal/homes/<id>`) plus only the folders you granted |
+| `$HOME` | **private per-app home** (`~/.local/share/sam/homes/<id>`) plus only the folders you granted |
 | `/` | read-only after setup (`--remount-ro /`) |
 
 Process isolation:
@@ -39,7 +39,7 @@ Process isolation:
 
 ## Defense in depth
 
-- **Landlock** (on by default where the kernel supports it): `appseal-run`
+- **Landlock** (on by default where the kernel supports it): `sam-jail-run`
   applies a Landlock ruleset *inside* the sandbox before it starts the app.
   Writes are then allowed only in the locations the profile grants read/write.
   If a mount is ever more permissive than intended, the kernel still blocks
@@ -52,7 +52,7 @@ Process isolation:
   - `~/.ssh`, `~/.gnupg` and other credential stores (keyrings, password
     stores, cloud credentials, browser profiles) stay hidden unless you
     explicitly allow them.
-  - Appseal's own configuration is hidden.
+  - SAM's own configuration is hidden.
   - Shell startup files, `autostart`, `systemd --user` and
     `~/.local/share/applications` stay read-only. These are common ways for
     malware to persist.
@@ -69,7 +69,7 @@ Extraction never executes the AppImage by default.
   payload are removed. Device nodes, FIFOs and sockets are removed.
 - **Limits:** file-count, size and time limits abort the extraction and
   remove partial output.
-- **Host-side reads:** Appseal reads only icon and desktop files from the
+- **Host-side reads:** SAM reads only icon and desktop files from the
   payload, and never follows a symlink out of it when doing so.
 
 ## Risk levels (§2.19.2)

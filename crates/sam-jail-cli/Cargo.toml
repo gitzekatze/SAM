@@ -1,0 +1,31 @@
+[package]
+name = "sam-jail-cli"
+description = "Command line interface for SAM (sam-jail, sam-jail-run)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "sam-jail"
+path = "src/main.rs"
+
+[[bin]]
+name = "sam-jail-run"
+path = "src/bin/sam-jail-run.rs"
+
+[dependencies]
+sam-core.workspace = true
+sam-storage.workspace = true
+sam-detect.workspace = true
+sam-intake.workspace = true
+sam-profile.workspace = true
+sam-runner.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+clap.workspace = true
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

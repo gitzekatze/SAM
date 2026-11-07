@@ -9,7 +9,7 @@
 class QJSEngine;
 
 /// Bridge between QML and the Rust core. Every call runs
-/// `appseal --json <args>` asynchronously and hands the parsed JSON
+/// `sam-jail --json <args>` asynchronously and hands the parsed JSON
 /// envelope (`{ok, data, error}`) to a JavaScript callback.
 class Backend : public QObject
 {
@@ -42,9 +42,9 @@ public:
     QString startupApp() const { return m_startupApp; }
     QString version() const;
 
-    /// Run `appseal --json <args>`; `input` is written to stdin when non-empty.
+    /// Run `sam-jail --json <args>`; `input` is written to stdin when non-empty.
     Q_INVOKABLE void call(const QStringList &args, const QJSValue &callback, const QString &input = QString());
-    /// Start an app detached through appseal-run (like the desktop launcher).
+    /// Start an app detached through sam-jail-run (like the desktop launcher).
     Q_INVOKABLE bool launch(const QString &appId, const QStringList &files = {});
     Q_INVOKABLE void copyToClipboard(const QString &text);
     Q_INVOKABLE QString urlToPath(const QUrl &url) const;

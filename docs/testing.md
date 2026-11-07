@@ -8,26 +8,26 @@ test).
 To keep your real configuration untouched while testing, run:
 
 ```sh
-export APPSEAL_CONFIG_DIR=/tmp/appseal-test/config \
-       APPSEAL_DATA_DIR=/tmp/appseal-test/data \
-       APPSEAL_APPLICATIONS_DIR=/tmp/appseal-test/applications
+export SAM_CONFIG_DIR=/tmp/sam-test/config \
+       SAM_DATA_DIR=/tmp/sam-test/data \
+       SAM_APPLICATIONS_DIR=/tmp/sam-test/applications
 ```
 
-Leave `APPSEAL_APPLICATIONS_DIR` unset if you want launchers to show up in your menu.
+Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu.
 
 ## 1. Environment
 
-- [ ] `appseal doctor`: everything is `ok`. The sandbox test passes, and
+- [ ] `sam-jail doctor`: everything is `ok`. The sandbox test passes, and
       Wayland, PipeWire and D-Bus are detected.
-- [ ] `appseal backends`: Bubblewrap is usable and Bubblejail is listed.
+- [ ] `sam-jail backends`: Bubblewrap is usable and Bubblejail is listed.
 
 ## 2. Real AppImages (whitepaper §3.3 corpus)
 
 For each category (browser, media player, image editor, game, text editor,
 Electron app, Qt app, GTK app):
 
-- [ ] `appseal add <file>` succeeds, and the category and recommendation make sense.
-- [ ] `appseal run <id>` opens a window on Wayland.
+- [ ] `sam-jail add <file>` succeeds, and the category and recommendation make sense.
+- [ ] `sam-jail run <id>` opens a window on Wayland.
 - [ ] Rendering is GPU-accelerated when GPU is on (e.g. `chrome://gpu`,
       `glxinfo` inside a terminal app).
 - [ ] Audio plays through PipeWire when sound is on, and is silent when off.
@@ -45,9 +45,9 @@ Electron app, Qt app, GTK app):
 
 ## 4. Kernel features
 
-- [ ] Logs show `landlock: true` (`appseal logs <id>`).
-- [ ] With `appseal config set security.experimental_seccomp true` and
-      `appseal set <id> advanced.seccomp_strict true`, a non-Electron app
+- [ ] Logs show `landlock: true` (`sam-jail logs <id>`).
+- [ ] With `sam-jail config set security.experimental_seccomp true` and
+      `sam-jail set <id> advanced.seccomp_strict true`, a non-Electron app
       still starts.
 
 ## 5. Desktop integration
@@ -59,20 +59,20 @@ Electron app, Qt app, GTK app):
 
 ## 6. Updates and staleness
 
-- [ ] Replace an AppImage with a newer version. `appseal refresh` reports it
+- [ ] Replace an AppImage with a newer version. `sam-jail refresh` reports it
       as stale and the GUI shows the *Stale* badge.
 - [ ] Re-extract. A customized profile is kept, and new needs are listed under
       "Update needs new permissions".
-- [ ] Move the AppImage. `appseal scan` reports it as a moved copy;
-      `appseal scan --add` or *Locate…* fixes the path.
+- [ ] Move the AppImage. `sam-jail scan` reports it as a moved copy;
+      `sam-jail scan --add` or *Locate…* fixes the path.
 
 ## 7. Optional backends
 
-- [ ] **Bubblejail:** `appseal backend <id> bubblejail`, then run. The
-      instance `appseal-<id>` appears in `bubblejail list`.
+- [ ] **Bubblejail:** `sam-jail backend <id> bubblejail`, then run. The
+      instance `sam-<id>` appears in `bubblejail list`.
 - [ ] **Firejail** (if installed): it is refused until
       `security.allow_firejail` is on *and* `--confirm` is given.
-- [ ] **Diagnostic run** (needs `strace`): `appseal diagnose <id> --apply`
+- [ ] **Diagnostic run** (needs `strace`): `sam-jail diagnose <id> --apply`
       lists findings, and low-risk fixes are applied.
 
 ## 8. Type 1 AppImages
@@ -93,4 +93,4 @@ Electron app, Qt app, GTK app):
 ## 10. Packaging
 
 - [ ] `cd packaging/arch && makepkg -si` builds and installs both packages.
-- [ ] Appseal starts from the application menu.
+- [ ] SAM starts from the application menu.

@@ -68,131 +68,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "appseal-backend-bubblejail"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "appseal-core",
- "toml",
-]
-
-[[package]]
-name = "appseal-backend-bubblewrap"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "appseal-core",
-]
-
-[[package]]
-name = "appseal-backend-firejail"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "appseal-core",
-]
-
-[[package]]
-name = "appseal-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "appseal-core",
- "appseal-detect",
- "appseal-intake",
- "appseal-profile",
- "appseal-runner",
- "appseal-storage",
- "clap",
- "libc",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
-]
-
-[[package]]
-name = "appseal-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "libc",
- "serde",
- "serde_json",
- "toml",
-]
-
-[[package]]
-name = "appseal-detect"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "appseal-core",
- "goblin",
- "libc",
- "serde",
- "tempfile",
-]
-
-[[package]]
-name = "appseal-intake"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "appseal-core",
- "appseal-detect",
- "backhand",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
-]
-
-[[package]]
-name = "appseal-profile"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "appseal-core",
- "appseal-storage",
- "serde",
-]
-
-[[package]]
-name = "appseal-runner"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "appseal-backend-bubblejail",
- "appseal-backend-bubblewrap",
- "appseal-backend-firejail",
- "appseal-core",
- "appseal-detect",
- "appseal-intake",
- "appseal-profile",
- "appseal-storage",
- "landlock",
- "libc",
- "seccompiler",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "appseal-storage"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "appseal-core",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -789,6 +664,131 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "sam-backend-bubblejail"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sam-core",
+ "toml",
+]
+
+[[package]]
+name = "sam-backend-bubblewrap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sam-core",
+]
+
+[[package]]
+name = "sam-backend-firejail"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sam-core",
+]
+
+[[package]]
+name = "sam-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "libc",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
+name = "sam-detect"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "goblin",
+ "libc",
+ "sam-core",
+ "serde",
+ "tempfile",
+]
+
+[[package]]
+name = "sam-intake"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "backhand",
+ "sam-core",
+ "sam-detect",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
+name = "sam-jail-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "libc",
+ "sam-core",
+ "sam-detect",
+ "sam-intake",
+ "sam-profile",
+ "sam-runner",
+ "sam-storage",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
+name = "sam-profile"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sam-core",
+ "sam-storage",
+ "serde",
+]
+
+[[package]]
+name = "sam-runner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "landlock",
+ "libc",
+ "sam-backend-bubblejail",
+ "sam-backend-bubblewrap",
+ "sam-backend-firejail",
+ "sam-core",
+ "sam-detect",
+ "sam-intake",
+ "sam-profile",
+ "sam-storage",
+ "seccompiler",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "sam-storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sam-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+]
 
 [[package]]
 name = "scroll"

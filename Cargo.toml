@@ -1,35 +1,35 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/appseal-core",
-    "crates/appseal-storage",
-    "crates/appseal-detect",
-    "crates/appseal-intake",
-    "crates/appseal-profile",
-    "crates/appseal-backend-bubblewrap",
-    "crates/appseal-backend-bubblejail",
-    "crates/appseal-backend-firejail",
-    "crates/appseal-runner",
-    "crates/appseal-cli",
+    "crates/sam-core",
+    "crates/sam-storage",
+    "crates/sam-detect",
+    "crates/sam-intake",
+    "crates/sam-profile",
+    "crates/sam-backend-bubblewrap",
+    "crates/sam-backend-bubblejail",
+    "crates/sam-backend-firejail",
+    "crates/sam-runner",
+    "crates/sam-jail-cli",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-repository = "https://example.invalid/appseal"
+repository = "https://github.com/gitzekatze/SAM"
 rust-version = "1.80"
 
 [workspace.dependencies]
-appseal-core = { path = "crates/appseal-core" }
-appseal-storage = { path = "crates/appseal-storage" }
-appseal-detect = { path = "crates/appseal-detect" }
-appseal-intake = { path = "crates/appseal-intake" }
-appseal-profile = { path = "crates/appseal-profile" }
-appseal-backend-bubblewrap = { path = "crates/appseal-backend-bubblewrap" }
-appseal-backend-bubblejail = { path = "crates/appseal-backend-bubblejail" }
-appseal-backend-firejail = { path = "crates/appseal-backend-firejail" }
-appseal-runner = { path = "crates/appseal-runner" }
+sam-core = { path = "crates/sam-core" }
+sam-storage = { path = "crates/sam-storage" }
+sam-detect = { path = "crates/sam-detect" }
+sam-intake = { path = "crates/sam-intake" }
+sam-profile = { path = "crates/sam-profile" }
+sam-backend-bubblewrap = { path = "crates/sam-backend-bubblewrap" }
+sam-backend-bubblejail = { path = "crates/sam-backend-bubblejail" }
+sam-backend-firejail = { path = "crates/sam-backend-firejail" }
+sam-runner = { path = "crates/sam-runner" }
 
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

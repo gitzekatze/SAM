@@ -36,10 +36,10 @@ QString ThemeManager::label(const QString &themeId) const
 /// the cache directory once and loaded from there.
 QString ThemeManager::schemeFile(const QString &themeId) const
 {
-    const QString res = QStringLiteral(":/qt/qml/Appseal/themes/%1.colors").arg(themeId);
+    const QString res = QStringLiteral(":/qt/qml/SAM/themes/%1.colors").arg(themeId);
     if (!QFile::exists(res))
         return {};
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + QStringLiteral("/appseal/themes");
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + QStringLiteral("/sam/themes");
     QDir().mkpath(dir);
     const QString out = dir + QLatin1Char('/') + themeId + QStringLiteral(".colors");
     QFile::remove(out);

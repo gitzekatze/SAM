@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.kirigamiaddons.formcard as FormCard
 
-import Appseal.Native
+import SAM.Native
 
 /// Create or edit a preset. Built-in presets are read-only.
 Kirigami.ScrollablePage {

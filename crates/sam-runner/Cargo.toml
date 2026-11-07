@@ -1,0 +1,25 @@
+[package]
+name = "sam-runner"
+description = "Orchestration for SAM: intake pipeline, backend selection, launching, diagnostics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sam-core.workspace = true
+sam-storage.workspace = true
+sam-detect.workspace = true
+sam-intake.workspace = true
+sam-profile.workspace = true
+sam-backend-bubblewrap.workspace = true
+sam-backend-bubblejail.workspace = true
+sam-backend-firejail.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc.workspace = true
+landlock.workspace = true
+seccompiler.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

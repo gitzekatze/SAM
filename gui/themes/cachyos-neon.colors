@@ -131,8 +131,8 @@ ForegroundPositive=64,255,170
 ForegroundVisited=190,130,255
 
 [General]
-ColorScheme=AppsealCachyOSNeon
-Name=Appseal CachyOS Neon
+ColorScheme=SAMCachyOSNeon
+Name=SAM CachyOS Neon
 shadeSortColumn=true
 
 [KDE]

@@ -1,0 +1,10 @@
+[package]
+name = "sam-backend-bubblewrap"
+description = "Bubblewrap sandbox backend for SAM (default)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sam-core.workspace = true
+anyhow.workspace = true

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Appseal's four KDE color schemes (whitepaper §2.21.7).
+"""Generate SAM's four KDE color schemes (whitepaper §2.21.7).
 
 Run from this directory: ./make-themes.py
 Writes breeze-light.colors, breeze-dark.colors, breeze-high-contrast.colors
@@ -9,7 +9,7 @@ Kirigami pick them up like any Plasma scheme.
 
 THEMES = {
     "breeze-light": dict(
-        name="Appseal Breeze Light",
+        name="SAM Breeze Light",
         window=(239, 240, 241), window_alt=(227, 229, 231),
         view=(252, 252, 252), view_alt=(239, 240, 241),
         button=(252, 252, 252), button_alt=(163, 212, 250),
@@ -21,7 +21,7 @@ THEMES = {
         negative=(218, 68, 83), neutral=(246, 116, 0), positive=(39, 174, 96),
     ),
     "breeze-dark": dict(
-        name="Appseal Breeze Dark",
+        name="SAM Breeze Dark",
         window=(32, 35, 38), window_alt=(41, 44, 48),
         view=(20, 22, 24), view_alt=(29, 31, 34),
         button=(41, 44, 48), button_alt=(26, 86, 120),
@@ -33,7 +33,7 @@ THEMES = {
         negative=(218, 68, 83), neutral=(246, 116, 0), positive=(39, 174, 96),
     ),
     "breeze-high-contrast": dict(
-        name="Appseal Breeze High Contrast",
+        name="SAM Breeze High Contrast",
         window=(0, 0, 0), window_alt=(24, 24, 24),
         view=(0, 0, 0), view_alt=(20, 20, 20),
         button=(16, 16, 16), button_alt=(60, 60, 0),
@@ -45,7 +45,7 @@ THEMES = {
         negative=(255, 90, 90), neutral=(255, 180, 0), positive=(0, 255, 140),
     ),
     "cachyos-neon": dict(
-        name="Appseal CachyOS Neon",
+        name="SAM CachyOS Neon",
         window=(17, 19, 27), window_alt=(24, 27, 38),
         view=(11, 12, 19), view_alt=(19, 21, 31),
         button=(27, 30, 43), button_alt=(0, 110, 100),
