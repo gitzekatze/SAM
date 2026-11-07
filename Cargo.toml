@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/appseal-core",
+    "crates/appseal-storage",
+    "crates/appseal-detect",
+    "crates/appseal-intake",
+    "crates/appseal-profile",
+    "crates/appseal-backend-bubblewrap",
+    "crates/appseal-backend-bubblejail",
+    "crates/appseal-backend-firejail",
+    "crates/appseal-runner",
+    "crates/appseal-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://example.invalid/appseal"
+rust-version = "1.80"
+
+[workspace.dependencies]
+appseal-core = { path = "crates/appseal-core" }
+appseal-storage = { path = "crates/appseal-storage" }
+appseal-detect = { path = "crates/appseal-detect" }
+appseal-intake = { path = "crates/appseal-intake" }
+appseal-profile = { path = "crates/appseal-profile" }
+appseal-backend-bubblewrap = { path = "crates/appseal-backend-bubblewrap" }
+appseal-backend-bubblejail = { path = "crates/appseal-backend-bubblejail" }
+appseal-backend-firejail = { path = "crates/appseal-backend-firejail" }
+appseal-runner = { path = "crates/appseal-runner" }
+
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+clap = { version = "4.5", features = ["derive"] }
+sha2 = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+libc = "0.2"
+goblin = { version = "0.10", default-features = false, features = ["elf32", "elf64", "endian_fd", "std"] }
+backhand = { version = "0.25", default-features = false, features = ["xz", "gzip", "zstd"] }
+landlock = "0.4"
+seccompiler = "0.5"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true

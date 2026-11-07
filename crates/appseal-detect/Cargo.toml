@@ -1,0 +1,16 @@
+[package]
+name = "appseal-detect"
+description = "AppImage format detection and static ELF dependency analysis for Appseal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+appseal-core.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+goblin.workspace = true
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

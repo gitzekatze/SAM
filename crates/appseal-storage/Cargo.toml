@@ -1,0 +1,16 @@
+[package]
+name = "appseal-storage"
+description = "App registry, preset storage and logs for Appseal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+appseal-core.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "appseal-profile"
+description = "Recommended profiles, presets and preset compatibility checks for Appseal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+appseal-core.workspace = true
+appseal-storage.workspace = true
+anyhow.workspace = true
+serde.workspace = true

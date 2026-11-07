@@ -1,0 +1,10 @@
+[package]
+name = "appseal-backend-bubblewrap"
+description = "Bubblewrap sandbox backend for Appseal (default)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+appseal-core.workspace = true
+anyhow.workspace = true

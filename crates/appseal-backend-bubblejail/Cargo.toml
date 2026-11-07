@@ -1,0 +1,11 @@
+[package]
+name = "appseal-backend-bubblejail"
+description = "Optional Bubblejail backend for Appseal (better D-Bus filtering)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+appseal-core.workspace = true
+anyhow.workspace = true
+toml.workspace = true

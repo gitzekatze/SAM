@@ -1,0 +1,18 @@
+[package]
+name = "appseal-intake"
+description = "AppImage extraction, desktop metadata and launcher integration for Appseal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+appseal-core.workspace = true
+appseal-detect.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+backhand.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

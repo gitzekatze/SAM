@@ -1,0 +1,76 @@
+# Maintainer: Appseal contributors
+#
+# Split package for CachyOS / Arch Linux (whitepaper §2.22.3):
+#   appseal      the Qt/Kirigami GUI
+#   appseal-cli  the command line tools and sandbox runner (required by appseal)
+#
+# This PKGBUILD builds the source tree it lives in:
+#   cd packaging/arch && makepkg -si
+# For the AUR, replace `source=()` with the release tarball and its checksum.
+
+pkgbase=appseal
+pkgname=(appseal-cli appseal)
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Flatseal-style permission manager and sandbox launcher for AppImages"
+arch=(x86_64 aarch64)
+url="https://example.invalid/appseal"
+license=(GPL-3.0-or-later)
+makedepends=(cargo cmake extra-cmake-modules qt6-base qt6-declarative kirigami kirigami-addons kcolorscheme kconfig)
+options=(!lto)
+source=()
+sha256sums=()
+
+_srcroot() { realpath "$startdir/../.."; }
+
+prepare() {
+  cd "$(_srcroot)"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$(_srcroot)"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo build --frozen --release -p appseal-cli
+  cmake -S gui -B "$srcdir/gui-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build "$srcdir/gui-build"
+}
+
+check() {
+  cd "$(_srcroot)"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="$srcdir/target"
+  # The end-to-end sandbox test skips itself when bubblewrap cannot run (e.g. in a chroot).
+  cargo test --frozen --workspace
+}
+
+package_appseal-cli() {
+  pkgdesc="Command line tools and sandbox runner for Appseal"
+  depends=(bubblewrap glibc gcc-libs libarchive)
+  optdepends=(
+    'xdg-dbus-proxy: filtered session D-Bus for sandboxed apps (recommended)'
+    'bubblejail: optional backend with better D-Bus filtering'
+    'firejail: optional compatibility backend (disabled by default)'
+    'squashfs-tools: additional SquashFS extractor'
+    'strace: dynamic diagnosis of missing resources'
+    'libnotify: launch error notifications'
+  )
+  cd "$(_srcroot)"
+  install -Dm755 "$srcdir/target/release/appseal"     "$pkgdir/usr/bin/appseal"
+  install -Dm755 "$srcdir/target/release/appseal-run" "$pkgdir/usr/bin/appseal-run"
+  install -Dm644 README.md          "$pkgdir/usr/share/doc/appseal/README.md"
+  install -Dm644 docs/security.md   "$pkgdir/usr/share/doc/appseal/security.md"
+  install -Dm644 docs/profiles.md   "$pkgdir/usr/share/doc/appseal/profiles.md"
+}
+
+package_appseal() {
+  pkgdesc="Flatseal-style permission manager for AppImages (Qt/Kirigami GUI)"
+  depends=(appseal-cli qt6-base qt6-declarative kirigami kirigami-addons kcolorscheme kconfig qqc2-desktop-style hicolor-icon-theme)
+  cd "$(_srcroot)"
+  install -Dm755 "$srcdir/gui-build/appseal-gui" "$pkgdir/usr/bin/appseal-gui"
+  install -Dm644 data/org.appseal.Appseal.desktop      "$pkgdir/usr/share/applications/org.appseal.Appseal.desktop"
+  install -Dm644 data/org.appseal.Appseal.metainfo.xml "$pkgdir/usr/share/metainfo/org.appseal.Appseal.metainfo.xml"
+  install -Dm644 data/org.appseal.Appseal.svg          "$pkgdir/usr/share/icons/hicolor/scalable/apps/org.appseal.Appseal.svg"
+}
