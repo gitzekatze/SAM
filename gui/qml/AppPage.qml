@@ -109,17 +109,17 @@ Kirigami.ScrollablePage {
             onTriggered: page.simple(["profile", "reset", page.appId], null, qsTr("Profile reset"))
         },
         Kirigami.Action {
-            text: qsTr("Remove…")
+            text: qsTr("Remove sandbox…")
             icon.name: "edit-delete"
             displayHint: Kirigami.DisplayHint.AlwaysHide
-            onTriggered: win.confirmDialog.ask(qsTr("Remove %1?").arg(page.title),
-                qsTr("The extracted copy, launcher, logs and the app's private settings are deleted. The AppImage file itself is kept."),
+            onTriggered: win.confirmDialog.ask(qsTr("Remove the sandbox for %1?").arg(page.title),
+                qsTr("The extracted copy, SAM's menu entry, logs and the app's private settings are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again. %1 moves back to “Not sandboxed”.").arg(page.title),
                 () => Backend.call(["remove", page.appId], function (r) {
                     if (!r.ok) { win.reportError(r); return }
-                    win.notify(qsTr("Removed %1").arg(page.title))
+                    win.notify(qsTr("Removed the sandbox for %1").arg(page.title))
                     win.refreshApps()
                     win.showSection("apps")
-                }), qsTr("Remove"))
+                }), qsTr("Remove sandbox"))
         }
     ]
 

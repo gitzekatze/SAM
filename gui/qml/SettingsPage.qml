@@ -31,6 +31,9 @@ FormCard.FormCardPage {
             load()
             // Keep the window (theme, simple/advanced mode) in sync.
             applicationWindow().loadConfig()
+            // Scan folders changed: rebuild the overview.
+            if (key.indexOf("general.scan") === 0)
+                applicationWindow().refreshApps()
         })
     }
 
@@ -102,7 +105,10 @@ FormCard.FormCardPage {
 
     FormCard.FormHeader { title: qsTr("Finding AppImages") }
     FormCard.FormCard {
-        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.automatic_scanning"; text: qsTr("Scan automatically on start"); description: qsTr("Look for new AppImages in the folders below when SAM opens.") }
+        FormCard.FormTextDelegate {
+            text: qsTr("The overview lists AppImages from these folders (two levels deep) and from existing menu entries. Nothing is unpacked or run until you create a sandbox.")
+            textItem.wrapMode: Text.WordWrap
+        }
         Repeater {
             model: page.cfg ? page.cfg.general.scan_directories : []
             delegate: FormCard.FormTextDelegate {
@@ -125,7 +131,8 @@ FormCard.FormCardPage {
             icon.name: "list-add"
             onClicked: folderDialog.open()
         }
-        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.desktop_integration"; text: qsTr("Create menu launchers"); description: qsTr("Registered apps appear in your application menu and always start through SAM.") }
+        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.scan_downloads"; text: qsTr("Include the Downloads folder"); description: qsTr("Off by default: Downloads often holds old copies and installers you don't want listed.") }
+        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.desktop_integration"; text: qsTr("Create menu launchers"); description: qsTr("Sandboxed apps appear in your application menu and always start through SAM.") }
     }
 
     FormCard.FormHeader { title: qsTr("Sandbox") }
@@ -184,7 +191,7 @@ FormCard.FormCardPage {
 
     FormCard.FormHeader { title: qsTr("Dependency detection") }
     FormCard.FormCard {
-        ConfigSwitch { cfg: page.cfg; owner: page; key: "dependencies.static_analysis"; text: qsTr("Analyze AppImages when adding them"); description: qsTr("Inspects the bundled programs and libraries without running them.") }
+        ConfigSwitch { cfg: page.cfg; owner: page; key: "dependencies.static_analysis"; text: qsTr("Analyze AppImages when creating a sandbox"); description: qsTr("Inspects the bundled programs and libraries without running them.") }
         ConfigSwitch { cfg: page.cfg; owner: page; key: "dependencies.dynamic_fallback"; text: qsTr("Allow diagnostic runs"); description: qsTr("Run an app once under strace to find missing resources (Advanced → Diagnose).") ; visible: (page.cfg !== null && page.cfg.general.ui_mode === "advanced") }
         ConfigSwitch { cfg: page.cfg; owner: page; key: "dependencies.automatic_low_risk_fixes"; text: qsTr("Apply low-risk fixes automatically"); description: qsTr("Read-only system data such as fonts or themes found during a diagnostic run is granted without asking.") }
     }

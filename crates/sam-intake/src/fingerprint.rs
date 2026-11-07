@@ -21,6 +21,11 @@ pub fn quick(path: &Path) -> Result<Fingerprint> {
     })
 }
 
+/// Short stable hex id for file names (first 16 hex digits of SHA-256).
+pub fn short_hash(data: &[u8]) -> String {
+    Sha256::digest(data).iter().take(8).map(|b| format!("{b:02x}")).collect()
+}
+
 pub fn sha256_file(path: &Path) -> Result<String> {
     let mut r = BufReader::with_capacity(1 << 20, File::open(path)?);
     let mut h = Sha256::new();

@@ -324,6 +324,23 @@ pub struct AppEntry {
     pub last_launch: Option<LaunchRecord>,
     pub desktop_entry: Option<PathBuf>,
     pub last_error: Option<String>,
+    /// Unsandboxed menu entries for this AppImage (made by AppImageLauncher,
+    /// Gear Lever, ...) that SAM hid when the sandbox was created.
+    pub hidden_entries: Vec<HiddenEntry>,
+}
+
+/// A foreign menu entry SAM hid, with what is needed to restore it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct HiddenEntry {
+    /// The original desktop file.
+    pub original: PathBuf,
+    /// The file SAM wrote: the original itself (user-level entries) or an
+    /// override with the same name in the user's applications folder.
+    pub modified: PathBuf,
+    pub created_override: bool,
+    /// `NoDisplay=` value before SAM changed it, if there was one.
+    pub previous_nodisplay: Option<String>,
 }
 
 impl AppEntry {

@@ -26,7 +26,7 @@ Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu
 For each category (browser, media player, image editor, game, text editor,
 Electron app, Qt app, GTK app):
 
-- [ ] `sam-jail add <file>` succeeds, and the category and recommendation make sense.
+- [ ] `sam-jail sandbox <file>` succeeds, and the category and recommendation make sense.
 - [ ] `sam-jail run <id>` opens a window on Wayland.
 - [ ] Rendering is GPU-accelerated when GPU is on (e.g. `chrome://gpu`,
       `glxinfo` inside a terminal app).
@@ -63,8 +63,8 @@ Electron app, Qt app, GTK app):
       as stale and the GUI shows the *Stale* badge.
 - [ ] Re-extract. A customized profile is kept, and new needs are listed under
       "Update needs new permissions".
-- [ ] Move the AppImage. `sam-jail scan` reports it as a moved copy;
-      `sam-jail scan --add` or *Locate…* fixes the path.
+- [ ] Move the AppImage. The overview shows it as a moved copy;
+      *Reconnect* or *Locate…* fixes the path.
 
 ## 7. Optional backends
 
@@ -81,7 +81,14 @@ Electron app, Qt app, GTK app):
 
 ## 9. GUI
 
-- [ ] Drag an AppImage into the window to add it.
+- [ ] The overview lists AppImages from the scan folders under *Not sandboxed*,
+      with names and icons, before anything is unpacked.
+- [ ] Downloads is only listed after *Settings → Include the Downloads folder*.
+- [ ] *Create sandbox* on an app with an AppImageLauncher/Gear Lever menu entry
+      asks to hide it. *Hide it* removes it from the KDE menu; *Remove sandbox*
+      brings it back unchanged.
+- [ ] No SAM menu entry exists for apps that are not sandboxed.
+- [ ] Drag an AppImage into the window to sandbox it.
 - [ ] The onboarding appears on first start and can be skipped.
 - [ ] Switching between Simple and Advanced mode shows or hides the
       advanced permissions, backend selection and the generated command.

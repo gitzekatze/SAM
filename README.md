@@ -1,9 +1,10 @@
-# SAM
+# SAM – Sandboxed AppImage Manager
 
 Flatseal-style permission manager and sandbox launcher for AppImages.
 Built in Rust and Qt6/Kirigami. Targets CachyOS first and works on other Linux distributions too.
 
-SAM unpacks an AppImage **without running it** and inspects its binaries
+SAM lists the AppImages on your computer, sandboxed or not. When you create a
+sandbox for one, SAM unpacks it **without running it** and inspects its binaries
 and libraries. It recommends a safe permission profile and then launches the
 app inside a **Bubblewrap** sandbox. Every permission comes with a
 plain-language explanation and a risk level, and risky choices show a warning.
@@ -14,6 +15,14 @@ plain-language explanation and a risk level, and risky choices show a warning.
 
 ## Features
 
+- **Overview:** AppImages in `~/Applications`, `~/AppImages`, `~/.local/bin`,
+  `~/bin` and your own folders (Downloads is opt-in), plus AppImages that
+  existing menu entries start. Names and icons are read straight from the
+  SquashFS image; nothing is unpacked or run until you create a sandbox.
+- **Sandbox on demand:** only *Create sandbox* unpacks the app, builds its
+  profile and adds a SAM menu entry. If AppImageLauncher, Gear Lever or similar
+  already made an unsandboxed menu entry, SAM offers to hide it, and puts it
+  back when the sandbox is removed.
 - **Intake:** Type 1 and Type 2 AppImages. Type 2 payloads (gzip, xz or zstd)
   are unpacked by a built-in SquashFS reader. Extraction strips setuid bits,
   removes symlinks that point outside the payload, and enforces size, file-count
@@ -69,13 +78,15 @@ own. You can also point it at a binary with `SAM_CLI` / `SAM_RUN`.
 ## Quick start
 
 ```sh
-sam-jail add ~/Applications/Krita-5.2.6-x86_64.AppImage
+sam-jail discover                        # AppImages found, sandboxed or not
+sam-jail sandbox ~/Applications/Krita-5.2.6-x86_64.AppImage --hide-duplicates
 sam-jail info krita                      # profile, warnings, dependencies
 sam-jail set krita network.mode none     # change one permission
 sam-jail preset apply "Image Editor" krita
 sam-jail review krita                    # accept the profile
 sam-jail run krita                       # or use the menu launcher
 sam-jail doctor                          # check the system
+sam-jail remove krita                    # remove the sandbox (the AppImage stays)
 ```
 
 Run `sam-jail --help` to see every command. Each command also accepts `--json`.

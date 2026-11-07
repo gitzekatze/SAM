@@ -14,4 +14,6 @@ pub mod fingerprint;
 pub mod id;
 pub mod metadata;
 pub mod normalize;
+pub mod menu;
+pub mod peek;
 pub mod testkit;

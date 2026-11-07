@@ -82,12 +82,17 @@ pub fn find_desktop_file(appdir: &Path) -> Option<PathBuf> {
 }
 
 pub fn read_metadata(appdir: &Path) -> Result<AppImageMetadata> {
-    let mut md = AppImageMetadata::default();
-    let Some(rel) = find_desktop_file(appdir) else { return Ok(md) };
-    let Some(path) = safe_resolve(appdir, &rel) else { return Ok(md) };
+    let Some(rel) = find_desktop_file(appdir) else { return Ok(AppImageMetadata::default()) };
+    let Some(path) = safe_resolve(appdir, &rel) else { return Ok(AppImageMetadata::default()) };
     let text = String::from_utf8_lossy(&fs::read(&path)?.into_iter().take(256 * 1024).collect::<Vec<u8>>()).into_owned();
-    let m = parse_desktop(&text);
-    md.desktop_file = Some(rel.display().to_string());
+    Ok(metadata_from_desktop(&text, &rel.display().to_string()))
+}
+
+/// Metadata from the text of an AppImage's top-level desktop file.
+pub fn metadata_from_desktop(text: &str, rel: &str) -> AppImageMetadata {
+    let mut md = AppImageMetadata::default();
+    let m = parse_desktop(text);
+    md.desktop_file = Some(rel.to_string());
     md.name = m.get("Name").cloned().unwrap_or_default();
     md.comment = m.get("Comment").or_else(|| m.get("GenericName")).cloned().unwrap_or_default();
     md.icon_name = m.get("Icon").cloned().unwrap_or_default();
@@ -97,7 +102,7 @@ pub fn read_metadata(appdir: &Path) -> Result<AppImageMetadata> {
     md.version = m.get("X-AppImage-Version").cloned().unwrap_or_default();
     md.terminal = m.get("Terminal").is_some_and(|v| v.eq_ignore_ascii_case("true"));
     md.startup_wm_class = m.get("StartupWMClass").cloned().unwrap_or_default();
-    Ok(md)
+    md
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,8 +136,8 @@ pub fn sniff_icon(data: &[u8]) -> Option<IconFormat> {
     None
 }
 
-/// Find the best icon inside the AppDir.
-pub fn find_icon(appdir: &Path, icon_name: &str) -> Option<(PathBuf, IconFormat)> {
+/// Where an AppDir may keep the icon named in its desktop file, best first.
+pub fn icon_candidates(icon_name: &str) -> Vec<PathBuf> {
     let mut cands: Vec<PathBuf> = Vec::new();
     let name = Path::new(icon_name).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     if !name.is_empty() {
@@ -150,7 +155,12 @@ pub fn find_icon(appdir: &Path, icon_name: &str) -> Option<(PathBuf, IconFormat)
         }
     }
     cands.push(PathBuf::from(".DirIcon"));
-    for rel in cands {
+    cands
+}
+
+/// Find the best icon inside the AppDir.
+pub fn find_icon(appdir: &Path, icon_name: &str) -> Option<(PathBuf, IconFormat)> {
+    for rel in icon_candidates(icon_name) {
         let Some(p) = safe_resolve(appdir, &rel) else { continue };
         let Ok(meta) = fs::metadata(&p) else { continue };
         if !meta.is_file() || meta.len() == 0 || meta.len() > 10 * 1024 * 1024 {

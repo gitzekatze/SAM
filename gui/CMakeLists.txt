@@ -43,7 +43,6 @@ qt_add_qml_module(sam-jail-gui
         qml/StatusBadge.qml
         qml/RiskChip.qml
         qml/WarningList.qml
-        qml/ScanDialog.qml
         qml/PresetPickerDialog.qml
         qml/TextInputDialog.qml
         qml/ConfirmDialog.qml

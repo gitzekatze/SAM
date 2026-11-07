@@ -13,7 +13,7 @@ use sam_detect::{analyze_appdir, inspect, looks_like_appimage, AnalyzeOptions};
 use sam_intake::extract::{extract, ExtractRequest, NeedsFallbackConsent};
 use sam_intake::fingerprint::{self, SourceStatus};
 use sam_intake::normalize::Limits;
-use sam_intake::{desktop, id, metadata};
+use sam_intake::{desktop, id, menu, metadata, peek};
 use sam_profile::{check_preset, compatibility_profile, find_preset, recommend, PresetCheck};
 use sam_storage::{LogKind, Logs, PresetStore, Registry};
 use serde::Serialize;
@@ -32,6 +32,51 @@ pub struct AddOptions {
     pub preset: Option<String>,
     /// Mark the recommended profile as reviewed.
     pub accept: bool,
+    /// Hide other (unsandboxed) menu entries that start this AppImage.
+    pub hide_duplicates: bool,
+}
+
+/// An AppImage found on disk, sandboxed or not (the overview).
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscoveredApp {
+    pub path: PathBuf,
+    pub size: u64,
+    pub name: String,
+    pub comment: String,
+    pub version: String,
+    pub categories: Vec<String>,
+    pub category: String,
+    pub category_label: String,
+    /// Icon extracted for the preview (`<data>/previews/`).
+    pub icon: Option<PathBuf>,
+    /// Registered app id when this file already has a sandbox.
+    pub sandboxed: Option<String>,
+    /// A sandboxed app whose file went missing and has this file's checksum.
+    pub moved_from: Option<String>,
+    /// Unsandboxed menu entries that start this file directly (still visible).
+    pub menu_entries: Vec<MenuEntryInfo>,
+    /// Found through a menu entry rather than a scanned folder.
+    pub from_menu: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MenuEntryInfo {
+    pub file: PathBuf,
+    pub name: String,
+    /// System-wide entry: SAM hides it with a user-level override.
+    pub system: bool,
+}
+
+/// Cached preview of one AppImage, keyed by path, size and mtime.
+#[derive(Debug, Clone, Default, Serialize, serde::Deserialize)]
+#[serde(default)]
+struct Preview {
+    key: String,
+    name: String,
+    comment: String,
+    version: String,
+    categories: Vec<String>,
+    icon: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -208,6 +253,9 @@ impl Sam {
                 Ok(p) => entry.desktop_entry = Some(p),
                 Err(e) => entry.last_error = Some(format!("launcher: {e:#}")),
             }
+        }
+        if opts.hide_duplicates && entry.desktop_entry.is_some() {
+            self.hide_menu_entries(&mut entry);
         }
         reg.save(&mut entry)?;
         let warnings = self.app_warnings(&entry, &self.host());
@@ -454,6 +502,11 @@ impl Sam {
     pub fn remove(&self, query: &str, keep_data: bool) -> Result<AppEntry> {
         let entry = self.resolve(query)?;
         desktop::remove_launcher(&self.paths, &entry.id)?;
+        for h in &entry.hidden_entries {
+            if let Err(e) = menu::restore(h, &entry.id) {
+                eprintln!("sam-jail: could not restore menu entry {}: {e:#}", h.original.display());
+            }
+        }
         if let Some(x) = &entry.extraction {
             if x.root.starts_with(self.extracted_root()) && x.root.exists() {
                 fs::remove_dir_all(&x.root)?;
@@ -649,8 +702,128 @@ impl Sam {
         w
     }
 
+    // ---------------------------------------------------------- overview
+
+    /// Folders the overview searches: configured ones, plus Downloads when
+    /// `general.scan_downloads` is on.
+    pub fn default_scan_dirs(&self) -> Vec<PathBuf> {
+        let downloads = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads").cloned();
+        self.config.scan_dirs(downloads.as_deref())
+    }
+
+    /// Every AppImage in the scanned folders or started by a menu entry,
+    /// with name and icon read without unpacking. Nothing is executed.
+    pub fn discover(&self) -> Result<Vec<DiscoveredApp>> {
+        let scanned = self.scan(None)?;
+        let foreign = menu::foreign_entries(&self.paths.applications_dir);
+        let mut paths: Vec<(PathBuf, bool)> = scanned.iter().map(|s| (s.path.clone(), false)).collect();
+        for f in &foreign {
+            if f.appimage.is_file() && !paths.iter().any(|(p, _)| p == &f.appimage) {
+                paths.push((f.appimage.clone(), true));
+            }
+        }
+        let apps = self.registry().list()?;
+        let previews_dir = self.paths.data_dir.join("previews");
+        let mut out = Vec::new();
+        for (path, from_menu) in paths {
+            let meta = fs::metadata(&path).ok();
+            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let p = self.preview(&path, meta.as_ref(), &previews_dir);
+            let md = AppImageMetadata { name: p.name.clone(), comment: p.comment.clone(), categories: p.categories.clone(), ..Default::default() };
+            let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let category = sam_profile::infer_category(&md, &file_name, None);
+            let scan = scanned.iter().find(|s| s.path == path);
+            let menu_entries = foreign
+                .iter()
+                .filter(|f| f.appimage == path && f.hidden_by.is_none() && !f.hidden_elsewhere)
+                .map(|f| MenuEntryInfo { file: f.file.clone(), name: f.name.clone(), system: !f.file.starts_with(&self.paths.applications_dir) })
+                .collect();
+            out.push(DiscoveredApp {
+                name: if p.name.is_empty() { id::slug_from_filename(&path) } else { p.name },
+                comment: p.comment,
+                version: p.version,
+                categories: p.categories,
+                category: category.as_str().to_string(),
+                category_label: category.label().to_string(),
+                icon: p.icon,
+                sandboxed: apps.iter().find(|a| a.source_path == path).map(|a| a.id.clone()),
+                moved_from: scan.and_then(|s| s.moved_from.clone()),
+                menu_entries,
+                from_menu,
+                size,
+                path,
+            });
+        }
+        out.sort_by_key(|d| d.name.to_lowercase());
+        Ok(out)
+    }
+
+    fn preview(&self, path: &Path, meta: Option<&fs::Metadata>, dir: &Path) -> Preview {
+        let mtime = meta.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+        let key = format!("{}|{}|{mtime}", path.display(), meta.map(|m| m.len()).unwrap_or(0));
+        let stem = fingerprint::short_hash(path.to_string_lossy().as_bytes());
+        let cache = dir.join(format!("{stem}.json"));
+        if let Some(p) = fs::read(&cache).ok().and_then(|b| serde_json::from_slice::<Preview>(&b).ok()) {
+            if p.key == key {
+                return p;
+            }
+        }
+        let mut p = Preview { key, ..Default::default() };
+        if let Ok(pk) = peek::peek(path) {
+            p.name = pk.metadata.name;
+            p.comment = pk.metadata.comment;
+            p.version = pk.metadata.version;
+            p.categories = pk.metadata.categories;
+            if let Some((data, fmt)) = pk.icon {
+                let icon = dir.join(format!("{stem}.{}", fmt.ext()));
+                if fs::create_dir_all(dir).is_ok() && sam_core::util::atomic_write(&icon, &data).is_ok() {
+                    p.icon = Some(icon);
+                }
+            }
+        }
+        if fs::create_dir_all(dir).is_ok() {
+            let _ = sam_core::util::atomic_write(&cache, &serde_json::to_vec(&p).unwrap_or_default());
+        }
+        p
+    }
+
+    /// Unsandboxed menu entries that start this app's AppImage.
+    pub fn menu_duplicates(&self, entry: &AppEntry) -> Vec<menu::ForeignEntry> {
+        menu::foreign_entries(&self.paths.applications_dir)
+            .into_iter()
+            .filter(|f| f.appimage == entry.source_path && f.hidden_by.is_none() && !f.hidden_elsewhere)
+            .collect()
+    }
+
+    fn hide_menu_entries(&self, entry: &mut AppEntry) {
+        for f in self.menu_duplicates(entry) {
+            match menu::hide(&f.file, &self.paths.applications_dir, &entry.id) {
+                Ok(h) => entry.hidden_entries.push(h),
+                Err(e) => eprintln!("sam-jail: could not hide menu entry {}: {e:#}", f.file.display()),
+            }
+        }
+    }
+
+    /// Hide this app's unsandboxed duplicate menu entries now.
+    pub fn hide_duplicates(&self, query: &str) -> Result<AppEntry> {
+        let mut e = self.resolve(query)?;
+        self.hide_menu_entries(&mut e);
+        self.registry().save(&mut e)?;
+        Ok(e)
+    }
+
+    /// Put back the menu entries SAM hid for this app.
+    pub fn restore_menu_entries(&self, query: &str) -> Result<AppEntry> {
+        let mut e = self.resolve(query)?;
+        for h in std::mem::take(&mut e.hidden_entries) {
+            menu::restore(&h, &e.id)?;
+        }
+        self.registry().save(&mut e)?;
+        Ok(e)
+    }
+
     pub fn scan(&self, dirs: Option<Vec<PathBuf>>) -> Result<Vec<ScanItem>> {
-        let dirs = dirs.unwrap_or_else(|| self.config.scan_dirs());
+        let dirs = dirs.unwrap_or_else(|| self.default_scan_dirs());
         let apps = self.registry().list()?;
         let mut out: Vec<ScanItem> = Vec::new();
         fn walk(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {

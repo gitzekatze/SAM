@@ -27,6 +27,16 @@ struct Cli {
     cmd: Cmd,
 }
 
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum MenuAction {
+    /// List unsandboxed menu entries that start this app's AppImage.
+    List,
+    /// Hide them (SAM's sandboxed launcher stays).
+    Hide,
+    /// Put back the entries SAM hid.
+    Restore,
+}
+
 #[derive(Subcommand)]
 enum Cmd {
     /// Find AppImages in the scan directories.
@@ -37,7 +47,11 @@ enum Cmd {
         /// Directories to scan (default: configured scan directories).
         dirs: Vec<PathBuf>,
     },
-    /// Register, extract and profile an AppImage.
+    /// List AppImages in the scan folders and menu, sandboxed or not.
+    /// Reads names and icons without unpacking or running anything.
+    Discover,
+    /// Create a sandbox for an AppImage: extract, profile, add a menu entry.
+    #[command(visible_alias = "sandbox")]
     Add {
         path: PathBuf,
         /// Allow the AppImage's own --appimage-extract (sandboxed) if static extraction fails.
@@ -52,6 +66,15 @@ enum Cmd {
         /// Accept the recommended profile (skip "Needs Review").
         #[arg(long)]
         accept: bool,
+        /// Hide other menu entries that start this AppImage without a sandbox.
+        #[arg(long)]
+        hide_duplicates: bool,
+    },
+    /// Show, hide or restore unsandboxed menu entries for a sandboxed app.
+    Menu {
+        #[arg(value_enum)]
+        action: MenuAction,
+        app: String,
     },
     /// List registered apps.
     List {
@@ -360,15 +383,56 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Add { path, allow_fallback, no_launcher, preset, accept } => {
-            let o = app.add(&path, &AddOptions { consent_fallback: allow_fallback, launcher: no_launcher.then_some(false), preset, accept })?;
+        Cmd::Discover => {
+            let found = app.discover()?;
+            out.emit(&json!({"apps": found}), || {
+                if found.is_empty() {
+                    println!("No AppImages found in: {}", app.default_scan_dirs().iter().map(|d| tildify(d)).collect::<Vec<_>>().join(", "));
+                }
+                for d in &found {
+                    let st = match (&d.sandboxed, &d.moved_from) {
+                        (Some(id), _) => paint(&format!("sandboxed ({id})"), "32"),
+                        (None, Some(id)) => paint(&format!("moved copy of {id}"), "33"),
+                        _ => paint("not sandboxed", "36"),
+                    };
+                    println!("{:<28} {:<14} {}  {}", d.name, d.category_label, st, tildify(&d.path));
+                    for m in &d.menu_entries {
+                        println!("    unsandboxed menu entry: {}", tildify(&m.file));
+                    }
+                }
+            });
+        }
+        Cmd::Menu { action, app: query } => {
+            let e = match action {
+                MenuAction::List => app.resolve(&query)?,
+                MenuAction::Hide => app.hide_duplicates(&query)?,
+                MenuAction::Restore => app.restore_menu_entries(&query)?,
+            };
+            let dups: Vec<_> = app.menu_duplicates(&e).into_iter().map(|f| json!({"file": f.file, "name": f.name})).collect();
+            out.emit(&json!({"visible": dups, "hidden": e.hidden_entries}), || {
+                for d in &dups {
+                    println!("visible  {}", d["file"].as_str().unwrap_or_default());
+                }
+                for h in &e.hidden_entries {
+                    println!("hidden   {}", tildify(&h.original));
+                }
+                if dups.is_empty() && e.hidden_entries.is_empty() {
+                    println!("No other menu entries start {}.", e.display_name());
+                }
+            });
+        }
+        Cmd::Add { path, allow_fallback, no_launcher, preset, accept, hide_duplicates } => {
+            let o = app.add(&path, &AddOptions { consent_fallback: allow_fallback, launcher: no_launcher.then_some(false), preset, accept, hide_duplicates })?;
             let summary = AppSummary::from_entry(&o.entry);
             out.emit(&json!({"app": summary, "entry": o.entry, "relocated": o.relocated, "needs_fallback_consent": o.needs_fallback_consent, "warnings": o.warnings}), || {
                 if o.relocated {
                     println!("{} was already registered; updated its location.", o.entry.display_name());
                     return;
                 }
-                println!("Added {} as {} [{}]", o.entry.display_name(), o.entry.id, badge_str(summary.badge));
+                println!("Sandboxed {} as {} [{}]", o.entry.display_name(), o.entry.id, badge_str(summary.badge));
+                for h in &o.entry.hidden_entries {
+                    println!("  hid unsandboxed menu entry {}", tildify(&h.original));
+                }
                 if let Some(x) = &o.entry.extraction {
                     println!("  extracted {} files ({}) via {}", x.file_count, human_size(x.total_size), x.method);
                 }

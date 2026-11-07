@@ -13,11 +13,11 @@ Kirigami.Dialog {
 
     readonly property var steps: [
         { icon: "qrc:/qt/qml/SAM/icons/sam.svg", title: qsTr("Welcome to SAM"),
-          text: qsTr("SAM runs your AppImages inside a sandbox and lets you decide what each one may access, like Flatseal does for Flatpak.") },
+          text: qsTr("SAM lists the AppImages on your computer and lets you put each one in a sandbox, then decide what it may access, like Flatseal does for Flatpak. Only sandboxed apps get a SAM menu entry.") },
         { icon: "security-high", title: qsTr("What sandboxing means"),
           text: qsTr("A sandboxed app only sees what you allow: it gets its own private settings folder instead of your home directory, and cannot reach your other files, the network or devices unless you grant them.") },
         { icon: "preferences-system-privacy", title: qsTr("Permissions"),
-          text: qsTr("When you add an AppImage, SAM looks at it without running it and suggests safe permissions: a browser gets the network and Downloads, an image editor gets Pictures. Every toggle explains what it allows and how risky it is.") },
+          text: qsTr("When you create a sandbox, SAM looks at it without running it and suggests safe permissions: a browser gets the network and Downloads, an image editor gets Pictures. Every toggle explains what it allows and how risky it is.") },
         { icon: "tools-wizard", title: qsTr("Compatibility mode"),
           text: qsTr("Some AppImages need more access to work. If an app breaks, SAM's repair options can grant broader access, always with a clear warning about what you give up.") },
         { icon: "video-display", title: qsTr("Wayland is safer than X11"),

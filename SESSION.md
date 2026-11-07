@@ -265,3 +265,25 @@ Contrast, CachyOS Neon) were checked through screenshots.
 - Package install.
 - The filtered bus also exposes `org.freedesktop.portal.Flatpak` (through
   the `portal.*` wildcard). Consider listing portals explicitly.
+
+## 10. Session 3 (2026-11-07): renamed to SAM, Flatseal-style overview
+
+- **Renamed** Appseal to SAM (Sandboxed AppImage Manager).
+  - App ID `io.github.gitzekatze.SAM`.
+  - Commands `sam-jail`, `sam-jail-run` and `sam-jail-gui`; crates `sam-*`.
+  - Data in `~/.config/sam` and `~/.local/share/sam`; env vars `SAM_*`.
+  - Repo: github.com/gitzekatze/SAM (private).
+- **Overview** (`sam-jail discover`, the GUI's Applications page):
+  - Lists AppImages from the scan folders (Downloads is opt-in via
+    `general.scan_downloads`) and from foreign menu entries.
+  - Name, comment, category and icon are read straight from the SquashFS
+    image (`sam-intake/src/peek.rs`). Results are cached in `<data>/previews`.
+- **Create sandbox** = `sam-jail sandbox <file>` (alias of `add`). Only this
+  creates a SAM menu entry.
+  - `--hide-duplicates` hides AppImageLauncher/Gear Lever entries
+    (`sam-intake/src/menu.rs`): user-level entries are edited in place
+    (`NoDisplay=true` + `X-SAM-HiddenBy`), system-level ones get a user
+    override.
+  - `remove` restores them exactly. `sam-jail menu list|hide|restore <app>`
+    does the same by hand.
+- The GUI's ScanDialog was removed; the overview replaces it.

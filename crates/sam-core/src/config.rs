@@ -35,7 +35,10 @@ pub const THEMES: [&str; 4] = ["breeze-light", "breeze-dark", "breeze-high-contr
 pub struct General {
     pub theme: String,
     pub default_backend: BackendChoice,
+    /// Folders the overview searches for AppImages (two levels deep).
     pub scan_directories: Vec<String>,
+    /// Also search the Downloads folder (opt-in: it often holds old copies).
+    pub scan_downloads: bool,
     pub automatic_scanning: bool,
     pub desktop_integration: bool,
     pub ui_mode: UiMode,
@@ -46,7 +49,8 @@ impl Default for General {
         General {
             theme: "breeze-dark".into(),
             default_backend: BackendChoice::Bubblewrap,
-            scan_directories: vec!["~/Applications".into(), "~/.local/bin".into(), "~/Downloads".into()],
+            scan_directories: vec!["~/Applications".into(), "~/AppImages".into(), "~/.local/bin".into(), "~/bin".into()],
+            scan_downloads: false,
             automatic_scanning: true,
             desktop_integration: true,
             ui_mode: UiMode::Simple,
@@ -185,8 +189,15 @@ impl Config {
         Ok(())
     }
 
-    pub fn scan_dirs(&self) -> Vec<PathBuf> {
-        self.general.scan_directories.iter().map(|d| expand_home(d)).collect()
+    /// Folders to search. `downloads` is the user's XDG download folder,
+    /// added only when `general.scan_downloads` is on.
+    pub fn scan_dirs(&self, downloads: Option<&std::path::Path>) -> Vec<PathBuf> {
+        let mut dirs: Vec<PathBuf> = self.general.scan_directories.iter().map(|d| expand_home(d)).collect();
+        if self.general.scan_downloads {
+            dirs.push(downloads.map(PathBuf::from).unwrap_or_else(|| expand_home("~/Downloads")));
+        }
+        dirs.dedup();
+        dirs
     }
 
     pub fn get_key(&self, key: &str) -> Result<serde_json::Value> {
@@ -273,6 +284,9 @@ cleanup_stale = true
         c.set_key("security.allow_firejail", "true").unwrap();
         c.set_key("general.scan_directories", "~/A, ~/B").unwrap();
         assert_eq!(c.general.scan_directories, vec!["~/A", "~/B"]);
+        assert!(!Config::default().scan_dirs(None).iter().any(|d| d.ends_with("Downloads")), "Downloads is opt-in");
+        c.set_key("general.scan_downloads", "true").unwrap();
+        assert!(c.scan_dirs(Some(std::path::Path::new("/x/Downloads"))).contains(&PathBuf::from("/x/Downloads")));
         assert!(c.set_key("general.theme", "pink").is_err());
         assert!(c.set_key("general.default_backend", "unsandboxed").is_err());
         assert!(c.set_key("nope.key", "1").is_err());

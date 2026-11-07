@@ -7,7 +7,8 @@ import org.kde.kirigami as Kirigami
 import SAM.Native
 import "Util.js" as Util
 
-/// Dashboard (whitepaper §2.21.2): app list with search, filters and badges.
+/// Overview: every AppImage SAM found, sandboxed or not (like Flatseal's
+/// app list). Sandboxed apps come first; the others offer "Create sandbox".
 Kirigami.ScrollablePage {
     id: page
     title: qsTr("Applications")
@@ -19,6 +20,8 @@ Kirigami.ScrollablePage {
     property string sortMode: "name"
     readonly property var win: QQC2.ApplicationWindow.window
     readonly property var allApps: win ? (win.apps || []) : []
+    /// Found AppImages without a sandbox (sandboxed ones are in allApps).
+    readonly property var unsandboxed: win ? (win.discovered || []).filter(d => !d.sandboxed) : []
 
     readonly property var filtered: {
         let list = page.allApps.slice()
@@ -37,20 +40,33 @@ Kirigami.ScrollablePage {
             list.sort((a, b) => b.added_at - a.added_at)
         else if (sortMode === "risk")
             list.sort((a, b) => b.risk.score - a.risk.score)
-        return list
+        return list.map(a => Object.assign({ group: "sandboxed" }, a))
     }
+    readonly property var filteredFound: {
+        // Status and risk only exist for sandboxed apps.
+        if (badgeFilter || riskFilter)
+            return []
+        let list = page.unsandboxed.slice()
+        const q = search.toLowerCase()
+        if (q)
+            list = list.filter(d => d.name.toLowerCase().indexOf(q) >= 0 || (d.comment || "").toLowerCase().indexOf(q) >= 0 || d.path.toLowerCase().indexOf(q) >= 0)
+        if (categoryFilter)
+            list = list.filter(d => d.category === categoryFilter)
+        return list.map(d => Object.assign({ group: "found" }, d))
+    }
+    readonly property var rows: page.filtered.concat(page.filteredFound)
     readonly property var attention: page.allApps.filter(a => a.badge !== "ready")
 
     actions: [
         Kirigami.Action {
-            text: qsTr("Add AppImage")
+            text: qsTr("Sandbox a file…")
             icon.name: "list-add"
             onTriggered: applicationWindow().addDialog.open()
         },
         Kirigami.Action {
-            text: qsTr("Scan")
-            icon.name: "edit-find"
-            onTriggered: applicationWindow().scanner.scan(false)
+            text: qsTr("Refresh")
+            icon.name: "view-refresh"
+            onTriggered: applicationWindow().refreshApps()
         },
         Kirigami.Action {
             text: qsTr("Check for changes")
@@ -67,7 +83,7 @@ Kirigami.ScrollablePage {
     ]
 
     header: QQC2.ToolBar {
-        visible: page.allApps.length > 0
+        visible: page.allApps.length + page.unsandboxed.length > 0
         contentItem: Flow {
             spacing: Kirigami.Units.smallSpacing
             Kirigami.SearchField {
@@ -124,8 +140,14 @@ Kirigami.ScrollablePage {
 
     ListView {
         id: list
-        model: page.filtered
+        model: page.rows
         spacing: Kirigami.Units.smallSpacing
+        section.property: "group"
+        section.delegate: Kirigami.ListSectionHeader {
+            required property string section
+            width: list.width - list.leftMargin - list.rightMargin
+            text: section === "sandboxed" ? qsTr("Sandboxed (%1)").arg(page.filtered.length) : qsTr("Not sandboxed (%1)").arg(page.filteredFound.length)
+        }
         topMargin: Kirigami.Units.largeSpacing
         bottomMargin: Kirigami.Units.largeSpacing
         leftMargin: Kirigami.Units.largeSpacing
@@ -150,10 +172,19 @@ Kirigami.ScrollablePage {
             }
         }
 
-        delegate: QQC2.ItemDelegate {
-            id: card
+        delegate: Loader {
             required property var modelData
             width: list.width - list.leftMargin - list.rightMargin
+            sourceComponent: modelData.group === "found" ? foundCard : appCard
+            onLoaded: item.modelData = Qt.binding(() => modelData)
+        }
+
+        Component {
+            id: appCard
+        QQC2.ItemDelegate {
+            id: card
+            property var modelData: ({})
+            width: parent ? parent.width : 0
             padding: Kirigami.Units.largeSpacing
             onClicked: applicationWindow().openApp(modelData.id)
 
@@ -219,16 +250,99 @@ Kirigami.ScrollablePage {
                 }
             }
         }
+        }
+
+        Component {
+            id: foundCard
+            QQC2.ItemDelegate {
+                id: fcard
+                property var modelData: ({ menu_entries: [] })
+                width: parent ? parent.width : 0
+                padding: Kirigami.Units.largeSpacing
+                hoverEnabled: false
+
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: Kirigami.Theme.backgroundColor
+                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.12)
+                    Kirigami.Theme.colorSet: Kirigami.Theme.View
+                    Kirigami.Theme.inherit: false
+                }
+
+                contentItem: RowLayout {
+                    spacing: Kirigami.Units.largeSpacing
+                    AppIcon {
+                        path: fcard.modelData.icon || ""
+                        Layout.preferredWidth: Kirigami.Units.iconSizes.large
+                        Layout.preferredHeight: Kirigami.Units.iconSizes.large
+                        opacity: 0.85
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Kirigami.Heading {
+                            level: 3
+                            text: fcard.modelData.name || ""
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            text: fcard.modelData.comment || fcard.modelData.category_label || ""
+                            elide: Text.ElideRight
+                            opacity: 0.75
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+                            Kirigami.Chip {
+                                text: fcard.modelData.moved_from ? qsTr("Moved copy of a sandboxed app") : qsTr("Not sandboxed")
+                                icon.name: fcard.modelData.moved_from ? "document-swap" : "security-low"
+                                closable: false
+                                checkable: false
+                            }
+                            Kirigami.Chip {
+                                visible: (fcard.modelData.menu_entries || []).length > 0
+                                text: qsTr("Unsandboxed menu entry")
+                                icon.name: "dialog-warning"
+                                closable: false
+                                checkable: false
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: qsTr("Starting it from the menu runs it without any sandbox.")
+                            }
+                            QQC2.Label {
+                                text: (fcard.modelData.category_label || "") + " · " + Util.tildify(fcard.modelData.path || "", page.win ? page.win.home : "")
+                                opacity: 0.6
+                                font.pointSize: Math.max(7, Qt.application.font.pointSize - 1)
+                                elide: Text.ElideMiddle
+                                width: Math.min(implicitWidth, fcard.width * 0.6)
+                            }
+                        }
+                    }
+                    QQC2.Button {
+                        text: fcard.modelData.moved_from ? qsTr("Reconnect") : qsTr("Create sandbox")
+                        icon.name: fcard.modelData.moved_from ? "document-swap" : "security-high"
+                        onClicked: applicationWindow().createSandbox(fcard.modelData.path)
+                        QQC2.ToolTip.visible: hovered
+                        QQC2.ToolTip.text: fcard.modelData.moved_from
+                            ? qsTr("Point the existing sandbox at this file")
+                            : qsTr("Unpack %1 (without running it), recommend permissions and add a sandboxed menu entry").arg(fcard.modelData.name)
+                    }
+                }
+            }
+        }
 
         Kirigami.PlaceholderMessage {
             anchors.centerIn: parent
             width: parent.width - Kirigami.Units.gridUnit * 4
+            readonly property bool anything: page.allApps.length + page.unsandboxed.length > 0
             visible: (page.win !== null && page.win.appsLoaded) && list.count === 0
-            icon.name: page.allApps.length ? "edit-find" : "application-x-executable"
-            text: page.allApps.length ? qsTr("No apps match your filters") : qsTr("No AppImages yet")
-            explanation: page.allApps.length ? "" : qsTr("Drag an AppImage into this window, add one from disk, or scan your folders. SAM unpacks it without running it and recommends safe permissions.")
+            icon.name: anything ? "edit-find" : "application-x-executable"
+            text: anything ? qsTr("No apps match your filters") : qsTr("No AppImages found")
+            explanation: anything ? "" : qsTr("SAM looks in %1. Add more folders (or the Downloads folder) in Settings, or drag an AppImage into this window.")
+                .arg(page.win && page.win.config ? page.win.config.general.scan_directories.join(", ") : "")
             helpfulAction: Kirigami.Action {
-                text: qsTr("Add AppImage…")
+                text: qsTr("Sandbox a file…")
                 icon.name: "list-add"
                 onTriggered: applicationWindow().addDialog.open()
             }

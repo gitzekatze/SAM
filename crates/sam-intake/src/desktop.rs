@@ -158,7 +158,7 @@ pub fn validate_launcher(path: &Path, id: &str) -> Vec<String> {
     problems
 }
 
-fn refresh_desktop_database(dir: &Path) {
+pub(crate) fn refresh_desktop_database(dir: &Path) {
     if let Some(udd) = which("update-desktop-database") {
         let _ = Command::new(udd).arg("-q").arg(dir).status();
     }

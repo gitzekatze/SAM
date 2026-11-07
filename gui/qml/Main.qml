@@ -22,6 +22,8 @@ Kirigami.ApplicationWindow {
     property var catalog: ({})
     property var apps: []
     property bool appsLoaded: false
+    /// Every AppImage found in the scan folders and menu (`sam-jail discover`).
+    property var discovered: []
     property string currentSection: "apps"
     readonly property bool advanced: config !== null && config.general.ui_mode === "advanced"
     readonly property string home: Backend.homeDir()
@@ -36,15 +38,35 @@ Kirigami.ApplicationWindow {
 
     function refreshApps(cb) {
         Backend.call(["list"], function (r) {
-            if (r.ok) {
+            if (r.ok)
                 root.apps = r.data
-                root.appsLoaded = true
-            } else {
+            else
                 reportError(r)
-            }
-            if (cb)
-                cb()
+            Backend.call(["discover"], function (d) {
+                if (d.ok)
+                    root.discovered = d.data.apps
+                root.appsLoaded = true
+                if (cb)
+                    cb()
+            })
         })
+    }
+
+    /// Create a sandbox for an AppImage file. If other, unsandboxed menu
+    /// entries start the same file, ask whether to hide them.
+    function createSandbox(path) {
+        const found = root.discovered.find(d => d.path === path)
+        const entries = found ? found.menu_entries : []
+        if (!entries.length) {
+            addAppImage(path, false, false)
+            return
+        }
+        const name = found.name
+        confirm.ask(qsTr("Hide the unsandboxed menu entry?"),
+            qsTr("%1 already has a menu entry that starts it without a sandbox (%2). If you keep it, the menu shows %1 twice and one of them is unprotected.\n\nSAM can hide that entry and puts it back if you remove the sandbox later.")
+                .arg(name).arg(entries.map(e => e.name || e.file.split("/").pop()).join(", ")),
+            function () { addAppImage(path, false, true) }, qsTr("Hide it"),
+            qsTr("Keep both"), function () { addAppImage(path, false, false) })
     }
 
     function loadConfig(cb) {
@@ -68,11 +90,13 @@ Kirigami.ApplicationWindow {
         })
     }
 
-    function addAppImage(path, consent) {
+    function addAppImage(path, consent, hideDuplicates) {
         const args = ["add", path]
         if (consent)
             args.push("--allow-fallback")
-        notify(qsTr("Adding %1…").arg(path.split("/").pop()))
+        if (hideDuplicates)
+            args.push("--hide-duplicates")
+        notify(qsTr("Creating a sandbox for %1…").arg(path.split("/").pop()))
         Backend.call(args, function (r) {
             if (!r.ok) {
                 reportError(r)
@@ -90,7 +114,7 @@ Kirigami.ApplicationWindow {
                 notify(qsTr("%1 was already known; its new location was saved.").arg(e.name))
                 return
             }
-            notify(qsTr("Added %1. Review its permissions.").arg(e.name))
+            notify(qsTr("Sandbox created for %1. Review its permissions.").arg(e.name))
             openApp(e.id)
         })
     }
@@ -192,13 +216,11 @@ Kirigami.ApplicationWindow {
                 else if (page === "onboarding")
                     onboarding.open()
                 for (const f of Backend.startupFiles)
-                    root.addAppImage(f, false)
+                    root.createSandbox(f)
                 Backend.call(["onboarding"], function (r) {
                     if (r.ok && !r.data.done && page === "")
                         onboarding.open()
                 })
-                if (root.config && root.config.general.automatic_scanning && page === "")
-                    scanDialog.scan(true)
             })
         })
     }
@@ -262,14 +284,14 @@ Kirigami.ApplicationWindow {
             },
             Kirigami.Action { separator: true },
             Kirigami.Action {
-                text: qsTr("Add AppImage…")
+                text: qsTr("Sandbox a file…")
                 icon.name: "list-add"
                 onTriggered: fileDialog.open()
             },
             Kirigami.Action {
-                text: qsTr("Scan folders")
-                icon.name: "edit-find"
-                onTriggered: scanDialog.scan(false)
+                text: qsTr("Refresh list")
+                icon.name: "view-refresh"
+                onTriggered: root.refreshApps()
             },
             Kirigami.Action {
                 text: qsTr("Welcome tour")
@@ -302,14 +324,10 @@ Kirigami.ApplicationWindow {
     // -------------------------------------------------------- dialogs
     Dialogs.FileDialog {
         id: fileDialog
-        title: qsTr("Add AppImage")
+        title: qsTr("Sandbox an AppImage")
         nameFilters: [qsTr("AppImages (*.AppImage *.appimage)"), qsTr("All files (*)")]
         currentFolder: Backend.pathToUrl(root.home)
-        onAccepted: root.addAppImage(Backend.urlToPath(selectedFile), false)
-    }
-
-    ScanDialog {
-        id: scanDialog
+        onAccepted: root.createSandbox(Backend.urlToPath(selectedFile))
     }
 
     OnboardingDialog {
@@ -328,7 +346,6 @@ Kirigami.ApplicationWindow {
     property alias confirmDialog: confirm
     property alias textDialog: textInput
     property alias addDialog: fileDialog
-    property alias scanner: scanDialog
 
     // -------------------------------------------------------- drag & drop
     DropArea {
@@ -337,7 +354,7 @@ Kirigami.ApplicationWindow {
         keys: ["text/uri-list"]
         onDropped: function (event) {
             for (const u of event.urls)
-                root.addAppImage(Backend.urlToPath(u), false)
+                root.createSandbox(Backend.urlToPath(u))
             event.acceptProposedAction()
         }
 
@@ -353,7 +370,7 @@ Kirigami.ApplicationWindow {
             Kirigami.PlaceholderMessage {
                 anchors.centerIn: parent
                 icon.name: "document-import"
-                text: qsTr("Drop an AppImage to add it")
+                text: qsTr("Drop an AppImage to sandbox it")
                 explanation: qsTr("SAM will unpack it without running it and suggest safe permissions.")
             }
         }
