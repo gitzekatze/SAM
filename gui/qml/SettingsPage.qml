@@ -140,7 +140,7 @@ FormCard.FormCardPage {
         ConfigChoice { cfg: page.cfg; owner: page;
             key: "general.default_backend"
             text: qsTr("Default backend")
-            description: qsTr("Bubblewrap is recommended. Apps can override this individually.")
+            description: qsTr("Used by every app set to “Automatic” (the default). Bubblewrap is recommended. Individual apps can be switched in Advanced mode. Firejail can only be chosen after allowing it below.")
             options: [
                 { value: "bubblewrap", text: "Bubblewrap" },
                 { value: "auto", text: qsTr("Automatic") },
@@ -152,7 +152,7 @@ FormCard.FormCardPage {
             key: "security.allow_firejail"
             text: qsTr("Allow the Firejail backend")
             description: qsTr("Off by default. Firejail is a setuid-root program and is only meant as a compatibility backend.")
-            confirmText: qsTr("Firejail is a setuid-root program. Bugs in it have historically allowed local privilege escalation. Each app still has to be switched to Firejail individually.")
+            confirmText: qsTr("Firejail is a setuid-root program. Bugs in it have historically allowed local privilege escalation. Apps only use it if you switch them to Firejail individually or make it the default backend.")
         }
         ConfigChoice { cfg: page.cfg; owner: page;
             key: "compatibility.behavior"

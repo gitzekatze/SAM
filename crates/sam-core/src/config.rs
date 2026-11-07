@@ -186,6 +186,9 @@ impl Config {
         if self.general.default_backend == BackendChoice::Unsandboxed {
             bail!("'unsandboxed' cannot be the default backend");
         }
+        if self.general.default_backend == BackendChoice::Firejail && !self.security.allow_firejail {
+            bail!("Firejail can only be the default backend after allowing it (security.allow_firejail = true)");
+        }
         Ok(())
     }
 
@@ -281,6 +284,7 @@ cleanup_stale = true
     fn set_keys() {
         let mut c = Config::default();
         c.set_key("general.theme", "cachyos-neon").unwrap();
+        assert!(c.set_key("general.default_backend", "firejail").is_err(), "Firejail must be allowed first");
         c.set_key("security.allow_firejail", "true").unwrap();
         c.set_key("general.scan_directories", "~/A, ~/B").unwrap();
         assert_eq!(c.general.scan_directories, vec!["~/A", "~/B"]);
