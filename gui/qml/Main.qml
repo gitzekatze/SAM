@@ -22,14 +22,17 @@ Kirigami.ApplicationWindow {
     property var catalog: ({})
     property var apps: []
     property bool appsLoaded: false
-    /// Every AppImage found in the scan folders and menu (`sam-jail discover`).
+    /// Every AppImage SAM found (`sam-jail discover`).
     property var discovered: []
-    property string currentSection: "apps"
-    readonly property bool advanced: config !== null && config.general.ui_mode === "advanced"
+    /// Key of the selected row in the left column (app id or file path).
+    property string selectedKey: ""
+    /// Height of the pinned areas at the top of both columns.
+    readonly property real topHeight: Kirigami.Units.gridUnit * 8
     readonly property string home: Backend.homeDir()
 
     function notify(text) {
-        showPassiveNotification(text, 4000)
+        if (text)
+            showPassiveNotification(text, 4000)
     }
 
     function reportError(r) {
@@ -52,23 +55,6 @@ Kirigami.ApplicationWindow {
         })
     }
 
-    /// Create a sandbox for an AppImage file. If other, unsandboxed menu
-    /// entries start the same file, ask whether to hide them.
-    function createSandbox(path) {
-        const found = root.discovered.find(d => d.path === path)
-        const entries = found ? found.menu_entries : []
-        if (!entries.length) {
-            addAppImage(path, false, false)
-            return
-        }
-        const name = found.name
-        confirm.ask(qsTr("Hide the unsandboxed menu entry?"),
-            qsTr("%1 already has a menu entry that starts it without a sandbox (%2). If you keep it, the menu shows %1 twice and one of them is unprotected.\n\nSAM can hide that entry and puts it back if you remove the sandbox later.")
-                .arg(name).arg(entries.map(e => e.name || e.file.split("/").pop()).join(", ")),
-            function () { addAppImage(path, false, true) }, qsTr("Hide it"),
-            qsTr("Keep both"), function () { addAppImage(path, false, false) })
-    }
-
     function loadConfig(cb) {
         Backend.call(["config", "show"], function (r) {
             if (r.ok) {
@@ -83,40 +69,26 @@ Kirigami.ApplicationWindow {
     function setConfig(key, value, cb) {
         const v = (typeof value === "string") ? value : JSON.stringify(value)
         Backend.call(["config", "set", key, v], function (r) {
-            if (!r.ok) {
+            if (!r.ok)
                 reportError(r)
-            }
             loadConfig(cb)
         })
     }
 
-    function addAppImage(path, consent, hideDuplicates) {
-        const args = ["add", path]
-        if (consent)
-            args.push("--allow-fallback")
-        if (hideDuplicates)
-            args.push("--hide-duplicates")
-        notify(qsTr("Creating a sandbox for %1…").arg(path.split("/").pop()))
-        Backend.call(args, function (r) {
-            if (!r.ok) {
-                reportError(r)
-                return
-            }
-            refreshApps()
-            const e = r.data.entry
-            if (r.data.needs_fallback_consent) {
-                confirm.ask(qsTr("Static extraction failed"),
-                    qsTr("SAM could not unpack %1 without running it. It can try the AppImage's own extractor instead. That runs code from the AppImage, inside a sandbox with no network and no access to your files.\n\nOnly continue if you trust where this file came from.").arg(e.name),
-                    function () { reextract(e.id, true) }, qsTr("Use the AppImage's extractor"))
-                return
-            }
-            if (r.data.relocated) {
-                notify(qsTr("%1 was already known; its new location was saved.").arg(e.name))
-                return
-            }
-            notify(qsTr("Sandbox created for %1. Review its permissions.").arg(e.name))
-            openApp(e.id, true)
-        })
+    /// Add AppImage files (dropped or opened with SAM) to the locations and
+    /// select the first one.
+    function addFiles(paths) {
+        const files = ((config && config.general.scan_files) || []).slice()
+        for (const p of paths) {
+            const t = Util.tildifyRaw(p, home)
+            if (files.indexOf(t) < 0)
+                files.push(t)
+        }
+        setConfig("general.scan_files", files, () => refreshApps(() => {
+            const d = discovered.find(x => x.path === paths[0])
+            if (d)
+                selectRow({ key: d.sandboxed || d.path, id: d.sandboxed || "", path: d.path, sandboxed: !!d.sandboxed })
+        }))
     }
 
     function reextract(id, consent, cb) {
@@ -137,7 +109,7 @@ Kirigami.ApplicationWindow {
         })
     }
 
-    /// Apply a preset with the compatibility check from whitepaper §2.18.
+    /// Apply a preset with the compatibility check.
     function applyPreset(name, appId, cb) {
         Backend.call(["preset", "apply", name, appId], function (r) {
             if (!r.ok) {
@@ -175,23 +147,27 @@ Kirigami.ApplicationWindow {
             notify(qsTr("Could not start sam-jail-run"))
     }
 
-    function showSection(section) {
-        currentSection = section
-        pageStack.clear()
-        switch (section) {
-        case "apps": pageStack.push(dashboardComponent); break
-        case "presets": pageStack.push(Qt.resolvedUrl("PresetsPage.qml")); break
-        case "settings": pageStack.push(Qt.resolvedUrl("SettingsPage.qml")); break
-        case "diagnostics": pageStack.push(Qt.resolvedUrl("DiagnosticsPage.qml")); break
-        }
-    }
-
-    function openApp(id, firstRun) {
-        if (currentSection !== "apps")
-            showSection("apps")
+    /// Show one AppImage in the right column.
+    function selectRow(row) {
+        selectedKey = row.key
         while (pageStack.depth > 1)
             pageStack.pop()
-        pageStack.push(Qt.resolvedUrl("AppPage.qml"), { appId: id, firstRun: firstRun === true })
+        pageStack.push(Qt.resolvedUrl("AppPanel.qml"), row.sandboxed ? { appId: row.id, path: row.path || "" } : { appId: "", path: row.path })
+    }
+
+    /// Show SAM settings, presets or diagnostics in the right column.
+    function showSection(section) {
+        selectedKey = ""
+        while (pageStack.depth > 1)
+            pageStack.pop()
+        const pages = { settings: "SettingsPage.qml", presets: "PresetsPage.qml", diagnostics: "DiagnosticsPage.qml" }
+        if (pages[section])
+            pageStack.push(Qt.resolvedUrl(pages[section]))
+    }
+
+    function openApp(id) {
+        const a = apps.find(x => x.id === id)
+        selectRow({ key: id, id: id, path: a ? a.source_path : "", sandboxed: true })
     }
 
     // -------------------------------------------------------- startup
@@ -207,148 +183,50 @@ Kirigami.ApplicationWindow {
         loadConfig(function () {
             refreshApps(function () {
                 const page = Backend.startupPage
-                if ((page === "app" || page === "app-repair") && Backend.startupApp) {
+                if ((page === "app" || page === "app-repair") && Backend.startupApp)
                     openApp(Backend.startupApp)
-                    if (page === "app-repair")
-                        pageStack.currentItem.tab = 1
-                }
                 else if (page === "app" && root.apps.length)
                     openApp(root.apps[0].id)
-                else if (page === "presets" || page === "settings" || page === "diagnostics")
+                else if (page === "file" && root.discovered.length) {
+                    const d = root.discovered.find(x => !x.sandboxed) || root.discovered[0]
+                    selectRow({ key: d.path, id: "", path: d.path, sandboxed: false })
+                } else if (page === "presets" || page === "settings" || page === "diagnostics")
                     showSection(page)
-                else if (page === "onboarding")
-                    onboarding.open()
-                for (const f of Backend.startupFiles)
-                    root.createSandbox(f)
-                Backend.call(["onboarding"], function (r) {
-                    if (r.ok && !r.data.done && page === "")
-                        onboarding.open()
-                })
+                else
+                    pageStack.push(welcomeComponent)
+                if (Backend.startupFiles.length)
+                    root.addFiles(Backend.startupFiles)
             })
         })
     }
 
-    // -------------------------------------------------------- drawer
-    globalDrawer: Kirigami.GlobalDrawer {
-        id: drawer
-        modal: !root.wideScreen
-        collapsible: true
-        collapsed: !root.wideScreen
-        showHeaderWhenCollapsed: true
-        width: Kirigami.Units.gridUnit * 13
-
-        header: Kirigami.AbstractApplicationHeader {
-            contentItem: RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: Kirigami.Units.largeSpacing
-                spacing: Kirigami.Units.smallSpacing
-                Kirigami.Icon {
-                    source: "qrc:/qt/qml/SAM/icons/sam.svg"
-                    implicitWidth: Kirigami.Units.iconSizes.medium
-                    implicitHeight: implicitWidth
-                }
-                Kirigami.Heading {
-                    level: 2
-                    text: "SAM"
-                    visible: !drawer.collapsed
-                    Layout.fillWidth: true
-                }
-            }
-        }
-
-        actions: [
-            Kirigami.Action {
-                text: qsTr("Applications")
-                icon.name: "view-list-icons"
-                checkable: true
-                checked: root.currentSection === "apps"
-                onTriggered: root.showSection("apps")
-            },
-            Kirigami.Action {
-                text: qsTr("Presets")
-                icon.name: "bookmarks"
-                checkable: true
-                checked: root.currentSection === "presets"
-                onTriggered: root.showSection("presets")
-            },
-            Kirigami.Action {
-                text: qsTr("Diagnostics")
-                icon.name: "tools-report-bug"
-                checkable: true
-                checked: root.currentSection === "diagnostics"
-                onTriggered: root.showSection("diagnostics")
-            },
-            Kirigami.Action {
-                text: qsTr("Settings")
-                icon.name: "configure"
-                checkable: true
-                checked: root.currentSection === "settings"
-                onTriggered: root.showSection("settings")
-            },
-            Kirigami.Action { separator: true },
-            Kirigami.Action {
-                text: qsTr("Sandbox a file…")
-                icon.name: "list-add"
-                onTriggered: fileDialog.open()
-            },
-            Kirigami.Action {
-                text: qsTr("Refresh list")
-                icon.name: "view-refresh"
-                onTriggered: root.refreshApps()
-            },
-            Kirigami.Action {
-                text: qsTr("Welcome tour")
-                icon.name: "help-about"
-                onTriggered: onboarding.open()
-            }
-        ]
-
-        footer: QQC2.ToolButton {
-            visible: !drawer.collapsed
-            text: root.advanced ? qsTr("Advanced mode") : qsTr("Simple mode")
-            icon.name: root.advanced ? "configure-toolbars" : "view-media-favorite"
-            checkable: true
-            checked: root.advanced
-            onToggled: root.setConfig("general.ui_mode", checked ? "advanced" : "simple")
-            QQC2.ToolTip.visible: hovered
-            QQC2.ToolTip.text: qsTr("Advanced mode shows backends, D-Bus rules, custom mounts, the generated sandbox command and diagnostics.")
-        }
-    }
-
-    pageStack.initialPage: dashboardComponent
+    pageStack.initialPage: AppListPage {}
     pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.ToolBar
     pageStack.defaultColumnWidth: Kirigami.Units.gridUnit * 26
 
+    /// Right column before anything is selected.
     Component {
-        id: dashboardComponent
-        DashboardPage {}
+        id: welcomeComponent
+        Kirigami.Page {
+            title: qsTr("Welcome")
+            Kirigami.PlaceholderMessage {
+                anchors.centerIn: parent
+                width: parent.width - Kirigami.Units.gridUnit * 4
+                icon.source: "qrc:/qt/qml/SAM/icons/sam.svg"
+                text: qsTr("Select an AppImage")
+                explanation: qsTr("SAM lists the AppImages in the locations on the left. Pick one to see the settings SAM recommends, adjust them, and create a sandbox. Nothing is unpacked or run before you click Create sandbox.")
+            }
+        }
     }
 
     // -------------------------------------------------------- dialogs
-    Dialogs.FileDialog {
-        id: fileDialog
-        title: qsTr("Sandbox an AppImage")
-        nameFilters: [qsTr("AppImages (*.AppImage *.appimage)"), qsTr("All files (*)")]
-        currentFolder: Backend.pathToUrl(root.home)
-        onAccepted: root.createSandbox(Backend.urlToPath(selectedFile))
-    }
-
-    OnboardingDialog {
-        id: onboarding
-    }
-
     ConfirmDialog {
         id: confirm
     }
 
-    TextInputDialog {
-        id: textInput
-    }
 
     // Exposed for pages.
     property alias confirmDialog: confirm
-    property alias textDialog: textInput
-    property alias addDialog: fileDialog
 
     // -------------------------------------------------------- drag & drop
     DropArea {
@@ -356,8 +234,7 @@ Kirigami.ApplicationWindow {
         anchors.fill: parent
         keys: ["text/uri-list"]
         onDropped: function (event) {
-            for (const u of event.urls)
-                root.createSandbox(Backend.urlToPath(u))
+            root.addFiles(event.urls.map(u => Backend.urlToPath(u)))
             event.acceptProposedAction()
         }
 
@@ -373,8 +250,8 @@ Kirigami.ApplicationWindow {
             Kirigami.PlaceholderMessage {
                 anchors.centerIn: parent
                 icon.name: "document-import"
-                text: qsTr("Drop an AppImage to sandbox it")
-                explanation: qsTr("SAM will unpack it without running it and suggest safe permissions.")
+                text: qsTr("Drop an AppImage to add it")
+                explanation: qsTr("It is added to the list on the left. Nothing is unpacked or run until you create a sandbox.")
             }
         }
     }
@@ -395,8 +272,6 @@ Kirigami.ApplicationWindow {
             if (code !== 0)
                 showPassiveNotification(qsTr("The app stopped with an error (code %1).").arg(code), 8000, qsTr("Fix it"), function () {
                     root.openApp(appId)
-                    if (pageStack.currentItem && pageStack.currentItem.tab !== undefined)
-                        pageStack.currentItem.tab = 1
                 })
         }
     }

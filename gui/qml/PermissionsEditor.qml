@@ -7,15 +7,15 @@ import org.kde.kirigamiaddons.formcard as FormCard
 
 import "Util.js" as Util
 
-/// Flatseal-style permission editor (whitepaper §2.21.4), shared by the
-/// app page and the preset editor. Emits `edited(newPerms)`; the owner
+/// Flatseal-style permission editor, shared by the app panel and the preset
+/// editor. Every setting is always visible; settings that do not apply right
+/// now are greyed out, never hidden. Emits `edited(newPerms)`; the owner
 /// persists the change and feeds back `perms` and `evaluation`.
 ColumnLayout {
     id: editor
 
     property var perms: null
     property var evaluation: null
-    property bool advanced: QQC2.ApplicationWindow.window ? QQC2.ApplicationWindow.window.advanced : false
     property bool editable: true
     property var catalog: QQC2.ApplicationWindow.window ? QQC2.ApplicationWindow.window.catalog : ({})
     /// Keys of permissions the app likely needs (from the recommendation),
@@ -109,18 +109,21 @@ ColumnLayout {
         { value: "rw", text: qsTr("Read & write") }
     ]
 
-    // ------------------------------------------------------------ summary
+    readonly property bool fullHome: value("filesystem.home") === true
+    readonly property bool localNet: value("network.mode") === "localhost"
+    readonly property bool filteredBus: value("dbus.session.mode") === "filtered"
+
+    // ------------------------------------------------------------ risk
+    FormCard.FormHeader { title: qsTr("Risk and warnings") }
     FormCard.FormCard {
-        Layout.topMargin: Kirigami.Units.largeSpacing
-        visible: editor.evaluation !== null
         FormCard.AbstractFormDelegate {
             background: null
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
                 RowLayout {
-                    Kirigami.Heading {
-                        level: 4
-                        text: qsTr("Overall risk")
+                    Layout.fillWidth: true
+                    QQC2.Label {
+                        text: qsTr("Overall risk of these settings")
                         Layout.fillWidth: true
                     }
                     RiskChip {
@@ -128,45 +131,13 @@ ColumnLayout {
                         score: editor.evaluation ? editor.evaluation.risk.score : -1
                     }
                 }
-                QQC2.ProgressBar {
-                    Layout.fillWidth: true
-                    from: 0
-                    to: 100
-                    value: editor.evaluation ? editor.evaluation.risk.score : 0
-                }
                 WarningList {
                     Layout.fillWidth: true
                     warnings: editor.evaluation ? editor.evaluation.warnings : []
-                    showInfo: editor.advanced
+                    showInfo: true
                 }
             }
         }
-    }
-
-    // ------------------------------------------------------------ filesystem
-    FormCard.FormHeader { title: qsTr("Filesystem") }
-    FormCard.FormCard {
-        PermSwitch { key: "filesystem.home"; editor: editor }
-        PermChoice {
-            key: "filesystem.home_access"; editor: editor
-            visible: editor.advanced && editor.value("filesystem.home") === true
-            options: [{ value: "ro", text: qsTr("Read-only") }, { value: "rw", text: qsTr("Read & write") }]
-        }
-        FormCard.FormDelegateSeparator {}
-        PermChoice { key: "filesystem.documents"; editor: editor; options: editor.accessOptions }
-        PermChoice { key: "filesystem.downloads"; editor: editor; options: editor.accessOptions }
-        PermChoice { key: "filesystem.pictures"; editor: editor; options: editor.accessOptions }
-        PermChoice { key: "filesystem.music"; editor: editor; options: editor.accessOptions }
-        PermChoice { key: "filesystem.videos"; editor: editor; options: editor.accessOptions }
-        PermChoice { key: "filesystem.desktop"; editor: editor; options: editor.accessOptions }
-        PermChoice { key: "filesystem.opened_files"; editor: editor; options: [{ value: "ro", text: qsTr("Read-only") }, { value: "rw", text: qsTr("Read & write") }] }
-        FormCard.FormDelegateSeparator { visible: editor.advanced && editor.value("filesystem.home") === true }
-        PermSwitch { key: "filesystem.ssh"; editor: editor; visible: editor.advanced && editor.value("filesystem.home") === true }
-        PermSwitch { key: "filesystem.gnupg"; editor: editor; visible: editor.advanced && editor.value("filesystem.home") === true }
-        PermSwitch { key: "filesystem.hidden_files"; editor: editor; visible: editor.advanced && editor.value("filesystem.home") === true }
-        FormCard.FormDelegateSeparator { visible: editor.advanced }
-        PathListEditor { key: "filesystem.custom_read"; editor: editor; Layout.fillWidth: true }
-        PathListEditor { key: "filesystem.custom_write"; editor: editor; Layout.fillWidth: true }
     }
 
     // ------------------------------------------------------------ network
@@ -174,26 +145,11 @@ ColumnLayout {
     FormCard.FormCard {
         PermChoice {
             key: "network.mode"; editor: editor
-            options: editor.advanced
-                ? [{ value: "none", text: qsTr("No network") }, { value: "localhost", text: qsTr("Local network only (no internet)") },
-                   { value: "full", text: qsTr("Full network") }, { value: "filtered", text: qsTr("Filtered (experimental)") }]
-                : [{ value: "none", text: qsTr("No network") }, { value: "localhost", text: qsTr("Local network only (no internet)") },
-                   { value: "full", text: qsTr("Full network") }]
+            options: [{ value: "none", text: qsTr("No network") }, { value: "localhost", text: qsTr("Local network only (no internet)") },
+                      { value: "full", text: qsTr("Full network") }, { value: "filtered", text: qsTr("Filtered (experimental)") }]
         }
-        PathListEditor {
-            key: "network.host_ports"; editor: editor; folders: false
-            Layout.fillWidth: true
-            visible: editor.value("network.mode") === "localhost"
-            addText: qsTr("Allow a local port…")
-            promptTitle: qsTr("Port on this computer (e.g. 11434 for Ollama)")
-        }
-        PathListEditor {
-            key: "network.app_ports"; editor: editor; folders: false
-            Layout.fillWidth: true
-            visible: editor.advanced && editor.value("network.mode") === "localhost"
-            addText: qsTr("Only make these app ports reachable…")
-            promptTitle: qsTr("Port of the app (e.g. its web page)")
-        }
+        PathListEditor { key: "network.host_ports"; editor: editor; folders: false; available: editor.localNet; Layout.fillWidth: true; placeholder: qsTr("Port on this computer, e.g. 11434 for Ollama") }
+        PathListEditor { key: "network.app_ports"; editor: editor; folders: false; available: editor.localNet; Layout.fillWidth: true; placeholder: qsTr("Port of the app, e.g. its web page (empty = automatic)") }
     }
 
     // ------------------------------------------------------------ display
@@ -203,16 +159,49 @@ ColumnLayout {
         PermSwitch { key: "display.x11"; editor: editor }
     }
 
-    // ------------------------------------------------------------ devices & audio
-    FormCard.FormHeader { title: qsTr("Devices & Audio") }
+    // ------------------------------------------------------------ sound & devices
+    FormCard.FormHeader { title: qsTr("Sound & devices") }
     FormCard.FormCard {
-        PermSwitch { key: "devices.gpu"; editor: editor }
         PermSwitch { key: "audio.enabled"; editor: editor }
+        PermSwitch { key: "devices.gpu"; editor: editor }
         PermSwitch { key: "devices.webcam"; editor: editor }
-        PermSwitch { key: "audio.alsa_raw"; editor: editor }
         PermSwitch { key: "devices.input"; editor: editor }
         PermSwitch { key: "devices.usb"; editor: editor }
         PermSwitch { key: "devices.bluetooth"; editor: editor }
+        PermSwitch { key: "audio.alsa_raw"; editor: editor }
+    }
+
+    // ------------------------------------------------------------ filesystem
+    FormCard.FormHeader { title: qsTr("Files") }
+    FormCard.FormCard {
+        PermChoice { key: "filesystem.documents"; editor: editor; options: editor.accessOptions }
+        PermChoice { key: "filesystem.downloads"; editor: editor; options: editor.accessOptions }
+        PermChoice { key: "filesystem.pictures"; editor: editor; options: editor.accessOptions }
+        PermChoice { key: "filesystem.music"; editor: editor; options: editor.accessOptions }
+        PermChoice { key: "filesystem.videos"; editor: editor; options: editor.accessOptions }
+        PermChoice { key: "filesystem.desktop"; editor: editor; options: editor.accessOptions }
+        PermChoice { key: "filesystem.opened_files"; editor: editor; options: [{ value: "ro", text: qsTr("Read-only") }, { value: "rw", text: qsTr("Read & write") }] }
+        FormCard.FormDelegateSeparator {}
+        PathListEditor { key: "filesystem.custom_read"; editor: editor; Layout.fillWidth: true }
+        PathListEditor { key: "filesystem.custom_write"; editor: editor; Layout.fillWidth: true }
+        FormCard.FormDelegateSeparator {}
+        PermSwitch { key: "filesystem.home"; editor: editor }
+        PermChoice {
+            key: "filesystem.home_access"; editor: editor; available: editor.fullHome
+            options: [{ value: "ro", text: qsTr("Read-only") }, { value: "rw", text: qsTr("Read & write") }]
+        }
+        PermSwitch { key: "filesystem.ssh"; editor: editor; available: editor.fullHome }
+        PermSwitch { key: "filesystem.gnupg"; editor: editor; available: editor.fullHome }
+        PermSwitch { key: "filesystem.hidden_files"; editor: editor; available: editor.fullHome }
+    }
+
+    // ------------------------------------------------------------ desktop integration
+    FormCard.FormHeader { title: qsTr("Desktop integration") }
+    FormCard.FormCard {
+        PermSwitch { key: "integrations.file_manager"; editor: editor; available: editor.filteredBus }
+        PermSwitch { key: "integrations.media_controls"; editor: editor; available: editor.filteredBus }
+        PermSwitch { key: "integrations.screen_sharing"; editor: editor; available: editor.filteredBus }
+        PermSwitch { key: "integrations.keyring"; editor: editor; available: editor.filteredBus }
     }
 
     // ------------------------------------------------------------ d-bus
@@ -222,65 +211,38 @@ ColumnLayout {
             key: "dbus.session.mode"; editor: editor
             options: [{ value: "none", text: qsTr("No access") }, { value: "filtered", text: qsTr("Filtered (portals, notifications, tray)") }, { value: "full", text: qsTr("Full access") }]
         }
+        PathListEditor { key: "dbus.session.allow"; editor: editor; folders: false; available: editor.filteredBus; Layout.fillWidth: true; placeholder: qsTr("Bus name, e.g. org.example.Service") }
         PermChoice {
             key: "dbus.system.mode"; editor: editor
             options: [{ value: "none", text: qsTr("No access") }, { value: "full", text: qsTr("Full access") }]
         }
-        PathListEditor {
-            key: "dbus.session.allow"; editor: editor; folders: false
-            Layout.fillWidth: true
-            visible: editor.advanced && editor.value("dbus.session.mode") === "filtered"
-            addText: qsTr("Allow a bus name…")
-            promptTitle: qsTr("Bus name (wildcards like org.example.* allowed)")
-        }
     }
 
-    // ------------------------------------------------------------ desktop integration
-    FormCard.FormHeader { title: qsTr("Desktop integration") }
+    // ------------------------------------------------------------ sockets & environment
+    FormCard.FormHeader { title: qsTr("Sockets & environment") }
     FormCard.FormCard {
-        PermSwitch { key: "integrations.file_manager"; editor: editor }
-        PermSwitch { key: "integrations.media_controls"; editor: editor }
-        PermSwitch { key: "integrations.screen_sharing"; editor: editor }
-        PermSwitch { key: "integrations.keyring"; editor: editor }
-    }
-
-    // ------------------------------------------------------------ sockets & env
-    FormCard.FormHeader { title: qsTr("Sockets & Environment"); visible: editor.advanced }
-    FormCard.FormCard {
-        visible: editor.advanced
         PermSwitch { key: "sockets.ssh_agent"; editor: editor }
         PermSwitch { key: "sockets.cups"; editor: editor }
-        PathListEditor {
-            key: "environment.passthrough"; editor: editor; folders: false
-            Layout.fillWidth: true
-            addText: qsTr("Pass a variable…")
-            promptTitle: qsTr("Environment variable name")
-        }
+        PathListEditor { key: "environment.passthrough"; editor: editor; folders: false; Layout.fillWidth: true; placeholder: qsTr("Variable name, e.g. LANG") }
     }
 
     // ------------------------------------------------------------ advanced
-    FormCard.FormHeader { title: qsTr("Advanced"); visible: editor.advanced }
+    FormCard.FormHeader { title: qsTr("Advanced") }
     FormCard.FormCard {
-        visible: editor.advanced
         PermChoice {
             key: "advanced.host_runtime"; editor: editor
             options: [{ value: "minimal", text: qsTr("Minimal (recommended)") }, { value: "full", text: qsTr("All of /usr (compatibility)") }]
         }
         PermSwitch { key: "advanced.persistent_home"; editor: editor }
+        PermSwitch { key: "advanced.writable_appdir"; editor: editor }
+        PermSwitch { key: "advanced.host_themes"; editor: editor }
+        PermSwitch { key: "advanced.allow_userns"; editor: editor }
         PermChoice {
             key: "advanced.landlock"; editor: editor
             options: [{ value: undefined, text: qsTr("Follow global setting") }, { value: true, text: qsTr("Enforce") }, { value: false, text: qsTr("Off") }]
         }
         PermSwitch { key: "advanced.seccomp_baseline"; editor: editor }
         PermSwitch { key: "advanced.seccomp_strict"; editor: editor }
-        PermSwitch { key: "advanced.allow_userns"; editor: editor }
-        PermSwitch { key: "advanced.host_themes"; editor: editor }
-        PermSwitch { key: "advanced.writable_appdir"; editor: editor }
-        PathListEditor {
-            key: "advanced.extra_backend_args"; editor: editor; folders: false
-            Layout.fillWidth: true
-            addText: qsTr("Add argument…")
-            promptTitle: qsTr("Raw backend argument")
-        }
+        PathListEditor { key: "advanced.extra_backend_args"; editor: editor; folders: false; Layout.fillWidth: true; placeholder: qsTr("Raw backend argument") }
     }
 }

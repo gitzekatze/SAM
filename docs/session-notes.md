@@ -416,3 +416,28 @@ Contrast, CachyOS Neon) were checked through screenshots.
   output, markup in metadata, the MIME filter, and garbage input to the
   parsers.
 - 93 tests, clippy clean. ZFontManager, Tuta and ArtCraft pass `selftest`.
+
+## 15. Session 8 (2026-11-08): Flatseal-style two-column GUI
+
+- **Window:** `Main.qml` has no sidebar, no Simple/Advanced mode, no
+  onboarding, preset-picker or text-input popups.
+  - `pageStack` has two columns: `AppListPage` (left) and `AppPanel`
+    (right) or the Settings, Presets or Diagnostics page.
+  - `topHeight` makes both pinned headers the same height.
+- **Left:** locations (`general.scan_directories` plus the new
+  `general.scan_files`, the Downloads switch, Folder/File buttons), then
+  search and every AppImage (discover + registered).
+- **Right:**
+  - A pinned header with the app and Launch / Create sandbox.
+  - Inline notices and hints, the backend (with limitations and a preset
+    choice), then `PermissionsEditor`. Everything is always visible;
+    `available:` greys out settings that don't apply.
+  - For sandboxed apps: "Make it work", details, the command and the log.
+- **Without a sandbox:** `sam-jail preview <file> [--permissions-stdin]
+  [--backend]` gives the recommendation, selection, risk and warnings from
+  metadata only. *Create sandbox* runs `add --permissions-stdin --backend
+  --accept [--hide-duplicates]`.
+- `PathListEditor` adds entries with an inline text field (no popup).
+  Preset duplicates are named automatically.
+- 93 tests, clippy clean. Screenshots were checked offscreen; clicking
+  through the GUI by hand is still to do.

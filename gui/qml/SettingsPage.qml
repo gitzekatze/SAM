@@ -29,7 +29,7 @@ FormCard.FormCardPage {
             if (!r.ok)
                 applicationWindow().reportError(r)
             load()
-            // Keep the window (theme, simple/advanced mode) in sync.
+            // Keep the window (theme) in sync.
             applicationWindow().loadConfig()
             // Scan folders changed: rebuild the overview.
             if (key.indexOf("general.scan") === 0)
@@ -95,44 +95,11 @@ FormCard.FormCardPage {
             text: qsTr("Theme")
             options: Themes.themes.map(t => ({ value: t, text: Themes.label(t) }))
         }
-        ConfigChoice { cfg: page.cfg; owner: page;
-            key: "general.ui_mode"
-            text: qsTr("Interface mode")
-            description: qsTr("Advanced mode shows backends, D-Bus rules, custom mounts, the generated sandbox command and diagnostic tools.")
-            options: [{ value: "simple", text: qsTr("Simple") }, { value: "advanced", text: qsTr("Advanced") }]
-        }
     }
 
-    FormCard.FormHeader { title: qsTr("Finding AppImages") }
+    FormCard.FormHeader { title: qsTr("Menu entries") }
     FormCard.FormCard {
-        FormCard.FormTextDelegate {
-            text: qsTr("The overview lists AppImages from these folders (two levels deep) and from existing menu entries. Nothing is unpacked or run until you create a sandbox.")
-            textItem.wrapMode: Text.WordWrap
-        }
-        Repeater {
-            model: page.cfg ? page.cfg.general.scan_directories : []
-            delegate: FormCard.FormTextDelegate {
-                required property string modelData
-                required property int index
-                icon.name: "folder"
-                text: modelData
-                trailing: QQC2.ToolButton {
-                    icon.name: "list-remove"
-                    onClicked: {
-                        const dirs = page.cfg.general.scan_directories.slice()
-                        dirs.splice(index, 1)
-                        page.set("general.scan_directories", JSON.stringify(dirs))
-                    }
-                }
-            }
-        }
-        FormCard.FormButtonDelegate {
-            text: qsTr("Add scan folder…")
-            icon.name: "list-add"
-            onClicked: folderDialog.open()
-        }
-        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.scan_downloads"; text: qsTr("Include the Downloads folder"); description: qsTr("Off by default: Downloads often holds old copies and installers you don't want listed.") }
-        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.desktop_integration"; text: qsTr("Create menu launchers"); description: qsTr("Sandboxed apps appear in your application menu and always start through SAM.") }
+        ConfigSwitch { cfg: page.cfg; owner: page; key: "general.desktop_integration"; text: qsTr("Create menu entries"); description: qsTr("Sandboxed apps appear in your application menu and always start through SAM. AppImage locations are managed in the left column.") }
     }
 
     FormCard.FormHeader { title: qsTr("Sandbox") }
@@ -140,7 +107,7 @@ FormCard.FormCardPage {
         ConfigChoice { cfg: page.cfg; owner: page;
             key: "general.default_backend"
             text: qsTr("Default backend")
-            description: qsTr("Used by every app set to “Automatic” (the default). Bubblewrap is recommended. Individual apps can be switched in Advanced mode. Firejail can only be chosen after allowing it below.")
+            description: qsTr("Used by every app set to “Automatic” (the default). Bubblewrap is recommended. Each app can use another backend (its “Sandbox backend” setting). Firejail can only be chosen after allowing it below.")
             options: [
                 { value: "bubblewrap", text: "Bubblewrap" },
                 { value: "auto", text: qsTr("Automatic") },
@@ -189,20 +156,18 @@ FormCard.FormCardPage {
             key: "security.experimental_seccomp"
             text: qsTr("Allow strict seccomp filters (experimental)")
             description: qsTr("Lets apps use the strict syscall filter from their Advanced permissions. Can break apps.")
-            visible: (page.cfg !== null && page.cfg.general.ui_mode === "advanced")
         }
         FormCard.FormSwitchDelegate {
             text: qsTr("eBPF network filtering (experimental)")
             description: qsTr("Not available in this release.")
             enabled: false
-            visible: (page.cfg !== null && page.cfg.general.ui_mode === "advanced")
         }
     }
 
     FormCard.FormHeader { title: qsTr("Dependency detection") }
     FormCard.FormCard {
         ConfigSwitch { cfg: page.cfg; owner: page; key: "dependencies.static_analysis"; text: qsTr("Analyze AppImages when creating a sandbox"); description: qsTr("Inspects the bundled programs and libraries without running them.") }
-        ConfigSwitch { cfg: page.cfg; owner: page; key: "dependencies.dynamic_fallback"; text: qsTr("Allow diagnostic runs"); description: qsTr("Run an app once under strace to find missing resources (Advanced → Diagnose).") ; visible: (page.cfg !== null && page.cfg.general.ui_mode === "advanced") }
+        ConfigSwitch { cfg: page.cfg; owner: page; key: "dependencies.dynamic_fallback"; text: qsTr("Allow diagnostic runs"); description: qsTr("Run an app once under strace to find missing resources (app → Make it work → Diagnose missing resources).") }
         ConfigSwitch { cfg: page.cfg; owner: page; key: "dependencies.automatic_low_risk_fixes"; text: qsTr("Apply low-risk fixes automatically"); description: qsTr("Read-only system data such as fonts or themes found during a diagnostic run is granted without asking.") }
     }
 
@@ -218,9 +183,9 @@ FormCard.FormCardPage {
             text: qsTr("Offer the AppImage's own extractor as fallback")
             description: qsTr("Only used after asking you, and only inside a restricted sandbox.")
         }
-        ConfigNumber { cfg: page.cfg; owner: page; key: "extraction.max_size_mb"; label: qsTr("Maximum extracted size (MiB)"); from: 64; to: 1048576; stepSize: 256; visible: (page.cfg !== null && page.cfg.general.ui_mode === "advanced") }
-        ConfigNumber { cfg: page.cfg; owner: page; key: "extraction.max_files"; label: qsTr("Maximum number of files"); from: 1000; to: 10000000; stepSize: 10000; visible: (page.cfg !== null && page.cfg.general.ui_mode === "advanced") }
-        ConfigNumber { cfg: page.cfg; owner: page; key: "extraction.max_seconds"; label: qsTr("Maximum extraction time (s)"); from: 10; to: 7200; stepSize: 30; visible: (page.cfg !== null && page.cfg.general.ui_mode === "advanced") }
+        ConfigNumber { cfg: page.cfg; owner: page; key: "extraction.max_size_mb"; label: qsTr("Maximum extracted size (MiB)"); from: 64; to: 1048576; stepSize: 256 }
+        ConfigNumber { cfg: page.cfg; owner: page; key: "extraction.max_files"; label: qsTr("Maximum number of files"); from: 1000; to: 10000000; stepSize: 10000 }
+        ConfigNumber { cfg: page.cfg; owner: page; key: "extraction.max_seconds"; label: qsTr("Maximum extraction time (s)"); from: 10; to: 7200; stepSize: 30 }
     }
 
     FormCard.FormHeader { title: qsTr("Diagnostics") }
@@ -229,15 +194,4 @@ FormCard.FormCardPage {
         ConfigNumber { cfg: page.cfg; owner: page; key: "diagnostics.keep_logs"; label: qsTr("Launch logs to keep per app"); from: 1; to: 500 }
     }
 
-    Dialogs.FolderDialog {
-        id: folderDialog
-        currentFolder: Backend.pathToUrl(Backend.homeDir())
-        onAccepted: {
-            const p = Util.tildify(Backend.urlToPath(selectedFolder), Backend.homeDir())
-            const dirs = (page.cfg.general.scan_directories || []).slice()
-            if (dirs.indexOf(p) < 0)
-                dirs.push(p)
-            page.set("general.scan_directories", JSON.stringify(dirs))
-        }
-    }
 }

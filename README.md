@@ -17,8 +17,8 @@ plain-language explanation and a risk level, and risky choices show a warning.
 ## Features
 
 - **Overview:** AppImages in `~/Applications`, `~/AppImages`, `~/.local/bin`,
-  `~/bin` and your own folders (Downloads is opt-in), plus AppImages that
-  existing menu entries start. Names and icons are read straight from the
+  `~/bin`, your own folders and single files you add (Downloads is opt-in),
+  plus AppImages that existing menu entries start. Names and icons are read straight from the
   SquashFS image; nothing is unpacked or run until you create a sandbox.
 - **Sandbox on demand:** only *Create sandbox* unpacks the app, builds its
   profile and adds a SAM menu entry. If AppImageLauncher, Gear Lever or similar
@@ -87,10 +87,23 @@ plain-language explanation and a risk level, and risky choices show a warning.
     players) or read/write.
 - **Desktop integration:** menu launchers that always start the app through
   `sam-jail-run`, plus cached icons.
-- **Usability:** onboarding, simple and advanced modes, status badges,
-  drag-and-drop, a repair workflow, logs, a diagnostics screen, redacted bug
-  reports, and four themes (Breeze Light, Breeze Dark, Breeze High Contrast,
-  CachyOS Neon).
+- **Two-column window, like Flatseal:**
+  - **Left:** the AppImage locations (folders and single files you add,
+    plus an optional Downloads switch) pinned at the top, and below them
+    every AppImage SAM found, with icon, path and whether it is sandboxed.
+  - **Right:** the selected app with its main button (Launch, or Create
+    sandbox) pinned at the top, then every setting: backend first, then
+    network, display, sound and devices, files, desktop integration, D-Bus,
+    sockets and advanced options.
+  - Nothing is hidden behind modes or popups. Settings that don't apply are
+    greyed out, so you always see what is on and off. For an app without a
+    sandbox, the right column shows SAM's recommendation, which you can
+    adjust before creating the sandbox.
+  - Repair steps, details, the generated command and the log follow the
+    settings. Global settings, presets and diagnostics open in the right
+    column from the menu at the top left.
+  - Drag-and-drop adds an AppImage to the list; four themes (Breeze Light,
+    Breeze Dark, Breeze High Contrast, CachyOS Neon).
 
 ## Install (CachyOS / Arch)
 

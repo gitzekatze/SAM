@@ -100,6 +100,15 @@ function dangerousBus(name) {
     return bad.some(b => prefix !== null ? (b.indexOf(prefix) === 0 || prefix.indexOf(b.replace(/\.$/, "")) === 0) : n.indexOf(b) === 0)
 }
 
+/// `~/…` form of a path, unchanged otherwise: for values that are stored.
+function tildifyRaw(path, home) {
+    if (!path)
+        return ""
+    if (home && path.indexOf(home) === 0)
+        return "~" + path.slice(home.length)
+    return path
+}
+
 function tildify(path, home) {
     if (!path)
         return ""

@@ -37,6 +37,18 @@ fn discover_sandbox_hide_and_restore() {
     assert_eq!(d.menu_entries.len(), 1, "the unsandboxed entry is reported");
     assert!(!paths.data_dir.join("extracted").exists() || fs::read_dir(paths.data_dir.join("extracted")).unwrap().next().is_none(), "nothing unpacked");
 
+    // A single file added by hand is listed even outside the scan folders.
+    let elsewhere = root.join("elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let single = elsewhere.join("Single.AppImage");
+    build(&single, &FixtureSpec::hello("Single")).unwrap();
+    sam.config.general.scan_files = vec![single.display().to_string()];
+    let d = sam.discover().unwrap().into_iter().find(|d| d.name == "Single").expect("manual file listed");
+    assert!(d.manual && d.sandboxed.is_none());
+    // The preview shows settings without unpacking anything.
+    let pv = sam.preview(&single, None, None).unwrap();
+    assert!(pv["permissions"]["display"]["wayland"].as_bool().unwrap());
+
     // Create the sandbox and hide the duplicate.
     let added = sam.add(&img, &AddOptions { launcher: Some(true), hide_duplicates: true, ..Default::default() }).unwrap();
     let id = added.entry.id.clone();

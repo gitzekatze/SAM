@@ -88,10 +88,13 @@ Electron app, Qt app, GTK app):
       asks to hide it. *Hide it* removes it from the KDE menu; *Remove sandbox*
       brings it back unchanged.
 - [ ] No SAM menu entry exists for apps that are not sandboxed.
-- [ ] Drag an AppImage into the window to sandbox it.
-- [ ] The onboarding appears on first start and can be skipped.
-- [ ] Switching between Simple and Advanced mode shows or hides the
-      advanced permissions, backend selection and the generated command.
+- [ ] Adding a folder or a single file in "AppImage locations" lists its
+      AppImages; removing it drops them from the list (sandboxed apps stay).
+- [ ] Selecting an app without a sandbox shows the recommended settings;
+      changes made there are used by *Create sandbox*.
+- [ ] Drag an AppImage into the window: it is added to the list and selected.
+- [ ] Every setting is visible at all times; settings that do not apply
+      (e.g. ~/.ssh without full home) are greyed out, never hidden.
 - [ ] All four themes apply instantly.
 - [ ] Turning on full home, the system bus, raw devices or unsandboxed asks for confirmation.
 - [ ] Applying the "Untrusted Utility" preset to a browser warns that it removes network access.

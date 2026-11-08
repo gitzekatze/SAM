@@ -34,6 +34,11 @@ pub struct AddOptions {
     pub accept: bool,
     /// Hide other (unsandboxed) menu entries that start this AppImage.
     pub hide_duplicates: bool,
+    /// Use these permissions instead of the recommendation (the settings
+    /// the user saw and adjusted before creating the sandbox).
+    pub permissions: Option<PermissionSet>,
+    /// Backend chosen before creating the sandbox.
+    pub backend: Option<BackendChoice>,
 }
 
 /// An AppImage found on disk, sandboxed or not (the overview).
@@ -57,6 +62,8 @@ pub struct DiscoveredApp {
     pub menu_entries: Vec<MenuEntryInfo>,
     /// Found through a menu entry rather than a scanned folder.
     pub from_menu: bool,
+    /// Added by hand (`general.scan_files`).
+    pub manual: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -246,6 +253,17 @@ impl Sam {
             } else {
                 bail!("unknown preset '{preset}'");
             }
+        }
+        if let Some(p) = &opts.permissions {
+            entry.profile.permissions = p.clone();
+            entry.profile.preset = None;
+            entry.profile.user_modified = entry.profile.permissions != entry.recommended;
+        }
+        if let Some(b) = opts.backend {
+            if matches!(b, BackendChoice::Unsandboxed | BackendChoice::Firejail) {
+                bail!("choose Firejail or unsandboxed after the sandbox exists; both need an explicit confirmation");
+            }
+            entry.profile.backend = b;
         }
         entry.reviewed = opts.accept;
         if entry.extraction.is_some() && opts.launcher.unwrap_or(self.config.general.desktop_integration) {
@@ -795,19 +813,33 @@ impl Sam {
     pub fn discover(&self) -> Result<Vec<DiscoveredApp>> {
         let scanned = self.scan(None)?;
         let foreign = menu::foreign_entries(&self.paths.applications_dir);
-        let mut paths: Vec<(PathBuf, bool)> = scanned.iter().map(|s| (s.path.clone(), false)).collect();
-        for f in &foreign {
-            if f.appimage.is_file() && !paths.iter().any(|(p, _)| p == &f.appimage) {
-                paths.push((f.appimage.clone(), true));
+        let apps = self.registry().list()?;
+        // (path, found via menu entry, added by hand)
+        let mut paths: Vec<(PathBuf, bool, bool)> = scanned.iter().map(|s| (s.path.clone(), false, false)).collect();
+        let add = |p: PathBuf, menu: bool, manual: bool, paths: &mut Vec<(PathBuf, bool, bool)>| {
+            if p.is_file() && !paths.iter().any(|(q, _, _)| q == &p) {
+                paths.push((p, menu, manual));
+            }
+        };
+        for f in &self.config.general.scan_files {
+            let p = fs::canonicalize(sam_core::util::expand_home(f)).unwrap_or_else(|_| sam_core::util::expand_home(f));
+            if looks_like_appimage(&p) {
+                add(p, false, true, &mut paths);
             }
         }
-        let apps = self.registry().list()?;
+        for f in &foreign {
+            add(f.appimage.clone(), true, false, &mut paths);
+        }
+        // Sandboxed apps whose files live outside the scanned locations.
+        for a in &apps {
+            add(a.source_path.clone(), false, false, &mut paths);
+        }
         let previews_dir = self.paths.data_dir.join("previews");
         let mut out = Vec::new();
-        for (path, from_menu) in paths {
+        for (path, from_menu, manual) in paths {
             let meta = fs::metadata(&path).ok();
             let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-            let p = self.preview(&path, meta.as_ref(), &previews_dir);
+            let p = self.cached_preview(&path, meta.as_ref(), &previews_dir);
             let md = AppImageMetadata { name: p.name.clone(), comment: p.comment.clone(), categories: p.categories.clone(), ..Default::default() };
             let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             let category = sam_profile::infer_category(&md, &file_name, None);
@@ -829,6 +861,7 @@ impl Sam {
                 moved_from: scan.and_then(|s| s.moved_from.clone()),
                 menu_entries,
                 from_menu,
+                manual,
                 size,
                 path,
             });
@@ -837,7 +870,7 @@ impl Sam {
         Ok(out)
     }
 
-    fn preview(&self, path: &Path, meta: Option<&fs::Metadata>, dir: &Path) -> Preview {
+    fn cached_preview(&self, path: &Path, meta: Option<&fs::Metadata>, dir: &Path) -> Preview {
         let mtime = meta.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
         let key = format!("{}|{}|{mtime}", path.display(), meta.map(|m| m.len()).unwrap_or(0));
         let stem = fingerprint::short_hash(path.to_string_lossy().as_bytes());
@@ -864,6 +897,32 @@ impl Sam {
             let _ = sam_core::util::atomic_write(&cache, &serde_json::to_vec(&p).unwrap_or_default());
         }
         p
+    }
+
+    /// The settings SAM would use for an AppImage that has no sandbox yet,
+    /// from its metadata only (nothing is unpacked or run). `perms`/`backend`
+    /// evaluate the user's adjusted settings instead.
+    pub fn preview(&self, path: &Path, perms: Option<PermissionSet>, backend: Option<BackendChoice>) -> Result<serde_json::Value> {
+        let path = fs::canonicalize(path).with_context(|| format!("{} does not exist", path.display()))?;
+        let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
+        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let rec = sam_profile::recommend(&md, &file_name, None);
+        let permissions = perms.unwrap_or_else(|| rec.permissions.clone());
+        let profile = SandboxProfile { backend: backend.unwrap_or(BackendChoice::Auto), permissions: permissions.clone(), ..Default::default() };
+        let host = self.host();
+        let selection = crate::select::select(&profile, &self.config, &host).ok();
+        let ev = self.evaluate(&permissions, None, selection.as_ref().map(|s| s.kind), &host);
+        Ok(serde_json::json!({
+            "category": rec.category.as_str(),
+            "category_label": rec.category.label(),
+            "recommended": rec.permissions,
+            "permissions": permissions,
+            "backend": profile.backend,
+            "notes": rec.notes,
+            "selection": selection,
+            "risk": ev.risk,
+            "warnings": ev.warnings,
+        }))
     }
 
     /// Unsandboxed menu entries that start this app's AppImage.

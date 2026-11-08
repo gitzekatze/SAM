@@ -12,13 +12,16 @@ FormCard.FormComboBoxDelegate {
     property string overrideText: ""
     property string overrideDescription: ""
 
-    visible: editor.advanced || !editor.isAdvanced(key)
+    /// Greyed out (never hidden) when it does not apply, e.g. ~/.ssh
+    /// without full home access.
+    property bool available: true
+    opacity: available ? 1 : 0.55
     text: overrideText || editor.titleOf(key)
     description: editor.describe(key, overrideDescription)
     model: options
     textRole: "text"
     valueRole: "value"
-    enabled: editor.editable
+    enabled: editor.editable && available
     // Bind after the model is set: the inner ComboBox resets its index on model changes.
     Component.onCompleted: currentIndex = Qt.binding(() => d.indexFor(d.editor.value(d.key)))
 

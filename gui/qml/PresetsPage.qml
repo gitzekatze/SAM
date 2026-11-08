@@ -27,13 +27,15 @@ Kirigami.ScrollablePage {
         win.pageStack.push(Qt.resolvedUrl("PresetEditorPage.qml"), { preset: JSON.parse(JSON.stringify(preset)), isNew: !!isNew, onSaved: () => page.reload() })
     }
     function duplicate(p) {
-        win.textDialog.ask(qsTr("Duplicate “%1”").arg(p.name), p.name + " " + qsTr("(copy)"), function (name) {
-            Backend.call(["preset", "duplicate", p.name, name], function (r) {
-                if (r.ok) win.notify(qsTr("Created “%1”").arg(name))
-                else win.reportError(r)
-                page.reload()
-            })
-        }, false, qsTr("Duplicate"))
+        // Name the copy automatically; it can be renamed in the editor.
+        let name = p.name + " " + qsTr("(copy)")
+        for (let n = 2; page.presets.some(x => x.name === name); n++)
+            name = p.name + " " + qsTr("(copy %1)").arg(n)
+        Backend.call(["preset", "duplicate", p.name, name], function (r) {
+            if (r.ok) win.notify(qsTr("Created “%1”").arg(name))
+            else win.reportError(r)
+            page.reload()
+        })
     }
 
     Component.onCompleted: reload()

@@ -29,8 +29,8 @@ qt_add_qml_module(sam-jail-gui
     VERSION 1.0
     QML_FILES
         qml/Main.qml
-        qml/DashboardPage.qml
-        qml/AppPage.qml
+        qml/AppListPage.qml
+        qml/AppPanel.qml
         qml/PermissionsEditor.qml
         qml/PermSwitch.qml
         qml/PermChoice.qml
@@ -39,12 +39,9 @@ qt_add_qml_module(sam-jail-gui
         qml/PresetEditorPage.qml
         qml/SettingsPage.qml
         qml/DiagnosticsPage.qml
-        qml/OnboardingDialog.qml
         qml/StatusBadge.qml
         qml/RiskChip.qml
         qml/WarningList.qml
-        qml/PresetPickerDialog.qml
-        qml/TextInputDialog.qml
         qml/ConfirmDialog.qml
         qml/AppIcon.qml
         qml/Util.js

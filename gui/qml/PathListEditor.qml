@@ -9,19 +9,28 @@ import org.kde.kirigamiaddons.formcard as FormCard
 import SAM.Native
 import "Util.js" as Util
 
-/// Edits a string list permission (custom folders, D-Bus names, ...).
+/// A string-list permission (folders, ports, bus names, variables), edited
+/// inline: the entries, then a text field with an add button. Folders also
+/// get a folder picker. Always visible; greyed out when it does not apply.
 ColumnLayout {
     id: root
     required property string key
     required property var editor
     property bool folders: true
-    property string addText: folders ? qsTr("Add folder…") : qsTr("Add…")
-    property string promptTitle: qsTr("Add entry")
+    property string placeholder: folders ? qsTr("Folder path, e.g. ~/Projects") : qsTr("Add an entry")
+    property bool available: true
 
     readonly property var items: editor.value(key) || []
 
-    visible: editor.advanced || !editor.isAdvanced(key)
     spacing: 0
+    opacity: available ? 1 : 0.55
+    enabled: editor.editable && available
+
+    function add(v) {
+        v = String(v).trim()
+        if (v && root.items.indexOf(v) < 0)
+            root.editor.request(root.key, root.items.concat([v]))
+    }
 
     FormCard.FormTextDelegate {
         text: editor.titleOf(root.key)
@@ -43,14 +52,14 @@ ColumnLayout {
                     implicitHeight: implicitWidth
                 }
                 QQC2.Label {
-                    text: row.modelData
+                    text: Util.plain(row.modelData)
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     elide: Text.ElideMiddle
                     font.family: root.folders ? Kirigami.Theme.defaultFont.family : "monospace"
                 }
                 QQC2.ToolButton {
                     icon.name: "list-remove"
-                    enabled: root.editor.editable
                     onClicked: {
                         const v = root.items.slice()
                         v.splice(row.index, 1)
@@ -63,27 +72,35 @@ ColumnLayout {
         }
     }
 
-    FormCard.FormButtonDelegate {
-        text: root.addText
-        icon.name: "list-add"
-        enabled: root.editor.editable
-        onClicked: {
-            if (root.folders)
-                folderDialog.open()
-            else
-                applicationWindow().textDialog.ask(root.promptTitle, "", function (name) {
-                    root.editor.request(root.key, root.items.concat([name]))
-                }, false, qsTr("Add"))
+    FormCard.AbstractFormDelegate {
+        Layout.fillWidth: true
+        background: null
+        contentItem: RowLayout {
+            QQC2.TextField {
+                id: field
+                Layout.fillWidth: true
+                placeholderText: root.placeholder
+                onAccepted: { root.add(text); text = "" }
+            }
+            QQC2.ToolButton {
+                icon.name: "folder-open"
+                visible: root.folders
+                onClicked: folderDialog.open()
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: qsTr("Choose a folder")
+            }
+            QQC2.Button {
+                text: qsTr("Add")
+                icon.name: "list-add"
+                enabled: field.text.trim().length > 0
+                onClicked: { root.add(field.text); field.text = "" }
+            }
         }
     }
 
     Dialogs.FolderDialog {
         id: folderDialog
         currentFolder: Backend.pathToUrl(Backend.homeDir())
-        onAccepted: {
-            const p = Util.tildify(Backend.urlToPath(selectedFolder), Backend.homeDir())
-            if (root.items.indexOf(p) < 0)
-                root.editor.request(root.key, root.items.concat([p]))
-        }
+        onAccepted: root.add(Util.tildifyRaw(Backend.urlToPath(selectedFolder), Backend.homeDir()))
     }
 }

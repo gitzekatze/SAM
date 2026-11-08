@@ -69,6 +69,21 @@ enum Cmd {
         /// Hide other menu entries that start this AppImage without a sandbox.
         #[arg(long)]
         hide_duplicates: bool,
+        /// Use the permissions given as JSON on stdin instead of the recommendation.
+        #[arg(long)]
+        permissions_stdin: bool,
+        /// Backend to use (auto, bubblewrap, bubblejail).
+        #[arg(long)]
+        backend: Option<String>,
+    },
+    /// Settings SAM would use for an AppImage without a sandbox (nothing is
+    /// unpacked). With --permissions-stdin, evaluates adjusted settings.
+    Preview {
+        path: PathBuf,
+        #[arg(long)]
+        permissions_stdin: bool,
+        #[arg(long)]
+        backend: Option<String>,
     },
     /// Things to check right after creating a sandbox, with one-click fixes.
     Hints {
@@ -547,8 +562,16 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Add { path, allow_fallback, no_launcher, preset, accept, hide_duplicates } => {
-            let o = app.add(&path, &AddOptions { consent_fallback: allow_fallback, launcher: no_launcher.then_some(false), preset, accept, hide_duplicates })?;
+        Cmd::Preview { path, permissions_stdin, backend } => {
+            let perms: Option<PermissionSet> = if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
+            let backend = backend.map(|b| BackendChoice::parse(&b).with_context(|| format!("unknown backend '{b}'"))).transpose()?;
+            let v = app.preview(&path, perms, backend)?;
+            out.emit(&v, || println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()));
+        }
+        Cmd::Add { path, allow_fallback, no_launcher, preset, accept, hide_duplicates, permissions_stdin, backend } => {
+            let permissions: Option<PermissionSet> = if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
+            let backend = backend.map(|b| BackendChoice::parse(&b).with_context(|| format!("unknown backend '{b}'"))).transpose()?;
+            let o = app.add(&path, &AddOptions { consent_fallback: allow_fallback, launcher: no_launcher.then_some(false), preset, accept, hide_duplicates, permissions, backend })?;
             let summary = AppSummary::from_entry(&o.entry);
             out.emit(&json!({"app": summary, "entry": o.entry, "relocated": o.relocated, "needs_fallback_consent": o.needs_fallback_consent, "warnings": o.warnings}), || {
                 if o.relocated {

@@ -39,6 +39,8 @@ pub struct General {
     pub scan_directories: Vec<String>,
     /// Also search the Downloads folder (opt-in: it often holds old copies).
     pub scan_downloads: bool,
+    /// Single AppImage files added by hand to the overview.
+    pub scan_files: Vec<String>,
     pub automatic_scanning: bool,
     pub desktop_integration: bool,
     pub ui_mode: UiMode,
@@ -51,6 +53,7 @@ impl Default for General {
             default_backend: BackendChoice::Bubblewrap,
             scan_directories: vec!["~/Applications".into(), "~/AppImages".into(), "~/.local/bin".into(), "~/bin".into()],
             scan_downloads: false,
+            scan_files: vec![],
             automatic_scanning: true,
             desktop_integration: true,
             ui_mode: UiMode::Simple,
