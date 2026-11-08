@@ -212,7 +212,7 @@ Kirigami.ApplicationWindow {
             title: qsTr("Welcome")
             Kirigami.PlaceholderMessage {
                 anchors.centerIn: parent
-                width: parent.width - Kirigami.Units.gridUnit * 4
+                width: Math.min(parent.width - Kirigami.Units.gridUnit * 4, Kirigami.Units.gridUnit * 24)
                 icon.source: "qrc:/qt/qml/SAM/icons/sam.svg"
                 text: qsTr("Select an AppImage")
                 explanation: qsTr("SAM lists the AppImages in the locations on the left. Pick one to see the settings SAM recommends, adjust them, and create a sandbox. Nothing is unpacked or run before you click Create sandbox.")

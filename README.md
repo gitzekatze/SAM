@@ -89,7 +89,8 @@ plain-language explanation and a risk level, and risky choices show a warning.
 - **Two-column window, like Flatseal:**
   - **Left:** the AppImage locations (folders and single files you add,
     plus an optional Downloads switch) pinned at the top, and below them
-    every AppImage SAM found, with icon, path and whether it is sandboxed.
+    every AppImage SAM found, grouped into *Sandboxed* and *Not sandboxed*,
+    with icon, name and path.
   - **Right:** the selected app with its main button (Launch, or Create
     sandbox) pinned at the top, then every setting: preset, then
     network, display, sound and devices, files, desktop integration, D-Bus,

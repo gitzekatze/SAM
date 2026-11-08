@@ -17,6 +17,11 @@ FormCard.FormSwitchDelegate {
     opacity: available ? 1 : 0.55
     text: overrideText || editor.titleOf(key)
     description: editor.describe(key, overrideDescription)
+    trailing: RiskChip {
+        shown: d.editor.activeRisk(d.key) !== ""
+        level: d.editor.activeRisk(d.key) || "high"
+        compact: true
+    }
     checked: editor.value(key) === true
     enabled: editor.editable && available
 

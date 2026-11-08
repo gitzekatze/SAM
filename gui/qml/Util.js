@@ -108,3 +108,9 @@ function tildify(path, home) {
         return plain("~" + path.slice(home.length))
     return plain(path)
 }
+
+/// Point size for secondary text (paths, captions): one step below the
+/// normal font, never below 7 pt.
+function smallPointSize(font) {
+    return Math.max(7, font.pointSize - 1)
+}

@@ -17,7 +17,15 @@ FormCard.FormComboBoxDelegate {
     property bool available: true
     opacity: available ? 1 : 0.55
     text: overrideText || editor.titleOf(key)
-    description: editor.describe(key, overrideDescription)
+    /// An option may carry its own `description`, shown while it is
+    /// selected; otherwise the setting's general description.
+    readonly property var selectedOption: options[indexFor(editor.value(key))]
+    description: editor.describe(key, overrideDescription || (selectedOption && selectedOption.description ? selectedOption.description : ""))
+    trailing: RiskChip {
+        shown: d.editor.activeRisk(d.key) !== ""
+        level: d.editor.activeRisk(d.key) || "high"
+        compact: true
+    }
     model: options
     textRole: "text"
     valueRole: "value"

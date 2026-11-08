@@ -4,6 +4,7 @@ import QtQuick.Controls as QQC2
 import QtQuick.Dialogs as Dialogs
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import org.kde.kirigamiaddons.delegates as Delegates
 
 import SAM.Native
 import "Util.js" as Util
@@ -60,7 +61,10 @@ Kirigami.ScrollablePage {
         }
         const q = search.toLowerCase()
         const filtered = q ? out.filter(r => (r.name || "").toLowerCase().indexOf(q) >= 0 || (r.path || "").toLowerCase().indexOf(q) >= 0) : out
-        filtered.sort((x, y) => (x.name || "").toLowerCase().localeCompare((y.name || "").toLowerCase()))
+        for (const r of filtered)
+            r.group = r.sandboxed ? "a" : "b"
+        // Sandboxed apps first, then the rest; alphabetical within each group.
+        filtered.sort((x, y) => x.group.localeCompare(y.group) || (x.name || "").toLowerCase().localeCompare((y.name || "").toLowerCase()))
         return filtered
     }
 
@@ -116,8 +120,11 @@ Kirigami.ScrollablePage {
 
     // ------------------------------------------------ pinned: locations
     header: QQC2.Pane {
-        implicitHeight: win ? win.topHeight : Kirigami.Units.gridUnit * 9
-        padding: Kirigami.Units.largeSpacing
+        implicitHeight: win ? win.topHeight : Kirigami.Units.gridUnit * 8
+        leftPadding: Kirigami.Units.largeSpacing * 2
+        rightPadding: Kirigami.Units.largeSpacing
+        topPadding: Kirigami.Units.largeSpacing
+        bottomPadding: Kirigami.Units.smallSpacing
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
         background: Rectangle {
@@ -126,25 +133,26 @@ Kirigami.ScrollablePage {
         }
 
         contentItem: ColumnLayout {
-            spacing: Kirigami.Units.smallSpacing
+            spacing: 0
             RowLayout {
-                Kirigami.Heading {
-                    level: 4
+                spacing: 0
+                QQC2.Label {
                     text: qsTr("AppImage locations")
+                    font.weight: Font.DemiBold
                     Layout.fillWidth: true
                 }
                 QQC2.ToolButton {
                     icon.name: "folder-new"
-                    text: qsTr("Folder")
-                    display: QQC2.AbstractButton.TextBesideIcon
+                    display: QQC2.AbstractButton.IconOnly
+                    text: qsTr("Add a folder")
                     onClicked: folderDialog.open()
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Search a folder for AppImages")
                 }
                 QQC2.ToolButton {
-                    icon.name: "document-open"
-                    text: qsTr("File")
-                    display: QQC2.AbstractButton.TextBesideIcon
+                    icon.name: "list-add"
+                    display: QQC2.AbstractButton.IconOnly
+                    text: qsTr("Add a file")
                     onClicked: fileDialog.open()
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Add a single AppImage file")
@@ -156,29 +164,49 @@ Kirigami.ScrollablePage {
                 Layout.fillHeight: true
                 clip: true
                 model: page.locations
-                QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
+                boundsBehavior: Flickable.StopAtBounds
+                // A thin overlay bar: the full desktop scrollbar is too heavy for this small box.
+                QQC2.ScrollBar.vertical: QQC2.ScrollBar {
+                    policy: locList.contentHeight > locList.height ? QQC2.ScrollBar.AlwaysOn : QQC2.ScrollBar.AlwaysOff
+                    implicitWidth: Kirigami.Units.smallSpacing * 1.5
+                    padding: 0
+                    background: null
+                    contentItem: Rectangle {
+                        radius: width / 2
+                        color: Kirigami.Theme.textColor
+                        opacity: parent.active ? 0.45 : 0.25
+                    }
+                }
                 delegate: RowLayout {
+                    id: locRow
                     required property var modelData
-                    width: locList.width
+                    width: locList.width - Kirigami.Units.largeSpacing
+                    height: Kirigami.Units.gridUnit * 1.6
                     spacing: Kirigami.Units.smallSpacing
                     Kirigami.Icon {
-                        source: modelData.file ? "package-x-generic" : "folder"
+                        source: locRow.modelData.file ? "application-vnd.appimage" : "folder"
                         implicitWidth: Kirigami.Units.iconSizes.small
                         implicitHeight: implicitWidth
                     }
                     QQC2.Label {
-                        text: Util.plain(modelData.path)
+                        text: Util.tildify(locRow.modelData.path, win ? win.home : "")
                         textFormat: Text.PlainText
                         elide: Text.ElideMiddle
+                        opacity: 0.85
                         Layout.fillWidth: true
                     }
                     QQC2.ToolButton {
-                        icon.name: "list-remove"
-                        implicitHeight: Kirigami.Units.iconSizes.medium
+                        icon.name: "window-close-symbolic"
+                        icon.width: Kirigami.Units.iconSizes.small
+                        icon.height: Kirigami.Units.iconSizes.small
+                        display: QQC2.AbstractButton.IconOnly
+                        text: qsTr("Stop searching here")
+                        implicitHeight: Kirigami.Units.gridUnit * 1.4
                         implicitWidth: implicitHeight
-                        onClicked: page.removeLocation(modelData)
+                        opacity: hovered ? 1 : 0.55
+                        onClicked: page.removeLocation(locRow.modelData)
                         QQC2.ToolTip.visible: hovered
-                        QQC2.ToolTip.text: qsTr("Stop searching here")
+                        QQC2.ToolTip.text: text
                     }
                 }
                 QQC2.Label {
@@ -201,76 +229,85 @@ Kirigami.ScrollablePage {
         id: list
         model: page.rows
         currentIndex: -1
-        headerPositioning: ListView.InlineHeader
-        header: Kirigami.SearchField {
-            width: list.width - Kirigami.Units.largeSpacing * 2
-            x: Kirigami.Units.largeSpacing
-            placeholderText: qsTr("Search %1 AppImages…").arg(page.rows.length)
-            onTextChanged: page.search = text
+        topMargin: Kirigami.Units.smallSpacing
+        bottomMargin: Kirigami.Units.largeSpacing
+        headerPositioning: ListView.OverlayHeader
+        header: QQC2.Pane {
+            z: 2
+            width: list.width
+            padding: Kirigami.Units.largeSpacing
+            bottomPadding: Kirigami.Units.smallSpacing
+            background: Rectangle { color: Kirigami.Theme.backgroundColor }
+            contentItem: Kirigami.SearchField {
+                placeholderText: qsTr("Search %1 AppImages…").arg(page.rows.length)
+                onTextChanged: page.search = text
+            }
         }
 
-        delegate: QQC2.ItemDelegate {
+        section.property: "group"
+        section.delegate: QQC2.Label {
+            required property string section
+            width: list.width
+            leftPadding: Kirigami.Units.largeSpacing * 2
+            topPadding: Kirigami.Units.largeSpacing
+            bottomPadding: Kirigami.Units.smallSpacing
+            text: section === "a" ? qsTr("Sandboxed") : qsTr("Not sandboxed")
+            font.weight: Font.DemiBold
+            font.pointSize: Util.smallPointSize(Qt.application.font)
+            opacity: 0.7
+        }
+
+        delegate: Delegates.RoundedItemDelegate {
             id: row
             required property var modelData
+            required property int index
             width: list.width
             highlighted: win !== null && win.selectedKey === modelData.key
-            padding: Kirigami.Units.largeSpacing
             onClicked: win.selectRow(modelData)
+            QQC2.ToolTip.visible: hovered && modelData.path !== ""
+            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+            QQC2.ToolTip.text: Util.tildify(modelData.path, win ? win.home : "")
 
             contentItem: RowLayout {
                 spacing: Kirigami.Units.largeSpacing
                 AppIcon {
                     path: row.modelData.icon
-                    Layout.preferredWidth: Kirigami.Units.iconSizes.large
-                    Layout.preferredHeight: Kirigami.Units.iconSizes.large
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                    opacity: row.modelData.sandboxed ? 1 : 0.8
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 1
+                    spacing: 0
                     QQC2.Label {
                         text: Util.plain(row.modelData.name)
                         textFormat: Text.PlainText
-                        font.bold: true
                         elide: Text.ElideRight
+                        color: row.highlighted ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                         Layout.fillWidth: true
                     }
                     QQC2.Label {
-                        text: Util.tildify(row.modelData.path, win ? win.home : "")
+                        text: row.modelData.badge === "missing" ? qsTr("File missing: %1").arg(Util.tildify(row.modelData.path, win ? win.home : ""))
+                            : row.modelData.moved ? qsTr("Moved copy of a sandboxed app")
+                            : Util.tildify(row.modelData.path, win ? win.home : "")
                         textFormat: Text.PlainText
                         elide: Text.ElideMiddle
-                        opacity: 0.65
-                        font.pointSize: Math.max(7, Qt.application.font.pointSize - 1)
+                        color: row.highlighted ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
+                        opacity: 0.6
+                        font.pointSize: Util.smallPointSize(Qt.application.font)
                         Layout.fillWidth: true
                     }
-                    RowLayout {
-                        spacing: Kirigami.Units.smallSpacing
-                        Kirigami.Icon {
-                            source: row.modelData.sandboxed ? "security-high" : "security-low"
-                            color: row.highlighted ? Kirigami.Theme.highlightedTextColor : (row.modelData.sandboxed ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor)
-                            implicitWidth: Kirigami.Units.iconSizes.small
-                            implicitHeight: implicitWidth
-                        }
-                        QQC2.Label {
-                            text: row.modelData.sandboxed
-                                ? (row.modelData.badge === "missing" ? qsTr("Sandboxed · file missing") : qsTr("Sandboxed"))
-                                : (row.modelData.moved ? qsTr("Moved copy of a sandboxed app") : qsTr("Not sandboxed"))
-                            font.pointSize: Math.max(7, Qt.application.font.pointSize - 1)
-                            color: row.highlighted ? Kirigami.Theme.highlightedTextColor : (row.modelData.sandboxed ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.textColor)
-                            opacity: row.modelData.sandboxed || row.highlighted ? 1 : 0.7
-                        }
-                        Kirigami.Icon {
-                            visible: row.modelData.problem !== "" || row.modelData.unsandboxedEntry
-                            source: "dialog-warning"
-                            color: Kirigami.Theme.neutralTextColor
-                            implicitWidth: Kirigami.Units.iconSizes.small
-                            implicitHeight: implicitWidth
-                            HoverHandler { id: warnHover }
-                            QQC2.ToolTip.visible: warnHover.hovered
-                            QQC2.ToolTip.text: row.modelData.problem !== ""
-                                ? qsTr("Didn't work last time: %1").arg(Util.plain(row.modelData.problem))
-                                : qsTr("Has an unsandboxed menu entry")
-                        }
-                    }
+                }
+                Kirigami.Icon {
+                    visible: row.modelData.problem !== "" || row.modelData.unsandboxedEntry || row.modelData.badge === "missing"
+                    source: "dialog-warning"
+                    implicitWidth: Kirigami.Units.iconSizes.small
+                    implicitHeight: implicitWidth
+                    HoverHandler { id: warnHover }
+                    QQC2.ToolTip.visible: warnHover.hovered
+                    QQC2.ToolTip.text: row.modelData.badge === "missing" ? qsTr("The AppImage file is missing")
+                        : row.modelData.problem !== "" ? qsTr("Didn't work last time: %1").arg(Util.plain(row.modelData.problem))
+                        : qsTr("Has a menu entry that starts it without a sandbox")
                 }
             }
         }
@@ -279,7 +316,7 @@ Kirigami.ScrollablePage {
             anchors.centerIn: parent
             width: parent.width - Kirigami.Units.gridUnit * 2
             visible: win !== null && win.appsLoaded && list.count === 0
-            icon.name: "application-x-executable"
+            icon.name: page.search ? "edit-find" : "application-x-executable"
             text: page.search ? qsTr("No AppImages match") : qsTr("No AppImages found")
             explanation: page.search ? "" : qsTr("Add a folder or a single AppImage file above, or drop an AppImage onto this window.")
         }

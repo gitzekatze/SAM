@@ -2,15 +2,17 @@
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import org.kde.kirigamiaddons.formcard as FormCard
 import "Util.js" as Util
 
-/// Plain-language warnings (whitepaper §2.19.3), most severe first.
+/// Plain-language warnings (whitepaper §2.19.3) as quiet rows inside a
+/// card, most severe first: a coloured icon, a title and an explanation.
 ColumnLayout {
     id: root
     property var warnings: []
     property bool showInfo: true
 
-    spacing: Kirigami.Units.smallSpacing
+    spacing: 0
 
     readonly property var sorted: {
         const order = { "danger": 0, "warning": 1, "info": 2 }
@@ -20,14 +22,22 @@ ColumnLayout {
 
     Repeater {
         model: root.sorted
-        delegate: Kirigami.InlineMessage {
+        delegate: ColumnLayout {
             required property var modelData
+            required property int index
             Layout.fillWidth: true
-            visible: true
-            type: modelData.severity === "danger" ? Kirigami.MessageType.Error
-                : modelData.severity === "warning" ? Kirigami.MessageType.Warning
-                : Kirigami.MessageType.Information
-            text: "<b>" + Util.esc(modelData.title) + "</b> — " + Util.esc(modelData.message)
+            spacing: 0
+            FormCard.FormDelegateSeparator {}
+            FormCard.FormTextDelegate {
+                text: Util.plain(modelData.title)
+                description: Util.plain(modelData.message)
+                leading: Kirigami.Icon {
+                    source: modelData.severity === "danger" ? "dialog-error" : modelData.severity === "warning" ? "dialog-warning" : "dialog-information"
+                    implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                    implicitHeight: implicitWidth
+                }
+                leadingPadding: Kirigami.Units.largeSpacing
+            }
         }
     }
 }

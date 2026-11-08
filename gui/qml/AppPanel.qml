@@ -47,7 +47,9 @@ Kirigami.ScrollablePage {
     readonly property var steps: info ? (info.repair_steps || []) : []
     readonly property var hints: info ? (info.hints || []) : []
 
-    title: Util.plain(appName)
+    /// The app's name; the toolbar above stays free of a second copy of it.
+    readonly property string displayName: Util.plain(appName)
+    title: ""
 
     // ------------------------------------------------ data
     function reload() {
@@ -109,16 +111,16 @@ Kirigami.ScrollablePage {
         const args = ["add", path, "--accept", "--permissions-stdin"]
         if (hideUnsandboxedEntry && found && found.menu_entries.length)
             args.push("--hide-duplicates")
-        win.notify(qsTr("Creating the sandbox for %1…").arg(page.title))
+        win.notify(qsTr("Creating the sandbox for %1…").arg(page.displayName))
         Backend.call(args, function (r) {
             if (!r.ok) { win.reportError(r); return }
             win.refreshApps(() => win.selectRow({ key: r.data.entry.id, id: r.data.entry.id, path: r.data.entry.source_path, sandboxed: true }))
             if (r.data.needs_fallback_consent)
                 win.confirmDialog.ask(qsTr("Static extraction failed"),
-                    qsTr("SAM could not unpack %1 without running it. It can try the AppImage's own extractor instead. That runs code from the AppImage, inside a sandbox with no network and no access to your files.\n\nOnly continue if you trust where this file came from.").arg(page.title),
+                    qsTr("SAM could not unpack %1 without running it. It can try the AppImage's own extractor instead. That runs code from the AppImage, inside a sandbox with no network and no access to your files.\n\nOnly continue if you trust where this file came from.").arg(page.displayName),
                     () => win.reextract(r.data.entry.id, true), qsTr("Use the AppImage's extractor"))
             else
-                win.notify(qsTr("Sandbox created for %1").arg(page.title))
+                win.notify(qsTr("Sandbox created for %1").arg(page.displayName))
         }, JSON.stringify(pendingPerms))
     }
     /// Apply a hint (`hints --apply`) or a repair step / finding (`repair --apply`).
@@ -170,11 +172,11 @@ Kirigami.ScrollablePage {
             icon.name: "edit-delete"
             displayHint: Kirigami.DisplayHint.AlwaysHide
             visible: page.sandboxed
-            onTriggered: win.confirmDialog.ask(qsTr("Remove the sandbox for %1?").arg(page.title),
+            onTriggered: win.confirmDialog.ask(qsTr("Remove the sandbox for %1?").arg(page.displayName),
                 qsTr("The extracted copy, SAM's menu entry, logs and the app's private settings are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again."),
                 () => Backend.call(["remove", page.appId], function (r) {
                     if (!r.ok) { win.reportError(r); return }
-                    win.notify((r.data.warnings || []).length ? qsTr("Removed the sandbox, but: %1").arg(Util.plain(r.data.warnings.join("; "))) : qsTr("Removed the sandbox for %1").arg(page.title))
+                    win.notify((r.data.warnings || []).length ? qsTr("Removed the sandbox, but: %1").arg(Util.plain(r.data.warnings.join("; "))) : qsTr("Removed the sandbox for %1").arg(page.displayName))
                     win.refreshApps(() => win.selectRow({ key: page.filePath, id: "", path: page.filePath, sandboxed: false }))
                 }), qsTr("Remove sandbox"))
         }
@@ -191,18 +193,21 @@ Kirigami.ScrollablePage {
             Kirigami.Separator { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom }
         }
         contentItem: RowLayout {
-            spacing: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.largeSpacing * 2
             AppIcon {
                 path: page.iconPath
                 Layout.preferredWidth: Kirigami.Units.iconSizes.huge
                 Layout.preferredHeight: Kirigami.Units.iconSizes.huge
+                Layout.leftMargin: Kirigami.Units.largeSpacing
             }
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
                 Kirigami.Heading {
-                    level: 2
-                    text: page.title
+                    level: 1
+                    font.pointSize: Math.round(Qt.application.font.pointSize * 1.6)
+                    font.weight: Font.Bold
+                    text: page.displayName
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     Layout.fillWidth: true
@@ -211,35 +216,36 @@ Kirigami.ScrollablePage {
                     text: Util.tildify(page.filePath, win ? win.home : "")
                     textFormat: Text.PlainText
                     elide: Text.ElideMiddle
-                    opacity: 0.7
+                    opacity: 0.6
+                    font.pointSize: Util.smallPointSize(Qt.application.font)
                     Layout.fillWidth: true
                 }
-                Flow {
-                    Layout.fillWidth: true
+                RowLayout {
                     spacing: Kirigami.Units.smallSpacing
-                    Kirigami.Chip {
+                    Layout.topMargin: Kirigami.Units.smallSpacing
+                    Pill {
                         text: page.sandboxed ? qsTr("Sandboxed") : qsTr("Not sandboxed")
-                        icon.name: page.sandboxed ? "security-high" : "security-low"
-                        closable: false
-                        checkable: false
+                        iconName: page.sandboxed ? "security-high" : "security-low"
+                        tone: page.sandboxed ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
                     }
                     RiskChip {
                         level: page.evaluation ? page.evaluation.risk.level : "low"
                         score: page.evaluation ? page.evaluation.risk.score : -1
                     }
-                    QQC2.Label {
-                        text: page.selection ? qsTr("Sandbox: Bubblewrap") : qsTr("Sandbox unavailable: see Diagnostics")
-                        opacity: 0.7
-                        height: parent.children[0].height
-                        verticalAlignment: Text.AlignVCenter
+                    Pill {
+                        text: page.selection ? qsTr("Bubblewrap") : qsTr("Sandbox unavailable")
+                        tone: page.selection ? Kirigami.Theme.disabledTextColor : Kirigami.Theme.negativeTextColor
+                        QQC2.ToolTip.visible: pillHover.hovered
+                        QQC2.ToolTip.text: page.selection ? qsTr("Runs in a Bubblewrap sandbox") : qsTr("Bubblewrap cannot run on this system; see Diagnostics")
+                        HoverHandler { id: pillHover }
                     }
                 }
             }
-            QQC2.Button {
+            PrimaryButton {
                 Layout.alignment: Qt.AlignVCenter
+                Layout.rightMargin: Kirigami.Units.largeSpacing
                 text: page.sandboxed ? qsTr("Launch") : qsTr("Create sandbox")
                 icon.name: page.sandboxed ? "media-playback-start" : "security-high"
-                highlighted: true
                 enabled: page.sandboxed ? (page.summary !== null && page.summary.badge !== "missing") : page.pendingPerms !== null
                 onClicked: page.sandboxed ? win.launch(page.appId) : page.createSandbox()
             }
@@ -350,18 +356,35 @@ Kirigami.ScrollablePage {
         FormCard.FormHeader { title: qsTr("Preset"); visible: page.sandboxed }
         FormCard.FormCard {
             visible: page.sandboxed
-            FormCard.FormComboBoxDelegate {
-                id: presetCombo
-                property var presets: []
-                text: qsTr("Start from a preset")
-                description: page.entry && page.entry.profile.preset ? qsTr("Current settings come from “%1”.").arg(page.entry.profile.preset) : qsTr("Replace the settings below with a preset.")
-                model: [{ name: qsTr("Choose a preset…") }].concat(presets)
-                textRole: "name"
-                Component.onCompleted: Backend.call(["preset", "list"], r => { if (r.ok) presets = r.data })
-                onActivated: index => {
-                    if (index > 0)
-                        win.applyPreset(presets[index - 1].name, page.appId, () => page.reload())
-                    currentIndex = 0
+            FormCard.AbstractFormDelegate {
+                background: null
+                Layout.fillWidth: true
+                contentItem: RowLayout {
+                    spacing: Kirigami.Units.largeSpacing
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+                        QQC2.Label { text: qsTr("Start from a preset"); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                        QQC2.Label {
+                            text: page.entry && page.entry.profile.preset ? qsTr("Current settings come from “%1”.").arg(Util.plain(page.entry.profile.preset)) : qsTr("Replaces the settings below.")
+                            color: Kirigami.Theme.disabledTextColor
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+                    QQC2.ComboBox {
+                        id: presetCombo
+                        property var presets: []
+                        model: [{ name: qsTr("Choose…") }].concat(presets)
+                        textRole: "name"
+                        Layout.preferredWidth: Math.max(implicitWidth, Kirigami.Units.gridUnit * 9)
+                        Component.onCompleted: Backend.call(["preset", "list"], r => { if (r.ok) presets = r.data })
+                        onActivated: index => {
+                            if (index > 0)
+                                win.applyPreset(presets[index - 1].name, page.appId, () => page.reload())
+                            currentIndex = 0
+                        }
+                    }
                 }
             }
         }
@@ -375,7 +398,7 @@ Kirigami.ScrollablePage {
         }
 
         // Making it work (sandboxed apps).
-        FormCard.FormHeader { title: qsTr("Make it work"); visible: page.sandboxed }
+        FormCard.FormHeader { title: qsTr("Troubleshooting"); visible: page.sandboxed }
         FormCard.FormCard {
             visible: page.sandboxed
             FormCard.FormTextDelegate {
@@ -450,7 +473,7 @@ Kirigami.ScrollablePage {
             FormCard.FormTextDelegate { text: qsTr("SHA-256"); description: page.entry ? page.entry.source.sha256 : "" }
         }
 
-        FormCard.FormHeader { title: qsTr("Generated sandbox command"); visible: page.sandboxed }
+        FormCard.FormHeader { title: qsTr("Sandbox command"); visible: page.sandboxed }
         FormCard.FormCard {
             visible: page.sandboxed
             FormCard.AbstractFormDelegate {

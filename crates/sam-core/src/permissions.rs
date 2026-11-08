@@ -632,7 +632,7 @@ macro_rules! perm {
 
 pub fn permission_catalog() -> Vec<PermissionInfo> {
     vec![
-        perm!("filesystem.home", "Filesystem", "Full Home Access",
+        perm!("filesystem.home", "Filesystem", "Full home access",
             "Allows the app to read and write all files in your home directory. This is high risk and usually not required.", Dangerous),
         perm!("filesystem.home_access", "Filesystem", "Home access level",
             "Whether full home access is read-only or read/write.", High, advanced),

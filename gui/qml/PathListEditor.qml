@@ -35,6 +35,12 @@ ColumnLayout {
     FormCard.FormTextDelegate {
         text: editor.titleOf(root.key)
         description: editor.describe(root.key, "")
+        bottomPadding: Kirigami.Units.smallSpacing
+        trailing: RiskChip {
+            shown: root.editor.activeRisk(root.key) !== ""
+            level: root.editor.activeRisk(root.key) || "high"
+            compact: true
+        }
     }
 
     Repeater {
@@ -45,6 +51,8 @@ ColumnLayout {
             required property int index
             Layout.fillWidth: true
             background: null
+            topPadding: 0
+            bottomPadding: 0
             contentItem: RowLayout {
                 Kirigami.Icon {
                     source: root.folders ? "folder" : "code-context"
@@ -59,7 +67,12 @@ ColumnLayout {
                     font.family: root.folders ? Kirigami.Theme.defaultFont.family : "monospace"
                 }
                 QQC2.ToolButton {
-                    icon.name: "list-remove"
+                    icon.name: "window-close-symbolic"
+                    icon.width: Kirigami.Units.iconSizes.small
+                    icon.height: Kirigami.Units.iconSizes.small
+                    opacity: hovered ? 1 : 0.6
+                    display: QQC2.AbstractButton.IconOnly
+                    text: qsTr("Remove")
                     onClicked: {
                         const v = root.items.slice()
                         v.splice(row.index, 1)
@@ -75,7 +88,9 @@ ColumnLayout {
     FormCard.AbstractFormDelegate {
         Layout.fillWidth: true
         background: null
+        topPadding: Kirigami.Units.smallSpacing
         contentItem: RowLayout {
+            spacing: Kirigami.Units.smallSpacing
             QQC2.TextField {
                 id: field
                 Layout.fillWidth: true
@@ -89,11 +104,14 @@ ColumnLayout {
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: qsTr("Choose a folder")
             }
-            QQC2.Button {
+            QQC2.ToolButton {
                 text: qsTr("Add")
                 icon.name: "list-add"
+                display: QQC2.AbstractButton.IconOnly
                 enabled: field.text.trim().length > 0
                 onClicked: { root.add(field.text); field.text = "" }
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: text
             }
         }
     }

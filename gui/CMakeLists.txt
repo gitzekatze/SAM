@@ -34,6 +34,7 @@ qt_add_qml_module(sam-jail-gui
         qml/PermissionsEditor.qml
         qml/PermSwitch.qml
         qml/PermChoice.qml
+        qml/PermChoiceInline.qml
         qml/PathListEditor.qml
         qml/PresetsPage.qml
         qml/PresetEditorPage.qml
@@ -41,6 +42,8 @@ qt_add_qml_module(sam-jail-gui
         qml/DiagnosticsPage.qml
         qml/StatusBadge.qml
         qml/RiskChip.qml
+        qml/Pill.qml
+        qml/PrimaryButton.qml
         qml/WarningList.qml
         qml/ConfirmDialog.qml
         qml/AppIcon.qml
