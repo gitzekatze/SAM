@@ -32,6 +32,8 @@ Kirigami.ScrollablePage {
     property string pendingBackend: "auto"
     property bool hideUnsandboxedEntry: true
     property string logText: ""
+    /// Why the settings could not be loaded (shown in the panel).
+    property string loadError: ""
     property string commandText: ""
 
     readonly property var entry: info ? info.entry : null
@@ -53,7 +55,8 @@ Kirigami.ScrollablePage {
     function reload() {
         if (sandboxed) {
             Backend.call(["info", appId], function (r) {
-                if (!r.ok) { win.reportError(r); return }
+                if (!r.ok) { page.loadError = r.error || qsTr("Unknown error"); win.reportError(r); return }
+                page.loadError = ""
                 page.info = r.data
                 evaluate(r.data.entry.profile.permissions)
                 loadLogs()
@@ -61,7 +64,8 @@ Kirigami.ScrollablePage {
             })
         } else {
             Backend.call(["preview", path], function (r) {
-                if (!r.ok) { win.reportError(r); return }
+                if (!r.ok) { page.loadError = r.error || qsTr("Unknown error"); win.reportError(r); return }
+                page.loadError = ""
                 page.preview = r.data
                 page.pendingPerms = r.data.permissions
                 page.evaluation = { risk: r.data.risk, warnings: r.data.warnings }
@@ -269,6 +273,25 @@ Kirigami.ScrollablePage {
         spacing: 0
 
         // Notices: only when there is something to say.
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 30
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: Kirigami.Units.largeSpacing
+            visible: page.loadError !== ""
+            type: Kirigami.MessageType.Error
+            text: qsTr("The settings could not be loaded: %1").arg(Util.plain(page.loadError))
+            actions: [Kirigami.Action { text: qsTr("Try again"); icon.name: "view-refresh"; onTriggered: page.reload() }]
+        }
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 30
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: Kirigami.Units.largeSpacing
+            visible: page.loadError === "" && page.perms === null
+            type: Kirigami.MessageType.Information
+            text: qsTr("Loading settings…")
+        }
         Kirigami.InlineMessage {
             Layout.fillWidth: true
             Layout.maximumWidth: Kirigami.Units.gridUnit * 30

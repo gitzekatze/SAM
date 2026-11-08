@@ -16,7 +16,8 @@ ColumnLayout {
 
     property var perms: null
     property var evaluation: null
-    property bool editable: true
+    /// Nothing can be changed until the settings are loaded.
+    property bool editable: perms !== null && perms !== undefined
     property var catalog: QQC2.ApplicationWindow.window ? QQC2.ApplicationWindow.window.catalog : ({})
     /// Keys of permissions the app likely needs (from the recommendation),
     /// shown with a "Recommended" hint.

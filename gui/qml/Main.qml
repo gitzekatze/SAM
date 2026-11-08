@@ -36,6 +36,7 @@ Kirigami.ApplicationWindow {
     }
 
     function reportError(r) {
+        console.warn("sam-jail:", r.error)
         notify(r.error || qsTr("Something went wrong"))
     }
 
