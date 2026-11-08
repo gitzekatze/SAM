@@ -48,6 +48,8 @@ yn '[ -e /usr/share/sam-matrix-never ] || [ -d /usr/include ]' FULL_USR
 yn 'unshare -U true' USERNS
 yn '[ -d /sys/class ]' SYSFS
 echo "END=1"
+[ "$1" = sleep ] && sleep 3
+exit 0
 "#;
 
 fn bwrap_works() -> bool {
@@ -119,6 +121,7 @@ fn permission_matrix() {
         p
     };
     std::env::set_var("SAM_MATRIX_EXTRA", &extra);
+    let last = std::cell::RefCell::new(None::<sam_core::LaunchRecord>);
     let launch = |name: &str, perms: PermissionSet| {
         let mut e = app.set_permissions(&id, perms).unwrap();
         let opts = LaunchOptions { quiet: true, owd: Some(home.clone()), ..Default::default() };
@@ -128,6 +131,7 @@ fn permission_matrix() {
             eprintln!("=== {name}\n{}", fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap());
         }
         let r = parse(rec.log_file.as_ref().unwrap());
+        *last.borrow_mut() = Some(rec.clone());
         assert_eq!(r.get("END").map(String::as_str), Some("1"), "[{name}] probe did not finish: {r:?}");
         r
     };
@@ -221,6 +225,12 @@ fn permission_matrix() {
         p.network.mode = NetworkMode::Localhost;
         let r = launch("localhost", p);
         assert!(r["NET"].contains("lo"), "local network only: {}", r["NET"]);
+        let rec = last.borrow().clone().unwrap();
+        assert!(!rec.setup_failed, "bwrap status reached SAM through pasta");
+        if sam_runner::find_helper().is_some() {
+            let e = rec.enforcement.unwrap_or_default();
+            assert!(e.contains("landlock"), "helper status reached SAM through pasta: {e:?}");
+        }
     }
 
     // D-Bus.
@@ -320,6 +330,27 @@ fn permission_matrix() {
         p.advanced.host_themes = flag;
         launch("themes", p);
     }
+
+    // A running app cannot lose its sandbox or be unpacked again.
+    let e = app.set_permissions(&id, base()).unwrap();
+    std::thread::scope(|sc| {
+        let h = sc.spawn(|| {
+            let mut e = e;
+            let opts = LaunchOptions { quiet: true, args: vec!["sleep".into()], owd: Some(home.clone()), ..Default::default() };
+            run(&mut e, &opts, &app.config, &app.paths, &host).unwrap()
+        });
+        let t0 = std::time::Instant::now();
+        while app.running(&id).is_empty() && t0.elapsed().as_secs() < 5 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(!app.running(&id).is_empty(), "the launch is seen as running");
+        let err = app.remove(&id, false).unwrap_err().to_string();
+        assert!(err.contains("is running"), "{err}");
+        assert!(app.reextract(&id, false).unwrap_err().to_string().contains("is running"));
+        assert!(h.join().unwrap().success);
+    });
+    assert!(app.running(&id).is_empty());
+    app.remove(&id, false).unwrap();
 }
 
 use sam_core::Paths;

@@ -402,6 +402,7 @@ impl Sam {
     /// Re-extract after an update or failure (§2.11.7 / repair workflow).
     pub fn reextract(&self, query: &str, consent_fallback: bool) -> Result<AppEntry> {
         let mut entry = self.resolve(query)?;
+        self.ensure_not_running(&entry, "unpack it again")?;
         if !entry.source_path.exists() {
             bail!("the source AppImage {} no longer exists; use `sam-jail relocate` to point SAM at its new location", tildify(&entry.source_path));
         }
@@ -514,8 +515,36 @@ impl Sam {
 
     /// Remove the sandbox. Returns the removed entry and problems that did
     /// not stop the removal (e.g. a hidden menu entry that could not be put back).
+    /// Launches of this app that are running now. Each launch keeps
+    /// `<runtime>/launch-<pid>-<time>/running.lock` locked while it runs;
+    /// folders left by a killed runner are removed here.
+    pub fn running(&self, id: &str) -> Vec<u32> {
+        let mut pids = Vec::new();
+        let Ok(rd) = fs::read_dir(self.paths.runtime_dir(id)) else { return pids };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let Some(pid) = name.strip_prefix("launch-").and_then(|r| r.split('-').next()).and_then(|p| p.parse::<u32>().ok()) else { continue };
+            let lock = e.path().join("running.lock");
+            if crate::launch::lock_held(&lock) {
+                pids.push(pid);
+            } else if lock.exists() && !Path::new(&format!("/proc/{pid}")).exists() {
+                // The runner was killed before it could clean up.
+                let _ = fs::remove_dir_all(e.path());
+            }
+        }
+        pids
+    }
+
+    fn ensure_not_running(&self, entry: &AppEntry, what: &str) -> Result<()> {
+        if !self.running(&entry.id).is_empty() {
+            bail!("{} is running. Close it first, then {what}.", sam_core::util::display_safe(&entry.metadata.name, 80));
+        }
+        Ok(())
+    }
+
     pub fn remove(&self, query: &str, keep_data: bool) -> Result<(AppEntry, Vec<String>)> {
         let entry = self.resolve(query)?;
+        self.ensure_not_running(&entry, "remove its sandbox")?;
         let mut problems = Vec::new();
         desktop::remove_launcher(&self.paths, &entry.id)?;
         for h in &entry.hidden_entries {

@@ -52,6 +52,7 @@ impl Instance {
         // directory created here is ever written to or deleted.
         let base = PathBuf::from(format!("/run/user/{uid}/.flatpak"));
         fs::create_dir_all(&base).with_context(|| format!("creating {}", base.display()))?;
+        remove_stale(&base);
         let mut instance_id = instance_id;
         let mut dir = base.join(instance_id.to_string());
         let mut tries = 0;
@@ -96,6 +97,43 @@ impl Drop for Instance {
     }
 }
 
+/// Removes SAM instances whose app is gone (SAM was killed before it could
+/// clean up). Only directories whose `info` names a SAM app are touched;
+/// real Flatpak instances are never removed.
+fn remove_stale(base: &Path) {
+    let Ok(rd) = fs::read_dir(base) else { return };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let dir = e.path();
+        let Ok(info) = fs::read_to_string(dir.join("info")) else { continue };
+        if !is_sam_instance(&info) {
+            continue;
+        }
+        let pid = fs::read_to_string(dir.join("bwrapinfo.json")).ok().and_then(|j| child_pid(&j));
+        let gone = match pid {
+            Some(pid) => !Path::new(&format!("/proc/{pid}")).exists(),
+            // Never started: stale once it is older than a minute.
+            None => e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 60),
+        };
+        if gone {
+            let _ = fs::remove_dir_all(&dir);
+        }
+    }
+}
+
+fn is_sam_instance(info: &str) -> bool {
+    info.lines().any(|l| l.strip_prefix("name=").is_some_and(|n| n.starts_with(&format!("{APP_ID_PREFIX}."))))
+        && info.contains(&format!("runtime=runtime/{APP_ID_PREFIX}.Host/"))
+}
+
+fn child_pid(bwrapinfo: &str) -> Option<u32> {
+    let v: serde_json::Value = serde_json::from_str(bwrapinfo).ok()?;
+    v.get("child-pid")?.as_u64().map(|p| p as u32)
+}
+
 fn instance_number() -> u64 {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos() as u64).unwrap_or(0);
     1_000_000_000 + (nanos ^ (std::process::id() as u64) << 7) % 3_000_000_000
@@ -134,4 +172,24 @@ mod tests {
         assert_eq!(portal_app_id("appimage-tuta-8dda"), "io.github.gitzekatze.SAM.appimage_tuta_8dda");
         assert_eq!(portal_app_id("9lives"), "io.github.gitzekatze.SAM.app_9lives");
     }
+
+    #[test]
+    fn only_dead_sam_instances_are_removed() {
+        let t = tempfile::tempdir().unwrap();
+        let sam_info = "[Application]\nname=io.github.gitzekatze.SAM.appimage_x\nruntime=runtime/io.github.gitzekatze.SAM.Host/x86_64/host\n";
+        let mk = |n: &str, info: &str, pid: u32| {
+            let d = t.path().join(n);
+            fs::create_dir(&d).unwrap();
+            fs::write(d.join("info"), info).unwrap();
+            fs::write(d.join("bwrapinfo.json"), format!("{{\"child-pid\": {pid}}}")).unwrap();
+        };
+        mk("100", sam_info, 4_000_000_000);
+        mk("101", sam_info, std::process::id());
+        mk("102", "[Application]\nname=com.tutanota.Tutanota\nruntime=runtime/org.freedesktop.Platform/x86_64/24.08\n", 4_000_000_000);
+        remove_stale(t.path());
+        assert!(!t.path().join("100").exists(), "dead SAM instance removed");
+        assert!(t.path().join("101").exists(), "running SAM instance kept");
+        assert!(t.path().join("102").exists(), "Flatpak instance never touched");
+    }
+
 }

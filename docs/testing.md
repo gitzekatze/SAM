@@ -116,6 +116,11 @@ Electron app, Qt app, GTK app):
 - [ ] An app that fails at start shows a notification with the likely cause,
       and *Details & Repair → Try the next fix and start* fixes it.
 - [ ] `sam-jail selftest` lists every sandboxed app as ✓ or ✗.
+- [ ] *Local network only*: the log shows `# enforced: landlock …` and
+      `# portal identity: …`.
+- [ ] Removing or re-extracting an app while it runs is refused with
+      "… is running. Close it first".
+- [ ] Closing SAM leaves apps started with *Launch* running.
 
 ## 11. Packaging
 

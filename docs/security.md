@@ -144,7 +144,7 @@ The score shown in the app is a weighted sum, capped at 100.
   undocumented xdg-desktop-portal behavior (tested with 1.22.1) and may break
   with future versions; SAM then falls back to the portal treating the app
   as an ordinary program (the method filter still applies). SAM apps appear
-  in `flatpak ps` while they run. It is not used with *Local network only*.
+  in `flatpak ps` while they run; if SAM is killed, the next start removes the leftover entries.
 - **Local network only** forwards the app's ports to this computer
   automatically, except privileged ports and well-known local services;
   list `network.app_ports` to restrict it further.

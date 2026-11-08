@@ -201,12 +201,10 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             .with_context(|| format!("creating private home {}", ctx.private_home.display()))?;
     }
 
-    // Portal identity (Bubblewrap with a filtered session bus). Not with
-    // 'Local network only': pasta does not pass bwrap's --info-fd on.
+    // Portal identity (Bubblewrap with a filtered session bus).
     let mut portal_instance = None;
     if cfg.security.portal_identity
         && perms.dbus.session.mode == DbusMode::Filtered
-        && perms.network.mode != sam_core::permissions::NetworkMode::Localhost
         && host.tools.xdg_dbus_proxy.is_some()
     {
         match crate::portal_identity::Instance::create(&runtime_dir, host.uid, &app.id) {
@@ -365,24 +363,81 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     // Status channels the app cannot write to (H1/M3 in the audit):
     // bwrap's --json-status-fd announces "child-pid" once the sandbox exists,
     // and SAM's helper reports what it enforced before it execs the app.
-    // pasta (local network only) does not pass extra fds, so these exist
-    // only when bwrap is started directly.
-    let direct_bwrap = host.tools.bwrap.as_ref().is_some_and(|b| b.path == prepared.command.program);
+    // Started directly, bwrap inherits two pipes. pasta (local network only)
+    // closes every inherited fd, so there the channels are FIFOs in the
+    // private runtime dir, which a shell inside pasta's namespace opens as
+    // fds 3 and 4 right before it execs bwrap.
+    let bwrap_path = host.tools.bwrap.as_ref().map(|b| b.path.clone());
+    let direct_bwrap = bwrap_path.as_ref() == Some(&prepared.command.program);
+    let pasta_bwrap = !direct_bwrap
+        && prepared.command.program.file_name().is_some_and(|n| n == "pasta")
+        && bwrap_path.as_ref().is_some_and(|b| prepared.command.args.iter().any(|a| Path::new(a) == b));
+    let with_helper = prepared.context.helper.is_some();
+    // Inserts the status options into bwrap's own arguments.
+    let add_status = |bwrap_args: &[String], status_fd: i32, helper_fd: Option<i32>| -> Vec<String> {
+        let mut args = vec!["--json-status-fd".to_string(), status_fd.to_string()];
+        args.extend(bwrap_args.iter().cloned());
+        if let Some(hw) = helper_fd {
+            // After --clearenv: right before bwrap's "--" separator.
+            let sep = args.iter().position(|a| a == "--").unwrap_or(args.len());
+            args.splice(sep..sep, ["--setenv".to_string(), "SAM_STATUS_FD".into(), hw.to_string()]);
+        }
+        args
+    };
+    let mut new_args: Option<Vec<String>> = None;
+    let mut close_after_spawn: Vec<i32> = Vec::new();
     let mut bwrap_status = None;
     let mut helper_status = None;
     if direct_bwrap {
         let (r, w) = status_pipe()?;
-        let mut args = vec!["--json-status-fd".to_string(), w.to_string()];
-        args.extend(prepared.command.args.iter().cloned());
         let mut helper_w = None;
-        if prepared.context.helper.is_some() {
+        if with_helper {
             let (hr, hw) = status_pipe()?;
-            // After --clearenv: right before bwrap's "--" separator.
-            let sep = args.iter().position(|a| a == "--").unwrap_or(args.len());
-            args.splice(sep..sep, ["--setenv".to_string(), "SAM_STATUS_FD".into(), hw.to_string()]);
             helper_status = Some(hr);
             helper_w = Some(hw);
+            close_after_spawn.push(hw);
         }
+        close_after_spawn.push(w);
+        new_args = Some(add_status(&prepared.command.args, w, helper_w));
+        bwrap_status = Some(r);
+    } else if pasta_bwrap {
+        let rt = &prepared.context.runtime_dir;
+        let status_fifo = rt.join("bwrap-status");
+        let helper_fifo = rt.join("helper-status");
+        let r = open_fifo_reader(&status_fifo)?;
+        let hr = if with_helper { Some(open_fifo_reader(&helper_fifo)?) } else { None };
+        let args = &prepared.command.args;
+        let sep = args.iter().position(|a| a == "--").context("pasta command without '--'")?;
+        let mut bwrap_args: Vec<String> = args[sep + 2..].to_vec();
+        // Portal identity: bwrap writes bwrapinfo.json to --info-fd; reopen
+        // that file by path as fd 5.
+        let mut info_path = String::new();
+        if let Some(fd) = prepared.context.portal_identity.as_ref().and_then(|i| i.info_fd) {
+            let fd_s = fd.to_string();
+            if let Some(i) = bwrap_args.windows(2).position(|w| w[0] == "--info-fd" && w[1] == fd_s) {
+                if let Ok(p) = fs::read_link(format!("/proc/self/fd/{fd}")) {
+                    bwrap_args[i + 1] = "5".into();
+                    info_path = p.display().to_string();
+                }
+            }
+        }
+        let mut out: Vec<String> = args[..=sep].to_vec();
+        out.extend([
+            "/bin/sh".into(),
+            "-c".into(),
+            r#"exec 3>"$1"; if [ -n "$2" ]; then exec 4>"$2"; fi; if [ -n "$3" ]; then exec 5>>"$3"; fi; shift 3; exec "$@""#.into(),
+            "sh".into(),
+            status_fifo.display().to_string(),
+            if with_helper { helper_fifo.display().to_string() } else { String::new() },
+            info_path,
+            args[sep + 1].clone(),
+        ]);
+        out.extend(add_status(&bwrap_args, 3, with_helper.then_some(4)));
+        new_args = Some(out);
+        bwrap_status = Some(r);
+        helper_status = hr;
+    }
+    if let Some(args) = new_args {
         cmd = Command::new(&prepared.command.program);
         cmd.args(&args).stdin(Stdio::inherit()).stdout(Stdio::piped()).stderr(Stdio::piped());
         if prepared.command.clear_env {
@@ -392,18 +447,17 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             cmd.env(k, v);
         }
         cmd.current_dir(&host.home);
-        bwrap_status = Some((r, w, helper_w));
     }
+    // Held until this launch is over: `Sam::running` sees the app as running.
+    let _running = hold_lock(&prepared.context.runtime_dir.join("running.lock"))?;
     let mut child = cmd.spawn().with_context(|| format!("starting {}", prepared.command.program.display()))?;
     // Close our copies of the write ends so the readers see EOF.
-    let bwrap_status_reader = bwrap_status.map(|(r, w, hw)| {
-        unsafe { libc::close(w) };
-        if let Some(hw) = hw {
-            unsafe { libc::close(hw) };
-        }
-        read_fd_in_thread(r)
-    });
-    let helper_status_reader = helper_status.map(read_fd_in_thread);
+    for fd in close_after_spawn {
+        unsafe { libc::close(fd) };
+    }
+    let child_done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let bwrap_status_reader = bwrap_status.map(|r| read_fd_in_thread(r, child_done.clone()));
+    let helper_status_reader = helper_status.map(|r| read_fd_in_thread(r, child_done.clone()));
     if let Some(fd) = prepared.context.seccomp_fd {
         unsafe { libc::close(fd) };
     }
@@ -462,6 +516,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             }
         }
     };
+    child_done.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = t1.join();
     let _ = t2.join();
     drop(prepared.proxy);
@@ -547,13 +602,72 @@ fn status_pipe() -> Result<(i32, i32)> {
     Ok((fds[0], fds[1]))
 }
 
-fn read_fd_in_thread(fd: i32) -> std::thread::JoinHandle<String> {
-    use std::os::fd::FromRawFd;
+/// Creates `path` and holds an exclusive lock on it while the file is open.
+fn hold_lock(path: &Path) -> Result<fs::File> {
+    use std::os::fd::AsRawFd;
+    let f = fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
+    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        bail!("locking {}: {}", path.display(), std::io::Error::last_os_error());
+    }
+    Ok(f)
+}
+
+/// True if another process holds the lock on `path`.
+pub fn lock_held(path: &Path) -> bool {
+    use std::os::fd::AsRawFd;
+    let Ok(f) = fs::File::open(path) else { return false };
+    unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) != 0 }
+}
+
+/// Opens the read end of a new FIFO without waiting for a writer.
+fn open_fifo_reader(path: &Path) -> Result<i32> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(path.as_os_str().as_bytes())?;
+    if unsafe { libc::mkfifo(c.as_ptr(), 0o600) } != 0 {
+        bail!("mkfifo {}: {}", path.display(), std::io::Error::last_os_error());
+    }
+    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC) };
+    if fd < 0 {
+        bail!("open {}: {}", path.display(), std::io::Error::last_os_error());
+    }
+    Ok(fd)
+}
+
+/// Reads a status channel until its writers are gone. Works for pipes and
+/// for FIFOs a writer may never open: on Linux, poll() reports a hangup on a
+/// FIFO only after a writer was connected, and `done` ends the wait once the
+/// sandbox process has exited.
+fn read_fd_in_thread(fd: i32, done: Arc<std::sync::atomic::AtomicBool>) -> std::thread::JoinHandle<String> {
     std::thread::spawn(move || {
-        let f = unsafe { fs::File::from_raw_fd(fd) };
-        let mut s = String::new();
-        let _ = f.take(64 * 1024).read_to_string(&mut s);
-        s
+        let mut out = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            let mut pfd = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
+            let n = unsafe { libc::poll(&mut pfd, 1, 200) };
+            if n < 0 {
+                if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                break;
+            }
+            if n == 0 {
+                if done.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+                continue;
+            }
+            let r = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
+            if r > 0 {
+                out.extend_from_slice(&buf[..r as usize]);
+                if out.len() > 64 * 1024 {
+                    break;
+                }
+            } else if r == 0 || std::io::Error::last_os_error().kind() != std::io::ErrorKind::WouldBlock {
+                break;
+            }
+        }
+        unsafe { libc::close(fd) };
+        String::from_utf8_lossy(&out).into_owned()
     })
 }
 
