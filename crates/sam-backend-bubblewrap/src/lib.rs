@@ -647,19 +647,6 @@ impl Bubblewrap {
         let chdir = if visible_in_sandbox(&ctx.owd, ctx) { ctx.owd.clone() } else { home.clone() };
         a.push("--chdir").push(chdir.to_string_lossy());
 
-        // Portal identity: the portal then treats the app as sandboxed and
-        // hands picked files over through the document portal.
-        if let Some(id) = &ctx.portal_identity {
-            a.op2("--ro-bind", &id.info_file, "/.flatpak-info");
-            if let Some(view) = &id.doc_view {
-                a.op2("--bind-try", view, format!("{run}/doc"));
-            }
-            if let Some(fd) = id.info_fd {
-                a.push("--info-fd").push(fd.to_string());
-                keep_fds.push(fd);
-            }
-        }
-
         // Seccomp.
         if let Some(fd) = ctx.seccomp_fd {
             a.push("--seccomp").push(fd.to_string());

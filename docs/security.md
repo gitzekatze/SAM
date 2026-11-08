@@ -62,10 +62,10 @@ Process isolation:
   sharing its own permission. Screenshot, Background (autostart),
   DynamicLauncher, Trash, Wallpaper, RemoteDesktop, InputCapture,
   GlobalShortcuts, Location, Usb, Clipboard and Secret are blocked.
-- **Portal identity** (on by default, `security.portal_identity`): portals
-  see SAM apps as sandboxed apps (`/.flatpak-info`, document portal view
-  at `/run/user/<uid>/doc`). Files picked in portal file dialogs are handed
-  over through the document portal; portals apply per-app prompts.
+- **SAM and Flatpak are separate.** SAM never writes to Flatpak's files or
+  folders and never presents its apps to the desktop as Flatpak apps.
+  Portals therefore see a SAM app as an ordinary program; the method filter
+  above is what limits it.
 - **Local network only** forwards only the host ports listed in
   `network.host_ports`; DNS is never forwarded.
 - **Full home access** stays guarded even when you grant it:
@@ -139,12 +139,10 @@ The score shown in the app is a weighted sum, capped at 100.
   network (X11 authorization still applies).
 - **Domain-filtered network** is experimental and not enforced (falls back
   to no network).
-- **Portal identity** imitates Flatpak's instance files
-  (`/.flatpak-info`, `/run/user/<uid>/.flatpak/<id>/`). This relies on
-  undocumented xdg-desktop-portal behavior (tested with 1.22.1) and may break
-  with future versions; SAM then falls back to the portal treating the app
-  as an ordinary program (the method filter still applies). SAM apps appear
-  in `flatpak ps` while they run; if SAM is killed, the next start removes the leftover entries.
+- **Files picked in a file dialog** outside the folders an app may use are
+  not visible to it: the portal hands over the host path, and the sandbox
+  does not contain it. Grant the folder (or open the file with the app,
+  which grants that one file) instead.
 - **Local network only** forwards the app's ports to this computer
   automatically, except privileged ports and well-known local services;
   list `network.app_ports` to restrict it further.

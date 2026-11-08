@@ -567,6 +567,11 @@ impl Sam {
                 fs::remove_dir_all(&home)?;
             }
             Logs::new(&self.paths).remove_all(&entry.id)?;
+            // Writable app folder layer (`advanced.writable_appdir`).
+            let overlay = self.paths.data_dir.join("overlays").join(&entry.id);
+            if overlay.exists() {
+                remove_tree(&overlay)?;
+            }
         }
         self.registry().remove(&entry.id)?;
         Ok((entry, problems))
@@ -1013,6 +1018,28 @@ pub fn new_requirements(old_rec: &PermissionSet, new_rec: &PermissionSet, cur: &
         chk(n > old_rec.filesystem.xdg_access(key), cur.filesystem.xdg_access(key) >= n, &format!("{key} folder"));
     }
     v
+}
+
+/// `remove_dir_all` that also handles folders without permissions, such as
+/// the `work/work` folder the kernel's overlay file system leaves behind.
+pub fn remove_tree(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fn unlock(p: &Path) {
+        let Ok(md) = fs::symlink_metadata(p) else { return };
+        if md.is_dir() {
+            let _ = fs::set_permissions(p, fs::Permissions::from_mode(0o700));
+            if let Ok(rd) = fs::read_dir(p) {
+                for e in rd.flatten() {
+                    unlock(&e.path());
+                }
+            }
+        }
+    }
+    if fs::remove_dir_all(path).is_ok() {
+        return Ok(());
+    }
+    unlock(path);
+    fs::remove_dir_all(path).with_context(|| format!("removing {}", path.display()))
 }
 
 /// Three-way merge of permission sets: every setting the user changed from

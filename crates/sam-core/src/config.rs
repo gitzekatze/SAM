@@ -67,9 +67,6 @@ pub struct Security {
     pub experimental_seccomp: bool,
     /// Baseline syscall filter for every Bubblewrap sandbox (like Flatpak's).
     pub baseline_seccomp: bool,
-    /// Give apps a portal identity so portals treat them as sandboxed and
-    /// file dialogs hand files over through the document portal.
-    pub portal_identity: bool,
     pub experimental_ebpf: bool,
 }
 
@@ -81,7 +78,6 @@ impl Default for Security {
             experimental_landlock: true,
             experimental_seccomp: false,
             baseline_seccomp: true,
-            portal_identity: true,
             experimental_ebpf: false,
         }
     }

@@ -62,8 +62,8 @@ plain-language explanation and a risk level, and risky choices show a warning.
   it cannot run inside SAM's; a "Didn't work last time" marker in the
   overview; `sam-jail selftest` to try apps briefly.
 - **Compatibility helpers:** links open in your normal browser through the
-  desktop portal; files picked in portal file dialogs are handed to the app
-  through the document portal (portal identity); AppImages started from
+  desktop portal; files opened with the app are granted one by one;
+  AppImages started from
   inside a sandbox extract instead of using FUSE; DNS works with any
   resolv.conf setup; symlinked system data (including `/etc/alternatives`) is
   followed; a writable app folder for portable apps.
@@ -79,7 +79,6 @@ plain-language explanation and a risk level, and risky choices show a warning.
   - A desktop-portal filter that only allows harmless functions; screenshot,
     autostart, menu-entry installation, trash, location and remote desktop
     are blocked.
-  - Portal identity, so portals treat SAM apps as sandboxed.
   - Nothing the app prints can grant it access: repair suggestions based on
     app output always ask first and never offer services that could escape
     the sandbox.
@@ -114,7 +113,7 @@ makepkg -si
 
 The packages are `sam-jail-cli` (`sam-jail`, `sam-jail-run`) and `sam` (the
 GUI, `sam-jail-gui`). Recommended extras:
-- `xdg-dbus-proxy`: filtered D-Bus, portal filter and portal identity.
+- `xdg-dbus-proxy`: filtered D-Bus and the portal filter.
 - `passt` (provides `pasta`): *Local network only*.
 - `strace`: diagnostic runs.
 
@@ -171,7 +170,7 @@ crates/
   sam-profile             categories, recommendations, presets, preset compatibility checks
   sam-backend-bubblewrap  the Bubblewrap command builder
   sam-runner              orchestration: discover/add/launch, Bubblewrap checks,
-                          D-Bus proxy and portal filter, portal identity, Landlock/seccomp,
+                          D-Bus proxy and portal filter, Landlock/seccomp,
                           local network (pasta), repair (hints, log analyzer, ladder), diagnostics
   sam-jail-cli            sam-jail and sam-jail-run binaries
 gui/                          Qt6/QML/Kirigami GUI (thin C++ shell; talks to the core via `sam-jail --json`)
@@ -187,9 +186,13 @@ docs/                         whitepaper, security, profiles, packaging, archite
 ~/.local/share/sam/       apps/, extracted/, icons/, desktop/, homes/ (private per-app homes),
                           previews/ (overview icons), overlays/ (writable app folders)
 ~/.local/share/applications/  sam-<app-id>.desktop
-/run/user/<uid>/sam/      per-launch runtime files (D-Bus proxy socket, identity files)
-/run/user/<uid>/.flatpak/ portal identity instance files while an app runs (removed afterwards)
+/run/user/<uid>/sam/      per-launch runtime files (D-Bus proxy socket, passwd/group), removed afterwards
 ```
+
+Apart from these, SAM only hides another tool's menu entry for an AppImage
+when you ask it to (and puts it back on removal). It never touches Flatpak's
+files or folders: SAM and Flatpak are separate apps; only SAM's window looks
+like Flatseal so it is familiar.
 
 Set `SAM_CONFIG_DIR`, `SAM_DATA_DIR` and `SAM_APPLICATIONS_DIR` to
 use different locations, for example for testing.

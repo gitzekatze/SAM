@@ -350,7 +350,11 @@ fn permission_matrix() {
         assert!(h.join().unwrap().success);
     });
     assert!(app.running(&id).is_empty());
+    let overlay = paths.data_dir.join("overlays").join(&id);
+    assert!(overlay.exists(), "writable app folder layer exists");
     app.remove(&id, false).unwrap();
+    assert!(!overlay.exists(), "remove deletes the writable app folder layer");
+    assert!(!paths.runtime_dir(&id).exists(), "no runtime folder left behind");
 }
 
 use sam_core::Paths;

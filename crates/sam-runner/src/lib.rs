@@ -16,7 +16,6 @@ pub mod kernel;
 pub mod launch;
 pub mod netns;
 pub mod ops;
-pub mod portal_identity;
 pub mod repair;
 pub mod select;
 

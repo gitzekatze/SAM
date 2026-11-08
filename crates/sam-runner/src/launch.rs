@@ -45,7 +45,6 @@ pub struct Prepared {
     pub landlock: bool,
     pub seccomp: bool,
     proxy: Option<DbusProxy>,
-    portal_instance: Option<crate::portal_identity::Instance>,
     _runtime: RuntimeDir,
 }
 
@@ -54,6 +53,14 @@ struct RuntimeDir(PathBuf);
 impl Drop for RuntimeDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
+        // The app's runtime folder and SAM's, once no other launch uses them.
+        if let Some(app_dir) = self.0.parent() {
+            if fs::remove_dir(app_dir).is_ok() {
+                if let Some(sam_dir) = app_dir.parent() {
+                    let _ = fs::remove_dir(sam_dir);
+                }
+            }
+        }
     }
 }
 
@@ -187,7 +194,6 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
         appdir_overlay: None,
-        portal_identity: None,
     };
     if perms.advanced.writable_appdir {
         let base = paths.data_dir.join("overlays").join(&app.id);
@@ -201,34 +207,14 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             .with_context(|| format!("creating private home {}", ctx.private_home.display()))?;
     }
 
-    // Portal identity (Bubblewrap with a filtered session bus).
-    let mut portal_instance = None;
-    if cfg.security.portal_identity
-        && perms.dbus.session.mode == DbusMode::Filtered
-        && host.tools.xdg_dbus_proxy.is_some()
-    {
-        match crate::portal_identity::Instance::create(&runtime_dir, host.uid, &app.id) {
-            Ok(inst) => {
-                ctx.portal_identity = Some(inst.identity.clone());
-                portal_instance = Some(inst);
-            }
-            Err(e) => warnings.push(Warning::info("portal-identity", "Portal identity unavailable", format!("{e:#}"))),
-        }
-    }
-
     let mut proxy = None;
     let mut landlock = false;
     let mut seccomp = false;
     {
         sam_backend_bubblewrap::write_identity_files(&ctx)?;
         if perms.dbus.session.mode == DbusMode::Filtered && host.tools.xdg_dbus_proxy.is_some() && host.sockets.dbus_session.is_some() {
-            let mut bus = perms.effective_session_bus();
-            if ctx.portal_identity.is_some() {
-                // With an identity the document portal applies per-app rules.
-                bus.allow.push("org.freedesktop.portal.Documents".into());
-            }
-            let identity_file = ctx.portal_identity.as_ref().map(|i| i.info_file.clone());
-            match DbusProxy::start(host, &bus, &runtime_dir, &app.id, identity_file.as_deref()) {
+            let bus = perms.effective_session_bus();
+            match DbusProxy::start(host, &bus, &runtime_dir, &app.id) {
                 Ok(p) => {
                     ctx.dbus_proxy_socket = Some(p.socket.clone());
                     proxy = Some(p);
@@ -273,7 +259,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             warnings.push(Warning::warn("localhost-unavailable", "Local network unavailable", format!("{e:#}. The app has no network.")));
         }
     }
-    Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy, portal_instance, _runtime: runtime_guard })
+    Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy, _runtime: runtime_guard })
 }
 
 /// Paths mounted writable only for this launch: files passed on the command
@@ -408,28 +394,15 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         let hr = if with_helper { Some(open_fifo_reader(&helper_fifo)?) } else { None };
         let args = &prepared.command.args;
         let sep = args.iter().position(|a| a == "--").context("pasta command without '--'")?;
-        let mut bwrap_args: Vec<String> = args[sep + 2..].to_vec();
-        // Portal identity: bwrap writes bwrapinfo.json to --info-fd; reopen
-        // that file by path as fd 5.
-        let mut info_path = String::new();
-        if let Some(fd) = prepared.context.portal_identity.as_ref().and_then(|i| i.info_fd) {
-            let fd_s = fd.to_string();
-            if let Some(i) = bwrap_args.windows(2).position(|w| w[0] == "--info-fd" && w[1] == fd_s) {
-                if let Ok(p) = fs::read_link(format!("/proc/self/fd/{fd}")) {
-                    bwrap_args[i + 1] = "5".into();
-                    info_path = p.display().to_string();
-                }
-            }
-        }
+        let bwrap_args: Vec<String> = args[sep + 2..].to_vec();
         let mut out: Vec<String> = args[..=sep].to_vec();
         out.extend([
             "/bin/sh".into(),
             "-c".into(),
-            r#"exec 3>"$1"; if [ -n "$2" ]; then exec 4>"$2"; fi; if [ -n "$3" ]; then exec 5>>"$3"; fi; shift 3; exec "$@""#.into(),
+            r#"exec 3>"$1"; if [ -n "$2" ]; then exec 4>"$2"; fi; shift 2; exec "$@""#.into(),
             "sh".into(),
             status_fifo.display().to_string(),
             if with_helper { helper_fifo.display().to_string() } else { String::new() },
-            info_path,
             args[sep + 1].clone(),
         ]);
         out.extend(add_status(&bwrap_args, 3, with_helper.then_some(4)));
@@ -461,11 +434,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     if let Some(fd) = prepared.context.seccomp_fd {
         unsafe { libc::close(fd) };
     }
-    let mut prepared = prepared;
-    if let Some(inst) = prepared.portal_instance.as_mut() {
-        inst.started();
-        writeln!(log, "# portal identity: {}", inst.identity.app_id)?;
-    }
+    let prepared = prepared;
 
 
     let log = Arc::new(Mutex::new(log));

@@ -441,3 +441,11 @@ Contrast, CachyOS Neon) were checked through screenshots.
   Preset duplicates are named automatically.
 - 93 tests, clippy clean. Screenshots were checked offscreen; clicking
   through the GUI by hand is still to do.
+
+## 2026-11-08: SAM and Flatpak kept separate
+
+Portal identity was removed. SAM no longer writes `/.flatpak-info`, files
+under `/run/user/<uid>/.flatpak/` or binds the document portal: SAM and
+Flatpak are separate apps, and only SAM's GUI resembles Flatseal. The
+deny list that keeps AppImages away from Flatpak's D-Bus services stays.
+Tests and scratch data live in `../.work` (TMPDIR), not in /tmp.
