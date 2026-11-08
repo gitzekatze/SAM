@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use sam_core::permissions::*;
 use sam_core::util::expand_home;
-use sam_core::{Backend, BackendKind, BackendStatus, HostInfo, LaunchContext, SandboxCommand};
+use sam_core::{BackendStatus, HostInfo, LaunchContext, SandboxCommand};
 
 pub struct Bubblewrap;
 
@@ -224,12 +224,9 @@ fn visible_in_sandbox(p: &Path, ctx: &LaunchContext) -> bool {
     fs.custom_read.iter().chain(fs.custom_write.iter()).any(|c| p.starts_with(expand_home(c)))
 }
 
-impl Backend for Bubblewrap {
-    fn kind(&self) -> BackendKind {
-        BackendKind::Bubblewrap
-    }
-
-    fn status(&self, host: &HostInfo) -> BackendStatus {
+impl Bubblewrap {
+    /// Whether Bubblewrap is installed and can create sandboxes here.
+    pub fn status(&self, host: &HostInfo) -> BackendStatus {
         let tool = host.tools.bwrap.as_ref();
         let mut notes = vec![];
         let installed = tool.is_some();
@@ -243,18 +240,16 @@ impl Backend for Bubblewrap {
             notes.push("xdg-dbus-proxy not found: filtered session D-Bus will be disabled".into());
         }
         BackendStatus {
-            kind: BackendKind::Bubblewrap,
             installed,
             path: tool.map(|t| t.path.clone()),
             version: tool.and_then(|t| t.version.clone()),
             usable: installed && host.userns.usable(),
-            recommended: true,
-            risks: vec!["Cannot filter D-Bus by itself (uses xdg-dbus-proxy when available).".into()],
             notes,
         }
     }
 
-    fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
+    /// The bwrap command line for this launch.
+    pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
         let bwrap = ctx.host.tools.bwrap.as_ref().context("bubblewrap (bwrap) is not installed")?;
         let p = &ctx.permissions;
         let h = &ctx.host;
@@ -367,7 +362,7 @@ impl Backend for Bubblewrap {
 
         // /sys: CPU topology always; device trees when GPU/USB/input/webcam is granted.
         a.ro("/sys/devices/system/cpu");
-        if p.devices.gpu || p.devices.usb || p.devices.input || p.devices.webcam {
+        if p.devices.gpu || p.devices.usb || p.devices.input || p.devices.gamepads || p.devices.webcam {
             for s in ["/sys/dev", "/sys/devices", "/sys/bus", "/sys/class"] {
                 a.ro(s);
             }
@@ -548,6 +543,14 @@ impl Backend for Bubblewrap {
         if p.devices.input {
             a.op2("--dev-bind-try", "/dev/input", "/dev/input");
             a.op2("--dev-bind-try", "/dev/uinput", "/dev/uinput");
+        } else if p.devices.gamepads {
+            let pads = gamepad_nodes(Path::new("/dev/input"), Path::new("/run/udev/data"));
+            if pads.is_empty() {
+                notes.push("No game controller is plugged in; controllers connected later are not seen until the app restarts".into());
+            }
+            for d in pads {
+                a.op2("--dev-bind-try", &d, &d);
+            }
         }
         if p.devices.usb {
             a.op2("--dev-bind-try", "/dev/bus/usb", "/dev/bus/usb");
@@ -558,6 +561,15 @@ impl Backend for Bubblewrap {
         // Private shared memory: the host's /dev/shm would be a side channel
         // to other programs' segments.
         a.push("--tmpfs").push("/dev/shm");
+
+        // Input methods: IBus talks to its portal frontend instead of its
+        // private socket (Fcitx5 finds its portal frontend on its own).
+        if p.integrations.input_method {
+            a.setenv("IBUS_USE_PORTAL", "1");
+            if p.dbus.session.mode == DbusMode::None {
+                notes.push("Input method needs the session D-Bus; not granted".into());
+            }
+        }
 
         // D-Bus.
         match p.dbus.session.mode {
@@ -712,6 +724,47 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
     Ok(())
 }
 
+/// Joystick device nodes: `js*`, plus `event*` nodes udev tagged as a
+/// joystick (`E:ID_INPUT_JOYSTICK=1` in `/run/udev/data/c13:<minor>`).
+/// Keyboards and mice are left out, so the app cannot log keystrokes.
+fn gamepad_nodes(dev_input: &Path, udev_data: &Path) -> Vec<PathBuf> {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    let mut out = Vec::new();
+    let Ok(rd) = fs::read_dir(dev_input) else { return out };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let path = e.path();
+        let Ok(md) = fs::metadata(&path) else { continue };
+        if !md.file_type().is_char_device() {
+            continue;
+        }
+        let keep = if name.starts_with("js") {
+            true
+        } else if name.starts_with("event") {
+            let rdev = md.rdev();
+            let (major, minor) = (libc_major(rdev), libc_minor(rdev));
+            fs::read_to_string(udev_data.join(format!("c{major}:{minor}")))
+                .map(|t| t.lines().any(|l| l.trim() == "E:ID_INPUT_JOYSTICK=1"))
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        if keep {
+            out.push(path);
+        }
+    }
+    out.sort();
+    out
+}
+
+fn libc_major(dev: u64) -> u64 {
+    ((dev >> 32) & 0xffff_f000) | ((dev >> 8) & 0x0000_0fff)
+}
+
+fn libc_minor(dev: u64) -> u64 {
+    ((dev >> 12) & 0xffff_ff00) | (dev & 0x0000_00ff)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -808,4 +861,22 @@ mod tests {
         assert!(a.contains(&"--disable-userns".to_string()));
         assert!(has_seq(&a, &["--", "/run/sam/sam-jail-run", "--sandbox-exec", "/run/sam/sandbox.json", "--", "/opt/app/AppRun"]));
     }
+
+    #[test]
+    fn gamepads_only_exposes_joysticks() {
+        let t = tempfile::tempdir().unwrap();
+        let (dev, udev) = (t.path().join("input"), t.path().join("udev"));
+        fs::create_dir_all(&dev).unwrap();
+        fs::create_dir_all(&udev).unwrap();
+        // /dev/null is c1:3, /dev/zero is c1:5: stand-ins for a gamepad and a keyboard.
+        std::os::unix::fs::symlink("/dev/null", dev.join("js0")).unwrap();
+        std::os::unix::fs::symlink("/dev/null", dev.join("event7")).unwrap();
+        std::os::unix::fs::symlink("/dev/zero", dev.join("event3")).unwrap();
+        std::os::unix::fs::symlink("/dev/zero", dev.join("mice")).unwrap();
+        fs::write(udev.join("c1:3"), "E:ID_INPUT=1\nE:ID_INPUT_JOYSTICK=1\n").unwrap();
+        fs::write(udev.join("c1:5"), "E:ID_INPUT=1\nE:ID_INPUT_KEYBOARD=1\n").unwrap();
+        let got = gamepad_nodes(&dev, &udev);
+        assert_eq!(got, vec![dev.join("event7"), dev.join("js0")]);
+    }
+
 }

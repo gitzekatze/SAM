@@ -20,17 +20,6 @@ pub mod portal_identity;
 pub mod repair;
 pub mod select;
 
-use sam_core::{Backend, BackendKind};
-
-pub fn backend_for(kind: BackendKind) -> Option<&'static dyn Backend> {
-    match kind {
-        BackendKind::Bubblewrap => Some(&sam_backend_bubblewrap::Bubblewrap),
-        BackendKind::Bubblejail => Some(&sam_backend_bubblejail::Bubblejail),
-        BackendKind::Firejail => Some(&sam_backend_firejail::Firejail),
-        BackendKind::Unsandboxed => None,
-    }
-}
-
 /// Locate the `sam-jail-run` helper (used for desktop launchers and as the
 /// in-sandbox Landlock helper).
 pub fn find_helper() -> Option<std::path::PathBuf> {

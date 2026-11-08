@@ -12,7 +12,6 @@ Native packages come first (whitepaper §2.23): SAM needs the host's sandbox too
 Optional dependencies of `sam-jail-cli`:
 
 - `xdg-dbus-proxy` (recommended): filtered session D-Bus.
-- `bubblejail`, `firejail`: optional backends.
 - `squashfs-tools`: an additional SquashFS extractor.
 - `strace`: diagnostic runs.
 - `libnotify`: launch error notifications.

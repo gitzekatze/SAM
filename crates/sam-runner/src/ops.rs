@@ -37,8 +37,6 @@ pub struct AddOptions {
     /// Use these permissions instead of the recommendation (the settings
     /// the user saw and adjusted before creating the sandbox).
     pub permissions: Option<PermissionSet>,
-    /// Backend chosen before creating the sandbox.
-    pub backend: Option<BackendChoice>,
 }
 
 /// An AppImage found on disk, sandboxed or not (the overview).
@@ -247,23 +245,22 @@ impl Sam {
             if let Some(p) = find_preset(&self.paths, preset)? {
                 entry.profile.permissions = p.permissions.clone();
                 entry.profile.preset = Some(p.name.clone());
-                if let Some(b) = p.backend {
-                    entry.profile.backend = b;
-                }
             } else {
                 bail!("unknown preset '{preset}'");
             }
         }
         if let Some(p) = &opts.permissions {
-            entry.profile.permissions = p.clone();
+            // `p` is the preview the user adjusted. The preview only knew the
+            // metadata; the full recommendation also knows what the unpacked
+            // app links (GPU, audio, X11, …). Keep every change the user made
+            // and take the full recommendation for everything else.
+            let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            let md = peek::peek(&canonical).map(|p| p.metadata).unwrap_or_default();
+            let file_name = canonical.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let seen = sam_profile::recommend(&md, &file_name, None).permissions;
+            entry.profile.permissions = merge_adjustments(&seen, p, &entry.recommended);
             entry.profile.preset = None;
             entry.profile.user_modified = entry.profile.permissions != entry.recommended;
-        }
-        if let Some(b) = opts.backend {
-            if matches!(b, BackendChoice::Unsandboxed | BackendChoice::Firejail) {
-                bail!("choose Firejail or unsandboxed after the sandbox exists; both need an explicit confirmation");
-            }
-            entry.profile.backend = b;
         }
         entry.reviewed = opts.accept;
         if entry.extraction.is_some() && opts.launcher.unwrap_or(self.config.general.desktop_integration) {
@@ -381,9 +378,7 @@ impl Sam {
         if entry.profile.user_modified {
             entry.pending_changes = new_requirements(&old_rec, &rec.permissions, &entry.profile.permissions);
         } else {
-            let keep_backend = entry.profile.backend;
             entry.profile.permissions = rec.permissions.clone();
-            entry.profile.backend = keep_backend;
             entry.pending_changes.clear();
         }
         entry.state = match report.as_ref().and_then(|r| r.verdict) {
@@ -537,7 +532,6 @@ impl Sam {
             let _ = fs::remove_file(self.paths.icons_dir().join(format!("sam-{}.{ext}", entry.id)));
         }
         let _ = fs::remove_dir_all(self.paths.runtime_dir(&entry.id));
-        let _ = sam_backend_bubblejail::remove_instance(&entry.id);
         if !keep_data {
             let home = self.paths.app_home(&entry.id);
             if home.exists() {
@@ -634,12 +628,6 @@ impl Sam {
                 e.profile.compatibility_mode = true;
                 e.profile.permissions = compatibility_profile(&e.profile.permissions);
             }
-            FixAction::Backend { backend } => {
-                if e.profile.backend != BackendChoice::Auto {
-                    bail!("{} uses a backend you picked ({}); set it to Automatic first", e.display_name(), e.profile.backend.fixed().map(|k| k.label()).unwrap_or("auto"));
-                }
-                e.profile.auto_backend = Some(LearnedBackend { kind: *backend, reason: format!("chosen by the repair step “{}”", sug.title) });
-            }
             FixAction::AddArg { value } => {
                 if !e.profile.args.contains(value) {
                     e.profile.args.push(value.clone());
@@ -682,30 +670,6 @@ impl Sam {
         Ok(e)
     }
 
-    pub fn set_backend(&self, query: &str, choice: BackendChoice, confirm: bool) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        match choice {
-            BackendChoice::Unsandboxed if !confirm => bail!(
-                "running unsandboxed gives the app all of your permissions. Repeat with --confirm if you trust this application."
-            ),
-            BackendChoice::Firejail if !self.config.security.allow_firejail => {
-                bail!("Firejail is disabled. Enable it first: sam-jail config set security.allow_firejail true")
-            }
-            BackendChoice::Firejail if !confirm => bail!("{} Repeat with --confirm to use it for this app.", sam_backend_firejail::FIREJAIL_RISK),
-            _ => {}
-        }
-        e.profile.unsandboxed_confirmed = choice == BackendChoice::Unsandboxed;
-        e.profile.firejail_confirmed = choice == BackendChoice::Firejail;
-        e.profile.backend = choice;
-        if choice == BackendChoice::Auto {
-            // Let SAM decide afresh for this app.
-            e.profile.auto_backend = None;
-        }
-        e.clear_launch_failure();
-        self.registry().save(&mut e)?;
-        Ok(e)
-    }
-
     pub fn apply_preset(&self, query: &str, preset_name: &str, confirm: bool) -> Result<PresetApply> {
         let mut e = self.resolve(query)?;
         let preset = find_preset(&self.paths, preset_name)?.with_context(|| format!("unknown preset '{preset_name}'"))?;
@@ -715,9 +679,6 @@ impl Sam {
         }
         e.profile.permissions = preset.permissions.clone();
         e.profile.preset = Some(preset.name.clone());
-        if let Some(b) = preset.backend {
-            e.profile.backend = b;
-        }
         self.save_profile(&mut e)?;
         Ok(PresetApply { preset: preset.name, check, applied: true })
     }
@@ -740,22 +701,19 @@ impl Sam {
 
     // ----------------------------------------------------------- queries
 
-    pub fn evaluate(&self, perms: &PermissionSet, app: Option<&AppEntry>, backend: Option<BackendKind>, host: &HostInfo) -> Evaluation {
+    pub fn evaluate(&self, perms: &PermissionSet, app: Option<&AppEntry>, host: &HostInfo) -> Evaluation {
         let ctx = WarningContext {
             app_needs_network: app.map(app_needs_network),
-            backend,
             host: Some(host),
             warn_x11: self.config.security.warn_x11,
             warn_full_home: self.config.security.warn_full_home,
-            warn_firejail: self.config.security.warn_firejail,
         };
-        Evaluation { risk: assess(perms, backend), warnings: evaluate(perms, &ctx) }
+        Evaluation { risk: assess(perms), warnings: evaluate(perms, &ctx) }
     }
 
     /// All warnings relevant to an app: permissions, extraction, detection, state.
     pub fn app_warnings(&self, e: &AppEntry, host: &HostInfo) -> Vec<Warning> {
-        let backend = crate::select::select(&e.profile, &self.config, host).ok().map(|s| s.kind).or(e.profile.backend.fixed());
-        let mut w = self.evaluate(&e.profile.permissions, Some(e), backend, host).warnings;
+        let mut w = self.evaluate(&e.profile.permissions, Some(e), host).warnings;
         if let Some(x) = &e.extraction {
             w.extend(x.warnings.iter().cloned());
         }
@@ -900,24 +858,22 @@ impl Sam {
     }
 
     /// The settings SAM would use for an AppImage that has no sandbox yet,
-    /// from its metadata only (nothing is unpacked or run). `perms`/`backend`
-    /// evaluate the user's adjusted settings instead.
-    pub fn preview(&self, path: &Path, perms: Option<PermissionSet>, backend: Option<BackendChoice>) -> Result<serde_json::Value> {
+    /// from its metadata only (nothing is unpacked or run). `perms` evaluates
+    /// the user's adjusted settings instead.
+    pub fn preview(&self, path: &Path, perms: Option<PermissionSet>) -> Result<serde_json::Value> {
         let path = fs::canonicalize(path).with_context(|| format!("{} does not exist", path.display()))?;
         let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
         let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let rec = sam_profile::recommend(&md, &file_name, None);
         let permissions = perms.unwrap_or_else(|| rec.permissions.clone());
-        let profile = SandboxProfile { backend: backend.unwrap_or(BackendChoice::Auto), permissions: permissions.clone(), ..Default::default() };
         let host = self.host();
-        let selection = crate::select::select(&profile, &self.config, &host).ok();
-        let ev = self.evaluate(&permissions, None, selection.as_ref().map(|s| s.kind), &host);
+        let selection = crate::select::select(&host).ok();
+        let ev = self.evaluate(&permissions, None, &host);
         Ok(serde_json::json!({
             "category": rec.category.as_str(),
             "category_label": rec.category.label(),
             "recommended": rec.permissions,
             "permissions": permissions,
-            "backend": profile.backend,
             "notes": rec.notes,
             "selection": selection,
             "risk": ev.risk,
@@ -1028,4 +984,54 @@ pub fn new_requirements(old_rec: &PermissionSet, new_rec: &PermissionSet, cur: &
         chk(n > old_rec.filesystem.xdg_access(key), cur.filesystem.xdg_access(key) >= n, &format!("{key} folder"));
     }
     v
+}
+
+/// Three-way merge of permission sets: every setting the user changed from
+/// `base` (what they were shown) is kept; every other setting comes from
+/// `newer` (a recommendation that knows more).
+pub fn merge_adjustments(base: &PermissionSet, user: &PermissionSet, newer: &PermissionSet) -> PermissionSet {
+    fn merge(b: &serde_json::Value, u: &serde_json::Value, n: &serde_json::Value) -> serde_json::Value {
+        use serde_json::Value;
+        match (b, u, n) {
+            (Value::Object(bo), Value::Object(uo), Value::Object(no)) => {
+                let mut out = no.clone();
+                for (k, uv) in uo {
+                    let merged = match (bo.get(k), no.get(k)) {
+                        (Some(bv), Some(nv)) => merge(bv, uv, nv),
+                        _ => uv.clone(),
+                    };
+                    out.insert(k.clone(), merged);
+                }
+                Value::Object(out)
+            }
+            _ if u == b => n.clone(),
+            _ => u.clone(),
+        }
+    }
+    let (b, u, n) = (serde_json::to_value(base), serde_json::to_value(user), serde_json::to_value(newer));
+    match (b, u, n) {
+        (Ok(b), Ok(u), Ok(n)) => serde_json::from_value(merge(&b, &u, &n)).unwrap_or_else(|_| user.clone()),
+        _ => user.clone(),
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_changes_survive_better_recommendation() {
+        let base = PermissionSet::strict_gui();
+        let mut user = base.clone();
+        user.network.mode = NetworkMode::Full;
+        user.filesystem.music = Access::Ro;
+        let mut newer = base.clone();
+        newer.devices.gpu = true;
+        newer.audio.enabled = true;
+        let m = merge_adjustments(&base, &user, &newer);
+        assert!(m.devices.gpu && m.audio.enabled, "detected needs are added");
+        assert_eq!(m.network.mode, NetworkMode::Full, "user change kept");
+        assert_eq!(m.filesystem.music, Access::Ro, "user change kept");
+    }
 }

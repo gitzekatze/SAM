@@ -6,9 +6,9 @@ sam-jail-gui (Qt/QML/Kirigami)   sam-jail / sam-jail-run (CLI)
         └──────────────┬───────────────────┘
                  sam-runner  (ops facade, launch, select, doctor, diagnose, kernel)
      ┌────────┬────────┼─────────┬──────────────┐
-  intake   detect   profile   storage     backends (bubblewrap | bubblejail | firejail)
+  intake   detect   profile   storage     sam-backend-bubblewrap
      └────────┴────────┴─────────┴──────────────┘
-                   sam-core (model, permissions, risk, warnings, config, host, Backend trait)
+                   sam-core (model, permissions, risk, warnings, config, host, LaunchContext)
 ```
 
 ## GUI ↔ core
@@ -27,13 +27,15 @@ Apps are launched detached with `sam-jail-run --app-id <id>`, the same command
 the desktop launchers use. This keeps the GUI free of Rust↔C++ bindings (the
 "thin C++ Qt shell" fallback from §2.9). The CLI is the API.
 
-## Backend adapter API
+## Sandbox command builder
+
+SAM has one sandbox: Bubblewrap. `sam_backend_bubblewrap::Bubblewrap` has two
+functions:
 
 ```rust
-pub trait Backend: Send + Sync {
-    fn kind(&self) -> BackendKind;
-    fn status(&self, host: &HostInfo) -> BackendStatus;       // installed / usable / risks
-    fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand>;
+impl Bubblewrap {
+    pub fn status(&self, host: &HostInfo) -> BackendStatus;         // installed / usable / notes
+    pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand>;
 }
 ```
 
@@ -42,19 +44,14 @@ entry point, the permission set, the host probe, the private home, the runtime
 dir, the AppImage environment (`APPDIR`, `APPIMAGE`, `OWD`, …), the D-Bus
 proxy socket, the Landlock helper, the seccomp fd, the tracer and extra binds.
 
-To add a backend:
-
-1. Implement the trait.
-2. Register it in `sam_runner::backend_for`.
-3. Add selection rules in `sam_runner::select`.
-
 ## Launch pipeline
 
 1. **Preflight:** the extraction exists; warn if the source is stale or missing.
-2. **Backend selection:** `select.rs`, following §2.13.3.
+2. **Sandbox check:** `select.rs` verifies Bubblewrap can run here (installed,
+   user namespaces allowed) or stops with a hint.
 3. **Runtime dir:** generated `passwd` and `group`, an `xdg-dbus-proxy` for a
    filtered bus, and the Landlock spec.
-4. **Build and spawn:** `Backend::build` produces the command, and stdout and
+4. **Build and spawn:** `Bubblewrap::build` produces the command, and stdout and
    stderr are teed into `~/.config/sam/logs/<id>/launch-*.log`.
 5. **Record:** exit code or signal, plus a sandbox-failure classification (a
    `bwrap:` error, exit 126 or 127). The result goes into

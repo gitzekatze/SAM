@@ -1,66 +1,23 @@
-//! Backend adapter API (whitepaper §2.13, build plan §3.6).
+//! What the Bubblewrap backend needs to build a sandbox (`LaunchContext`)
+//! and what it produces (`SandboxCommand`).
 
 use std::path::PathBuf;
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::host::HostInfo;
 use crate::permissions::PermissionSet;
 use crate::util::shell_join;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BackendKind {
-    Bubblewrap,
-    Bubblejail,
-    Firejail,
-    Unsandboxed,
-}
 
-impl BackendKind {
-    pub const ALL: [BackendKind; 4] = [
-        BackendKind::Bubblewrap,
-        BackendKind::Bubblejail,
-        BackendKind::Firejail,
-        BackendKind::Unsandboxed,
-    ];
-    pub fn as_str(self) -> &'static str {
-        match self {
-            BackendKind::Bubblewrap => "bubblewrap",
-            BackendKind::Bubblejail => "bubblejail",
-            BackendKind::Firejail => "firejail",
-            BackendKind::Unsandboxed => "unsandboxed",
-        }
-    }
-    pub fn label(self) -> &'static str {
-        match self {
-            BackendKind::Bubblewrap => "Bubblewrap",
-            BackendKind::Bubblejail => "Bubblejail",
-            BackendKind::Firejail => "Firejail",
-            BackendKind::Unsandboxed => "Unsandboxed",
-        }
-    }
-}
-
-impl std::fmt::Display for BackendKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Installation / health of a backend on this host.
+/// Whether Bubblewrap is installed and usable on this host.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackendStatus {
-    pub kind: BackendKind,
     pub installed: bool,
     pub path: Option<PathBuf>,
     pub version: Option<String>,
-    /// Usable right now (installed, enabled and prerequisites present).
+    /// Usable right now (installed and user namespaces available).
     pub usable: bool,
-    pub recommended: bool,
-    /// Plain-language risk notes.
-    pub risks: Vec<String>,
     pub notes: Vec<String>,
 }
 
@@ -155,7 +112,7 @@ pub struct SandboxCommand {
     pub keep_fds: Vec<i32>,
     /// Human readable notes (e.g. features that were downgraded).
     pub notes: Vec<String>,
-    /// Files the backend generated (e.g. bubblejail services.toml).
+    /// Files the sandbox builder generated.
     pub generated_files: Vec<PathBuf>,
 }
 
@@ -165,12 +122,6 @@ impl SandboxCommand {
         parts.extend(self.args.iter().cloned());
         shell_join(parts)
     }
-}
-
-pub trait Backend: Send + Sync {
-    fn kind(&self) -> BackendKind;
-    fn status(&self, host: &HostInfo) -> BackendStatus;
-    fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand>;
 }
 
 /// Fixed, host-independent launch context for backend unit tests.
@@ -206,8 +157,6 @@ pub fn sample_context() -> LaunchContext {
         },
         tools: Tools {
             bwrap: Some(Tool { path: "/usr/bin/bwrap".into(), version: Some("bubblewrap 0.11.0".into()) }),
-            bubblejail: Some(Tool { path: "/usr/bin/bubblejail".into(), version: None }),
-            firejail: Some(Tool { path: "/usr/bin/firejail".into(), version: None }),
             xdg_dbus_proxy: Some(Tool { path: "/usr/bin/xdg-dbus-proxy".into(), version: None }),
             ..Default::default()
         },

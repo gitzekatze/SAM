@@ -7,7 +7,7 @@ use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use sam_core::util::which;
-use sam_runner::launch::{run_auto, LaunchOptions};
+use sam_runner::launch::{run, LaunchOptions};
 use sam_runner::ops::Sam;
 
 fn usage() -> ! {
@@ -66,7 +66,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
     let app = Sam::open()?;
     let mut entry = app.registry().get(&id)?.or_else(|| app.resolve(&id).ok()).with_context(|| format!("no registered app '{id}'"))?;
     let host = sam_core::HostInfo::probe();
-    let rec = run_auto(&mut entry, &LaunchOptions { args: rest, ..Default::default() }, &app.config, &app.paths, &host)?;
+    let rec = run(&mut entry, &LaunchOptions { args: rest, ..Default::default() }, &app.config, &app.paths, &host)?;
     if rec.sandbox_failure {
         notify(&format!("{} failed to start", entry.display_name()), &format!("{}\nOpen SAM → {} → Details & Repair.", rec.summary, entry.display_name()));
         bail!("{}", rec.summary);

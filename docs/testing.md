@@ -15,11 +15,19 @@ export SAM_CONFIG_DIR=/tmp/sam-test/config \
 
 Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu.
 
+## 0. Automated permission matrix
+
+`cargo test -p sam-runner --test matrix` starts a probe AppImage once per
+permission and checks from inside the sandbox what it can see. Put
+`target/debug` on `PATH` (after `cargo build -p sam-jail-cli`) so Landlock and
+seccomp are applied too; `SAM_MATRIX_DEBUG=1` with `-- --nocapture` prints
+every launch log.
+
 ## 1. Environment
 
 - [ ] `sam-jail doctor`: everything is `ok`. The sandbox test passes, and
       Wayland, PipeWire and D-Bus are detected.
-- [ ] `sam-jail backends`: Bubblewrap is usable and Bubblejail is listed.
+- [ ] `sam-jail info <id>` prints `sandbox: Bubblewrap`.
 
 ## 2. Real AppImages (whitepaper §3.3 corpus)
 
@@ -66,12 +74,10 @@ Electron app, Qt app, GTK app):
 - [ ] Move the AppImage. The overview shows it as a moved copy;
       *Reconnect* or *Locate…* fixes the path.
 
-## 7. Optional backends
+## 7. Diagnostics
 
-- [ ] **Bubblejail:** `sam-jail backend <id> bubblejail`, then run. The
-      instance `sam-<id>` appears in `bubblejail list`.
-- [ ] **Firejail** (if installed): it is refused until
-      `security.allow_firejail` is on *and* `--confirm` is given.
+- [ ] With user namespaces disabled, starting an app stops with a clear
+      hint and nothing runs unsandboxed.
 - [ ] **Diagnostic run** (needs `strace`): `sam-jail diagnose <id> --apply`
       lists findings, and low-risk fixes are applied.
 
@@ -96,7 +102,7 @@ Electron app, Qt app, GTK app):
 - [ ] Every setting is visible at all times; settings that do not apply
       (e.g. ~/.ssh without full home) are greyed out, never hidden.
 - [ ] All four themes apply instantly.
-- [ ] Turning on full home, the system bus, raw devices or unsandboxed asks for confirmation.
+- [ ] Turning on full home, the system bus or raw devices asks for confirmation.
 - [ ] Applying the "Untrusted Utility" preset to a browser warns that it removes network access.
 - [ ] *Copy bug report* produces a report without your username or home path.
 
@@ -109,8 +115,6 @@ Electron app, Qt app, GTK app):
       copy under `extracted/` is unchanged.
 - [ ] An app that fails at start shows a notification with the likely cause,
       and *Details & Repair → Try the next fix and start* fixes it.
-- [ ] *Automatic* backend: if Bubblewrap cannot set up an app's sandbox, the
-      app starts with Bubblejail and the header says "picked for this app".
 - [ ] `sam-jail selftest` lists every sandboxed app as ✓ or ✗.
 
 ## 11. Packaging

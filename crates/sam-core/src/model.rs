@@ -1,11 +1,10 @@
 //! Core data types (build plan §3.4): AppEntry, AppImageMetadata,
-//! SandboxProfile, Preset, Warning, BackendChoice, DiagnosticReport, ...
+//! SandboxProfile, Preset, Warning, DiagnosticReport, ...
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::backend::BackendKind;
 use crate::permissions::PermissionSet;
 use crate::risk::{RiskAssessment, RiskLevel};
 use crate::warnings::Warning;
@@ -199,7 +198,7 @@ impl IsolationVerdict {
         match self {
             IsolationVerdict::WeaklyIsolated => "This app can run, but meaningful isolation is limited.",
             IsolationVerdict::LikelyBroken => "This app probably cannot run correctly inside a sandbox.",
-            IsolationVerdict::UnsafeToSandbox => "This app requires access that cannot be safely sandboxed. Run unsandboxed only if you trust this application.",
+            IsolationVerdict::UnsafeToSandbox => "This app requires access that cannot be safely sandboxed (it asks for administrator rights).",
         }
     }
 }
@@ -222,68 +221,18 @@ pub struct DependencyReport {
     pub notes: Vec<String>,
 }
 
-/// Backend selection stored per app (§2.13.2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum BackendChoice {
-    #[default]
-    Auto,
-    Bubblewrap,
-    Bubblejail,
-    Firejail,
-    Unsandboxed,
-}
-
-impl BackendChoice {
-    pub fn fixed(self) -> Option<BackendKind> {
-        match self {
-            BackendChoice::Auto => None,
-            BackendChoice::Bubblewrap => Some(BackendKind::Bubblewrap),
-            BackendChoice::Bubblejail => Some(BackendKind::Bubblejail),
-            BackendChoice::Firejail => Some(BackendKind::Firejail),
-            BackendChoice::Unsandboxed => Some(BackendKind::Unsandboxed),
-        }
-    }
-    pub fn parse(s: &str) -> Option<Self> {
-        Some(match s.to_ascii_lowercase().as_str() {
-            "auto" => BackendChoice::Auto,
-            "bubblewrap" | "bwrap" => BackendChoice::Bubblewrap,
-            "bubblejail" => BackendChoice::Bubblejail,
-            "firejail" => BackendChoice::Firejail,
-            "unsandboxed" | "none" => BackendChoice::Unsandboxed,
-            _ => return None,
-        })
-    }
-    pub fn as_str(self) -> &'static str {
-        match self {
-            BackendChoice::Auto => "auto",
-            BackendChoice::Bubblewrap => "bubblewrap",
-            BackendChoice::Bubblejail => "bubblejail",
-            BackendChoice::Firejail => "firejail",
-            BackendChoice::Unsandboxed => "unsandboxed",
-        }
-    }
-}
-
+/// Per-app sandbox settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct SandboxProfile {
-    pub backend: BackendChoice,
     pub permissions: PermissionSet,
     /// Name of the preset last applied, if any.
     pub preset: Option<String>,
     pub compatibility_mode: bool,
-    /// The user explicitly confirmed running without a sandbox.
-    pub unsandboxed_confirmed: bool,
-    /// The user explicitly confirmed Firejail use for this app.
-    pub firejail_confirmed: bool,
     /// Extra arguments always passed to the app.
     pub args: Vec<String>,
     /// The profile differs from the recommendation because the user changed it.
     pub user_modified: bool,
-    /// With `backend = auto`: the backend SAM found to work best for this app
-    /// (after a failed sandbox setup or a repair step), and why.
-    pub auto_backend: Option<LearnedBackend>,
 }
 
 /// A suggested change that may make an app work (first-run hint, log
@@ -311,18 +260,10 @@ pub enum FixAction {
     Add { key: String, value: String },
     /// Turn on compatibility mode.
     Compat,
-    /// Let the automatic backend choice use this backend for the app.
-    Backend { backend: BackendKind },
     /// Always pass this argument to the app (e.g. `--no-sandbox`).
     AddArg { value: String },
     /// Nothing SAM can change (explanation only).
     None,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LearnedBackend {
-    pub kind: BackendKind,
-    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -330,15 +271,13 @@ pub struct LearnedBackend {
 pub struct LaunchRecord {
     pub started_at: i64,
     pub finished_at: i64,
-    pub backend: Option<BackendKind>,
     pub exit_code: Option<i32>,
     pub signal: Option<i32>,
     pub success: bool,
     /// Failure looked like a sandbox setup problem rather than the app exiting.
     pub sandbox_failure: bool,
     /// Bubblewrap reported that the sandbox could not be built (its status
-    /// channel never announced the app's process). Only this verified signal
-    /// may trigger an automatic backend change; app output never does.
+    /// channel never announced the app's process). App output never sets this.
     pub setup_failed: bool,
     /// What SAM's helper actually enforced inside the sandbox, e.g.
     /// "landlock: fully enforced; seccomp: baseline loaded".
@@ -400,7 +339,7 @@ pub struct HiddenEntry {
 
 impl AppEntry {
     /// Forget that the last launch failed in the sandbox setup. Called when the
-    /// profile or backend changes, since the next launch will be different.
+    /// profile changes, since the next launch will be different.
     /// The record and its log stay; only the "Broken" verdict is dropped.
     pub fn clear_launch_failure(&mut self) {
         if let Some(l) = self.last_launch.as_mut().filter(|l| l.sandbox_failure) {
@@ -425,7 +364,7 @@ impl AppEntry {
             return Badge::Broken;
         }
         if let Some(d) = &self.detection {
-            if d.verdict == Some(IsolationVerdict::UnsafeToSandbox) && self.profile.backend != BackendChoice::Unsandboxed {
+            if d.verdict == Some(IsolationVerdict::UnsafeToSandbox) {
                 return Badge::Unsafe;
             }
         }
@@ -456,8 +395,6 @@ pub struct Preset {
     pub name: String,
     pub description: String,
     pub permissions: PermissionSet,
-    /// Backend the preset prefers, if any (e.g. compatibility presets needing Firejail).
-    pub backend: Option<BackendChoice>,
     pub risk: RiskLevel,
     pub created_at: i64,
     pub modified_at: i64,
@@ -522,7 +459,6 @@ pub struct AppSummary {
     pub badge: Badge,
     pub badge_label: &'static str,
     pub category: String,
-    pub backend: BackendChoice,
     pub risk: RiskAssessment,
     pub last_launched: Option<i64>,
     pub added_at: i64,
@@ -543,8 +479,7 @@ impl AppSummary {
             badge,
             badge_label: badge.label(),
             category: e.category.clone(),
-            backend: e.profile.backend,
-            risk: crate::risk::assess(&e.profile.permissions, e.profile.backend.fixed()),
+            risk: crate::risk::assess(&e.profile.permissions),
             last_launched: e.last_launched,
             added_at: e.added_at,
             last_problem: e.last_launch.as_ref().filter(|l| !l.success && !matches!(l.signal, Some(9) | Some(15))).map(|l| {

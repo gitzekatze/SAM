@@ -116,7 +116,11 @@ void Backend::call(const QStringList &args, const QJSValue &callback, const QStr
 
 bool Backend::launch(const QString &appId, const QStringList &files)
 {
-    auto *proc = new QProcess(this);
+    // No parent: a QProcess owned by Backend would be killed when SAM's
+    // window closes, taking the sandboxed app with it (bwrap
+    // --die-with-parent). Apps keep running after SAM exits; while SAM
+    // runs, `finished` still reports failures.
+    auto *proc = new QProcess();
     proc->setProgram(m_runner);
     proc->setArguments(QStringList{QStringLiteral("--app-id"), appId} + files);
     proc->setProcessChannelMode(QProcess::ForwardedChannels);

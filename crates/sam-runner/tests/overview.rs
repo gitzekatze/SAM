@@ -46,7 +46,7 @@ fn discover_sandbox_hide_and_restore() {
     let d = sam.discover().unwrap().into_iter().find(|d| d.name == "Single").expect("manual file listed");
     assert!(d.manual && d.sandboxed.is_none());
     // The preview shows settings without unpacking anything.
-    let pv = sam.preview(&single, None, None).unwrap();
+    let pv = sam.preview(&single, None).unwrap();
     assert!(pv["permissions"]["display"]["wayland"].as_bool().unwrap());
 
     // Create the sandbox and hide the duplicate.
@@ -60,7 +60,7 @@ fn discover_sandbox_hide_and_restore() {
     assert!(d.menu_entries.is_empty(), "hidden entry no longer reported");
 
     // Remove the sandbox: launcher gone, original entry restored exactly.
-    sam.remove(&id, false).unwrap().0;
+    sam.remove(&id, false).unwrap();
     assert!(!added.entry.desktop_entry.unwrap().exists());
     assert_eq!(fs::read_to_string(&foreign).unwrap(), foreign_text);
     assert!(sam.discover().unwrap().iter().any(|d| d.path == img && d.sandboxed.is_none()));

@@ -4,7 +4,7 @@
 use anyhow::Result;
 use sam_core::permissions::*;
 use sam_core::risk::{assess, RiskLevel};
-use sam_core::{AppEntry, AppImageMetadata, BackendChoice, DependencyReport, Paths, Preset};
+use sam_core::{AppEntry, AppImageMetadata, DependencyReport, Paths, Preset};
 use sam_storage::PresetStore;
 use serde::Serialize;
 
@@ -166,7 +166,6 @@ pub struct Recommendation {
     pub category: Category,
     pub permissions: PermissionSet,
     pub notes: Vec<String>,
-    pub backend: BackendChoice,
 }
 
 fn base_for(cat: Category) -> PermissionSet {
@@ -205,6 +204,7 @@ fn base_for(cat: Category) -> PermissionSet {
         }
         Category::Game => {
             p.devices.gpu = true;
+            p.devices.gamepads = true;
             p.audio.enabled = true;
         }
         Category::TextEditor | Category::Office => {
@@ -252,7 +252,12 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
             notes.push(format!("X11 enabled: {} apps usually need XWayland", req.toolkit));
         }
         if !req.x11 && !req.wayland && r.elf_count > 0 && req.toolkit == "Unknown" {
-            // Can't tell; keep Wayland only but note it.
+            // Nothing linked: the app loads its graphics stack at start
+            // (Rust/wgpu, game engines). Those need the GPU to open a window.
+            if !p.devices.gpu {
+                p.devices.gpu = true;
+                notes.push("GPU enabled: the app loads its graphics libraries at start (common for Rust apps and game engines)".into());
+            }
             notes.push("No display libraries detected; if the window does not appear, enable X11".into());
         }
         if req.network && p.network.mode == NetworkMode::None {
@@ -285,7 +290,7 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
     if XDG_DIR_KEYS.iter().any(|k| p.filesystem.xdg_access(k).is_granted()) {
         p.integrations.file_manager = true;
     }
-    Recommendation { category, permissions: p, notes, backend: BackendChoice::Auto }
+    Recommendation { category, permissions: p, notes }
 }
 
 /// Apps whose purpose is talking to models, servers or services: local AI
@@ -325,12 +330,11 @@ pub const COMPAT_WARNING: &str = "This AppImage may require broader host access 
 /// Built-in presets (§2.18 examples).
 pub fn builtin_presets() -> Vec<Preset> {
     let mk = |name: &str, desc: &str, notes: &str, p: PermissionSet| {
-        let risk = assess(&p, None).level;
+        let risk = assess(&p).level;
         Preset {
             name: name.into(),
             description: desc.into(),
             permissions: p,
-            backend: None,
             risk,
             created_at: 0,
             modified_at: 0,
@@ -346,6 +350,7 @@ pub fn builtin_presets() -> Vec<Preset> {
     game.network.mode = NetworkMode::Full;
     game.display.x11 = true;
     game.devices.input = false;
+    game.devices.gamepads = true;
     let mut untrusted = PermissionSet::strict_gui();
     untrusted.dbus.session.mode = DbusMode::None;
     untrusted.advanced.persistent_home = false;
@@ -400,8 +405,8 @@ pub fn check_preset(app: &AppEntry, preset: &Preset) -> PresetCheck {
     let new = &preset.permissions;
     let cur = &app.profile.permissions;
     let mut c = PresetCheck {
-        risk_before: assess(cur, app.profile.backend.fixed()).level,
-        risk_after: assess(new, preset.backend.or(Some(app.profile.backend)).and_then(|b| b.fixed())).level,
+        risk_before: assess(cur).level,
+        risk_after: assess(new).level,
         ..Default::default()
     };
     let mut removed = |cond: bool, what: &str| {
@@ -420,8 +425,8 @@ pub fn check_preset(app: &AppEntry, preset: &Preset) -> PresetCheck {
         }
     }
 
-    let before = assess(cur, None);
-    for item in assess(new, None).items {
+    let before = assess(cur);
+    for item in assess(new).items {
         if item.level >= RiskLevel::High && !before.items.iter().any(|b| b.key == item.key && b.level >= item.level) {
             c.adds_dangerous.push(item.title);
         }

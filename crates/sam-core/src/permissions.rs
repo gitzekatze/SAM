@@ -189,6 +189,9 @@ impl NetworkPerms {
 pub struct DevicePerms {
     pub gpu: bool,
     pub webcam: bool,
+    /// Game controllers only: joystick device nodes, not keyboards or mice.
+    pub gamepads: bool,
+    /// All of /dev/input (keyboards, mice, everything) and /dev/uinput.
     pub input: bool,
     pub usb: bool,
     pub bluetooth: bool,
@@ -349,9 +352,6 @@ pub fn default_session_allow() -> Vec<String> {
     vec![
         // Desktop portal, restricted to selected interfaces (see portal_interfaces).
         "org.freedesktop.portal.Desktop".into(),
-        // Input methods (typing in other scripts, emoji pickers).
-        "org.freedesktop.portal.IBus".into(),
-        "org.freedesktop.portal.Fcitx".into(),
         "org.freedesktop.Notifications".into(),
         "org.kde.StatusNotifierWatcher".into(),
     ]
@@ -430,7 +430,7 @@ pub struct AdvancedPerms {
 }
 
 /// Desktop services an app may use through the filtered session bus.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct IntegrationPerms {
     /// Password storage (Secret Service / KWallet). The keyring does not
@@ -443,6 +443,17 @@ pub struct IntegrationPerms {
     /// Screen sharing through the portal (the desktop always asks which
     /// screen or window). For video calls and streaming.
     pub screen_sharing: bool,
+    /// Typing through an input method (Fcitx5 or IBus), e.g. for Chinese,
+    /// Japanese or Korean.
+    pub input_method: bool,
+}
+
+impl Default for IntegrationPerms {
+    fn default() -> Self {
+        // Input methods are on by default, like Flatpak: their portal
+        // frontends only accept typed text from the app.
+        IntegrationPerms { keyring: false, media_controls: false, file_manager: false, screen_sharing: false, input_method: true }
+    }
 }
 
 impl IntegrationPerms {
@@ -458,6 +469,12 @@ impl IntegrationPerms {
         }
         if self.file_manager {
             talk.push("org.freedesktop.FileManager1");
+        }
+        if self.input_method {
+            // The sandbox frontends of Fcitx5 and IBus, the names Flatpak
+            // apps use. Not `org.fcitx.Fcitx5`: its controller interface
+            // can change Fcitx's configuration.
+            talk.extend(["org.freedesktop.portal.Fcitx", "org.freedesktop.portal.IBus"]);
         }
         (talk, own)
     }
@@ -653,8 +670,10 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Hardware-accelerated graphics through /dev/dri and host graphics drivers. Needed by most games, browsers and editors.", Medium),
         perm!("devices.webcam", "Devices", "Webcam",
             "Access to video capture devices. The app could record you.", High),
-        perm!("devices.input", "Devices", "Input devices / gamepads",
-            "Raw access to /dev/input, e.g. for game controllers. Can be used to read keystrokes.", Dangerous, advanced),
+        perm!("devices.gamepads", "Devices", "Game controllers",
+            "Gamepads and joysticks that are plugged in when the app starts. Keyboards and mice stay hidden.", Medium),
+        perm!("devices.input", "Devices", "All input devices",
+            "Raw access to every keyboard, mouse and controller in /dev/input. Can be used to read keystrokes. Only for tools that remap or configure input devices.", Dangerous, advanced),
         perm!("devices.usb", "Devices", "Raw USB",
             "Raw access to USB devices. Needed by flashing tools and some hardware utilities.", Dangerous, advanced),
         perm!("devices.bluetooth", "Devices", "Bluetooth",
@@ -681,6 +700,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Lets the app ask to share your screen or a window (video calls, streaming). Your desktop always asks which screen or window first.", Medium),
         perm!("integrations.file_manager", "Desktop integration", "Show in folder",
             "Lets the app open your file manager at a file it saved.", Low),
+        perm!("integrations.input_method", "Desktop integration", "Input method",
+            "Typing through Fcitx5 or IBus (their sandbox frontends), e.g. for Chinese, Japanese or Korean, and emoji pickers.", Low),
         perm!("sockets.ssh_agent", "Sockets", "SSH agent",
             "Lets the app use keys loaded in your SSH agent.", High, advanced),
         perm!("sockets.cups", "Sockets", "Printing",
@@ -702,7 +723,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("advanced.host_themes", "Advanced", "Host theme settings",
             "Read-only access to GTK/Qt/KDE theme configuration so apps match your desktop.", Low, advanced),
         perm!("advanced.writable_appdir", "Advanced", "Writable app folder",
-            "For portable apps that save settings next to themselves. Changes go to a separate layer; the extracted app stays untouched. Bubblewrap only.", Low, advanced),
+            "For portable apps that save settings next to themselves. Changes go to a separate layer; the extracted app stays untouched.", Low, advanced),
         perm!("advanced.extra_backend_args", "Advanced", "Raw backend arguments",
             "Arguments passed verbatim to the sandbox backend. Can weaken the sandbox.", High, advanced),
     ]

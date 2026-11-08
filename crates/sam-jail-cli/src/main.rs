@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use sam_core::util::{format_ts, human_size, tildify};
 use sam_core::*;
-use sam_runner::launch::{prepare, run_auto, LaunchOptions};
+use sam_runner::launch::{prepare, run, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
 use sam_storage::{parse_preset_toml, preset_to_toml, read_preset_file, LogKind, Logs, PresetStore};
 use clap::{Parser, Subcommand};
@@ -72,9 +72,6 @@ enum Cmd {
         /// Use the permissions given as JSON on stdin instead of the recommendation.
         #[arg(long)]
         permissions_stdin: bool,
-        /// Backend to use (auto, bubblewrap, bubblejail).
-        #[arg(long)]
-        backend: Option<String>,
     },
     /// Settings SAM would use for an AppImage without a sandbox (nothing is
     /// unpacked). With --permissions-stdin, evaluates adjusted settings.
@@ -82,8 +79,6 @@ enum Cmd {
         path: PathBuf,
         #[arg(long)]
         permissions_stdin: bool,
-        #[arg(long)]
-        backend: Option<String>,
     },
     /// Things to check right after creating a sandbox, with one-click fixes.
     Hints {
@@ -175,16 +170,6 @@ enum Cmd {
         #[command(subcommand)]
         cmd: PresetCmd,
     },
-    /// Show or set the backend of an app (auto, bubblewrap, bubblejail, firejail, unsandboxed).
-    Backend {
-        app: String,
-        backend: Option<String>,
-        /// Confirm risky choices (firejail, unsandboxed).
-        #[arg(long)]
-        confirm: bool,
-    },
-    /// Show backend availability on this system.
-    Backends,
     /// Set one permission, e.g. `sam-jail set krita network.mode none`.
     Set { app: String, key: String, value: String },
     /// Read permissions (all, or one key).
@@ -518,7 +503,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     eprintln!("testing {} for {seconds}s…", e.display_name());
                 }
                 let opts = LaunchOptions { timeout_secs: Some(seconds), quiet: true, ..Default::default() };
-                let (status, detail, findings) = match run_auto(&mut e, &opts, &app.config, &app.paths, &app.host()) {
+                let (status, detail, findings) = match run(&mut e, &opts, &app.config, &app.paths, &app.host()) {
                     Ok(rec) => {
                         let ran = rec.finished_at - rec.started_at;
                         if rec.sandbox_failure {
@@ -562,16 +547,14 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Preview { path, permissions_stdin, backend } => {
+        Cmd::Preview { path, permissions_stdin } => {
             let perms: Option<PermissionSet> = if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
-            let backend = backend.map(|b| BackendChoice::parse(&b).with_context(|| format!("unknown backend '{b}'"))).transpose()?;
-            let v = app.preview(&path, perms, backend)?;
+            let v = app.preview(&path, perms)?;
             out.emit(&v, || println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()));
         }
-        Cmd::Add { path, allow_fallback, no_launcher, preset, accept, hide_duplicates, permissions_stdin, backend } => {
+        Cmd::Add { path, allow_fallback, no_launcher, preset, accept, hide_duplicates, permissions_stdin } => {
             let permissions: Option<PermissionSet> = if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
-            let backend = backend.map(|b| BackendChoice::parse(&b).with_context(|| format!("unknown backend '{b}'"))).transpose()?;
-            let o = app.add(&path, &AddOptions { consent_fallback: allow_fallback, launcher: no_launcher.then_some(false), preset, accept, hide_duplicates, permissions, backend })?;
+            let o = app.add(&path, &AddOptions { consent_fallback: allow_fallback, launcher: no_launcher.then_some(false), preset, accept, hide_duplicates, permissions })?;
             let summary = AppSummary::from_entry(&o.entry);
             out.emit(&json!({"app": summary, "entry": o.entry, "relocated": o.relocated, "needs_fallback_consent": o.needs_fallback_consent, "warnings": o.warnings}), || {
                 if o.relocated {
@@ -646,7 +629,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let host = app.host();
             let warnings = app.app_warnings(&e, &host);
             let summary = AppSummary::from_entry(&e);
-            let selection = sam_runner::select::select(&e.profile, &app.config, &host).ok();
+            let selection = sam_runner::select::select(&host).ok();
             let hints = sam_runner::repair::first_run_hints(&e);
             let steps = sam_runner::repair::ladder(&e, &app.config);
             out.emit(
@@ -665,7 +648,7 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         Cmd::Run { app: q, args } => {
             let mut e = app.resolve(&q)?;
-            let rec = run_auto(&mut e, &LaunchOptions { args, ..Default::default() }, &app.config, &app.paths, &app.host())?;
+            let rec = run(&mut e, &LaunchOptions { args, ..Default::default() }, &app.config, &app.paths, &app.host())?;
             out.emit(&rec, || {
                 if rec.sandbox_failure {
                     eprintln!("{} {}", paint("sam-jail:", "1;31"), rec.summary);
@@ -682,7 +665,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let p = prepare(&e, &LaunchOptions { args, ..Default::default() }, &app.config, &app.paths, &app.host())?;
             let pv = p.preview();
             out.emit(&pv, || {
-                println!("# backend: {} ({})", pv.backend, pv.reason);
+                println!("# sandbox: {} ({})", pv.backend, pv.reason);
                 println!("# landlock: {}  seccomp: {}", pv.landlock, pv.seccomp);
                 if let Some(d) = &pv.dbus_proxy {
                     println!("# dbus proxy: xdg-dbus-proxy {}", sam_core::util::shell_join(d));
@@ -735,47 +718,10 @@ fn real_main(cli: Cli) -> Result<()> {
             }
         }
         Cmd::Preset { cmd } => preset_cmd(&app, &out, cmd)?,
-        Cmd::Backend { app: q, backend, confirm } => {
-            let e = match backend {
-                Some(b) => {
-                    let choice = BackendChoice::parse(&b).with_context(|| format!("unknown backend '{b}' (auto, bubblewrap, bubblejail, firejail, unsandboxed)"))?;
-                    app.set_backend(&q, choice, confirm)?
-                }
-                None => app.resolve(&q)?,
-            };
-            let sel = sam_runner::select::select(&e.profile, &app.config, &app.host());
-            let selection = sel.as_ref().ok().cloned();
-            let error = sel.err().map(|e| e.to_string());
-            out.emit(&json!({"choice": e.profile.backend, "selection": selection, "error": error}), || {
-                println!("{}: backend '{}'", e.display_name(), e.profile.backend.as_str());
-                match (&selection, &error) {
-                    (Some(s), _) => {
-                        println!("  will use {} — {}", s.kind.label(), s.reason);
-                        for r in &s.risks {
-                            println!("  risk: {r}");
-                        }
-                    }
-                    (_, Some(err)) => println!("  {}", paint(err, "31")),
-                    _ => {}
-                }
-            });
-        }
-        Cmd::Backends => {
-            let st = sam_runner::select::statuses(&HostInfo::probe_full(), &app.config);
-            out.emit(&st, || {
-                for s in &st {
-                    let state = if s.usable { paint("usable", "32") } else if s.installed { paint("installed, not usable", "33") } else { paint("not installed", "31") };
-                    println!("{:<12} {}{}{}", s.kind.label(), state, s.version.as_ref().map(|v| format!("  ({v})")).unwrap_or_default(), if s.recommended { "  [recommended]" } else { "" });
-                    for n in s.notes.iter().chain(s.risks.iter()) {
-                        println!("             - {n}");
-                    }
-                }
-            });
-        }
         Cmd::Set { app: q, key, value } => {
             let e = app.set_permission(&q, &key, &value)?;
             let v = e.profile.permissions.get_key(&key)?;
-            let eval = app.evaluate(&e.profile.permissions, Some(&e), e.profile.backend.fixed(), &app.host());
+            let eval = app.evaluate(&e.profile.permissions, Some(&e), &app.host());
             out.emit(&json!({"key": key, "value": v, "risk": eval.risk, "warnings": eval.warnings}), || {
                 println!("{key} = {v}   (risk now {} {}/100)", risk_str(eval.risk.level), eval.risk.score);
                 print_warnings(&eval.warnings.iter().filter(|w| w.key.as_deref() == Some(&key)).cloned().collect::<Vec<_>>());
@@ -811,12 +757,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let perms: PermissionSet = serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?;
             let e = q.map(|q| app.resolve(&q)).transpose()?;
             let host = app.host();
-            let backend = e.as_ref().and_then(|e| {
-                let mut prof = e.profile.clone();
-                prof.permissions = perms.clone();
-                sam_runner::select::select(&prof, &app.config, &host).ok().map(|s| s.kind)
-            });
-            let ev = app.evaluate(&perms, e.as_ref(), backend, &host);
+            let ev = app.evaluate(&perms, e.as_ref(), &host);
             out.emit(&ev, || {
                 println!("risk: {} ({}/100)", risk_str(ev.risk.level), ev.risk.score);
                 print_warnings(&ev.warnings);
@@ -1010,8 +951,8 @@ fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel: Option<&s
     println!("  category:    {}", e.category);
     println!("  state:       {:?}", e.state);
     match sel {
-        Some(sel) => println!("  backend:     {} → {} ({})", e.profile.backend.as_str(), sel.kind, sel.reason),
-        None => println!("  backend:     {} (not available)", e.profile.backend.as_str()),
+        Some(sel) => println!("  sandbox:     Bubblewrap ({})", sel.reason),
+        None => println!("  sandbox:     not available (see sam-jail doctor)"),
     }
     println!("  risk:        {} ({}/100)", risk_str(s.risk.level), s.risk.score);
     if let Some(p) = &e.profile.preset {
@@ -1035,7 +976,11 @@ fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel: Option<&s
     println!("  network:     {}", p.network.mode.as_str());
     println!("  display:     wayland={} x11={}", p.display.wayland, p.display.x11);
     println!("  audio:       {}{}", p.audio.enabled, if p.audio.alsa_raw { " + raw ALSA" } else { "" });
-    println!("  devices:     gpu={} webcam={} input={} usb={}", p.devices.gpu, p.devices.webcam, p.devices.input, p.devices.usb);
+    println!("  devices:     gpu={} webcam={} gamepads={} input={} usb={}", p.devices.gpu, p.devices.webcam, p.devices.gamepads, p.devices.input, p.devices.usb);
+    println!(
+        "  desktop:     input_method={} keyring={} media_controls={} screen_sharing={} file_manager={}",
+        p.integrations.input_method, p.integrations.keyring, p.integrations.media_controls, p.integrations.screen_sharing, p.integrations.file_manager
+    );
     println!("  d-bus:       session={} system={}", p.dbus.session.mode.as_str(), p.dbus.system.mode.as_str());
     if let Some(d) = &e.detection {
         println!("\n{}", paint("Dependencies", "1"));

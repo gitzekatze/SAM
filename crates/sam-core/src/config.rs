@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::model::BackendChoice;
 use crate::paths::Paths;
 use crate::util::{atomic_write, expand_home};
 
@@ -34,7 +33,6 @@ pub const THEMES: [&str; 4] = ["breeze-light", "breeze-dark", "breeze-high-contr
 #[serde(default)]
 pub struct General {
     pub theme: String,
-    pub default_backend: BackendChoice,
     /// Folders the overview searches for AppImages (two levels deep).
     pub scan_directories: Vec<String>,
     /// Also search the Downloads folder (opt-in: it often holds old copies).
@@ -50,7 +48,6 @@ impl Default for General {
     fn default() -> Self {
         General {
             theme: "breeze-dark".into(),
-            default_backend: BackendChoice::Bubblewrap,
             scan_directories: vec!["~/Applications".into(), "~/AppImages".into(), "~/.local/bin".into(), "~/bin".into()],
             scan_downloads: false,
             scan_files: vec![],
@@ -66,8 +63,6 @@ impl Default for General {
 pub struct Security {
     pub warn_x11: bool,
     pub warn_full_home: bool,
-    pub warn_firejail: bool,
-    pub allow_firejail: bool,
     pub experimental_landlock: bool,
     pub experimental_seccomp: bool,
     /// Baseline syscall filter for every Bubblewrap sandbox (like Flatpak's).
@@ -83,8 +78,6 @@ impl Default for Security {
         Security {
             warn_x11: true,
             warn_full_home: true,
-            warn_firejail: true,
-            allow_firejail: false,
             experimental_landlock: true,
             experimental_seccomp: false,
             baseline_seccomp: true,
@@ -193,12 +186,6 @@ impl Config {
         if !THEMES.contains(&self.general.theme.as_str()) {
             bail!("unknown theme '{}'; choose one of: {}", self.general.theme, THEMES.join(", "));
         }
-        if self.general.default_backend == BackendChoice::Unsandboxed {
-            bail!("'unsandboxed' cannot be the default backend");
-        }
-        if self.general.default_backend == BackendChoice::Firejail && !self.security.allow_firejail {
-            bail!("Firejail can only be the default backend after allowing it (security.allow_firejail = true)");
-        }
         Ok(())
     }
 
@@ -261,7 +248,6 @@ mod tests {
         let s = r#"
 [general]
 theme = "breeze-dark"
-default_backend = "bubblewrap"
 scan_directories = [
     "~/Applications",
     "~/.local/bin",
@@ -270,8 +256,6 @@ scan_directories = [
 [security]
 warn_x11 = true
 warn_full_home = true
-warn_firejail = true
-allow_firejail = false
 experimental_landlock = true
 experimental_ebpf = false
 
@@ -286,7 +270,6 @@ cleanup_stale = true
 "#;
         let c: Config = toml::from_str(s).unwrap();
         assert_eq!(c.general.scan_directories.len(), 2);
-        assert!(!c.security.allow_firejail);
         c.validate().unwrap();
     }
 
@@ -294,15 +277,12 @@ cleanup_stale = true
     fn set_keys() {
         let mut c = Config::default();
         c.set_key("general.theme", "cachyos-neon").unwrap();
-        assert!(c.set_key("general.default_backend", "firejail").is_err(), "Firejail must be allowed first");
-        c.set_key("security.allow_firejail", "true").unwrap();
         c.set_key("general.scan_directories", "~/A, ~/B").unwrap();
         assert_eq!(c.general.scan_directories, vec!["~/A", "~/B"]);
         assert!(!Config::default().scan_dirs(None).iter().any(|d| d.ends_with("Downloads")), "Downloads is opt-in");
         c.set_key("general.scan_downloads", "true").unwrap();
         assert!(c.scan_dirs(Some(std::path::Path::new("/x/Downloads"))).contains(&PathBuf::from("/x/Downloads")));
         assert!(c.set_key("general.theme", "pink").is_err());
-        assert!(c.set_key("general.default_backend", "unsandboxed").is_err());
         assert!(c.set_key("nope.key", "1").is_err());
     }
 }

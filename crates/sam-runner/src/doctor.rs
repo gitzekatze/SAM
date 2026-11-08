@@ -64,16 +64,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
 
     c.push(match &host.tools.xdg_dbus_proxy {
         Some(_) => check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Ok, "installed: filtered session D-Bus available"),
-        None => check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Warn, "not installed: filtered D-Bus falls back to no D-Bus").hint("Install xdg-dbus-proxy or use the Bubblejail backend."),
-    });
-    c.push(match &host.tools.bubblejail {
-        Some(t) => check("bubblejail", "Bubblejail", CheckStatus::Ok, format!("installed ({})", t.version.clone().unwrap_or_default())),
-        None => check("bubblejail", "Bubblejail", CheckStatus::Info, "not installed (optional)"),
-    });
-    c.push(match (&host.tools.firejail, cfg.security.allow_firejail) {
-        (Some(_), false) => check("firejail", "Firejail", CheckStatus::Info, "installed but disabled by default"),
-        (Some(_), true) => check("firejail", "Firejail", CheckStatus::Warn, "installed and enabled (setuid-root backend)"),
-        (None, _) => check("firejail", "Firejail", CheckStatus::Info, "not installed (optional)"),
+        None => check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Warn, "not installed: filtered D-Bus falls back to no D-Bus").hint("Install xdg-dbus-proxy."),
     });
 
     let mut extract_tools = vec!["built-in SquashFS reader (gzip, xz, zstd)".to_string()];
@@ -128,7 +119,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
     DiagnosticReport { generated_at: now(), sam_version: SAM_VERSION.into(), checks: c }
 }
 
-pub fn app_report(app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport {
+pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport {
     let mut c = Vec::new();
     c.push(if e.source_path.exists() {
         check("source", "Source AppImage", CheckStatus::Ok, tildify(&e.source_path))
@@ -149,9 +140,9 @@ pub fn app_report(app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport 
         };
         c.push(check("detect", "Dependency detection", st, format!("{host_res} controlled host resources required; toolkit {}; {} libraries expected from the host", d.requirements.toolkit, d.missing.len())));
     }
-    match crate::select::select(&e.profile, &app.config, host) {
-        Ok(s) => c.push(check("backend", "Launch backend", CheckStatus::Ok, format!("{} ({})", s.kind, s.reason))),
-        Err(err) => c.push(check("backend", "Launch backend", CheckStatus::Fail, err.to_string())),
+    match crate::select::select(host) {
+        Ok(s) => c.push(check("backend", "Sandbox", CheckStatus::Ok, format!("Bubblewrap ({})", s.reason))),
+        Err(err) => c.push(check("backend", "Sandbox", CheckStatus::Fail, err.to_string())),
     }
     match &e.desktop_entry {
         Some(p) => {
@@ -194,7 +185,7 @@ pub fn bug_report(app: &Sam, e: Option<&AppEntry>, host: &HostInfo) -> String {
         s += &format!("- [{:?}] {}: {}\n", ch.status, ch.label, ch.detail);
     }
     if let Some(e) = e {
-        s += &format!("\n### App: {} ({})\n\n- Type: {}\n- Category: {}\n- State: {:?} / badge {}\n- Backend choice: {}\n", e.display_name(), e.id, e.appimage_type.label(), e.category, e.state, e.badge().label(), e.profile.backend.as_str());
+        s += &format!("\n### App: {} ({})\n\n- Type: {}\n- Category: {}\n- State: {:?} / badge {}\n", e.display_name(), e.id, e.appimage_type.label(), e.category, e.state, e.badge().label());
         if let Some(x) = &e.extraction {
             s += &format!("- Extraction: {} ({}), {} files\n", x.method, x.compression, x.file_count);
         }

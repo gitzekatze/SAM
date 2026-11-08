@@ -82,10 +82,9 @@ Process isolation:
 The sandboxed app controls its own output, and an AppImage controls its own
 metadata and file name. SAM treats both as untrusted:
 
-- **Automatic backend changes** happen only when Bubblewrap itself reports
-  that the sandbox could not be built (`--json-status-fd`), never because of
-  text the app printed. The only automatic fallback is Bubblejail; Firejail
-  is never chosen without you.
+- **Sandbox failures** are reported only when Bubblewrap itself says the
+  sandbox could not be built (`--json-status-fd`), never because of text the
+  app printed. SAM never falls back to running an app without a sandbox.
 - **Repair suggestions** derived from the app's output are labelled as such
   and always need confirmation. They never offer services that can act
   outside the sandbox (systemd, Flatpak, KWin/Plasma scripting, dconf, …)
@@ -127,21 +126,17 @@ executes the AppImage by default. Additionally:
 | Fonts, icons, locale, timezone (read-only), Wayland, filtered D-Bus | Low |
 | GPU, audio, folder access, full `/usr` | Medium |
 | Network, X11, full home read-only, full session D-Bus, webcam, SSH agent | High |
-| Full home read/write, system D-Bus, raw devices (input, USB, ALSA), exposed keys, unsandboxed | Dangerous |
+| Full home read/write, system D-Bus, raw devices (input, USB, ALSA), exposed keys | Dangerous |
 
 The score shown in the app is a weighted sum, capped at 100.
 
 ## Known limitations
 
-- **D-Bus filtering** needs `xdg-dbus-proxy` (or the Bubblejail backend).
+- **D-Bus filtering** needs `xdg-dbus-proxy`.
   Without it, "filtered" falls back to *no* session bus.
 - **Abstract sockets** are blocked only with Landlock ABI 6 (kernel 6.12+)
-  and only by the Bubblewrap backend. On older kernels, or with Bubblejail
-  or Firejail, XWayland's abstract socket is reachable with full network
-  (X11 authorization still applies).
-- **Bubblejail and Firejail** do not apply SAM's Landlock layer, portal
-  identity, link opener, writable app folder or *Local network only*. The
-  app page lists what is not enforced for the chosen backend.
+  On older kernels, XWayland's abstract socket is reachable with full
+  network (X11 authorization still applies).
 - **Domain-filtered network** is experimental and not enforced (falls back
   to no network).
 - **Portal identity** imitates Flatpak's instance files
@@ -153,6 +148,5 @@ The score shown in the app is a weighted sum, capped at 100.
 - **Local network only** forwards the app's ports to this computer
   automatically, except privileged ports and well-known local services;
   list `network.app_ports` to restrict it further.
-- **Firejail** is setuid-root. Use it only as a compatibility backend.
 - **Hostname:** the sandbox keeps the host's hostname. Changing it is blocked
   on some hardened hosts.

@@ -9,7 +9,7 @@ use std::process::Command;
 use sam_core::permissions::PermissionSet;
 use sam_core::{HostInfo, Paths};
 use sam_intake::testkit::{build, FixtureSpec};
-use sam_runner::launch::{run_auto, LaunchOptions};
+use sam_runner::launch::{run, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
 
 fn bwrap_works() -> bool {
@@ -19,9 +19,9 @@ fn bwrap_works() -> bool {
         .is_ok_and(|s| s.success())
 }
 
-/// H1: an app printing a fake Bubblewrap error must not get a weaker backend.
+/// H1: an app printing a fake Bubblewrap error is not a sandbox failure.
 #[test]
-fn fake_bwrap_error_does_not_downgrade_the_backend() {
+fn fake_bwrap_error_is_not_a_sandbox_failure() {
     if !bwrap_works() {
         eprintln!("skipping: bubblewrap is not functional here");
         return;
@@ -33,11 +33,9 @@ fn fake_bwrap_error_does_not_downgrade_the_backend() {
     build(&img, &spec).unwrap();
     let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
     let mut e = sam.add(&img, &AddOptions { launcher: Some(false), accept: true, ..Default::default() }).unwrap().entry;
-    let rec = run_auto(&mut e, &LaunchOptions { quiet: true, ..Default::default() }, &sam.config, &sam.paths, &HostInfo::probe()).unwrap();
+    let rec = run(&mut e, &LaunchOptions { quiet: true, ..Default::default() }, &sam.config, &sam.paths, &HostInfo::probe()).unwrap();
     assert!(!rec.setup_failed, "the sandbox was built; the error text came from the app");
     assert!(!rec.sandbox_failure, "{}", rec.summary);
-    assert_eq!(rec.backend, Some(sam_core::BackendKind::Bubblewrap));
-    assert!(sam.resolve(&e.id).unwrap().profile.auto_backend.is_none(), "nothing learned from app output");
     if sam_runner::find_helper().is_some() {
         assert!(rec.enforcement.as_deref().is_some_and(|s| s.contains("seccomp")), "helper reported what it enforced: {:?}", rec.enforcement);
     }

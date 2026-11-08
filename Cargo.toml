@@ -7,8 +7,6 @@ members = [
     "crates/sam-intake",
     "crates/sam-profile",
     "crates/sam-backend-bubblewrap",
-    "crates/sam-backend-bubblejail",
-    "crates/sam-backend-firejail",
     "crates/sam-runner",
     "crates/sam-jail-cli",
 ]
@@ -27,8 +25,6 @@ sam-detect = { path = "crates/sam-detect" }
 sam-intake = { path = "crates/sam-intake" }
 sam-profile = { path = "crates/sam-profile" }
 sam-backend-bubblewrap = { path = "crates/sam-backend-bubblewrap" }
-sam-backend-bubblejail = { path = "crates/sam-backend-bubblejail" }
-sam-backend-firejail = { path = "crates/sam-backend-firejail" }
 sam-runner = { path = "crates/sam-runner" }
 
 anyhow = "1"

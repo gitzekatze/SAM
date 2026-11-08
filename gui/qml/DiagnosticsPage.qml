@@ -12,16 +12,12 @@ FormCard.FormCardPage {
     id: page
     title: qsTr("Diagnostics")
     property var report: null
-    property var backends: []
     readonly property var win: QQC2.ApplicationWindow.window
 
     function reload() {
         Backend.call(["doctor"], function (r) {
             if (r.ok) page.report = r.data
             else page.win.reportError(r)
-        })
-        Backend.call(["backends"], function (r) {
-            if (r.ok) page.backends = r.data
         })
     }
     function statusIcon(s) {
@@ -75,23 +71,6 @@ FormCard.FormCardPage {
                         }
                     }
                 }
-            }
-        }
-    }
-
-    FormCard.FormHeader { title: qsTr("Sandbox backends") }
-    FormCard.FormCard {
-        Repeater {
-            model: page.backends
-            delegate: FormCard.FormTextDelegate {
-                required property var modelData
-                icon.name: modelData.usable ? "emblem-ok-symbolic" : (modelData.installed ? "data-warning" : "dialog-cancel")
-                text: ({ bubblewrap: "Bubblewrap", bubblejail: "Bubblejail", firejail: "Firejail", unsandboxed: qsTr("Unsandboxed") })[modelData.kind]
-                    + (modelData.recommended ? "  " + qsTr("(recommended)") : "")
-                description: (modelData.usable ? qsTr("Usable") : modelData.installed ? qsTr("Installed, not usable") : qsTr("Not installed"))
-                    + (modelData.version ? " · " + modelData.version : "")
-                    + (modelData.notes.length ? "\n" + modelData.notes.join("\n") : "")
-                    + (modelData.risks.length ? "\n⚠ " + modelData.risks.join("\n⚠ ") : "")
             }
         }
     }

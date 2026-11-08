@@ -113,6 +113,9 @@ ColumnLayout {
     readonly property bool fullHome: value("filesystem.home") === true
     readonly property bool localNet: value("network.mode") === "localhost"
     readonly property bool filteredBus: value("dbus.session.mode") === "filtered"
+    readonly property bool anyBus: value("dbus.session.mode") !== "none"
+    /// "All input devices" already includes the game controllers.
+    readonly property bool allInput: value("devices.input") === true
 
     // ------------------------------------------------------------ risk
     FormCard.FormHeader { title: qsTr("Risk and warnings") }
@@ -166,6 +169,7 @@ ColumnLayout {
         PermSwitch { key: "audio.enabled"; editor: editor }
         PermSwitch { key: "devices.gpu"; editor: editor }
         PermSwitch { key: "devices.webcam"; editor: editor }
+        PermSwitch { key: "devices.gamepads"; editor: editor; available: !editor.allInput }
         PermSwitch { key: "devices.input"; editor: editor }
         PermSwitch { key: "devices.usb"; editor: editor }
         PermSwitch { key: "devices.bluetooth"; editor: editor }
@@ -203,6 +207,7 @@ ColumnLayout {
         PermSwitch { key: "integrations.media_controls"; editor: editor; available: editor.filteredBus }
         PermSwitch { key: "integrations.screen_sharing"; editor: editor; available: editor.filteredBus }
         PermSwitch { key: "integrations.keyring"; editor: editor; available: editor.filteredBus }
+        PermSwitch { key: "integrations.input_method"; editor: editor; available: editor.anyBus }
     }
 
     // ------------------------------------------------------------ d-bus
@@ -244,6 +249,6 @@ ColumnLayout {
         }
         PermSwitch { key: "advanced.seccomp_baseline"; editor: editor }
         PermSwitch { key: "advanced.seccomp_strict"; editor: editor }
-        PathListEditor { key: "advanced.extra_backend_args"; editor: editor; folders: false; Layout.fillWidth: true; placeholder: qsTr("Raw backend argument") }
+        PathListEditor { key: "advanced.extra_backend_args"; editor: editor; folders: false; Layout.fillWidth: true; placeholder: qsTr("Raw bwrap argument, e.g. --setenv FOO 1") }
     }
 }

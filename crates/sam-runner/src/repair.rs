@@ -6,7 +6,7 @@ use sam_core::permissions::*;
 use sam_core::permissions::dangerous_bus_name;
 use sam_core::util::display_safe;
 use sam_core::risk::RiskLevel;
-use sam_core::{AppEntry, BackendKind, Config, FixAction, Suggestion};
+use sam_core::{AppEntry, Config, FixAction, Suggestion};
 
 fn s(id: &str, title: &str, explanation: impl Into<String>, action: FixAction, risk: RiskLevel) -> Suggestion {
     Suggestion { id: id.into(), title: title.into(), explanation: explanation.into(), action, risk, from_app_output: false }
@@ -16,12 +16,11 @@ fn set(key: &str, value: &str) -> FixAction {
 }
 
 /// Does applying `action` change anything for this profile?
-pub fn changes_something(p: &PermissionSet, compat: bool, auto: Option<BackendKind>, args: &[String], action: &FixAction) -> bool {
+pub fn changes_something(p: &PermissionSet, compat: bool, args: &[String], action: &FixAction) -> bool {
     match action {
         FixAction::Set { key, value } => p.get_key(key).ok().map(|v| v.to_string().trim_matches('"').to_string()) != Some(value.clone()),
         FixAction::Add { key, value } => !p.get_key(key).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default().iter().any(|x| x.as_str() == Some(value)),
         FixAction::Compat => !compat,
-        FixAction::Backend { backend } => auto != Some(*backend),
         FixAction::AddArg { value } => !args.contains(value),
         FixAction::None => true,
     }
@@ -103,7 +102,6 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             push(s("seccomp", "The strict syscall filter blocks the app", "Turn off the strict syscall filter for this app.", set("advanced.seccomp_strict", "false"), RiskLevel::Low));
         } else {
             push(no_sandbox("Chromium's internal sandbox could not start inside SAM's sandbox (common on systems that restrict user namespaces). Starting without it fixes that; SAM's sandbox still protects your system."));
-            push(s("backend-bubblejail", "Try another sandbox backend", "Chromium's sandbox fails in this backend. Bubblejail sets up namespaces differently.", FixAction::Backend { backend: BackendKind::Bubblejail }, RiskLevel::Low));
         }
     }
     if p.network.mode != NetworkMode::Full
@@ -192,7 +190,7 @@ fn denied_home_path(line: &str) -> Option<String> {
 /// Repair steps to try, best first: what the last launch's output suggests,
 /// then generic steps. Steps already applied, or that change nothing, are
 /// left out.
-pub fn ladder(e: &AppEntry, cfg: &Config) -> Vec<Suggestion> {
+pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
     let p = &e.profile.permissions;
     let mut steps: Vec<Suggestion> = e.last_launch.as_ref().map(|l| l.findings.clone()).unwrap_or_default();
     steps.extend([
@@ -203,22 +201,16 @@ pub fn ladder(e: &AppEntry, cfg: &Config) -> Vec<Suggestion> {
         s("seccomp-baseline", "Turn off the baseline syscall filter", "Rarely needed: some apps use kernel interfaces the filter blocks.", set("advanced.seccomp_baseline", "false"), RiskLevel::Medium),
         s("writable-appdir", "Writable app folder", "For apps that save next to themselves.", set("advanced.writable_appdir", "true"), RiskLevel::Low),
         s("compat", "Compatibility mode", "Grants broad access (network, full session bus, all of /usr, X11, GPU, sound). Use when nothing else helps.", FixAction::Compat, RiskLevel::High),
-        s("backend-bubblejail", "Try Bubblejail", "A different way of building the sandbox.", FixAction::Backend { backend: BackendKind::Bubblejail }, RiskLevel::Low),
     ]);
     if e.detection.as_ref().is_some_and(|d| d.requirements.electron) {
-        steps.insert(steps.len().saturating_sub(2), no_sandbox("For Electron apps whose internal Chromium sandbox fails inside SAM's sandbox. SAM's sandbox still protects your system."));
+        steps.insert(steps.len().saturating_sub(1), no_sandbox("For Electron apps whose internal Chromium sandbox fails inside SAM's sandbox. SAM's sandbox still protects your system."));
     }
-    if cfg.security.allow_firejail {
-        steps.push(s("backend-firejail", "Try Firejail", "Runs the original AppImage with Firejail (setuid). Last resort.", FixAction::Backend { backend: BackendKind::Firejail }, RiskLevel::High));
-    }
-    let auto = e.profile.auto_backend.as_ref().map(|l| l.kind);
     let mut seen = Vec::new();
     steps.retain(|st| {
         let keep = !seen.contains(&st.id)
             && !e.repairs_applied.contains(&st.id)
             && !matches!(st.action, FixAction::None)
-            && (e.profile.backend == sam_core::BackendChoice::Auto || !matches!(st.action, FixAction::Backend { .. }))
-            && changes_something(p, e.profile.compatibility_mode, auto, &e.profile.args, &st.action);
+            && changes_something(p, e.profile.compatibility_mode, &e.profile.args, &st.action);
         seen.push(st.id.clone());
         keep
     });
@@ -250,7 +242,7 @@ mod tests {
         assert!(ids("all good").is_empty());
         assert_eq!(analyze("", &p, Some(11))[0].id, "crash");
         let ids_userns: Vec<String> = analyze("Zygote process exited prematurely", &p, None).into_iter().map(|s| s.id).collect();
-        assert_eq!(ids_userns, vec!["chromium-no-sandbox", "backend-bubblejail"]);
+        assert_eq!(ids_userns, vec!["chromium-no-sandbox"]);
     }
 
     #[test]
@@ -261,7 +253,6 @@ mod tests {
         let ids: Vec<String> = ladder(&e, &cfg).into_iter().map(|s| s.id).collect();
         assert_eq!(ids.first().map(String::as_str), Some("full-usr"));
         assert!(!ids.contains(&"userns".to_string()), "already allowed by default");
-        assert!(!ids.contains(&"backend-firejail".to_string()), "firejail not allowed");
         e.repairs_applied.push("full-usr".into());
         assert_ne!(ladder(&e, &cfg)[0].id, "full-usr");
     }

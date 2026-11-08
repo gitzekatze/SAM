@@ -171,7 +171,7 @@ fn sandbox_end_to_end() {
     assert_eq!(app.resolve(&id).unwrap().badge(), Badge::Missing);
 
     // Removal cleans everything up.
-    app.remove(&id, false).unwrap().0;
+    app.remove(&id, false).unwrap();
     assert!(!launcher.exists(), "launcher removed");
     assert!(!paths.app_home(&id).exists());
     assert!(app.registry().list().unwrap().is_empty());

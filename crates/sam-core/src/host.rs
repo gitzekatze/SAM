@@ -69,8 +69,6 @@ pub struct Tool {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Tools {
     pub bwrap: Option<Tool>,
-    pub bubblejail: Option<Tool>,
-    pub firejail: Option<Tool>,
     pub xdg_dbus_proxy: Option<Tool>,
     pub unsquashfs: Option<Tool>,
     pub bsdtar: Option<Tool>,
@@ -131,8 +129,6 @@ impl HostInfo {
         };
         let tools = Tools {
             bwrap: tool("bwrap", &["--version"]),
-            bubblejail: tool("bubblejail", &["--version"]),
-            firejail: tool("firejail", &["--version"]),
             xdg_dbus_proxy: tool("xdg-dbus-proxy", &["--version"]),
             unsquashfs: tool("unsquashfs", &["-version"]),
             bsdtar: tool("bsdtar", &["--version"]),

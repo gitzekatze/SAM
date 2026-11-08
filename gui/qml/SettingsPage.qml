@@ -102,25 +102,8 @@ FormCard.FormCardPage {
         ConfigSwitch { cfg: page.cfg; owner: page; key: "general.desktop_integration"; text: qsTr("Create menu entries"); description: qsTr("Sandboxed apps appear in your application menu and always start through SAM. AppImage locations are managed in the left column.") }
     }
 
-    FormCard.FormHeader { title: qsTr("Sandbox") }
+    FormCard.FormHeader { title: qsTr("Repair") }
     FormCard.FormCard {
-        ConfigChoice { cfg: page.cfg; owner: page;
-            key: "general.default_backend"
-            text: qsTr("Default backend")
-            description: qsTr("Used by every app set to “Automatic” (the default). Bubblewrap is recommended. Each app can use another backend (its “Sandbox backend” setting). Firejail can only be chosen after allowing it below.")
-            options: [
-                { value: "bubblewrap", text: "Bubblewrap" },
-                { value: "auto", text: qsTr("Automatic") },
-                { value: "bubblejail", text: "Bubblejail" },
-                { value: "firejail", text: "Firejail" }
-            ]
-        }
-        ConfigSwitch { cfg: page.cfg; owner: page;
-            key: "security.allow_firejail"
-            text: qsTr("Allow the Firejail backend")
-            description: qsTr("Off by default. Firejail is a setuid-root program and is only meant as a compatibility backend.")
-            confirmText: qsTr("Firejail is a setuid-root program. Bugs in it have historically allowed local privilege escalation. Apps only use it if you switch them to Firejail individually or make it the default backend.")
-        }
         ConfigChoice { cfg: page.cfg; owner: page;
             key: "compatibility.behavior"
             text: qsTr("Compatibility mode")
@@ -132,7 +115,6 @@ FormCard.FormCardPage {
     FormCard.FormCard {
         ConfigSwitch { cfg: page.cfg; owner: page; key: "security.warn_x11"; text: qsTr("Warn about X11 access") }
         ConfigSwitch { cfg: page.cfg; owner: page; key: "security.warn_full_home"; text: qsTr("Warn about full home access") }
-        ConfigSwitch { cfg: page.cfg; owner: page; key: "security.warn_firejail"; text: qsTr("Warn when Firejail is used") }
     }
 
     FormCard.FormHeader { title: qsTr("Kernel security features") }

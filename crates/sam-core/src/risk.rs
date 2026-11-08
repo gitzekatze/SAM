@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::backend::BackendKind;
 use crate::permissions::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default, Hash)]
@@ -64,8 +63,8 @@ fn item(items: &mut Vec<RiskItem>, key: &str, title: &str, level: RiskLevel) {
     });
 }
 
-/// Score a permission set, optionally taking the backend into account.
-pub fn assess(p: &PermissionSet, backend: Option<BackendKind>) -> RiskAssessment {
+/// Score a permission set.
+pub fn assess(p: &PermissionSet) -> RiskAssessment {
     let mut items = Vec::new();
 
     // Baseline resources every sandbox gets.
@@ -115,6 +114,9 @@ pub fn assess(p: &PermissionSet, backend: Option<BackendKind>) -> RiskAssessment
     if p.devices.webcam {
         item(&mut items, "devices.webcam", "Webcam", RiskLevel::High);
     }
+    if p.devices.gamepads && !p.devices.input {
+        item(&mut items, "devices.gamepads", "Game controllers", RiskLevel::Medium);
+    }
     if p.devices.input {
         item(&mut items, "devices.input", "Raw input devices", RiskLevel::Dangerous);
     }
@@ -141,6 +143,9 @@ pub fn assess(p: &PermissionSet, backend: Option<BackendKind>) -> RiskAssessment
     }
     if p.integrations.screen_sharing {
         item(&mut items, "integrations.screen_sharing", "Screen sharing (asks each time)", RiskLevel::Medium);
+    }
+    if p.integrations.input_method {
+        item(&mut items, "integrations.input_method", "Input method", RiskLevel::Low);
     }
     if p.integrations.file_manager {
         item(&mut items, "integrations.file_manager", "Show in folder", RiskLevel::Low);
@@ -182,11 +187,6 @@ pub fn assess(p: &PermissionSet, backend: Option<BackendKind>) -> RiskAssessment
         item(&mut items, "advanced.extra_backend_args", "Raw backend arguments", RiskLevel::High);
     }
 
-    match backend {
-        Some(BackendKind::Firejail) => item(&mut items, "backend", "Firejail backend (setuid)", RiskLevel::Medium),
-        Some(BackendKind::Unsandboxed) => item(&mut items, "backend", "No sandbox", RiskLevel::Dangerous),
-        _ => {}
-    }
 
     let level = items.iter().map(|i| i.level).max().unwrap_or_default();
     let score = items
@@ -258,18 +258,18 @@ mod tests {
 
     #[test]
     fn strict_is_low() {
-        let a = assess(&PermissionSet::strict_gui(), Some(BackendKind::Bubblewrap));
+        let a = assess(&PermissionSet::strict_gui());
         assert_eq!(a.level, RiskLevel::Low);
-        assert_eq!(a.score, 2);
+        assert_eq!(a.score, 3, "Wayland, filtered D-Bus and input method");
     }
 
     #[test]
     fn full_home_is_dangerous() {
         let mut p = PermissionSet::strict_gui();
         p.filesystem.home = true;
-        assert_eq!(assess(&p, None).level, RiskLevel::Dangerous);
+        assert_eq!(assess(&p).level, RiskLevel::Dangerous);
         p.filesystem.home_access = Access::Ro;
-        assert_eq!(assess(&p, None).level, RiskLevel::High);
+        assert_eq!(assess(&p).level, RiskLevel::High);
     }
 
     #[test]
@@ -277,7 +277,7 @@ mod tests {
         let mut p = PermissionSet::strict_gui();
         p.network.mode = NetworkMode::Full;
         p.display.x11 = true;
-        let a = assess(&p, None);
+        let a = assess(&p);
         assert_eq!(a.level, RiskLevel::High);
         assert!(a.score >= 30);
     }

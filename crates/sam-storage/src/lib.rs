@@ -137,7 +137,6 @@ fn empty_table() -> toml::Value {
 struct PresetMeta {
     name: String,
     description: String,
-    backend: Option<sam_core::BackendChoice>,
     risk: sam_core::RiskLevel,
     created_at: i64,
     modified_at: i64,
@@ -195,7 +194,7 @@ impl PresetStore {
             preset.created_at = t;
         }
         preset.modified_at = t;
-        preset.risk = sam_core::risk::assess(&preset.permissions, preset.backend.and_then(|b| b.fixed())).level;
+        preset.risk = sam_core::risk::assess(&preset.permissions).level;
         let path = self.file_for(&preset.name);
         atomic_write(&path, preset_to_toml(preset)?.as_bytes())?;
         Ok(path)
@@ -225,7 +224,6 @@ pub fn preset_to_toml(p: &Preset) -> Result<String> {
         preset: PresetMeta {
             name: p.name.clone(),
             description: p.description.clone(),
-            backend: p.backend,
             risk: p.risk,
             created_at: p.created_at,
             modified_at: p.modified_at,
@@ -250,7 +248,6 @@ pub fn parse_preset_toml(s: &str) -> Result<Preset> {
         name: file.preset.name,
         description: file.preset.description,
         permissions,
-        backend: file.preset.backend,
         risk: file.preset.risk,
         created_at: file.preset.created_at,
         modified_at: file.preset.modified_at,

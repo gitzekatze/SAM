@@ -62,14 +62,6 @@ function riskLabel(r) {
     return r.charAt(0).toUpperCase() + r.slice(1)
 }
 
-const backendLabels = {
-    "auto": "Automatic",
-    "bubblewrap": "Bubblewrap",
-    "bubblejail": "Bubblejail",
-    "firejail": "Firejail",
-    "unsandboxed": "Unsandboxed"
-}
-
 function iconUrl(path) {
     return path ? "file://" + path : ""
 }

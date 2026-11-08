@@ -29,7 +29,6 @@ Kirigami.ScrollablePage {
     property var preview: null
     property var evaluation: null
     property var pendingPerms: null
-    property string pendingBackend: "auto"
     property bool hideUnsandboxedEntry: true
     property string logText: ""
     /// Why the settings could not be loaded (shown in the panel).
@@ -41,7 +40,6 @@ Kirigami.ScrollablePage {
     readonly property var found: win ? (win.discovered || []).find(d => d.path === (entry ? entry.source_path : path)) : null
     readonly property var selection: sandboxed ? (info ? info.selection : null) : (preview ? preview.selection : null)
     readonly property var perms: sandboxed ? (entry ? entry.profile.permissions : null) : pendingPerms
-    readonly property string backendChoice: sandboxed ? (entry ? entry.profile.backend : "auto") : pendingBackend
     readonly property string appName: sandboxed ? (summary ? summary.name : "") : (found ? found.name : path.split("/").pop())
     readonly property string iconPath: sandboxed ? (summary && summary.icon_path ? summary.icon_path : (found ? (found.icon || "") : "")) : (found ? (found.icon || "") : "")
     readonly property string filePath: sandboxed ? (entry ? entry.source_path : "") : path
@@ -77,7 +75,7 @@ Kirigami.ScrollablePage {
     }
     /// Re-evaluate the adjusted settings of an AppImage without a sandbox.
     function evaluatePending() {
-        Backend.call(["preview", path, "--permissions-stdin", "--backend", pendingBackend], function (r) {
+        Backend.call(["preview", path, "--permissions-stdin"], function (r) {
             if (!r.ok) { win.reportError(r); return }
             page.preview = r.data
             page.evaluation = { risk: r.data.risk, warnings: r.data.warnings }
@@ -107,28 +105,8 @@ Kirigami.ScrollablePage {
             evaluatePending()
         }
     }
-    function setBackend(choice) {
-        if (!sandboxed) {
-            pendingBackend = choice
-            evaluatePending()
-            return
-        }
-        const go = confirm => page.simple(["backend", appId, choice].concat(confirm ? ["--confirm"] : []), null, qsTr("Backend set to %1").arg(Util.backendLabels[choice]))
-        if (choice === "unsandboxed")
-            win.confirmDialog.ask(qsTr("Run without a sandbox?"),
-                qsTr("%1 will run with all of your permissions: every file, the network and all devices. Run unsandboxed only if you trust this application.").arg(page.title),
-                () => go(true), qsTr("Run unsandboxed"))
-        else if (choice === "firejail")
-            win.confirmDialog.ask(qsTr("Use Firejail?"),
-                qsTr("Firejail is a setuid-root program. Bugs in it have historically allowed privilege escalation. Use it only for compatibility."),
-                () => go(true), qsTr("Use Firejail"))
-        else
-            go(false)
-    }
     function createSandbox() {
         const args = ["add", path, "--accept", "--permissions-stdin"]
-        if (pendingBackend === "bubblewrap" || pendingBackend === "bubblejail")
-            args.push("--backend", pendingBackend)
         if (hideUnsandboxedEntry && found && found.menu_entries.length)
             args.push("--hide-duplicates")
         win.notify(qsTr("Creating the sandbox for %1…").arg(page.title))
@@ -250,7 +228,7 @@ Kirigami.ScrollablePage {
                         score: page.evaluation ? page.evaluation.risk.score : -1
                     }
                     QQC2.Label {
-                        text: page.selection ? qsTr("Backend: %1").arg(Util.backendLabels[page.selection.kind]) : ""
+                        text: page.selection ? qsTr("Sandbox: Bubblewrap") : qsTr("Sandbox unavailable: see Diagnostics")
                         opacity: 0.7
                         height: parent.children[0].height
                         verticalAlignment: Text.AlignVCenter
@@ -368,39 +346,12 @@ Kirigami.ScrollablePage {
             }
         }
 
-        // Backend first.
-        FormCard.FormHeader { title: qsTr("Sandbox backend") }
+        // Presets (sandboxed apps).
+        FormCard.FormHeader { title: qsTr("Preset"); visible: page.sandboxed }
         FormCard.FormCard {
-            FormCard.FormComboBoxDelegate {
-                id: backendCombo
-                readonly property var values: page.sandboxed ? ["auto", "bubblewrap", "bubblejail", "firejail", "unsandboxed"] : ["auto", "bubblewrap", "bubblejail"]
-                text: qsTr("Backend")
-                description: page.selection ? qsTr("Using %1: %2").arg(Util.backendLabels[page.selection.kind]).arg(page.selection.reason) : qsTr("No backend is available. See Diagnostics.")
-                model: page.sandboxed
-                    ? [{ value: "auto", text: qsTr("Automatic (recommended)") }, { value: "bubblewrap", text: "Bubblewrap" }, { value: "bubblejail", text: "Bubblejail" },
-                       { value: "firejail", text: qsTr("Firejail (setuid, compatibility)") }, { value: "unsandboxed", text: qsTr("Unsandboxed (no protection)") }]
-                    : [{ value: "auto", text: qsTr("Automatic (recommended)") }, { value: "bubblewrap", text: "Bubblewrap" }, { value: "bubblejail", text: "Bubblejail" }]
-                textRole: "text"
-                valueRole: "value"
-                Component.onCompleted: currentIndex = Qt.binding(() => Math.max(0, values.indexOf(page.backendChoice)))
-                onActivated: index => {
-                    const v = values[index]
-                    currentIndex = Qt.binding(() => Math.max(0, values.indexOf(page.backendChoice)))
-                    page.setBackend(v)
-                }
-            }
-            Repeater {
-                model: page.selection ? (page.selection.limitations || []) : []
-                delegate: FormCard.FormTextDelegate {
-                    required property string modelData
-                    icon.name: "data-warning"
-                    text: qsTr("Not enforced with this backend")
-                    description: modelData
-                }
-            }
+            visible: page.sandboxed
             FormCard.FormComboBoxDelegate {
                 id: presetCombo
-                visible: page.sandboxed
                 property var presets: []
                 text: qsTr("Start from a preset")
                 description: page.entry && page.entry.profile.preset ? qsTr("Current settings come from “%1”.").arg(page.entry.profile.preset) : qsTr("Replace the settings below with a preset.")

@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Result};
 use sam_core::risk::{is_sensitive_path, RiskLevel};
 use sam_core::util::tildify;
-use sam_core::{AppEntry, BackendChoice, HostInfo, PermissionSet};
+use sam_core::{AppEntry, HostInfo, PermissionSet};
 use serde::Serialize;
 
 use crate::launch::{run, LaunchOptions};
@@ -83,7 +83,7 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         return Some(mk(RiskLevel::High, "The app tried to open a camera.".into(), Some(("devices.webcam", "true".into()))));
     }
     if path.starts_with("/dev/input") {
-        return Some(mk(RiskLevel::Dangerous, "The app tried to read input devices (game controllers?).".into(), Some(("devices.input", "true".into()))));
+        return Some(mk(RiskLevel::Medium, "The app looked for input devices, probably game controllers. Allow game controllers.".into(), Some(("devices.gamepads", "true".into()))));
     }
     if path.starts_with("/tmp/.X11-unix") {
         return Some(mk(RiskLevel::High, "The app tried to connect to X11. Enable X11 / XWayland.".into(), Some(("display.x11", "true".into()))));
@@ -133,9 +133,6 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
     let Some(strace) = strace else { bail!("strace is not installed; install it to use dynamic diagnosis (sudo pacman -S strace)") };
     if entry.profile.permissions.filesystem.home {
         bail!("diagnostic runs are refused while full home access is granted (whitepaper §2.16.3)");
-    }
-    if !matches!(entry.profile.backend, BackendChoice::Auto | BackendChoice::Bubblewrap) {
-        bail!("diagnostic runs use the Bubblewrap backend; switch this app to 'auto' or 'bubblewrap'");
     }
     let diag_dir = sam.paths.runtime_dir(&entry.id).join("diag");
     let _ = fs::remove_dir_all(&diag_dir);

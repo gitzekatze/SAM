@@ -16,7 +16,7 @@
       <li>Recommended profiles and reusable presets</li>
       <li>Desktop launchers that always start apps through the sandbox</li>
       <li>Repair tools, logs and diagnostics</li>
-      <li>Optional Bubblejail and Firejail backends, Landlock defense in depth</li>
+      <li>Bubblewrap sandbox with Landlock and seccomp defense in depth</li>
     </ul>
   </description>
   <launchable type="desktop-id">io.github.gitzekatze.SAM.desktop</launchable>

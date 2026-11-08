@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::backend::BackendKind;
 use crate::host::HostInfo;
 use crate::permissions::*;
 use crate::risk::is_sensitive_path;
@@ -57,11 +56,9 @@ impl Warning {
 pub struct WarningContext<'a> {
     /// Whether the app appears to need network (from its category/libraries).
     pub app_needs_network: Option<bool>,
-    pub backend: Option<BackendKind>,
     pub host: Option<&'a HostInfo>,
     pub warn_x11: bool,
     pub warn_full_home: bool,
-    pub warn_firejail: bool,
 }
 
 impl WarningContext<'_> {
@@ -69,7 +66,6 @@ impl WarningContext<'_> {
         WarningContext {
             warn_x11: true,
             warn_full_home: true,
-            warn_firejail: true,
             ..Default::default()
         }
     }
@@ -185,11 +181,11 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             }
         }
         if let Some(host) = ctx.host {
-            if host.tools.xdg_dbus_proxy.is_none() && ctx.backend == Some(BackendKind::Bubblewrap) {
+            if host.tools.xdg_dbus_proxy.is_none() {
                 w.push(Warning::info(
                     "dbus-proxy-missing",
                     "D-Bus filtering unavailable",
-                    "xdg-dbus-proxy is not installed, so the filtered session bus is disabled. Install xdg-dbus-proxy or use the Bubblejail backend.",
+                    "xdg-dbus-proxy is not installed, so the filtered session bus is disabled. Install xdg-dbus-proxy.",
                 ));
             }
         }
@@ -226,24 +222,8 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
         ));
     }
 
-    match ctx.backend {
-        Some(BackendKind::Firejail) if ctx.warn_firejail => w.push(Warning::warn(
-            "firejail",
-            "Firejail backend",
-            "Firejail is a setuid-root program. Bugs in it have historically allowed privilege escalation. Use it only for compatibility.",
-        )),
-        Some(BackendKind::Unsandboxed) => w.push(Warning::danger(
-            "unsandboxed",
-            "Running without a sandbox",
-            "The app runs with all of your user's permissions. Run unsandboxed only if you trust this application.",
-        )),
-        _ => {}
-    }
-
     if let Some(host) = ctx.host {
-        if matches!(ctx.backend, Some(BackendKind::Bubblewrap) | Some(BackendKind::Bubblejail) | None)
-            && !host.userns.usable()
-        {
+        if !host.userns.usable() {
             w.push(Warning::danger(
                 "userns-unavailable",
                 "User namespaces unavailable",
@@ -292,10 +272,9 @@ mod tests {
         p.dbus.system.mode = DbusMode::Full;
         let mut ctx = WarningContext::all_enabled();
         ctx.app_needs_network = Some(false);
-        ctx.backend = Some(BackendKind::Firejail);
         let w = evaluate(&p, &ctx);
         let c = codes(&w);
-        for code in ["x11-enabled", "full-home", "network-unneeded", "system-dbus", "firejail"] {
+        for code in ["x11-enabled", "full-home", "network-unneeded", "system-dbus"] {
             assert!(c.contains(&code), "missing {code} in {c:?}");
         }
     }

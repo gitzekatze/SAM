@@ -36,23 +36,24 @@ plain-language explanation and a risk level, and risky choices show a warning.
   requirements, CPU architecture, toolkit, Electron/Java markers). An optional
   diagnostic run under `strace` finds missing resources.
 - **Recommended profiles** chosen by category (browser, media player, image
-  editor, game, …) plus what detection found. Six built-in presets, and you can
+  editor, game, …) plus what detection found. Settings you adjust before
+  *Create sandbox* are kept; everything else follows what SAM finds after
+  unpacking (e.g. GPU for apps that load their graphics stack at start). Six built-in presets, and you can
   create, import and export your own.
 - **Permissions:** filesystem (private home, XDG folders read-only or read/write,
   custom paths), network (none, *local network only*, or full), GPU, audio,
-  webcam, input devices, USB, Wayland and X11, session and system D-Bus
+  webcam, game controllers (only joysticks: keyboards and mice stay hidden),
+  all input devices, USB, Wayland and X11, session and system D-Bus
   (filtered through `xdg-dbus-proxy`), desktop integrations (passwords &
-  keyring, media controls, screen sharing, "show in folder"), sockets,
+  keyring, media controls, screen sharing, "show in folder", input methods
+  such as Fcitx5 and IBus through their sandbox frontends), sockets,
   environment variables, and advanced options (writable app folder, syscall
   filters, nested namespaces, …).
-- **Backends, picked per app:** Bubblewrap (default), Bubblejail, Firejail
-  (allowed in settings first; runs the original AppImage) and unsandboxed
-  (explicit confirmation). On *Automatic*, SAM chooses for each app: features
-  only Bubblewrap has force it; if the sandbox cannot be set up, the next
-  backend is tried and the one that works is remembered for that app, with
-  the reason shown. A backend you pick yourself is never changed. If the
-  chosen backend does not enforce some of the app's settings (for example
-  Firejail has no *Local network only*), the app page lists them.
+- **One sandbox: Bubblewrap.** Every app runs under `bwrap` with SAM's own
+  layout (private home, read-only system, no capabilities, private `/dev/shm`),
+  plus SAM's Landlock and seccomp layers inside it. There is no backend to
+  pick and no unsandboxed mode. If Bubblewrap cannot run on this system (for
+  example user namespaces are disabled), SAM says so and starts nothing.
 - **Making apps work:** a first-run check after *Create sandbox* (no internet,
   files stay in the sandbox, window/GPU, logins, Electron on systems that
   restrict user namespaces); a log analyzer that turns common error messages
@@ -79,10 +80,9 @@ plain-language explanation and a risk level, and risky choices show a warning.
     autostart, menu-entry installation, trash, location and remote desktop
     are blocked.
   - Portal identity, so portals treat SAM apps as sandboxed.
-  - Nothing the app prints can change its backend or grant it access: an
-    automatic backend change needs Bubblewrap's own failure report, and
-    repair suggestions based on app output always ask first and never offer
-    services that could escape the sandbox.
+  - Nothing the app prints can grant it access: repair suggestions based on
+    app output always ask first and never offer services that could escape
+    the sandbox.
   - Files you open with an app can be given read-only (the default for media
     players) or read/write.
 - **Desktop integration:** menu launchers that always start the app through
@@ -92,7 +92,7 @@ plain-language explanation and a risk level, and risky choices show a warning.
     plus an optional Downloads switch) pinned at the top, and below them
     every AppImage SAM found, with icon, path and whether it is sandboxed.
   - **Right:** the selected app with its main button (Launch, or Create
-    sandbox) pinned at the top, then every setting: backend first, then
+    sandbox) pinned at the top, then every setting: preset, then
     network, display, sound and devices, files, desktop integration, D-Bus,
     sockets and advanced options.
   - Nothing is hidden behind modes or popups. Settings that don't apply are
@@ -117,7 +117,6 @@ GUI, `sam-jail-gui`). Recommended extras:
 - `xdg-dbus-proxy`: filtered D-Bus, portal filter and portal identity.
 - `passt` (provides `pasta`): *Local network only*.
 - `strace`: diagnostic runs.
-- `bubblejail`, `firejail`: optional backends.
 
 ## Build from source
 
@@ -156,7 +155,6 @@ sam-jail repair krita                    # what went wrong last time, and repair
 sam-jail repair krita --next             # apply the next step (then start the app again)
 sam-jail repair krita --undo             # undo all repair steps
 sam-jail selftest                        # start every sandboxed app briefly
-sam-jail backend krita auto              # let SAM pick the backend again
 sam-jail menu list krita                 # unsandboxed menu entries for this AppImage
 ```
 
@@ -166,15 +164,13 @@ Run `sam-jail --help` to see every command. Each command also accepts `--json`.
 
 ```
 crates/
-  sam-core                core types, permission model, risk, warnings, config, host probing, backend trait
+  sam-core                core types, permission model, risk, warnings, config, host probing
   sam-storage             app registry, presets, logs
   sam-detect              AppImage type/payload detection, ELF dependency analysis
   sam-intake              extraction, normalization, metadata, icons, launchers, staleness
   sam-profile             categories, recommendations, presets, preset compatibility checks
-  sam-backend-bubblewrap  default backend
-  sam-backend-bubblejail  optional backend
-  sam-backend-firejail    optional compatibility backend
-  sam-runner              orchestration: discover/add/launch, per-app backend selection and fallback,
+  sam-backend-bubblewrap  the Bubblewrap command builder
+  sam-runner              orchestration: discover/add/launch, Bubblewrap checks,
                           D-Bus proxy and portal filter, portal identity, Landlock/seccomp,
                           local network (pasta), repair (hints, log analyzer, ladder), diagnostics
   sam-jail-cli            sam-jail and sam-jail-run binaries

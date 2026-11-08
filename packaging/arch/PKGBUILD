@@ -51,8 +51,6 @@ package_sam-jail-cli() {
   depends=(bubblewrap glibc gcc-libs libarchive)
   optdepends=(
     'xdg-dbus-proxy: filtered session D-Bus for sandboxed apps (recommended)'
-    'bubblejail: optional backend with better D-Bus filtering'
-    'firejail: optional compatibility backend (disabled by default)'
     'squashfs-tools: additional SquashFS extractor'
     'strace: dynamic diagnosis of missing resources'
     'libnotify: launch error notifications'
