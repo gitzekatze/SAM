@@ -37,18 +37,26 @@ QString Backend::findTool(const QString &name) const
         return fromEnv;
 
     const QDir here(QCoreApplication::applicationDirPath());
+    // Installed next to the GUI: use that.
+    const QFileInfo beside(here.filePath(name));
+    if (beside.isFile() && beside.isExecutable())
+        return beside.canonicalFilePath();
+    // Source checkout: release and debug builds may both exist; use the one
+    // built most recently, so a stale build never shadows the current one.
     const QStringList candidates = {
-        here.filePath(name),
         here.filePath(QStringLiteral("../../target/release/") + name),
         here.filePath(QStringLiteral("../../target/debug/") + name),
         here.filePath(QStringLiteral("../target/release/") + name),
         here.filePath(QStringLiteral("../target/debug/") + name),
     };
+    QFileInfo best;
     for (const QString &c : candidates) {
         QFileInfo fi(c);
-        if (fi.isFile() && fi.isExecutable())
-            return fi.canonicalFilePath();
+        if (fi.isFile() && fi.isExecutable() && (!best.exists() || fi.lastModified() > best.lastModified()))
+            best = fi;
     }
+    if (best.exists())
+        return best.canonicalFilePath();
     const QString inPath = QStandardPaths::findExecutable(name);
     return inPath.isEmpty() ? name : inPath;
 }
