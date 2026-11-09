@@ -162,6 +162,9 @@ enum Cmd {
         /// List log files instead of printing the latest.
         #[arg(long)]
         list: bool,
+        /// Print this log file (one of `--list`) instead of the latest.
+        #[arg(long)]
+        file: Option<PathBuf>,
         #[arg(long, default_value_t = 200)]
         tail: usize,
     },
@@ -184,8 +187,16 @@ enum Cmd {
         /// Evaluate in the context of this app (category, backend).
         app: Option<String>,
     },
-    /// Turn compatibility mode on or off.
+    /// Turn compatibility mode on or off. Off restores the settings from
+    /// before it was turned on.
     Compat { app: String, state: String },
+    /// Show the extra arguments always passed to the app, or replace them
+    /// with a JSON list on stdin (`--stdin`).
+    Args {
+        app: String,
+        #[arg(long)]
+        stdin: bool,
+    },
     /// Mark an app's profile as reviewed.
     Review { app: String },
     /// Re-extract the AppImage (after updates or failures).
@@ -697,7 +708,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Logs { app: q, kind, list, tail } => {
+        Cmd::Logs { app: q, kind, list, file, tail } => {
             let e = app.resolve(&q)?;
             let kind = kind.as_deref().map(|k| LogKind::parse(k).with_context(|| format!("unknown log kind '{k}'"))).transpose()?;
             let logs = Logs::new(&app.paths);
@@ -707,6 +718,14 @@ fn real_main(cli: Cli) -> Result<()> {
                     for f in &files {
                         println!("{}  {:<8}  {:>9}  {}", format_ts(f.modified), f.kind.prefix(), human_size(f.size), tildify(&f.path));
                     }
+                });
+            } else if let Some(f) = file {
+                // Only files of this app's own log list.
+                let known = logs.list(&e.id, None)?.into_iter().find(|l| l.path == f).context("not a log file of this app")?;
+                let text = sam_runner::launch::tail(&known.path, tail);
+                out.emit(&json!({"file": known.path, "kind": known.kind, "text": text}), || {
+                    println!("==> {} <==", tildify(&known.path));
+                    println!("{text}");
                 });
             } else {
                 let latest = logs.latest(&e.id, kind)?.context("no logs yet for this app")?;
@@ -770,6 +789,21 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("Compatibility mode {} for {}", if on { "enabled" } else { "disabled" }, e.display_name());
                 if on {
                     println!("{}", paint(sam_profile::COMPAT_WARNING, "33"));
+                }
+            });
+        }
+        Cmd::Args { app: q, stdin } => {
+            let e = if stdin {
+                let list: Vec<String> = serde_json::from_str(&read_stdin()?).context("expected a JSON list of strings on stdin")?;
+                app.set_args(&q, list)?
+            } else {
+                app.resolve(&q)?
+            };
+            out.emit(&e.profile.args, || {
+                if e.profile.args.is_empty() {
+                    println!("No extra arguments for {}", e.display_name());
+                } else {
+                    println!("{}", e.profile.args.join(" "));
                 }
             });
         }

@@ -233,6 +233,10 @@ pub struct SandboxProfile {
     pub args: Vec<String>,
     /// The profile differs from the recommendation because the user changed it.
     pub user_modified: bool,
+    /// Permissions from before compatibility mode was turned on; restored
+    /// when it is turned off again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before_compat: Option<PermissionSet>,
 }
 
 /// A suggested change that may make an app work (first-run hint, log

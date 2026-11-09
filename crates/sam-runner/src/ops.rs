@@ -634,9 +634,32 @@ impl Sam {
             bail!("compatibility mode is disabled in settings (compatibility.behavior = never)");
         }
         let mut e = self.resolve(query)?;
+        if on == e.profile.compatibility_mode {
+            return Ok(e);
+        }
+        if on {
+            e.profile.before_compat = Some(e.profile.permissions.clone());
+            e.profile.permissions = compatibility_profile(&e.profile.permissions);
+        } else {
+            // Back to the settings from before, or the recommendation.
+            e.profile.permissions = e.profile.before_compat.take().unwrap_or_else(|| e.recommended.clone());
+        }
         e.profile.compatibility_mode = on;
-        e.profile.permissions = if on { compatibility_profile(&e.profile.permissions) } else { e.recommended.clone() };
         self.save_profile(&mut e)?;
+        Ok(e)
+    }
+
+    /// Replaces the extra arguments always passed to the app.
+    pub fn set_args(&self, query: &str, args: Vec<String>) -> Result<AppEntry> {
+        let mut e = self.resolve(query)?;
+        let args: Vec<String> = args.into_iter().map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect();
+        for a in &args {
+            if a.contains('\0') || a.len() > 4096 {
+                bail!("invalid argument {a:?}");
+            }
+        }
+        e.profile.args = args;
+        self.registry().save(&mut e)?;
         Ok(e)
     }
 
@@ -659,6 +682,9 @@ impl Sam {
                 e.profile.permissions.set_key(key, &serde_json::to_string(&list)?)?;
             }
             FixAction::Compat => {
+                if !e.profile.compatibility_mode {
+                    e.profile.before_compat = Some(e.profile.permissions.clone());
+                }
                 e.profile.compatibility_mode = true;
                 e.profile.permissions = compatibility_profile(&e.profile.permissions);
             }

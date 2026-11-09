@@ -122,6 +122,16 @@ Electron app, Qt app, GTK app):
 - [ ] Removing or re-extracting an app while it runs is refused with
       "… is running. Close it first".
 - [ ] Closing SAM leaves apps started with *Launch* running.
+- [ ] *Launching*: adding and removing a launch argument shows in the
+      sandbox command; compatibility mode on asks first, off restores the
+      settings from before.
+- [ ] *Menu Entries*: with an AppImageLauncher/Gear Lever entry, the hide
+      switch hides and restores it; without one it is greyed out.
+- [ ] *Environment variables*: `NAME=value` is set in the sandbox; an
+      invalid name is refused with a message.
+- [ ] *Logs*: the picker lists start, unpacking, detection and diagnostic
+      logs; each one opens.
+- [ ] A new app shows *Needs review*; *Mark as Reviewed* clears it.
 
 ## 11. Packaging
 

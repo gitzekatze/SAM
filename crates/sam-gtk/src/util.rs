@@ -133,3 +133,21 @@ pub fn set_badge(l: &gtk::Label, text: &str, tone: &str) {
     l.add_css_class(&format!("sam-badge-{tone}"));
     l.set_text(text);
 }
+
+/// A removable chip ("org.example.Name ✕") for list settings.
+pub fn chip(text: &str, folder: bool, on_remove: impl Fn() + 'static) -> gtk::Widget {
+    let b = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    b.add_css_class("sam-chip");
+    b.set_halign(gtk::Align::Start);
+    if folder {
+        b.append(&gtk::Image::from_icon_name("folder-symbolic"));
+    }
+    let l = gtk::Label::builder().label(plain(text)).ellipsize(gtk::pango::EllipsizeMode::Middle).max_width_chars(40).build();
+    b.append(&l);
+    let x = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text("Remove").valign(gtk::Align::Center).build();
+    x.add_css_class("flat");
+    x.add_css_class("circular");
+    x.connect_clicked(move |_| on_remove());
+    b.append(&x);
+    b.upcast()
+}

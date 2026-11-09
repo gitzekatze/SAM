@@ -807,7 +807,18 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
         }));
         b.append(&warn);
     }
-    b.append(&if r.sandboxed { util::badge("Sandboxed", "accent") } else { util::badge("Not sandboxed", "neutral") });
+    // Status, or what needs attention.
+    let (text, tone) = match (r.sandboxed, r.badge.as_str()) {
+        (false, _) => ("Not sandboxed", "neutral"),
+        (true, "needs-review") => ("Needs review", "warn"),
+        (true, "compatibility-risk") => ("Compatibility", "warn"),
+        (true, "unsafe") => ("Unsafe", "danger"),
+        (true, "stale") => ("Changed", "warn"),
+        (true, "broken") => ("Broken", "bad"),
+        (true, "missing") => ("Missing", "bad"),
+        (true, _) => ("Sandboxed", "accent"),
+    };
+    b.append(&util::badge(text, tone));
     row.set_child(Some(&b));
     row.set_tooltip_text(Some(&util::plain(&util::tildify(&r.path))));
     row

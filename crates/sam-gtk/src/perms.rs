@@ -67,7 +67,7 @@ fn opt(value: Value, text: &'static str, description: &'static str) -> Opt {
 enum Ctl {
     Switch { key: &'static str, row: adw::ActionRow, sw: gtk::Switch, badge: gtk::Label, avail: Avail },
     Choice { key: &'static str, row: adw::ActionRow, drop: gtk::DropDown, opts: Vec<Opt>, badge: gtk::Label, avail: Avail },
-    List { key: &'static str, row: gtk::ListBoxRow, title: gtk::Label, subtitle: gtk::Label, chips: gtk::FlowBox, badge: gtk::Label, avail: Avail, folders: bool },
+    List { key: &'static str, row: gtk::ListBoxRow, title: gtk::Label, subtitle: gtk::Label, chips: gtk::FlowBox, badge: gtk::Label, avail: Avail, folders: bool, map: bool },
 }
 
 pub struct Editor {
@@ -152,6 +152,13 @@ impl Editor {
         self.perms.borrow().as_ref().and_then(|p| util::get(p, key).cloned()).unwrap_or(Value::Null)
     }
     fn info(&self, key: &str) -> Info {
+        if key == "environment.set" {
+            return Info {
+                title: "Environment variables".into(),
+                description: "Variables set inside the sandbox, as NAME=value, e.g. QT_SCALE_FACTOR=1.5. They override variables passed through.".into(),
+                risk: "medium".into(),
+            };
+        }
         self.catalog.get(key).cloned().unwrap_or(Info { title: key.into(), ..Default::default() })
     }
     fn full_home(&self) -> bool {
@@ -283,6 +290,11 @@ impl Editor {
     /// A string list (folders, ports, bus names, variables): entries as
     /// removable chips, then an inline field to add one. Always visible.
     fn list(self: &Rc<Self>, g: &adw::PreferencesGroup, key: &'static str, placeholder: &str, folders: bool, avail: Avail) {
+        self.list_or_map(g, key, placeholder, folders, false, avail)
+    }
+
+    /// `map`: the setting is a NAME → value map, edited as NAME=value.
+    fn list_or_map(self: &Rc<Self>, g: &adw::PreferencesGroup, key: &'static str, placeholder: &str, folders: bool, map: bool, avail: Avail) {
         let row = gtk::ListBoxRow::builder().activatable(false).selectable(false).build();
         let vbox = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -317,7 +329,7 @@ impl Editor {
         vbox.append(&chips);
 
         let add_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        let entry = gtk::Entry::builder().placeholder_text(placeholder).hexpand(true).build();
+        let entry = gtk::Entry::builder().placeholder_text(placeholder).hexpand(true).name(format!("perm-entry:{key}")).build();
         add_box.append(&entry);
         if folders {
             let pick = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text("Choose a folder").valign(gtk::Align::Center).build();
@@ -347,8 +359,10 @@ impl Editor {
             if let Some(me) = me.upgrade() {
                 let t = e2.text().trim().to_string();
                 if !t.is_empty() {
-                    me.add_item(key, &t);
-                    e2.set_text("");
+                    let ok = if map { me.add_pair(key, &t) } else { me.add_item(key, &t); true };
+                    if ok {
+                        e2.set_text("");
+                    }
                 }
             }
         };
@@ -358,7 +372,7 @@ impl Editor {
 
         row.set_child(Some(&vbox));
         g.add(&row);
-        self.ctls.borrow_mut().push(Ctl::List { key, row, title, subtitle, chips, badge, avail, folders });
+        self.ctls.borrow_mut().push(Ctl::List { key, row, title, subtitle, chips, badge, avail, folders, map });
     }
 
     fn add_item(self: &Rc<Self>, key: &'static str, item: &str) {
@@ -366,6 +380,38 @@ impl Editor {
         if !items.iter().any(|v| v.as_str() == Some(item)) {
             items.push(json!(item));
             self.request(key, Value::Array(items));
+        }
+    }
+
+    /// Adds NAME=value to a map setting; false (with a message) if invalid.
+    fn add_pair(self: &Rc<Self>, key: &'static str, text: &str) -> bool {
+        let Some((name, value)) = text.split_once('=') else {
+            self.notify("Write it as NAME=value");
+            return false;
+        };
+        let name = name.trim();
+        let valid = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !valid {
+            self.notify("A variable name has only letters, digits and _, and does not start with a digit");
+            return false;
+        }
+        let mut m = self.value(key).as_object().cloned().unwrap_or_default();
+        m.insert(name.to_string(), json!(value));
+        self.request(key, Value::Object(m));
+        true
+    }
+
+    fn remove_pair(self: &Rc<Self>, key: &'static str, name: &str) {
+        let mut m = self.value(key).as_object().cloned().unwrap_or_default();
+        if m.remove(name).is_some() {
+            self.request(key, Value::Object(m));
+        }
+    }
+
+    fn notify(&self, text: &str) {
+        let toast = adw::Toast::new(&esc(text));
+        if let Some(overlay) = self.window.content().and_downcast::<adw::ToastOverlay>() {
+            overlay.add_toast(toast);
         }
     }
 
@@ -453,6 +499,7 @@ impl Editor {
         self.switch(&g, "sockets.ssh_agent", Always);
         self.switch(&g, "sockets.cups", Always);
         self.list(&g, "environment.passthrough", "Variable name, e.g. LANG", false, Always);
+        self.list_or_map(&g, "environment.set", "NAME=value, e.g. QT_SCALE_FACTOR=1.5", false, true, Always);
 
         let g = self.group("Advanced", "Change these only if an app does not work.");
         self.choice(&g, "advanced.host_runtime", vec![
@@ -497,7 +544,7 @@ impl Editor {
                     row.set_sensitive(editable && self.available(*avail));
                     self.set_risk_badge(badge, key);
                 }
-                Ctl::List { key, row, title, subtitle, chips, badge, avail, folders } => {
+                Ctl::List { key, row, title, subtitle, chips, badge, avail, folders, map } => {
                     let info = self.info(key);
                     title.set_text(&info.title);
                     subtitle.set_markup(&self.describe(key, &info.description));
@@ -506,13 +553,29 @@ impl Editor {
                     while let Some(ch) = chips.first_child() {
                         chips.remove(&ch);
                     }
-                    let items = self.value(key).as_array().cloned().unwrap_or_default();
-                    for (i, it) in items.iter().enumerate() {
-                        let text = it.as_str().map(String::from).unwrap_or_else(|| it.to_string());
-                        let child = gtk::FlowBoxChild::builder().child(&self.chip(key, i, &text, *folders)).halign(gtk::Align::Start).focusable(false).build();
-                        chips.insert(&child, -1);
-                    }
-                    chips.set_visible(!items.is_empty());
+                    let count = if *map {
+                        let m = self.value(key).as_object().cloned().unwrap_or_default();
+                        for (name, v) in &m {
+                            let text = format!("{name}={}", v.as_str().map(String::from).unwrap_or_else(|| v.to_string()));
+                            let (me, name, k): (_, String, &'static str) = (Rc::downgrade(self), name.clone(), key);
+                            let w = self.chip_with(&text, false, move || {
+                                if let Some(me) = me.upgrade() {
+                                    me.remove_pair(k, &name)
+                                }
+                            });
+                            chips.insert(&gtk::FlowBoxChild::builder().child(&w).halign(gtk::Align::Start).focusable(false).build(), -1);
+                        }
+                        m.len()
+                    } else {
+                        let items = self.value(key).as_array().cloned().unwrap_or_default();
+                        for (i, it) in items.iter().enumerate() {
+                            let text = it.as_str().map(String::from).unwrap_or_else(|| it.to_string());
+                            let child = gtk::FlowBoxChild::builder().child(&self.chip(key, i, &text, *folders)).halign(gtk::Align::Start).focusable(false).build();
+                            chips.insert(&child, -1);
+                        }
+                        items.len()
+                    };
+                    chips.set_visible(count > 0);
                 }
             }
         }
@@ -521,25 +584,16 @@ impl Editor {
     }
 
     fn chip(self: &Rc<Self>, key: &'static str, idx: usize, text: &str, folder: bool) -> gtk::Widget {
-        let b = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        b.add_css_class("sam-chip");
-        b.set_halign(gtk::Align::Start);
-        if folder {
-            b.append(&gtk::Image::from_icon_name("folder-symbolic"));
-        }
-        let l = gtk::Label::builder().label(util::plain(text)).ellipsize(gtk::pango::EllipsizeMode::Middle).max_width_chars(36).build();
-        b.append(&l);
-        let x = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text("Remove").valign(gtk::Align::Center).build();
-        x.add_css_class("flat");
-        x.add_css_class("circular");
         let me = Rc::downgrade(self);
-        x.connect_clicked(move |_| {
+        self.chip_with(text, folder, move || {
             if let Some(me) = me.upgrade() {
                 me.remove_item(key, idx);
             }
-        });
-        b.append(&x);
-        b.upcast()
+        })
+    }
+
+    fn chip_with(&self, text: &str, folder: bool, on_remove: impl Fn() + 'static) -> gtk::Widget {
+        crate::util::chip(text, folder, on_remove)
     }
 
     fn set_risk_badge(&self, badge: &gtk::Label, key: &str) {

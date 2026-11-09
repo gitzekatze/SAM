@@ -648,7 +648,12 @@ impl Bubblewrap {
             a.setenv(&k, v);
         }
         for (k, v) in &p.environment.set {
-            a.setenv(k, v);
+            // Only proper variable names; values may be anything but NUL.
+            let valid = k.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if valid && !v.contains('\0') {
+                a.setenv(k, v);
+            }
         }
 
         // Working directory.

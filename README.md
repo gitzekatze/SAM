@@ -99,9 +99,14 @@ plain-language explanation and a risk level, and risky choices show a warning.
     greyed out, so you always see what is on and off. For an app without a
     sandbox, the right column shows SAM's recommendation, which you can
     adjust before creating the sandbox.
-  - Repair steps, details, the generated command and the log follow the
-    settings. Global settings, presets and diagnostics open in the right
-    column from the menu at the top left.
+  - After the permissions: **Launching** (launch arguments, a
+    compatibility-mode switch that restores your settings when turned off)
+    and **Menu Entries** (SAM's menu entry, and a switch that hides or
+    restores other tools' menu entries for the same AppImage). Then
+    troubleshooting (repair steps, re-run detection), details, the
+    generated command and every log (start, unpacking, detection,
+    diagnostic run). Global settings, presets and diagnostics open in the
+    right column from the menu at the top left.
   - A segmented filter (All / Sandboxed / Unsandboxed), search, status
     badges, settings grouped with a short explanation each, toasts for
     feedback.
@@ -156,6 +161,9 @@ sam-jail hints krita                     # first-run check, with one-click fixes
 sam-jail repair krita                    # what went wrong last time, and repair steps
 sam-jail repair krita --next             # apply the next step (then start the app again)
 sam-jail repair krita --undo             # undo all repair steps
+sam-jail compat krita on                 # compatibility mode; `off` restores the previous settings
+echo '["--no-sandbox"]' | sam-jail args krita --stdin   # launch arguments
+sam-jail logs krita --list               # every log; show one with --file
 sam-jail selftest                        # start every sandboxed app briefly
 sam-jail menu list krita                 # unsandboxed menu entries for this AppImage
 ```

@@ -29,6 +29,7 @@ pub struct AppPage {
     title: gtk::Label,
     subtitle: gtk::Label,
     status_badge: gtk::Label,
+    state_badge: gtk::Label,
     risk_badge: gtk::Label,
     sandbox_badge: gtk::Label,
     main_button: gtk::Button,
@@ -43,12 +44,30 @@ pub struct AppPage {
     preset_row: adw::ComboRow,
     save_preset_row: adw::EntryRow,
     presets: RefCell<Vec<Value>>,
+    launch_group: adw::PreferencesGroup,
+    args_row: gtk::ListBoxRow,
+    args_chips: gtk::FlowBox,
+    args_entry: gtk::Entry,
+    args_add: gtk::Button,
+    compat_row: adw::ActionRow,
+    compat_switch: gtk::Switch,
+    compat_badge: gtk::Label,
+    sam_menu_row: adw::ActionRow,
+    sam_menu_switch: gtk::Switch,
+    hide_row: adw::ActionRow,
+    hide_switch: gtk::Switch,
+    menu_state: RefCell<Option<Value>>,
     trouble: adw::PreferencesGroup,
     details: adw::PreferencesGroup,
     command_group: adw::PreferencesGroup,
     command_view: gtk::TextView,
     log_group: adw::PreferencesGroup,
     log_view: gtk::TextView,
+    log_drop: gtk::DropDown,
+    log_files: RefCell<Vec<Value>>,
+    /// Saves run one after another; only the newest pending one is sent.
+    saving: Cell<bool>,
+    queued: RefCell<Option<Value>>,
     dynamic_rows: RefCell<Vec<(adw::PreferencesGroup, gtk::Widget)>>,
     updating: Cell<bool>,
 }
@@ -79,9 +98,12 @@ impl AppPage {
         let badges = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         badges.set_margin_top(4);
         let status_badge = util::badge("", "neutral");
+        let state_badge = util::badge("", "warn");
+        state_badge.set_visible(false);
         let risk_badge = util::badge("", "neutral");
         let sandbox_badge = util::badge("Bubblewrap", "neutral");
         badges.append(&status_badge);
+        badges.append(&state_badge);
         badges.append(&risk_badge);
         badges.append(&sandbox_badge);
         meta.append(&title);
@@ -126,6 +148,39 @@ impl AppPage {
         pref.add(&findings);
         pref.add(&preset_group);
         editor.add_to(&pref);
+
+        // Launching: how SAM starts this app.
+        let launch_group = adw::PreferencesGroup::builder().title("Launching").description("How SAM starts this app.").build();
+        let (args_row, args_chips, args_entry, args_add) = chip_editor(
+            "Launch arguments",
+            "Passed to the app every time it starts, e.g. --no-sandbox for Electron apps that cannot start their own sandbox.",
+            "Argument, e.g. --disable-gpu",
+        );
+        launch_group.add(&args_row);
+        let compat_row = adw::ActionRow::builder().title("Compatibility mode").build();
+        let compat_badge = util::badge("High risk", "bad");
+        compat_badge.set_visible(false);
+        let compat_switch = gtk::Switch::builder().valign(gtk::Align::Center).name("compat-switch").build();
+        compat_row.add_suffix(&compat_badge);
+        compat_row.add_suffix(&compat_switch);
+        compat_row.set_activatable_widget(Some(&compat_switch));
+        launch_group.add(&compat_row);
+        pref.add(&launch_group);
+
+        // Menu entries: SAM's own, and other tools' entries for this AppImage.
+        let menu_group = adw::PreferencesGroup::builder().title("Menu Entries").description("How this app appears in your application menu.").build();
+        let sam_menu_row = adw::ActionRow::builder().title("Menu entry from SAM").build();
+        let sam_menu_switch = gtk::Switch::builder().valign(gtk::Align::Center).build();
+        sam_menu_row.add_suffix(&sam_menu_switch);
+        sam_menu_row.set_activatable_widget(Some(&sam_menu_switch));
+        let hide_row = adw::ActionRow::builder().title("Hide other menu entries for this AppImage").build();
+        let hide_switch = gtk::Switch::builder().valign(gtk::Align::Center).name("hide-switch").build();
+        hide_row.add_suffix(&hide_switch);
+        hide_row.set_activatable_widget(Some(&hide_switch));
+        menu_group.add(&sam_menu_row);
+        menu_group.add(&hide_row);
+        pref.add(&menu_group);
+
         let trouble = adw::PreferencesGroup::builder().title("Troubleshooting").description("When the app does not start or does not work as expected.").build();
         let details = adw::PreferencesGroup::builder().title("Details").build();
         let command_group = adw::PreferencesGroup::builder().title("Sandbox Command").description("The Bubblewrap command SAM runs for this app.").build();
@@ -134,7 +189,7 @@ impl AppPage {
         let copy_cmd = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text("Copy").valign(gtk::Align::Center).build();
         copy_cmd.add_css_class("flat");
         command_group.set_header_suffix(Some(&copy_cmd));
-        let log_group = adw::PreferencesGroup::builder().title("Log of the Last Start").build();
+        let log_group = adw::PreferencesGroup::builder().title("Logs").description("Unpacking, detection and start logs.").build();
         let log_view = mono_view();
         log_group.add(&framed(&log_view, 260));
         let log_buttons = gtk::Box::new(gtk::Orientation::Horizontal, 4);
@@ -142,6 +197,11 @@ impl AppPage {
         let copy_log = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text("Copy").valign(gtk::Align::Center).build();
         refresh_log.add_css_class("flat");
         copy_log.add_css_class("flat");
+        let log_drop = gtk::DropDown::from_strings(&["No logs yet"]);
+        log_drop.set_valign(gtk::Align::Center);
+        log_drop.set_widget_name("log-picker");
+        log_drop.set_tooltip_text(Some("Which log to show"));
+        log_buttons.append(&log_drop);
         log_buttons.append(&refresh_log);
         log_buttons.append(&copy_log);
         log_group.set_header_suffix(Some(&log_buttons));
@@ -165,6 +225,7 @@ impl AppPage {
             title,
             subtitle,
             status_badge,
+            state_badge,
             risk_badge,
             sandbox_badge,
             main_button,
@@ -178,12 +239,29 @@ impl AppPage {
             preset_row,
             save_preset_row,
             presets: RefCell::new(Vec::new()),
+            launch_group,
+            args_row,
+            args_chips,
+            args_entry,
+            args_add,
+            compat_row,
+            compat_switch,
+            compat_badge,
+            sam_menu_row,
+            sam_menu_switch,
+            hide_row,
+            hide_switch,
+            menu_state: RefCell::new(None),
             trouble,
             details,
             command_group,
             command_view,
             log_group,
             log_view,
+            log_drop,
+            log_files: RefCell::new(Vec::new()),
+            saving: Cell::new(false),
+            queued: RefCell::new(None),
             dynamic_rows: RefCell::new(Vec::new()),
             updating: Cell::new(false),
         });
@@ -199,7 +277,7 @@ impl AppPage {
         let w = Rc::downgrade(&me);
         refresh_log.connect_clicked(move |_| {
             if let Some(me) = w.upgrade() {
-                glib::spawn_future_local(async move { me.load_log().await });
+                glib::spawn_future_local(async move { me.load_log_list().await });
             }
         });
         me.wire();
@@ -344,7 +422,112 @@ impl AppPage {
         }
         self.menu_button.set_menu_model(Some(&menu));
 
+        // Launch arguments.
+        let w = Rc::downgrade(self);
+        let add_args = move || {
+            let Some(me) = w.upgrade() else { return };
+            let text = me.args_entry.text().to_string();
+            let mut args = me.args();
+            args.extend(text.split_whitespace().map(String::from));
+            if args.len() != me.args().len() {
+                me.args_entry.set_text("");
+                me.save_args(args);
+            }
+        };
+        let a2 = add_args.clone();
+        self.args_entry.connect_activate(move |_| a2());
+        self.args_add.connect_clicked(move |_| add_args());
+
+        // Compatibility mode.
+        let w = Rc::downgrade(self);
+        self.compat_switch.connect_active_notify(move |sw| {
+            let Some(me) = w.upgrade() else { return };
+            if me.updating.get() {
+                return;
+            }
+            let on = sw.is_active();
+            me.render();
+            me.set_compat(on);
+        });
+
+        // Menu entries.
+        let w = Rc::downgrade(self);
+        self.sam_menu_switch.connect_active_notify(move |sw| {
+            let Some(me) = w.upgrade() else { return };
+            if me.updating.get() || !me.sandboxed() {
+                return;
+            }
+            let on = sw.is_active();
+            me.simple(vec!["desktop".into(), me.app_id.clone(), if on { "install".into() } else { "remove".into() }], if on { "Menu entry added" } else { "Menu entry removed" });
+        });
+        let w = Rc::downgrade(self);
+        self.hide_switch.connect_active_notify(move |sw| {
+            let Some(me) = w.upgrade() else { return };
+            if me.updating.get() {
+                return;
+            }
+            let on = sw.is_active();
+            if me.sandboxed() {
+                me.simple(vec!["menu".into(), if on { "hide".into() } else { "restore".into() }, me.app_id.clone()], if on { "Other menu entries hidden" } else { "Other menu entries restored" });
+            } else {
+                // No sandbox yet: decides what Create Sandbox does.
+                me.hide_duplicates.set(on);
+                me.render();
+            }
+        });
+
+        // Log picker.
+        let w = Rc::downgrade(self);
+        self.log_drop.connect_selected_notify(move |d| {
+            let Some(me) = w.upgrade() else { return };
+            if me.updating.get() {
+                return;
+            }
+            let file = me.log_files.borrow().get(d.selected() as usize).map(|f| util::str_of(f, "path").to_string());
+            if let Some(f) = file {
+                glib::spawn_future_local(async move { me.show_log_file(&f).await });
+            }
+        });
+
         self.load_presets();
+    }
+
+    fn args(&self) -> Vec<String> {
+        self.entry().map(|e| util::list_of(&e, "profile.args")).unwrap_or_default()
+    }
+
+    fn save_args(self: &Rc<Self>, args: Vec<String>) {
+        let Some(app) = self.app() else { return };
+        let me = self.clone();
+        glib::spawn_future_local(async move {
+            match app.backend.call(&["args", &me.app_id, "--stdin"], Some(serde_json::to_string(&args).unwrap())).await {
+                Ok(_) => app.toast("Launch arguments saved"),
+                Err(e) => app.report_error(&e),
+            }
+            me.reload();
+        });
+    }
+
+    fn set_compat(self: &Rc<Self>, on: bool) {
+        let Some(app) = self.app() else { return };
+        let me = self.clone();
+        glib::spawn_future_local(async move {
+            if on && !window::confirm(
+                &app.window,
+                "Turn On Compatibility Mode?",
+                "The app gets broad access: the network, the whole session bus, all of /usr, X11, the GPU and sound. Use it when nothing else helps.\n\nYour current settings are remembered and come back when you turn it off.",
+                "Turn On",
+                true,
+            ).await {
+                return;
+            }
+            match app.backend.call(&["compat", &me.app_id, if on { "on" } else { "off" }], None).await {
+                Ok(_) => app.toast(if on { "Compatibility mode on" } else { "Compatibility mode off: your previous settings are back" }),
+                Err(e) => app.report_error(&e),
+            }
+            me.reload();
+            app.refresh_apps().await;
+        });
     }
 
     /// Fills the preset picker.
@@ -462,40 +645,100 @@ impl AppPage {
             Ok(c) => util::str_of(&c, "command").to_string(),
             Err(e) => e,
         });
-        self.load_log().await;
+        *self.menu_state.borrow_mut() = app.backend.call(&["menu", "list", &self.app_id], None).await.ok();
+        self.render_menu_group();
+        self.load_log_list().await;
     }
 
-    async fn load_log(self: &Rc<Self>) {
+    /// Fills the log picker (newest first) and shows the newest start log.
+    async fn load_log_list(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
-        let log = app.backend.call(&["logs", &self.app_id, "--kind", "launch", "--tail", "200"], None).await;
-        let text = log.ok().map(|l| util::str_of(&l, "text").to_string()).filter(|t| !t.is_empty()).unwrap_or_else(|| "No logs yet.".into());
-        set_mono_text(&self.log_view, &text);
+        let mut files: Vec<Value> = app.backend.call(&["logs", &self.app_id, "--list"], None).await.ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
+        files.sort_by_key(|f| std::cmp::Reverse(util::get(f, "modified").and_then(Value::as_i64).unwrap_or(0)));
+        let labels: Vec<String> = files
+            .iter()
+            .map(|f| {
+                let kind = match util::str_of(f, "kind") {
+                    "launch" => "Start",
+                    "extract" => "Unpacking",
+                    "detect" => "Detection",
+                    "diagnose" => "Diagnostic run",
+                    other => other,
+                };
+                format!("{kind} · {}", util::format_time(util::get(f, "modified").and_then(Value::as_i64).unwrap_or(0)))
+            })
+            .collect();
+        let pick = files.iter().position(|f| util::str_of(f, "kind") == "launch").unwrap_or(0);
+        self.updating.set(true);
+        if labels.is_empty() {
+            self.log_drop.set_model(Some(&gtk::StringList::new(&["No logs yet"])));
+            self.log_drop.set_sensitive(false);
+        } else {
+            let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+            self.log_drop.set_model(Some(&gtk::StringList::new(&refs)));
+            self.log_drop.set_sensitive(true);
+            self.log_drop.set_selected(pick as u32);
+        }
+        self.updating.set(false);
+        let first = files.get(pick).map(|f| util::str_of(f, "path").to_string());
+        *self.log_files.borrow_mut() = files;
+        match first {
+            Some(f) => self.show_log_file(&f).await,
+            None => set_mono_text(&self.log_view, "No logs yet."),
+        }
     }
 
+    async fn show_log_file(self: &Rc<Self>, file: &str) {
+        let Some(app) = self.app() else { return };
+        let text = match app.backend.call(&["logs", &self.app_id, "--file", file, "--tail", "400"], None).await {
+            Ok(l) => util::str_of(&l, "text").to_string(),
+            Err(e) => e,
+        };
+        set_mono_text(&self.log_view, if text.is_empty() { "(empty)" } else { &text });
+    }
+
+    /// Saves (or previews) changed settings. Changes are sent one after
+    /// another, and while one is being saved only the newest waiting change
+    /// is kept, so a quick series of edits can never be saved out of order.
     fn on_perms_edited(self: &Rc<Self>, p: Value) {
+        if !self.sandboxed() {
+            *self.pending.borrow_mut() = Some(p.clone());
+        }
+        *self.queued.borrow_mut() = Some(p);
+        if self.saving.get() {
+            return;
+        }
         let Some(app) = self.app() else { return };
+        self.saving.set(true);
         let me = self.clone();
-        if self.sandboxed() {
-            glib::spawn_future_local(async move {
-                me.evaluate(p.clone()).await;
-                if let Err(e) = app.backend.call(&["profile", "set", &me.app_id], Some(p.to_string())).await {
-                    app.report_error(&e);
+        glib::spawn_future_local(async move {
+            let mut saved = false;
+            loop {
+                let next = me.queued.borrow_mut().take();
+                let Some(p) = next else { break };
+                if me.sandboxed() {
+                    if let Err(e) = app.backend.call(&["profile", "set", &me.app_id], Some(p.to_string())).await {
+                        app.report_error(&e);
+                    }
+                    saved = true;
+                } else {
+                    match app.backend.call(&["preview", &me.path, "--permissions-stdin"], Some(p.to_string())).await {
+                        Ok(pv) => {
+                            if me.queued.borrow().is_none() {
+                                *me.preview.borrow_mut() = Some(pv);
+                                me.render();
+                            }
+                        }
+                        Err(e) => app.report_error(&e),
+                    }
                 }
+            }
+            me.saving.set(false);
+            if saved {
                 me.reload();
                 app.refresh_apps().await;
-            });
-        } else {
-            *self.pending.borrow_mut() = Some(p.clone());
-            glib::spawn_future_local(async move {
-                match app.backend.call(&["preview", &me.path, "--permissions-stdin"], Some(p.to_string())).await {
-                    Ok(pv) => {
-                        *me.preview.borrow_mut() = Some(pv);
-                        me.render();
-                    }
-                    Err(e) => app.report_error(&e),
-                }
-            });
-        }
+            }
+        });
     }
 
     fn create_sandbox(self: &Rc<Self>) {
@@ -679,6 +922,23 @@ impl AppPage {
         } else {
             util::set_badge(&self.status_badge, "Not sandboxed", "neutral");
         }
+        // Anything that needs attention, next to the status.
+        let compat_on = entry.as_ref().is_some_and(|e| util::bool_of(e, "profile.compatibility_mode"));
+        let badge_state = summary.as_ref().map(|s| util::str_of(s, "badge").to_string()).unwrap_or_default();
+        let state = match badge_state.as_str() {
+            "needs-review" => Some(("Needs review", "warn")),
+            "compatibility-risk" if compat_on => Some(("Compatibility mode", "warn")),
+            "compatibility-risk" => Some(("Compatibility risk", "warn")),
+            "unsafe" => Some(("Unsafe", "danger")),
+            "stale" => Some(("AppImage changed", "warn")),
+            "broken" => Some(("Broken", "bad")),
+            "missing" => Some(("File missing", "bad")),
+            _ => None,
+        };
+        self.state_badge.set_visible(state.is_some());
+        if let Some((t, tone)) = state {
+            util::set_badge(&self.state_badge, t, tone);
+        }
         let selection = if sandboxed { info.as_ref().and_then(|i| i.get("selection").cloned()) } else { self.preview.borrow().as_ref().and_then(|p| p.get("selection").cloned()) };
         let have_data = if sandboxed { info.is_some() } else { self.preview.borrow().is_some() };
         if have_data && selection.as_ref().is_none_or(Value::is_null) {
@@ -734,20 +994,7 @@ impl AppPage {
                 .build();
             row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
             self.add_dynamic(&self.notices, &row);
-            if found.as_ref().and_then(|f| f.get("menu_entries")).and_then(Value::as_array).is_some_and(|m| !m.is_empty()) {
-                let sw = adw::SwitchRow::builder()
-                    .title("Hide the unsandboxed menu entry")
-                    .subtitle("This AppImage already has a menu entry that starts it without a sandbox. SAM hides it when the sandbox is created and puts it back if you remove the sandbox.")
-                    .active(self.hide_duplicates.get())
-                    .build();
-                let w = Rc::downgrade(self);
-                sw.connect_active_notify(move |s| {
-                    if let Some(me) = w.upgrade() {
-                        me.hide_duplicates.set(s.is_active());
-                    }
-                });
-                self.add_dynamic(&self.notices, &sw);
-            }
+
         }
         if let (Some(e), Some(s)) = (entry.as_ref(), summary.as_ref()) {
             let badge = util::str_of(s, "badge");
@@ -771,6 +1018,23 @@ impl AppPage {
                 self.add_dynamic(&self.notices, &row);
             }
             let pending = util::list_of(e, "pending_changes");
+            if badge == "needs-review" && pending.is_empty() {
+                let row = adw::ActionRow::builder()
+                    .title("Settings not reviewed yet")
+                    .subtitle("SAM chose these settings for you. Look through them, then confirm.")
+                    .build();
+                row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
+                let btn = gtk::Button::builder().label("Mark as Reviewed").valign(gtk::Align::Center).name("review-button").build();
+                btn.add_css_class("suggested-action");
+                let w = Rc::downgrade(self);
+                btn.connect_clicked(move |_| {
+                    if let Some(me) = w.upgrade() {
+                        me.simple(vec!["review".into(), me.app_id.clone()], "Marked as reviewed");
+                    }
+                });
+                row.add_suffix(&btn);
+                self.add_dynamic(&self.notices, &row);
+            }
             if !pending.is_empty() {
                 let row = adw::ActionRow::builder().title(esc(&format!("The updated AppImage likely needs: {}. Your settings were kept.", pending.join(", ")))).build();
                 row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
@@ -809,6 +1073,9 @@ impl AppPage {
             });
         }
 
+        self.render_launch_group(entry.as_ref(), &app);
+        self.render_menu_group();
+
         // Troubleshooting and details (sandboxed apps).
         for g in [&self.trouble, &self.details, &self.command_group, &self.log_group] {
             g.set_visible(sandboxed);
@@ -818,6 +1085,96 @@ impl AppPage {
             self.render_details(e);
         }
         let _ = app;
+    }
+
+    /// Launch arguments and compatibility mode (sandboxed apps; shown greyed
+    /// out before the sandbox exists).
+    fn render_launch_group(self: &Rc<Self>, entry: Option<&Value>, app: &Rc<App>) {
+        let sandboxed = self.sandboxed() && entry.is_some();
+        self.launch_group.set_description(Some(if self.sandboxed() { "How SAM starts this app." } else { "How SAM starts this app. Available once the sandbox exists." }));
+        self.args_row.set_sensitive(sandboxed);
+        while let Some(c) = self.args_chips.first_child() {
+            self.args_chips.remove(&c);
+        }
+        let args = self.args();
+        for (i, a) in args.iter().enumerate() {
+            let w = Rc::downgrade(self);
+            let chip = util::chip(a, false, move || {
+                if let Some(me) = w.upgrade() {
+                    let mut args = me.args();
+                    if i < args.len() {
+                        args.remove(i);
+                        me.save_args(args);
+                    }
+                }
+            });
+            self.args_chips.insert(&gtk::FlowBoxChild::builder().child(&chip).halign(gtk::Align::Start).focusable(false).build(), -1);
+        }
+        self.args_chips.set_visible(!args.is_empty());
+
+        let on = entry.is_some_and(|e| util::bool_of(e, "profile.compatibility_mode"));
+        let never = util::str_of(&app.state.borrow().config, "compatibility.behavior") == "never";
+        self.updating.set(true);
+        self.compat_switch.set_active(on);
+        self.updating.set(false);
+        self.compat_badge.set_visible(on);
+        self.compat_row.set_sensitive(sandboxed && (on || !never));
+        let mut sub = String::from("Broad access (network, the whole session bus, all of /usr, X11, GPU, sound) for apps that work no other way. Turning it off restores your previous settings.");
+        if never && !on {
+            sub.push_str(" Turned off in Preferences → Repair.");
+        }
+        self.compat_row.set_subtitle(&esc(&sub));
+    }
+
+    /// SAM's menu entry and other tools' entries for this AppImage.
+    fn render_menu_group(self: &Rc<Self>) {
+        self.updating.set(true);
+        let entry = self.entry();
+        if self.sandboxed() {
+            let desktop = entry.as_ref().and_then(|e| e.get("desktop_entry")).and_then(Value::as_str).map(String::from);
+            self.sam_menu_row.set_sensitive(entry.is_some());
+            self.sam_menu_switch.set_active(desktop.is_some());
+            self.sam_menu_row.set_subtitle(&esc(&match &desktop {
+                Some(d) => format!("Starts the app through SAM. {}", util::tildify(d)),
+                None => "No menu entry: start the app from SAM.".into(),
+            }));
+            let st = self.menu_state.borrow().clone();
+            let visible: Vec<Value> = st.as_ref().and_then(|s| s.get("visible")).and_then(Value::as_array).cloned().unwrap_or_default();
+            let hidden: Vec<Value> = st.as_ref().and_then(|s| s.get("hidden")).and_then(Value::as_array).cloned().unwrap_or_default();
+            let names: Vec<String> = visible
+                .iter()
+                .map(|v| util::tildify(util::str_of(v, "file")))
+                .chain(hidden.iter().map(|h| util::tildify(util::str_of(h, "original"))))
+                .collect();
+            self.hide_switch.set_active(!hidden.is_empty() && visible.is_empty());
+            self.hide_row.set_sensitive(!names.is_empty());
+            self.hide_row.set_subtitle(&esc(&if names.is_empty() {
+                "No other menu entry starts this AppImage.".to_string()
+            } else if !visible.is_empty() {
+                format!("These start the AppImage without a sandbox: {}", names.join(", "))
+            } else {
+                format!("Hidden by SAM, shown again when you turn this off or remove the sandbox: {}", names.join(", "))
+            }));
+        } else {
+            self.sam_menu_row.set_sensitive(false);
+            self.sam_menu_switch.set_active(false);
+            self.sam_menu_row.set_subtitle("Created together with the sandbox (see Preferences → Menu Entries).");
+            let entries: Vec<String> = self
+                .found()
+                .and_then(|f| f.get("menu_entries").and_then(Value::as_array).cloned())
+                .unwrap_or_default()
+                .iter()
+                .map(|m| util::tildify(m.as_str().map(String::from).unwrap_or_else(|| util::str_of(m, "file").to_string()).as_str()))
+                .collect();
+            self.hide_switch.set_active(self.hide_duplicates.get() && !entries.is_empty());
+            self.hide_row.set_sensitive(!entries.is_empty());
+            self.hide_row.set_subtitle(&esc(&if entries.is_empty() {
+                "No other menu entry starts this AppImage.".to_string()
+            } else {
+                format!("These start the AppImage without a sandbox; SAM hides them when it creates the sandbox: {}", entries.join(", "))
+            }));
+        }
+        self.updating.set(false);
     }
 
     fn suggestion_row(self: &Rc<Self>, s: &Value, icon: &str, as_repair: bool, then_run: bool) -> adw::ActionRow {
@@ -884,6 +1241,9 @@ impl AppPage {
             self.button_row(&g, "edit-undo-symbolic", "Undo all repairs", &format!("Applied: {applied}"), |me| me.simple(vec!["repair".into(), me.app_id.clone(), "--undo".into()], "Repairs undone"));
         }
         self.button_row(&g, "folder-open-symbolic", "Files this app saved", "The app's private folder, where it keeps settings and files it saved outside your granted folders.", |me| me.open_private_folder());
+        self.button_row(&g, "system-search-symbolic", "Re-run detection", "Inspects the app again and updates SAM's recommendation. Your settings are kept; anything new is listed above.", |me| {
+            me.simple(vec!["redetect".into(), me.app_id.clone()], "Detection finished");
+        });
         self.button_row(&g, "system-run-symbolic", "Diagnose missing resources", "Runs the app once under strace (if installed) and suggests fixes.", |me| {
             if let Some(app) = me.app() {
                 app.toast("Starting a diagnostic run (closes after 30 s)…");
@@ -919,20 +1279,7 @@ impl AppPage {
             None => "Not extracted".into(),
         };
         self.add_dynamic(&g, &text_row("Extraction", &extraction));
-        let desktop = e.get("desktop_entry").and_then(Value::as_str).map(String::from);
-        let menu = adw::SwitchRow::builder()
-            .title("Menu entry")
-            .subtitle(esc(&desktop.as_deref().map(util::tildify).unwrap_or_else(|| "No menu entry".into())))
-            .active(desktop.is_some())
-            .build();
-        let w = Rc::downgrade(self);
-        menu.connect_active_notify(move |s| {
-            if let Some(me) = w.upgrade() {
-                let on = s.is_active();
-                me.simple(vec!["desktop".into(), me.app_id.clone(), if on { "install".into() } else { "remove".into() }], "Menu entry updated");
-            }
-        });
-        self.add_dynamic(&g, &menu);
+
         self.add_dynamic(&g, &text_row("SHA-256", util::str_of(e, "source.sha256")));
     }
 
@@ -948,6 +1295,29 @@ impl AppPage {
             }
         });
     }
+}
+
+/// A list editor row: title, description, chips, and an add field.
+fn chip_editor(title: &str, description: &str, placeholder: &str) -> (gtk::ListBoxRow, gtk::FlowBox, gtk::Entry, gtk::Button) {
+    let row = gtk::ListBoxRow::builder().activatable(false).selectable(false).build();
+    let vbox = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).margin_top(10).margin_bottom(10).margin_start(12).margin_end(12).build();
+    let t = gtk::Label::builder().label(title).xalign(0.0).wrap(true).build();
+    let d = gtk::Label::builder().label(description).xalign(0.0).wrap(true).build();
+    d.add_css_class("dim-label");
+    d.add_css_class("caption");
+    vbox.append(&t);
+    vbox.append(&d);
+    let chips = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).column_spacing(6).row_spacing(6).max_children_per_line(30).build();
+    vbox.append(&chips);
+    let add_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let entry = gtk::Entry::builder().placeholder_text(placeholder).hexpand(true).name("args-entry").build();
+    let add = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text("Add").valign(gtk::Align::Center).build();
+    add.add_css_class("flat");
+    add_box.append(&entry);
+    add_box.append(&add);
+    vbox.append(&add_box);
+    row.set_child(Some(&vbox));
+    (row, chips, entry, add)
 }
 
 fn button_content(icon: &str, label: &str) -> adw::ButtonContent {
