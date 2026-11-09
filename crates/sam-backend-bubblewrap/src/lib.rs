@@ -368,6 +368,14 @@ impl Bubblewrap {
             }
             a.ro("/run/udev/data");
         }
+        // NVIDIA's driver reads its kernel module's information
+        // (/sys/module/nvidia/version); without it, OpenGL and Vulkan fall
+        // back to software rendering. Only the NVIDIA modules are exposed.
+        if p.devices.gpu {
+            for m in gpu_module_dirs(Path::new("/sys/module")) {
+                a.ro(&m);
+            }
+        }
 
         // Home.
         let fsp = &p.filesystem;
@@ -711,6 +719,16 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
     Ok(())
 }
 
+/// Kernel module folders a GPU driver needs to see: NVIDIA's (`nvidia`,
+/// `nvidia_drm`, `nvidia_modeset`, `nvidia_uvm`).
+fn gpu_module_dirs(sys_module: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = fs::read_dir(sys_module)
+        .map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("nvidia")).map(|e| e.path()).collect())
+        .unwrap_or_default();
+    out.sort();
+    out
+}
+
 /// Joystick device nodes: `js*`, plus `event*` nodes udev tagged as a
 /// joystick (`E:ID_INPUT_JOYSTICK=1` in `/run/udev/data/c13:<minor>`).
 /// Keyboards and mice are left out, so the app cannot log keystrokes.
@@ -864,6 +882,17 @@ mod tests {
         fs::write(udev.join("c1:5"), "E:ID_INPUT=1\nE:ID_INPUT_KEYBOARD=1\n").unwrap();
         let got = gamepad_nodes(&dev, &udev);
         assert_eq!(got, vec![dev.join("event7"), dev.join("js0")]);
+    }
+
+
+    #[test]
+    fn nvidia_modules_are_exposed_with_the_gpu() {
+        let t = tempfile::tempdir().unwrap();
+        for m in ["nvidia", "nvidia_drm", "snd_hda_intel", "i915"] {
+            fs::create_dir(t.path().join(m)).unwrap();
+        }
+        assert_eq!(gpu_module_dirs(t.path()), vec![t.path().join("nvidia"), t.path().join("nvidia_drm")]);
+        assert!(gpu_module_dirs(&t.path().join("missing")).is_empty());
     }
 
 }

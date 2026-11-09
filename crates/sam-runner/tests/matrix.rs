@@ -17,6 +17,7 @@ use sam_runner::ops::{AddOptions, Sam};
 const PROBE: &str = r#"#!/bin/sh
 yn() { if eval "$1" 2>/dev/null; then echo "$2=yes"; else echo "$2=no"; fi; }
 yn '[ -e /dev/dri ]' GPU
+yn '[ -e /sys/module/nvidia/version ]' NVMOD
 echo "JS=$(ls /dev/input 2>/dev/null | grep -c '^js')"
 echo "EVENTS=$(ls /dev/input 2>/dev/null | grep -c '^event')"
 echo "MICE=$(ls /dev/input 2>/dev/null | grep -c '^mice')"
@@ -155,6 +156,9 @@ fn permission_matrix() {
     if Path::new("/dev/dri").exists() {
         assert_eq!(r["GPU"], "yes");
         assert_eq!(r["SYSFS"], "yes", "GPU drivers need /sys");
+    }
+    if Path::new("/sys/module/nvidia/version").exists() {
+        assert_eq!(r["NVMOD"], "yes", "NVIDIA's driver needs /sys/module/nvidia");
     }
 
     let mut p = base();
