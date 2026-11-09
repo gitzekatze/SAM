@@ -260,10 +260,15 @@ impl App {
         view.add_top_bar(&header);
 
         // Pinned: AppImage locations.
-        let loc_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).margin_start(12).margin_end(12).margin_top(6).margin_bottom(10).build();
+        // Both headline rows have the same height and the same gap (HEAD_GAP)
+        // to what follows them.
+        const HEAD_GAP: i32 = 8;
+        let heads = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
+        let loc_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(6).margin_bottom(14).build();
         loc_box.add_css_class("sam-locations");
         let loc_head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        let loc_title = gtk::Label::builder().label("AppImage locations").xalign(0.0).hexpand(true).build();
+        heads.add_widget(&loc_head);
+        let loc_title = gtk::Label::builder().label("AppImage locations").xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
         loc_title.add_css_class("heading");
         loc_head.append(&loc_title);
         let add_folder = gtk::Button::builder().icon_name("folder-new-symbolic").tooltip_text("Search a folder for AppImages").build();
@@ -280,10 +285,11 @@ impl App {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .propagate_natural_height(true)
             .max_content_height(104)
+            .margin_top(HEAD_GAP)
             .child(&locations)
             .build();
         loc_box.append(&loc_scroll);
-        let dl_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let dl_row = gtk::Box::builder().spacing(8).margin_top(8).build();
         let dl_label = gtk::Label::builder().label("Also search the Downloads folder").xalign(0.0).hexpand(true).build();
         dl_label.add_css_class("caption");
         let downloads = gtk::Switch::builder().valign(gtk::Align::Center).build();
@@ -293,20 +299,23 @@ impl App {
         view.add_top_bar(&loc_box);
         self.top_sizes.add_widget(&loc_box);
 
-        // Pinned: search and filter.
-        let filter_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(8).margin_start(12).margin_end(12).margin_top(10).margin_bottom(6).build();
-        let found_title = gtk::Label::builder().label("AppImages found").xalign(0.0).build();
+        // Pinned: headline, filter, then search.
+        let filter_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(16).margin_bottom(6).build();
+        let found_head = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        heads.add_widget(&found_head);
+        let found_title = gtk::Label::builder().label("AppImages found").xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
         found_title.add_css_class("heading");
-        filter_box.append(&found_title);
-        let search = gtk::SearchEntry::builder().placeholder_text("Search AppImages").build();
-        filter_box.append(&search);
-        let toggles = adw::ToggleGroup::new();
+        found_head.append(&found_title);
+        filter_box.append(&found_head);
+        let toggles = adw::ToggleGroup::builder().margin_top(HEAD_GAP).build();
         toggles.add_css_class("round");
         for (name, label) in [("all", "All"), ("sandboxed", "Sandboxed"), ("unsandboxed", "Unsandboxed")] {
             toggles.add(adw::Toggle::builder().name(name).label(label).build());
         }
         toggles.set_active_name(Some("all"));
         filter_box.append(&toggles);
+        let search = gtk::SearchEntry::builder().placeholder_text("Search AppImages").margin_top(8).build();
+        filter_box.append(&search);
         view.add_top_bar(&filter_box);
 
         // The app list.
