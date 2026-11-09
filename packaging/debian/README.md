@@ -18,8 +18,8 @@ Release notes per distribution:
 
 - **Debian 13 (trixie)** and newer: CLI and GUI.
 - **Debian 12 (bookworm)**: libadwaita is too old for the GUI; CLI only.
-- **Ubuntu 24.04 LTS** and newer: CLI and GUI (needs the GUI to target
-  libadwaita 1.5). Since 23.10, Ubuntu restricts unprivileged user
+- **Ubuntu 24.04 LTS** and newer: CLI and GUI (the GUI needs libadwaita
+  1.5 or newer). Since 23.10, Ubuntu restricts unprivileged user
   namespaces with AppArmor; Bubblewrap needs an AppArmor allowance.
   `sam-jail doctor` detects this and explains the fix. Electron apps inside
   SAM then usually need `--no-sandbox` (SAM's repair offers it).

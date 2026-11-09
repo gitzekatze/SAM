@@ -133,7 +133,7 @@ GUI, `sam-jail-gui`). Recommended extras:
 
 ## Build from source
 
-Requirements: Rust (stable), GTK 4.12+, libadwaita 1.7+ and bubblewrap.
+Requirements: Rust (stable), GTK 4.12+, libadwaita 1.5+ and bubblewrap.
 
 ```sh
 make            # release build of the CLI and the GUI

@@ -1026,7 +1026,7 @@ impl AppPage {
         self.clear_dynamic();
         if !have_data {
             let row = adw::ActionRow::builder().title("Loading settings…").build();
-            row.add_prefix(&adw::Spinner::new());
+            row.add_prefix(&gtk::Spinner::builder().spinning(true).build());
             self.add_dynamic(&self.notices, &row);
         }
         if !sandboxed {

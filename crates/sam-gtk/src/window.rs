@@ -62,7 +62,7 @@ pub struct App {
     sidebar: OnceCell<Sidebar>,
     /// The page shown on the right, kept alive while it is shown.
     current: RefCell<Option<Rc<dyn std::any::Any>>>,
-    spinner: adw::Spinner,
+    spinner: gtk::Spinner,
 }
 
 struct Sidebar {
@@ -93,7 +93,8 @@ impl App {
         bp.add_setter(&split, "collapsed", Some(&true.to_value()));
         window.add_breakpoint(bp);
 
-        let spinner = adw::Spinner::builder().visible(false).build();
+        // gtk::Spinner rather than adw::Spinner: works with libadwaita 1.5.
+        let spinner = gtk::Spinner::builder().spinning(true).visible(false).build();
         let sp = spinner.clone();
         let backend = Backend::new(move |busy| sp.set_visible(busy));
         let me = Rc::new(App {
@@ -307,12 +308,29 @@ impl App {
         found_title.add_css_class("heading");
         found_head.append(&found_title);
         filter_box.append(&found_head);
-        let toggles = adw::ToggleGroup::builder().margin_top(HEAD_GAP).build();
-        toggles.add_css_class("round");
+        // Segmented filter: linked toggle buttons (works with libadwaita 1.5).
+        let toggles = gtk::Box::builder().homogeneous(true).margin_top(HEAD_GAP).build();
+        toggles.add_css_class("linked");
+        let mut first: Option<gtk::ToggleButton> = None;
         for (name, label) in [("all", "All"), ("sandboxed", "Sandboxed"), ("unsandboxed", "Unsandboxed")] {
-            toggles.add(adw::Toggle::builder().name(name).label(label).build());
+            let b = gtk::ToggleButton::builder().label(label).active(name == "all").build();
+            if let Some(f) = &first {
+                b.set_group(Some(f));
+            } else {
+                first = Some(b.clone());
+            }
+            let w = Rc::downgrade(self);
+            b.connect_toggled(move |b| {
+                if !b.is_active() {
+                    return;
+                }
+                if let Some(me) = w.upgrade() {
+                    me.state.borrow_mut().filter = name.to_string();
+                    me.rebuild_list();
+                }
+            });
+            toggles.append(&b);
         }
-        toggles.set_active_name(Some("all"));
         filter_box.append(&toggles);
         let search = gtk::SearchEntry::builder().placeholder_text("Search AppImages").margin_top(8).build();
         filter_box.append(&search);
@@ -366,13 +384,6 @@ impl App {
         search.connect_search_changed(move |s| {
             if let Some(me) = w.upgrade() {
                 me.state.borrow_mut().search = s.text().to_string();
-                me.rebuild_list();
-            }
-        });
-        let w = Rc::downgrade(self);
-        toggles.connect_active_name_notify(move |t| {
-            if let Some(me) = w.upgrade() {
-                me.state.borrow_mut().filter = t.active_name().map(|s| s.to_string()).unwrap_or_else(|| "all".into());
                 me.rebuild_list();
             }
         });
