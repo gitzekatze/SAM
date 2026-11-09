@@ -4,6 +4,7 @@
 #   make test            run the Rust test suite
 #   make install         install into $(DESTDIR)$(PREFIX)
 #   make install-cli     CLI only (sam-jail, sam-jail-run)
+#   make dist            release tarballs (source + vendored crates) in dist/
 #
 # Uses the project-local Rust toolchain in ../.toolchain when present.
 
@@ -22,7 +23,7 @@ else
 CARGO ?= cargo
 endif
 
-.PHONY: all cli gui test install install-cli install-gui clean
+.PHONY: all cli gui test install install-cli install-gui clean dist
 
 all: cli gui
 
@@ -49,6 +50,9 @@ install-gui:
 	install -Dm644 data/io.github.gitzekatze.SAM.svg         $(DATADIR)/icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg
 
 install: install-cli install-gui
+
+dist:
+	scripts/make-release.sh dist
 
 clean:
 	$(CARGO) clean
