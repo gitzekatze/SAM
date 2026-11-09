@@ -32,6 +32,7 @@ pub struct AppPage {
     risk_badge: gtk::Label,
     sandbox_badge: gtk::Label,
     main_button: gtk::Button,
+    remove_button: gtk::Button,
     menu_button: gtk::MenuButton,
     // Content.
     editor: Rc<Editor>,
@@ -40,7 +41,8 @@ pub struct AppPage {
     findings: adw::PreferencesGroup,
     preset_group: adw::PreferencesGroup,
     preset_row: adw::ComboRow,
-    presets: RefCell<Vec<String>>,
+    save_preset_row: adw::EntryRow,
+    presets: RefCell<Vec<Value>>,
     trouble: adw::PreferencesGroup,
     details: adw::PreferencesGroup,
     command_group: adw::PreferencesGroup,
@@ -86,10 +88,21 @@ impl AppPage {
         meta.append(&subtitle);
         meta.append(&badges);
         hero.append(&meta);
-        let main_button = gtk::Button::builder().valign(gtk::Align::Center).name("main-button").build();
+        // Launch (or Create Sandbox), with Remove Sandbox right under it.
+        let buttons = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).valign(gtk::Align::Center).build();
+        let main_button = gtk::Button::builder().name("main-button").build();
         main_button.add_css_class("suggested-action");
         main_button.add_css_class("pill");
-        hero.append(&main_button);
+        let remove_button = gtk::Button::builder()
+            .child(&button_content("user-trash-symbolic", "Remove Sandbox"))
+            .tooltip_text("Remove the sandbox (the AppImage file is kept)")
+            .name("remove-button")
+            .build();
+        remove_button.add_css_class("flat");
+        remove_button.add_css_class("sam-remove");
+        buttons.append(&main_button);
+        buttons.append(&remove_button);
+        hero.append(&buttons);
         view.add_top_bar(&hero);
         app.top_sizes.add_widget(&hero);
 
@@ -99,9 +112,15 @@ impl AppPage {
         let notices = adw::PreferencesGroup::new();
         let hints = adw::PreferencesGroup::builder().title("Worth Checking").description("Things that often stop apps from working in a sandbox.").build();
         let findings = adw::PreferencesGroup::builder().title("What Went Wrong Last Time").build();
-        let preset_group = adw::PreferencesGroup::builder().title("Preset").build();
+        let preset_group = adw::PreferencesGroup::builder()
+            .title("Presets")
+            .description("Reuse settings between apps. Manage all presets from the main menu → Presets.")
+            .build();
         let preset_row = adw::ComboRow::builder().title("Start from a preset").subtitle("Replaces the settings below.").build();
+        preset_row.set_widget_name("preset-picker");
+        let save_preset_row = adw::EntryRow::builder().title("Save these settings as a preset (name)").show_apply_button(true).name("save-preset").build();
         preset_group.add(&preset_row);
+        preset_group.add(&save_preset_row);
         pref.add(&notices);
         pref.add(&hints);
         pref.add(&findings);
@@ -149,6 +168,7 @@ impl AppPage {
             risk_badge,
             sandbox_badge,
             main_button,
+            remove_button,
             menu_button,
             editor,
             notices,
@@ -156,6 +176,7 @@ impl AppPage {
             findings,
             preset_group,
             preset_row,
+            save_preset_row,
             presets: RefCell::new(Vec::new()),
             trouble,
             details,
@@ -242,22 +263,41 @@ impl AppPage {
             }
         });
         let w = Rc::downgrade(self);
+        self.remove_button.connect_clicked(move |_| {
+            if let Some(me) = w.upgrade() {
+                me.remove_sandbox();
+            }
+        });
+        let w = Rc::downgrade(self);
         self.preset_row.connect_selected_notify(move |r| {
             let Some(me) = w.upgrade() else { return };
             if me.updating.get() || r.selected() == 0 {
                 return;
             }
-            let name = me.presets.borrow().get(r.selected() as usize - 1).cloned();
+            let preset = me.presets.borrow().get(r.selected() as usize - 1).cloned();
             me.updating.set(true);
             r.set_selected(0);
             me.updating.set(false);
-            if let (Some(name), Some(app)) = (name, me.app()) {
+            let (Some(preset), Some(app)) = (preset, me.app()) else { return };
+            let name = util::str_of(&preset, "name").to_string();
+            if me.sandboxed() {
                 let id = me.app_id.clone();
                 glib::spawn_future_local(async move {
                     if app.apply_preset(&name, &id).await {
                         me.reload();
                     }
                 });
+            } else if let Some(p) = preset.get("permissions").cloned() {
+                // No sandbox yet: the preset replaces the settings shown.
+                app.toast(&format!("Settings from “{name}”"));
+                me.on_perms_edited(p);
+            }
+        });
+        let w = Rc::downgrade(self);
+        self.save_preset_row.connect_apply(move |row| {
+            if let Some(me) = w.upgrade() {
+                let name = row.text().trim().to_string();
+                me.save_as_preset(name);
             }
         });
 
@@ -304,27 +344,69 @@ impl AppPage {
         }
         self.menu_button.set_menu_model(Some(&menu));
 
-        // Presets for the picker.
-        if self.sandboxed() {
-            let w = Rc::downgrade(self);
-            if let Some(app) = self.app() {
-                glib::spawn_future_local(async move {
-                    if let Ok(list) = app.backend.call(&["preset", "list"], None).await {
-                        if let Some(me) = w.upgrade() {
-                            let names: Vec<String> = list.as_array().map(|a| a.iter().map(|p| util::str_of(p, "name").to_string()).collect()).unwrap_or_default();
-                            let mut labels = vec!["Choose…".to_string()];
-                            labels.extend(names.iter().cloned());
-                            let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-                            me.updating.set(true);
-                            me.preset_row.set_model(Some(&gtk::StringList::new(&refs)));
-                            me.preset_row.set_selected(0);
-                            me.updating.set(false);
-                            *me.presets.borrow_mut() = names;
-                        }
-                    }
-                });
+        self.load_presets();
+    }
+
+    /// Fills the preset picker.
+    fn load_presets(self: &Rc<Self>) {
+        let Some(app) = self.app() else { return };
+        let w = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            if let Ok(list) = app.backend.call(&["preset", "list"], None).await {
+                if let Some(me) = w.upgrade() {
+                    let presets: Vec<Value> = list.as_array().cloned().unwrap_or_default();
+                    let mut labels = vec!["Choose…".to_string()];
+                    labels.extend(presets.iter().map(|p| util::str_of(p, "name").to_string()));
+                    let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+                    me.updating.set(true);
+                    me.preset_row.set_model(Some(&gtk::StringList::new(&refs)));
+                    me.preset_row.set_selected(0);
+                    me.updating.set(false);
+                    *me.presets.borrow_mut() = presets;
+                }
             }
+        });
+    }
+
+    /// Saves the settings shown as a user preset (asks before replacing one).
+    fn save_as_preset(self: &Rc<Self>, name: String) {
+        let Some(app) = self.app() else { return };
+        if name.is_empty() {
+            app.toast("Type a name for the preset first");
+            return;
         }
+        let Some(perms) = self.perms() else { return };
+        let existing = self.presets.borrow().iter().find(|p| util::str_of(p, "name").eq_ignore_ascii_case(&name)).cloned();
+        let me = self.clone();
+        let app_name = util::plain(&self.name());
+        glib::spawn_future_local(async move {
+            if let Some(e) = &existing {
+                if util::bool_of(e, "builtin") {
+                    app.toast(&format!("“{name}” is a built-in preset. Choose another name."));
+                    return;
+                }
+                if !window::confirm(&app.window, &format!("Replace “{name}”?"), "A preset with this name exists. Its settings are replaced by the ones shown here. Apps that used it keep their current settings.", "Replace", true).await {
+                    return;
+                }
+            }
+            let preset = serde_json::json!({
+                "name": name,
+                "description": format!("Saved from {app_name}"),
+                "permissions": perms,
+                "risk": "low",
+                "created_at": 0,
+                "modified_at": 0,
+                "compatibility_notes": "",
+            });
+            match app.backend.call(&["preset", "put"], Some(preset.to_string())).await {
+                Ok(_) => {
+                    app.toast(&format!("Saved preset “{name}”. Apply it to any app from its Presets section."));
+                    me.save_preset_row.set_text("");
+                    me.load_presets();
+                }
+                Err(e) => app.report_error(&e),
+            }
+        });
     }
 
     // ------------------------------------------------------------ data
@@ -616,6 +698,7 @@ impl AppPage {
             self.risk_badge.set_visible(false);
         }
         let badge = summary.as_ref().map(|s| util::str_of(s, "badge").to_string()).unwrap_or_default();
+        self.remove_button.set_visible(sandboxed);
         if sandboxed {
             self.main_button.set_child(Some(&button_content("media-playback-start-symbolic", "Launch")));
             self.main_button.set_sensitive(summary.is_some() && badge != "missing");
@@ -717,7 +800,7 @@ impl AppPage {
         self.findings.set_visible(!findings.is_empty());
         self.notices.set_visible(true);
 
-        self.preset_group.set_visible(sandboxed);
+        self.preset_group.set_visible(have_data);
         if let Some(e) = entry.as_ref() {
             let p = util::get(e, "profile.preset").and_then(Value::as_str).map(String::from);
             self.preset_row.set_subtitle(&match p {

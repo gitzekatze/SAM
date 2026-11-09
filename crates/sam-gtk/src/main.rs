@@ -47,6 +47,9 @@ const CSS: &str = r#"
 .sam-location-list button.circular { min-width: 24px; min-height: 24px; padding: 0; }
 
 .sam-mono { font-size: 0.86em; background: transparent; }
+
+button.sam-remove { color: @error_color; font-size: 0.9em; padding: 2px 10px; }
+button.sam-remove:hover { background-color: alpha(@error_color, 0.12); }
 textview.sam-mono text { background: transparent; }
 "#;
 
