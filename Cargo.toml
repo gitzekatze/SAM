@@ -9,6 +9,7 @@ members = [
     "crates/sam-backend-bubblewrap",
     "crates/sam-runner",
     "crates/sam-jail-cli",
+    "crates/sam-gtk",
 ]
 
 [workspace.package]

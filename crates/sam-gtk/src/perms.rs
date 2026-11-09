@@ -1,0 +1,648 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Flatseal-style permission editor, shared by the app page and the preset
+//! editor. Every setting is always visible; settings that do not apply right
+//! now are insensitive (greyed out), never hidden. Changes go to `on_edit`;
+//! the owner saves them and feeds back `set_data`.
+
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use adw::prelude::*;
+use gtk::glib;
+use serde_json::{json, Value};
+
+use crate::util::{self, esc};
+
+/// Permission catalog entry from `sam-jail permissions`.
+#[derive(Clone, Default)]
+pub struct Info {
+    pub title: String,
+    pub description: String,
+    pub risk: String,
+}
+
+pub type Catalog = Rc<HashMap<String, Info>>;
+
+pub fn parse_catalog(v: &Value) -> HashMap<String, Info> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|p| {
+                    Some((
+                        p.get("key")?.as_str()?.to_string(),
+                        Info {
+                            title: util::str_of(p, "title").to_string(),
+                            description: util::str_of(p, "description").to_string(),
+                            risk: util::str_of(p, "risk").to_string(),
+                        },
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Avail {
+    Always,
+    LocalNet,
+    FullHome,
+    FilteredBus,
+    AnyBus,
+    NotAllInput,
+}
+
+#[derive(Clone)]
+struct Opt {
+    value: Value,
+    text: &'static str,
+    description: &'static str,
+}
+
+fn opt(value: Value, text: &'static str, description: &'static str) -> Opt {
+    Opt { value, text, description }
+}
+
+enum Ctl {
+    Switch { key: &'static str, row: adw::ActionRow, sw: gtk::Switch, badge: gtk::Label, avail: Avail },
+    Choice { key: &'static str, row: adw::ActionRow, drop: gtk::DropDown, opts: Vec<Opt>, badge: gtk::Label, avail: Avail },
+    List { key: &'static str, row: gtk::ListBoxRow, title: gtk::Label, subtitle: gtk::Label, chips: gtk::FlowBox, badge: gtk::Label, avail: Avail, folders: bool },
+}
+
+pub struct Editor {
+    catalog: Catalog,
+    window: adw::ApplicationWindow,
+    perms: RefCell<Option<Value>>,
+    recommended: RefCell<Option<Value>>,
+    evaluation: RefCell<Option<Value>>,
+    editable: Cell<bool>,
+    updating: Cell<bool>,
+    on_edit: RefCell<Option<Box<dyn Fn(Value)>>>,
+    ctls: RefCell<Vec<Ctl>>,
+    overview: adw::PreferencesGroup,
+    risk_row: adw::ActionRow,
+    risk_badge: gtk::Label,
+    warning_rows: RefCell<Vec<adw::ActionRow>>,
+    groups: RefCell<Vec<adw::PreferencesGroup>>,
+}
+
+impl Editor {
+    pub fn new(catalog: Catalog, window: &adw::ApplicationWindow) -> Rc<Editor> {
+        let overview = adw::PreferencesGroup::builder()
+            .title("Overview")
+            .description("How much this app can reach with the settings below.")
+            .build();
+        let risk_row = adw::ActionRow::builder().title("Risk of these settings").build();
+        let risk_badge = util::badge("", "neutral");
+        risk_row.add_suffix(&risk_badge);
+        overview.add(&risk_row);
+        let ed = Rc::new(Editor {
+            catalog,
+            window: window.clone(),
+            perms: RefCell::new(None),
+            recommended: RefCell::new(None),
+            evaluation: RefCell::new(None),
+            editable: Cell::new(true),
+            updating: Cell::new(false),
+            on_edit: RefCell::new(None),
+            ctls: RefCell::new(Vec::new()),
+            overview,
+            risk_row,
+            risk_badge,
+            warning_rows: RefCell::new(Vec::new()),
+            groups: RefCell::new(Vec::new()),
+        });
+        ed.build();
+        ed
+    }
+
+    /// Adds the overview and permission groups to `page`, in order.
+    pub fn add_to(&self, page: &adw::PreferencesPage) {
+        page.add(&self.overview);
+        for g in self.groups.borrow().iter() {
+            page.add(g);
+        }
+    }
+
+    pub fn connect_edited(&self, f: impl Fn(Value) + 'static) {
+        *self.on_edit.borrow_mut() = Some(Box::new(f));
+    }
+
+    pub fn set_editable(self: &Rc<Self>, e: bool) {
+        self.editable.set(e);
+        self.refresh();
+    }
+
+    pub fn set_data(self: &Rc<Self>, perms: Option<Value>, recommended: Option<Value>, evaluation: Option<Value>) {
+        *self.perms.borrow_mut() = perms;
+        *self.recommended.borrow_mut() = recommended;
+        *self.evaluation.borrow_mut() = evaluation;
+        self.refresh();
+    }
+
+    pub fn set_evaluation(&self, evaluation: Option<Value>) {
+        *self.evaluation.borrow_mut() = evaluation;
+        self.refresh_overview();
+    }
+
+    // ------------------------------------------------------------ helpers
+
+    fn value(&self, key: &str) -> Value {
+        self.perms.borrow().as_ref().and_then(|p| util::get(p, key).cloned()).unwrap_or(Value::Null)
+    }
+    fn info(&self, key: &str) -> Info {
+        self.catalog.get(key).cloned().unwrap_or(Info { title: key.into(), ..Default::default() })
+    }
+    fn full_home(&self) -> bool {
+        self.value("filesystem.home") == json!(true)
+    }
+    fn available(&self, a: Avail) -> bool {
+        match a {
+            Avail::Always => true,
+            Avail::LocalNet => self.value("network.mode") == json!("localhost"),
+            Avail::FullHome => self.full_home(),
+            Avail::FilteredBus => self.value("dbus.session.mode") == json!("filtered"),
+            Avail::AnyBus => self.value("dbus.session.mode") != json!("none"),
+            Avail::NotAllInput => self.value("devices.input") != json!(true),
+        }
+    }
+
+    /// Risk shown as a badge next to a setting: only while it is in use and
+    /// its risk is high or dangerous, so the list stays calm.
+    fn active_risk(&self, key: &str) -> String {
+        let v = self.value(key);
+        let risky: &[&str] = match key {
+            "network.mode" | "dbus.session.mode" | "dbus.system.mode" => &["full"],
+            "filesystem.home_access" => &["rw"],
+            _ => &[],
+        };
+        let mut on = if !risky.is_empty() {
+            v.as_str().is_some_and(|s| risky.contains(&s))
+        } else {
+            v == json!(true) || v.as_str().is_some_and(|s| !["none", "minimal", "ro"].contains(&s)) || v.as_array().is_some_and(|a| !a.is_empty())
+        };
+        if matches!(key, "filesystem.home_access" | "filesystem.ssh" | "filesystem.gnupg" | "filesystem.hidden_files") {
+            on = on && self.full_home();
+        }
+        let r = self.info(key).risk;
+        if on && (r == "high" || r == "dangerous") { r } else { String::new() }
+    }
+
+    fn value_label(v: &Value) -> String {
+        match v {
+            Value::Bool(true) => "on".into(),
+            Value::Bool(false) => "off".into(),
+            Value::String(s) => match s.as_str() {
+                "none" => "none",
+                "ro" => "read-only",
+                "rw" => "read & write",
+                "full" => "full",
+                "localhost" => "local network only",
+                "filtered" => "filtered",
+                "minimal" => "minimal",
+                o => o,
+            }
+            .into(),
+            Value::Null => "default".into(),
+            o => o.to_string(),
+        }
+    }
+
+    /// Grey subtitle (markup): the description, plus SAM's recommendation
+    /// when the current value differs from it.
+    fn describe(&self, key: &str, text: &str) -> String {
+        let mut s = esc(text);
+        if let Some(rec) = self.recommended.borrow().as_ref() {
+            if let Some(rv) = util::get(rec, key) {
+                if !rv.is_object() && !rv.is_array() && *rv != self.value(key) {
+                    s.push_str(&format!("\n<i>SAM recommends: {}</i>", esc(&Self::value_label(rv))));
+                }
+            }
+        }
+        s
+    }
+
+    // ------------------------------------------------------------ building
+
+    fn group(&self, title: &str, description: &str) -> adw::PreferencesGroup {
+        let g = adw::PreferencesGroup::builder().title(title).description(description).build();
+        self.groups.borrow_mut().push(g.clone());
+        g
+    }
+
+    fn switch(self: &Rc<Self>, g: &adw::PreferencesGroup, key: &'static str, avail: Avail) {
+        let row = adw::ActionRow::builder().title(esc(&self.info(key).title)).build();
+        let badge = util::badge("", "bad");
+        badge.set_visible(false);
+        let sw = gtk::Switch::builder().valign(gtk::Align::Center).name(format!("perm:{key}")).build();
+        row.add_suffix(&badge);
+        row.add_suffix(&sw);
+        row.set_activatable_widget(Some(&sw));
+        let me = Rc::downgrade(self);
+        sw.connect_active_notify(move |s| {
+            if let Some(me) = me.upgrade() {
+                if !me.updating.get() {
+                    me.request(key, Value::Bool(s.is_active()));
+                }
+            }
+        });
+        g.add(&row);
+        self.ctls.borrow_mut().push(Ctl::Switch { key, row, sw, badge, avail });
+    }
+
+    fn choice(self: &Rc<Self>, g: &adw::PreferencesGroup, key: &'static str, opts: Vec<Opt>, avail: Avail) {
+        // A drop-down keeps its full width; the description wraps instead
+        // (a combo row would shorten the selected value to "…").
+        let labels: Vec<&str> = opts.iter().map(|o| o.text).collect();
+        let row = adw::ActionRow::builder().title(esc(&self.info(key).title)).build();
+        let badge = util::badge("", "bad");
+        badge.set_visible(false);
+        row.add_suffix(&badge);
+        let drop = gtk::DropDown::from_strings(&labels);
+        drop.set_valign(gtk::Align::Center);
+        drop.set_widget_name(&format!("perm:{key}"));
+        drop.add_css_class("flat");
+        row.add_suffix(&drop);
+        row.set_activatable_widget(Some(&drop));
+        let me = Rc::downgrade(self);
+        let values: Vec<Value> = opts.iter().map(|o| o.value.clone()).collect();
+        drop.connect_selected_notify(move |r| {
+            if let Some(me) = me.upgrade() {
+                if !me.updating.get() {
+                    if let Some(v) = values.get(r.selected() as usize) {
+                        me.request(key, v.clone());
+                    }
+                }
+            }
+        });
+        g.add(&row);
+        self.ctls.borrow_mut().push(Ctl::Choice { key, row, drop, opts, badge, avail });
+    }
+
+    /// A string list (folders, ports, bus names, variables): entries as
+    /// removable chips, then an inline field to add one. Always visible.
+    fn list(self: &Rc<Self>, g: &adw::PreferencesGroup, key: &'static str, placeholder: &str, folders: bool, avail: Avail) {
+        let row = gtk::ListBoxRow::builder().activatable(false).selectable(false).build();
+        let vbox = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(6)
+            .margin_top(10)
+            .margin_bottom(10)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        let head = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let texts = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        texts.set_hexpand(true);
+        let title = gtk::Label::builder().xalign(0.0).wrap(true).build();
+        let subtitle = gtk::Label::builder().xalign(0.0).wrap(true).use_markup(true).build();
+        subtitle.add_css_class("dim-label");
+        subtitle.add_css_class("caption");
+        texts.append(&title);
+        texts.append(&subtitle);
+        head.append(&texts);
+        let badge = util::badge("", "bad");
+        badge.set_visible(false);
+        head.append(&badge);
+        vbox.append(&head);
+
+        let chips = gtk::FlowBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .column_spacing(6)
+            .row_spacing(6)
+            .max_children_per_line(30)
+            .homogeneous(false)
+            .build();
+        vbox.append(&chips);
+
+        let add_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let entry = gtk::Entry::builder().placeholder_text(placeholder).hexpand(true).build();
+        add_box.append(&entry);
+        if folders {
+            let pick = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text("Choose a folder").valign(gtk::Align::Center).build();
+            pick.add_css_class("flat");
+            let me = Rc::downgrade(self);
+            pick.connect_clicked(move |_| {
+                let Some(me) = me.upgrade() else { return };
+                let dialog = gtk::FileDialog::builder().title("Choose a folder").build();
+                let win = me.window.clone();
+                glib::spawn_future_local(async move {
+                    if let Ok(f) = dialog.select_folder_future(Some(&win)).await {
+                        if let Some(p) = f.path() {
+                            me.add_item(key, &util::tildify(&p.to_string_lossy()));
+                        }
+                    }
+                });
+            });
+            add_box.append(&pick);
+        }
+        let add = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text("Add").valign(gtk::Align::Center).build();
+        add.add_css_class("flat");
+        add_box.append(&add);
+        vbox.append(&add_box);
+        let me = Rc::downgrade(self);
+        let e2 = entry.clone();
+        let commit = move || {
+            if let Some(me) = me.upgrade() {
+                let t = e2.text().trim().to_string();
+                if !t.is_empty() {
+                    me.add_item(key, &t);
+                    e2.set_text("");
+                }
+            }
+        };
+        let c2 = commit.clone();
+        entry.connect_activate(move |_| c2());
+        add.connect_clicked(move |_| commit());
+
+        row.set_child(Some(&vbox));
+        g.add(&row);
+        self.ctls.borrow_mut().push(Ctl::List { key, row, title, subtitle, chips, badge, avail, folders });
+    }
+
+    fn add_item(self: &Rc<Self>, key: &'static str, item: &str) {
+        let mut items: Vec<Value> = self.value(key).as_array().cloned().unwrap_or_default();
+        if !items.iter().any(|v| v.as_str() == Some(item)) {
+            items.push(json!(item));
+            self.request(key, Value::Array(items));
+        }
+    }
+
+    fn remove_item(self: &Rc<Self>, key: &'static str, idx: usize) {
+        let mut items: Vec<Value> = self.value(key).as_array().cloned().unwrap_or_default();
+        if idx < items.len() {
+            items.remove(idx);
+            self.request(key, Value::Array(items));
+        }
+    }
+
+    fn build(self: &Rc<Self>) {
+        use Avail::*;
+        let access = || {
+            vec![
+                opt(json!("none"), "No access", "Hidden from the app."),
+                opt(json!("ro"), "Read-only", "The app can open files here but not change or delete them."),
+                opt(json!("rw"), "Read & write", "The app can open, change and delete files here."),
+            ]
+        };
+
+        let g = self.group("Network", "Internet and connections to services on this computer.");
+        self.choice(&g, "network.mode", vec![
+            opt(json!("none"), "No network", "No connection at all, not even to this computer."),
+            opt(json!("localhost"), "Local network only", "No internet. The app can reach the services on this computer you list below, and its own web page opens in your browser."),
+            opt(json!("full"), "Full network", "The app uses your internet connection like any other program."),
+            opt(json!("filtered"), "Filtered (experimental)", "Not enforced yet: the app gets no network."),
+        ], Always);
+        self.list(&g, "network.host_ports", "Port on this computer, e.g. 11434 for Ollama", false, LocalNet);
+        self.list(&g, "network.app_ports", "Port of the app (empty = automatic)", false, LocalNet);
+
+        let g = self.group("Display", "How the app shows its windows.");
+        self.switch(&g, "display.wayland", Always);
+        self.switch(&g, "display.x11", Always);
+
+        let g = self.group("Sound and devices", "Audio and hardware the app may use.");
+        self.switch(&g, "audio.enabled", Always);
+        self.switch(&g, "devices.gpu", Always);
+        self.switch(&g, "devices.webcam", Always);
+        self.switch(&g, "devices.gamepads", NotAllInput);
+        self.switch(&g, "devices.input", Always);
+        self.switch(&g, "devices.usb", Always);
+        self.switch(&g, "devices.bluetooth", Always);
+        self.switch(&g, "audio.alsa_raw", Always);
+
+        let g = self.group("Files", "Folders the app can see. Everything else in your home stays hidden.");
+        for k in ["filesystem.documents", "filesystem.downloads", "filesystem.pictures", "filesystem.music", "filesystem.videos", "filesystem.desktop"] {
+            self.choice(&g, k, access(), Always);
+        }
+        self.choice(&g, "filesystem.opened_files", vec![
+            opt(json!("ro"), "Read-only", "The app can view the files but not save changes."),
+            opt(json!("rw"), "Read & write", "The app can view and save the files."),
+        ], Always);
+        self.list(&g, "filesystem.custom_read", "Folder path, e.g. ~/Projects", true, Always);
+        self.list(&g, "filesystem.custom_write", "Folder path, e.g. ~/Projects", true, Always);
+        self.switch(&g, "filesystem.home", Always);
+        self.choice(&g, "filesystem.home_access", vec![
+            opt(json!("ro"), "Read-only", "The app can read your whole home but not change it."),
+            opt(json!("rw"), "Read & write", "The app can change and delete anything in your home."),
+        ], FullHome);
+        self.switch(&g, "filesystem.ssh", FullHome);
+        self.switch(&g, "filesystem.gnupg", FullHome);
+        self.switch(&g, "filesystem.hidden_files", FullHome);
+
+        let g = self.group("Desktop integration", "Desktop services the app may use. Needs the filtered session bus.");
+        self.switch(&g, "integrations.file_manager", FilteredBus);
+        self.switch(&g, "integrations.media_controls", FilteredBus);
+        self.switch(&g, "integrations.screen_sharing", FilteredBus);
+        self.switch(&g, "integrations.keyring", FilteredBus);
+        self.switch(&g, "integrations.input_method", AnyBus);
+
+        let g = self.group("D-Bus", "How the app talks to other programs on your desktop.");
+        self.choice(&g, "dbus.session.mode", vec![
+            opt(json!("none"), "No access", "No desktop services: no file dialogs, notifications or tray icon."),
+            opt(json!("filtered"), "Filtered", "File dialogs, notifications, the tray and the services you allow below. Everything else is blocked."),
+            opt(json!("full"), "Full access", "Every desktop service, including ones that can act outside the sandbox."),
+        ], Always);
+        self.list(&g, "dbus.session.allow", "Bus name, e.g. org.example.Service", false, FilteredBus);
+        self.choice(&g, "dbus.system.mode", vec![
+            opt(json!("none"), "No access", "The system bus controls hardware, networking and power."),
+            opt(json!("full"), "Full access", "The app can talk to every system service."),
+        ], Always);
+
+        let g = self.group("Sockets and environment", "Other services and settings passed into the sandbox.");
+        self.switch(&g, "sockets.ssh_agent", Always);
+        self.switch(&g, "sockets.cups", Always);
+        self.list(&g, "environment.passthrough", "Variable name, e.g. LANG", false, Always);
+
+        let g = self.group("Advanced", "Change these only if an app does not work.");
+        self.choice(&g, "advanced.host_runtime", vec![
+            opt(json!("minimal"), "Minimal", "System libraries plus a short list of shared data (fonts, icons, themes)."),
+            opt(json!("full"), "All of /usr", "Everything installed on the system, read-only. For apps that look for programs or data elsewhere."),
+        ], Always);
+        self.switch(&g, "advanced.persistent_home", Always);
+        self.switch(&g, "advanced.writable_appdir", Always);
+        self.switch(&g, "advanced.host_themes", Always);
+        self.switch(&g, "advanced.allow_userns", Always);
+        self.choice(&g, "advanced.landlock", vec![
+            opt(Value::Null, "Follow global setting", "Uses the setting in SAM's preferences."),
+            opt(json!(true), "Enforce", "Kernel-enforced write restrictions for this app."),
+            opt(json!(false), "Off", "No Landlock restrictions for this app."),
+        ], Always);
+        self.switch(&g, "advanced.seccomp_baseline", Always);
+        self.switch(&g, "advanced.seccomp_strict", Always);
+        self.list(&g, "advanced.extra_backend_args", "Raw bwrap argument, e.g. --setenv FOO 1", false, Always);
+    }
+
+    // ------------------------------------------------------------ refresh
+
+    pub fn refresh(self: &Rc<Self>) {
+        self.updating.set(true);
+        let has = self.perms.borrow().is_some();
+        let editable = self.editable.get() && has;
+        for c in self.ctls.borrow().iter() {
+            match c {
+                Ctl::Switch { key, row, sw, badge, avail } => {
+                    let info = self.info(key);
+                    sw.set_active(self.value(key) == json!(true));
+                    row.set_subtitle(&self.describe(key, &info.description));
+                    row.set_sensitive(editable && self.available(*avail));
+                    self.set_risk_badge(badge, key);
+                }
+                Ctl::Choice { key, row, drop, opts, badge, avail } => {
+                    let v = self.value(key);
+                    let idx = opts.iter().position(|o| o.value == v).unwrap_or(0);
+                    drop.set_selected(idx as u32);
+                    let d = opts.get(idx).map(|o| o.description).filter(|d| !d.is_empty()).map(String::from).unwrap_or_else(|| self.info(key).description);
+                    row.set_subtitle(&self.describe(key, &d));
+                    row.set_sensitive(editable && self.available(*avail));
+                    self.set_risk_badge(badge, key);
+                }
+                Ctl::List { key, row, title, subtitle, chips, badge, avail, folders } => {
+                    let info = self.info(key);
+                    title.set_text(&info.title);
+                    subtitle.set_markup(&self.describe(key, &info.description));
+                    row.set_sensitive(editable && self.available(*avail));
+                    self.set_risk_badge(badge, key);
+                    while let Some(ch) = chips.first_child() {
+                        chips.remove(&ch);
+                    }
+                    let items = self.value(key).as_array().cloned().unwrap_or_default();
+                    for (i, it) in items.iter().enumerate() {
+                        let text = it.as_str().map(String::from).unwrap_or_else(|| it.to_string());
+                        let child = gtk::FlowBoxChild::builder().child(&self.chip(key, i, &text, *folders)).halign(gtk::Align::Start).focusable(false).build();
+                        chips.insert(&child, -1);
+                    }
+                    chips.set_visible(!items.is_empty());
+                }
+            }
+        }
+        self.updating.set(false);
+        self.refresh_overview();
+    }
+
+    fn chip(self: &Rc<Self>, key: &'static str, idx: usize, text: &str, folder: bool) -> gtk::Widget {
+        let b = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        b.add_css_class("sam-chip");
+        b.set_halign(gtk::Align::Start);
+        if folder {
+            b.append(&gtk::Image::from_icon_name("folder-symbolic"));
+        }
+        let l = gtk::Label::builder().label(util::plain(text)).ellipsize(gtk::pango::EllipsizeMode::Middle).max_width_chars(36).build();
+        b.append(&l);
+        let x = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text("Remove").valign(gtk::Align::Center).build();
+        x.add_css_class("flat");
+        x.add_css_class("circular");
+        let me = Rc::downgrade(self);
+        x.connect_clicked(move |_| {
+            if let Some(me) = me.upgrade() {
+                me.remove_item(key, idx);
+            }
+        });
+        b.append(&x);
+        b.upcast()
+    }
+
+    fn set_risk_badge(&self, badge: &gtk::Label, key: &str) {
+        let r = self.active_risk(key);
+        badge.set_visible(!r.is_empty());
+        if !r.is_empty() {
+            util::set_badge(badge, &util::risk_label(&r), util::risk_tone(&r));
+        }
+    }
+
+    fn refresh_overview(&self) {
+        for r in self.warning_rows.borrow_mut().drain(..) {
+            self.overview.remove(&r);
+        }
+        let ev = self.evaluation.borrow();
+        let (level, score) = ev
+            .as_ref()
+            .map(|e| (util::str_of(e, "risk.level").to_string(), util::get(e, "risk.score").and_then(Value::as_i64).unwrap_or(-1)))
+            .unwrap_or_default();
+        self.risk_badge.set_visible(!level.is_empty());
+        util::set_badge(&self.risk_badge, &format!("{}{}", util::risk_label(&level), if score >= 0 { format!(" · {score}") } else { String::new() }), util::risk_tone(&level));
+        let mut warnings: Vec<Value> = ev.as_ref().and_then(|e| e.get("warnings")).and_then(Value::as_array).cloned().unwrap_or_default();
+        let order = |s: &str| match s { "danger" => 0, "warning" => 1, _ => 2 };
+        warnings.sort_by_key(|w| order(util::str_of(w, "severity")));
+        let serious = warnings.iter().filter(|w| util::str_of(w, "severity") != "info").count();
+        self.risk_row.set_subtitle(match serious {
+            0 => "Nothing to watch out for.",
+            1 => "One thing to watch out for, listed below.",
+            _ => "Several things to watch out for, listed below.",
+        });
+        for w in warnings {
+            let sev = util::str_of(&w, "severity");
+            let row = adw::ActionRow::builder()
+                .title(esc(util::str_of(&w, "title")))
+                .subtitle(esc(util::str_of(&w, "message")))
+                .build();
+            let icon = gtk::Image::from_icon_name(match sev { "danger" => "dialog-error-symbolic", "warning" => "dialog-warning-symbolic", _ => "dialog-information-symbolic" });
+            icon.add_css_class(match sev { "danger" => "error", "warning" => "warning", _ => "dim-label" });
+            row.add_prefix(&icon);
+            self.overview.add(&row);
+            self.warning_rows.borrow_mut().push(row);
+        }
+    }
+
+    // ------------------------------------------------------------ changes
+
+    fn is_enabling(&self, key: &str, v: &Value) -> bool {
+        let cur = self.value(key);
+        match key {
+            "dbus.session.mode" => *v == json!("full") && cur != json!("full"),
+            "dbus.system.mode" => *v != json!("none") && cur == json!("none"),
+            "filesystem.home_access" => *v == json!("rw") && cur != json!("rw"),
+            _ => *v == json!(true) && cur != json!(true),
+        }
+    }
+
+    /// Applies a change, asking first for high-risk grants. A refused or
+    /// pending change leaves the controls showing the saved value.
+    fn request(self: &Rc<Self>, key: &'static str, v: Value) {
+        let Some(mut p) = self.perms.borrow().clone() else { return };
+        let mut ask: Option<(String, String, &'static str)> = None;
+        if key == "dbus.session.allow" {
+            let before: Vec<String> = util::list_of(&p, key);
+            let added: Vec<String> = v
+                .as_array()
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).filter(|n| !before.contains(n) && sam_core::permissions::dangerous_bus_name(n).is_some()).collect())
+                .unwrap_or_default();
+            if !added.is_empty() {
+                ask = Some((
+                    format!("Allow “{}”?", added.join(", ")),
+                    "This service can act outside the sandbox: start programs, run scripts in the desktop shell or change any setting. An app with access to it can escape the sandbox.".into(),
+                    "Allow Anyway",
+                ));
+            }
+        }
+        let info = self.info(key);
+        if ask.is_none() && self.is_enabling(key, &v) && (info.risk == "dangerous" || key == "dbus.session.mode" || key == "integrations.keyring") {
+            ask = Some((
+                format!("Grant “{}”?", info.title),
+                format!("{}\n\nThis is a high-risk permission. Only grant it to apps you trust.", info.description),
+                "Grant",
+            ));
+        }
+        util::set(&mut p, key, v);
+        let me = self.clone();
+        match ask {
+            None => me.emit(p),
+            Some((heading, body, accept)) => {
+                me.refresh();
+                glib::spawn_future_local(async move {
+                    if crate::window::confirm(&me.window, &heading, &body, accept, true).await {
+                        me.emit(p);
+                    }
+                });
+            }
+        }
+    }
+
+    fn emit(self: &Rc<Self>, p: Value) {
+        *self.perms.borrow_mut() = Some(p.clone());
+        self.refresh();
+        if let Some(f) = self.on_edit.borrow().as_ref() {
+            f(p);
+        }
+    }
+}

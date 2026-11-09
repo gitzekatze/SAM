@@ -101,7 +101,7 @@ Electron app, Qt app, GTK app):
 - [ ] Drag an AppImage into the window: it is added to the list and selected.
 - [ ] Every setting is visible at all times; settings that do not apply
       (e.g. ~/.ssh without full home) are greyed out, never hidden.
-- [ ] All four themes apply instantly.
+- [ ] Preferences → Style (Follow system, Light, Dark) applies instantly.
 - [ ] Turning on full home, the system bus or raw devices asks for confirmation.
 - [ ] Applying the "Untrusted Utility" preset to a browser warns that it removes network access.
 - [ ] *Copy bug report* produces a report without your username or home path.

@@ -1,7 +1,7 @@
 # Maintainer: SAM contributors
 #
 # Split package for CachyOS / Arch Linux (whitepaper §2.22.3):
-#   sam      the Qt/Kirigami GUI
+#   sam      the GTK 4 / libadwaita GUI
 #   sam-jail-cli  the command line tools and sandbox runner (required by sam)
 #
 # This PKGBUILD builds the source tree it lives in:
@@ -16,7 +16,7 @@ pkgdesc="Flatseal-style permission manager and sandbox launcher for AppImages"
 arch=(x86_64 aarch64)
 url="https://github.com/gitzekatze/SAM"
 license=(GPL-3.0-or-later)
-makedepends=(cargo cmake extra-cmake-modules qt6-base qt6-declarative kirigami kirigami-addons kcolorscheme kconfig)
+makedepends=(cargo gtk4 libadwaita)
 options=(!lto)
 source=()
 sha256sums=()
@@ -33,9 +33,7 @@ build() {
   cd "$(_srcroot)"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR="$srcdir/target"
-  cargo build --frozen --release -p sam-jail-cli
-  cmake -S gui -B "$srcdir/gui-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
-  cmake --build "$srcdir/gui-build"
+  cargo build --frozen --release -p sam-jail-cli -p sam-gtk
 }
 
 check() {
@@ -64,10 +62,10 @@ package_sam-jail-cli() {
 }
 
 package_sam() {
-  pkgdesc="Flatseal-style permission manager for AppImages (Qt/Kirigami GUI)"
-  depends=(sam-jail-cli qt6-base qt6-declarative kirigami kirigami-addons kcolorscheme kconfig qqc2-desktop-style hicolor-icon-theme)
+  pkgdesc="Flatseal-style permission manager for AppImages (GTK 4 / libadwaita GUI)"
+  depends=(sam-jail-cli gtk4 libadwaita hicolor-icon-theme)
   cd "$(_srcroot)"
-  install -Dm755 "$srcdir/gui-build/sam-jail-gui" "$pkgdir/usr/bin/sam-jail-gui"
+  install -Dm755 "$srcdir/target/release/sam-jail-gui" "$pkgdir/usr/bin/sam-jail-gui"
   install -Dm644 data/io.github.gitzekatze.SAM.desktop      "$pkgdir/usr/share/applications/io.github.gitzekatze.SAM.desktop"
   install -Dm644 data/io.github.gitzekatze.SAM.metainfo.xml "$pkgdir/usr/share/metainfo/io.github.gitzekatze.SAM.metainfo.xml"
   install -Dm644 data/io.github.gitzekatze.SAM.svg          "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg"

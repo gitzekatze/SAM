@@ -7,7 +7,7 @@ Native packages come first (whitepaper §2.23): SAM needs the host's sandbox too
 | Package | Contents | Requires |
 |---|---|---|
 | `sam-jail-cli` | `/usr/bin/sam-jail`, `/usr/bin/sam-jail-run`, docs | bubblewrap, libarchive (`bsdtar`), glibc |
-| `sam` | `/usr/bin/sam-jail-gui`, desktop entry, metainfo, icon | sam-jail-cli, qt6-base, qt6-declarative, kirigami, kirigami-addons, kcolorscheme, kconfig, qqc2-desktop-style |
+| `sam` | `/usr/bin/sam-jail-gui`, desktop entry, metainfo, icon | sam-jail-cli, gtk4, libadwaita |
 
 Optional dependencies of `sam-jail-cli`:
 

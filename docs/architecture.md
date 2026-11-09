@@ -1,7 +1,7 @@
 # Architecture (developer documentation)
 
 ```
-sam-jail-gui (Qt/QML/Kirigami)   sam-jail / sam-jail-run (CLI)
+sam-jail-gui (GTK 4/libadwaita)  sam-jail / sam-jail-run (CLI)
         │  `sam-jail --json …`              │
         └──────────────┬───────────────────┘
                  sam-runner  (ops facade, launch, select, doctor, diagnose, kernel)
@@ -13,7 +13,7 @@ sam-jail-gui (Qt/QML/Kirigami)   sam-jail / sam-jail-run (CLI)
 
 ## GUI ↔ core
 
-The GUI is a thin C++ shell (`gui/src/backend.cpp`). Each operation runs
+The GUI (`crates/sam-gtk`) is a GTK 4 / libadwaita window. Each operation runs
 `sam-jail --json <args>` asynchronously. When a command needs a full profile,
 preset or config, the GUI sends it as JSON on stdin (`profile set`,
 `preset put`, `config put`, `evaluate`). Every response is a single envelope:
@@ -24,8 +24,14 @@ preset or config, the GUI sends it as JSON on stdin (`profile set`,
 ```
 
 Apps are launched detached with `sam-jail-run --app-id <id>`, the same command
-the desktop launchers use. This keeps the GUI free of Rust↔C++ bindings (the
-"thin C++ Qt shell" fallback from §2.9). The CLI is the API.
+the desktop launchers use, so apps keep running when SAM closes. The GUI
+links no SAM crate except `sam-core` (for the dangerous D-Bus name list):
+the CLI is the API.
+
+`sam-jail-gui --screenshot out.png [--size WxH] [--page …]` renders the
+window once it has loaded (with `GDK_BACKEND=broadway` it works without a
+desktop), and saves the scrollable content of the right column as
+`out-content.png`.
 
 ## Sandbox command builder
 

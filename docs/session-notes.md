@@ -449,3 +449,13 @@ under `/run/user/<uid>/.flatpak/` or binds the document portal: SAM and
 Flatpak are separate apps, and only SAM's GUI resembles Flatseal. The
 deny list that keeps AppImages away from Flatpak's D-Bus services stays.
 Tests and scratch data live in `../.work` (TMPDIR), not in /tmp.
+
+## 2026-11-09: GTK 4 / libadwaita GUI
+
+The Qt/Kirigami GUI (`gui/`) was replaced by `crates/sam-gtk` (binary
+`sam-jail-gui`), built with gtk-rs and libadwaita, the toolkit Flatseal
+uses. Same rules as before: locations pinned top left, app header with the
+main button pinned top right, every setting visible (insensitive when it
+does not apply), recommendation shown before Create Sandbox, no settings
+in popups (only confirmations). Themes are now system/light/dark; old theme
+names are mapped on load.

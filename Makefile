@@ -1,6 +1,6 @@
 # SAM build helper.
 #
-#   make                 build CLI (Rust) and GUI (Qt) in release mode
+#   make                 build CLI and GUI (GTK 4 / libadwaita) in release mode
 #   make test            run the Rust test suite
 #   make install         install into $(DESTDIR)$(PREFIX)
 #   make install-cli     CLI only (sam-jail, sam-jail-run)
@@ -30,8 +30,7 @@ cli:
 	$(CARGO) build --release --locked -p sam-jail-cli
 
 gui:
-	cmake -S gui -B gui/build-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX)
-	cmake --build gui/build-release
+	$(CARGO) build --release --locked -p sam-gtk
 
 test:
 	$(CARGO) test --workspace --locked
@@ -44,7 +43,7 @@ install-cli:
 	install -Dm644 docs/profiles.md           $(DATADIR)/doc/sam/profiles.md
 
 install-gui:
-	install -Dm755 gui/build-release/sam-jail-gui        $(BINDIR)/sam-jail-gui
+	install -Dm755 target/release/sam-jail-gui           $(BINDIR)/sam-jail-gui
 	install -Dm644 data/io.github.gitzekatze.SAM.desktop     $(DATADIR)/applications/io.github.gitzekatze.SAM.desktop
 	install -Dm644 data/io.github.gitzekatze.SAM.metainfo.xml $(DATADIR)/metainfo/io.github.gitzekatze.SAM.metainfo.xml
 	install -Dm644 data/io.github.gitzekatze.SAM.svg         $(DATADIR)/icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg
@@ -53,4 +52,3 @@ install: install-cli install-gui
 
 clean:
 	$(CARGO) clean
-	rm -rf gui/build gui/build-release

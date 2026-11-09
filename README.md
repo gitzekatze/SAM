@@ -1,7 +1,7 @@
 # SAM – Sandboxed AppImage Manager
 
 Flatseal-style permission manager and sandbox launcher for AppImages.
-Built in Rust and Qt6/Kirigami. Developed and tested on CachyOS (Arch); other
+Built in Rust with a GTK 4 / libadwaita window (the toolkit Flatseal uses). Developed and tested on CachyOS (Arch); other
 distributions should work but are not tested yet (see [docs/testing.md](docs/testing.md)).
 
 SAM lists the AppImages on your computer, sandboxed or not. When you create a
@@ -102,8 +102,11 @@ plain-language explanation and a risk level, and risky choices show a warning.
   - Repair steps, details, the generated command and the log follow the
     settings. Global settings, presets and diagnostics open in the right
     column from the menu at the top left.
-  - Drag-and-drop adds an AppImage to the list; four themes (Breeze Light,
-    Breeze Dark, Breeze High Contrast, CachyOS Neon).
+  - A segmented filter (All / Sandboxed / Unsandboxed), search, status
+    badges, settings grouped with a short explanation each, toasts for
+    feedback.
+  - Drag-and-drop adds an AppImage to the list. Style: follow the system,
+    light or dark.
 
 ## Install (CachyOS / Arch)
 
@@ -120,8 +123,7 @@ GUI, `sam-jail-gui`). Recommended extras:
 
 ## Build from source
 
-Requirements: Rust (stable), CMake, Qt 6.5+, KF6 Kirigami, Kirigami Addons,
-KColorScheme, KConfig and bubblewrap.
+Requirements: Rust (stable), GTK 4.12+, libadwaita 1.7+ and bubblewrap.
 
 ```sh
 make            # release build of the CLI and the GUI
@@ -129,9 +131,9 @@ make test       # Rust test suite (includes an end-to-end sandbox test)
 sudo make install PREFIX=/usr
 ```
 
-For development: `cargo build`, then `cmake -S gui -B gui/build && cmake --build gui/build`.
-Started from a source checkout, the GUI finds `target/debug/sam-jail` on its
-own. You can also point it at a binary with `SAM_CLI` / `SAM_RUN`.
+For development: `cargo build`, then `target/debug/sam-jail-gui`. The GUI
+uses the `sam-jail` built next to it (or the newer of `target/release` and
+`target/debug`). You can also point it at a binary with `SAM_CLI` / `SAM_RUN`.
 
 ## Quick start
 
@@ -174,7 +176,7 @@ crates/
                           D-Bus proxy and portal filter, Landlock/seccomp,
                           local network (pasta), repair (hints, log analyzer, ladder), diagnostics
   sam-jail-cli            sam-jail and sam-jail-run binaries
-gui/                          Qt6/QML/Kirigami GUI (thin C++ shell; talks to the core via `sam-jail --json`)
+  sam-gtk                 sam-jail-gui: the GTK 4 / libadwaita window (talks to the core via `sam-jail --json`)
 data/                         desktop entry, AppStream metainfo, icon
 packaging/                    Arch/CachyOS PKGBUILD, notes for other distributions
 docs/                         whitepaper, security, profiles, packaging, architecture, testing

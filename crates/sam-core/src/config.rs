@@ -27,7 +27,17 @@ pub enum CompatBehavior {
     Never,
 }
 
-pub const THEMES: [&str; 4] = ["breeze-light", "breeze-dark", "breeze-high-contrast", "cachyos-neon"];
+/// GUI colour scheme: follow the desktop, or force light or dark.
+pub const THEMES: [&str; 3] = ["system", "light", "dark"];
+
+/// Theme names of the earlier Qt GUI, mapped to the current ones.
+fn migrate_theme(t: &str) -> &'static str {
+    match t {
+        "light" | "breeze-light" => "light",
+        "dark" | "breeze-dark" | "cachyos-neon" => "dark",
+        _ => "system",
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -47,7 +57,7 @@ pub struct General {
 impl Default for General {
     fn default() -> Self {
         General {
-            theme: "breeze-dark".into(),
+            theme: "system".into(),
             scan_directories: vec!["~/Applications".into(), "~/AppImages".into(), "~/.local/bin".into(), "~/bin".into()],
             scan_downloads: false,
             scan_files: vec![],
@@ -166,7 +176,11 @@ impl Config {
     pub fn load(paths: &Paths) -> Result<Config> {
         let file = paths.config_file();
         match fs::read_to_string(&file) {
-            Ok(s) => toml::from_str(&s).with_context(|| format!("parsing {}", file.display())),
+            Ok(s) => {
+                let mut c: Config = toml::from_str(&s).with_context(|| format!("parsing {}", file.display()))?;
+                c.general.theme = migrate_theme(&c.general.theme).into();
+                Ok(c)
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
             Err(e) => Err(e).with_context(|| format!("reading {}", file.display())),
         }
@@ -243,7 +257,7 @@ mod tests {
     fn parses_whitepaper_example() {
         let s = r#"
 [general]
-theme = "breeze-dark"
+theme = "dark"
 scan_directories = [
     "~/Applications",
     "~/.local/bin",
@@ -272,7 +286,10 @@ cleanup_stale = true
     #[test]
     fn set_keys() {
         let mut c = Config::default();
-        c.set_key("general.theme", "cachyos-neon").unwrap();
+        c.set_key("general.theme", "dark").unwrap();
+        assert_eq!(migrate_theme("breeze-light"), "light");
+        assert_eq!(migrate_theme("cachyos-neon"), "dark");
+        assert_eq!(migrate_theme("breeze-high-contrast"), "system");
         c.set_key("general.scan_directories", "~/A, ~/B").unwrap();
         assert_eq!(c.general.scan_directories, vec!["~/A", "~/B"]);
         assert!(!Config::default().scan_dirs(None).iter().any(|d| d.ends_with("Downloads")), "Downloads is opt-in");
