@@ -166,6 +166,12 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             item(&mut items, "dbus.session.allow", &format!("Session service {name}"), RiskLevel::Dangerous);
         }
     }
+    if p.dbus.session.mode == DbusMode::Filtered {
+        for name in &p.dbus.session.own {
+            let level = if crate::permissions::dangerous_bus_name(name).is_some() { RiskLevel::Dangerous } else { RiskLevel::Low };
+            item(&mut items, "dbus.session.own", &format!("Owns {name}"), level);
+        }
+    }
     match p.dbus.system.mode {
         DbusMode::None => {}
         DbusMode::Filtered => item(&mut items, "dbus.system.mode", "Filtered system D-Bus", RiskLevel::High),
@@ -178,7 +184,8 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
         item(&mut items, "sockets.cups", "Printing", RiskLevel::Low);
     }
     for s in &p.sockets.custom {
-        item(&mut items, "sockets.custom", &format!("Socket {s}"), RiskLevel::High);
+        let level = if crate::permissions::dangerous_socket(s).is_some() { RiskLevel::Dangerous } else { RiskLevel::High };
+        item(&mut items, "sockets.custom", &format!("Socket {s}"), level);
     }
     if p.advanced.host_runtime == HostRuntime::Full {
         item(&mut items, "advanced.host_runtime", "Full /usr exposure", RiskLevel::Medium);

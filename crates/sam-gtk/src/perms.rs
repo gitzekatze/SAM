@@ -376,6 +376,20 @@ impl Editor {
     }
 
     fn add_item(self: &Rc<Self>, key: &'static str, item: &str) {
+        if key == "sockets.custom" {
+            let p = sam_core::util::expand_home(item);
+            if !p.is_absolute() {
+                self.notify("Give the full path of the socket, e.g. /run/user/1000/app.sock");
+                return;
+            }
+            use std::os::unix::fs::FileTypeExt;
+            if let Ok(md) = std::fs::metadata(&p) {
+                if !md.file_type().is_socket() {
+                    self.notify(&format!("{} is not a socket. Use the Files settings to share folders or files.", item));
+                    return;
+                }
+            }
+        }
         let mut items: Vec<Value> = self.value(key).as_array().cloned().unwrap_or_default();
         if !items.iter().any(|v| v.as_str() == Some(item)) {
             items.push(json!(item));
@@ -490,6 +504,8 @@ impl Editor {
             opt(json!("full"), "Full access", "Every desktop service, including ones that can act outside the sandbox."),
         ], Always);
         self.list(&g, "dbus.session.allow", "Bus name, e.g. org.example.Service", false, FilteredBus);
+        self.list(&g, "dbus.session.own", "Bus name, e.g. org.example.App", false, FilteredBus);
+        self.list(&g, "dbus.session.deny", "Bus name, e.g. org.freedesktop.secrets", false, FilteredBus);
         self.choice(&g, "dbus.system.mode", vec![
             opt(json!("none"), "No access", "The system bus controls hardware, networking and power."),
             opt(json!("full"), "Full access", "The app can talk to every system service."),
@@ -498,6 +514,7 @@ impl Editor {
         let g = self.group("Sockets and environment", "Other services and settings passed into the sandbox.");
         self.switch(&g, "sockets.ssh_agent", Always);
         self.switch(&g, "sockets.cups", Always);
+        self.list(&g, "sockets.custom", "Socket path, e.g. /run/user/1000/app.sock", false, Always);
         self.list(&g, "environment.passthrough", "Variable name, e.g. LANG", false, Always);
         self.list_or_map(&g, "environment.set", "NAME=value, e.g. QT_SCALE_FACTOR=1.5", false, true, Always);
 
@@ -665,6 +682,21 @@ impl Editor {
                 ask = Some((
                     format!("Allow “{}”?", added.join(", ")),
                     "This service can act outside the sandbox: start programs, run scripts in the desktop shell or change any setting. An app with access to it can escape the sandbox.".into(),
+                    "Allow Anyway",
+                ));
+            }
+        }
+        if key == "dbus.session.own" || key == "sockets.custom" {
+            let before: Vec<String> = util::list_of(&p, key);
+            let added: Vec<String> = v.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).filter(|n| !before.contains(n)).collect()).unwrap_or_default();
+            let why: Vec<String> = added
+                .iter()
+                .filter_map(|n| if key == "sockets.custom" { sam_core::permissions::dangerous_socket(n) } else { sam_core::permissions::dangerous_bus_name(n) })
+                .collect();
+            if !why.is_empty() {
+                ask = Some((
+                    format!("Allow “{}”?", added.join(", ")),
+                    format!("{}.\n\nAn app with this can act outside the sandbox. Only allow it for apps you trust completely.", why.join(". ")),
                     "Allow Anyway",
                 ));
             }

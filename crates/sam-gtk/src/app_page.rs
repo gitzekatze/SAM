@@ -95,17 +95,29 @@ impl AppPage {
         let subtitle = gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::Middle).build();
         subtitle.add_css_class("caption");
         subtitle.add_css_class("dim-label");
-        let badges = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        badges.set_margin_top(4);
+        // Wraps onto a second line when the column is narrow.
+        let badges = gtk::FlowBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .column_spacing(6)
+            .row_spacing(6)
+            .max_children_per_line(8)
+            .homogeneous(false)
+            .halign(gtk::Align::Start)
+            .margin_top(4)
+            .build();
         let status_badge = util::badge("", "neutral");
         let state_badge = util::badge("", "warn");
         state_badge.set_visible(false);
         let risk_badge = util::badge("", "neutral");
         let sandbox_badge = util::badge("Bubblewrap", "neutral");
         badges.append(&status_badge);
+        status_badge.parent().unwrap().set_can_focus(false);
         badges.append(&state_badge);
+        state_badge.parent().unwrap().set_can_focus(false);
         badges.append(&risk_badge);
+        risk_badge.parent().unwrap().set_can_focus(false);
         badges.append(&sandbox_badge);
+        sandbox_badge.parent().unwrap().set_can_focus(false);
         meta.append(&title);
         meta.append(&subtitle);
         meta.append(&badges);
@@ -468,7 +480,7 @@ impl AppPage {
             }
             let on = sw.is_active();
             if me.sandboxed() {
-                me.simple(vec!["menu".into(), if on { "hide".into() } else { "restore".into() }, me.app_id.clone()], if on { "Other menu entries hidden" } else { "Other menu entries restored" });
+                me.simple_with(vec!["menu".into(), if on { "hide".into() } else { "restore".into() }, me.app_id.clone()], if on { "Other menu entries hidden" } else { "Other menu entries restored" }, true);
             } else {
                 // No sandbox yet: decides what Create Sandbox does.
                 me.hide_duplicates.set(on);
@@ -526,7 +538,7 @@ impl AppPage {
                 Err(e) => app.report_error(&e),
             }
             me.reload();
-            app.refresh_apps().await;
+            app.refresh_registered().await;
         });
     }
 
@@ -736,7 +748,7 @@ impl AppPage {
             me.saving.set(false);
             if saved {
                 me.reload();
-                app.refresh_apps().await;
+                app.refresh_registered().await;
             }
         });
     }
@@ -781,13 +793,33 @@ impl AppPage {
         let me = self.clone();
         let name = util::plain(&self.name());
         glib::spawn_future_local(async move {
-            if !window::confirm(&app.window, &format!("Remove the Sandbox for {name}?"), "The extracted copy, SAM's menu entry, logs and the app's private settings are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again.", "Remove Sandbox", true).await {
+            let d = adw::AlertDialog::new(
+                Some(&format!("Remove the Sandbox for {name}?")),
+                Some("The unpacked app and SAM's menu entry are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again."),
+            );
+            let keep = gtk::CheckButton::builder()
+                .label("Keep the app's settings and files")
+                .tooltip_text("Its private folder (logins, settings, saved files) and logs stay. A new sandbox for this AppImage picks them up again.")
+                .name("keep-data")
+                .build();
+            d.set_extra_child(Some(&keep));
+            d.add_responses(&[("cancel", "Cancel"), ("ok", "Remove Sandbox")]);
+            d.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
+            d.set_default_response(Some("cancel"));
+            d.set_close_response("cancel");
+            if d.choose_future(Some(&app.window)).await != "ok" {
                 return;
             }
-            match app.backend.call(&["remove", &me.app_id], None).await {
+            let keep_data = keep.is_active();
+            let mut args = vec!["remove", &me.app_id];
+            if keep_data {
+                args.push("--keep-data");
+            }
+            match app.backend.call(&args, None).await {
                 Ok(r) => {
                     let warnings = util::list_of(&r, "warnings");
-                    app.toast(&if warnings.is_empty() { format!("Removed the sandbox for {name}") } else { format!("Removed the sandbox, but: {}", warnings.join("; ")) });
+                    let kept = if keep_data { " Its settings and files were kept." } else { "" };
+                    app.toast(&if warnings.is_empty() { format!("Removed the sandbox for {name}.{kept}") } else { format!("Removed the sandbox, but: {}", warnings.join("; ")) });
                     let path = me.entry().map(|e| util::str_of(&e, "source_path").to_string()).unwrap_or_default();
                     app.refresh_apps().await;
                     if path.is_empty() { app.show_welcome() } else { app.open_file(&path) }
@@ -811,6 +843,12 @@ impl AppPage {
 
     /// Runs a command that changes the app, then reloads.
     fn simple(self: &Rc<Self>, args: Vec<String>, ok_text: &'static str) {
+        self.simple_with(args, ok_text, false)
+    }
+
+    /// `full`: the change affects what is found on disk (menu entries),
+    /// so every AppImage is looked at again.
+    fn simple_with(self: &Rc<Self>, args: Vec<String>, ok_text: &'static str, full: bool) {
         let Some(app) = self.app() else { return };
         let me = self.clone();
         glib::spawn_future_local(async move {
@@ -820,7 +858,11 @@ impl AppPage {
                 Err(e) => app.report_error(&e),
             }
             me.reload();
-            app.refresh_apps().await;
+            if full {
+                app.refresh_apps().await;
+            } else {
+                app.refresh_registered().await;
+            }
         });
     }
 
@@ -855,7 +897,7 @@ impl AppPage {
                 Err(e) => app.report_error(&e),
             }
             me.reload();
-            app.refresh_apps().await;
+            app.refresh_registered().await;
         });
     }
 
@@ -879,7 +921,7 @@ impl AppPage {
     fn set_risk_badge(&self, ev: &Value) {
         let level = util::str_of(ev, "risk.level").to_string();
         let score = util::get(ev, "risk.score").and_then(Value::as_i64).unwrap_or(-1);
-        self.risk_badge.set_visible(!level.is_empty());
+        set_badge_visible(&self.risk_badge, !level.is_empty());
         util::set_badge(&self.risk_badge, &format!("{}{}", util::risk_label(&level), if score >= 0 { format!(" · {score}") } else { String::new() }), util::risk_tone(&level));
     }
 
@@ -935,7 +977,7 @@ impl AppPage {
             "missing" => Some(("File missing", "bad")),
             _ => None,
         };
-        self.state_badge.set_visible(state.is_some());
+        set_badge_visible(&self.state_badge, state.is_some());
         if let Some((t, tone)) = state {
             util::set_badge(&self.state_badge, t, tone);
         }
@@ -952,10 +994,10 @@ impl AppPage {
             if let Some(pv) = self.preview.borrow().as_ref() {
                 self.set_risk_badge(pv);
             } else {
-                self.risk_badge.set_visible(false);
+                set_badge_visible(&self.risk_badge, false);
             }
         } else if info.is_none() {
-            self.risk_badge.set_visible(false);
+            set_badge_visible(&self.risk_badge, false);
         }
         let badge = summary.as_ref().map(|s| util::str_of(s, "badge").to_string()).unwrap_or_default();
         self.remove_button.set_visible(sandboxed);
@@ -1318,6 +1360,14 @@ fn chip_editor(title: &str, description: &str, placeholder: &str) -> (gtk::ListB
     vbox.append(&add_box);
     row.set_child(Some(&vbox));
     (row, chips, entry, add)
+}
+
+/// Shows or hides a header badge together with its FlowBox slot.
+fn set_badge_visible(b: &gtk::Label, v: bool) {
+    b.set_visible(v);
+    if let Some(slot) = b.parent() {
+        slot.set_visible(v);
+    }
 }
 
 fn button_content(icon: &str, label: &str) -> adw::ButtonContent {

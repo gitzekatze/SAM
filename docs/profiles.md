@@ -47,6 +47,9 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `sockets.ssh_agent`, `sockets.cups` | `true` / `false` |
 | `sockets.custom` | list of socket paths |
 | `environment.passthrough` | list of variable names |
+| `sockets.custom` | paths of extra service sockets; only real socket files are passed in |
+| `dbus.session.own` | extra bus names the app may own (filtered bus) |
+| `dbus.session.deny` | bus names that stay blocked even if allowed elsewhere |
 | `environment.set` | variables set inside the sandbox, e.g. `{"QT_SCALE_FACTOR": "1.5"}` (names: letters, digits, `_`) |
 | `advanced.host_runtime` | `minimal` / `full` |
 | `advanced.persistent_home`, `advanced.seccomp_strict`, `advanced.allow_userns`, `advanced.host_themes` | `true` / `false` |

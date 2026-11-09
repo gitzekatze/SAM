@@ -25,7 +25,7 @@ pub struct Startup {
 }
 
 /// One line in the app list: a found AppImage, a sandboxed app, or both.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub struct Row {
     pub key: String,
     pub id: String,
@@ -166,6 +166,16 @@ impl App {
         self.rebuild_list();
     }
 
+    /// After a change to one sandboxed app (settings, review, repair):
+    /// re-reads only the registered apps, not every AppImage on disk.
+    pub async fn refresh_registered(self: &Rc<Self>) {
+        match self.backend.call(&["list"], None).await {
+            Ok(v) => self.state.borrow_mut().apps = v.as_array().cloned().unwrap_or_default(),
+            Err(e) => self.report_error(&e),
+        }
+        self.rebuild_list();
+    }
+
     /// Refresh in the background (for callbacks that are not async).
     pub fn refresh_apps_later(self: &Rc<Self>) {
         let me = self.clone();
@@ -284,7 +294,10 @@ impl App {
         self.top_sizes.add_widget(&loc_box);
 
         // Pinned: search and filter.
-        let filter_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(8).margin_start(12).margin_end(12).margin_bottom(6).build();
+        let filter_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(8).margin_start(12).margin_end(12).margin_top(10).margin_bottom(6).build();
+        let found_title = gtk::Label::builder().label("AppImages found").xalign(0.0).build();
+        found_title.add_css_class("heading");
+        filter_box.append(&found_title);
         let search = gtk::SearchEntry::builder().placeholder_text("Search AppImages").build();
         filter_box.append(&search);
         let toggles = adw::ToggleGroup::new();
@@ -297,7 +310,7 @@ impl App {
         view.add_top_bar(&filter_box);
 
         // The app list.
-        let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Single).build();
+        let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Single).name("app-list").build();
         list.add_css_class("navigation-sidebar");
         let empty = adw::StatusPage::builder()
             .icon_name("system-search-symbolic")
@@ -493,9 +506,17 @@ impl App {
         });
     }
 
+    /// Brings the list up to date. Rows are only rebuilt when something in
+    /// them changed; otherwise just the selection follows, so keyboard
+    /// navigation and the scroll position stay where they are.
     pub fn rebuild_list(self: &Rc<Self>) {
         let Some(sb) = self.sidebar.get() else { return };
         let rows = self.rows();
+        if *sb.rows.borrow() == rows && sb.list.first_child().is_some() {
+            self.sync_selection();
+            return;
+        }
+        let had_focus = sb.list.has_focus() || sb.list.focus_child().is_some();
         sb.selecting.set(true);
         while let Some(c) = sb.list.first_child() {
             sb.list.remove(&c);
@@ -525,6 +546,28 @@ impl App {
             None => sb.list.unselect_all(),
         }
         sb.list.invalidate_headers();
+        sb.selecting.set(false);
+        if had_focus {
+            if let Some(r) = sb.list.selected_row() {
+                r.grab_focus();
+            }
+        }
+    }
+
+    /// Highlights the row of the selected app without rebuilding the list.
+    fn sync_selection(self: &Rc<Self>) {
+        let Some(sb) = self.sidebar.get() else { return };
+        let selected = self.state.borrow().selected.clone();
+        let idx = sb.rows.borrow().iter().position(|r| !selected.is_empty() && (r.key == selected || r.path == selected));
+        sb.selecting.set(true);
+        match idx.and_then(|i| sb.list.row_at_index(i as i32)) {
+            Some(r) => {
+                if sb.list.selected_row().as_ref() != Some(&r) {
+                    sb.list.select_row(Some(&r));
+                }
+            }
+            None => sb.list.unselect_all(),
+        }
         sb.selecting.set(false);
     }
 
@@ -556,7 +599,7 @@ impl App {
         let page = AppPage::new(self, if r.sandboxed { &r.id } else { "" }, &r.path);
         let nav = page.page.clone();
         self.show(&nav, Some(page));
-        self.rebuild_list();
+        self.sync_selection();
     }
 
     pub fn open_app(self: &Rc<Self>, id: &str) {
@@ -574,7 +617,7 @@ impl App {
 
     pub fn show_section(self: &Rc<Self>, section: &str) {
         self.state.borrow_mut().selected.clear();
-        self.rebuild_list();
+        self.sync_selection();
         match section {
             "preferences" => {
                 let p = crate::pages::preferences(self);
@@ -643,24 +686,61 @@ impl App {
         self.window.add_controller(target);
     }
 
-    /// Adds AppImage files (dropped or opened with SAM) to the locations
-    /// and selects the first one.
+    /// Adds dropped (or opened) items to the locations: folders as folder
+    /// locations, AppImages as file locations (and selects the first one).
+    /// Anything else is refused with a message.
     pub fn add_files(self: &Rc<Self>, paths: Vec<String>) {
         if paths.is_empty() {
             return;
         }
+        let (mut new_dirs, mut new_files, mut refused) = (Vec::new(), Vec::new(), Vec::new());
+        for p in paths {
+            let path = std::path::Path::new(&p);
+            if path.is_dir() {
+                new_dirs.push(p);
+            } else if is_appimage(path) {
+                new_files.push(p);
+            } else {
+                refused.push(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(p.clone()));
+            }
+        }
+        match refused.len() {
+            0 => {}
+            1 => self.toast(&format!("{} is not an AppImage.", util::plain(&refused[0]))),
+            n => self.toast(&format!("{n} items are not AppImages and were not added.")),
+        }
+        if new_dirs.is_empty() && new_files.is_empty() {
+            return;
+        }
         let me = self.clone();
         glib::spawn_future_local(async move {
-            let mut files = util::list_of(&me.state.borrow().config, "general.scan_files");
-            for p in &paths {
-                let t = util::tildify(p);
+            let cfg = me.state.borrow().config.clone();
+            let mut dirs = util::list_of(&cfg, "general.scan_directories");
+            let mut files = util::list_of(&cfg, "general.scan_files");
+            for d in &new_dirs {
+                let t = util::tildify(d);
+                if !dirs.contains(&t) {
+                    dirs.push(t);
+                }
+            }
+            for f in &new_files {
+                let t = util::tildify(f);
                 if !files.contains(&t) {
                     files.push(t);
                 }
             }
-            me.set_config("general.scan_files", &serde_json::to_string(&files).unwrap()).await;
+            if !new_dirs.is_empty() {
+                me.set_config("general.scan_directories", &serde_json::to_string(&dirs).unwrap()).await;
+            }
+            if !new_files.is_empty() {
+                me.set_config("general.scan_files", &serde_json::to_string(&files).unwrap()).await;
+            }
             me.refresh_apps().await;
-            me.open_file(&paths[0]);
+            if let Some(f) = new_files.first() {
+                me.open_file(f);
+            } else if new_dirs.len() == 1 {
+                me.toast(&format!("Added the folder {}", util::plain(&util::tildify(&new_dirs[0]))));
+            }
         });
     }
 
@@ -669,7 +749,8 @@ impl App {
         let id2 = id.to_string();
         match self.backend.launch(id, &[], move |code| {
             let Some(me) = w.upgrade() else { return };
-            me.refresh_apps_later();
+            let m2 = me.clone();
+            glib::spawn_future_local(async move { m2.refresh_registered().await });
             if code != 0 {
                 let t = adw::Toast::builder().title(format!("The app stopped with an error (code {code}).")).button_label("Fix It").timeout(8).build();
                 let w2 = Rc::downgrade(&me);
@@ -697,7 +778,7 @@ impl App {
         };
         if util::bool_of(&r, "applied") {
             self.toast(&format!("Applied “{name}”"));
-            self.refresh_apps().await;
+            self.refresh_registered().await;
             return true;
         }
         let c = r.get("check").cloned().unwrap_or(json!({}));
@@ -718,7 +799,7 @@ impl App {
             Ok(_) => self.toast(&format!("Applied “{name}”")),
             Err(e) => self.report_error(&e),
         }
-        self.refresh_apps().await;
+        self.refresh_registered().await;
         true
     }
 
@@ -822,6 +903,17 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
     row.set_child(Some(&b));
     row.set_tooltip_text(Some(&util::plain(&util::tildify(&r.path))));
     row
+}
+
+/// True for an AppImage: an ELF program carrying the AppImage marker
+/// ("AI" and type 1 or 2 at offset 8), whatever its file name.
+pub fn is_appimage(p: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 11];
+    std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut head)).is_ok()
+        && head[..4] == *b"\x7fELF"
+        && head[8..10] == *b"AI"
+        && (head[10] == 1 || head[10] == 2)
 }
 
 /// An app icon from SAM's icon cache, or a generic one.

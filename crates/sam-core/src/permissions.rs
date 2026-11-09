@@ -276,6 +276,22 @@ const DANGEROUS_BUS_NAMES: &[(&str, &str)] = &[
 /// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
 /// Wildcards (`org.kde.*`, `*`) count when they cover a dangerous name, and
 /// any wildcard over the portal namespace would bypass SAM's portal filter.
+/// Sockets that give whoever can connect control over the computer or
+/// a way around the sandbox's D-Bus filter.
+pub fn dangerous_socket(path: &str) -> Option<String> {
+    let p = path.trim();
+    let bad: &[(&str, &str)] = &[
+        ("docker.sock", "controls Docker, which equals full control of the computer"),
+        ("podman.sock", "controls Podman containers on this computer"),
+        ("containerd.sock", "controls containers on this computer"),
+        ("/run/dbus/system_bus_socket", "is the system bus, unfiltered"),
+        ("systemd/private", "controls systemd"),
+        ("/bus", "is a D-Bus socket, which bypasses SAM's D-Bus filter"),
+        ("libvirt", "controls virtual machines"),
+    ];
+    bad.iter().find(|(needle, _)| p.contains(needle)).map(|(_, why)| format!("{p} {why}"))
+}
+
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
     let name = name.trim();
     if name == "*" || name == "org.*" || name == "org.freedesktop.*" || name.starts_with("org.freedesktop.portal.*") {
@@ -706,6 +722,12 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Lets the app use keys loaded in your SSH agent.", High, advanced),
         perm!("sockets.cups", "Sockets", "Printing",
             "Access to the CUPS printing service.", Low, advanced),
+        perm!("sockets.custom", "Sockets", "Extra sockets",
+            "Paths of other service sockets the app may connect to, e.g. a password manager's browser connection. The app can do whatever that service allows. Only real socket files are passed into the sandbox.", High, advanced),
+        perm!("dbus.session.own", "D-Bus", "Names the app may own",
+            "Extra bus names the app may register with the filtered session bus, for apps that do not start without their own name. Owning a well-known name lets the app pose as that service.", Medium, advanced),
+        perm!("dbus.session.deny", "D-Bus", "Always blocked names",
+            "Bus names that stay blocked even when a preset or another setting allows them.", Low, advanced),
         perm!("environment.passthrough", "Environment", "Passed-through variables",
             "Host environment variables made visible to the app.", Medium, advanced),
         perm!("advanced.host_runtime", "Advanced", "Host runtime exposure",

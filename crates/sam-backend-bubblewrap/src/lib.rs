@@ -620,9 +620,15 @@ impl Bubblewrap {
         if p.sockets.cups {
             a.ro("/run/cups/cups.sock");
         }
+        // Extra sockets: only real socket files, so this setting can never
+        // grant access to a folder or an ordinary file.
         for s in &p.sockets.custom {
             let sp = expand_home(s);
-            a.op2("--bind-try", &sp, &sp);
+            if is_socket(&sp) {
+                a.op2("--bind-try", &sp, &sp);
+            } else {
+                notes.push(format!("{} is not a socket; not passed into the sandbox", sp.display()));
+            }
         }
 
         // Environment.
@@ -722,6 +728,12 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// True for an existing Unix socket (not a folder, file or device).
+pub fn is_socket(p: &Path) -> bool {
+    use std::os::unix::fs::FileTypeExt;
+    fs::metadata(p).is_ok_and(|m| m.file_type().is_socket())
 }
 
 /// Kernel module folders a GPU driver needs to see: NVIDIA's (`nvidia`,
@@ -898,6 +910,21 @@ mod tests {
         }
         assert_eq!(gpu_module_dirs(t.path()), vec![t.path().join("nvidia"), t.path().join("nvidia_drm")]);
         assert!(gpu_module_dirs(&t.path().join("missing")).is_empty());
+    }
+
+
+    #[test]
+    fn extra_sockets_must_be_sockets() {
+        let t = tempfile::tempdir().unwrap();
+        let sock = t.path().join("svc.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        assert!(is_socket(&sock));
+        assert!(!is_socket(t.path()), "a folder is not a socket");
+        let mut ctx = sample_context();
+        ctx.permissions.sockets.custom = vec![sock.display().to_string(), t.path().display().to_string()];
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(cmd.args.windows(2).any(|w| w[0] == "--bind-try" && w[1] == sock.display().to_string()));
+        assert!(!cmd.args.iter().any(|a| a == &t.path().display().to_string()), "folder not bound");
     }
 
 }

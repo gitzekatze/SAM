@@ -237,7 +237,15 @@ enum Cmd {
     /// List all permissions with plain-language explanations.
     Permissions,
     /// Remove extraction leftovers not referenced by any app.
-    Cleanup,
+    Cleanup {
+        /// Also (or with --list: only list) the private data of apps whose
+        /// sandbox was removed with --keep-data.
+        #[arg(long)]
+        data: bool,
+        /// Only list what would be removed.
+        #[arg(long)]
+        list: bool,
+    },
     /// First-run onboarding status.
     Onboarding { action: Option<String> },
     /// Developer tools.
@@ -904,11 +912,22 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Cleanup => {
-            let removed = app.cleanup()?;
-            out.emit(&removed, || {
-                println!("Removed {} unreferenced extraction(s)", removed.len());
-            });
+        Cmd::Cleanup { data, list } => {
+            if data {
+                let items = if list { app.leftover_data()? } else { app.remove_leftover_data()? };
+                let total: u64 = items.iter().map(|d| d.size).sum();
+                out.emit(&json!({"apps": items, "total": total, "removed": !list}), || {
+                    for d in &items {
+                        println!("{:<40} {:>10}", d.id, human_size(d.size));
+                    }
+                    println!("{} {} app(s), {}", if list { "Left behind by" } else { "Removed data of" }, items.len(), human_size(total));
+                });
+            } else {
+                let removed = if list { vec![] } else { app.cleanup()? };
+                out.emit(&removed, || {
+                    println!("Removed {} unreferenced extraction(s)", removed.len());
+                });
+            }
         }
         Cmd::Onboarding { action } => {
             let marker = app.paths.onboarding_marker();

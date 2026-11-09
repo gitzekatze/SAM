@@ -577,6 +577,37 @@ impl Sam {
         Ok((entry, problems))
     }
 
+    /// Private data of apps that no longer have a sandbox: their home,
+    /// writable app folder layer and logs (kept by `remove --keep-data`).
+    pub fn leftover_data(&self) -> Result<Vec<LeftoverData>> {
+        let ids: std::collections::HashSet<String> = self.registry().list()?.into_iter().map(|a| a.id).collect();
+        let mut by_id: std::collections::BTreeMap<String, LeftoverData> = Default::default();
+        for root in [self.paths.homes_dir(), self.paths.data_dir.join("overlays"), self.paths.logs_dir()] {
+            let Ok(rd) = fs::read_dir(&root) else { continue };
+            for e in rd.flatten() {
+                let id = e.file_name().to_string_lossy().into_owned();
+                if ids.contains(&id) || !e.path().is_dir() {
+                    continue;
+                }
+                let d = by_id.entry(id.clone()).or_insert_with(|| LeftoverData { id, paths: vec![], size: 0 });
+                d.size += tree_size(&e.path());
+                d.paths.push(e.path());
+            }
+        }
+        Ok(by_id.into_values().collect())
+    }
+
+    /// Deletes the data `leftover_data` lists.
+    pub fn remove_leftover_data(&self) -> Result<Vec<LeftoverData>> {
+        let list = self.leftover_data()?;
+        for d in &list {
+            for p in &d.paths {
+                remove_tree(p)?;
+            }
+        }
+        Ok(list)
+    }
+
     /// Remove extraction leftovers that no registered app references.
     pub fn cleanup(&self) -> Result<Vec<PathBuf>> {
         let root = self.extracted_root();
@@ -1044,6 +1075,24 @@ pub fn new_requirements(old_rec: &PermissionSet, new_rec: &PermissionSet, cur: &
         chk(n > old_rec.filesystem.xdg_access(key), cur.filesystem.xdg_access(key) >= n, &format!("{key} folder"));
     }
     v
+}
+
+/// Data left behind by a removed sandbox.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LeftoverData {
+    pub id: String,
+    pub paths: Vec<PathBuf>,
+    pub size: u64,
+}
+
+/// Size of a folder tree in bytes (symlinks are not followed).
+fn tree_size(p: &Path) -> u64 {
+    let Ok(md) = fs::symlink_metadata(p) else { return 0 };
+    if md.is_dir() {
+        fs::read_dir(p).map(|rd| rd.flatten().map(|e| tree_size(&e.path())).sum()).unwrap_or(0)
+    } else {
+        md.len()
+    }
 }
 
 /// `remove_dir_all` that also handles folders without permissions, such as

@@ -110,7 +110,12 @@ plain-language explanation and a risk level, and risky choices show a warning.
   - A segmented filter (All / Sandboxed / Unsandboxed), search, status
     badges, settings grouped with a short explanation each, toasts for
     feedback.
-  - Drag-and-drop adds an AppImage to the list. Style: follow the system,
+  - Drag-and-drop: a dropped folder becomes a location, a dropped
+    AppImage is added and selected, anything else is refused with a
+    message.
+  - *Remove Sandbox* can keep the app's settings and files, so a new
+    sandbox for the same AppImage picks them up again; Diagnostics shows
+    and deletes data left behind this way. Style: follow the system,
     light or dark.
 
 ## Install (CachyOS / Arch)
@@ -164,6 +169,8 @@ sam-jail repair krita --undo             # undo all repair steps
 sam-jail compat krita on                 # compatibility mode; `off` restores the previous settings
 echo '["--no-sandbox"]' | sam-jail args krita --stdin   # launch arguments
 sam-jail logs krita --list               # every log; show one with --file
+sam-jail remove krita --keep-data        # remove the sandbox, keep the app's settings and files
+sam-jail cleanup --data --list           # data left behind by removed sandboxes (drop --list to delete)
 sam-jail selftest                        # start every sandboxed app briefly
 sam-jail menu list krita                 # unsandboxed menu entries for this AppImage
 ```

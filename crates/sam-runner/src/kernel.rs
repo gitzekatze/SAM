@@ -74,7 +74,10 @@ pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox:
         write.push(expand_home(c));
     }
     for s in &p.sockets.custom {
-        write.push(expand_home(s));
+        let sp = expand_home(s);
+        if sam_backend_bubblewrap::is_socket(&sp) {
+            write.push(sp);
+        }
     }
     write.extend(extra_write.iter().cloned());
     LandlockSpec { read: vec![PathBuf::from("/")], write }

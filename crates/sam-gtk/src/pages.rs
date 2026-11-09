@@ -531,6 +531,53 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
             }
         });
     }));
+    // Data kept when sandboxes were removed with "Keep the app's settings and files".
+    let leftover = adw::ActionRow::builder().title("Data of removed sandboxes").subtitle("Checking…").activatable(true).name("leftover-data").build();
+    leftover.add_prefix(&gtk::Image::from_icon_name("user-trash-symbolic"));
+    let leftover_btn = gtk::Button::builder().label("Delete").valign(gtk::Align::Center).sensitive(false).build();
+    leftover_btn.add_css_class("destructive-action");
+    leftover.add_suffix(&leftover_btn);
+    leftover.set_activatable_widget(Some(&leftover_btn));
+    maint.add(&leftover);
+    let load_leftover = {
+        let (w, row, btn) = (Rc::downgrade(app), leftover.clone(), leftover_btn.clone());
+        move || {
+            let (Some(app), row, btn) = (w.upgrade(), row.clone(), btn.clone()) else { return };
+            glib::spawn_future_local(async move {
+                match app.backend.call(&["cleanup", "--data", "--list"], None).await {
+                    Ok(r) => {
+                        let n = r.get("apps").and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+                        let total = util::get(&r, "total").and_then(Value::as_u64).unwrap_or(0);
+                        row.set_subtitle(&if n == 0 {
+                            "Nothing left behind.".to_string()
+                        } else {
+                            format!("Settings and files of {n} app(s) whose sandbox was removed: {}. A new sandbox for the same AppImage would use them again.", glib::format_size(total))
+                        });
+                        btn.set_sensitive(n > 0);
+                    }
+                    Err(e) => row.set_subtitle(&esc(&e)),
+                }
+            });
+        }
+    };
+    load_leftover();
+    let w = Rc::downgrade(app);
+    let reload = load_leftover.clone();
+    leftover_btn.connect_clicked(move |_| {
+        let Some(app) = w.upgrade() else { return };
+        let reload = reload.clone();
+        glib::spawn_future_local(async move {
+            if !window::confirm(&app.window, "Delete Data of Removed Sandboxes?", "The settings, logins and saved files of apps whose sandbox was removed are deleted. This cannot be undone.", "Delete", true).await {
+                return;
+            }
+            match app.backend.call(&["cleanup", "--data"], None).await {
+                Ok(r) => app.toast(&format!("Deleted {}", glib::format_size(util::get(&r, "total").and_then(Value::as_u64).unwrap_or(0)))),
+                Err(e) => app.report_error(&e),
+            }
+            reload();
+        });
+    });
+
     let cli = adw::ActionRow::builder().title("Command line").subtitle(esc(&app.backend.cli.to_string_lossy())).subtitle_selectable(true).build();
     cli.add_css_class("property");
     maint.add(&cli);
