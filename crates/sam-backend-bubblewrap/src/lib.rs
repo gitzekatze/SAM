@@ -95,7 +95,47 @@ const PROTECTED_RO: &[&str] = &[
     ".config/sam", ".local/share/sam", ".local/share/applications", ".config/autostart",
     ".config/systemd", ".bashrc", ".bash_profile", ".profile", ".zshrc", ".zprofile", ".config/fish",
     ".config/environment.d", ".config/plasma-workspace", ".xinitrc", ".xprofile",
+    // Programs on $PATH, D-Bus services the session bus starts outside the
+    // sandbox, default apps for files and links, desktop scripting and
+    // service menus, and configs that can run commands (git hooks, editors).
+    ".local/bin", "bin", ".local/share/dbus-1", ".config/mimeapps.list", ".local/share/kwin",
+    ".local/share/plasma", ".local/share/kservices5", ".local/share/kio/servicemenus",
+    ".local/share/nautilus/scripts", ".gitconfig", ".config/git", ".vimrc", ".config/nvim",
+    ".pam_environment",
 ];
+
+/// Protected paths created (empty) before a full-home read/write start when
+/// they are missing, so they can be mounted read-only: an app could create
+/// them otherwise. Only where an empty one behaves like a missing one
+/// (not `.bash_profile`, which hides `.profile`, `.xinitrc` or `.vimrc`).
+const PROTECTED_CREATE_DIRS: &[&str] = &[
+    ".local/share/applications", ".config/autostart", ".config/systemd", ".config/environment.d",
+    ".local/bin", ".local/share/dbus-1", ".local/share/kwin",
+];
+const PROTECTED_CREATE_FILES: &[&str] = &[".bashrc", ".profile", ".gitconfig", ".config/mimeapps.list"];
+
+/// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
+/// home before a start with full home read/write. Called by the launcher.
+pub fn prepare_home_protection(p: &PermissionSet, home: &Path) {
+    if !(p.filesystem.home && p.filesystem.home_access == Access::Rw) {
+        return;
+    }
+    for d in PROTECTED_CREATE_DIRS {
+        let path = home.join(d);
+        if fs::symlink_metadata(&path).is_err() {
+            let _ = fs::create_dir_all(&path);
+        }
+    }
+    for f in PROTECTED_CREATE_FILES {
+        let path = home.join(f);
+        if fs::symlink_metadata(&path).is_err() {
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::OpenOptions::new().write(true).create_new(true).open(&path);
+        }
+    }
+}
 
 /// Host theme configuration (read-only) when `advanced.host_themes` is on.
 const THEME_FILES: &[&str] = &[

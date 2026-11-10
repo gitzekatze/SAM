@@ -271,6 +271,9 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
         if req.electron {
             p.advanced.allow_userns = true;
             notes.push("Electron app: nested namespaces allowed so Chromium's own sandbox can start".into());
+        } else if req.nested_sandbox {
+            p.advanced.allow_userns = true;
+            notes.push("Nested namespaces allowed: the app's web engine (Chromium or WebKit) starts its own sandbox".into());
         }
         if r.compatibility != sam_core::Compatibility::Good {
             notes.push("Compatibility issues were detected; see the dependency report".into());

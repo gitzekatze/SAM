@@ -359,8 +359,14 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     if w.qt_wayland_plugin || matches!(toolkit, Some("GTK3") | Some("GTK4") | Some("Qt6")) {
         req.wayland = true;
     }
+    // Engines that build their own sandbox from namespaces.
+    let nested = ["libwebkit2gtk", "libwebkitgtk", "libcef", "libQt5WebEngineCore", "libQt6WebEngineCore"];
+    if needed.keys().chain(w.bundled.iter()).any(|n| nested.iter().any(|p| n.starts_with(p))) {
+        req.nested_sandbox = true;
+    }
     if w.electron {
         req.electron = true;
+        req.nested_sandbox = true;
         req.gpu = true;
         req.audio = true;
         req.network = true;

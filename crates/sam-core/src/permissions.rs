@@ -516,7 +516,9 @@ impl Default for AdvancedPerms {
             landlock: None,
             seccomp_strict: false,
             seccomp_baseline: true,
-            allow_userns: true,
+            // Off: namespaces add kernel attack surface. Turned on by the
+            // recommendation only for apps that start their own sandbox.
+            allow_userns: false,
             host_themes: true,
             writable_appdir: false,
             extra_backend_args: vec![],

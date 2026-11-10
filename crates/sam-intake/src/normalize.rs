@@ -205,7 +205,12 @@ mod tests {
         symlink("../../../../etc/shadow", root.join("usr/lib/evil")).unwrap();
         symlink("../../AppRun", root.join("usr/lib/ok")).unwrap();
         symlink("/usr/share/icons/x.png", root.join(".DirIcon")).unwrap();
+        // Special files: a FIFO and a socket (device nodes need root).
+        assert!(std::process::Command::new("mkfifo").arg(root.join("usr/lib/pipe")).status().unwrap().success());
+        let _sock = std::os::unix::net::UnixListener::bind(root.join("usr/lib/sock")).unwrap();
         let r = normalize(root, &Limits::default(), Instant::now()).unwrap();
+        assert!(fs::symlink_metadata(root.join("usr/lib/pipe")).is_err(), "FIFO removed");
+        assert!(fs::symlink_metadata(root.join("usr/lib/sock")).is_err(), "socket removed");
         assert_eq!(fs::metadata(root.join("AppRun")).unwrap().permissions().mode() & 0o7777, 0o755);
         assert_eq!(fs::metadata(root.join("data.txt")).unwrap().permissions().mode() & 0o7777, 0o644);
         assert_eq!(r.setid_removed, vec!["AppRun"]);

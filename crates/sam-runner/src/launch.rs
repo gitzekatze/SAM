@@ -217,6 +217,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let mut seccomp = false;
     {
         sam_backend_bubblewrap::write_identity_files(&ctx)?;
+        sam_backend_bubblewrap::prepare_home_protection(perms, &host.home);
         if perms.dbus.session.mode == DbusMode::Filtered && host.tools.xdg_dbus_proxy.is_some() && host.sockets.dbus_session.is_some() {
             let bus = perms.effective_session_bus();
             match DbusProxy::start(host, &bus, &runtime_dir, &app.id) {

@@ -165,6 +165,10 @@ pub struct Requirements {
     pub dbus: bool,
     pub electron: bool,
     pub java: bool,
+    /// Starts its own sandbox with namespaces: Chromium engines (CEF, Qt
+    /// WebEngine) and WebKitGTK (which runs Bubblewrap itself).
+    #[serde(default)]
+    pub nested_sandbox: bool,
     pub toolkit: String,
 }
 

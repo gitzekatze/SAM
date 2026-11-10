@@ -255,8 +255,13 @@ mod tests {
         assert_eq!(ids("ERROR eframe::native::run] Exiting because of error: WGPU error: Failed to create surface for any enabled backend"), vec!["gpu"]);
         assert!(ids("all good").is_empty());
         assert_eq!(analyze("", &p, Some(11))[0].id, "crash");
-        let ids_userns: Vec<String> = analyze("Zygote process exited prematurely", &p, None).into_iter().map(|s| s.id).collect();
-        assert_eq!(ids_userns, vec!["chromium-no-sandbox"]);
+        // Nested namespaces are off by default: allowing them comes first;
+        // when they are on already, starting without Chromium's sandbox.
+        let zygote = |p: &PermissionSet| analyze("Zygote process exited prematurely", p, None).into_iter().map(|s| s.id).collect::<Vec<_>>();
+        assert_eq!(zygote(&p), vec!["userns"]);
+        let mut nested = p.clone();
+        nested.advanced.allow_userns = true;
+        assert_eq!(zygote(&nested), vec!["chromium-no-sandbox"]);
     }
 
     #[test]
@@ -266,7 +271,10 @@ mod tests {
         let cfg = Config::default();
         let ids: Vec<String> = ladder(&e, &cfg).into_iter().map(|s| s.id).collect();
         assert_eq!(ids.first().map(String::as_str), Some("full-usr"));
-        assert!(!ids.contains(&"userns".to_string()), "already allowed by default");
+        assert!(ids.contains(&"userns".to_string()), "offered: nested namespaces are off by default");
+        e.profile.permissions.advanced.allow_userns = true;
+        assert!(!ladder(&e, &cfg).iter().any(|s| s.id == "userns"), "not offered once allowed");
+        e.profile.permissions.advanced.allow_userns = false;
         e.repairs_applied.push("full-usr".into());
         assert_ne!(ladder(&e, &cfg)[0].id, "full-usr");
     }
