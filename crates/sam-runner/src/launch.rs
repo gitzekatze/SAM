@@ -199,6 +199,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
         appdir_overlay: None,
+        sam_dirs: vec![paths.config_dir.clone(), paths.data_dir.clone(), paths.extracted_root(&cfg.extraction.location)],
     };
     if perms.advanced.writable_appdir {
         let base = paths.data_dir.join("overlays").join(&app.id);

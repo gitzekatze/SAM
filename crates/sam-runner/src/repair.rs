@@ -217,6 +217,8 @@ pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
         let keep = !seen.contains(&st.id)
             && !e.repairs_applied.contains(&st.id)
             && !matches!(st.action, FixAction::None)
+            // A terminal program has no window: display steps cannot help.
+            && !(e.metadata.terminal && matches!(st.id.as_str(), "x11" | "gpu"))
             && changes_something(p, e.profile.compatibility_mode, &e.profile.args, &st.action);
         seen.push(st.id.clone());
         keep

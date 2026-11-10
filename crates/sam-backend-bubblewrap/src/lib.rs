@@ -115,9 +115,13 @@ const PROTECTED_CREATE_DIRS: &[&str] = &[
 const PROTECTED_CREATE_FILES: &[&str] = &[".bashrc", ".profile", ".gitconfig", ".config/mimeapps.list"];
 
 /// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
-/// home before a start with full home read/write. Called by the launcher.
+/// home before a start that can write the home (full home read/write, or a
+/// writable folder that contains it). Called by the launcher.
 pub fn prepare_home_protection(p: &PermissionSet, home: &Path) {
-    if !(p.filesystem.home && p.filesystem.home_access == Access::Rw) {
+    let fs = &p.filesystem;
+    let full_rw = fs.home && fs.home_access == Access::Rw;
+    let grant_rw = fs.custom_write.iter().any(|c| home.starts_with(expand_home(c)));
+    if !(full_rw || grant_rw) {
         return;
     }
     for d in PROTECTED_CREATE_DIRS {
@@ -279,6 +283,42 @@ impl Bubblewrap {
 }
 
 /// Is `p` visible inside the sandbox given the granted folders?
+/// Hides credential stores and SAM's own folders in the real home, and keeps
+/// persistence paths read-only when `writable`. Used with full home access
+/// and when a granted folder contains the home.
+fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, writable: bool) {
+    let mut masks: Vec<&str> = Vec::new();
+    if !fsp.ssh {
+        masks.push(".ssh");
+    }
+    if !fsp.gnupg {
+        masks.push(".gnupg");
+    }
+    if !fsp.hidden_files {
+        masks.extend(SENSITIVE_DOTFILES);
+    }
+    for m in masks {
+        let path = home.join(m);
+        match fs::symlink_metadata(&path) {
+            Ok(md) if md.is_dir() => {
+                a.push("--tmpfs").push(path.to_string_lossy());
+            }
+            Ok(md) if md.is_file() => a.op2("--ro-bind", "/dev/null", &path),
+            _ => {}
+        }
+    }
+    for prot in PROTECTED_RO {
+        let path = home.join(prot);
+        if matches!(*prot, ".config/sam" | ".local/share/sam") {
+            if path.is_dir() {
+                a.push("--tmpfs").push(path.to_string_lossy());
+            }
+        } else if writable && path.exists() {
+            a.ro(&path);
+        }
+    }
+}
+
 fn visible_in_sandbox(p: &Path, ctx: &LaunchContext) -> bool {
     let fs = &ctx.permissions.filesystem;
     if fs.home && p.starts_with(&ctx.host.home) {
@@ -467,36 +507,7 @@ impl Bubblewrap {
         if fsp.home {
             let op = if fsp.home_access == Access::Rw { "--bind" } else { "--ro-bind" };
             a.op2(op, &home, &home);
-            let mut masks: Vec<&str> = Vec::new();
-            if !fsp.ssh {
-                masks.push(".ssh");
-            }
-            if !fsp.gnupg {
-                masks.push(".gnupg");
-            }
-            if !fsp.hidden_files {
-                masks.extend(SENSITIVE_DOTFILES);
-            }
-            for m in masks {
-                let path = home.join(m);
-                match fs::symlink_metadata(&path) {
-                    Ok(md) if md.is_dir() => {
-                        a.push("--tmpfs").push(path.to_string_lossy());
-                    }
-                    Ok(md) if md.is_file() => a.op2("--ro-bind", "/dev/null", &path),
-                    _ => {}
-                }
-            }
-            for prot in PROTECTED_RO {
-                let path = home.join(prot);
-                if matches!(*prot, ".config/sam" | ".local/share/sam") {
-                    if path.is_dir() {
-                        a.push("--tmpfs").push(path.to_string_lossy());
-                    }
-                } else if fsp.home_access == Access::Rw && path.exists() {
-                    a.ro(&path);
-                }
-            }
+            guard_home(&mut a, &home, fsp, fsp.home_access == Access::Rw);
         } else {
             if p.advanced.persistent_home {
                 // The launch pipeline creates the directory; build() has no side effects.
@@ -534,6 +545,15 @@ impl Bubblewrap {
         for c in &fsp.custom_write {
             let path = expand_home(c);
             a.op2("--bind-try", &path, &path);
+        }
+        // A granted folder that contains the real home (e.g. /home) shows it
+        // as well: the same masks and protections as full home access.
+        if !fsp.home {
+            let covers = |c: &String| home.starts_with(expand_home(c));
+            let rw = fsp.custom_write.iter().any(covers);
+            if rw || fsp.custom_read.iter().any(covers) {
+                guard_home(&mut a, &home, fsp, rw);
+            }
         }
         // Files explicitly passed on the command line (e.g. "Open with") are
         // granted individually, like a document portal.
@@ -713,6 +733,16 @@ impl Bubblewrap {
                 a.op2("--bind-try", &sp, &sp);
             } else {
                 notes.push(format!("{} is not a socket; not passed into the sandbox", sp.display()));
+            }
+        }
+
+        // SAM's own folders, wherever they are: an empty, throwaway folder
+        // in their place when a grant would show them.
+        for d in &ctx.sam_dirs {
+            // A folder inside another hidden one is hidden with it.
+            let nested = ctx.sam_dirs.iter().any(|o| o != d && d.starts_with(o));
+            if !nested && d.is_dir() && visible_in_sandbox(d, ctx) {
+                a.push("--tmpfs").push(d.to_string_lossy());
             }
         }
 

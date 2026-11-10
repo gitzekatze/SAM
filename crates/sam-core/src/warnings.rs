@@ -73,6 +73,20 @@ impl WarningContext<'_> {
 
 pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     let mut w = Vec::new();
+    let ignored = crate::permissions::blocked_wildcards(&p.dbus.session);
+    if !ignored.is_empty() && p.dbus.session.mode == DbusMode::Filtered {
+        w.push(
+            Warning::warn(
+                "dbus-wildcard-ignored",
+                "D-Bus wildcard not used",
+                format!(
+                    "{} would also reach a name you blocked, and the D-Bus filter cannot make exceptions, so SAM does not allow it. List the services you need one by one.",
+                    ignored.join(", ")
+                ),
+            )
+            .with_key("dbus.session.allow"),
+        );
+    }
 
     if p.display.x11 && ctx.warn_x11 {
         w.push(

@@ -68,6 +68,10 @@ pub struct LaunchContext {
     /// Per-app folder holding `upper/` and `work/` for the writable app
     /// folder overlay (`advanced.writable_appdir`).
     pub appdir_overlay: Option<PathBuf>,
+    /// SAM's own folders (config, data, extraction): hidden whenever a
+    /// granted folder would make them visible, so an app cannot change its
+    /// own permissions or another app's files.
+    pub sam_dirs: Vec<PathBuf>,
 }
 
 impl LaunchContext {
@@ -172,5 +176,6 @@ pub fn sample_context() -> LaunchContext {
         tracer: None,
         extra_binds: vec![],
         appdir_overlay: None,
+        sam_dirs: vec![],
     }
 }

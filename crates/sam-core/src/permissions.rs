@@ -287,6 +287,27 @@ pub fn dangerous_socket(path: &str) -> Option<String> {
     bad.iter().find(|(needle, _)| p.contains(needle)).map(|(_, why)| format!("{p} {why}"))
 }
 
+/// True when a bus-name pattern (`org.kde.*`, `org.kde*`, exact) covers `name`.
+pub fn bus_pattern_matches(pattern: &str, name: &str) -> bool {
+    match pattern.strip_suffix(".*") {
+        Some(prefix) => name == prefix || name.starts_with(&format!("{prefix}.")),
+        None => match pattern.strip_suffix('*') {
+            Some(prefix) => name.starts_with(prefix),
+            None => pattern == name,
+        },
+    }
+}
+
+/// Wildcard allow entries that cover a name in `deny`: they cannot be
+/// enforced together, so the wildcard is not used.
+pub fn blocked_wildcards(b: &DbusBusPerms) -> Vec<String> {
+    b.allow
+        .iter()
+        .filter(|a| a.ends_with('*') && b.deny.iter().any(|d| bus_pattern_matches(a, d)))
+        .cloned()
+        .collect()
+}
+
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
     let name = name.trim();
     if name == "*" || name == "org.*" || name == "org.freedesktop.*" || name.starts_with("org.freedesktop.portal.*") {
@@ -553,6 +574,10 @@ impl PermissionSet {
     /// the enabled integrations and tray item names.
     pub fn effective_session_bus(&self) -> DbusBusPerms {
         let mut b = self.dbus.session.clone();
+        // xdg-dbus-proxy has no deny rules: a wildcard allow entry would let
+        // a blocked name through. Fail closed: drop such wildcards.
+        let blocked = blocked_wildcards(&b);
+        b.allow.retain(|a| !blocked.contains(a));
         let (talk, own) = self.integrations.bus_names();
         for n in talk {
             if !b.allow.iter().any(|x| x == n) {
@@ -797,6 +822,17 @@ mod tests {
         assert!(p.set_key("network.bogus", "1").is_err());
         assert!(p.set_key("network.mode", "sideways").is_err());
         assert_eq!(p.get_key("network.mode").unwrap(), "full");
+    }
+
+    #[test]
+    fn blocked_names_win_over_wildcards() {
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.allow = vec!["org.kde.*".into(), "org.example.App".into()];
+        p.dbus.session.deny = vec!["org.kde.KWin".into()];
+        let b = p.effective_session_bus();
+        assert!(!b.allow.iter().any(|a| a == "org.kde.*"), "wildcard dropped");
+        assert!(b.allow.iter().any(|a| a == "org.example.App"));
+        assert!(bus_pattern_matches("org.kde.*", "org.kde.KWin") && !bus_pattern_matches("org.kde.*", "org.kdex"));
     }
 
     #[test]

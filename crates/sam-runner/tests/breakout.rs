@@ -77,6 +77,12 @@ for key, rel in [("H_KEYRINGS", ".local/share/keyrings/login.keyring"), ("H_PASS
         data = open(home + "/" + rel).read(); print(f"{key}=readable:{data[:8]}")
     except OSError as e:
         print(f"{key}=" + errno.errorcode.get(e.errno, str(e.errno)))
+# SAM's own registry, inside a folder the app may read.
+samdir = os.environ.get("SAM_TEST_SAMDIR", "/nonexistent")
+def has_files(d):
+    try: return len(os.listdir(d)) > 0
+    except OSError: return False
+print("SAM_REGISTRY=" + ("visible" if has_files(samdir + "/data") or has_files(samdir + "/config") else "hidden"))
 # Private /dev/shm and the environment.
 token = os.environ.get("SAM_TEST_TOKEN", "none")
 try:
@@ -173,7 +179,9 @@ fn breakout_attempts_fail() {
     let mut p = PermissionSet::strict_gui();
     p.network.mode = NetworkMode::Full;
     let ex = extra.display().to_string();
-    p.filesystem.custom_read = vec![ex.clone()];
+    // The whole test folder, which holds SAM's config and data (sam/).
+    p.filesystem.custom_read = vec![ex.clone(), root.display().to_string()];
+    p.environment.set.insert("SAM_TEST_SAMDIR".into(), root.join("sam").display().to_string());
     p.advanced.extra_backend_args = vec!["--bind".into(), ex.clone(), ex.clone()];
     p.environment.set.insert("SAM_TEST_EXTRA".into(), ex);
     let r = launch(p);
@@ -197,6 +205,7 @@ fn breakout_attempts_fail() {
         assert_ne!(r["ABSTRACT"], "connected", "host abstract sockets are blocked");
     }
     assert_ne!(r["ROOT_WRITE"], "written", "/ is read-only");
+    assert_eq!(r["SAM_REGISTRY"], "hidden", "SAM's own folders stay hidden inside granted folders");
     assert_eq!(r["SHM"], "written", "the app has a /dev/shm of its own");
     assert!(!Path::new(&format!("/dev/shm/sam-breakout-{token}")).exists(), "/dev/shm is private");
     assert_eq!(r["ENV_SECRET"], "absent", "host environment is not passed in");
