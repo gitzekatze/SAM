@@ -114,9 +114,50 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title("Extraction").build();
-    let loc = util::str_of(&cfg, "extraction.location");
-    let row = adw::ActionRow::builder().title("Location").subtitle(esc(if loc.is_empty() { "Default (~/.local/share/sam/extracted)" } else { loc })).build();
-    row.add_css_class("property");
+    // Where new sandboxes are unpacked. Existing ones stay where they are
+    // until they are unpacked again (Re-extract).
+    let loc = util::str_of(&cfg, "extraction.location").to_string();
+    let loc_text = |l: &str| if l.trim().is_empty() { "Default: ~/.local/share/sam/extracted".to_string() } else { l.to_string() };
+    let row = adw::ActionRow::builder()
+        .title("Location")
+        .subtitle(esc(&format!("{}\nNew sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.", loc_text(&loc))))
+        .build();
+    let choose = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text("Choose a folder").valign(gtk::Align::Center).build();
+    choose.add_css_class("flat");
+    let reset = gtk::Button::builder().icon_name("edit-undo-symbolic").tooltip_text("Back to the default folder").valign(gtk::Align::Center).sensitive(!loc.trim().is_empty()).build();
+    reset.add_css_class("flat");
+    row.add_suffix(&choose);
+    row.add_suffix(&reset);
+    let set_loc = {
+        let (w, row, reset) = (Rc::downgrade(app), row.clone(), reset.clone());
+        move |value: String| {
+            let Some(app) = w.upgrade() else { return };
+            let (row, reset) = (row.clone(), reset.clone());
+            glib::spawn_future_local(async move {
+                app.set_config("extraction.location", &value).await;
+                let now = util::str_of(&app.state.borrow().config, "extraction.location").to_string();
+                row.set_subtitle(&esc(&format!("{}\nNew sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.", loc_text(&now))));
+                reset.set_sensitive(!now.trim().is_empty());
+            });
+        }
+    };
+    let set_loc = Rc::new(set_loc);
+    {
+        let (w, set_loc) = (Rc::downgrade(app), set_loc.clone());
+        choose.connect_clicked(move |_| {
+            let Some(app) = w.upgrade() else { return };
+            let set_loc = set_loc.clone();
+            glib::spawn_future_local(async move {
+                let d = gtk::FileDialog::builder().title("Folder for unpacked AppImages").modal(true).build();
+                if let Ok(f) = d.select_folder_future(Some(&app.window)).await {
+                    if let Some(p) = f.path() {
+                        set_loc(p.to_string_lossy().into_owned());
+                    }
+                }
+            });
+        });
+    }
+    reset.connect_clicked(move |_| set_loc(String::new()));
     g.add(&row);
     switch(&g, "extraction.cleanup_stale", "Clean up stale extractions", "");
     switch(&g, "extraction.allow_fallback", "Offer the AppImage's own extractor as fallback", "Only used after asking you, and only inside a restricted sandbox.");

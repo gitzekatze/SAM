@@ -201,6 +201,18 @@ impl Config {
         if !THEMES.contains(&self.general.theme.as_str()) {
             bail!("unknown theme '{}'; choose one of: {}", self.general.theme, THEMES.join(", "));
         }
+        // Extraction folder: empty (default) or an absolute folder below /.
+        let loc = self.extraction.location.trim();
+        if !loc.is_empty() {
+            let p = expand_home(loc);
+            let home = expand_home("~");
+            if !p.is_absolute() || p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                bail!("extraction.location must be an absolute path (or start with ~/), without '..'");
+            }
+            if p == std::path::Path::new("/") || p == home {
+                bail!("extraction.location cannot be / or the home folder itself; choose a folder of its own");
+            }
+        }
         Ok(())
     }
 

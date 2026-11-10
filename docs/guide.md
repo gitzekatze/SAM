@@ -159,7 +159,7 @@ If the app is still running, often only as an icon in the system tray, the dialo
 
 ## Preferences
 
-Style (follow the system, light or dark), menu entries, repair options, warnings, the kernel security layers, the sandbox check, dependency detection, extraction limits and how many logs to keep.
+Style (follow the system, light or dark), menu entries, repair options, warnings, the kernel security layers, the sandbox check, dependency detection, where AppImages are unpacked and the extraction limits, and how many logs to keep.
 
 ## Diagnostics
 
