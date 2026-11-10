@@ -13,8 +13,8 @@ pkgbase = sam-jail
 	options = !lto
 	source = sam-0.1.0.tar.gz::https://github.com/gitzekatze/SAM/releases/download/v0.1.0/sam-0.1.0.tar.gz
 	source = sam-0.1.0-vendor.tar.xz::https://github.com/gitzekatze/SAM/releases/download/v0.1.0/sam-0.1.0-vendor.tar.xz
-	sha256sums = fc1d0f56d5148a3c642914cc1ecd8f8b9e4afe1f5969f04cc0702603a5e9d2e9
-	sha256sums = d485f9ae85d570a4ed2f1bf89afbc2f4c889f9822486d74dc9a215ee1d07dc46
+	sha256sums = 4bce50dd5f74ee8e0ef498557ddaf99118e77890a5f091ac7b738765f316963a
+	sha256sums = 8563ceb78dfdae9bbb09cc160899d4792451abb664622cf630dab9df2b5dca99
 
 pkgname = sam-jail-cli
 	pkgdesc = Command line tools and sandbox runner for SAM, the Sandboxed AppImage Manager
