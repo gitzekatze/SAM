@@ -46,6 +46,10 @@ show("SC_OPEN_BY_HANDLE", sc(304, -1, 0, 0))
 show("SC_SYSLOG", sc(103, 10, 0, 0))             # SYSLOG_ACTION_SIZE_BUFFER
 show("SC_TIOCSTI", sc(16, 0, 0x5412, 0))         # ioctl(0, TIOCSTI): ENOTTY unfiltered
 show("SC_TIOCLINUX", sc(16, 0, 0x541C, 0))
+# The same calls through the x32 ABI (bit 30): the filter answers before
+# the kernel would say ENOSYS, so EPERM proves x32 is covered.
+show("SC_X32_KEYCTL", sc(250 | 0x40000000, 0, -3, 0))
+show("SC_X32_UNSHARE", sc(272 | 0x40000000, 0))
 # Abstract socket created by the test on the host.
 name = os.environ.get("SAM_TEST_ABSTRACT", "")
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -187,7 +191,7 @@ fn breakout_attempts_fail() {
     let r = launch(p);
 
     // The syscall filter: calls an ordinary user may make are refused.
-    for k in ["SC_KEYCTL", "SC_USERFAULTFD", "SC_UNSHARE", "SC_TIOCSTI", "SC_TIOCLINUX"] {
+    for k in ["SC_KEYCTL", "SC_USERFAULTFD", "SC_UNSHARE", "SC_TIOCSTI", "SC_TIOCLINUX", "SC_X32_KEYCTL", "SC_X32_UNSHARE"] {
         assert_eq!(r[k], "EPERM", "{k} is blocked by the syscall filter");
     }
     for k in ["SC_PERF", "SC_BPF", "SC_INIT_MODULE", "SC_OPEN_BY_HANDLE", "SC_SYSLOG"] {

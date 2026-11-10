@@ -223,6 +223,16 @@ pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
     if spec.strict {
         list.extend(strict_extra_syscalls());
     }
+    // x86-64 kernels may accept the x32 ABI: the same architecture, syscall
+    // numbers with bit 30 set. Block those numbers too, or a blocked call
+    // could be made through x32 where the kernel allows it. (32-bit calls
+    // through int 0x80 fail the architecture check and end the process.)
+    const X32: i64 = 0x4000_0000;
+    let x86 = matches!(arch, TargetArch::x86_64);
+    if x86 {
+        let x32: Vec<i64> = list.iter().map(|n| n | X32).collect();
+        list.extend(x32);
+    }
     let mut rules: BTreeMap<i64, Vec<SeccompRule>> = list.into_iter().map(|s| (s, vec![])).collect();
     // Terminal input injection into the parent's tty (TIOCSTI, TIOCLINUX).
     let ioctl_rule = |req: u64| -> Result<SeccompRule> {
@@ -230,6 +240,10 @@ pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
         SeccompRule::new(vec![c]).map_err(|e| anyhow!("{e}"))
     };
     rules.insert(libc::SYS_ioctl, vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?]);
+    if x86 {
+        // x32's ioctl is the compat entry 514.
+        rules.insert(514 | X32, vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?]);
+    }
     let filter = SeccompFilter::new(rules, SeccompAction::Allow, SeccompAction::Errno(libc::EPERM as u32), arch).map_err(|e| anyhow!("{e}"))?;
     filter.try_into().map_err(|e: seccompiler::BackendError| anyhow!("{e}"))
 }

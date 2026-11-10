@@ -41,9 +41,12 @@ Process isolation:
 
 - **Landlock** (on by default where the kernel supports it): `sam-jail-run`
   applies a Landlock ruleset *inside* the sandbox before it starts the app.
-  Writes are then allowed only in the locations the profile grants read/write.
-  If a mount is ever more permissive than intended, the kernel still blocks
-  the write. On kernels with Landlock ABI 6 (6.12+) it also blocks
+  Writes are then allowed only in the app's home, its temporary folders and
+  the locations the profile grants read/write. If a mount outside those is
+  ever more permissive than intended, the kernel still blocks the write.
+  Inside the home (which must be writable) read-only folders such as a
+  read-only Documents are protected by their read-only mount, which the app
+  cannot change: it has no privileges and Bubblewrap locks the mount. On kernels with Landlock ABI 6 (6.12+) it also blocks
   connections to abstract UNIX sockets created outside the sandbox, such as
   XWayland's `@/tmp/.X11-unix/X0`, which would otherwise be reachable
   whenever the app shares the network namespace.
@@ -52,7 +55,12 @@ Process isolation:
   opens, `syslog` and terminal injection (`TIOCSTI`, `TIOCLINUX`). Without
   nested sandboxes it also blocks namespaces and mounts. Loaded by
   `sam-jail-run` right before the app starts, so it also applies under
-  *Local network only*.
+  *Local network only*. The same calls are blocked through the x32 ABI;
+  32-bit calls (`int 0x80`) end the process. 32-bit AppImages therefore get
+  the filter turned off in their recommendation (and say so).
+- **Nested sandboxes are off by default:** user namespaces add kernel
+  attack surface. Only apps whose engine builds its own sandbox (Electron,
+  CEF, Qt WebEngine, WebKitGTK; found by the dependency analysis) get them.
 - **Strict seccomp** (experimental, opt-in) adds ptrace, process memory
   access, `personality` and NUMA memory calls.
 - **Private `/dev/shm`** per sandbox.
@@ -66,16 +74,30 @@ Process isolation:
   folders and never presents its apps to the desktop as Flatpak apps.
   Portals therefore see a SAM app as an ordinary program; the method filter
   above is what limits it.
+- **D-Bus "Always blocked" names win:** the D-Bus filter cannot make
+  exceptions, so a wildcard allow entry that would also reach a blocked name
+  is not used (the app page warns about it).
 - **Local network only** forwards only the host ports listed in
   `network.host_ports`; DNS is never forwarded.
-- **Full home access** stays guarded even when you grant it:
+- **Full home access** stays guarded even when you grant it, and so does
+  any granted folder that contains the home (such as `/home`):
   - `~/.ssh`, `~/.gnupg` and other credential stores (keyrings, password
     stores, cloud credentials, browser profiles) stay hidden unless you
     explicitly allow them.
-  - SAM's own configuration is hidden.
-  - Shell startup files, `autostart`, `systemd --user` and
-    `~/.local/share/applications` stay read-only. These are common ways for
-    malware to persist.
+  - SAM's own folders (configuration, data, unpacked apps, wherever they
+    are configured) are replaced by an empty, throwaway folder whenever any
+    grant would show them, so an app cannot change its own permissions or
+    another app's files.
+  - With write access these stay read-only: shell startup files,
+    `autostart`, `systemd --user`, `environment.d`, menu entries,
+    `~/.local/bin` and `~/bin` (programs on `$PATH`), D-Bus service files
+    (the session bus would start them outside the sandbox), `mimeapps.list`
+    (default apps), KWin/Plasma scripts, file manager service menus, and
+    configs that can run commands (git, vim, Neovim, `.pam_environment`).
+    Missing folders of this list, and `.bashrc`, `.profile`, `.gitconfig`
+    and `mimeapps.list`, are created empty first so they can be protected.
+    Files whose mere presence changes behaviour (`.bash_profile`, `.zshrc`,
+    `.xinitrc`, `.xprofile`, `.vimrc`) are protected only if they exist.
 - **No starting programs outside the sandbox through system services:**
   `systemd-run` (and `run0`, a link to it) is replaced inside every sandbox
   by a stand-in that runs the command directly, so it stays sandboxed;
@@ -154,6 +176,11 @@ at 100) is still in the JSON output as `risk.score` for scripts, but is not
 shown, because a number next to the level was easily misread.
 
 ## Known limitations
+
+- **Icons are rendered outside the sandbox:** SAM copies an AppImage's icon
+  (PNG, SVG or XPM, at most 10 MB) into its cache, and the window and the
+  application menu draw it with the system's image libraries, like every
+  AppImage integration tool does.
 
 - **D-Bus filtering** needs `xdg-dbus-proxy`.
   Without it, "filtered" falls back to *no* session bus.

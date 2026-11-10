@@ -275,6 +275,12 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
             p.advanced.allow_userns = true;
             notes.push("Nested namespaces allowed: the app's web engine (Chromium or WebKit) starts its own sandbox".into());
         }
+        if r.arch == "i686" {
+            // The syscall filter is built for 64-bit programs; a 32-bit one
+            // is stopped by its architecture check at the first call.
+            p.advanced.seccomp_baseline = false;
+            notes.push("32-bit app: the baseline syscall filter is off, because it only supports 64-bit programs and would stop the app".into());
+        }
         if r.compatibility != sam_core::Compatibility::Good {
             notes.push("Compatibility issues were detected; see the dependency report".into());
         }
