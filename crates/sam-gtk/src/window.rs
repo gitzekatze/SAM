@@ -256,6 +256,26 @@ impl App {
         menu.append_section(None, &about);
         let menu_btn = gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).tooltip_text("Main menu").primary(true).build();
         header.pack_end(&menu_btn);
+        // SAM's logo opens the start page. It replaces the window icon of the
+        // desktop's button layout (`icon:…`), which cannot be clicked.
+        let layout = gtk::Settings::default().and_then(|st| st.gtk_decoration_layout()).map(|l| l.to_string()).unwrap_or_else(|| ":close".into());
+        let stripped = layout
+            .split(':')
+            .map(|side| side.split(',').filter(|b| !b.is_empty() && *b != "icon").collect::<Vec<_>>().join(","))
+            .collect::<Vec<_>>()
+            .join(":");
+        header.set_decoration_layout(Some(&stripped));
+        let logo = gtk::Image::from_icon_name("io.github.gitzekatze.SAM");
+        logo.set_pixel_size(24);
+        let home = gtk::Button::builder().child(&logo).tooltip_text("Start page").name("home-button").build();
+        home.add_css_class("flat");
+        let w = Rc::downgrade(self);
+        home.connect_clicked(move |_| {
+            if let Some(me) = w.upgrade() {
+                me.show_home();
+            }
+        });
+        header.pack_start(&home);
         let refresh = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text("Search the locations again").action_name("win.refresh").build();
         header.pack_start(&refresh);
         header.pack_start(&self.spinner);
@@ -612,6 +632,14 @@ impl App {
         let page = adw::NavigationPage::builder().title("Welcome").child(&view).build();
         self.split.set_content(Some(&page));
         *self.current.borrow_mut() = None;
+    }
+
+    /// The start page: no AppImage selected, SAM's logo and a short intro.
+    pub fn show_home(self: &Rc<Self>) {
+        self.state.borrow_mut().selected.clear();
+        self.show_welcome();
+        self.split.set_show_content(true);
+        self.sync_selection();
     }
 
     /// Shows one AppImage on the right.

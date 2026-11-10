@@ -118,8 +118,13 @@ fn main() -> glib::ExitCode {
             // SAM's own icon, from a folder only SAM writes. The user's icon
             // folder may hold an outdated icon-theme.cache, and GTK ignores
             // every icon that cache does not list.
+            // It goes first, so an older copy elsewhere never wins.
             if let Some(dir) = own_icon_dir() {
-                gtk::IconTheme::for_display(&display).add_search_path(dir);
+                let theme = gtk::IconTheme::for_display(&display);
+                let mut paths = theme.search_path();
+                paths.insert(0, dir);
+                let refs: Vec<&std::path::Path> = paths.iter().map(|p| p.as_path()).collect();
+                theme.set_search_path(&refs);
             }
             // Debug builds started from a checkout: also look next to the
             // sources, so a changed icon shows without reinstalling. Release
@@ -211,7 +216,7 @@ fn desktop_identity() {
         let _ = std::fs::create_dir_all(ours.parent().unwrap());
         let _ = std::fs::write(&ours, entry);
     }
-    if !icon.exists() {
+    if std::fs::read(&icon).ok().as_deref() != Some(ICON_SVG) {
         let _ = std::fs::create_dir_all(icon.parent().unwrap());
         let _ = std::fs::write(&icon, ICON_SVG);
     }

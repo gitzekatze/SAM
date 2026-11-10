@@ -43,6 +43,7 @@
 
 - **The header** shows the app, its file, its status, its risk and **Launch** (or **Create Sandbox**) with **Remove Sandbox** below it.
 - **Below the header** come all settings and tools for the app, always visible. Settings that do not apply right now are greyed out, never hidden.
+- **SAM's logo** at the top left opens the start page (no AppImage selected).
 - The **☰ menu** at the top left opens this guide, **Presets**, **Diagnostics**, **Preferences** and *About SAM* in the right column.
 
 ---
