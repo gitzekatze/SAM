@@ -33,6 +33,14 @@ as passed; `sam-jail config set security.check_before_launch true`, then a
 raw `--ro-bind` of a hidden folder in `advanced.extra_backend_args`, must make
 `sam-jail run` refuse to start with "sandbox check failed".
 
+## 0b. Real AppImages
+
+`WORK=… tests/real-apps/run.sh App.AppImage …` runs the whole flow
+(recommendation, Create Sandbox, sandbox check, test start, hints, repair
+steps) on real AppImages in an invisible KWin session with a fake home;
+`python3 tests/real-apps/analyze.py "$WORK"` summarises it. Results of the
+first run: [real-apps-2026-11-10.md](real-apps-2026-11-10.md).
+
 ## 1. Environment
 
 - [ ] `sam-jail doctor`: everything is `ok`. The sandbox test passes, and
