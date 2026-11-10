@@ -40,7 +40,10 @@ git archive --format=tar --prefix="$name/" "$ref" | gzip -9n > "$out/$name.tar.g
 mkdir -p "$work/$name/.cargo"
 git archive --format=tar "$ref" Cargo.toml Cargo.lock crates | tar -x -C "$work/$name"
 (cd "$work/$name" && cargo vendor --locked --versioned-dirs vendor > .cargo/config.toml)
-tar -C "$work" -cJf "$out/$name-vendor.tar.xz" "$name/vendor" "$name/.cargo/config.toml"
+# Reproducible: the same tag always gives the same file.
+stamp=$(git log -1 --format=%ct "$ref")
+tar -C "$work" --sort=name --mtime="@$stamp" --owner=0 --group=0 --numeric-owner \
+    -cf - "$name/vendor" "$name/.cargo/config.toml" | xz -9 -T1 > "$out/$name-vendor.tar.xz"
 
 (cd "$out" && sha256sum "$name.tar.gz" "$name-vendor.tar.xz" > SHA256SUMS)
 echo "Wrote $out/$name.tar.gz, $out/$name-vendor.tar.xz and SHA256SUMS ($ref)"
