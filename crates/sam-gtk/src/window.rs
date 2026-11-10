@@ -4,8 +4,7 @@
 //! or SAM's preferences, presets or diagnostics.
 
 use std::cell::{OnceCell, RefCell};
-use std::collections::HashMap;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
@@ -836,17 +835,7 @@ impl App {
             return true;
         }
         let c = r.get("check").cloned().unwrap_or(json!({}));
-        let mut text = String::new();
-        let removes = util::list_of(&c, "removes_needed");
-        if !removes.is_empty() {
-            text.push_str(&format!("This preset removes permissions the app likely needs: {}.\n\n", removes.join(", ")));
-        }
-        let adds = util::list_of(&c, "adds_dangerous");
-        if !adds.is_empty() {
-            text.push_str(&format!("It adds high-risk permissions: {}.\n\n", adds.join(", ")));
-        }
-        text.push_str(&format!("Risk changes from {} to {}.", util::str_of(&c, "risk_before"), util::str_of(&c, "risk_after")));
-        if !confirm(&self.window, &format!("Apply “{name}” Anyway?"), &text, "Apply", false).await {
+        if !self.confirm_preset(name, &c).await {
             return false;
         }
         match self.backend.call(&["preset", "apply", name, app_id, "--yes"], None).await {
@@ -855,6 +844,21 @@ impl App {
         }
         self.refresh_registered().await;
         true
+    }
+
+    /// Asks before a preset that removes needed or adds high-risk access.
+    pub async fn confirm_preset(&self, name: &str, c: &Value) -> bool {
+        let mut text = String::new();
+        let removes = util::list_of(c, "removes_needed");
+        if !removes.is_empty() {
+            text.push_str(&format!("This preset removes permissions the app likely needs: {}.\n\n", removes.join(", ")));
+        }
+        let adds = util::list_of(c, "adds_dangerous");
+        if !adds.is_empty() {
+            text.push_str(&format!("It adds high-risk permissions: {}.\n\n", adds.join(", ")));
+        }
+        text.push_str(&format!("Risk changes from {} to {}.", util::str_of(c, "risk_before"), util::str_of(c, "risk_after")));
+        confirm(&self.window, &format!("Apply “{name}” Anyway?"), &text, "Apply", false).await
     }
 
     /// Re-extracts an app (after the AppImage changed).
@@ -1016,7 +1020,3 @@ pub async fn confirm(win: &adw::ApplicationWindow, heading: &str, body: &str, ac
     d.choose_future(Some(win)).await == "ok"
 }
 
-#[allow(dead_code)]
-pub type WeakApp = Weak<App>;
-#[allow(dead_code)]
-pub type Map = HashMap<String, Value>;

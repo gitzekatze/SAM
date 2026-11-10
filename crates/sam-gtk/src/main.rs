@@ -123,8 +123,36 @@ fn parse_args() -> Options {
 fn main() -> glib::ExitCode {
     let opts = parse_args();
     glib::set_application_name("SAM");
-    let app = adw::Application::builder().application_id(APP_ID).flags(gio::ApplicationFlags::NON_UNIQUE).build();
+    // One window per set of SAM data: starting SAM again brings the open
+    // window forward (and hands over AppImages given on the command line),
+    // so two windows never write the same configuration. Screenshot runs and
+    // runs with their own data folders (tests) stay separate.
+    let separate = opts.screenshot.is_some() || std::env::var_os("SAM_CONFIG_DIR").is_some() || std::env::var_os("SAM_DATA_DIR").is_some();
+    let flags = if separate { gio::ApplicationFlags::NON_UNIQUE } else { gio::ApplicationFlags::HANDLES_OPEN };
+    let app = adw::Application::builder().application_id(APP_ID).flags(flags).build();
+    if !separate && app.register(gio::Cancellable::NONE).is_ok() && app.is_remote() {
+        if opts.startup.files.is_empty() {
+            app.activate();
+        } else {
+            let files: Vec<gio::File> = opts.startup.files.iter().map(gio::File::for_path).collect();
+            app.open(&files, "");
+        }
+        return glib::ExitCode::SUCCESS;
+    }
     let opts = std::rc::Rc::new(std::cell::RefCell::new(Some(opts)));
+    // The window, once open: a second start brings it forward.
+    let current: std::rc::Rc<std::cell::RefCell<Option<std::rc::Rc<window::App>>>> = Default::default();
+    let cur = current.clone();
+    app.connect_open(move |app, files, _| {
+        let paths: Vec<String> = files.iter().filter_map(|f| f.path()).map(|p| p.to_string_lossy().into_owned()).collect();
+        match cur.borrow().as_ref() {
+            Some(win) => {
+                win.window.present();
+                win.add_files(paths);
+            }
+            None => app.activate(),
+        }
+    });
     app.connect_startup(|_| {
         desktop_identity();
         gtk::Window::set_default_icon_name(APP_ID);
@@ -156,8 +184,14 @@ fn main() -> glib::ExitCode {
         }
     });
     app.connect_activate(move |app| {
-        let Some(o) = opts.borrow_mut().take() else { return };
+        let Some(o) = opts.borrow_mut().take() else {
+            if let Some(win) = current.borrow().as_ref() {
+                win.window.present();
+            }
+            return;
+        };
         let win = window::App::new(app);
+        *current.borrow_mut() = Some(win.clone());
         if o.screenshot.is_some() {
             win.window.set_default_size(o.size.0, o.size.1);
         }
@@ -173,8 +207,10 @@ fn main() -> glib::ExitCode {
         }
         // Keep the window state alive for the lifetime of the window.
         let keep = std::cell::RefCell::new(Some(win.clone()));
+        let cur = current.clone();
         win.window.connect_close_request(move |_| {
             keep.borrow_mut().take();
+            cur.borrow_mut().take();
             glib::Propagation::Proceed
         });
     });

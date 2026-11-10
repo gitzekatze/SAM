@@ -897,6 +897,26 @@ impl Sam {
         Ok(PresetApply { preset: preset.name, check, applied: true })
     }
 
+    /// The preset check for an AppImage without a sandbox: against SAM's
+    /// recommendation for it and the settings shown now (`current`, else the
+    /// recommendation). Nothing is changed.
+    pub fn check_preset_preview(&self, path: &Path, preset_name: &str, current: Option<PermissionSet>) -> Result<(Preset, sam_profile::PresetCheck)> {
+        let path = fs::canonicalize(path).with_context(|| format!("{} does not exist", path.display()))?;
+        let preset = find_preset(&self.paths, preset_name)?.with_context(|| format!("unknown preset '{preset_name}'"))?;
+        let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
+        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let rec = recommend(&md, &file_name, None);
+        let entry = AppEntry {
+            source_path: path,
+            metadata: md,
+            profile: SandboxProfile { permissions: current.unwrap_or_else(|| rec.permissions.clone()), ..Default::default() },
+            recommended: rec.permissions,
+            ..Default::default()
+        };
+        let check = check_preset(&entry, &preset);
+        Ok((preset, check))
+    }
+
     pub fn save_preset_from_app(&self, query: &str, name: &str, description: &str) -> Result<Preset> {
         let e = self.resolve(query)?;
         if sam_profile::builtin_presets().iter().any(|b| b.name.eq_ignore_ascii_case(name)) {

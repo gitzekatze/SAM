@@ -432,9 +432,31 @@ impl AppPage {
                     }
                 });
             } else if let Some(p) = preset.get("permissions").cloned() {
-                // No sandbox yet: the preset replaces the settings shown.
-                app.toast(&format!("Settings from “{name}”"));
-                me.on_perms_edited(p);
+                // No sandbox yet: the preset replaces the settings shown,
+                // after the same check a sandboxed app gets.
+                let current = me.pending.borrow().as_ref().map(|v| v.to_string());
+                let path = me.path.clone();
+                glib::spawn_future_local(async move {
+                    let mut args = vec!["preset", "check", name.as_str(), path.as_str()];
+                    if current.is_some() {
+                        args.push("--current-stdin");
+                    }
+                    match app.backend.call(&args, current).await {
+                        Ok(r) if util::bool_of(&r, "needs_confirmation") => {
+                            let c = r.get("check").cloned().unwrap_or_default();
+                            if !app.confirm_preset(&name, &c).await {
+                                return;
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            app.report_error(&e);
+                            return;
+                        }
+                    }
+                    app.toast(&format!("Settings from “{name}”"));
+                    me.on_perms_edited(p);
+                });
             }
         });
         let w = Rc::downgrade(self);

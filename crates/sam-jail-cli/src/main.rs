@@ -287,6 +287,15 @@ enum PresetCmd {
         #[arg(long, short)]
         yes: bool,
     },
+    /// What applying a preset would change for an AppImage without a
+    /// sandbox (the settings shown now as a PermissionSet on stdin with
+    /// --current-stdin). Changes nothing.
+    Check {
+        name: String,
+        appimage: PathBuf,
+        #[arg(long)]
+        current_stdin: bool,
+    },
     /// Save an app's current permissions as a new preset.
     Save {
         app: String,
@@ -1166,6 +1175,19 @@ fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                 } else {
                     println!("Not applied. Re-run with --yes to confirm.");
                 }
+            });
+        }
+        PresetCmd::Check { name, appimage, current_stdin } => {
+            let current: Option<PermissionSet> = if current_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
+            let (p, c) = app.check_preset_preview(&appimage, &name, current)?;
+            out.emit(&json!({"preset": p.name, "permissions": p.permissions, "check": c, "needs_confirmation": c.needs_confirmation()}), || {
+                for s in &c.removes_needed {
+                    println!("  {} removes {s}, which the app likely needs", paint("warning:", "33"));
+                }
+                for s in &c.adds_dangerous {
+                    println!("  {} adds high-risk permission: {s}", paint("warning:", "31"));
+                }
+                println!("'{}': risk {} → {}", p.name, c.risk_before, c.risk_after);
             });
         }
         PresetCmd::Save { app: q, name, description } => {
