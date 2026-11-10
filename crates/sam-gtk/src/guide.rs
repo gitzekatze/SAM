@@ -59,7 +59,10 @@ fn render(md: &str, root: &gtk::Box) {
     let mut heading: Option<HeadingLevel> = None;
     let mut code: Option<String> = None;
     let mut table: Option<Table> = None;
+    // Open list items: their text so far, and whether their row is shown
+    // already (an item with a nested list shows its row before the list).
     let mut item_text: Vec<String> = Vec::new();
+    let mut item_shown: Vec<bool> = Vec::new();
 
     let push = |frames: &Vec<Frame>, w: &gtk::Widget| frames.last().unwrap().container.append(w);
 
@@ -115,6 +118,22 @@ fn render(md: &str, root: &gtk::Box) {
                 frames.pop();
             }
             Event::Start(Tag::List(start)) => {
+                // A nested list: show the parent item's row first, or its
+                // text would be lost (and its bullet left empty).
+                if let (Some(t), Some(shown)) = (item_text.last_mut(), item_shown.last_mut()) {
+                    if !*shown {
+                        let mut text = std::mem::take(t);
+                        if !inline.is_empty() {
+                            if !text.is_empty() {
+                                text.push('\n');
+                            }
+                            text.push_str(&inline);
+                        }
+                        inline.clear();
+                        push(&frames, item_row(&mut lists, &text).upcast_ref());
+                        *shown = true;
+                    }
+                }
                 lists.push(List { ordered: start });
             }
             Event::End(TagEnd::List(_)) => {
@@ -122,10 +141,12 @@ fn render(md: &str, root: &gtk::Box) {
             }
             Event::Start(Tag::Item) => {
                 item_text.push(String::new());
+                item_shown.push(false);
                 inline.clear();
             }
             Event::End(TagEnd::Item) => {
                 let mut text = item_text.pop().unwrap_or_default();
+                let shown = item_shown.pop().unwrap_or(false);
                 if !inline.is_empty() {
                     if !text.is_empty() {
                         text.push('\n');
@@ -133,23 +154,9 @@ fn render(md: &str, root: &gtk::Box) {
                     text.push_str(&inline);
                 }
                 inline.clear();
-                let depth = lists.len().saturating_sub(1) as i32;
-                let marker = match lists.last_mut().and_then(|l| l.ordered.as_mut()) {
-                    Some(n) => {
-                        let m = format!("{n}.");
-                        *n += 1;
-                        m
-                    }
-                    None => "•".to_string(),
-                };
-                let row = gtk::Box::builder().spacing(10).margin_start(4 + depth * 22).build();
-                let bullet = gtk::Label::builder().label(&marker).valign(gtk::Align::Start).width_chars(2).xalign(1.0).build();
-                bullet.add_css_class("sam-bullet");
-                let body = text_label(&text);
-                body.set_hexpand(true);
-                row.append(&bullet);
-                row.append(&body);
-                push(&frames, row.upcast_ref());
+                if !shown {
+                    push(&frames, item_row(&mut lists, &text).upcast_ref());
+                }
             }
             Event::Start(Tag::CodeBlock(_)) => code = Some(String::new()),
             Event::End(TagEnd::CodeBlock) => {
@@ -221,6 +228,27 @@ fn render(md: &str, root: &gtk::Box) {
     }
 }
 
+/// One list item: its marker (bullet or number) and text, indented by depth.
+fn item_row(lists: &mut [List], text: &str) -> gtk::Box {
+    let depth = lists.len().saturating_sub(1) as i32;
+    let marker = match lists.last_mut().and_then(|l| l.ordered.as_mut()) {
+        Some(n) => {
+            let m = format!("{n}.");
+            *n += 1;
+            m
+        }
+        None => if depth > 0 { "◦" } else { "•" }.to_string(),
+    };
+    let row = gtk::Box::builder().spacing(10).margin_start(4 + depth * 22).build();
+    let bullet = gtk::Label::builder().label(&marker).valign(gtk::Align::Start).width_chars(2).xalign(1.0).build();
+    bullet.add_css_class("sam-bullet");
+    let body = text_label(text);
+    body.set_hexpand(true);
+    row.append(&bullet);
+    row.append(&body);
+    row
+}
+
 fn table_widget(t: &Table) -> gtk::Widget {
     let grid = gtk::Grid::builder().column_spacing(0).row_spacing(0).hexpand(true).build();
     for (r, row) in t.rows.iter().enumerate() {
@@ -247,6 +275,22 @@ fn table_widget(t: &Table) -> gtk::Widget {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn nested_items_keep_their_text() {
+        // The parent text must be in a row before the nested list's rows.
+        let md = "- **Parent** text\n  - child one\n  - child two\n- last\n";
+        let mut texts = Vec::new();
+        let mut cur = String::new();
+        for ev in pulldown_cmark::Parser::new(md) {
+            match ev {
+                pulldown_cmark::Event::Text(t) => cur.push_str(&t),
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::List(_)) | pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Item) if !cur.is_empty() => texts.push(std::mem::take(&mut cur)),
+                _ => {}
+            }
+        }
+        assert_eq!(texts, ["Parent text", "child one", "child two", "last"]);
+    }
+
     #[test]
     fn guide_parses() {
         // Every block event must be balanced; pulldown-cmark guarantees

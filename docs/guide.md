@@ -16,7 +16,10 @@
 | Confirm the sandbox really applies your settings | **Check** next to Launch, results under **Sandbox Check** |
 | Fix an app that does not start | Its page → **Troubleshooting** |
 | Reuse settings for other apps | Its page → **Presets** → *Save these settings as a preset* |
+| Find out what a label means | Hover over it |
 | Remove a sandbox | **Remove Sandbox** under the Launch button |
+| Close an app that hides in the tray | **Remove Sandbox** offers *Close and Remove*, or `sam-jail stop app` |
+| Go back to the start page | Click SAM's logo at the top left |
 
 ---
 
@@ -47,7 +50,13 @@
 
 **Right column**
 
-- **The header** shows the app, its file, its status, its risk and **Launch** (or **Create Sandbox**) with **Remove Sandbox** below it.
+- **The header** shows the app, its file and labels for its state. Hover over a label to see what it means.
+  - *Sandboxed* (green) or *Not sandboxed*.
+  - The risk, for example *High risk · Network +1*: the level and the permission that sets it (see Overview below).
+  - *Bubblewrap* (blue): the sandbox technology.
+  - *Checked* or *Check failed*: the result of the last sandbox check.
+  - Anything that needs attention, such as *Needs review* or *May not start*.
+- **Check**, **Launch** (or **Create Sandbox**) and **Remove Sandbox** sit on the right of the header. In a narrow window, Check moves above Launch.
 - **Below the header** come all settings and tools for the app, always visible. Settings that do not apply right now are greyed out, never hidden.
 - **SAM's logo** at the top left opens the start page (no AppImage selected).
 - The **☰ menu** at the top left opens this guide, **Presets**, **Diagnostics**, **Preferences** and *About SAM* in the right column.
@@ -172,7 +181,7 @@ sam-jail remove app --keep-data             # remove, keep its data
 sam-jail stop app                           # close a running app
 ```
 
-Run `sam-jail --help` for every command.
+Run `sam-jail --help` for every command. In the AppImage, the same commands are `SAM.AppImage cli …`, for example `./SAM-0.1.0-x86_64.AppImage cli doctor`.
 
 ---
 
@@ -185,6 +194,16 @@ Keep in mind:
 - A sandbox limits what an app can reach; it does not make a malicious app harmless if you give it broad access such as full home, X11, the full session bus or the keyring.
 - Prefer **Wayland** over X11, **Filtered** D-Bus over full access, and single folders over full home.
 - Only allow risky settings for apps you trust. SAM asks before granting the dangerous ones.
+
+---
+
+## Installing SAM
+
+- **Arch / CachyOS:** the packages `sam-jail` (window) and `sam-jail-cli` (command line).
+- **Fedora:** the RPM packages of the same names.
+- **Debian, Ubuntu and everything else:** the AppImage. It uses the GTK 4 and libadwaita installed on your system, and Bubblewrap must be installed too. If something is missing, it says which packages to install.
+
+> **Moved the AppImage?** Menu entries SAM made point at the AppImage file. Open SAM once from its new place and it updates them.
 
 ---
 
