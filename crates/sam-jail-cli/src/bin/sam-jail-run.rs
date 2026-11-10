@@ -66,6 +66,21 @@ fn launch(args: Vec<String>) -> Result<i32> {
     let app = Sam::open()?;
     let mut entry = app.registry().get(&id)?.or_else(|| app.resolve(&id).ok()).with_context(|| format!("no registered app '{id}'"))?;
     let host = sam_core::HostInfo::probe();
+    if app.config.security.check_before_launch {
+        // Only when the settings, SAM or this computer changed since the
+        // last passing check; a failed check stops the start.
+        let key = sam_runner::verify::check_key(&entry, &app.config, &host);
+        let fresh = entry.last_check.as_ref().is_some_and(|c| c.key == key && c.failed.is_empty());
+        if !fresh {
+            let out = app.verify(&entry.id).context("checking the sandbox before starting")?;
+            if !out.record.failed.is_empty() {
+                let list = out.record.failed.join(", ");
+                notify(&format!("{} was not started", entry.display_name()), &format!("The sandbox check found settings that do not apply: {list}.\nOpen SAM → {} → Sandbox Check.", entry.display_name()));
+                bail!("sandbox check failed: {list}");
+            }
+            entry.last_check = Some(out.record);
+        }
+    }
     let rec = run(&mut entry, &LaunchOptions { args: rest, ..Default::default() }, &app.config, &app.paths, &host)?;
     if rec.sandbox_failure {
         notify(&format!("{} failed to start", entry.display_name()), &format!("{}\nOpen SAM → {} → Details & Repair.", rec.summary, entry.display_name()));

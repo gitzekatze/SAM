@@ -23,6 +23,16 @@ permission and checks from inside the sandbox what it can see. Put
 seccomp are applied too; `SAM_MATRIX_DEBUG=1` with `-- --nocapture` prints
 every launch log.
 
+`cargo test -p sam-runner --test verify` covers the sandbox check
+(`sam-jail verify`): it passes for a correct sandbox, reports a folder leaked
+through a raw Bubblewrap argument, and follows the settings (syscall filter
+off is expected off). Same `PATH` requirement as above.
+
+By hand: `sam-jail verify <app>` on a few real apps should report every check
+as passed; `sam-jail config set security.check_before_launch true`, then a
+raw `--ro-bind` of a hidden folder in `advanced.extra_backend_args`, must make
+`sam-jail run` refuse to start with "sandbox check failed".
+
 ## 1. Environment
 
 - [ ] `sam-jail doctor`: everything is `ok`. The sandbox test passes, and

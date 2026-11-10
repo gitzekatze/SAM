@@ -221,6 +221,22 @@ pub struct DependencyReport {
     pub notes: Vec<String>,
 }
 
+/// Outcome of a sandbox check: the sandbox was started with a probe
+/// instead of the app, and every setting was checked from inside.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CheckRecord {
+    pub at: i64,
+    /// Settings, SAM version and relevant host state the check applied to;
+    /// a different key means the check is out of date.
+    pub key: String,
+    pub passed: usize,
+    /// Titles of the checks that failed.
+    pub failed: Vec<String>,
+    /// Checks that could not run on this computer.
+    pub skipped: usize,
+}
+
 /// Per-app sandbox settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -315,6 +331,9 @@ pub struct AppEntry {
     pub reviewed: bool,
     /// Permissions newly requested after an update that need confirmation.
     pub pending_changes: Vec<String>,
+    /// Result of the last sandbox check (`sam-jail verify`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_check: Option<CheckRecord>,
     pub last_launch: Option<LaunchRecord>,
     pub desktop_entry: Option<PathBuf>,
     pub last_error: Option<String>,

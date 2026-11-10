@@ -31,6 +31,9 @@ pub struct SandboxSpec {
     pub landlock: Option<LandlockSpec>,
     #[serde(default)]
     pub seccomp: Option<SeccompSpec>,
+    /// Sandbox check: run these checks instead of the app.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe: Option<crate::probe::ProbePlan>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -106,6 +109,12 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
     }
     // Report to SAM on a private fd, then close it before the app runs, so
     // the app cannot forge or read the report.
+    if let Some(plan) = &spec.probe {
+        // Every layer is in place: check what the app would get, report, stop.
+        let r = crate::probe::run(plan, &report.join("; "));
+        println!("{}{}", crate::probe::REPORT_MARKER, serde_json::to_string(&r)?);
+        std::process::exit(0);
+    }
     if let Some(fd) = std::env::var("SAM_STATUS_FD").ok().and_then(|v| v.parse::<i32>().ok()) {
         let line = format!("{}\n", report.join("; "));
         unsafe {

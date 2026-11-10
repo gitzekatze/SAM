@@ -680,6 +680,18 @@ impl Sam {
         Ok(e)
     }
 
+    /// Runs the sandbox check and stores its result with the app.
+    pub fn verify(&self, query: &str) -> Result<crate::verify::Outcome> {
+        let e = self.resolve(query)?;
+        let out = crate::verify::verify(&e, &self.config, &self.paths, &self.host())?;
+        let reg = self.registry();
+        if let Some(mut fresh) = reg.get(&e.id)? {
+            fresh.last_check = Some(out.record.clone());
+            reg.save(&mut fresh)?;
+        }
+        Ok(out)
+    }
+
     /// Replaces the extra arguments always passed to the app.
     pub fn set_args(&self, query: &str, args: Vec<String>) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;

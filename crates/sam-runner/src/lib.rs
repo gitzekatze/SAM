@@ -15,9 +15,12 @@ pub mod doctor;
 pub mod kernel;
 pub mod launch;
 pub mod netns;
+pub mod dbus_check;
 pub mod ops;
+pub mod probe;
 pub mod repair;
 pub mod select;
+pub mod verify;
 
 /// Locate the `sam-jail-run` helper (used for desktop launchers and as the
 /// in-sandbox Landlock helper).

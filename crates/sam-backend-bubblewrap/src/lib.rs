@@ -749,7 +749,7 @@ fn gpu_module_dirs(sys_module: &Path) -> Vec<PathBuf> {
 /// Joystick device nodes: `js*`, plus `event*` nodes udev tagged as a
 /// joystick (`E:ID_INPUT_JOYSTICK=1` in `/run/udev/data/c13:<minor>`).
 /// Keyboards and mice are left out, so the app cannot log keystrokes.
-fn gamepad_nodes(dev_input: &Path, udev_data: &Path) -> Vec<PathBuf> {
+pub fn gamepad_nodes(dev_input: &Path, udev_data: &Path) -> Vec<PathBuf> {
     use std::os::unix::fs::{FileTypeExt, MetadataExt};
     let mut out = Vec::new();
     let Ok(rd) = fs::read_dir(dev_input) else { return out };

@@ -84,8 +84,16 @@ plain-language explanation and a risk level, and risky choices show a warning.
     the sandbox.
   - Files you open with an app can be given read-only (the default for media
     players) or read/write.
+- **Sandbox check:** starts an app's real sandbox with a test program
+  instead of the app and confirms from inside that every setting applies
+  (folders hidden, read-only or writable, network, devices, display, sound,
+  reachable D-Bus names, Landlock, syscall filter, no privileges). Results
+  are stored with the app; optionally SAM checks before every start when
+  something changed and refuses to start on a failed check.
 - **Desktop integration:** menu launchers that always start the app through
   `sam-jail-run`, plus cached icons.
+- **User guide** built into the window (☰ → *User Guide*), from
+  [docs/guide.md](docs/guide.md).
 - **Two-column window, like Flatseal:**
   - **Left:** the AppImage locations (folders and single files you add,
     plus an optional Downloads switch) pinned at the top, and below them
@@ -155,6 +163,7 @@ sam-jail set krita network.mode none     # change one permission
 sam-jail preset apply "Image Editor" krita
 sam-jail review krita                    # accept the profile
 sam-jail run krita                       # or use the menu launcher
+sam-jail verify krita                    # sandbox check: do the settings really apply?
 sam-jail doctor                          # check the system
 sam-jail remove krita                    # remove the sandbox (the AppImage stays)
 ```

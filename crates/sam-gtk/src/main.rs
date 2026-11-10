@@ -12,6 +12,7 @@
 
 mod app_page;
 mod backend;
+mod guide;
 mod pages;
 mod perms;
 mod util;
@@ -49,6 +50,20 @@ const CSS: &str = r#"
 .sam-mono { font-size: 0.86em; background: transparent; }
 
 button.sam-remove { color: @error_color; font-size: 0.9em; padding: 2px 10px; }
+
+/* User guide */
+.sam-guide label { line-height: 1.35; }
+.sam-callout {
+    background-color: alpha(@accent_bg_color, 0.12);
+    border-left: 4px solid @accent_bg_color;
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+.sam-code { padding: 12px 14px; }
+.sam-bullet { color: @accent_color; font-weight: 700; }
+.sam-table .sam-td { padding: 8px 12px; border-bottom: 1px solid alpha(@window_fg_color, 0.08); }
+.sam-table .sam-td-last { border-bottom: none; }
+.sam-table .sam-th { font-weight: 700; background-color: alpha(@window_fg_color, 0.05); }
 button.sam-remove:hover { background-color: alpha(@error_color, 0.12); }
 textview.sam-mono text { background: transparent; }
 "#;
@@ -94,6 +109,8 @@ fn main() -> glib::ExitCode {
     let app = adw::Application::builder().application_id(APP_ID).flags(gio::ApplicationFlags::NON_UNIQUE).build();
     let opts = std::rc::Rc::new(std::cell::RefCell::new(Some(opts)));
     app.connect_startup(|_| {
+        desktop_identity();
+        gtk::Window::set_default_icon_name(APP_ID);
         let css = gtk::CssProvider::new();
         css.load_from_string(CSS);
         if let Some(display) = gdk::Display::default() {
@@ -133,6 +150,53 @@ fn main() -> glib::ExitCode {
 
 /// Saves the window, plus (as `<file>-content.png`) the full scrollable
 /// content of the right column, which is often taller than the screen.
+/// On Wayland the taskbar finds a window's icon through the desktop file
+/// named after the app ID. Installed packages ship it; when SAM runs from a
+/// source checkout there is none and the taskbar shows a generic icon. So
+/// SAM then registers a hidden desktop entry and its icon for itself in the
+/// user's data folder, and removes them again once a system-wide desktop
+/// file exists. Skipped when SAM runs with its own folders (tests).
+fn desktop_identity() {
+    if std::env::var_os("SAM_CONFIG_DIR").is_some() || std::env::var_os("SAM_DATA_DIR").is_some() {
+        return;
+    }
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+    let data_home = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".local/share"));
+    let name = format!("{APP_ID}.desktop");
+    let ours = data_home.join("applications").join(&name);
+    let icon = data_home.join("icons/hicolor/scalable/apps").join(format!("{APP_ID}.svg"));
+    let system = std::env::var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".into())
+        .split(':')
+        .any(|d| std::path::Path::new(d).join("applications").join(&name).is_file());
+    let is_ours = std::fs::read_to_string(&ours).is_ok_and(|t| t.contains("X-SAM-Self=true"));
+    if system {
+        if is_ours {
+            let _ = std::fs::remove_file(&ours);
+            let _ = std::fs::remove_file(&icon);
+        }
+        return;
+    }
+    if ours.exists() && !is_ours {
+        return; // A desktop file the user made: leave it alone.
+    }
+    let Ok(exe) = std::env::current_exe() else { return };
+    let entry = format!(
+        "[Desktop Entry]\nType=Application\nName=SAM\nComment=Sandbox AppImages and manage their permissions\nExec=\"{}\" %F\nIcon={APP_ID}\nTerminal=false\nNoDisplay=true\nStartupWMClass={APP_ID}\nX-SAM-Self=true\n",
+        exe.display()
+    );
+    if std::fs::read_to_string(&ours).ok().as_deref() != Some(entry.as_str()) {
+        let _ = std::fs::create_dir_all(ours.parent().unwrap());
+        let _ = std::fs::write(&ours, entry);
+    }
+    if !icon.exists() {
+        let _ = std::fs::create_dir_all(icon.parent().unwrap());
+        let _ = std::fs::write(&icon, include_bytes!("../../../data/io.github.gitzekatze.SAM.svg"));
+    }
+}
+
 fn save_screenshot(window: &adw::ApplicationWindow, file: &str) {
     render_widget(window.upcast_ref(), window.upcast_ref(), file);
     if let Some(content) = window.content().and_then(|c| last_viewport_child(&c)) {

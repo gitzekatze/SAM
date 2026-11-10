@@ -103,6 +103,10 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     g.add(&ebpf);
     pref.add(&g);
 
+    let g = adw::PreferencesGroup::builder().title("Sandbox Check").build();
+    switch(&g, "security.check_before_launch", "Check the sandbox before each start", "Confirms that every setting applies before an app starts. Runs only when its settings, SAM or this computer changed since the last passing check, and takes about a second. A failed check stops the start.");
+    pref.add(&g);
+
     let g = adw::PreferencesGroup::builder().title("Dependency Detection").build();
     switch(&g, "dependencies.static_analysis", "Analyze AppImages when creating a sandbox", "Inspects the bundled programs and libraries without running them.");
     switch(&g, "dependencies.dynamic_fallback", "Allow diagnostic runs", "Run an app once under strace to find missing resources (app → Troubleshooting → Diagnose missing resources).");

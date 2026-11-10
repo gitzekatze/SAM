@@ -76,6 +76,16 @@ Process isolation:
   - Shell startup files, `autostart`, `systemd --user` and
     `~/.local/share/applications` stay read-only. These are common ways for
     malware to persist.
+- **Sandbox check** (`sam-jail verify`, *Check Now* in the window): the same
+  launch path as a real start, but the helper runs a test program after
+  Landlock and the syscall filter are in place instead of executing the app.
+  It compares what it observes inside (folder identity by device and inode,
+  write tests with invisible `O_TMPFILE` files, network routes, device nodes,
+  D-Bus names via `GetNameOwner`, `NoNewPrivs`, capabilities, user
+  namespaces, seccomp and Landlock state) with what the settings promise.
+  `security.check_before_launch` repeats it before a start whenever SAM's
+  version, the app's settings, the security configuration or the host
+  changed, and refuses the start on any failure.
 
 ## What SAM never trusts
 

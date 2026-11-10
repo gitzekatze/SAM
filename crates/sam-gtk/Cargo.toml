@@ -13,4 +13,5 @@ path = "src/main.rs"
 gtk = { package = "gtk4", version = "0.11", features = ["v4_12"] }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 serde_json.workspace = true
+pulldown-cmark = { version = "0.13", default-features = false }
 sam-core.workspace = true

@@ -78,6 +78,10 @@ pub struct Security {
     /// Baseline syscall filter for every Bubblewrap sandbox (like Flatpak's).
     pub baseline_seccomp: bool,
     pub experimental_ebpf: bool,
+    /// Run the sandbox check before an app starts (only when its settings,
+    /// SAM or this computer changed since the last passing check); a failed
+    /// check stops the start.
+    pub check_before_launch: bool,
 }
 
 impl Default for Security {
@@ -89,6 +93,7 @@ impl Default for Security {
             experimental_seccomp: false,
             baseline_seccomp: true,
             experimental_ebpf: false,
+            check_before_launch: false,
         }
     }
 }

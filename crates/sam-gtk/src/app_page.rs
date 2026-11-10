@@ -57,6 +57,12 @@ pub struct AppPage {
     hide_row: adw::ActionRow,
     hide_switch: gtk::Switch,
     menu_state: RefCell<Option<Value>>,
+    check_group: adw::PreferencesGroup,
+    check_summary: adw::ActionRow,
+    check_button: gtk::Button,
+    check_badge: gtk::Label,
+    check_rows: RefCell<Vec<gtk::Widget>>,
+    check_report: RefCell<Option<Value>>,
     trouble: adw::PreferencesGroup,
     details: adw::PreferencesGroup,
     command_group: adw::PreferencesGroup,
@@ -110,6 +116,7 @@ impl AppPage {
         state_badge.set_visible(false);
         let risk_badge = util::badge("", "neutral");
         let sandbox_badge = util::badge("Bubblewrap", "neutral");
+        let check_badge = util::badge("", "good");
         badges.append(&status_badge);
         status_badge.parent().unwrap().set_can_focus(false);
         badges.append(&state_badge);
@@ -117,6 +124,7 @@ impl AppPage {
         badges.append(&risk_badge);
         risk_badge.parent().unwrap().set_can_focus(false);
         badges.append(&sandbox_badge);
+        badges.append(&check_badge);
         sandbox_badge.parent().unwrap().set_can_focus(false);
         meta.append(&title);
         meta.append(&subtitle);
@@ -193,6 +201,19 @@ impl AppPage {
         menu_group.add(&hide_row);
         pref.add(&menu_group);
 
+        // Sandbox check: start the sandbox with a probe and confirm every setting.
+        let check_group = adw::PreferencesGroup::builder()
+            .title("Sandbox Check")
+            .description("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed.")
+            .build();
+        let check_summary = adw::ActionRow::builder().title("Not checked yet").build();
+        check_summary.add_prefix(&gtk::Image::from_icon_name("security-high-symbolic"));
+        let check_button = gtk::Button::builder().label("Check Now").valign(gtk::Align::Center).name("check-button").build();
+        check_button.add_css_class("suggested-action");
+        check_summary.add_suffix(&check_button);
+        check_group.add(&check_summary);
+        pref.add(&check_group);
+
         let trouble = adw::PreferencesGroup::builder().title("Troubleshooting").description("When the app does not start or does not work as expected.").build();
         let details = adw::PreferencesGroup::builder().title("Details").build();
         let command_group = adw::PreferencesGroup::builder().title("Sandbox Command").description("The Bubblewrap command SAM runs for this app.").build();
@@ -251,6 +272,12 @@ impl AppPage {
             preset_row,
             save_preset_row,
             presets: RefCell::new(Vec::new()),
+            check_group,
+            check_summary,
+            check_button,
+            check_badge,
+            check_rows: RefCell::new(Vec::new()),
+            check_report: RefCell::new(None),
             launch_group,
             args_row,
             args_chips,
@@ -434,6 +461,14 @@ impl AppPage {
         }
         self.menu_button.set_menu_model(Some(&menu));
 
+        // Sandbox check.
+        let w = Rc::downgrade(self);
+        self.check_button.connect_clicked(move |_| {
+            if let Some(me) = w.upgrade() {
+                me.run_check();
+            }
+        });
+
         // Launch arguments.
         let w = Rc::downgrade(self);
         let add_args = move || {
@@ -502,6 +537,114 @@ impl AppPage {
         });
 
         self.load_presets();
+    }
+
+    fn run_check(self: &Rc<Self>) {
+        let Some(app) = self.app() else { return };
+        self.check_button.set_sensitive(false);
+        self.check_summary.set_title("Checking…");
+        self.check_summary.set_subtitle("Starting the sandbox with the test program.");
+        let me = self.clone();
+        glib::spawn_future_local(async move {
+            match app.backend.call(&["verify", &me.app_id], None).await {
+                Ok(r) => {
+                    let failed = r.get("record").and_then(|x| x.get("failed")).and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+                    app.toast(&if failed == 0 { "Sandbox check passed: every setting applies".to_string() } else { format!("Sandbox check: {failed} setting(s) do not apply") });
+                    *me.check_report.borrow_mut() = r.get("report").cloned();
+                }
+                Err(e) => app.report_error(&e),
+            }
+            me.check_button.set_sensitive(true);
+            me.reload();
+            app.refresh_registered().await;
+        });
+    }
+
+    /// Status row, header badge and the results of the last check.
+    fn render_check(self: &Rc<Self>) {
+        for w in self.check_rows.borrow_mut().drain(..) {
+            self.check_group.remove(&w);
+        }
+        let sandboxed = self.sandboxed() && self.entry().is_some();
+        self.check_button.set_sensitive(sandboxed);
+        if !sandboxed {
+            self.check_group.set_description(Some("Starts this app's sandbox with a test program and confirms that every setting really applies. Available once the sandbox exists."));
+            self.check_summary.set_title("Not checked yet");
+            self.check_summary.set_subtitle("");
+            set_badge_visible(&self.check_badge, false);
+            return;
+        }
+        let rec = self.entry().and_then(|e| e.get("last_check").cloned()).filter(|v| !v.is_null());
+        let current = self.info.borrow().as_ref().is_some_and(|i| util::bool_of(i, "check_current"));
+        match &rec {
+            None => {
+                self.check_summary.set_title("Not checked yet");
+                self.check_summary.set_subtitle("Check that the sandbox gives the app exactly what its settings say.");
+                set_badge_visible(&self.check_badge, false);
+            }
+            Some(r) => {
+                let passed = util::get(r, "passed").and_then(Value::as_u64).unwrap_or(0);
+                let failed = util::list_of(r, "failed");
+                let when = util::format_time(util::get(r, "at").and_then(Value::as_i64).unwrap_or(0));
+                let total = passed as usize + failed.len();
+                if !current {
+                    self.check_summary.set_title("Out of date");
+                    self.check_summary.set_subtitle(&esc(&format!("The settings, SAM or this computer changed since the last check ({when}). Check again.")));
+                    set_badge_visible(&self.check_badge, false);
+                } else if failed.is_empty() {
+                    self.check_summary.set_title(&format!("All {total} checks passed"));
+                    self.check_summary.set_subtitle(&esc(&format!("Every setting applies. Checked {when}.")));
+                    set_badge_visible(&self.check_badge, true);
+                    util::set_badge(&self.check_badge, "Checked", "good");
+                } else {
+                    self.check_summary.set_title(&format!("{} of {total} checks failed", failed.len()));
+                    self.check_summary.set_subtitle(&esc(&format!("Not applied: {}. Checked {when}.", failed.join(", "))));
+                    set_badge_visible(&self.check_badge, true);
+                    util::set_badge(&self.check_badge, "Check failed", "bad");
+                }
+            }
+        }
+        // Results of the check run in this session.
+        let Some(report) = self.check_report.borrow().clone() else { return };
+        let results: Vec<Value> = report.get("results").and_then(Value::as_array).cloned().unwrap_or_default();
+        let row_for = |r: &Value, icon: &str, class: &str| {
+            let row = adw::ActionRow::builder()
+                .title(esc(&format!("{} · {}", util::str_of(r, "group"), util::str_of(r, "title"))))
+                .subtitle(esc(util::str_of(r, "observed")))
+                .build();
+            let img = gtk::Image::from_icon_name(icon);
+            img.add_css_class(class);
+            row.add_prefix(&img);
+            row
+        };
+        for r in results.iter().filter(|r| util::get(r, "ok") == Some(&Value::Bool(false))) {
+            let row = row_for(r, "dialog-error-symbolic", "error");
+            self.check_group.add(&row);
+            self.check_rows.borrow_mut().push(row.upcast());
+        }
+        for r in results.iter().filter(|r| util::get(r, "ok").is_none_or(Value::is_null)) {
+            let row = row_for(r, "dialog-information-symbolic", "dim-label");
+            self.check_group.add(&row);
+            self.check_rows.borrow_mut().push(row.upcast());
+        }
+        let passed: Vec<&Value> = results.iter().filter(|r| util::get(r, "ok") == Some(&Value::Bool(true))).collect();
+        if !passed.is_empty() {
+            let exp = adw::ExpanderRow::builder().title(format!("{} confirmed settings", passed.len())).subtitle("What the test program found inside the sandbox").build();
+            exp.add_prefix(&{
+                let i = gtk::Image::from_icon_name("emblem-ok-symbolic");
+                i.add_css_class("success");
+                i
+            });
+            for r in passed {
+                let row = adw::ActionRow::builder()
+                    .title(esc(&format!("{} · {}", util::str_of(r, "group"), util::str_of(r, "title"))))
+                    .subtitle(esc(util::str_of(r, "observed")))
+                    .build();
+                exp.add_row(&row);
+            }
+            self.check_group.add(&exp);
+            self.check_rows.borrow_mut().push(exp.upcast());
+        }
     }
 
     fn args(&self) -> Vec<String> {
@@ -1117,6 +1260,7 @@ impl AppPage {
 
         self.render_launch_group(entry.as_ref(), &app);
         self.render_menu_group();
+        self.render_check();
 
         // Troubleshooting and details (sandboxed apps).
         for g in [&self.trouble, &self.details, &self.command_group, &self.log_group] {

@@ -248,6 +248,7 @@ impl App {
         let sect = gio::Menu::new();
         sect.append(Some("Presets"), Some("win.show-presets"));
         sect.append(Some("Diagnostics"), Some("win.show-diagnostics"));
+        sect.append(Some("User Guide"), Some("win.show-guide"));
         sect.append(Some("Preferences"), Some("win.show-preferences"));
         menu.append_section(None, &sect);
         let about = gio::Menu::new();
@@ -651,6 +652,10 @@ impl App {
                 let p = crate::pages::diagnostics(self);
                 self.show(&p, None);
             }
+            "guide" => {
+                let p = crate::guide::page();
+                self.show(&p, None);
+            }
             _ => self.show_welcome(),
         }
     }
@@ -673,6 +678,7 @@ impl App {
             });
             self.window.add_action(&a);
         };
+        add("show-guide", Box::new(|me| me.show_section("guide")));
         add("show-presets", Box::new(|me| me.show_section("presets")));
         add("show-diagnostics", Box::new(|me| me.show_section("diagnostics")));
         add("show-preferences", Box::new(|me| me.show_section("preferences")));
@@ -866,7 +872,7 @@ impl App {
                         me.open_file(&p)
                     }
                 }
-                "presets" | "preferences" | "settings" | "diagnostics" => me.show_section(if s.page == "settings" { "preferences" } else { &s.page }),
+                "presets" | "preferences" | "settings" | "diagnostics" | "guide" => me.show_section(if s.page == "settings" { "preferences" } else { &s.page }),
                 _ => {}
             }
             me.add_files(s.files);

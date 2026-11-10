@@ -187,6 +187,9 @@ enum Cmd {
         /// Evaluate in the context of this app (category, backend).
         app: Option<String>,
     },
+    /// Check that the app's sandbox gives it exactly what its settings say:
+    /// starts the sandbox with a probe instead of the app.
+    Verify { app: String },
     /// Turn compatibility mode on or off. Off restores the settings from
     /// before it was turned on.
     Compat { app: String, state: String },
@@ -652,7 +655,8 @@ fn real_main(cli: Cli) -> Result<()> {
             let hints = sam_runner::repair::first_run_hints(&e);
             let steps = sam_runner::repair::ladder(&e, &app.config);
             out.emit(
-                &json!({"app": summary, "entry": e, "warnings": warnings, "selection": selection, "hints": hints, "repair_steps": steps, "private_home": app.paths.app_home(&e.id)}),
+                &json!({"app": summary, "entry": e, "warnings": warnings, "selection": selection, "hints": hints, "repair_steps": steps, "private_home": app.paths.app_home(&e.id),
+                    "check_current": e.last_check.as_ref().is_some_and(|c| c.key == sam_runner::verify::check_key(&e, &app.config, &host))}),
                 || print_info(&e, &summary, &warnings, selection.as_ref()),
             );
         }
@@ -798,6 +802,26 @@ fn real_main(cli: Cli) -> Result<()> {
                 if on {
                     println!("{}", paint(sam_profile::COMPAT_WARNING, "33"));
                 }
+            });
+        }
+        Cmd::Verify { app: q } => {
+            let out_v = app.verify(&q)?;
+            let r = &out_v.report;
+            out.emit(&json!({"report": r, "record": out_v.record}), || {
+                let mut group = String::new();
+                for res in &r.results {
+                    if res.group != group {
+                        group = res.group.clone();
+                        println!("\n{group}");
+                    }
+                    let mark = match res.ok {
+                        Some(true) => paint("✓", "32"),
+                        Some(false) => paint("✗", "31"),
+                        None => paint("–", "90"),
+                    };
+                    println!("  {mark} {:<46} {}", res.title, res.observed);
+                }
+                println!("\n{} passed, {} failed, {} not applicable", out_v.record.passed, out_v.record.failed.len(), out_v.record.skipped);
             });
         }
         Cmd::Args { app: q, stdin } => {

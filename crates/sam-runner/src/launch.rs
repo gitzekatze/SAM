@@ -34,6 +34,8 @@ pub struct LaunchOptions {
     pub timeout_secs: Option<u64>,
     /// Don't echo the app's output to our stdout/stderr.
     pub quiet: bool,
+    /// Sandbox check: the helper runs these checks instead of the app.
+    pub probe: Option<crate::probe::ProbePlan>,
 }
 
 /// Everything needed to start a sandbox, plus the explanation for the user.
@@ -233,12 +235,13 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             ));
         }
         let want_seccomp = (cfg.security.baseline_seccomp && perms.advanced.seccomp_baseline) || strict;
-        if want_landlock || want_seccomp {
+        if want_landlock || want_seccomp || opts.probe.is_some() {
             match crate::find_helper() {
                 Some(helper) => {
                     let spec = kernel::SandboxSpec {
                         landlock: want_landlock.then(|| kernel::landlock_spec(perms, host, &format!("/run/user/{}", host.uid), &launch_writable_paths(&ctx))),
                         seccomp: want_seccomp.then_some(kernel::SeccompSpec { strict, allow_userns: perms.advanced.allow_userns }),
+                        probe: opts.probe.clone(),
                     };
                     let spec_path = runtime_dir.join("sandbox.json");
                     fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
