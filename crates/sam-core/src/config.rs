@@ -22,6 +22,19 @@ pub enum CompatBehavior {
 /// GUI colour scheme: follow the desktop, or force light or dark.
 pub const THEMES: [&str; 3] = ["system", "light", "dark"];
 
+/// Migrates a configuration (as a JSON value) from format `from` to the
+/// current one, one step at a time.
+fn migrate(mut v: serde_json::Value, from: u32) -> serde_json::Value {
+    if from < 1 {
+        // 0 -> 1: theme names of the earlier Qt GUI.
+        if let Some(t) = v.pointer_mut("/general/theme") {
+            let new = migrate_theme(t.as_str().unwrap_or("system"));
+            *t = serde_json::Value::String(new.into());
+        }
+    }
+    v
+}
+
 /// Theme names of the earlier Qt GUI, mapped to the current ones.
 fn migrate_theme(t: &str) -> &'static str {
     match t {
@@ -155,6 +168,8 @@ pub struct Compatibility {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Config {
+    /// File format (see `format`); written as the current one.
+    pub format: u32,
     pub general: General,
     pub security: Security,
     pub dependencies: Dependencies,
@@ -164,22 +179,57 @@ pub struct Config {
 }
 
 impl Config {
+    /// Reads the configuration. Older formats are migrated (the original
+    /// is kept once); one from a newer SAM is an error and stays untouched;
+    /// a damaged one is moved aside and the defaults are used.
     pub fn load(paths: &Paths) -> Result<Config> {
         let file = paths.config_file();
-        match fs::read_to_string(&file) {
-            Ok(s) => {
-                let mut c: Config = toml::from_str(&s).with_context(|| format!("parsing {}", file.display()))?;
-                c.general.theme = migrate_theme(&c.general.theme).into();
-                Ok(c)
+        let s = match fs::read_to_string(&file) {
+            Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Config::default()),
+            Err(e) => return Err(e).with_context(|| format!("reading {}", file.display())),
+        };
+        let parsed = toml::from_str::<toml::Value>(&s).ok().and_then(|v| serde_json::to_value(v).ok());
+        let Some(v) = parsed else {
+            return Ok(Self::damaged(&file));
+        };
+        let found = crate::format::of_json(&v);
+        crate::format::check_not_newer(&file, found)?;
+        let v = migrate(v, found);
+        let Ok(mut c) = serde_json::from_value::<Config>(v) else {
+            return Ok(Self::damaged(&file));
+        };
+        // A single invalid value is reset, not the whole file.
+        if let Err(e) = c.validate() {
+            eprintln!("sam-jail: {}: {e:#}; that setting was reset", file.display());
+            if !THEMES.contains(&c.general.theme.as_str()) {
+                c.general.theme = "system".into();
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
-            Err(e) => Err(e).with_context(|| format!("reading {}", file.display())),
+            if (Config { extraction: c.extraction.clone(), ..Config::default() }).validate().is_err() {
+                c.extraction.location.clear();
+            }
+            if c.validate().is_err() {
+                return Ok(Self::damaged(&file));
+            }
         }
+        crate::format::backup_before_migration(&file, found);
+        c.format = crate::format::CURRENT;
+        Ok(c)
+    }
+
+    fn damaged(file: &std::path::Path) -> Config {
+        match crate::format::quarantine(file) {
+            Some(to) => eprintln!("sam-jail: {} could not be read; moved it to {} and using the default settings", file.display(), to.display()),
+            None => eprintln!("sam-jail: {} could not be read; using the default settings", file.display()),
+        }
+        Config::default()
     }
 
     pub fn save(&self, paths: &Paths) -> Result<()> {
         self.validate()?;
-        let s = toml::to_string_pretty(self)?;
+        let mut c = self.clone();
+        c.format = crate::format::CURRENT;
+        let s = toml::to_string_pretty(&c)?;
         atomic_write(&paths.config_file(), s.as_bytes())
     }
 

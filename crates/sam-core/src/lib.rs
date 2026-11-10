@@ -6,6 +6,7 @@
 
 pub mod backend;
 pub mod config;
+pub mod format;
 pub mod host;
 pub mod model;
 pub mod paths;

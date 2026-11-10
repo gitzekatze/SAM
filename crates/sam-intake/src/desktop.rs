@@ -200,6 +200,26 @@ pub fn validate_launcher(path: &Path, id: &str) -> Vec<String> {
     problems
 }
 
+/// SAM's own menu entries (`sam-*.desktop` carrying `X-SAM-AppId`).
+pub fn sam_launchers(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Ok(rd) = fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            let named = p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("sam-") && n.ends_with(".desktop"));
+            if named && fs::read_to_string(&p).is_ok_and(|s| s.contains("X-SAM-AppId=")) {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
+/// Updates the desktop's menu cache after changes.
+pub fn refresh(dir: &Path) {
+    refresh_desktop_database(dir);
+}
+
 pub(crate) fn refresh_desktop_database(dir: &Path) {
     if let Some(udd) = which("update-desktop-database") {
         let _ = Command::new(udd).arg("-q").arg(dir).status();

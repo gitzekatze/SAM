@@ -507,8 +507,7 @@ mod tests {
 
     #[test]
     fn detection_adjusts_profile() {
-        let mut rep = DependencyReport::default();
-        rep.requirements = Requirements { gpu: true, x11: true, toolkit: "Qt5".into(), ..Default::default() };
+        let rep = DependencyReport { requirements: Requirements { gpu: true, x11: true, toolkit: "Qt5".into(), ..Default::default() }, ..Default::default() };
         let r = recommend(&md("Tool", &["Utility"]), "", Some(&rep));
         assert!(r.permissions.devices.gpu);
         assert!(r.permissions.display.x11, "X11-only app gets XWayland");
@@ -517,17 +516,14 @@ mod tests {
 
     #[test]
     fn preset_check_flags_removals_and_additions() {
-        let mut app = AppEntry::default();
-        app.recommended = recommend(&md("Firefox", &["WebBrowser"]), "", None).permissions;
-        app.profile.permissions = app.recommended.clone();
+        let recommended = recommend(&md("Firefox", &["WebBrowser"]), "", None).permissions;
+        let app = AppEntry { profile: sam_core::SandboxProfile { permissions: recommended.clone(), ..Default::default() }, recommended, ..Default::default() };
         let untrusted = builtin_presets().into_iter().find(|p| p.name == "Untrusted Utility").unwrap();
         let c = check_preset(&app, &untrusted);
         assert!(c.removes_needed.iter().any(|s| s == "network access"));
         assert!(c.needs_confirmation());
 
-        let mut app2 = AppEntry::default();
-        app2.recommended = PermissionSet::strict_gui();
-        app2.profile.permissions = PermissionSet::strict_gui();
+        let app2 = AppEntry { recommended: PermissionSet::strict_gui(), profile: sam_core::SandboxProfile { permissions: PermissionSet::strict_gui(), ..Default::default() }, ..Default::default() };
         let browser = builtin_presets().into_iter().find(|p| p.name == "Strict Browser").unwrap();
         let c2 = check_preset(&app2, &browser);
         assert!(c2.adds_dangerous.iter().any(|s| s == "Network"), "{:?}", c2.adds_dangerous);

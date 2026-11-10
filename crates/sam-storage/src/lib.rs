@@ -14,6 +14,20 @@ pub struct Registry {
     paths: Paths,
 }
 
+/// Migrates an app record (JSON) from format `from` to the current one.
+fn migrate_app(v: serde_json::Value, _from: u32) -> serde_json::Value {
+    // 0 -> 1: same layout; removed options load through serde aliases.
+    v
+}
+
+/// A record that cannot be read: moved aside, reported once.
+fn damaged_record(p: &Path, err: &anyhow::Error) {
+    match sam_core::format::quarantine(p) {
+        Some(to) => eprintln!("sam-jail: app record {} could not be read ({err:#}); moved it to {}", p.display(), to.display()),
+        None => eprintln!("sam-jail: app record {} could not be read: {err:#}", p.display()),
+    }
+}
+
 impl Registry {
     pub fn new(paths: &Paths) -> Self {
         Registry { paths: paths.clone() }
@@ -34,16 +48,28 @@ impl Registry {
             }
             match self.load_file(&p) {
                 Ok(a) => out.push(a),
-                Err(err) => eprintln!("sam-jail: skipping corrupt registry entry {}: {err:#}", p.display()),
+                // From a newer SAM: left alone, just not shown.
+                Err(err) if err.downcast_ref::<serde_json::Error>().is_some() => damaged_record(&p, &err),
+                // From a newer SAM, or not readable right now: left alone.
+                Err(err) => eprintln!("sam-jail: {err:#}"),
             }
         }
         out.sort_by_key(|a| a.display_name().to_lowercase());
         Ok(out)
     }
 
+    /// Reads one app record: migrated from older formats (original kept),
+    /// an error for a newer one (left untouched).
     fn load_file(&self, p: &Path) -> Result<AppEntry> {
         let s = fs::read_to_string(p)?;
-        Ok(serde_json::from_str(&s)?)
+        let v: serde_json::Value = serde_json::from_str(&s)?;
+        let found = sam_core::format::of_json(&v);
+        sam_core::format::check_not_newer(p, found)?;
+        let v = migrate_app(v, found);
+        let mut e: AppEntry = serde_json::from_value(v)?;
+        sam_core::format::backup_before_migration(p, found);
+        e.format = sam_core::format::CURRENT;
+        Ok(e)
     }
 
     pub fn get(&self, id: &str) -> Result<Option<AppEntry>> {
@@ -54,7 +80,14 @@ impl Registry {
         if !p.exists() {
             return Ok(None);
         }
-        self.load_file(&p).map(Some)
+        match self.load_file(&p) {
+            Ok(e) => Ok(Some(e)),
+            Err(err) if err.downcast_ref::<serde_json::Error>().is_some() => {
+                damaged_record(&p, &err);
+                Ok(None)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     pub fn exists(&self, id: &str) -> bool {
@@ -95,6 +128,7 @@ impl Registry {
             bail!("invalid app id '{}'", entry.id);
         }
         entry.updated_at = now();
+        entry.format = sam_core::format::CURRENT;
         let s = serde_json::to_string_pretty(entry)?;
         atomic_write(&self.paths.app_file(&entry.id), s.as_bytes())
     }
@@ -135,6 +169,8 @@ fn empty_table() -> toml::Value {
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(default)]
 struct PresetMeta {
+    /// File format (see `sam_core::format`).
+    format: u32,
     name: String,
     description: String,
     risk: sam_core::RiskLevel,
@@ -171,7 +207,13 @@ impl PresetStore {
             }
             match read_preset_file(&p) {
                 Ok(pr) => out.push(pr),
-                Err(err) => eprintln!("sam-jail: skipping invalid preset {}: {err:#}", p.display()),
+                // Not readable as a preset: moved aside, so it is reported
+                // once (sam-jail doctor lists it) instead of on every start.
+                Err(err) if err.chain().any(|c| c.downcast_ref::<toml::de::Error>().is_some()) => match sam_core::format::quarantine(&p) {
+                    Some(to) => eprintln!("sam-jail: preset {} could not be read ({err:#}); moved it to {}", p.display(), to.display()),
+                    None => eprintln!("sam-jail: skipping invalid preset {}: {err:#}", p.display()),
+                },
+                Err(err) => eprintln!("sam-jail: skipping preset {}: {err:#}", p.display()),
             }
         }
         out.sort_by_key(|a| a.name.to_lowercase());
@@ -222,6 +264,7 @@ pub fn preset_slug(name: &str) -> String {
 pub fn preset_to_toml(p: &Preset) -> Result<String> {
     let file = PresetFile {
         preset: PresetMeta {
+            format: sam_core::format::CURRENT,
             name: p.name.clone(),
             description: p.description.clone(),
             risk: p.risk,
@@ -243,6 +286,9 @@ pub fn read_preset_file(path: &Path) -> Result<Preset> {
 /// format shown in the whitepaper (`network = "full"`, `gpu = true`, ...).
 pub fn parse_preset_toml(s: &str) -> Result<Preset> {
     let file: PresetFile = toml::from_str(s)?;
+    if file.preset.format > sam_core::format::CURRENT {
+        bail!("this preset was made by a newer SAM (format {}); update SAM to use it", file.preset.format);
+    }
     let permissions = permissions_from_toml(file.permissions)?;
     Ok(Preset {
         name: file.preset.name,

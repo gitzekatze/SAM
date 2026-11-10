@@ -320,6 +320,8 @@ pub struct LaunchRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AppEntry {
+    /// File format (see `format`); written as the current one.
+    pub format: u32,
     pub id: String,
     pub name: String,
     pub source_path: PathBuf,

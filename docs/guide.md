@@ -205,6 +205,10 @@ Keep in mind:
 
 > **Moved the AppImage?** Menu entries SAM made point at the AppImage file. Open SAM once from its new place and it updates them.
 
+**Removing SAM:** run `sam-jail uninstall` to see what would be removed, then `sam-jail uninstall --yes`. It closes running apps, removes every sandbox (hidden menu entries come back), SAM's menu entries, its settings and the apps' private data; `--keep-data` keeps settings and app data. Your AppImage files stay. Then remove the package or the AppImage.
+
+**Updating SAM** keeps your settings and sandboxes. If SAM ever finds a file it cannot read, it moves it aside (nothing is deleted) and **☰ → Diagnostics** lists it.
+
 ---
 
 ## Where SAM keeps its files

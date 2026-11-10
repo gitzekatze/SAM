@@ -33,6 +33,20 @@ as passed; `sam-jail config set security.check_before_launch true`, then a
 raw `--ro-bind` of a hidden folder in `advanced.extra_backend_args`, must make
 `sam-jail run` refuse to start with "sandbox check failed".
 
+## 0a. Robustness and removal
+
+`cargo test -p sam-jail-cli --test robustness` runs the real `sam-jail` on
+old, newer, damaged and deliberately mangled files (truncated at many
+lengths, single bytes changed): old ones are migrated with a backup, newer
+ones are never changed, damaged ones are moved aside and reported, and
+nothing panics. `cargo test -p sam-runner --test uninstall` checks that
+`sam-jail uninstall` removes every trace, restores hidden menu entries,
+keeps the AppImage and refuses folders that are not SAM's.
+
+Scale (2026-11-10, release build): 200 AppImages among 3,200 files are
+found in 0.8 s cold and 30 ms warm; with 40 sandboxes `list`, `doctor` and
+`info` answer in under 40 ms, and the window shows all 240 entries.
+
 ## 0b. Real AppImages
 
 `WORK=… tests/real-apps/run.sh App.AppImage …` runs the whole flow

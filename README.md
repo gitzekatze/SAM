@@ -155,6 +155,26 @@ Menu entries SAM creates call the AppImage file; after moving it, open SAM
 once to update them. Build it yourself with `make appimage` (see
 [docs/packaging.md](docs/packaging.md)).
 
+## Removing SAM
+
+```sh
+sam-jail uninstall          # lists what would be removed
+sam-jail uninstall --yes    # removes it (add --keep-data to keep settings and app data)
+```
+
+This closes running apps, removes every sandbox (menu entries SAM hid come
+back), SAM's menu entries, its own taskbar entry and icon, its settings and
+the apps' private data. Your AppImage files are not touched. Then remove the
+package (`sam-jail`, `sam-jail-cli`) or the AppImage.
+
+## Your data across versions
+
+SAM's configuration, app records and presets carry a format number. A newer
+SAM migrates older files and keeps the original once (`….format0.bak`); an
+older SAM refuses to change files from a newer one instead of losing what it
+does not know. Files SAM cannot read are moved aside as `….damaged-<time>`,
+never deleted, and `sam-jail doctor` lists them.
+
 ## Build from source
 
 Requirements: Rust 1.92 or newer, GTK 4.12+, libadwaita 1.5+ and bubblewrap.

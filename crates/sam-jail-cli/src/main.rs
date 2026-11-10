@@ -146,6 +146,16 @@ enum Cmd {
     },
     /// Close a running app (it gets the chance to save and quit first).
     Stop { app: String },
+    /// Remove SAM from this computer: every sandbox (menu entries SAM hid
+    /// come back), SAM's menu entries, its settings and the apps' private
+    /// data. AppImage files stay. Lists what it would remove without --yes.
+    Uninstall {
+        /// Keep SAM's settings and the apps' private data.
+        #[arg(long)]
+        keep_data: bool,
+        #[arg(long)]
+        yes: bool,
+    },
     /// Run an app in its sandbox.
     Run {
         app: String,
@@ -695,6 +705,27 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("Removed {} ({}){}", e.display_name(), e.id, if keep_data { "; private data kept" } else { "" });
                 for p in &problems {
                     eprintln!("{} {p}", paint("warning:", "33"));
+                }
+            });
+        }
+        Cmd::Uninstall { keep_data, yes } => {
+            let u = app.uninstall(keep_data, !yes)?;
+            out.emit(&json!({"done": yes, "apps": u.apps, "files": u.files, "dirs": u.dirs, "problems": u.problems}), || {
+                println!("{} SAM{}:", if yes { "Removed" } else { "This would remove" }, if keep_data { " (keeping settings and app data)" } else { "" });
+                println!("  sandboxes: {}", if u.apps.is_empty() { "none".into() } else { u.apps.join(", ") });
+                for f in &u.files {
+                    println!("  {}", tildify(f));
+                }
+                for d in &u.dirs {
+                    println!("  {}/", tildify(d));
+                }
+                for p in &u.problems {
+                    eprintln!("{} {p}", paint("warning:", "33"));
+                }
+                if !yes {
+                    println!("Your AppImage files stay. Run again with --yes to remove.");
+                } else {
+                    println!("Your AppImage files were not touched. Remove the SAM package or AppImage to finish.");
                 }
             });
         }

@@ -116,6 +116,22 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         let st = if count(Badge::Broken) + count(Badge::Missing) > 0 { CheckStatus::Warn } else { CheckStatus::Ok };
         c.push(check("apps", "Registered apps", st, detail));
     }
+    // Files SAM could not read and moved aside (see sam_core::format).
+    let p = &app.paths;
+    let damaged = sam_core::format::damaged_files(&[p.config_dir.as_path(), p.apps_dir().as_path(), p.presets_dir().as_path()]);
+    c.push(if damaged.is_empty() {
+        check("damaged", "Damaged files", CheckStatus::Ok, "none")
+    } else {
+        check(
+            "damaged",
+            "Damaged files",
+            CheckStatus::Warn,
+            format!(
+                "SAM could not read these and moved them aside (nothing was deleted); restore one by fixing it and removing the .damaged-… ending, or delete it: {}",
+                damaged.iter().map(|d| tildify(d)).collect::<Vec<_>>().join(", ")
+            ),
+        )
+    });
     DiagnosticReport { generated_at: now(), sam_version: SAM_VERSION.into(), checks: c }
 }
 

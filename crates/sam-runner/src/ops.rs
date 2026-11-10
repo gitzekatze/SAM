@@ -639,6 +639,58 @@ impl Sam {
         Ok((entry, problems))
     }
 
+    /// Removes SAM from this computer: closes running apps, removes every
+    /// sandbox (menu entries SAM hid come back), SAM's menu entries, its own
+    /// taskbar entry and icon, its runtime files and (unless `keep_data`)
+    /// its settings and the apps' private data. AppImage files stay.
+    /// With `dry_run`, only lists what would be removed.
+    pub fn uninstall(&self, keep_data: bool, dry_run: bool) -> Result<Uninstall> {
+        let mut u = Uninstall::default();
+        let apps = self.registry().list()?;
+        for a in &apps {
+            u.apps.push(a.display_name().to_string());
+            if !dry_run {
+                self.stop(&a.id)?;
+                let (_, problems) = self.remove(&a.id, keep_data)?;
+                u.problems.extend(problems);
+            }
+        }
+        // SAM's menu entries left without a record, and SAM's own entry.
+        let mut files = desktop::sam_launchers(&self.paths.applications_dir);
+        let own = self.paths.applications_dir.join("io.github.gitzekatze.SAM.desktop");
+        if fs::read_to_string(&own).is_ok_and(|t| t.contains("X-SAM-Self=true")) {
+            files.push(own);
+            if let Some(data_home) = self.paths.applications_dir.parent() {
+                let icon = data_home.join("icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg");
+                if icon.exists() {
+                    files.push(icon);
+                }
+            }
+        }
+        let runtime = self.paths.runtime_dir("x").parent().map(Path::to_path_buf);
+        let mut dirs: Vec<PathBuf> = runtime.into_iter().filter(|d| d.exists()).collect();
+        if !keep_data {
+            for d in [self.paths.config_dir.clone(), self.paths.data_dir.clone(), self.extracted_root()] {
+                if d.exists() && !dirs.iter().any(|o| d.starts_with(o)) {
+                    safe_to_delete(&d)?;
+                    dirs.push(d);
+                }
+            }
+        }
+        u.files = files.clone();
+        u.dirs = dirs.clone();
+        if !dry_run {
+            for f in files {
+                let _ = fs::remove_file(f);
+            }
+            for d in dirs {
+                remove_tree(&d).with_context(|| format!("removing {}", d.display()))?;
+            }
+            desktop::refresh(&self.paths.applications_dir);
+        }
+        Ok(u)
+    }
+
     /// Private data of apps that no longer have a sandbox: their home,
     /// writable app folder layer and logs (kept by `remove --keep-data`).
     pub fn leftover_data(&self) -> Result<Vec<LeftoverData>> {
@@ -1240,6 +1292,25 @@ fn tree_size(p: &Path) -> u64 {
 
 /// `remove_dir_all` that also handles folders without permissions, such as
 /// the `work/work` folder the kernel's overlay file system leaves behind.
+/// What `Sam::uninstall` removes (or would remove).
+#[derive(Debug, Default, Serialize)]
+pub struct Uninstall {
+    pub apps: Vec<String>,
+    pub files: Vec<PathBuf>,
+    pub dirs: Vec<PathBuf>,
+    pub problems: Vec<String>,
+}
+
+/// Refuses folders that cannot be SAM's alone: `/`, the home folder or an
+/// ancestor of it, top-level folders. Guards against odd SAM_*_DIR values.
+fn safe_to_delete(d: &Path) -> Result<()> {
+    let home = sam_core::util::home_dir();
+    if d.components().count() < 3 || home.starts_with(d) {
+        bail!("refusing to delete {}: not a folder of SAM's own", d.display());
+    }
+    Ok(())
+}
+
 /// The process has this file open.
 fn holds_open(pid: u32, file: &Path) -> bool {
     let Ok(want) = fs::canonicalize(file) else { return false };
