@@ -126,7 +126,6 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     match p.network.mode {
         NetworkMode::Full => item(&mut items, "network.mode", "Network", RiskLevel::High),
         NetworkMode::Localhost => item(&mut items, "network.mode", "Local network only (no internet)", RiskLevel::Low),
-        NetworkMode::Filtered => item(&mut items, "network.mode", "Filtered network (experimental)", RiskLevel::Medium),
         NetworkMode::None => {}
     }
 
@@ -196,7 +195,7 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     }
     match p.dbus.system.mode {
         DbusMode::None => {}
-        DbusMode::Filtered => item(&mut items, "dbus.system.mode", "Filtered system D-Bus", RiskLevel::High),
+        DbusMode::Filtered => {} // not possible for the system bus (loads as none)
         DbusMode::Full => item(&mut items, "dbus.system.mode", "System D-Bus", RiskLevel::Dangerous),
     }
     if p.sockets.ssh_agent {

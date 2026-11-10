@@ -129,25 +129,22 @@ impl FilesystemPerms {
 #[serde(rename_all = "lowercase")]
 pub enum NetworkMode {
     Full,
+    /// "filtered" was an experimental mode that was never enforced and
+    /// always meant no network; old profiles with it load as `None`.
     #[default]
+    #[serde(alias = "filtered")]
     None,
     /// Loopback only: no internet, but local servers on both sides stay
     /// reachable (forwarded by `pasta`). For local AI/web-UI apps.
     Localhost,
-    /// Experimental: domain filtered. Not part of the MVP.
-    Filtered,
 }
 
 impl NetworkMode {
-    pub fn is_experimental(self) -> bool {
-        matches!(self, NetworkMode::Filtered)
-    }
     pub fn as_str(self) -> &'static str {
         match self {
             NetworkMode::Full => "full",
             NetworkMode::None => "none",
             NetworkMode::Localhost => "localhost",
-            NetworkMode::Filtered => "filtered",
         }
     }
 }
@@ -156,8 +153,6 @@ impl NetworkMode {
 #[serde(default)]
 pub struct NetworkPerms {
     pub mode: NetworkMode,
-    /// Hosts for the experimental `filtered` mode.
-    pub allowed_hosts: Vec<String>,
     /// `localhost` mode: TCP ports on the host's loopback the app may reach,
     /// e.g. "11434" for Ollama. Nothing else on the host is reachable.
     pub host_ports: Vec<String>,
@@ -333,7 +328,24 @@ pub fn portal_interfaces(p: &PermissionSet) -> Vec<&'static str> {
 #[serde(default)]
 pub struct DbusPerms {
     pub session: DbusBusPerms,
-    pub system: DbusBusPerms,
+    /// The system bus is all or nothing (no filter), so it has a mode only.
+    pub system: DbusSystemPerms,
+}
+
+/// System bus access: `none` or `full`. A "filtered" value from older
+/// profiles (never supported) loads as `none`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DbusSystemPerms {
+    #[serde(deserialize_with = "system_bus_mode")]
+    pub mode: DbusMode,
+}
+
+fn system_bus_mode<'de, D: serde::Deserializer<'de>>(d: D) -> Result<DbusMode, D::Error> {
+    Ok(match DbusMode::deserialize(d)? {
+        DbusMode::Full => DbusMode::Full,
+        _ => DbusMode::None,
+    })
 }
 
 impl DbusBusPerms {
@@ -384,7 +396,7 @@ impl Default for DbusPerms {
                 calls: vec![],
                 broadcasts: vec![],
             },
-            system: DbusBusPerms::default(),
+            system: DbusSystemPerms::default(),
         }
     }
 }
@@ -783,6 +795,19 @@ mod tests {
         assert!(p.set_key("network.bogus", "1").is_err());
         assert!(p.set_key("network.mode", "sideways").is_err());
         assert_eq!(p.get_key("network.mode").unwrap(), "full");
+    }
+
+    #[test]
+    fn old_profiles_with_removed_options_still_load() {
+        // "filtered" network (never enforced, meant no network) with its
+        // host list, and a "filtered" system bus with name lists.
+        let old = r#"{"network": {"mode": "filtered", "allowed_hosts": ["example.org"]},
+            "dbus": {"system": {"mode": "filtered", "allow": ["org.freedesktop.NetworkManager"], "own": [], "deny": []}}}"#;
+        let p: PermissionSet = serde_json::from_str(old).unwrap();
+        assert_eq!(p.network.mode, NetworkMode::None);
+        assert_eq!(p.dbus.system.mode, DbusMode::None);
+        let full: PermissionSet = serde_json::from_str(r#"{"dbus": {"system": {"mode": "full"}}}"#).unwrap();
+        assert_eq!(full.dbus.system.mode, DbusMode::Full);
     }
 
     #[test]

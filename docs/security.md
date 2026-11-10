@@ -151,8 +151,9 @@ shown, because a number next to the level was easily misread.
 - **Abstract sockets** are blocked only with Landlock ABI 6 (kernel 6.12+)
   On older kernels, XWayland's abstract socket is reachable with full
   network (X11 authorization still applies).
-- **Domain-filtered network** is experimental and not enforced (falls back
-  to no network).
+- **No domain-filtered network:** an app gets no network, only this
+  computer (*Local network only*), or the full network. Old profiles with
+  the never-enforced "filtered" mode load as no network.
 - **Files picked in a file dialog** outside the folders an app may use are
   not visible to it: the portal hands over the host path, and the sandbox
   does not contain it. Grant the folder (or open the file with the app,

@@ -452,7 +452,6 @@ impl Editor {
             opt(json!("none"), "No network", "No connection at all, not even to this computer."),
             opt(json!("localhost"), "Local network only", "No internet. The app can reach the services on this computer you list below, and its own web page opens in your browser."),
             opt(json!("full"), "Full network", "The app uses your internet connection like any other program."),
-            opt(json!("filtered"), "Filtered (experimental)", "Not enforced yet: the app gets no network."),
         ], Always);
         self.list(&g, "network.host_ports", "Port on this computer, e.g. 11434 for Ollama", false, LocalNet);
         self.list(&g, "network.app_ports", "Port of the app (empty = automatic)", false, LocalNet);

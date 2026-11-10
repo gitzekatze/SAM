@@ -10,14 +10,6 @@ use crate::paths::Paths;
 use crate::util::{atomic_write, expand_home};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum UiMode {
-    #[default]
-    Simple,
-    Advanced,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum CompatBehavior {
     /// Offer compatibility mode in the repair flow, never apply automatically.
@@ -49,9 +41,7 @@ pub struct General {
     pub scan_downloads: bool,
     /// Single AppImage files added by hand to the overview.
     pub scan_files: Vec<String>,
-    pub automatic_scanning: bool,
     pub desktop_integration: bool,
-    pub ui_mode: UiMode,
 }
 
 impl Default for General {
@@ -61,9 +51,7 @@ impl Default for General {
             scan_directories: vec!["~/Applications".into(), "~/AppImages".into(), "~/.local/bin".into(), "~/bin".into()],
             scan_downloads: false,
             scan_files: vec![],
-            automatic_scanning: true,
             desktop_integration: true,
-            ui_mode: UiMode::Simple,
         }
     }
 }
@@ -77,7 +65,6 @@ pub struct Security {
     pub experimental_seccomp: bool,
     /// Baseline syscall filter for every Bubblewrap sandbox (like Flatpak's).
     pub baseline_seccomp: bool,
-    pub experimental_ebpf: bool,
     /// Run the sandbox check before an app starts (only when its settings,
     /// SAM or this computer changed since the last passing check); a failed
     /// check stops the start.
@@ -92,7 +79,6 @@ impl Default for Security {
             experimental_landlock: true,
             experimental_seccomp: false,
             baseline_seccomp: true,
-            experimental_ebpf: false,
             check_before_launch: false,
         }
     }

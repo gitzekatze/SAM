@@ -271,10 +271,6 @@ impl Bubblewrap {
                 // The launcher starts bwrap inside a pasta loopback-only
                 // namespace (sam-runner netns.rs), so no --unshare-net here.
             }
-            m => {
-                a.push("--unshare-net");
-                notes.push(format!("network mode '{}' is experimental and not supported by bubblewrap; network disabled", m.as_str()));
-            }
         }
         if !p.advanced.allow_userns {
             a.push("--disable-userns");
@@ -607,7 +603,7 @@ impl Bubblewrap {
                     a.op2("--ro-bind", sys, sys);
                 }
             }
-            DbusMode::Filtered => notes.push("filtered system D-Bus is not supported by the bubblewrap backend; denied".into()),
+            DbusMode::Filtered => {} // loads as none; nothing is passed in
         }
 
         // Sockets.
@@ -854,12 +850,8 @@ mod tests {
     }
 
     #[test]
-    fn experimental_network_falls_back_to_none() {
+    fn localhost_network_leaves_netns_to_pasta() {
         let mut ctx = sample_context();
-        ctx.permissions.network.mode = NetworkMode::Filtered;
-        let cmd = Bubblewrap.build(&ctx).unwrap();
-        assert!(cmd.args.contains(&"--unshare-net".to_string()));
-        assert!(!cmd.notes.is_empty());
         // Localhost: the launcher wraps bwrap in pasta, which owns the netns.
         ctx.permissions.network.mode = NetworkMode::Localhost;
         assert!(!Bubblewrap.build(&ctx).unwrap().args.contains(&"--unshare-net".to_string()));

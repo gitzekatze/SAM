@@ -140,19 +140,6 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             .with_key("network.mode"),
         );
     }
-    if p.network.mode.is_experimental() {
-        w.push(
-            Warning::warn(
-                "network-experimental",
-                "Experimental network mode",
-                format!(
-                    "Network mode '{}' is experimental. Bubblewrap cannot enforce it on its own, so SAM falls back to 'none'.",
-                    p.network.mode.as_str()
-                ),
-            )
-            .with_key("network.mode"),
-        );
-    }
     match p.dbus.system.mode {
         DbusMode::None => {}
         _ => w.push(
