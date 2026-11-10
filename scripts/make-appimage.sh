@@ -82,7 +82,7 @@ EOF
 chmod 755 "$app/AppRun"
 
 # Reproducible image: fixed owner and times.
-epoch=$(git log -1 --format=%ct 2>/dev/null || echo 0)
+epoch=$(git log -1 --format=%ct "v$version" 2>/dev/null || git log -1 --format=%ct 2>/dev/null || echo 0)
 mksquashfs "$app" "$work/fs.squashfs" -root-owned -noappend -no-xattrs -all-time "$epoch" -mkfs-time "$epoch" \
     -comp zstd -Xcompression-level 19 -quiet
 target="$out/SAM-$version-x86_64.AppImage"
