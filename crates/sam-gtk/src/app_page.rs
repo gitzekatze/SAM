@@ -15,6 +15,9 @@ use crate::perms::Editor;
 use crate::util::{self, esc};
 use crate::window::{self, App};
 
+/// Header width from which Check and Launch sit side by side.
+const HERO_SIDE_BY_SIDE: i32 = 720;
+
 pub struct AppPage {
     pub page: adw::NavigationPage,
     app: Weak<App>,
@@ -63,6 +66,8 @@ pub struct AppPage {
     check_badge: gtk::Label,
     check_rows: RefCell<Vec<gtk::Widget>>,
     check_report: RefCell<Option<Value>>,
+    /// For an AppImage without a sandbox: the settings the last check tested.
+    check_settings: RefCell<Option<Value>>,
     trouble: adw::PreferencesGroup,
     details: adw::PreferencesGroup,
     command_group: adw::PreferencesGroup,
@@ -130,8 +135,17 @@ impl AppPage {
         meta.append(&subtitle);
         meta.append(&badges);
         hero.append(&meta);
-        // Launch (or Create Sandbox), with Remove Sandbox right under it.
+        // Check and Launch (or Create Sandbox), Remove Sandbox under them.
         let buttons = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).valign(gtk::Align::Center).build();
+        // Side by side; Check moves above Launch when the header is narrow
+        // (the breakpoint below).
+        let top_buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::End).build();
+        let check_button = gtk::Button::builder()
+            .child(&button_content("security-high-symbolic", "Check"))
+            .tooltip_text("Start the sandbox with a test program and confirm that every setting applies")
+            .name("check-button")
+            .build();
+        check_button.add_css_class("pill");
         let main_button = gtk::Button::builder().name("main-button").build();
         main_button.add_css_class("suggested-action");
         main_button.add_css_class("pill");
@@ -142,10 +156,19 @@ impl AppPage {
             .build();
         remove_button.add_css_class("flat");
         remove_button.add_css_class("sam-remove");
-        buttons.append(&main_button);
+        remove_button.set_halign(gtk::Align::End);
+        top_buttons.append(&check_button);
+        top_buttons.append(&main_button);
+        buttons.append(&top_buttons);
         buttons.append(&remove_button);
         hero.append(&buttons);
-        view.add_top_bar(&hero);
+        let hero_bin = adw::BreakpointBin::builder().width_request(320).height_request(96).child(&hero).build();
+        let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse(&format!("max-width: {}px", HERO_SIDE_BY_SIDE)).unwrap());
+        narrow.add_setter(&top_buttons, "orientation", Some(&gtk::Orientation::Vertical.to_value()));
+        narrow.add_setter(&top_buttons, "spacing", Some(&6.to_value()));
+        narrow.add_setter(&remove_button, "halign", Some(&gtk::Align::Center.to_value()));
+        hero_bin.add_breakpoint(narrow);
+        view.add_top_bar(&hero_bin);
         app.top_sizes.add_widget(&hero);
 
         // ---- settings
@@ -208,9 +231,6 @@ impl AppPage {
             .build();
         let check_summary = adw::ActionRow::builder().title("Not checked yet").build();
         check_summary.add_prefix(&gtk::Image::from_icon_name("security-high-symbolic"));
-        let check_button = gtk::Button::builder().label("Check Now").valign(gtk::Align::Center).name("check-button").build();
-        check_button.add_css_class("suggested-action");
-        check_summary.add_suffix(&check_button);
         check_group.add(&check_summary);
         pref.add(&check_group);
 
@@ -278,6 +298,7 @@ impl AppPage {
             check_badge,
             check_rows: RefCell::new(Vec::new()),
             check_report: RefCell::new(None),
+            check_settings: RefCell::new(None),
             launch_group,
             args_row,
             args_chips,
@@ -541,22 +562,38 @@ impl AppPage {
 
     fn run_check(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
+        let sandboxed = self.sandboxed();
+        let settings = if sandboxed { None } else { self.pending.borrow().clone() };
+        if !sandboxed && settings.is_none() {
+            return;
+        }
         self.check_button.set_sensitive(false);
         self.check_summary.set_title("Checking…");
         self.check_summary.set_subtitle("Starting the sandbox with the test program.");
         let me = self.clone();
         glib::spawn_future_local(async move {
-            match app.backend.call(&["verify", &me.app_id], None).await {
+            let reply = if sandboxed {
+                app.backend.call(&["verify", &me.app_id], None).await
+            } else {
+                let input = settings.as_ref().map(|v| v.to_string());
+                app.backend.call(&["verify", &me.path, "--permissions-stdin"], input).await
+            };
+            match reply {
                 Ok(r) => {
                     let failed = r.get("record").and_then(|x| x.get("failed")).and_then(Value::as_array).map(Vec::len).unwrap_or(0);
                     app.toast(&if failed == 0 { "Sandbox check passed: every setting applies".to_string() } else { format!("Sandbox check: {failed} setting(s) do not apply") });
                     *me.check_report.borrow_mut() = r.get("report").cloned();
+                    *me.check_settings.borrow_mut() = settings;
                 }
                 Err(e) => app.report_error(&e),
             }
             me.check_button.set_sensitive(true);
-            me.reload();
-            app.refresh_registered().await;
+            if sandboxed {
+                me.reload();
+                app.refresh_registered().await;
+            } else {
+                me.render_check();
+            }
         });
     }
 
@@ -565,10 +602,14 @@ impl AppPage {
         for w in self.check_rows.borrow_mut().drain(..) {
             self.check_group.remove(&w);
         }
-        let sandboxed = self.sandboxed() && self.entry().is_some();
+        if !self.sandboxed() {
+            self.render_check_preview();
+            return;
+        }
+        let sandboxed = self.entry().is_some();
         self.check_button.set_sensitive(sandboxed);
+        self.check_group.set_description(Some("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed. Use the Check button at the top."));
         if !sandboxed {
-            self.check_group.set_description(Some("Starts this app's sandbox with a test program and confirms that every setting really applies. Available once the sandbox exists."));
             self.check_summary.set_title("Not checked yet");
             self.check_summary.set_subtitle("");
             set_badge_visible(&self.check_badge, false);
@@ -606,6 +647,52 @@ impl AppPage {
         }
         // Results of the check run in this session.
         let Some(report) = self.check_report.borrow().clone() else { return };
+        self.render_check_results(&report);
+    }
+
+    /// An AppImage without a sandbox: the check tests the settings shown
+    /// on the page, before anything is unpacked.
+    fn render_check_preview(self: &Rc<Self>) {
+        let pending = self.pending.borrow().clone();
+        self.check_button.set_sensitive(pending.is_some());
+        self.check_group.set_description(Some("Starts the sandbox this AppImage would get with a test program and confirms from inside that every setting below really applies. The AppImage is not unpacked or run. Use the Check button at the top."));
+        let report = self.check_report.borrow().clone();
+        let current = report.is_some() && *self.check_settings.borrow() == pending;
+        match report.as_ref() {
+            None => {
+                self.check_summary.set_title("Not checked yet");
+                self.check_summary.set_subtitle("You can check the settings before you create the sandbox.");
+                set_badge_visible(&self.check_badge, false);
+            }
+            Some(_) if !current => {
+                self.check_summary.set_title("Out of date");
+                self.check_summary.set_subtitle("The settings changed since the last check. Check again.");
+                set_badge_visible(&self.check_badge, false);
+            }
+            Some(r) => {
+                let results: Vec<Value> = r.get("results").and_then(Value::as_array).cloned().unwrap_or_default();
+                let failed: Vec<String> = results.iter().filter(|x| util::get(x, "ok") == Some(&Value::Bool(false))).map(|x| util::str_of(x, "title").to_string()).collect();
+                let total = results.iter().filter(|x| matches!(util::get(x, "ok"), Some(Value::Bool(_)))).count();
+                if failed.is_empty() {
+                    self.check_summary.set_title(&format!("All {total} checks passed"));
+                    self.check_summary.set_subtitle("Every setting below applies. Not stored: the sandbox does not exist yet.");
+                    set_badge_visible(&self.check_badge, true);
+                    util::set_badge(&self.check_badge, "Checked", "good");
+                } else {
+                    self.check_summary.set_title(&format!("{} of {total} checks failed", failed.len()));
+                    self.check_summary.set_subtitle(&esc(&format!("Not applied: {}.", failed.join(", "))));
+                    set_badge_visible(&self.check_badge, true);
+                    util::set_badge(&self.check_badge, "Check failed", "bad");
+                }
+            }
+        }
+        if let (true, Some(r)) = (current, report) {
+            self.render_check_results(&r);
+        }
+    }
+
+    /// Failed and not-applicable checks as rows, confirmed ones folded away.
+    fn render_check_results(self: &Rc<Self>, report: &Value) {
         let results: Vec<Value> = report.get("results").and_then(Value::as_array).cloned().unwrap_or_default();
         let row_for = |r: &Value, icon: &str, class: &str| {
             let row = adw::ActionRow::builder()
@@ -858,6 +945,7 @@ impl AppPage {
     fn on_perms_edited(self: &Rc<Self>, p: Value) {
         if !self.sandboxed() {
             *self.pending.borrow_mut() = Some(p.clone());
+            self.render_check();
         }
         *self.queued.borrow_mut() = Some(p);
         if self.saving.get() {

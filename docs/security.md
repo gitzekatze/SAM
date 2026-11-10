@@ -76,7 +76,7 @@ Process isolation:
   - Shell startup files, `autostart`, `systemd --user` and
     `~/.local/share/applications` stay read-only. These are common ways for
     malware to persist.
-- **Sandbox check** (`sam-jail verify`, *Check Now* in the window): the same
+- **Sandbox check** (`sam-jail verify`, *Check* in the window): the same
   launch path as a real start, but the helper runs a test program after
   Landlock and the syscall filter are in place instead of executing the app.
   It compares what it observes inside (folder identity by device and inode,

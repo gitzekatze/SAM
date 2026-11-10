@@ -188,8 +188,16 @@ enum Cmd {
         app: Option<String>,
     },
     /// Check that the app's sandbox gives it exactly what its settings say:
-    /// starts the sandbox with a probe instead of the app.
-    Verify { app: String },
+    /// starts the sandbox with a probe instead of the app. Also takes an
+    /// AppImage without a sandbox: then the settings it would get are
+    /// checked (nothing is unpacked or stored).
+    Verify {
+        app: String,
+        /// Check these settings (a PermissionSet as JSON on stdin) for an
+        /// AppImage without a sandbox, instead of SAM's recommendation.
+        #[arg(long)]
+        permissions_stdin: bool,
+    },
     /// Turn compatibility mode on or off. Off restores the settings from
     /// before it was turned on.
     Compat { app: String, state: String },
@@ -804,8 +812,17 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Verify { app: q } => {
-            let out_v = app.verify(&q)?;
+        Cmd::Verify { app: q, permissions_stdin } => {
+            let perms: Option<PermissionSet> = if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
+            let out_v = match app.resolve(&q) {
+                Ok(_) if perms.is_some() => bail!("{q} already has a sandbox; --permissions-stdin is only for AppImages without one"),
+                Ok(_) => app.verify(&q)?,
+                Err(e) if std::path::Path::new(&q).is_file() => {
+                    let _ = e;
+                    app.verify_preview(std::path::Path::new(&q), perms)?
+                }
+                Err(e) => return Err(e),
+            };
             let r = &out_v.report;
             out.emit(&json!({"report": r, "record": out_v.record}), || {
                 let mut group = String::new();

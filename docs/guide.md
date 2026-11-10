@@ -13,7 +13,7 @@
 | Sandbox an AppImage | Select it on the left, then **Create Sandbox** |
 | Start a sandboxed app | **Launch** on its page, or from your application menu |
 | Give an app access to a folder | Its page → **Files** |
-| Confirm the sandbox really applies your settings | Its page → **Sandbox Check** → **Check Now** |
+| Confirm the sandbox really applies your settings | **Check** next to Launch, results under **Sandbox Check** |
 | Fix an app that does not start | Its page → **Troubleshooting** |
 | Reuse settings for other apps | Its page → **Presets** → *Save these settings as a preset* |
 | Remove a sandbox | **Remove Sandbox** under the Launch button |
@@ -113,8 +113,9 @@ A preset is a named set of permissions you can apply to any app.
 
 ## Sandbox Check
 
-Does the sandbox really give the app exactly what its settings say? **Check Now** starts the app's real sandbox with a small test program instead of the app. From inside, it confirms every setting: which folders are visible and writable, the network, devices, display and sound, which desktop services are reachable, and that Landlock, the syscall filter and the other protections are active.
+Does the sandbox really give the app exactly what its settings say? **Check**, next to **Launch** at the top, starts the app's real sandbox with a small test program instead of the app. From inside, it confirms every setting: which folders are visible and writable, the network, devices, display and sound, which desktop services are reachable, and that Landlock, the syscall filter and the other protections are active.
 
+- It works before the sandbox exists too: then it checks the settings shown on the page, without unpacking or running the AppImage. That result is not stored.
 - Nothing is changed and nothing leaves your computer. Write tests use invisible temporary files.
 - A ✓ **Checked** pill appears in the header when everything applies. Failed checks are listed in red; checks that do not apply to your computer (for example no webcam) are shown as not applicable.
 - **Preferences → Check the sandbox before each start** runs the check automatically, only when something changed since the last passing check. A failed check stops the start.

@@ -692,6 +692,55 @@ impl Sam {
         Ok(out)
     }
 
+    /// Sandbox check for an AppImage that has no sandbox yet, with the
+    /// settings it would get (`perms`, or SAM's recommendation). Runs the
+    /// same sandbox as a real start, but around an empty stand-in app folder
+    /// and a throwaway private home; the AppImage is neither unpacked nor
+    /// run, and nothing is stored.
+    pub fn verify_preview(&self, path: &Path, perms: Option<PermissionSet>) -> Result<crate::verify::Outcome> {
+        let path = fs::canonicalize(path).with_context(|| format!("{} does not exist", path.display()))?;
+        if !path.is_file() {
+            bail!("{} is not a file", path.display());
+        }
+        let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
+        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let rec = recommend(&md, &file_name, None);
+        let permissions = perms.unwrap_or_else(|| rec.permissions.clone());
+
+        struct Scratch(PathBuf);
+        impl Drop for Scratch {
+            fn drop(&mut self) {
+                let _ = remove_tree(&self.0);
+                if let Some(parent) = self.0.parent() {
+                    let _ = fs::remove_dir(parent); // only when empty
+                }
+            }
+        }
+        let root = self.paths.data_dir.join("check").join(format!("{}-{}", std::process::id(), now()));
+        let scratch = Scratch(root.clone());
+        let appdir = root.join("AppDir");
+        fs::create_dir_all(&appdir)?;
+        fs::write(appdir.join("AppRun"), "#!/bin/sh\n")?;
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(appdir.join("AppRun"), fs::Permissions::from_mode(0o755))?;
+        }
+        let paths = Paths { data_dir: root.join("data"), ..self.paths.clone() };
+        let entry = AppEntry {
+            id: "sam-check-preview".into(),
+            name: if md.name.is_empty() { file_name.clone() } else { md.name.clone() },
+            source_path: path,
+            metadata: md,
+            extraction: Some(ExtractionInfo { root: root.clone(), appdir, entry: "AppRun".into(), ..Default::default() }),
+            recommended: rec.permissions,
+            profile: SandboxProfile { permissions, ..Default::default() },
+            ..Default::default()
+        };
+        let out = crate::verify::verify(&entry, &self.config, &paths, &self.host());
+        drop(scratch);
+        out
+    }
+
     /// Replaces the extra arguments always passed to the app.
     pub fn set_args(&self, query: &str, args: Vec<String>) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;

@@ -89,7 +89,8 @@ plain-language explanation and a risk level, and risky choices show a warning.
   (folders hidden, read-only or writable, network, devices, display, sound,
   reachable D-Bus names, Landlock, syscall filter, no privileges). Results
   are stored with the app; optionally SAM checks before every start when
-  something changed and refuses to start on a failed check.
+  something changed and refuses to start on a failed check. Also works
+  before the sandbox exists, for the settings shown (nothing is unpacked).
 - **Desktop integration:** menu launchers that always start the app through
   `sam-jail-run`, plus cached icons.
 - **User guide** built into the window (☰ → *User Guide*), from
@@ -164,6 +165,7 @@ sam-jail preset apply "Image Editor" krita
 sam-jail review krita                    # accept the profile
 sam-jail run krita                       # or use the menu launcher
 sam-jail verify krita                    # sandbox check: do the settings really apply?
+sam-jail verify ~/Applications/App.AppImage   # check the recommended settings before creating the sandbox
 sam-jail doctor                          # check the system
 sam-jail remove krita                    # remove the sandbox (the AppImage stays)
 ```
