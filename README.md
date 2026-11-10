@@ -229,3 +229,7 @@ use different locations, for example for testing.
 ## License
 
 GPL-3.0-or-later.
+
+The app icon (`data/io.github.gitzekatze.SAM.svg`) is based on the seal icon
+from [Arcticons](https://github.com/Arcticons-Team/Arcticons), licensed under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
