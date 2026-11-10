@@ -1,0 +1,2 @@
+# Product names, not typos.
+addFilter(r"spelling-error .*'(Flatseal|libadwaita|gui)'")

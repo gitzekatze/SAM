@@ -5,8 +5,8 @@
 # Builds offline (COPR/mock have no network) from the two release files made
 # by scripts/make-release.sh: the source and the vendored Rust crates.
 
-# The release profile already strips the binaries.
-%global debug_package %{nil}
+# Fedora's Rust flags keep debug info; rpm strips the binaries and puts it
+# into the -debuginfo/-debugsource packages, as Fedora expects.
 
 Name:           sam-jail
 Version:        0.1.0
