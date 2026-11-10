@@ -130,6 +130,12 @@ impl AppPage {
         risk_badge.parent().unwrap().set_can_focus(false);
         badges.append(&sandbox_badge);
         badges.append(&check_badge);
+        // Each label keeps its own width when they wrap into a column.
+        for b in [&status_badge, &state_badge, &risk_badge, &sandbox_badge, &check_badge] {
+            if let Some(child) = b.parent() {
+                child.set_halign(gtk::Align::Start);
+            }
+        }
         sandbox_badge.parent().unwrap().set_can_focus(false);
         meta.append(&title);
         meta.append(&subtitle);
@@ -1161,11 +1167,11 @@ impl AppPage {
     }
 
     fn set_risk_badge(&self, ev: &Value) {
-        let level = util::str_of(ev, "risk.level").to_string();
-        let score = util::get(ev, "risk.score").and_then(Value::as_i64).unwrap_or(-1);
+        let risk = ev.get("risk").cloned().unwrap_or_default();
+        let level = util::str_of(&risk, "level").to_string();
         set_badge_visible(&self.risk_badge, !level.is_empty());
-        util::set_badge(&self.risk_badge, &format!("{}{}", util::risk_label(&level), if score >= 0 { format!(" · {score}") } else { String::new() }), util::risk_tone(&level));
-        self.risk_badge.set_tooltip_text(Some("How much this app can reach with the settings below, from 0 (almost nothing) to 100 (everything). Details under Overview"));
+        util::set_badge(&self.risk_badge, &util::risk_headline(&risk), util::risk_tone(&level));
+        self.risk_badge.set_tooltip_text(Some(&util::risk_tooltip(&risk)));
     }
 
     fn add_dynamic(&self, g: &adw::PreferencesGroup, w: &impl IsA<gtk::Widget>) {

@@ -83,7 +83,7 @@ pub struct Editor {
     overview: adw::PreferencesGroup,
     risk_row: adw::ActionRow,
     risk_badge: gtk::Label,
-    warning_rows: RefCell<Vec<adw::ActionRow>>,
+    warning_rows: RefCell<Vec<gtk::Widget>>,
     groups: RefCell<Vec<adw::PreferencesGroup>>,
 }
 
@@ -626,21 +626,44 @@ impl Editor {
             self.overview.remove(&r);
         }
         let ev = self.evaluation.borrow();
-        let (level, score) = ev
-            .as_ref()
-            .map(|e| (util::str_of(e, "risk.level").to_string(), util::get(e, "risk.score").and_then(Value::as_i64).unwrap_or(-1)))
-            .unwrap_or_default();
+        let risk = ev.as_ref().and_then(|e| e.get("risk").cloned()).unwrap_or_default();
+        let level = util::str_of(&risk, "level").to_string();
         self.risk_badge.set_visible(!level.is_empty());
-        util::set_badge(&self.risk_badge, &format!("{}{}", util::risk_label(&level), if score >= 0 { format!(" · {score}") } else { String::new() }), util::risk_tone(&level));
+        util::set_badge(&self.risk_badge, &util::risk_label(&level), util::risk_tone(&level));
+        self.risk_badge.set_tooltip_text(Some(&util::risk_tooltip(&risk)));
         let mut warnings: Vec<Value> = ev.as_ref().and_then(|e| e.get("warnings")).and_then(Value::as_array).cloned().unwrap_or_default();
         let order = |s: &str| match s { "danger" => 0, "warning" => 1, _ => 2 };
         warnings.sort_by_key(|w| order(util::str_of(w, "severity")));
         let serious = warnings.iter().filter(|w| util::str_of(w, "severity") != "info").count();
-        self.risk_row.set_subtitle(match serious {
-            0 => "Nothing to watch out for.",
-            1 => "One thing to watch out for, listed below.",
-            _ => "Several things to watch out for, listed below.",
-        });
+        // Which permission sets the level, in words.
+        let items = util::risk_items(&risk);
+        let top: Vec<&str> = items.iter().filter(|(_, l)| *l == level).map(|(t, _)| t.as_str()).collect();
+        let why = match top.len() {
+            0 => "Only harmless basics: fonts, its own window and folders you share read-only.".to_string(),
+            1 => format!("Set by the riskiest permission: {}.", top[0]),
+            _ => format!("Set by the riskiest permissions: {}.", top.join(", ")),
+        };
+        let watch = match serious {
+            0 => "",
+            1 => " One thing to watch out for, listed below.",
+            _ => " Several things to watch out for, listed below.",
+        };
+        self.risk_row.set_subtitle(&esc(&format!("{why}{watch}")));
+        // Everything that raises the risk, riskiest first.
+        if !items.is_empty() {
+            let exp = adw::ExpanderRow::builder()
+                .title("What raises the risk")
+                .subtitle(format!("{} permission{} beyond the basics. The level is set by the riskiest one, not by how many there are.", items.len(), if items.len() == 1 { "" } else { "s" }))
+                .build();
+            for (title, lvl) in &items {
+                let row = adw::ActionRow::builder().title(esc(title)).build();
+                let b = util::badge(util::risk_label(lvl).trim_end_matches(" risk"), util::risk_tone(lvl));
+                row.add_suffix(&b);
+                exp.add_row(&row);
+            }
+            self.overview.add(&exp);
+            self.warning_rows.borrow_mut().push(exp.upcast());
+        }
         for w in warnings {
             let sev = util::str_of(&w, "severity");
             let row = adw::ActionRow::builder()
@@ -651,7 +674,7 @@ impl Editor {
             icon.add_css_class(match sev { "danger" => "error", "warning" => "warning", _ => "dim-label" });
             row.add_prefix(&icon);
             self.overview.add(&row);
-            self.warning_rows.borrow_mut().push(row);
+            self.warning_rows.borrow_mut().push(row.upcast());
         }
     }
 

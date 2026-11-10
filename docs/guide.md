@@ -54,7 +54,7 @@ Every setting has a short explanation under its name. When a setting carries a r
 
 ### Overview
 
-The **risk** of the current settings (low, medium, high or dangerous, with a score) and anything worth watching out for, such as X11 access.
+The **risk** of the current settings: *low*, *medium*, *high* or *dangerous*. It is the level of the riskiest permission, not a count, so one webcam permission makes an app *high risk* however little else it may do. The label names that permission, for example **High risk · Network +1** (network and one more high-risk permission). *What raises the risk* lists every permission above *low*, and hovering over the label shows the same. Below that come things worth watching out for, such as X11 access.
 
 ### Network
 

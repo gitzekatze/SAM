@@ -50,9 +50,31 @@ pub struct RiskItem {
 pub struct RiskAssessment {
     /// Highest individual risk.
     pub level: RiskLevel,
-    /// 0..=100 aggregate score.
+    /// Sum of item weights, capped at 100. Kept for scripts; not shown,
+    /// because a number next to the level is easily misread.
     pub score: u32,
     pub items: Vec<RiskItem>,
+}
+
+impl RiskAssessment {
+    /// The permissions that set `level` (the riskiest ones). Empty for low
+    /// risk, where only harmless basics are granted.
+    pub fn deciding(&self) -> Vec<&RiskItem> {
+        if self.level == RiskLevel::Low {
+            return Vec::new();
+        }
+        self.items.iter().filter(|i| i.level == self.level && !i.key.starts_with("baseline.")).collect()
+    }
+
+    /// Why the level is what it is: "Network", "Network +2", or "" for low.
+    pub fn reason(&self) -> String {
+        let d = self.deciding();
+        match d.len() {
+            0 => String::new(),
+            1 => d[0].title.clone(),
+            n => format!("{} +{}", d[0].title, n - 1),
+        }
+    }
 }
 
 fn item(items: &mut Vec<RiskItem>, key: &str, title: &str, level: RiskLevel) {

@@ -113,6 +113,59 @@ pub fn badge(text: &str, tone: &str) -> gtk::Label {
 }
 
 /// Tone of a risk level, for `badge`.
+fn risk_rank(level: &str) -> u8 {
+    match level {
+        "dangerous" => 3,
+        "high" => 2,
+        "medium" => 1,
+        _ => 0,
+    }
+}
+
+/// Permissions that raise the risk (everything but the harmless basics),
+/// riskiest first: (title, level).
+pub fn risk_items(risk: &Value) -> Vec<(String, String)> {
+    let mut items: Vec<(String, String)> = risk
+        .get("items")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|i| !str_of(i, "key").starts_with("baseline.") && str_of(i, "level") != "low")
+        .map(|i| (str_of(i, "title").to_string(), str_of(i, "level").to_string()))
+        .collect();
+    items.sort_by_key(|(_, l)| std::cmp::Reverse(risk_rank(l)));
+    items
+}
+
+/// Label text: "High risk · Network", "High risk · Network +1", "Low risk".
+pub fn risk_headline(risk: &Value) -> String {
+    let level = str_of(risk, "level");
+    let top: Vec<String> = risk_items(risk).into_iter().filter(|(_, l)| l == level).map(|(t, _)| t).collect();
+    let label = risk_label(level);
+    match top.len() {
+        0 => label,
+        1 => format!("{label} · {}", top[0]),
+        n => format!("{label} · {} +{}", top[0], n - 1),
+    }
+}
+
+/// Hover text: what each level means for this app.
+pub fn risk_tooltip(risk: &Value) -> String {
+    let items = risk_items(risk);
+    if items.is_empty() {
+        return "Low risk: the app only gets harmless basics such as fonts, its own window and the folders you share read-only.".into();
+    }
+    let mut lines = vec!["The risk is set by the riskiest permission:".to_string()];
+    for lvl in ["dangerous", "high", "medium"] {
+        let names: Vec<&str> = items.iter().filter(|(_, l)| l == lvl).map(|(t, _)| t.as_str()).collect();
+        if !names.is_empty() {
+            lines.push(format!("{}: {}", risk_label(lvl).trim_end_matches(" risk"), names.join(", ")));
+        }
+    }
+    lines.push("Details under Overview.".into());
+    lines.join("\n")
+}
+
 pub fn risk_tone(level: &str) -> &'static str {
     match level {
         "low" => "good",

@@ -138,7 +138,11 @@ executes the AppImage by default. Additionally:
 | Network, X11, full home read-only, full session D-Bus, webcam, SSH agent | High |
 | Full home read/write, system D-Bus, raw devices (input, USB, ALSA), exposed keys | Dangerous |
 
-The score shown in the app is a weighted sum, capped at 100.
+An app's risk is the level of its riskiest permission. The app shows that
+level together with the permission(s) that set it, e.g. *High risk · Network
++1*; the Overview lists every permission above *Low*. A weighted sum (capped
+at 100) is still in the JSON output as `risk.score` for scripts, but is not
+shown, because a number next to the level was easily misread.
 
 ## Known limitations
 

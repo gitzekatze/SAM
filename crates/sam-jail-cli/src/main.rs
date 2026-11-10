@@ -604,7 +604,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 if let Some(x) = &o.entry.extraction {
                     println!("  extracted {} files ({}) via {}", x.file_count, human_size(x.total_size), x.method);
                 }
-                println!("  category: {}   risk: {} ({}/100)", o.entry.category, risk_str(summary.risk.level), summary.risk.score);
+                println!("  category: {}   risk: {}", o.entry.category, risk_line(&summary.risk));
                 for n in &o.entry.recommendation_notes {
                     println!("  - {n}");
                 }
@@ -781,7 +781,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let v = e.profile.permissions.get_key(&key)?;
             let eval = app.evaluate(&e.profile.permissions, Some(&e), &app.host());
             out.emit(&json!({"key": key, "value": v, "risk": eval.risk, "warnings": eval.warnings}), || {
-                println!("{key} = {v}   (risk now {} {}/100)", risk_str(eval.risk.level), eval.risk.score);
+                println!("{key} = {v}   (risk now {})", risk_line(&eval.risk));
                 print_warnings(&eval.warnings.iter().filter(|w| w.key.as_deref() == Some(&key)).cloned().collect::<Vec<_>>());
             });
         }
@@ -817,7 +817,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let host = app.host();
             let ev = app.evaluate(&perms, e.as_ref(), &host);
             out.emit(&ev, || {
-                println!("risk: {} ({}/100)", risk_str(ev.risk.level), ev.risk.score);
+                println!("risk: {}", risk_line(&ev.risk));
                 print_warnings(&ev.warnings);
             });
         }
@@ -1067,7 +1067,7 @@ fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel: Option<&s
         Some(sel) => println!("  sandbox:     Bubblewrap ({})", sel.reason),
         None => println!("  sandbox:     not available (see sam-jail doctor)"),
     }
-    println!("  risk:        {} ({}/100)", risk_str(s.risk.level), s.risk.score);
+    println!("  risk:        {}", risk_line(&s.risk));
     if let Some(p) = &e.profile.preset {
         println!("  preset:      {p}");
     }
@@ -1266,4 +1266,14 @@ fn config_cmd(app: &Sam, out: &Out, cmd: ConfigCmd) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// "High (Network, Webcam)": the level and the permissions that set it.
+fn risk_line(r: &sam_core::risk::RiskAssessment) -> String {
+    let names: Vec<&str> = r.deciding().iter().map(|i| i.title.as_str()).collect();
+    if names.is_empty() {
+        risk_str(r.level)
+    } else {
+        format!("{} ({})", risk_str(r.level), names.join(", "))
+    }
 }
