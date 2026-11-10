@@ -179,7 +179,10 @@ fn denied_home_path(line: &str) -> Option<String> {
     if !(l.contains("permission denied") || l.contains("eacces")) {
         return None;
     }
-    let start = line.find("/home/")?;
+    // The user's real home folder (e.g. /var/home/… on Fedora Silverblue),
+    // which is where the sandbox shows the app its private home.
+    let home = format!("{}/", sam_core::util::home_dir().display());
+    let start = line.find(&home).or_else(|| line.find("/home/"))?;
     let rest = &line[start..];
     let end = rest.find(|c: char| c == '\'' || c == '"' || c == ':' || c.is_whitespace()).unwrap_or(rest.len());
     Some(rest[..end].to_string()).filter(|p| p.len() > 6)
@@ -231,6 +234,10 @@ mod tests {
         assert_eq!(ids("Error: getaddrinfo ENOTFOUND api.example.com"), vec!["network"]);
         let home = sam_core::util::home_dir().display().to_string();
         assert_eq!(ids(&format!("EACCES: permission denied, open '{home}/Projects/x.txt'")), vec!["grant-folder"]);
+        // Homes outside /home (Fedora Silverblue, root) are recognised too.
+        if !home.starts_with("/home/") {
+            assert_eq!(ids(&format!("permission denied: '{home}/Music/a.mp3'")), vec!["grant-folder"]);
+        }
         assert_eq!(ids(&format!("EACCES: permission denied, open '{home}/.ssh/id_ed25519'")), vec!["grant-folder-refused"]);
         assert_eq!(ids("ServiceUnknown: The name org.freedesktop.systemd1 was not provided"), vec!["dbus-name-refused"]);
         assert!(analyze("Error: getaddrinfo ENOTFOUND x", &p, None).iter().all(|s| s.from_app_output));
