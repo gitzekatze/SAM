@@ -23,7 +23,7 @@ else
 CARGO ?= cargo
 endif
 
-.PHONY: all cli gui test install install-cli install-gui clean dist
+.PHONY: all cli gui test install install-cli install-gui clean dist appimage
 
 all: cli gui
 
@@ -53,6 +53,10 @@ install: install-cli install-gui
 
 dist:
 	scripts/make-release.sh dist
+
+# Needs RUNTIME=/path/to/runtime-x86_64 (see scripts/make-appimage.sh).
+appimage:
+	scripts/make-appimage.sh dist
 
 clean:
 	$(CARGO) clean

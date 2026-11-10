@@ -140,6 +140,21 @@ The packages are `sam-jail-cli` (`sam-jail`, `sam-jail-run`) and `sam-jail`
 - `passt` (provides `pasta`): *Local network only*.
 - `strace`: diagnostic runs.
 
+## AppImage
+
+`SAM-X.Y.Z-x86_64.AppImage` from the GitHub release runs on any recent
+distribution with Bubblewrap, GTK 4 and libadwaita 1.5+ installed:
+
+```sh
+chmod +x SAM-*-x86_64.AppImage
+./SAM-*-x86_64.AppImage            # the window
+./SAM-*-x86_64.AppImage cli doctor # the command line (sam-jail)
+```
+
+Menu entries SAM creates call the AppImage file; after moving it, open SAM
+once to update them. Build it yourself with `make appimage` (see
+[docs/packaging.md](docs/packaging.md)).
+
 ## Build from source
 
 Requirements: Rust (stable), GTK 4.12+, libadwaita 1.5+ and bubblewrap.
