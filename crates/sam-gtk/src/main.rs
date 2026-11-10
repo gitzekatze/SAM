@@ -115,9 +115,15 @@ fn main() -> glib::ExitCode {
         css.load_from_string(CSS);
         if let Some(display) = gdk::Display::default() {
             gtk::style_context_add_provider_for_display(&display, &css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-            // Debug builds started from a checkout: find the app icon next to
-            // the sources. Release builds use the installed icon, so the
-            // build folder's path never ends up in a packaged binary.
+            // SAM's own icon, from a folder only SAM writes. The user's icon
+            // folder may hold an outdated icon-theme.cache, and GTK ignores
+            // every icon that cache does not list.
+            if let Some(dir) = own_icon_dir() {
+                gtk::IconTheme::for_display(&display).add_search_path(dir);
+            }
+            // Debug builds started from a checkout: also look next to the
+            // sources, so a changed icon shows without reinstalling. Release
+            // builds never contain the build folder's path.
             #[cfg(debug_assertions)]
             gtk::IconTheme::for_display(&display).add_search_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data"));
         }
@@ -156,6 +162,20 @@ fn main() -> glib::ExitCode {
 /// SAM then registers a hidden desktop entry and its icon for itself in the
 /// user's data folder, and removes them again once a system-wide desktop
 /// file exists. Skipped when SAM runs with its own folders (tests).
+const ICON_SVG: &[u8] = include_bytes!("../../../data/io.github.gitzekatze.SAM.svg");
+
+/// `<SAM data>/theme`, holding hicolor/scalable/apps/<app id>.svg (written
+/// when missing or outdated). No icon-theme.cache, so GTK always scans it.
+fn own_icon_dir() -> Option<std::path::PathBuf> {
+    let root = sam_core::Paths::from_env().data_dir.join("theme");
+    let file = root.join("hicolor/scalable/apps").join(format!("{APP_ID}.svg"));
+    if std::fs::read(&file).ok().as_deref() != Some(ICON_SVG) {
+        std::fs::create_dir_all(file.parent()?).ok()?;
+        std::fs::write(&file, ICON_SVG).ok()?;
+    }
+    Some(root)
+}
+
 fn desktop_identity() {
     if std::env::var_os("SAM_CONFIG_DIR").is_some() || std::env::var_os("SAM_DATA_DIR").is_some() {
         return;
@@ -193,7 +213,7 @@ fn desktop_identity() {
     }
     if !icon.exists() {
         let _ = std::fs::create_dir_all(icon.parent().unwrap());
-        let _ = std::fs::write(&icon, include_bytes!("../../../data/io.github.gitzekatze.SAM.svg"));
+        let _ = std::fs::write(&icon, ICON_SVG);
     }
 }
 
