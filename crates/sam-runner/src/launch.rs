@@ -444,7 +444,11 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
 
 
     let log = Arc::new(Mutex::new(log));
+    // The first part of each stream: stderr decides whether the sandbox
+    // failed; both are searched for known problems (some apps, such as
+    // Audacity, log errors to stdout).
     let head = Arc::new(Mutex::new(String::new()));
+    let out_head = Arc::new(Mutex::new(String::new()));
     let pump = |src: Box<dyn Read + Send>, is_err: bool, log: Arc<Mutex<fs::File>>, head: Arc<Mutex<String>>, quiet: bool| {
         std::thread::spawn(move || {
             let reader = BufReader::new(src);
@@ -454,12 +458,10 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                 if let Ok(mut l) = log.lock() {
                     let _ = writeln!(l, "{}{text}", if is_err { "[err] " } else { "" });
                 }
-                if is_err {
-                    if let Ok(mut h) = head.lock() {
-                        if h.len() < STDERR_HEAD_LIMIT {
-                            h.push_str(&text);
-                            h.push('\n');
-                        }
+                if let Ok(mut h) = head.lock() {
+                    if h.len() < STDERR_HEAD_LIMIT {
+                        h.push_str(&text);
+                        h.push('\n');
                     }
                 }
                 if !quiet {
@@ -472,7 +474,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             }
         })
     };
-    let t1 = pump(Box::new(child.stdout.take().context("no stdout pipe")?), false, log.clone(), head.clone(), opts.quiet);
+    let t1 = pump(Box::new(child.stdout.take().context("no stdout pipe")?), false, log.clone(), out_head.clone(), opts.quiet);
     let t2 = pump(Box::new(child.stderr.take().context("no stderr pipe")?), true, log.clone(), head.clone(), opts.quiet);
 
     // A time-limited start (test start, diagnostic run) that SAM ended.
@@ -502,6 +504,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let code = status.code();
     let signal = status.signal();
     let head = head.lock().map(|h| h.clone()).unwrap_or_default();
+    let out_head = out_head.lock().map(|h| h.clone()).unwrap_or_default();
     let bwrap_json = bwrap_status_reader.and_then(|t| t.join().ok());
     let enforcement = helper_status_reader.and_then(|t| t.join().ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
     let (mut sandbox_failure, mut summary) = classify_failure(code, &head);
@@ -558,7 +561,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         setup_failed,
         enforcement,
         log_file: Some(log_path),
-        findings: if success { vec![] } else { crate::repair::analyze(&head, &app.profile.permissions, signal) },
+        findings: if success { vec![] } else { crate::repair::analyze(&format!("{head}\n{out_head}"), &app.profile.permissions, signal) },
         summary,
     };
     app.last_launched = Some(started_at);

@@ -11,6 +11,7 @@ use std::rc::Rc;
 use std::time::SystemTime;
 
 use gtk::gio;
+use gtk::gio::prelude::AppInfoExt;
 use gtk::glib;
 use serde_json::Value;
 
@@ -77,6 +78,14 @@ impl Backend {
 
     /// Starts an app in its sandbox. The app keeps running when SAM closes;
     /// `on_exit` gets the exit code while SAM is open.
+    /// A terminal program: opened in the user's terminal emulator (GIO picks
+    /// it), like a menu entry with `Terminal=true`.
+    pub fn launch_in_terminal(&self, app_id: &str, name: &str) -> Result<(), String> {
+        let cmd = format!("{} --app-id {}", glib::shell_quote(&self.runner).to_string_lossy(), glib::shell_quote(app_id).to_string_lossy());
+        let info = gio::AppInfo::create_from_commandline(&cmd, Some(name), gio::AppInfoCreateFlags::NEEDS_TERMINAL).map_err(|e| format!("Could not start a terminal: {e}"))?;
+        info.launch(&[], gio::AppLaunchContext::NONE).map_err(|e| format!("Could not start a terminal: {e}"))
+    }
+
     pub fn launch(&self, app_id: &str, files: &[String], on_exit: impl FnOnce(i32) + 'static) -> Result<(), String> {
         let mut argv: Vec<OsString> = vec![self.runner.clone().into(), "--app-id".into(), app_id.into()];
         argv.extend(files.iter().map(OsString::from));

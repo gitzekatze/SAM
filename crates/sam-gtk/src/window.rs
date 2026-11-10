@@ -798,6 +798,14 @@ impl App {
     }
 
     pub fn launch(self: &Rc<Self>, id: &str) {
+        let summary = self.state.borrow().apps.iter().find(|a| util::str_of(a, "id") == id).cloned();
+        if let Some(s) = summary.filter(|s| util::bool_of(s, "terminal")) {
+            match self.backend.launch_in_terminal(id, util::str_of(&s, "name")) {
+                Ok(()) => self.toast("Starting in a terminal…"),
+                Err(e) => self.report_error(&e),
+            }
+            return;
+        }
         let w = Rc::downgrade(self);
         let id2 = id.to_string();
         match self.backend.launch(id, &[], move |code| {

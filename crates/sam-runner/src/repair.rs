@@ -35,6 +35,9 @@ pub fn first_run_hints(e: &AppEntry) -> Vec<Suggestion> {
     let req = e.detection.as_ref().map(|d| d.requirements.clone()).unwrap_or_default();
     let toolkit = req.toolkit.as_str();
     let mut out = Vec::new();
+    if p.network.mode == NetworkMode::None && e.category == "game" && !(req.network || req.electron) {
+        out.push(s("network", "No online play", "The game has no network access, so multiplayer, online accounts and downloads of extra content will not work. Single-player games run fine without it.", set("network.mode", "full"), RiskLevel::High));
+    }
     if p.network.mode == NetworkMode::None && (req.network || req.electron) {
         out.push(s("network", "No internet", "The app has no network access. If it loads web content, syncs, signs in or talks to an AI model, it will seem broken. 'Local network only' is a middle ground for apps that use local servers.", set("network.mode", "full"), RiskLevel::High));
     }
@@ -42,10 +45,11 @@ pub fn first_run_hints(e: &AppEntry) -> Vec<Suggestion> {
     if !any_folder {
         out.push(s("files", "Files stay inside the sandbox", "The app cannot see your folders. Files it saves land in its private folder (open it with 'Files this app saved'). Grant Downloads to save there instead.", set("filesystem.downloads", "rw"), RiskLevel::Medium));
     }
-    if !p.display.x11 && !req.wayland && matches!(toolkit, "Unknown" | "") && e.detection.as_ref().is_some_and(|d| d.elf_count > 0) {
+    let windowed = !e.metadata.terminal;
+    if windowed && !p.display.x11 && !req.wayland && matches!(toolkit, "Unknown" | "") && e.detection.as_ref().is_some_and(|d| d.elf_count > 0) {
         out.push(s("x11", "The window may not appear", "SAM found no Wayland support in this app. If no window opens, turn on X11 (XWayland).", set("display.x11", "true"), RiskLevel::High));
     }
-    if !p.devices.gpu && !req.wayland && !req.x11 && matches!(toolkit, "Unknown" | "") && e.detection.as_ref().is_some_and(|d| d.elf_count > 0) {
+    if windowed && !p.devices.gpu && !req.wayland && !req.x11 && matches!(toolkit, "Unknown" | "") && e.detection.as_ref().is_some_and(|d| d.elf_count > 0) {
         out.push(s("gpu", "Graphics may not work", "SAM found no graphics libraries in this app, which usually means it loads them at start (common for Rust and game engines). If it fails to start or draw, turn on GPU acceleration.", set("devices.gpu", "true"), RiskLevel::Medium));
     }
         if req.electron && apparmor_restricts_userns() && !e.profile.args.iter().any(|a| a == "--no-sandbox") {
@@ -231,6 +235,9 @@ mod tests {
         assert_eq!(ids("./app: error while loading shared libraries: libfoo.so.1: cannot open shared object file"), vec!["libs-missing"]);
         assert_eq!(ids("(app:2): Gdk-ERROR **: Failed to create XKB keymap"), vec!["system-data"]);
         assert_eq!(ids("Error: Missing X server or $DISPLAY"), vec!["x11"]);
+        // Audacity 4: Qt forced to xcb, with colour codes from its logger.
+        let audacity = "\x1b[1;33m20:59:06.972 | WARN  | main_thread     | Qt              | could not connect to display \x1b[0m\n\x1b[1;32m20:59:06.973 | INFO  | main_thread     | Qt              | Could not load the Qt platform plugin \"xcb\" in \"\" even though it was found.\x1b[0m\n/opt/app/AppRun: line 34:     6 Aborted                    (core dumped)";
+        assert!(ids(audacity).contains(&"x11".to_string()), "{:?}", ids(audacity));
         assert_eq!(ids("Error: getaddrinfo ENOTFOUND api.example.com"), vec!["network"]);
         let home = sam_core::util::home_dir().display().to_string();
         assert_eq!(ids(&format!("EACCES: permission denied, open '{home}/Projects/x.txt'")), vec!["grant-folder"]);

@@ -57,6 +57,17 @@ fn check_passes_and_catches_mismatches() {
     assert!(failed.iter().any(|t| t == "Documents"), "the leaked folder is reported: {failed:?}");
     assert_eq!(app.resolve(&id).unwrap().last_check.unwrap().failed, failed);
 
+    // 2b. Local network only (pasta): the app runs as the user, not root,
+    //     so the D-Bus proxy accepts it and every check passes.
+    if sam_core::util::which("pasta").is_some() {
+        let mut p = PermissionSet::strict_gui();
+        p.network.mode = NetworkMode::Localhost;
+        app.set_permissions(&id, p).unwrap();
+        let out = app.verify(&id).unwrap();
+        let failed: Vec<_> = out.report.failed().iter().map(|r| format!("{}: {}", r.title, r.observed)).collect();
+        assert!(failed.is_empty(), "local network only: {failed:?}");
+    }
+
     // 3. Expectations follow the settings: without the syscall filter the
     //    check expects it off (and finds it off).
     let mut p = PermissionSet::strict_gui();

@@ -77,7 +77,15 @@ pub fn default_host_lib_dirs() -> Vec<PathBuf> {
 }
 
 fn host_has_lib(dirs: &[PathBuf], name: &str) -> bool {
-    dirs.iter().any(|d| d.join(name).exists())
+    if dirs.iter().any(|d| d.join(name).exists()) {
+        return true;
+    }
+    // An unversioned name ("libdl.so") is a development link; the loader
+    // also accepts the versioned library ("libdl.so.2") many systems have.
+    name.ends_with(".so")
+        && dirs.iter().any(|d| {
+            fs::read_dir(d).into_iter().flatten().flatten().any(|e| e.file_name().to_str().is_some_and(|f| f.starts_with(&format!("{name}."))))
+        })
 }
 
 #[derive(Default)]
@@ -285,9 +293,17 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
         ordered.insert(0, e.clone());
     }
     let mut parsed = 0u64;
+    // Programs built for musl (Alpine): bundled as alternatives (Node and
+    // Python packages ship both), never used on a glibc system. Their
+    // libraries are not missing for the app.
+    let mut musl_variants = 0u64;
     for p in &ordered {
         let Some(f) = parse_elf(p) else { continue };
         parsed += 1;
+        if f.needed.iter().any(|n| n.starts_with("libc.musl") || n.starts_with("ld-musl")) {
+            musl_variants += 1;
+            continue;
+        }
         if arch.is_none() {
             arch = f.arch;
         }
@@ -313,6 +329,9 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
         }
     }
     report.elf_count = parsed;
+    if musl_variants > 0 {
+        report.notes.push(format!("{musl_variants} bundled program(s) built for musl (Alpine) skipped: alternatives that only run on musl systems"));
+    }
     report.bundled_libraries = w.bundled.len() as u64;
     report.arch = arch.unwrap_or("unknown").to_string();
 

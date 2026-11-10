@@ -23,6 +23,38 @@ use sam_core::{BackendStatus, HostInfo, LaunchContext, SandboxCommand};
 pub struct Bubblewrap;
 
 /// `/usr/share` entries exposed in minimal runtime mode. Safe, read-only data.
+/// Host programs that ask a service outside the sandbox to start a program
+/// (which would then run unsandboxed). Inside every sandbox each is
+/// replaced by a stand-in from `TOOL_SHIMS` (see the /usr binding).
+const HIDDEN_HOST_TOOLS: &[&str] = &["/usr/bin/systemd-run", "/usr/bin/flatpak-spawn"];
+
+/// Stand-ins, written by `write_identity_files` into `<runtime>/tools`.
+/// `systemd-run [options] CMD...` runs CMD directly, so it stays in the
+/// sandbox; some AppRun scripts use systemd-run whenever it exists (e.g.
+/// KeePassXC's, for a separate scope). `flatpak-spawn` refuses.
+pub const TOOL_SHIMS: &[(&str, &str)] = &[
+    (
+        "systemd-run",
+        r#"#!/bin/sh
+# SAM: inside the sandbox, systemd-run runs the command directly (sandboxed).
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --) shift; break ;;
+    -u|-p|-E|-M|-H|--unit|--property|--slice|--description|--setenv|--uid|--gid|--nice|--working-directory|--machine|--host|--service-type|--on-active|--on-boot|--on-startup|--on-unit-active|--on-unit-inactive|--on-calendar|--timer-property|--path-property|--socket-property|--background|--json) shift 2 ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+[ $# -gt 0 ] || { echo "systemd-run: not available in SAM's sandbox" >&2; exit 1; }
+exec "$@"
+"#,
+    ),
+    (
+        "flatpak-spawn",
+        "#!/bin/sh\necho \"flatpak-spawn: not available in SAM's sandbox\" >&2\nexit 1\n",
+    ),
+];
+
 const SHARE_BASE: &[&str] = &[
     "fonts", "fontconfig", "icons", "locale", "zoneinfo", "themes", "mime", "X11", "glib-2.0", "pixmaps",
     "ca-certificates", "terminfo", "icu", "iso-codes", "misc", "file", "hwdata", "color-schemes", "kf6",
@@ -262,6 +294,10 @@ impl Bubblewrap {
         // Namespaces & process hygiene.
         a.push("--die-with-parent").push("--new-session");
         a.push("--unshare-user").push("--unshare-pid").push("--unshare-ipc").push("--unshare-uts").push("--unshare-cgroup-try");
+        // The user's own ids, also when bwrap runs inside pasta's namespace
+        // (Local network only), where it would otherwise map to root: apps
+        // then refuse to run (Electron) and the D-Bus proxy rejects them.
+        a.push("--uid").push(ctx.host.uid.to_string()).push("--gid").push(ctx.host.gid.to_string());
         match p.network.mode {
             NetworkMode::Full => {}
             NetworkMode::None => {
@@ -313,6 +349,19 @@ impl Bubblewrap {
         }
         for d in ["/bin", "/sbin", "/lib", "/lib64", "/lib32"] {
             mirror(&mut a, d);
+        }
+        // Tools that ask a service outside the sandbox to start a program
+        // (systemd, Flatpak). They would run it unsandboxed if the service
+        // is reachable, and otherwise fail: some AppRun scripts use
+        // systemd-run whenever it exists, so hiding it lets them start
+        // normally. Hidden as an empty, non-executable file.
+        // Links (run0 -> systemd-run) lead to a replaced file anyway, and
+        // Bubblewrap cannot mount over a link.
+        for t in HIDDEN_HOST_TOOLS {
+            if fs::symlink_metadata(t).is_ok_and(|m| m.file_type().is_file()) {
+                let name = Path::new(t).file_name().unwrap_or_default();
+                a.op2("--ro-bind", ctx.runtime_dir.join("tools").join(name), *t);
+            }
         }
 
         // /etc
@@ -714,6 +763,13 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
     fs::create_dir_all(&bin)?;
     {
         use std::os::unix::fs::PermissionsExt;
+        let tools = ctx.runtime_dir.join("tools");
+        fs::create_dir_all(&tools)?;
+        for (name, script) in TOOL_SHIMS {
+            let f = tools.join(name);
+            fs::write(&f, script)?;
+            fs::set_permissions(&f, fs::Permissions::from_mode(0o755))?;
+        }
         let shim = bin.join("sam-open");
         fs::write(&shim, OPEN_SHIM)?;
         fs::set_permissions(&shim, fs::Permissions::from_mode(0o755))?;
@@ -847,6 +903,24 @@ mod tests {
         let cmd = Bubblewrap.build(&ctx).unwrap();
         assert!(cmd.notes.iter().any(|n| n.contains("no proxy")));
         assert!(!has_seq(&cmd.args, &["--setenv", "DBUS_SESSION_BUS_ADDRESS"]));
+    }
+
+    #[test]
+    fn own_ids_and_tool_stand_ins() {
+        let ctx = sample_context();
+        let a = Bubblewrap.build(&ctx).unwrap().args;
+        assert!(has_seq(&a, &["--uid", &ctx.host.uid.to_string(), "--gid", &ctx.host.gid.to_string()]));
+        if fs::symlink_metadata("/usr/bin/systemd-run").is_ok_and(|m| m.file_type().is_file()) {
+            let shim = ctx.runtime_dir.join("tools/systemd-run").display().to_string();
+            assert!(has_seq(&a, &["--ro-bind", &shim, "/usr/bin/systemd-run"]));
+        }
+        // The stand-in runs the command, skipping systemd-run's options.
+        let (_, script) = TOOL_SHIMS.iter().find(|(n, _)| *n == "systemd-run").unwrap();
+        let out = std::process::Command::new("sh")
+            .args(["-c", script, "systemd-run", "--user", "--scope", "--slice=app.slice", "--unit", "x.scope", "echo", "ran"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ran");
     }
 
     #[test]

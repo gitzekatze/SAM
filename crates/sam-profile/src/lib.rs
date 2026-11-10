@@ -276,6 +276,15 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
             notes.push("Compatibility issues were detected; see the dependency report".into());
         }
     }
+    // Terminal programs run in the terminal that starts them: no window,
+    // no graphics, no desktop services.
+    if md.terminal {
+        p.display.wayland = false;
+        p.display.x11 = false;
+        p.devices.gpu = false;
+        p.dbus.session.mode = sam_core::permissions::DbusMode::None;
+        notes.push("Terminal program: no display, GPU or desktop services; it runs in a terminal window".into());
+    }
     if p.network.mode == NetworkMode::None && needs_network_by_purpose(md, file_name) {
         p.network.mode = NetworkMode::Full;
         notes.push("Network enabled: this looks like an AI, web-UI or server app, which talks to models or services over the network. If it only uses local models, 'Local network only' blocks the internet but keeps local servers reachable.".into());
@@ -440,6 +449,15 @@ fn needs_x11_only(app: &AppEntry) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn terminal_programs_get_no_display() {
+        let md = AppImageMetadata { name: "Neovim".into(), categories: vec!["Utility".into(), "TextEditor".into()], terminal: true, ..Default::default() };
+        let r = recommend(&md, "nvim.appimage", None);
+        assert!(!r.permissions.display.wayland && !r.permissions.display.x11 && !r.permissions.devices.gpu);
+        assert_eq!(r.permissions.dbus.session.mode, sam_core::permissions::DbusMode::None);
+    }
+
     use super::*;
     use sam_core::Requirements;
 

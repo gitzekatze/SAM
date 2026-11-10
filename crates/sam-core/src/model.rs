@@ -500,6 +500,8 @@ pub struct AppSummary {
     pub added_at: i64,
     /// The last start failed: the likely cause, or the exit summary.
     pub last_problem: Option<String>,
+    /// A terminal program (`Terminal=true`): started in a terminal window.
+    pub terminal: bool,
 }
 
 impl AppSummary {
@@ -521,6 +523,7 @@ impl AppSummary {
             last_problem: e.last_launch.as_ref().filter(|l| !l.success && !matches!(l.signal, Some(9) | Some(15))).map(|l| {
                 l.findings.first().map(|f| f.title.clone()).unwrap_or_else(|| l.summary.clone())
             }),
+            terminal: e.metadata.terminal,
         }
     }
 }

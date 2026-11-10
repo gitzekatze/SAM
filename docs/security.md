@@ -76,6 +76,15 @@ Process isolation:
   - Shell startup files, `autostart`, `systemd --user` and
     `~/.local/share/applications` stay read-only. These are common ways for
     malware to persist.
+- **No starting programs outside the sandbox through system services:**
+  `systemd-run` (and `run0`, a link to it) is replaced inside every sandbox
+  by a stand-in that runs the command directly, so it stays sandboxed;
+  `flatpak-spawn` refuses. With full D-Bus access the real tools could ask
+  systemd or Flatpak to start a program outside. Some AppRun scripts use
+  `systemd-run` whenever it exists (KeePassXC), and now start normally.
+- **The app runs with your user and group id**, also in *Local network
+  only*, where Bubblewrap runs inside pasta's namespace and would otherwise
+  map the app to root.
 - **Sandbox check** (`sam-jail verify`, *Check* in the window): the same
   launch path as a real start, but the helper runs a test program after
   Landlock and the syscall filter are in place instead of executing the app.
