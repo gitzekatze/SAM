@@ -229,7 +229,8 @@ fn desktop_identity() {
     if ours.exists() && !is_ours {
         return; // A desktop file the user made: leave it alone.
     }
-    let Ok(exe) = std::env::current_exe() else { return };
+    // From SAM's AppImage: the AppImage file (its mount folder changes).
+    let Some(exe) = sam_core::util::own_appimage().or_else(|| std::env::current_exe().ok()) else { return };
     let entry = format!(
         "[Desktop Entry]\nType=Application\nName=SAM\nComment=Sandbox AppImages and manage their permissions\nExec=\"{}\" %F\nIcon={APP_ID}\nTerminal=false\nNoDisplay=true\nStartupWMClass={APP_ID}\nX-SAM-Self=true\n",
         exe.display()

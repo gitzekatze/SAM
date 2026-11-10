@@ -10,9 +10,14 @@ use anyhow::Result;
 use sam_core::util::{atomic_write, which};
 use sam_core::{AppEntry, Paths};
 
-/// Command used in `Exec=` lines: `sam-jail-run` if it is on `$PATH`
-/// (packaged install), otherwise the absolute path next to the current binary.
+/// Command used in `Exec=` lines: SAM's own AppImage file when SAM runs
+/// from one (it hands `--app-id` on to sam-jail-run), else `sam-jail-run` if
+/// it is on `$PATH` (packaged install), otherwise the absolute path next to
+/// the current binary.
 pub fn runner_command() -> String {
+    if let Some(a) = sam_core::util::own_appimage() {
+        return a.display().to_string();
+    }
     if let Some(p) = which("sam-jail-run") {
         if p.starts_with("/usr") {
             return "sam-jail-run".into();
@@ -139,6 +144,22 @@ pub fn remove_launcher(paths: &Paths, id: &str) -> Result<bool> {
     Ok(removed)
 }
 
+/// Rewrites installed launchers whose contents are outdated, e.g. because
+/// SAM's AppImage was moved. Returns how many changed.
+pub fn refresh_launchers(paths: &Paths, entries: &[AppEntry]) -> usize {
+    let runner = runner_command();
+    let mut changed = 0;
+    for e in entries {
+        let path = paths.launcher_file(&e.id);
+        let Ok(old) = fs::read_to_string(&path) else { continue };
+        let new = launcher_contents(e, &runner);
+        if old != new && install_launcher(paths, e).is_ok() {
+            changed += 1;
+        }
+    }
+    changed
+}
+
 /// Other SAM-managed desktop files carrying this app id.
 pub fn find_duplicates(paths: &Paths, id: &str) -> Vec<PathBuf> {
     let needle = format!("X-SAM-AppId={id}\n");
@@ -163,7 +184,7 @@ pub fn validate_launcher(path: &Path, id: &str) -> Vec<String> {
     };
     let m = crate::metadata::parse_desktop(&text);
     match m.get("Exec") {
-        Some(exec) if exec.contains("sam-jail-run") && exec.contains(&format!("--app-id {id}")) => {}
+        Some(exec) if (exec.contains("sam-jail-run") || exec.starts_with(&exec_quote(&runner_command()))) && exec.contains(&format!("--app-id {id}")) => {}
         Some(_) => problems.push("launcher does not start the app through sam-jail-run".into()),
         None => problems.push("launcher has no Exec line".into()),
     }

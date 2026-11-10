@@ -234,7 +234,9 @@ enum Cmd {
     },
     /// Point an app at the new location of its AppImage.
     Relocate { app: String, path: PathBuf },
-    /// Install or remove the desktop launcher.
+    /// Install or remove the desktop launcher. `sam-jail desktop all refresh`
+    /// rewrites every launcher whose command is outdated (e.g. SAM's AppImage
+    /// was moved).
     Desktop { app: String, action: String },
     /// Run the app once under strace to find missing resources.
     Diagnose {
@@ -915,6 +917,10 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Relocate { app: q, path } => {
             let e = app.relocate(&q, &path)?;
             out.emit(&AppSummary::from_entry(&e), || println!("{} now points to {} [{}]", e.display_name(), tildify(&e.source_path), badge_str(e.badge())));
+        }
+        Cmd::Desktop { app: q, action } if q == "all" && action == "refresh" => {
+            let n = sam_intake::desktop::refresh_launchers(&app.paths, &app.registry().list()?);
+            out.emit(&json!({"refreshed": n}), || println!("{n} launcher(s) updated"));
         }
         Cmd::Desktop { app: q, action } => {
             let mut e = app.resolve(&q)?;

@@ -882,6 +882,8 @@ impl App {
         let me = self.clone();
         glib::spawn_future_local(async move {
             me.load_catalog().await;
+            // Menu entries point at the old place if SAM's AppImage was moved.
+            let _ = me.backend.call(&["desktop", "all", "refresh"], None).await;
             me.load_config().await;
             me.refresh_apps().await;
             let st = me.state.borrow();

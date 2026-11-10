@@ -71,6 +71,17 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// The AppImage file SAM itself runs from, when this program was started
+/// from SAM's own AppImage (its runtime sets `$APPIMAGE` and `$APPDIR`, and
+/// the program lies inside `$APPDIR`). Menu entries must then call the
+/// AppImage file: the folder it is mounted at changes on every start.
+pub fn own_appimage() -> Option<PathBuf> {
+    let appimage = PathBuf::from(std::env::var_os("APPIMAGE")?);
+    let appdir = PathBuf::from(std::env::var_os("APPDIR")?);
+    let exe = std::env::current_exe().ok()?;
+    (exe.starts_with(&appdir) && appimage.is_file()).then_some(appimage)
+}
+
 /// Find an executable in `$PATH`.
 pub fn which(name: &str) -> Option<PathBuf> {
     if name.contains('/') {
