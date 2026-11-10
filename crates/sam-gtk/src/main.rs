@@ -23,6 +23,22 @@ use gtk::{gdk, gio, glib};
 
 const APP_ID: &str = "io.github.gitzekatze.SAM";
 
+/// SAM's own green accent (buttons, switches, links), independent of the
+/// desktop's accent colour, which may be grey or black.
+const ACCENT_CSS: &str = r#"
+@define-color accent_bg_color #26a269;
+@define-color accent_fg_color #ffffff;
+@define-color accent_color @success_color;
+"#;
+/// The same for libadwaita 1.6+ (GTK 4.16+), which uses CSS variables.
+const ACCENT_VARS_CSS: &str = r#"
+:root {
+    --accent-bg-color: #26a269;
+    --accent-fg-color: #ffffff;
+    --accent-color: var(--success-color);
+}
+"#;
+
 const CSS: &str = r#"
 .sam-badge {
     padding: 2px 9px;
@@ -35,7 +51,8 @@ const CSS: &str = r#"
 .sam-badge-warn    { background-color: alpha(@warning_color, 0.18); color: @warning_color; }
 .sam-badge-bad     { background-color: alpha(@error_color, 0.15);   color: @error_color; }
 .sam-badge-danger  { background-color: @error_bg_color;             color: @error_fg_color; }
-.sam-badge-neutral { background-color: alpha(@window_fg_color, 0.08); color: alpha(@window_fg_color, 0.7); }
+.sam-badge-neutral { background-color: alpha(@window_fg_color, 0.10); color: alpha(@window_fg_color, 0.85); }
+.sam-badge-blue    { background-color: alpha(#3584e4, 0.20);        color: #3584e4; }
 
 .sam-chip {
     padding: 1px 2px 1px 10px;
@@ -112,7 +129,12 @@ fn main() -> glib::ExitCode {
         desktop_identity();
         gtk::Window::set_default_icon_name(APP_ID);
         let css = gtk::CssProvider::new();
-        css.load_from_string(CSS);
+        let mut all = String::from(ACCENT_CSS);
+        if gtk::check_version(4, 16, 0).is_none() {
+            all.push_str(ACCENT_VARS_CSS);
+        }
+        all.push_str(CSS);
+        css.load_from_string(&all);
         if let Some(display) = gdk::Display::default() {
             gtk::style_context_add_provider_for_display(&display, &css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
             // SAM's own icon, from a folder only SAM writes. The user's icon

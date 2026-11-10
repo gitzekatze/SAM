@@ -120,7 +120,7 @@ impl AppPage {
         let state_badge = util::badge("", "warn");
         state_badge.set_visible(false);
         let risk_badge = util::badge("", "neutral");
-        let sandbox_badge = util::badge("Bubblewrap", "neutral");
+        let sandbox_badge = util::badge("Bubblewrap", "blue");
         let check_badge = util::badge("", "good");
         badges.append(&status_badge);
         status_badge.parent().unwrap().set_can_focus(false);
@@ -637,11 +637,13 @@ impl AppPage {
                     self.check_summary.set_subtitle(&esc(&format!("Every setting applies. Checked {when}.")));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, "Checked", "good");
+                    self.check_badge.set_tooltip_text(Some("The sandbox check confirmed that every setting applies; see Sandbox Check below"));
                 } else {
                     self.check_summary.set_title(&format!("{} of {total} checks failed", failed.len()));
                     self.check_summary.set_subtitle(&esc(&format!("Not applied: {}. Checked {when}.", failed.join(", "))));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, "Check failed", "bad");
+                    self.check_badge.set_tooltip_text(Some("The sandbox check found settings that do not apply; see Sandbox Check below"));
                 }
             }
         }
@@ -678,11 +680,13 @@ impl AppPage {
                     self.check_summary.set_subtitle("Every setting below applies. Not stored: the sandbox does not exist yet.");
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, "Checked", "good");
+                    self.check_badge.set_tooltip_text(Some("The sandbox check confirmed that every setting applies; see Sandbox Check below"));
                 } else {
                     self.check_summary.set_title(&format!("{} of {total} checks failed", failed.len()));
                     self.check_summary.set_subtitle(&esc(&format!("Not applied: {}.", failed.join(", "))));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, "Check failed", "bad");
+                    self.check_badge.set_tooltip_text(Some("The sandbox check found settings that do not apply; see Sandbox Check below"));
                 }
             }
         }
@@ -1161,6 +1165,7 @@ impl AppPage {
         let score = util::get(ev, "risk.score").and_then(Value::as_i64).unwrap_or(-1);
         set_badge_visible(&self.risk_badge, !level.is_empty());
         util::set_badge(&self.risk_badge, &format!("{}{}", util::risk_label(&level), if score >= 0 { format!(" · {score}") } else { String::new() }), util::risk_tone(&level));
+        self.risk_badge.set_tooltip_text(Some("How much this app can reach with the settings below, from 0 (almost nothing) to 100 (everything). Details under Overview"));
     }
 
     fn add_dynamic(&self, g: &adw::PreferencesGroup, w: &impl IsA<gtk::Widget>) {
@@ -1198,26 +1203,29 @@ impl AppPage {
         }
         self.icon_slot.append(&window::app_icon(&icon, 64));
         if sandboxed {
-            util::set_badge(&self.status_badge, "Sandboxed", "accent");
+            util::set_badge(&self.status_badge, "Sandboxed", "good");
+            self.status_badge.set_tooltip_text(Some("SAM runs this app in its sandbox, with exactly the access listed below"));
         } else {
             util::set_badge(&self.status_badge, "Not sandboxed", "neutral");
+            self.status_badge.set_tooltip_text(Some("No sandbox yet. Nothing has been unpacked or run; below are the settings SAM recommends"));
         }
         // Anything that needs attention, next to the status.
         let compat_on = entry.as_ref().is_some_and(|e| util::bool_of(e, "profile.compatibility_mode"));
         let badge_state = summary.as_ref().map(|s| util::str_of(s, "badge").to_string()).unwrap_or_default();
         let state = match badge_state.as_str() {
-            "needs-review" => Some(("Needs review", "warn")),
-            "compatibility-risk" if compat_on => Some(("Compatibility mode", "warn")),
-            "compatibility-risk" => Some(("Compatibility risk", "warn")),
-            "unsafe" => Some(("Unsafe", "danger")),
-            "stale" => Some(("AppImage changed", "warn")),
-            "broken" => Some(("Broken", "bad")),
-            "missing" => Some(("File missing", "bad")),
+            "needs-review" => Some(("Needs review", "warn", "Look over the settings below; SAM chose them automatically or the app asks for new access")),
+            "compatibility-risk" if compat_on => Some(("Compatibility mode", "warn", "Compatibility mode gives this app broad access; turn it off under Launching when it is no longer needed")),
+            "compatibility-risk" => Some(("Compatibility risk", "warn", "These settings give the app broad access, similar to compatibility mode")),
+            "unsafe" => Some(("Unsafe", "danger", "These settings let the app reach far outside its sandbox")),
+            "stale" => Some(("AppImage changed", "warn", "The AppImage file changed since it was unpacked; SAM still runs the previous version until you update the sandbox")),
+            "broken" => Some(("Broken", "bad", "The last start failed; see Troubleshooting below")),
+            "missing" => Some(("File missing", "bad", "The AppImage file is gone; SAM can still run the unpacked copy")),
             _ => None,
         };
         set_badge_visible(&self.state_badge, state.is_some());
-        if let Some((t, tone)) = state {
+        if let Some((t, tone, tip)) = state {
             util::set_badge(&self.state_badge, t, tone);
+            self.state_badge.set_tooltip_text(Some(tip));
         }
         let selection = if sandboxed { info.as_ref().and_then(|i| i.get("selection").cloned()) } else { self.preview.borrow().as_ref().and_then(|p| p.get("selection").cloned()) };
         let have_data = if sandboxed { info.is_some() } else { self.preview.borrow().is_some() };
@@ -1225,8 +1233,8 @@ impl AppPage {
             util::set_badge(&self.sandbox_badge, "Sandbox unavailable", "bad");
             self.sandbox_badge.set_tooltip_text(Some("Bubblewrap cannot run on this system; see Diagnostics"));
         } else {
-            util::set_badge(&self.sandbox_badge, "Bubblewrap", "neutral");
-            self.sandbox_badge.set_tooltip_text(Some("Runs in a Bubblewrap sandbox"));
+            util::set_badge(&self.sandbox_badge, "Bubblewrap", "blue");
+            self.sandbox_badge.set_tooltip_text(Some("The sandbox technology: Bubblewrap gives the app its own view of the system with only the folders, devices and services allowed below"));
         }
         if !sandboxed {
             if let Some(pv) = self.preview.borrow().as_ref() {

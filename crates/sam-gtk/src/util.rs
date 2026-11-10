@@ -127,7 +127,7 @@ use gtk::prelude::*;
 
 /// Replaces a badge's text and tone in place.
 pub fn set_badge(l: &gtk::Label, text: &str, tone: &str) {
-    for t in ["good", "warn", "bad", "danger", "neutral", "accent"] {
+    for t in ["good", "warn", "bad", "danger", "neutral", "accent", "blue"] {
         l.remove_css_class(&format!("sam-badge-{t}"));
     }
     l.add_css_class(&format!("sam-badge-{tone}"));
