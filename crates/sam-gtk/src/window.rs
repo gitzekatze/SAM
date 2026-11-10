@@ -946,14 +946,27 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
     let (text, tone) = match (r.sandboxed, r.badge.as_str()) {
         (false, _) => ("Not sandboxed", "neutral"),
         (true, "needs-review") => ("Needs review", "warn"),
-        (true, "compatibility-risk") => ("Compatibility", "warn"),
+        (true, "compatibility-mode") => ("Compatibility mode", "warn"),
+        (true, "compatibility-risk") => ("May not start", "warn"),
         (true, "unsafe") => ("Unsafe", "danger"),
         (true, "stale") => ("Changed", "warn"),
         (true, "broken") => ("Broken", "bad"),
         (true, "missing") => ("Missing", "bad"),
-        (true, _) => ("Sandboxed", "accent"),
+        (true, _) => ("Sandboxed", "good"),
     };
-    b.append(&util::badge(text, tone));
+    let label = util::badge(text, tone);
+    label.set_tooltip_text(Some(match (r.sandboxed, r.badge.as_str()) {
+        (false, _) => "No sandbox yet",
+        (true, "needs-review") => "Look over its settings: SAM chose them automatically or the app asks for new access",
+        (true, "compatibility-mode") => "Compatibility mode is on: the app has broad access so that it works",
+        (true, "compatibility-risk") => "SAM's analysis found it may not start in its sandbox; this goes away after the first successful start",
+        (true, "unsafe") => "Its settings let it reach far outside its sandbox",
+        (true, "stale") => "The AppImage file changed since it was unpacked",
+        (true, "broken") => "The last start failed",
+        (true, "missing") => "The AppImage file is gone",
+        (true, _) => "Runs in its sandbox",
+    }));
+    b.append(&label);
     row.set_child(Some(&b));
     row.set_tooltip_text(Some(&util::plain(&util::tildify(&r.path))));
     row

@@ -31,6 +31,10 @@ pub enum AppState {
 pub enum Badge {
     Ready,
     NeedsReview,
+    /// Compatibility mode is on: the app has broad access so that it works.
+    CompatibilityMode,
+    /// The dependency analysis found the app may not start in its sandbox
+    /// (e.g. it relies on system libraries), and it has not started yet.
     CompatibilityRisk,
     Stale,
     Broken,
@@ -43,7 +47,8 @@ impl Badge {
         match self {
             Badge::Ready => "Ready",
             Badge::NeedsReview => "Needs Review",
-            Badge::CompatibilityRisk => "Compatibility Risk",
+            Badge::CompatibilityMode => "Compatibility Mode",
+            Badge::CompatibilityRisk => "May Not Start",
             Badge::Stale => "Stale",
             Badge::Broken => "Broken",
             Badge::Unsafe => "Unsafe",
@@ -394,12 +399,20 @@ impl AppEntry {
         if !self.reviewed || !self.pending_changes.is_empty() {
             return Badge::NeedsReview;
         }
-        if self.profile.compatibility_mode
-            || matches!(&self.detection, Some(d) if d.compatibility != Compatibility::Good)
-        {
+        if self.profile.compatibility_mode {
+            return Badge::CompatibilityMode;
+        }
+        // A warning from the analysis, until the app has shown it starts.
+        if matches!(&self.detection, Some(d) if d.compatibility != Compatibility::Good) && !self.started_fine() {
             return Badge::CompatibilityRisk;
         }
         Badge::Ready
+    }
+
+    /// The last start got the app running: it exited normally, was closed by
+    /// SAM, or ran for more than ten seconds.
+    pub fn started_fine(&self) -> bool {
+        self.last_launch.as_ref().is_some_and(|l| !l.sandbox_failure && (l.success || l.finished_at - l.started_at > 10))
     }
 
     pub fn display_name(&self) -> &str {
@@ -526,5 +539,23 @@ mod tests {
         a.clear_launch_failure();
         assert!(!a.last_launch.as_ref().unwrap().sandbox_failure);
         assert!(a.last_error.is_none());
+    }
+}
+
+#[cfg(test)]
+mod badge_tests {
+    use super::*;
+
+    #[test]
+    fn compatibility_labels() {
+        let mut e = AppEntry { extraction: Some(ExtractionInfo::default()), reviewed: true, ..Default::default() };
+        e.detection = Some(DependencyReport { compatibility: Compatibility::Risk, ..Default::default() });
+        assert_eq!(e.badge(), Badge::CompatibilityRisk, "warning until it has started");
+        e.last_launch = Some(LaunchRecord { started_at: 0, finished_at: 3, success: false, ..Default::default() });
+        assert_eq!(e.badge(), Badge::CompatibilityRisk, "a crash right away keeps it");
+        e.last_launch = Some(LaunchRecord { started_at: 0, finished_at: 60, success: false, ..Default::default() });
+        assert_eq!(e.badge(), Badge::Ready, "ran for a minute: it starts");
+        e.profile.compatibility_mode = true;
+        assert_eq!(e.badge(), Badge::CompatibilityMode);
     }
 }

@@ -1216,22 +1216,21 @@ impl AppPage {
             self.status_badge.set_tooltip_text(Some("No sandbox yet. Nothing has been unpacked or run; below are the settings SAM recommends"));
         }
         // Anything that needs attention, next to the status.
-        let compat_on = entry.as_ref().is_some_and(|e| util::bool_of(e, "profile.compatibility_mode"));
         let badge_state = summary.as_ref().map(|s| util::str_of(s, "badge").to_string()).unwrap_or_default();
         let state = match badge_state.as_str() {
-            "needs-review" => Some(("Needs review", "warn", "Look over the settings below; SAM chose them automatically or the app asks for new access")),
-            "compatibility-risk" if compat_on => Some(("Compatibility mode", "warn", "Compatibility mode gives this app broad access; turn it off under Launching when it is no longer needed")),
-            "compatibility-risk" => Some(("Compatibility risk", "warn", "These settings give the app broad access, similar to compatibility mode")),
-            "unsafe" => Some(("Unsafe", "danger", "These settings let the app reach far outside its sandbox")),
-            "stale" => Some(("AppImage changed", "warn", "The AppImage file changed since it was unpacked; SAM still runs the previous version until you update the sandbox")),
-            "broken" => Some(("Broken", "bad", "The last start failed; see Troubleshooting below")),
-            "missing" => Some(("File missing", "bad", "The AppImage file is gone; SAM can still run the unpacked copy")),
+            "needs-review" => Some(("Needs review", "warn", "Look over the settings below; SAM chose them automatically or the app asks for new access".to_string())),
+            "compatibility-mode" => Some(("Compatibility mode", "warn", "Compatibility mode is on: so that the app works, it gets broad access (internet, the whole session bus, all of /usr, X11, GPU and sound). Turn it off under Launching → Compatibility mode once a narrower setting works; your previous settings come back".to_string())),
+            "compatibility-risk" => Some(compat_risk_label(entry.as_ref())),
+            "unsafe" => Some(("Unsafe", "danger", "These settings let the app reach far outside its sandbox".to_string())),
+            "stale" => Some(("AppImage changed", "warn", "The AppImage file changed since it was unpacked; SAM still runs the previous version until you update the sandbox".to_string())),
+            "broken" => Some(("Broken", "bad", "The last start failed; see Troubleshooting below".to_string())),
+            "missing" => Some(("File missing", "bad", "The AppImage file is gone; SAM can still run the unpacked copy".to_string())),
             _ => None,
         };
         set_badge_visible(&self.state_badge, state.is_some());
         if let Some((t, tone, tip)) = state {
             util::set_badge(&self.state_badge, t, tone);
-            self.state_badge.set_tooltip_text(Some(tip));
+            self.state_badge.set_tooltip_text(Some(&tip));
         }
         let selection = if sandboxed { info.as_ref().and_then(|i| i.get("selection").cloned()) } else { self.preview.borrow().as_ref().and_then(|p| p.get("selection").cloned()) };
         let have_data = if sandboxed { info.is_some() } else { self.preview.borrow().is_some() };
@@ -1656,4 +1655,25 @@ fn framed(v: &gtk::TextView, height: i32) -> gtk::Widget {
     s.add_css_class("card");
     s.set_overflow(gtk::Overflow::Hidden);
     s.upcast()
+}
+
+/// "May not start": what SAM's analysis found, in words, for the header label.
+fn compat_risk_label(entry: Option<&Value>) -> (&'static str, &'static str, String) {
+    let det = entry.and_then(|e| e.get("detection")).cloned().unwrap_or_default();
+    let likely_broken = util::str_of(&det, "compatibility") == "likely-broken";
+    let missing: Vec<String> = det.get("missing").and_then(Value::as_array).into_iter().flatten().map(|m| util::str_of(m, "name").to_string()).filter(|n| !n.is_empty()).collect();
+    let mut tip = if missing.is_empty() {
+        let found: Vec<String> = det.get("warnings").and_then(Value::as_array).into_iter().flatten().map(|w| util::str_of(w, "title").to_string()).collect();
+        format!("SAM's analysis of this AppImage found: {}.", if found.is_empty() { "possible problems".to_string() } else { found.join("; ") })
+    } else {
+        let shown: Vec<&str> = missing.iter().take(4).map(String::as_str).collect();
+        let more = if missing.len() > 4 { format!(" and {} more", missing.len() - 4) } else { String::new() };
+        format!("This AppImage does not bring all the libraries it needs ({}{more}) and expects them on this computer. SAM shows them inside the sandbox, but if one is missing here the app will not start.", shown.join(", "))
+    };
+    tip.push_str(" Just launch it: if it starts, this label goes away. If not, see Troubleshooting below.");
+    if likely_broken {
+        ("Likely won't start", "bad", tip)
+    } else {
+        ("May not start", "warn", tip)
+    }
 }

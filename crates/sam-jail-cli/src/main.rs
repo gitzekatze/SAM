@@ -119,7 +119,8 @@ enum Cmd {
     List {
         #[arg(long)]
         search: Option<String>,
-        /// Filter by badge (ready, needs-review, compatibility-risk, stale, broken, unsafe, missing).
+        /// Filter by badge (ready, needs-review, compatibility-mode,
+        /// compatibility-risk, stale, broken, unsafe, missing).
         #[arg(long)]
         badge: Option<String>,
         /// Filter by risk level (low, medium, high, dangerous).
@@ -376,7 +377,7 @@ fn badge_str(b: Badge) -> String {
     let code = match b {
         Badge::Ready => "32",
         Badge::NeedsReview => "36",
-        Badge::CompatibilityRisk | Badge::Stale => "33",
+        Badge::CompatibilityMode | Badge::CompatibilityRisk | Badge::Stale => "33",
         Badge::Broken | Badge::Unsafe | Badge::Missing => "31",
     };
     paint(b.label(), code)

@@ -37,7 +37,13 @@
 
 - **AppImage locations:** the folders and single files SAM searches. The ✕ removes a location (your files are not touched). *Also search the Downloads folder* adds your Downloads folder.
 - **AppImages found:** every AppImage in those locations, grouped into *Sandboxed* and *Not sandboxed*. Use **All / Sandboxed / Unsandboxed** to filter and the search field to find one by name or path.
-- Each row shows the app's icon, name, file name and a status: *Sandboxed*, *Not sandboxed*, *Needs review*, *Compatibility*, *Changed*, *Broken* or *Missing*. A ⚠ means something needs attention; hover over it to see what.
+- Each row shows the app's icon, name, file name and a status. Hover over any status to see what it means.
+  - *Sandboxed* / *Not sandboxed*: whether the app has a sandbox yet.
+  - *Needs review*: look over the settings SAM chose, or new access the app asks for.
+  - *Compatibility mode*: you turned on compatibility mode, so the app has broad access.
+  - *May not start* / *Likely won't start*: SAM's analysis found the app relies on libraries it does not bring itself (or something worse). It is only a warning: launch the app, and the label disappears once it has started.
+  - *Changed*, *Broken*, *Missing*: the AppImage file changed, the last start failed, or the file is gone.
+- A ⚠ next to a row means something needs attention; hover over it to see what.
 
 **Right column**
 
