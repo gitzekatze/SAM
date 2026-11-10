@@ -133,12 +133,18 @@ enum Cmd {
     },
     /// Show details about an app.
     Info { app: String },
-    /// Remove an app, its extraction, launcher and (unless --keep-data) its private home.
+    /// Remove an app, its extraction, launcher and (unless --keep-data) its
+    /// private home. Refuses while the app runs, unless --stop.
     Remove {
         app: String,
         #[arg(long)]
         keep_data: bool,
+        /// Close the app first if it is running (instead of refusing).
+        #[arg(long)]
+        stop: bool,
     },
+    /// Close a running app (it gets the chance to save and quit first).
+    Stop { app: String },
     /// Run an app in its sandbox.
     Run {
         app: String,
@@ -663,17 +669,30 @@ fn real_main(cli: Cli) -> Result<()> {
             let hints = sam_runner::repair::first_run_hints(&e);
             let steps = sam_runner::repair::ladder(&e, &app.config);
             out.emit(
-                &json!({"app": summary, "entry": e, "warnings": warnings, "selection": selection, "hints": hints, "repair_steps": steps, "private_home": app.paths.app_home(&e.id),
+                &json!({"app": summary, "entry": e, "warnings": warnings, "selection": selection, "hints": hints, "repair_steps": steps, "private_home": app.paths.app_home(&e.id), "running": app.running(&e.id).len(),
                     "check_current": e.last_check.as_ref().is_some_and(|c| c.key == sam_runner::verify::check_key(&e, &app.config, &host))}),
                 || print_info(&e, &summary, &warnings, selection.as_ref()),
             );
         }
-        Cmd::Remove { app: q, keep_data } => {
+        Cmd::Remove { app: q, keep_data, stop } => {
+            if stop {
+                app.stop(&q)?;
+            }
             let (e, problems) = app.remove(&q, keep_data)?;
             out.emit(&json!({"removed": e.id, "warnings": problems}), || {
                 println!("Removed {} ({}){}", e.display_name(), e.id, if keep_data { "; private data kept" } else { "" });
                 for p in &problems {
                     eprintln!("{} {p}", paint("warning:", "33"));
+                }
+            });
+        }
+        Cmd::Stop { app: q } => {
+            let n = app.stop(&q)?;
+            out.emit(&json!({"stopped": n}), || {
+                if n == 0 {
+                    println!("Not running");
+                } else {
+                    println!("Closed {n} running launch(es)");
                 }
             });
         }

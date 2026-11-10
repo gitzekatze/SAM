@@ -1024,17 +1024,21 @@ impl AppPage {
         let me = self.clone();
         let name = util::plain(&self.name());
         glib::spawn_future_local(async move {
-            let d = adw::AlertDialog::new(
-                Some(&format!("Remove the Sandbox for {name}?")),
-                Some("The unpacked app and SAM's menu entry are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again."),
-            );
+            // Asked fresh: the app may have been started or closed meanwhile.
+            let running = app.backend.call(&["info", &me.app_id], None).await.ok().and_then(|i| i.get("running").and_then(Value::as_u64)).unwrap_or(0) > 0;
+            let body = if running {
+                format!("{name} is running right now (maybe only in the system tray). It is closed first and gets the chance to save. Then the unpacked app and SAM's menu entry are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again.")
+            } else {
+                "The unpacked app and SAM's menu entry are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again.".to_string()
+            };
+            let d = adw::AlertDialog::new(Some(&format!("Remove the Sandbox for {name}?")), Some(&body));
             let keep = gtk::CheckButton::builder()
                 .label("Keep the app's settings and files")
                 .tooltip_text("Its private folder (logins, settings, saved files) and logs stay. A new sandbox for this AppImage picks them up again.")
                 .name("keep-data")
                 .build();
             d.set_extra_child(Some(&keep));
-            d.add_responses(&[("cancel", "Cancel"), ("ok", "Remove Sandbox")]);
+            d.add_responses(&[("cancel", "Cancel"), ("ok", if running { "Close and Remove" } else { "Remove Sandbox" })]);
             d.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
             d.set_default_response(Some("cancel"));
             d.set_close_response("cancel");
@@ -1045,6 +1049,9 @@ impl AppPage {
             let mut args = vec!["remove", &me.app_id];
             if keep_data {
                 args.push("--keep-data");
+            }
+            if running {
+                args.push("--stop");
             }
             match app.backend.call(&args, None).await {
                 Ok(r) => {

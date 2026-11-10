@@ -39,6 +39,9 @@ pub struct LaunchOptions {
 }
 
 /// Everything needed to start a sandbox, plus the explanation for the user.
+/// Left in a launch's runtime folder by `Sam::stop` before it signals the app.
+pub const STOP_MARKER: &str = "stop-requested";
+
 pub struct Prepared {
     pub selection: Selection,
     pub command: SandboxCommand,
@@ -512,7 +515,14 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             summary = "sandbox setup failed (Bubblewrap could not build the sandbox)".into();
         }
     }
-    let success = status.success();
+    // `Sam::stop` (Close and Remove, `sam-jail stop`) asked the app to quit:
+    // however it exits, that is not a failed start.
+    let closed_by_sam = !setup_failed && prepared.context.runtime_dir.join(STOP_MARKER).exists();
+    if closed_by_sam {
+        sandbox_failure = false;
+        summary = "closed by SAM".into();
+    }
+    let success = status.success() || closed_by_sam;
     if summary.is_empty() {
         summary = match (code, signal) {
             (Some(0), _) => "exited normally".into(),

@@ -535,9 +535,71 @@ impl Sam {
         pids
     }
 
+    /// Closes every running launch of this app. The app's own processes get
+    /// SIGTERM first, so it can save and quit like on logout; launches still
+    /// running after 10 seconds are ended by stopping their runner (Bubblewrap
+    /// then takes the whole sandbox down). Returns how many launches ran.
+    pub fn stop(&self, query: &str) -> Result<usize> {
+        let entry = self.resolve(query)?;
+        // Only processes that really hold their launch's lock open: a process
+        // id reused by an unrelated program is never touched.
+        let base = self.paths.runtime_dir(&entry.id);
+        let mut runners = Vec::new();
+        for p in self.running(&entry.id) {
+            for e in fs::read_dir(&base).into_iter().flatten().flatten() {
+                if e.file_name().to_string_lossy().starts_with(&format!("launch-{p}-")) && holds_open(p, &e.path().join("running.lock")) {
+                    // So the launch is recorded as closed, not as a failed start.
+                    let _ = fs::write(e.path().join(crate::launch::STOP_MARKER), b"");
+                    runners.push(p);
+                    break;
+                }
+            }
+        }
+        if runners.is_empty() {
+            return Ok(0);
+        }
+        let signal = |pid: u32, sig: i32| unsafe {
+            libc::kill(pid as libc::pid_t, sig);
+        };
+        for &r in &runners {
+            for pid in descendants(r) {
+                let comm = fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+                // Not Bubblewrap itself (that would kill the app at once) and
+                // not the D-Bus proxy the app may still need while quitting.
+                if !matches!(comm.trim(), "bwrap" | "xdg-dbus-proxy") {
+                    signal(pid, libc::SIGTERM);
+                }
+            }
+        }
+        let wait = |secs: u64| {
+            let end = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+            while std::time::Instant::now() < end {
+                if self.running(&entry.id).is_empty() {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            false
+        };
+        if !wait(10) {
+            for &r in &runners {
+                signal(r, libc::SIGTERM);
+            }
+            if !wait(3) {
+                for &r in &runners {
+                    signal(r, libc::SIGKILL);
+                }
+                if !wait(3) {
+                    bail!("{} could not be closed", sam_core::util::display_safe(&entry.metadata.name, 80));
+                }
+            }
+        }
+        Ok(runners.len())
+    }
+
     fn ensure_not_running(&self, entry: &AppEntry, what: &str) -> Result<()> {
         if !self.running(&entry.id).is_empty() {
-            bail!("{} is running. Close it first, then {what}.", sam_core::util::display_safe(&entry.metadata.name, 80));
+            bail!("{} is running (maybe only in the system tray). Close it first, then {what}.", sam_core::util::display_safe(&entry.metadata.name, 80));
         }
         Ok(())
     }
@@ -1158,6 +1220,39 @@ fn tree_size(p: &Path) -> u64 {
 
 /// `remove_dir_all` that also handles folders without permissions, such as
 /// the `work/work` folder the kernel's overlay file system leaves behind.
+/// The process has this file open.
+fn holds_open(pid: u32, file: &Path) -> bool {
+    let Ok(want) = fs::canonicalize(file) else { return false };
+    fs::read_dir(format!("/proc/{pid}/fd")).into_iter().flatten().flatten().any(|fd| fs::read_link(fd.path()).is_ok_and(|t| t == want))
+}
+
+/// All processes below `root`, children before grandchildren.
+fn descendants(root: u32) -> Vec<u32> {
+    let mut parent_of = Vec::new();
+    if let Ok(rd) = fs::read_dir("/proc") {
+        for e in rd.flatten() {
+            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
+            let Ok(stat) = fs::read_to_string(e.path().join("stat")) else { continue };
+            // "pid (comm) state ppid ...": comm may contain spaces or ')'.
+            let Some(rest) = stat.rfind(')').map(|i| &stat[i + 1..]) else { continue };
+            if let Some(ppid) = rest.split_whitespace().nth(1).and_then(|p| p.parse::<u32>().ok()) {
+                parent_of.push((pid, ppid));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let mut frontier = vec![root];
+    while let Some(p) = frontier.pop() {
+        for &(child, parent) in &parent_of {
+            if parent == p && !out.contains(&child) {
+                out.push(child);
+                frontier.push(child);
+            }
+        }
+    }
+    out
+}
+
 pub fn remove_tree(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     fn unlock(p: &Path) {

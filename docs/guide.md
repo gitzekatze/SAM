@@ -138,6 +138,8 @@ Does the sandbox really give the app exactly what its settings say? **Check**, n
 
 **Remove Sandbox** deletes the unpacked app and SAM's menu entry, and shows again any menu entry SAM hid. Your AppImage file always stays. Tick **Keep the app's settings and files** to keep its private folder: a new sandbox for the same AppImage picks it up again. Data kept this way is listed under **☰ → Diagnostics → Data of removed sandboxes**.
 
+If the app is still running, often only as an icon in the system tray, the dialog says so and the button becomes **Close and Remove**. SAM asks the app to quit so it can save its data, and only ends it if it is still running after ten seconds.
+
 ---
 
 ## Preferences
@@ -161,6 +163,7 @@ sam-jail set app filesystem.documents ro    # change one setting
 sam-jail verify app                         # sandbox check
 sam-jail repair app --next                  # try the next repair step
 sam-jail remove app --keep-data             # remove, keep its data
+sam-jail stop app                           # close a running app
 ```
 
 Run `sam-jail --help` for every command.

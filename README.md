@@ -181,6 +181,8 @@ sam-jail compat krita on                 # compatibility mode; `off` restores th
 echo '["--no-sandbox"]' | sam-jail args krita --stdin   # launch arguments
 sam-jail logs krita --list               # every log; show one with --file
 sam-jail remove krita --keep-data        # remove the sandbox, keep the app's settings and files
+sam-jail stop krita                      # close a running app (also one sitting in the tray)
+sam-jail remove krita --stop             # close it first if it runs, then remove
 sam-jail cleanup --data --list           # data left behind by removed sandboxes (drop --list to delete)
 sam-jail selftest                        # start every sandboxed app briefly
 sam-jail menu list krita                 # unsandboxed menu entries for this AppImage
