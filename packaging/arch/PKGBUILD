@@ -22,8 +22,8 @@ checkdepends=(bubblewrap)
 options=(!lto)
 source=("sam-$pkgver.tar.gz::$url/releases/download/v$pkgver/sam-$pkgver.tar.gz"
         "sam-$pkgver-vendor.tar.xz::$url/releases/download/v$pkgver/sam-$pkgver-vendor.tar.xz")
-sha256sums=('67edf87c44d11cf959d20716e03008fc09dec1b056574f68a6f8c6c09c44577d'
-            '22a5a945d8469a06f9f8681afd737f2ab2189bf5d347d29002058ac7a3f25916')
+sha256sums=('1a4c7e888be73eb427483265057f7cb5325d33f73381b151e971917822ffa7b8'
+            'b2aeb3038ee9d084d5c12817765ab69c06f6c72c23d041993e770e28b9e8ca42')
 
 # makepkg's RUSTFLAGS plus a path remap that keeps the build folder out of
 # the binaries (reproducible builds). Passed space-safe, because $srcdir may
