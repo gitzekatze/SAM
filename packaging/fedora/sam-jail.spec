@@ -23,7 +23,7 @@ Source1:        %{url}/releases/download/v%{version}/sam-%{version}-vendor.tar.x
 ExclusiveArch:  x86_64 aarch64
 
 BuildRequires:  cargo
-BuildRequires:  rust >= 1.80
+BuildRequires:  rust >= 1.92
 BuildRequires:  pkgconfig(gtk4) >= 4.12
 BuildRequires:  pkgconfig(libadwaita-1) >= 1.5
 BuildRequires:  desktop-file-utils

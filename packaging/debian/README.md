@@ -1,27 +1,35 @@
 # Debian / Ubuntu
 
-Planned: `.deb` packages from one source (openSUSE Build Service or a
-Launchpad PPA), built from a release tarball that includes all Rust crates
-(`cargo vendor`), because these builders have no network access.
+**Use the AppImage** (`SAM-X.Y.Z-x86_64.AppImage` from the GitHub release).
+It uses the system's GTK 4 and libadwaita, so on Debian 13 (trixie) and
+Ubuntu 24.04 or newer install these first:
 
-Packages, same split as on Arch:
+```sh
+sudo apt install bubblewrap libarchive-tools libgtk-4-1 libadwaita-1-0 xdg-dbus-proxy passt
+```
+
+`xdg-dbus-proxy` (filtered D-Bus) and `passt` (*Local network only*) are
+optional but recommended; `strace` enables diagnostic runs.
+
+## Why there are no .deb packages yet
+
+SAM's GTK bindings (gtk-rs 0.11) need Rust 1.92 or newer. Debian 13 ships
+Rust 1.85 and Ubuntu 24.04 offers versioned Rust packages of a similar age,
+so the distributions' own build services (official Debian, Launchpad PPAs,
+openSUSE Build Service) cannot build SAM. Revisit when those releases carry
+Rust 1.92+ (Debian 14, Ubuntu 26.04), or build .debs with an upstream Rust
+toolchain for the GitHub release.
+
+If .debs are made later, use the same split as on Arch:
 
 | Package | Contents | Depends |
 |---|---|---|
 | `sam-jail-cli` | `sam-jail`, `sam-jail-run` | `bubblewrap`, `libarchive-tools` (bsdtar); recommends `xdg-dbus-proxy`, `passt`; suggests `strace`, `squashfs-tools` |
 | `sam-jail` | `sam-jail-gui`, desktop entry, metainfo, icon | `sam-jail-cli`, `libgtk-4-1`, `libadwaita-1-0` |
 
-Build dependencies: `cargo`/`rustc` (1.80 or newer), `libgtk-4-dev`,
-`libadwaita-1-dev`, `pkg-config`.
+## Ubuntu: user namespaces
 
-Release notes per distribution:
-
-- **Debian 13 (trixie)** and newer: CLI and GUI.
-- **Debian 12 (bookworm)**: libadwaita is too old for the GUI; CLI only.
-- **Ubuntu 24.04 LTS** and newer: CLI and GUI (the GUI needs libadwaita
-  1.5 or newer). Since 23.10, Ubuntu restricts unprivileged user
-  namespaces with AppArmor; Bubblewrap needs an AppArmor allowance.
-  `sam-jail doctor` detects this and explains the fix. Electron apps inside
-  SAM then usually need `--no-sandbox` (SAM's repair offers it).
-- Rust: Ubuntu 24.04's default `rustc` is too old; build with the
-  versioned `rustc-1.80`/`cargo-1.80` packages or a newer toolchain.
+Since 23.10, Ubuntu restricts unprivileged user namespaces with AppArmor;
+Bubblewrap needs an AppArmor allowance. `sam-jail doctor` (in the AppImage:
+`SAM.AppImage cli doctor`) detects this and explains the fix. Electron apps
+inside SAM then usually need `--no-sandbox` (SAM's repair offers it).

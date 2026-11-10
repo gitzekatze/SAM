@@ -12,7 +12,9 @@ Packages, same split as on Arch:
 - `sam-jail`: `sam-jail-gui`, desktop entry, metainfo, icon. Requires
   `sam-jail-cli`, `gtk4`, `libadwaita`.
 
-Build requirements: `cargo`, `rust` (1.80 or newer), `gtk4-devel`,
+Build requirements: `cargo`, `rust` (1.92 or newer: the GTK bindings
+gtk-rs 0.11 need it, so only Fedora releases with Rust 1.92+ can build it),
+`gtk4-devel`,
 `libadwaita-devel`, `pkgconf`. Recent Fedora releases ship new enough
 GTK and libadwaita. Unprivileged user namespaces are allowed by default,
 so Bubblewrap works without extra setup.

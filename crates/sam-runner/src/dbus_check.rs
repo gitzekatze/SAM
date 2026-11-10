@@ -46,8 +46,7 @@ pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bo
 }
 
 fn pad(buf: &mut Vec<u8>, align: usize) {
-    #[allow(clippy::manual_is_multiple_of)] // rust-version 1.80
-    while buf.len() % align != 0 {
+    while !buf.len().is_multiple_of(align) {
         buf.push(0);
     }
 }
