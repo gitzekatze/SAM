@@ -557,7 +557,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         if rec.sandbox_failure {
                             ("fail", rec.summary.clone(), rec.findings.clone())
                         } else if rec.success || (rec.signal == Some(9) && ran + 1 >= seconds as i64) {
-                            ("ok", if rec.success { "exited normally".into() } else { format!("kept running for {seconds}s") }, vec![])
+                            ("ok", if rec.signal.is_none() { "exited normally".into() } else { format!("kept running for {seconds}s") }, vec![])
                         } else {
                             ("fail", rec.summary.clone(), rec.findings.clone())
                         }

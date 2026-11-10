@@ -475,6 +475,8 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let t1 = pump(Box::new(child.stdout.take().context("no stdout pipe")?), false, log.clone(), head.clone(), opts.quiet);
     let t2 = pump(Box::new(child.stderr.take().context("no stderr pipe")?), true, log.clone(), head.clone(), opts.quiet);
 
+    // A time-limited start (test start, diagnostic run) that SAM ended.
+    let mut timed_out = false;
     let status = match opts.timeout_secs {
         None => child.wait()?,
         Some(secs) => {
@@ -485,6 +487,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                 }
                 if std::time::Instant::now() > deadline {
                     let _ = child.kill();
+                    timed_out = true;
                     break child.wait()?;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
@@ -522,7 +525,12 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         sandbox_failure = false;
         summary = "closed by SAM".into();
     }
-    let success = status.success() || closed_by_sam;
+    // Still running when the time was up: it started fine.
+    let kept_running = timed_out && !setup_failed && !sandbox_failure;
+    if kept_running {
+        summary = format!("kept running for {} s (test start, ended by SAM)", opts.timeout_secs.unwrap_or(0));
+    }
+    let success = status.success() || closed_by_sam || kept_running;
     if summary.is_empty() {
         summary = match (code, signal) {
             (Some(0), _) => "exited normally".into(),

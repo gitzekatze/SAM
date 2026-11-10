@@ -15,6 +15,9 @@ use crate::perms::Editor;
 use crate::util::{self, esc};
 use crate::window::{self, App};
 
+/// How long "Test start" lets the app run.
+const TEST_SECONDS: u64 = 8;
+
 /// Header width from which Check and Launch sit side by side.
 const HERO_SIDE_BY_SIDE: i32 = 720;
 
@@ -68,6 +71,9 @@ pub struct AppPage {
     check_report: RefCell<Option<Value>>,
     /// For an AppImage without a sandbox: the settings the last check tested.
     check_settings: RefCell<Option<Value>>,
+    /// Results of "Check the setup" and "Test start" in this session.
+    setup_report: RefCell<Option<Value>>,
+    test_result: RefCell<Option<Value>>,
     trouble: adw::PreferencesGroup,
     details: adw::PreferencesGroup,
     command_group: adw::PreferencesGroup,
@@ -305,6 +311,8 @@ impl AppPage {
             check_rows: RefCell::new(Vec::new()),
             check_report: RefCell::new(None),
             check_settings: RefCell::new(None),
+            setup_report: RefCell::new(None),
+            test_result: RefCell::new(None),
             launch_group,
             args_row,
             args_chips,
@@ -1543,6 +1551,39 @@ impl AppPage {
         let row = adw::ActionRow::builder().title("Last start").subtitle(esc(&last_text)).build();
         row.add_prefix(&gtk::Image::from_icon_name("document-open-recent-symbolic"));
         self.add_dynamic(&g, &row);
+        // Check the setup (sam-jail doctor <app>), results right below.
+        self.button_row(&g, "emblem-system-symbolic", "Check the setup", "Is the AppImage still there, unpacked and intact, is the menu entry valid, and how did the last start end.", |me| me.run_setup_check());
+        if let Some(r) = self.setup_report.borrow().as_ref() {
+            for c in r.get("checks").and_then(Value::as_array).into_iter().flatten() {
+                let status = util::str_of(c, "status");
+                let row = adw::ActionRow::builder().title(esc(util::str_of(c, "label"))).subtitle(esc(util::str_of(c, "detail"))).build();
+                let (icon, class) = match status {
+                    "ok" => ("emblem-ok-symbolic", "success"),
+                    "warn" => ("dialog-warning-symbolic", "warning"),
+                    "fail" | "error" => ("dialog-error-symbolic", "error"),
+                    _ => ("dialog-information-symbolic", "dim-label"),
+                };
+                let img = gtk::Image::from_icon_name(icon);
+                img.add_css_class(class);
+                img.set_margin_start(24);
+                row.add_prefix(&img);
+                self.add_dynamic(&g, &row);
+            }
+        }
+        // Test start (sam-jail selftest <app>): a short real start.
+        self.button_row(&g, "media-playback-start-symbolic", "Test start", &format!("Starts the app for {TEST_SECONDS} seconds (its window opens) and reports whether it keeps running. A quick way to see if a change helped."), |me| me.run_test_start());
+        if let Some(r) = self.test_result.borrow().as_ref() {
+            let ok = util::str_of(r, "status") == "ok";
+            let row = adw::ActionRow::builder()
+                .title(if ok { "The app started and kept running" } else { "The app did not keep running" })
+                .subtitle(esc(util::str_of(r, "detail")))
+                .build();
+            let img = gtk::Image::from_icon_name(if ok { "emblem-ok-symbolic" } else { "dialog-error-symbolic" });
+            img.add_css_class(if ok { "success" } else { "error" });
+            img.set_margin_start(24);
+            row.add_prefix(&img);
+            self.add_dynamic(&g, &row);
+        }
         let steps: Vec<Value> = info.as_ref().and_then(|i| i.get("repair_steps")).and_then(Value::as_array).cloned().unwrap_or_default();
         if let Some(first) = steps.first().cloned() {
             let sub = format!("Next: {}. {}", util::str_of(&first, "title"), util::str_of(&first, "explanation"));
@@ -1578,6 +1619,40 @@ impl AppPage {
                     Err(e) => app.report_error(&e),
                 }
             });
+        });
+    }
+
+    fn run_setup_check(self: &Rc<Self>) {
+        let Some(app) = self.app() else { return };
+        let me = self.clone();
+        glib::spawn_future_local(async move {
+            match app.backend.call(&["doctor", &me.app_id], None).await {
+                Ok(r) => {
+                    let bad = r.get("checks").and_then(Value::as_array).map(|c| c.iter().filter(|x| matches!(util::str_of(x, "status"), "warn" | "fail" | "error")).count()).unwrap_or(0);
+                    app.toast(&if bad == 0 { "Setup check: everything is in order".to_string() } else { format!("Setup check: {bad} thing(s) to look at") });
+                    *me.setup_report.borrow_mut() = Some(r);
+                    me.reload();
+                }
+                Err(e) => app.report_error(&e),
+            }
+        });
+    }
+
+    fn run_test_start(self: &Rc<Self>) {
+        let Some(app) = self.app() else { return };
+        let me = self.clone();
+        app.toast(&format!("Starting {} for {TEST_SECONDS} seconds…", util::plain(&self.name())));
+        glib::spawn_future_local(async move {
+            let secs = TEST_SECONDS.to_string();
+            match app.backend.call(&["selftest", &me.app_id, "--seconds", &secs], None).await {
+                Ok(r) => {
+                    let first = r.get("results").and_then(Value::as_array).and_then(|a| a.first().cloned());
+                    *me.test_result.borrow_mut() = first;
+                    me.reload();
+                    app.refresh_registered().await;
+                }
+                Err(e) => app.report_error(&e),
+            }
         });
     }
 
