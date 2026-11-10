@@ -9,7 +9,7 @@ Packages, same split as on Arch:
 | Package | Contents | Depends |
 |---|---|---|
 | `sam-jail-cli` | `sam-jail`, `sam-jail-run` | `bubblewrap`, `libarchive-tools` (bsdtar); recommends `xdg-dbus-proxy`, `passt`; suggests `strace`, `squashfs-tools` |
-| `sam` | `sam-jail-gui`, desktop entry, metainfo, icon | `sam-jail-cli`, `libgtk-4-1`, `libadwaita-1-0` |
+| `sam-jail` | `sam-jail-gui`, desktop entry, metainfo, icon | `sam-jail-cli`, `libgtk-4-1`, `libadwaita-1-0` |
 
 Build dependencies: `cargo`/`rustc` (1.80 or newer), `libgtk-4-dev`,
 `libadwaita-1-dev`, `pkg-config`.

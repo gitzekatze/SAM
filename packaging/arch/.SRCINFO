@@ -1,0 +1,35 @@
+pkgbase = sam-jail
+	pkgdesc = Flatseal-style sandbox manager for AppImages, using Bubblewrap
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/gitzekatze/SAM
+	arch = x86_64
+	arch = aarch64
+	license = GPL-3.0-or-later
+	checkdepends = bubblewrap
+	makedepends = cargo
+	makedepends = gtk4
+	makedepends = libadwaita
+	options = !lto
+	source = sam-0.1.0.tar.gz::https://github.com/gitzekatze/SAM/releases/download/v0.1.0/sam-0.1.0.tar.gz
+	source = sam-0.1.0-vendor.tar.xz::https://github.com/gitzekatze/SAM/releases/download/v0.1.0/sam-0.1.0-vendor.tar.xz
+	sha256sums = fc1d0f56d5148a3c642914cc1ecd8f8b9e4afe1f5969f04cc0702603a5e9d2e9
+	sha256sums = d485f9ae85d570a4ed2f1bf89afbc2f4c889f9822486d74dc9a215ee1d07dc46
+
+pkgname = sam-jail-cli
+	pkgdesc = Command line tools and sandbox runner for SAM, the Sandboxed AppImage Manager
+	depends = bubblewrap
+	depends = glibc
+	depends = gcc-libs
+	depends = libarchive
+	optdepends = xdg-dbus-proxy: filtered session D-Bus for sandboxed apps (recommended)
+	optdepends = passt: "Local network only" for sandboxed apps
+	optdepends = squashfs-tools: additional SquashFS extractor
+	optdepends = strace: diagnostic runs that find missing resources
+
+pkgname = sam-jail
+	pkgdesc = Flatseal-style sandbox manager for AppImages, using Bubblewrap (GTK 4 / libadwaita GUI)
+	depends = sam-jail-cli=0.1.0
+	depends = gtk4
+	depends = libadwaita
+	depends = hicolor-icon-theme

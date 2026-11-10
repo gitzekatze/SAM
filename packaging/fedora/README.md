@@ -9,7 +9,7 @@ Packages, same split as on Arch:
 - `sam-jail-cli`: `sam-jail`, `sam-jail-run`. Requires `bubblewrap`,
   `bsdtar`; recommends `xdg-dbus-proxy`, `passt`; suggests `strace`,
   `squashfs-tools`.
-- `sam`: `sam-jail-gui`, desktop entry, metainfo, icon. Requires
+- `sam-jail`: `sam-jail-gui`, desktop entry, metainfo, icon. Requires
   `sam-jail-cli`, `gtk4`, `libadwaita`.
 
 Build requirements: `cargo`, `rust` (1.80 or newer), `gtk4-devel`,

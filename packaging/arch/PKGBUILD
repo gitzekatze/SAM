@@ -1,71 +1,80 @@
-# Maintainer: SAM contributors
+# Maintainer: gitzekatze <206283406+gitzekatze@users.noreply.github.com>
 #
-# Split package for CachyOS / Arch Linux (whitepaper §2.22.3):
-#   sam      the GTK 4 / libadwaita GUI
-#   sam-jail-cli  the command line tools and sandbox runner (required by sam)
+# SAM, the Sandboxed AppImage Manager. Split package:
+#   sam-jail-cli   command line tools and sandbox runner (sam-jail, sam-jail-run)
+#   sam-jail       the GTK 4 / libadwaita window (sam-jail-gui); "sam" is taken on the AUR
 #
-# This PKGBUILD builds the source tree it lives in:
-#   cd packaging/arch && makepkg -si
-# For the AUR, replace `source=()` with the release tarball and its checksum.
+# Builds offline from two release files made by `scripts/make-release.sh`:
+# the source and the vendored Rust crates. To test before a release is
+# published, put both files next to this PKGBUILD (or in $SRCDEST) and run
+# `makepkg -si`.
 
-pkgbase=sam
-pkgname=(sam-jail-cli sam)
+pkgbase=sam-jail
+pkgname=(sam-jail-cli sam-jail)
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Flatseal-style permission manager and sandbox launcher for AppImages"
+pkgdesc="Flatseal-style sandbox manager for AppImages, using Bubblewrap"
 arch=(x86_64 aarch64)
 url="https://github.com/gitzekatze/SAM"
 license=(GPL-3.0-or-later)
 makedepends=(cargo gtk4 libadwaita)
+checkdepends=(bubblewrap)
 options=(!lto)
-source=()
-sha256sums=()
+source=("sam-$pkgver.tar.gz::$url/releases/download/v$pkgver/sam-$pkgver.tar.gz"
+        "sam-$pkgver-vendor.tar.xz::$url/releases/download/v$pkgver/sam-$pkgver-vendor.tar.xz")
+sha256sums=('fc1d0f56d5148a3c642914cc1ecd8f8b9e4afe1f5969f04cc0702603a5e9d2e9'
+            'd485f9ae85d570a4ed2f1bf89afbc2f4c889f9822486d74dc9a215ee1d07dc46')
 
-_srcroot() { realpath "$startdir/../.."; }
-
-prepare() {
-  cd "$(_srcroot)"
-  export RUSTUP_TOOLCHAIN=stable
-  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+# makepkg's RUSTFLAGS plus a path remap that keeps the build folder out of
+# the binaries (reproducible builds). Passed space-safe, because $srcdir may
+# contain spaces.
+_rustflags() {
+  local flags=()
+  read -ra flags <<< "${RUSTFLAGS:-}"
+  flags+=("--remap-path-prefix=$srcdir=/usr/src/debug/$pkgbase")
+  CARGO_ENCODED_RUSTFLAGS="$(IFS=$'\x1f'; echo "${flags[*]}")"
+  export CARGO_ENCODED_RUSTFLAGS
+  unset RUSTFLAGS
 }
 
 build() {
-  cd "$(_srcroot)"
-  export RUSTUP_TOOLCHAIN=stable
-  export CARGO_TARGET_DIR="$srcdir/target"
-  cargo build --frozen --release -p sam-jail-cli -p sam-gtk
+  cd "sam-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  _rustflags
+  cargo build --frozen --offline --release -p sam-jail-cli -p sam-gtk
 }
 
 check() {
-  cd "$(_srcroot)"
-  export RUSTUP_TOOLCHAIN=stable
-  export CARGO_TARGET_DIR="$srcdir/target"
-  # The end-to-end sandbox test skips itself when bubblewrap cannot run (e.g. in a chroot).
-  cargo test --frozen --workspace
+  cd "sam-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  _rustflags
+  # The end-to-end sandbox tests skip themselves where Bubblewrap cannot run
+  # (for example in a clean chroot without user namespaces).
+  cargo test --frozen --offline --workspace
 }
 
 package_sam-jail-cli() {
-  pkgdesc="Command line tools and sandbox runner for SAM"
+  pkgdesc="Command line tools and sandbox runner for SAM, the Sandboxed AppImage Manager"
   depends=(bubblewrap glibc gcc-libs libarchive)
   optdepends=(
     'xdg-dbus-proxy: filtered session D-Bus for sandboxed apps (recommended)'
+    'passt: "Local network only" for sandboxed apps'
     'squashfs-tools: additional SquashFS extractor'
-    'strace: dynamic diagnosis of missing resources'
-    'libnotify: launch error notifications'
+    'strace: diagnostic runs that find missing resources'
   )
-  cd "$(_srcroot)"
-  install -Dm755 "$srcdir/target/release/sam-jail"     "$pkgdir/usr/bin/sam-jail"
-  install -Dm755 "$srcdir/target/release/sam-jail-run" "$pkgdir/usr/bin/sam-jail-run"
+  cd "sam-$pkgver"
+  install -Dm755 target/release/sam-jail     "$pkgdir/usr/bin/sam-jail"
+  install -Dm755 target/release/sam-jail-run "$pkgdir/usr/bin/sam-jail-run"
   install -Dm644 README.md          "$pkgdir/usr/share/doc/sam/README.md"
   install -Dm644 docs/security.md   "$pkgdir/usr/share/doc/sam/security.md"
   install -Dm644 docs/profiles.md   "$pkgdir/usr/share/doc/sam/profiles.md"
 }
 
-package_sam() {
-  pkgdesc="Flatseal-style permission manager for AppImages (GTK 4 / libadwaita GUI)"
-  depends=(sam-jail-cli gtk4 libadwaita hicolor-icon-theme)
-  cd "$(_srcroot)"
-  install -Dm755 "$srcdir/target/release/sam-jail-gui" "$pkgdir/usr/bin/sam-jail-gui"
+package_sam-jail() {
+  pkgdesc="Flatseal-style sandbox manager for AppImages, using Bubblewrap (GTK 4 / libadwaita GUI)"
+  depends=("sam-jail-cli=$pkgver" gtk4 libadwaita hicolor-icon-theme)
+  cd "sam-$pkgver"
+  install -Dm755 target/release/sam-jail-gui "$pkgdir/usr/bin/sam-jail-gui"
   install -Dm644 data/io.github.gitzekatze.SAM.desktop      "$pkgdir/usr/share/applications/io.github.gitzekatze.SAM.desktop"
   install -Dm644 data/io.github.gitzekatze.SAM.metainfo.xml "$pkgdir/usr/share/metainfo/io.github.gitzekatze.SAM.metainfo.xml"
   install -Dm644 data/io.github.gitzekatze.SAM.svg          "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg"

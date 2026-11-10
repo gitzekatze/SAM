@@ -125,8 +125,8 @@ cd packaging/arch
 makepkg -si
 ```
 
-The packages are `sam-jail-cli` (`sam-jail`, `sam-jail-run`) and `sam` (the
-GUI, `sam-jail-gui`). Recommended extras:
+The packages are `sam-jail-cli` (`sam-jail`, `sam-jail-run`) and `sam-jail`
+(the GUI, `sam-jail-gui`). Recommended extras:
 - `xdg-dbus-proxy`: filtered D-Bus and the portal filter.
 - `passt` (provides `pasta`): *Local network only*.
 - `strace`: diagnostic runs.
