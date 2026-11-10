@@ -15,8 +15,10 @@
       <li>Plain-language permission toggles with risk levels and warnings</li>
       <li>Recommended profiles and reusable presets</li>
       <li>Desktop launchers that always start apps through the sandbox</li>
+      <li>A sandbox check that confirms from inside that every setting applies</li>
       <li>Repair tools, logs and diagnostics</li>
       <li>Bubblewrap sandbox with Landlock and seccomp defense in depth</li>
+      <li>A built-in user guide</li>
     </ul>
   </description>
   <launchable type="desktop-id">io.github.gitzekatze.SAM.desktop</launchable>
@@ -26,6 +28,6 @@
   </developer>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="0.1.0" date="2026-11-07"/>
+    <release version="0.1.0" date="2026-11-10"/>
   </releases>
 </component>
