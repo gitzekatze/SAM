@@ -1,0 +1,25 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-profile 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-profile \- Read or replace the full profile (JSON on stdin for `set`)
+.SH SYNOPSIS
+\fBsam\-jail profile\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Read or replace the full profile (JSON on stdin for `set`)
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH SUBCOMMANDS
+.TP
+sam\-jail\-profile\-get(1)
+.TP
+sam\-jail\-profile\-set(1)
+Replace permissions from JSON (a PermissionSet) on stdin
+.TP
+sam\-jail\-profile\-reset(1)
+Reset to the recommended profile
+.TP
+sam\-jail\-profile\-help(1)
+Print this message or the help of the given subcommand(s)

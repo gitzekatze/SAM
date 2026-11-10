@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-cleanup 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-cleanup \- Remove extraction leftovers not referenced by any app
+.SH SYNOPSIS
+\fBsam\-jail cleanup\fR [\fB\-\-data\fR] [\fB\-\-list\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Remove extraction leftovers not referenced by any app
+.SH OPTIONS
+.TP
+\fB\-\-data\fR
+Also (or with \-\-list: only list) the private data of apps whose sandbox was removed with \-\-keep\-data
+.TP
+\fB\-\-list\fR
+Only list what would be removed
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help

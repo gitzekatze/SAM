@@ -1,0 +1,16 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-evaluate 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-evaluate \- Risk and warnings for a permission set given as JSON on stdin
+.SH SYNOPSIS
+\fBsam\-jail evaluate\fR [\fB\-h\fR|\fB\-\-help\fR] [\fIAPP\fR] 
+.SH DESCRIPTION
+Risk and warnings for a permission set given as JSON on stdin
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+[\fIAPP\fR]
+Evaluate in the context of this app (category, backend)

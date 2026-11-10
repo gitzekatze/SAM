@@ -73,6 +73,7 @@ install -Dpm 0755 target/release/sam-jail-gui %{buildroot}%{_bindir}/sam-jail-gu
 install -Dpm 0644 data/io.github.gitzekatze.SAM.desktop      %{buildroot}%{_datadir}/applications/io.github.gitzekatze.SAM.desktop
 install -Dpm 0644 data/io.github.gitzekatze.SAM.metainfo.xml %{buildroot}%{_metainfodir}/io.github.gitzekatze.SAM.metainfo.xml
 install -Dpm 0644 data/io.github.gitzekatze.SAM.svg          %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg
+install -Dpm 0644 -t %{buildroot}%{_mandir}/man1 data/man/*.1
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/io.github.gitzekatze.SAM.desktop
@@ -87,12 +88,15 @@ cargo test --frozen --offline --workspace
 %{_datadir}/applications/io.github.gitzekatze.SAM.desktop
 %{_metainfodir}/io.github.gitzekatze.SAM.metainfo.xml
 %{_datadir}/icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg
+%{_mandir}/man1/sam-jail-gui.1*
 
 %files -n sam-jail-cli
 %license LICENSE
-%doc README.md docs/security.md docs/profiles.md
+%doc README.md CHANGELOG.md docs/security.md docs/profiles.md
 %{_bindir}/sam-jail
 %{_bindir}/sam-jail-run
+%{_mandir}/man1/sam-jail.1*
+%{_mandir}/man1/sam-jail-[!g]*.1*
 
 %changelog
 * Tue Nov 10 2026 gitzekatze <206283406+gitzekatze@users.noreply.github.com> - 0.1.0-1

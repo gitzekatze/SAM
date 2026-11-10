@@ -1,0 +1,25 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-repair 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-repair \- Repair an app that does not start or misbehaves: list steps, apply one, or undo
+.SH SYNOPSIS
+\fBsam\-jail repair\fR [\fB\-\-apply\fR] [\fB\-\-next\fR] [\fB\-\-undo\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
+.SH DESCRIPTION
+Repair an app that does not start or misbehaves: list steps, apply one, or undo
+.SH OPTIONS
+.TP
+\fB\-\-apply\fR \fI<APPLY>\fR
+Apply the step with this id (see the list)
+.TP
+\fB\-\-next\fR
+Apply the first step in the list
+.TP
+\fB\-\-undo\fR
+Restore the profile from before the first repair step
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIAPP\fR>
+

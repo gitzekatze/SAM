@@ -1,0 +1,37 @@
+.TH sam-jail-gui 1 "2026-11-10" "SAM" "SAM Manual"
+.SH NAME
+sam-jail-gui \- SAM's window: sandbox AppImages and manage their permissions
+.SH SYNOPSIS
+.B sam-jail-gui
+.RI [ APPIMAGE ...]
+.SH DESCRIPTION
+Opens SAM's window: the AppImages SAM found on the left, the selected app's
+permissions, sandbox check and troubleshooting on the right. AppImages given
+on the command line are added to the list. Starting it again brings the open
+window forward and hands over the AppImages.
+.PP
+The window uses
+.BR sam-jail (1)
+for everything it does; the built-in user guide (menu \(-> User Guide)
+explains every setting.
+.SH OPTIONS
+.TP
+.B \-\-version
+Print the version.
+.TP
+.B \-\-help
+Print a short usage text.
+.SH ENVIRONMENT
+.TP
+.BR SAM_CONFIG_DIR ", " SAM_DATA_DIR ", " SAM_APPLICATIONS_DIR
+Use other folders for SAM's settings, data and menu entries (testing).
+.TP
+.BR SAM_CLI ", " SAM_RUN
+Use another
+.B sam-jail
+or
+.B sam-jail-run
+program.
+.SH SEE ALSO
+.BR sam-jail (1),
+.BR sam-jail-run (1)

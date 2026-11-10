@@ -1,0 +1,22 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-remove 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-remove \- Remove an app, its extraction, launcher and (unless \-\-keep\-data) its private home. Refuses while the app runs, unless \-\-stop
+.SH SYNOPSIS
+\fBsam\-jail remove\fR [\fB\-\-keep\-data\fR] [\fB\-\-stop\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
+.SH DESCRIPTION
+Remove an app, its extraction, launcher and (unless \-\-keep\-data) its private home. Refuses while the app runs, unless \-\-stop
+.SH OPTIONS
+.TP
+\fB\-\-keep\-data\fR
+
+.TP
+\fB\-\-stop\fR
+Close the app first if it is running (instead of refusing)
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIAPP\fR>
+

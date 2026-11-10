@@ -1,0 +1,34 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-add 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-add \- Create a sandbox for an AppImage: extract, profile, add a menu entry
+.SH SYNOPSIS
+\fBsam\-jail add\fR [\fB\-\-allow\-fallback\fR] [\fB\-\-no\-launcher\fR] [\fB\-\-preset\fR] [\fB\-\-accept\fR] [\fB\-\-hide\-duplicates\fR] [\fB\-\-permissions\-stdin\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIPATH\fR> 
+.SH DESCRIPTION
+Create a sandbox for an AppImage: extract, profile, add a menu entry
+.SH OPTIONS
+.TP
+\fB\-\-allow\-fallback\fR
+Allow the AppImage\*(Aqs own \-\-appimage\-extract (sandboxed) if static extraction fails
+.TP
+\fB\-\-no\-launcher\fR
+Do not create a desktop launcher
+.TP
+\fB\-\-preset\fR \fI<PRESET>\fR
+Apply a preset instead of the recommended profile
+.TP
+\fB\-\-accept\fR
+Accept the recommended profile (skip "Needs Review")
+.TP
+\fB\-\-hide\-duplicates\fR
+Hide other menu entries that start this AppImage without a sandbox
+.TP
+\fB\-\-permissions\-stdin\fR
+Use the permissions given as JSON on stdin instead of the recommendation
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIPATH\fR>
+

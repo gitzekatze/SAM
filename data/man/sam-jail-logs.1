@@ -1,0 +1,28 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-logs 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-logs \- Show logs for an app
+.SH SYNOPSIS
+\fBsam\-jail logs\fR [\fB\-\-kind\fR] [\fB\-\-list\fR] [\fB\-\-file\fR] [\fB\-\-tail\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
+.SH DESCRIPTION
+Show logs for an app
+.SH OPTIONS
+.TP
+\fB\-\-kind\fR \fI<KIND>\fR
+launch, extract, detect or diagnose
+.TP
+\fB\-\-list\fR
+List log files instead of printing the latest
+.TP
+\fB\-\-file\fR \fI<FILE>\fR
+Print this log file (one of `\-\-list`) instead of the latest
+.TP
+\fB\-\-tail\fR \fI<TAIL>\fR [default: 200]
+
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIAPP\fR>
+

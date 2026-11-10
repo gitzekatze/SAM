@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-scan 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-scan \- Find AppImages in the scan directories
+.SH SYNOPSIS
+\fBsam\-jail scan\fR [\fB\-\-add\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fIDIRS\fR] 
+.SH DESCRIPTION
+Find AppImages in the scan directories
+.SH OPTIONS
+.TP
+\fB\-\-add\fR
+Register every new AppImage found
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+[\fIDIRS\fR]
+Directories to scan (default: configured scan directories)

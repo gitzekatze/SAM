@@ -1,0 +1,22 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-diagnose 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-diagnose \- Run the app once under strace to find missing resources
+.SH SYNOPSIS
+\fBsam\-jail diagnose\fR [\fB\-\-timeout\fR] [\fB\-\-apply\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
+.SH DESCRIPTION
+Run the app once under strace to find missing resources
+.SH OPTIONS
+.TP
+\fB\-\-timeout\fR \fI<TIMEOUT>\fR [default: 30]
+
+.TP
+\fB\-\-apply\fR
+Apply low\-risk fixes automatically
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIAPP\fR>
+

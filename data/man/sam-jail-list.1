@@ -1,0 +1,28 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-list 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-list \- List registered apps
+.SH SYNOPSIS
+\fBsam\-jail list\fR [\fB\-\-search\fR] [\fB\-\-badge\fR] [\fB\-\-risk\fR] [\fB\-\-category\fR] [\fB\-\-sort\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+List registered apps
+.SH OPTIONS
+.TP
+\fB\-\-search\fR \fI<SEARCH>\fR
+
+.TP
+\fB\-\-badge\fR \fI<BADGE>\fR
+Filter by badge (ready, needs\-review, compatibility\-mode, compatibility\-risk, stale, broken, unsafe, missing)
+.TP
+\fB\-\-risk\fR \fI<RISK>\fR
+Filter by risk level (low, medium, high, dangerous)
+.TP
+\fB\-\-category\fR \fI<CATEGORY>\fR
+
+.TP
+\fB\-\-sort\fR \fI<SORT>\fR [default: name]
+Sort by: name, recent, added
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help

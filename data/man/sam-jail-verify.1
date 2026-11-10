@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-verify 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-verify \- Check that the app\*(Aqs sandbox gives it exactly what its settings say: starts the sandbox with a probe instead of the app. Also takes an AppImage without a sandbox: then the settings it would get are checked (nothing is unpacked or stored)
+.SH SYNOPSIS
+\fBsam\-jail verify\fR [\fB\-\-permissions\-stdin\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
+.SH DESCRIPTION
+Check that the app\*(Aqs sandbox gives it exactly what its settings say: starts the sandbox with a probe instead of the app. Also takes an AppImage without a sandbox: then the settings it would get are checked (nothing is unpacked or stored)
+.SH OPTIONS
+.TP
+\fB\-\-permissions\-stdin\fR
+Check these settings (a PermissionSet as JSON on stdin) for an AppImage without a sandbox, instead of SAM\*(Aqs recommendation
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIAPP\fR>
+

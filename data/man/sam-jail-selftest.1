@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-selftest 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-selftest \- Start sandboxed apps briefly and report which ones keep running. Opens their windows for a few seconds
+.SH SYNOPSIS
+\fBsam\-jail selftest\fR [\fB\-\-seconds\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fIAPPS\fR] 
+.SH DESCRIPTION
+Start sandboxed apps briefly and report which ones keep running. Opens their windows for a few seconds
+.SH OPTIONS
+.TP
+\fB\-\-seconds\fR \fI<SECONDS>\fR [default: 8]
+Seconds to let each app run
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+[\fIAPPS\fR]
+Apps to test (default: all sandboxed apps)

@@ -1,0 +1,29 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-menu 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail\-menu \- Show, hide or restore unsandboxed menu entries for a sandboxed app
+.SH SYNOPSIS
+\fBsam\-jail menu\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIACTION\fR> <\fIAPP\fR> 
+.SH DESCRIPTION
+Show, hide or restore unsandboxed menu entries for a sandboxed app
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+<\fIACTION\fR>
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+list: List unsandboxed menu entries that start this app\*(Aqs AppImage
+.IP \(bu 2
+hide: Hide them (SAM\*(Aqs sandboxed launcher stays)
+.IP \(bu 2
+restore: Put back the entries SAM hid
+.RE
+.TP
+<\fIAPP\fR>
+

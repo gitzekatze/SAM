@@ -146,6 +146,9 @@ enum Cmd {
     },
     /// Close a running app (it gets the chance to save and quit first).
     Stop { app: String },
+    /// Write man pages (sam-jail.1 and one per command) into a folder.
+    #[command(hide = true)]
+    Man { dir: PathBuf },
     /// Remove SAM from this computer: every sandbox (menu entries SAM hid
     /// come back), SAM's menu entries, its settings and the apps' private
     /// data. AppImage files stay. Lists what it would remove without --yes.
@@ -707,6 +710,10 @@ fn real_main(cli: Cli) -> Result<()> {
                     eprintln!("{} {p}", paint("warning:", "33"));
                 }
             });
+        }
+        Cmd::Man { dir } => {
+            write_man_pages(&dir)?;
+            out.emit(&json!({"dir": dir}), || println!("Man pages written to {}", dir.display()));
         }
         Cmd::Uninstall { keep_data, yes } => {
             let u = app.uninstall(keep_data, !yes)?;
@@ -1338,3 +1345,27 @@ fn risk_line(r: &sam_core::risk::RiskAssessment) -> String {
         format!("{} ({})", risk_str(r.level), names.join(", "))
     }
 }
+
+/// `sam-jail.1` plus `sam-jail-<command>.1` for every visible command,
+/// generated from the same definitions as `--help`.
+fn write_man_pages(dir: &std::path::Path) -> Result<()> {
+    use clap::CommandFactory;
+    std::fs::create_dir_all(dir)?;
+    // The release script sets the release date; otherwise today.
+    let date = std::env::var("SAM_MAN_DATE").unwrap_or_else(|_| sam_core::util::format_ts(sam_core::util::now()).chars().take(10).collect());
+    let render = |cmd: clap::Command, file: &str| -> Result<()> {
+        let mut buf = Vec::new();
+        clap_mangen::Man::new(cmd).date(date.clone()).source(format!("SAM {}", env!("CARGO_PKG_VERSION"))).manual("SAM Manual").render(&mut buf)?;
+        std::fs::write(dir.join(file), buf)?;
+        Ok(())
+    };
+    let root = Cli::command();
+    for sub in root.get_subcommands().filter(|s| !s.is_hide_set()) {
+        // A one-off command: the names may live until it exits.
+        let name: &'static str = Box::leak(format!("sam-jail-{}", sub.get_name()).into_boxed_str());
+        let typed: &'static str = Box::leak(format!("sam-jail {}", sub.get_name()).into_boxed_str());
+        render(sub.clone().name(name).display_name(name).bin_name(typed), &format!("{name}.1"))?;
+    }
+    render(root, "sam-jail.1")
+}
+

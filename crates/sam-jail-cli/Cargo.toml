@@ -26,6 +26,7 @@ serde_json.workspace = true
 toml.workspace = true
 clap.workspace = true
 libc.workspace = true
+clap_mangen = "0.3"
 
 [dev-dependencies]
 tempfile.workspace = true

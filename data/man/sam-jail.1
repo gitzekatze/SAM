@@ -1,0 +1,136 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail 1 2026-11-10 "SAM 0.1.0" "SAM Manual"
+.SH NAME
+sam\-jail \- Flatseal\-style permission manager and sandbox launcher for AppImages
+.SH SYNOPSIS
+\fBsam\-jail\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Flatseal\-style permission manager and sandbox launcher for AppImages
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print machine\-readable JSON
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+sam\-jail\-scan(1)
+Find AppImages in the scan directories
+.TP
+sam\-jail\-discover(1)
+List AppImages in the scan folders and menu, sandboxed or not. Reads names and icons without unpacking or running anything
+.TP
+sam\-jail\-add(1)
+Create a sandbox for an AppImage: extract, profile, add a menu entry
+.TP
+sam\-jail\-preview(1)
+Settings SAM would use for an AppImage without a sandbox (nothing is unpacked). With \-\-permissions\-stdin, evaluates adjusted settings
+.TP
+sam\-jail\-hints(1)
+Things to check right after creating a sandbox, with one\-click fixes
+.TP
+sam\-jail\-repair(1)
+Repair an app that does not start or misbehaves: list steps, apply one, or undo
+.TP
+sam\-jail\-selftest(1)
+Start sandboxed apps briefly and report which ones keep running. Opens their windows for a few seconds
+.TP
+sam\-jail\-menu(1)
+Show, hide or restore unsandboxed menu entries for a sandboxed app
+.TP
+sam\-jail\-list(1)
+List registered apps
+.TP
+sam\-jail\-info(1)
+Show details about an app
+.TP
+sam\-jail\-remove(1)
+Remove an app, its extraction, launcher and (unless \-\-keep\-data) its private home. Refuses while the app runs, unless \-\-stop
+.TP
+sam\-jail\-stop(1)
+Close a running app (it gets the chance to save and quit first)
+.TP
+sam\-jail\-uninstall(1)
+Remove SAM from this computer: every sandbox (menu entries SAM hid come back), SAM\*(Aqs menu entries, its settings and the apps\*(Aq private data. AppImage files stay. Lists what it would remove without \-\-yes
+.TP
+sam\-jail\-run(1)
+Run an app in its sandbox
+.TP
+sam\-jail\-command(1)
+Show the generated sandbox command without running it
+.TP
+sam\-jail\-doctor(1)
+Check the system (or one app) for problems
+.TP
+sam\-jail\-logs(1)
+Show logs for an app
+.TP
+sam\-jail\-preset(1)
+Manage presets
+.TP
+sam\-jail\-set(1)
+Set one permission, e.g. `sam\-jail set krita network.mode none`
+.TP
+sam\-jail\-get(1)
+Read permissions (all, or one key)
+.TP
+sam\-jail\-profile(1)
+Read or replace the full profile (JSON on stdin for `set`)
+.TP
+sam\-jail\-evaluate(1)
+Risk and warnings for a permission set given as JSON on stdin
+.TP
+sam\-jail\-verify(1)
+Check that the app\*(Aqs sandbox gives it exactly what its settings say: starts the sandbox with a probe instead of the app. Also takes an AppImage without a sandbox: then the settings it would get are checked (nothing is unpacked or stored)
+.TP
+sam\-jail\-compat(1)
+Turn compatibility mode on or off. Off restores the settings from before it was turned on
+.TP
+sam\-jail\-args(1)
+Show the extra arguments always passed to the app, or replace them with a JSON list on stdin (`\-\-stdin`)
+.TP
+sam\-jail\-review(1)
+Mark an app\*(Aqs profile as reviewed
+.TP
+sam\-jail\-reextract(1)
+Re\-extract the AppImage (after updates or failures)
+.TP
+sam\-jail\-redetect(1)
+Re\-run dependency detection and the recommendation
+.TP
+sam\-jail\-refresh(1)
+Check AppImages for changes (stale/missing)
+.TP
+sam\-jail\-relocate(1)
+Point an app at the new location of its AppImage
+.TP
+sam\-jail\-desktop(1)
+Install or remove the desktop launcher. `sam\-jail desktop all refresh` rewrites every launcher whose command is outdated (e.g. SAM\*(Aqs AppImage was moved)
+.TP
+sam\-jail\-diagnose(1)
+Run the app once under strace to find missing resources
+.TP
+sam\-jail\-report(1)
+Print a redacted bug report
+.TP
+sam\-jail\-config(1)
+Read or change configuration
+.TP
+sam\-jail\-permissions(1)
+List all permissions with plain\-language explanations
+.TP
+sam\-jail\-cleanup(1)
+Remove extraction leftovers not referenced by any app
+.TP
+sam\-jail\-onboarding(1)
+First\-run onboarding status
+.TP
+sam\-jail\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v0.1.0
