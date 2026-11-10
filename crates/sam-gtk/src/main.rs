@@ -98,9 +98,11 @@ fn main() -> glib::ExitCode {
         css.load_from_string(CSS);
         if let Some(display) = gdk::Display::default() {
             gtk::style_context_add_provider_for_display(&display, &css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-            // In-tree runs: find the app icon next to the sources.
-            let theme = gtk::IconTheme::for_display(&display);
-            theme.add_search_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data"));
+            // Debug builds started from a checkout: find the app icon next to
+            // the sources. Release builds use the installed icon, so the
+            // build folder's path never ends up in a packaged binary.
+            #[cfg(debug_assertions)]
+            gtk::IconTheme::for_display(&display).add_search_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data"));
         }
     });
     app.connect_activate(move |app| {
