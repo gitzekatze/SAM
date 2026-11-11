@@ -120,6 +120,18 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     switch(&g, "security.check_before_launch", "Check the sandbox before each start", "Confirms that every setting applies before an app starts. Runs only when its settings, SAM or this computer changed since the last passing check, and takes about a second. A failed check stops the start.");
     pref.add(&g);
 
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Updates"))
+        .description(tr("SAM goes online only for update checks. Each check asks the source an AppImage names (GitHub or the app's own server) whether a newer version is published; nothing is downloaded."))
+        .build();
+    switch(
+        &g,
+        "updates.check_on_start",
+        "Check for updates when SAM opens",
+        "At most once a day, for every sandboxed app. Otherwise only when you click Check on an app's page.",
+    );
+    pref.add(&g);
+
     let g = adw::PreferencesGroup::builder().title(tr("Dependency Detection")).build();
     switch(
         &g,

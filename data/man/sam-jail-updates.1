@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-updates 1 2026-11-10 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.SH NAME
+sam\-jail\-updates \- Check whether newer versions are published (one app, or all). Contacts the update source each AppImage names (GitHub or its own server); nothing is downloaded or replaced
+.SH SYNOPSIS
+\fBsam\-jail updates\fR [\fB\-\-if\-due\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fIAPP\fR] 
+.SH DESCRIPTION
+Check whether newer versions are published (one app, or all). Contacts the update source each AppImage names (GitHub or its own server); nothing is downloaded or replaced
+.SH OPTIONS
+.TP
+\fB\-\-if\-due\fR
+Only if `updates.check_on_start` is on, and only apps not checked for a day (used by the window at start)
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+[\fIAPP\fR]
+

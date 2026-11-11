@@ -167,6 +167,8 @@ Style (follow the system, light or dark), menu entries, repair options, warnings
 
 A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets), *Check all AppImages for changes*, *Remove unused extractions*, the disk space of sandboxed apps, data of removed sandboxes, and a redacted bug report.
 
+**Updates:** under *Details*, **Check** asks the update source the AppImage names (GitHub or the app's own server) whether a newer version is published. If so, the page says which one and offers **Open Download Page**. Download it, replace the old file, and SAM unpacks the new version, keeping your settings. *Preferences → Updates* can check every app once a day when SAM opens.
+
 **Disk space:** an app's page shows, under *Details*, how much space it takes. **Free Space** deletes its unpacked copy; its settings and files stay, and the next start unpacks the AppImage again (a few seconds).
 
 ---

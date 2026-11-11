@@ -164,6 +164,22 @@ impl AppPage {
             row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
             self.add_dynamic(&self.notices, &row);
         }
+        // A newer version is published (last update check).
+        if let Some(e) = entry.as_ref().filter(|e| util::str_of(e, "update.state") == "available") {
+            let row = adw::ActionRow::builder().title(tr("Update available")).subtitle(esc(util::str_of(e, "update.detail"))).build();
+            row.add_prefix(&status_icon("software-update-available-symbolic", "accent"));
+            if let Some(page) = Some(util::str_of(e, "update.download_page")).filter(|p| p.starts_with("https://")) {
+                let open = gtk::Button::builder().label(tr("Open Download Page")).valign(gtk::Align::Center).build();
+                let (page, w) = (page.to_string(), Rc::downgrade(self));
+                open.connect_clicked(move |_| {
+                    if let Some(app) = w.upgrade().and_then(|me| me.app()) {
+                        gtk::UriLauncher::new(&page).launch(Some(&app.window), gio::Cancellable::NONE, |_| {});
+                    }
+                });
+                row.add_suffix(&open);
+            }
+            self.add_dynamic(&self.notices, &row);
+        }
         if let (Some(e), Some(s)) = (entry.as_ref(), summary.as_ref()) {
             let badge = util::str_of(s, "badge");
             if ["stale", "broken", "missing"].contains(&badge) {
@@ -566,6 +582,36 @@ impl AppPage {
             _ => util::str_of(e, "signature.detail").to_string(),
         };
         self.add_dynamic(&g, &text_row("Signature", &signature));
+
+        // Updates: the last check, and a button to check now.
+        let checked = util::get(e, "update.checked_at").and_then(Value::as_i64).unwrap_or(0);
+        let update = adw::ActionRow::builder()
+            .title(tr("Updates"))
+            .subtitle(esc(&if checked == 0 {
+                "Not checked yet. Checking contacts the update source this AppImage names (GitHub or its own server).".to_string()
+            } else {
+                format!(
+                    "{} (checked {})",
+                    util::str_of(e, "update.detail"),
+                    glib::DateTime::from_unix_local(checked).and_then(|d| d.format("%x %H:%M")).map(|s| s.to_string()).unwrap_or_default()
+                )
+            }))
+            .build();
+        update.add_css_class("property");
+        let check = gtk::Button::builder()
+            .label(tr("Check"))
+            .valign(gtk::Align::Center)
+            .tooltip_text(tr("Ask the update source whether a newer version is published"))
+            .build();
+        update.add_suffix(&check);
+        self.add_dynamic(&g, &update);
+        let w = Rc::downgrade(self);
+        check.connect_clicked(move |b| {
+            if let Some(me) = w.upgrade() {
+                b.set_sensitive(false);
+                me.simple(vec!["updates".into(), me.app_id.clone()], "Update check done");
+            }
+        });
 
         // Disk space, with "Free Space" for the unpacked copy.
         let space = adw::ActionRow::builder().title(tr("Disk space")).subtitle(tr("Checking…")).build();

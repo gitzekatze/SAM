@@ -360,6 +360,37 @@ pub struct AppEntry {
     /// Set when the current file is signed with another key than the one
     /// before (or no longer signed): what the earlier signature was.
     pub signing_key_changed: Option<String>,
+    /// Result of the last update check (`sam-jail updates`).
+    pub update: Option<UpdateStatus>,
+}
+
+/// Whether a newer version of an AppImage is published.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdateState {
+    /// The AppImage names no update source SAM knows.
+    #[default]
+    Unsupported,
+    /// The published file is the one on this computer.
+    Current,
+    /// A different file is published.
+    Available,
+    /// The check did not get an answer (offline, server error, …).
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UpdateStatus {
+    pub state: UpdateState,
+    /// Release or file name of the newest version, when known.
+    pub latest: Option<String>,
+    /// Where people can download it (https only).
+    pub download_page: Option<String>,
+    /// One sentence for people.
+    pub detail: String,
+    /// When the check ran (Unix seconds).
+    pub checked_at: i64,
 }
 
 /// State of an AppImage's embedded signature.

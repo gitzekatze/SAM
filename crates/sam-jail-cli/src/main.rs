@@ -326,6 +326,27 @@ fn real_main(cli: Cli) -> Result<()> {
             });
         }
         Cmd::Version => {} // answered above
+        Cmd::Updates { app: q, if_due } => {
+            let results = app.check_updates(q.as_deref(), if_due)?;
+            let list: Vec<_> = results.iter().map(|(id, s)| json!({"id": id, "update": s})).collect();
+            out.emit(&json!({"apps": list}), || {
+                if results.is_empty() && if_due {
+                    println!("Nothing due (updates.check_on_start is off, or every app was checked today)");
+                }
+                for (id, s) in &results {
+                    let state = match s.state {
+                        sam_core::model::UpdateState::Available => paint("update available", "33"),
+                        sam_core::model::UpdateState::Current => paint("up to date", "32"),
+                        sam_core::model::UpdateState::Failed => paint("check failed", "31"),
+                        sam_core::model::UpdateState::Unsupported => "no update source".to_string(),
+                    };
+                    println!("{id:<32} {state}  {}", s.detail);
+                    if let Some(p) = s.download_page.as_deref().filter(|_| s.state == sam_core::model::UpdateState::Available) {
+                        println!("{:<32} {p}", "");
+                    }
+                }
+            });
+        }
         Cmd::Space { app: q } => {
             let entries = match &q {
                 Some(q) => vec![app.resolve(q)?],

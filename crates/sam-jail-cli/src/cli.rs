@@ -160,6 +160,16 @@ pub(crate) enum Cmd {
     Doctor { app: Option<String> },
     /// Show the version and the level of the JSON interface.
     Version,
+    /// Check whether newer versions are published (one app, or all).
+    /// Contacts the update source each AppImage names (GitHub or its own
+    /// server); nothing is downloaded or replaced.
+    Updates {
+        app: Option<String>,
+        /// Only if `updates.check_on_start` is on, and only apps not checked
+        /// for a day (used by the window at start).
+        #[arg(long)]
+        if_due: bool,
+    },
     /// Disk space of one app, or of every app.
     Space { app: Option<String> },
     /// Delete an app's unpacked copy; the next start unpacks it again.

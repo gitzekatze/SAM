@@ -234,6 +234,18 @@ metadata. SAM treats both as untrusted.
 
 ---
 
+## Network use by SAM itself
+
+SAM goes online for one thing only: update checks. A check reads the update
+source an AppImage names (GitHub, or the app's own server) and asks for the
+first few kilobytes of the update description. It runs only when you click
+*Check* or run `sam-jail updates`, or once a day when *Check for updates when
+SAM opens* is on (off by default). It uses `curl`, HTTPS only (redirects
+included), with a generic user agent; nothing about you or your apps is
+sent, and nothing is downloaded or installed.
+
+---
+
 ## Signatures
 
 AppImages can carry a GPG signature and the signer's public key inside the

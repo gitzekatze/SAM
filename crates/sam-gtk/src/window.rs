@@ -987,6 +987,23 @@ impl App {
             let _ = me.backend.call(&["desktop", "all", "refresh"], None).await;
             me.load_config().await;
             me.refresh_apps().await;
+            // Optional update check (Preferences → Updates), in the background.
+            {
+                let me = me.clone();
+                glib::spawn_future_local(async move {
+                    if let Ok(v) = me.backend.call(&["updates", "--if-due"], None).await {
+                        let n = v
+                            .get("apps")
+                            .and_then(Value::as_array)
+                            .map(|a| a.iter().filter(|x| util::str_of(x, "update.state") == "available").count())
+                            .unwrap_or(0);
+                        if n > 0 {
+                            me.toast(&format!("Updates are available for {n} app(s)"));
+                            me.refresh_registered().await;
+                        }
+                    }
+                });
+            }
             let st = me.state.borrow();
             let first_app = st.apps.first().map(|a| util::str_of(a, "id").to_string());
             let first_file =

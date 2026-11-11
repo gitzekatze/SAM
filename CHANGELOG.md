@@ -60,6 +60,11 @@ version.
 - 64-bit ARM (aarch64): an AppImage of SAM is built for it, and CI tests
   it once the repository is public; the breakout test uses each
   architecture's syscall numbers.
+- Update check: SAM reads where an AppImage's updates are published (its
+  update information: zsync or GitHub releases) and tells whether a newer
+  version exists, with a link to download it. Only on request (*Check* on
+  an app's page, `sam-jail updates`), or once a day at start when turned on
+  in Preferences. Nothing is downloaded or replaced yet.
 - Disk space per app (details, Diagnostics, `sam-jail space`) and *Free
   Space*: deletes the unpacked copy, which is unpacked again before the next
   start (`sam-jail free-space`).

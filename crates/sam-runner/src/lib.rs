@@ -20,6 +20,7 @@ pub mod netns;
 pub mod ops;
 pub mod probe;
 pub mod repair;
+pub mod updates;
 pub mod verify;
 pub mod wayland_ctx;
 

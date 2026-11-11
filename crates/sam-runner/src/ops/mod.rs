@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+use sam_core::model::UpdateStatus;
 use sam_core::permissions::*;
 use sam_core::risk::{assess, RiskAssessment};
 use sam_core::util::{now, tildify};

@@ -408,4 +408,32 @@ impl Sam {
         }
         Ok(removed)
     }
+
+    /// Checks whether newer versions are published, for one app or all,
+    /// and stores the result with each app. With `if_due`, only when
+    /// `updates.check_on_start` is on, and only apps not checked for a day.
+    pub fn check_updates(&self, query: Option<&str>, if_due: bool) -> Result<Vec<(String, UpdateStatus)>> {
+        if if_due && !self.config.updates.check_on_start {
+            return Ok(vec![]);
+        }
+        let entries = match query {
+            Some(q) => vec![self.resolve(q)?],
+            None => self.registry().list()?,
+        };
+        let reg = self.registry();
+        let mut out = Vec::new();
+        for mut e in entries {
+            if if_due && e.update.as_ref().is_some_and(|u| now() - u.checked_at < 24 * 3600) {
+                continue;
+            }
+            if !e.source_path.exists() {
+                continue;
+            }
+            let status = crate::updates::check(&e.source_path);
+            e.update = Some(status.clone());
+            reg.save(&mut e)?;
+            out.push((e.id.clone(), status));
+        }
+        Ok(out)
+    }
 }

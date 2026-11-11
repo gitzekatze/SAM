@@ -162,6 +162,17 @@ pub struct Config {
     pub extraction: Extraction,
     pub diagnostics: Diagnostics,
     pub compatibility: Compatibility,
+    pub updates: Updates,
+}
+
+/// Update checks. SAM contacts the internet only for these, and by default
+/// only when asked (a check button, `sam-jail updates`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Updates {
+    /// Check every sandboxed app's update source when the window opens
+    /// (at most once a day).
+    pub check_on_start: bool,
 }
 
 impl Config {

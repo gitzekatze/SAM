@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: sam\n"
 "Report-Msgid-Bugs-To: https://github.com/gitzekatze/SAM/issues\n"
-"POT-Creation-Date: 2026-11-11 15:48+0100\n"
+"POT-Creation-Date: 2026-11-11 16:37+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,7 +17,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: crates/sam-gtk/src/guide.rs:22 crates/sam-gtk/src/window.rs:254
+#: crates/sam-gtk/src/guide.rs:22 crates/sam-gtk/src/window.rs:256
 msgid "User Guide"
 msgstr ""
 
@@ -49,140 +49,151 @@ msgstr ""
 msgid "Sandbox Check"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:123
+#: crates/sam-gtk/src/pages.rs:124 crates/sam-gtk/src/app_page/render.rs:589
+msgid "Updates"
+msgstr ""
+
+#: crates/sam-gtk/src/pages.rs:125
+msgid ""
+"SAM goes online only for update checks. Each check asks the source an "
+"AppImage names (GitHub or the app's own server) whether a newer version is "
+"published; nothing is downloaded."
+msgstr ""
+
+#: crates/sam-gtk/src/pages.rs:135
 msgid "Dependency Detection"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:144
+#: crates/sam-gtk/src/pages.rs:156
 msgid "Extraction"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:150
+#: crates/sam-gtk/src/pages.rs:162
 msgid "Location"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:156 crates/sam-gtk/src/perms.rs:354
+#: crates/sam-gtk/src/pages.rs:168 crates/sam-gtk/src/perms.rs:354
 #: crates/sam-gtk/src/perms.rs:359
 msgid "Choose a folder"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:160
+#: crates/sam-gtk/src/pages.rs:172
 msgid "Back to the default folder"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:190
+#: crates/sam-gtk/src/pages.rs:202
 msgid "Folder for unpacked AppImages"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:213 crates/sam-gtk/src/window.rs:253
+#: crates/sam-gtk/src/pages.rs:225 crates/sam-gtk/src/window.rs:255
 msgid "Diagnostics"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:232
+#: crates/sam-gtk/src/pages.rs:244
 msgid "New preset"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:233 crates/sam-gtk/src/pages.rs:263
+#: crates/sam-gtk/src/pages.rs:245 crates/sam-gtk/src/pages.rs:275
 msgid "Import a preset"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:237 crates/sam-gtk/src/window.rs:252
+#: crates/sam-gtk/src/pages.rs:249 crates/sam-gtk/src/window.rs:254
 #: crates/sam-gtk/src/app_page/mod.rs:199
 msgid "Presets"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:238
+#: crates/sam-gtk/src/pages.rs:250
 msgid ""
 "Ready-made sets of permissions. Apply one to an app from its page, or from "
 "the menu of a preset."
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:325
+#: crates/sam-gtk/src/pages.rs:337
 msgid "Duplicate"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:326
+#: crates/sam-gtk/src/pages.rs:338
 msgid "Export…"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:330 crates/sam-gtk/src/pages.rs:671
+#: crates/sam-gtk/src/pages.rs:342 crates/sam-gtk/src/pages.rs:683
 msgid "Delete"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:359
+#: crates/sam-gtk/src/pages.rs:371
 msgid "More actions"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:413
+#: crates/sam-gtk/src/pages.rs:425
 msgid "Export preset"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:417
+#: crates/sam-gtk/src/pages.rs:429
 msgid "Exported"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:461
+#: crates/sam-gtk/src/pages.rs:473
 msgid "Back to presets"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:463
+#: crates/sam-gtk/src/pages.rs:475
 msgid "Save"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:472
+#: crates/sam-gtk/src/pages.rs:484
 msgid "Name"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:473
+#: crates/sam-gtk/src/pages.rs:485
 msgid "Description"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:474
+#: crates/sam-gtk/src/pages.rs:486
 msgid "Compatibility notes"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:507
+#: crates/sam-gtk/src/pages.rs:519
 msgid "Give the preset a name"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:542
+#: crates/sam-gtk/src/pages.rs:554
 msgid "Check again"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:543
+#: crates/sam-gtk/src/pages.rs:555
 msgid "Copy a redacted bug report"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:546
+#: crates/sam-gtk/src/pages.rs:558
 msgid "System"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:546
+#: crates/sam-gtk/src/pages.rs:558
 msgid "What SAM needs from this computer."
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:548
+#: crates/sam-gtk/src/pages.rs:560
 msgid "Maintenance"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:597
+#: crates/sam-gtk/src/pages.rs:609
 msgid "Redacted report copied"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:642
+#: crates/sam-gtk/src/pages.rs:654
 msgid "Disk space of sandboxed apps"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:642 crates/sam-gtk/src/pages.rs:669
-#: crates/sam-gtk/src/app_page/render.rs:571
+#: crates/sam-gtk/src/pages.rs:654 crates/sam-gtk/src/pages.rs:681
+#: crates/sam-gtk/src/app_page/render.rs:617
 msgid "Checking…"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:669
+#: crates/sam-gtk/src/pages.rs:681
 msgid "Data of removed sandboxes"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:726
+#: crates/sam-gtk/src/pages.rs:738
 msgid "Command line"
 msgstr ""
 
@@ -214,104 +225,104 @@ msgstr ""
 msgid "SAM - Sandboxed AppImage Manager"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:249
+#: crates/sam-gtk/src/window.rs:251
 msgid "Sandboxed AppImage Manager"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:255
+#: crates/sam-gtk/src/window.rs:257
 msgid "Preferences"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:258
+#: crates/sam-gtk/src/window.rs:260
 msgid "About SAM"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:260
+#: crates/sam-gtk/src/window.rs:262
 msgid "Main menu"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:270
+#: crates/sam-gtk/src/window.rs:272
 msgid "Start page"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:280
+#: crates/sam-gtk/src/window.rs:282
 msgid "Search the locations again"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:297
+#: crates/sam-gtk/src/window.rs:299
 msgid "AppImage locations"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:300 crates/sam-gtk/src/window.rs:580
+#: crates/sam-gtk/src/window.rs:302 crates/sam-gtk/src/window.rs:582
 msgid "Search a folder for AppImages"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:302
+#: crates/sam-gtk/src/window.rs:304
 msgid "Add a single AppImage file"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:313
+#: crates/sam-gtk/src/window.rs:315
 msgid "Also search the Downloads folder"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:327
+#: crates/sam-gtk/src/window.rs:329
 msgid "AppImages found"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:357
+#: crates/sam-gtk/src/window.rs:359
 msgid "Search AppImages"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:366
+#: crates/sam-gtk/src/window.rs:368
 msgid "No AppImages Found"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:367
+#: crates/sam-gtk/src/window.rs:369
 msgid ""
 "Add a folder or a single AppImage file above, or drop an AppImage onto this "
 "window."
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:377
+#: crates/sam-gtk/src/window.rs:379
 msgid "SAM"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:474
+#: crates/sam-gtk/src/window.rs:476
 msgid "Stop searching here"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:490
+#: crates/sam-gtk/src/window.rs:492
 msgid "No locations yet: add a folder or a file."
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:589
+#: crates/sam-gtk/src/window.rs:591
 msgid "Add an AppImage"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:682
+#: crates/sam-gtk/src/window.rs:684
 msgid "Select an AppImage"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:683
+#: crates/sam-gtk/src/window.rs:685
 msgid ""
 "SAM lists the AppImages in the locations on the left. Pick one to see the "
 "settings SAM recommends, adjust them, and create a sandbox. Nothing is "
 "unpacked or run before you click Create Sandbox."
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:688
+#: crates/sam-gtk/src/window.rs:690
 msgid "Welcome"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:865
+#: crates/sam-gtk/src/window.rs:867
 msgid "Starting in a terminal…"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:887
+#: crates/sam-gtk/src/window.rs:889
 msgid "Starting in sandbox…"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:941
+#: crates/sam-gtk/src/window.rs:943
 msgid "Re-extracted"
 msgstr ""
 
@@ -468,49 +479,65 @@ msgid ""
 "click Create Sandbox. Nothing is unpacked or run before that."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:198
+#: crates/sam-gtk/src/app_page/render.rs:169
+msgid "Update available"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/render.rs:172
+msgid "Open Download Page"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/render.rs:214
 msgid "Settings not reviewed yet"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:199
+#: crates/sam-gtk/src/app_page/render.rs:215
 msgid "SAM chose these settings for you. Look through them, then confirm."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:202
+#: crates/sam-gtk/src/app_page/render.rs:218
 msgid "Mark as Reviewed"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:218
+#: crates/sam-gtk/src/app_page/render.rs:234
 msgid "Got It"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:409
+#: crates/sam-gtk/src/app_page/render.rs:425
 msgid "Last start"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:492
+#: crates/sam-gtk/src/app_page/render.rs:508
 msgid "Starting a diagnostic run (closes after 30 s)…"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:503
+#: crates/sam-gtk/src/app_page/render.rs:519
 msgid "Bug report copied"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:571
+#: crates/sam-gtk/src/app_page/render.rs:602
+msgid "Check"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/render.rs:604
+msgid "Ask the update source whether a newer version is published"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/render.rs:617
 msgid "Disk space"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:574
+#: crates/sam-gtk/src/app_page/render.rs:620
 msgid "Free Space"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:577
+#: crates/sam-gtk/src/app_page/render.rs:623
 msgid ""
 "Delete the unpacked copy. Settings and files stay; the next start unpacks "
 "the AppImage again."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:611
+#: crates/sam-gtk/src/app_page/render.rs:657
 msgid "Locate the AppImage"
 msgstr ""
 
