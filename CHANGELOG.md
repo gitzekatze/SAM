@@ -125,7 +125,9 @@ version.
   a second line.
 - Unpacking tools installed outside `/usr` (e.g. `~/.local/bin`) now work
   inside the unpacking sandbox.
-- Keyboard: greyed-out settings are skipped by Tab; the Downloads switch
+- Keyboard: Tab no longer gets stuck at the "⋮" button of an app page (a
+  label under the app's name could take the focus); greyed-out settings are
+  skipped by Tab; the Downloads switch
   and the search field have names for screen readers.
 
 ### Removed

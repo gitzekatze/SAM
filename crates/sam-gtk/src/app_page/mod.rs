@@ -135,20 +135,20 @@ impl AppPage {
         let sandbox_badge = util::badge("Bubblewrap", "blue");
         let check_badge = util::badge("", "good");
         badges.append(&status_badge);
-        status_badge.parent().unwrap().set_can_focus(false);
         badges.append(&state_badge);
-        state_badge.parent().unwrap().set_can_focus(false);
         badges.append(&risk_badge);
-        risk_badge.parent().unwrap().set_can_focus(false);
         badges.append(&sandbox_badge);
         badges.append(&check_badge);
-        // Each label keeps its own width when they wrap into a column.
+        // Each label keeps its own width when they wrap into a column. The
+        // labels are not controls: none takes the keyboard focus (a
+        // focusable one made Tab stop for good at the button before them).
         for b in [&status_badge, &state_badge, &risk_badge, &sandbox_badge, &check_badge] {
             if let Some(child) = b.parent() {
                 child.set_halign(gtk::Align::Start);
+                child.set_can_focus(false);
             }
         }
-        sandbox_badge.parent().unwrap().set_can_focus(false);
+        badges.set_can_focus(false);
         meta.append(&title);
         meta.append(&subtitle);
         meta.append(&badges);
