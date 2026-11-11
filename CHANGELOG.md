@@ -128,6 +128,9 @@ version.
     the system's GTK aborted at the first icon.
   - Apps may own the D-Bus name of their own reverse-DNS ID (as with
     Flatpak); a refused name in the log is offered as a repair step.
+  - Apps whose start script launches the real program in the background
+    and exits (Pulsar) stay alive: SAM's helper waits for the app's last
+    process, not its first.
   - The AppImage's own extractor (after consent) works from files without
     the executable bit and with uruntime's AppDir layout (DwarFS
     "anylinux" AppImages).

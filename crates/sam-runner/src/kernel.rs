@@ -16,7 +16,6 @@
 //!   which does not pass extra file descriptors on.
 
 use std::collections::BTreeMap;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -119,8 +118,47 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
             libc::close(fd);
         }
     }
-    let err = Command::new(prog).args(rest).env_remove("SAM_STATUS_FD").exec();
-    bail!("exec {prog}: {err}")
+    run_and_reap(prog, rest)
+}
+
+/// Starts the app and stays until its last process has ended, not only the
+/// first: many start scripts (Pulsar, WezTerm) launch the real program in
+/// the background and exit at once, and when the first process of a
+/// Bubblewrap sandbox ends, the whole sandbox ends with it. As subreaper the
+/// helper inherits such background processes and waits for them too.
+/// Returns the exit status of the program it started.
+fn run_and_reap(prog: &str, args: &[String]) -> Result<()> {
+    // SAFETY: plain prctl; only changes who reaps orphaned descendants.
+    unsafe {
+        libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+    }
+    let child = Command::new(prog).args(args).env_remove("SAM_STATUS_FD").spawn().with_context(|| format!("starting {prog}"))?;
+    let main = child.id() as libc::pid_t;
+    // Closing the app (sam-jail stop) signals every process in the sandbox;
+    // the helper outlives them so they can quit cleanly. Set only here, in
+    // the helper: an ignored signal would be inherited by the app.
+    // SAFETY: setting signal dispositions to SIG_IGN.
+    unsafe {
+        for sig in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+            libc::signal(sig, libc::SIG_IGN);
+        }
+    }
+    let mut code = 0;
+    loop {
+        let mut status = 0;
+        // SAFETY: waitpid on any child, status points to a local.
+        let pid = unsafe { libc::waitpid(-1, &mut status, 0) };
+        if pid < 0 {
+            if std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {
+                continue;
+            }
+            break; // ECHILD: nothing of the app is left
+        }
+        if pid == main {
+            code = if libc::WIFEXITED(status) { libc::WEXITSTATUS(status) } else { 128 + libc::WTERMSIG(status) };
+        }
+    }
+    std::process::exit(code)
 }
 
 fn apply_landlock(spec: &LandlockSpec) -> Result<String> {
