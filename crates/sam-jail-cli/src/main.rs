@@ -175,6 +175,10 @@ enum Cmd {
     Doctor { app: Option<String> },
     /// Show the version and the level of the JSON interface.
     Version,
+    /// Disk space of one app, or of every app.
+    Space { app: Option<String> },
+    /// Delete an app's unpacked copy; the next start unpacks it again.
+    FreeSpace { app: String },
     /// Show logs for an app.
     Logs {
         app: String,
@@ -720,6 +724,25 @@ fn real_main(cli: Cli) -> Result<()> {
             });
         }
         Cmd::Version => {} // answered above
+        Cmd::Space { app: q } => {
+            let entries = match &q {
+                Some(q) => vec![app.resolve(q)?],
+                None => app.registry().list()?,
+            };
+            let usage: Vec<_> = entries.iter().map(|e| app.disk_usage(e)).collect();
+            let total: u64 = usage.iter().map(|u| u.total).sum();
+            out.emit(&json!({"apps": usage, "total": total}), || {
+                let mb = |b: u64| format!("{:.1} MB", b as f64 / 1e6);
+                for u in &usage {
+                    println!("{:<28} {:>10}  (unpacked {}, home {}, app folder {}, logs {})", u.name, mb(u.total), mb(u.unpacked), mb(u.home), mb(u.overlay), mb(u.logs));
+                }
+                println!("{:<28} {:>10}", "total", mb(total));
+            });
+        }
+        Cmd::FreeSpace { app: q } => {
+            let freed = app.free_space(&q)?;
+            out.emit(&json!({"freed": freed}), || println!("Freed {:.1} MB; the next start unpacks the AppImage again", freed as f64 / 1e6));
+        }
         Cmd::Man { dir } => {
             write_man_pages(&dir)?;
             out.emit(&json!({"dir": dir}), || println!("Man pages written to {}", dir.display()));
@@ -757,6 +780,7 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         Cmd::Run { app: q, args } => {
             let mut e = app.resolve(&q)?;
+            app.ensure_unpacked(&mut e)?;
             let rec = run(&mut e, &LaunchOptions { args, ..Default::default() }, &app.config, &app.paths, &app.host())?;
             out.emit(&rec, || {
                 if rec.sandbox_failure {
@@ -1124,6 +1148,9 @@ fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel: Option<&s
     println!("  source:      {}{}", tildify(&e.source_path), if e.source_path.exists() { "" } else { "  (missing)" });
     println!("  sha256:      {}", e.source.sha256);
     println!("  type:        {}", e.appimage_type.label());
+    if let Some(sig) = &e.signature {
+        println!("  signature:   {}", sig.detail);
+    }
     println!("  category:    {}", e.category);
     println!("  state:       {:?}", e.state);
     match sel {

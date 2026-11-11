@@ -1671,6 +1671,40 @@ impl AppPage {
         };
         self.add_dynamic(&g, &text_row("Extraction", &extraction));
 
+        let signature = match util::str_of(e, "signature.state") {
+            "" => "Not checked".to_string(),
+            _ => util::str_of(e, "signature.detail").to_string(),
+        };
+        self.add_dynamic(&g, &text_row("Signature", &signature));
+
+        // Disk space, with "Free Space" for the unpacked copy.
+        let space = adw::ActionRow::builder().title(tr("Disk space")).subtitle(tr("Checking…")).build();
+        space.add_css_class("property");
+        let free = gtk::Button::builder()
+            .label(tr("Free Space"))
+            .valign(gtk::Align::Center)
+            .visible(false)
+            .tooltip_text(tr("Delete the unpacked copy. Settings and files stay; the next start unpacks the AppImage again."))
+            .build();
+        space.add_suffix(&free);
+        self.add_dynamic(&g, &space);
+        let w = Rc::downgrade(self);
+        free.connect_clicked(move |_| {
+            if let Some(me) = w.upgrade() {
+                me.simple(vec!["free-space".into(), me.app_id.clone()], "Space freed; the next start unpacks the AppImage again");
+            }
+        });
+        if let Some(app) = self.app() {
+            let id = self.app_id.clone();
+            glib::spawn_future_local(async move {
+                if let Ok(v) = app.backend.call(&["space", &id], None).await {
+                    let Some(u) = v.get("apps").and_then(|a| a.get(0)) else { return };
+                    let size = |k: &str| glib::format_size(util::get(u, k).and_then(Value::as_u64).unwrap_or(0)).to_string();
+                    space.set_subtitle(&format!("{} in total: unpacked app {}, private home {}, logs {}", size("total"), size("unpacked"), size("home"), size("logs")));
+                    free.set_visible(util::get(u, "can_free").and_then(Value::as_bool).unwrap_or(false));
+                }
+            });
+        }
         self.add_dynamic(&g, &text_row("SHA-256", util::str_of(e, "source.sha256")));
     }
 

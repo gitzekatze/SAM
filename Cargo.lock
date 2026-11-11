@@ -1142,6 +1142,7 @@ dependencies = [
  "libc",
  "sam-core",
  "serde",
+ "sha2",
  "tempfile",
 ]
 

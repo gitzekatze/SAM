@@ -38,7 +38,7 @@
 
 **Left column**
 
-- **AppImage locations:** the folders and single files SAM searches. The ✕ removes a location (your files are not touched). *Also search the Downloads folder* adds your Downloads folder. The list grows with every location you add; the whole left column scrolls.
+- **AppImage locations:** the folders and single files SAM searches. The ✕ removes a location (your files are not touched). *Also search the Downloads folder* adds your Downloads folder. The list grows with every location you add; the whole left column scrolls. New AppImages in these locations appear by themselves.
 - **AppImages found:** every AppImage in those locations, grouped into *Sandboxed* and *Not sandboxed*. Use **All / Sandboxed / Unsandboxed** to filter and the search field to find one by name or path.
 - Each row shows the app's icon, name, file name and a status. Hover over any status to see what it means.
   - *Sandboxed* / *Not sandboxed*: whether the app has a sandbox yet.
@@ -165,7 +165,9 @@ Style (follow the system, light or dark), menu entries, repair options, warnings
 
 ## Diagnostics
 
-A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets), *Check all AppImages for changes*, *Remove unused extractions*, data of removed sandboxes, and a redacted bug report.
+A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets), *Check all AppImages for changes*, *Remove unused extractions*, the disk space of sandboxed apps, data of removed sandboxes, and a redacted bug report.
+
+**Disk space:** an app's page shows, under *Details*, how much space it takes. **Free Space** deletes its unpacked copy; its settings and files stay, and the next start unpacks the AppImage again (a few seconds).
 
 ---
 

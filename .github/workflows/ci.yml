@@ -69,7 +69,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Tests
-        run: PATH="$PWD/target/debug:$PATH" cargo test --workspace --locked --no-fail-fast
+        # SAM_TEST_GPG: also sign and check a test AppImage with GnuPG.
+        run: SAM_TEST_GPG=1 PATH="$PWD/target/debug:$PATH" cargo test --workspace --locked --no-fail-fast
 
       - name: Desktop file and metainfo
         run: |

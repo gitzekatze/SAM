@@ -199,6 +199,7 @@ impl Sam {
             source: fp.clone(),
             added_at: t,
             state: AppState::Registered,
+            signature: Some(sam_detect::signature::check(&source)),
             ..Default::default()
         };
         // Extract into a temporary root; the final id depends on metadata.
@@ -417,6 +418,11 @@ impl Sam {
         match extract(&req, &mut log) {
             Ok(out) => {
                 entry.appimage_type = info.kind;
+                if entry.source.sha256 != fp.sha256 {
+                    let new_sig = sam_detect::signature::check(&entry.source_path);
+                    entry.signing_key_changed = signing_key_change(entry.signature.as_ref(), &new_sig);
+                    entry.signature = Some(new_sig);
+                }
                 entry.source = fp.clone();
                 let appdir = root.join("AppDir");
                 entry.extraction = Some(self.extraction_info(&root, &appdir, &out, &info, &fp));
@@ -693,6 +699,48 @@ impl Sam {
 
     /// Private data of apps that no longer have a sandbox: their home,
     /// writable app folder layer and logs (kept by `remove --keep-data`).
+    /// Space one app takes: its unpacked copy, private home, writable app
+    /// folder and logs.
+    pub fn disk_usage(&self, entry: &AppEntry) -> DiskUsage {
+        let unpacked = tree_size(&self.extracted_root().join(&entry.id));
+        let home = tree_size(&self.paths.app_home(&entry.id));
+        let overlay = tree_size(&self.paths.data_dir.join("overlays").join(&entry.id));
+        let logs = tree_size(&self.paths.app_logs_dir(&entry.id));
+        DiskUsage { id: entry.id.clone(), name: entry.display_name().to_string(), unpacked, home, overlay, logs, total: unpacked + home + overlay + logs, can_free: unpacked > 0 && entry.source_path.exists() }
+    }
+
+    /// Deletes an app's unpacked copy to free space. Its settings and
+    /// private home stay; the next start unpacks the AppImage again (see
+    /// [`Sam::ensure_unpacked`]). Returns the bytes freed.
+    pub fn free_space(&self, query: &str) -> Result<u64> {
+        let entry = self.resolve(query)?;
+        self.ensure_not_running(&entry, "free its space")?;
+        if !entry.source_path.exists() {
+            bail!("the AppImage {} is missing, so the unpacked copy is the only one left; it is kept", tildify(&entry.source_path));
+        }
+        let root = self.extracted_root().join(&entry.id);
+        let size = tree_size(&root);
+        if root.exists() {
+            remove_tree(&root).with_context(|| format!("removing {}", root.display()))?;
+        }
+        Ok(size)
+    }
+
+    /// Unpacks the AppImage again when its unpacked copy is gone (after
+    /// *Free space*, or deleted by hand) and the file is unchanged. A
+    /// changed file is left to `reextract`, which reviews new permissions.
+    pub fn ensure_unpacked(&self, entry: &mut AppEntry) -> Result<bool> {
+        let Some(x) = &entry.extraction else { return Ok(false) };
+        if x.appdir.join(&x.entry).exists() || !entry.source_path.exists() {
+            return Ok(false);
+        }
+        if !matches!(fingerprint::check(&entry.source_path, &x.source, false), Ok(SourceStatus::Unchanged)) {
+            return Ok(false);
+        }
+        *entry = self.reextract(&entry.id, false)?;
+        Ok(true)
+    }
+
     pub fn leftover_data(&self) -> Result<Vec<LeftoverData>> {
         let ids: std::collections::HashSet<String> = self.registry().list()?.into_iter().map(|a| a.id).collect();
         let mut by_id: std::collections::BTreeMap<String, LeftoverData> = Default::default();
@@ -796,7 +844,8 @@ impl Sam {
 
     /// Runs the sandbox check and stores its result with the app.
     pub fn verify(&self, query: &str) -> Result<crate::verify::Outcome> {
-        let e = self.resolve(query)?;
+        let mut e = self.resolve(query)?;
+        self.ensure_unpacked(&mut e)?;
         let out = crate::verify::verify(&e, &self.config, &self.paths, &self.host())?;
         let reg = self.registry();
         if let Some(mut fresh) = reg.get(&e.id)? {
@@ -1029,6 +1078,16 @@ impl Sam {
         }
         if e.profile.compatibility_mode {
             w.push(Warning::warn("compat-mode", "Compatibility mode", sam_profile::COMPAT_WARNING));
+        }
+        if let Some(before) = &e.signing_key_changed {
+            w.push(Warning::danger(
+                "signing-key-changed",
+                "Signed differently than before",
+                format!("The previous version was {before}. The current file is {}. An update from the same developer normally keeps its key: make sure the file comes from where you expect.", e.signature.as_ref().map(sig_words).unwrap_or_else(|| "not checked".into())),
+            ));
+        }
+        if e.signature.as_ref().is_some_and(|s| s.state == sam_core::model::SignatureState::Invalid) {
+            w.push(Warning::danger("signature-invalid", "Signature does not match", e.signature.as_ref().map(|s| s.detail.clone()).unwrap_or_default()));
         }
         w
     }
@@ -1272,6 +1331,20 @@ pub fn new_requirements(old_rec: &PermissionSet, new_rec: &PermissionSet, cur: &
     v
 }
 
+/// Disk space of one app (bytes).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DiskUsage {
+    pub id: String,
+    pub name: String,
+    pub unpacked: u64,
+    pub home: u64,
+    pub overlay: u64,
+    pub logs: u64,
+    pub total: u64,
+    /// The unpacked copy can be deleted (the AppImage is still there).
+    pub can_free: bool,
+}
+
 /// Data left behind by a removed sandbox.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LeftoverData {
@@ -1290,8 +1363,6 @@ fn tree_size(p: &Path) -> u64 {
     }
 }
 
-/// `remove_dir_all` that also handles folders without permissions, such as
-/// the `work/work` folder the kernel's overlay file system leaves behind.
 /// What `Sam::uninstall` removes (or would remove).
 #[derive(Debug, Default, Serialize)]
 pub struct Uninstall {
@@ -1344,6 +1415,8 @@ fn descendants(root: u32) -> Vec<u32> {
     out
 }
 
+/// `remove_dir_all` that also handles folders without permissions, such as
+/// the `work/work` folder the kernel's overlay file system leaves behind.
 pub fn remove_tree(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     fn unlock(p: &Path) {
@@ -1411,5 +1484,51 @@ mod tests {
         assert!(m.devices.gpu && m.audio.enabled, "detected needs are added");
         assert_eq!(m.network.mode, NetworkMode::Full, "user change kept");
         assert_eq!(m.filesystem.music, Access::Ro, "user change kept");
+    }
+}
+
+/// Short description of a signature for messages.
+fn sig_words(s: &sam_core::model::SignatureInfo) -> String {
+    use sam_core::model::SignatureState as S;
+    let key = s.fingerprint.as_deref().map(|f| format!(" (key {})", &f[f.len().saturating_sub(16)..])).unwrap_or_default();
+    match s.state {
+        S::Unsigned => "not signed".into(),
+        S::Valid => format!("signed{key}"),
+        S::Invalid => format!("signed{key}, but the signature does not match"),
+        S::Unchecked => "signed (not checked)".into(),
+    }
+}
+
+/// What the earlier signature was, when the new file is signed with another
+/// key or no longer signed. An unsigned app that stays unsigned, or a first
+/// signature, is no change worth a warning.
+fn signing_key_change(old: Option<&sam_core::model::SignatureInfo>, new: &sam_core::model::SignatureInfo) -> Option<String> {
+    use sam_core::model::SignatureState as S;
+    let old = old?;
+    let old_fp = old.fingerprint.as_deref().filter(|_| old.state == S::Valid)?;
+    match (new.state, new.fingerprint.as_deref()) {
+        (S::Valid, Some(fp)) if fp == old_fp => None,
+        (S::Unchecked, _) => None,
+        _ => Some(sig_words(old)),
+    }
+}
+
+#[cfg(test)]
+mod signature_tests {
+    use super::signing_key_change;
+    use sam_core::model::{SignatureInfo, SignatureState as S};
+
+    fn sig(state: S, fp: Option<&str>) -> SignatureInfo {
+        SignatureInfo { state, fingerprint: fp.map(str::to_string), detail: String::new() }
+    }
+
+    #[test]
+    fn key_changes_are_noticed() {
+        let a = sig(S::Valid, Some("AAAA"));
+        assert_eq!(signing_key_change(Some(&a), &sig(S::Valid, Some("AAAA"))), None, "same key");
+        assert!(signing_key_change(Some(&a), &sig(S::Valid, Some("BBBB"))).is_some(), "other key");
+        assert!(signing_key_change(Some(&a), &sig(S::Unsigned, None)).is_some(), "no longer signed");
+        assert_eq!(signing_key_change(Some(&sig(S::Unsigned, None)), &sig(S::Valid, Some("AAAA"))), None, "first signature");
+        assert_eq!(signing_key_change(None, &sig(S::Unsigned, None)), None);
     }
 }

@@ -355,6 +355,35 @@ pub struct AppEntry {
     /// Unsandboxed menu entries for this AppImage (made by AppImageLauncher,
     /// Gear Lever, ...) that SAM hid when the sandbox was created.
     pub hidden_entries: Vec<HiddenEntry>,
+    /// The AppImage's embedded signature, checked when it was unpacked.
+    pub signature: Option<SignatureInfo>,
+    /// Set when the current file is signed with another key than the one
+    /// before (or no longer signed): what the earlier signature was.
+    pub signing_key_changed: Option<String>,
+}
+
+/// State of an AppImage's embedded signature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SignatureState {
+    #[default]
+    Unsigned,
+    /// Matches the file (with the key that came in the file).
+    Valid,
+    /// Does not match: the file was changed after signing, or the key is unreadable.
+    Invalid,
+    /// Signed, but could not be checked (GnuPG missing, unreadable file).
+    Unchecked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SignatureInfo {
+    pub state: SignatureState,
+    /// Fingerprint of the signer's key, when it could be read.
+    pub fingerprint: Option<String>,
+    /// One sentence for people.
+    pub detail: String,
 }
 
 /// A foreign menu entry SAM hid, with what is needed to restore it.

@@ -234,6 +234,21 @@ metadata. SAM treats both as untrusted.
 
 ---
 
+## Signatures
+
+AppImages can carry a GPG signature and the signer's public key inside the
+file. SAM checks the signature with `gpgv` in a throwaway keyring (your own
+GnuPG folder is never used) and shows the result in the app's details:
+*not signed*, *signed by …*, or a warning when the signature does not match
+the file.
+
+Because the key comes with the file, a valid signature shows that the file
+is unchanged since signing, not who made it. What it adds is continuity:
+SAM remembers the key, and when an updated AppImage is signed with another
+key, or no longer signed, the app page shows a warning.
+
+---
+
 ## Safe unpacking
 
 SAM unpacks AppImages with its own reader and never runs them to do so.

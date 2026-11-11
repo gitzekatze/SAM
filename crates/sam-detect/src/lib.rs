@@ -2,6 +2,7 @@
 //! detection.
 
 pub mod appimage;
+pub mod signature;
 pub mod classify;
 pub mod elf;
 

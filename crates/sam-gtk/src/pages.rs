@@ -575,6 +575,31 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
             }
         });
     }));
+    // Space used by the sandboxed apps, biggest first.
+    let space = adw::ActionRow::builder().title(tr("Disk space of sandboxed apps")).subtitle(tr("Checking…")).build();
+    space.add_prefix(&gtk::Image::from_icon_name("drive-harddisk-symbolic"));
+    maint.add(&space);
+    {
+        let (w, row) = (Rc::downgrade(app), space.clone());
+        glib::spawn_future_local(async move {
+            let Some(app) = w.upgrade() else { return };
+            if let Ok(v) = app.backend.call(&["space"], None).await {
+                let mut apps = v.get("apps").and_then(Value::as_array).cloned().unwrap_or_default();
+                apps.sort_by_key(|a| std::cmp::Reverse(util::get(a, "total").and_then(Value::as_u64).unwrap_or(0)));
+                let total = util::get(&v, "total").and_then(Value::as_u64).unwrap_or(0);
+                let top: Vec<String> = apps
+                    .iter()
+                    .take(3)
+                    .map(|a| format!("{} {}", util::plain(util::str_of(a, "name")), glib::format_size(util::get(a, "total").and_then(Value::as_u64).unwrap_or(0))))
+                    .collect();
+                row.set_subtitle(&esc(&if apps.is_empty() {
+                    "No sandboxed apps.".to_string()
+                } else {
+                    format!("{} for {} app(s). Largest: {}. Free space from an app's page → Details.", glib::format_size(total), apps.len(), top.join(", "))
+                }));
+            }
+        });
+    }
     // Data kept when sandboxes were removed with "Keep the app's settings and files".
     let leftover = adw::ActionRow::builder().title(tr("Data of removed sandboxes")).subtitle(tr("Checking…")).activatable(true).name("leftover-data").build();
     leftover.add_prefix(&gtk::Image::from_icon_name("user-trash-symbolic"));

@@ -110,6 +110,8 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `preset list/show/apply/check/save/delete/duplicate/import/export/put` | preset objects; `put` reads one on stdin |
 | `config show/get/set/put/path` | configuration; `put` reads it on stdin |
 | `permissions` | the catalogue: every key with title, explanation, risk |
+| `space [APP]` | `{apps: [{id, name, unpacked, home, overlay, logs, total, can_free}], total}` (bytes) |
+| `free-space APP` | `{freed}` (bytes) |
 | `cleanup [--data] [--list]` | data left behind, or what was removed |
 | `onboarding [done]` | `{done}` |
 | `uninstall [--keep-data] [--yes]` | `{done, apps, files, dirs, problems}` |

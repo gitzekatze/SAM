@@ -57,6 +57,11 @@ version.
   disappear from a location (a finished download, a deleted file).
 - Screen readers announce every icon-only button by name; the blue label
   keeps enough contrast in light and dark style.
+- Disk space per app (details, Diagnostics, `sam-jail space`) and *Free
+  Space*: deletes the unpacked copy, which is unpacked again before the next
+  start (`sam-jail free-space`).
+- AppImage signatures are checked and shown; an update signed with another
+  key, or no longer signed, gets a warning.
 - AppImages with lz4-compressed SquashFS are unpacked by SAM's own reader.
 - AppImages with a DwarFS image (uruntime) are recognised and unpacked with
   `dwarfsextract` when the dwarfs tools are installed.

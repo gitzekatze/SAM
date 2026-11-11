@@ -65,6 +65,8 @@ fn launch(args: Vec<String>) -> Result<i32> {
     };
     let app = Sam::open()?;
     let mut entry = app.registry().get(&id)?.or_else(|| app.resolve(&id).ok()).with_context(|| format!("no registered app '{id}'"))?;
+    // After "Free space": unpack again first (the file is unchanged).
+    app.ensure_unpacked(&mut entry).context("unpacking the AppImage again")?;
     let host = sam_core::HostInfo::probe();
     if app.config.security.check_before_launch {
         // Only when the settings, SAM or this computer changed since the
