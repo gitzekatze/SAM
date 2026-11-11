@@ -102,6 +102,10 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         None => check("dbus", "Session D-Bus", CheckStatus::Warn, "session bus socket not found"),
     });
     c.push(check("gpu", "GPU devices", if host.gpu_devices.is_empty() { CheckStatus::Warn } else { CheckStatus::Ok }, if host.gpu_devices.is_empty() { "no /dev/dri devices".to_string() } else { host.gpu_devices.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ") }));
+    c.push(match crate::netns::pasta_usable() {
+        Ok(p) => check("pasta", "Local network only", CheckStatus::Ok, format!("pasta with --splice-only ({})", tildify(&p))),
+        Err(e) => check("pasta", "Local network only", CheckStatus::Warn, format!("{e:#}")),
+    });
     c.push(match crate::find_helper() {
         Some(p) => check("helper", "sam-jail-run", CheckStatus::Ok, tildify(&p)),
         None => check("helper", "sam-jail-run", CheckStatus::Fail, "sam-jail-run not found; launchers and Landlock will not work"),

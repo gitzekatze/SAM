@@ -264,7 +264,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         if let Err(e) = crate::netns::wrap_localhost(&mut command, &perms.network.valid_host_ports(), &perms.network.valid_app_ports()) {
             // Without pasta, fall back to no network at all.
             command.args.insert(0, "--unshare-net".into());
-            warnings.push(Warning::warn("localhost-unavailable", "Local network unavailable", format!("{e:#}. The app has no network.")));
+            warnings.push(Warning::warn("localhost-unavailable", "Local network unavailable", format!("{e:#}. Until then the app starts with no network at all, never with internet access.")));
         }
     }
     Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy, _runtime: runtime_guard })

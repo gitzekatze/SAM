@@ -230,7 +230,14 @@ fn permission_matrix() {
     p.network.mode = NetworkMode::Full;
     let r = launch("network", p);
     assert_ne!(r["NET"], "lo,", "full network shares host interfaces");
-    if host.tools_extra_pasta() {
+    if host.tools_extra_pasta() && sam_runner::netns::pasta_usable().is_err() {
+        // A pasta without --splice-only (Ubuntu 24.04) would give the app
+        // internet access: SAM starts it with no network at all instead.
+        let mut p = base();
+        p.network.mode = NetworkMode::Localhost;
+        let r = launch("localhost-old-pasta", p);
+        assert_eq!(r["NET"], "lo,", "no network at all with an old pasta");
+    } else if host.tools_extra_pasta() {
         let mut p = base();
         p.network.mode = NetworkMode::Localhost;
         let r = launch("localhost", p);

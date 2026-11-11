@@ -10,9 +10,35 @@
 //! (Attaching pasta to a namespace Bubblewrap already created fails with
 //! EPERM when pasta isolates itself, so pasta has to be the outer process.)
 
-use anyhow::{Context, Result};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::OnceLock;
+
+use anyhow::{bail, Result};
 use sam_core::util::which;
 use sam_core::SandboxCommand;
+
+/// The pasta to use for "Local network only", or why there is none.
+/// `--splice-only` is what keeps the app off the internet; pasta versions
+/// without it (Ubuntu 24.04 ships one) would give the app internet access,
+/// so they are not used: the launcher then starts the app with no network at
+/// all. Checked once per process.
+pub fn pasta_usable() -> Result<PathBuf> {
+    static CHECKED: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+    let r = CHECKED.get_or_init(|| {
+        let pasta = which("pasta").ok_or("'Local network only' needs pasta (package 'passt'), which is not installed")?;
+        let help = Command::new(&pasta).arg("--help").stdin(Stdio::null()).output().map_err(|e| format!("cannot run {}: {e}", pasta.display()))?;
+        let text = format!("{}{}", String::from_utf8_lossy(&help.stdout), String::from_utf8_lossy(&help.stderr));
+        if !text.contains("--splice-only") {
+            return Err("'Local network only' needs a newer pasta (package 'passt'): the installed one has no --splice-only, which is what keeps the app off the internet. Update passt, or choose 'No network' or 'Full network' for this app".into());
+        }
+        Ok(pasta)
+    });
+    match r {
+        Ok(p) => Ok(p.clone()),
+        Err(e) => bail!("{e}"),
+    }
+}
 
 /// Ports an app must never take over on the host's loopback when its ports
 /// are detected automatically: privileged ports and well-known local
@@ -30,7 +56,7 @@ pub fn pasta_args(host_ports: &[u16], app_ports: &[u16]) -> Vec<String> {
 
 /// Run `cmd` inside a pasta loopback-only network namespace.
 pub fn wrap_localhost(cmd: &mut SandboxCommand, host_ports: &[u16], app_ports: &[u16]) -> Result<()> {
-    let pasta = which("pasta").context("'Local network only' needs pasta (package 'passt')")?;
+    let pasta = pasta_usable()?;
     let mut args = pasta_args(host_ports, app_ports);
     args.push("--".into());
     args.push(cmd.program.to_string_lossy().into_owned());

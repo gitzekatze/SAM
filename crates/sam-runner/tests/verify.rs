@@ -59,7 +59,7 @@ fn check_passes_and_catches_mismatches() {
 
     // 2b. Local network only (pasta): the app runs as the user, not root,
     //     so the D-Bus proxy accepts it and every check passes.
-    if sam_core::util::which("pasta").is_some() {
+    if sam_runner::netns::pasta_usable().is_ok() {
         let mut p = PermissionSet::strict_gui();
         p.network.mode = NetworkMode::Localhost;
         app.set_permissions(&id, p).unwrap();

@@ -11,6 +11,12 @@ sudo apt install bubblewrap libarchive-tools libgtk-4-1 libadwaita-1-0 xdg-dbus-
 `xdg-dbus-proxy` (filtered D-Bus) and `passt` (*Local network only*) are
 optional but recommended; `strace` enables diagnostic runs.
 
+*Local network only* needs a `pasta` with `--splice-only` (newer passt
+releases). Ubuntu 24.04's passt is too old: SAM then starts such apps with no
+network at all, never with internet access, and `SAM.AppImage cli doctor`
+says so. On newer releases, `doctor`'s "Local network only" line shows whether
+the installed passt is new enough.
+
 ## Why there are no .deb packages yet
 
 SAM's GTK bindings (gtk-rs 0.11) need Rust 1.92 or newer. Debian 13 ships
