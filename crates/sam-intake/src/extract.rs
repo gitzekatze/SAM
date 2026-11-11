@@ -2,7 +2,8 @@
 //!
 //! Preferred order:
 //! 1. Static extraction without executing the AppImage:
-//!    * Type 2: built-in SquashFS reader (gzip/xz/zstd), then `unsquashfs`
+//!    * Type 2: built-in SquashFS reader (gzip/xz/zstd/lz4), then `unsquashfs`
+//!    * Type 2 with a DwarFS image (uruntime): `dwarfsextract`
 //!    * Type 1: `bsdtar` (libarchive)
 //! 2. Optional fallback: the AppImage's own `--appimage-extract`, run inside a
 //!    network-less bubblewrap sandbox, only with explicit user consent.
@@ -100,6 +101,27 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     type Method<'m> = (&'static str, Box<dyn Fn(&Path, &mut dyn Write) -> Result<()> + 'm>);
     let mut methods: Vec<Method> = Vec::new();
     match req.info.kind {
+        AppImageType::Type2 if req.info.payload == sam_detect::appimage::PayloadFormat::Dwarfs => {
+            // DwarFS (uruntime): unpacked by the dwarfs tools, inside the
+            // same minimal sandbox as the other extractors.
+            let off = req.info.payload_offset.context("no payload offset")?;
+            if let Some(d) = which("dwarfsextract") {
+                methods.push(("dwarfsextract", Box::new(move |dst: &Path, log: &mut dyn Write| {
+                    fs::create_dir_all(dst)?;
+                    let mut c = match &req.isolation {
+                        Some(iso) => {
+                            let mut c = isolated(iso, req.source, req.root);
+                            c.arg(&d);
+                            c
+                        }
+                        None => Command::new(&d),
+                    };
+                    run_tool(c.arg("-i").arg(req.source).arg("-O").arg(off.to_string()).arg("-o").arg(dst), &req.limits, started, log)
+                })));
+            } else {
+                attempts.push("this AppImage uses a DwarFS image; install the dwarfs tools (dwarfsextract) to unpack it without running it".into());
+            }
+        }
         AppImageType::Type2 => {
             let off = req.info.payload_offset.context("no payload offset")?;
             methods.push(("builtin-squashfs", Box::new(move |dst: &Path, log: &mut dyn Write| match &req.isolation {

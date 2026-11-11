@@ -4,6 +4,7 @@
 //! now are insensitive (greyed out), never hidden. Changes go to `on_edit`;
 //! the owner saves them and feeds back `set_data`.
 
+use crate::i18n::tr;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -90,10 +91,10 @@ pub struct Editor {
 impl Editor {
     pub fn new(catalog: Catalog, window: &adw::ApplicationWindow) -> Rc<Editor> {
         let overview = adw::PreferencesGroup::builder()
-            .title("Overview")
-            .description("How much this app can reach with the settings below.")
+            .title(tr("Overview"))
+            .description(tr("How much this app can reach with the settings below."))
             .build();
-        let risk_row = adw::ActionRow::builder().title("Risk of these settings").build();
+        let risk_row = adw::ActionRow::builder().title(tr("Risk of these settings")).build();
         let risk_badge = util::badge("", "neutral");
         risk_row.add_suffix(&risk_badge);
         overview.add(&risk_row);
@@ -332,12 +333,12 @@ impl Editor {
         let entry = gtk::Entry::builder().placeholder_text(placeholder).hexpand(true).name(format!("perm-entry:{key}")).build();
         add_box.append(&entry);
         if folders {
-            let pick = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text("Choose a folder").valign(gtk::Align::Center).build();
+            let pick = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text(tr("Choose a folder")).valign(gtk::Align::Center).build();
             pick.add_css_class("flat");
             let me = Rc::downgrade(self);
             pick.connect_clicked(move |_| {
                 let Some(me) = me.upgrade() else { return };
-                let dialog = gtk::FileDialog::builder().title("Choose a folder").build();
+                let dialog = gtk::FileDialog::builder().title(tr("Choose a folder")).build();
                 let win = me.window.clone();
                 glib::spawn_future_local(async move {
                     if let Ok(f) = dialog.select_folder_future(Some(&win)).await {
@@ -349,7 +350,7 @@ impl Editor {
             });
             add_box.append(&pick);
         }
-        let add = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text("Add").valign(gtk::Align::Center).build();
+        let add = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text(tr("Add")).valign(gtk::Align::Center).build();
         add.add_css_class("flat");
         add_box.append(&add);
         vbox.append(&add_box);
@@ -653,7 +654,7 @@ impl Editor {
         // Everything that raises the risk, riskiest first.
         if !items.is_empty() {
             let exp = adw::ExpanderRow::builder()
-                .title("What raises the risk")
+                .title(tr("What raises the risk"))
                 .subtitle(format!("{} permission{} beyond the basics. The level is set by the riskiest one, not by how many there are.", items.len(), if items.len() == 1 { "" } else { "s" }))
                 .build();
             for (title, lvl) in &items {

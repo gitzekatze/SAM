@@ -87,8 +87,9 @@ Every permission has a plain-language explanation and a risk level
 
 ### Safe intake
 
-- Type 1 and Type 2 AppImages (gzip, xz and zstd), unpacked by SAM's own
-  SquashFS reader inside a minimal sandbox.
+- Type 1 and Type 2 AppImages (gzip, xz, zstd and lz4), unpacked by SAM's
+  own SquashFS reader inside a minimal sandbox. DwarFS-based AppImages are
+  unpacked with `dwarfsextract` when it is installed.
 - Setuid bits, links that point outside the app and special files are
   removed. Size, file-count and time limits apply.
 - Names, descriptions and file names from an AppImage are shown as plain
@@ -263,6 +264,7 @@ AppImage.
 | [JSON interface](docs/json-interface.md) | scripts: the `--json` output of every command |
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |
+| [Translating](docs/translating.md) | adding a language |
 | [Changelog](CHANGELOG.md) | what changed in each version |
 
 ### Source layout

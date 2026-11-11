@@ -16,6 +16,8 @@ use serde::Serialize;
 #[serde(rename_all = "lowercase")]
 pub enum PayloadFormat {
     Squashfs,
+    /// DwarFS image (newer runtimes such as uruntime).
+    Dwarfs,
     Iso9660,
     Unknown,
 }
@@ -42,6 +44,8 @@ impl AppImageInfo {
 }
 
 const SQUASHFS_MAGIC: &[u8; 4] = b"hsqs";
+/// Start of a DwarFS image (followed by its major and minor version).
+const DWARFS_MAGIC: &[u8; 6] = b"DWARFS";
 
 /// Cheap check used by directory scans: extension or magic.
 pub fn looks_like_appimage(path: &Path) -> bool {
@@ -100,6 +104,18 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
     if let Some(off) = elf_end_offset(&head) {
         if off + 96 <= size && read_at(&mut f, off, 4)? == SQUASHFS_MAGIC {
             info.payload_offset = Some(off);
+        }
+    }
+    // Type 2 with a DwarFS image (uruntime): appended after the ELF too.
+    if info.payload_offset.is_none() {
+        if let Some(off) = elf_end_offset(&head) {
+            if off + 8 <= size && read_at(&mut f, off, 6)? == DWARFS_MAGIC {
+                info.payload = PayloadFormat::Dwarfs;
+                info.payload_offset = Some(off);
+                info.compression = Some("dwarfs".into());
+                info.kind = AppImageType::Type2;
+                return Ok(info);
+            }
         }
     }
     if info.payload_offset.is_none() {
@@ -259,6 +275,26 @@ mod tests {
         assert_eq!(info.payload_offset, Some(end as u64));
         assert_eq!(info.compression.as_deref(), Some("zstd"));
         assert!(looks_like_appimage(t.path()));
+    }
+
+    #[test]
+    fn detects_dwarfs_payload() {
+        let elf = std::fs::read("/bin/true").unwrap();
+        let end = elf_end_offset(&elf).unwrap() as usize;
+        let mut data = elf[..end.min(elf.len())].to_vec();
+        data.resize(end, 0);
+        data[8] = b'A';
+        data[9] = b'I';
+        data[10] = 2;
+        data.extend_from_slice(b"DWARFS\x02\x05");
+        data.resize(data.len() + 64, 0);
+        let mut t = tempfile::NamedTempFile::new().unwrap();
+        t.write_all(&data).unwrap();
+        let info = inspect(t.path()).unwrap();
+        assert_eq!(info.kind, AppImageType::Type2);
+        assert_eq!(info.payload, PayloadFormat::Dwarfs);
+        assert_eq!(info.payload_offset, Some(end as u64));
+        assert_eq!(info.compression.as_deref(), Some("dwarfs"));
     }
 
     #[test]

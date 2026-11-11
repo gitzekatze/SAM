@@ -1151,6 +1151,7 @@ version = "0.1.0"
 dependencies = [
  "gtk4",
  "libadwaita",
+ "libc",
  "pulldown-cmark",
  "sam-core",
  "serde_json",

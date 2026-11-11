@@ -3,6 +3,7 @@
 //! AppImages (pinned) and every AppImage it found. Right: the selected app,
 //! or SAM's preferences, presets or diagnostics.
 
+use crate::i18n::tr;
 use std::cell::{OnceCell, RefCell};
 use std::rc::Rc;
 
@@ -62,6 +63,10 @@ pub struct App {
     /// The page shown on the right, kept alive while it is shown.
     current: RefCell<Option<Rc<dyn std::any::Any>>>,
     spinner: gtk::Spinner,
+    /// Watches the locations; AppImages appear and disappear by themselves.
+    monitors: RefCell<Vec<gio::FileMonitor>>,
+    /// A pending refresh after file changes (several changes, one refresh).
+    refresh_pending: std::cell::Cell<bool>,
 }
 
 struct Sidebar {
@@ -78,7 +83,7 @@ impl App {
     pub fn new(app: &adw::Application) -> Rc<App> {
         let window = adw::ApplicationWindow::builder()
             .application(app)
-            .title("SAM - Sandboxed AppImage Manager")
+            .title(tr("SAM - Sandboxed AppImage Manager"))
             .default_width(1180)
             .default_height(800)
             .width_request(360)
@@ -106,6 +111,8 @@ impl App {
             sidebar: OnceCell::new(),
             current: RefCell::new(None),
             spinner,
+            monitors: RefCell::new(Vec::new()),
+            refresh_pending: std::cell::Cell::new(false),
         });
         me.build_sidebar();
         me.install_actions();
@@ -242,18 +249,18 @@ impl App {
     fn build_sidebar(self: &Rc<Self>) {
         let view = adw::ToolbarView::new();
         let header = adw::HeaderBar::new();
-        header.set_title_widget(Some(&adw::WindowTitle::new("SAM", "Sandboxed AppImage Manager")));
+        header.set_title_widget(Some(&adw::WindowTitle::new("SAM", &tr("Sandboxed AppImage Manager"))));
         let menu = gio::Menu::new();
         let sect = gio::Menu::new();
-        sect.append(Some("Presets"), Some("win.show-presets"));
-        sect.append(Some("Diagnostics"), Some("win.show-diagnostics"));
-        sect.append(Some("User Guide"), Some("win.show-guide"));
-        sect.append(Some("Preferences"), Some("win.show-preferences"));
+        sect.append(Some(&tr("Presets")), Some("win.show-presets"));
+        sect.append(Some(&tr("Diagnostics")), Some("win.show-diagnostics"));
+        sect.append(Some(&tr("User Guide")), Some("win.show-guide"));
+        sect.append(Some(&tr("Preferences")), Some("win.show-preferences"));
         menu.append_section(None, &sect);
         let about = gio::Menu::new();
-        about.append(Some("About SAM"), Some("win.about"));
+        about.append(Some(&tr("About SAM")), Some("win.about"));
         menu.append_section(None, &about);
-        let menu_btn = gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).tooltip_text("Main menu").primary(true).build();
+        let menu_btn = gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).tooltip_text(tr("Main menu")).primary(true).build();
         header.pack_end(&menu_btn);
         // SAM's logo opens the start page. It replaces the window icon of the
         // desktop's button layout (`icon:…`), which cannot be clicked.
@@ -266,7 +273,7 @@ impl App {
         header.set_decoration_layout(Some(&stripped));
         let logo = gtk::Image::from_icon_name("io.github.gitzekatze.SAM");
         logo.set_pixel_size(24);
-        let home = gtk::Button::builder().child(&logo).tooltip_text("Start page").name("home-button").build();
+        let home = gtk::Button::builder().child(&logo).tooltip_text(tr("Start page")).name("home-button").build();
         home.add_css_class("flat");
         let w = Rc::downgrade(self);
         home.connect_clicked(move |_| {
@@ -275,7 +282,7 @@ impl App {
             }
         });
         header.pack_start(&home);
-        let refresh = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text("Search the locations again").action_name("win.refresh").build();
+        let refresh = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text(tr("Search the locations again")).action_name("win.refresh").build();
         header.pack_start(&refresh);
         header.pack_start(&self.spinner);
         view.add_top_bar(&header);
@@ -291,12 +298,12 @@ impl App {
         loc_box.add_css_class("sam-locations");
         let loc_head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heads.add_widget(&loc_head);
-        let loc_title = gtk::Label::builder().label("AppImage locations").xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
+        let loc_title = gtk::Label::builder().label(tr("AppImage locations")).xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
         loc_title.add_css_class("heading");
         loc_head.append(&loc_title);
-        let add_folder = gtk::Button::builder().icon_name("folder-new-symbolic").tooltip_text("Search a folder for AppImages").build();
+        let add_folder = gtk::Button::builder().icon_name("folder-new-symbolic").tooltip_text(tr("Search a folder for AppImages")).build();
         add_folder.add_css_class("flat");
-        let add_file = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text("Add a single AppImage file").build();
+        let add_file = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text(tr("Add a single AppImage file")).build();
         add_file.add_css_class("flat");
         loc_head.append(&add_folder);
         loc_head.append(&add_file);
@@ -307,7 +314,7 @@ impl App {
         locations.set_margin_top(HEAD_GAP);
         loc_box.append(&locations);
         let dl_row = gtk::Box::builder().spacing(8).margin_top(8).build();
-        let dl_label = gtk::Label::builder().label("Also search the Downloads folder").xalign(0.0).hexpand(true).build();
+        let dl_label = gtk::Label::builder().label(tr("Also search the Downloads folder")).xalign(0.0).hexpand(true).build();
         dl_label.add_css_class("caption");
         let downloads = gtk::Switch::builder().valign(gtk::Align::Center).build();
         dl_row.append(&dl_label);
@@ -320,7 +327,7 @@ impl App {
         let filter_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(16).margin_bottom(6).build();
         let found_head = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         heads.add_widget(&found_head);
-        let found_title = gtk::Label::builder().label("AppImages found").xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
+        let found_title = gtk::Label::builder().label(tr("AppImages found")).xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
         found_title.add_css_class("heading");
         found_head.append(&found_title);
         filter_box.append(&found_head);
@@ -350,7 +357,7 @@ impl App {
             toggles.append(&b);
         }
         filter_box.append(&toggles);
-        let search = gtk::SearchEntry::builder().placeholder_text("Search AppImages").margin_top(8).build();
+        let search = gtk::SearchEntry::builder().placeholder_text(tr("Search AppImages")).margin_top(8).build();
         filter_box.append(&search);
         column.append(&filter_box);
 
@@ -359,8 +366,8 @@ impl App {
         list.add_css_class("navigation-sidebar");
         let empty = adw::StatusPage::builder()
             .icon_name("system-search-symbolic")
-            .title("No AppImages Found")
-            .description("Add a folder or a single AppImage file above, or drop an AppImage onto this window.")
+            .title(tr("No AppImages Found"))
+            .description(tr("Add a folder or a single AppImage file above, or drop an AppImage onto this window."))
             .build();
         empty.add_css_class("compact");
         let stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).vexpand(true).build();
@@ -370,7 +377,8 @@ impl App {
         let scroll = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).child(&column).build();
         view.set_content(Some(&scroll));
 
-        let page = adw::NavigationPage::builder().title("SAM").child(&view).build();
+        let page = adw::NavigationPage::builder().title(tr("SAM")).child(&view).build();
+        util::name_icon_buttons(&page);
         self.split.set_sidebar(Some(&page));
 
         // Signals.
@@ -473,7 +481,8 @@ impl App {
             l.add_css_class("caption");
             b.append(&l);
             row.set_tooltip_text(Some(&util::plain(&util::tildify(&path))));
-            let rm = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text("Stop searching here").valign(gtk::Align::Center).build();
+            let rm = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text(tr("Stop searching here")).valign(gtk::Align::Center).build();
+            rm.update_property(&[gtk::accessible::Property::Label(&format!("Stop searching {}", util::plain(&util::tildify(&path))))]);
             rm.add_css_class("flat");
             rm.add_css_class("circular");
             let w = Rc::downgrade(self);
@@ -488,7 +497,7 @@ impl App {
         }
         if sb.locations.first_child().is_none() {
             let row = gtk::ListBoxRow::builder().activatable(false).build();
-            let l = gtk::Label::builder().label("No locations yet: add a folder or a file.").margin_top(8).margin_bottom(8).build();
+            let l = gtk::Label::builder().label(tr("No locations yet: add a folder or a file.")).margin_top(8).margin_bottom(8).build();
             l.add_css_class("dim-label");
             l.add_css_class("caption");
             row.set_child(Some(&l));
@@ -496,6 +505,60 @@ impl App {
         }
         sb.downloads.set_state(util::bool_of(&cfg, "general.scan_downloads"));
         sb.downloads.set_active(util::bool_of(&cfg, "general.scan_downloads"));
+        self.watch_locations(&cfg);
+    }
+
+    /// Watches every location (and Downloads when it is searched). A change
+    /// that may concern an AppImage refreshes the list a moment later, so a
+    /// finished download or a deleted file shows up without *Refresh*.
+    fn watch_locations(self: &Rc<Self>, cfg: &Value) {
+        let mut paths: Vec<std::path::PathBuf> = util::list_of(cfg, "general.scan_directories").iter().map(|p| sam_core::util::expand_home(p)).collect();
+        paths.extend(util::list_of(cfg, "general.scan_files").iter().map(|p| sam_core::util::expand_home(p)));
+        if util::bool_of(cfg, "general.scan_downloads") {
+            if let Some(d) = glib::user_special_dir(glib::UserDirectory::Downloads) {
+                paths.push(d);
+            }
+        }
+        let mut monitors = Vec::new();
+        for p in paths.into_iter().filter(|p| p.exists()) {
+            let file = gio::File::for_path(&p);
+            let m = if p.is_dir() {
+                file.monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
+            } else {
+                file.monitor_file(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE)
+            };
+            let Ok(m) = m else { continue };
+            let w = Rc::downgrade(self);
+            m.connect_changed(move |_, f, other, ev| {
+                use gio::FileMonitorEvent as E;
+                if !matches!(ev, E::Created | E::Deleted | E::MovedIn | E::MovedOut | E::Renamed | E::ChangesDoneHint) {
+                    return;
+                }
+                let relevant = |f: &gio::File| f.basename().is_some_and(|n| watched_name(&n.to_string_lossy()));
+                if !relevant(f) && !other.is_some_and(relevant) {
+                    return;
+                }
+                if let Some(me) = w.upgrade() {
+                    me.refresh_soon();
+                }
+            });
+            monitors.push(m);
+        }
+        *self.monitors.borrow_mut() = monitors;
+    }
+
+    /// One refresh 1.5 s after the last burst of changes started.
+    fn refresh_soon(self: &Rc<Self>) {
+        if self.refresh_pending.replace(true) {
+            return;
+        }
+        let w = Rc::downgrade(self);
+        glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
+            if let Some(me) = w.upgrade() {
+                me.refresh_pending.set(false);
+                me.refresh_apps_later();
+            }
+        });
     }
 
     fn set_locations(self: &Rc<Self>, dirs: Vec<String>, files: Vec<String>) {
@@ -520,7 +583,7 @@ impl App {
         glib::spawn_future_local(async move {
             let home = gio::File::for_path(util::home());
             let picked = if folder {
-                let d = gtk::FileDialog::builder().title("Search a folder for AppImages").initial_folder(&home).build();
+                let d = gtk::FileDialog::builder().title(tr("Search a folder for AppImages")).initial_folder(&home).build();
                 d.select_folder_future(Some(&me.window)).await.ok()
             } else {
                 let filter = gtk::FileFilter::new();
@@ -529,7 +592,7 @@ impl App {
                 filter.add_pattern("*.appimage");
                 let filters = gio::ListStore::new::<gtk::FileFilter>();
                 filters.append(&filter);
-                let d = gtk::FileDialog::builder().title("Add an AppImage").initial_folder(&home).filters(&filters).build();
+                let d = gtk::FileDialog::builder().title(tr("Add an AppImage")).initial_folder(&home).filters(&filters).build();
                 d.open_future(Some(&me.window)).await.ok()
             };
             let Some(p) = picked.and_then(|f| f.path()) else { return };
@@ -613,6 +676,7 @@ impl App {
     // ------------------------------------------------------------ navigation
 
     fn show(self: &Rc<Self>, page: &adw::NavigationPage, keep: Option<Rc<dyn std::any::Any>>) {
+        util::name_icon_buttons(page);
         self.split.set_content(Some(page));
         self.split.set_show_content(true);
         *self.current.borrow_mut() = keep;
@@ -621,13 +685,13 @@ impl App {
     pub fn show_welcome(self: &Rc<Self>) {
         let status = adw::StatusPage::builder()
             .icon_name("io.github.gitzekatze.SAM")
-            .title("Select an AppImage")
-            .description("SAM lists the AppImages in the locations on the left. Pick one to see the settings SAM recommends, adjust them, and create a sandbox. Nothing is unpacked or run before you click Create Sandbox.")
+            .title(tr("Select an AppImage"))
+            .description(tr("SAM lists the AppImages in the locations on the left. Pick one to see the settings SAM recommends, adjust them, and create a sandbox. Nothing is unpacked or run before you click Create Sandbox."))
             .build();
         let view = adw::ToolbarView::new();
         view.add_top_bar(&adw::HeaderBar::builder().show_title(false).build());
         view.set_content(Some(&status));
-        let page = adw::NavigationPage::builder().title("Welcome").child(&view).build();
+        let page = adw::NavigationPage::builder().title(tr("Welcome")).child(&view).build();
         self.split.set_content(Some(&page));
         *self.current.borrow_mut() = None;
     }
@@ -800,7 +864,7 @@ impl App {
         let summary = self.state.borrow().apps.iter().find(|a| util::str_of(a, "id") == id).cloned();
         if let Some(s) = summary.filter(|s| util::bool_of(s, "terminal")) {
             match self.backend.launch_in_terminal(id, util::str_of(&s, "name")) {
-                Ok(()) => self.toast("Starting in a terminal…"),
+                Ok(()) => self.toast(&tr("Starting in a terminal…")),
                 Err(e) => self.report_error(&e),
             }
             return;
@@ -822,7 +886,7 @@ impl App {
                 me.toasts.add_toast(t);
             }
         }) {
-            Ok(()) => self.toast("Starting in sandbox…"),
+            Ok(()) => self.toast(&tr("Starting in sandbox…")),
             Err(e) => self.report_error(&e),
         }
     }
@@ -876,7 +940,7 @@ impl App {
         }
         match self.backend.call(&args, None).await {
             Ok(r) => {
-                self.toast("Re-extracted");
+                self.toast(&tr("Re-extracted"));
                 let pending = util::list_of(&r, "pending_changes");
                 if !pending.is_empty() {
                     self.toast(&format!("The update likely needs: {}", pending.join(", ")));
@@ -1053,3 +1117,23 @@ pub async fn confirm(win: &adw::ApplicationWindow, heading: &str, body: &str, ac
     d.choose_future(Some(win)).await == "ok"
 }
 
+
+/// Whether a file name may be an AppImage worth refreshing for: not hidden,
+/// not a download still in progress. AppImages without the usual ending
+/// count too, since SAM recognises them by content.
+fn watched_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    !name.starts_with('.') && ![".part", ".crdownload", ".download", ".tmp", ".partial"].iter().any(|e| lower.ends_with(e))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn watched_names() {
+        assert!(super::watched_name("Krita-5.2.AppImage"));
+        assert!(super::watched_name("nvim"));
+        assert!(!super::watched_name("Krita.AppImage.part"));
+        assert!(!super::watched_name("Krita.AppImage.crdownload"));
+        assert!(!super::watched_name(".hidden"));
+    }
+}

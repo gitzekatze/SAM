@@ -16,3 +16,4 @@ adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 serde_json.workspace = true
 pulldown-cmark = { version = "0.13", default-features = false }
 sam-core.workspace = true
+libc.workspace = true

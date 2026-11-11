@@ -2,6 +2,7 @@
 //! SAM's own pages in the right column: preferences, presets (with the
 //! preset editor) and diagnostics.
 
+use crate::i18n::tr;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -78,51 +79,51 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
         g.add(&row);
     };
 
-    let g = adw::PreferencesGroup::builder().title("Appearance").build();
+    let g = adw::PreferencesGroup::builder().title(tr("Appearance")).build();
     choice(&g, "general.theme", "Style", &[("system", "Follow system"), ("light", "Light"), ("dark", "Dark")]);
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title("Menu Entries").build();
+    let g = adw::PreferencesGroup::builder().title(tr("Menu Entries")).build();
     switch(&g, "general.desktop_integration", "Create menu entries", "Sandboxed apps appear in your application menu and always start through SAM. AppImage locations are managed in the left column.");
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title("Repair").build();
+    let g = adw::PreferencesGroup::builder().title(tr("Repair")).build();
     choice(&g, "compatibility.behavior", "Compatibility mode", &[("ask", "Offer in repair options"), ("never", "Never offer")]);
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title("Warnings").build();
+    let g = adw::PreferencesGroup::builder().title(tr("Warnings")).build();
     switch(&g, "security.warn_x11", "Warn about X11 access", "");
     switch(&g, "security.warn_full_home", "Warn about full home access", "");
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title("Kernel Security Features").description("Extra layers inside every sandbox.").build();
+    let g = adw::PreferencesGroup::builder().title(tr("Kernel Security Features")).description(tr("Extra layers inside every sandbox.")).build();
     switch(&g, "security.experimental_landlock", "Landlock write protection", "Kernel-enforced write restrictions inside the sandbox. Also blocks connections to abstract sockets outside the sandbox (such as XWayland's). Skipped on kernels without Landlock.");
     switch(&g, "security.baseline_seccomp", "Baseline syscall filter", "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Individual apps can turn it off in their repair steps.");
     switch(&g, "security.experimental_seccomp", "Allow strict syscall filters (experimental)", "Lets apps use the strict syscall filter from their Advanced settings. Can break apps.");
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title("Sandbox Check").build();
+    let g = adw::PreferencesGroup::builder().title(tr("Sandbox Check")).build();
     switch(&g, "security.check_before_launch", "Check the sandbox before each start", "Confirms that every setting applies before an app starts. Runs only when its settings, SAM or this computer changed since the last passing check, and takes about a second. A failed check stops the start.");
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title("Dependency Detection").build();
+    let g = adw::PreferencesGroup::builder().title(tr("Dependency Detection")).build();
     switch(&g, "dependencies.static_analysis", "Analyze AppImages when creating a sandbox", "Inspects the bundled programs and libraries without running them.");
     switch(&g, "dependencies.dynamic_fallback", "Allow diagnostic runs", "Run an app once under strace to find missing resources (app → Troubleshooting → Diagnose missing resources).");
     switch(&g, "dependencies.automatic_low_risk_fixes", "Apply low-risk fixes automatically", "Read-only system data such as fonts or themes found during a diagnostic run is granted without asking.");
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title("Extraction").build();
+    let g = adw::PreferencesGroup::builder().title(tr("Extraction")).build();
     // Where new sandboxes are unpacked. Existing ones stay where they are
     // until they are unpacked again (Re-extract).
     let loc = util::str_of(&cfg, "extraction.location").to_string();
     let loc_text = |l: &str| if l.trim().is_empty() { "Default: ~/.local/share/sam/extracted".to_string() } else { l.to_string() };
     let row = adw::ActionRow::builder()
-        .title("Location")
+        .title(tr("Location"))
         .subtitle(esc(&format!("{}\nNew sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.", loc_text(&loc))))
         .build();
-    let choose = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text("Choose a folder").valign(gtk::Align::Center).build();
+    let choose = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text(tr("Choose a folder")).valign(gtk::Align::Center).build();
     choose.add_css_class("flat");
-    let reset = gtk::Button::builder().icon_name("edit-undo-symbolic").tooltip_text("Back to the default folder").valign(gtk::Align::Center).sensitive(!loc.trim().is_empty()).build();
+    let reset = gtk::Button::builder().icon_name("edit-undo-symbolic").tooltip_text(tr("Back to the default folder")).valign(gtk::Align::Center).sensitive(!loc.trim().is_empty()).build();
     reset.add_css_class("flat");
     row.add_suffix(&choose);
     row.add_suffix(&reset);
@@ -146,7 +147,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             let Some(app) = w.upgrade() else { return };
             let set_loc = set_loc.clone();
             glib::spawn_future_local(async move {
-                let d = gtk::FileDialog::builder().title("Folder for unpacked AppImages").modal(true).build();
+                let d = gtk::FileDialog::builder().title(tr("Folder for unpacked AppImages")).modal(true).build();
                 if let Ok(f) = d.select_folder_future(Some(&app.window)).await {
                     if let Some(p) = f.path() {
                         set_loc(p.to_string_lossy().into_owned());
@@ -164,7 +165,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     number(&g, "extraction.max_seconds", "Maximum extraction time (s)", 10.0, 7200.0, 30.0);
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title("Diagnostics").build();
+    let g = adw::PreferencesGroup::builder().title(tr("Diagnostics")).build();
     switch(&g, "diagnostics.verbose_logging", "Verbose logging", "");
     number(&g, "diagnostics.keep_logs", "Launch logs to keep per app", 1.0, 500.0, 1.0);
     pref.add(&g);
@@ -183,13 +184,13 @@ pub struct Presets {
 pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
     let pref = adw::PreferencesPage::new();
     let header = adw::HeaderBar::new();
-    let new_btn = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text("New preset").build();
-    let import_btn = gtk::Button::builder().icon_name("document-open-symbolic").tooltip_text("Import a preset").build();
+    let new_btn = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text(tr("New preset")).build();
+    let import_btn = gtk::Button::builder().icon_name("document-open-symbolic").tooltip_text(tr("Import a preset")).build();
     header.pack_start(&new_btn);
     header.pack_end(&import_btn);
     let list = adw::PreferencesGroup::builder()
-        .title("Presets")
-        .description("Ready-made sets of permissions. Apply one to an app from its page, or from the menu of a preset.")
+        .title(tr("Presets"))
+        .description(tr("Ready-made sets of permissions. Apply one to an app from its page, or from the menu of a preset."))
         .build();
     pref.add(&list);
     let page = page_with("Presets", &pref, &header);
@@ -214,7 +215,7 @@ pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
         let Some(me) = w.upgrade() else { return };
         let Some(app) = me.app.upgrade() else { return };
         glib::spawn_future_local(async move {
-            let d = gtk::FileDialog::builder().title("Import a preset").build();
+            let d = gtk::FileDialog::builder().title(tr("Import a preset")).build();
             if let Ok(f) = d.open_future(Some(&app.window)).await {
                 if let Some(p) = f.path() {
                     match app.backend.call(&["preset", "import", &p.to_string_lossy()], None).await {
@@ -276,12 +277,12 @@ impl Presets {
             }
             let edit = gio::Menu::new();
             edit.append(Some(if builtin { "View" } else { "Edit" }), Some("row.edit"));
-            edit.append(Some("Duplicate"), Some("row.duplicate"));
-            edit.append(Some("Export…"), Some("row.export"));
+            edit.append(Some(&tr("Duplicate")), Some("row.duplicate"));
+            edit.append(Some(&tr("Export…")), Some("row.export"));
             menu.append_section(None, &edit);
             if !builtin {
                 let del = gio::Menu::new();
-                del.append(Some("Delete"), Some("row.delete"));
+                del.append(Some(&tr("Delete")), Some("row.delete"));
                 menu.append_section(None, &del);
             }
             let w = Rc::downgrade(self);
@@ -304,7 +305,7 @@ impl Presets {
             act("export", None, Box::new(move |me, _| me.export(i)));
             act("delete", None, Box::new(move |me, _| me.delete(i)));
             row.insert_action_group("row", Some(&group));
-            let mb = gtk::MenuButton::builder().icon_name("view-more-symbolic").menu_model(&menu).valign(gtk::Align::Center).build();
+            let mb = gtk::MenuButton::builder().icon_name("view-more-symbolic").tooltip_text(tr("More actions")).menu_model(&menu).valign(gtk::Align::Center).build();
             mb.add_css_class("flat");
             row.add_suffix(&mb);
             let w = Rc::downgrade(self);
@@ -355,11 +356,11 @@ impl Presets {
         let Some(app) = self.app.upgrade() else { return };
         let name = self.name(i);
         glib::spawn_future_local(async move {
-            let d = gtk::FileDialog::builder().title("Export preset").initial_name(format!("{name}.toml")).build();
+            let d = gtk::FileDialog::builder().title(tr("Export preset")).initial_name(format!("{name}.toml")).build();
             if let Ok(f) = d.save_future(Some(&app.window)).await {
                 if let Some(p) = f.path() {
                     match app.backend.call(&["preset", "export", &name, &p.to_string_lossy()], None).await {
-                        Ok(_) => app.toast("Exported"),
+                        Ok(_) => app.toast(&tr("Exported")),
                         Err(e) => app.report_error(&e),
                     }
                 }
@@ -402,9 +403,9 @@ impl PresetEditor {
         let editor = Editor::new(catalog, &app.window);
         let pref = adw::PreferencesPage::new();
         let header = adw::HeaderBar::new();
-        let back = gtk::Button::builder().icon_name("go-previous-symbolic").tooltip_text("Back to presets").build();
+        let back = gtk::Button::builder().icon_name("go-previous-symbolic").tooltip_text(tr("Back to presets")).build();
         header.pack_start(&back);
-        let save = gtk::Button::builder().label("Save").build();
+        let save = gtk::Button::builder().label(tr("Save")).build();
         save.add_css_class("suggested-action");
         if !read_only {
             header.pack_end(&save);
@@ -413,9 +414,9 @@ impl PresetEditor {
             .title(if is_new { "New Preset" } else { "Preset" })
             .description(if read_only { "Built-in presets cannot be changed. Duplicate it to make your own version." } else { "" })
             .build();
-        let name = adw::EntryRow::builder().title("Name").text(util::str_of(&preset, "name")).sensitive(!read_only && is_new).build();
-        let desc = adw::EntryRow::builder().title("Description").text(util::str_of(&preset, "description")).sensitive(!read_only).build();
-        let notes = adw::EntryRow::builder().title("Compatibility notes").text(util::str_of(&preset, "compatibility_notes")).sensitive(!read_only).build();
+        let name = adw::EntryRow::builder().title(tr("Name")).text(util::str_of(&preset, "name")).sensitive(!read_only && is_new).build();
+        let desc = adw::EntryRow::builder().title(tr("Description")).text(util::str_of(&preset, "description")).sensitive(!read_only).build();
+        let notes = adw::EntryRow::builder().title(tr("Compatibility notes")).text(util::str_of(&preset, "compatibility_notes")).sensitive(!read_only).build();
         g.add(&name);
         g.add(&desc);
         g.add(&notes);
@@ -448,7 +449,7 @@ impl PresetEditor {
             p["description"] = desc.text().trim().into();
             p["compatibility_notes"] = notes.text().trim().into();
             if util::str_of(&p, "name").is_empty() {
-                app.toast("Give the preset a name");
+                app.toast(&tr("Give the preset a name"));
                 return;
             }
             glib::spawn_future_local(async move {
@@ -483,13 +484,13 @@ impl PresetEditor {
 pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
     let pref = adw::PreferencesPage::new();
     let header = adw::HeaderBar::new();
-    let refresh = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text("Check again").build();
-    let report = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text("Copy a redacted bug report").build();
+    let refresh = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text(tr("Check again")).build();
+    let report = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text(tr("Copy a redacted bug report")).build();
     header.pack_end(&refresh);
     header.pack_end(&report);
-    let system = adw::PreferencesGroup::builder().title("System").description("What SAM needs from this computer.").build();
+    let system = adw::PreferencesGroup::builder().title(tr("System")).description(tr("What SAM needs from this computer.")).build();
     pref.add(&system);
-    let maint = adw::PreferencesGroup::builder().title("Maintenance").build();
+    let maint = adw::PreferencesGroup::builder().title(tr("Maintenance")).build();
     pref.add(&maint);
     let page = page_with("Diagnostics", &pref, &header);
 
@@ -538,7 +539,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
             match app.backend.call(&["report"], None).await {
                 Ok(r) => {
                     app.window.clipboard().set_text(util::str_of(&r, "report"));
-                    app.toast("Redacted report copied");
+                    app.toast(&tr("Redacted report copied"));
                 }
                 Err(e) => app.report_error(&e),
             }
@@ -575,9 +576,9 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         });
     }));
     // Data kept when sandboxes were removed with "Keep the app's settings and files".
-    let leftover = adw::ActionRow::builder().title("Data of removed sandboxes").subtitle("Checking…").activatable(true).name("leftover-data").build();
+    let leftover = adw::ActionRow::builder().title(tr("Data of removed sandboxes")).subtitle(tr("Checking…")).activatable(true).name("leftover-data").build();
     leftover.add_prefix(&gtk::Image::from_icon_name("user-trash-symbolic"));
-    let leftover_btn = gtk::Button::builder().label("Delete").valign(gtk::Align::Center).sensitive(false).build();
+    let leftover_btn = gtk::Button::builder().label(tr("Delete")).valign(gtk::Align::Center).sensitive(false).build();
     leftover_btn.add_css_class("destructive-action");
     leftover.add_suffix(&leftover_btn);
     leftover.set_activatable_widget(Some(&leftover_btn));
@@ -621,7 +622,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         });
     });
 
-    let cli = adw::ActionRow::builder().title("Command line").subtitle(esc(&app.backend.cli.to_string_lossy())).subtitle_selectable(true).build();
+    let cli = adw::ActionRow::builder().title(tr("Command line")).subtitle(esc(&app.backend.cli.to_string_lossy())).subtitle_selectable(true).build();
     cli.add_css_class("property");
     maint.add(&cli);
     page

@@ -27,6 +27,7 @@ BuildRequires:  rust >= 1.92
 BuildRequires:  pkgconfig(gtk4) >= 4.12
 BuildRequires:  pkgconfig(libadwaita-1) >= 1.5
 BuildRequires:  desktop-file-utils
+BuildRequires:  gettext
 BuildRequires:  libappstream-glib
 # For the end-to-end tests (they skip themselves where Bubblewrap cannot run).
 BuildRequires:  bubblewrap
@@ -65,6 +66,7 @@ tar -xJf %{SOURCE1} --strip-components=1
 export CARGO_HOME="$PWD/.cargo-home"
 %{?build_rustflags:export RUSTFLAGS="%{build_rustflags}"}
 cargo build --frozen --offline --release -p sam-jail-cli -p sam-gtk
+make mo
 
 %install
 install -Dpm 0755 target/release/sam-jail     %{buildroot}%{_bindir}/sam-jail
@@ -74,6 +76,8 @@ install -Dpm 0644 data/io.github.gitzekatze.SAM.desktop      %{buildroot}%{_data
 install -Dpm 0644 data/io.github.gitzekatze.SAM.metainfo.xml %{buildroot}%{_metainfodir}/io.github.gitzekatze.SAM.metainfo.xml
 install -Dpm 0644 data/io.github.gitzekatze.SAM.svg          %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg
 install -Dpm 0644 -t %{buildroot}%{_mandir}/man1 data/man/*.1
+for f in target/locale/*/LC_MESSAGES/sam.mo; do install -Dpm 0644 "$f" "%{buildroot}%{_datadir}/locale/${f#target/locale/}"; done
+%find_lang sam
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/io.github.gitzekatze.SAM.desktop
@@ -82,7 +86,7 @@ export CARGO_HOME="$PWD/.cargo-home"
 %{?build_rustflags:export RUSTFLAGS="%{build_rustflags}"}
 cargo test --frozen --offline --workspace
 
-%files
+%files -f sam.lang
 %license LICENSE
 %{_bindir}/sam-jail-gui
 %{_datadir}/applications/io.github.gitzekatze.SAM.desktop

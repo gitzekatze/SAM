@@ -4,6 +4,7 @@
 //! Without a sandbox yet, the settings are SAM's recommendation and can be
 //! adjusted before the sandbox is created.
 
+use crate::i18n::tr;
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
@@ -97,7 +98,7 @@ impl AppPage {
         // ---- header bar + pinned app header
         let view = adw::ToolbarView::new();
         let header = adw::HeaderBar::builder().show_title(false).build();
-        let menu_button = gtk::MenuButton::builder().icon_name("view-more-symbolic").tooltip_text("More").build();
+        let menu_button = gtk::MenuButton::builder().icon_name("view-more-symbolic").tooltip_text(tr("More")).build();
         header.pack_end(&menu_button);
         view.add_top_bar(&header);
 
@@ -154,7 +155,7 @@ impl AppPage {
         let top_buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::End).build();
         let check_button = gtk::Button::builder()
             .child(&button_content("security-high-symbolic", "Check"))
-            .tooltip_text("Start the sandbox with a test program and confirm that every setting applies")
+            .tooltip_text(tr("Start the sandbox with a test program and confirm that every setting applies"))
             .name("check-button")
             .build();
         check_button.add_css_class("pill");
@@ -163,7 +164,7 @@ impl AppPage {
         main_button.add_css_class("pill");
         let remove_button = gtk::Button::builder()
             .child(&button_content("user-trash-symbolic", "Remove Sandbox"))
-            .tooltip_text("Remove the sandbox (the AppImage file is kept)")
+            .tooltip_text(tr("Remove the sandbox (the AppImage file is kept)"))
             .name("remove-button")
             .build();
         remove_button.add_css_class("flat");
@@ -187,15 +188,15 @@ impl AppPage {
         let pref = adw::PreferencesPage::new();
         pref.add_css_class("sam-wide");
         let notices = adw::PreferencesGroup::new();
-        let hints = adw::PreferencesGroup::builder().title("Worth Checking").description("Things that often stop apps from working in a sandbox.").build();
-        let findings = adw::PreferencesGroup::builder().title("What Went Wrong Last Time").build();
+        let hints = adw::PreferencesGroup::builder().title(tr("Worth Checking")).description(tr("Things that often stop apps from working in a sandbox.")).build();
+        let findings = adw::PreferencesGroup::builder().title(tr("What Went Wrong Last Time")).build();
         let preset_group = adw::PreferencesGroup::builder()
-            .title("Presets")
-            .description("Reuse settings between apps. Manage all presets from the main menu → Presets.")
+            .title(tr("Presets"))
+            .description(tr("Reuse settings between apps. Manage all presets from the main menu → Presets."))
             .build();
-        let preset_row = adw::ComboRow::builder().title("Start from a preset").subtitle("Replaces the settings below.").build();
+        let preset_row = adw::ComboRow::builder().title(tr("Start from a preset")).subtitle(tr("Replaces the settings below.")).build();
         preset_row.set_widget_name("preset-picker");
-        let save_preset_row = adw::EntryRow::builder().title("Save these settings as a preset (name)").show_apply_button(true).name("save-preset").build();
+        let save_preset_row = adw::EntryRow::builder().title(tr("Save these settings as a preset (name)")).show_apply_button(true).name("save-preset").build();
         preset_group.add(&preset_row);
         preset_group.add(&save_preset_row);
         pref.add(&notices);
@@ -205,14 +206,14 @@ impl AppPage {
         editor.add_to(&pref);
 
         // Launching: how SAM starts this app.
-        let launch_group = adw::PreferencesGroup::builder().title("Launching").description("How SAM starts this app.").build();
+        let launch_group = adw::PreferencesGroup::builder().title(tr("Launching")).description(tr("How SAM starts this app.")).build();
         let (args_row, args_chips, args_entry, args_add) = chip_editor(
             "Launch arguments",
             "Passed to the app every time it starts, e.g. --no-sandbox for Electron apps that cannot start their own sandbox.",
             "Argument, e.g. --disable-gpu",
         );
         launch_group.add(&args_row);
-        let compat_row = adw::ActionRow::builder().title("Compatibility mode").build();
+        let compat_row = adw::ActionRow::builder().title(tr("Compatibility mode")).build();
         let compat_badge = util::badge("High risk", "bad");
         compat_badge.set_visible(false);
         let compat_switch = gtk::Switch::builder().valign(gtk::Align::Center).name("compat-switch").build();
@@ -223,12 +224,12 @@ impl AppPage {
         pref.add(&launch_group);
 
         // Menu entries: SAM's own, and other tools' entries for this AppImage.
-        let menu_group = adw::PreferencesGroup::builder().title("Menu Entries").description("How this app appears in your application menu.").build();
-        let sam_menu_row = adw::ActionRow::builder().title("Menu entry from SAM").build();
+        let menu_group = adw::PreferencesGroup::builder().title(tr("Menu Entries")).description(tr("How this app appears in your application menu.")).build();
+        let sam_menu_row = adw::ActionRow::builder().title(tr("Menu entry from SAM")).build();
         let sam_menu_switch = gtk::Switch::builder().valign(gtk::Align::Center).build();
         sam_menu_row.add_suffix(&sam_menu_switch);
         sam_menu_row.set_activatable_widget(Some(&sam_menu_switch));
-        let hide_row = adw::ActionRow::builder().title("Hide other menu entries for this AppImage").build();
+        let hide_row = adw::ActionRow::builder().title(tr("Hide other menu entries for this AppImage")).build();
         let hide_switch = gtk::Switch::builder().valign(gtk::Align::Center).name("hide-switch").build();
         hide_row.add_suffix(&hide_switch);
         hide_row.set_activatable_widget(Some(&hide_switch));
@@ -238,28 +239,28 @@ impl AppPage {
 
         // Sandbox check: start the sandbox with a probe and confirm every setting.
         let check_group = adw::PreferencesGroup::builder()
-            .title("Sandbox Check")
-            .description("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed.")
+            .title(tr("Sandbox Check"))
+            .description(tr("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed."))
             .build();
-        let check_summary = adw::ActionRow::builder().title("Not checked yet").build();
+        let check_summary = adw::ActionRow::builder().title(tr("Not checked yet")).build();
         check_summary.add_prefix(&gtk::Image::from_icon_name("security-high-symbolic"));
         check_group.add(&check_summary);
         pref.add(&check_group);
 
-        let trouble = adw::PreferencesGroup::builder().title("Troubleshooting").description("When the app does not start or does not work as expected.").build();
-        let details = adw::PreferencesGroup::builder().title("Details").build();
-        let command_group = adw::PreferencesGroup::builder().title("Sandbox Command").description("The Bubblewrap command SAM runs for this app.").build();
+        let trouble = adw::PreferencesGroup::builder().title(tr("Troubleshooting")).description(tr("When the app does not start or does not work as expected.")).build();
+        let details = adw::PreferencesGroup::builder().title(tr("Details")).build();
+        let command_group = adw::PreferencesGroup::builder().title(tr("Sandbox Command")).description(tr("The Bubblewrap command SAM runs for this app.")).build();
         let command_view = mono_view();
         command_group.add(&framed(&command_view, 120));
-        let copy_cmd = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text("Copy").valign(gtk::Align::Center).build();
+        let copy_cmd = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text(tr("Copy")).valign(gtk::Align::Center).build();
         copy_cmd.add_css_class("flat");
         command_group.set_header_suffix(Some(&copy_cmd));
-        let log_group = adw::PreferencesGroup::builder().title("Logs").description("Unpacking, detection and start logs.").build();
+        let log_group = adw::PreferencesGroup::builder().title(tr("Logs")).description(tr("Unpacking, detection and start logs.")).build();
         let log_view = mono_view();
         log_group.add(&framed(&log_view, 260));
         let log_buttons = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        let refresh_log = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text("Refresh").valign(gtk::Align::Center).build();
-        let copy_log = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text("Copy").valign(gtk::Align::Center).build();
+        let refresh_log = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text(tr("Refresh")).valign(gtk::Align::Center).build();
+        let copy_log = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text(tr("Copy")).valign(gtk::Align::Center).build();
         refresh_log.add_css_class("flat");
         copy_log.add_css_class("flat");
         let log_drop = gtk::DropDown::from_strings(&["No logs yet"]);
@@ -276,7 +277,7 @@ impl AppPage {
         pref.add(&log_group);
         view.set_content(Some(&pref));
 
-        let page = adw::NavigationPage::builder().title("App").child(&view).build();
+        let page = adw::NavigationPage::builder().title(tr("App")).child(&view).build();
         let me = Rc::new(AppPage {
             page,
             app: Rc::downgrade(app),
@@ -345,7 +346,7 @@ impl AppPage {
                 let Some(app) = w.upgrade().and_then(|m| m.app()) else { return };
                 let b = view.buffer();
                 app.window.clipboard().set_text(&b.text(&b.start_iter(), &b.end_iter(), false));
-                app.toast("Copied");
+                app.toast(&tr("Copied"));
             });
         }
         let w = Rc::downgrade(&me);
@@ -507,14 +508,14 @@ impl AppPage {
         self.page.insert_action_group("page", Some(&group));
         let menu = gio::Menu::new();
         if self.sandboxed() {
-            menu.append(Some("Files This App Saved"), Some("page.open-folder"));
-            menu.append(Some("Reset to Recommended"), Some("page.reset"));
-            menu.append(Some("Re-extract AppImage"), Some("page.reextract"));
+            menu.append(Some(&tr("Files This App Saved")), Some("page.open-folder"));
+            menu.append(Some(&tr("Reset to Recommended")), Some("page.reset"));
+            menu.append(Some(&tr("Re-extract AppImage")), Some("page.reextract"));
             let danger = gio::Menu::new();
-            danger.append(Some("Remove Sandbox…"), Some("page.remove"));
+            danger.append(Some(&tr("Remove Sandbox…")), Some("page.remove"));
             menu.append_section(None, &danger);
         } else {
-            menu.append(Some("Reset to Recommended"), Some("page.reset"));
+            menu.append(Some(&tr("Reset to Recommended")), Some("page.reset"));
         }
         self.menu_button.set_menu_model(Some(&menu));
 
@@ -756,7 +757,7 @@ impl AppPage {
         }
         let passed: Vec<&Value> = results.iter().filter(|r| util::get(r, "ok") == Some(&Value::Bool(true))).collect();
         if !passed.is_empty() {
-            let exp = adw::ExpanderRow::builder().title(format!("{} confirmed settings", passed.len())).subtitle("What the test program found inside the sandbox").build();
+            let exp = adw::ExpanderRow::builder().title(format!("{} confirmed settings", passed.len())).subtitle(tr("What the test program found inside the sandbox")).build();
             exp.add_prefix(&{
                 let i = gtk::Image::from_icon_name("emblem-ok-symbolic");
                 i.add_css_class("success");
@@ -783,7 +784,7 @@ impl AppPage {
         let me = self.clone();
         glib::spawn_future_local(async move {
             match app.backend.call(&["args", &me.app_id, "--stdin"], Some(serde_json::to_string(&args).unwrap())).await {
-                Ok(_) => app.toast("Launch arguments saved"),
+                Ok(_) => app.toast(&tr("Launch arguments saved")),
                 Err(e) => app.report_error(&e),
             }
             me.reload();
@@ -837,7 +838,7 @@ impl AppPage {
     fn save_as_preset(self: &Rc<Self>, name: String) {
         let Some(app) = self.app() else { return };
         if name.is_empty() {
-            app.toast("Type a name for the preset first");
+            app.toast(&tr("Type a name for the preset first"));
             return;
         }
         let Some(perms) = self.perms() else { return };
@@ -1073,8 +1074,8 @@ impl AppPage {
             };
             let d = adw::AlertDialog::new(Some(&format!("Remove the Sandbox for {name}?")), Some(&body));
             let keep = gtk::CheckButton::builder()
-                .label("Keep the app's settings and files")
-                .tooltip_text("Its private folder (logins, settings, saved files) and logs stay. A new sandbox for this AppImage picks them up again.")
+                .label(tr("Keep the app's settings and files"))
+                .tooltip_text(tr("Its private folder (logins, settings, saved files) and logs stay. A new sandbox for this AppImage picks them up again."))
                 .name("keep-data")
                 .build();
             d.set_extra_child(Some(&keep));
@@ -1183,9 +1184,9 @@ impl AppPage {
 
     fn show_load_error(self: &Rc<Self>, e: &str) {
         self.clear_dynamic();
-        let row = adw::ActionRow::builder().title("The settings could not be loaded").subtitle(esc(e)).build();
+        let row = adw::ActionRow::builder().title(tr("The settings could not be loaded")).subtitle(esc(e)).build();
         row.add_prefix(&status_icon("dialog-error-symbolic", "error"));
-        let retry = gtk::Button::builder().label("Try Again").valign(gtk::Align::Center).build();
+        let retry = gtk::Button::builder().label(tr("Try Again")).valign(gtk::Align::Center).build();
         let w = Rc::downgrade(self);
         retry.connect_clicked(move |_| {
             if let Some(me) = w.upgrade() {
@@ -1306,14 +1307,14 @@ impl AppPage {
         // Dynamic groups.
         self.clear_dynamic();
         if !have_data {
-            let row = adw::ActionRow::builder().title("Loading settings…").build();
+            let row = adw::ActionRow::builder().title(tr("Loading settings…")).build();
             row.add_prefix(&gtk::Spinner::builder().spinning(true).build());
             self.add_dynamic(&self.notices, &row);
         }
         if !sandboxed {
             let row = adw::ActionRow::builder()
-                .title("Not sandboxed yet")
-                .subtitle("These are the settings SAM recommends for this app. Adjust them below, then click Create Sandbox. Nothing is unpacked or run before that.")
+                .title(tr("Not sandboxed yet"))
+                .subtitle(tr("These are the settings SAM recommends for this app. Adjust them below, then click Create Sandbox. Nothing is unpacked or run before that."))
                 .build();
             row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
             self.add_dynamic(&self.notices, &row);
@@ -1343,11 +1344,11 @@ impl AppPage {
             let pending = util::list_of(e, "pending_changes");
             if badge == "needs-review" && pending.is_empty() {
                 let row = adw::ActionRow::builder()
-                    .title("Settings not reviewed yet")
-                    .subtitle("SAM chose these settings for you. Look through them, then confirm.")
+                    .title(tr("Settings not reviewed yet"))
+                    .subtitle(tr("SAM chose these settings for you. Look through them, then confirm."))
                     .build();
                 row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
-                let btn = gtk::Button::builder().label("Mark as Reviewed").valign(gtk::Align::Center).name("review-button").build();
+                let btn = gtk::Button::builder().label(tr("Mark as Reviewed")).valign(gtk::Align::Center).name("review-button").build();
                 btn.add_css_class("suggested-action");
                 let w = Rc::downgrade(self);
                 btn.connect_clicked(move |_| {
@@ -1361,7 +1362,7 @@ impl AppPage {
             if !pending.is_empty() {
                 let row = adw::ActionRow::builder().title(esc(&format!("The updated AppImage likely needs: {}. Your settings were kept.", pending.join(", ")))).build();
                 row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
-                let btn = gtk::Button::builder().label("Got It").valign(gtk::Align::Center).build();
+                let btn = gtk::Button::builder().label(tr("Got It")).valign(gtk::Align::Center).build();
                 let w = Rc::downgrade(self);
                 btn.connect_clicked(move |_| {
                     if let Some(me) = w.upgrade() {
@@ -1548,7 +1549,7 @@ impl AppPage {
             }
             None => "Not started yet".into(),
         };
-        let row = adw::ActionRow::builder().title("Last start").subtitle(esc(&last_text)).build();
+        let row = adw::ActionRow::builder().title(tr("Last start")).subtitle(esc(&last_text)).build();
         row.add_prefix(&gtk::Image::from_icon_name("document-open-recent-symbolic"));
         self.add_dynamic(&g, &row);
         // Check the setup (sam-jail doctor <app>), results right below.
@@ -1603,7 +1604,7 @@ impl AppPage {
         });
         self.button_row(&g, "system-run-symbolic", "Diagnose missing resources", "Runs the app once under strace (if installed) and suggests fixes.", |me| {
             if let Some(app) = me.app() {
-                app.toast("Starting a diagnostic run (closes after 30 s)…");
+                app.toast(&tr("Starting a diagnostic run (closes after 30 s)…"));
                 me.simple(vec!["diagnose".into(), me.app_id.clone(), "--apply".into()], "Diagnostic run finished");
             }
         });
@@ -1614,7 +1615,7 @@ impl AppPage {
                 match app.backend.call(&["report", &id], None).await {
                     Ok(r) => {
                         app.window.clipboard().set_text(util::str_of(&r, "report"));
-                        app.toast("Bug report copied");
+                        app.toast(&tr("Bug report copied"));
                     }
                     Err(e) => app.report_error(&e),
                 }
@@ -1678,7 +1679,7 @@ impl AppPage {
         let Some(app) = self.app() else { return };
         let me = self.clone();
         glib::spawn_future_local(async move {
-            let d = gtk::FileDialog::builder().title("Locate the AppImage").build();
+            let d = gtk::FileDialog::builder().title(tr("Locate the AppImage")).build();
             if let Ok(f) = d.open_future(Some(&app.window)).await {
                 if let Some(p) = f.path() {
                     me.simple(vec!["relocate".into(), me.app_id.clone(), p.to_string_lossy().into_owned()], "Location updated");
@@ -1702,7 +1703,7 @@ fn chip_editor(title: &str, description: &str, placeholder: &str) -> (gtk::ListB
     vbox.append(&chips);
     let add_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     let entry = gtk::Entry::builder().placeholder_text(placeholder).hexpand(true).name("args-entry").build();
-    let add = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text("Add").valign(gtk::Align::Center).build();
+    let add = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text(tr("Add")).valign(gtk::Align::Center).build();
     add.add_css_class("flat");
     add_box.append(&entry);
     add_box.append(&add);

@@ -6,6 +6,8 @@
 #   make install-cli     CLI only (sam-jail, sam-jail-run)
 #   make dist            release tarballs (source + vendored crates) in dist/
 #   make man             regenerate the man pages in data/man
+#   make pot             collect translatable strings into po/sam.pot
+#   make mo              compile the translations (po/*.po) into target/locale
 #
 # Uses the project-local Rust toolchain in ../.toolchain when present.
 
@@ -24,15 +26,28 @@ else
 CARGO ?= cargo
 endif
 
-.PHONY: all cli gui test install install-cli install-gui clean dist appimage man
+.PHONY: all cli gui test install install-cli install-gui clean dist appimage man pot mo
+
+# Languages with a translation (po/LINGUAS).
+LINGUAS := $(shell cat po/LINGUAS 2>/dev/null)
 
 all: cli gui
 
 cli:
 	$(CARGO) build --release --locked -p sam-jail-cli
 
-gui:
+gui: mo
 	$(CARGO) build --release --locked -p sam-gtk
+
+# Translations need msgfmt (gettext); without it SAM is built in English.
+mo:
+	@if command -v msgfmt >/dev/null; then \
+	  for l in $(LINGUAS); do mkdir -p target/locale/$$l/LC_MESSAGES && msgfmt --check -o target/locale/$$l/LC_MESSAGES/sam.mo po/$$l.po || exit 1; done; \
+	else echo "msgfmt not found: translations skipped"; fi
+
+pot:
+	xgettext -L Rust --keyword=tr --from-code=UTF-8 --package-name=sam --msgid-bugs-address=https://github.com/gitzekatze/SAM/issues -o po/sam.pot crates/sam-gtk/src/*.rs
+	for l in $(LINGUAS); do msgmerge --update --backup=none po/$$l.po po/sam.pot; done
 
 test:
 	$(CARGO) test --workspace --locked
@@ -52,6 +67,7 @@ install-gui:
 	install -Dm644 data/io.github.gitzekatze.SAM.metainfo.xml "$(DATADIR)/metainfo/io.github.gitzekatze.SAM.metainfo.xml"
 	install -Dm644 data/io.github.gitzekatze.SAM.svg         "$(DATADIR)/icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg"
 	install -Dm644 data/man/sam-jail-gui.1                    "$(DATADIR)/man/man1/sam-jail-gui.1"
+	for l in $(LINGUAS); do f=target/locale/$$l/LC_MESSAGES/sam.mo; [ ! -f $$f ] || install -Dm644 $$f "$(DATADIR)/locale/$$l/LC_MESSAGES/sam.mo"; done
 
 install: install-cli install-gui
 

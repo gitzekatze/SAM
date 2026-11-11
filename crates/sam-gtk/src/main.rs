@@ -13,6 +13,7 @@
 mod app_page;
 mod backend;
 mod guide;
+mod i18n;
 mod pages;
 mod perms;
 mod util;
@@ -52,7 +53,9 @@ const CSS: &str = r#"
 .sam-badge-bad     { background-color: alpha(@error_color, 0.15);   color: @error_color; }
 .sam-badge-danger  { background-color: @error_bg_color;             color: @error_fg_color; }
 .sam-badge-neutral { background-color: alpha(@window_fg_color, 0.10); color: alpha(@window_fg_color, 0.85); }
-.sam-badge-blue    { background-color: alpha(#3584e4, 0.20);        color: #3584e4; }
+/* Text mixed towards the window text colour: darker in light style, lighter
+   in dark style, so it keeps a contrast of at least 4.5:1 in both. */
+.sam-badge-blue    { background-color: alpha(#3584e4, 0.20);        color: mix(#3584e4, @window_fg_color, 0.45); }
 
 .sam-chip {
     padding: 1px 2px 1px 10px;
@@ -121,6 +124,7 @@ fn parse_args() -> Options {
 }
 
 fn main() -> glib::ExitCode {
+    i18n::init();
     let opts = parse_args();
     glib::set_application_name("SAM - Sandboxed AppImage Manager");
     // One window per set of SAM data: starting SAM again brings the open

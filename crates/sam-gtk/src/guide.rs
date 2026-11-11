@@ -2,6 +2,7 @@
 //! The user guide: docs/guide.md, built into the program and shown as
 //! native widgets (headings, paragraphs, lists, tables, tip boxes, code).
 
+use crate::i18n::tr;
 use adw::prelude::*;
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
@@ -24,7 +25,7 @@ pub fn page() -> adw::NavigationPage {
     let view = adw::ToolbarView::new();
     view.add_top_bar(&adw::HeaderBar::new());
     view.set_content(Some(&scroll));
-    adw::NavigationPage::builder().title("User Guide").child(&view).build()
+    adw::NavigationPage::builder().title(tr("User Guide")).child(&view).build()
 }
 
 fn esc(s: &str) -> String {

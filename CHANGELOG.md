@@ -51,7 +51,15 @@ version.
   when no sandbox exists yet.
 - Single SAM window per data set.
 - Man pages for `sam-jail`, `sam-jail-run` and `sam-jail-gui`.
+- Translations (gettext): the window's own text can be translated; German
+  is the first language (`docs/translating.md`).
+- The list of AppImages updates by itself when files appear in or
+  disappear from a location (a finished download, a deleted file).
+- Screen readers announce every icon-only button by name; the blue label
+  keeps enough contrast in light and dark style.
 - AppImages with lz4-compressed SquashFS are unpacked by SAM's own reader.
+- AppImages with a DwarFS image (uruntime) are recognised and unpacked with
+  `dwarfsextract` when the dwarfs tools are installed.
 - The JSON interface is documented (`docs/json-interface.md`).
 - `sam-jail version` reports the JSON interface level; the window says so
   clearly when its command line tool is from another version.

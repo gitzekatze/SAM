@@ -28,7 +28,9 @@ pub struct Peek {
 
 pub fn peek(path: &Path) -> Result<Peek> {
     let info = inspect(path)?;
-    if info.kind != AppImageType::Type2 {
+    // Names and icons are read from SquashFS only; DwarFS images show their
+    // file name until they are unpacked.
+    if info.kind != AppImageType::Type2 || info.payload != sam_detect::appimage::PayloadFormat::Squashfs {
         return Ok(Peek { metadata: AppImageMetadata::default(), icon: None });
     }
     let offset = info.payload_offset.context("no payload offset")?;

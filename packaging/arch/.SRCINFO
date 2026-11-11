@@ -10,6 +10,7 @@ pkgbase = sam-jail
 	makedepends = cargo
 	makedepends = gtk4
 	makedepends = libadwaita
+	makedepends = gettext
 	options = !lto
 	source = sam-0.1.0.tar.gz::https://github.com/gitzekatze/SAM/releases/download/v0.1.0/sam-0.1.0.tar.gz
 	source = sam-0.1.0-vendor.tar.xz::https://github.com/gitzekatze/SAM/releases/download/v0.1.0/sam-0.1.0-vendor.tar.xz

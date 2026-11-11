@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Small helpers shared by the views.
 
+use crate::i18n::tr;
 use serde_json::Value;
 
 /// The user's home directory.
@@ -197,10 +198,37 @@ pub fn chip(text: &str, folder: bool, on_remove: impl Fn() + 'static) -> gtk::Wi
     }
     let l = gtk::Label::builder().label(plain(text)).ellipsize(gtk::pango::EllipsizeMode::Middle).max_width_chars(40).build();
     b.append(&l);
-    let x = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text("Remove").valign(gtk::Align::Center).build();
+    let x = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text(tr("Remove")).valign(gtk::Align::Center).build();
+    x.update_property(&[gtk::accessible::Property::Label(&format!("Remove {}", plain(text)))]);
     x.add_css_class("flat");
     x.add_css_class("circular");
     x.connect_clicked(move |_| on_remove());
     b.append(&x);
     b.upcast()
+}
+
+/// Gives every button that shows only an icon an accessible name (its
+/// tooltip), so screen readers announce what it does instead of "button".
+/// Walks the whole tree below `root`; buttons with a text label keep theirs.
+pub fn name_icon_buttons(root: &impl IsA<gtk::Widget>) {
+    let mut stack = vec![root.as_ref().clone()];
+    while let Some(w) = stack.pop() {
+        let named = |w: &gtk::Widget, has_label: bool| {
+            if !has_label {
+                if let Some(t) = w.tooltip_text() {
+                    w.update_property(&[gtk::accessible::Property::Label(&t)]);
+                }
+            }
+        };
+        if let Some(b) = w.downcast_ref::<gtk::Button>() {
+            named(&w, b.label().is_some_and(|l| !l.is_empty()));
+        } else if let Some(b) = w.downcast_ref::<gtk::MenuButton>() {
+            named(&w, b.label().is_some_and(|l| !l.is_empty()));
+        }
+        let mut c = w.first_child();
+        while let Some(ch) = c {
+            c = ch.next_sibling();
+            stack.push(ch);
+        }
+    }
 }
