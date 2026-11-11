@@ -127,7 +127,13 @@ fn permission_matrix() {
         let mut e = app.set_permissions(&id, perms).unwrap();
         let opts = LaunchOptions { quiet: true, owd: Some(home.clone()), ..Default::default() };
         let rec = run(&mut e, &opts, &app.config, &app.paths, &host).unwrap();
-        assert!(rec.success, "[{name}] launch failed: {} (log {:?})", rec.summary, rec.log_file);
+        if !rec.success {
+            // The log is gone after the test (and on CI out of reach): show
+            // what matters from it right here.
+            let log = rec.log_file.as_ref().and_then(|f| fs::read_to_string(f).ok()).unwrap_or_default();
+            let important: Vec<&str> = log.lines().filter(|l| l.starts_with("[err]") || l.starts_with("# note") || l.starts_with("# warning") || l.contains("bwrap:") || l.contains("pasta")).take(40).collect();
+            panic!("[{name}] launch failed: {}\n{}", rec.summary, important.join("\n"));
+        }
         if std::env::var_os("SAM_MATRIX_DEBUG").is_some() {
             eprintln!("=== {name}\n{}", fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap());
         }
