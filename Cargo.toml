@@ -37,9 +37,11 @@ sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 libc = "0.2"
 goblin = { version = "0.10", default-features = false, features = ["elf32", "elf64", "endian_fd", "std"] }
-backhand = { version = "0.25", default-features = false, features = ["xz", "gzip", "zstd"] }
+backhand = { version = "0.25", default-features = false, features = ["xz", "gzip", "zstd", "lz4"] }
 landlock = "0.4"
 seccompiler = "0.5"
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 tempfile = "3"
 
 [profile.release]

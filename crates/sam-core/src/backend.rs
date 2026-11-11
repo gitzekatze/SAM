@@ -57,6 +57,9 @@ pub struct LaunchContext {
     pub app_env: Vec<(String, String)>,
     /// Host path of a filtered D-Bus session proxy socket, if one is running.
     pub dbus_proxy_socket: Option<PathBuf>,
+    /// Host path of a Wayland socket with a security context for this app
+    /// (privileged protocols hidden); `None` = the compositor's own socket.
+    pub wayland_socket: Option<PathBuf>,
     pub helper: Option<SandboxHelper>,
     /// File descriptor holding a compiled seccomp program (bwrap `--seccomp`).
     pub seccomp_fd: Option<i32>,
@@ -170,6 +173,7 @@ pub fn sample_context() -> LaunchContext {
         runtime_dir: "/run/user/1000/sam/appimage-hello-1234".into(),
         app_env: vec![("APPDIR".into(), "@APPDIR@".into())],
         dbus_proxy_socket: None,
+        wayland_socket: None,
         helper: None,
         seccomp_fd: None,
         compatibility_mode: false,

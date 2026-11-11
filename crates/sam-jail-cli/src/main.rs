@@ -173,6 +173,8 @@ enum Cmd {
     },
     /// Check the system (or one app) for problems.
     Doctor { app: Option<String> },
+    /// Show the version and the level of the JSON interface.
+    Version,
     /// Show logs for an app.
     Logs {
         app: String,
@@ -452,6 +454,12 @@ fn main() {
 
 fn real_main(cli: Cli) -> Result<()> {
     let out = Out { json: cli.json };
+    // Before opening SAM's data, so it answers even when that fails.
+    if let Cmd::Version = cli.cmd {
+        let (version, interface) = (env!("CARGO_PKG_VERSION"), sam_core::JSON_INTERFACE);
+        out.emit(&json!({"version": version, "interface": interface}), || println!("sam-jail {version} (JSON interface {interface})"));
+        return Ok(());
+    }
     let app = Sam::open()?;
     match cli.cmd {
         Cmd::Scan { add, dirs } => {
@@ -711,6 +719,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
+        Cmd::Version => {} // answered above
         Cmd::Man { dir } => {
             write_man_pages(&dir)?;
             out.emit(&json!({"dir": dir}), || println!("Man pages written to {}", dir.display()));
@@ -1142,7 +1151,7 @@ fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel: Option<&s
     println!("  filesystem:  {}", if fs.home { format!("FULL HOME ({})", fs.home_access.as_str()) } else if dirs.is_empty() { "private home only".into() } else { dirs.join(", ") });
     println!("  network:     {}", p.network.mode.as_str());
     println!("  display:     wayland={} x11={}", p.display.wayland, p.display.x11);
-    println!("  audio:       {}{}", p.audio.enabled, if p.audio.alsa_raw { " + raw ALSA" } else { "" });
+    println!("  audio:       {}{}{}", p.audio.enabled, if p.audio.pipewire { " + direct PipeWire" } else { "" }, if p.audio.alsa_raw { " + raw ALSA" } else { "" });
     println!("  devices:     gpu={} webcam={} gamepads={} input={} usb={}", p.devices.gpu, p.devices.webcam, p.devices.gamepads, p.devices.input, p.devices.usb);
     println!(
         "  desktop:     input_method={} keyring={} media_controls={} screen_sharing={} file_manager={}",

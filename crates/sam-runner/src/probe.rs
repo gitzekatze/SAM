@@ -55,8 +55,10 @@ pub enum ProbeTest {
     Wayland { expect: bool },
     /// An X11 socket and $DISPLAY.
     X11 { expect: bool },
-    /// PipeWire or PulseAudio socket in $XDG_RUNTIME_DIR.
+    /// The PulseAudio socket in $XDG_RUNTIME_DIR.
     Audio { expect: bool },
+    /// The raw PipeWire socket in $XDG_RUNTIME_DIR.
+    PipeWire { expect: bool },
     /// Only the loopback interface and no default route.
     NoNetwork,
     /// A default route exists (full network).
@@ -219,8 +221,13 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         }
         ProbeTest::Audio { expect } => {
             let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
-            let there = Path::new(&rt).join("pipewire-0").exists() || Path::new(&rt).join("pulse/native").exists();
+            let there = Path::new(&rt).join("pulse/native").exists();
             (Some(there == *expect), if there { "sound socket present".into() } else { "no sound socket".to_string() })
+        }
+        ProbeTest::PipeWire { expect } => {
+            let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
+            let there = Path::new(&rt).join("pipewire-0").exists();
+            (Some(there == *expect), if there { "PipeWire socket present".into() } else { "no PipeWire socket".to_string() })
         }
         ProbeTest::NoNetwork | ProbeTest::Network => {
             let ifaces = interfaces();

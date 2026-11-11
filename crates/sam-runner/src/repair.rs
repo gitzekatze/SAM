@@ -159,6 +159,8 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
     }
     if !p.audio.enabled && has(&["pa_context_connect", "connection to pulseaudio", "alsa lib", "cannot find card", "pipewire: can't connect"]) {
         push(s("audio", "Sound is off", "The app tried to use audio. Turn on sound.", set("audio.enabled", "true"), RiskLevel::Medium));
+    } else if p.audio.enabled && !p.audio.pipewire && has(&["pipewire: can't connect", "pw_context_connect", "failed to connect to pipewire"]) {
+        push(s("pipewire", "The app wants PipeWire directly", "It has sound through PulseAudio, but tried to connect to PipeWire itself. Direct access also reaches cameras and other apps' screen streams; allow it only if sound does not work otherwise.", set("audio.pipewire", "true"), RiskLevel::High));
     }
     if has(&["fusermount", "libfuse.so.2", "appimages require fuse"]) {
         push(s("fuse", "The app starts another AppImage", "It tried to mount an AppImage with FUSE, which is not available in a sandbox. SAM already asks AppImages to extract instead; if this still fails, the inner app needs its own sandbox.", FixAction::None, RiskLevel::Low));

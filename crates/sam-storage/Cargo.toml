@@ -4,6 +4,7 @@ description = "App registry, preset storage and logs for SAM - Sandboxed AppImag
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 sam-core.workspace = true

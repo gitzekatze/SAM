@@ -572,7 +572,8 @@ impl Bubblewrap {
         // Display.
         let mut session_type = "tty";
         if p.display.wayland {
-            match &h.sockets.wayland {
+            // The socket with a security context when the runner made one.
+            match ctx.wayland_socket.as_ref().or(h.sockets.wayland.as_ref()) {
                 Some(sock) => {
                     a.op2("--ro-bind", sock, format!("{run}/wayland-0"));
                     a.setenv("WAYLAND_DISPLAY", "wayland-0");
@@ -612,19 +613,24 @@ impl Bubblewrap {
         }
 
         // Audio.
+        // Sound goes through the PulseAudio socket only. The raw PipeWire
+        // socket reaches cameras and other apps' screen-cast streams (PipeWire
+        // restricts only Flatpak apps), so it needs its own permission.
+        // Webcam and screen sharing work without it: their portals hand the
+        // app a PipeWire connection limited to what the user picked.
         if p.audio.enabled {
-            let mut any = false;
-            if let Some(pw) = &h.sockets.pipewire {
-                a.op2("--ro-bind", pw, format!("{run}/pipewire-0"));
-                any = true;
-            }
             if let Some(pulse) = &h.sockets.pulse {
                 a.op2("--ro-bind", pulse, format!("{run}/pulse/native"));
                 a.setenv("PULSE_SERVER", format!("unix:{run}/pulse/native"));
-                any = true;
+            } else if h.sockets.pipewire.is_some() {
+                notes.push("PipeWire runs without its PulseAudio service (pipewire-pulse), so the app has no sound. Install or start pipewire-pulse, or allow direct PipeWire access.".into());
+            } else {
+                notes.push("No sound server found. Audio may not work.".into());
             }
-            if !any {
-                notes.push("PipeWire socket not found. Audio may not work.".into());
+        }
+        if p.audio.pipewire {
+            if let Some(pw) = &h.sockets.pipewire {
+                a.op2("--ro-bind", pw, format!("{run}/pipewire-0"));
             }
         }
         if p.audio.alsa_raw {
@@ -942,6 +948,15 @@ mod tests {
     }
 
     #[test]
+    fn wayland_security_context_socket_is_used() {
+        let mut ctx = sample_context();
+        ctx.wayland_socket = Some("/run/user/1000/sam/x/launch-1/wayland-0".into());
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/sam/x/launch-1/wayland-0", "/run/user/1000/wayland-0"]));
+        assert!(!has_seq(&a, &["--ro-bind", "/run/user/1000/wayland-0", "/run/user/1000/wayland-0"]), "not the compositor's own socket");
+    }
+
+    #[test]
     fn permissions_change_command() {
         let mut ctx = sample_context();
         let p = &mut ctx.permissions;
@@ -954,7 +969,8 @@ mod tests {
         let a = args_of(&ctx);
         assert!(!a.contains(&"--unshare-net".to_string()));
         assert!(has_seq(&a, &["--dev-bind-try", "/dev/dri", "/dev/dri"]));
-        assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/pipewire-0", "/run/user/1000/pipewire-0"]));
+        assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/pulse/native", "/run/user/1000/pulse/native"]));
+        assert!(!a.iter().any(|x| x.ends_with("/pipewire-0")), "sound never brings the raw PipeWire socket");
         assert!(has_seq(&a, &["--ro-bind", "/tmp/.X11-unix/X0", "/tmp/.X11-unix/X0"]));
         assert!(has_seq(&a, &["--setenv", "DISPLAY", ":0"]));
         assert!(has_seq(&a, &["--setenv", "QT_QPA_PLATFORM", "wayland;xcb"]));

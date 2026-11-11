@@ -4,6 +4,7 @@ description = "AppImage format detection and static ELF dependency analysis for 
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 sam-core.workspace = true

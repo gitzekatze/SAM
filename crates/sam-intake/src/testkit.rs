@@ -9,7 +9,7 @@ use std::io::Cursor;
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
-use backhand::compression::Compressor;
+use backhand::compression::{CompressionOptions, Compressor, Lz4};
 use backhand::{FilesystemCompressor, FilesystemWriter, NodeHeader};
 
 /// A valid 1x1 PNG.
@@ -86,7 +86,9 @@ pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
 
     // Payload.
     let mut w = FilesystemWriter::default();
-    w.set_compressor(FilesystemCompressor::new(spec.compressor, None).map_err(|e| anyhow!("{e}"))?);
+    // lz4 needs its options block (version 1 is the only one).
+    let options = (spec.compressor == Compressor::Lz4).then_some(CompressionOptions::Lz4(Lz4 { version: 1, flags: 0 }));
+    w.set_compressor(FilesystemCompressor::new(spec.compressor, options).map_err(|e| anyhow!("{e}"))?);
     let desktop = format!(
         "[Desktop Entry]\nType=Application\nName={}\nComment={}\nExec={} %F\nIcon={}\nCategories={}\nTerminal=false\n",
         spec.name, spec.comment, spec.icon, spec.icon, spec.categories
@@ -141,6 +143,28 @@ mod tests {
     use crate::extract::{extract, ExtractRequest};
     use crate::normalize::Limits;
     use sam_core::AppImageType;
+
+    /// Every SquashFS compression AppImages use is unpacked by the built-in
+    /// reader, so none needs the AppImage's own extractor. (lzo is left out:
+    /// its only Rust decoder is GPL-2.0-only, which SAM's GPL-3.0-or-later
+    /// cannot include; such rare images go to the host's unsquashfs.)
+    #[test]
+    fn every_compression_unpacks() {
+        for (c, name) in [(Compressor::Gzip, "gzip"), (Compressor::Xz, "xz"), (Compressor::Lz4, "lz4"), (Compressor::Zstd, "zstd")] {
+            let d = tempfile::tempdir().unwrap();
+            let img = d.path().join("Hello-1.0-x86_64.AppImage");
+            let mut spec = FixtureSpec::hello("Hello");
+            spec.compressor = c;
+            build(&img, &spec).unwrap_or_else(|e| panic!("build {name}: {e:#}"));
+            let info = sam_detect::inspect(&img).unwrap();
+            assert_eq!(info.compression.as_deref(), Some(name));
+            let root = d.path().join("x");
+            let req = ExtractRequest { source: &img, info: &info, root: &root, limits: Limits::default(), allow_fallback: false, isolation: None };
+            let out = extract(&req, &mut Vec::new()).unwrap_or_else(|e| panic!("{name}: {e:#}"));
+            assert_eq!(out.method, "builtin-squashfs", "{name}");
+            assert!(out.appdir.join("usr/bin/hello").is_file(), "{name}");
+        }
+    }
 
     #[test]
     fn build_detect_extract_roundtrip() {

@@ -4,6 +4,7 @@ description = "Core data model, permissions, risk scoring, configuration and hos
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 anyhow.workspace = true

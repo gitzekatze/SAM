@@ -245,11 +245,15 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
                 "No X11 display was found ($DISPLAY is unset or its socket is missing).",
             ));
         }
-        if p.audio.enabled && host.sockets.pipewire.is_none() && host.sockets.pulse.is_none() {
+        if p.audio.enabled && host.sockets.pulse.is_none() {
             w.push(Warning::warn(
                 "audio-missing",
-                "Audio socket not found",
-                "PipeWire socket not found. Audio may not work.",
+                "Sound server not found",
+                if host.sockets.pipewire.is_some() {
+                    "PipeWire runs without its PulseAudio service (pipewire-pulse), which sandboxed apps use for sound. Install or start pipewire-pulse."
+                } else {
+                    "No PulseAudio or PipeWire sound server was found. Audio may not work."
+                },
             ));
         }
     }

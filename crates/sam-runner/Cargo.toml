@@ -4,6 +4,7 @@ description = "Orchestration for SAM - Sandboxed AppImage Manager: intake, launc
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 sam-core.workspace = true
@@ -18,6 +19,8 @@ serde_json.workspace = true
 libc.workspace = true
 landlock.workspace = true
 seccompiler.workspace = true
+wayland-client.workspace = true
+wayland-protocols.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

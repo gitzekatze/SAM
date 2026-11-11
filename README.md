@@ -63,7 +63,8 @@ Every permission has a plain-language explanation and a risk level
   paths. Files you open with an app are granted one by one.
 - **Network:** none, *Local network only* (no internet, but the app's own web
   page and the local services you list, such as Ollama), or full.
-- **Display and devices:** Wayland, X11, GPU, audio, webcam, game controllers
+- **Display and devices:** Wayland, X11, GPU, sound (without access to
+  cameras), webcam, game controllers
   (joysticks only, never keyboards or mice), USB, all input devices.
 - **Desktop integration:** passwords and keyring, media controls, screen
   sharing, "show in folder", input methods (Fcitx5, IBus).
@@ -259,6 +260,7 @@ AppImage.
 | [Security](docs/security.md) | what the sandbox protects against, and its limits |
 | [Profiles and presets](docs/profiles.md) | the permission file format |
 | [Packaging](docs/packaging.md) | building packages and the AppImage |
+| [JSON interface](docs/json-interface.md) | scripts: the `--json` output of every command |
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |
 | [Changelog](CHANGELOG.md) | what changed in each version |

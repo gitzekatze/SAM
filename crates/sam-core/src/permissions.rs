@@ -195,8 +195,15 @@ pub struct DevicePerms {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AudioPerms {
-    /// PipeWire / PulseAudio socket access.
+    /// Sound through the PulseAudio socket (PipeWire's `pipewire-pulse`
+    /// on current systems): playing and recording, but no cameras or
+    /// screen-cast streams.
     pub enabled: bool,
+    /// The raw PipeWire socket (`pipewire-0`). It reaches every PipeWire
+    /// node, including cameras and other apps' screen-cast streams, because
+    /// PipeWire does not restrict programs outside Flatpak. Only for apps
+    /// that speak PipeWire natively and have no PulseAudio support.
+    pub pipewire: bool,
     /// Raw ALSA devices (`/dev/snd`). Off unless required.
     pub alsa_raw: bool,
 }
@@ -206,6 +213,10 @@ pub struct AudioPerms {
 pub struct DisplayPerms {
     pub wayland: bool,
     pub x11: bool,
+    /// The compositor's own socket instead of one with a security context,
+    /// so privileged protocols (clipboard history, screen capture, virtual
+    /// keyboards) stay visible. Only for tools that are exactly that.
+    pub wayland_privileged: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -734,11 +745,15 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("devices.bluetooth", "Devices", "Bluetooth",
             "Bluetooth needs the system D-Bus and cannot be isolated well.", Dangerous, advanced),
         perm!("audio.enabled", "Audio", "Sound",
-            "Play and record audio through PipeWire or PulseAudio. Recording is possible once this is on.", Medium),
+            "Play and record audio (through PipeWire's PulseAudio service). Recording is possible once this is on.", Medium),
+        perm!("audio.pipewire", "Audio", "Direct PipeWire access",
+            "The full PipeWire connection. Besides sound it reaches cameras and screen-cast streams of other apps, bypassing the webcam and screen sharing settings. Only for apps that support nothing else.", High, advanced),
         perm!("audio.alsa_raw", "Audio", "Raw ALSA devices",
             "Direct sound card access. Only needed by apps that do not support PipeWire/PulseAudio.", High, advanced),
         perm!("display.wayland", "Display", "Wayland",
             "Show windows through the Wayland compositor. Wayland isolates apps from each other.", Low),
+        perm!("display.wayland_privileged", "Display", "Privileged Wayland protocols",
+            "Lets the app use Wayland functions the desktop normally hides from sandboxed apps: reading the clipboard in the background, capturing the screen, typing as a virtual keyboard. Only for clipboard managers, screenshot and remote-control tools.", High, advanced),
         perm!("display.x11", "Display", "X11 / XWayland",
             "X11 access allows the app to observe input and other windows. Wayland is safer, but some apps may require XWayland.", High),
         perm!("dbus.session.mode", "D-Bus", "Session bus",
@@ -778,7 +793,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("advanced.seccomp_strict", "Advanced", "Strict syscall filter",
             "Experimental: blocks rarely needed, dangerous system calls. Can break apps.", Low, advanced),
         perm!("advanced.seccomp_baseline", "Advanced", "Baseline syscall filter",
-            "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, terminal injection). Turn off only if an app fails because of it.", Low, advanced),
+            "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Turn off only if an app fails because of it.", Low, advanced),
         perm!("advanced.allow_userns", "Advanced", "Nested namespaces",
             "Lets Chromium/Electron apps start their own internal sandbox.", Low, advanced),
         perm!("advanced.host_themes", "Advanced", "Host theme settings",

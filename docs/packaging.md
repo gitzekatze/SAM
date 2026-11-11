@@ -32,11 +32,14 @@ Release steps (one command does them all):
    - commits `Release X.Y.Z` and tags `vX.Y.Z` with the release notes;
    - builds `dist/` (source, vendored crates, `SHA256SUMS`, the AppImage)
      and commits the PKGBUILD checksums and `.SRCINFO`.
-   `SIGN_KEY=<gpg id>` also signs the tag and the files. Nothing is pushed.
+   Releases are signed: `SIGN_KEY=<gpg id>` is required and signs the tag,
+   the files and `SHA256SUMS` (`.asc` next to each). `UNSIGNED=1` makes an
+   unsigned test release. Nothing is pushed.
 3. `git push origin main vX.Y.Z`. The *Release* workflow builds the same
    files from the tag and attaches them to a **draft** GitHub release; check
-   that its `SHA256SUMS` matches `dist/SHA256SUMS`, then publish the draft
-   (the repository must be public for the AUR).
+   that its `SHA256SUMS` matches `dist/SHA256SUMS`, add the `.asc` files from
+   `dist/`, then publish the draft (the repository must be public for the
+   AUR).
 4. Copy `packaging/arch/PKGBUILD` and `.SRCINFO` into the AUR repository and
    push.
 
@@ -50,6 +53,11 @@ Test before publishing: copy both files next to the PKGBUILD (or point
 end-to-end sandbox tests (Ubuntu's AppArmor restriction on user namespaces is
 lifted on the throwaway runner), desktop file and metainfo validation, and a
 check that `data/man` matches the commands (`make man`).
+
+A second job runs `cargo deny check` (`deny.toml`): known security
+advisories, licences that fit GPL-3.0-or-later, banned crates, and crates
+only from crates.io. Dependabot (`.github/dependabot.yml`) proposes updates
+for the Actions and the crates every week.
 
 ## Generic install
 

@@ -1,0 +1,44 @@
+# cargo-deny: checks every Rust dependency in CI (`cargo deny check`).
+#   advisories  known security problems (RustSec), unmaintained crates
+#   licenses    only licences that can be combined with GPL-3.0-or-later
+#               (SAM's own crates are not published and not checked)
+#   bans        crates SAM must not pull in, duplicate versions
+#   sources     crates come only from crates.io
+
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+all-features = false
+
+[advisories]
+# Unmaintained crates are reported only for direct dependencies.
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+]
+# SAM's own crates.
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+    # GPL-2.0-only: cannot be combined with GPL-3.0-or-later (see testkit.rs).
+    { crate = "rust-lzo" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

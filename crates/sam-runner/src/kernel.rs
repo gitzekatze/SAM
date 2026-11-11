@@ -158,7 +158,7 @@ fn apply_landlock(spec: &LandlockSpec) -> Result<String> {
 
 /// Syscalls blocked (EPERM) by the baseline filter, on by default. Kernel
 /// interfaces no desktop app needs and that have a history of exploits:
-/// modules, kexec, BPF, perf, keyrings, userfaultfd, handle-based opens.
+/// modules, kexec, BPF, perf, keyrings, userfaultfd, handle-based opens, io_uring.
 fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
     let mut v: Vec<i64> = vec![
         libc::SYS_kexec_load,
@@ -183,6 +183,12 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
         libc::SYS_name_to_handle_at,
         libc::SYS_vhangup,
         libc::SYS_syslog,
+        // io_uring: a frequent source of kernel privilege escalations,
+        // blocked by Docker, ChromeOS and Android too. Programs that use it
+        // fall back to ordinary I/O when it is refused.
+        libc::SYS_io_uring_setup,
+        libc::SYS_io_uring_enter,
+        libc::SYS_io_uring_register,
     ];
     #[cfg(target_arch = "x86_64")]
     v.extend([libc::SYS_kexec_file_load, libc::SYS_iopl, libc::SYS_ioperm, libc::SYS_uselib]);
@@ -284,6 +290,7 @@ mod tests {
             assert!(!seccomp_program(&SeccompSpec { strict, allow_userns }).unwrap().is_empty());
         }
         assert!(baseline_syscalls(false).contains(&libc::SYS_mount));
+        assert!(baseline_syscalls(true).contains(&libc::SYS_io_uring_setup), "io_uring is blocked even with nested sandboxes");
         assert!(!baseline_syscalls(true).contains(&libc::SYS_mount), "nested sandboxes need mount");
     }
 }

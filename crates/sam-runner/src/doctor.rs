@@ -85,6 +85,13 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         Some(p) => check("wayland", "Wayland socket", CheckStatus::Ok, tildify(p)),
         None => check("wayland", "Wayland socket", if host.session_type == "wayland" { CheckStatus::Warn } else { CheckStatus::Info }, "The Wayland socket is not available."),
     });
+    if let Some(display) = &s.wayland {
+        c.push(if crate::wayland_ctx::supported(display) {
+            check("wayland-context", "Wayland security context", CheckStatus::Ok, "supported: sandboxed apps do not see privileged Wayland functions")
+        } else {
+            check("wayland-context", "Wayland security context", CheckStatus::Info, "not supported by this desktop: sandboxed apps see every Wayland function it offers")
+        });
+    }
     c.push(match (&s.x11, &s.x11_display) {
         (Some(p), _) => check("x11", "X11 display", CheckStatus::Ok, format!("{} ({})", s.x11_display.clone().unwrap_or_default(), p.display())),
         (None, Some(d)) => check("x11", "X11 display", CheckStatus::Warn, format!("DISPLAY={d} but no socket in /tmp/.X11-unix")),
@@ -92,7 +99,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
     });
     c.push(match (&s.pipewire, &s.pulse) {
         (Some(_), Some(_)) => check("audio", "Audio", CheckStatus::Ok, "PipeWire and PulseAudio sockets found"),
-        (Some(_), None) => check("audio", "Audio", CheckStatus::Ok, "PipeWire socket found"),
+        (Some(_), None) => check("audio", "Audio", CheckStatus::Warn, "PipeWire found, but not its PulseAudio service (pipewire-pulse), which sandboxed apps use for sound"),
         (None, Some(_)) => check("audio", "Audio", CheckStatus::Ok, "PulseAudio socket found"),
         (None, None) => check("audio", "Audio", CheckStatus::Warn, "PipeWire socket not found. Audio may not work."),
     });

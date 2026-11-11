@@ -889,9 +889,35 @@ impl App {
 
     // ------------------------------------------------------------ startup
 
+    /// The window reads the command line tool's JSON. A tool from another
+    /// version could leave fields out or mean something else by them, so a
+    /// mismatch is said clearly instead of showing half-empty pages.
+    async fn check_cli_version(self: &Rc<Self>) {
+        let reply = self.backend.call(&["version"], None).await;
+        let found = match &reply {
+            Ok(v) if v.get("interface").and_then(Value::as_u64) == Some(sam_core::JSON_INTERFACE as u64) => return,
+            Ok(v) => format!("version {} (interface {})", util::str_of(v, "version"), v.get("interface").and_then(Value::as_u64).unwrap_or(0)),
+            Err(e) if e.starts_with("Could not start") => {
+                self.report_error(e);
+                return;
+            }
+            Err(_) => "an older version".to_string(),
+        };
+        let body = format!(
+            "This window is SAM {} (interface {}), but the command line tool it uses, {}, is {found}.\n\nInstall matching versions of both, or point SAM_CLI at the right sam-jail. Until then, SAM may show wrong or missing information.",
+            env!("CARGO_PKG_VERSION"),
+            sam_core::JSON_INTERFACE,
+            self.backend.cli.display()
+        );
+        let d = adw::AlertDialog::new(Some("SAM's Parts Do Not Match"), Some(&body));
+        d.add_response("ok", "OK");
+        d.present(Some(&self.window));
+    }
+
     pub fn start(self: &Rc<Self>, s: Startup) {
         let me = self.clone();
         glib::spawn_future_local(async move {
+            me.check_cli_version().await;
             me.load_catalog().await;
             // Menu entries point at the old place if SAM's AppImage was moved.
             let _ = me.backend.call(&["desktop", "all", "refresh"], None).await;

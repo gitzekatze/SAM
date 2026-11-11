@@ -459,6 +459,7 @@ impl Editor {
         let g = self.group("Display", "How the app shows its windows.");
         self.switch(&g, "display.wayland", Always);
         self.switch(&g, "display.x11", Always);
+        self.switch(&g, "display.wayland_privileged", Always);
 
         let g = self.group("Sound and devices", "Audio and hardware the app may use.");
         self.switch(&g, "audio.enabled", Always);
@@ -468,6 +469,7 @@ impl Editor {
         self.switch(&g, "devices.input", Always);
         self.switch(&g, "devices.usb", Always);
         self.switch(&g, "devices.bluetooth", Always);
+        self.switch(&g, "audio.pipewire", Always);
         self.switch(&g, "audio.alsa_raw", Always);
 
         let g = self.group("Files", "Folders the app can see. Everything else in your home stays hidden.");

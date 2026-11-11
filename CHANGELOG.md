@@ -24,7 +24,17 @@ version.
 - `systemd-run` inside the sandbox runs the command inside it;
   `flatpak-spawn` refuses.
 - Blocked D-Bus names win over wildcard allow entries.
-- The syscall filter also covers the x32 ABI.
+- The syscall filter also covers the x32 ABI, and blocks `io_uring`.
+- Wayland security context: each app gets its own Wayland socket, and the
+  desktop hides privileged functions (background clipboard access, screen
+  capture, fake input) from it. *Privileged Wayland protocols* turns this
+  off for tools that need them.
+- *Audio* gives only the PulseAudio socket. The raw PipeWire socket, which
+  also reaches cameras and other apps' screen-cast streams, is a separate
+  advanced permission (*Direct PipeWire access*); the sandbox check confirms
+  it is absent.
+- `cargo deny` checks advisories, licences and sources in CI; Dependabot
+  proposes updates; `scripts/release.sh` signs releases by default.
 - New breakout test suite; security review report
   (`docs/security-review-2026-11-10.md`).
 
@@ -41,6 +51,10 @@ version.
   when no sandbox exists yet.
 - Single SAM window per data set.
 - Man pages for `sam-jail`, `sam-jail-run` and `sam-jail-gui`.
+- AppImages with lz4-compressed SquashFS are unpacked by SAM's own reader.
+- The JSON interface is documented (`docs/json-interface.md`).
+- `sam-jail version` reports the JSON interface level; the window says so
+  clearly when its command line tool is from another version.
 
 ### Changed
 

@@ -10,6 +10,7 @@
 //! * [`diagnose`]: dynamic dependency fallback via strace
 
 pub mod dbus_proxy;
+pub mod wayland_ctx;
 pub mod diagnose;
 pub mod doctor;
 pub mod kernel;

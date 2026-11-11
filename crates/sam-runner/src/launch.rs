@@ -50,6 +50,9 @@ pub struct Prepared {
     pub landlock: bool,
     pub seccomp: bool,
     proxy: Option<DbusProxy>,
+    /// Whether the app's Wayland socket carries a security context.
+    pub wayland_context: bool,
+    wayland: Option<crate::wayland_ctx::WaylandContext>,
     _runtime: RuntimeDir,
 }
 
@@ -193,6 +196,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         runtime_dir: runtime_dir.clone(),
         app_env,
         dbus_proxy_socket: None,
+        wayland_socket: None,
         helper: None,
         seccomp_fd: None,
         compatibility_mode: app.profile.compatibility_mode,
@@ -220,6 +224,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     }
 
     let mut proxy = None;
+    let mut wayland = None;
     let mut landlock = false;
     let mut seccomp = false;
     {
@@ -233,6 +238,23 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                     proxy = Some(p);
                 }
                 Err(e) => warnings.push(Warning::warn("dbus-proxy-failed", "D-Bus proxy failed", format!("{e:#}; session bus disabled"))),
+            }
+        }
+        if perms.display.wayland && !perms.display.wayland_privileged {
+            if let Some(display) = &host.sockets.wayland {
+                let instance = runtime_dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                match crate::wayland_ctx::start(display, &runtime_dir, &app.id, &instance) {
+                    Ok(Some(w)) => {
+                        ctx.wayland_socket = Some(w.socket.clone());
+                        wayland = Some(w);
+                    }
+                    Ok(None) => warnings.push(Warning::info(
+                        "wayland-context-unsupported",
+                        "Wayland functions not restricted",
+                        "This desktop does not support Wayland security contexts, so the app can use every Wayland function it offers, including privileged ones some desktops provide (clipboard history, screen capture).",
+                    )),
+                    Err(e) => warnings.push(Warning::warn("wayland-context-failed", "Wayland security context failed", format!("{e:#}; the app uses the normal Wayland socket"))),
+                }
             }
         }
         // Landlock and seccomp are applied by SAM's helper inside the sandbox.
@@ -273,7 +295,8 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             warnings.push(Warning::warn("localhost-unavailable", "Local network unavailable", format!("{e:#}. Until then the app starts with no network at all, never with internet access.")));
         }
     }
-    Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy, _runtime: runtime_guard })
+    let wayland_context = wayland.is_some();
+    Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy, wayland_context, wayland, _runtime: runtime_guard })
 }
 
 /// Paths mounted writable only for this launch: files passed on the command
@@ -331,7 +354,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         }
     };
     writeln!(log, "# sandbox: {}", prepared.selection.reason)?;
-    writeln!(log, "# landlock: {}  seccomp: {}", prepared.landlock, prepared.seccomp)?;
+    writeln!(log, "# landlock: {}  seccomp: {}  wayland security context: {}", prepared.landlock, prepared.seccomp, prepared.wayland_context)?;
     if let Some(p) = &prepared.proxy {
         writeln!(log, "# dbus proxy: xdg-dbus-proxy {}", shell_join(&p.args))?;
     }
@@ -508,6 +531,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let _ = t1.join();
     let _ = t2.join();
     drop(prepared.proxy);
+    drop(prepared.wayland);
 
     let code = status.code();
     let signal = status.signal();

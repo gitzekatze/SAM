@@ -150,6 +150,12 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     if p.audio.enabled {
         item(&mut items, "audio.enabled", "Audio", RiskLevel::Medium);
     }
+    if p.display.wayland && p.display.wayland_privileged {
+        item(&mut items, "display.wayland_privileged", "Privileged Wayland protocols", RiskLevel::High);
+    }
+    if p.audio.pipewire {
+        item(&mut items, "audio.pipewire", "Direct PipeWire access", RiskLevel::High);
+    }
     if p.audio.alsa_raw {
         item(&mut items, "audio.alsa_raw", "Raw ALSA devices", RiskLevel::Dangerous);
     }

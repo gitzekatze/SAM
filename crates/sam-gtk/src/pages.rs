@@ -97,7 +97,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
 
     let g = adw::PreferencesGroup::builder().title("Kernel Security Features").description("Extra layers inside every sandbox.").build();
     switch(&g, "security.experimental_landlock", "Landlock write protection", "Kernel-enforced write restrictions inside the sandbox. Also blocks connections to abstract sockets outside the sandbox (such as XWayland's). Skipped on kernels without Landlock.");
-    switch(&g, "security.baseline_seccomp", "Baseline syscall filter", "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, terminal injection). Individual apps can turn it off in their repair steps.");
+    switch(&g, "security.baseline_seccomp", "Baseline syscall filter", "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Individual apps can turn it off in their repair steps.");
     switch(&g, "security.experimental_seccomp", "Allow strict syscall filters (experimental)", "Lets apps use the strict syscall filter from their Advanced settings. Can break apps.");
     pref.add(&g);
 

@@ -118,7 +118,11 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     let s = &host.sockets;
     v.push(c("wayland", "Display", "Wayland", ProbeTest::Wayland { expect: p.display.wayland && s.wayland.is_some() }));
     v.push(c("x11", "Display", "X11 / XWayland", ProbeTest::X11 { expect: p.display.x11 && s.x11.is_some() }));
-    v.push(c("audio", "Sound and devices", "Sound", ProbeTest::Audio { expect: p.audio.enabled && (s.pipewire.is_some() || s.pulse.is_some()) }));
+    v.push(c("audio", "Sound and devices", "Sound", ProbeTest::Audio { expect: p.audio.enabled && s.pulse.is_some() }));
+    if s.pipewire.is_some() {
+        let label = if p.audio.pipewire { "Direct PipeWire access" } else { "Cameras and screen streams through PipeWire stay hidden" };
+        v.push(c("pipewire", "Sound and devices", label, ProbeTest::PipeWire { expect: p.audio.pipewire }));
+    }
 
     // Devices.
     let dev = |path: &str| Path::new(path).exists();

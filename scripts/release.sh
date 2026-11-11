@@ -17,6 +17,7 @@
 # Optional:
 #   RUNTIME=/path/to/runtime-x86_64   also build the AppImage
 #   SIGN_KEY=<gpg key id>             sign the tag and the release files
+#                                     (required; UNSIGNED=1 for a test release)
 #   SKIP_TESTS=1                      skip clippy and tests (not recommended)
 set -eu
 
@@ -30,6 +31,12 @@ old=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
 [ "$new" != "$old" ] || die "version $new is the current one"
 [ "$(printf '%s\n%s\n' "$old" "$new" | sort -V | tail -n1)" = "$new" ] || die "$new is not newer than $old"
 git rev-parse -q --verify "refs/tags/v$new" >/dev/null && die "tag v$new exists"
+# Releases are signed, so packagers (AUR, COPR) can check the files.
+if [ -n "${SIGN_KEY:-}" ]; then
+    gpg --batch --list-secret-keys "$SIGN_KEY" >/dev/null 2>&1 || die "no secret GPG key '$SIGN_KEY'"
+elif [ "${UNSIGNED:-}" != 1 ]; then
+    die "set SIGN_KEY=<gpg key id> to sign the release (or UNSIGNED=1 for an unsigned test release)"
+fi
 [ -z "$(git status --porcelain)" ] || die "uncommitted changes; commit or stash them first"
 
 # Release notes: the Unreleased section.
@@ -89,7 +96,7 @@ mv packaging/arch/PKGBUILD.new packaging/arch/PKGBUILD
 git add packaging/arch/PKGBUILD packaging/arch/.SRCINFO
 git commit -q -m "PKGBUILD: checksums for the $new release files"
 if [ -n "${SIGN_KEY:-}" ]; then
-    for f in dist/sam-$new.tar.gz dist/sam-$new-vendor.tar.xz dist/SAM-$new-x86_64.AppImage; do
+    for f in dist/sam-$new.tar.gz dist/sam-$new-vendor.tar.xz dist/SAM-$new-x86_64.AppImage dist/SHA256SUMS; do
         [ -f "$f" ] && gpg --batch --yes -u "$SIGN_KEY" --armor --detach-sign "$f"
     done
 fi
@@ -97,6 +104,6 @@ fi
 echo
 echo "SAM $new is ready (not pushed). Next:"
 echo "  git push origin main v$new"
-echo "  GitHub release v$new with the files in dist/:"
+echo "  GitHub release v$new with the files in dist/ (the CI draft has them; add the .asc signatures):"
 ls dist | grep -F "$new" | sed 's/^/    /'
 echo "  AUR: copy packaging/arch/PKGBUILD and .SRCINFO into the AUR repository and push"

@@ -4,6 +4,7 @@ description = "Recommended profiles, presets and preset compatibility checks for
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 sam-core.workspace = true

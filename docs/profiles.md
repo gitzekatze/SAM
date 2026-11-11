@@ -40,8 +40,8 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `filesystem.custom_read`, `filesystem.custom_write` | list, e.g. `"~/Projects, /mnt/data"` |
 | `network.mode` | `none` / `localhost` (no internet; loopback ports forwarded by pasta, Bubblewrap only) / `full` (`filtered` is experimental) |
 | `devices.gpu`, `devices.webcam`, `devices.gamepads`, `devices.input`, `devices.usb`, `devices.bluetooth` | `true` / `false` |
-| `audio.enabled`, `audio.alsa_raw` | `true` / `false` |
-| `display.wayland`, `display.x11` | `true` / `false` |
+| `audio.enabled`, `audio.pipewire`, `audio.alsa_raw` | `true` / `false` |
+| `display.wayland`, `display.x11`, `display.wayland_privileged` | `true` / `false` |
 | `dbus.session.mode`, `dbus.system.mode` | `none` / `filtered` / `full` |
 | `dbus.session.allow`, `dbus.session.own` | list of bus names (wildcards allowed) |
 | `sockets.ssh_agent`, `sockets.cups` | `true` / `false` |

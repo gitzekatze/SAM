@@ -25,7 +25,8 @@ yn '[ -e /dev/uinput ]' UINPUT
 yn '[ -e /dev/bus/usb ]' USB
 yn '[ -e /dev/snd ]' ALSA
 yn 'ls /dev | grep -q "^video"' VIDEO
-yn '[ -S "$XDG_RUNTIME_DIR/pipewire-0" ] || [ -S "$XDG_RUNTIME_DIR/pulse/native" ]' AUDIO
+yn '[ -S "$XDG_RUNTIME_DIR/pulse/native" ]' AUDIO
+yn '[ -S "$XDG_RUNTIME_DIR/pipewire-0" ]' PIPEWIRE
 yn '[ -n "$WAYLAND_DISPLAY" ] && [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]' WAYLAND
 yn '[ -n "$(ls /tmp/.X11-unix 2>/dev/null)" ]' X11
 echo "NET=$(tail -n +3 /proc/net/dev | cut -d: -f1 | tr -d ' ' | sort | tr '\n' ',')"
@@ -196,10 +197,16 @@ fn permission_matrix() {
     let mut p = base();
     p.audio.enabled = true;
     let r = launch("audio", p);
-    if runtime_has("pipewire-0") || runtime_has("pulse/native") {
+    if runtime_has("pulse/native") {
         assert_eq!(r["AUDIO"], "yes");
     }
+    assert_eq!(r["PIPEWIRE"], "no", "sound never brings the raw PipeWire socket (cameras, screen streams)");
     assert_eq!(r["ALSA"], "no", "audio does not expose raw ALSA");
+
+    let mut p = base();
+    p.audio.pipewire = true;
+    let r = launch("pipewire", p);
+    assert_eq!(r["PIPEWIRE"], if runtime_has("pipewire-0") { "yes" } else { "no" });
 
     let mut p = base();
     p.audio.alsa_raw = true;

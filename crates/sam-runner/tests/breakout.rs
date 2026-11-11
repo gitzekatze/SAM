@@ -44,6 +44,7 @@ show("SC_BPF", sc(321, 9999, 0, 0))              # bpf(invalid cmd)
 show("SC_INIT_MODULE", sc(175, 0, 0, 0))
 show("SC_OPEN_BY_HANDLE", sc(304, -1, 0, 0))
 show("SC_SYSLOG", sc(103, 10, 0, 0))             # SYSLOG_ACTION_SIZE_BUFFER
+show("SC_IO_URING", sc(425, 1, 0))               # io_uring_setup(1, NULL): EFAULT unfiltered
 show("SC_TIOCSTI", sc(16, 0, 0x5412, 0))         # ioctl(0, TIOCSTI): ENOTTY unfiltered
 show("SC_TIOCLINUX", sc(16, 0, 0x541C, 0))
 # The same calls through the x32 ABI (bit 30): the filter answers before
@@ -196,7 +197,7 @@ fn breakout_attempts_fail() {
     let r = launch(p);
 
     // The syscall filter: calls an ordinary user may make are refused.
-    for k in ["SC_KEYCTL", "SC_USERFAULTFD", "SC_UNSHARE", "SC_TIOCSTI", "SC_TIOCLINUX", "SC_X32_KEYCTL", "SC_X32_UNSHARE"] {
+    for k in ["SC_KEYCTL", "SC_USERFAULTFD", "SC_UNSHARE", "SC_IO_URING", "SC_TIOCSTI", "SC_TIOCLINUX", "SC_X32_KEYCTL", "SC_X32_UNSHARE"] {
         assert_eq!(r[k], "EPERM", "{k} is blocked by the syscall filter");
     }
     for k in ["SC_PERF", "SC_BPF", "SC_INIT_MODULE", "SC_OPEN_BY_HANDLE", "SC_SYSLOG"] {

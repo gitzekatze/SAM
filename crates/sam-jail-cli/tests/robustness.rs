@@ -145,3 +145,15 @@ fn mangled_files_never_crash() {
         }
     }
 }
+
+#[test]
+fn version_reports_the_json_interface() {
+    let e = env();
+    // Answers even when SAM's configuration cannot be read.
+    fs::write(e.config.join("config.toml"), "format = 99\n").unwrap();
+    let o = sam(&e, &["--json", "version"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(out.contains(&format!("\"interface\":{}", sam_core::JSON_INTERFACE)), "{out}");
+    assert!(out.contains(env!("CARGO_PKG_VERSION")), "{out}");
+}

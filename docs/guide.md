@@ -81,9 +81,11 @@ The **risk** of the current settings: *low*, *medium*, *high* or *dangerous*. It
 
 **Wayland** shows windows through your compositor, which keeps apps apart. **X11 / XWayland** is for apps without Wayland support; X11 lets an app observe input and other windows, so only turn it on when needed.
 
+On desktops that support it (KDE Plasma, GNOME 47+, Sway, Hyprland), SAM tells the compositor that the app is sandboxed, and the desktop hides privileged functions from it: reading the clipboard in the background, capturing the screen, typing as a virtual keyboard. **Privileged Wayland protocols** (advanced) turns that off for the few tools that are exactly that, such as clipboard managers or screenshot tools.
+
 ### Sound and devices
 
-Sound (PipeWire or PulseAudio), **GPU acceleration**, **Webcam**, **Game controllers** (only gamepads; keyboards and mice stay hidden), **All input devices** (only for tools that remap input), **Raw USB**, **Bluetooth** and **Raw ALSA devices**.
+**Sound** (through PipeWire's PulseAudio service), **GPU acceleration**, **Webcam**, **Game controllers** (only gamepads; keyboards and mice stay hidden), **All input devices** (only for tools that remap input), **Raw USB**, **Bluetooth**, **Direct PipeWire access** (only for apps that support nothing else: it also reaches cameras and other apps' screen streams) and **Raw ALSA devices**.
 
 ### Files
 

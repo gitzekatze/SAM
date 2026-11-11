@@ -4,6 +4,7 @@ description = "Command line interface of SAM - Sandboxed AppImage Manager (sam-j
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [[bin]]
 name = "sam-jail"

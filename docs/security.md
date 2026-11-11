@@ -73,6 +73,8 @@ blocks:
 
 - loading kernel modules, `kexec`, BPF and `perf`;
 - keyrings, `userfaultfd`, handle-based opens and `syslog`;
+- `io_uring`, a frequent source of kernel exploits (programs fall back to
+  ordinary I/O);
 - terminal injection (`TIOCSTI`, `TIOCLINUX`);
 - namespaces and mounts, unless the app needs nested sandboxes.
 
@@ -88,6 +90,32 @@ other processes' memory, `personality` and NUMA memory calls.
 User namespaces inside the sandbox add kernel attack surface. Only apps whose
 engine builds its own sandbox get them: Electron, CEF, Qt WebEngine and
 WebKitGTK, as found by the dependency analysis.
+
+### Wayland security context
+
+Every app gets its own Wayland socket, created through the compositor's
+security-context protocol (`wp_security_context_v1`) and marked with SAM as
+the sandbox engine plus the app id. The compositor then hides privileged
+functions from the app, as it does for Flatpak apps. On KDE Plasma these
+include background clipboard access (`ext_data_control`) and fake input. The
+launch log and `sam-jail doctor` say whether the desktop supports it.
+
+*Privileged Wayland protocols* (advanced, High risk) gives the compositor's
+own socket instead, for clipboard managers and screenshot tools. Desktops
+without the protocol give every app all their functions; SAM says so.
+
+### Sound without cameras
+
+*Audio* gives the app only the PulseAudio socket (PipeWire's
+`pipewire-pulse` on current systems). It can play and record sound, but it
+cannot see cameras or screen-cast streams.
+
+The raw PipeWire socket would reach those as well, because PipeWire limits
+only Flatpak apps and treats every other program as trusted. So it is a
+separate, advanced permission, *Direct PipeWire access* (High risk), for
+the rare app that supports nothing else. Webcam and screen sharing don't
+need it: their portals hand the app a PipeWire connection limited to what
+you picked. The sandbox check confirms that the socket is absent.
 
 ### D-Bus and portals
 

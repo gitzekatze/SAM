@@ -4,6 +4,7 @@ description = "GTK 4 / libadwaita window of SAM - Sandboxed AppImage Manager (sa
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [[bin]]
 name = "sam-jail-gui"
