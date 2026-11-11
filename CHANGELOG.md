@@ -111,6 +111,26 @@ version.
 
 ### Fixed
 
+- Compatibility, from a test of 71 real AppImages (59 started before these
+  fixes, 69 after; the other 2 are terminal tools):
+  - Apps with an older bundled libxcb (many Qt and Java apps) could not
+    connect to X11 even with X11 allowed: Landlock refused the abstract
+    socket and old libxcb gives up instead of using the socket file. The
+    sandbox now uses its own display number (:99) with a matching cookie.
+  - Apps whose AppImage bundles only Qt's X11 plugin, and apps whose start
+    script forces X11 (linuxdeploy's GTK hook, Tauri apps), get X11 in
+    their recommendation.
+  - X11 apps share the IPC namespace (as Flatpak's `--share=ipc`); GTK and
+    Electron apps died with BadAccess from MIT-SHM.
+  - With both Wayland and X11 allowed, Qt picks the platform itself; the
+    list `wayland;xcb` stopped Qt before 5.12.
+  - GTK's image loaders (glycin, gdk-pixbuf 2.44+) are visible; apps using
+    the system's GTK aborted at the first icon.
+  - Apps may own the D-Bus name of their own reverse-DNS ID (as with
+    Flatpak); a refused name in the log is offered as a repair step.
+  - The AppImage's own extractor (after consent) works from files without
+    the executable bit and with uruntime's AppDir layout (DwarFS
+    "anylinux" AppImages).
 - *Local network only* on systems whose `pasta` has no `--splice-only`
   (Ubuntu 24.04): every start failed with a misleading Bubblewrap error. Such
   a pasta is no longer used; the app starts with no network at all, and

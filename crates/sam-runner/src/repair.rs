@@ -302,6 +302,25 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             ));
         }
     }
+    // The app could not register a D-Bus name of its own (single-instance
+    // handling, its own service). Owning a name of an app's own namespace is
+    // harmless; desktop services and dangerous names are never offered.
+    for marker in ["Failed to register name '", "failed to acquire bus name '", "Could not register D-Bus service '", "Unable to register service '"] {
+        let Some(rest) = after(output, marker) else { continue };
+        let name = display_safe(rest.split('\'').next().unwrap_or(""), 200);
+        let desktop = ["org.freedesktop.", "org.kde.", "org.gnome.", "org.gtk.", "org.mpris.", "ca.desrt.", "org.a11y."].iter().any(|r| name.starts_with(r));
+        let valid = name.split('.').count() >= 2 && name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c));
+        if valid && !desktop && dangerous_bus_name(&name).is_none() && !p.dbus.session.own.contains(&name) {
+            push(s(
+                "dbus-own",
+                "The app wants its own D-Bus name",
+                format!("The app tried to register {name} (usually so that a second start hands over to the first). Allow it to own just this name."),
+                FixAction::Add { key: "dbus.session.own".into(), value: name },
+                RiskLevel::Low,
+            ));
+        }
+        break;
+    }
     if !p.audio.enabled && has(&["pa_context_connect", "connection to pulseaudio", "alsa lib", "cannot find card", "pipewire: can't connect"]) {
         push(s("audio", "Sound is off", "The app tried to use audio. Turn on sound.", set("audio.enabled", "true"), RiskLevel::Medium));
     } else if p.audio.enabled && !p.audio.pipewire && has(&["pipewire: can't connect", "pw_context_connect", "failed to connect to pipewire"]) {
@@ -411,6 +430,17 @@ pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn own_name_requests_become_a_repair() {
+        let p = PermissionSet::default();
+        let log = "kf.dbusaddons: Failed to register name 'com.nextcloud.desktopclient.nextcloud' with DBUS - does this process have permission";
+        let sug = analyze(log, &p, None);
+        let own = sug.iter().find(|x| x.id == "dbus-own").expect("suggested");
+        assert!(matches!(&own.action, FixAction::Add { key, value } if key == "dbus.session.own" && value == "com.nextcloud.desktopclient.nextcloud"));
+        let bad = analyze("Failed to register name 'org.freedesktop.Notifications' with DBUS", &p, None);
+        assert!(!bad.iter().any(|x| x.id == "dbus-own"), "desktop services are never offered");
+    }
 
     #[test]
     fn analyzer_maps_errors_to_fixes() {

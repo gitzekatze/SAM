@@ -413,7 +413,23 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
     if work.exists() {
         fs::remove_dir_all(&work)?;
     }
-    fs::create_dir_all(&work)?;
+    fs::create_dir_all(&work).with_context(|| format!("creating {}", work.display()))?;
+    // The AppImage's own extractor runs from the file, which must be
+    // executable; browsers save downloads without that bit. Then it runs
+    // from an executable copy (outside the folder it extracts to).
+    let exe_copy = work.with_extension("appimage");
+    let src = {
+        use std::os::unix::fs::PermissionsExt;
+        let executable = fs::metadata(src).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false);
+        if executable {
+            src.to_path_buf()
+        } else {
+            fs::copy(src, &exe_copy).context("copying the AppImage to run its extractor")?;
+            fs::set_permissions(&exe_copy, fs::Permissions::from_mode(0o755)).context("making the copy executable")?;
+            exe_copy.clone()
+        }
+    };
+    let src = src.as_path();
     let mut cmd = Command::new(bwrap);
     cmd.args(["--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL"])
         .args(["--ro-bind", "/usr", "/usr"])
@@ -428,13 +444,21 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
         .arg("/out")
         .args(["--chdir", "/out", "--clearenv", "--setenv", "PATH", "/usr/bin", "--setenv", "HOME", "/out"])
         .args(["--", "/in/app.AppImage", "--appimage-extract"]);
-    run_tool(&mut cmd, limits, started, log)?;
-    let out = work.join("squashfs-root");
-    if !out.is_dir() {
+    let ran = run_tool(&mut cmd, limits, started, log);
+    let _ = fs::remove_file(&exe_copy);
+    ran?;
+    // Classic runtimes write squashfs-root; uruntime writes AppDir and makes
+    // squashfs-root a link to it. Follow the link, but only inside the work
+    // folder (moving the link itself would leave it pointing nowhere).
+    let out = ["squashfs-root", "AppDir"]
+        .iter()
+        .filter_map(|n| fs::canonicalize(work.join(n)).ok())
+        .find(|p| p.starts_with(fs::canonicalize(&work).unwrap_or_else(|_| work.clone())) && p.is_dir());
+    let Some(out) = out else {
         let _ = fs::remove_dir_all(&work);
         bail!("--appimage-extract produced no squashfs-root");
-    }
-    fs::rename(&out, staging)?;
+    };
+    fs::rename(&out, staging).with_context(|| format!("moving the unpacked app to {}", staging.display()))?;
     let _ = fs::remove_dir_all(&work);
     Ok(())
 }

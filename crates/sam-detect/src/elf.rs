@@ -85,6 +85,8 @@ struct Walk {
     electron: bool,
     java: bool,
     qt_wayland_plugin: bool,
+    /// Qt's X11 platform plugin (libqxcb.so) is bundled.
+    qt_xcb_plugin: bool,
     kernel_modules: Vec<String>,
     truncated: bool,
 }
@@ -115,6 +117,9 @@ fn walk(root: &Path, dir: &Path, w: &mut Walk, opts: &AnalyzeOptions) {
         }
         if name.starts_with("libqwayland") {
             w.qt_wayland_plugin = true;
+        }
+        if name.starts_with("libqxcb.so") {
+            w.qt_xcb_plugin = true;
         }
         if name.ends_with(".ko") || name.ends_with(".ko.zst") || name.ends_with(".ko.xz") {
             w.kernel_modules.push(path.strip_prefix(root).unwrap_or(&path).display().to_string());
@@ -244,6 +249,31 @@ fn resolve_entry_binary(appdir: &Path, opts: &AnalyzeOptions) -> (Option<PathBuf
     (None, true, script_text)
 }
 
+/// Whether `AppRun` or one of linuxdeploy's `apprun-hooks` sets the app to
+/// X11 only (GDK_BACKEND=x11, QT_QPA_PLATFORM=xcb, SDL_VIDEODRIVER=x11),
+/// ignoring comments.
+fn start_scripts_force_x11(appdir: &Path) -> bool {
+    let mut scripts = vec![appdir.join("AppRun")];
+    if let Ok(rd) = fs::read_dir(appdir.join("apprun-hooks")) {
+        scripts.extend(rd.flatten().map(|e| e.path()));
+    }
+    scripts.iter().any(|f| {
+        let Ok(meta) = fs::metadata(f) else { return false };
+        if !meta.is_file() || meta.len() > 256 * 1024 {
+            return false;
+        }
+        let Ok(text) = fs::read(f) else { return false };
+        if text.starts_with(b"\x7fELF") {
+            return false;
+        }
+        String::from_utf8_lossy(&text).lines().any(|l| {
+            let code = l.split('#').next().unwrap_or("").replace(['"', '\''], "");
+            // Whole words only: `${GDK_BACKEND:-x11}` is a default, not a force.
+            code.split_whitespace().any(|w| ["GDK_BACKEND=x11", "QT_QPA_PLATFORM=xcb", "SDL_VIDEODRIVER=x11"].contains(&w))
+        })
+    })
+}
+
 pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<DependencyReport> {
     let appdir = fs::canonicalize(appdir)?;
     let mut w = Walk::default();
@@ -327,7 +357,21 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
             toolkit = toolkit_of(name);
         }
     }
-    if w.qt_wayland_plugin || matches!(toolkit, Some("GTK3") | Some("GTK4") | Some("Qt6")) {
+    // Qt finds its platform plugins in the AppImage: one that bundles the
+    // X11 plugin but not the Wayland one can only open windows on X11, even
+    // with Qt 6 (Gittyup, Nextcloud, nheko, RPCS3, Subsurface).
+    // (A linked libwayland-client says nothing here: Qt only uses Wayland
+    // through its plugin.)
+    let qt_x11_only = w.qt_xcb_plugin && !w.qt_wayland_plugin;
+    if start_scripts_force_x11(&appdir) {
+        // The app's own start script insists on X11 (linuxdeploy's GTK
+        // hook does, and so every Tauri AppImage); SAM's choice is overridden.
+        req.x11 = true;
+        req.wayland = false;
+    } else if qt_x11_only {
+        req.x11 = true;
+        req.wayland = false;
+    } else if w.qt_wayland_plugin || matches!(toolkit, Some("GTK3") | Some("GTK4") | Some("Qt6")) {
         req.wayland = true;
     }
     // Engines that build their own sandbox from namespaces.
@@ -518,6 +562,18 @@ fn list(v: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn start_scripts_that_force_x11() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("AppRun"), "#!/bin/sh\nexec \"$APPDIR/usr/bin/app\"\n").unwrap();
+        assert!(!super::start_scripts_force_x11(d.path()));
+        std::fs::create_dir(d.path().join("apprun-hooks")).unwrap();
+        std::fs::write(d.path().join("apprun-hooks/gtk.sh"), "# export GDK_BACKEND=x11 (commented)\nexport GDK_BACKEND=\"${GDK_BACKEND:-x11}\"\n").unwrap();
+        assert!(!super::start_scripts_force_x11(d.path()), "comments and defaults do not count");
+        std::fs::write(d.path().join("apprun-hooks/gtk.sh"), "export GDK_BACKEND=x11 # Crash with Wayland backend\n").unwrap();
+        assert!(super::start_scripts_force_x11(d.path()));
+    }
+
     use super::*;
     use std::os::unix::fs::symlink;
 

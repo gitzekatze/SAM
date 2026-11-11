@@ -247,6 +247,22 @@ fn base_for(cat: Category) -> PermissionSet {
 }
 
 /// Generate the recommended profile for an app.
+/// The app's own D-Bus name: its desktop file ID when that is a reverse-DNS
+/// name (`com.example.App`), never one in a desktop's namespace or one SAM
+/// treats as dangerous.
+pub fn own_bus_name(md: &AppImageMetadata) -> Option<String> {
+    let file = md.desktop_file.as_deref()?;
+    let id = std::path::Path::new(file).file_name()?.to_str()?.strip_suffix(".desktop")?;
+    let parts: Vec<&str> = id.split('.').collect();
+    let valid = parts.len() >= 3
+        && id.len() <= 200
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && !p.starts_with(|c: char| c.is_ascii_digit()) && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
+    let reserved = ["org.freedesktop.", "org.kde.", "org.gnome.", "org.gtk.", "org.mpris.", "ca.desrt.", "org.a11y.", "io.github.gitzekatze.SAM"];
+    (valid && !reserved.iter().any(|r| id.starts_with(r)) && sam_core::permissions::dangerous_bus_name(id).is_none()).then(|| id.to_string())
+}
+
 pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&DependencyReport>) -> Recommendation {
     let category = infer_category(md, file_name, report);
     let mut p = base_for(category);
@@ -325,6 +341,14 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
     }
     if XDG_DIR_KEYS.iter().any(|k| p.filesystem.xdg_access(k).is_granted()) {
         p.integrations.file_manager = true;
+    }
+    // The app may own the D-Bus name of its own ID (as Flatpak allows): many
+    // apps register it to hand a second start over to the first one.
+    if let Some(name) = own_bus_name(md) {
+        if !p.dbus.session.own.contains(&name) {
+            notes.push(format!("D-Bus: may own its own name {name}"));
+            p.dbus.session.own.push(name);
+        }
     }
     Recommendation { category, permissions: p, notes }
 }
@@ -581,5 +605,27 @@ mod tests {
             assert!(!p.permissions.filesystem.home, "{} must not grant full home", p.name);
             assert_eq!(p.permissions.dbus.system.mode, DbusMode::None);
         }
+    }
+}
+
+#[cfg(test)]
+mod own_name_tests {
+    use super::own_bus_name;
+    use sam_core::model::AppImageMetadata;
+
+    fn md(file: &str) -> AppImageMetadata {
+        AppImageMetadata { desktop_file: Some(file.into()), ..Default::default() }
+    }
+
+    #[test]
+    fn own_name_only_for_reverse_dns_ids() {
+        assert_eq!(
+            own_bus_name(&md("usr/share/applications/com.nextcloud.desktopclient.nextcloud.desktop")).as_deref(),
+            Some("com.nextcloud.desktopclient.nextcloud")
+        );
+        assert_eq!(own_bus_name(&md("nheko.desktop")), None, "not reverse DNS");
+        assert_eq!(own_bus_name(&md("org.freedesktop.Notifications.desktop")), None, "desktop service");
+        assert_eq!(own_bus_name(&md("org.kde.kwin.desktop")), None);
+        assert_eq!(own_bus_name(&AppImageMetadata::default()), None);
     }
 }

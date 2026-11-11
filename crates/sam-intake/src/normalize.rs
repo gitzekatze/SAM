@@ -11,7 +11,7 @@ use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
@@ -50,19 +50,19 @@ impl NormalizeReport {
 
 pub fn normalize(root: &Path, limits: &Limits, started: Instant) -> Result<NormalizeReport> {
     let mut r = NormalizeReport::default();
-    fs::set_permissions(root, fs::Permissions::from_mode(0o755))?;
+    fs::set_permissions(root, fs::Permissions::from_mode(0o755)).with_context(|| format!("permissions of {}", root.display()))?;
     walk(root, Path::new(""), limits, started, &mut r)?;
     Ok(r)
 }
 
 fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut NormalizeReport) -> Result<()> {
     let dir = root.join(rel);
-    for entry in fs::read_dir(&dir)? {
+    for entry in fs::read_dir(&dir).with_context(|| format!("reading {}", dir.display()))? {
         let entry = entry?;
         let name = entry.file_name();
         let rel_path = rel.join(&name);
         let path = entry.path();
-        let meta = fs::symlink_metadata(&path)?;
+        let meta = fs::symlink_metadata(&path).with_context(|| format!("inspecting {}", path.display()))?;
         let ft = meta.file_type();
 
         r.file_count += 1;
@@ -84,7 +84,7 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
                 r.removed_symlinks.push(format!("{display} -> {}", target.display()));
             }
         } else if ft.is_dir() {
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o755))?;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).with_context(|| format!("permissions of {}", path.display()))?;
             walk(root, &rel_path, limits, started, r)?;
         } else if ft.is_file() {
             let mode = meta.permissions().mode();
@@ -93,7 +93,7 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
             }
             let new_mode = if mode & 0o111 != 0 { 0o755 } else { 0o644 };
             if mode & 0o7777 != new_mode {
-                fs::set_permissions(&path, fs::Permissions::from_mode(new_mode))?;
+                fs::set_permissions(&path, fs::Permissions::from_mode(new_mode)).with_context(|| format!("permissions of {}", path.display()))?;
             }
             r.total_size += meta.len();
             if r.total_size > limits.max_bytes {

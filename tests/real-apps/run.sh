@@ -9,7 +9,8 @@
 #   python3 tests/real-apps/analyze.py "$WORK"
 #
 # Needs kwin_wayland, dbus-run-session and a built SAM (target/debug).
-# Set SESSION_SCRIPT to run your own script in the session instead.
+# Set SESSION_SCRIPT to run your own script in the session instead, and
+# SESSION_TIMEOUT (seconds, default 3600) for long queues.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 : "${WORK:?set WORK to a scratch folder}"
@@ -40,6 +41,6 @@ export TEST_ONE="$here/test-one.sh"
 # KWin splits the session command at spaces: start it through a link.
 ln -sf "${SESSION_SCRIPT:-$run/queue}" "$run/start"
 dbus-run-session --config-file="$R/session.conf" -- \
-  timeout 3600 kwin_wayland --virtual --xwayland --socket sam-test --width 1280 --height 800 \
+  timeout "${SESSION_TIMEOUT:-3600}" kwin_wayland --virtual --xwayland --socket sam-test --width 1280 --height 800 \
   --exit-with-session "$run/start" > "$R/kwin.log" 2>&1 || true
 rm -rf "$run"

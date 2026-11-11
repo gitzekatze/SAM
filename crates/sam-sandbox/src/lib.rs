@@ -56,6 +56,9 @@ const SHARE_BASE: &[&str] = &[
     "fonts",
     "fontconfig",
     "icons",
+    // Image loaders of GTK (gdk-pixbuf 2.44+): without their configuration
+    // GTK finds no loader and aborts at the first icon.
+    "glycin-loaders",
     "locale",
     "zoneinfo",
     "themes",
@@ -495,7 +498,14 @@ impl Bubblewrap {
 
         // Namespaces & process hygiene.
         a.push("--die-with-parent").push("--new-session");
-        a.push("--unshare-user").push("--unshare-pid").push("--unshare-ipc").push("--unshare-uts").push("--unshare-cgroup-try");
+        a.push("--unshare-user").push("--unshare-pid").push("--unshare-uts").push("--unshare-cgroup-try");
+        // X11 apps share the IPC namespace (as with Flatpak's --share=ipc):
+        // X11's shared-memory extension (MIT-SHM) needs the X server to see
+        // the app's SysV shared memory, or GTK and Electron apps die with
+        // BadAccess. X11 itself already exposes far more than that.
+        if !(p.display.x11 && h.sockets.x11.is_some()) {
+            a.push("--unshare-ipc");
+        }
         // The user's own ids, also when bwrap runs inside pasta's namespace
         // (Local network only), where it would otherwise map to root: apps
         // then refuse to run (Electron) and the D-Bus proxy rejects them.
@@ -709,12 +719,15 @@ impl Bubblewrap {
         }
         if p.display.x11 {
             match (&h.sockets.x11, &h.sockets.x11_display) {
-                (Some(sock), Some(display)) => {
-                    a.op2("--ro-bind", sock, sock);
-                    let num = sam_core::host::x11_display_number(display).unwrap_or_else(|| "0".into());
-                    a.setenv("DISPLAY", format!(":{num}"));
-                    if let Some(xa) = &h.sockets.xauthority {
-                        a.op2("--ro-bind", xa, format!("{run}/Xauthority"));
+                (Some(sock), _) => {
+                    // The display gets a number of its own inside (see
+                    // SANDBOX_X11_DISPLAY), with the cookie rewritten to match.
+                    let inner = sandbox_x11_display(&h.sockets);
+                    a.op2("--ro-bind", sock, format!("/tmp/.X11-unix/X{inner}"));
+                    a.setenv("DISPLAY", format!(":{inner}"));
+                    let cookie = ctx.runtime_dir.join("Xauthority");
+                    if h.sockets.xauthority.is_some() && cookie.exists() {
+                        a.op2("--ro-bind", &cookie, format!("{run}/Xauthority"));
                         a.setenv("XAUTHORITY", format!("{run}/Xauthority"));
                     }
                     if session_type == "tty" {
@@ -726,12 +739,16 @@ impl Bubblewrap {
         }
         a.setenv("XDG_SESSION_TYPE", session_type);
         let (qt, gdk, sdl) = match (p.display.wayland && h.sockets.wayland.is_some(), p.display.x11 && h.sockets.x11.is_some()) {
-            (true, true) => ("wayland;xcb", "wayland,x11", "wayland,x11"),
+            // Both: Qt chooses (Qt 6 takes Wayland in a Wayland session,
+            // Qt 5 X11). The list form "wayland;xcb" stops Qt before 5.12.
+            (true, true) => ("", "wayland,x11", "wayland,x11"),
             (true, false) => ("wayland", "wayland", "wayland"),
             (false, true) => ("xcb", "x11", "x11"),
             (false, false) => ("offscreen", "", ""),
         };
-        a.setenv("QT_QPA_PLATFORM", qt);
+        if !qt.is_empty() {
+            a.setenv("QT_QPA_PLATFORM", qt);
+        }
         if !gdk.is_empty() {
             a.setenv("GDK_BACKEND", gdk);
             a.setenv("SDL_VIDEODRIVER", sdl);
@@ -940,9 +957,81 @@ impl Bubblewrap {
 }
 
 /// Write the synthetic passwd/group files referenced by the command.
+/// Display number of X11 inside every sandbox.
+///
+/// X11 libraries look for the display's *abstract* socket first. SAM's
+/// Landlock layer blocks abstract sockets outside the sandbox, which newer
+/// libxcb answers by using the socket file, but the older libxcb many
+/// AppImages bundle stops at "permission denied" (Qt and Java apps then
+/// cannot open a window even with X11 allowed). Under a number the host does
+/// not use, the abstract lookup finds nothing ("not found"), and every libxcb
+/// goes on to the socket file, which is the real display.
+pub const SANDBOX_X11_DISPLAY: u32 = 99;
+
+fn sandbox_x11_display(s: &sam_core::host::Sockets) -> u32 {
+    let host = s.x11_display.as_deref().and_then(sam_core::host::x11_display_number).and_then(|n| n.parse::<u32>().ok());
+    if host == Some(SANDBOX_X11_DISPLAY) {
+        SANDBOX_X11_DISPLAY + 1
+    } else {
+        SANDBOX_X11_DISPLAY
+    }
+}
+
+/// Copies the X11 cookies for the host display into the launch folder, with
+/// the display number changed to the one the sandbox uses. Cookies for other
+/// displays are left out.
+fn write_xauthority(ctx: &LaunchContext) -> Result<()> {
+    let s = &ctx.host.sockets;
+    let (Some(src), Some(display)) = (&s.xauthority, &s.x11_display) else { return Ok(()) };
+    let Some(host_num) = sam_core::host::x11_display_number(display) else { return Ok(()) };
+    let Ok(data) = fs::read(src) else { return Ok(()) };
+    let out = rewrite_xauthority(&data, &host_num, &sandbox_x11_display(s).to_string());
+    let dest = ctx.runtime_dir.join("Xauthority");
+    fs::write(&dest, out)?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&dest, fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+/// Xauthority records are: family (u16), then address, number, name and
+/// data, each as a big-endian u16 length and the bytes. Records for display
+/// `from` (or for any display, empty number) are kept with number `to`.
+fn rewrite_xauthority(data: &[u8], from: &str, to: &str) -> Vec<u8> {
+    fn field(d: &[u8], pos: &mut usize) -> Option<Vec<u8>> {
+        let len = u16::from_be_bytes([*d.get(*pos)?, *d.get(*pos + 1)?]) as usize;
+        let v = d.get(*pos + 2..*pos + 2 + len)?.to_vec();
+        *pos += 2 + len;
+        Some(v)
+    }
+    let mut out = Vec::new();
+    let mut pos = 0;
+    while pos + 2 <= data.len() {
+        let family = [data[pos], data[pos + 1]];
+        pos += 2;
+        let (Some(addr), Some(num), Some(name), Some(cookie)) = (field(data, &mut pos), field(data, &mut pos), field(data, &mut pos), field(data, &mut pos))
+        else {
+            break;
+        };
+        if num != from.as_bytes() && !num.is_empty() {
+            continue;
+        }
+        out.extend_from_slice(&family);
+        for f in [addr.as_slice(), to.as_bytes(), name.as_slice(), cookie.as_slice()] {
+            out.extend_from_slice(&(f.len() as u16).to_be_bytes());
+            out.extend_from_slice(f);
+        }
+    }
+    out
+}
+
 pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
     fs::create_dir_all(&ctx.runtime_dir)?;
     let h = &ctx.host;
+    if ctx.permissions.display.x11 {
+        write_xauthority(ctx)?;
+    }
     fs::write(
         ctx.runtime_dir.join("passwd"),
         format!(
@@ -1056,12 +1145,30 @@ mod tests {
         assert!(has_seq(&a, &["--bind", "/data/homes/appimage-hello-1234", "/home/tester"]), "private home");
         assert!(!a.iter().any(|x| x == "/dev/dri"), "no GPU by default");
         assert!(!a.iter().any(|x| x.ends_with("/pipewire-0")), "no audio by default");
-        assert!(!a.iter().any(|x| x == "/tmp/.X11-unix/X0"), "no X11 by default");
+        assert!(!a.iter().any(|x| x.starts_with("/tmp/.X11-unix")), "no X11 by default");
+        assert!(a.iter().any(|x| x == "--unshare-ipc"), "own IPC namespace without X11");
         assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/wayland-0", "/run/user/1000/wayland-0"]));
         assert!(!a.iter().any(|x| x == "/home/tester/Documents"));
         assert!(has_seq(&a, &["--setenv", "APPDIR", "/opt/app"]));
         assert_eq!(a.last().unwrap(), "/opt/app/AppRun");
         assert!(!a.iter().any(|x| x == "/run/dbus/system_bus_socket"));
+    }
+
+    #[test]
+    fn xauthority_gets_the_sandbox_display_number() {
+        fn rec(num: &str, cookie: &[u8]) -> Vec<u8> {
+            let mut v = vec![0x01, 0x00]; // FamilyLocal
+            for f in [b"host".as_slice(), num.as_bytes(), b"MIT-MAGIC-COOKIE-1".as_slice(), cookie] {
+                v.extend_from_slice(&(f.len() as u16).to_be_bytes());
+                v.extend_from_slice(f);
+            }
+            v
+        }
+        let mut file = rec("0", b"secret-for-0");
+        file.extend(rec("1", b"secret-for-1"));
+        let out = rewrite_xauthority(&file, "0", "99");
+        assert_eq!(out, rec("99", b"secret-for-0"), "only display 0's cookie, renumbered");
+        assert!(rewrite_xauthority(&[1, 2, 3], "0", "99").is_empty(), "garbage is dropped");
     }
 
     #[test]
@@ -1088,9 +1195,10 @@ mod tests {
         assert!(has_seq(&a, &["--dev-bind-try", "/dev/dri", "/dev/dri"]));
         assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/pulse/native", "/run/user/1000/pulse/native"]));
         assert!(!a.iter().any(|x| x.ends_with("/pipewire-0")), "sound never brings the raw PipeWire socket");
-        assert!(has_seq(&a, &["--ro-bind", "/tmp/.X11-unix/X0", "/tmp/.X11-unix/X0"]));
-        assert!(has_seq(&a, &["--setenv", "DISPLAY", ":0"]));
-        assert!(has_seq(&a, &["--setenv", "QT_QPA_PLATFORM", "wayland;xcb"]));
+        assert!(has_seq(&a, &["--ro-bind", "/tmp/.X11-unix/X0", "/tmp/.X11-unix/X99"]), "the host display under the sandbox's own number");
+        assert!(!a.iter().any(|x| x == "--unshare-ipc"), "X11 apps share IPC for MIT-SHM");
+        assert!(has_seq(&a, &["--setenv", "DISPLAY", ":99"]));
+        assert!(!a.iter().any(|x| x == "QT_QPA_PLATFORM"), "with both displays Qt chooses itself");
         assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/bus", "/run/user/1000/bus"]));
         // Documents is never mounted read/write when granted read-only.
         assert!(!has_seq(&a, &["--bind-try", "/home/tester/Documents"]));
