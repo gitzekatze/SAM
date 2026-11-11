@@ -309,14 +309,13 @@ fn last_viewport_child(w: &gtk::Widget) -> Option<gtk::Widget> {
 
 fn render_widget(window: &gtk::Widget, widget: &gtk::Widget, file: &str) {
     let paintable = gtk::WidgetPaintable::new(Some(widget));
-    let (w, h) = (widget.width() as f64, widget.height() as f64);
+    // Cairo (GTK's renderer on Broadway and older systems) cannot make
+    // images taller than 32767 px; very long pages are cut at 16384.
+    let (w, h) = (widget.width() as f64, (widget.height() as f64).min(16384.0));
     if w < 1.0 || h < 1.0 {
         return;
     }
     let snapshot = gtk::Snapshot::new();
-    // The window background, so transparent content stays readable.
-    let bg = widget.color();
-    let _ = bg;
     paintable.snapshot(&snapshot, w, h);
     let Some(node) = snapshot.to_node() else { return };
     let Some(renderer) = window.native().and_then(|n| n.renderer()) else { return };

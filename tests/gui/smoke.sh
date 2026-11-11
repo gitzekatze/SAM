@@ -25,7 +25,7 @@ fail=0
 shot() {
     name=$1; shift
     "$bin/sam-jail-gui" --screenshot "$out/$name.png" --size 1180x800 --delay 2500 "$@" > "$out/$name.log" 2>&1 || {
-        echo "FAIL $name: exited with $?"; fail=1; return; }
+        echo "FAIL $name: exited with $?"; tail -n 30 "$out/$name.log"; fail=1; return; }
     if [ ! -s "$out/$name.png" ]; then
         echo "FAIL $name: no screenshot"; fail=1
     fi

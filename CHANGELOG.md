@@ -102,6 +102,8 @@ version.
   the app failed to start. The folder now stays read-only there, with a
   warning.
 - The filter buttons above the AppImage list fit the narrowest window.
+- On libadwaita 1.5 (Ubuntu 24.04) a narrow window now folds into one
+  column instead of overflowing.
 - The labels under an app's name are no longer cut off when they wrap onto
   a second line.
 

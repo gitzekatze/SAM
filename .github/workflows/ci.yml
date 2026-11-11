@@ -99,7 +99,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: window-screenshots-${{ runner.arch }}
-          path: ${{ runner.temp }}/gui/*.png
+          path: |
+            ${{ runner.temp }}/gui/*.png
+            ${{ runner.temp }}/gui/*.log
           if-no-files-found: ignore
 
       - name: Translations compile

@@ -91,7 +91,9 @@ impl App {
         let toasts = adw::ToastOverlay::new();
         toasts.set_child(Some(&split));
         window.set_content(Some(&toasts));
-        let bp = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 720sp").unwrap());
+        // px, not sp: libadwaita 1.5 (Ubuntu 24.04) did not apply an `sp`
+        // condition here, so narrow windows kept both columns and overflowed.
+        let bp = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 720px").unwrap());
         bp.add_setter(&split, "collapsed", Some(&true.to_value()));
         window.add_breakpoint(bp);
 
