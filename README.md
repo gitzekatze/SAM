@@ -165,6 +165,7 @@ You need Rust 1.92 or newer, GTK 4.12+, libadwaita 1.5+ and Bubblewrap.
 ```sh
 make                              # release build of the command line and the window
 make test                         # test suite, including real sandbox tests
+cargo fmt --all                   # the code format (rustfmt.toml); CI checks it
 sudo make install PREFIX=/usr
 ```
 

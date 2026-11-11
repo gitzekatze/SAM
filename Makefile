@@ -46,7 +46,7 @@ mo:
 	else echo "msgfmt not found: translations skipped"; fi
 
 pot:
-	xgettext -L Rust --keyword=tr --from-code=UTF-8 --package-name=sam --msgid-bugs-address=https://github.com/gitzekatze/SAM/issues -o po/sam.pot crates/sam-gtk/src/*.rs
+	xgettext -L Rust --keyword=tr --from-code=UTF-8 --package-name=sam --msgid-bugs-address=https://github.com/gitzekatze/SAM/issues -o po/sam.pot crates/sam-gtk/src/*.rs crates/sam-gtk/src/*/*.rs
 	for l in $(LINGUAS); do msgmerge --update --backup=none po/$$l.po po/sam.pot; done
 
 test:
