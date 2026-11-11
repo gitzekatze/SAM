@@ -42,7 +42,29 @@ pub fn check(appimage: &Path) -> UpdateStatus {
     }
 }
 
-fn check_source(appimage: &Path, source: &UpdateSource) -> Result<UpdateStatus> {
+/// The newest published file, as its update description (.zsync) states it.
+#[derive(Debug, Clone)]
+pub struct Published {
+    /// Where the AppImage itself is downloaded (https).
+    pub file_url: String,
+    /// SHA-1 of the published AppImage (lowercase hex).
+    pub sha1: String,
+    pub filename: Option<String>,
+    pub length: Option<u64>,
+    /// GitHub release tag, when the source is a release.
+    pub release: Option<String>,
+    /// A page for people (release page, or the file itself).
+    pub page: Option<String>,
+}
+
+/// What the source publishes: `Ok(None)` when one of the published files
+/// is exactly `appimage` (it is current).
+pub fn newest(appimage: &Path) -> Result<Option<Published>> {
+    let source = update_info::read(appimage).context("this AppImage does not say where updates are published")?;
+    newest_from(appimage, &source)
+}
+
+fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Published>> {
     // Candidate .zsync files: one fixed address, or every matching file of
     // a GitHub release (releases often hold rebuilds or variants side by side).
     let (zsyncs, release, page) = match source {
@@ -72,49 +94,112 @@ fn check_source(appimage: &Path, source: &UpdateSource) -> Result<UpdateStatus> 
         }
     };
     let local = sha1_of(appimage)?;
-    let mut newest = None;
+    let mut first = None;
     for url in &zsyncs {
-        let header = zsync_header(&fetch(url, Some(16 * 1024))?)?;
-        if header.sha1.eq_ignore_ascii_case(&local) {
-            return Ok(UpdateStatus {
-                state: UpdateState::Current,
-                latest: header.filename.or(release),
-                download_page: page.filter(|p| p.starts_with("https://")),
-                detail: "This is the newest published version.".into(),
-                checked_at: 0,
-            });
+        let h = zsync_header(&fetch(url, Some(16 * 1024))?)?;
+        if h.sha1.eq_ignore_ascii_case(&local) {
+            return Ok(None);
         }
-        newest.get_or_insert(header);
+        if first.is_none() {
+            first = Some((url.clone(), h));
+        }
     }
-    let file = newest.and_then(|h| h.filename);
-    let name = match (&file, &release) {
-        (Some(f), Some(r)) => format!("{f} (release {r})"),
-        (Some(f), None) => f.clone(),
-        (None, Some(r)) => format!("release {r}"),
-        (None, None) => "a newer version".into(),
-    };
-    Ok(UpdateStatus {
-        state: UpdateState::Available,
-        detail: format!(
-            "{} is published. Download it and replace the AppImage file; SAM then unpacks it again and keeps your settings.",
-            sam_core::util::display_safe(&name, 160)
-        ),
-        latest: file.or(release),
-        download_page: page.filter(|p| p.starts_with("https://")),
-        checked_at: 0,
+    let (zsync_url, h) = first.context("no update description")?;
+    let file_url = resolve(&zsync_url, h.url.as_deref().or(h.filename.as_deref()).context("the update description names no file")?)?;
+    Ok(Some(Published {
+        file_url,
+        sha1: h.sha1.to_ascii_lowercase(),
+        filename: h.filename,
+        length: h.length,
+        release,
+        page: page.filter(|p| p.starts_with("https://")),
+    }))
+}
+
+fn check_source(appimage: &Path, source: &UpdateSource) -> Result<UpdateStatus> {
+    Ok(match newest_from(appimage, source)? {
+        None => UpdateStatus { state: UpdateState::Current, detail: "This is the newest published version.".into(), ..Default::default() },
+        Some(p) => {
+            let name = match (&p.filename, &p.release) {
+                (Some(f), Some(r)) => format!("{f} (release {r})"),
+                (Some(f), None) => f.clone(),
+                (None, Some(r)) => format!("release {r}"),
+                (None, None) => "a newer version".into(),
+            };
+            UpdateStatus {
+                state: UpdateState::Available,
+                detail: format!("{} is published.", sam_core::util::display_safe(&name, 160)),
+                latest: p.filename.or(p.release),
+                download_page: p.page,
+                checked_at: 0,
+            }
+        }
     })
+}
+
+/// `file` relative to the address of the .zsync file (or absolute https).
+fn resolve(zsync_url: &str, file: &str) -> Result<String> {
+    if file.contains("://") {
+        if file.starts_with("https://") {
+            return Ok(file.to_string());
+        }
+        bail!("the update file is not offered over HTTPS");
+    }
+    if file.is_empty() || file.contains("..") || file.starts_with('/') {
+        bail!("the update description names an unusable file ({})", sam_core::util::display_safe(file, 80));
+    }
+    let base = zsync_url.rsplit_once('/').map(|(b, _)| b).context("bad update address")?;
+    Ok(format!("{base}/{file}"))
+}
+
+/// Downloads the published file to `dest` (a new file next to the old one)
+/// and checks it against the SHA-1 of the update description. A partial or
+/// wrong file is removed.
+pub fn download(p: &Published, dest: &Path) -> Result<()> {
+    let res = download_inner(p, dest);
+    if res.is_err() {
+        let _ = std::fs::remove_file(dest);
+    }
+    res
+}
+
+fn download_inner(p: &Published, dest: &Path) -> Result<()> {
+    if !p.file_url.starts_with("https://") {
+        bail!("the update file is not offered over HTTPS");
+    }
+    let curl = sam_core::util::which("curl").context("curl is not installed")?;
+    let mut cmd = Command::new(curl);
+    cmd.args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
+        .args(["--max-redirs", "5", "--connect-timeout", "15", "--speed-limit", "1024", "--speed-time", "60"])
+        .args(["--user-agent", "SAM-AppImage-update-check"]);
+    if let Some(len) = p.length {
+        cmd.args(["--max-filesize", &(len + 1).to_string()]);
+    }
+    let out = cmd.arg("--output").arg(dest).arg("--").arg(&p.file_url).stdin(Stdio::null()).output().context("starting curl")?;
+    if !out.status.success() {
+        bail!("download failed: {}", sam_core::util::display_safe(String::from_utf8_lossy(&out.stderr).trim().trim_start_matches("curl: "), 200));
+    }
+    let got = sha1_of(dest)?;
+    if got != p.sha1 {
+        bail!("the downloaded file does not match the published checksum; it was deleted");
+    }
+    Ok(())
 }
 
 /// The fields of a zsync header SAM needs.
 struct ZsyncHeader {
     sha1: String,
     filename: Option<String>,
+    url: Option<String>,
+    length: Option<u64>,
 }
 
 fn zsync_header(data: &[u8]) -> Result<ZsyncHeader> {
     let text = String::from_utf8_lossy(data);
     let mut sha1 = None;
     let mut filename = None;
+    let mut url = None;
+    let mut length = None;
     for line in text.lines() {
         if line.is_empty() {
             break; // end of the header; block checksums follow
@@ -122,11 +207,13 @@ fn zsync_header(data: &[u8]) -> Result<ZsyncHeader> {
         match line.split_once(": ") {
             Some(("SHA-1", v)) if v.len() == 40 && v.chars().all(|c| c.is_ascii_hexdigit()) => sha1 = Some(v.to_string()),
             Some(("Filename", v)) => filename = Some(sam_core::util::display_safe(v, 200)),
+            Some(("URL", v)) if url.is_none() => url = Some(v.trim().to_string()),
+            Some(("Length", v)) => length = v.trim().parse().ok(),
             _ => {}
         }
     }
     let Some(sha1) = sha1 else { bail!("the update description (.zsync) has no SHA-1") };
-    Ok(ZsyncHeader { sha1, filename })
+    Ok(ZsyncHeader { sha1, filename, url, length })
 }
 
 fn sha1_of(path: &Path) -> Result<String> {
@@ -188,6 +275,16 @@ mod tests {
         assert_eq!(h.sha1, "0123456789abcdef0123456789abcdef01234567");
         assert_eq!(h.filename.as_deref(), Some("App-2.0-x86_64.AppImage"));
         assert!(zsync_header(b"zsync: 0.6.2\n\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n").is_err(), "only the header counts");
+    }
+
+    #[test]
+    fn resolves_file_addresses() {
+        let z = "https://github.com/o/r/releases/download/v1/App.AppImage.zsync";
+        assert_eq!(resolve(z, "App.AppImage").unwrap(), "https://github.com/o/r/releases/download/v1/App.AppImage");
+        assert_eq!(resolve(z, "https://cdn.example.org/App.AppImage").unwrap(), "https://cdn.example.org/App.AppImage");
+        assert!(resolve(z, "http://cdn.example.org/App.AppImage").is_err());
+        assert!(resolve(z, "../../evil").is_err());
+        assert!(resolve(z, "").is_err());
     }
 
     #[test]

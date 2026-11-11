@@ -1,0 +1,22 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-update 1 2026-11-10 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.SH NAME
+sam\-jail\-update \- Download the newest published version of an app\*(Aqs AppImage and put it in place of the old one (kept, so `\-\-undo` can go back). Settings and files stay
+.SH SYNOPSIS
+\fBsam\-jail update\fR [\fB\-\-undo\fR] [\fB\-\-accept\-key\-change\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
+.SH DESCRIPTION
+Download the newest published version of an app\*(Aqs AppImage and put it in place of the old one (kept, so `\-\-undo` can go back). Settings and files stay
+.SH OPTIONS
+.TP
+\fB\-\-undo\fR
+Go back to the version the last update replaced
+.TP
+\fB\-\-accept\-key\-change\fR
+Accept a new file signed with another key than the installed one
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIAPP\fR>
+

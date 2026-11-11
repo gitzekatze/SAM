@@ -244,6 +244,16 @@ SAM opens* is on (off by default). It uses `curl`, HTTPS only (redirects
 included), with a generic user agent; nothing about you or your apps is
 sent, and nothing is downloaded or installed.
 
+**Updating** (*Update Now*, `sam-jail update`) is the one time SAM
+downloads a file, and only when you ask:
+- The new AppImage comes from the address its update description names,
+  over HTTPS. It is written next to the old file as a hidden
+  `.….sam-download` file.
+- It must match the published SHA-1 and be an AppImage.
+- It must be signed like the installed version. A new or missing key stops
+  the update unless you accept it.
+- The old file moves into SAM's data folder, so you can go back.
+
 ---
 
 ## Signatures

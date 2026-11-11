@@ -170,6 +170,18 @@ pub(crate) enum Cmd {
         #[arg(long)]
         if_due: bool,
     },
+    /// Download the newest published version of an app's AppImage and put it
+    /// in place of the old one (kept, so `--undo` can go back). Settings and
+    /// files stay.
+    Update {
+        app: String,
+        /// Go back to the version the last update replaced.
+        #[arg(long, conflicts_with = "accept_key_change")]
+        undo: bool,
+        /// Accept a new file signed with another key than the installed one.
+        #[arg(long)]
+        accept_key_change: bool,
+    },
     /// Disk space of one app, or of every app.
     Space { app: Option<String> },
     /// Delete an app's unpacked copy; the next start unpacks it again.

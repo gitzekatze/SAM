@@ -347,6 +347,19 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
+        Cmd::Update { app: q, undo, accept_key_change } => {
+            let e = if undo { app.undo_update(&q)? } else { app.update(&q, accept_key_change)? };
+            out.emit(&AppSummary::from_entry(&e), || {
+                if undo {
+                    println!("{} is back to {}", e.display_name(), tildify(&e.source_path));
+                } else {
+                    println!("{} updated: {}", e.display_name(), tildify(&e.source_path));
+                    if let Some(b) = &e.update_backup {
+                        println!("  previous version kept: {} (sam-jail update {} --undo)", tildify(&b.file), e.id);
+                    }
+                }
+            });
+        }
         Cmd::Space { app: q } => {
             let entries = match &q {
                 Some(q) => vec![app.resolve(q)?],

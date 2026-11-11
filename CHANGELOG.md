@@ -64,7 +64,11 @@ version.
   update information: zsync or GitHub releases) and tells whether a newer
   version exists, with a link to download it. Only on request (*Check* on
   an app's page, `sam-jail updates`), or once a day at start when turned on
-  in Preferences. Nothing is downloaded or replaced yet.
+  in Preferences.
+- *Update Now* (`sam-jail update APP`) downloads the newest version, checks
+  it against the published checksum and the signing key, and puts it in
+  place; settings stay. The replaced version is kept, and *Go back to the
+  previous version* (`--undo`) restores it.
 - Disk space per app (details, Diagnostics, `sam-jail space`) and *Free
   Space*: deletes the unpacked copy, which is unpacked again before the next
   start (`sam-jail free-space`).

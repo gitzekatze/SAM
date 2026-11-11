@@ -253,6 +253,11 @@ impl Sam {
             if overlay.exists() {
                 remove_tree(&overlay)?;
             }
+            // The version an update replaced.
+            let previous = self.paths.data_dir.join("update-backups").join(&entry.id);
+            if previous.exists() {
+                remove_tree(&previous)?;
+            }
         }
         self.registry().remove(&entry.id)?;
         Ok((entry, problems))
@@ -319,6 +324,7 @@ impl Sam {
         let home = tree_size(&self.paths.app_home(&entry.id));
         let overlay = tree_size(&self.paths.data_dir.join("overlays").join(&entry.id));
         let logs = tree_size(&self.paths.app_logs_dir(&entry.id));
+        let previous = tree_size(&self.paths.data_dir.join("update-backups").join(&entry.id));
         DiskUsage {
             id: entry.id.clone(),
             name: entry.display_name().to_string(),
@@ -326,7 +332,8 @@ impl Sam {
             home,
             overlay,
             logs,
-            total: unpacked + home + overlay + logs,
+            previous,
+            total: unpacked + home + overlay + logs + previous,
             can_free: unpacked > 0 && entry.source_path.exists(),
         }
     }
@@ -436,4 +443,126 @@ impl Sam {
         }
         Ok(out)
     }
+
+    /// Downloads the newest published version of an app's AppImage and
+    /// puts it in place of the old one:
+    /// 1. download next to the old file (hidden, `.….sam-download`) and
+    ///    check it against the published SHA-1;
+    /// 2. it must be an AppImage, signed like the old one (or
+    ///    `accept_key_change`);
+    /// 3. the old file moves to `<data>/update-backups/<id>/` (so it is not
+    ///    listed as a second AppImage), the new one takes its new name next
+    ///    to it, and the sandbox is unpacked again with its settings kept.
+    pub fn update(&self, query: &str, accept_key_change: bool) -> Result<AppEntry> {
+        let entry = self.resolve(query)?;
+        self.ensure_not_running(&entry, "update it")?;
+        let old = entry.source_path.clone();
+        if !old.exists() {
+            bail!("the AppImage {} is missing; relocate it first", tildify(&old));
+        }
+        let Some(p) = crate::updates::newest(&old)? else {
+            bail!("{} is already the newest published version", sam_core::util::display_safe(entry.display_name(), 80));
+        };
+        let dir = old.parent().context("no folder")?.to_path_buf();
+        let old_name = old.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        // The new file keeps its published name, if that is a plain name and
+        // does not clash with another file.
+        let name = p
+            .filename
+            .clone()
+            .filter(|n| !n.is_empty() && !n.starts_with('.') && !n.contains('/') && n.len() < 200)
+            .filter(|n| *n == old_name || !dir.join(n).exists())
+            .unwrap_or(old_name.clone());
+        let target = dir.join(&name);
+        let tmp = dir.join(format!(".{name}.sam-download"));
+        crate::updates::download(&p, &tmp)?;
+        // From here on, any error removes the download again.
+        let placed = (|| -> Result<PathBuf> {
+            if !inspect(&tmp)?.is_appimage() {
+                bail!("the downloaded file is not an AppImage; it was deleted");
+            }
+            let new_sig = sam_detect::signature::check(&tmp);
+            if let Some(before) = signing_key_change(entry.signature.as_ref(), &new_sig) {
+                if !accept_key_change {
+                    bail!(
+                        "signing key changed: the installed version was {before}, the new file is {}. The download was deleted; update again and accept the change only if you trust it.",
+                        sig_words(&new_sig)
+                    );
+                }
+            }
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = fs::metadata(&old).map(|m| m.permissions().mode()).unwrap_or(0o755) | 0o500;
+                fs::set_permissions(&tmp, fs::Permissions::from_mode(mode & 0o777))?;
+            }
+            // Keep the old version, then put the new one in place.
+            let backup_dir = self.paths.data_dir.join("update-backups").join(&entry.id);
+            if backup_dir.exists() {
+                remove_tree(&backup_dir)?;
+            }
+            fs::create_dir_all(&backup_dir)?;
+            let backup = backup_dir.join(&old_name);
+            move_file(&old, &backup)?;
+            if let Err(e) = fs::rename(&tmp, &target) {
+                let _ = move_file(&backup, &old);
+                return Err(anyhow::Error::new(e).context("putting the new version in place"));
+            }
+            Ok(backup)
+        })();
+        let backup = match placed {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = fs::remove_file(&tmp);
+                return Err(e);
+            }
+        };
+        self.relocate(&entry.id, &target)?;
+        let mut e = self.reextract(&entry.id, false)?;
+        e.update_backup = Some(UpdateBackup { file: backup, original_path: old, replaced_at: now() });
+        e.update = Some(UpdateStatus {
+            state: sam_core::model::UpdateState::Current,
+            latest: p.filename.or(p.release),
+            download_page: p.page,
+            detail: "Updated; this is the newest published version.".into(),
+            checked_at: now(),
+        });
+        self.registry().save(&mut e)?;
+        Ok(e)
+    }
+
+    /// Goes back to the version an update replaced. The newer file is kept
+    /// in its place, so going back can itself be undone.
+    pub fn undo_update(&self, query: &str) -> Result<AppEntry> {
+        let entry = self.resolve(query)?;
+        self.ensure_not_running(&entry, "go back")?;
+        let b = entry.update_backup.clone().context("there is no earlier version to go back to")?;
+        if !b.file.exists() {
+            bail!("the earlier version is no longer there ({})", tildify(&b.file));
+        }
+        if b.original_path.exists() && b.original_path != entry.source_path {
+            bail!("{} exists again; move it away first", tildify(&b.original_path));
+        }
+        let current = entry.source_path.clone();
+        let keep = b.file.with_file_name(current.file_name().context("no name")?);
+        if current.exists() {
+            move_file(&current, &keep)?;
+        }
+        move_file(&b.file, &b.original_path)?;
+        self.relocate(&entry.id, &b.original_path)?;
+        let mut e = self.reextract(&entry.id, false)?;
+        e.update_backup = Some(UpdateBackup { file: keep, original_path: current, replaced_at: now() });
+        e.update = None;
+        self.registry().save(&mut e)?;
+        Ok(e)
+    }
+}
+
+/// Rename, or copy and delete across file systems.
+fn move_file(from: &Path, to: &Path) -> Result<()> {
+    if fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    fs::copy(from, to).with_context(|| format!("copying {} to {}", from.display(), to.display()))?;
+    fs::remove_file(from).with_context(|| format!("removing {}", from.display()))?;
+    Ok(())
 }

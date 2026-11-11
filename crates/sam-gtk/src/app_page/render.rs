@@ -178,6 +178,15 @@ impl AppPage {
                 });
                 row.add_suffix(&open);
             }
+            let now = gtk::Button::builder().label(tr("Update Now")).valign(gtk::Align::Center).build();
+            now.add_css_class("suggested-action");
+            let w = Rc::downgrade(self);
+            now.connect_clicked(move |b| {
+                if let Some(me) = w.upgrade() {
+                    me.run_update(b);
+                }
+            });
+            row.add_suffix(&now);
             self.add_dynamic(&self.notices, &row);
         }
         if let (Some(e), Some(s)) = (entry.as_ref(), summary.as_ref()) {
@@ -425,6 +434,16 @@ impl AppPage {
         let row = adw::ActionRow::builder().title(tr("Last start")).subtitle(esc(&last_text)).build();
         row.add_prefix(&gtk::Image::from_icon_name("document-open-recent-symbolic"));
         self.add_dynamic(&g, &row);
+        // Going back after an update (the replaced version is kept).
+        if let Some(prev) = entry_backup_name(e) {
+            self.button_row(
+                &g,
+                "edit-undo-symbolic",
+                "Go back to the previous version",
+                &format!("Puts {prev} back in place of the updated AppImage. The updated file is kept, so you can switch again."),
+                |me| me.simple_with(vec!["update".into(), me.app_id.clone(), "--undo".into()], "Back to the previous version", true),
+            );
+        }
         // Check the setup (sam-jail doctor <app>), results right below.
         self.button_row(
             &g,
@@ -662,4 +681,10 @@ impl AppPage {
             }
         });
     }
+}
+
+/// File name of the version the last update replaced, if it is kept.
+fn entry_backup_name(e: &Value) -> Option<String> {
+    let f = util::str_of(e, "update_backup.original_path");
+    (!f.is_empty()).then(|| util::plain(f.rsplit('/').next().unwrap_or(f)))
 }

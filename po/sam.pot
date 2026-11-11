@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: sam\n"
 "Report-Msgid-Bugs-To: https://github.com/gitzekatze/SAM/issues\n"
-"POT-Creation-Date: 2026-11-11 16:37+0100\n"
+"POT-Creation-Date: 2026-11-11 16:58+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -49,7 +49,7 @@ msgstr ""
 msgid "Sandbox Check"
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:124 crates/sam-gtk/src/app_page/render.rs:589
+#: crates/sam-gtk/src/pages.rs:124 crates/sam-gtk/src/app_page/render.rs:608
 msgid "Updates"
 msgstr ""
 
@@ -185,7 +185,7 @@ msgid "Disk space of sandboxed apps"
 msgstr ""
 
 #: crates/sam-gtk/src/pages.rs:654 crates/sam-gtk/src/pages.rs:681
-#: crates/sam-gtk/src/app_page/render.rs:617
+#: crates/sam-gtk/src/app_page/render.rs:636
 msgid "Checking…"
 msgstr ""
 
@@ -334,6 +334,30 @@ msgstr ""
 msgid ""
 "Its private folder (logins, settings, saved files) and logs stay. A new "
 "sandbox for this AppImage picks them up again."
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/data.rs:340
+msgid "Update Now?"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/data.rs:340
+msgid "Update"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/data.rs:344
+msgid "Downloading the update…"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/data.rs:349
+msgid "Signed With Another Key"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/data.rs:349
+msgid "Update Anyway"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/data.rs:359
+msgid "Updated; the previous version is kept"
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/mod.rs:105
@@ -487,57 +511,61 @@ msgstr ""
 msgid "Open Download Page"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:214
+#: crates/sam-gtk/src/app_page/render.rs:181
+msgid "Update Now"
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/render.rs:223
 msgid "Settings not reviewed yet"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:215
+#: crates/sam-gtk/src/app_page/render.rs:224
 msgid "SAM chose these settings for you. Look through them, then confirm."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:218
+#: crates/sam-gtk/src/app_page/render.rs:227
 msgid "Mark as Reviewed"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:234
+#: crates/sam-gtk/src/app_page/render.rs:243
 msgid "Got It"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:425
+#: crates/sam-gtk/src/app_page/render.rs:434
 msgid "Last start"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:508
+#: crates/sam-gtk/src/app_page/render.rs:527
 msgid "Starting a diagnostic run (closes after 30 s)…"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:519
+#: crates/sam-gtk/src/app_page/render.rs:538
 msgid "Bug report copied"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:602
+#: crates/sam-gtk/src/app_page/render.rs:621
 msgid "Check"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:604
+#: crates/sam-gtk/src/app_page/render.rs:623
 msgid "Ask the update source whether a newer version is published"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:617
+#: crates/sam-gtk/src/app_page/render.rs:636
 msgid "Disk space"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:620
+#: crates/sam-gtk/src/app_page/render.rs:639
 msgid "Free Space"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:623
+#: crates/sam-gtk/src/app_page/render.rs:642
 msgid ""
 "Delete the unpacked copy. Settings and files stay; the next start unpacks "
 "the AppImage again."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:657
+#: crates/sam-gtk/src/app_page/render.rs:676
 msgid "Locate the AppImage"
 msgstr ""
 

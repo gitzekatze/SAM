@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
-use sam_core::model::UpdateStatus;
+use sam_core::model::{UpdateBackup, UpdateStatus};
 use sam_core::permissions::*;
 use sam_core::risk::{assess, RiskAssessment};
 use sam_core::util::{now, tildify};
@@ -199,6 +199,8 @@ pub struct DiskUsage {
     pub home: u64,
     pub overlay: u64,
     pub logs: u64,
+    /// The version an update replaced (kept for going back).
+    pub previous: u64,
     pub total: u64,
     /// The unpacked copy can be deleted (the AppImage is still there).
     pub can_free: bool,
@@ -346,7 +348,7 @@ mod tests {
 }
 
 /// Short description of a signature for messages.
-fn sig_words(s: &sam_core::model::SignatureInfo) -> String {
+pub(crate) fn sig_words(s: &sam_core::model::SignatureInfo) -> String {
     use sam_core::model::SignatureState as S;
     let key = s.fingerprint.as_deref().map(|f| format!(" (key {})", &f[f.len().saturating_sub(16)..])).unwrap_or_default();
     match s.state {
@@ -360,7 +362,7 @@ fn sig_words(s: &sam_core::model::SignatureInfo) -> String {
 /// What the earlier signature was, when the new file is signed with another
 /// key or no longer signed. An unsigned app that stays unsigned, or a first
 /// signature, is no change worth a warning.
-fn signing_key_change(old: Option<&sam_core::model::SignatureInfo>, new: &sam_core::model::SignatureInfo) -> Option<String> {
+pub(crate) fn signing_key_change(old: Option<&sam_core::model::SignatureInfo>, new: &sam_core::model::SignatureInfo) -> Option<String> {
     use sam_core::model::SignatureState as S;
     let old = old?;
     let old_fp = old.fingerprint.as_deref().filter(|_| old.state == S::Valid)?;

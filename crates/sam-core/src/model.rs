@@ -362,6 +362,20 @@ pub struct AppEntry {
     pub signing_key_changed: Option<String>,
     /// Result of the last update check (`sam-jail updates`).
     pub update: Option<UpdateStatus>,
+    /// The version an update replaced, kept in SAM's data folder so the
+    /// update can be undone (`sam-jail update APP --undo`).
+    pub update_backup: Option<UpdateBackup>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UpdateBackup {
+    /// The kept file (in `<data>/update-backups/<id>/`).
+    pub file: PathBuf,
+    /// Where it was before the update.
+    pub original_path: PathBuf,
+    /// When the update ran (Unix seconds).
+    pub replaced_at: i64,
 }
 
 /// Whether a newer version of an AppImage is published.

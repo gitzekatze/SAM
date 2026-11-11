@@ -111,7 +111,8 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `config show/get/set/put/path` | configuration; `put` reads it on stdin |
 | `permissions` | the catalogue: every key with title, explanation, risk |
 | `updates [APP] [--if-due]` | `{apps: [{id, update: {state, latest, download_page, detail, checked_at}}]}`; `state` is `available`, `current`, `failed` or `unsupported` |
-| `space [APP]` | `{apps: [{id, name, unpacked, home, overlay, logs, total, can_free}], total}` (bytes) |
+| `update APP [--undo] [--accept-key-change]` | app summary; an error starting with `signing key changed` means the new file is signed with another key |
+| `space [APP]` | `{apps: [{id, name, unpacked, home, overlay, logs, previous, total, can_free}], total}` (bytes) |
 | `free-space APP` | `{freed}` (bytes) |
 | `cleanup [--data] [--list]` | data left behind, or what was removed |
 | `onboarding [done]` | `{done}` |

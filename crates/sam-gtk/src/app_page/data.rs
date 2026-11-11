@@ -323,4 +323,46 @@ impl AppPage {
             app.refresh_registered().await;
         });
     }
+
+    /// Downloads and installs the newest version (`sam-jail update`), after
+    /// asking; asks again when the new file is signed with another key.
+    pub(super) fn run_update(self: &Rc<Self>, button: &gtk::Button) {
+        let Some(app) = self.app() else { return };
+        let me = self.clone();
+        let button = button.clone();
+        glib::spawn_future_local(async move {
+            let latest =
+                me.entry().map(|e| util::str_of(&e, "update.latest").to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| "the newest version".into());
+            let body = format!(
+                "SAM downloads {} from the address the AppImage names, checks it against the published checksum, and puts it in place of the current file. The current version is kept, so you can go back. Settings and files stay.",
+                util::plain(&latest)
+            );
+            if !window::confirm(&app.window, &tr("Update Now?"), &body, &tr("Update"), false).await {
+                return;
+            }
+            button.set_sensitive(false);
+            app.toast(&tr("Downloading the update…"));
+            let mut args = vec!["update".to_string(), me.app_id.clone()];
+            let mut result = app.backend.call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None).await;
+            if let Err(e) = &result {
+                if e.starts_with("signing key changed") {
+                    let ok = window::confirm(&app.window, &tr("Signed With Another Key"), e, &tr("Update Anyway"), true).await;
+                    if ok {
+                        args.push("--accept-key-change".into());
+                        result = app.backend.call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None).await;
+                    } else {
+                        result = Ok(Value::Null);
+                    }
+                }
+            }
+            match result {
+                Ok(v) if !v.is_null() => app.toast(&tr("Updated; the previous version is kept")),
+                Ok(_) => {}
+                Err(e) => app.report_error(&e),
+            }
+            button.set_sensitive(true);
+            me.reload();
+            app.refresh_apps().await;
+        });
+    }
 }
