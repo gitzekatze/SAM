@@ -201,7 +201,13 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         appdir_overlay: None,
         sam_dirs: vec![paths.config_dir.clone(), paths.data_dir.clone(), paths.extracted_root(&cfg.extraction.location)],
     };
-    if perms.advanced.writable_appdir {
+    if perms.advanced.writable_appdir && !sam_core::host::bwrap_supports_overlay() {
+        warnings.push(Warning::warn(
+            "writable-appdir-unavailable",
+            "Writable app folder unavailable",
+            "The writable app folder needs Bubblewrap 0.10 or newer; the installed one is older, so the app folder stays read-only. Update Bubblewrap to use this setting.",
+        ));
+    } else if perms.advanced.writable_appdir {
         let base = paths.data_dir.join("overlays").join(&app.id);
         fs::create_dir_all(base.join("upper"))?;
         fs::create_dir_all(base.join("work"))?;

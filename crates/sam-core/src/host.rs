@@ -60,6 +60,37 @@ impl UsernsStatus {
     }
 }
 
+/// Whether the installed Bubblewrap supports overlays (`--overlay-src`,
+/// Bubblewrap 0.10+), which the writable app folder needs. Ubuntu 24.04 and
+/// Debian 12 ship older ones. Asked once per process.
+pub fn bwrap_supports_overlay() -> bool {
+    static CHECKED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *CHECKED.get_or_init(|| {
+        let Some(path) = crate::util::which("bwrap") else { return false };
+        let out = std::process::Command::new(path).arg("--version").output();
+        let text = out.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+        version_at_least(&text, (0, 10))
+    })
+}
+
+/// "bubblewrap 0.13.1" -> true for (0, 10).
+fn version_at_least(text: &str, want: (u32, u32)) -> bool {
+    let v = text.split_whitespace().find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit())).unwrap_or("");
+    let mut it = v.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+    (it.next().unwrap_or(0), it.next().unwrap_or(0)) >= want
+}
+
+#[cfg(test)]
+mod version_tests {
+    #[test]
+    fn bubblewrap_versions() {
+        assert!(super::version_at_least("bubblewrap 0.13.1", (0, 10)));
+        assert!(super::version_at_least("bubblewrap 0.10.0\n", (0, 10)));
+        assert!(!super::version_at_least("bubblewrap 0.9.0", (0, 10)));
+        assert!(!super::version_at_least("", (0, 10)));
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Tool {
     pub path: PathBuf,

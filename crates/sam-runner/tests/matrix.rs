@@ -314,7 +314,8 @@ fn permission_matrix() {
     let mut p = base();
     p.advanced.writable_appdir = true;
     let r = launch("writable-appdir", p);
-    assert_eq!(r["APPDIR_WRITE"], "yes");
+    // Bubblewrap before 0.10 (Ubuntu 24.04) has no overlays: read-only then.
+    assert_eq!(r["APPDIR_WRITE"], if sam_core::host::bwrap_supports_overlay() { "yes" } else { "no" });
     let extracted = app.resolve(&id).unwrap().extraction.unwrap().appdir;
     assert!(!Path::new(&extracted).join("portable.ini").exists(), "extracted copy unchanged");
 

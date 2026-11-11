@@ -113,7 +113,7 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
     {
         push(s("network", "The app tried to go online", "Network requests failed because the app has no internet access.", set("network.mode", "full"), RiskLevel::High));
     }
-    if has(&["read-only file system"]) && low.contains("/opt/app") && !p.advanced.writable_appdir {
+    if has(&["read-only file system"]) && low.contains("/opt/app") && !p.advanced.writable_appdir && sam_core::host::bwrap_supports_overlay() {
         push(s("writable-appdir", "The app writes into its own folder", "Portable apps save settings next to themselves. Give it a writable app folder (changes go to a separate layer).", set("advanced.writable_appdir", "true"), RiskLevel::Low));
     }
     for line in output.lines() {
@@ -219,6 +219,8 @@ pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
             && !matches!(st.action, FixAction::None)
             // A terminal program has no window: display steps cannot help.
             && !(e.metadata.terminal && matches!(st.id.as_str(), "x11" | "gpu"))
+            // Needs Bubblewrap 0.10+ (overlays).
+            && !(st.id == "writable-appdir" && !sam_core::host::bwrap_supports_overlay())
             && changes_something(p, e.profile.compatibility_mode, &e.profile.args, &st.action);
         seen.push(st.id.clone());
         keep

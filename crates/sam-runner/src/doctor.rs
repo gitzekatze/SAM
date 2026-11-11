@@ -102,6 +102,11 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         None => check("dbus", "Session D-Bus", CheckStatus::Warn, "session bus socket not found"),
     });
     c.push(check("gpu", "GPU devices", if host.gpu_devices.is_empty() { CheckStatus::Warn } else { CheckStatus::Ok }, if host.gpu_devices.is_empty() { "no /dev/dri devices".to_string() } else { host.gpu_devices.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ") }));
+    c.push(if sam_core::host::bwrap_supports_overlay() {
+        check("overlay", "Writable app folder", CheckStatus::Ok, "Bubblewrap supports overlays")
+    } else {
+        check("overlay", "Writable app folder", CheckStatus::Info, "needs Bubblewrap 0.10 or newer; app folders stay read-only")
+    });
     c.push(match crate::netns::pasta_usable() {
         Ok(p) => check("pasta", "Local network only", CheckStatus::Ok, format!("pasta with --splice-only ({})", tildify(&p))),
         Err(e) => check("pasta", "Local network only", CheckStatus::Warn, format!("{e:#}")),
