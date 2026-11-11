@@ -39,10 +39,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # A stuck package mirror fails the step after 10 minutes instead of
+      # holding the whole job for 45.
       - name: System packages
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends \
+          sudo apt-get update -q -o Acquire::Retries=3 -o Acquire::http::Timeout=30
+          sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
             libgtk-4-dev libadwaita-1-dev pkg-config \
             bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3 \
             desktop-file-utils appstream gettext libgtk-4-bin dbus
