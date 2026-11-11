@@ -281,9 +281,11 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
         if req.x11 && !req.wayland {
             p.display.x11 = true;
             notes.push("X11 enabled: no Wayland support detected (uses XWayland)".into());
-        } else if req.x11 && matches!(req.toolkit.as_str(), "Electron" | "Java" | "Unknown") {
+        } else if req.x11 && (req.java || matches!(req.toolkit.as_str(), "Electron" | "Java" | "Unknown")) {
+            // Java's AWT and JavaFX draw through X11 only, whatever toolkit
+            // they load (JavaFX uses GTK on X11).
             p.display.x11 = true;
-            notes.push(format!("X11 enabled: {} apps usually need XWayland", req.toolkit));
+            notes.push(format!("X11 enabled: {} apps usually need XWayland", if req.java { "Java" } else { req.toolkit.as_str() }));
         }
         if !req.x11 && !req.wayland && r.elf_count > 0 && req.toolkit == "Unknown" {
             // Nothing linked: the app loads its graphics stack at start

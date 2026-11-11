@@ -253,7 +253,8 @@ fn resolve_entry_binary(appdir: &Path, opts: &AnalyzeOptions) -> (Option<PathBuf
 /// X11 only (GDK_BACKEND=x11, QT_QPA_PLATFORM=xcb, SDL_VIDEODRIVER=x11),
 /// ignoring comments.
 fn start_scripts_force_x11(appdir: &Path) -> bool {
-    let mut scripts = vec![appdir.join("AppRun")];
+    // AppRun.env: appimage-builder's environment file.
+    let mut scripts = vec![appdir.join("AppRun"), appdir.join("AppRun.env")];
     if let Ok(rd) = fs::read_dir(appdir.join("apprun-hooks")) {
         scripts.extend(rd.flatten().map(|e| e.path()));
     }
@@ -268,8 +269,18 @@ fn start_scripts_force_x11(appdir: &Path) -> bool {
         }
         String::from_utf8_lossy(&text).lines().any(|l| {
             let code = l.split('#').next().unwrap_or("").replace(['"', '\''], "");
-            // Whole words only: `${GDK_BACKEND:-x11}` is a default, not a force.
-            code.split_whitespace().any(|w| ["GDK_BACKEND=x11", "QT_QPA_PLATFORM=xcb", "SDL_VIDEODRIVER=x11"].contains(&w))
+            // Whole words only: `VAR=${VAR:-x11}` keeps the user's choice, but
+            // `VAR=${OTHER:-x11}` (FreeCAD) forces X11 all the same.
+            code.split_whitespace().any(|w| {
+                [("GDK_BACKEND", "x11"), ("QT_QPA_PLATFORM", "xcb"), ("SDL_VIDEODRIVER", "x11")].iter().any(|(var, x11)| {
+                    let Some(value) = w.strip_prefix(var).and_then(|r| r.strip_prefix('=')) else { return false };
+                    value == *x11
+                        || value
+                            .strip_prefix("${")
+                            .and_then(|r| r.strip_suffix(&format!(":-{x11}}}")))
+                            .is_some_and(|other| other != *var && other.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                })
+            })
         })
     })
 }
@@ -572,6 +583,12 @@ mod tests {
         assert!(!super::start_scripts_force_x11(d.path()), "comments and defaults do not count");
         std::fs::write(d.path().join("apprun-hooks/gtk.sh"), "export GDK_BACKEND=x11 # Crash with Wayland backend\n").unwrap();
         assert!(super::start_scripts_force_x11(d.path()));
+        std::fs::remove_file(d.path().join("apprun-hooks/gtk.sh")).unwrap();
+        std::fs::write(d.path().join("AppRun"), "export QT_QPA_PLATFORM=\"${FREECAD_QT_QPA_PLATFORM:-xcb}\"\n").unwrap();
+        assert!(super::start_scripts_force_x11(d.path()), "FreeCAD's own override variable still forces X11");
+        std::fs::write(d.path().join("AppRun"), "#!/bin/sh\n").unwrap();
+        std::fs::write(d.path().join("AppRun.env"), "QT_QPA_PLATFORMTHEME=xdgdesktopportal\nQT_QPA_PLATFORM=xcb\n").unwrap();
+        assert!(super::start_scripts_force_x11(d.path()), "appimage-builder's AppRun.env (Cura)");
     }
 
     use super::*;

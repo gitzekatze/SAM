@@ -4,7 +4,7 @@
 
 Outcome: OK (works with SAM's recommendation), OK+N (after N repair steps),
 FAIL (does not start), ADD (no sandbox could be created). Window: a window
-was on screen 10 s after the start (screenshot bigger than an empty desktop).
+was on screen 20 s after the start (screenshot bigger than an empty desktop).
 kinds.txt: optional "file-name kind" lines to group the totals.
 """
 import glob

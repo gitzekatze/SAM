@@ -2,16 +2,16 @@
 # Full SAM flow for one AppImage; writes results/<name>.* files.
 # Runs inside the invisible KWin session (WAYLAND_DISPLAY/DISPLAY set).
 #
-#   recommendation → Create Sandbox → sandbox check → test start (15 s, with
-#   a screenshot after 10 s) → if the start failed: up to three rounds of
+#   recommendation → Create Sandbox → sandbox check → test start (25 s, with
+#   a screenshot after 20 s: first starts of Electron apps take a while) → if the start failed: up to three rounds of
 #   "apply the next repair step, start again" → hints, repair list, info.
 set -u
 img=$1; name=$(basename "$img"); out="$R/results/$name"
 S=sam-jail
 start() { # round
-    ( sleep 10; spectacle -b -n -f -o "$out.shot$1.png" >/dev/null 2>&1 ) &
+    ( sleep 20; spectacle -b -n -f -o "$out.shot$1.png" >/dev/null 2>&1 ) &
     shot=$!
-    $S --json selftest "$id" --seconds 15 > "$out.selftest$1.json" 2>&1
+    $S --json selftest "$id" --seconds 25 > "$out.selftest$1.json" 2>&1
     echo "selftest$1 exit $?"
     wait "$shot" 2>/dev/null
 }
