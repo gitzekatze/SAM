@@ -178,8 +178,13 @@ fn breakout_attempts_fail() {
     //    sockets would be reachable without Landlock), an extra folder
     //    outside the home granted read-only but mounted writable by a raw
     //    Bubblewrap argument.
-    let extra = root.join("shared-readonly");
+    // Outside every place Landlock lets the app write (its home, /tmp,
+    // /var/tmp, /dev, /proc, the runtime folder): the test's temporary
+    // folder may itself be under /tmp (CI), so use Cargo's folder for tests.
+    let extra_dir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let extra = extra_dir.path().join("shared-readonly");
     fs::create_dir_all(&extra).unwrap();
+    assert!(!extra.starts_with("/tmp") && !extra.starts_with("/var/tmp"), "{}", extra.display());
     let mut p = PermissionSet::strict_gui();
     p.network.mode = NetworkMode::Full;
     let ex = extra.display().to_string();

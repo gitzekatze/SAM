@@ -20,7 +20,7 @@ jobs:
       RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
       RUNTIME_SHA256: 617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
