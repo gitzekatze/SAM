@@ -254,7 +254,9 @@ mod tests {
         assert!(analyze("Error: getaddrinfo ENOTFOUND x", &p, None).iter().all(|s| s.from_app_output));
         assert!(analyze("error while loading shared libraries: <img src=x>: cannot open", &p, None)[0].explanation.contains("‹img"));
         assert_eq!(ids("org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.secrets was not provided"), vec!["keyring"]);
-        assert_eq!(ids("touch: cannot touch '/opt/app/settings.ini': Read-only file system"), vec!["writable-appdir"]);
+        // Offered only where Bubblewrap can do it (0.10+, overlays).
+        let expected: Vec<&str> = if sam_core::host::bwrap_supports_overlay() { vec!["writable-appdir"] } else { vec![] };
+        assert_eq!(ids("touch: cannot touch '/opt/app/settings.ini': Read-only file system"), expected);
         assert_eq!(ids("/lib/libc.so.6: version `GLIBC_2.99' not found"), vec!["glibc"]);
         assert_eq!(ids("ERROR eframe::native::run] Exiting because of error: WGPU error: Failed to create surface for any enabled backend"), vec!["gpu"]);
         assert!(ids("all good").is_empty());

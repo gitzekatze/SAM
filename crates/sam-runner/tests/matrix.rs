@@ -369,7 +369,8 @@ fn permission_matrix() {
     });
     assert!(app.running(&id).is_empty());
     let overlay = paths.data_dir.join("overlays").join(&id);
-    assert!(overlay.exists(), "writable app folder layer exists");
+    // The layer exists only where Bubblewrap supports overlays (0.10+).
+    assert_eq!(overlay.exists(), sam_core::host::bwrap_supports_overlay(), "writable app folder layer");
     app.remove(&id, false).unwrap();
     assert!(!overlay.exists(), "remove deletes the writable app folder layer");
     assert!(!paths.runtime_dir(&id).exists(), "no runtime folder left behind");
