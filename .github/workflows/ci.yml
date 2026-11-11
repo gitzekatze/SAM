@@ -39,7 +39,7 @@ jobs:
           sudo apt-get install -y -q --no-install-recommends \
             libgtk-4-dev libadwaita-1-dev pkg-config \
             bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3 \
-            desktop-file-utils appstream gettext
+            desktop-file-utils appstream gettext libgtk-4-bin dbus
 
       # Ubuntu restricts unprivileged user namespaces through AppArmor, so
       # Bubblewrap cannot run and the end-to-end sandbox tests would skip.
@@ -75,6 +75,22 @@ jobs:
         run: |
           desktop-file-validate data/io.github.gitzekatze.SAM.desktop
           appstreamcli validate --no-net data/io.github.gitzekatze.SAM.metainfo.xml
+
+      # Opens every page of the window on GTK's Broadway backend (no
+      # desktop needed) and fails on GTK criticals, warnings or panics.
+      - name: Window smoke test
+        run: |
+          gtk4-broadwayd :5 &
+          sleep 1
+          GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 dbus-run-session -- tests/gui/smoke.sh "$RUNNER_TEMP/gui"
+
+      - name: Window screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: window-screenshots
+          path: ${{ runner.temp }}/gui/*.png
+          if-no-files-found: ignore
 
       - name: Translations compile
         run: make mo

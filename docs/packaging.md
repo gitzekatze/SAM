@@ -52,7 +52,10 @@ Test before publishing: copy both files next to the PKGBUILD (or point
 24.04): build, clippy with warnings as errors, the whole test suite with the
 end-to-end sandbox tests (Ubuntu's AppArmor restriction on user namespaces is
 lifted on the throwaway runner), desktop file and metainfo validation, and a
-check that `data/man` matches the commands (`make man`).
+check that `data/man` matches the commands (`make man`), that the
+translations compile, and a window smoke test (`tests/gui/smoke.sh` on GTK's
+Broadway backend: every page opens without GTK warnings; screenshots are
+kept as a CI artifact).
 
 A second job runs `cargo deny check` (`deny.toml`): known security
 advisories, licences that fit GPL-3.0-or-later, banned crates, and crates

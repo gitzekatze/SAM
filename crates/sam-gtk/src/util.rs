@@ -232,3 +232,77 @@ pub fn name_icon_buttons(root: &impl IsA<gtk::Widget>) {
         }
     }
 }
+
+/// A container whose minimum height is its child's natural height (for the
+/// width it gets). The header of the app page sits in an `AdwBreakpointBin`,
+/// which reports only its fixed minimum height, and a pinned top bar gets no
+/// more than the minimum; without this wrapper a second row of labels under
+/// the app name would be cut off.
+pub mod natural_height {
+    use gtk::glib;
+    use gtk::prelude::*;
+    use gtk::subclass::prelude::*;
+
+    mod imp {
+        use super::*;
+
+        #[derive(Default)]
+        pub struct Bin;
+
+        #[glib::object_subclass]
+        impl ObjectSubclass for Bin {
+            const NAME: &'static str = "SamNaturalHeightBin";
+            type Type = super::Bin;
+            type ParentType = gtk::Widget;
+        }
+
+        impl ObjectImpl for Bin {
+            fn dispose(&self) {
+                while let Some(c) = self.obj().first_child() {
+                    c.unparent();
+                }
+            }
+        }
+
+        impl WidgetImpl for Bin {
+            // Height for width: the parent then asks for the height at the
+            // real width, where the labels may wrap (AdwBreakpointBin itself
+            // reports a constant size).
+            fn request_mode(&self) -> gtk::SizeRequestMode {
+                gtk::SizeRequestMode::HeightForWidth
+            }
+            fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
+                let Some(c) = self.obj().first_child() else { return (0, 0, -1, -1) };
+                let (min, nat, _, _) = c.measure(orientation, for_size);
+                if orientation == gtk::Orientation::Vertical {
+                    // AdwBreakpointBin reports a constant size, so GTK measures
+                    // it without the width; ask its content at the real width.
+                    let inner = c.first_child().map(|i| i.measure(orientation, for_size).1).unwrap_or(nat);
+                    let h = min.max(nat).max(inner);
+                    (h, h, -1, -1)
+                } else {
+                    (min, nat, -1, -1)
+                }
+            }
+            fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+                if let Some(c) = self.obj().first_child() {
+                    c.allocate(width, height, baseline, None);
+                }
+            }
+        }
+    }
+
+    glib::wrapper! {
+        pub struct Bin(ObjectSubclass<imp::Bin>)
+            @extends gtk::Widget,
+            @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+    }
+
+    impl Bin {
+        pub fn new(child: &impl IsA<gtk::Widget>) -> Self {
+            let bin: Self = glib::Object::new();
+            child.set_parent(&bin);
+            bin
+        }
+    }
+}

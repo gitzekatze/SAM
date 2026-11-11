@@ -181,8 +181,7 @@ impl AppPage {
         narrow.add_setter(&top_buttons, "spacing", Some(&6.to_value()));
         narrow.add_setter(&remove_button, "halign", Some(&gtk::Align::Center.to_value()));
         hero_bin.add_breakpoint(narrow);
-        view.add_top_bar(&hero_bin);
-        app.top_sizes.add_widget(&hero);
+        view.add_top_bar(&util::natural_height::Bin::new(&hero_bin));
 
         // ---- settings
         let pref = adw::PreferencesPage::new();

@@ -56,8 +56,6 @@ pub struct App {
     pub backend: Backend,
     pub toasts: adw::ToastOverlay,
     pub split: adw::NavigationSplitView,
-    /// Keeps the pinned areas at the top of both columns the same height.
-    pub top_sizes: gtk::SizeGroup,
     pub state: RefCell<State>,
     sidebar: OnceCell<Sidebar>,
     /// The page shown on the right, kept alive while it is shown.
@@ -106,7 +104,6 @@ impl App {
             backend,
             toasts,
             split,
-            top_sizes: gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical),
             state: RefCell::new(State { filter: "all".into(), ..Default::default() }),
             sidebar: OnceCell::new(),
             current: RefCell::new(None),

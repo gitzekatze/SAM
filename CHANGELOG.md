@@ -91,6 +91,8 @@ version.
   the app failed to start. The folder now stays read-only there, with a
   warning.
 - The filter buttons above the AppImage list fit the narrowest window.
+- The labels under an app's name are no longer cut off when they wrap onto
+  a second line.
 
 ### Removed
 
