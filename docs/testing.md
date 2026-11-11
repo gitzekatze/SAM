@@ -169,3 +169,16 @@ Electron app, Qt app, GTK app):
 
 - [ ] `cd packaging/arch && makepkg -si` builds and installs both packages.
 - [ ] SAM starts from the application menu.
+
+## Keyboard
+
+`sam-jail-gui --screenshot OUT.png --page app --focus-walk` (in the invisible
+session of `tests/real-apps/run.sh`) moves the focus with Tab like a person,
+1.5 s per step, and prints every stop with its name. On 2026-11-11 it found
+two unnamed controls (fixed) and showed the focus stopping at the app page's
+"⋮" menu button; whether a real Tab press does the same still needs a check
+by hand:
+
+- [ ] On an app page, Tab from the AppImage list reaches *Check*, *Launch*
+      and every setting, and Shift+Tab goes back.
+

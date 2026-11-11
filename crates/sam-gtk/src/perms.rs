@@ -613,7 +613,7 @@ impl Editor {
                     let info = self.info(key);
                     sw.set_active(self.value(key) == json!(true));
                     row.set_subtitle(&self.describe(key, &info.description));
-                    row.set_sensitive(editable && self.available(*avail));
+                    set_usable(row.upcast_ref(), editable && self.available(*avail));
                     self.set_risk_badge(badge, key);
                 }
                 Ctl::Choice { key, row, drop, opts, badge, avail } => {
@@ -622,14 +622,14 @@ impl Editor {
                     drop.set_selected(idx as u32);
                     let d = opts.get(idx).map(|o| o.description).filter(|d| !d.is_empty()).map(String::from).unwrap_or_else(|| self.info(key).description);
                     row.set_subtitle(&self.describe(key, &d));
-                    row.set_sensitive(editable && self.available(*avail));
+                    set_usable(row.upcast_ref(), editable && self.available(*avail));
                     self.set_risk_badge(badge, key);
                 }
                 Ctl::List { key, row, title, subtitle, chips, badge, avail, folders, map } => {
                     let info = self.info(key);
                     title.set_text(&info.title);
                     subtitle.set_markup(&self.describe(key, &info.description));
-                    row.set_sensitive(editable && self.available(*avail));
+                    set_usable(row.upcast_ref(), editable && self.available(*avail));
                     self.set_risk_badge(badge, key);
                     while let Some(ch) = chips.first_child() {
                         chips.remove(&ch);
@@ -838,4 +838,12 @@ impl Editor {
             f(p);
         }
     }
+}
+
+/// Greys a setting's row out, and takes it out of the keyboard focus chain
+/// while it is greyed out: GTK's list otherwise moves the focus to the
+/// insensitive row, which refuses it, and Tab stops there.
+fn set_usable(row: &gtk::Widget, on: bool) {
+    row.set_sensitive(on);
+    row.set_can_focus(on);
 }

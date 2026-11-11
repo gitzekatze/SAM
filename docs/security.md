@@ -253,6 +253,13 @@ downloads a file, and only when you ask:
 - It must be signed like the installed version. A new or missing key stops
   the update unless you accept it.
 - The old file moves into SAM's data folder, so you can go back.
+- Downloading only the changed parts (zsync) reuses blocks of the old file
+  and fetches the rest by HTTP range requests; the assembled file must still
+  match the published SHA-1, or it is discarded and the whole file is
+  downloaded instead.
+
+SAM's own AppImage updates the same way (*Check for SAM Updates*), from
+SAM's GitHub releases.
 
 ---
 

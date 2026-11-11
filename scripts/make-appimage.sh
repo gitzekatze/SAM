@@ -3,8 +3,8 @@
 #
 #   RUNTIME=/path/to/runtime-ARCH scripts/make-appimage.sh [OUTDIR]
 #
-# Writes OUTDIR/SAM-VERSION-ARCH.AppImage (default OUTDIR: ./dist), ARCH
-# being this computer's (x86_64 or aarch64).
+# Writes OUTDIR/SAM-VERSION-ARCH.AppImage and its .zsync update description
+# (default OUTDIR: ./dist), ARCH being this computer's (x86_64 or aarch64).
 #
 # The AppImage holds sam-jail, sam-jail-run and sam-jail-gui, and uses the
 # GTK 4 and libadwaita (1.5 or newer) installed on the computer, like
@@ -96,7 +96,12 @@ epoch=$(git log -1 --format=%ct "v$version" 2>/dev/null || git log -1 --format=%
 mksquashfs "$app" "$work/fs.squashfs" -root-owned -noappend -no-xattrs -all-time "$epoch" -mkfs-time "$epoch" \
     -comp zstd -Xcompression-level 19 -quiet
 target="$out/SAM-$version-$arch.AppImage"
-cat "$RUNTIME" "$work/fs.squashfs" > "$target"
+# Where updates of SAM itself are published: GitHub releases of SAM, with a
+# .zsync file next to each AppImage (sam-jail self-update uses both).
+cp "$RUNTIME" "$work/runtime"
+"$bin/sam-jail" dev set-update-info "$work/runtime" "gh-releases-zsync|gitzekatze|SAM|latest|SAM-*-$arch.AppImage.zsync" >/dev/null
+cat "$work/runtime" "$work/fs.squashfs" > "$target"
 chmod 755 "$target"
+"$bin/sam-jail" dev make-zsync "$target" >/dev/null
 (cd "$out" && sha256sum "$(basename "$target")" > "$(basename "$target").sha256")
 echo "Wrote $target"

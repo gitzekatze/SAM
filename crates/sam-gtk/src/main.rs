@@ -2,7 +2,7 @@
 //! SAM's GUI (GTK 4 / libadwaita).
 //!
 //!   sam-jail-gui [--page app|file|presets|preferences|diagnostics] [--app <id>] [FILES…]
-//!   sam-jail-gui --screenshot out.png [--size 1180x800] [--delay 3000] [--page …]
+//!   sam-jail-gui --screenshot out.png [--size 1180x800] [--delay 3000] [--page …] [--focus-walk]
 //!
 //! --screenshot renders the window once it has loaded, saves it as PNG and
 //! exits; used for documentation and UI checks.
@@ -91,12 +91,15 @@ textview.sam-mono text { background: transparent; }
 struct Options {
     startup: window::Startup,
     screenshot: Option<String>,
+    /// With --screenshot: also walk the keyboard focus with Tab and print
+    /// every stop (a check that everything is reachable by keyboard).
+    focus_walk: bool,
     size: (i32, i32),
     delay: u64,
 }
 
 fn parse_args() -> Options {
-    let mut o = Options { startup: window::Startup::default(), screenshot: None, size: (1180, 800), delay: 3000 };
+    let mut o = Options { startup: window::Startup::default(), screenshot: None, focus_walk: false, size: (1180, 800), delay: 3000 };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -109,6 +112,7 @@ fn parse_args() -> Options {
                 }
             }
             "--delay" => o.delay = args.next().and_then(|s| s.parse().ok()).unwrap_or(3000),
+            "--focus-walk" => o.focus_walk = true,
             "-h" | "--help" => {
                 println!("Usage: sam-jail-gui [--page app|file|presets|preferences|diagnostics] [--app ID] [FILES…]");
                 std::process::exit(0);
@@ -204,9 +208,14 @@ fn main() -> glib::ExitCode {
         if let Some(file) = o.screenshot {
             let w = win.clone();
             let app = app.clone();
+            let focus_walk = o.focus_walk;
             glib::timeout_add_local_once(std::time::Duration::from_millis(o.delay), move || {
                 save_screenshot(&w.window, &file);
-                app.quit();
+                if focus_walk {
+                    walk_focus(&w.window, app.clone());
+                } else {
+                    app.quit();
+                }
             });
         }
         // Keep the window state alive for the lifetime of the window.
@@ -323,4 +332,67 @@ fn render_widget(window: &gtk::Widget, widget: &gtk::Widget, file: &str) {
     if let Err(e) = texture.save_to_png(file) {
         eprintln!("screenshot: {e}");
     }
+}
+
+/// Moves the focus forward with Tab, a step every 1.5 s (time for a page
+/// the focus opened to load, as for a person), until it comes back to the
+/// start, printing each stop; then quits.
+fn walk_focus(window: &adw::ApplicationWindow, app: adw::Application) {
+    use gtk::prelude::*;
+    fn name(w: &gtk::Widget) -> String {
+        let label = w
+            .downcast_ref::<gtk::Button>()
+            .and_then(|b| b.label())
+            .map(|l| l.to_string())
+            .or_else(|| w.downcast_ref::<adw::PreferencesRow>().map(|r| r.title().to_string()))
+            .or_else(|| w.downcast_ref::<gtk::ListBoxRow>().map(|_| "list row".to_string()))
+            .or_else(|| w.tooltip_text().map(|t| t.to_string()))
+            .unwrap_or_default();
+        let mut page = String::new();
+        let mut a = w.parent();
+        while let Some(p) = a {
+            if let Some(np) = p.downcast_ref::<adw::NavigationPage>() {
+                page = np.title().to_string();
+                break;
+            }
+            a = p.parent();
+        }
+        format!("{} \"{}\" [page {page}]", w.type_().name(), label.replace('\n', " "))
+    }
+    let window = window.clone();
+    let seen: std::rc::Rc<std::cell::RefCell<Vec<String>>> = Default::default();
+    let step = std::rc::Rc::new(std::cell::Cell::new(0u32));
+    glib::timeout_add_local(std::time::Duration::from_millis(1500), move || {
+        let n = step.get();
+        step.set(n + 1);
+        // At the end of the chain Tab wraps around to the start.
+        let moved = window.child_focus(gtk::DirectionType::TabForward) || {
+            gtk::prelude::GtkWindowExt::set_focus(&window, None::<&gtk::Widget>);
+            window.child_focus(gtk::DirectionType::TabForward)
+        };
+        let focus = gtk::prelude::GtkWindowExt::focus(&window);
+        let id = focus.as_ref().map(|f| format!("{:p}", f.as_ptr())).unwrap_or_default();
+        if !moved || focus.is_none() || n >= 300 || seen.borrow().contains(&id) {
+            println!("FOCUS stopped after {n} steps (moved={moved}, now at {})", focus.as_ref().map(name).unwrap_or_default());
+            if let Some(f) = &focus {
+                let mut chain = Vec::new();
+                let mut w = Some(f.clone());
+                while let Some(x) = w {
+                    chain.push(format!("{}#{}", x.type_().name(), x.widget_name()));
+                    w = x.parent();
+                    if chain.len() > 12 {
+                        break;
+                    }
+                }
+                println!("FOCUS chain: {}", chain.join(" < "));
+            }
+            app.quit();
+            return glib::ControlFlow::Break;
+        }
+        seen.borrow_mut().push(id);
+        if let Some(f) = focus {
+            println!("FOCUS {n:3} {}", name(&f));
+        }
+        glib::ControlFlow::Continue
+    });
 }

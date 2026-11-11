@@ -55,6 +55,8 @@ pub struct Published {
     pub release: Option<String>,
     /// A page for people (release page, or the file itself).
     pub page: Option<String>,
+    /// The update description (.zsync) itself, for downloading only changes.
+    pub zsync_url: String,
 }
 
 /// What the source publishes: `Ok(None)` when one of the published files
@@ -113,6 +115,7 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
         length: h.length,
         release,
         page: page.filter(|p| p.starts_with("https://")),
+        zsync_url,
     }))
 }
 
@@ -155,6 +158,71 @@ fn resolve(zsync_url: &str, file: &str) -> Result<String> {
 /// Downloads the published file to `dest` (a new file next to the old one)
 /// and checks it against the SHA-1 of the update description. A partial or
 /// wrong file is removed.
+/// How it was downloaded, for the log and the user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Fetched {
+    /// Only the changed parts: `bytes` of `total`.
+    Delta {
+        bytes: u64,
+        total: u64,
+    },
+    Full {
+        total: u64,
+    },
+}
+
+/// Downloads the new version to `dest`, reusing unchanged blocks of `old`
+/// (zsync) when that saves most of the download; otherwise, or when anything
+/// goes wrong with that, the whole file. Either way the result must match the
+/// published SHA-1.
+pub fn download_update(p: &Published, old: &Path, dest: &Path) -> Result<Fetched> {
+    match download_delta(p, old, dest) {
+        Ok(Some(f)) => return Ok(f),
+        Ok(None) | Err(_) => {
+            let _ = std::fs::remove_file(dest);
+        }
+    }
+    download(p, dest)?;
+    Ok(Fetched::Full { total: std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0) })
+}
+
+/// `Ok(None)` when a delta would not save enough (most of the file changed,
+/// or it would take too many requests).
+fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetched>> {
+    let ctl = crate::zsync::parse(&fetch(&p.zsync_url, Some(64 << 20))?)?;
+    if ctl.sha1 != p.sha1 {
+        bail!("the update description changed while reading it");
+    }
+    let old_data = std::fs::read(old)?;
+    let plan = crate::zsync::plan(&ctl, &old_data);
+    let ranges = crate::zsync::missing_ranges(&ctl, &plan, 64 * 1024);
+    let bytes: u64 = ranges.iter().map(|(s, e)| e - s).sum();
+    if ranges.len() > 300 || bytes * 10 > ctl.length * 7 {
+        return Ok(None);
+    }
+    crate::zsync::assemble(&ctl, &old_data, &plan, &ranges, dest, |s, e| fetch_range(&p.file_url, s, e))?;
+    Ok(Some(Fetched::Delta { bytes, total: ctl.length }))
+}
+
+/// Bytes `start..end` of `url` (an HTTP range request).
+fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>> {
+    if !url.starts_with("https://") {
+        bail!("not HTTPS");
+    }
+    let curl = sam_core::util::which("curl").context("curl is not installed")?;
+    let out = Command::new(curl)
+        .args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
+        .args(["--max-redirs", "5", "--connect-timeout", "15", "--speed-limit", "1024", "--speed-time", "60"])
+        .args(["--user-agent", "SAM-AppImage-update-check", "--range", &format!("{}-{}", start, end - 1), "--"])
+        .arg(url)
+        .stdin(Stdio::null())
+        .output()?;
+    if !out.status.success() {
+        bail!("range request failed: {}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    Ok(out.stdout)
+}
+
 pub fn download(p: &Published, dest: &Path) -> Result<()> {
     let res = download_inner(p, dest);
     if res.is_err() {
@@ -177,13 +245,28 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
     }
     let out = cmd.arg("--output").arg(dest).arg("--").arg(&p.file_url).stdin(Stdio::null()).output().context("starting curl")?;
     if !out.status.success() {
-        bail!("download failed: {}", sam_core::util::display_safe(String::from_utf8_lossy(&out.stderr).trim().trim_start_matches("curl: "), 200));
+        bail!("download failed: {}", curl_error(&String::from_utf8_lossy(&out.stderr)));
     }
     let got = sha1_of(dest)?;
     if got != p.sha1 {
         bail!("the downloaded file does not match the published checksum; it was deleted");
     }
     Ok(())
+}
+
+/// curl's error, in words: HTTP status codes become sentences.
+fn curl_error(stderr: &str) -> String {
+    let e = stderr.trim();
+    let status = e.rsplit("error: ").next().and_then(|n| n.trim().parse::<u16>().ok());
+    match status {
+        Some(404) => "the update source has nothing published at that address (yet)".into(),
+        Some(403) | Some(429) => "the update source refused the request for now (rate limit); try again later".into(),
+        Some(s) if s >= 500 => format!("the update source has a problem (HTTP {s}); try again later"),
+        _ if e.contains("Could not resolve host") || e.contains("Failed to connect") => {
+            "no connection to the update source; check the internet connection".into()
+        }
+        _ => sam_core::util::display_safe(e.trim_start_matches("curl: "), 200),
+    }
 }
 
 /// The fields of a zsync header SAM needs.
@@ -259,7 +342,7 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
     let _ = child.stderr.take().map(|mut e| e.read_to_string(&mut err));
     let st = child.wait()?;
     if !st.success() {
-        bail!("{}", sam_core::util::display_safe(err.trim().trim_start_matches("curl: "), 200));
+        bail!("{}", curl_error(&err));
     }
     Ok(out)
 }

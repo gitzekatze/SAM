@@ -45,7 +45,9 @@ pub struct Isolation {
 }
 
 /// `bwrap … --` prefix for running an extractor on untrusted input.
-fn isolated(iso: &Isolation, source: &Path, writable: &Path) -> Command {
+/// `tool` is the program that will run; one installed outside `/usr` (for
+/// example in `~/.local/bin`) is added read-only so it exists inside.
+fn isolated(iso: &Isolation, source: &Path, writable: &Path, tool: &Path) -> Command {
     let mut c = Command::new(&iso.bwrap);
     c.args(["--die-with-parent", "--new-session", "--unshare-all", "--cap-drop", "ALL", "--clearenv", "--tmpfs", "/", "--ro-bind", "/usr", "/usr"]);
     for d in ["/lib", "/lib64", "/bin", "/sbin"] {
@@ -55,6 +57,9 @@ fn isolated(iso: &Isolation, source: &Path, writable: &Path) -> Command {
     c.arg("--ro-bind").arg(source).arg(source);
     c.arg("--bind").arg(writable).arg(writable);
     c.arg("--ro-bind").arg(&iso.self_exe).arg(&iso.self_exe);
+    if !tool.starts_with("/usr") && tool != iso.self_exe {
+        c.arg("--ro-bind").arg(tool).arg(tool);
+    }
     c.args(["--setenv", "PATH", "/usr/bin:/bin", "--remount-ro", "/", "--"]);
     c
 }
@@ -112,7 +117,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                         fs::create_dir_all(dst)?;
                         let mut c = match &req.isolation {
                             Some(iso) => {
-                                let mut c = isolated(iso, req.source, req.root);
+                                let mut c = isolated(iso, req.source, req.root, &d);
                                 c.arg(&d);
                                 c
                             }
@@ -131,7 +136,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                 "builtin-squashfs",
                 Box::new(move |dst: &Path, log: &mut dyn Write| match &req.isolation {
                     Some(iso) => {
-                        let mut c = isolated(iso, req.source, req.root);
+                        let mut c = isolated(iso, req.source, req.root, &iso.self_exe);
                         c.arg(&iso.self_exe).args(["dev", "extract-squashfs"]).arg(req.source).arg(off.to_string()).arg(dst);
                         c.args([
                             "--max-files",
@@ -152,7 +157,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                     Box::new(move |dst: &Path, log: &mut dyn Write| {
                         let mut c = match &req.isolation {
                             Some(iso) => {
-                                let mut c = isolated(iso, req.source, req.root);
+                                let mut c = isolated(iso, req.source, req.root, &u);
                                 c.arg(&u);
                                 c
                             }
@@ -176,7 +181,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                         fs::create_dir_all(dst)?;
                         let mut c = match &req.isolation {
                             Some(iso) => {
-                                let mut c = isolated(iso, req.source, req.root);
+                                let mut c = isolated(iso, req.source, req.root, &b);
                                 c.arg(&b);
                                 c
                             }

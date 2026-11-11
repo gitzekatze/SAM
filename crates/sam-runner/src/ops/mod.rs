@@ -190,6 +190,18 @@ pub fn new_requirements(old_rec: &PermissionSet, new_rec: &PermissionSet, cur: &
     v
 }
 
+/// Result of `Sam::self_update`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SelfUpdate {
+    /// `current`, `available` or `updated`.
+    pub state: String,
+    pub latest: Option<String>,
+    /// SAM's AppImage after the update (the new file when updated).
+    pub path: PathBuf,
+    pub detail: String,
+    pub page: Option<String>,
+}
+
 /// Disk space of one app (bytes).
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DiskUsage {

@@ -283,6 +283,14 @@ pub mod natural_height {
                     c.allocate(width, height, baseline, None);
                 }
             }
+            // Keyboard focus goes on to the content (a plain widget would
+            // keep Tab from ever reaching the buttons inside).
+            fn focus(&self, direction: gtk::DirectionType) -> bool {
+                self.obj().first_child().is_some_and(|c| c.child_focus(direction))
+            }
+            fn grab_focus(&self) -> bool {
+                self.obj().first_child().is_some_and(|c| c.grab_focus())
+            }
         }
     }
 

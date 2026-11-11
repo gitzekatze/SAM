@@ -257,6 +257,11 @@ impl App {
         sect.append(Some(&tr("Preferences")), Some("win.show-preferences"));
         menu.append_section(None, &sect);
         let about = gio::Menu::new();
+        // SAM updates itself only as an AppImage; packages update through
+        // the package manager.
+        if std::env::var_os("APPIMAGE").is_some() {
+            about.append(Some(&tr("Check for SAM Updates")), Some("win.self-update"));
+        }
         about.append(Some(&tr("About SAM")), Some("win.about"));
         menu.append_section(None, &about);
         let menu_btn = gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).tooltip_text(tr("Main menu")).primary(true).build();
@@ -315,6 +320,7 @@ impl App {
         let dl_label = gtk::Label::builder().label(tr("Also search the Downloads folder")).xalign(0.0).hexpand(true).build();
         dl_label.add_css_class("caption");
         let downloads = gtk::Switch::builder().valign(gtk::Align::Center).build();
+        downloads.update_property(&[gtk::accessible::Property::Label(&tr("Also search the Downloads folder"))]);
         dl_row.append(&dl_label);
         dl_row.append(&downloads);
         loc_box.append(&dl_row);
@@ -357,6 +363,7 @@ impl App {
         }
         filter_box.append(&toggles);
         let search = gtk::SearchEntry::builder().placeholder_text(tr("Search AppImages")).margin_top(8).build();
+        search.update_property(&[gtk::accessible::Property::Label(&tr("Search AppImages"))]);
         filter_box.append(&search);
         column.append(&filter_box);
 
@@ -770,6 +777,7 @@ impl App {
         add("show-diagnostics", Box::new(|me| me.show_section("diagnostics")));
         add("show-preferences", Box::new(|me| me.show_section("preferences")));
         add("refresh", Box::new(|me| me.refresh_apps_later()));
+        add("self-update", Box::new(|me| me.self_update()));
         add(
             "about",
             Box::new(|me| {
@@ -952,6 +960,50 @@ impl App {
     }
 
     // ------------------------------------------------------------ startup
+
+    /// Checks for a newer SAM (its own AppImage), asks, updates, and offers
+    /// to restart into the new version.
+    fn self_update(self: &Rc<Self>) {
+        let me = self.clone();
+        glib::spawn_future_local(async move {
+            let check = match me.backend.call(&["self-update", "--check"], None).await {
+                Ok(v) => v,
+                Err(e) => return me.report_error(&e),
+            };
+            if util::str_of(&check, "state") != "available" {
+                me.toast(&tr("SAM is up to date"));
+                return;
+            }
+            let body = format!(
+                "{} SAM downloads it (only the changed parts when possible), checks it and puts it next to the current file. The current version is kept until the next update.",
+                util::plain(util::str_of(&check, "detail"))
+            );
+            if !confirm(&me.window, &tr("Update SAM?"), &body, &tr("Update"), false).await {
+                return;
+            }
+            me.toast(&tr("Downloading the update…"));
+            let done = match me.backend.call(&["self-update"], None).await {
+                Ok(v) => v,
+                Err(e) => return me.report_error(&e),
+            };
+            let new_path = util::str_of(&done, "path").to_string();
+            if confirm(&me.window, &tr("SAM Was Updated"), util::str_of(&done, "detail"), &tr("Restart SAM"), false).await {
+                // SAM allows one window: the new one starts a moment after
+                // this one has quit, or it would hand over to it and exit.
+                let argv = [
+                    std::ffi::OsStr::new("/bin/sh"),
+                    std::ffi::OsStr::new("-c"),
+                    std::ffi::OsStr::new("sleep 1; exec \"$0\""),
+                    std::ffi::OsStr::new(&new_path),
+                ];
+                if gio::Subprocess::newv(&argv, gio::SubprocessFlags::NONE).is_ok() {
+                    if let Some(app) = me.window.application() {
+                        app.quit();
+                    }
+                }
+            }
+        });
+    }
 
     /// The window reads the command line tool's JSON. A tool from another
     /// version could leave fields out or mean something else by them, so a

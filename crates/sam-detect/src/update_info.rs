@@ -36,6 +36,25 @@ pub fn read(path: &Path) -> Option<UpdateSource> {
     parse(std::str::from_utf8(&raw[..end]).ok()?)
 }
 
+/// Writes `info` into the `.upd_info` section of an AppImage runtime (the
+/// AppImage type 2 runtime reserves 1024 bytes for it). Used when building
+/// SAM's own AppImage.
+pub fn write(path: &Path, info: &str) -> anyhow::Result<()> {
+    use anyhow::Context;
+    use std::io::{Seek, SeekFrom, Write};
+    anyhow::ensure!(parse(info).is_some(), "not an update information string SAM understands: {info}");
+    let data = std::fs::read(path)?;
+    let elf = goblin::elf::Elf::parse(&data).context("not an ELF file")?;
+    let sh = elf.section_headers.iter().find(|sh| elf.shdr_strtab.get_at(sh.sh_name) == Some(".upd_info")).context("the runtime has no .upd_info section")?;
+    anyhow::ensure!(info.len() < sh.sh_size as usize, ".upd_info holds only {} bytes", sh.sh_size);
+    let mut buf = vec![0u8; sh.sh_size as usize];
+    buf[..info.len()].copy_from_slice(info.as_bytes());
+    let mut f = std::fs::OpenOptions::new().write(true).open(path)?;
+    f.seek(SeekFrom::Start(sh.sh_offset))?;
+    f.write_all(&buf)?;
+    Ok(())
+}
+
 /// Parses an update information string.
 pub fn parse(s: &str) -> Option<UpdateSource> {
     let s = s.trim();

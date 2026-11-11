@@ -69,6 +69,14 @@ version.
   it against the published checksum and the signing key, and puts it in
   place; settings stay. The replaced version is kept, and *Go back to the
   previous version* (`--undo`) restores it.
+- Updates download only the changed parts when the AppImage publishes a
+  zsync description (e.g. 5.5 of 11.5 MB for Neovim 0.12.5 → 0.12.6), and
+  fall back to the whole file otherwise.
+- SAM's own AppImage updates itself: *Check for SAM Updates* in the main
+  menu, or `sam-jail self-update [--check]`. Release builds carry SAM's
+  update information and a `.zsync` file.
+- `SECURITY.md` (private vulnerability reports), `CONTRIBUTING.md` and issue
+  forms.
 - Disk space per app (details, Diagnostics, `sam-jail space`) and *Free
   Space*: deletes the unpacked copy, which is unpacked again before the next
   start (`sam-jail free-space`).
@@ -115,6 +123,10 @@ version.
   column instead of overflowing.
 - The labels under an app's name are no longer cut off when they wrap onto
   a second line.
+- Unpacking tools installed outside `/usr` (e.g. `~/.local/bin`) now work
+  inside the unpacking sandbox.
+- Keyboard: greyed-out settings are skipped by Tab; the Downloads switch
+  and the search field have names for screen readers.
 
 ### Removed
 

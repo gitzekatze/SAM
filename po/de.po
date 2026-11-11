@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: sam\n"
 "Report-Msgid-Bugs-To: https://github.com/gitzekatze/SAM/issues\n"
-"POT-Creation-Date: 2026-11-11 16:58+0100\n"
+"POT-Creation-Date: 2026-11-11 21:04+0100\n"
 "PO-Revision-Date: 2026-11-11 12:00+0100\n"
 "Last-Translator: SAM contributors\n"
 "Language-Team: German\n"
@@ -225,93 +225,122 @@ msgstr "Sandboxed AppImage Manager"
 msgid "Preferences"
 msgstr "Einstellungen"
 
-#: crates/sam-gtk/src/window.rs:260
+#: crates/sam-gtk/src/window.rs:263
+msgid "Check for SAM Updates"
+msgstr ""
+
+#: crates/sam-gtk/src/window.rs:265
 msgid "About SAM"
 msgstr "Über SAM"
 
-#: crates/sam-gtk/src/window.rs:262
+#: crates/sam-gtk/src/window.rs:267
 msgid "Main menu"
 msgstr "Hauptmenü"
 
-#: crates/sam-gtk/src/window.rs:272
+#: crates/sam-gtk/src/window.rs:277
 msgid "Start page"
 msgstr "Startseite"
 
-#: crates/sam-gtk/src/window.rs:282
+#: crates/sam-gtk/src/window.rs:287
 msgid "Search the locations again"
 msgstr "Orte erneut durchsuchen"
 
-#: crates/sam-gtk/src/window.rs:299
+#: crates/sam-gtk/src/window.rs:304
 msgid "AppImage locations"
 msgstr "AppImage-Orte"
 
-#: crates/sam-gtk/src/window.rs:302 crates/sam-gtk/src/window.rs:582
+#: crates/sam-gtk/src/window.rs:307 crates/sam-gtk/src/window.rs:589
 msgid "Search a folder for AppImages"
 msgstr "Einen Ordner nach AppImages durchsuchen"
 
-#: crates/sam-gtk/src/window.rs:304
+#: crates/sam-gtk/src/window.rs:309
 msgid "Add a single AppImage file"
 msgstr "Eine einzelne AppImage-Datei hinzufügen"
 
-#: crates/sam-gtk/src/window.rs:315
+#: crates/sam-gtk/src/window.rs:320 crates/sam-gtk/src/window.rs:323
 msgid "Also search the Downloads folder"
 msgstr "Auch den Download-Ordner durchsuchen"
 
-#: crates/sam-gtk/src/window.rs:329
+#: crates/sam-gtk/src/window.rs:335
 msgid "AppImages found"
 msgstr "Gefundene AppImages"
 
-#: crates/sam-gtk/src/window.rs:359
+#: crates/sam-gtk/src/window.rs:365 crates/sam-gtk/src/window.rs:366
 msgid "Search AppImages"
 msgstr "AppImages suchen"
 
-#: crates/sam-gtk/src/window.rs:368
+#: crates/sam-gtk/src/window.rs:375
 msgid "No AppImages Found"
 msgstr "Keine AppImages gefunden"
 
-#: crates/sam-gtk/src/window.rs:369
+#: crates/sam-gtk/src/window.rs:376
 msgid "Add a folder or a single AppImage file above, or drop an AppImage onto this window."
 msgstr "Fügen Sie oben einen Ordner oder eine einzelne AppImage-Datei hinzu oder ziehen Sie ein AppImage auf dieses Fenster."
 
-#: crates/sam-gtk/src/window.rs:379
+#: crates/sam-gtk/src/window.rs:386
 msgid "SAM"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:476
+#: crates/sam-gtk/src/window.rs:483
 msgid "Stop searching here"
 msgstr "Hier nicht mehr suchen"
 
-#: crates/sam-gtk/src/window.rs:492
+#: crates/sam-gtk/src/window.rs:499
 msgid "No locations yet: add a folder or a file."
 msgstr "Noch keine Orte: Fügen Sie einen Ordner oder eine Datei hinzu."
 
-#: crates/sam-gtk/src/window.rs:591
+#: crates/sam-gtk/src/window.rs:598
 msgid "Add an AppImage"
 msgstr "AppImage hinzufügen"
 
-#: crates/sam-gtk/src/window.rs:684
+#: crates/sam-gtk/src/window.rs:691
 msgid "Select an AppImage"
 msgstr "AppImage auswählen"
 
-#: crates/sam-gtk/src/window.rs:685
+#: crates/sam-gtk/src/window.rs:692
 msgid "SAM lists the AppImages in the locations on the left. Pick one to see the settings SAM recommends, adjust them, and create a sandbox. Nothing is unpacked or run before you click Create Sandbox."
 msgstr "SAM listet die AppImages an den Orten links auf. Wählen Sie eines, um die von SAM empfohlenen Einstellungen zu sehen, passen Sie sie an und erstellen Sie eine Sandbox. Vor „Sandbox erstellen“ wird nichts entpackt oder ausgeführt."
 
-#: crates/sam-gtk/src/window.rs:690
+#: crates/sam-gtk/src/window.rs:697
 msgid "Welcome"
 msgstr "Willkommen"
 
-#: crates/sam-gtk/src/window.rs:867
+#: crates/sam-gtk/src/window.rs:875
 msgid "Starting in a terminal…"
 msgstr "Wird im Terminal gestartet …"
 
-#: crates/sam-gtk/src/window.rs:889
+#: crates/sam-gtk/src/window.rs:897
 msgid "Starting in sandbox…"
 msgstr "Wird in der Sandbox gestartet …"
 
-#: crates/sam-gtk/src/window.rs:943
+#: crates/sam-gtk/src/window.rs:951
 msgid "Re-extracted"
 msgstr "Neu entpackt"
+
+#: crates/sam-gtk/src/window.rs:974
+msgid "SAM is up to date"
+msgstr ""
+
+#: crates/sam-gtk/src/window.rs:981
+#, fuzzy
+msgid "Update SAM?"
+msgstr "Jetzt aktualisieren?"
+
+#: crates/sam-gtk/src/window.rs:981 crates/sam-gtk/src/app_page/data.rs:340
+msgid "Update"
+msgstr "Aktualisieren"
+
+#: crates/sam-gtk/src/window.rs:984 crates/sam-gtk/src/app_page/data.rs:344
+msgid "Downloading the update…"
+msgstr "Aktualisierung wird heruntergeladen …"
+
+#: crates/sam-gtk/src/window.rs:990
+msgid "SAM Was Updated"
+msgstr ""
+
+#: crates/sam-gtk/src/window.rs:990
+msgid "Restart SAM"
+msgstr ""
 
 #: crates/sam-gtk/src/app_page/data.rs:211
 msgid "Keep the app's settings and files"
@@ -324,14 +353,6 @@ msgstr "Ihr privater Ordner (Anmeldungen, Einstellungen, gespeicherte Dateien) u
 #: crates/sam-gtk/src/app_page/data.rs:340
 msgid "Update Now?"
 msgstr "Jetzt aktualisieren?"
-
-#: crates/sam-gtk/src/app_page/data.rs:340
-msgid "Update"
-msgstr "Aktualisieren"
-
-#: crates/sam-gtk/src/app_page/data.rs:344
-msgid "Downloading the update…"
-msgstr "Aktualisierung wird heruntergeladen …"
 
 #: crates/sam-gtk/src/app_page/data.rs:349
 msgid "Signed With Another Key"

@@ -23,6 +23,7 @@ pub mod repair;
 pub mod updates;
 pub mod verify;
 pub mod wayland_ctx;
+pub mod zsync;
 
 /// Locate the `sam-jail-run` helper (used for desktop launchers and as the
 /// in-sandbox Landlock helper).

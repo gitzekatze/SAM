@@ -182,6 +182,12 @@ pub(crate) enum Cmd {
         #[arg(long)]
         accept_key_change: bool,
     },
+    /// Update SAM itself, when it runs from its AppImage ($APPIMAGE).
+    SelfUpdate {
+        /// Only check whether a newer SAM is published.
+        #[arg(long)]
+        check: bool,
+    },
     /// Disk space of one app, or of every app.
     Space { app: Option<String> },
     /// Delete an app's unpacked copy; the next start unpacks it again.
@@ -391,6 +397,18 @@ pub(crate) enum DevCmd {
         /// Use this file as the AppRun script.
         #[arg(long)]
         apprun: Option<PathBuf>,
+    },
+    /// Write update information into an AppImage runtime (release builds).
+    SetUpdateInfo { runtime: PathBuf, info: String },
+    /// Write the .zsync update description of a file (release builds).
+    MakeZsync {
+        file: PathBuf,
+        /// Address of the file, relative to the .zsync (usually its name).
+        #[arg(long)]
+        url: Option<String>,
+        /// Output (default: FILE.zsync).
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     /// Built-in SquashFS reader, run by SAM inside a sandbox during extraction.
     ExtractSquashfs {

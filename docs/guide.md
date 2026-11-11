@@ -167,7 +167,9 @@ Style (follow the system, light or dark), menu entries, repair options, warnings
 
 A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets), *Check all AppImages for changes*, *Remove unused extractions*, the disk space of sandboxed apps, data of removed sandboxes, and a redacted bug report.
 
-**Updates:** under *Details*, **Check** asks the update source the AppImage names (GitHub or the app's own server) whether a newer version is published. If so, the page says which one and offers **Update Now**: SAM downloads it, checks it, puts it in place of the old file and unpacks it, keeping your settings. The old version is kept; **Go back to the previous version** under *Troubleshooting* restores it. (**Open Download Page** is there if you prefer to do it yourself.) *Preferences → Updates* can check every app once a day when SAM opens.
+**Updates:** under *Details*, **Check** asks the update source the AppImage names (GitHub or the app's own server) whether a newer version is published. If so, the page says which one and offers **Update Now**: SAM downloads it, checks it, puts it in place of the old file and unpacks it, keeping your settings. The old version is kept; **Go back to the previous version** under *Troubleshooting* restores it. (**Open Download Page** is there if you prefer to do it yourself.) *Preferences → Updates* can check every app once a day when SAM opens. When an update description is published (most do), only the changed parts are downloaded.
+
+**SAM itself:** if you use SAM's AppImage, *Check for SAM Updates* in the main menu updates SAM the same way. Packages from your distribution update through its package manager.
 
 **Disk space:** an app's page shows, under *Details*, how much space it takes. **Free Space** deletes its unpacked copy; its settings and files stay, and the next start unpacks the AppImage again (a few seconds).
 

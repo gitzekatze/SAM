@@ -475,7 +475,7 @@ impl Sam {
             .unwrap_or(old_name.clone());
         let target = dir.join(&name);
         let tmp = dir.join(format!(".{name}.sam-download"));
-        crate::updates::download(&p, &tmp)?;
+        let fetched = crate::updates::download_update(&p, &old, &tmp)?;
         // From here on, any error removes the download again.
         let placed = (|| -> Result<PathBuf> {
             if !inspect(&tmp)?.is_appimage() {
@@ -523,7 +523,14 @@ impl Sam {
             state: sam_core::model::UpdateState::Current,
             latest: p.filename.or(p.release),
             download_page: p.page,
-            detail: "Updated; this is the newest published version.".into(),
+            detail: match fetched {
+                crate::updates::Fetched::Delta { bytes, total } => format!(
+                    "Updated; this is the newest published version. Only the changed parts were downloaded ({:.1} of {:.1} MB).",
+                    bytes as f64 / 1e6,
+                    total as f64 / 1e6
+                ),
+                crate::updates::Fetched::Full { total } => format!("Updated; this is the newest published version ({:.1} MB downloaded).", total as f64 / 1e6),
+            },
             checked_at: now(),
         });
         self.registry().save(&mut e)?;
@@ -554,6 +561,74 @@ impl Sam {
         e.update = None;
         self.registry().save(&mut e)?;
         Ok(e)
+    }
+
+    /// Updates SAM's own AppImage (`appimage`, from `$APPIMAGE`): checks the
+    /// update source written into it, and unless `check_only` downloads the
+    /// new version (only the changed parts when possible), checks it, and
+    /// puts it next to the old one under its published name. The old file
+    /// moves to `<data>/update-backups/sam/`. SAM must be restarted.
+    pub fn self_update(&self, appimage: &Path, check_only: bool) -> Result<SelfUpdate> {
+        if !appimage.is_absolute() || !appimage.is_file() {
+            bail!("SAM is not running from an AppImage; update it with your package manager");
+        }
+        let Some(p) = crate::updates::newest(appimage)? else {
+            return Ok(SelfUpdate { state: "current".into(), latest: None, path: appimage.to_path_buf(), detail: "SAM is up to date.".into(), page: None });
+        };
+        let latest = p.filename.clone().or(p.release.clone());
+        let page = p.page.clone();
+        if check_only {
+            let name = latest.clone().unwrap_or_else(|| "A newer version".into());
+            return Ok(SelfUpdate {
+                state: "available".into(),
+                detail: format!("{} is published.", sam_core::util::display_safe(&name, 120)),
+                latest,
+                path: appimage.to_path_buf(),
+                page,
+            });
+        }
+        let dir = appimage.parent().context("no folder")?;
+        let old_name = appimage.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = p
+            .filename
+            .clone()
+            .filter(|n| !n.is_empty() && !n.starts_with('.') && !n.contains('/') && n.len() < 200)
+            .filter(|n| *n == old_name || !dir.join(n).exists())
+            .unwrap_or(old_name.clone());
+        let target = dir.join(&name);
+        let tmp = dir.join(format!(".{name}.sam-download"));
+        let fetched = crate::updates::download_update(&p, appimage, &tmp)?;
+        let placed = (|| -> Result<()> {
+            if !inspect(&tmp)?.is_appimage() {
+                bail!("the downloaded file is not an AppImage; it was deleted");
+            }
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))?;
+            let backup_dir = self.paths.data_dir.join("update-backups").join("sam");
+            if backup_dir.exists() {
+                remove_tree(&backup_dir)?;
+            }
+            fs::create_dir_all(&backup_dir)?;
+            // A running AppImage can be moved: the old SAM keeps running
+            // from its mounted image until it exits.
+            move_file(appimage, &backup_dir.join(&old_name))?;
+            if let Err(e) = fs::rename(&tmp, &target) {
+                let _ = move_file(&backup_dir.join(&old_name), appimage);
+                return Err(anyhow::Error::new(e).context("putting the new version in place"));
+            }
+            Ok(())
+        })();
+        if let Err(e) = placed {
+            let _ = fs::remove_file(&tmp);
+            return Err(e);
+        }
+        let how = match fetched {
+            crate::updates::Fetched::Delta { bytes, total } => {
+                format!("only the changed parts were downloaded ({:.1} of {:.1} MB)", bytes as f64 / 1e6, total as f64 / 1e6)
+            }
+            crate::updates::Fetched::Full { total } => format!("{:.1} MB downloaded", total as f64 / 1e6),
+        };
+        Ok(SelfUpdate { state: "updated".into(), latest, path: target, detail: format!("SAM was updated; {how}. Restart SAM to use the new version."), page })
     }
 }
 

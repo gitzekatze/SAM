@@ -74,7 +74,10 @@ make install DESTDIR=/tmp/stage PREFIX=/usr
 
 `make appimage RUNTIME=/path/to/runtime-ARCH` writes
 `dist/SAM-X.Y.Z-ARCH.AppImage` (plus a `.sha256`) for this computer's
-architecture, x86_64 or aarch64; the *Release* workflow builds both. It needs `mksquashfs`
+architecture, x86_64 or aarch64; the *Release* workflow builds both. The AppImage carries
+SAM's update information (`gh-releases-zsync|gitzekatze|SAM|latest|…`) and
+gets a `.zsync` file next to it, written by `sam-jail dev make-zsync`; upload
+both with every release so `sam-jail self-update` can find them. It needs `mksquashfs`
 (squashfs-tools) and the AppImage type 2 runtime from
 <https://github.com/AppImage/type2-runtime/releases>; the script checks the
 runtime against a pinned SHA-256 (`RUNTIME_SHA256` to override).

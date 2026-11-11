@@ -360,6 +360,16 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
+        Cmd::SelfUpdate { check } => {
+            let appimage = std::env::var_os("APPIMAGE").map(std::path::PathBuf::from).unwrap_or_default();
+            let r = app.self_update(&appimage, check)?;
+            out.emit(&r, || {
+                println!("{}", r.detail);
+                if r.state == "updated" {
+                    println!("  new file: {}", tildify(&r.path));
+                }
+            });
+        }
         Cmd::Space { app: q } => {
             let entries = match &q {
                 Some(q) => vec![app.resolve(q)?],
@@ -744,6 +754,18 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Dev { cmd: DevCmd::ExtractSquashfs { source, offset, dest, max_files, max_bytes, max_seconds } } => {
             let limits = sam_intake::normalize::Limits { max_files, max_bytes, max_seconds };
             sam_intake::extract::builtin_squashfs_entry(&source, offset, &dest, &limits)?;
+        }
+        Cmd::Dev { cmd: DevCmd::SetUpdateInfo { runtime, info } } => {
+            sam_detect::update_info::write(&runtime, &info)?;
+            out.emit(&json!({"runtime": runtime, "info": info}), || println!("Update information written to {}", runtime.display()));
+        }
+        Cmd::Dev { cmd: DevCmd::MakeZsync { file, url, out: dest } } => {
+            let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).context("no file name")?;
+            let mtime = chrono::DateTime::<chrono::Utc>::from(std::fs::metadata(&file)?.modified()?).format("%a, %d %b %Y %H:%M:%S +0000").to_string();
+            let data = sam_runner::zsync::make(&file, &name, url.as_deref().unwrap_or(&name), &mtime)?;
+            let dest = dest.unwrap_or_else(|| file.with_file_name(format!("{name}.zsync")));
+            std::fs::write(&dest, data)?;
+            out.emit(&json!({"zsync": dest}), || println!("Wrote {}", dest.display()));
         }
         Cmd::Dev { cmd: DevCmd::MakeFixture { path, name, categories, apprun } } => {
             let mut spec = sam_intake::testkit::FixtureSpec::hello(&name);

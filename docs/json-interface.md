@@ -112,6 +112,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `permissions` | the catalogue: every key with title, explanation, risk |
 | `updates [APP] [--if-due]` | `{apps: [{id, update: {state, latest, download_page, detail, checked_at}}]}`; `state` is `available`, `current`, `failed` or `unsupported` |
 | `update APP [--undo] [--accept-key-change]` | app summary; an error starting with `signing key changed` means the new file is signed with another key |
+| `self-update [--check]` | `{state, latest, path, detail, page}`; `state` is `current`, `available` or `updated` (only from SAM's AppImage) |
 | `space [APP]` | `{apps: [{id, name, unpacked, home, overlay, logs, previous, total, can_free}], total}` (bytes) |
 | `free-space APP` | `{freed}` (bytes) |
 | `cleanup [--data] [--list]` | data left behind, or what was removed |
