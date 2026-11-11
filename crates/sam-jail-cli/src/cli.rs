@@ -1,0 +1,362 @@
+//! Command line definitions (clap): every command and its arguments.
+
+use super::*;
+
+#[derive(Parser)]
+#[command(name = "sam-jail", version, about = "SAM - Sandboxed AppImage Manager: Flatseal-style permission manager and sandbox launcher for AppImages")]
+pub(crate) struct Cli {
+    /// Print machine-readable JSON.
+    #[arg(long, global = true)]
+    pub(crate) json: bool,
+    #[command(subcommand)]
+    pub(crate) cmd: Cmd,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub(crate) enum MenuAction {
+    /// List unsandboxed menu entries that start this app's AppImage.
+    List,
+    /// Hide them (SAM's sandboxed launcher stays).
+    Hide,
+    /// Put back the entries SAM hid.
+    Restore,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum Cmd {
+    /// Find AppImages in the scan directories.
+    Scan {
+        /// Register every new AppImage found.
+        #[arg(long)]
+        add: bool,
+        /// Directories to scan (default: configured scan directories).
+        dirs: Vec<PathBuf>,
+    },
+    /// List AppImages in the scan folders and menu, sandboxed or not.
+    /// Reads names and icons without unpacking or running anything.
+    Discover,
+    /// Create a sandbox for an AppImage: extract, profile, add a menu entry.
+    #[command(visible_alias = "sandbox")]
+    Add {
+        path: PathBuf,
+        /// Allow the AppImage's own --appimage-extract (sandboxed) if static extraction fails.
+        #[arg(long)]
+        allow_fallback: bool,
+        /// Do not create a desktop launcher.
+        #[arg(long)]
+        no_launcher: bool,
+        /// Apply a preset instead of the recommended profile.
+        #[arg(long)]
+        preset: Option<String>,
+        /// Accept the recommended profile (skip "Needs Review").
+        #[arg(long)]
+        accept: bool,
+        /// Hide other menu entries that start this AppImage without a sandbox.
+        #[arg(long)]
+        hide_duplicates: bool,
+        /// Use the permissions given as JSON on stdin instead of the recommendation.
+        #[arg(long)]
+        permissions_stdin: bool,
+    },
+    /// Settings SAM would use for an AppImage without a sandbox (nothing is
+    /// unpacked). With --permissions-stdin, evaluates adjusted settings.
+    Preview {
+        path: PathBuf,
+        #[arg(long)]
+        permissions_stdin: bool,
+    },
+    /// Things to check right after creating a sandbox, with one-click fixes.
+    Hints {
+        app: String,
+        /// Apply the hint with this id.
+        #[arg(long)]
+        apply: Option<String>,
+    },
+    /// Repair an app that does not start or misbehaves: list steps, apply one, or undo.
+    Repair {
+        app: String,
+        /// Apply the step with this id (see the list).
+        #[arg(long)]
+        apply: Option<String>,
+        /// Apply the first step in the list.
+        #[arg(long, conflicts_with = "apply")]
+        next: bool,
+        /// Restore the profile from before the first repair step.
+        #[arg(long, conflicts_with_all = ["apply", "next"])]
+        undo: bool,
+    },
+    /// Start sandboxed apps briefly and report which ones keep running.
+    /// Opens their windows for a few seconds.
+    Selftest {
+        /// Apps to test (default: all sandboxed apps).
+        apps: Vec<String>,
+        /// Seconds to let each app run.
+        #[arg(long, default_value_t = 8)]
+        seconds: u64,
+    },
+    /// Show, hide or restore unsandboxed menu entries for a sandboxed app.
+    Menu {
+        #[arg(value_enum)]
+        action: MenuAction,
+        app: String,
+    },
+    /// List registered apps.
+    List {
+        #[arg(long)]
+        search: Option<String>,
+        /// Filter by badge (ready, needs-review, compatibility-mode,
+        /// compatibility-risk, stale, broken, unsafe, missing).
+        #[arg(long)]
+        badge: Option<String>,
+        /// Filter by risk level (low, medium, high, dangerous).
+        #[arg(long)]
+        risk: Option<String>,
+        #[arg(long)]
+        category: Option<String>,
+        /// Sort by: name, recent, added.
+        #[arg(long, default_value = "name")]
+        sort: String,
+    },
+    /// Show details about an app.
+    Info { app: String },
+    /// Remove an app, its extraction, launcher and (unless --keep-data) its
+    /// private home. Refuses while the app runs, unless --stop.
+    Remove {
+        app: String,
+        #[arg(long)]
+        keep_data: bool,
+        /// Close the app first if it is running (instead of refusing).
+        #[arg(long)]
+        stop: bool,
+    },
+    /// Close a running app (it gets the chance to save and quit first).
+    Stop { app: String },
+    /// Write man pages (sam-jail.1 and one per command) into a folder.
+    #[command(hide = true)]
+    Man { dir: PathBuf },
+    /// Remove SAM from this computer: every sandbox (menu entries SAM hid
+    /// come back), SAM's menu entries, its settings and the apps' private
+    /// data. AppImage files stay. Lists what it would remove without --yes.
+    Uninstall {
+        /// Keep SAM's settings and the apps' private data.
+        #[arg(long)]
+        keep_data: bool,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Run an app in its sandbox.
+    Run {
+        app: String,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Show the generated sandbox command without running it.
+    Command {
+        app: String,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Check the system (or one app) for problems.
+    Doctor { app: Option<String> },
+    /// Show the version and the level of the JSON interface.
+    Version,
+    /// Disk space of one app, or of every app.
+    Space { app: Option<String> },
+    /// Delete an app's unpacked copy; the next start unpacks it again.
+    FreeSpace { app: String },
+    /// Show logs for an app.
+    Logs {
+        app: String,
+        /// launch, extract, detect or diagnose
+        #[arg(long)]
+        kind: Option<String>,
+        /// List log files instead of printing the latest.
+        #[arg(long)]
+        list: bool,
+        /// Print this log file (one of `--list`) instead of the latest.
+        #[arg(long)]
+        file: Option<PathBuf>,
+        #[arg(long, default_value_t = 200)]
+        tail: usize,
+    },
+    /// Manage presets.
+    Preset {
+        #[command(subcommand)]
+        cmd: PresetCmd,
+    },
+    /// Set one permission, e.g. `sam-jail set krita network.mode none`.
+    Set { app: String, key: String, value: String },
+    /// Read permissions (all, or one key).
+    Get { app: String, key: Option<String> },
+    /// Read or replace the full profile (JSON on stdin for `set`).
+    Profile {
+        #[command(subcommand)]
+        cmd: ProfileCmd,
+    },
+    /// Risk and warnings for a permission set given as JSON on stdin.
+    Evaluate {
+        /// Evaluate in the context of this app (category, backend).
+        app: Option<String>,
+    },
+    /// Check that the app's sandbox gives it exactly what its settings say:
+    /// starts the sandbox with a probe instead of the app. Also takes an
+    /// AppImage without a sandbox: then the settings it would get are
+    /// checked (nothing is unpacked or stored).
+    Verify {
+        app: String,
+        /// Check these settings (a PermissionSet as JSON on stdin) for an
+        /// AppImage without a sandbox, instead of SAM's recommendation.
+        #[arg(long)]
+        permissions_stdin: bool,
+    },
+    /// Turn compatibility mode on or off. Off restores the settings from
+    /// before it was turned on.
+    Compat { app: String, state: String },
+    /// Show the extra arguments always passed to the app, or replace them
+    /// with a JSON list on stdin (`--stdin`).
+    Args {
+        app: String,
+        #[arg(long)]
+        stdin: bool,
+    },
+    /// Mark an app's profile as reviewed.
+    Review { app: String },
+    /// Re-extract the AppImage (after updates or failures).
+    Reextract {
+        app: String,
+        #[arg(long)]
+        allow_fallback: bool,
+    },
+    /// Re-run dependency detection and the recommendation.
+    Redetect { app: String },
+    /// Check AppImages for changes (stale/missing).
+    Refresh {
+        app: Option<String>,
+        /// Always verify checksums.
+        #[arg(long)]
+        deep: bool,
+    },
+    /// Point an app at the new location of its AppImage.
+    Relocate { app: String, path: PathBuf },
+    /// Install or remove the desktop launcher. `sam-jail desktop all refresh`
+    /// rewrites every launcher whose command is outdated (e.g. SAM's AppImage
+    /// was moved).
+    Desktop { app: String, action: String },
+    /// Run the app once under strace to find missing resources.
+    Diagnose {
+        app: String,
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+        /// Apply low-risk fixes automatically.
+        #[arg(long)]
+        apply: bool,
+    },
+    /// Print a redacted bug report.
+    Report { app: Option<String> },
+    /// Read or change configuration.
+    Config {
+        #[command(subcommand)]
+        cmd: ConfigCmd,
+    },
+    /// List all permissions with plain-language explanations.
+    Permissions,
+    /// Remove extraction leftovers not referenced by any app.
+    Cleanup {
+        /// Also (or with --list: only list) the private data of apps whose
+        /// sandbox was removed with --keep-data.
+        #[arg(long)]
+        data: bool,
+        /// Only list what would be removed.
+        #[arg(long)]
+        list: bool,
+    },
+    /// First-run onboarding status.
+    Onboarding { action: Option<String> },
+    /// Developer tools.
+    #[command(hide = true)]
+    Dev {
+        #[command(subcommand)]
+        cmd: DevCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum PresetCmd {
+    List,
+    Show { name: String },
+    /// Apply a preset to an app (asks for confirmation when it conflicts).
+    Apply {
+        name: String,
+        app: String,
+        #[arg(long, short)]
+        yes: bool,
+    },
+    /// What applying a preset would change for an AppImage without a
+    /// sandbox (the settings shown now as a PermissionSet on stdin with
+    /// --current-stdin). Changes nothing.
+    Check {
+        name: String,
+        appimage: PathBuf,
+        #[arg(long)]
+        current_stdin: bool,
+    },
+    /// Save an app's current permissions as a new preset.
+    Save {
+        app: String,
+        name: String,
+        #[arg(long, default_value = "")]
+        description: String,
+    },
+    Delete { name: String },
+    Duplicate { name: String, new_name: String },
+    Import { file: PathBuf },
+    Export { name: String, file: Option<PathBuf> },
+    /// Create or replace a user preset from JSON on stdin.
+    Put,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ProfileCmd {
+    Get { app: String },
+    /// Replace permissions from JSON (a PermissionSet) on stdin.
+    Set { app: String },
+    /// Reset to the recommended profile.
+    Reset { app: String },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ConfigCmd {
+    Show,
+    Get { key: String },
+    Set { key: String, value: String },
+    /// Replace the whole configuration from JSON on stdin.
+    Put,
+    Path,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum DevCmd {
+    /// Build a synthetic test AppImage.
+    MakeFixture {
+        path: PathBuf,
+        #[arg(long, default_value = "Hello")]
+        name: String,
+        #[arg(long, default_value = "Utility;")]
+        categories: String,
+        /// Use this file as the AppRun script.
+        #[arg(long)]
+        apprun: Option<PathBuf>,
+    },
+    /// Built-in SquashFS reader, run by SAM inside a sandbox during extraction.
+    ExtractSquashfs {
+        source: PathBuf,
+        offset: u64,
+        dest: PathBuf,
+        #[arg(long)]
+        max_files: u64,
+        #[arg(long)]
+        max_bytes: u64,
+        #[arg(long)]
+        max_seconds: u64,
+    },
+}
