@@ -1,5 +1,5 @@
-//! Environment checks, diagnostics screen data (§2.26) and redacted bug
-//! reports (§2.20.7).
+//! Environment checks, diagnostics screen data and redacted bug
+//! reports.
 
 use std::process::{Command, Stdio};
 
@@ -60,7 +60,6 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         None => check("landlock", "Landlock", CheckStatus::Info, "not available on this kernel (optional)"),
     });
     c.push(check("seccomp", "Seccomp", if host.seccomp { CheckStatus::Ok } else { CheckStatus::Info }, if host.seccomp { format!("available; strict mode {}", if cfg.security.experimental_seccomp { "enabled" } else { "disabled (experimental)" }) } else { "not detected".into() }));
-    c.push(check("ebpf", "eBPF network filtering", CheckStatus::Info, "experimental, not implemented in this release"));
 
     c.push(match &host.tools.xdg_dbus_proxy {
         Some(_) => check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Ok, "installed: filtered session D-Bus available"),

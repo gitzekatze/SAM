@@ -1,4 +1,4 @@
-//! Kernel security features (§2.22.2): Landlock and seccomp.
+//! Kernel security features: Landlock and seccomp.
 //!
 //! * Landlock is applied *inside* the sandbox by `sam-jail-run --sandbox-exec`
 //!   (a Landlock domain cannot set up mounts, so it must come after bwrap).

@@ -1,6 +1,6 @@
 [package]
 name = "sam-core"
-description = "Core data model, permissions, risk scoring, configuration and host probing for SAM"
+description = "Core data model, permissions, risk scoring, configuration and host probing for SAM - Sandboxed AppImage Manager"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

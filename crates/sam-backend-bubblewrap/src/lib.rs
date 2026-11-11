@@ -1,6 +1,6 @@
-//! Bubblewrap backend (default, §2.13.1 / build plan §3.6).
+//! The Bubblewrap command builder.
 //!
-//! Sandbox layout (§2.14):
+//! Sandbox layout:
 //!
 //! ```text
 //! /opt/app              extracted AppImage payload, read-only

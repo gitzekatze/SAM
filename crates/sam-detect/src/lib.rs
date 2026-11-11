@@ -1,5 +1,5 @@
-//! sam-detect: AppImage format detection (§2.11.1) and dependency
-//! detection (§2.16).
+//! sam-detect: AppImage format detection and dependency
+//! detection.
 
 pub mod appimage;
 pub mod classify;

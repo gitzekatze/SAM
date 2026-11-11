@@ -3,11 +3,11 @@
   <id>io.github.gitzekatze.SAM</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  <name>SAM</name>
+  <name>SAM - Sandboxed AppImage Manager</name>
   <summary>Sandbox AppImages and manage their permissions</summary>
   <description>
     <p>
-      SAM is a Flatseal-style permission manager for AppImages. It unpacks
+      SAM - Sandboxed AppImage Manager is a Flatseal-style permission manager for AppImages. It unpacks
       AppImages without running them, recommends safe permissions, and launches
       them inside a Bubblewrap sandbox.
     </p>

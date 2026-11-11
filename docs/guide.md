@@ -1,6 +1,6 @@
 # SAM User Guide
 
-**SAM, the Sandboxed AppImage Manager**, runs your AppImages in a sandbox and shows every permission an app has as a simple switch, much like Flatseal does for Flatpak apps.
+**SAM - Sandboxed AppImage Manager** runs your AppImages in a sandbox and shows every permission an app has as a simple switch, much like Flatseal does for Flatpak apps.
 
 > **The short version:** pick an AppImage on the left, look at the settings SAM recommends, click **Create Sandbox**, then **Launch**. Everything an app may reach is listed on its page, and nothing is ever hidden.
 
@@ -38,7 +38,7 @@
 
 **Left column**
 
-- **AppImage locations:** the folders and single files SAM searches. The ✕ removes a location (your files are not touched). *Also search the Downloads folder* adds your Downloads folder.
+- **AppImage locations:** the folders and single files SAM searches. The ✕ removes a location (your files are not touched). *Also search the Downloads folder* adds your Downloads folder. The list grows with every location you add; the whole left column scrolls.
 - **AppImages found:** every AppImage in those locations, grouped into *Sandboxed* and *Not sandboxed*. Use **All / Sandboxed / Unsandboxed** to filter and the search field to find one by name or path.
 - Each row shows the app's icon, name, file name and a status. Hover over any status to see what it means.
   - *Sandboxed* / *Not sandboxed*: whether the app has a sandbox yet.

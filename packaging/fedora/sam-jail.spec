@@ -1,4 +1,4 @@
-# SAM, the Sandboxed AppImage Manager. Split package, same as on Arch:
+# SAM - Sandboxed AppImage Manager. Split package, same as on Arch:
 #   sam-jail-cli   command line tools and sandbox runner (sam-jail, sam-jail-run)
 #   sam-jail       the GTK 4 / libadwaita window (sam-jail-gui)
 #
@@ -11,7 +11,7 @@
 Name:           sam-jail
 Version:        0.1.0
 Release:        1%{?dist}
-Summary:        Flatseal-style sandbox manager for AppImages, using Bubblewrap
+Summary:        SAM - Sandboxed AppImage Manager: Flatseal-style sandbox manager for AppImages
 
 # SAM itself; the vendored Rust crates are MIT, Apache-2.0, Unicode-3.0 and
 # similar permissive licenses (see vendor/*/LICENSE*).
@@ -43,7 +43,7 @@ derived from the AppImage itself, without running it.
 This package contains the GTK 4 / libadwaita window (sam-jail-gui).
 
 %package -n sam-jail-cli
-Summary:        Command line tools and sandbox runner for SAM
+Summary:        Command line tools and sandbox runner of SAM - Sandboxed AppImage Manager
 Requires:       bubblewrap
 Requires:       bsdtar
 Recommends:     xdg-dbus-proxy
@@ -52,7 +52,7 @@ Suggests:       strace
 Suggests:       squashfs-tools
 
 %description -n sam-jail-cli
-Command line tools of SAM, the Sandboxed AppImage Manager: sam-jail creates
+Command line tools of SAM - Sandboxed AppImage Manager: sam-jail creates
 and manages sandboxes for AppImages, sam-jail-run starts an app in its
 sandbox (also used by SAM's menu entries).
 

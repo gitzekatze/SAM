@@ -1,6 +1,6 @@
 [package]
 name = "sam-jail-cli"
-description = "Command line interface for SAM (sam-jail, sam-jail-run)"
+description = "Command line interface of SAM - Sandboxed AppImage Manager (sam-jail, sam-jail-run)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

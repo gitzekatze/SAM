@@ -1,4 +1,4 @@
-//! App id generation (build plan §3.5 task 5).
+//! App id generation.
 //!
 //! `appimage-<slug>-<hash>`: human-readable slug from the app name (or file
 //! name without version/arch noise) plus a checksum prefix. The hash grows

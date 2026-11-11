@@ -128,7 +128,7 @@ where
 /// Text from an untrusted source (an AppImage's desktop file, an app's
 /// output, a file name) made safe to show: control characters removed,
 /// length capped, and `<`/`>` replaced by look-alikes so no UI toolkit can
-/// mistake it for markup (Qt's AutoText renders HTML, including remote
+/// mistake it for markup (some render HTML automatically, including remote
 /// images).
 pub fn display_safe(s: &str, max_chars: usize) -> String {
     let mut out: String = s

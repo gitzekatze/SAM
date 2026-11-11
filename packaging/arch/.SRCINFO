@@ -1,5 +1,5 @@
 pkgbase = sam-jail
-	pkgdesc = Flatseal-style sandbox manager for AppImages, using Bubblewrap
+	pkgdesc = SAM - Sandboxed AppImage Manager: Flatseal-style sandbox manager for AppImages
 	pkgver = 0.1.0
 	pkgrel = 1
 	url = https://github.com/gitzekatze/SAM
@@ -17,7 +17,7 @@ pkgbase = sam-jail
 	sha256sums = 6f31053708211a434a638e01f121062013edce5068598684b93b9085ca793396
 
 pkgname = sam-jail-cli
-	pkgdesc = Command line tools and sandbox runner for SAM, the Sandboxed AppImage Manager
+	pkgdesc = Command line tools and sandbox runner of SAM - Sandboxed AppImage Manager
 	depends = bubblewrap
 	depends = glibc
 	depends = gcc-libs
@@ -28,7 +28,7 @@ pkgname = sam-jail-cli
 	optdepends = strace: diagnostic runs that find missing resources
 
 pkgname = sam-jail
-	pkgdesc = Flatseal-style sandbox manager for AppImages, using Bubblewrap (GTK 4 / libadwaita GUI)
+	pkgdesc = SAM - Sandboxed AppImage Manager: Flatseal-style sandbox manager for AppImages (GTK 4 / libadwaita window)
 	depends = sam-jail-cli=0.1.0
 	depends = gtk4
 	depends = libadwaita

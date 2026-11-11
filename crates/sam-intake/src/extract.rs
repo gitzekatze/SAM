@@ -1,4 +1,4 @@
-//! Payload extraction (§2.11.2).
+//! Payload extraction.
 //!
 //! Preferred order:
 //! 1. Static extraction without executing the AppImage:

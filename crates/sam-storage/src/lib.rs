@@ -283,7 +283,7 @@ pub fn read_preset_file(path: &Path) -> Result<Preset> {
 }
 
 /// Parse a preset, accepting both the structured format and the flat
-/// format shown in the whitepaper (`network = "full"`, `gpu = true`, ...).
+/// format (`network = "full"`, `gpu = true`, ...).
 pub fn parse_preset_toml(s: &str) -> Result<Preset> {
     let file: PresetFile = toml::from_str(s)?;
     if file.preset.format > sam_core::format::CURRENT {
@@ -311,7 +311,7 @@ fn permissions_from_toml(v: toml::Value) -> Result<PermissionSet> {
     if !is_flat || table.is_empty() {
         return Ok(toml::Value::Table(table).try_into()?);
     }
-    // Flat whitepaper format.
+    // Older flat format.
     let mut p = PermissionSet::default();
     for (k, v) in table {
         let raw = match &v {
@@ -502,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn flat_preset_from_whitepaper() {
+    fn flat_preset_format() {
         let s = r#"
 [preset]
 name = "Strict Browser"

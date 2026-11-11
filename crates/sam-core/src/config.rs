@@ -1,4 +1,4 @@
-//! User configuration (whitepaper §2.25), stored as TOML.
+//! User configuration, stored as TOML.
 
 use std::fs;
 use std::path::PathBuf;
@@ -26,7 +26,7 @@ pub const THEMES: [&str; 3] = ["system", "light", "dark"];
 /// current one, one step at a time.
 fn migrate(mut v: serde_json::Value, from: u32) -> serde_json::Value {
     if from < 1 {
-        // 0 -> 1: theme names of the earlier Qt GUI.
+        // 0 -> 1: older theme names.
         if let Some(t) = v.pointer_mut("/general/theme") {
             let new = migrate_theme(t.as_str().unwrap_or("system"));
             *t = serde_json::Value::String(new.into());
@@ -35,7 +35,7 @@ fn migrate(mut v: serde_json::Value, from: u32) -> serde_json::Value {
     v
 }
 
-/// Theme names of the earlier Qt GUI, mapped to the current ones.
+/// Theme names of format 0, mapped to the current ones.
 fn migrate_theme(t: &str) -> &'static str {
     match t {
         "light" | "breeze-light" => "light",
@@ -307,7 +307,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_whitepaper_example() {
+    fn parses_full_example() {
         let s = r#"
 [general]
 theme = "dark"

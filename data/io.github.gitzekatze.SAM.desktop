@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=SAM
+Name=SAM - Sandboxed AppImage Manager
 GenericName=AppImage Permissions
 Comment=Sandbox AppImages and manage their permissions
 Exec=sam-jail-gui %F

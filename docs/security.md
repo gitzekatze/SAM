@@ -1,201 +1,278 @@
-# SAM security model
+# Security
 
-## Threat model (whitepaper §2.5)
+This page explains how SAM - Sandboxed AppImage Manager protects your
+computer from the AppImages it runs, and where that protection ends.
 
-SAM assumes that **you are trusted** and that **individual AppImages may not be**.
+**In short:** every app runs in a Bubblewrap sandbox with its own private
+home, a read-only system, no privileges and only the access you allow. Inside
+it, Landlock and a syscall filter add a second line of defence. SAM never
+starts an app without a sandbox.
 
-**What it mitigates:** accidental access to unrelated files, broad home access,
-unneeded network access, unnecessary devices, excessive D-Bus access,
-modification of other apps' configuration, and dangerous permissions granted
-by mistake.
+---
 
-**What it cannot fully mitigate:**
+## Threat model
 
-- **X11:** any X11 client can log keystrokes and capture the screen. Prefer Wayland.
-- **Kernel and firmware:** exploits there bypass any user-space sandbox.
-- **Root-level malware.**
-- **Social engineering.**
-- **Apps that need privileged host access to work.**
+SAM assumes that **you are trusted** and that **an AppImage may not be**.
 
-## What the default sandbox looks like (Bubblewrap)
-
-| Path | Contents |
+| SAM protects against | SAM cannot fully protect against |
 |---|---|
-| `/opt/app` | extracted payload, read-only |
-| `/usr/lib`, `/usr/bin` | host runtime, read-only. All of `/usr` with `sam-jail set <id> advanced.host_runtime full`, or with compatibility mode (`sam-jail compat <id> on`) |
-| `/usr/share/<x>` | whitelisted shared data (fonts, icons, locale, themes, …), read-only |
-| `/etc/<x>` | whitelisted configuration; `passwd` and `group` are generated and contain only your user |
-| `/tmp`, `/var/tmp`, `$XDG_RUNTIME_DIR` | private tmpfs |
-| `$HOME` | **private per-app home** (`~/.local/share/sam/homes/<id>`) plus only the folders you granted |
-| `/` | read-only after setup (`--remount-ro /`) |
+| apps reading files they have no business with | **X11:** any X11 app can read keystrokes and capture the screen. Prefer Wayland. |
+| apps changing other apps' settings | **Kernel and firmware bugs:** they bypass every user-space sandbox. |
+| unneeded network, devices and D-Bus services | **Malware that is already root.** |
+| dangerous permissions granted by mistake | **Social engineering:** an app that talks you into granting access. |
+| an app starting programs outside its sandbox | **Apps that need privileged host access** to work at all. |
 
-Process isolation:
+---
 
-- **Namespaces:** user, PID, IPC, UTS and cgroup are always unshared. The
-  network namespace is unshared when network access is "none".
-- **Hardening:** `--cap-drop ALL`, `--new-session` (prevents TIOCSTI terminal
-  injection) and `--die-with-parent`.
-- **Environment:** cleared, then only safe variables are set.
+## Inside the sandbox
 
-## Defense in depth
+### Files
 
-- **Landlock** (on by default where the kernel supports it): `sam-jail-run`
-  applies a Landlock ruleset *inside* the sandbox before it starts the app.
-  Writes are then allowed only in the app's home, its temporary folders and
-  the locations the profile grants read/write. If a mount outside those is
-  ever more permissive than intended, the kernel still blocks the write.
-  Inside the home (which must be writable) read-only folders such as a
-  read-only Documents are protected by their read-only mount, which the app
-  cannot change: it has no privileges and Bubblewrap locks the mount. On kernels with Landlock ABI 6 (6.12+) it also blocks
-  connections to abstract UNIX sockets created outside the sandbox, such as
-  XWayland's `@/tmp/.X11-unix/X0`, which would otherwise be reachable
-  whenever the app shares the network namespace.
-- **Baseline seccomp** (on by default, `security.baseline_seccomp`): blocks
-  module loading, kexec, BPF, perf, keyrings, userfaultfd, handle-based
-  opens, `syslog` and terminal injection (`TIOCSTI`, `TIOCLINUX`). Without
-  nested sandboxes it also blocks namespaces and mounts. Loaded by
-  `sam-jail-run` right before the app starts, so it also applies under
-  *Local network only*. The same calls are blocked through the x32 ABI;
-  32-bit calls (`int 0x80`) end the process. 32-bit AppImages therefore get
-  the filter turned off in their recommendation (and say so).
-- **Nested sandboxes are off by default:** user namespaces add kernel
-  attack surface. Only apps whose engine builds its own sandbox (Electron,
-  CEF, Qt WebEngine, WebKitGTK; found by the dependency analysis) get them.
-- **Strict seccomp** (experimental, opt-in) adds ptrace, process memory
-  access, `personality` and NUMA memory calls.
-- **Private `/dev/shm`** per sandbox.
-- **Portal filter:** the desktop portal is reachable only for opening links,
-  notifications, appearance settings, file dialogs, printing, email,
-  inhibit and system monitors. Camera needs the webcam permission and screen
-  sharing its own permission. Screenshot, Background (autostart),
-  DynamicLauncher, Trash, Wallpaper, RemoteDesktop, InputCapture,
-  GlobalShortcuts, Location, Usb, Clipboard and Secret are blocked.
-- **SAM and Flatpak are separate.** SAM never writes to Flatpak's files or
-  folders and never presents its apps to the desktop as Flatpak apps.
-  Portals therefore see a SAM app as an ordinary program; the method filter
-  above is what limits it.
-- **D-Bus "Always blocked" names win:** the D-Bus filter cannot make
-  exceptions, so a wildcard allow entry that would also reach a blocked name
-  is not used (the app page warns about it).
-- **Local network only** forwards only the host ports listed in
-  `network.host_ports`; DNS is never forwarded.
-- **Full home access** stays guarded even when you grant it, and so does
-  any granted folder that contains the home (such as `/home`):
-  - `~/.ssh`, `~/.gnupg` and other credential stores (keyrings, password
-    stores, cloud credentials, browser profiles) stay hidden unless you
-    explicitly allow them.
-  - SAM's own folders (configuration, data, unpacked apps, wherever they
-    are configured) are replaced by an empty, throwaway folder whenever any
-    grant would show them, so an app cannot change its own permissions or
-    another app's files.
-  - With write access these stay read-only: shell startup files,
-    `autostart`, `systemd --user`, `environment.d`, menu entries,
-    `~/.local/bin` and `~/bin` (programs on `$PATH`), D-Bus service files
-    (the session bus would start them outside the sandbox), `mimeapps.list`
-    (default apps), KWin/Plasma scripts, file manager service menus, and
-    configs that can run commands (git, vim, Neovim, `.pam_environment`).
-    Missing folders of this list, and `.bashrc`, `.profile`, `.gitconfig`
-    and `mimeapps.list`, are created empty first so they can be protected.
-    Files whose mere presence changes behaviour (`.bash_profile`, `.zshrc`,
-    `.xinitrc`, `.xprofile`, `.vimrc`) are protected only if they exist.
-- **No starting programs outside the sandbox through system services:**
-  `systemd-run` (and `run0`, a link to it) is replaced inside every sandbox
-  by a stand-in that runs the command directly, so it stays sandboxed;
-  `flatpak-spawn` refuses. With full D-Bus access the real tools could ask
-  systemd or Flatpak to start a program outside. Some AppRun scripts use
-  `systemd-run` whenever it exists (KeePassXC), and now start normally.
-- **The app runs with your user and group id**, also in *Local network
-  only*, where Bubblewrap runs inside pasta's namespace and would otherwise
-  map the app to root.
-- **Sandbox check** (`sam-jail verify`, *Check* in the window): the same
-  launch path as a real start, but the helper runs a test program after
-  Landlock and the syscall filter are in place instead of executing the app.
-  It compares what it observes inside (folder identity by device and inode,
-  write tests with invisible `O_TMPFILE` files, network routes, device nodes,
-  D-Bus names via `GetNameOwner`, `NoNewPrivs`, capabilities, user
-  namespaces, seccomp and Landlock state) with what the settings promise.
-  `security.check_before_launch` repeats it before a start whenever SAM's
-  version, the app's settings, the security configuration or the host
-  changed, and refuses the start on any failure.
+| Path in the sandbox | What it is |
+|---|---|
+| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus only the folders you granted |
+| `/opt/app` | the unpacked app, read-only |
+| `/usr/lib`, `/usr/bin` | the system's libraries and programs, read-only (all of `/usr` with `advanced.host_runtime full` or compatibility mode) |
+| `/usr/share/…` | selected shared data (fonts, icons, locales, themes), read-only |
+| `/etc/…` | selected configuration; `passwd` and `group` are generated and list only you |
+| `/tmp`, `/var/tmp`, `$XDG_RUNTIME_DIR` | empty and private |
+| `/` | read-only once the sandbox is set up |
+
+### Processes
+
+- **Namespaces:** user, PID, IPC, UTS and cgroup are always separate. The
+  network is separate too, unless the app has full network access.
+- **No privileges:** all capabilities dropped, a new session (stops terminal
+  injection through `TIOCSTI`), and the sandbox ends when SAM's runner ends.
+- **Clean environment:** cleared, then only safe variables are set.
+- **Your ids:** the app runs with your user and group id, also with *Local
+  network only*, where it would otherwise appear as root.
+
+---
+
+## Layers of protection
+
+### Landlock
+
+On by default where the kernel supports it. SAM's runner applies it inside
+the sandbox, just before the app starts.
+
+- Writes are allowed only in the app's home, its temporary folders and the
+  folders granted read/write. Even if a mount were more permissive than
+  intended, the kernel still blocks the write.
+- Read-only folders inside the home (such as a read-only *Documents*) are
+  protected by their read-only mount, which the app cannot change.
+- With kernel 6.12+ (Landlock ABI 6), connections to abstract sockets outside
+  the sandbox are blocked too, for example XWayland's
+  `@/tmp/.X11-unix/X0`.
+
+### Syscall filter
+
+The **baseline filter** is on by default (`security.baseline_seccomp`). It
+blocks:
+
+- loading kernel modules, `kexec`, BPF and `perf`;
+- keyrings, `userfaultfd`, handle-based opens and `syslog`;
+- terminal injection (`TIOCSTI`, `TIOCLINUX`);
+- namespaces and mounts, unless the app needs nested sandboxes.
+
+It covers the x32 ABI as well. 32-bit system calls (`int 0x80`) end the
+process, so 32-bit AppImages get the filter turned off in their
+recommendation, and SAM says so.
+
+The **strict filter** (experimental, opt-in) also blocks `ptrace`, access to
+other processes' memory, `personality` and NUMA memory calls.
+
+### Nested sandboxes are off by default
+
+User namespaces inside the sandbox add kernel attack surface. Only apps whose
+engine builds its own sandbox get them: Electron, CEF, Qt WebEngine and
+WebKitGTK, as found by the dependency analysis.
+
+### D-Bus and portals
+
+- **D-Bus** goes through `xdg-dbus-proxy`. The app sees only the names it is
+  allowed to talk to.
+- **Blocked names always win.** The proxy cannot make exceptions, so a
+  wildcard allow entry that would also reach a blocked name is not used; the
+  app page warns about it.
+- **Portals** are reachable only for harmless functions: opening links,
+  notifications, appearance settings, file dialogs, printing, email, inhibit
+  and system monitors. Camera needs the webcam permission, screen sharing its
+  own permission.
+- **Blocked portals:** Screenshot, Background (autostart), DynamicLauncher,
+  Trash, Wallpaper, RemoteDesktop, InputCapture, GlobalShortcuts, Location,
+  Usb, Clipboard and Secret.
+- **No Flatpak identity.** SAM never presents its apps as Flatpak apps, so
+  portals see an ordinary program and the filter above is what limits it.
+
+### Local network only
+
+The app has no internet and no DNS. It can reach only the host ports listed
+in `network.host_ports`. It needs `pasta` with `--splice-only`; an older
+`pasta` is not used, and the app then gets no network at all, never more.
+
+### Private `/dev/shm`
+
+Each sandbox has its own shared memory folder.
+
+---
+
+## Full home access stays guarded
+
+Granting the whole home, or a folder that contains it (such as `/home`),
+still keeps these protections:
+
+**Hidden unless you allow them explicitly:** `~/.ssh`, `~/.gnupg`, keyrings,
+password stores, cloud credentials and browser profiles.
+
+**Hidden whenever a grant would show them:** SAM's own folders
+(configuration, data and unpacked apps, wherever they are). They are replaced
+by an empty, throwaway folder, so an app cannot change its own permissions
+or another app's files.
+
+**Read-only, even with write access** (each of these can make your system
+run a program the next time you log in or open a file):
+
+| Kind | Examples |
+|---|---|
+| shell and session startup | `.bashrc`, `.profile`, `.pam_environment`, `environment.d` |
+| autostart and services | `autostart`, `systemd --user`, D-Bus service files |
+| programs on `$PATH` | `~/.local/bin`, `~/bin` |
+| menu and default apps | menu entries, `mimeapps.list` |
+| desktop scripting | KWin and Plasma scripts, file manager service menus |
+| configs that run commands | git, vim, Neovim |
+
+Missing folders from this list, and `.bashrc`, `.profile`, `.gitconfig` and
+`mimeapps.list`, are created empty first so they can be protected. Files
+whose mere presence changes behaviour (`.bash_profile`, `.zshrc`,
+`.xinitrc`, `.xprofile`, `.vimrc`) are protected only if they exist.
+
+---
+
+## No way out through system services
+
+With full D-Bus access, `systemd-run` and `flatpak-spawn` could ask systemd
+or Flatpak to start a program outside the sandbox. So inside every sandbox:
+
+- `systemd-run` (and `run0`, a link to it) is replaced by a stand-in that
+  runs the command directly, inside the sandbox. Apps whose start script
+  uses `systemd-run` (such as KeePassXC) still start normally.
+- `flatpak-spawn` refuses to run.
+
+---
+
+## The sandbox check
+
+`sam-jail verify`, or *Check* in the window, proves that the settings apply.
+
+1. It takes the same path as a real start, but SAM's runner starts a test
+   program instead of the app, after Landlock and the syscall filter are in
+   place.
+2. The test program observes the sandbox from the inside: which folders it
+   sees (by device and inode), where it can write (with invisible
+   `O_TMPFILE` files), network routes, device nodes, reachable D-Bus names,
+   `NoNewPrivs`, capabilities, user namespaces, and the seccomp and Landlock
+   state.
+3. SAM compares what it observed with what the settings promise.
+
+With `security.check_before_launch`, SAM repeats the check before a start
+whenever SAM, the app's settings, the security settings or the computer have
+changed, and refuses to start on any failure.
+
+---
 
 ## What SAM never trusts
 
-The sandboxed app controls its own output, and an AppImage controls its own
-metadata and file name. SAM treats both as untrusted:
+An app controls what it prints, and an AppImage controls its own name and
+metadata. SAM treats both as untrusted.
 
-- **Sandbox failures** are reported only when Bubblewrap itself says the
-  sandbox could not be built (`--json-status-fd`), never because of text the
-  app printed. SAM never falls back to running an app without a sandbox.
-- **Repair suggestions** derived from the app's output are labelled as such
-  and always need confirmation. They never offer services that can act
-  outside the sandbox (systemd, Flatpak, KWin/Plasma scripting, dconf, …)
-  or protected locations (`~/.ssh`, keyrings, the whole home). Adding such a
-  D-Bus service by hand is rated Dangerous and asks first.
-- **Names, comments and file names** are cleaned (no markup, no control
-  characters, capped length) and shown as plain text, so an AppImage cannot
-  inject HTML (remote images, fake formatting) into SAM's windows or
-  notifications.
-- **MimeType** declarations are filtered: a sandboxed launcher never
-  registers URL schemes (`https`, `mailto`, …), directories, executables or
-  generic types.
-- **What was enforced** (Landlock, seccomp) is reported by SAM's helper on a
-  private channel that is closed before the app starts, and shown in the
+- **Sandbox errors** count only when Bubblewrap itself reports them (through
+  `--json-status-fd`), never because of text the app printed. SAM never falls
+  back to running an app without a sandbox.
+- **Repair suggestions** based on app output are marked as such and always
+  ask first. They never offer services that can act outside the sandbox
+  (systemd, Flatpak, KWin/Plasma scripting, dconf, …) or protected places
+  (`~/.ssh`, keyrings, the whole home). Adding such a D-Bus service by hand
+  is rated *Dangerous* and asks first.
+- **Names, descriptions and file names** are cleaned (no markup, no control
+  characters, limited length) and shown as plain text, so an AppImage cannot
+  inject formatting or remote images into SAM's window or notifications.
+- **File types** a menu entry registers are filtered: never URL schemes
+  (`https`, `mailto`, …), folders, programs or catch-all types.
+- **What was enforced** (Landlock, seccomp) is reported by SAM's runner over
+  a private channel that closes before the app starts. It appears in the
   launch log and on the app page.
 
-## Extraction safety (§2.11.4)
+---
 
-Extraction runs inside a minimal Bubblewrap sandbox (source read-only, only
-the target writable, no network, no capabilities) whenever Bubblewrap is
-usable; the extraction log says whether it was isolated. Extraction never
-executes the AppImage by default. Additionally:
+## Safe unpacking
 
-- **Archive paths:** entries containing `..` are refused. Parent directories
-  are checked so that writes can't be redirected through symlinks.
-- **Permissions:** setuid, setgid, sticky and world-writable bits are removed.
-  Files become 0755 or 0644.
-- **Symlinks and special files:** relative symlinks that resolve outside the
-  payload are removed. Device nodes, FIFOs and sockets are removed.
-- **Limits:** file-count, size and time limits abort the extraction and
-  remove partial output.
-- **Host-side reads:** SAM reads only icon and desktop files from the
-  payload, and never follows a symlink out of it when doing so.
+SAM unpacks AppImages with its own reader and never runs them to do so.
+Unpacking happens inside a minimal Bubblewrap sandbox (the AppImage
+read-only, only the target writable, no network, no privileges) whenever
+Bubblewrap works; the unpacking log says whether it was isolated.
 
-## Risk levels (§2.19.2)
-
-| Permission | Risk |
+| Risk | What SAM does |
 |---|---|
-| Fonts, icons, locale, timezone (read-only), Wayland, filtered D-Bus | Low |
-| GPU, audio, folder access, full `/usr` | Medium |
-| Network, X11, full home read-only, full session D-Bus, webcam, SSH agent | High |
-| Full home read/write, system D-Bus, raw devices (input, USB, ALSA), exposed keys | Dangerous |
+| paths with `..` | refused; parent folders are checked so writes cannot be redirected through links |
+| setuid, setgid, sticky, world-writable | removed; files become `0755` or `0644` |
+| links pointing outside the app | removed |
+| device nodes, FIFOs, sockets | removed |
+| huge or endless archives | file-count, size and time limits stop the unpacking and remove partial output |
+| reading outside the sandbox | SAM itself reads only icon and desktop files, and never follows a link out of the app |
 
-An app's risk is the level of its riskiest permission. The app shows that
-level together with the permission(s) that set it, e.g. *High risk · Network
-+1*; the Overview lists every permission above *Low*. A weighted sum (capped
-at 100) is still in the JSON output as `risk.score` for scripts, but is not
-shown, because a number next to the level was easily misread.
+Running the AppImage's own `--appimage-extract` is a fallback that needs your
+consent, and also runs in a sandbox.
+
+---
+
+## Risk levels
+
+| Level | Permissions |
+|---|---|
+| **Low** | fonts, icons, locales, time zone (read-only), Wayland, filtered D-Bus |
+| **Medium** | GPU, audio, folder access, all of `/usr` |
+| **High** | network, X11, whole home read-only, full session D-Bus, webcam, SSH agent |
+| **Dangerous** | whole home read/write, system D-Bus, raw devices (input, USB, ALSA), exposed keys |
+
+An app's risk is the level of its riskiest permission. SAM shows the level
+with the permission that sets it, for example *High risk · Network +1*. The
+*Overview* group lists every permission above *Low*.
+
+For scripts, the JSON output still has a weighted score (`risk.score`, at
+most 100). The window does not show it, because a number next to the level
+was easily misread.
+
+---
 
 ## Known limitations
 
-- **Icons are rendered outside the sandbox:** SAM copies an AppImage's icon
-  (PNG, SVG or XPM, at most 10 MB) into its cache, and the window and the
-  application menu draw it with the system's image libraries, like every
-  AppImage integration tool does.
+- **Icons are drawn outside the sandbox.** SAM copies an AppImage's icon
+  (PNG, SVG or XPM, at most 10 MB) into its cache. The window and the menu
+  draw it with the system's image libraries, as every AppImage integration
+  tool does.
+- **D-Bus filtering needs `xdg-dbus-proxy`.** Without it, an app with
+  filtered D-Bus gets no session bus at all.
+- **Abstract sockets** are blocked only on kernel 6.12+. On older kernels,
+  XWayland's socket is reachable for apps with full network (X11
+  authorization still applies).
+- **No filtering by domain.** An app gets no network, only this computer
+  (*Local network only*), or the full network.
+- **File dialogs:** a file picked outside the folders an app may use is not
+  visible to it, because the portal hands over the host path. Grant the
+  folder, or open the file with the app (which grants that one file).
+- **Local network only** forwards the app's own ports to this computer
+  automatically, except privileged ports and well-known local services. List
+  `network.app_ports` to restrict it further.
+- **Hostname:** the sandbox keeps the computer's hostname, because changing
+  it is blocked on some hardened systems.
 
-- **D-Bus filtering** needs `xdg-dbus-proxy`.
-  Without it, "filtered" falls back to *no* session bus.
-- **Abstract sockets** are blocked only with Landlock ABI 6 (kernel 6.12+)
-  On older kernels, XWayland's abstract socket is reachable with full
-  network (X11 authorization still applies).
-- **No domain-filtered network:** an app gets no network, only this
-  computer (*Local network only*), or the full network. Old profiles with
-  the never-enforced "filtered" mode load as no network.
-- **Files picked in a file dialog** outside the folders an app may use are
-  not visible to it: the portal hands over the host path, and the sandbox
-  does not contain it. Grant the folder (or open the file with the app,
-  which grants that one file) instead.
-- **Local network only** forwards the app's ports to this computer
-  automatically, except privileged ports and well-known local services;
-  list `network.app_ports` to restrict it further.
-- **Hostname:** the sandbox keeps the host's hostname. Changing it is blocked
-  on some hardened hosts.
+---
+
+## Reviews and tests
+
+- [Security review 2026-11-10](security-review-2026-11-10.md): every promise
+  on this page checked by a breakout test, with the fixes it led to.
+- The breakout tests run in CI on every push
+  (`crates/sam-runner/tests/breakout.rs`).

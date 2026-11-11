@@ -1,6 +1,6 @@
 [package]
 name = "sam-storage"
-description = "App registry, preset storage and logs for SAM"
+description = "App registry, preset storage and logs for SAM - Sandboxed AppImage Manager"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

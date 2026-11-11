@@ -1,4 +1,4 @@
-//! Library and resource classification (whitepaper §2.16.2).
+//! Library and resource classification.
 
 use sam_core::ResourceClass;
 
@@ -29,7 +29,7 @@ const SYSTEM: &[&str] = &[
     "libstdc++.so", "libz.so", "libcrypt.so", "libnss_", "libthread_db.so",
 ];
 
-/// ABI-sensitive host libraries that must not be silently exposed (§2.16.2).
+/// ABI-sensitive host libraries that must not be silently exposed.
 const DANGEROUS: &[(&str, Option<&str>)] = &[
     ("libgtk-3.so", Some("GTK3")),
     ("libgtk-4.so", Some("GTK4")),
@@ -141,7 +141,7 @@ pub fn classify_library(name: &str) -> LibInfo {
     }
 }
 
-/// Read-only host resources that are always safe to expose (§2.16.2).
+/// Read-only host resources that are always safe to expose.
 pub const SAFE_HOST_RESOURCES: &[(&str, &str)] = &[
     ("/usr/share/fonts", "fonts"),
     ("~/.local/share/fonts", "user fonts"),

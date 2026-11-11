@@ -1,6 +1,6 @@
 # Profiles and presets
 
-## Recommended profiles (§2.17)
+## Recommended profiles
 
 SAM infers a category from the desktop file's `Categories`, then the app
 name, then the toolkit. It then adjusts the result with what dependency
@@ -66,7 +66,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 
 `sam-jail permissions` prints the same list with plain-language explanations and risk levels.
 
-## Preset file format (§2.18)
+## Preset file format
 
 ```toml
 [preset]
@@ -85,7 +85,7 @@ wayland = true
 x11 = true
 ```
 
-The flat form from the whitepaper (`network = "full"`, `gpu = true`,
+The older flat form (`network = "full"`, `gpu = true`,
 `dbus_session = "filtered"`, …) is also accepted on import.
 
 When you apply a preset, SAM compares it with what the app likely needs

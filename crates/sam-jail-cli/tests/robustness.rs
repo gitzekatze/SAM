@@ -47,7 +47,7 @@ const RECORD: &str = r#"{"id": "appimage-demo-1234", "name": "Demo", "source_pat
 #[test]
 fn old_formats_are_migrated_and_kept() {
     let e = env();
-    // Format 0: no `format`, a theme name of the earlier Qt GUI.
+    // Format 0: no `format`, an older theme name.
     fs::write(e.config.join("config.toml"), "[general]\ntheme = \"breeze-dark\"\n").unwrap();
     fs::write(e.data.join("apps/appimage-demo-1234.json"), RECORD).unwrap();
     let o = sam(&e, &["--json", "list"]);

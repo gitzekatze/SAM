@@ -3,8 +3,8 @@
 `sam-jail.spec` builds offline from the two release files (source and
 vendored Rust crates), as COPR and Koji require. Tested on Fedora 45
 (Rust 1.99, GTK 4.24, libadwaita 1.10): builds, passes the test suite,
-installs into a clean system with all dependencies, rpmlint clean apart
-from missing man pages. A COPR repository is the planned way to publish.
+installs into a clean system with all dependencies, rpmlint clean.
+A COPR repository is the planned way to publish.
 
 Packages, same split as on Arch:
 

@@ -1,4 +1,4 @@
-//! Dynamic dependency fallback (§2.16.3).
+//! Dynamic dependency fallback.
 //!
 //! The app is launched once in diagnostic mode under `strace`, inside the
 //! *same* sandbox (never with full home access). Failed file and socket
@@ -132,7 +132,7 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
     let strace = host.tools.strace.clone();
     let Some(strace) = strace else { bail!("strace is not installed; install it to use dynamic diagnosis (sudo pacman -S strace)") };
     if entry.profile.permissions.filesystem.home {
-        bail!("diagnostic runs are refused while full home access is granted (whitepaper §2.16.3)");
+        bail!("diagnostic runs are refused while full home access is granted");
     }
     let diag_dir = sam.paths.runtime_dir(&entry.id).join("diag");
     let _ = fs::remove_dir_all(&diag_dir);

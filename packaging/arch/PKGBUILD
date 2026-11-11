@@ -1,6 +1,6 @@
 # Maintainer: gitzekatze <206283406+gitzekatze@users.noreply.github.com>
 #
-# SAM, the Sandboxed AppImage Manager. Split package:
+# SAM - Sandboxed AppImage Manager. Split package:
 #   sam-jail-cli   command line tools and sandbox runner (sam-jail, sam-jail-run)
 #   sam-jail       the GTK 4 / libadwaita window (sam-jail-gui); "sam" is taken on the AUR
 #
@@ -13,7 +13,7 @@ pkgbase=sam-jail
 pkgname=(sam-jail-cli sam-jail)
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Flatseal-style sandbox manager for AppImages, using Bubblewrap"
+pkgdesc="SAM - Sandboxed AppImage Manager: Flatseal-style sandbox manager for AppImages"
 arch=(x86_64 aarch64)
 url="https://github.com/gitzekatze/SAM"
 license=(GPL-3.0-or-later)
@@ -54,7 +54,7 @@ check() {
 }
 
 package_sam-jail-cli() {
-  pkgdesc="Command line tools and sandbox runner for SAM, the Sandboxed AppImage Manager"
+  pkgdesc="Command line tools and sandbox runner of SAM - Sandboxed AppImage Manager"
   depends=(bubblewrap glibc gcc-libs libarchive)
   optdepends=(
     'xdg-dbus-proxy: filtered session D-Bus for sandboxed apps (recommended)'
@@ -75,7 +75,7 @@ package_sam-jail-cli() {
 }
 
 package_sam-jail() {
-  pkgdesc="Flatseal-style sandbox manager for AppImages, using Bubblewrap (GTK 4 / libadwaita GUI)"
+  pkgdesc="SAM - Sandboxed AppImage Manager: Flatseal-style sandbox manager for AppImages (GTK 4 / libadwaita window)"
   depends=("sam-jail-cli=$pkgver" gtk4 libadwaita hicolor-icon-theme)
   cd "sam-$pkgver"
   install -Dm755 target/release/sam-jail-gui "$pkgdir/usr/bin/sam-jail-gui"

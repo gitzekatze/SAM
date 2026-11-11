@@ -1,4 +1,4 @@
-//! Source file fingerprints and staleness detection (§2.11.7).
+//! Source file fingerprints and staleness detection.
 
 use std::fs::{self, File};
 use std::io::{BufReader, Read};

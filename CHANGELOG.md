@@ -52,6 +52,12 @@ version.
   start* clears after the first successful start.
 - Log analysis reads stdout as well as stderr.
 - Detection skips bundled musl (Alpine) variants.
+- The app is called *SAM - Sandboxed AppImage Manager* everywhere it
+  introduces itself: window title, About, menu entry, metainfo, man pages,
+  packages.
+- The AppImage locations no longer scroll in a small box: the list grows
+  with every location and the whole left column scrolls.
+- README and security page rewritten.
 
 ### Fixed
 
@@ -62,11 +68,15 @@ version.
 - The writable app folder on Bubblewrap before 0.10 (Ubuntu 24.04, Debian 12):
   the app failed to start. The folder now stays read-only there, with a
   warning.
+- The filter buttons above the AppImage list fit the narrowest window.
 
 ### Removed
 
 - The never-enforced "filtered" network mode, `network.allowed_hosts`, the
   system-bus name lists and three unused config keys (old files still load).
+- The placeholder for eBPF network filtering (Preferences, `doctor`), a
+  feature that was never built.
+- Outdated design and handover documents from before the GTK window.
 
 ## 0.1.0 - 2026-11-10
 

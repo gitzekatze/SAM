@@ -99,8 +99,6 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     switch(&g, "security.experimental_landlock", "Landlock write protection", "Kernel-enforced write restrictions inside the sandbox. Also blocks connections to abstract sockets outside the sandbox (such as XWayland's). Skipped on kernels without Landlock.");
     switch(&g, "security.baseline_seccomp", "Baseline syscall filter", "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, terminal injection). Individual apps can turn it off in their repair steps.");
     switch(&g, "security.experimental_seccomp", "Allow strict syscall filters (experimental)", "Lets apps use the strict syscall filter from their Advanced settings. Can break apps.");
-    let ebpf = adw::SwitchRow::builder().title("eBPF network filtering (experimental)").subtitle("Not available in this release.").sensitive(false).build();
-    g.add(&ebpf);
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title("Sandbox Check").build();

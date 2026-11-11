@@ -78,7 +78,7 @@ impl App {
     pub fn new(app: &adw::Application) -> Rc<App> {
         let window = adw::ApplicationWindow::builder()
             .application(app)
-            .title("SAM")
+            .title("SAM - Sandboxed AppImage Manager")
             .default_width(1180)
             .default_height(800)
             .width_request(360)
@@ -242,7 +242,7 @@ impl App {
     fn build_sidebar(self: &Rc<Self>) {
         let view = adw::ToolbarView::new();
         let header = adw::HeaderBar::new();
-        header.set_title_widget(Some(&adw::WindowTitle::new("SAM", "")));
+        header.set_title_widget(Some(&adw::WindowTitle::new("SAM", "Sandboxed AppImage Manager")));
         let menu = gio::Menu::new();
         let sect = gio::Menu::new();
         sect.append(Some("Presets"), Some("win.show-presets"));
@@ -280,7 +280,9 @@ impl App {
         header.pack_start(&self.spinner);
         view.add_top_bar(&header);
 
-        // Pinned: AppImage locations.
+        // The left column scrolls as a whole: the AppImage locations (the
+        // list grows with every entry), the Downloads switch, then filter,
+        // search and the AppImages found.
         // Both headline rows have the same height and the same gap (HEAD_GAP)
         // to what follows them.
         const HEAD_GAP: i32 = 8;
@@ -302,14 +304,8 @@ impl App {
         let locations = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
         locations.add_css_class("boxed-list");
         locations.add_css_class("sam-location-list");
-        let loc_scroll = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .propagate_natural_height(true)
-            .max_content_height(104)
-            .margin_top(HEAD_GAP)
-            .child(&locations)
-            .build();
-        loc_box.append(&loc_scroll);
+        locations.set_margin_top(HEAD_GAP);
+        loc_box.append(&locations);
         let dl_row = gtk::Box::builder().spacing(8).margin_top(8).build();
         let dl_label = gtk::Label::builder().label("Also search the Downloads folder").xalign(0.0).hexpand(true).build();
         dl_label.add_css_class("caption");
@@ -317,10 +313,10 @@ impl App {
         dl_row.append(&dl_label);
         dl_row.append(&downloads);
         loc_box.append(&dl_row);
-        view.add_top_bar(&loc_box);
-        self.top_sizes.add_widget(&loc_box);
+        let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        column.append(&loc_box);
 
-        // Pinned: headline, filter, then search.
+        // Headline, filter, then search.
         let filter_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(16).margin_bottom(6).build();
         let found_head = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         heads.add_widget(&found_head);
@@ -329,11 +325,13 @@ impl App {
         found_head.append(&found_title);
         filter_box.append(&found_head);
         // Segmented filter: linked toggle buttons (works with libadwaita 1.5).
-        let toggles = gtk::Box::builder().homogeneous(true).margin_top(HEAD_GAP).build();
+        // Not homogeneous: three equal widths would need more room than the
+        // narrowest window has. Each button expands, so the row stays full.
+        let toggles = gtk::Box::builder().margin_top(HEAD_GAP).build();
         toggles.add_css_class("linked");
         let mut first: Option<gtk::ToggleButton> = None;
         for (name, label) in [("all", "All"), ("sandboxed", "Sandboxed"), ("unsandboxed", "Unsandboxed")] {
-            let b = gtk::ToggleButton::builder().label(label).active(name == "all").build();
+            let b = gtk::ToggleButton::builder().label(label).active(name == "all").hexpand(true).build();
             if let Some(f) = &first {
                 b.set_group(Some(f));
             } else {
@@ -354,7 +352,7 @@ impl App {
         filter_box.append(&toggles);
         let search = gtk::SearchEntry::builder().placeholder_text("Search AppImages").margin_top(8).build();
         filter_box.append(&search);
-        view.add_top_bar(&filter_box);
+        column.append(&filter_box);
 
         // The app list.
         let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Single).name("app-list").build();
@@ -365,10 +363,11 @@ impl App {
             .description("Add a folder or a single AppImage file above, or drop an AppImage onto this window.")
             .build();
         empty.add_css_class("compact");
-        let stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).build();
+        let stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).vexpand(true).build();
         stack.add_named(&list, Some("list"));
         stack.add_named(&empty, Some("empty"));
-        let scroll = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).child(&stack).build();
+        column.append(&stack);
+        let scroll = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).child(&column).build();
         view.set_content(Some(&scroll));
 
         let page = adw::NavigationPage::builder().title("SAM").child(&view).build();
@@ -712,10 +711,10 @@ impl App {
         add("refresh", Box::new(|me| me.refresh_apps_later()));
         add("about", Box::new(|me| {
             let d = adw::AboutDialog::builder()
-                .application_name("SAM")
+                .application_name("SAM - Sandboxed AppImage Manager")
                 .application_icon("io.github.gitzekatze.SAM")
                 .version(env!("CARGO_PKG_VERSION"))
-                .comments("Sandboxed AppImage Manager: sandbox AppImages with Bubblewrap and manage their permissions.")
+                .comments("Sandbox AppImages with Bubblewrap and manage their permissions, much like Flatseal does for Flatpak apps.")
                 .website("https://github.com/gitzekatze/SAM")
                 .license_type(gtk::License::Gpl30)
                 .build();

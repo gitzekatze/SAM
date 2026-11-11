@@ -1,6 +1,6 @@
 [package]
 name = "sam-runner"
-description = "Orchestration for SAM: intake pipeline, backend selection, launching, diagnostics"
+description = "Orchestration for SAM - Sandboxed AppImage Manager: intake, launching, sandbox check, repair, diagnostics"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

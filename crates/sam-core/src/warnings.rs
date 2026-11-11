@@ -1,4 +1,4 @@
-//! Warning generation (whitepaper §2.19.3).
+//! Warning generation.
 
 use serde::{Deserialize, Serialize};
 

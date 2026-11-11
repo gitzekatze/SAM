@@ -61,7 +61,7 @@ first run: [real-apps-2026-11-10.md](real-apps-2026-11-10.md).
       Wayland, PipeWire and D-Bus are detected.
 - [ ] `sam-jail info <id>` prints `sandbox: Bubblewrap`.
 
-## 2. Real AppImages (whitepaper §3.3 corpus)
+## 2. Real AppImages
 
 For each category (browser, media player, image editor, game, text editor,
 Electron app, Qt app, GTK app):
@@ -76,7 +76,7 @@ Electron app, Qt app, GTK app):
       ("Open with" via the launcher) works even when its folder isn't granted.
 - [ ] Electron apps start (nested namespaces allowed).
 
-## 3. D-Bus filtering (could not be verified in the build sandbox)
+## 3. D-Bus filtering
 
 - [ ] With the session bus set to *filtered*, `busctl --user list` inside a
       sandboxed terminal app lists only the portals, notifications and tray.

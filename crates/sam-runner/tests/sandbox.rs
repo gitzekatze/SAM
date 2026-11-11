@@ -1,4 +1,4 @@
-//! End-to-end sandbox tests (whitepaper §6.2 / §6.4).
+//! End-to-end sandbox tests.
 //!
 //! Builds a probe AppImage, registers it through the full intake pipeline and
 //! launches it with Bubblewrap under several profiles. The probe prints what

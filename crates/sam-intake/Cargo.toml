@@ -1,6 +1,6 @@
 [package]
 name = "sam-intake"
-description = "AppImage extraction, desktop metadata and launcher integration for SAM"
+description = "AppImage extraction, desktop metadata and launcher integration for SAM - Sandboxed AppImage Manager"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

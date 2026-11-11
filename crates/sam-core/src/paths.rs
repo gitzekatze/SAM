@@ -1,4 +1,4 @@
-//! Storage layout (whitepaper §2.24).
+//! Storage layout.
 //!
 //! ```text
 //! ~/.config/sam/            config.toml, presets/, logs/

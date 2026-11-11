@@ -1,4 +1,4 @@
-//! `sam-jail`: the command line interface (whitepaper §2.9, build plan §3.4).
+//! `sam-jail`: the command line interface.
 //!
 //! Every command supports `--json`, which prints a single JSON envelope
 //! (`{"ok": true, "data": ...}` or `{"ok": false, "error": "..."}`). The GUI
@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 #[derive(Parser)]
-#[command(name = "sam-jail", version, about = "Flatseal-style permission manager and sandbox launcher for AppImages")]
+#[command(name = "sam-jail", version, about = "SAM - Sandboxed AppImage Manager: Flatseal-style permission manager and sandbox launcher for AppImages")]
 struct Cli {
     /// Print machine-readable JSON.
     #[arg(long, global = true)]
@@ -1355,7 +1355,7 @@ fn write_man_pages(dir: &std::path::Path) -> Result<()> {
     let date = std::env::var("SAM_MAN_DATE").unwrap_or_else(|_| sam_core::util::format_ts(sam_core::util::now()).chars().take(10).collect());
     let render = |cmd: clap::Command, file: &str| -> Result<()> {
         let mut buf = Vec::new();
-        clap_mangen::Man::new(cmd).date(date.clone()).source(format!("SAM {}", env!("CARGO_PKG_VERSION"))).manual("SAM Manual").render(&mut buf)?;
+        clap_mangen::Man::new(cmd).date(date.clone()).source(format!("SAM {}", env!("CARGO_PKG_VERSION"))).manual("SAM - Sandboxed AppImage Manager").render(&mut buf)?;
         std::fs::write(dir.join(file), buf)?;
         Ok(())
     };

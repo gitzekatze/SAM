@@ -1,4 +1,4 @@
-//! Desktop metadata and icon discovery (§2.11.6).
+//! Desktop metadata and icon discovery.
 
 use sam_core::util::display_safe;
 use std::collections::HashMap;

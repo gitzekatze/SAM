@@ -1,6 +1,6 @@
 [package]
 name = "sam-gtk"
-description = "SAM's GTK 4 / libadwaita GUI (sam-jail-gui)"
+description = "GTK 4 / libadwaita window of SAM - Sandboxed AppImage Manager (sam-jail-gui)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

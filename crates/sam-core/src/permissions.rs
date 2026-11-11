@@ -1,4 +1,4 @@
-//! The permission model (whitepaper §2.15).
+//! The permission model.
 //!
 //! A [`PermissionSet`] is backend-neutral. Backends translate it into their own
 //! command line or configuration. Every struct uses `#[serde(default)]` so
@@ -37,7 +37,7 @@ impl Access {
 
 impl<'de> Deserialize<'de> for Access {
     /// Accepts `"none" | "ro" | "rw"` as well as booleans (`false` = none,
-    /// `true` = rw) so the flat preset format from the whitepaper also loads.
+    /// `true` = rw) so the older flat preset format also loads.
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         #[serde(untagged)]

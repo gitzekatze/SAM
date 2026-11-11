@@ -2,12 +2,12 @@
 //!
 //! * [`ops`]: the [`ops::SAM`] facade: add, re-extract, stale handling,
 //!   permissions, presets, scanning
-//! * [`select`]: backend selection logic (§2.13.3)
+//! * [`select`]: checks that Bubblewrap can run here
 //! * [`launch`]: building and running sandboxes, logs and crash capture
 //! * [`dbus_proxy`]: filtered session bus through xdg-dbus-proxy
-//! * [`kernel`]: Landlock and seccomp (§2.22.2)
+//! * [`kernel`]: Landlock and seccomp
 //! * [`doctor`]: environment checks, diagnostics and bug reports
-//! * [`diagnose`]: dynamic dependency fallback via strace (§2.16.3)
+//! * [`diagnose`]: dynamic dependency fallback via strace
 
 pub mod dbus_proxy;
 pub mod diagnose;

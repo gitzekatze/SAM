@@ -1,4 +1,4 @@
-//! Risk scoring (whitepaper §2.19.2).
+//! Risk scoring.
 
 use serde::{Deserialize, Serialize};
 

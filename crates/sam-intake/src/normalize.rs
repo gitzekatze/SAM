@@ -1,4 +1,4 @@
-//! Payload normalization (§2.11.4).
+//! Payload normalization.
 //!
 //! * directories become 0755, files 0755 (if any exec bit) or 0644
 //! * setuid/setgid/sticky and world-writable bits are dropped

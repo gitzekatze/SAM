@@ -1,5 +1,5 @@
-//! sam-profile: category inference, recommended profiles (§2.17),
-//! built-in and user presets (§2.18) and preset compatibility checks.
+//! sam-profile: category inference, recommended profiles,
+//! built-in and user presets and preset compatibility checks.
 
 use anyhow::Result;
 use sam_core::permissions::*;
@@ -82,7 +82,7 @@ pub const ALL_CATEGORIES: [Category; 12] = [
     Category::Utility,
 ];
 
-/// Infer a category from desktop categories, name and binary (§2.17 sources 1-3).
+/// Infer a category from desktop categories, name and binary.
 pub fn infer_category(md: &AppImageMetadata, file_name: &str, report: Option<&DependencyReport>) -> Category {
     let cats: Vec<String> = md.categories.iter().map(|c| c.to_lowercase()).collect();
     let has = |c: &str| cats.iter().any(|x| x == c);
@@ -228,7 +228,7 @@ fn base_for(cat: Category) -> PermissionSet {
     p
 }
 
-/// Generate the recommended profile for an app (§2.17).
+/// Generate the recommended profile for an app.
 pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&DependencyReport>) -> Recommendation {
     let category = infer_category(md, file_name, report);
     let mut p = base_for(category);
@@ -329,7 +329,7 @@ pub fn needs_network_by_purpose(md: &AppImageMetadata, file_name: &str) -> bool 
     text.split_whitespace().any(|t| (t.contains("llm") && !t.contains("ullm")) || t.ends_with("api") || t.ends_with("gpt") || t.ends_with("webui"))
 }
 
-/// Compatibility mode (§2.16.4): broader access for apps that otherwise break.
+/// Compatibility mode: broader access for apps that otherwise break.
 pub fn compatibility_profile(base: &PermissionSet) -> PermissionSet {
     let mut p = base.clone();
     p.advanced.host_runtime = HostRuntime::Full;
@@ -345,7 +345,7 @@ pub fn compatibility_profile(base: &PermissionSet) -> PermissionSet {
 
 pub const COMPAT_WARNING: &str = "This AppImage may require broader host access to function correctly. SAM can grant additional permissions, but this reduces isolation.";
 
-/// Built-in presets (§2.18 examples).
+/// Built-in presets.
 pub fn builtin_presets() -> Vec<Preset> {
     let mk = |name: &str, desc: &str, notes: &str, p: PermissionSet| {
         let risk = assess(&p).level;
@@ -417,7 +417,7 @@ impl PresetCheck {
 }
 
 /// Compare a preset against what the app likely needs (its recommendation)
-/// and against its current profile (§2.18 "When applying a preset").
+/// and against its current profile.
 pub fn check_preset(app: &AppEntry, preset: &Preset) -> PresetCheck {
     let need = &app.recommended;
     let new = &preset.permissions;
@@ -492,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn recommendations_follow_whitepaper() {
+    fn recommendations_by_category() {
         let r = recommend(&md("Firefox", &["WebBrowser"]), "", None);
         let p = &r.permissions;
         assert_eq!(p.network.mode, NetworkMode::Full);

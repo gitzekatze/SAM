@@ -1,4 +1,4 @@
-//! Launching (build plan §3.6 tasks 7-9): environment checks, command
+//! Launching: environment checks, command
 //! generation, launch logging and crash capture.
 
 use std::fs;
@@ -100,7 +100,7 @@ impl Prepared {
     }
 }
 
-/// Environment checks before launching (§2.13.4). Returns blocking errors
+/// Environment checks before launching. Returns blocking errors
 /// and non-blocking warnings.
 pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
     let mut errors = Vec::new();

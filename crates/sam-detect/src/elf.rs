@@ -1,4 +1,4 @@
-//! Static analysis of an extracted AppDir (§2.16.1).
+//! Static analysis of an extracted AppDir.
 //!
 //! Walks the AppDir without following symlinks, parses every ELF file,
 //! collects DT_NEEDED entries, compares them against the bundled libraries
@@ -489,7 +489,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
         report.notes.push("analysis was truncated because the payload is very large".into());
     }
 
-    // Isolation verdict (§2.19.4).
+    // Isolation verdict.
     let privileged = script_text.as_deref().and_then(script_privileged);
     report.verdict = if let Some(tool) = privileged {
         report.warnings.push(Warning::danger(
@@ -517,7 +517,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     };
     report.compatibility = compat;
 
-    // Host resources (§2.16.2).
+    // Host resources.
     for (res, why) in SAFE_HOST_RESOURCES {
         let relevant = match *why {
             "TLS certificates" => report.requirements.certificates || report.requirements.network,

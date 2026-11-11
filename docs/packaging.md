@@ -1,6 +1,6 @@
 # Packaging
 
-Native packages come first (whitepaper §2.23): SAM needs the host's sandbox tools.
+Native packages come first: SAM needs the host's sandbox tools.
 
 ## Packages
 
@@ -78,7 +78,7 @@ runtime against a pinned SHA-256 (`RUNTIME_SHA256` to override).
 - SAM itself is not sandboxed when run from the AppImage: it has to start
   Bubblewrap on the host. Upload the AppImage with the release files.
 
-## Phase 2 and 3
+## Other distributions
 
 - **Fedora COPR, openSUSE OBS, Debian/Ubuntu:** see the notes in `packaging/`.
 - **Flatpak of SAM itself:** not planned. SAM must start `bwrap` on the

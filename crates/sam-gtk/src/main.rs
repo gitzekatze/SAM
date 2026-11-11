@@ -122,7 +122,7 @@ fn parse_args() -> Options {
 
 fn main() -> glib::ExitCode {
     let opts = parse_args();
-    glib::set_application_name("SAM");
+    glib::set_application_name("SAM - Sandboxed AppImage Manager");
     // One window per set of SAM data: starting SAM again brings the open
     // window forward (and hands over AppImages given on the command line),
     // so two windows never write the same configuration. Screenshot runs and

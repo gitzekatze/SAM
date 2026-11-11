@@ -399,7 +399,7 @@ impl Sam {
 
     // ------------------------------------------------------------ maintain
 
-    /// Re-extract after an update or failure (§2.11.7 / repair workflow).
+    /// Re-extract after an update or failure.
     pub fn reextract(&self, query: &str, consent_fallback: bool) -> Result<AppEntry> {
         let mut entry = self.resolve(query)?;
         self.ensure_not_running(&entry, "unpack it again")?;

@@ -24,7 +24,7 @@ fn notify(title: &str, body: &str) {
         // App names and messages are untrusted; notification bodies render
         // markup, so neutralize it.
         let clean = |s: &str| sam_core::util::display_safe(s, 400).replace('&', "&amp;");
-        let _ = Command::new(n).args(["--app-name=SAM", "--icon=dialog-warning", &clean(title), &clean(body)]).status();
+        let _ = Command::new(n).args(["--app-name=SAM - Sandboxed AppImage Manager", "--icon=dialog-warning", &clean(title), &clean(body)]).status();
     }
 }
 

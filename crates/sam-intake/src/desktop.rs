@@ -1,4 +1,4 @@
-//! Desktop launcher integration (§2.12).
+//! Desktop launcher integration.
 //!
 //! Launchers always go through `sam-jail-run`, never the original AppImage.
 

@@ -1,4 +1,4 @@
-//! Core data types (build plan §3.4): AppEntry, AppImageMetadata,
+//! Core data types: AppEntry, AppImageMetadata,
 //! SandboxProfile, Preset, Warning, DiagnosticReport, ...
 
 use std::path::PathBuf;
@@ -9,7 +9,7 @@ use crate::permissions::PermissionSet;
 use crate::risk::{RiskAssessment, RiskLevel};
 use crate::warnings::Warning;
 
-/// Lifecycle state (whitepaper §2.10).
+/// Lifecycle state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AppState {
@@ -25,7 +25,7 @@ pub enum AppState {
     Missing,
 }
 
-/// User-facing badge (whitepaper §2.20.4).
+/// User-facing badge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Badge {
@@ -78,7 +78,7 @@ impl AppImageType {
     }
 }
 
-/// Identity of the source file, used for staleness detection (§2.11.7).
+/// Identity of the source file, used for staleness detection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Fingerprint {
     pub size: u64,
@@ -126,7 +126,7 @@ pub struct ExtractionInfo {
     pub warnings: Vec<Warning>,
 }
 
-/// How a library or host resource is classified (§2.16.2).
+/// How a library or host resource is classified.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum ResourceClass {
@@ -190,7 +190,7 @@ pub enum Compatibility {
     LikelyBroken,
 }
 
-/// Unsafe-handling outcomes (§2.19.4).
+/// Unsafe-handling outcomes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum IsolationVerdict {
@@ -430,7 +430,7 @@ impl AppEntry {
     }
 }
 
-/// A reusable permission template (§2.18).
+/// A reusable permission template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Preset {
