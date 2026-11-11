@@ -78,7 +78,7 @@ dist:
 man: cli
 	target/release/sam-jail man data/man
 
-# Needs RUNTIME=/path/to/runtime-x86_64 (see scripts/make-appimage.sh).
+# Needs RUNTIME=/path/to/runtime-ARCH (see scripts/make-appimage.sh).
 appimage:
 	scripts/make-appimage.sh dist
 

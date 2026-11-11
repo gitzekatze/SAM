@@ -28,7 +28,13 @@ jobs:
           arguments: --locked
 
   test:
-    runs-on: ubuntu-24.04
+    # x86_64, and aarch64 (GitHub's free arm64 runners are for public
+    # repositories, so that one starts once SAM is public).
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(github.event.repository.private && '["ubuntu-24.04"]' || '["ubuntu-24.04", "ubuntu-24.04-arm"]') }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -59,8 +65,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build
         run: cargo build --workspace --locked
@@ -89,7 +95,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: window-screenshots
+          name: window-screenshots-${{ runner.arch }}
           path: ${{ runner.temp }}/gui/*.png
           if-no-files-found: ignore
 

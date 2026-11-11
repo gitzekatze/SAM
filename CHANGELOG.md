@@ -57,6 +57,9 @@ version.
   disappear from a location (a finished download, a deleted file).
 - Screen readers announce every icon-only button by name; the blue label
   keeps enough contrast in light and dark style.
+- 64-bit ARM (aarch64): an AppImage of SAM is built for it, and CI tests
+  it once the repository is public; the breakout test uses each
+  architecture's syscall numbers.
 - Disk space per app (details, Diagnostics, `sam-jail space`) and *Free
   Space*: deletes the unpacked copy, which is unpacked again before the next
   start (`sam-jail free-space`).

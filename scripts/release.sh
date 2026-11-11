@@ -15,7 +15,7 @@
 # Nothing is pushed or uploaded; the script prints what to do next.
 #
 # Optional:
-#   RUNTIME=/path/to/runtime-x86_64   also build the AppImage
+#   RUNTIME=/path/to/runtime-ARCH     also build the AppImage (this computer's architecture)
 #   SIGN_KEY=<gpg key id>             sign the tag and the release files
 #                                     (required; UNSIGNED=1 for a test release)
 #   SKIP_TESTS=1                      skip clippy and tests (not recommended)
@@ -96,7 +96,7 @@ mv packaging/arch/PKGBUILD.new packaging/arch/PKGBUILD
 git add packaging/arch/PKGBUILD packaging/arch/.SRCINFO
 git commit -q -m "PKGBUILD: checksums for the $new release files"
 if [ -n "${SIGN_KEY:-}" ]; then
-    for f in dist/sam-$new.tar.gz dist/sam-$new-vendor.tar.xz dist/SAM-$new-x86_64.AppImage dist/SHA256SUMS; do
+    for f in dist/sam-$new.tar.gz dist/sam-$new-vendor.tar.xz dist/SAM-$new-*.AppImage dist/SHA256SUMS; do
         [ -f "$f" ] && gpg --batch --yes -u "$SIGN_KEY" --armor --detach-sign "$f"
     done
 fi

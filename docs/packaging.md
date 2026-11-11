@@ -72,8 +72,9 @@ make install DESTDIR=/tmp/stage PREFIX=/usr
 
 ## AppImage
 
-`make appimage RUNTIME=/path/to/runtime-x86_64` writes
-`dist/SAM-X.Y.Z-x86_64.AppImage` (plus a `.sha256`). It needs `mksquashfs`
+`make appimage RUNTIME=/path/to/runtime-ARCH` writes
+`dist/SAM-X.Y.Z-ARCH.AppImage` (plus a `.sha256`) for this computer's
+architecture, x86_64 or aarch64; the *Release* workflow builds both. It needs `mksquashfs`
 (squashfs-tools) and the AppImage type 2 runtime from
 <https://github.com/AppImage/type2-runtime/releases>; the script checks the
 runtime against a pinned SHA-256 (`RUNTIME_SHA256` to override).

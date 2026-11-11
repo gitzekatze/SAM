@@ -1,26 +1,32 @@
 #!/bin/sh
 # Builds SAM as an AppImage.
 #
-#   RUNTIME=/path/to/runtime-x86_64 scripts/make-appimage.sh [OUTDIR]
+#   RUNTIME=/path/to/runtime-ARCH scripts/make-appimage.sh [OUTDIR]
 #
-# Writes OUTDIR/SAM-VERSION-x86_64.AppImage (default OUTDIR: ./dist).
+# Writes OUTDIR/SAM-VERSION-ARCH.AppImage (default OUTDIR: ./dist), ARCH
+# being this computer's (x86_64 or aarch64).
 #
 # The AppImage holds sam-jail, sam-jail-run and sam-jail-gui, and uses the
 # GTK 4 and libadwaita (1.5 or newer) installed on the computer, like
 # Bubblewrap, which SAM needs anyway. Nothing else is bundled.
 #
 # Needs: cargo, mksquashfs (squashfs-tools) and the AppImage type 2 runtime
-# from https://github.com/AppImage/type2-runtime/releases (runtime-x86_64).
-# The runtime's SHA-256 is checked against RUNTIME_SHA256; set that to the
-# digest GitHub shows for a newer runtime.
+# from https://github.com/AppImage/type2-runtime/releases (runtime-ARCH).
+# The runtime's SHA-256 is checked against RUNTIME_SHA256 (defaults: the
+# pinned runtimes below); set it to the digest GitHub shows for a newer one.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
 out=$(mkdir -p "${1:-dist}" && cd "${1:-dist}" && pwd)
-: "${RUNTIME:?set RUNTIME to the AppImage runtime (runtime-x86_64)}"
-: "${RUNTIME_SHA256:=617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46}"
+arch=$(uname -m)
+: "${RUNTIME:?set RUNTIME to the AppImage runtime (runtime-$arch)}"
+case "$arch" in
+    x86_64)  : "${RUNTIME_SHA256:=617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46}" ;;
+    aarch64) : "${RUNTIME_SHA256:=9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47900}" ;;
+    *) echo "unsupported architecture $arch" >&2; exit 1 ;;
+esac
 command -v mksquashfs >/dev/null || { echo "mksquashfs not found (install squashfs-tools)" >&2; exit 1; }
 echo "$RUNTIME_SHA256  $RUNTIME" | sha256sum -c --quiet - || { echo "runtime checksum mismatch" >&2; exit 1; }
 
@@ -89,7 +95,7 @@ chmod 755 "$app/AppRun"
 epoch=$(git log -1 --format=%ct "v$version" 2>/dev/null || git log -1 --format=%ct 2>/dev/null || echo 0)
 mksquashfs "$app" "$work/fs.squashfs" -root-owned -noappend -no-xattrs -all-time "$epoch" -mkfs-time "$epoch" \
     -comp zstd -Xcompression-level 19 -quiet
-target="$out/SAM-$version-x86_64.AppImage"
+target="$out/SAM-$version-$arch.AppImage"
 cat "$RUNTIME" "$work/fs.squashfs" > "$target"
 chmod 755 "$target"
 (cd "$out" && sha256sum "$(basename "$target")" > "$(basename "$target").sha256")

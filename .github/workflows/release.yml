@@ -1,6 +1,6 @@
 # On a version tag (made by scripts/release.sh): build the release files and
-# the AppImage from the tag and attach them to a *draft* release. Publishing
-# the draft stays a manual step.
+# the AppImages (x86_64 and aarch64) from the tag and attach them to a
+# *draft* release. Publishing the draft stays a manual step.
 name: Release
 
 on:
@@ -12,13 +12,19 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: ubuntu-24.04
+  appimage:
+    strategy:
+      matrix:
+        include:
+          # AppImage type 2 runtimes, pinned (github.com/AppImage/type2-runtime).
+          - arch: x86_64
+            runner: ubuntu-24.04
+            runtime_sha256: 617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            runtime_sha256: 9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47900
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
-    env:
-      # AppImage type 2 runtime, pinned (github.com/AppImage/type2-runtime).
-      RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
-      RUNTIME_SHA256: 617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46
     steps:
       - uses: actions/checkout@v7
         with:
@@ -34,19 +40,42 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
+      # The source and vendored-crate tarballs are the same on every
+      # architecture; they come from the x86_64 job only.
       - name: Release files
+        if: matrix.arch == 'x86_64'
         run: make dist
 
       - name: AppImage
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/runtime-x86_64" "$RUNTIME_URL"
-          RUNTIME="$RUNNER_TEMP/runtime-x86_64" RUNTIME_SHA256="$RUNTIME_SHA256" make appimage
-          cat dist/SHA256SUMS dist/*.AppImage.sha256
+          curl -fsSL -o "$RUNNER_TEMP/runtime" "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-${{ matrix.arch }}"
+          RUNTIME="$RUNNER_TEMP/runtime" RUNTIME_SHA256="${{ matrix.runtime_sha256 }}" make appimage
+          cat dist/*.AppImage.sha256
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.arch }}
+          path: dist/*
+
+  draft:
+    needs: appimage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          git fetch --tags --force
           notes="$(git tag -l --format='%(contents:body)' "$TAG")"
+          ls -l dist
           gh release create "$TAG" --draft --title "SAM ${TAG#v}" --notes "$notes" dist/*

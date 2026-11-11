@@ -146,8 +146,8 @@ repository is planned.
 
 ### AppImage (any distribution)
 
-`SAM-X.Y.Z-x86_64.AppImage` from the GitHub release runs on any recent
-distribution that has Bubblewrap, GTK 4 and libadwaita 1.5 or newer:
+`SAM-X.Y.Z-x86_64.AppImage` (or `-aarch64` for 64-bit ARM) from the GitHub
+release runs on any recent distribution that has Bubblewrap, GTK 4 and libadwaita 1.5 or newer:
 
 ```sh
 chmod +x SAM-*-x86_64.AppImage

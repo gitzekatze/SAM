@@ -9,6 +9,8 @@
 //! read-only, also when they do not exist yet; credential stores and SAM's
 //! own data stay hidden).
 //!
+//! Syscall numbers follow the architecture (x86_64 or aarch64).
+//!
 //! Uses a fake `$HOME`. Skipped when Bubblewrap cannot run, or when
 //! sam-jail-run (which applies Landlock and seccomp) or python3 is missing.
 
@@ -35,22 +37,33 @@ def sc(nr, *a):
     return r, ctypes.get_errno()
 def show(key, r):
     print(f"{key}=" + ("ok" if r[0] >= 0 else errno.errorcode.get(r[1], str(r[1]))))
+# Syscall numbers differ per architecture (x86_64, and the generic table
+# that aarch64 uses).
+import platform
+ARM = platform.machine() in ("aarch64", "arm64")
+NR = dict(keyctl=219, userfaultfd=282, unshare=97, perf=241, bpf=280, init_module=105,
+          open_by_handle=265, syslog=116, ioctl=29, io_uring_setup=425) if ARM else \
+     dict(keyctl=250, userfaultfd=323, unshare=272, perf=298, bpf=321, init_module=175,
+          open_by_handle=304, syslog=103, ioctl=16, io_uring_setup=425)
 # Calls that work for an ordinary user without the filter.
-show("SC_KEYCTL", sc(250, 0, -3, 0))            # keyctl(GET_KEYRING_ID, SESSION)
-show("SC_USERFAULTFD", sc(323, 1))               # userfaultfd(UFFD_USER_MODE_ONLY)
-show("SC_UNSHARE", sc(272, 0))                   # unshare(0)
-show("SC_PERF", sc(298, 0, 0, -1, -1, 0))        # perf_event_open(NULL, ...)
-show("SC_BPF", sc(321, 9999, 0, 0))              # bpf(invalid cmd)
-show("SC_INIT_MODULE", sc(175, 0, 0, 0))
-show("SC_OPEN_BY_HANDLE", sc(304, -1, 0, 0))
-show("SC_SYSLOG", sc(103, 10, 0, 0))             # SYSLOG_ACTION_SIZE_BUFFER
-show("SC_IO_URING", sc(425, 1, 0))               # io_uring_setup(1, NULL): EFAULT unfiltered
-show("SC_TIOCSTI", sc(16, 0, 0x5412, 0))         # ioctl(0, TIOCSTI): ENOTTY unfiltered
-show("SC_TIOCLINUX", sc(16, 0, 0x541C, 0))
-# The same calls through the x32 ABI (bit 30): the filter answers before
-# the kernel would say ENOSYS, so EPERM proves x32 is covered.
-show("SC_X32_KEYCTL", sc(250 | 0x40000000, 0, -3, 0))
-show("SC_X32_UNSHARE", sc(272 | 0x40000000, 0))
+show("SC_KEYCTL", sc(NR["keyctl"], 0, -3, 0))            # keyctl(GET_KEYRING_ID, SESSION)
+show("SC_USERFAULTFD", sc(NR["userfaultfd"], 1))         # userfaultfd(UFFD_USER_MODE_ONLY)
+show("SC_UNSHARE", sc(NR["unshare"], 0))                 # unshare(0)
+show("SC_PERF", sc(NR["perf"], 0, 0, -1, -1, 0))         # perf_event_open(NULL, ...)
+show("SC_BPF", sc(NR["bpf"], 9999, 0, 0))                # bpf(invalid cmd)
+show("SC_INIT_MODULE", sc(NR["init_module"], 0, 0, 0))
+show("SC_OPEN_BY_HANDLE", sc(NR["open_by_handle"], -1, 0, 0))
+show("SC_SYSLOG", sc(NR["syslog"], 10, 0, 0))            # SYSLOG_ACTION_SIZE_BUFFER
+show("SC_IO_URING", sc(NR["io_uring_setup"], 1, 0))      # io_uring_setup(1, NULL): EFAULT unfiltered
+show("SC_TIOCSTI", sc(NR["ioctl"], 0, 0x5412, 0))        # ioctl(0, TIOCSTI): ENOTTY unfiltered
+show("SC_TIOCLINUX", sc(NR["ioctl"], 0, 0x541C, 0))
+# The same calls through the x32 ABI (bit 30, x86_64 only): the filter
+# answers before the kernel would say ENOSYS, so EPERM proves x32 is covered.
+if ARM:
+    print("SC_X32_KEYCTL=n/a"); print("SC_X32_UNSHARE=n/a")
+else:
+    show("SC_X32_KEYCTL", sc(250 | 0x40000000, 0, -3, 0))
+    show("SC_X32_UNSHARE", sc(272 | 0x40000000, 0))
 # Abstract socket created by the test on the host.
 name = os.environ.get("SAM_TEST_ABSTRACT", "")
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -198,6 +211,9 @@ fn breakout_attempts_fail() {
 
     // The syscall filter: calls an ordinary user may make are refused.
     for k in ["SC_KEYCTL", "SC_USERFAULTFD", "SC_UNSHARE", "SC_IO_URING", "SC_TIOCSTI", "SC_TIOCLINUX", "SC_X32_KEYCTL", "SC_X32_UNSHARE"] {
+        if r[k] == "n/a" {
+            continue; // x32 exists only on x86_64
+        }
         assert_eq!(r[k], "EPERM", "{k} is blocked by the syscall filter");
     }
     for k in ["SC_PERF", "SC_BPF", "SC_INIT_MODULE", "SC_OPEN_BY_HANDLE", "SC_SYSLOG"] {
