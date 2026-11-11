@@ -702,7 +702,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let host = app.host();
             let warnings = app.app_warnings(&e, &host);
             let summary = AppSummary::from_entry(&e);
-            let selection = sam_runner::select::select(&host).ok();
+            let selection = sam_runner::bwrap::check(&host).ok();
             let hints = sam_runner::repair::first_run_hints(&e);
             let steps = sam_runner::repair::ladder(&e, &app.config);
             out.emit(
@@ -1139,7 +1139,7 @@ fn pretty_command(argv: &[String]) -> String {
     out
 }
 
-fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel: Option<&sam_runner::select::Selection>) {
+fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel: Option<&sam_runner::bwrap::SandboxInfo>) {
     println!("{}  [{}]", paint(e.display_name(), "1"), badge_str(s.badge));
     if !e.metadata.comment.is_empty() {
         println!("  {}", e.metadata.comment);

@@ -50,7 +50,7 @@ fn check_passes_and_catches_mismatches() {
     //    anyway: the check must notice.
     let mut p = PermissionSet::strict_gui();
     let docs = home.join("Documents").display().to_string();
-    p.advanced.extra_backend_args = vec!["--ro-bind".into(), docs.clone(), docs];
+    p.advanced.extra_bwrap_args = vec!["--ro-bind".into(), docs.clone(), docs];
     app.set_permissions(&id, p).unwrap();
     let out = app.verify(&id).unwrap();
     let failed: Vec<String> = out.report.failed().iter().map(|r| r.title.clone()).collect();

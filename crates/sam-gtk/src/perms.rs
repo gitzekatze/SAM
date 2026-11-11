@@ -536,7 +536,7 @@ impl Editor {
         ], Always);
         self.switch(&g, "advanced.seccomp_baseline", Always);
         self.switch(&g, "advanced.seccomp_strict", Always);
-        self.list(&g, "advanced.extra_backend_args", "Raw bwrap argument, e.g. --setenv FOO 1", false, Always);
+        self.list(&g, "advanced.extra_bwrap_args", "Raw bwrap argument, e.g. --setenv FOO 1", false, Always);
     }
 
     // ------------------------------------------------------------ refresh

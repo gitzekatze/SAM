@@ -1,5 +1,5 @@
 [package]
-name = "sam-backend-bubblewrap"
+name = "sam-sandbox"
 description = "Bubblewrap command builder for SAM - Sandboxed AppImage Manager"
 version.workspace = true
 edition.workspace = true

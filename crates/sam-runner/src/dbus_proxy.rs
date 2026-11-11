@@ -1,4 +1,4 @@
-//! Filtered session bus through `xdg-dbus-proxy` (Bubblewrap backend).
+//! Filtered session bus through `xdg-dbus-proxy` (for the Bubblewrap sandbox).
 
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};

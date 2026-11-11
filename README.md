@@ -276,7 +276,7 @@ AppImage.
 | `sam-detect` | AppImage format and ELF dependency analysis |
 | `sam-intake` | unpacking, metadata, icons, menu entries |
 | `sam-profile` | categories, recommendations, presets |
-| `sam-backend-bubblewrap` | the Bubblewrap command builder |
+| `sam-sandbox` | the Bubblewrap command builder |
 | `sam-runner` | everything that runs: launch, D-Bus proxy, Landlock and seccomp, local network, sandbox check, repair, diagnostics |
 | `sam-jail-cli` | the `sam-jail` and `sam-jail-run` programs |
 | `sam-gtk` | `sam-jail-gui`, the window (talks to the core through `sam-jail --json`) |

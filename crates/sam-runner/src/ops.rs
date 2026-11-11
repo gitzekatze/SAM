@@ -1212,7 +1212,7 @@ impl Sam {
         let rec = sam_profile::recommend(&md, &file_name, None);
         let permissions = perms.unwrap_or_else(|| rec.permissions.clone());
         let host = self.host();
-        let selection = crate::select::select(&host).ok();
+        let selection = crate::bwrap::check(&host).ok();
         let ev = self.evaluate(&permissions, None, &host);
         Ok(serde_json::json!({
             "category": rec.category.as_str(),

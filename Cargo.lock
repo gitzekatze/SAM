@@ -1112,15 +1112,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
-name = "sam-backend-bubblewrap"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "sam-core",
- "tempfile",
-]
-
-[[package]]
 name = "sam-core"
 version = "0.1.0"
 dependencies = [
@@ -1209,11 +1200,11 @@ dependencies = [
  "anyhow",
  "landlock",
  "libc",
- "sam-backend-bubblewrap",
  "sam-core",
  "sam-detect",
  "sam-intake",
  "sam-profile",
+ "sam-sandbox",
  "sam-storage",
  "seccompiler",
  "serde",
@@ -1222,6 +1213,15 @@ dependencies = [
  "toml",
  "wayland-client",
  "wayland-protocols",
+]
+
+[[package]]
+name = "sam-sandbox"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sam-core",
+ "tempfile",
 ]
 
 [[package]]

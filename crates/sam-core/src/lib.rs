@@ -4,7 +4,7 @@
 //! the permission model, risk scoring, warnings, configuration, storage
 //! paths, host probing and the sandbox launch context.
 
-pub mod backend;
+pub mod sandbox;
 pub mod config;
 pub mod format;
 pub mod host;
@@ -21,7 +21,7 @@ pub mod warnings;
 /// it, and the window refuses to trust a command line tool with another one.
 pub const JSON_INTERFACE: u32 = 1;
 
-pub use backend::{BackendStatus, LaunchContext, SandboxCommand};
+pub use sandbox::{BubblewrapStatus, LaunchContext, SandboxCommand};
 pub use config::Config;
 pub use host::HostInfo;
 pub use model::*;

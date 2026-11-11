@@ -187,7 +187,7 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sam_core::backend::sample_context;
+    use sam_core::sandbox::sample_context;
 
     #[test]
     fn parses_strace_output() {

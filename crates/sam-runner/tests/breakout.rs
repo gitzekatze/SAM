@@ -205,7 +205,7 @@ fn breakout_attempts_fail() {
     // The whole test folder, which holds SAM's config and data (sam/).
     p.filesystem.custom_read = vec![ex.clone(), root.display().to_string()];
     p.environment.set.insert("SAM_TEST_SAMDIR".into(), root.join("sam").display().to_string());
-    p.advanced.extra_backend_args = vec!["--bind".into(), ex.clone(), ex.clone()];
+    p.advanced.extra_bwrap_args = vec!["--bind".into(), ex.clone(), ex.clone()];
     p.environment.set.insert("SAM_TEST_EXTRA".into(), ex);
     let r = launch(p);
 

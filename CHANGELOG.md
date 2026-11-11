@@ -81,6 +81,9 @@ version.
 - *Compatibility mode* and *May not start* are separate labels; *May not
   start* clears after the first successful start.
 - Log analysis reads stdout as well as stderr.
+- `advanced.extra_backend_args` is now `advanced.extra_bwrap_args` (old
+  profiles still load). Internally, the crate `sam-backend-bubblewrap` is
+  now `sam-sandbox`.
 - Detection skips bundled musl (Alpine) variants.
 - The app is called *SAM - Sandboxed AppImage Manager* everywhere it
   introduces itself: window title, About, menu entry, metainfo, man pages,

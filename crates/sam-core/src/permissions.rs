@@ -485,8 +485,10 @@ pub struct AdvancedPerms {
     /// separate per-app layer (Bubblewrap overlay); the extracted copy stays
     /// untouched. For portable apps that save next to themselves.
     pub writable_appdir: bool,
-    /// Extra raw backend arguments (power users only).
-    pub extra_backend_args: Vec<String>,
+    /// Extra raw Bubblewrap arguments (power users only). Profiles from
+    /// before 0.2 call it `extra_backend_args`.
+    #[serde(alias = "extra_backend_args")]
+    pub extra_bwrap_args: Vec<String>,
 }
 
 /// Desktop services an app may use through the filtered session bus.
@@ -553,7 +555,7 @@ impl Default for AdvancedPerms {
             allow_userns: false,
             host_themes: true,
             writable_appdir: false,
-            extra_backend_args: vec![],
+            extra_bwrap_args: vec![],
         }
     }
 }
@@ -800,8 +802,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Read-only access to GTK/Qt/KDE theme configuration so apps match your desktop.", Low, advanced),
         perm!("advanced.writable_appdir", "Advanced", "Writable app folder",
             "For portable apps that save settings next to themselves. Changes go to a separate layer; the extracted app stays untouched.", Low, advanced),
-        perm!("advanced.extra_backend_args", "Advanced", "Raw backend arguments",
-            "Arguments passed verbatim to the sandbox backend. Can weaken the sandbox.", High, advanced),
+        perm!("advanced.extra_bwrap_args", "Advanced", "Raw Bubblewrap arguments",
+            "Arguments passed verbatim to Bubblewrap. Can weaken the sandbox.", High, advanced),
     ]
 }
 
@@ -870,5 +872,14 @@ mod tests {
         let s = toml::to_string(&p).unwrap();
         let back: PermissionSet = toml::from_str(&s).unwrap();
         assert_eq!(p, back);
+    }
+}
+
+#[cfg(test)]
+mod rename_tests {
+    #[test]
+    fn old_extra_backend_args_still_load() {
+        let a: super::AdvancedPerms = serde_json::from_str(r#"{"extra_backend_args": ["--setenv", "A", "1"]}"#).unwrap();
+        assert_eq!(a.extra_bwrap_args, vec!["--setenv", "A", "1"]);
     }
 }

@@ -21,7 +21,7 @@ use serde::Serialize;
 
 use crate::dbus_proxy::DbusProxy;
 use crate::kernel;
-use crate::select::{select, Selection};
+use crate::bwrap::SandboxInfo;
 
 #[derive(Debug, Clone, Default)]
 pub struct LaunchOptions {
@@ -43,7 +43,7 @@ pub struct LaunchOptions {
 pub const STOP_MARKER: &str = "stop-requested";
 
 pub struct Prepared {
-    pub selection: Selection,
+    pub sandbox: SandboxInfo,
     pub command: SandboxCommand,
     pub context: LaunchContext,
     pub warnings: Vec<Warning>,
@@ -90,8 +90,8 @@ impl Prepared {
         let mut argv = vec![self.command.program.to_string_lossy().into_owned()];
         argv.extend(self.command.args.iter().cloned());
         CommandPreview {
-            backend: self.selection.kind,
-            reason: self.selection.reason.clone(),
+            backend: self.sandbox.kind,
+            reason: self.sandbox.reason.clone(),
             command: self.command.display(),
             argv,
             notes: self.command.notes.clone(),
@@ -143,7 +143,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         bail!("{e}");
     }
     let x = app.extraction.as_ref().context("the AppImage has not been extracted")?;
-    let selection = select(host)?;
+    let sandbox = crate::bwrap::check(host)?;
     let perms = &app.profile.permissions;
 
     let ctx_w = WarningContext {
@@ -228,8 +228,8 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let mut landlock = false;
     let mut seccomp = false;
     {
-        sam_backend_bubblewrap::write_identity_files(&ctx)?;
-        sam_backend_bubblewrap::prepare_home_protection(perms, &host.home);
+        sam_sandbox::write_identity_files(&ctx)?;
+        sam_sandbox::prepare_home_protection(perms, &host.home);
         if perms.dbus.session.mode == DbusMode::Filtered && host.tools.xdg_dbus_proxy.is_some() && host.sockets.dbus_session.is_some() {
             let bus = perms.effective_session_bus();
             match DbusProxy::start(host, &bus, &runtime_dir, &app.id) {
@@ -278,7 +278,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                     };
                     let spec_path = runtime_dir.join("sandbox.json");
                     fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
-                    ctx.helper = Some(sam_core::backend::SandboxHelper { binary: helper, spec: spec_path });
+                    ctx.helper = Some(sam_core::sandbox::SandboxHelper { binary: helper, spec: spec_path });
                     landlock = want_landlock;
                     seccomp = want_seccomp;
                 }
@@ -287,7 +287,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         }
     }
 
-    let mut command = sam_backend_bubblewrap::Bubblewrap.build(&ctx)?;
+    let mut command = sam_sandbox::Bubblewrap.build(&ctx)?;
     if perms.network.mode == sam_core::permissions::NetworkMode::Localhost {
         if let Err(e) = crate::netns::wrap_localhost(&mut command, &perms.network.valid_host_ports(), &perms.network.valid_app_ports()) {
             // Without pasta, fall back to no network at all.
@@ -296,7 +296,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         }
     }
     let wayland_context = wayland.is_some();
-    Ok(Prepared { selection, command, context: ctx, warnings, landlock, seccomp, proxy, wayland_context, wayland, _runtime: runtime_guard })
+    Ok(Prepared { sandbox, command, context: ctx, warnings, landlock, seccomp, proxy, wayland_context, wayland, _runtime: runtime_guard })
 }
 
 /// Paths mounted writable only for this launch: files passed on the command
@@ -353,7 +353,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             return Err(e);
         }
     };
-    writeln!(log, "# sandbox: {}", prepared.selection.reason)?;
+    writeln!(log, "# sandbox: {}", prepared.sandbox.reason)?;
     writeln!(log, "# landlock: {}  seccomp: {}  wayland security context: {}", prepared.landlock, prepared.seccomp, prepared.wayland_context)?;
     if let Some(p) = &prepared.proxy {
         writeln!(log, "# dbus proxy: xdg-dbus-proxy {}", shell_join(&p.args))?;

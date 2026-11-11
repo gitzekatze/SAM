@@ -171,7 +171,7 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
         };
         c.push(check("detect", "Dependency detection", st, format!("{host_res} controlled host resources required; toolkit {}; {} libraries expected from the host", d.requirements.toolkit, d.missing.len())));
     }
-    match crate::select::select(host) {
+    match crate::bwrap::check(host) {
         Ok(s) => c.push(check("backend", "Sandbox", CheckStatus::Ok, format!("Bubblewrap ({})", s.reason))),
         Err(err) => c.push(check("backend", "Sandbox", CheckStatus::Fail, err.to_string())),
     }

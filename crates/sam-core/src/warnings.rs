@@ -208,7 +208,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             .with_key("devices.bluetooth"),
         );
     }
-    if !p.advanced.extra_backend_args.is_empty() {
+    if !p.advanced.extra_bwrap_args.is_empty() {
         w.push(Warning::warn(
             "raw-backend-args",
             "Raw backend arguments",

@@ -78,7 +78,7 @@ pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox:
     }
     for s in &p.sockets.custom {
         let sp = expand_home(s);
-        if sam_backend_bubblewrap::is_socket(&sp) {
+        if sam_sandbox::is_socket(&sp) {
             write.push(sp);
         }
     }
@@ -266,7 +266,7 @@ fn apply_seccomp(spec: &SeccompSpec) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sam_core::backend::sample_context;
+    use sam_core::sandbox::sample_context;
 
     #[test]
     fn spec_follows_permissions() {

@@ -30,7 +30,7 @@ off is expected off). Same `PATH` requirement as above.
 
 By hand: `sam-jail verify <app>` on a few real apps should report every check
 as passed; `sam-jail config set security.check_before_launch true`, then a
-raw `--ro-bind` of a hidden folder in `advanced.extra_backend_args`, must make
+raw `--ro-bind` of a hidden folder in `advanced.extra_bwrap_args`, must make
 `sam-jail run` refuse to start with "sandbox check failed".
 
 ## 0a. Robustness and removal

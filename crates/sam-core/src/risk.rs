@@ -217,8 +217,8 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     if p.advanced.host_runtime == HostRuntime::Full {
         item(&mut items, "advanced.host_runtime", "Full /usr exposure", RiskLevel::Medium);
     }
-    if !p.advanced.extra_backend_args.is_empty() {
-        item(&mut items, "advanced.extra_backend_args", "Raw backend arguments", RiskLevel::High);
+    if !p.advanced.extra_bwrap_args.is_empty() {
+        item(&mut items, "advanced.extra_bwrap_args", "Raw backend arguments", RiskLevel::High);
     }
 
 

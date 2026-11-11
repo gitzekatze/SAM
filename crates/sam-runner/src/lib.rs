@@ -2,7 +2,7 @@
 //!
 //! * [`ops`]: the [`ops::SAM`] facade: add, re-extract, stale handling,
 //!   permissions, presets, scanning
-//! * [`select`]: checks that Bubblewrap can run here
+//! * [`bwrap`]: checks that Bubblewrap can run here
 //! * [`launch`]: building and running sandboxes, logs and crash capture
 //! * [`dbus_proxy`]: filtered session bus through xdg-dbus-proxy
 //! * [`kernel`]: Landlock and seccomp
@@ -20,7 +20,7 @@ pub mod dbus_check;
 pub mod ops;
 pub mod probe;
 pub mod repair;
-pub mod select;
+pub mod bwrap;
 pub mod verify;
 
 /// Locate the `sam-jail-run` helper (used for desktop launchers and as the

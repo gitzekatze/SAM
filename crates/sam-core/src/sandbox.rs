@@ -1,4 +1,4 @@
-//! What the Bubblewrap backend needs to build a sandbox (`LaunchContext`)
+//! What the Bubblewrap command builder needs to build a sandbox (`LaunchContext`)
 //! and what it produces (`SandboxCommand`).
 
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ use crate::util::shell_join;
 
 /// Whether Bubblewrap is installed and usable on this host.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BackendStatus {
+pub struct BubblewrapStatus {
     pub installed: bool,
     pub path: Option<PathBuf>,
     pub version: Option<String>,
@@ -30,7 +30,7 @@ pub struct SandboxHelper {
     pub spec: PathBuf,
 }
 
-/// Everything a backend needs to build a sandbox command.
+/// Everything needed to build a sandbox command.
 #[derive(Debug, Clone)]
 pub struct LaunchContext {
     pub app_id: String,
@@ -53,7 +53,7 @@ pub struct LaunchContext {
     /// Host scratch directory for this launch.
     pub runtime_dir: PathBuf,
     /// AppImage runtime variables computed by the runner (APPDIR, OWD, ...).
-    /// Values may reference `@APPDIR@`, which backends replace with their AppDir path.
+    /// Values may reference `@APPDIR@`, which the command builder replaces with the AppDir path.
     pub app_env: Vec<(String, String)>,
     /// Host path of a filtered D-Bus session proxy socket, if one is running.
     pub dbus_proxy_socket: Option<PathBuf>,
@@ -98,9 +98,9 @@ impl LaunchContext {
 pub struct SandboxCommand {
     pub program: PathBuf,
     pub args: Vec<String>,
-    /// Environment for the backend process itself.
+    /// Environment for the Bubblewrap process itself.
     pub env: Vec<(String, String)>,
-    /// Start the backend process with an empty environment plus `env`.
+    /// Start Bubblewrap with an empty environment plus `env`.
     pub clear_env: bool,
     /// File descriptors that must survive exec.
     pub keep_fds: Vec<i32>,
@@ -118,7 +118,7 @@ impl SandboxCommand {
     }
 }
 
-/// Fixed, host-independent launch context for backend unit tests.
+/// Fixed, host-independent launch context for unit tests.
 pub fn sample_context() -> LaunchContext {
     use crate::host::{Sockets, Tool, Tools};
     use std::collections::BTreeMap;

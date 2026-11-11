@@ -4,9 +4,9 @@
 sam-jail-gui (GTK 4/libadwaita)  sam-jail / sam-jail-run (CLI)
         │  `sam-jail --json …`              │
         └──────────────┬───────────────────┘
-                 sam-runner  (ops facade, launch, select, doctor, diagnose, kernel)
+                 sam-runner  (ops facade, launch, bwrap, doctor, diagnose, kernel)
      ┌────────┬────────┼─────────┬──────────────┐
-  intake   detect   profile   storage     sam-backend-bubblewrap
+  intake   detect   profile   storage     sam-sandbox
      └────────┴────────┴─────────┴──────────────┘
                    sam-core (model, permissions, risk, warnings, config, host, LaunchContext)
 ```
@@ -35,12 +35,12 @@ desktop), and saves the scrollable content of the right column as
 
 ## Sandbox command builder
 
-SAM has one sandbox: Bubblewrap. `sam_backend_bubblewrap::Bubblewrap` has two
+SAM has one sandbox: Bubblewrap. `sam_sandbox::Bubblewrap` has two
 functions:
 
 ```rust
 impl Bubblewrap {
-    pub fn status(&self, host: &HostInfo) -> BackendStatus;         // installed / usable / notes
+    pub fn status(&self, host: &HostInfo) -> BubblewrapStatus;         // installed / usable / notes
     pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand>;
 }
 ```
@@ -53,7 +53,7 @@ proxy socket, the Landlock helper, the seccomp fd, the tracer and extra binds.
 ## Launch pipeline
 
 1. **Preflight:** the extraction exists; warn if the source is stale or missing.
-2. **Sandbox check:** `select.rs` verifies Bubblewrap can run here (installed,
+2. **Sandbox check:** `bwrap.rs` verifies Bubblewrap can run here (installed,
    user namespaces allowed) or stops with a hint.
 3. **Runtime dir:** generated `passwd` and `group`, an `xdg-dbus-proxy` for a
    filtered bus, and the Landlock spec.

@@ -131,7 +131,7 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
         v.push(c("webcam", "Sound and devices", "Webcam", ProbeTest::Present { path: cam, expect: p.devices.webcam }));
     }
     let events = list_dev("/dev/input", "event");
-    let pads = sam_backend_bubblewrap::gamepad_nodes(Path::new("/dev/input"), Path::new("/run/udev/data"));
+    let pads = sam_sandbox::gamepad_nodes(Path::new("/dev/input"), Path::new("/run/udev/data"));
     if p.devices.input {
         if let Some(e) = events.first() {
             v.push(c("input", "Sound and devices", "All input devices", ProbeTest::Present { path: e.clone(), expect: true }));
@@ -192,7 +192,7 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     }
     for raw in &p.sockets.custom {
         let path = sam_core::util::expand_home(raw);
-        if sam_backend_bubblewrap::is_socket(&path) {
+        if sam_sandbox::is_socket(&path) {
             v.push(c("socket", "Sockets and environment", format!("Socket {}", sam_core::util::tildify(&path)), ProbeTest::Present { path, expect: true }));
         }
     }

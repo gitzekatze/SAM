@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use sam_core::permissions::*;
 use sam_core::util::expand_home;
-use sam_core::{BackendStatus, HostInfo, LaunchContext, SandboxCommand};
+use sam_core::{BubblewrapStatus, HostInfo, LaunchContext, SandboxCommand};
 
 pub struct Bubblewrap;
 
@@ -338,7 +338,7 @@ fn visible_in_sandbox(p: &Path, ctx: &LaunchContext) -> bool {
 
 impl Bubblewrap {
     /// Whether Bubblewrap is installed and can create sandboxes here.
-    pub fn status(&self, host: &HostInfo) -> BackendStatus {
+    pub fn status(&self, host: &HostInfo) -> BubblewrapStatus {
         let tool = host.tools.bwrap.as_ref();
         let mut notes = vec![];
         let installed = tool.is_some();
@@ -351,7 +351,7 @@ impl Bubblewrap {
         if host.tools.xdg_dbus_proxy.is_none() {
             notes.push("xdg-dbus-proxy not found: filtered session D-Bus will be disabled".into());
         }
-        BackendStatus {
+        BubblewrapStatus {
             installed,
             path: tool.map(|t| t.path.clone()),
             version: tool.and_then(|t| t.version.clone()),
@@ -803,7 +803,7 @@ impl Bubblewrap {
         if let Some(tracer) = &ctx.tracer {
             cmd.extend(tracer.iter().cloned());
         }
-        for extra in &p.advanced.extra_backend_args {
+        for extra in &p.advanced.extra_bwrap_args {
             a.push(extra.clone());
         }
         // Everything is mounted: make the sandbox root itself read-only.
@@ -918,7 +918,7 @@ fn libc_minor(dev: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sam_core::backend::sample_context;
+    use sam_core::sandbox::sample_context;
 
     fn args_of(ctx: &LaunchContext) -> Vec<String> {
         Bubblewrap.build(ctx).unwrap().args
@@ -1030,7 +1030,7 @@ mod tests {
     fn helper_and_userns() {
         let mut ctx = sample_context();
         ctx.permissions.advanced.allow_userns = false;
-        ctx.helper = Some(sam_core::backend::SandboxHelper { binary: "/usr/bin/sam-jail-run".into(), spec: "/tmp/spec.json".into() });
+        ctx.helper = Some(sam_core::sandbox::SandboxHelper { binary: "/usr/bin/sam-jail-run".into(), spec: "/tmp/spec.json".into() });
         let a = args_of(&ctx);
         assert!(a.contains(&"--disable-userns".to_string()));
         assert!(has_seq(&a, &["--", "/run/sam/sam-jail-run", "--sandbox-exec", "/run/sam/sandbox.json", "--", "/opt/app/AppRun"]));
