@@ -4,7 +4,6 @@
 //! malformed input.
 
 use std::fs;
-use std::process::Command;
 
 use sam_core::permissions::PermissionSet;
 use sam_core::{HostInfo, Paths};
@@ -12,11 +11,9 @@ use sam_intake::testkit::{build, FixtureSpec};
 use sam_runner::launch::{run, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
 
+/// SAM's own check (it also mounts /proc, which fails in some containers).
 fn bwrap_works() -> bool {
-    Command::new("bwrap")
-        .args(["--unshare-user", "--ro-bind", "/", "/", "--", "true"])
-        .status()
-        .is_ok_and(|s| s.success())
+    sam_runner::doctor::bwrap_functional(&HostInfo::probe()).is_ok()
 }
 
 /// H1: an app printing a fake Bubblewrap error is not a sandbox failure.

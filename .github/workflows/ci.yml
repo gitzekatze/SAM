@@ -1,0 +1,72 @@
+# Build, lint and test every push and pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev pkg-config \
+            bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3 \
+            desktop-file-utils appstream
+
+      # Ubuntu restricts unprivileged user namespaces through AppArmor, so
+      # Bubblewrap cannot run and the end-to-end sandbox tests would skip.
+      # Lift it on this throwaway machine only.
+      - name: Allow user namespaces for Bubblewrap
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Rust (stable, SAM needs 1.92+)
+        run: |
+          rustup toolchain install stable --profile minimal -c clippy
+          rustup default stable
+          rustc --version
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build
+        run: cargo build --workspace --locked
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Tests
+        run: PATH="$PWD/target/debug:$PATH" cargo test --workspace --locked
+
+      - name: Desktop file and metainfo
+        run: |
+          desktop-file-validate data/io.github.gitzekatze.SAM.desktop
+          appstreamcli validate --no-net data/io.github.gitzekatze.SAM.metainfo.xml
+
+      - name: Man pages are up to date
+        run: |
+          target/debug/sam-jail man "$RUNNER_TEMP/man"
+          for f in "$RUNNER_TEMP"/man/*.1; do
+            diff -I '^\.TH' "$f" "data/man/$(basename "$f")" || { echo "data/man is out of date: run 'make man' and commit"; exit 1; }
+          done

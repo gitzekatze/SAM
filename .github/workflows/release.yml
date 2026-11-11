@@ -1,0 +1,52 @@
+# On a version tag (made by scripts/release.sh): build the release files and
+# the AppImage from the tag and attach them to a *draft* release. Publishing
+# the draft stays a manual step.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # AppImage type 2 runtime, pinned (github.com/AppImage/type2-runtime).
+      RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
+      RUNTIME_SHA256: 617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: System packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libgtk-4-dev libadwaita-1-dev pkg-config squashfs-tools xz-utils
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Release files
+        run: make dist
+
+      - name: AppImage
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/runtime-x86_64" "$RUNTIME_URL"
+          RUNTIME="$RUNNER_TEMP/runtime-x86_64" RUNTIME_SHA256="$RUNTIME_SHA256" make appimage
+          cat dist/SHA256SUMS dist/*.AppImage.sha256
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes="$(git tag -l --format='%(contents:body)' "$TAG")"
+          gh release create "$TAG" --draft --title "SAM ${TAG#v}" --notes "$notes" dist/*

@@ -22,18 +22,34 @@ Optional dependencies of `sam-jail-cli`:
 split into `sam-jail-cli` and `sam-jail`. It downloads the two release files
 from GitHub, checks them, and builds offline from the vendored crates.
 
-Release steps:
+Release steps (one command does them all):
 
-1. Bump the version in `Cargo.toml`, commit, tag `vX.Y.Z`.
-2. `make dist`: `dist/sam-X.Y.Z.tar.gz`, `dist/sam-X.Y.Z-vendor.tar.xz` and
-   `SHA256SUMS` (reproducible: the same tag gives the same files).
-3. Upload both files to the GitHub release `vX.Y.Z` (the repository must be
-   public for the AUR).
-4. Put the checksums into the PKGBUILD, `makepkg --printsrcinfo > .SRCINFO`,
-   push both to the AUR repository.
+1. Write the changes under `## Unreleased` in `CHANGELOG.md`.
+2. `RUNTIME=/path/to/runtime-x86_64 scripts/release.sh X.Y.Z`
+   - sets the version everywhere (Cargo, metainfo, Fedora spec, PKGBUILD),
+     dates the changelog section, regenerates the man pages;
+   - runs clippy (warnings are errors) and the whole test suite;
+   - commits `Release X.Y.Z` and tags `vX.Y.Z` with the release notes;
+   - builds `dist/` (source, vendored crates, `SHA256SUMS`, the AppImage)
+     and commits the PKGBUILD checksums and `.SRCINFO`.
+   `SIGN_KEY=<gpg id>` also signs the tag and the files. Nothing is pushed.
+3. `git push origin main vX.Y.Z`. The *Release* workflow builds the same
+   files from the tag and attaches them to a **draft** GitHub release; check
+   that its `SHA256SUMS` matches `dist/SHA256SUMS`, then publish the draft
+   (the repository must be public for the AUR).
+4. Copy `packaging/arch/PKGBUILD` and `.SRCINFO` into the AUR repository and
+   push.
 
 Test before publishing: copy both files next to the PKGBUILD (or point
 `SRCDEST` at `dist/`) and run `makepkg -si`.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request (Ubuntu
+24.04): build, clippy with warnings as errors, the whole test suite with the
+end-to-end sandbox tests (Ubuntu's AppArmor restriction on user namespaces is
+lifted on the throwaway runner), desktop file and metainfo validation, and a
+check that `data/man` matches the commands (`make man`).
 
 ## Generic install
 
