@@ -140,7 +140,7 @@ fn digest_without(path: &Path, zero: &[std::ops::Range<usize>]) -> Result<String
         h.update(&chunk[..]);
         pos += n;
     }
-    Ok(format!("{:x}", h.finalize()))
+    Ok(sam_core::util::hex(&h.finalize()))
 }
 
 fn unsigned(detail: &str) -> SignatureInfo {
@@ -186,7 +186,7 @@ pub fn sign_for_test(path: &Path, gpg_home: &Path, key_id: &str) -> Result<()> {
     let mut zeroed = data.clone();
     zeroed[sig_range.clone()].fill(0);
     zeroed[key_range.clone()].fill(0);
-    let digest = format!("{:x}", Sha256::digest(&zeroed));
+    let digest = sam_core::util::hex(&Sha256::digest(&zeroed));
     let mut child = Command::new(&gpg)
         .arg("--homedir")
         .arg(gpg_home)

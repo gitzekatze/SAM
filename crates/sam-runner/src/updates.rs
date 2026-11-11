@@ -227,7 +227,7 @@ fn sha1_of(path: &Path) -> Result<String> {
         }
         h.update(&buf[..n]);
     }
-    Ok(format!("{:x}", h.finalize()))
+    Ok(sam_core::util::hex(&h.finalize()))
 }
 
 /// GETs `url` (HTTPS only) and returns at most `limit` bytes (or
