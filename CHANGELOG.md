@@ -53,6 +53,16 @@ version.
 - Log analysis reads stdout as well as stderr.
 - Detection skips bundled musl (Alpine) variants.
 
+### Fixed
+
+- *Local network only* on systems whose `pasta` has no `--splice-only`
+  (Ubuntu 24.04): every start failed with a misleading Bubblewrap error. Such
+  a pasta is no longer used; the app starts with no network at all, and
+  `doctor` says why.
+- The writable app folder on Bubblewrap before 0.10 (Ubuntu 24.04, Debian 12):
+  the app failed to start. The folder now stays read-only there, with a
+  warning.
+
 ### Removed
 
 - The never-enforced "filtered" network mode, `network.allowed_hosts`, the
