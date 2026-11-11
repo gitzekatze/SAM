@@ -133,7 +133,25 @@ pub fn infer_category(md: &AppImageMetadata, file_name: &str, report: Option<&De
     // Name heuristics.
     for (words, cat) in [
         (&["browser", "firefox", "chromium", "librewolf", "brave", "vivaldi", "waterfox", "floorp"][..], Category::Browser),
-        (&["discord", "signal", "telegram", "slack", "element", "zoom", "teams", "thunderbird", "whatsapp", "e-mail", "email", "mail client", "tuta", "proton mail"][..], Category::Communication),
+        (
+            &[
+                "discord",
+                "signal",
+                "telegram",
+                "slack",
+                "element",
+                "zoom",
+                "teams",
+                "thunderbird",
+                "whatsapp",
+                "e-mail",
+                "email",
+                "mail client",
+                "tuta",
+                "proton mail",
+            ][..],
+            Category::Communication,
+        ),
         (&["vlc", "mpv", "player", "jellyfin", "spotify", "strawberry", "audacious", "celluloid"][..], Category::MediaPlayer),
         (&["kdenlive", "shotcut", "olive", "openshot", "davinci", "flowblade"][..], Category::VideoEditor),
         (&["audacity", "ardour", "lmms", "tenacity", "reaper", "bitwig"][..], Category::AudioEditor),
@@ -318,9 +336,32 @@ pub fn needs_network_by_purpose(md: &AppImageMetadata, file_name: &str) -> bool 
     let text = format!(" {} {} {} {} ", md.name, md.comment, md.exec, file_name).to_lowercase();
     let text: String = text.chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
     let words = [
-        " llm", " llms ", " ai ", " gpt", " ollama", " openai", " webui ", " web ui ", " comfy", " comfyui",
-        " stable diffusion", " diffusion ", " server ", " api ", " router ", " proxy ", " sync ", " cloud ",
-        " client ", " chat ", " assistant ", " model ", " models ", " inference ", " unsloth", " anythingllm",
+        " llm",
+        " llms ",
+        " ai ",
+        " gpt",
+        " ollama",
+        " openai",
+        " webui ",
+        " web ui ",
+        " comfy",
+        " comfyui",
+        " stable diffusion",
+        " diffusion ",
+        " server ",
+        " api ",
+        " router ",
+        " proxy ",
+        " sync ",
+        " cloud ",
+        " client ",
+        " chat ",
+        " assistant ",
+        " model ",
+        " models ",
+        " inference ",
+        " unsloth",
+        " anythingllm",
     ];
     if words.iter().any(|w| text.contains(w)) {
         return true;
@@ -343,7 +384,8 @@ pub fn compatibility_profile(base: &PermissionSet) -> PermissionSet {
     p
 }
 
-pub const COMPAT_WARNING: &str = "This AppImage may require broader host access to function correctly. SAM can grant additional permissions, but this reduces isolation.";
+pub const COMPAT_WARNING: &str =
+    "This AppImage may require broader host access to function correctly. SAM can grant additional permissions, but this reduces isolation.";
 
 /// Built-in presets.
 pub fn builtin_presets() -> Vec<Preset> {
@@ -379,7 +421,12 @@ pub fn builtin_presets() -> Vec<Preset> {
         mk("Strict Browser", "Browser profile with no home access except Downloads", "Enables X11 for browsers without native Wayland.", strict_browser),
         mk("Media Player Safe", "Offline playback of local Music and Videos", "Streaming services need network access.", media),
         mk("Game Performance", "GPU, audio, network and XWayland for games", "Controllers need 'Input devices', which is not enabled by default.", game),
-        mk("Untrusted Utility", "Wayland window only: no files, network, audio or D-Bus. Fresh home on each run.", "Settings are not kept between runs.", untrusted),
+        mk(
+            "Untrusted Utility",
+            "Wayland window only: no files, network, audio or D-Bus. Fresh home on each run.",
+            "Settings are not kept between runs.",
+            untrusted,
+        ),
         mk("Office Documents Only", "Read and write Documents, nothing else", "", office),
         mk("Image Editor", "Pictures and Documents with GPU acceleration, offline", "", image),
     ]
@@ -388,10 +435,7 @@ pub fn builtin_presets() -> Vec<Preset> {
 /// Built-in + user presets. User presets with the same name shadow built-ins.
 pub fn all_presets(paths: &Paths) -> Result<Vec<Preset>> {
     let user = PresetStore::new(paths).list()?;
-    let mut out: Vec<Preset> = builtin_presets()
-        .into_iter()
-        .filter(|b| !user.iter().any(|u| u.name.eq_ignore_ascii_case(&b.name)))
-        .collect();
+    let mut out: Vec<Preset> = builtin_presets().into_iter().filter(|b| !user.iter().any(|u| u.name.eq_ignore_ascii_case(&b.name))).collect();
     out.extend(user);
     Ok(out)
 }
@@ -422,11 +466,7 @@ pub fn check_preset(app: &AppEntry, preset: &Preset) -> PresetCheck {
     let need = &app.recommended;
     let new = &preset.permissions;
     let cur = &app.profile.permissions;
-    let mut c = PresetCheck {
-        risk_before: assess(cur).level,
-        risk_after: assess(new).level,
-        ..Default::default()
-    };
+    let mut c = PresetCheck { risk_before: assess(cur).level, risk_after: assess(new).level, ..Default::default() };
     let mut removed = |cond: bool, what: &str| {
         if cond {
             c.removes_needed.push(what.to_string());
@@ -523,7 +563,11 @@ mod tests {
         assert!(c.removes_needed.iter().any(|s| s == "network access"));
         assert!(c.needs_confirmation());
 
-        let app2 = AppEntry { recommended: PermissionSet::strict_gui(), profile: sam_core::SandboxProfile { permissions: PermissionSet::strict_gui(), ..Default::default() }, ..Default::default() };
+        let app2 = AppEntry {
+            recommended: PermissionSet::strict_gui(),
+            profile: sam_core::SandboxProfile { permissions: PermissionSet::strict_gui(), ..Default::default() },
+            ..Default::default()
+        };
         let browser = builtin_presets().into_iter().find(|p| p.name == "Strict Browser").unwrap();
         let c2 = check_preset(&app2, &browser);
         assert!(c2.adds_dangerous.iter().any(|s| s == "Network"), "{:?}", c2.adds_dangerous);

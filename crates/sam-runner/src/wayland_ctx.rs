@@ -87,7 +87,15 @@ impl Dispatch<WlRegistry, GlobalListContents> for State {
 }
 
 impl Dispatch<WpSecurityContextManagerV1, ()> for State {
-    fn event(_: &mut Self, _: &WpSecurityContextManagerV1, _: <WpSecurityContextManagerV1 as wayland_client::Proxy>::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &WpSecurityContextManagerV1,
+        _: <WpSecurityContextManagerV1 as wayland_client::Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 impl Dispatch<WpSecurityContextV1, ()> for State {

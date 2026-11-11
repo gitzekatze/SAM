@@ -56,7 +56,12 @@ impl AppPage {
         let file_path = if sandboxed { entry.as_ref().map(|e| util::str_of(e, "source_path").to_string()).unwrap_or_default() } else { self.path.clone() };
         self.subtitle.set_text(&util::plain(&util::tildify(&file_path)));
         let icon = if sandboxed {
-            summary.as_ref().map(|s| util::str_of(s, "icon_path").to_string()).filter(|s| !s.is_empty()).or_else(|| found.as_ref().map(|f| util::str_of(f, "icon").to_string())).unwrap_or_default()
+            summary
+                .as_ref()
+                .map(|s| util::str_of(s, "icon_path").to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| found.as_ref().map(|f| util::str_of(f, "icon").to_string()))
+                .unwrap_or_default()
         } else {
             found.as_ref().map(|f| util::str_of(f, "icon").to_string()).unwrap_or_default()
         };
@@ -88,14 +93,20 @@ impl AppPage {
             util::set_badge(&self.state_badge, t, tone);
             self.state_badge.set_tooltip_text(Some(&tip));
         }
-        let selection = if sandboxed { info.as_ref().and_then(|i| i.get("selection").cloned()) } else { self.preview.borrow().as_ref().and_then(|p| p.get("selection").cloned()) };
+        let selection = if sandboxed {
+            info.as_ref().and_then(|i| i.get("selection").cloned())
+        } else {
+            self.preview.borrow().as_ref().and_then(|p| p.get("selection").cloned())
+        };
         let have_data = if sandboxed { info.is_some() } else { self.preview.borrow().is_some() };
         if have_data && selection.as_ref().is_none_or(Value::is_null) {
             util::set_badge(&self.sandbox_badge, "Sandbox unavailable", "bad");
             self.sandbox_badge.set_tooltip_text(Some("Bubblewrap cannot run on this system; see Diagnostics"));
         } else {
             util::set_badge(&self.sandbox_badge, "Bubblewrap", "blue");
-            self.sandbox_badge.set_tooltip_text(Some("The sandbox technology: Bubblewrap gives the app its own view of the system with only the folders, devices and services allowed below"));
+            self.sandbox_badge.set_tooltip_text(Some(
+                "The sandbox technology: Bubblewrap gives the app its own view of the system with only the folders, devices and services allowed below",
+            ));
         }
         if !sandboxed {
             if let Some(pv) = self.preview.borrow().as_ref() {
@@ -117,11 +128,18 @@ impl AppPage {
         }
 
         // Editor.
-        let recommended = if sandboxed { entry.as_ref().and_then(|e| e.get("recommended").cloned()) } else { self.preview.borrow().as_ref().and_then(|p| p.get("recommended").cloned()) };
+        let recommended = if sandboxed {
+            entry.as_ref().and_then(|e| e.get("recommended").cloned())
+        } else {
+            self.preview.borrow().as_ref().and_then(|p| p.get("recommended").cloned())
+        };
         let evaluation = if sandboxed {
             None
         } else {
-            self.preview.borrow().as_ref().map(|p| serde_json::json!({ "risk": p.get("risk").cloned().unwrap_or_default(), "warnings": p.get("warnings").cloned().unwrap_or_default() }))
+            self.preview
+                .borrow()
+                .as_ref()
+                .map(|p| serde_json::json!({ "risk": p.get("risk").cloned().unwrap_or_default(), "warnings": p.get("warnings").cloned().unwrap_or_default() }))
         };
         if sandboxed {
             self.editor.set_data(self.perms(), recommended, None);
@@ -139,11 +157,12 @@ impl AppPage {
         if !sandboxed {
             let row = adw::ActionRow::builder()
                 .title(tr("Not sandboxed yet"))
-                .subtitle(tr("These are the settings SAM recommends for this app. Adjust them below, then click Create Sandbox. Nothing is unpacked or run before that."))
+                .subtitle(tr(
+                    "These are the settings SAM recommends for this app. Adjust them below, then click Create Sandbox. Nothing is unpacked or run before that.",
+                ))
                 .build();
             row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
             self.add_dynamic(&self.notices, &row);
-
         }
         if let (Some(e), Some(s)) = (entry.as_ref(), summary.as_ref()) {
             let badge = util::str_of(s, "badge");
@@ -154,13 +173,20 @@ impl AppPage {
                     _ => util::plain(util::get(e, "last_error").and_then(Value::as_str).unwrap_or("This app cannot start.")),
                 };
                 let row = adw::ActionRow::builder().title(esc(&text)).build();
-                row.add_prefix(&status_icon(if badge == "stale" { "dialog-warning-symbolic" } else { "dialog-error-symbolic" }, if badge == "stale" { "warning" } else { "error" }));
+                row.add_prefix(&status_icon(
+                    if badge == "stale" { "dialog-warning-symbolic" } else { "dialog-error-symbolic" },
+                    if badge == "stale" { "warning" } else { "error" },
+                ));
                 let btn = gtk::Button::builder().label(if badge == "missing" { "Locate…" } else { "Re-extract" }).valign(gtk::Align::Center).build();
                 let w = Rc::downgrade(self);
                 let missing = badge == "missing";
                 btn.connect_clicked(move |_| {
                     if let Some(me) = w.upgrade() {
-                        if missing { me.relocate() } else { me.menu_button.activate_action("page.reextract", None).ok(); }
+                        if missing {
+                            me.relocate()
+                        } else {
+                            me.menu_button.activate_action("page.reextract", None).ok();
+                        }
                     }
                 });
                 row.add_suffix(&btn);
@@ -185,7 +211,9 @@ impl AppPage {
                 self.add_dynamic(&self.notices, &row);
             }
             if !pending.is_empty() {
-                let row = adw::ActionRow::builder().title(esc(&format!("The updated AppImage likely needs: {}. Your settings were kept.", pending.join(", ")))).build();
+                let row = adw::ActionRow::builder()
+                    .title(esc(&format!("The updated AppImage likely needs: {}. Your settings were kept.", pending.join(", "))))
+                    .build();
                 row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
                 let btn = gtk::Button::builder().label(tr("Got It")).valign(gtk::Align::Center).build();
                 let w = Rc::downgrade(self);
@@ -241,7 +269,11 @@ impl AppPage {
     /// out before the sandbox exists).
     pub(super) fn render_launch_group(self: &Rc<Self>, entry: Option<&Value>, app: &Rc<App>) {
         let sandboxed = self.sandboxed() && entry.is_some();
-        self.launch_group.set_description(Some(if self.sandboxed() { "How SAM starts this app." } else { "How SAM starts this app. Available once the sandbox exists." }));
+        self.launch_group.set_description(Some(if self.sandboxed() {
+            "How SAM starts this app."
+        } else {
+            "How SAM starts this app. Available once the sandbox exists."
+        }));
         self.args_row.set_sensitive(sandboxed);
         while let Some(c) = self.args_chips.first_child() {
             self.args_chips.remove(&c);
@@ -329,11 +361,7 @@ impl AppPage {
 
     pub(super) fn suggestion_row(self: &Rc<Self>, s: &Value, icon: &str, as_repair: bool, then_run: bool) -> adw::ActionRow {
         let none = util::str_of(s, "action.kind") == "none";
-        let row = adw::ActionRow::builder()
-            .title(esc(util::str_of(s, "title")))
-            .subtitle(esc(util::str_of(s, "explanation")))
-            .activatable(!none)
-            .build();
+        let row = adw::ActionRow::builder().title(esc(util::str_of(s, "title"))).subtitle(esc(util::str_of(s, "explanation"))).activatable(!none).build();
         row.add_prefix(&status_icon(icon, "accent"));
         if !none {
             row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
@@ -366,7 +394,11 @@ impl AppPage {
         let last = e.get("last_launch").filter(|l| !l.is_null());
         let last_text = match last {
             Some(l) => {
-                let mut t = format!("{} — {}", util::format_time(util::get(l, "started_at").and_then(Value::as_i64).unwrap_or(0)), util::plain(util::str_of(l, "summary")));
+                let mut t = format!(
+                    "{} — {}",
+                    util::format_time(util::get(l, "started_at").and_then(Value::as_i64).unwrap_or(0)),
+                    util::plain(util::str_of(l, "summary"))
+                );
                 if let Some(en) = l.get("enforcement").and_then(Value::as_str) {
                     t.push_str(&format!("\nEnforced: {}", util::plain(en)));
                 }
@@ -378,7 +410,13 @@ impl AppPage {
         row.add_prefix(&gtk::Image::from_icon_name("document-open-recent-symbolic"));
         self.add_dynamic(&g, &row);
         // Check the setup (sam-jail doctor <app>), results right below.
-        self.button_row(&g, "emblem-system-symbolic", "Check the setup", "Is the AppImage still there, unpacked and intact, is the menu entry valid, and how did the last start end.", |me| me.run_setup_check());
+        self.button_row(
+            &g,
+            "emblem-system-symbolic",
+            "Check the setup",
+            "Is the AppImage still there, unpacked and intact, is the menu entry valid, and how did the last start end.",
+            |me| me.run_setup_check(),
+        );
         if let Some(r) = self.setup_report.borrow().as_ref() {
             for c in r.get("checks").and_then(Value::as_array).into_iter().flatten() {
                 let status = util::str_of(c, "status");
@@ -397,7 +435,15 @@ impl AppPage {
             }
         }
         // Test start (sam-jail selftest <app>): a short real start.
-        self.button_row(&g, "media-playback-start-symbolic", "Test start", &format!("Starts the app for {TEST_SECONDS} seconds (its window opens) and reports whether it keeps running. A quick way to see if a change helped."), |me| me.run_test_start());
+        self.button_row(
+            &g,
+            "media-playback-start-symbolic",
+            "Test start",
+            &format!(
+                "Starts the app for {TEST_SECONDS} seconds (its window opens) and reports whether it keeps running. A quick way to see if a change helped."
+            ),
+            |me| me.run_test_start(),
+        );
         if let Some(r) = self.test_result.borrow().as_ref() {
             let ok = util::str_of(r, "status") == "ok";
             let row = adw::ActionRow::builder()
@@ -421,12 +467,26 @@ impl AppPage {
         }
         if e.get("repair_backup").is_some_and(|b| !b.is_null()) {
             let applied = util::list_of(e, "repairs_applied").join(", ");
-            self.button_row(&g, "edit-undo-symbolic", "Undo all repairs", &format!("Applied: {applied}"), |me| me.simple(vec!["repair".into(), me.app_id.clone(), "--undo".into()], "Repairs undone"));
+            self.button_row(&g, "edit-undo-symbolic", "Undo all repairs", &format!("Applied: {applied}"), |me| {
+                me.simple(vec!["repair".into(), me.app_id.clone(), "--undo".into()], "Repairs undone")
+            });
         }
-        self.button_row(&g, "folder-open-symbolic", "Files this app saved", "The app's private folder, where it keeps settings and files it saved outside your granted folders.", |me| me.open_private_folder());
-        self.button_row(&g, "system-search-symbolic", "Re-run detection", "Inspects the app again and updates SAM's recommendation. Your settings are kept; anything new is listed above.", |me| {
-            me.simple(vec!["redetect".into(), me.app_id.clone()], "Detection finished");
-        });
+        self.button_row(
+            &g,
+            "folder-open-symbolic",
+            "Files this app saved",
+            "The app's private folder, where it keeps settings and files it saved outside your granted folders.",
+            |me| me.open_private_folder(),
+        );
+        self.button_row(
+            &g,
+            "system-search-symbolic",
+            "Re-run detection",
+            "Inspects the app again and updates SAM's recommendation. Your settings are kept; anything new is listed above.",
+            |me| {
+                me.simple(vec!["redetect".into(), me.app_id.clone()], "Detection finished");
+            },
+        );
         self.button_row(&g, "system-run-symbolic", "Diagnose missing resources", "Runs the app once under strace (if installed) and suggests fixes.", |me| {
             if let Some(app) = me.app() {
                 app.toast(&tr("Starting a diagnostic run (closes after 30 s)…"));
@@ -454,7 +514,11 @@ impl AppPage {
         glib::spawn_future_local(async move {
             match app.backend.call(&["doctor", &me.app_id], None).await {
                 Ok(r) => {
-                    let bad = r.get("checks").and_then(Value::as_array).map(|c| c.iter().filter(|x| matches!(util::str_of(x, "status"), "warn" | "fail" | "error")).count()).unwrap_or(0);
+                    let bad = r
+                        .get("checks")
+                        .and_then(Value::as_array)
+                        .map(|c| c.iter().filter(|x| matches!(util::str_of(x, "status"), "warn" | "fail" | "error")).count())
+                        .unwrap_or(0);
                     app.toast(&if bad == 0 { "Setup check: everything is in order".to_string() } else { format!("Setup check: {bad} thing(s) to look at") });
                     *me.setup_report.borrow_mut() = Some(r);
                     me.reload();
@@ -526,7 +590,13 @@ impl AppPage {
                 if let Ok(v) = app.backend.call(&["space", &id], None).await {
                     let Some(u) = v.get("apps").and_then(|a| a.get(0)) else { return };
                     let size = |k: &str| glib::format_size(util::get(u, k).and_then(Value::as_u64).unwrap_or(0)).to_string();
-                    space.set_subtitle(&format!("{} in total: unpacked app {}, private home {}, logs {}", size("total"), size("unpacked"), size("home"), size("logs")));
+                    space.set_subtitle(&format!(
+                        "{} in total: unpacked app {}, private home {}, logs {}",
+                        size("total"),
+                        size("unpacked"),
+                        size("home"),
+                        size("logs")
+                    ));
                     free.set_visible(util::get(u, "can_free").and_then(Value::as_bool).unwrap_or(false));
                 }
             });

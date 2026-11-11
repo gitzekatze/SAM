@@ -150,11 +150,7 @@ impl Sam {
 
     fn limits(&self) -> Limits {
         let e = &self.config.extraction;
-        Limits {
-            max_files: e.max_files,
-            max_bytes: e.max_size_mb.saturating_mul(1024 * 1024),
-            max_seconds: e.max_seconds,
-        }
+        Limits { max_files: e.max_files, max_bytes: e.max_size_mb.saturating_mul(1024 * 1024), max_seconds: e.max_seconds }
     }
 
     pub fn extracted_root(&self) -> PathBuf {
@@ -164,7 +160,6 @@ impl Sam {
     pub fn resolve(&self, query: &str) -> Result<AppEntry> {
         self.registry().resolve(query)
     }
-
 }
 
 /// Browsers and chat apps need the network; games do when they link networking libraries.
@@ -328,7 +323,6 @@ pub fn merge_adjustments(base: &PermissionSet, user: &PermissionSet, newer: &Per
         _ => user.clone(),
     }
 }
-
 
 #[cfg(test)]
 mod tests {

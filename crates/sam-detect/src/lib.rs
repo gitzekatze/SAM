@@ -2,9 +2,9 @@
 //! detection.
 
 pub mod appimage;
-pub mod signature;
 pub mod classify;
 pub mod elf;
+pub mod signature;
 
 pub use appimage::{inspect, looks_like_appimage, AppImageInfo, PayloadFormat};
 pub use elf::{analyze_appdir, AnalyzeOptions};

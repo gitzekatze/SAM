@@ -10,14 +10,8 @@ const GUIDE: &str = include_str!("../../../docs/guide.md");
 
 /// The guide page for the right column.
 pub fn page() -> adw::NavigationPage {
-    let content = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(12)
-        .margin_top(24)
-        .margin_bottom(48)
-        .margin_start(24)
-        .margin_end(24)
-        .build();
+    let content =
+        gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(12).margin_top(24).margin_bottom(48).margin_start(24).margin_end(24).build();
     content.add_css_class("sam-guide");
     render(GUIDE, &content);
     let clamp = adw::Clamp::builder().maximum_size(760).tightening_threshold(600).child(&content).build();
@@ -285,7 +279,9 @@ mod tests {
         for ev in pulldown_cmark::Parser::new(md) {
             match ev {
                 pulldown_cmark::Event::Text(t) => cur.push_str(&t),
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::List(_)) | pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Item) if !cur.is_empty() => texts.push(std::mem::take(&mut cur)),
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::List(_)) | pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Item) if !cur.is_empty() => {
+                    texts.push(std::mem::take(&mut cur))
+                }
                 _ => {}
             }
         }

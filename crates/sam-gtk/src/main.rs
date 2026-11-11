@@ -325,4 +325,3 @@ fn render_widget(window: &gtk::Widget, widget: &gtk::Widget, file: &str) {
         eprintln!("screenshot: {e}");
     }
 }
-

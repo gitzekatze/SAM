@@ -43,7 +43,11 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let choice = |g: &adw::PreferencesGroup, key: &'static str, title: &str, opts: &'static [(&'static str, &'static str)]| {
         let labels: Vec<&str> = opts.iter().map(|o| o.1).collect();
         let cur = util::str_of(&cfg, key);
-        let row = adw::ComboRow::builder().title(esc(title)).model(&gtk::StringList::new(&labels)).selected(opts.iter().position(|o| o.0 == cur).unwrap_or(0) as u32).build();
+        let row = adw::ComboRow::builder()
+            .title(esc(title))
+            .model(&gtk::StringList::new(&labels))
+            .selected(opts.iter().position(|o| o.0 == cur).unwrap_or(0) as u32)
+            .build();
         let w = Rc::downgrade(app);
         row.connect_selected_notify(move |r| {
             if let (Some(app), Some(o)) = (w.upgrade(), opts.get(r.selected() as usize)) {
@@ -84,7 +88,12 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Menu Entries")).build();
-    switch(&g, "general.desktop_integration", "Create menu entries", "Sandboxed apps appear in your application menu and always start through SAM. AppImage locations are managed in the left column.");
+    switch(
+        &g,
+        "general.desktop_integration",
+        "Create menu entries",
+        "Sandboxed apps appear in your application menu and always start through SAM. AppImage locations are managed in the left column.",
+    );
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Repair")).build();
@@ -99,7 +108,12 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let g = adw::PreferencesGroup::builder().title(tr("Kernel Security Features")).description(tr("Extra layers inside every sandbox.")).build();
     switch(&g, "security.experimental_landlock", "Landlock write protection", "Kernel-enforced write restrictions inside the sandbox. Also blocks connections to abstract sockets outside the sandbox (such as XWayland's). Skipped on kernels without Landlock.");
     switch(&g, "security.baseline_seccomp", "Baseline syscall filter", "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Individual apps can turn it off in their repair steps.");
-    switch(&g, "security.experimental_seccomp", "Allow strict syscall filters (experimental)", "Lets apps use the strict syscall filter from their Advanced settings. Can break apps.");
+    switch(
+        &g,
+        "security.experimental_seccomp",
+        "Allow strict syscall filters (experimental)",
+        "Lets apps use the strict syscall filter from their Advanced settings. Can break apps.",
+    );
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Sandbox Check")).build();
@@ -107,9 +121,24 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Dependency Detection")).build();
-    switch(&g, "dependencies.static_analysis", "Analyze AppImages when creating a sandbox", "Inspects the bundled programs and libraries without running them.");
-    switch(&g, "dependencies.dynamic_fallback", "Allow diagnostic runs", "Run an app once under strace to find missing resources (app → Troubleshooting → Diagnose missing resources).");
-    switch(&g, "dependencies.automatic_low_risk_fixes", "Apply low-risk fixes automatically", "Read-only system data such as fonts or themes found during a diagnostic run is granted without asking.");
+    switch(
+        &g,
+        "dependencies.static_analysis",
+        "Analyze AppImages when creating a sandbox",
+        "Inspects the bundled programs and libraries without running them.",
+    );
+    switch(
+        &g,
+        "dependencies.dynamic_fallback",
+        "Allow diagnostic runs",
+        "Run an app once under strace to find missing resources (app → Troubleshooting → Diagnose missing resources).",
+    );
+    switch(
+        &g,
+        "dependencies.automatic_low_risk_fixes",
+        "Apply low-risk fixes automatically",
+        "Read-only system data such as fonts or themes found during a diagnostic run is granted without asking.",
+    );
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Extraction")).build();
@@ -119,11 +148,19 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let loc_text = |l: &str| if l.trim().is_empty() { "Default: ~/.local/share/sam/extracted".to_string() } else { l.to_string() };
     let row = adw::ActionRow::builder()
         .title(tr("Location"))
-        .subtitle(esc(&format!("{}\nNew sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.", loc_text(&loc))))
+        .subtitle(esc(&format!(
+            "{}\nNew sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.",
+            loc_text(&loc)
+        )))
         .build();
     let choose = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text(tr("Choose a folder")).valign(gtk::Align::Center).build();
     choose.add_css_class("flat");
-    let reset = gtk::Button::builder().icon_name("edit-undo-symbolic").tooltip_text(tr("Back to the default folder")).valign(gtk::Align::Center).sensitive(!loc.trim().is_empty()).build();
+    let reset = gtk::Button::builder()
+        .icon_name("edit-undo-symbolic")
+        .tooltip_text(tr("Back to the default folder"))
+        .valign(gtk::Align::Center)
+        .sensitive(!loc.trim().is_empty())
+        .build();
     reset.add_css_class("flat");
     row.add_suffix(&choose);
     row.add_suffix(&reset);
@@ -135,7 +172,10 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             glib::spawn_future_local(async move {
                 app.set_config("extraction.location", &value).await;
                 let now = util::str_of(&app.state.borrow().config, "extraction.location").to_string();
-                row.set_subtitle(&esc(&format!("{}\nNew sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.", loc_text(&now))));
+                row.set_subtitle(&esc(&format!(
+                    "{}\nNew sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.",
+                    loc_text(&now)
+                )));
                 reset.set_sensitive(!now.trim().is_empty());
             });
         }
@@ -159,7 +199,12 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     reset.connect_clicked(move |_| set_loc(String::new()));
     g.add(&row);
     switch(&g, "extraction.cleanup_stale", "Clean up stale extractions", "");
-    switch(&g, "extraction.allow_fallback", "Offer the AppImage's own extractor as fallback", "Only used after asking you, and only inside a restricted sandbox.");
+    switch(
+        &g,
+        "extraction.allow_fallback",
+        "Offer the AppImage's own extractor as fallback",
+        "Only used after asking you, and only inside a restricted sandbox.",
+    );
     number(&g, "extraction.max_size_mb", "Maximum extracted size (MiB)", 64.0, 1048576.0, 256.0);
     number(&g, "extraction.max_files", "Maximum number of files", 1000.0, 10000000.0, 10000.0);
     number(&g, "extraction.max_seconds", "Maximum extraction time (s)", 10.0, 7200.0, 30.0);
@@ -297,15 +342,24 @@ impl Presets {
                 group.add_action(&a);
             };
             act("apply", Some(glib::VariantTy::STRING), Box::new(move |me, id| me.apply(i, id.unwrap_or_default())));
-            act("edit", None, Box::new(move |me, _| {
-                let p = me.presets.borrow()[i].clone();
-                me.edit(p, false)
-            }));
+            act(
+                "edit",
+                None,
+                Box::new(move |me, _| {
+                    let p = me.presets.borrow()[i].clone();
+                    me.edit(p, false)
+                }),
+            );
             act("duplicate", None, Box::new(move |me, _| me.duplicate(i)));
             act("export", None, Box::new(move |me, _| me.export(i)));
             act("delete", None, Box::new(move |me, _| me.delete(i)));
             row.insert_action_group("row", Some(&group));
-            let mb = gtk::MenuButton::builder().icon_name("view-more-symbolic").tooltip_text(tr("More actions")).menu_model(&menu).valign(gtk::Align::Center).build();
+            let mb = gtk::MenuButton::builder()
+                .icon_name("view-more-symbolic")
+                .tooltip_text(tr("More actions"))
+                .menu_model(&menu)
+                .valign(gtk::Align::Center)
+                .build();
             mb.add_css_class("flat");
             row.add_suffix(&mb);
             let w = Rc::downgrade(self);
@@ -373,7 +427,8 @@ impl Presets {
         let name = self.name(i);
         let me = self.clone();
         glib::spawn_future_local(async move {
-            if window::confirm(&app.window, &format!("Delete “{name}”?"), "Apps that use this preset keep their current permissions.", "Delete", true).await {
+            if window::confirm(&app.window, &format!("Delete “{name}”?"), "Apps that use this preset keep their current permissions.", "Delete", true).await
+            {
                 if let Err(e) = app.backend.call(&["preset", "delete", &name], None).await {
                     app.report_error(&e);
                 }
@@ -558,23 +613,31 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         });
         maint.add(&row);
     };
-    button("Check all AppImages for changes", "view-refresh-symbolic", Box::new(|app| {
-        glib::spawn_future_local(async move {
-            let r = app.backend.call(&["refresh", "--deep"], None).await;
-            app.refresh_apps().await;
-            if let Ok(r) = r {
-                let n = r.as_array().map(|a| a.iter().filter(|i| ["stale", "missing"].contains(&util::str_of(i, "status"))).count()).unwrap_or(0);
-                app.toast(&if n > 0 { format!("{n} app(s) changed or are missing") } else { "All AppImages are unchanged".into() });
-            }
-        });
-    }));
-    button("Remove unused extractions", "edit-clear-all-symbolic", Box::new(|app| {
-        glib::spawn_future_local(async move {
-            if let Ok(r) = app.backend.call(&["cleanup"], None).await {
-                app.toast(&format!("Removed {} unused extraction(s)", r.as_array().map(Vec::len).unwrap_or(0)));
-            }
-        });
-    }));
+    button(
+        "Check all AppImages for changes",
+        "view-refresh-symbolic",
+        Box::new(|app| {
+            glib::spawn_future_local(async move {
+                let r = app.backend.call(&["refresh", "--deep"], None).await;
+                app.refresh_apps().await;
+                if let Ok(r) = r {
+                    let n = r.as_array().map(|a| a.iter().filter(|i| ["stale", "missing"].contains(&util::str_of(i, "status"))).count()).unwrap_or(0);
+                    app.toast(&if n > 0 { format!("{n} app(s) changed or are missing") } else { "All AppImages are unchanged".into() });
+                }
+            });
+        }),
+    );
+    button(
+        "Remove unused extractions",
+        "edit-clear-all-symbolic",
+        Box::new(|app| {
+            glib::spawn_future_local(async move {
+                if let Ok(r) = app.backend.call(&["cleanup"], None).await {
+                    app.toast(&format!("Removed {} unused extraction(s)", r.as_array().map(Vec::len).unwrap_or(0)));
+                }
+            });
+        }),
+    );
     // Space used by the sandboxed apps, biggest first.
     let space = adw::ActionRow::builder().title(tr("Disk space of sandboxed apps")).subtitle(tr("Checking…")).build();
     space.add_prefix(&gtk::Image::from_icon_name("drive-harddisk-symbolic"));
@@ -590,7 +653,9 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                 let top: Vec<String> = apps
                     .iter()
                     .take(3)
-                    .map(|a| format!("{} {}", util::plain(util::str_of(a, "name")), glib::format_size(util::get(a, "total").and_then(Value::as_u64).unwrap_or(0))))
+                    .map(|a| {
+                        format!("{} {}", util::plain(util::str_of(a, "name")), glib::format_size(util::get(a, "total").and_then(Value::as_u64).unwrap_or(0)))
+                    })
                     .collect();
                 row.set_subtitle(&esc(&if apps.is_empty() {
                     "No sandboxed apps.".to_string()
@@ -620,7 +685,10 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                         row.set_subtitle(&if n == 0 {
                             "Nothing left behind.".to_string()
                         } else {
-                            format!("Settings and files of {n} app(s) whose sandbox was removed: {}. A new sandbox for the same AppImage would use them again.", glib::format_size(total))
+                            format!(
+                                "Settings and files of {n} app(s) whose sandbox was removed: {}. A new sandbox for the same AppImage would use them again.",
+                                glib::format_size(total)
+                            )
                         });
                         btn.set_sensitive(n > 0);
                     }
@@ -636,7 +704,15 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         let Some(app) = w.upgrade() else { return };
         let reload = reload.clone();
         glib::spawn_future_local(async move {
-            if !window::confirm(&app.window, "Delete Data of Removed Sandboxes?", "The settings, logins and saved files of apps whose sandbox was removed are deleted. This cannot be undone.", "Delete", true).await {
+            if !window::confirm(
+                &app.window,
+                "Delete Data of Removed Sandboxes?",
+                "The settings, logins and saved files of apps whose sandbox was removed are deleted. This cannot be undone.",
+                "Delete",
+                true,
+            )
+            .await
+            {
                 return;
             }
             match app.backend.call(&["cleanup", "--data"], None).await {

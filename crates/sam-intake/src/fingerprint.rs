@@ -12,13 +12,7 @@ use sha2::{Digest, Sha256};
 
 pub fn quick(path: &Path) -> Result<Fingerprint> {
     let m = fs::metadata(path).with_context(|| format!("reading {}", path.display()))?;
-    Ok(Fingerprint {
-        size: m.len(),
-        mtime: m.mtime(),
-        inode: m.ino(),
-        device: m.dev(),
-        sha256: String::new(),
-    })
+    Ok(Fingerprint { size: m.len(), mtime: m.mtime(), inode: m.ino(), device: m.dev(), sha256: String::new() })
 }
 
 /// Short stable hex id for file names (first 16 hex digits of SHA-256).
@@ -52,7 +46,10 @@ pub enum SourceStatus {
     /// Metadata changed but the content is identical (e.g. copied, touched).
     Touched(Fingerprint),
     /// Content changed (AppImage updated).
-    Changed { new: Fingerprint, reasons: Vec<String> },
+    Changed {
+        new: Fingerprint,
+        reasons: Vec<String>,
+    },
     Missing,
 }
 

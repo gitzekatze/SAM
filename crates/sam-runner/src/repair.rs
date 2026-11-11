@@ -2,10 +2,10 @@
 //! messages into fixes (no strace needed), and the repair ladder that tries
 //! one fix at a time.
 
-use sam_core::permissions::*;
 use sam_core::permissions::dangerous_bus_name;
-use sam_core::util::display_safe;
+use sam_core::permissions::*;
 use sam_core::risk::RiskLevel;
+use sam_core::util::display_safe;
 use sam_core::{AppEntry, Config, FixAction, Suggestion};
 
 fn s(id: &str, title: &str, explanation: impl Into<String>, action: FixAction, risk: RiskLevel) -> Suggestion {
@@ -47,12 +47,18 @@ pub fn first_run_hints(e: &AppEntry) -> Vec<Suggestion> {
     }
     let windowed = !e.metadata.terminal;
     if windowed && !p.display.x11 && !req.wayland && matches!(toolkit, "Unknown" | "") && e.detection.as_ref().is_some_and(|d| d.elf_count > 0) {
-        out.push(s("x11", "The window may not appear", "SAM found no Wayland support in this app. If no window opens, turn on X11 (XWayland).", set("display.x11", "true"), RiskLevel::High));
+        out.push(s(
+            "x11",
+            "The window may not appear",
+            "SAM found no Wayland support in this app. If no window opens, turn on X11 (XWayland).",
+            set("display.x11", "true"),
+            RiskLevel::High,
+        ));
     }
     if windowed && !p.devices.gpu && !req.wayland && !req.x11 && matches!(toolkit, "Unknown" | "") && e.detection.as_ref().is_some_and(|d| d.elf_count > 0) {
         out.push(s("gpu", "Graphics may not work", "SAM found no graphics libraries in this app, which usually means it loads them at start (common for Rust and game engines). If it fails to start or draw, turn on GPU acceleration.", set("devices.gpu", "true"), RiskLevel::Medium));
     }
-        if req.electron && apparmor_restricts_userns() && !e.profile.args.iter().any(|a| a == "--no-sandbox") {
+    if req.electron && apparmor_restricts_userns() && !e.profile.args.iter().any(|a| a == "--no-sandbox") {
         out.push(no_sandbox("This system (AppArmor) does not let apps inside a sandbox create their own sandbox, so Electron apps usually fail to start. Starting it without Chromium's internal sandbox fixes that; SAM's sandbox still protects your system."));
     }
     let signs_in = matches!(e.category.as_str(), "communication" | "browser") || req.electron;
@@ -86,35 +92,113 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
 
     if let Some(lib) = after(output, "error while loading shared libraries: ").map(|r| display_safe(r.split(':').next().unwrap_or("").trim(), 120)) {
         if p.advanced.host_runtime == HostRuntime::Minimal {
-            push(s("libs-missing", "A library is not visible", format!("The app needs {lib}, which SAM's minimal system view may hide. Show all of /usr."), set("advanced.host_runtime", "full"), RiskLevel::Medium));
+            push(s(
+                "libs-missing",
+                "A library is not visible",
+                format!("The app needs {lib}, which SAM's minimal system view may hide. Show all of /usr."),
+                set("advanced.host_runtime", "full"),
+                RiskLevel::Medium,
+            ));
         } else {
-            push(s("libs-missing", "A library is missing on this system", format!("The app needs {lib}, which is not installed. Install the package that provides it."), FixAction::None, RiskLevel::Low));
+            push(s(
+                "libs-missing",
+                "A library is missing on this system",
+                format!("The app needs {lib}, which is not installed. Install the package that provides it."),
+                FixAction::None,
+                RiskLevel::Low,
+            ));
         }
     }
-    if has(&["failed to create xkb keymap", "xkbcommon: error", "couldn't find file \"rules/evdev\"", "could not find a usable locale", "locale: cannot set"]) && p.advanced.host_runtime == HostRuntime::Minimal {
-        push(s("system-data", "System data is missing", "Keyboard layouts or locale data were not found in SAM's minimal system view. Show all of /usr.", set("advanced.host_runtime", "full"), RiskLevel::Medium));
+    if has(&["failed to create xkb keymap", "xkbcommon: error", "couldn't find file \"rules/evdev\"", "could not find a usable locale", "locale: cannot set"])
+        && p.advanced.host_runtime == HostRuntime::Minimal
+    {
+        push(s(
+            "system-data",
+            "System data is missing",
+            "Keyboard layouts or locale data were not found in SAM's minimal system view. Show all of /usr.",
+            set("advanced.host_runtime", "full"),
+            RiskLevel::Medium,
+        ));
     }
     if !p.display.x11
-        && has(&["cannot open display", "unable to open x display", "missing x server or $display", "can't connect to x11 window server", "java.awt.headlessexception", "could not connect to display", "could not load the qt platform plugin \"xcb\"", "no platform plugin", "qt.qpa.plugin: could not find the qt platform plugin \"wayland\""])
+        && has(&[
+            "cannot open display",
+            "unable to open x display",
+            "missing x server or $display",
+            "can't connect to x11 window server",
+            "java.awt.headlessexception",
+            "could not connect to display",
+            "could not load the qt platform plugin \"xcb\"",
+            "no platform plugin",
+            "qt.qpa.plugin: could not find the qt platform plugin \"wayland\"",
+        ])
     {
-        push(s("x11", "The app needs X11", "The app tried to open a window through X11 (or has no Wayland support). Turn on X11 (XWayland).", set("display.x11", "true"), RiskLevel::High));
+        push(s(
+            "x11",
+            "The app needs X11",
+            "The app tried to open a window through X11 (or has no Wayland support). Turn on X11 (XWayland).",
+            set("display.x11", "true"),
+            RiskLevel::High,
+        ));
     }
-    if has(&["zygote process exited", "no usable sandbox", "suid sandbox helper binary", "failed to move to new namespace", "operation not permitted: clone", "credentials.cc"]) {
+    if has(&[
+        "zygote process exited",
+        "no usable sandbox",
+        "suid sandbox helper binary",
+        "failed to move to new namespace",
+        "operation not permitted: clone",
+        "credentials.cc",
+    ]) {
         if !p.advanced.allow_userns {
-            push(s("userns", "Chromium's own sandbox cannot start", "Electron/Chromium apps start their own internal sandbox. Allow nested namespaces.", set("advanced.allow_userns", "true"), RiskLevel::Low));
+            push(s(
+                "userns",
+                "Chromium's own sandbox cannot start",
+                "Electron/Chromium apps start their own internal sandbox. Allow nested namespaces.",
+                set("advanced.allow_userns", "true"),
+                RiskLevel::Low,
+            ));
         } else if p.advanced.seccomp_strict {
-            push(s("seccomp", "The strict syscall filter blocks the app", "Turn off the strict syscall filter for this app.", set("advanced.seccomp_strict", "false"), RiskLevel::Low));
+            push(s(
+                "seccomp",
+                "The strict syscall filter blocks the app",
+                "Turn off the strict syscall filter for this app.",
+                set("advanced.seccomp_strict", "false"),
+                RiskLevel::Low,
+            ));
         } else {
             push(no_sandbox("Chromium's internal sandbox could not start inside SAM's sandbox (common on systems that restrict user namespaces). Starting without it fixes that; SAM's sandbox still protects your system."));
         }
     }
     if p.network.mode != NetworkMode::Full
-        && has(&["enotfound", "temporary failure in name resolution", "name or service not known", "network is unreachable", "err_name_not_resolved", "err_internet_disconnected", "could not resolve host", "getaddrinfo", "no address associated with hostname", "err_network_changed"])
+        && has(&[
+            "enotfound",
+            "temporary failure in name resolution",
+            "name or service not known",
+            "network is unreachable",
+            "err_name_not_resolved",
+            "err_internet_disconnected",
+            "could not resolve host",
+            "getaddrinfo",
+            "no address associated with hostname",
+            "err_network_changed",
+        ])
     {
-        push(s("network", "The app tried to go online", "Network requests failed because the app has no internet access.", set("network.mode", "full"), RiskLevel::High));
+        push(s(
+            "network",
+            "The app tried to go online",
+            "Network requests failed because the app has no internet access.",
+            set("network.mode", "full"),
+            RiskLevel::High,
+        ));
     }
     if has(&["read-only file system"]) && low.contains("/opt/app") && !p.advanced.writable_appdir && sam_core::host::bwrap_supports_overlay() {
-        push(s("writable-appdir", "The app writes into its own folder", "Portable apps save settings next to themselves. Give it a writable app folder (changes go to a separate layer).", set("advanced.writable_appdir", "true"), RiskLevel::Low));
+        push(s(
+            "writable-appdir",
+            "The app writes into its own folder",
+            "Portable apps save settings next to themselves. Give it a writable app folder (changes go to a separate layer).",
+            set("advanced.writable_appdir", "true"),
+            RiskLevel::Low,
+        ));
     }
     for line in output.lines() {
         if let Some(path) = denied_home_path(line) {
@@ -125,36 +209,97 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             if sam_core::risk::is_sensitive_path(&dir) || sam_core::risk::is_sensitive_path(&path) || too_broad {
                 push(s("grant-folder-refused", "The app asked for a protected location", format!("The app reported that it could not open {shown_path}. SAM does not offer access to {shown_dir}: it holds keys, passwords or your whole home."), FixAction::None, RiskLevel::Dangerous));
             } else {
-                push(s("grant-folder", "Access to a folder was denied", format!("The app reported that it could not open {shown_path}. Grant read/write access to {shown_dir}."), FixAction::Add { key: "filesystem.custom_write".into(), value: dir }, RiskLevel::High));
+                push(s(
+                    "grant-folder",
+                    "Access to a folder was denied",
+                    format!("The app reported that it could not open {shown_path}. Grant read/write access to {shown_dir}."),
+                    FixAction::Add { key: "filesystem.custom_write".into(), value: dir },
+                    RiskLevel::High,
+                ));
             }
             break;
         }
     }
     if let Some(v) = after(output, "version `GLIBC_").map(|r| display_safe(r.split('\'').next().unwrap_or(""), 16)) {
-        push(s("glibc", "The app needs a newer system", format!("The app needs glibc {v}, newer than this system's. Update the system or use an older version of the app."), FixAction::None, RiskLevel::Low));
+        push(s(
+            "glibc",
+            "The app needs a newer system",
+            format!("The app needs glibc {v}, newer than this system's. Update the system or use an older version of the app."),
+            FixAction::None,
+            RiskLevel::Low,
+        ));
     }
     if has(&[
-        "libgl error: failed to load driver", "mesa-loader: failed to open", "failed to initialize glx", "gpu process isn't usable",
-        "egl_not_initialized", "failed to get gbm", "wgpu error", "failed to create surface", "no suitable adapter",
-        "failed to find a suitable gpu", "vk_error", "vulkan: no devices", "failed to create opengl context", "glutin",
+        "libgl error: failed to load driver",
+        "mesa-loader: failed to open",
+        "failed to initialize glx",
+        "gpu process isn't usable",
+        "egl_not_initialized",
+        "failed to get gbm",
+        "wgpu error",
+        "failed to create surface",
+        "no suitable adapter",
+        "failed to find a suitable gpu",
+        "vk_error",
+        "vulkan: no devices",
+        "failed to create opengl context",
+        "glutin",
     ]) {
         if !p.devices.gpu {
-            push(s("gpu", "Graphics acceleration is off", "The app could not use the GPU. Turn on GPU acceleration.", set("devices.gpu", "true"), RiskLevel::Medium));
+            push(s(
+                "gpu",
+                "Graphics acceleration is off",
+                "The app could not use the GPU. Turn on GPU acceleration.",
+                set("devices.gpu", "true"),
+                RiskLevel::Medium,
+            ));
         } else if p.advanced.host_runtime == HostRuntime::Minimal {
-            push(s("gpu-data", "Graphics driver files are hidden", "The GPU driver could not load in SAM's minimal system view. Show all of /usr.", set("advanced.host_runtime", "full"), RiskLevel::Medium));
+            push(s(
+                "gpu-data",
+                "Graphics driver files are hidden",
+                "The GPU driver could not load in SAM's minimal system view. Show all of /usr.",
+                set("advanced.host_runtime", "full"),
+                RiskLevel::Medium,
+            ));
         }
     }
-    if let Some(name) = after(output, "The name ").and_then(|r| r.split_whitespace().next()).filter(|_| low.contains("was not provided") || low.contains("serviceunknown")) {
+    if let Some(name) =
+        after(output, "The name ").and_then(|r| r.split_whitespace().next()).filter(|_| low.contains("was not provided") || low.contains("serviceunknown"))
+    {
         let name = name.trim_matches(|c| c == '\'' || c == '"' || c == ',').to_string();
         let name = if name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) { name } else { display_safe(&name, 80) };
         if name.contains("secrets") || name.contains("kwallet") {
-            push(s("keyring", "The app wants your keyring", "The app tried to store or read a login. Allowing the keyring lets it read every password stored there.", set("integrations.keyring", "true"), RiskLevel::High));
+            push(s(
+                "keyring",
+                "The app wants your keyring",
+                "The app tried to store or read a login. Allowing the keyring lets it read every password stored there.",
+                set("integrations.keyring", "true"),
+                RiskLevel::High,
+            ));
         } else if name.contains("ScreenSaver") || name.contains("PowerManagement") || name.contains("mpris") {
-            push(s("media", "The app wants media controls", "Allow media keys and keeping the screen awake.", set("integrations.media_controls", "true"), RiskLevel::Low));
+            push(s(
+                "media",
+                "The app wants media controls",
+                "Allow media keys and keeping the screen awake.",
+                set("integrations.media_controls", "true"),
+                RiskLevel::Low,
+            ));
         } else if let Some(why) = dangerous_bus_name(&name) {
-            push(s("dbus-name-refused", "The app asked for a dangerous service", format!("The app tried to use {why}. SAM does not offer this: it would let the app escape the sandbox."), FixAction::None, RiskLevel::Dangerous));
+            push(s(
+                "dbus-name-refused",
+                "The app asked for a dangerous service",
+                format!("The app tried to use {why}. SAM does not offer this: it would let the app escape the sandbox."),
+                FixAction::None,
+                RiskLevel::Dangerous,
+            ));
         } else if name.contains('.') && !name.starts_with(':') {
-            push(s("dbus-name", "A desktop service is blocked", format!("The app tried to use {name}, which the D-Bus filter blocks. Allow just this service."), FixAction::Add { key: "dbus.session.allow".into(), value: name }, RiskLevel::Medium));
+            push(s(
+                "dbus-name",
+                "A desktop service is blocked",
+                format!("The app tried to use {name}, which the D-Bus filter blocks. Allow just this service."),
+                FixAction::Add { key: "dbus.session.allow".into(), value: name },
+                RiskLevel::Medium,
+            ));
         }
     }
     if !p.audio.enabled && has(&["pa_context_connect", "connection to pulseaudio", "alsa lib", "cannot find card", "pipewire: can't connect"]) {
@@ -170,7 +315,13 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
         x.from_app_output = true;
     }
     if signal == Some(11) && out.is_empty() {
-        out.push(s("crash", "The app crashed", "A crash right at start is often a missing system file. Showing all of /usr is the safest first step.", set("advanced.host_runtime", "full"), RiskLevel::Medium));
+        out.push(s(
+            "crash",
+            "The app crashed",
+            "A crash right at start is often a missing system file. Showing all of /usr is the safest first step.",
+            set("advanced.host_runtime", "full"),
+            RiskLevel::Medium,
+        ));
     }
     out
 }
@@ -203,16 +354,43 @@ pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
     let p = &e.profile.permissions;
     let mut steps: Vec<Suggestion> = e.last_launch.as_ref().map(|l| l.findings.clone()).unwrap_or_default();
     steps.extend([
-        s("full-usr", "Show all of /usr", "Most crashes at start are a system file hidden by SAM's minimal view.", set("advanced.host_runtime", "full"), RiskLevel::Medium),
+        s(
+            "full-usr",
+            "Show all of /usr",
+            "Most crashes at start are a system file hidden by SAM's minimal view.",
+            set("advanced.host_runtime", "full"),
+            RiskLevel::Medium,
+        ),
         s("x11", "Turn on X11", "For apps without Wayland support, or whose window does not appear.", set("display.x11", "true"), RiskLevel::High),
         s("gpu", "Turn on GPU acceleration", "Some apps refuse to start without hardware graphics.", set("devices.gpu", "true"), RiskLevel::Medium),
-        s("userns", "Allow nested namespaces", "Needed by apps that start their own sandbox (Chromium, Electron, WebKit).", set("advanced.allow_userns", "true"), RiskLevel::Low),
-        s("seccomp-baseline", "Turn off the baseline syscall filter", "Rarely needed: some apps use kernel interfaces the filter blocks.", set("advanced.seccomp_baseline", "false"), RiskLevel::Medium),
+        s(
+            "userns",
+            "Allow nested namespaces",
+            "Needed by apps that start their own sandbox (Chromium, Electron, WebKit).",
+            set("advanced.allow_userns", "true"),
+            RiskLevel::Low,
+        ),
+        s(
+            "seccomp-baseline",
+            "Turn off the baseline syscall filter",
+            "Rarely needed: some apps use kernel interfaces the filter blocks.",
+            set("advanced.seccomp_baseline", "false"),
+            RiskLevel::Medium,
+        ),
         s("writable-appdir", "Writable app folder", "For apps that save next to themselves.", set("advanced.writable_appdir", "true"), RiskLevel::Low),
-        s("compat", "Compatibility mode", "Grants broad access (network, full session bus, all of /usr, X11, GPU, sound). Use when nothing else helps.", FixAction::Compat, RiskLevel::High),
+        s(
+            "compat",
+            "Compatibility mode",
+            "Grants broad access (network, full session bus, all of /usr, X11, GPU, sound). Use when nothing else helps.",
+            FixAction::Compat,
+            RiskLevel::High,
+        ),
     ]);
     if e.detection.as_ref().is_some_and(|d| d.requirements.electron) {
-        steps.insert(steps.len().saturating_sub(1), no_sandbox("For Electron apps whose internal Chromium sandbox fails inside SAM's sandbox. SAM's sandbox still protects your system."));
+        steps.insert(
+            steps.len().saturating_sub(1),
+            no_sandbox("For Electron apps whose internal Chromium sandbox fails inside SAM's sandbox. SAM's sandbox still protects your system."),
+        );
     }
     let mut seen = Vec::new();
     steps.retain(|st| {

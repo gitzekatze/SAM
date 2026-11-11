@@ -106,7 +106,8 @@ impl AppPage {
         header.pack_end(&menu_button);
         view.add_top_bar(&header);
 
-        let hero = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(18).margin_start(24).margin_end(24).margin_top(4).margin_bottom(14).build();
+        let hero =
+            gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(18).margin_start(24).margin_end(24).margin_top(4).margin_bottom(14).build();
         hero.add_css_class("sam-hero");
         let icon_slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         icon_slot.set_valign(gtk::Align::Center);
@@ -191,7 +192,8 @@ impl AppPage {
         let pref = adw::PreferencesPage::new();
         pref.add_css_class("sam-wide");
         let notices = adw::PreferencesGroup::new();
-        let hints = adw::PreferencesGroup::builder().title(tr("Worth Checking")).description(tr("Things that often stop apps from working in a sandbox.")).build();
+        let hints =
+            adw::PreferencesGroup::builder().title(tr("Worth Checking")).description(tr("Things that often stop apps from working in a sandbox.")).build();
         let findings = adw::PreferencesGroup::builder().title(tr("What Went Wrong Last Time")).build();
         let preset_group = adw::PreferencesGroup::builder()
             .title(tr("Presets"))
@@ -250,9 +252,11 @@ impl AppPage {
         check_group.add(&check_summary);
         pref.add(&check_group);
 
-        let trouble = adw::PreferencesGroup::builder().title(tr("Troubleshooting")).description(tr("When the app does not start or does not work as expected.")).build();
+        let trouble =
+            adw::PreferencesGroup::builder().title(tr("Troubleshooting")).description(tr("When the app does not start or does not work as expected.")).build();
         let details = adw::PreferencesGroup::builder().title(tr("Details")).build();
-        let command_group = adw::PreferencesGroup::builder().title(tr("Sandbox Command")).description(tr("The Bubblewrap command SAM runs for this app.")).build();
+        let command_group =
+            adw::PreferencesGroup::builder().title(tr("Sandbox Command")).description(tr("The Bubblewrap command SAM runs for this app.")).build();
         let command_view = mono_view();
         command_group.add(&framed(&command_view, 120));
         let copy_cmd = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text(tr("Copy")).valign(gtk::Align::Center).build();
@@ -387,7 +391,10 @@ impl AppPage {
         if self.sandboxed() {
             self.info.borrow().as_ref().map(|i| util::str_of(i, "app.name").to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| self.app_id.clone())
         } else {
-            self.found().map(|f| util::str_of(&f, "name").to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| self.path.rsplit('/').next().unwrap_or("").to_string())
+            self.found()
+                .map(|f| util::str_of(&f, "name").to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| self.path.rsplit('/').next().unwrap_or("").to_string())
         }
     }
 
@@ -398,7 +405,6 @@ impl AppPage {
             self.pending.borrow().clone()
         }
     }
-
 }
 
 /// A list editor row: title, description, chips, and an add field.
@@ -443,7 +449,15 @@ fn status_icon(name: &str, class: &str) -> gtk::Image {
 }
 
 fn mono_view() -> gtk::TextView {
-    let v = gtk::TextView::builder().editable(false).monospace(true).wrap_mode(gtk::WrapMode::Char).top_margin(10).bottom_margin(10).left_margin(12).right_margin(12).build();
+    let v = gtk::TextView::builder()
+        .editable(false)
+        .monospace(true)
+        .wrap_mode(gtk::WrapMode::Char)
+        .top_margin(10)
+        .bottom_margin(10)
+        .left_margin(12)
+        .right_margin(12)
+        .build();
     v.add_css_class("sam-mono");
     v
 }
@@ -471,7 +485,8 @@ fn framed(v: &gtk::TextView, height: i32) -> gtk::Widget {
 fn compat_risk_label(entry: Option<&Value>) -> (&'static str, &'static str, String) {
     let det = entry.and_then(|e| e.get("detection")).cloned().unwrap_or_default();
     let likely_broken = util::str_of(&det, "compatibility") == "likely-broken";
-    let missing: Vec<String> = det.get("missing").and_then(Value::as_array).into_iter().flatten().map(|m| util::str_of(m, "name").to_string()).filter(|n| !n.is_empty()).collect();
+    let missing: Vec<String> =
+        det.get("missing").and_then(Value::as_array).into_iter().flatten().map(|m| util::str_of(m, "name").to_string()).filter(|n| !n.is_empty()).collect();
     let mut tip = if missing.is_empty() {
         let found: Vec<String> = det.get("warnings").and_then(Value::as_array).into_iter().flatten().map(|w| util::str_of(w, "title").to_string()).collect();
         format!("SAM's analysis of this AppImage found: {}.", if found.is_empty() { "possible problems".to_string() } else { found.join("; ") })

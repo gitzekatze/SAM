@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use sam_core::{HostInfo, Paths};
 use sam_intake::testkit::{build, FixtureSpec};
-use std::process::{Child, Command, Stdio};
 use sam_runner::ops::{AddOptions, Sam};
+use std::process::{Child, Command, Stdio};
 
 fn usable() -> bool {
     let host = HostInfo::probe();

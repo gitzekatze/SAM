@@ -59,10 +59,7 @@ pub fn bool_of(v: &Value, key: &str) -> bool {
 }
 
 pub fn list_of(v: &Value, key: &str) -> Vec<String> {
-    get(v, key)
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-        .unwrap_or_default()
+    get(v, key).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
 }
 
 pub fn risk_label(level: &str) -> String {
@@ -98,10 +95,7 @@ pub fn category_label(c: &str) -> String {
 
 /// Local date and time of a Unix timestamp.
 pub fn format_time(secs: i64) -> String {
-    gtk::glib::DateTime::from_unix_local(secs)
-        .and_then(|d| d.format("%x %H:%M"))
-        .map(|s| s.to_string())
-        .unwrap_or_default()
+    gtk::glib::DateTime::from_unix_local(secs).and_then(|d| d.format("%x %H:%M")).map(|s| s.to_string()).unwrap_or_default()
 }
 
 /// A tinted status label ("Sandboxed", "High risk").

@@ -49,21 +49,48 @@ done
 exec "$@"
 "#,
     ),
-    (
-        "flatpak-spawn",
-        "#!/bin/sh\necho \"flatpak-spawn: not available in SAM's sandbox\" >&2\nexit 1\n",
-    ),
+    ("flatpak-spawn", "#!/bin/sh\necho \"flatpak-spawn: not available in SAM's sandbox\" >&2\nexit 1\n"),
 ];
 
 const SHARE_BASE: &[&str] = &[
-    "fonts", "fontconfig", "icons", "locale", "zoneinfo", "themes", "mime", "X11", "glib-2.0", "pixmaps",
-    "ca-certificates", "terminfo", "icu", "iso-codes", "misc", "file", "hwdata", "color-schemes", "kf6",
-    "kf5", "qt", "qt5", "qt6", "gtk-2.0", "gtk-3.0", "gtk-4.0", "xml", "p11-kit", "libthai", "hunspell",
-    "myspell", "mime-info", "sounds",
+    "fonts",
+    "fontconfig",
+    "icons",
+    "locale",
+    "zoneinfo",
+    "themes",
+    "mime",
+    "X11",
+    "glib-2.0",
+    "pixmaps",
+    "ca-certificates",
+    "terminfo",
+    "icu",
+    "iso-codes",
+    "misc",
+    "file",
+    "hwdata",
+    "color-schemes",
+    "kf6",
+    "kf5",
+    "qt",
+    "qt5",
+    "qt6",
+    "gtk-2.0",
+    "gtk-3.0",
+    "gtk-4.0",
+    "xml",
+    "p11-kit",
+    "libthai",
+    "hunspell",
+    "myspell",
+    "mime-info",
+    "sounds",
     // Keyboard layouts for xkbcommon. Newer distributions keep them here and
     // make /usr/share/X11/xkb a symlink to it; without it GTK and Electron
     // abort with "Failed to create XKB keymap".
-    "xkeyboard-config-2", "xkeyboard-config",
+    "xkeyboard-config-2",
+    "xkeyboard-config",
 ];
 const SHARE_GPU: &[&str] = &["vulkan", "glvnd", "egl", "drirc.d", "libdrm", "nvidia"];
 const SHARE_AUDIO: &[&str] = &["alsa", "pipewire", "pulseaudio"];
@@ -71,9 +98,27 @@ const SHARE_DBUS: &[&str] = &["dbus-1"];
 
 /// `/etc` entries always exposed (read-only).
 const ETC_BASE: &[&str] = &[
-    "ld.so.cache", "ld.so.conf", "ld.so.conf.d", "fonts", "ssl", "ca-certificates", "pki", "crypto-policies",
-    "localtime", "locale.conf", "locale.alias", "os-release", "xdg", "mime.types", "nsswitch.conf",
-    "gtk-2.0", "gtk-3.0", "gtk-4.0", "timezone", "drirc", "glvnd",
+    "ld.so.cache",
+    "ld.so.conf",
+    "ld.so.conf.d",
+    "fonts",
+    "ssl",
+    "ca-certificates",
+    "pki",
+    "crypto-policies",
+    "localtime",
+    "locale.conf",
+    "locale.alias",
+    "os-release",
+    "xdg",
+    "mime.types",
+    "nsswitch.conf",
+    "gtk-2.0",
+    "gtk-3.0",
+    "gtk-4.0",
+    "timezone",
+    "drirc",
+    "glvnd",
     // Debian/Ubuntu: /usr/bin/java etc. are symlinks into /etc/alternatives.
     "alternatives",
 ];
@@ -84,23 +129,59 @@ const ETC_AUDIO: &[&str] = &["alsa", "asound.conf", "pulse", "pipewire"];
 /// Sensitive dotfiles hidden when full home access is granted with
 /// `hidden_files = false`.
 const SENSITIVE_DOTFILES: &[&str] = &[
-    ".password-store", ".local/share/keyrings", ".pki", ".aws", ".kube", ".docker", ".config/gcloud",
-    ".azure", ".netrc", ".git-credentials", ".config/keepassxc", ".mozilla", ".config/chromium",
-    ".config/google-chrome", ".config/BraveSoftware", ".thunderbird", ".local/share/kwalletd",
+    ".password-store",
+    ".local/share/keyrings",
+    ".pki",
+    ".aws",
+    ".kube",
+    ".docker",
+    ".config/gcloud",
+    ".azure",
+    ".netrc",
+    ".git-credentials",
+    ".config/keepassxc",
+    ".mozilla",
+    ".config/chromium",
+    ".config/google-chrome",
+    ".config/BraveSoftware",
+    ".thunderbird",
+    ".local/share/kwalletd",
 ];
 
 /// Paths kept read-only even with full home read/write: SAM's own state
 /// and common persistence vectors.
 const PROTECTED_RO: &[&str] = &[
-    ".config/sam", ".local/share/sam", ".local/share/applications", ".config/autostart",
-    ".config/systemd", ".bashrc", ".bash_profile", ".profile", ".zshrc", ".zprofile", ".config/fish",
-    ".config/environment.d", ".config/plasma-workspace", ".xinitrc", ".xprofile",
+    ".config/sam",
+    ".local/share/sam",
+    ".local/share/applications",
+    ".config/autostart",
+    ".config/systemd",
+    ".bashrc",
+    ".bash_profile",
+    ".profile",
+    ".zshrc",
+    ".zprofile",
+    ".config/fish",
+    ".config/environment.d",
+    ".config/plasma-workspace",
+    ".xinitrc",
+    ".xprofile",
     // Programs on $PATH, D-Bus services the session bus starts outside the
     // sandbox, default apps for files and links, desktop scripting and
     // service menus, and configs that can run commands (git hooks, editors).
-    ".local/bin", "bin", ".local/share/dbus-1", ".config/mimeapps.list", ".local/share/kwin",
-    ".local/share/plasma", ".local/share/kservices5", ".local/share/kio/servicemenus",
-    ".local/share/nautilus/scripts", ".gitconfig", ".config/git", ".vimrc", ".config/nvim",
+    ".local/bin",
+    "bin",
+    ".local/share/dbus-1",
+    ".config/mimeapps.list",
+    ".local/share/kwin",
+    ".local/share/plasma",
+    ".local/share/kservices5",
+    ".local/share/kio/servicemenus",
+    ".local/share/nautilus/scripts",
+    ".gitconfig",
+    ".config/git",
+    ".vimrc",
+    ".config/nvim",
     ".pam_environment",
 ];
 
@@ -108,10 +189,8 @@ const PROTECTED_RO: &[&str] = &[
 /// they are missing, so they can be mounted read-only: an app could create
 /// them otherwise. Only where an empty one behaves like a missing one
 /// (not `.bash_profile`, which hides `.profile`, `.xinitrc` or `.vimrc`).
-const PROTECTED_CREATE_DIRS: &[&str] = &[
-    ".local/share/applications", ".config/autostart", ".config/systemd", ".config/environment.d",
-    ".local/bin", ".local/share/dbus-1", ".local/share/kwin",
-];
+const PROTECTED_CREATE_DIRS: &[&str] =
+    &[".local/share/applications", ".config/autostart", ".config/systemd", ".config/environment.d", ".local/bin", ".local/share/dbus-1", ".local/share/kwin"];
 const PROTECTED_CREATE_FILES: &[&str] = &[".bashrc", ".profile", ".gitconfig", ".config/mimeapps.list"];
 
 /// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
@@ -143,20 +222,63 @@ pub fn prepare_home_protection(p: &PermissionSet, home: &Path) {
 
 /// Host theme configuration (read-only) when `advanced.host_themes` is on.
 const THEME_FILES: &[&str] = &[
-    ".config/gtk-3.0", ".config/gtk-4.0", ".gtkrc-2.0", ".config/kdeglobals", ".config/Trolltech.conf",
-    ".config/qt5ct", ".config/qt6ct", ".config/Kvantum", ".config/breezerc", ".config/kcminputrc",
-    ".icons", ".local/share/icons", ".themes", ".local/share/themes", ".config/xsettingsd", ".local/share/color-schemes",
+    ".config/gtk-3.0",
+    ".config/gtk-4.0",
+    ".gtkrc-2.0",
+    ".config/kdeglobals",
+    ".config/Trolltech.conf",
+    ".config/qt5ct",
+    ".config/qt6ct",
+    ".config/Kvantum",
+    ".config/breezerc",
+    ".config/kcminputrc",
+    ".icons",
+    ".local/share/icons",
+    ".themes",
+    ".local/share/themes",
+    ".config/xsettingsd",
+    ".local/share/color-schemes",
 ];
 
 /// Host env vars forwarded by default (locale, scaling, theming).
 const ENV_FORWARD: &[&str] = &[
-    "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_NUMERIC", "LC_TIME", "LC_COLLATE", "LC_MONETARY",
-    "LC_MESSAGES", "LC_PAPER", "LC_NAME", "LC_ADDRESS", "LC_TELEPHONE", "LC_MEASUREMENT",
-    "LC_IDENTIFICATION", "TERM", "COLORTERM", "TZ", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP",
-    "DESKTOP_SESSION", "KDE_FULL_SESSION", "KDE_SESSION_VERSION", "GTK_THEME", "XCURSOR_THEME",
-    "XCURSOR_SIZE", "QT_SCALE_FACTOR", "QT_SCREEN_SCALE_FACTORS", "QT_AUTO_SCREEN_SCALE_FACTOR",
-    "QT_ENABLE_HIGHDPI_SCALING", "GDK_SCALE", "GDK_DPI_SCALE", "QT_QPA_PLATFORMTHEME", "QT_STYLE_OVERRIDE",
-    "XMODIFIERS", "GTK_IM_MODULE", "QT_IM_MODULE",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LC_NUMERIC",
+    "LC_TIME",
+    "LC_COLLATE",
+    "LC_MONETARY",
+    "LC_MESSAGES",
+    "LC_PAPER",
+    "LC_NAME",
+    "LC_ADDRESS",
+    "LC_TELEPHONE",
+    "LC_MEASUREMENT",
+    "LC_IDENTIFICATION",
+    "TERM",
+    "COLORTERM",
+    "TZ",
+    "XDG_CURRENT_DESKTOP",
+    "XDG_SESSION_DESKTOP",
+    "DESKTOP_SESSION",
+    "KDE_FULL_SESSION",
+    "KDE_SESSION_VERSION",
+    "GTK_THEME",
+    "XCURSOR_THEME",
+    "XCURSOR_SIZE",
+    "QT_SCALE_FACTOR",
+    "QT_SCREEN_SCALE_FACTORS",
+    "QT_AUTO_SCREEN_SCALE_FACTOR",
+    "QT_ENABLE_HIGHDPI_SCALING",
+    "GDK_SCALE",
+    "GDK_DPI_SCALE",
+    "QT_QPA_PLATFORMTHEME",
+    "QT_STYLE_OVERRIDE",
+    "XMODIFIERS",
+    "GTK_IM_MODULE",
+    "QT_IM_MODULE",
 ];
 
 struct Args {
@@ -475,7 +597,10 @@ impl Bubblewrap {
         match &ctx.appdir_overlay {
             Some(base) if p.advanced.writable_appdir => {
                 a.push("--overlay-src").push(ctx.appdir.to_string_lossy());
-                a.push("--overlay").push(base.join("upper").to_string_lossy()).push(base.join("work").to_string_lossy()).push(ctx.sandbox_appdir.to_string_lossy());
+                a.push("--overlay")
+                    .push(base.join("upper").to_string_lossy())
+                    .push(base.join("work").to_string_lossy())
+                    .push(ctx.sandbox_appdir.to_string_lossy());
             }
             _ => a.op2("--ro-bind", &ctx.appdir, &ctx.sandbox_appdir),
         }
@@ -648,11 +773,8 @@ impl Bubblewrap {
         }
         if p.devices.webcam {
             if let Ok(rd) = fs::read_dir("/dev") {
-                let mut cams: Vec<PathBuf> = rd
-                    .flatten()
-                    .map(|e| e.path())
-                    .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("video")))
-                    .collect();
+                let mut cams: Vec<PathBuf> =
+                    rd.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("video"))).collect();
                 cams.sort();
                 for c in cams {
                     a.op2("--dev-bind-try", &c, &c);
@@ -776,8 +898,7 @@ impl Bubblewrap {
         }
         for (k, v) in &p.environment.set {
             // Only proper variable names; values may be anything but NUL.
-            let valid = k.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-                && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            let valid = k.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
             if valid && !v.contains('\0') {
                 a.setenv(k, v);
             }
@@ -814,15 +935,7 @@ impl Bubblewrap {
         cmd.extend(ctx.args.iter().cloned());
         a.v.extend(cmd);
 
-        Ok(SandboxCommand {
-            program: bwrap.path.clone(),
-            args: a.v,
-            env: vec![],
-            clear_env: false,
-            keep_fds,
-            notes,
-            generated_files: vec![passwd, group],
-        })
+        Ok(SandboxCommand { program: bwrap.path.clone(), args: a.v, env: vec![], clear_env: false, keep_fds, notes, generated_files: vec![passwd, group] })
     }
 }
 
@@ -832,7 +945,13 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
     let h = &ctx.host;
     fs::write(
         ctx.runtime_dir.join("passwd"),
-        format!("{u}:x:{uid}:{gid}:{u}:{home}:/bin/sh\nnobody:x:65534:65534:Nobody:/:/usr/bin/nologin\n", u = h.user, uid = h.uid, gid = h.gid, home = h.home.display()),
+        format!(
+            "{u}:x:{uid}:{gid}:{u}:{home}:/bin/sh\nnobody:x:65534:65534:Nobody:/:/usr/bin/nologin\n",
+            u = h.user,
+            uid = h.uid,
+            gid = h.gid,
+            home = h.home.display()
+        ),
     )?;
     fs::write(ctx.runtime_dir.join("group"), format!("{u}:x:{gid}:\nnobody:x:65534:\n", u = h.user, gid = h.gid))?;
     let bin = ctx.runtime_dir.join("bin");
@@ -893,9 +1012,7 @@ pub fn gamepad_nodes(dev_input: &Path, udev_data: &Path) -> Vec<PathBuf> {
         } else if name.starts_with("event") {
             let rdev = md.rdev();
             let (major, minor) = (libc_major(rdev), libc_minor(rdev));
-            fs::read_to_string(udev_data.join(format!("c{major}:{minor}")))
-                .map(|t| t.lines().any(|l| l.trim() == "E:ID_INPUT_JOYSTICK=1"))
-                .unwrap_or(false)
+            fs::read_to_string(udev_data.join(format!("c{major}:{minor}"))).map(|t| t.lines().any(|l| l.trim() == "E:ID_INPUT_JOYSTICK=1")).unwrap_or(false)
         } else {
             false
         };
@@ -1023,7 +1140,10 @@ mod tests {
         ctx.permissions.advanced.writable_appdir = true;
         ctx.appdir_overlay = Some("/data/overlays/x".into());
         let a = Bubblewrap.build(&ctx).unwrap().args;
-        assert!(has_seq(&a, &["--overlay-src", "/data/extracted/appimage-hello-1234/AppDir", "--overlay", "/data/overlays/x/upper", "/data/overlays/x/work", "/opt/app"]));
+        assert!(has_seq(
+            &a,
+            &["--overlay-src", "/data/extracted/appimage-hello-1234/AppDir", "--overlay", "/data/overlays/x/upper", "/data/overlays/x/work", "/opt/app"]
+        ));
     }
 
     #[test]
@@ -1053,7 +1173,6 @@ mod tests {
         assert_eq!(got, vec![dev.join("event7"), dev.join("js0")]);
     }
 
-
     #[test]
     fn nvidia_modules_are_exposed_with_the_gpu() {
         let t = tempfile::tempdir().unwrap();
@@ -1063,7 +1182,6 @@ mod tests {
         assert_eq!(gpu_module_dirs(t.path()), vec![t.path().join("nvidia"), t.path().join("nvidia_drm")]);
         assert!(gpu_module_dirs(&t.path().join("missing")).is_empty());
     }
-
 
     #[test]
     fn extra_sockets_must_be_sockets() {
@@ -1078,5 +1196,4 @@ mod tests {
         assert!(cmd.args.windows(2).any(|w| w[0] == "--bind-try" && w[1] == sock.display().to_string()));
         assert!(!cmd.args.iter().any(|a| a == &t.path().display().to_string()), "folder not bound");
     }
-
 }

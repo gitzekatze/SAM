@@ -106,71 +106,90 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             // same minimal sandbox as the other extractors.
             let off = req.info.payload_offset.context("no payload offset")?;
             if let Some(d) = which("dwarfsextract") {
-                methods.push(("dwarfsextract", Box::new(move |dst: &Path, log: &mut dyn Write| {
-                    fs::create_dir_all(dst)?;
-                    let mut c = match &req.isolation {
-                        Some(iso) => {
-                            let mut c = isolated(iso, req.source, req.root);
-                            c.arg(&d);
-                            c
-                        }
-                        None => Command::new(&d),
-                    };
-                    run_tool(c.arg("-i").arg(req.source).arg("-O").arg(off.to_string()).arg("-o").arg(dst), &req.limits, started, log)
-                })));
+                methods.push((
+                    "dwarfsextract",
+                    Box::new(move |dst: &Path, log: &mut dyn Write| {
+                        fs::create_dir_all(dst)?;
+                        let mut c = match &req.isolation {
+                            Some(iso) => {
+                                let mut c = isolated(iso, req.source, req.root);
+                                c.arg(&d);
+                                c
+                            }
+                            None => Command::new(&d),
+                        };
+                        run_tool(c.arg("-i").arg(req.source).arg("-O").arg(off.to_string()).arg("-o").arg(dst), &req.limits, started, log)
+                    }),
+                ));
             } else {
                 attempts.push("this AppImage uses a DwarFS image; install the dwarfs tools (dwarfsextract) to unpack it without running it".into());
             }
         }
         AppImageType::Type2 => {
             let off = req.info.payload_offset.context("no payload offset")?;
-            methods.push(("builtin-squashfs", Box::new(move |dst: &Path, log: &mut dyn Write| match &req.isolation {
-                Some(iso) => {
-                    let mut c = isolated(iso, req.source, req.root);
-                    c.arg(&iso.self_exe).args(["dev", "extract-squashfs"]).arg(req.source).arg(off.to_string()).arg(dst);
-                    c.args(["--max-files", &req.limits.max_files.to_string(), "--max-bytes", &req.limits.max_bytes.to_string(), "--max-seconds", &req.limits.max_seconds.to_string()]);
-                    run_tool(&mut c, &req.limits, started, log)
-                }
-                None => builtin_squashfs(req.source, off, dst, &req.limits, started, log),
-            })));
+            methods.push((
+                "builtin-squashfs",
+                Box::new(move |dst: &Path, log: &mut dyn Write| match &req.isolation {
+                    Some(iso) => {
+                        let mut c = isolated(iso, req.source, req.root);
+                        c.arg(&iso.self_exe).args(["dev", "extract-squashfs"]).arg(req.source).arg(off.to_string()).arg(dst);
+                        c.args([
+                            "--max-files",
+                            &req.limits.max_files.to_string(),
+                            "--max-bytes",
+                            &req.limits.max_bytes.to_string(),
+                            "--max-seconds",
+                            &req.limits.max_seconds.to_string(),
+                        ]);
+                        run_tool(&mut c, &req.limits, started, log)
+                    }
+                    None => builtin_squashfs(req.source, off, dst, &req.limits, started, log),
+                }),
+            ));
             if let Some(u) = which("unsquashfs") {
-                methods.push(("unsquashfs", Box::new(move |dst: &Path, log: &mut dyn Write| {
-                    let mut c = match &req.isolation {
-                        Some(iso) => {
-                            let mut c = isolated(iso, req.source, req.root);
-                            c.arg(&u);
-                            c
-                        }
-                        None => Command::new(&u),
-                    };
-                    run_tool(
-                        c
-                            .arg("-o").arg(off.to_string())
-                            .arg("-d").arg(dst)
-                            .args(["-f", "-no-xattrs", "-no-progress", "-quiet"])
-                            .arg(req.source),
-                        &req.limits, started, log,
-                    )
-                })));
+                methods.push((
+                    "unsquashfs",
+                    Box::new(move |dst: &Path, log: &mut dyn Write| {
+                        let mut c = match &req.isolation {
+                            Some(iso) => {
+                                let mut c = isolated(iso, req.source, req.root);
+                                c.arg(&u);
+                                c
+                            }
+                            None => Command::new(&u),
+                        };
+                        run_tool(
+                            c.arg("-o").arg(off.to_string()).arg("-d").arg(dst).args(["-f", "-no-xattrs", "-no-progress", "-quiet"]).arg(req.source),
+                            &req.limits,
+                            started,
+                            log,
+                        )
+                    }),
+                ));
             }
         }
         AppImageType::Type1 => {
             if let Some(b) = which("bsdtar") {
-                methods.push(("bsdtar", Box::new(move |dst: &Path, log: &mut dyn Write| {
-                    fs::create_dir_all(dst)?;
-                    let mut c = match &req.isolation {
-                        Some(iso) => {
-                            let mut c = isolated(iso, req.source, req.root);
-                            c.arg(&b);
-                            c
-                        }
-                        None => Command::new(&b),
-                    };
-                    run_tool(
-                        c.arg("-xf").arg(req.source).arg("-C").arg(dst).args(["--no-same-owner", "--no-xattrs", "--no-acls"]),
-                        &req.limits, started, log,
-                    )
-                })));
+                methods.push((
+                    "bsdtar",
+                    Box::new(move |dst: &Path, log: &mut dyn Write| {
+                        fs::create_dir_all(dst)?;
+                        let mut c = match &req.isolation {
+                            Some(iso) => {
+                                let mut c = isolated(iso, req.source, req.root);
+                                c.arg(&b);
+                                c
+                            }
+                            None => Command::new(&b),
+                        };
+                        run_tool(
+                            c.arg("-xf").arg(req.source).arg("-C").arg(dst).args(["--no-same-owner", "--no-xattrs", "--no-acls"]),
+                            &req.limits,
+                            started,
+                            log,
+                        )
+                    }),
+                ));
             } else {
                 attempts.push("bsdtar (libarchive) is not installed".into());
             }
@@ -233,7 +252,11 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     writeln!(
         log,
         "[extract] normalized {} entries, {} bytes; {} setid bits removed, {} escaping symlinks removed, {} special files removed",
-        report.file_count, report.total_size, report.setid_removed.len(), report.removed_symlinks.len(), report.removed_special.len()
+        report.file_count,
+        report.total_size,
+        report.setid_removed.len(),
+        report.removed_symlinks.len(),
+        report.removed_special.len()
     )?;
 
     // Atomically swap the new payload into place.
@@ -246,12 +269,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     if old.exists() {
         let _ = fs::remove_dir_all(&old);
     }
-    Ok(ExtractOutcome {
-        appdir,
-        method: method_used.unwrap_or_default(),
-        report,
-        attempts,
-    })
+    Ok(ExtractOutcome { appdir, method: method_used.unwrap_or_default(), report, attempts })
 }
 
 fn is_limit_error(e: &anyhow::Error) -> bool {
@@ -359,12 +377,7 @@ fn wait_with_timeout(mut child: std::process::Child, limits: &Limits, started: I
 
 fn run_tool(cmd: &mut Command, limits: &Limits, started: Instant, log: &mut dyn Write) -> Result<()> {
     let errf = tempfile_in_tmp()?;
-    let child = cmd
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::from(errf.try_clone()?))
-        .spawn()
-        .context("spawning extraction tool")?;
+    let child = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::from(errf.try_clone()?)).spawn().context("spawning extraction tool")?;
     let st = wait_with_timeout(child, limits, started)?;
     let mut err = String::new();
     let mut f = errf;
@@ -402,8 +415,12 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
         .args(["--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64", "--symlink", "usr/bin", "/bin", "--symlink", "usr/sbin", "/sbin"])
         .args(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
         .args(["--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache"])
-        .arg("--ro-bind").arg(src).arg("/in/app.AppImage")
-        .arg("--bind").arg(&work).arg("/out")
+        .arg("--ro-bind")
+        .arg(src)
+        .arg("/in/app.AppImage")
+        .arg("--bind")
+        .arg(&work)
+        .arg("/out")
         .args(["--chdir", "/out", "--clearenv", "--setenv", "PATH", "/usr/bin", "--setenv", "HOME", "/out"])
         .args(["--", "/in/app.AppImage", "--appimage-extract"]);
     run_tool(&mut cmd, limits, started, log)?;

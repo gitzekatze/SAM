@@ -66,9 +66,32 @@ fn opt(value: Value, text: &'static str, description: &'static str) -> Opt {
 }
 
 enum Ctl {
-    Switch { key: &'static str, row: adw::ActionRow, sw: gtk::Switch, badge: gtk::Label, avail: Avail },
-    Choice { key: &'static str, row: adw::ActionRow, drop: gtk::DropDown, opts: Vec<Opt>, badge: gtk::Label, avail: Avail },
-    List { key: &'static str, row: gtk::ListBoxRow, title: gtk::Label, subtitle: gtk::Label, chips: gtk::FlowBox, badge: gtk::Label, avail: Avail, folders: bool, map: bool },
+    Switch {
+        key: &'static str,
+        row: adw::ActionRow,
+        sw: gtk::Switch,
+        badge: gtk::Label,
+        avail: Avail,
+    },
+    Choice {
+        key: &'static str,
+        row: adw::ActionRow,
+        drop: gtk::DropDown,
+        opts: Vec<Opt>,
+        badge: gtk::Label,
+        avail: Avail,
+    },
+    List {
+        key: &'static str,
+        row: gtk::ListBoxRow,
+        title: gtk::Label,
+        subtitle: gtk::Label,
+        chips: gtk::FlowBox,
+        badge: gtk::Label,
+        avail: Avail,
+        folders: bool,
+        map: bool,
+    },
 }
 
 pub struct Editor {
@@ -90,10 +113,7 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(catalog: Catalog, window: &adw::ApplicationWindow) -> Rc<Editor> {
-        let overview = adw::PreferencesGroup::builder()
-            .title(tr("Overview"))
-            .description(tr("How much this app can reach with the settings below."))
-            .build();
+        let overview = adw::PreferencesGroup::builder().title(tr("Overview")).description(tr("How much this app can reach with the settings below.")).build();
         let risk_row = adw::ActionRow::builder().title(tr("Risk of these settings")).build();
         let risk_badge = util::badge("", "neutral");
         risk_row.add_suffix(&risk_badge);
@@ -194,7 +214,11 @@ impl Editor {
             on = on && self.full_home();
         }
         let r = self.info(key).risk;
-        if on && (r == "high" || r == "dangerous") { r } else { String::new() }
+        if on && (r == "high" || r == "dangerous") {
+            r
+        } else {
+            String::new()
+        }
     }
 
     fn value_label(v: &Value) -> String {
@@ -297,14 +321,8 @@ impl Editor {
     /// `map`: the setting is a NAME → value map, edited as NAME=value.
     fn list_or_map(self: &Rc<Self>, g: &adw::PreferencesGroup, key: &'static str, placeholder: &str, folders: bool, map: bool, avail: Avail) {
         let row = gtk::ListBoxRow::builder().activatable(false).selectable(false).build();
-        let vbox = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(6)
-            .margin_top(10)
-            .margin_bottom(10)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
+        let vbox =
+            gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).margin_top(10).margin_bottom(10).margin_start(12).margin_end(12).build();
         let head = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         let texts = gtk::Box::new(gtk::Orientation::Vertical, 2);
         texts.set_hexpand(true);
@@ -360,7 +378,12 @@ impl Editor {
             if let Some(me) = me.upgrade() {
                 let t = e2.text().trim().to_string();
                 if !t.is_empty() {
-                    let ok = if map { me.add_pair(key, &t) } else { me.add_item(key, &t); true };
+                    let ok = if map {
+                        me.add_pair(key, &t)
+                    } else {
+                        me.add_item(key, &t);
+                        true
+                    };
                     if ok {
                         e2.set_text("");
                     }
@@ -449,11 +472,20 @@ impl Editor {
         };
 
         let g = self.group("Network", "Internet and connections to services on this computer.");
-        self.choice(&g, "network.mode", vec![
-            opt(json!("none"), "No network", "No connection at all, not even to this computer."),
-            opt(json!("localhost"), "Local network only", "No internet. The app can reach the services on this computer you list below, and its own web page opens in your browser."),
-            opt(json!("full"), "Full network", "The app uses your internet connection like any other program."),
-        ], Always);
+        self.choice(
+            &g,
+            "network.mode",
+            vec![
+                opt(json!("none"), "No network", "No connection at all, not even to this computer."),
+                opt(
+                    json!("localhost"),
+                    "Local network only",
+                    "No internet. The app can reach the services on this computer you list below, and its own web page opens in your browser.",
+                ),
+                opt(json!("full"), "Full network", "The app uses your internet connection like any other program."),
+            ],
+            Always,
+        );
         self.list(&g, "network.host_ports", "Port on this computer, e.g. 11434 for Ollama", false, LocalNet);
         self.list(&g, "network.app_ports", "Port of the app (empty = automatic)", false, LocalNet);
 
@@ -477,17 +509,27 @@ impl Editor {
         for k in ["filesystem.documents", "filesystem.downloads", "filesystem.pictures", "filesystem.music", "filesystem.videos", "filesystem.desktop"] {
             self.choice(&g, k, access(), Always);
         }
-        self.choice(&g, "filesystem.opened_files", vec![
-            opt(json!("ro"), "Read-only", "The app can view the files but not save changes."),
-            opt(json!("rw"), "Read & write", "The app can view and save the files."),
-        ], Always);
+        self.choice(
+            &g,
+            "filesystem.opened_files",
+            vec![
+                opt(json!("ro"), "Read-only", "The app can view the files but not save changes."),
+                opt(json!("rw"), "Read & write", "The app can view and save the files."),
+            ],
+            Always,
+        );
         self.list(&g, "filesystem.custom_read", "Folder path, e.g. ~/Projects", true, Always);
         self.list(&g, "filesystem.custom_write", "Folder path, e.g. ~/Projects", true, Always);
         self.switch(&g, "filesystem.home", Always);
-        self.choice(&g, "filesystem.home_access", vec![
-            opt(json!("ro"), "Read-only", "The app can read your whole home but not change it."),
-            opt(json!("rw"), "Read & write", "The app can change and delete anything in your home."),
-        ], FullHome);
+        self.choice(
+            &g,
+            "filesystem.home_access",
+            vec![
+                opt(json!("ro"), "Read-only", "The app can read your whole home but not change it."),
+                opt(json!("rw"), "Read & write", "The app can change and delete anything in your home."),
+            ],
+            FullHome,
+        );
         self.switch(&g, "filesystem.ssh", FullHome);
         self.switch(&g, "filesystem.gnupg", FullHome);
         self.switch(&g, "filesystem.hidden_files", FullHome);
@@ -500,18 +542,28 @@ impl Editor {
         self.switch(&g, "integrations.input_method", AnyBus);
 
         let g = self.group("D-Bus", "How the app talks to other programs on your desktop.");
-        self.choice(&g, "dbus.session.mode", vec![
-            opt(json!("none"), "No access", "No desktop services: no file dialogs, notifications or tray icon."),
-            opt(json!("filtered"), "Filtered", "File dialogs, notifications, the tray and the services you allow below. Everything else is blocked."),
-            opt(json!("full"), "Full access", "Every desktop service, including ones that can act outside the sandbox."),
-        ], Always);
+        self.choice(
+            &g,
+            "dbus.session.mode",
+            vec![
+                opt(json!("none"), "No access", "No desktop services: no file dialogs, notifications or tray icon."),
+                opt(json!("filtered"), "Filtered", "File dialogs, notifications, the tray and the services you allow below. Everything else is blocked."),
+                opt(json!("full"), "Full access", "Every desktop service, including ones that can act outside the sandbox."),
+            ],
+            Always,
+        );
         self.list(&g, "dbus.session.allow", "Bus name, e.g. org.example.Service", false, FilteredBus);
         self.list(&g, "dbus.session.own", "Bus name, e.g. org.example.App", false, FilteredBus);
         self.list(&g, "dbus.session.deny", "Bus name, e.g. org.freedesktop.secrets", false, FilteredBus);
-        self.choice(&g, "dbus.system.mode", vec![
-            opt(json!("none"), "No access", "The system bus controls hardware, networking and power."),
-            opt(json!("full"), "Full access", "The app can talk to every system service."),
-        ], Always);
+        self.choice(
+            &g,
+            "dbus.system.mode",
+            vec![
+                opt(json!("none"), "No access", "The system bus controls hardware, networking and power."),
+                opt(json!("full"), "Full access", "The app can talk to every system service."),
+            ],
+            Always,
+        );
 
         let g = self.group("Sockets and environment", "Other services and settings passed into the sandbox.");
         self.switch(&g, "sockets.ssh_agent", Always);
@@ -521,19 +573,29 @@ impl Editor {
         self.list_or_map(&g, "environment.set", "NAME=value, e.g. QT_SCALE_FACTOR=1.5", false, true, Always);
 
         let g = self.group("Advanced", "Change these only if an app does not work.");
-        self.choice(&g, "advanced.host_runtime", vec![
-            opt(json!("minimal"), "Minimal", "System libraries plus a short list of shared data (fonts, icons, themes)."),
-            opt(json!("full"), "All of /usr", "Everything installed on the system, read-only. For apps that look for programs or data elsewhere."),
-        ], Always);
+        self.choice(
+            &g,
+            "advanced.host_runtime",
+            vec![
+                opt(json!("minimal"), "Minimal", "System libraries plus a short list of shared data (fonts, icons, themes)."),
+                opt(json!("full"), "All of /usr", "Everything installed on the system, read-only. For apps that look for programs or data elsewhere."),
+            ],
+            Always,
+        );
         self.switch(&g, "advanced.persistent_home", Always);
         self.switch(&g, "advanced.writable_appdir", Always);
         self.switch(&g, "advanced.host_themes", Always);
         self.switch(&g, "advanced.allow_userns", Always);
-        self.choice(&g, "advanced.landlock", vec![
-            opt(Value::Null, "Follow global setting", "Uses the setting in SAM's preferences."),
-            opt(json!(true), "Enforce", "Kernel-enforced write restrictions for this app."),
-            opt(json!(false), "Off", "No Landlock restrictions for this app."),
-        ], Always);
+        self.choice(
+            &g,
+            "advanced.landlock",
+            vec![
+                opt(Value::Null, "Follow global setting", "Uses the setting in SAM's preferences."),
+                opt(json!(true), "Enforce", "Kernel-enforced write restrictions for this app."),
+                opt(json!(false), "Off", "No Landlock restrictions for this app."),
+            ],
+            Always,
+        );
         self.switch(&g, "advanced.seccomp_baseline", Always);
         self.switch(&g, "advanced.seccomp_strict", Always);
         self.list(&g, "advanced.extra_bwrap_args", "Raw bwrap argument, e.g. --setenv FOO 1", false, Always);
@@ -589,7 +651,8 @@ impl Editor {
                         let items = self.value(key).as_array().cloned().unwrap_or_default();
                         for (i, it) in items.iter().enumerate() {
                             let text = it.as_str().map(String::from).unwrap_or_else(|| it.to_string());
-                            let child = gtk::FlowBoxChild::builder().child(&self.chip(key, i, &text, *folders)).halign(gtk::Align::Start).focusable(false).build();
+                            let child =
+                                gtk::FlowBoxChild::builder().child(&self.chip(key, i, &text, *folders)).halign(gtk::Align::Start).focusable(false).build();
                             chips.insert(&child, -1);
                         }
                         items.len()
@@ -634,7 +697,11 @@ impl Editor {
         util::set_badge(&self.risk_badge, &util::risk_label(&level), util::risk_tone(&level));
         self.risk_badge.set_tooltip_text(Some(&util::risk_tooltip(&risk)));
         let mut warnings: Vec<Value> = ev.as_ref().and_then(|e| e.get("warnings")).and_then(Value::as_array).cloned().unwrap_or_default();
-        let order = |s: &str| match s { "danger" => 0, "warning" => 1, _ => 2 };
+        let order = |s: &str| match s {
+            "danger" => 0,
+            "warning" => 1,
+            _ => 2,
+        };
         warnings.sort_by_key(|w| order(util::str_of(w, "severity")));
         let serious = warnings.iter().filter(|w| util::str_of(w, "severity") != "info").count();
         // Which permission sets the level, in words.
@@ -655,7 +722,11 @@ impl Editor {
         if !items.is_empty() {
             let exp = adw::ExpanderRow::builder()
                 .title(tr("What raises the risk"))
-                .subtitle(format!("{} permission{} beyond the basics. The level is set by the riskiest one, not by how many there are.", items.len(), if items.len() == 1 { "" } else { "s" }))
+                .subtitle(format!(
+                    "{} permission{} beyond the basics. The level is set by the riskiest one, not by how many there are.",
+                    items.len(),
+                    if items.len() == 1 { "" } else { "s" }
+                ))
                 .build();
             for (title, lvl) in &items {
                 let row = adw::ActionRow::builder().title(esc(title)).build();
@@ -668,12 +739,17 @@ impl Editor {
         }
         for w in warnings {
             let sev = util::str_of(&w, "severity");
-            let row = adw::ActionRow::builder()
-                .title(esc(util::str_of(&w, "title")))
-                .subtitle(esc(util::str_of(&w, "message")))
-                .build();
-            let icon = gtk::Image::from_icon_name(match sev { "danger" => "dialog-error-symbolic", "warning" => "dialog-warning-symbolic", _ => "dialog-information-symbolic" });
-            icon.add_css_class(match sev { "danger" => "error", "warning" => "warning", _ => "dim-label" });
+            let row = adw::ActionRow::builder().title(esc(util::str_of(&w, "title"))).subtitle(esc(util::str_of(&w, "message"))).build();
+            let icon = gtk::Image::from_icon_name(match sev {
+                "danger" => "dialog-error-symbolic",
+                "warning" => "dialog-warning-symbolic",
+                _ => "dialog-information-symbolic",
+            });
+            icon.add_css_class(match sev {
+                "danger" => "error",
+                "warning" => "warning",
+                _ => "dim-label",
+            });
             row.add_prefix(&icon);
             self.overview.add(&row);
             self.warning_rows.borrow_mut().push(row.upcast());
@@ -701,7 +777,12 @@ impl Editor {
             let before: Vec<String> = util::list_of(&p, key);
             let added: Vec<String> = v
                 .as_array()
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).filter(|n| !before.contains(n) && sam_core::permissions::dangerous_bus_name(n).is_some()).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .filter(|n| !before.contains(n) && sam_core::permissions::dangerous_bus_name(n).is_some())
+                        .collect()
+                })
                 .unwrap_or_default();
             if !added.is_empty() {
                 ask = Some((
@@ -713,7 +794,8 @@ impl Editor {
         }
         if key == "dbus.session.own" || key == "sockets.custom" {
             let before: Vec<String> = util::list_of(&p, key);
-            let added: Vec<String> = v.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).filter(|n| !before.contains(n)).collect()).unwrap_or_default();
+            let added: Vec<String> =
+                v.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).filter(|n| !before.contains(n)).collect()).unwrap_or_default();
             let why: Vec<String> = added
                 .iter()
                 .filter_map(|n| if key == "sockets.custom" { sam_core::permissions::dangerous_socket(n) } else { sam_core::permissions::dangerous_bus_name(n) })

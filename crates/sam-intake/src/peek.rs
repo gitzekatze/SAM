@@ -69,10 +69,7 @@ pub fn peek(path: &Path) -> Result<Peek> {
         (buf.len() as u64 <= max).then_some(buf)
     };
 
-    let mut desktops: Vec<&PathBuf> = index
-        .keys()
-        .filter(|p| p.components().count() == 1 && p.extension().is_some_and(|e| e == "desktop"))
-        .collect();
+    let mut desktops: Vec<&PathBuf> = index.keys().filter(|p| p.components().count() == 1 && p.extension().is_some_and(|e| e == "desktop")).collect();
     desktops.sort();
     let metadata = desktops
         .first()

@@ -61,8 +61,7 @@ fn unescape(v: &str) -> String {
 }
 
 fn split_list(v: Option<&String>) -> Vec<String> {
-    v.map(|s| s.split(';').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect())
-        .unwrap_or_default()
+    v.map(|s| s.split(';').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect()).unwrap_or_default()
 }
 
 /// Locate the desktop file: AppDir root first, then usr/share/applications.
@@ -70,11 +69,8 @@ pub fn find_desktop_file(appdir: &Path) -> Option<PathBuf> {
     let mut candidates = Vec::new();
     for dir in [Path::new(""), Path::new("usr/share/applications")] {
         if let Ok(rd) = fs::read_dir(appdir.join(dir)) {
-            let mut v: Vec<PathBuf> = rd
-                .flatten()
-                .map(|e| dir.join(e.file_name()))
-                .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("desktop"))
-                .collect();
+            let mut v: Vec<PathBuf> =
+                rd.flatten().map(|e| dir.join(e.file_name())).filter(|p| p.extension().and_then(|e| e.to_str()) == Some("desktop")).collect();
             v.sort();
             candidates.extend(v);
         }

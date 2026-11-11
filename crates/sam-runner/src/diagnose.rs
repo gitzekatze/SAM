@@ -40,7 +40,8 @@ pub struct DiagnoseResult {
     pub launch_summary: String,
 }
 
-const ETC_SENSITIVE: &[&str] = &["/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/etc/ssh", "/etc/NetworkManager", "/etc/polkit-1", "/etc/pam.d", "/etc/security"];
+const ETC_SENSITIVE: &[&str] =
+    &["/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/etc/ssh", "/etc/NetworkManager", "/etc/polkit-1", "/etc/pam.d", "/etc/security"];
 
 /// Parse strace lines: `123 openat(AT_FDCWD, "/path", O_RDONLY) = -1 ENOENT (No such file or directory)`.
 pub fn parse_trace(text: &str) -> BTreeMap<String, String> {
@@ -77,13 +78,21 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         return Some(mk(RiskLevel::Medium, "The app tried to use the GPU. Enable GPU acceleration.".into(), Some(("devices.gpu", "true".into()))));
     }
     if path.starts_with("/dev/snd") {
-        return Some(mk(RiskLevel::High, "The app tried to open sound devices directly. Enable audio (or raw ALSA).".into(), Some(("audio.enabled", "true".into()))));
+        return Some(mk(
+            RiskLevel::High,
+            "The app tried to open sound devices directly. Enable audio (or raw ALSA).".into(),
+            Some(("audio.enabled", "true".into())),
+        ));
     }
     if path.starts_with("/dev/video") {
         return Some(mk(RiskLevel::High, "The app tried to open a camera.".into(), Some(("devices.webcam", "true".into()))));
     }
     if path.starts_with("/dev/input") {
-        return Some(mk(RiskLevel::Medium, "The app looked for input devices, probably game controllers. Allow game controllers.".into(), Some(("devices.gamepads", "true".into()))));
+        return Some(mk(
+            RiskLevel::Medium,
+            "The app looked for input devices, probably game controllers. Allow game controllers.".into(),
+            Some(("devices.gamepads", "true".into())),
+        ));
     }
     if path.starts_with("/tmp/.X11-unix") {
         return Some(mk(RiskLevel::High, "The app tried to connect to X11. Enable X11 / XWayland.".into(), Some(("display.x11", "true".into()))));
@@ -112,7 +121,11 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         let top: PathBuf = p.components().take(4).collect();
         let dir = if p.is_dir() { p.to_path_buf() } else { top.clone() };
         let dir = if dir.as_os_str().len() > top.as_os_str().len() { top } else { dir };
-        return Some(mk(RiskLevel::Low, format!("Read-only system data {} is needed.", dir.display()), Some(("filesystem.custom_read", dir.display().to_string()))));
+        return Some(mk(
+            RiskLevel::Low,
+            format!("Read-only system data {} is needed.", dir.display()),
+            Some(("filesystem.custom_read", dir.display().to_string())),
+        ));
     }
     if p.starts_with(&host.home) {
         if is_sensitive_path(path) {
@@ -122,7 +135,11 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         let rel = p.strip_prefix(&host.home).unwrap();
         let first: PathBuf = host.home.join(rel.components().next().map(|c| c.as_os_str()).unwrap_or_default());
         let key = if err == "EROFS" { "filesystem.custom_write" } else { "filesystem.custom_read" };
-        return Some(mk(RiskLevel::High, format!("The app tried to access {}. Grant the folder if this is expected.", tildify(p)), Some((key, tildify(&first)))));
+        return Some(mk(
+            RiskLevel::High,
+            format!("The app tried to access {}. Grant the folder if this is expected.", tildify(p)),
+            Some((key, tildify(&first))),
+        ));
     }
     None
 }

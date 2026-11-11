@@ -9,7 +9,6 @@ use crate::host::HostInfo;
 use crate::permissions::PermissionSet;
 use crate::util::shell_join;
 
-
 /// Whether Bubblewrap is installed and usable on this host.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BubblewrapStatus {
@@ -86,10 +85,7 @@ impl LaunchContext {
     }
     /// app_env with the `@APPDIR@` placeholder substituted.
     pub fn resolved_app_env(&self, appdir: &str) -> Vec<(String, String)> {
-        self.app_env
-            .iter()
-            .map(|(k, v)| (k.clone(), v.replace("@APPDIR@", appdir)))
-            .collect()
+        self.app_env.iter().map(|(k, v)| (k.clone(), v.replace("@APPDIR@", appdir))).collect()
     }
 }
 
@@ -123,7 +119,9 @@ pub fn sample_context() -> LaunchContext {
     use crate::host::{Sockets, Tool, Tools};
     use std::collections::BTreeMap;
     let mut xdg = BTreeMap::new();
-    for (k, v) in [("documents", "Documents"), ("downloads", "Downloads"), ("music", "Music"), ("pictures", "Pictures"), ("videos", "Videos"), ("desktop", "Desktop")] {
+    for (k, v) in
+        [("documents", "Documents"), ("downloads", "Downloads"), ("music", "Music"), ("pictures", "Pictures"), ("videos", "Videos"), ("desktop", "Desktop")]
+    {
         xdg.insert(k.to_string(), PathBuf::from(format!("/home/tester/{v}")));
     }
     let host = HostInfo {

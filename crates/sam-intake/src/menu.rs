@@ -191,12 +191,7 @@ pub fn hide(entry: &Path, user_dir: &Path, app_id: &str) -> Result<HiddenEntry> 
     fs::create_dir_all(user_dir)?;
     atomic_write(&modified, new_text.as_bytes())?;
     refresh_desktop_database(user_dir);
-    Ok(HiddenEntry {
-        original: entry.to_path_buf(),
-        modified,
-        created_override: !in_user_dir,
-        previous_nodisplay: if in_user_dir { previous } else { None },
-    })
+    Ok(HiddenEntry { original: entry.to_path_buf(), modified, created_override: !in_user_dir, previous_nodisplay: if in_user_dir { previous } else { None } })
 }
 
 /// Undo [`hide`]. Leaves files alone that no longer carry SAM's marker for

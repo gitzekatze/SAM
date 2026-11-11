@@ -54,7 +54,12 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     if fs.home {
         v.push(c("home", "Files", "Your home folder", ProbeTest::Folder { path: host.home.clone(), host_id: probe::identity(&host.home), expect: home_level }));
     } else {
-        v.push(c("home", "Files", "Your home folder stays private", ProbeTest::Folder { path: host.home.clone(), host_id: probe::identity(&host.home), expect: Access::Hidden }));
+        v.push(c(
+            "home",
+            "Files",
+            "Your home folder stays private",
+            ProbeTest::Folder { path: host.home.clone(), host_id: probe::identity(&host.home), expect: Access::Hidden },
+        ));
     }
     for (key, title, a) in [
         ("documents", "Documents", fs.documents),
@@ -76,7 +81,12 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
             let path = sam_core::util::expand_home(raw);
             if path.is_dir() {
                 let want = if rank(home_level) > rank(want) && path.starts_with(&host.home) { home_level } else { want };
-                v.push(c("custom", "Files", format!("Extra folder {}", sam_core::util::tildify(&path)), ProbeTest::Folder { host_id: probe::identity(&path), path, expect: want }));
+                v.push(c(
+                    "custom",
+                    "Files",
+                    format!("Extra folder {}", sam_core::util::tildify(&path)),
+                    ProbeTest::Folder { host_id: probe::identity(&path), path, expect: want },
+                ));
             }
         }
     }
@@ -91,7 +101,12 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     v.push(c("etc", "System", "System settings are read-only", ProbeTest::NotWritable { path: "/etc".into() }));
     v.push(c("shadow", "System", "Password hashes are unreadable", ProbeTest::Unreadable { path: "/etc/shadow".into() }));
     v.push(c("tmp", "System", "Private /tmp", ProbeTest::Folder { path: "/tmp".into(), host_id: probe::identity(Path::new("/tmp")), expect: Access::Hidden }));
-    v.push(c("shm", "System", "Private shared memory", ProbeTest::Folder { path: "/dev/shm".into(), host_id: probe::identity(Path::new("/dev/shm")), expect: Access::Hidden }));
+    v.push(c(
+        "shm",
+        "System",
+        "Private shared memory",
+        ProbeTest::Folder { path: "/dev/shm".into(), host_id: probe::identity(Path::new("/dev/shm")), expect: Access::Hidden },
+    ));
 
     // Network.
     match p.network.mode {
@@ -176,17 +191,32 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
         ] {
             if on_host(name) {
                 let want = allowed(name) && !p.dbus.session.deny.iter().any(|d| d == name);
-                v.push(c("busname", "D-Bus", if want { format!("{title} reachable") } else { format!("{title} hidden") }, ProbeTest::BusName { name: name.into(), expect: want }));
+                v.push(c(
+                    "busname",
+                    "D-Bus",
+                    if want { format!("{title} reachable") } else { format!("{title} hidden") },
+                    ProbeTest::BusName { name: name.into(), expect: want },
+                ));
             }
         }
     }
     if s.dbus_system.is_some() {
-        v.push(c("sysbus", "D-Bus", "System bus", ProbeTest::Present { path: "/run/dbus/system_bus_socket".into(), expect: p.dbus.system.mode != DbusMode::None }));
+        v.push(c(
+            "sysbus",
+            "D-Bus",
+            "System bus",
+            ProbeTest::Present { path: "/run/dbus/system_bus_socket".into(), expect: p.dbus.system.mode != DbusMode::None },
+        ));
     }
 
     // Sockets and environment.
     let agent = p.sockets.ssh_agent && s.ssh_agent.is_some();
-    v.push(c("ssh-agent", "Sockets and environment", "SSH agent", ProbeTest::Env { name: "SSH_AUTH_SOCK".into(), expect: agent.then(|| format!("/run/user/{}/ssh-agent.sock", host.uid)) }));
+    v.push(c(
+        "ssh-agent",
+        "Sockets and environment",
+        "SSH agent",
+        ProbeTest::Env { name: "SSH_AUTH_SOCK".into(), expect: agent.then(|| format!("/run/user/{}/ssh-agent.sock", host.uid)) },
+    ));
     if s.cups.is_some() {
         v.push(c("cups", "Sockets and environment", "Printing", ProbeTest::Present { path: "/run/cups/cups.sock".into(), expect: p.sockets.cups }));
     }
@@ -202,7 +232,8 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
         }
     }
     for (name, val) in &p.environment.set {
-        let valid = name.chars().next().is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_') && name.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+        let valid =
+            name.chars().next().is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_') && name.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_');
         if valid {
             v.push(c("env", "Sockets and environment", format!("Variable {name}"), ProbeTest::Env { name: name.clone(), expect: Some(val.clone()) }));
         }
@@ -217,7 +248,12 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     v.push(c("nnp", "Security", "Cannot gain privileges", ProbeTest::NoNewPrivileges));
     v.push(c("caps", "Security", "No special capabilities", ProbeTest::NoCapabilities));
     v.push(c("pidns", "Security", "Own process list", ProbeTest::OwnProcesses));
-    v.push(c("userns", "Security", if p.advanced.allow_userns { "Nested sandboxes allowed" } else { "Nested sandboxes blocked" }, ProbeTest::UserNamespaces { blocked: !p.advanced.allow_userns }));
+    v.push(c(
+        "userns",
+        "Security",
+        if p.advanced.allow_userns { "Nested sandboxes allowed" } else { "Nested sandboxes blocked" },
+        ProbeTest::UserNamespaces { blocked: !p.advanced.allow_userns },
+    ));
     ProbePlan { checks: v }
 }
 

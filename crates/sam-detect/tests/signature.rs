@@ -26,7 +26,9 @@ fn signed_appimage_is_checked() {
     let home = d.join("gnupg");
     std::fs::create_dir(&home).unwrap();
     std::fs::set_permissions(&home, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
-    let gpg = |args: &[&str]| assert!(Command::new("gpg").arg("--homedir").arg(&home).args(["--batch", "--quiet"]).args(args).status().unwrap().success(), "gpg {args:?}");
+    let gpg = |args: &[&str]| {
+        assert!(Command::new("gpg").arg("--homedir").arg(&home).args(["--batch", "--quiet"]).args(args).status().unwrap().success(), "gpg {args:?}")
+    };
     gpg(&["--passphrase", "", "--pinentry-mode", "loopback", "--quick-gen-key", "SAM Test <test@example.invalid>", "ed25519", "sign", "never"]);
 
     // A runtime with empty signature sections, like the AppImage runtime.

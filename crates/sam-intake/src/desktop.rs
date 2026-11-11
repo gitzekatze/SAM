@@ -61,18 +61,9 @@ fn value(s: &str) -> String {
 
 pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
     let name = if entry.metadata.name.is_empty() { entry.display_name().to_string() } else { entry.metadata.name.clone() };
-    let icon = entry
-        .metadata
-        .icon_path
-        .as_ref()
-        .filter(|p| p.exists())
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "application-x-executable".into());
-    let comment = if entry.metadata.comment.is_empty() {
-        format!("{name} (sandboxed by SAM)")
-    } else {
-        format!("{} (sandboxed by SAM)", entry.metadata.comment)
-    };
+    let icon = entry.metadata.icon_path.as_ref().filter(|p| p.exists()).map(|p| p.display().to_string()).unwrap_or_else(|| "application-x-executable".into());
+    let comment =
+        if entry.metadata.comment.is_empty() { format!("{name} (sandboxed by SAM)") } else { format!("{} (sandboxed by SAM)", entry.metadata.comment) };
     let mut s = String::from("[Desktop Entry]\nType=Application\n");
     s += &format!("Name={}\n", value(&name));
     s += &format!("Comment={}\n", value(&comment));
@@ -102,9 +93,17 @@ pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
 pub fn launcher_mime_types(declared: &[String]) -> Vec<String> {
     const BLOCKED_PREFIX: &[&str] = &["x-scheme-handler/", "inode/", "x-content/"];
     const BLOCKED: &[&str] = &[
-        "application/x-desktop", "application/x-executable", "application/x-sharedlib", "application/x-shellscript",
-        "application/x-sh", "application/vnd.appimage", "application/x-iso9660-appimage", "application/octet-stream",
-        "text/plain", "text/html", "application/xhtml+xml",
+        "application/x-desktop",
+        "application/x-executable",
+        "application/x-sharedlib",
+        "application/x-shellscript",
+        "application/x-sh",
+        "application/vnd.appimage",
+        "application/x-iso9660-appimage",
+        "application/octet-stream",
+        "text/plain",
+        "text/html",
+        "application/xhtml+xml",
     ];
     declared
         .iter()
@@ -255,8 +254,10 @@ mod tests {
 
     #[test]
     fn launcher_mime_types_drop_hijack_targets() {
-        let d: Vec<String> = ["x-scheme-handler/https", "inode/directory", "text/html", "application/pdf", "image/png", "application/x-desktop"].iter().map(|s| s.to_string()).collect();
+        let d: Vec<String> = ["x-scheme-handler/https", "inode/directory", "text/html", "application/pdf", "image/png", "application/x-desktop"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert_eq!(launcher_mime_types(&d), vec!["application/pdf", "image/png"]);
     }
-
 }

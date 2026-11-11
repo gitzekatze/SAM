@@ -22,11 +22,7 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Limits {
-            max_files: 200_000,
-            max_bytes: 8 * 1024 * 1024 * 1024,
-            max_seconds: 600,
-        }
+        Limits { max_files: 200_000, max_bytes: 8 * 1024 * 1024 * 1024, max_seconds: 600 }
     }
 }
 
@@ -101,10 +97,7 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
             }
             r.total_size += meta.len();
             if r.total_size > limits.max_bytes {
-                bail!(
-                    "extraction limit exceeded: more than {} extracted",
-                    sam_core::util::human_size(limits.max_bytes)
-                );
+                bail!("extraction limit exceeded: more than {} extracted", sam_core::util::human_size(limits.max_bytes));
             }
             let lname = name.to_string_lossy().to_lowercase();
             if lname.ends_with(".ko") || lname.ends_with(".ko.xz") || lname.ends_with(".ko.zst") {

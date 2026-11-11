@@ -262,11 +262,8 @@ impl App {
         // SAM's logo opens the start page. It replaces the window icon of the
         // desktop's button layout (`icon:…`), which cannot be clicked.
         let layout = gtk::Settings::default().and_then(|st| st.gtk_decoration_layout()).map(|l| l.to_string()).unwrap_or_else(|| ":close".into());
-        let stripped = layout
-            .split(':')
-            .map(|side| side.split(',').filter(|b| !b.is_empty() && *b != "icon").collect::<Vec<_>>().join(","))
-            .collect::<Vec<_>>()
-            .join(":");
+        let stripped =
+            layout.split(':').map(|side| side.split(',').filter(|b| !b.is_empty() && *b != "icon").collect::<Vec<_>>().join(",")).collect::<Vec<_>>().join(":");
         header.set_decoration_layout(Some(&stripped));
         let logo = gtk::Image::from_icon_name("io.github.gitzekatze.SAM");
         logo.set_pixel_size(24);
@@ -279,7 +276,8 @@ impl App {
             }
         });
         header.pack_start(&home);
-        let refresh = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text(tr("Search the locations again")).action_name("win.refresh").build();
+        let refresh =
+            gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text(tr("Search the locations again")).action_name("win.refresh").build();
         header.pack_start(&refresh);
         header.pack_start(&self.spinner);
         view.add_top_bar(&header);
@@ -291,7 +289,8 @@ impl App {
         // to what follows them.
         const HEAD_GAP: i32 = 8;
         let heads = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
-        let loc_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(6).margin_bottom(14).build();
+        let loc_box =
+            gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(6).margin_bottom(14).build();
         loc_box.add_css_class("sam-locations");
         let loc_head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heads.add_widget(&loc_head);
@@ -321,7 +320,8 @@ impl App {
         column.append(&loc_box);
 
         // Headline, filter, then search.
-        let filter_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(16).margin_bottom(6).build();
+        let filter_box =
+            gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(16).margin_bottom(6).build();
         let found_head = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         heads.add_widget(&found_head);
         let found_title = gtk::Label::builder().label(tr("AppImages found")).xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
@@ -451,15 +451,7 @@ impl App {
             }
         });
 
-        let _ = self.sidebar.set(Sidebar {
-            locations,
-            downloads,
-            list,
-            stack,
-            empty,
-            rows: RefCell::new(Vec::new()),
-            selecting: std::cell::Cell::new(false),
-        });
+        let _ = self.sidebar.set(Sidebar { locations, downloads, list, stack, empty, rows: RefCell::new(Vec::new()), selecting: std::cell::Cell::new(false) });
     }
 
     fn refresh_locations(self: &Rc<Self>) {
@@ -474,7 +466,8 @@ impl App {
             let row = gtk::ListBoxRow::builder().activatable(false).build();
             let b = gtk::Box::builder().spacing(8).margin_start(10).margin_end(4).margin_top(3).margin_bottom(3).build();
             b.append(&gtk::Image::from_icon_name(if file { "application-vnd.appimage" } else { "folder-symbolic" }));
-            let l = gtk::Label::builder().label(util::plain(&util::tildify(&path))).xalign(0.0).hexpand(true).ellipsize(gtk::pango::EllipsizeMode::Middle).build();
+            let l =
+                gtk::Label::builder().label(util::plain(&util::tildify(&path))).xalign(0.0).hexpand(true).ellipsize(gtk::pango::EllipsizeMode::Middle).build();
             l.add_css_class("caption");
             b.append(&l);
             row.set_tooltip_text(Some(&util::plain(&util::tildify(&path))));
@@ -571,7 +564,11 @@ impl App {
         let cfg = self.state.borrow().config.clone();
         let mut dirs = util::list_of(&cfg, "general.scan_directories");
         let mut files = util::list_of(&cfg, "general.scan_files");
-        if file { files.retain(|p| p != path) } else { dirs.retain(|p| p != path) }
+        if file {
+            files.retain(|p| p != path)
+        } else {
+            dirs.retain(|p| p != path)
+        }
         self.set_locations(dirs, files);
     }
 
@@ -711,7 +708,8 @@ impl App {
     }
 
     pub fn open_app(self: &Rc<Self>, id: &str) {
-        let path = self.state.borrow().apps.iter().find(|a| util::str_of(a, "id") == id).map(|a| util::str_of(a, "source_path").to_string()).unwrap_or_default();
+        let path =
+            self.state.borrow().apps.iter().find(|a| util::str_of(a, "id") == id).map(|a| util::str_of(a, "source_path").to_string()).unwrap_or_default();
         self.select_row(&Row { key: id.into(), id: id.into(), path, sandboxed: true, ..Default::default() });
     }
 
@@ -770,17 +768,20 @@ impl App {
         add("show-diagnostics", Box::new(|me| me.show_section("diagnostics")));
         add("show-preferences", Box::new(|me| me.show_section("preferences")));
         add("refresh", Box::new(|me| me.refresh_apps_later()));
-        add("about", Box::new(|me| {
-            let d = adw::AboutDialog::builder()
-                .application_name("SAM - Sandboxed AppImage Manager")
-                .application_icon("io.github.gitzekatze.SAM")
-                .version(env!("CARGO_PKG_VERSION"))
-                .comments("Sandbox AppImages with Bubblewrap and manage their permissions, much like Flatseal does for Flatpak apps.")
-                .website("https://github.com/gitzekatze/SAM")
-                .license_type(gtk::License::Gpl30)
-                .build();
-            d.present(Some(&me.window));
-        }));
+        add(
+            "about",
+            Box::new(|me| {
+                let d = adw::AboutDialog::builder()
+                    .application_name("SAM - Sandboxed AppImage Manager")
+                    .application_icon("io.github.gitzekatze.SAM")
+                    .version(env!("CARGO_PKG_VERSION"))
+                    .comments("Sandbox AppImages with Bubblewrap and manage their permissions, much like Flatseal does for Flatpak apps.")
+                    .website("https://github.com/gitzekatze/SAM")
+                    .license_type(gtk::License::Gpl30)
+                    .build();
+                d.present(Some(&me.window));
+            }),
+        );
         if let Some(app) = self.window.application() {
             app.set_accels_for_action("win.refresh", &["<primary>r", "F5"]);
             app.set_accels_for_action("window.close", &["<primary>w"]);
@@ -986,7 +987,8 @@ impl App {
             me.refresh_apps().await;
             let st = me.state.borrow();
             let first_app = st.apps.first().map(|a| util::str_of(a, "id").to_string());
-            let first_file = st.discovered.iter().find(|d| util::str_of(d, "sandboxed").is_empty()).or(st.discovered.first()).map(|d| util::str_of(d, "path").to_string());
+            let first_file =
+                st.discovered.iter().find(|d| util::str_of(d, "sandboxed").is_empty()).or(st.discovered.first()).map(|d| util::str_of(d, "path").to_string());
             drop(st);
             match s.page.as_str() {
                 "app" | "app-repair" if !s.app.is_empty() => me.open_app(&s.app),
@@ -1113,7 +1115,6 @@ pub async fn confirm(win: &adw::ApplicationWindow, heading: &str, body: &str, ac
     d.set_close_response("cancel");
     d.choose_future(Some(win)).await == "ok"
 }
-
 
 /// Whether a file name may be an AppImage worth refreshing for: not hidden,
 /// not a download still in progress. AppImages without the usual ending

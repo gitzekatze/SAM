@@ -53,12 +53,9 @@ impl Backend {
         if input.is_some() {
             flags |= gio::SubprocessFlags::STDIN_PIPE;
         }
-        let proc = gio::Subprocess::newv(&argv_ref, flags)
-            .map_err(|e| format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e))?;
-        let (out, err) = proc
-            .communicate_utf8_future(input)
-            .await
-            .map_err(|e| format!("sam-jail failed: {e}"))?;
+        let proc =
+            gio::Subprocess::newv(&argv_ref, flags).map_err(|e| format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e))?;
+        let (out, err) = proc.communicate_utf8_future(input).await.map_err(|e| format!("sam-jail failed: {e}"))?;
         let out = out.map(|s| s.to_string()).unwrap_or_default();
         // The envelope is the last JSON object line on stdout.
         for line in out.lines().rev() {
@@ -82,7 +79,8 @@ impl Backend {
     /// it), like a menu entry with `Terminal=true`.
     pub fn launch_in_terminal(&self, app_id: &str, name: &str) -> Result<(), String> {
         let cmd = format!("{} --app-id {}", glib::shell_quote(&self.runner).to_string_lossy(), glib::shell_quote(app_id).to_string_lossy());
-        let info = gio::AppInfo::create_from_commandline(&cmd, Some(name), gio::AppInfoCreateFlags::NEEDS_TERMINAL).map_err(|e| format!("Could not start a terminal: {e}"))?;
+        let info = gio::AppInfo::create_from_commandline(&cmd, Some(name), gio::AppInfoCreateFlags::NEEDS_TERMINAL)
+            .map_err(|e| format!("Could not start a terminal: {e}"))?;
         info.launch(&[], gio::AppLaunchContext::NONE).map_err(|e| format!("Could not start a terminal: {e}"))
     }
 
@@ -90,8 +88,7 @@ impl Backend {
         let mut argv: Vec<OsString> = vec![self.runner.clone().into(), "--app-id".into(), app_id.into()];
         argv.extend(files.iter().map(OsString::from));
         let argv_ref: Vec<&std::ffi::OsStr> = argv.iter().map(|a| a.as_os_str()).collect();
-        let proc = gio::Subprocess::newv(&argv_ref, gio::SubprocessFlags::NONE)
-            .map_err(|e| format!("Could not start sam-jail-run: {e}"))?;
+        let proc = gio::Subprocess::newv(&argv_ref, gio::SubprocessFlags::NONE).map_err(|e| format!("Could not start sam-jail-run: {e}"))?;
         glib::spawn_future_local(async move {
             let _ = proc.wait_future().await;
             let code = if proc.has_exited() { proc.exit_status() } else { -1 };
@@ -115,10 +112,7 @@ fn find_tool(name: &str, env: &str) -> PathBuf {
             candidates.push(d.join("..").join(profile).join(name));
         }
     }
-    let newest = candidates
-        .into_iter()
-        .filter(|p| p.is_file())
-        .max_by_key(|p| p.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH));
+    let newest = candidates.into_iter().filter(|p| p.is_file()).max_by_key(|p| p.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH));
     if let Some(p) = newest {
         return p.canonicalize().unwrap_or(p);
     }

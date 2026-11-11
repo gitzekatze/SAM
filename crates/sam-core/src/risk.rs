@@ -78,11 +78,7 @@ impl RiskAssessment {
 }
 
 fn item(items: &mut Vec<RiskItem>, key: &str, title: &str, level: RiskLevel) {
-    items.push(RiskItem {
-        key: key.into(),
-        title: title.into(),
-        level,
-    });
+    items.push(RiskItem { key: key.into(), title: title.into(), level });
 }
 
 /// Score a permission set.
@@ -221,14 +217,8 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
         item(&mut items, "advanced.extra_bwrap_args", "Raw backend arguments", RiskLevel::High);
     }
 
-
     let level = items.iter().map(|i| i.level).max().unwrap_or_default();
-    let score = items
-        .iter()
-        .filter(|i| !i.key.starts_with("baseline."))
-        .map(|i| i.level.weight())
-        .sum::<u32>()
-        .min(100);
+    let score = items.iter().filter(|i| !i.key.starts_with("baseline.")).map(|i| i.level.weight()).sum::<u32>().min(100);
     RiskAssessment { level, score, items }
 }
 
@@ -242,11 +232,36 @@ fn cap(s: &str) -> String {
 
 /// Paths that must never be granted casually.
 pub const SENSITIVE_PATHS: &[&str] = &[
-    "/", "/etc", "/usr", "/boot", "/root", "/var", "/proc", "/sys", "/dev", "/run",
-    "~", "~/.ssh", "~/.gnupg", "~/.config", "~/.local", "~/.local/share", "~/.bashrc",
-    "~/.zshrc", "~/.profile", "~/.config/autostart", "~/.config/systemd",
-    "~/.password-store", "~/.local/share/keyrings", "~/.mozilla", "~/.aws", "~/.kube",
-    "~/.docker", "~/.config/sam", "~/.local/share/sam", "~/.local/share/applications",
+    "/",
+    "/etc",
+    "/usr",
+    "/boot",
+    "/root",
+    "/var",
+    "/proc",
+    "/sys",
+    "/dev",
+    "/run",
+    "~",
+    "~/.ssh",
+    "~/.gnupg",
+    "~/.config",
+    "~/.local",
+    "~/.local/share",
+    "~/.bashrc",
+    "~/.zshrc",
+    "~/.profile",
+    "~/.config/autostart",
+    "~/.config/systemd",
+    "~/.password-store",
+    "~/.local/share/keyrings",
+    "~/.mozilla",
+    "~/.aws",
+    "~/.kube",
+    "~/.docker",
+    "~/.config/sam",
+    "~/.local/share/sam",
+    "~/.local/share/applications",
 ];
 
 pub fn is_sensitive_path(path: &str) -> bool {

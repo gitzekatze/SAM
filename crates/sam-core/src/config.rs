@@ -107,11 +107,7 @@ pub struct Dependencies {
 
 impl Default for Dependencies {
     fn default() -> Self {
-        Dependencies {
-            static_analysis: true,
-            dynamic_fallback: true,
-            automatic_low_risk_fixes: true,
-        }
+        Dependencies { static_analysis: true, dynamic_fallback: true, automatic_low_risk_fixes: true }
     }
 }
 
@@ -131,14 +127,7 @@ pub struct Extraction {
 
 impl Default for Extraction {
     fn default() -> Self {
-        Extraction {
-            location: String::new(),
-            cleanup_stale: true,
-            max_files: 200_000,
-            max_size_mb: 8192,
-            max_seconds: 600,
-            allow_fallback: true,
-        }
+        Extraction { location: String::new(), cleanup_stale: true, max_files: 200_000, max_size_mb: 8192, max_seconds: 600, allow_fallback: true }
     }
 }
 
@@ -152,10 +141,7 @@ pub struct Diagnostics {
 
 impl Default for Diagnostics {
     fn default() -> Self {
-        Diagnostics {
-            verbose_logging: false,
-            keep_logs: 20,
-        }
+        Diagnostics { verbose_logging: false, keep_logs: 20 }
     }
 }
 
@@ -284,13 +270,9 @@ impl Config {
         let obj = cur.as_object_mut().ok_or_else(|| anyhow!("'{key}' is not settable"))?;
         let existing = obj.get(*last).ok_or_else(|| anyhow!("unknown config key '{key}'"))?;
         let new_val = match existing {
-            Value::Array(_) if !raw.trim_start().starts_with('[') => Value::Array(
-                raw.split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(|s| Value::String(s.into()))
-                    .collect(),
-            ),
+            Value::Array(_) if !raw.trim_start().starts_with('[') => {
+                Value::Array(raw.split(',').map(str::trim).filter(|s| !s.is_empty()).map(|s| Value::String(s.into())).collect())
+            }
             Value::String(_) => Value::String(raw.to_string()),
             _ => serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.into())),
         };

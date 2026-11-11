@@ -106,7 +106,11 @@ fn read_message(r: &mut impl Read) -> Result<(u8, Option<u32>)> {
     let le = head[0] == b'l';
     let u32_at = |b: &[u8], i: usize| {
         let a = [b[i], b[i + 1], b[i + 2], b[i + 3]];
-        if le { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) }
+        if le {
+            u32::from_le_bytes(a)
+        } else {
+            u32::from_be_bytes(a)
+        }
     };
     let kind = head[1];
     let body_len = u32_at(&head, 4) as usize;

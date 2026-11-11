@@ -141,11 +141,28 @@ pub(crate) fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel
     let mut dirs: Vec<String> = XDG_DIR_KEYS.iter().filter(|k| fs.xdg_access(k).is_granted()).map(|k| format!("{k} ({})", fs.xdg_access(k).as_str())).collect();
     dirs.extend(fs.custom_read.iter().map(|c| format!("{c} (ro)")));
     dirs.extend(fs.custom_write.iter().map(|c| format!("{c} (rw)")));
-    println!("  filesystem:  {}", if fs.home { format!("FULL HOME ({})", fs.home_access.as_str()) } else if dirs.is_empty() { "private home only".into() } else { dirs.join(", ") });
+    println!(
+        "  filesystem:  {}",
+        if fs.home {
+            format!("FULL HOME ({})", fs.home_access.as_str())
+        } else if dirs.is_empty() {
+            "private home only".into()
+        } else {
+            dirs.join(", ")
+        }
+    );
     println!("  network:     {}", p.network.mode.as_str());
     println!("  display:     wayland={} x11={}", p.display.wayland, p.display.x11);
-    println!("  audio:       {}{}{}", p.audio.enabled, if p.audio.pipewire { " + direct PipeWire" } else { "" }, if p.audio.alsa_raw { " + raw ALSA" } else { "" });
-    println!("  devices:     gpu={} webcam={} gamepads={} input={} usb={}", p.devices.gpu, p.devices.webcam, p.devices.gamepads, p.devices.input, p.devices.usb);
+    println!(
+        "  audio:       {}{}{}",
+        p.audio.enabled,
+        if p.audio.pipewire { " + direct PipeWire" } else { "" },
+        if p.audio.alsa_raw { " + raw ALSA" } else { "" }
+    );
+    println!(
+        "  devices:     gpu={} webcam={} gamepads={} input={} usb={}",
+        p.devices.gpu, p.devices.webcam, p.devices.gamepads, p.devices.input, p.devices.usb
+    );
     println!(
         "  desktop:     input_method={} keyring={} media_controls={} screen_sharing={} file_manager={}",
         p.integrations.input_method, p.integrations.keyring, p.integrations.media_controls, p.integrations.screen_sharing, p.integrations.file_manager

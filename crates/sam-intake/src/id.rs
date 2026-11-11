@@ -9,21 +9,16 @@ use std::path::Path;
 use sam_core::util::slugify;
 
 const NOISE: &[&str] = &[
-    "x86", "64", "x86-64", "x64", "amd64", "aarch64", "arm64", "armhf", "i386", "i686", "linux", "appimage",
-    "release", "stable", "portable", "glibc", "setup",
+    "x86", "64", "x86-64", "x64", "amd64", "aarch64", "arm64", "armhf", "i386", "i686", "linux", "appimage", "release", "stable", "portable", "glibc", "setup",
 ];
 
 pub fn slug_from_filename(path: &Path) -> String {
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let words: Vec<String> = stem
-        .split(['-', '_', '.', ' ', '+'])
-        .map(|w| w.to_lowercase())
-        .filter(|w| !w.is_empty())
-        .collect();
+    let words: Vec<String> = stem.split(['-', '_', '.', ' ', '+']).map(|w| w.to_lowercase()).filter(|w| !w.is_empty()).collect();
     let mut kept = Vec::new();
     for w in &words {
-        let is_version = w.chars().next().is_some_and(|c| c.is_ascii_digit())
-            || (w.starts_with('v') && w[1..].chars().next().is_some_and(|c| c.is_ascii_digit()));
+        let is_version =
+            w.chars().next().is_some_and(|c| c.is_ascii_digit()) || (w.starts_with('v') && w[1..].chars().next().is_some_and(|c| c.is_ascii_digit()));
         if is_version || NOISE.contains(&w.as_str()) {
             // Stop at the first version token: everything after is noise.
             if is_version && !kept.is_empty() {

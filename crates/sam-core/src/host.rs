@@ -51,7 +51,8 @@ impl UsernsStatus {
         if self.max_user_namespaces == Some(0) {
             "User namespaces are disabled on this system (user.max_user_namespaces = 0). Bubblewrap cannot create a sandbox.".into()
         } else if self.unprivileged_clone == Some(false) {
-            "Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone = 0). Enable them with: sudo sysctl kernel.unprivileged_userns_clone=1".into()
+            "Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone = 0). Enable them with: sudo sysctl kernel.unprivileged_userns_clone=1"
+                .into()
         } else if self.apparmor_restricted == Some(true) {
             "AppArmor restricts unprivileged user namespaces. Bubblewrap may need an AppArmor profile (Ubuntu 24.04+).".into()
         } else {
@@ -147,16 +148,10 @@ impl HostInfo {
             .filter(|u| !u.is_empty())
             .or_else(|| home.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| "user".into());
-        let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .filter(|p| p.is_dir());
+        let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).filter(|p| p.is_dir());
 
         let tool = |name: &str, args: &[&str]| -> Option<Tool> {
-            which(name).map(|path| Tool {
-                version: if versions { tool_version(&path, args) } else { None },
-                path,
-            })
+            which(name).map(|path| Tool { version: if versions { tool_version(&path, args) } else { None }, path })
         };
         let tools = Tools {
             bwrap: tool("bwrap", &["--version"]),
@@ -194,9 +189,7 @@ impl HostInfo {
                 bwrap_setuid,
             },
             landlock_abi: landlock_abi(),
-            seccomp: read_trim("/proc/self/status")
-                .map(|s| s.lines().any(|l| l.starts_with("Seccomp:")))
-                .unwrap_or(false),
+            seccomp: read_trim("/proc/self/status").map(|s| s.lines().any(|l| l.starts_with("Seccomp:"))).unwrap_or(false),
             tools,
             gpu_devices: gpu_devices(),
             xdg_dirs: xdg_user_dirs(&home),
@@ -221,10 +214,7 @@ fn tool_version(path: &Path, args: &[&str]) -> Option<String> {
 
 fn os_release_name() -> String {
     let s = fs::read_to_string("/etc/os-release").unwrap_or_default();
-    s.lines()
-        .find_map(|l| l.strip_prefix("PRETTY_NAME="))
-        .map(|v| v.trim_matches('"').to_string())
-        .unwrap_or_default()
+    s.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")).map(|v| v.trim_matches('"').to_string()).unwrap_or_default()
 }
 
 fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
@@ -234,11 +224,7 @@ fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
     // Wayland
     let wd = env("WAYLAND_DISPLAY").unwrap_or_else(|| "wayland-0".into());
     s.wayland_display = wd.clone();
-    let wpath = if wd.starts_with('/') {
-        Some(PathBuf::from(&wd))
-    } else {
-        runtime.map(|r| r.join(&wd))
-    };
+    let wpath = if wd.starts_with('/') { Some(PathBuf::from(&wd)) } else { runtime.map(|r| r.join(&wd)) };
     s.wayland = wpath.filter(|p| p.exists());
 
     // X11
@@ -250,10 +236,7 @@ fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
                 s.x11 = Some(sock);
             }
         }
-        s.xauthority = env("XAUTHORITY")
-            .map(PathBuf::from)
-            .or_else(|| Some(home.join(".Xauthority")))
-            .filter(|p| p.is_file());
+        s.xauthority = env("XAUTHORITY").map(PathBuf::from).or_else(|| Some(home.join(".Xauthority"))).filter(|p| p.is_file());
     }
 
     if let Some(r) = runtime {
@@ -267,12 +250,7 @@ fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
     }
 
     s.dbus_session_address = env("DBUS_SESSION_BUS_ADDRESS");
-    s.dbus_session = s
-        .dbus_session_address
-        .as_deref()
-        .and_then(dbus_unix_path)
-        .or_else(|| runtime.map(|r| r.join("bus")))
-        .filter(|p| p.exists());
+    s.dbus_session = s.dbus_session_address.as_deref().and_then(dbus_unix_path).or_else(|| runtime.map(|r| r.join("bus"))).filter(|p| p.exists());
     s.dbus_system = Some(PathBuf::from("/run/dbus/system_bus_socket")).filter(|p| p.exists());
     s.ssh_agent = env("SSH_AUTH_SOCK").map(PathBuf::from).filter(|p| p.exists());
     s.cups = Some(PathBuf::from("/run/cups/cups.sock")).filter(|p| p.exists());
@@ -328,10 +306,7 @@ pub fn xdg_user_dirs(home: &Path) -> BTreeMap<String, PathBuf> {
         ("pictures", "PICTURES", "Pictures"),
         ("videos", "VIDEOS", "Videos"),
     ];
-    let cfg_home = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".config"));
+    let cfg_home = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
     let text = fs::read_to_string(cfg_home.join("user-dirs.dirs")).unwrap_or_default();
     for (key, var, fallback) in defaults {
         let from_file = text.lines().find_map(|l| {
@@ -362,14 +337,7 @@ pub fn landlock_abi() -> Option<u32> {
     {
         const SYS_LANDLOCK_CREATE_RULESET: libc::c_long = 444;
         const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
-        let r = unsafe {
-            libc::syscall(
-                SYS_LANDLOCK_CREATE_RULESET,
-                std::ptr::null::<u8>(),
-                0usize,
-                LANDLOCK_CREATE_RULESET_VERSION,
-            )
-        };
+        let r = unsafe { libc::syscall(SYS_LANDLOCK_CREATE_RULESET, std::ptr::null::<u8>(), 0usize, LANDLOCK_CREATE_RULESET_VERSION) };
         if r > 0 {
             return Some(r as u32);
         }
@@ -391,10 +359,7 @@ mod tests {
 
     #[test]
     fn dbus_paths() {
-        assert_eq!(
-            dbus_unix_path("unix:path=/run/user/1000/bus,guid=abc"),
-            Some(PathBuf::from("/run/user/1000/bus"))
-        );
+        assert_eq!(dbus_unix_path("unix:path=/run/user/1000/bus,guid=abc"), Some(PathBuf::from("/run/user/1000/bus")));
         assert_eq!(dbus_unix_path("unix:abstract=/tmp/dbus-x"), None);
     }
 }

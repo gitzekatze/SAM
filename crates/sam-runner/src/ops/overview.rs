@@ -34,9 +34,17 @@ impl Sam {
             }
         }
         match e.state {
-            AppState::Stale => w.push(Warning::warn("stale", "AppImage changed", "The AppImage changed since it was extracted. Re-extract to update the sandbox.")),
-            AppState::Missing => w.push(Warning::warn("missing", "AppImage missing", "The source AppImage no longer exists. You can still run the extracted copy, relocate it, or remove the app.")),
-            AppState::Broken => w.push(Warning::danger("broken", "Not runnable", e.last_error.clone().unwrap_or_else(|| "Extraction or launch failed.".into()))),
+            AppState::Stale => {
+                w.push(Warning::warn("stale", "AppImage changed", "The AppImage changed since it was extracted. Re-extract to update the sandbox."))
+            }
+            AppState::Missing => w.push(Warning::warn(
+                "missing",
+                "AppImage missing",
+                "The source AppImage no longer exists. You can still run the extracted copy, relocate it, or remove the app.",
+            )),
+            AppState::Broken => {
+                w.push(Warning::danger("broken", "Not runnable", e.last_error.clone().unwrap_or_else(|| "Extraction or launch failed.".into())))
+            }
             _ => {}
         }
         if !e.pending_changes.is_empty() {

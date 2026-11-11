@@ -11,7 +11,11 @@ pub(crate) fn write_man_pages(dir: &std::path::Path) -> Result<()> {
     let date = std::env::var("SAM_MAN_DATE").unwrap_or_else(|_| sam_core::util::format_ts(sam_core::util::now()).chars().take(10).collect());
     let render = |cmd: clap::Command, file: &str| -> Result<()> {
         let mut buf = Vec::new();
-        clap_mangen::Man::new(cmd).date(date.clone()).source(format!("SAM {}", env!("CARGO_PKG_VERSION"))).manual("SAM - Sandboxed AppImage Manager").render(&mut buf)?;
+        clap_mangen::Man::new(cmd)
+            .date(date.clone())
+            .source(format!("SAM {}", env!("CARGO_PKG_VERSION")))
+            .manual("SAM - Sandboxed AppImage Manager")
+            .render(&mut buf)?;
         std::fs::write(dir.join(file), buf)?;
         Ok(())
     };

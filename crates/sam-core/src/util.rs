@@ -47,21 +47,14 @@ pub fn tildify(p: &Path) -> String {
 }
 
 pub fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
+    std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// Write a file atomically (write to temp file in same dir, then rename).
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     let dir = path.parent().context("path has no parent")?;
     fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    let tmp = dir.join(format!(
-        ".{}.tmp-{}",
-        path.file_name().and_then(OsStr::to_str).unwrap_or("file"),
-        std::process::id()
-    ));
+    let tmp = dir.join(format!(".{}.tmp-{}", path.file_name().and_then(OsStr::to_str).unwrap_or("file"), std::process::id()));
     {
         let mut f = fs::File::create(&tmp).with_context(|| format!("creating {}", tmp.display()))?;
         f.write_all(data)?;
@@ -89,24 +82,17 @@ pub fn which(name: &str) -> Option<PathBuf> {
         return is_executable(&p).then_some(p);
     }
     let path = std::env::var_os("PATH").unwrap_or_else(|| "/usr/local/bin:/usr/bin:/bin".into());
-    std::env::split_paths(&path)
-        .map(|d| d.join(name))
-        .find(|p| is_executable(p))
+    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| is_executable(p))
 }
 
 pub fn is_executable(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    fs::metadata(p)
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+    fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
 }
 
 /// Quote a single argument for display as a POSIX shell word.
 pub fn shell_quote(s: &str) -> String {
-    if !s.is_empty()
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_./=:,+@%".contains(c))
-    {
+    if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_./=:,+@%".contains(c)) {
         s.to_string()
     } else {
         format!("'{}'", s.replace('\'', "'\\''"))
@@ -118,10 +104,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    args.into_iter()
-        .map(|a| shell_quote(a.as_ref()))
-        .collect::<Vec<_>>()
-        .join(" ")
+    args.into_iter().map(|a| shell_quote(a.as_ref())).collect::<Vec<_>>().join(" ")
 }
 
 /// Lowercase ASCII slug: `Krita 5.2 (x86_64)` -> `krita-5-2-x86-64`.

@@ -104,9 +104,17 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
         .success();
     let who = uid.map(|u| format!(" by {u}")).unwrap_or_default();
     Ok(if ok {
-        SignatureInfo { state: SignatureState::Valid, fingerprint, detail: format!("signed{who}; the key comes with the file, so this shows it is unchanged, not who made it") }
+        SignatureInfo {
+            state: SignatureState::Valid,
+            fingerprint,
+            detail: format!("signed{who}; the key comes with the file, so this shows it is unchanged, not who made it"),
+        }
     } else {
-        SignatureInfo { state: SignatureState::Invalid, fingerprint, detail: format!("the signature{who} does not match the file: it was changed after signing") }
+        SignatureInfo {
+            state: SignatureState::Invalid,
+            fingerprint,
+            detail: format!("the signature{who} does not match the file: it was changed after signing"),
+        }
     })
 }
 

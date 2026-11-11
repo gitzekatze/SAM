@@ -77,7 +77,10 @@ fn launch(args: Vec<String>) -> Result<i32> {
             let out = app.verify(&entry.id).context("checking the sandbox before starting")?;
             if !out.record.failed.is_empty() {
                 let list = out.record.failed.join(", ");
-                notify(&format!("{} was not started", entry.display_name()), &format!("The sandbox check found settings that do not apply: {list}.\nOpen SAM → {} → Sandbox Check.", entry.display_name()));
+                notify(
+                    &format!("{} was not started", entry.display_name()),
+                    &format!("The sandbox check found settings that do not apply: {list}.\nOpen SAM → {} → Sandbox Check.", entry.display_name()),
+                );
                 bail!("sandbox check failed: {list}");
             }
             entry.last_check = Some(out.record);
@@ -92,7 +95,10 @@ fn launch(args: Vec<String>) -> Result<i32> {
     // something: say what the output suggests.
     if !rec.success && rec.finished_at - rec.started_at <= 10 {
         let hint = rec.findings.first().map(|f| format!("Likely cause: {}.", f.title)).unwrap_or_else(|| "Try the repair steps.".into());
-        notify(&format!("{} stopped right after starting", entry.display_name()), &format!("{} {hint}\nOpen SAM → {} → Details & Repair.", rec.summary, entry.display_name()));
+        notify(
+            &format!("{} stopped right after starting", entry.display_name()),
+            &format!("{} {hint}\nOpen SAM → {} → Details & Repair.", rec.summary, entry.display_name()),
+        );
     }
     Ok(rec.exit_code.unwrap_or(if rec.success { 0 } else { 1 }))
 }

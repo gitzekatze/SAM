@@ -70,9 +70,7 @@ fn parse(log: &Path) -> HashMap<String, String> {
 }
 
 fn count_host(prefix: &str) -> usize {
-    fs::read_dir("/dev/input")
-        .map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with(prefix)).count())
-        .unwrap_or(0)
+    fs::read_dir("/dev/input").map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with(prefix)).count()).unwrap_or(0)
 }
 
 fn runtime_has(name: &str) -> bool {
@@ -132,7 +130,11 @@ fn permission_matrix() {
             // The log is gone after the test (and on CI out of reach): show
             // what matters from it right here.
             let log = rec.log_file.as_ref().and_then(|f| fs::read_to_string(f).ok()).unwrap_or_default();
-            let important: Vec<&str> = log.lines().filter(|l| l.starts_with("[err]") || l.starts_with("# note") || l.starts_with("# warning") || l.contains("bwrap:") || l.contains("pasta")).take(40).collect();
+            let important: Vec<&str> = log
+                .lines()
+                .filter(|l| l.starts_with("[err]") || l.starts_with("# note") || l.starts_with("# warning") || l.contains("bwrap:") || l.contains("pasta"))
+                .take(40)
+                .collect();
             panic!("[{name}] launch failed: {}\n{}", rec.summary, important.join("\n"));
         }
         if std::env::var_os("SAM_MATRIX_DEBUG").is_some() {
@@ -147,10 +149,27 @@ fn permission_matrix() {
     // Baseline: everything off.
     let r = launch("strict", base());
     for (k, v) in [
-        ("GPU", "no"), ("UINPUT", "no"), ("USB", "no"), ("ALSA", "no"), ("VIDEO", "no"), ("AUDIO", "no"),
-        ("X11", "no"), ("SYSBUS", "no"), ("SSHAGENT", "no"), ("CUPS", "no"), ("SSHKEY", "no"),
-        ("DOCS", "no"), ("PICS_WRITE", "no"), ("EXTRA_READ", "no"), ("APPDIR_WRITE", "no"), ("USERNS", "no"),
-        ("SYSFS", "no"), ("PASSVAR", "unset"), ("IBUS_USE_PORTAL", "unset"), ("JS", "0"), ("EVENTS", "0"),
+        ("GPU", "no"),
+        ("UINPUT", "no"),
+        ("USB", "no"),
+        ("ALSA", "no"),
+        ("VIDEO", "no"),
+        ("AUDIO", "no"),
+        ("X11", "no"),
+        ("SYSBUS", "no"),
+        ("SSHAGENT", "no"),
+        ("CUPS", "no"),
+        ("SSHKEY", "no"),
+        ("DOCS", "no"),
+        ("PICS_WRITE", "no"),
+        ("EXTRA_READ", "no"),
+        ("APPDIR_WRITE", "no"),
+        ("USERNS", "no"),
+        ("SYSFS", "no"),
+        ("PASSVAR", "unset"),
+        ("IBUS_USE_PORTAL", "unset"),
+        ("JS", "0"),
+        ("EVENTS", "0"),
     ] {
         assert_eq!(r[k], v, "[strict] {k}");
     }

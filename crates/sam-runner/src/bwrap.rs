@@ -22,11 +22,7 @@ pub fn check(host: &HostInfo) -> Result<SandboxInfo> {
     if s.usable {
         return Ok(SandboxInfo { kind: "bubblewrap", reason: s.version.unwrap_or_else(|| "Bubblewrap".into()) });
     }
-    let hint = if !host.userns.usable() {
-        host.userns.explain()
-    } else {
-        "Bubblewrap is not installed. Install the 'bubblewrap' package.".into()
-    };
+    let hint = if !host.userns.usable() { host.userns.explain() } else { "Bubblewrap is not installed. Install the 'bubblewrap' package.".into() };
     bail!("the sandbox cannot be created here. {hint}")
 }
 

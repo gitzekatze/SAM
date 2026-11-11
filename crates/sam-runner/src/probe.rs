@@ -42,43 +42,79 @@ pub enum ProbeTest {
     /// A host folder: `host_id` is its (device, inode) on the host, which a
     /// bind mount keeps, so the probe can tell the real folder from an
     /// empty private one with the same name.
-    Folder { path: PathBuf, host_id: Option<(u64, u64)>, expect: Access },
+    Folder {
+        path: PathBuf,
+        host_id: Option<(u64, u64)>,
+        expect: Access,
+    },
     /// A file or socket is present / absent.
-    Present { path: PathBuf, expect: bool },
+    Present {
+        path: PathBuf,
+        expect: bool,
+    },
     /// A file exists but cannot be read.
-    Unreadable { path: PathBuf },
+    Unreadable {
+        path: PathBuf,
+    },
     /// Nothing can be created in this folder.
-    NotWritable { path: PathBuf },
+    NotWritable {
+        path: PathBuf,
+    },
     /// An environment variable: `None` = must be unset.
-    Env { name: String, expect: Option<String> },
+    Env {
+        name: String,
+        expect: Option<String>,
+    },
     /// The Wayland socket named by $WAYLAND_DISPLAY.
-    Wayland { expect: bool },
+    Wayland {
+        expect: bool,
+    },
     /// An X11 socket and $DISPLAY.
-    X11 { expect: bool },
+    X11 {
+        expect: bool,
+    },
     /// The PulseAudio socket in $XDG_RUNTIME_DIR.
-    Audio { expect: bool },
+    Audio {
+        expect: bool,
+    },
     /// The raw PipeWire socket in $XDG_RUNTIME_DIR.
-    PipeWire { expect: bool },
+    PipeWire {
+        expect: bool,
+    },
     /// Only the loopback interface and no default route.
     NoNetwork,
     /// A default route exists (full network).
     Network,
     /// TCP connection to 127.0.0.1:port succeeds / fails.
-    LocalPort { port: u16, expect: bool },
+    LocalPort {
+        port: u16,
+        expect: bool,
+    },
     /// The session bus: `None` = no session bus at all.
-    SessionBus { expect: bool },
+    SessionBus {
+        expect: bool,
+    },
     /// A name on the session bus is reachable / hidden.
-    BusName { name: String, expect: bool },
+    BusName {
+        name: String,
+        expect: bool,
+    },
     NoNewPrivileges,
     NoCapabilities,
     /// Own process list (PID namespace).
     OwnProcesses,
     /// Creating a user namespace is blocked (or allowed).
-    UserNamespaces { blocked: bool },
+    UserNamespaces {
+        blocked: bool,
+    },
     /// The baseline syscall filter blocks keyring syscalls.
-    SyscallFilter { active: bool },
+    SyscallFilter {
+        active: bool,
+    },
     /// The kernel-level write protection reported by the helper.
-    Landlock { expect: bool },
+    Landlock {
+        expect: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,7 +230,11 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             (Some(there == *expect), seen.into())
         }
         ProbeTest::NotWritable { path } => {
-            if can_create_in(path) { fail("can be written") } else { pass("cannot be written") }
+            if can_create_in(path) {
+                fail("can be written")
+            } else {
+                pass("cannot be written")
+            }
         }
         ProbeTest::Unreadable { path } => match std::fs::File::open(path) {
             Ok(_) => fail("can be read"),
@@ -267,7 +307,9 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             None => skip("unknown"),
         },
         ProbeTest::OwnProcesses => {
-            let n = std::fs::read_dir("/proc").map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().chars().all(|c| c.is_ascii_digit())).count()).unwrap_or(0);
+            let n = std::fs::read_dir("/proc")
+                .map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().chars().all(|c| c.is_ascii_digit())).count())
+                .unwrap_or(0);
             (Some(n > 0 && n < 20), format!("sees {n} process(es)"))
         }
         ProbeTest::UserNamespaces { blocked } => {
@@ -291,32 +333,21 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
 }
 
 fn interfaces() -> Vec<String> {
-    std::fs::read_to_string("/proc/net/dev")
-        .unwrap_or_default()
-        .lines()
-        .skip(2)
-        .filter_map(|l| l.split(':').next().map(|s| s.trim().to_string()))
-        .collect()
+    std::fs::read_to_string("/proc/net/dev").unwrap_or_default().lines().skip(2).filter_map(|l| l.split(':').next().map(|s| s.trim().to_string())).collect()
 }
 
 /// A default route in /proc/net/route (IPv4) or /proc/net/ipv6_route.
 pub fn has_default_route() -> bool {
     let v4 = std::fs::read_to_string("/proc/net/route").unwrap_or_default().lines().skip(1).any(|l| l.split_whitespace().nth(1) == Some("00000000"));
-    let v6 = std::fs::read_to_string("/proc/net/ipv6_route")
-        .unwrap_or_default()
-        .lines()
-        .any(|l| {
-            let f: Vec<&str> = l.split_whitespace().collect();
-            f.len() > 9 && f[0] == "00000000000000000000000000000000" && f[1] == "00" && f[9] != "lo"
-        });
+    let v6 = std::fs::read_to_string("/proc/net/ipv6_route").unwrap_or_default().lines().any(|l| {
+        let f: Vec<&str> = l.split_whitespace().collect();
+        f.len() > 9 && f[0] == "00000000000000000000000000000000" && f[1] == "00" && f[9] != "lo"
+    });
     v4 || v6
 }
 
 fn status_field(name: &str) -> Option<String> {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()?
-        .lines()
-        .find_map(|l| l.strip_prefix(&format!("{name}:")).map(|v| v.trim().to_string()))
+    std::fs::read_to_string("/proc/self/status").ok()?.lines().find_map(|l| l.strip_prefix(&format!("{name}:")).map(|v| v.trim().to_string()))
 }
 
 /// TCP ports something listens on, on the host (/proc/net/tcp{,6}).

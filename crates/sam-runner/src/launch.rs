@@ -12,16 +12,14 @@ use anyhow::{bail, Context, Result};
 use sam_core::permissions::DbusMode;
 use sam_core::util::{format_ts, now, shell_join};
 use sam_core::warnings::{evaluate, WarningContext};
-use sam_core::{
-    AppEntry, AppState, Config, HostInfo, LaunchContext, LaunchRecord, Paths, SandboxCommand, Warning,
-};
+use sam_core::{AppEntry, AppState, Config, HostInfo, LaunchContext, LaunchRecord, Paths, SandboxCommand, Warning};
 use sam_intake::fingerprint::{self, SourceStatus};
 use sam_storage::{LogKind, Logs, Registry};
 use serde::Serialize;
 
+use crate::bwrap::SandboxInfo;
 use crate::dbus_proxy::DbusProxy;
 use crate::kernel;
-use crate::bwrap::SandboxInfo;
 
 #[derive(Debug, Clone, Default)]
 pub struct LaunchOptions {
@@ -112,10 +110,7 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
         None => errors.push("The AppImage has not been extracted. Use 'Re-extract' (sam-jail reextract).".into()),
         Some(x) => {
             if !x.appdir.join(&x.entry).exists() {
-                errors.push(format!(
-                    "The extracted payload is missing or incomplete ({}). Re-extract the AppImage.",
-                    x.appdir.display()
-                ));
+                errors.push(format!("The extracted payload is missing or incomplete ({}). Re-extract the AppImage.", x.appdir.display()));
             }
         }
     }
@@ -219,8 +214,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     }
 
     if perms.advanced.persistent_home {
-        fs::create_dir_all(&ctx.private_home)
-            .with_context(|| format!("creating private home {}", ctx.private_home.display()))?;
+        fs::create_dir_all(&ctx.private_home).with_context(|| format!("creating private home {}", ctx.private_home.display()))?;
     }
 
     let mut proxy = None;
@@ -282,7 +276,11 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                     landlock = want_landlock;
                     seccomp = want_seccomp;
                 }
-                None => warnings.push(Warning::warn("helper-missing", "Kernel restrictions unavailable", "sam-jail-run was not found next to sam-jail; Landlock and seccomp are not applied.")),
+                None => warnings.push(Warning::warn(
+                    "helper-missing",
+                    "Kernel restrictions unavailable",
+                    "sam-jail-run was not found next to sam-jail; Landlock and seccomp are not applied.",
+                )),
             }
         }
     }
@@ -292,7 +290,11 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         if let Err(e) = crate::netns::wrap_localhost(&mut command, &perms.network.valid_host_ports(), &perms.network.valid_app_ports()) {
             // Without pasta, fall back to no network at all.
             command.args.insert(0, "--unshare-net".into());
-            warnings.push(Warning::warn("localhost-unavailable", "Local network unavailable", format!("{e:#}. Until then the app starts with no network at all, never with internet access.")));
+            warnings.push(Warning::warn(
+                "localhost-unavailable",
+                "Local network unavailable",
+                format!("{e:#}. Until then the app starts with no network at all, never with internet access."),
+            ));
         }
     }
     let wayland_context = wayland.is_some();
@@ -473,7 +475,6 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     }
     let prepared = prepared;
 
-
     let log = Arc::new(Mutex::new(log));
     // The first part of each stream: stderr decides whether the sandbox
     // failed; both are searched for known problems (some apps, such as
@@ -570,7 +571,16 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         summary = match (code, signal) {
             (Some(0), _) => "exited normally".into(),
             (Some(c), _) => format!("exited with code {c}"),
-            (None, Some(s)) => format!("terminated by signal {s}{}", if s == 11 { " (segmentation fault)" } else if s == 6 { " (abort)" } else { "" }),
+            (None, Some(s)) => format!(
+                "terminated by signal {s}{}",
+                if s == 11 {
+                    " (segmentation fault)"
+                } else if s == 6 {
+                    " (abort)"
+                } else {
+                    ""
+                }
+            ),
             _ => "finished".into(),
         };
     }

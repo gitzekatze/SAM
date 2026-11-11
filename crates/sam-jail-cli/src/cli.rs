@@ -283,7 +283,9 @@ pub(crate) enum Cmd {
 #[derive(Subcommand)]
 pub(crate) enum PresetCmd {
     List,
-    Show { name: String },
+    Show {
+        name: String,
+    },
     /// Apply a preset to an app (asks for confirmation when it conflicts).
     Apply {
         name: String,
@@ -307,28 +309,49 @@ pub(crate) enum PresetCmd {
         #[arg(long, default_value = "")]
         description: String,
     },
-    Delete { name: String },
-    Duplicate { name: String, new_name: String },
-    Import { file: PathBuf },
-    Export { name: String, file: Option<PathBuf> },
+    Delete {
+        name: String,
+    },
+    Duplicate {
+        name: String,
+        new_name: String,
+    },
+    Import {
+        file: PathBuf,
+    },
+    Export {
+        name: String,
+        file: Option<PathBuf>,
+    },
     /// Create or replace a user preset from JSON on stdin.
     Put,
 }
 
 #[derive(Subcommand)]
 pub(crate) enum ProfileCmd {
-    Get { app: String },
+    Get {
+        app: String,
+    },
     /// Replace permissions from JSON (a PermissionSet) on stdin.
-    Set { app: String },
+    Set {
+        app: String,
+    },
     /// Reset to the recommended profile.
-    Reset { app: String },
+    Reset {
+        app: String,
+    },
 }
 
 #[derive(Subcommand)]
 pub(crate) enum ConfigCmd {
     Show,
-    Get { key: String },
-    Set { key: String, value: String },
+    Get {
+        key: String,
+    },
+    Set {
+        key: String,
+        value: String,
+    },
     /// Replace the whole configuration from JSON on stdin.
     Put,
     Path,

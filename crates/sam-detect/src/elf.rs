@@ -11,10 +11,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use sam_core::util::now;
-use sam_core::{
-    Compatibility, DependencyReport, HostResource, IsolationVerdict, MissingLibrary, Requirements, ResourceClass,
-    Warning,
-};
+use sam_core::{Compatibility, DependencyReport, HostResource, IsolationVerdict, MissingLibrary, Requirements, ResourceClass, Warning};
 
 use crate::classify::{classify_library, toolkit_of, Signal, GRAPHICS_HOST_RESOURCES, SAFE_HOST_RESOURCES};
 
@@ -46,19 +43,11 @@ impl Default for AnalyzeOptions {
 }
 
 pub fn default_host_lib_dirs() -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = [
-        "/usr/lib",
-        "/usr/lib64",
-        "/lib",
-        "/lib64",
-        "/usr/lib/x86_64-linux-gnu",
-        "/lib/x86_64-linux-gnu",
-        "/usr/lib/aarch64-linux-gnu",
-        "/usr/local/lib",
-    ]
-    .iter()
-    .map(PathBuf::from)
-    .collect();
+    let mut dirs: Vec<PathBuf> =
+        ["/usr/lib", "/usr/lib64", "/lib", "/lib64", "/usr/lib/x86_64-linux-gnu", "/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/usr/local/lib"]
+            .iter()
+            .map(PathBuf::from)
+            .collect();
     // ld.so.conf.d entries (e.g. /usr/lib/nvidia, /opt/... on some distros).
     if let Ok(rd) = fs::read_dir("/etc/ld.so.conf.d") {
         for e in rd.flatten() {
@@ -83,9 +72,9 @@ fn host_has_lib(dirs: &[PathBuf], name: &str) -> bool {
     // An unversioned name ("libdl.so") is a development link; the loader
     // also accepts the versioned library ("libdl.so.2") many systems have.
     name.ends_with(".so")
-        && dirs.iter().any(|d| {
-            fs::read_dir(d).into_iter().flatten().flatten().any(|e| e.file_name().to_str().is_some_and(|f| f.starts_with(&format!("{name}."))))
-        })
+        && dirs
+            .iter()
+            .any(|d| fs::read_dir(d).into_iter().flatten().flatten().any(|e| e.file_name().to_str().is_some_and(|f| f.starts_with(&format!("{name}.")))))
 }
 
 #[derive(Default)]
@@ -174,11 +163,7 @@ fn parse_elf(p: &Path) -> Option<ElfFacts> {
             }
         }
     }
-    Some(ElfFacts {
-        needed: elf.libraries.iter().map(|s| s.to_string()).collect(),
-        glibc_max,
-        arch,
-    })
+    Some(ElfFacts { needed: elf.libraries.iter().map(|s| s.to_string()).collect(), glibc_max, arch })
 }
 
 /// Resolves a path-style DT_NEEDED entry (`$ORIGIN/../lib/libx.so`) against
@@ -218,20 +203,8 @@ pub fn host_glibc_version() -> Option<(u32, u32)> {
 
 /// Look at an AppRun-style script for privilege escalation helpers.
 fn script_privileged(text: &str) -> Option<&'static str> {
-    for (needle, label) in [
-        ("pkexec", "pkexec"),
-        ("sudo ", "sudo"),
-        ("gksu", "gksu"),
-        ("kdesu", "kdesu"),
-        ("insmod ", "insmod"),
-        ("modprobe ", "modprobe"),
-    ] {
-        if text
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.starts_with('#'))
-            .any(|l| l.contains(needle))
-        {
+    for (needle, label) in [("pkexec", "pkexec"), ("sudo ", "sudo"), ("gksu", "gksu"), ("kdesu", "kdesu"), ("insmod ", "insmod"), ("modprobe ", "modprobe")] {
+        if text.lines().map(str::trim).filter(|l| !l.starts_with('#')).any(|l| l.contains(needle)) {
             return Some(label);
         }
     }
@@ -279,9 +252,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     let mut report = DependencyReport { analyzed_at: now(), ..Default::default() };
     let (entry_bin, is_script, script_text) = resolve_entry_binary(&appdir, opts);
     report.entry_is_script = is_script;
-    report.entry_binary = entry_bin
-        .as_ref()
-        .map(|p| p.strip_prefix(&appdir).unwrap_or(p).display().to_string());
+    report.entry_binary = entry_bin.as_ref().map(|p| p.strip_prefix(&appdir).unwrap_or(p).display().to_string());
 
     let mut needed: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut glibc_max: Option<(u32, u32)> = None;
@@ -415,21 +386,13 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
             abi_sensitive.push(name.clone());
             worsen(&mut compat, Compatibility::Risk);
         }
-        report.missing.push(MissingLibrary {
-            name: name.clone(),
-            class: info.class,
-            host_available: host,
-            needed_by: by.clone(),
-        });
+        report.missing.push(MissingLibrary { name: name.clone(), class: info.class, host_available: host, needed_by: by.clone() });
     }
     if !not_found.is_empty() {
         report.warnings.push(Warning::danger(
             "libs-not-found",
             "Libraries not found",
-            format!(
-                "These libraries are neither bundled nor installed on this system: {}. The app will probably fail to start.",
-                list(&not_found)
-            ),
+            format!("These libraries are neither bundled nor installed on this system: {}. The app will probably fail to start.", list(&not_found)),
         ));
     }
     if !lib_only_missing.is_empty() {
@@ -476,11 +439,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     }
     if parsed == 0 {
         worsen(&mut compat, Compatibility::LikelyBroken);
-        report.warnings.push(Warning::warn(
-            "no-elf",
-            "No executables found",
-            "No ELF executables were found in the AppImage payload.",
-        ));
+        report.warnings.push(Warning::warn("no-elf", "No executables found", "No ELF executables were found in the AppImage payload."));
     }
     if is_script && report.entry_binary.is_none() {
         report.notes.push("AppRun is a script; the main binary could not be determined".into());
@@ -524,22 +483,12 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
             _ => true,
         };
         if relevant {
-            report.resources.push(HostResource {
-                resource: res.to_string(),
-                class: ResourceClass::Safe,
-                reason: why.to_string(),
-                auto: true,
-            });
+            report.resources.push(HostResource { resource: res.to_string(), class: ResourceClass::Safe, reason: why.to_string(), auto: true });
         }
     }
     if report.requirements.gpu {
         for (res, why) in GRAPHICS_HOST_RESOURCES {
-            report.resources.push(HostResource {
-                resource: res.to_string(),
-                class: ResourceClass::Graphics,
-                reason: why.to_string(),
-                auto: false,
-            });
+            report.resources.push(HostResource { resource: res.to_string(), class: ResourceClass::Graphics, reason: why.to_string(), auto: false });
         }
     }
     let controlled = [
@@ -550,12 +499,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     ];
     for (needed, res, why) in controlled {
         if needed {
-            report.resources.push(HostResource {
-                resource: res.into(),
-                class: ResourceClass::Controlled,
-                reason: why.into(),
-                auto: false,
-            });
+            report.resources.push(HostResource { resource: res.into(), class: ResourceClass::Controlled, reason: why.into(), auto: false });
         }
     }
     if report.requirements.electron {

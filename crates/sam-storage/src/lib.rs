@@ -103,21 +103,16 @@ impl Registry {
         let all = self.list()?;
         let q = query.to_lowercase();
         let qslug = slugify(query);
-        let tiers: [&dyn Fn(&AppEntry) -> bool; 4] = [
-            &|a| a.name.to_lowercase() == q,
-            &|a| a.id.starts_with(&q),
-            &|a| !qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")),
-            &|a| a.name.to_lowercase().contains(&q),
-        ];
+        let tiers: [&dyn Fn(&AppEntry) -> bool; 4] =
+            [&|a| a.name.to_lowercase() == q, &|a| a.id.starts_with(&q), &|a| !qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")), &|a| {
+                a.name.to_lowercase().contains(&q)
+            }];
         for tier in tiers {
             let m: Vec<&AppEntry> = all.iter().filter(|a| tier(a)).collect();
             match m.len() {
                 0 => continue,
                 1 => return Ok(m[0].clone()),
-                _ => bail!(
-                    "'{query}' is ambiguous: {}",
-                    m.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join(", ")
-                ),
+                _ => bail!("'{query}' is ambiguous: {}", m.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join(", ")),
             }
         }
         bail!("no registered app matches '{query}' (see `sam-jail list`)")
@@ -148,10 +143,7 @@ impl Registry {
 
 /// App ids are used as file names; keep them to a safe alphabet.
 pub fn valid_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= 128
-        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        && !id.starts_with('-')
+    !id.is_empty() && id.len() <= 128 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') && !id.starts_with('-')
 }
 
 /// On-disk preset format: `[preset]` metadata plus `[permissions]`.
@@ -221,10 +213,7 @@ impl PresetStore {
     }
 
     pub fn get(&self, name: &str) -> Result<Option<Preset>> {
-        Ok(self
-            .list()?
-            .into_iter()
-            .find(|p| p.name.eq_ignore_ascii_case(name) || preset_slug(&p.name) == preset_slug(name)))
+        Ok(self.list()?.into_iter().find(|p| p.name.eq_ignore_ascii_case(name) || preset_slug(&p.name) == preset_slug(name)))
     }
 
     pub fn save(&self, preset: &mut Preset) -> Result<PathBuf> {
@@ -320,8 +309,8 @@ fn permissions_from_toml(v: toml::Value) -> Result<PermissionSet> {
         };
         let key = match k.as_str() {
             "network" => "network.mode".to_string(),
-            "home" | "documents" | "downloads" | "music" | "pictures" | "videos" | "desktop" | "ssh"
-            | "gnupg" | "hidden_files" | "custom_read" | "custom_write" => format!("filesystem.{k}"),
+            "home" | "documents" | "downloads" | "music" | "pictures" | "videos" | "desktop" | "ssh" | "gnupg" | "hidden_files" | "custom_read"
+            | "custom_write" => format!("filesystem.{k}"),
             "audio" => "audio.enabled".into(),
             "alsa" | "alsa_raw" => "audio.alsa_raw".into(),
             "gpu" | "webcam" | "input" | "usb" | "bluetooth" => format!("devices.{k}"),
@@ -407,22 +396,13 @@ impl Logs {
                 continue;
             }
             let meta = e.metadata()?;
-            let modified = meta
-                .modified()
-                .ok()
-                .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
+            let modified = meta.modified().ok().and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
             out.push(LogFile { path: e.path(), kind: k, modified, size: meta.len() });
         }
         // Newest first. Logs from the same second are `<kind>-<date>-<time>.log`,
         // then `...-1.log`, `...-2.log`: order by that sequence number, not by
         // name (where `.log` would sort after `-1.log`).
-        out.sort_by(|a, b| {
-            b.modified
-                .cmp(&a.modified)
-                .then_with(|| log_stamp(&b.path).cmp(&log_stamp(&a.path)))
-        });
+        out.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| log_stamp(&b.path).cmp(&log_stamp(&a.path))));
         Ok(out)
     }
 
@@ -449,9 +429,7 @@ impl Logs {
 
 fn chrono_stamp() -> String {
     // YYYYmmdd-HHMMSS derived from the formatted local timestamp.
-    sam_core::util::format_ts(now())
-        .replace(['-', ':'], "")
-        .replace(' ', "-")
+    sam_core::util::format_ts(now()).replace(['-', ':'], "").replace(' ', "-")
 }
 
 /// `(date, time, sequence)` from a log file name like `launch-20261107-013613-1.log`.

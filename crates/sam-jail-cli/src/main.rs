@@ -8,12 +8,12 @@ use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
+use clap::{Parser, Subcommand};
 use sam_core::util::{format_ts, human_size, tildify};
 use sam_core::*;
 use sam_runner::launch::{prepare, run, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
 use sam_storage::{parse_preset_toml, preset_to_toml, read_preset_file, LogKind, Logs, PresetStore};
-use clap::{Parser, Subcommand};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -106,7 +106,10 @@ fn real_main(cli: Cli) -> Result<()> {
             let e = app.resolve(&query)?;
             let e = match apply {
                 Some(id) => {
-                    let sug = sam_runner::repair::first_run_hints(&e).into_iter().find(|s| s.id == id).with_context(|| format!("no hint '{id}' for {}", e.display_name()))?;
+                    let sug = sam_runner::repair::first_run_hints(&e)
+                        .into_iter()
+                        .find(|s| s.id == id)
+                        .with_context(|| format!("no hint '{id}' for {}", e.display_name()))?;
                     app.apply_suggestion(&query, &sug, false)?
                 }
                 None => e,
@@ -136,23 +139,26 @@ fn real_main(cli: Cli) -> Result<()> {
             let e = app.resolve(&query)?;
             let steps = sam_runner::repair::ladder(&e, &app.config);
             let findings = e.last_launch.as_ref().map(|l| l.findings.clone()).unwrap_or_default();
-            out.emit(&json!({"applied": applied, "findings": findings, "steps": steps, "applied_steps": e.repairs_applied, "can_undo": e.repair_backup.is_some()}), || {
-                if let Some(a) = &applied {
-                    println!("Applied: {a}. Start the app again to test it.");
-                }
-                for f in &findings {
-                    println!("{} {}: {}", paint("found", "33"), f.title, f.explanation);
-                }
-                for (i, st) in steps.iter().enumerate() {
-                    println!("{}. {} ({})\n   {}", i + 1, st.title, st.id, st.explanation);
-                }
-                if steps.is_empty() {
-                    println!("No more repair steps. Check the logs (sam-jail logs {}).", e.id);
-                }
-                if e.repair_backup.is_some() {
-                    println!("Undo all repairs: sam-jail repair {} --undo", e.id);
-                }
-            });
+            out.emit(
+                &json!({"applied": applied, "findings": findings, "steps": steps, "applied_steps": e.repairs_applied, "can_undo": e.repair_backup.is_some()}),
+                || {
+                    if let Some(a) = &applied {
+                        println!("Applied: {a}. Start the app again to test it.");
+                    }
+                    for f in &findings {
+                        println!("{} {}: {}", paint("found", "33"), f.title, f.explanation);
+                    }
+                    for (i, st) in steps.iter().enumerate() {
+                        println!("{}. {} ({})\n   {}", i + 1, st.title, st.id, st.explanation);
+                    }
+                    if steps.is_empty() {
+                        println!("No more repair steps. Check the logs (sam-jail logs {}).", e.id);
+                    }
+                    if e.repair_backup.is_some() {
+                        println!("Undo all repairs: sam-jail repair {} --undo", e.id);
+                    }
+                },
+            );
         }
         Cmd::Selftest { apps, seconds } => {
             let list: Vec<AppEntry> = if apps.is_empty() { app.registry().list()? } else { apps.iter().map(|q| app.resolve(q)).collect::<Result<_>>()? };
@@ -180,7 +186,12 @@ fn real_main(cli: Cli) -> Result<()> {
             out.emit(&json!({"results": results}), || {
                 for r in &results {
                     let ok = r["status"] == "ok";
-                    println!("{} {:<28} {}", if ok { paint("✓", "32") } else { paint("✗", "31") }, r["name"].as_str().unwrap_or_default(), r["detail"].as_str().unwrap_or_default());
+                    println!(
+                        "{} {:<28} {}",
+                        if ok { paint("✓", "32") } else { paint("✗", "31") },
+                        r["name"].as_str().unwrap_or_default(),
+                        r["detail"].as_str().unwrap_or_default()
+                    );
                     for f in r["findings"].as_array().into_iter().flatten() {
                         println!("    likely: {}", f["title"].as_str().unwrap_or_default());
                     }
@@ -207,13 +218,18 @@ fn real_main(cli: Cli) -> Result<()> {
             });
         }
         Cmd::Preview { path, permissions_stdin } => {
-            let perms: Option<PermissionSet> = if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
+            let perms: Option<PermissionSet> =
+                if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
             let v = app.preview(&path, perms)?;
             out.emit(&v, || println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()));
         }
         Cmd::Add { path, allow_fallback, no_launcher, preset, accept, hide_duplicates, permissions_stdin } => {
-            let permissions: Option<PermissionSet> = if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
-            let o = app.add(&path, &AddOptions { consent_fallback: allow_fallback, launcher: no_launcher.then_some(false), preset, accept, hide_duplicates, permissions })?;
+            let permissions: Option<PermissionSet> =
+                if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
+            let o = app.add(
+                &path,
+                &AddOptions { consent_fallback: allow_fallback, launcher: no_launcher.then_some(false), preset, accept, hide_duplicates, permissions },
+            )?;
             let summary = AppSummary::from_entry(&o.entry);
             out.emit(&json!({"app": summary, "entry": o.entry, "relocated": o.relocated, "needs_fallback_consent": o.needs_fallback_consent, "warnings": o.warnings}), || {
                 if o.relocated {
@@ -320,7 +336,15 @@ fn real_main(cli: Cli) -> Result<()> {
             out.emit(&json!({"apps": usage, "total": total}), || {
                 let mb = |b: u64| format!("{:.1} MB", b as f64 / 1e6);
                 for u in &usage {
-                    println!("{:<28} {:>10}  (unpacked {}, home {}, app folder {}, logs {})", u.name, mb(u.total), mb(u.unpacked), mb(u.home), mb(u.overlay), mb(u.logs));
+                    println!(
+                        "{:<28} {:>10}  (unpacked {}, home {}, app folder {}, logs {})",
+                        u.name,
+                        mb(u.total),
+                        mb(u.unpacked),
+                        mb(u.home),
+                        mb(u.overlay),
+                        mb(u.logs)
+                    );
                 }
                 println!("{:<28} {:>10}", "total", mb(total));
             });
@@ -501,7 +525,8 @@ fn real_main(cli: Cli) -> Result<()> {
             });
         }
         Cmd::Verify { app: q, permissions_stdin } => {
-            let perms: Option<PermissionSet> = if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
+            let perms: Option<PermissionSet> =
+                if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
             let out_v = match app.resolve(&q) {
                 Ok(_) if perms.is_some() => bail!("{q} already has a sandbox; --permissions-stdin is only for AppImages without one"),
                 Ok(_) => app.verify(&q)?,
@@ -553,7 +578,10 @@ fn real_main(cli: Cli) -> Result<()> {
             out.emit(&json!({"app": AppSummary::from_entry(&e), "pending_changes": e.pending_changes}), || {
                 println!("Re-extracted {} [{}]", e.display_name(), badge_str(e.badge()));
                 if !e.pending_changes.is_empty() {
-                    println!("{}", paint(&format!("  The update likely needs new permissions: {}. Your customized profile was kept.", e.pending_changes.join(", ")), "33"));
+                    println!(
+                        "{}",
+                        paint(&format!("  The update likely needs new permissions: {}. Your customized profile was kept.", e.pending_changes.join(", ")), "33")
+                    );
                 }
             });
         }
@@ -617,7 +645,14 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
                 for f in &r.findings {
                     let fix = f.fix.as_ref().map(|(k, v)| format!("  fix: sam-jail set {} {k} {v}", e.id)).unwrap_or_default();
-                    println!("  [{}] {} ({}){}{}", risk_str(f.risk), f.suggestion, f.error, if f.applied { paint("  applied", "32") } else { String::new() }, if f.applied { String::new() } else { fix });
+                    println!(
+                        "  [{}] {} ({}){}{}",
+                        risk_str(f.risk),
+                        f.suggestion,
+                        f.error,
+                        if f.applied { paint("  applied", "32") } else { String::new() },
+                        if f.applied { String::new() } else { fix }
+                    );
                 }
                 if r.applied > 0 {
                     println!("{} low-risk fix(es) applied automatically.", r.applied);

@@ -49,10 +49,7 @@ const DWARFS_MAGIC: &[u8; 6] = b"DWARFS";
 
 /// Cheap check used by directory scans: extension or magic.
 pub fn looks_like_appimage(path: &Path) -> bool {
-    let ext_match = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
+    let ext_match = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
     if ext_match {
         return true;
     }

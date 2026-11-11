@@ -9,19 +9,19 @@
 //! * [`doctor`]: environment checks, diagnostics and bug reports
 //! * [`diagnose`]: dynamic dependency fallback via strace
 
+pub mod bwrap;
+pub mod dbus_check;
 pub mod dbus_proxy;
-pub mod wayland_ctx;
 pub mod diagnose;
 pub mod doctor;
 pub mod kernel;
 pub mod launch;
 pub mod netns;
-pub mod dbus_check;
 pub mod ops;
 pub mod probe;
 pub mod repair;
-pub mod bwrap;
 pub mod verify;
+pub mod wayland_ctx;
 
 /// Locate the `sam-jail-run` helper (used for desktop launchers and as the
 /// in-sandbox Landlock helper).

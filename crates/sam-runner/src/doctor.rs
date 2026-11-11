@@ -42,13 +42,21 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
             c.push(check("bwrap", "Bubblewrap", CheckStatus::Ok, format!("installed ({})", t.version.clone().unwrap_or_else(|| t.path.display().to_string()))));
             match bwrap_functional(host) {
                 Ok(()) => c.push(check("bwrap-run", "Sandbox test", CheckStatus::Ok, "a test sandbox started successfully")),
-                Err(e) => c.push(check("bwrap-run", "Sandbox test", CheckStatus::Fail, format!("bubblewrap failed: {e}")).hint("Check that user namespaces are enabled, or that AppArmor allows bwrap.")),
+                Err(e) => c.push(
+                    check("bwrap-run", "Sandbox test", CheckStatus::Fail, format!("bubblewrap failed: {e}"))
+                        .hint("Check that user namespaces are enabled, or that AppArmor allows bwrap."),
+                ),
             }
         }
         None => c.push(check("bwrap", "Bubblewrap", CheckStatus::Fail, "Bubblewrap is not installed.").hint("Install it: sudo pacman -S bubblewrap")),
     }
     c.push(if host.userns.usable() {
-        check("userns", "User namespaces", CheckStatus::Ok, format!("enabled (max {})", host.userns.max_user_namespaces.map(|v| v.to_string()).unwrap_or_else(|| "?".into())))
+        check(
+            "userns",
+            "User namespaces",
+            CheckStatus::Ok,
+            format!("enabled (max {})", host.userns.max_user_namespaces.map(|v| v.to_string()).unwrap_or_else(|| "?".into())),
+        )
     } else {
         check("userns", "User namespaces", CheckStatus::Fail, host.userns.explain())
     });
@@ -56,14 +64,30 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         c.push(check("apparmor", "AppArmor userns restriction", CheckStatus::Warn, host.userns.explain()));
     }
     c.push(match host.landlock_abi {
-        Some(v) => check("landlock", "Landlock", CheckStatus::Ok, format!("ABI v{v} available{}", if cfg.security.experimental_landlock { ", enabled" } else { ", disabled in settings" })),
+        Some(v) => check(
+            "landlock",
+            "Landlock",
+            CheckStatus::Ok,
+            format!("ABI v{v} available{}", if cfg.security.experimental_landlock { ", enabled" } else { ", disabled in settings" }),
+        ),
         None => check("landlock", "Landlock", CheckStatus::Info, "not available on this kernel (optional)"),
     });
-    c.push(check("seccomp", "Seccomp", if host.seccomp { CheckStatus::Ok } else { CheckStatus::Info }, if host.seccomp { format!("available; strict mode {}", if cfg.security.experimental_seccomp { "enabled" } else { "disabled (experimental)" }) } else { "not detected".into() }));
+    c.push(check(
+        "seccomp",
+        "Seccomp",
+        if host.seccomp { CheckStatus::Ok } else { CheckStatus::Info },
+        if host.seccomp {
+            format!("available; strict mode {}", if cfg.security.experimental_seccomp { "enabled" } else { "disabled (experimental)" })
+        } else {
+            "not detected".into()
+        },
+    ));
 
     c.push(match &host.tools.xdg_dbus_proxy {
         Some(_) => check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Ok, "installed: filtered session D-Bus available"),
-        None => check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Warn, "not installed: filtered D-Bus falls back to no D-Bus").hint("Install xdg-dbus-proxy."),
+        None => {
+            check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Warn, "not installed: filtered D-Bus falls back to no D-Bus").hint("Install xdg-dbus-proxy.")
+        }
     });
 
     let mut extract_tools = vec!["built-in SquashFS reader (gzip, xz, zstd)".to_string()];
@@ -83,13 +107,23 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
     c.push(check("session", "Session", CheckStatus::Info, format!("{} {} on {} ({})", host.session_type, host.desktop, host.distro, host.kernel)));
     c.push(match &s.wayland {
         Some(p) => check("wayland", "Wayland socket", CheckStatus::Ok, tildify(p)),
-        None => check("wayland", "Wayland socket", if host.session_type == "wayland" { CheckStatus::Warn } else { CheckStatus::Info }, "The Wayland socket is not available."),
+        None => check(
+            "wayland",
+            "Wayland socket",
+            if host.session_type == "wayland" { CheckStatus::Warn } else { CheckStatus::Info },
+            "The Wayland socket is not available.",
+        ),
     });
     if let Some(display) = &s.wayland {
         c.push(if crate::wayland_ctx::supported(display) {
             check("wayland-context", "Wayland security context", CheckStatus::Ok, "supported: sandboxed apps do not see privileged Wayland functions")
         } else {
-            check("wayland-context", "Wayland security context", CheckStatus::Info, "not supported by this desktop: sandboxed apps see every Wayland function it offers")
+            check(
+                "wayland-context",
+                "Wayland security context",
+                CheckStatus::Info,
+                "not supported by this desktop: sandboxed apps see every Wayland function it offers",
+            )
         });
     }
     c.push(match (&s.x11, &s.x11_display) {
@@ -99,7 +133,9 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
     });
     c.push(match (&s.pipewire, &s.pulse) {
         (Some(_), Some(_)) => check("audio", "Audio", CheckStatus::Ok, "PipeWire and PulseAudio sockets found"),
-        (Some(_), None) => check("audio", "Audio", CheckStatus::Warn, "PipeWire found, but not its PulseAudio service (pipewire-pulse), which sandboxed apps use for sound"),
+        (Some(_), None) => {
+            check("audio", "Audio", CheckStatus::Warn, "PipeWire found, but not its PulseAudio service (pipewire-pulse), which sandboxed apps use for sound")
+        }
         (None, Some(_)) => check("audio", "Audio", CheckStatus::Ok, "PulseAudio socket found"),
         (None, None) => check("audio", "Audio", CheckStatus::Warn, "PipeWire socket not found. Audio may not work."),
     });
@@ -107,7 +143,16 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         Some(_) => check("dbus", "Session D-Bus", CheckStatus::Ok, "available"),
         None => check("dbus", "Session D-Bus", CheckStatus::Warn, "session bus socket not found"),
     });
-    c.push(check("gpu", "GPU devices", if host.gpu_devices.is_empty() { CheckStatus::Warn } else { CheckStatus::Ok }, if host.gpu_devices.is_empty() { "no /dev/dri devices".to_string() } else { host.gpu_devices.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ") }));
+    c.push(check(
+        "gpu",
+        "GPU devices",
+        if host.gpu_devices.is_empty() { CheckStatus::Warn } else { CheckStatus::Ok },
+        if host.gpu_devices.is_empty() {
+            "no /dev/dri devices".to_string()
+        } else {
+            host.gpu_devices.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+        },
+    ));
     c.push(if sam_core::host::bwrap_supports_overlay() {
         check("overlay", "Writable app folder", CheckStatus::Ok, "Bubblewrap supports overlays")
     } else {
@@ -126,7 +171,12 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         let count = |b: Badge| apps.iter().filter(|a| a.badge() == b).count();
         let detail = format!(
             "{} registered; {} ready, {} need review, {} stale, {} broken, {} missing",
-            apps.len(), count(Badge::Ready), count(Badge::NeedsReview), count(Badge::Stale), count(Badge::Broken), count(Badge::Missing)
+            apps.len(),
+            count(Badge::Ready),
+            count(Badge::NeedsReview),
+            count(Badge::Stale),
+            count(Badge::Broken),
+            count(Badge::Missing)
         );
         let st = if count(Badge::Broken) + count(Badge::Missing) > 0 { CheckStatus::Warn } else { CheckStatus::Ok };
         c.push(check("apps", "Registered apps", st, detail));
@@ -158,9 +208,14 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
         check("source", "Source AppImage", CheckStatus::Warn, format!("The selected AppImage no longer exists ({})", tildify(&e.source_path)))
     });
     match &e.extraction {
-        Some(x) if x.appdir.join(&x.entry).exists() => c.push(check("extraction", "AppImage extraction", CheckStatus::Ok, format!("success via {} ({} files)", x.method, x.file_count))),
+        Some(x) if x.appdir.join(&x.entry).exists() => {
+            c.push(check("extraction", "AppImage extraction", CheckStatus::Ok, format!("success via {} ({} files)", x.method, x.file_count)))
+        }
         Some(_) => c.push(check("extraction", "AppImage extraction", CheckStatus::Fail, "extracted payload is missing").hint("Re-extract the AppImage.")),
-        None => c.push(check("extraction", "AppImage extraction", CheckStatus::Fail, e.last_error.clone().unwrap_or_else(|| "not extracted".into())).hint("Re-extract the AppImage (optionally allowing the fallback extractor).")),
+        None => c.push(
+            check("extraction", "AppImage extraction", CheckStatus::Fail, e.last_error.clone().unwrap_or_else(|| "not extracted".into()))
+                .hint("Re-extract the AppImage (optionally allowing the fallback extractor)."),
+        ),
     }
     if let Some(d) = &e.detection {
         let host_res = d.resources.iter().filter(|r| !r.auto).count();
@@ -169,7 +224,12 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
             Compatibility::Risk => CheckStatus::Warn,
             Compatibility::LikelyBroken => CheckStatus::Fail,
         };
-        c.push(check("detect", "Dependency detection", st, format!("{host_res} controlled host resources required; toolkit {}; {} libraries expected from the host", d.requirements.toolkit, d.missing.len())));
+        c.push(check(
+            "detect",
+            "Dependency detection",
+            st,
+            format!("{host_res} controlled host resources required; toolkit {}; {} libraries expected from the host", d.requirements.toolkit, d.missing.len()),
+        ));
     }
     match crate::bwrap::check(host) {
         Ok(s) => c.push(check("backend", "Sandbox", CheckStatus::Ok, format!("Bubblewrap ({})", s.reason))),
@@ -187,7 +247,13 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
         None => c.push(check("launcher", "Desktop entry", CheckStatus::Info, "no launcher installed")),
     }
     if let Some(l) = &e.last_launch {
-        let st = if l.sandbox_failure { CheckStatus::Fail } else if l.success { CheckStatus::Ok } else { CheckStatus::Warn };
+        let st = if l.sandbox_failure {
+            CheckStatus::Fail
+        } else if l.success {
+            CheckStatus::Ok
+        } else {
+            CheckStatus::Warn
+        };
         c.push(check("last-launch", "Last launch", st, format!("{} — {}", format_ts(l.started_at), l.summary)));
     }
     DiagnosticReport { generated_at: now(), sam_version: SAM_VERSION.into(), checks: c }
@@ -210,13 +276,29 @@ pub fn redact(s: &str, host: &HostInfo) -> String {
 
 /// Markdown bug report for one app (or the system), redacted.
 pub fn bug_report(app: &Sam, e: Option<&AppEntry>, host: &HostInfo) -> String {
-    let mut s = format!("## SAM bug report\n\n- SAM: {}\n- Generated: {}\n- System: {} / kernel {} / {} {}\n\n", SAM_VERSION, format_ts(now()), host.distro, host.kernel, host.desktop, host.session_type);
+    let mut s = format!(
+        "## SAM bug report\n\n- SAM: {}\n- Generated: {}\n- System: {} / kernel {} / {} {}\n\n",
+        SAM_VERSION,
+        format_ts(now()),
+        host.distro,
+        host.kernel,
+        host.desktop,
+        host.session_type
+    );
     s += "### Environment\n\n";
     for ch in system_report(app, host).checks {
         s += &format!("- [{:?}] {}: {}\n", ch.status, ch.label, ch.detail);
     }
     if let Some(e) = e {
-        s += &format!("\n### App: {} ({})\n\n- Type: {}\n- Category: {}\n- State: {:?} / badge {}\n", e.display_name(), e.id, e.appimage_type.label(), e.category, e.state, e.badge().label());
+        s += &format!(
+            "\n### App: {} ({})\n\n- Type: {}\n- Category: {}\n- State: {:?} / badge {}\n",
+            e.display_name(),
+            e.id,
+            e.appimage_type.label(),
+            e.category,
+            e.state,
+            e.badge().label()
+        );
         if let Some(x) = &e.extraction {
             s += &format!("- Extraction: {} ({}), {} files\n", x.method, x.compression, x.file_count);
         }
@@ -240,9 +322,5 @@ pub fn bug_report(app: &Sam, e: Option<&AppEntry>, host: &HostInfo) -> String {
 }
 
 fn toml_string<T: serde::Serialize>(v: &T) -> String {
-    serde_json::to_value(v)
-        .ok()
-        .map(|j| serde_json::to_string_pretty(&j).unwrap_or_default())
-        .unwrap_or_default()
-        + "\n"
+    serde_json::to_value(v).ok().map(|j| serde_json::to_string_pretty(&j).unwrap_or_default()).unwrap_or_default() + "\n"
 }

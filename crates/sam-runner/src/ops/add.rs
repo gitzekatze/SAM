@@ -52,7 +52,14 @@ impl Sam {
             fs::remove_dir_all(&incoming)?;
         }
         let mut log = Vec::new();
-        let req = ExtractRequest { source: &source, info: &info, root: &incoming, limits: self.limits(), allow_fallback: opts.consent_fallback && self.config.extraction.allow_fallback, isolation: self.extract_isolation() };
+        let req = ExtractRequest {
+            source: &source,
+            info: &info,
+            root: &incoming,
+            limits: self.limits(),
+            allow_fallback: opts.consent_fallback && self.config.extraction.allow_fallback,
+            isolation: self.extract_isolation(),
+        };
         let extracted = extract(&req, &mut log);
         let md = match &extracted {
             Ok(out) => metadata::read_metadata(&out.appdir).unwrap_or_default(),
@@ -121,7 +128,14 @@ impl Sam {
         Ok(AddOutcome { entry, created: true, relocated: false, needs_fallback_consent: needs_consent, warnings })
     }
 
-    pub(super) fn extraction_info(&self, root: &Path, appdir: &Path, out: &sam_intake::extract::ExtractOutcome, info: &sam_detect::AppImageInfo, fp: &Fingerprint) -> ExtractionInfo {
+    pub(super) fn extraction_info(
+        &self,
+        root: &Path,
+        appdir: &Path,
+        out: &sam_intake::extract::ExtractOutcome,
+        info: &sam_detect::AppImageInfo,
+        fp: &Fingerprint,
+    ) -> ExtractionInfo {
         let mut warnings = Vec::new();
         let suspicious = out.report.all_suspicious();
         if !suspicious.is_empty() {
@@ -132,7 +146,11 @@ impl Sam {
             ));
         }
         if out.method.contains("appimage-extract") {
-            warnings.push(Warning::info("fallback-extraction", "Fallback extraction used", "The AppImage's own extractor was used inside a restricted sandbox."));
+            warnings.push(Warning::info(
+                "fallback-extraction",
+                "Fallback extraction used",
+                "The AppImage's own extractor was used inside a restricted sandbox.",
+            ));
         }
         ExtractionInfo {
             root: root.to_path_buf(),
@@ -163,10 +181,9 @@ impl Sam {
         }
         let x = entry.extraction.clone().unwrap();
         entry.metadata.icon_path = metadata::cache_icon(&x.appdir, &entry.metadata.icon_name, &entry.id, &self.paths.icons_dir(), &x.root).ok().flatten();
-        if (entry.name.is_empty() || entry.name == id::slug_from_filename(&entry.source_path))
-            && !entry.metadata.name.is_empty() {
-                entry.name = entry.metadata.name.clone();
-            }
+        if (entry.name.is_empty() || entry.name == id::slug_from_filename(&entry.source_path)) && !entry.metadata.name.is_empty() {
+            entry.name = entry.metadata.name.clone();
+        }
         let _ = fs::write(x.root.join("metadata.json"), serde_json::to_vec_pretty(&entry.metadata)?);
         let _ = fs::write(x.root.join("extraction.log"), extract_log);
         self.write_log(&entry.id, LogKind::Extract, extract_log);
@@ -200,7 +217,10 @@ impl Sam {
         };
         if let Some(r) = &report {
             let mut log = String::new();
-            log += &format!("entry binary: {:?} (script: {})\nELF files: {}  bundled libraries: {}  arch: {}\n", r.entry_binary, r.entry_is_script, r.elf_count, r.bundled_libraries, r.arch);
+            log += &format!(
+                "entry binary: {:?} (script: {})\nELF files: {}  bundled libraries: {}  arch: {}\n",
+                r.entry_binary, r.entry_is_script, r.elf_count, r.bundled_libraries, r.arch
+            );
             log += &format!("requirements: {:?}\ncompatibility: {:?}  verdict: {:?}\n", r.requirements, r.compatibility, r.verdict);
             for m in &r.missing {
                 log += &format!("needs {} [{:?}] host={} (by {})\n", m.name, m.class, m.host_available, m.needed_by.join(", "));

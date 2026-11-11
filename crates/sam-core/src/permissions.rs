@@ -52,9 +52,7 @@ impl<'de> Deserialize<'de> for Access {
                 "none" | "false" | "no" | "off" | "" => Ok(Access::None),
                 "ro" | "read" | "read-only" | "readonly" => Ok(Access::Ro),
                 "rw" | "true" | "yes" | "on" | "read-write" | "readwrite" => Ok(Access::Rw),
-                other => Err(serde::de::Error::custom(format!(
-                    "invalid access level '{other}' (expected none, ro or rw)"
-                ))),
+                other => Err(serde::de::Error::custom(format!("invalid access level '{other}' (expected none, ro or rw)"))),
             },
         }
     }
@@ -312,11 +310,7 @@ pub fn bus_pattern_matches(pattern: &str, name: &str) -> bool {
 /// Wildcard allow entries that cover a name in `deny`: they cannot be
 /// enforced together, so the wildcard is not used.
 pub fn blocked_wildcards(b: &DbusBusPerms) -> Vec<String> {
-    b.allow
-        .iter()
-        .filter(|a| a.ends_with('*') && b.deny.iter().any(|d| bus_pattern_matches(a, d)))
-        .cloned()
-        .collect()
+    b.allow.iter().filter(|a| a.ends_with('*') && b.deny.iter().any(|d| bus_pattern_matches(a, d))).cloned().collect()
 }
 
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
@@ -328,7 +322,13 @@ pub fn dangerous_bus_name(name: &str) -> Option<String> {
     for (d, why) in DANGEROUS_BUS_NAMES {
         let hit = match wildcard {
             Some(prefix) => d.starts_with(prefix) || prefix.starts_with(d.trim_end_matches('.')),
-            None => if d.ends_with('.') { name.starts_with(d) } else { name == *d || name.starts_with(&format!("{d}.")) || name.starts_with(&format!("{d}5")) || name.starts_with(&format!("{d}6")) },
+            None => {
+                if d.ends_with('.') {
+                    name.starts_with(d)
+                } else {
+                    name == *d || name.starts_with(&format!("{d}.")) || name.starts_with(&format!("{d}5")) || name.starts_with(&format!("{d}6"))
+                }
+            }
         };
         if hit {
             return Some(format!("{name} {why}"));
@@ -344,8 +344,17 @@ pub fn dangerous_bus_name(name: &str) -> Option<String> {
 /// InputCapture, GlobalShortcuts, Location, Usb, Clipboard, Secret, Account.
 pub fn portal_interfaces(p: &PermissionSet) -> Vec<&'static str> {
     let mut v = vec![
-        "OpenURI", "Notification", "Settings", "FileChooser", "Print", "Email", "Inhibit",
-        "NetworkMonitor", "ProxyResolver", "MemoryMonitor", "PowerProfileMonitor",
+        "OpenURI",
+        "Notification",
+        "Settings",
+        "FileChooser",
+        "Print",
+        "Email",
+        "Inhibit",
+        "NetworkMonitor",
+        "ProxyResolver",
+        "MemoryMonitor",
+        "PowerProfileMonitor",
     ];
     if p.devices.webcam {
         v.push("Camera");
@@ -420,14 +429,7 @@ pub fn default_session_allow() -> Vec<String> {
 impl Default for DbusPerms {
     fn default() -> Self {
         DbusPerms {
-            session: DbusBusPerms {
-                mode: DbusMode::Filtered,
-                allow: default_session_allow(),
-                deny: vec![],
-                own: vec![],
-                calls: vec![],
-                broadcasts: vec![],
-            },
+            session: DbusBusPerms { mode: DbusMode::Filtered, allow: default_session_allow(), deny: vec![], own: vec![], calls: vec![], broadcasts: vec![] },
             system: DbusSystemPerms::default(),
         }
     }
@@ -624,9 +626,7 @@ impl PermissionSet {
         let v = serde_json::to_value(self)?;
         let mut cur = &v;
         for part in key.split('.') {
-            cur = cur
-                .get(part)
-                .ok_or_else(|| anyhow!("unknown permission key '{key}'"))?;
+            cur = cur.get(part).ok_or_else(|| anyhow!("unknown permission key '{key}'"))?;
         }
         Ok(cur.clone())
     }
@@ -639,13 +639,9 @@ impl PermissionSet {
         let (last, parents) = parts.split_last().context("empty key")?;
         let mut cur = &mut v;
         for part in parents {
-            cur = cur
-                .get_mut(*part)
-                .ok_or_else(|| anyhow!("unknown permission key '{key}'"))?;
+            cur = cur.get_mut(*part).ok_or_else(|| anyhow!("unknown permission key '{key}'"))?;
         }
-        let obj = cur
-            .as_object_mut()
-            .ok_or_else(|| anyhow!("'{key}' is not a settable key"))?;
+        let obj = cur.as_object_mut().ok_or_else(|| anyhow!("'{key}' is not a settable key"))?;
         let existing = obj.get(*last);
         if existing.is_none() && !(*last == "landlock" && parents == ["advanced"]) {
             bail!("unknown permission key '{key}'");
@@ -662,12 +658,7 @@ fn parse_value(raw: &str, existing: Option<&serde_json::Value>) -> serde_json::V
     // Comma separated input into an array field, for CLI convenience.
     if let Some(Value::Array(_)) = existing {
         if !raw.trim_start().starts_with('[') {
-            let items: Vec<Value> = raw
-                .split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(|s| Value::String(s.to_string()))
-                .collect();
+            let items: Vec<Value> = raw.split(',').map(str::trim).filter(|s| !s.is_empty()).map(|s| Value::String(s.to_string())).collect();
             return Value::Array(items);
         }
     }

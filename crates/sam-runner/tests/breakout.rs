@@ -123,7 +123,10 @@ const APPRUN: &str = "#!/bin/sh\nexec python3 \"$APPDIR/usr/bin/breakout.py\"\n"
 
 fn usable() -> bool {
     let host = HostInfo::probe();
-    host.tools.bwrap.is_some() && sam_runner::doctor::bwrap_functional(&host).is_ok() && sam_runner::find_helper().is_some() && sam_core::util::which("python3").is_some()
+    host.tools.bwrap.is_some()
+        && sam_runner::doctor::bwrap_functional(&host).is_ok()
+        && sam_runner::find_helper().is_some()
+        && sam_core::util::which("python3").is_some()
 }
 
 fn parse(log: &Path) -> HashMap<String, String> {
@@ -145,10 +148,27 @@ fn breakout_attempts_fail() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let home = root.join("home/tester");
-    for d in ["Documents", ".ssh", ".aws", ".password-store", ".local/share/keyrings", ".config/autostart", ".config/systemd/user", ".config/sam", ".local/share/applications"] {
+    for d in [
+        "Documents",
+        ".ssh",
+        ".aws",
+        ".password-store",
+        ".local/share/keyrings",
+        ".config/autostart",
+        ".config/systemd/user",
+        ".config/sam",
+        ".local/share/applications",
+    ] {
         fs::create_dir_all(home.join(d)).unwrap();
     }
-    for (f, data) in [(".ssh/id_ed25519", "KEY"), (".aws/credentials", "AWS"), (".password-store/bank.gpg", "PASS"), (".local/share/keyrings/login.keyring", "RING"), (".bashrc", "# bashrc"), (".config/sam/config.toml", "# sam")] {
+    for (f, data) in [
+        (".ssh/id_ed25519", "KEY"),
+        (".aws/credentials", "AWS"),
+        (".password-store/bank.gpg", "PASS"),
+        (".local/share/keyrings/login.keyring", "RING"),
+        (".bashrc", "# bashrc"),
+        (".config/sam/config.toml", "# sam"),
+    ] {
         fs::write(home.join(f), data).unwrap();
     }
     std::env::set_var("HOME", &home);
@@ -257,7 +277,8 @@ fn breakout_attempts_fail() {
     // SAM's own folder is replaced by an empty, throwaway one: writes land
     // there, never in the real configuration.
     assert_eq!(fs::read_to_string(home.join(".config/sam/config.toml")).unwrap(), "# sam", "SAM's configuration unchanged");
-    for rel in [".config/autostart/evil.desktop", ".local/bin/ls", ".local/share/dbus-1/services/evil.service", ".local/share/kwin/scripts/evil/metadata.json"] {
+    for rel in [".config/autostart/evil.desktop", ".local/bin/ls", ".local/share/dbus-1/services/evil.service", ".local/share/kwin/scripts/evil/metadata.json"]
+    {
         assert!(!home.join(rel).exists(), "{rel} was not created on the host");
     }
     // Created empty by SAM so they could be mounted read-only; still empty.

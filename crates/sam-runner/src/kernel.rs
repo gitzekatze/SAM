@@ -57,10 +57,7 @@ pub struct LandlockSpec {
 /// `extra_write`: paths mounted writable for this launch only, e.g. files
 /// passed with "Open with" (else the app could open but not save them).
 pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox: &str, extra_write: &[PathBuf]) -> LandlockSpec {
-    let mut write: Vec<PathBuf> = ["/tmp", "/var/tmp", "/dev", "/proc", runtime_dir_in_sandbox]
-        .iter()
-        .map(PathBuf::from)
-        .collect();
+    let mut write: Vec<PathBuf> = ["/tmp", "/var/tmp", "/dev", "/proc", runtime_dir_in_sandbox].iter().map(PathBuf::from).collect();
     let fs = &p.filesystem;
     if !fs.home || fs.home_access == Access::Rw {
         // Private home (or full home read/write).
@@ -127,9 +124,7 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
 }
 
 fn apply_landlock(spec: &LandlockSpec) -> Result<String> {
-    use landlock::{
-        path_beneath_rules, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, Scope, ABI,
-    };
+    use landlock::{path_beneath_rules, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, Scope, ABI};
     let abi = ABI::V3;
     let read = AccessFs::from_read(abi);
     let all = AccessFs::from_all(abi);
@@ -212,7 +207,15 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
 
 /// Additionally blocked by the strict filter.
 fn strict_extra_syscalls() -> Vec<i64> {
-    vec![libc::SYS_ptrace, libc::SYS_process_vm_writev, libc::SYS_process_vm_readv, libc::SYS_personality, libc::SYS_mbind, libc::SYS_move_pages, libc::SYS_migrate_pages]
+    vec![
+        libc::SYS_ptrace,
+        libc::SYS_process_vm_writev,
+        libc::SYS_process_vm_readv,
+        libc::SYS_personality,
+        libc::SYS_mbind,
+        libc::SYS_move_pages,
+        libc::SYS_migrate_pages,
+    ]
 }
 
 /// The compiled BPF program for a filter spec.

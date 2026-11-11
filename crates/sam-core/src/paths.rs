@@ -24,37 +24,17 @@ pub struct Paths {
 impl Paths {
     pub fn from_env() -> Self {
         let home = home_dir();
-        let xdg_config = std::env::var_os("XDG_CONFIG_HOME")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".config"));
-        let xdg_data = std::env::var_os("XDG_DATA_HOME")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".local/share"));
-        let config_dir = std::env::var_os("SAM_CONFIG_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| xdg_config.join("sam"));
-        let data_dir = std::env::var_os("SAM_DATA_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| xdg_data.join("sam"));
-        let applications_dir = std::env::var_os("SAM_APPLICATIONS_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| xdg_data.join("applications"));
-        Paths {
-            config_dir,
-            data_dir,
-            applications_dir,
-        }
+        let xdg_config = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+        let xdg_data = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join(".local/share"));
+        let config_dir = std::env::var_os("SAM_CONFIG_DIR").map(PathBuf::from).unwrap_or_else(|| xdg_config.join("sam"));
+        let data_dir = std::env::var_os("SAM_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| xdg_data.join("sam"));
+        let applications_dir = std::env::var_os("SAM_APPLICATIONS_DIR").map(PathBuf::from).unwrap_or_else(|| xdg_data.join("applications"));
+        Paths { config_dir, data_dir, applications_dir }
     }
 
     /// Root all paths under one directory (tests).
     pub fn rooted(root: &Path) -> Self {
-        Paths {
-            config_dir: root.join("config"),
-            data_dir: root.join("data"),
-            applications_dir: root.join("applications"),
-        }
+        Paths { config_dir: root.join("config"), data_dir: root.join("data"), applications_dir: root.join("applications") }
     }
 
     pub fn config_file(&self) -> PathBuf {

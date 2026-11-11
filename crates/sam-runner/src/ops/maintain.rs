@@ -20,7 +20,14 @@ impl Sam {
         let fp = fingerprint::compute(&entry.source_path)?;
         let root = self.extracted_root().join(&entry.id);
         let mut log = Vec::new();
-        let req = ExtractRequest { source: &entry.source_path, info: &info, root: &root, limits: self.limits(), allow_fallback: consent_fallback && self.config.extraction.allow_fallback, isolation: self.extract_isolation() };
+        let req = ExtractRequest {
+            source: &entry.source_path,
+            info: &info,
+            root: &root,
+            limits: self.limits(),
+            allow_fallback: consent_fallback && self.config.extraction.allow_fallback,
+            isolation: self.extract_isolation(),
+        };
         match extract(&req, &mut log) {
             Ok(out) => {
                 entry.appimage_type = info.kind;
@@ -312,7 +319,16 @@ impl Sam {
         let home = tree_size(&self.paths.app_home(&entry.id));
         let overlay = tree_size(&self.paths.data_dir.join("overlays").join(&entry.id));
         let logs = tree_size(&self.paths.app_logs_dir(&entry.id));
-        DiskUsage { id: entry.id.clone(), name: entry.display_name().to_string(), unpacked, home, overlay, logs, total: unpacked + home + overlay + logs, can_free: unpacked > 0 && entry.source_path.exists() }
+        DiskUsage {
+            id: entry.id.clone(),
+            name: entry.display_name().to_string(),
+            unpacked,
+            home,
+            overlay,
+            logs,
+            total: unpacked + home + overlay + logs,
+            can_free: unpacked > 0 && entry.source_path.exists(),
+        }
     }
 
     /// Deletes an app's unpacked copy to free space. Its settings and

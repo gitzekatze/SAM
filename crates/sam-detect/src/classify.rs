@@ -24,9 +24,24 @@ pub struct LibInfo {
 /// glibc and the GCC runtime are on the AppImage excludelist: AppImages are
 /// built to use the host copies, so these are expected, not dangerous.
 const SYSTEM: &[&str] = &[
-    "libc.so", "libm.so", "libdl.so", "libpthread.so", "librt.so", "libresolv.so", "libutil.so",
-    "libanl.so", "libmvec.so", "libnsl.so", "libBrokenLocale.so", "ld-linux", "libgcc_s.so",
-    "libstdc++.so", "libz.so", "libcrypt.so", "libnss_", "libthread_db.so",
+    "libc.so",
+    "libm.so",
+    "libdl.so",
+    "libpthread.so",
+    "librt.so",
+    "libresolv.so",
+    "libutil.so",
+    "libanl.so",
+    "libmvec.so",
+    "libnsl.so",
+    "libBrokenLocale.so",
+    "ld-linux",
+    "libgcc_s.so",
+    "libstdc++.so",
+    "libz.so",
+    "libcrypt.so",
+    "libnss_",
+    "libthread_db.so",
 ];
 
 /// ABI-sensitive host libraries that must not be silently exposed.
@@ -45,28 +60,65 @@ const DANGEROUS: &[(&str, Option<&str>)] = &[
 ];
 
 const GRAPHICS: &[&str] = &[
-    "libGL.so", "libEGL.so", "libGLX.so", "libGLESv1", "libGLESv2.so", "libOpenGL.so",
-    "libvulkan.so", "libdrm.so", "libgbm.so", "libnvidia", "libva.so", "libva-", "libvdpau.so",
+    "libGL.so",
+    "libEGL.so",
+    "libGLX.so",
+    "libGLESv1",
+    "libGLESv2.so",
+    "libOpenGL.so",
+    "libvulkan.so",
+    "libdrm.so",
+    "libgbm.so",
+    "libnvidia",
+    "libva.so",
+    "libva-",
+    "libvdpau.so",
     "libGLdispatch.so",
 ];
 
 const DISPLAY_X11: &[&str] = &[
-    "libX11.so", "libX11-xcb.so", "libxcb", "libXext.so", "libXrender.so", "libXi.so", "libXrandr.so",
-    "libXcursor.so", "libXfixes.so", "libXcomposite.so", "libXdamage.so", "libXinerama.so",
-    "libXtst.so", "libXss.so", "libXxf86vm.so", "libICE.so", "libSM.so", "libXau.so", "libXdmcp.so",
-    "libXmu.so", "libXt.so", "libXpm.so", "libXft.so",
+    "libX11.so",
+    "libX11-xcb.so",
+    "libxcb",
+    "libXext.so",
+    "libXrender.so",
+    "libXi.so",
+    "libXrandr.so",
+    "libXcursor.so",
+    "libXfixes.so",
+    "libXcomposite.so",
+    "libXdamage.so",
+    "libXinerama.so",
+    "libXtst.so",
+    "libXss.so",
+    "libXxf86vm.so",
+    "libICE.so",
+    "libSM.so",
+    "libXau.so",
+    "libXdmcp.so",
+    "libXmu.so",
+    "libXt.so",
+    "libXpm.so",
+    "libXft.so",
 ];
 
 const DISPLAY_WAYLAND: &[&str] = &["libwayland-client.so", "libwayland-cursor.so", "libwayland-egl.so", "libdecor"];
 
-const AUDIO: &[&str] = &[
-    "libasound.so", "libpulse.so", "libpulse-simple.so", "libpulse-mainloop", "libpipewire",
-    "libjack.so", "libportaudio.so", "libopenal.so",
-];
+const AUDIO: &[&str] =
+    &["libasound.so", "libpulse.so", "libpulse-simple.so", "libpulse-mainloop", "libpipewire", "libjack.so", "libportaudio.so", "libopenal.so"];
 
 const NETWORK: &[&str] = &[
-    "libcurl", "libssl.so", "libnss3.so", "libQt5Network.so", "libQt6Network.so", "libsoup",
-    "libgnutls.so", "libnghttp2.so", "libwebkit", "libQt5WebEngine", "libQt6WebEngine",
+    "libcurl",
+    "libssl.so",
+    "libnss3.so",
+    "libQt5Network.so",
+    "libQt6Network.so",
+    "libsoup",
+    "libgnutls.so",
+    "libnghttp2.so",
+    "libwebkit",
+    "libQt5WebEngine",
+    "libQt6WebEngine",
 ];
 
 const FONTS: &[&str] = &["libfontconfig.so", "libfreetype.so", "libharfbuzz.so", "libpango"];
@@ -134,11 +186,7 @@ pub fn classify_library(name: &str) -> LibInfo {
     } else {
         ResourceClass::Unknown
     };
-    LibInfo {
-        class,
-        signals,
-        toolkit: toolkit_of(name),
-    }
+    LibInfo { class, signals, toolkit: toolkit_of(name) }
 }
 
 /// Read-only host resources that are always safe to expose.

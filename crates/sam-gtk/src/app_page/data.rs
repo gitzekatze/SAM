@@ -54,10 +54,13 @@ impl AppPage {
     pub(super) async fn load_side_info(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
         let cmd = app.backend.call(&["command", &self.app_id], None).await;
-        set_mono_text(&self.command_view, &match cmd {
-            Ok(c) => util::str_of(&c, "command").to_string(),
-            Err(e) => e,
-        });
+        set_mono_text(
+            &self.command_view,
+            &match cmd {
+                Ok(c) => util::str_of(&c, "command").to_string(),
+                Err(e) => e,
+            },
+        );
         *self.menu_state.borrow_mut() = app.backend.call(&["menu", "list", &self.app_id], None).await.ok();
         self.render_menu_group();
         self.load_log_list().await;
@@ -66,7 +69,8 @@ impl AppPage {
     /// Fills the log picker (newest first) and shows the newest start log.
     pub(super) async fn load_log_list(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
-        let mut files: Vec<Value> = app.backend.call(&["logs", &self.app_id, "--list"], None).await.ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
+        let mut files: Vec<Value> =
+            app.backend.call(&["logs", &self.app_id, "--list"], None).await.ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
         files.sort_by_key(|f| std::cmp::Reverse(util::get(f, "modified").and_then(Value::as_i64).unwrap_or(0)));
         let labels: Vec<String> = files
             .iter()
@@ -228,10 +232,18 @@ impl AppPage {
                 Ok(r) => {
                     let warnings = util::list_of(&r, "warnings");
                     let kept = if keep_data { " Its settings and files were kept." } else { "" };
-                    app.toast(&if warnings.is_empty() { format!("Removed the sandbox for {name}.{kept}") } else { format!("Removed the sandbox, but: {}", warnings.join("; ")) });
+                    app.toast(&if warnings.is_empty() {
+                        format!("Removed the sandbox for {name}.{kept}")
+                    } else {
+                        format!("Removed the sandbox, but: {}", warnings.join("; "))
+                    });
                     let path = me.entry().map(|e| util::str_of(&e, "source_path").to_string()).unwrap_or_default();
                     app.refresh_apps().await;
-                    if path.is_empty() { app.show_welcome() } else { app.open_file(&path) }
+                    if path.is_empty() {
+                        app.show_welcome()
+                    } else {
+                        app.open_file(&path)
+                    }
                 }
                 Err(e) => app.report_error(&e),
             }
@@ -283,7 +295,9 @@ impl AppPage {
             let explanation = util::str_of(&sug, "explanation").to_string();
             let risk = util::str_of(&sug, "risk");
             let ask = if util::bool_of(&sug, "from_app_output") {
-                Some(format!("This suggestion is based on messages the app printed itself. A malicious app can print messages to get more access.\n\n{explanation}"))
+                Some(format!(
+                    "This suggestion is based on messages the app printed itself. A malicious app can print messages to get more access.\n\n{explanation}"
+                ))
             } else if risk == "high" || risk == "dangerous" || util::str_of(&sug, "action.kind") == "compat" {
                 Some(explanation.clone())
             } else {

@@ -35,7 +35,8 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             });
         }
         PresetCmd::Check { name, appimage, current_stdin } => {
-            let current: Option<PermissionSet> = if current_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
+            let current: Option<PermissionSet> =
+                if current_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
             let (p, c) = app.check_preset_preview(&appimage, &name, current)?;
             out.emit(&json!({"preset": p.name, "permissions": p.permissions, "check": c, "needs_confirmation": c.needs_confirmation()}), || {
                 for s in &c.removes_needed {

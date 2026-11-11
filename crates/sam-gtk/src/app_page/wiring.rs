@@ -98,21 +98,27 @@ impl AppPage {
             group.add_action(&a);
         };
         add("open-folder", Box::new(|me| me.open_private_folder()));
-        add("reset", Box::new(|me| {
-            if me.sandboxed() {
-                me.simple(vec!["profile".into(), "reset".into(), me.app_id.clone()], "Settings reset");
-            } else {
-                me.reload();
-            }
-        }));
-        add("reextract", Box::new(|me| {
-            let Some(app) = me.app() else { return };
-            let (id, me) = (me.app_id.clone(), me.clone());
-            glib::spawn_future_local(async move {
-                app.reextract(&id, false).await;
-                me.reload();
-            });
-        }));
+        add(
+            "reset",
+            Box::new(|me| {
+                if me.sandboxed() {
+                    me.simple(vec!["profile".into(), "reset".into(), me.app_id.clone()], "Settings reset");
+                } else {
+                    me.reload();
+                }
+            }),
+        );
+        add(
+            "reextract",
+            Box::new(|me| {
+                let Some(app) = me.app() else { return };
+                let (id, me) = (me.app_id.clone(), me.clone());
+                glib::spawn_future_local(async move {
+                    app.reextract(&id, false).await;
+                    me.reload();
+                });
+            }),
+        );
         add("remove", Box::new(|me| me.remove_sandbox()));
         self.page.insert_action_group("page", Some(&group));
         let menu = gio::Menu::new();
@@ -172,7 +178,10 @@ impl AppPage {
                 return;
             }
             let on = sw.is_active();
-            me.simple(vec!["desktop".into(), me.app_id.clone(), if on { "install".into() } else { "remove".into() }], if on { "Menu entry added" } else { "Menu entry removed" });
+            me.simple(
+                vec!["desktop".into(), me.app_id.clone(), if on { "install".into() } else { "remove".into() }],
+                if on { "Menu entry added" } else { "Menu entry removed" },
+            );
         });
         let w = Rc::downgrade(self);
         self.hide_switch.connect_active_notify(move |sw| {
@@ -182,7 +191,11 @@ impl AppPage {
             }
             let on = sw.is_active();
             if me.sandboxed() {
-                me.simple_with(vec!["menu".into(), if on { "hide".into() } else { "restore".into() }, me.app_id.clone()], if on { "Other menu entries hidden" } else { "Other menu entries restored" }, true);
+                me.simple_with(
+                    vec!["menu".into(), if on { "hide".into() } else { "restore".into() }, me.app_id.clone()],
+                    if on { "Other menu entries hidden" } else { "Other menu entries restored" },
+                    true,
+                );
             } else {
                 // No sandbox yet: decides what Create Sandbox does.
                 me.hide_duplicates.set(on);
@@ -227,7 +240,11 @@ impl AppPage {
             match reply {
                 Ok(r) => {
                     let failed = r.get("record").and_then(|x| x.get("failed")).and_then(Value::as_array).map(Vec::len).unwrap_or(0);
-                    app.toast(&if failed == 0 { "Sandbox check passed: every setting applies".to_string() } else { format!("Sandbox check: {failed} setting(s) do not apply") });
+                    app.toast(&if failed == 0 {
+                        "Sandbox check passed: every setting applies".to_string()
+                    } else {
+                        format!("Sandbox check: {failed} setting(s) do not apply")
+                    });
                     *me.check_report.borrow_mut() = r.get("report").cloned();
                     *me.check_settings.borrow_mut() = settings;
                 }
@@ -319,7 +336,8 @@ impl AppPage {
             }
             Some(r) => {
                 let results: Vec<Value> = r.get("results").and_then(Value::as_array).cloned().unwrap_or_default();
-                let failed: Vec<String> = results.iter().filter(|x| util::get(x, "ok") == Some(&Value::Bool(false))).map(|x| util::str_of(x, "title").to_string()).collect();
+                let failed: Vec<String> =
+                    results.iter().filter(|x| util::get(x, "ok") == Some(&Value::Bool(false))).map(|x| util::str_of(x, "title").to_string()).collect();
                 let total = results.iter().filter(|x| matches!(util::get(x, "ok"), Some(Value::Bool(_)))).count();
                 if failed.is_empty() {
                     self.check_summary.set_title(&format!("All {total} checks passed"));
@@ -366,7 +384,10 @@ impl AppPage {
         }
         let passed: Vec<&Value> = results.iter().filter(|r| util::get(r, "ok") == Some(&Value::Bool(true))).collect();
         if !passed.is_empty() {
-            let exp = adw::ExpanderRow::builder().title(format!("{} confirmed settings", passed.len())).subtitle(tr("What the test program found inside the sandbox")).build();
+            let exp = adw::ExpanderRow::builder()
+                .title(format!("{} confirmed settings", passed.len()))
+                .subtitle(tr("What the test program found inside the sandbox"))
+                .build();
             exp.add_prefix(&{
                 let i = gtk::Image::from_icon_name("emblem-ok-symbolic");
                 i.add_css_class("success");
@@ -460,7 +481,15 @@ impl AppPage {
                     app.toast(&format!("“{name}” is a built-in preset. Choose another name."));
                     return;
                 }
-                if !window::confirm(&app.window, &format!("Replace “{name}”?"), "A preset with this name exists. Its settings are replaced by the ones shown here. Apps that used it keep their current settings.", "Replace", true).await {
+                if !window::confirm(
+                    &app.window,
+                    &format!("Replace “{name}”?"),
+                    "A preset with this name exists. Its settings are replaced by the ones shown here. Apps that used it keep their current settings.",
+                    "Replace",
+                    true,
+                )
+                .await
+                {
                     return;
                 }
             }

@@ -504,13 +504,7 @@ pub struct DiagnosticCheck {
 
 impl DiagnosticCheck {
     pub fn new(id: &str, label: &str, status: CheckStatus, detail: impl Into<String>) -> Self {
-        DiagnosticCheck {
-            id: id.into(),
-            label: label.into(),
-            status,
-            detail: detail.into(),
-            hint: None,
-        }
+        DiagnosticCheck { id: id.into(), label: label.into(), status, detail: detail.into(), hint: None }
     }
     pub fn hint(mut self, h: impl Into<String>) -> Self {
         self.hint = Some(h.into());
@@ -555,9 +549,11 @@ impl AppSummary {
             risk: crate::risk::assess(&e.profile.permissions),
             last_launched: e.last_launched,
             added_at: e.added_at,
-            last_problem: e.last_launch.as_ref().filter(|l| !l.success && !matches!(l.signal, Some(9) | Some(15))).map(|l| {
-                l.findings.first().map(|f| f.title.clone()).unwrap_or_else(|| l.summary.clone())
-            }),
+            last_problem: e
+                .last_launch
+                .as_ref()
+                .filter(|l| !l.success && !matches!(l.signal, Some(9) | Some(15)))
+                .map(|l| l.findings.first().map(|f| f.title.clone()).unwrap_or_else(|| l.summary.clone())),
             terminal: e.metadata.terminal,
         }
     }
