@@ -488,14 +488,39 @@ impl Bubblewrap {
     /// The bwrap command line for this launch.
     pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
         let bwrap = ctx.host.tools.bwrap.as_ref().context("bubblewrap (bwrap) is not installed")?;
+        // Each step adds its part of the Bubblewrap command, in this order.
+        let mut s = Section { ctx, a: Args { v: Vec::new() }, notes: Vec::new(), keep_fds: Vec::new() };
+        s.namespaces();
+        s.system();
+        s.identity_app_sys();
+        s.home();
+        s.display();
+        s.audio();
+        s.devices();
+        s.dbus();
+        s.sockets();
+        s.environment();
+        s.finish_command();
+        let generated_files = vec![ctx.runtime_dir.join("passwd"), ctx.runtime_dir.join("group")];
+        Ok(SandboxCommand { program: bwrap.path.clone(), args: s.a.v, env: vec![], clear_env: false, keep_fds: s.keep_fds, notes: s.notes, generated_files })
+    }
+}
+
+/// The Bubblewrap command, one part per method (see `Bubblewrap::build`).
+struct Section<'c> {
+    ctx: &'c LaunchContext,
+    a: Args,
+    notes: Vec<String>,
+    keep_fds: Vec<i32>,
+}
+
+impl Section<'_> {
+    /// Namespaces, ids and process hygiene.
+    fn namespaces(&mut self) {
+        let ctx = self.ctx;
         let p = &ctx.permissions;
         let h = &ctx.host;
-        let home = h.home.clone();
-        let run = Self::runtime_dir(ctx);
-        let mut notes: Vec<String> = Vec::new();
-        let mut a = Args { v: Vec::new() };
-        let mut keep_fds = Vec::new();
-
+        let a = &mut self.a;
         // Namespaces & process hygiene.
         a.push("--die-with-parent").push("--new-session");
         a.push("--unshare-user").push("--unshare-pid").push("--unshare-uts").push("--unshare-cgroup-try");
@@ -527,7 +552,14 @@ impl Bubblewrap {
         // hosts and nested sandboxes; the UTS namespace alone is sufficient.
         a.push("--cap-drop").push("ALL");
         a.push("--clearenv");
+    }
 
+    /// The read-only system: /usr, selected /etc and /var, hidden host tools.
+    fn system(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let run = Bubblewrap::runtime_dir(ctx);
+        let a = &mut self.a;
         // Base filesystem.
         a.push("--proc").push("/proc");
         a.push("--dev").push("/dev");
@@ -542,7 +574,7 @@ impl Bubblewrap {
                 a.op2("--ro-bind", "/usr/lib", "/usr/lib");
                 a.op2("--ro-bind-try", "/usr/bin", "/usr/bin");
                 for d in ["/usr/lib64", "/usr/lib32", "/usr/libexec", "/usr/sbin"] {
-                    mirror(&mut a, d);
+                    mirror(a, d);
                 }
                 let mut share: Vec<&str> = SHARE_BASE.to_vec();
                 if p.devices.gpu {
@@ -555,12 +587,12 @@ impl Bubblewrap {
                     share.extend(SHARE_DBUS);
                 }
                 for s in share {
-                    ro_follow(&mut a, &Path::new("/usr/share").join(s));
+                    ro_follow(a, &Path::new("/usr/share").join(s));
                 }
             }
         }
         for d in ["/bin", "/sbin", "/lib", "/lib64", "/lib32"] {
-            mirror(&mut a, d);
+            mirror(a, d);
         }
         // Tools that ask a service outside the sandbox to start a program
         // (systemd, Flatpak). They would run it unsandboxed if the service
@@ -594,8 +626,15 @@ impl Bubblewrap {
             etc.push("machine-id");
         }
         for e in etc {
-            ro_follow(&mut a, &Path::new("/etc").join(e));
+            ro_follow(a, &Path::new("/etc").join(e));
         }
+    }
+
+    /// Generated passwd/group, the app folder (read-only or an overlay) and /sys.
+    fn identity_app_sys(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let a = &mut self.a;
         // Synthetic passwd/group with only the current user.
         let passwd = ctx.runtime_dir.join("passwd");
         let group = ctx.runtime_dir.join("group");
@@ -636,13 +675,22 @@ impl Bubblewrap {
                 a.ro(&m);
             }
         }
+    }
 
+    /// The private home, granted folders and files, and the protections inside.
+    fn home(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let h = &ctx.host;
+        let home = h.home.clone();
+        let a = &mut self.a;
+        let notes = &mut self.notes;
         // Home.
         let fsp = &p.filesystem;
         if fsp.home {
             let op = if fsp.home_access == Access::Rw { "--bind" } else { "--ro-bind" };
             a.op2(op, &home, &home);
-            guard_home(&mut a, &home, fsp, fsp.home_access == Access::Rw);
+            guard_home(a, &home, fsp, fsp.home_access == Access::Rw);
         } else {
             if p.advanced.persistent_home {
                 // The launch pipeline creates the directory; build() has no side effects.
@@ -687,7 +735,7 @@ impl Bubblewrap {
             let covers = |c: &String| home.starts_with(expand_home(c));
             let rw = fsp.custom_write.iter().any(covers);
             if rw || fsp.custom_read.iter().any(covers) {
-                guard_home(&mut a, &home, fsp, rw);
+                guard_home(a, &home, fsp, rw);
             }
         }
         // Files explicitly passed on the command line (e.g. "Open with") are
@@ -703,7 +751,16 @@ impl Bubblewrap {
         for (host_p, sb, rw) in &ctx.extra_binds {
             a.op2(if *rw { "--bind" } else { "--ro-bind" }, host_p, sb);
         }
+    }
 
+    /// Wayland and X11.
+    fn display(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let h = &ctx.host;
+        let run = Bubblewrap::runtime_dir(ctx);
+        let a = &mut self.a;
+        let notes = &mut self.notes;
         // Display.
         let mut session_type = "tty";
         if p.display.wayland {
@@ -753,7 +810,16 @@ impl Bubblewrap {
             a.setenv("GDK_BACKEND", gdk);
             a.setenv("SDL_VIDEODRIVER", sdl);
         }
+    }
 
+    /// Sound.
+    fn audio(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let h = &ctx.host;
+        let run = Bubblewrap::runtime_dir(ctx);
+        let a = &mut self.a;
+        let notes = &mut self.notes;
         // Audio.
         // Sound goes through the PulseAudio socket only. The raw PipeWire
         // socket reaches cameras and other apps' screen-cast streams (PipeWire
@@ -778,7 +844,15 @@ impl Bubblewrap {
         if p.audio.alsa_raw {
             a.op2("--dev-bind-try", "/dev/snd", "/dev/snd");
         }
+    }
 
+    /// GPU, webcam, game controllers, input, USB, Bluetooth.
+    fn devices(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let h = &ctx.host;
+        let a = &mut self.a;
+        let notes = &mut self.notes;
         // Devices.
         if p.devices.gpu {
             a.op2("--dev-bind-try", "/dev/dri", "/dev/dri");
@@ -828,7 +902,16 @@ impl Bubblewrap {
                 notes.push("Input method needs the session D-Bus; not granted".into());
             }
         }
+    }
 
+    /// Session and system bus (filtered through the proxy, full, or none).
+    fn dbus(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let h = &ctx.host;
+        let run = Bubblewrap::runtime_dir(ctx);
+        let a = &mut self.a;
+        let notes = &mut self.notes;
         // D-Bus.
         match p.dbus.session.mode {
             DbusMode::None => a.setenv("NO_AT_BRIDGE", "1"),
@@ -859,7 +942,16 @@ impl Bubblewrap {
             }
             DbusMode::Filtered => {} // loads as none; nothing is passed in
         }
+    }
 
+    /// Other sockets (SSH agent, …).
+    fn sockets(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let h = &ctx.host;
+        let run = Bubblewrap::runtime_dir(ctx);
+        let a = &mut self.a;
+        let notes = &mut self.notes;
         // Sockets.
         if p.sockets.ssh_agent {
             if let Some(s) = &h.sockets.ssh_agent {
@@ -890,7 +982,16 @@ impl Bubblewrap {
                 a.push("--tmpfs").push(d.to_string_lossy());
             }
         }
+    }
 
+    /// The cleared environment, then only safe variables.
+    fn environment(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let h = &ctx.host;
+        let home = h.home.clone();
+        let run = Bubblewrap::runtime_dir(ctx);
+        let a = &mut self.a;
         // Environment.
         a.setenv("HOME", home.to_string_lossy());
         a.setenv("USER", &h.user);
@@ -920,7 +1021,16 @@ impl Bubblewrap {
                 a.setenv(k, v);
             }
         }
+    }
 
+    /// Working directory, seccomp, SAM's helper (Landlock, syscall filter, the app's start), extra arguments, and the command itself.
+    fn finish_command(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        let h = &ctx.host;
+        let home = h.home.clone();
+        let a = &mut self.a;
+        let keep_fds = &mut self.keep_fds;
         // Working directory.
         let chdir = if visible_in_sandbox(&ctx.owd, ctx) { ctx.owd.clone() } else { home.clone() };
         a.push("--chdir").push(chdir.to_string_lossy());
@@ -951,8 +1061,6 @@ impl Bubblewrap {
         cmd.push(ctx.entry_in_sandbox());
         cmd.extend(ctx.args.iter().cloned());
         a.v.extend(cmd);
-
-        Ok(SandboxCommand { program: bwrap.path.clone(), args: a.v, env: vec![], clear_env: false, keep_fds, notes, generated_files: vec![passwd, group] })
     }
 }
 
