@@ -91,6 +91,11 @@ version.
 
 ### Changed
 
+- While Downloads is not searched, its switch says how many AppImages are
+  there (browsers save new AppImages to Downloads).
+- Asking to let an AppImage unpack itself is worded plainly, and for DwarFS
+  AppImages names the dwarfs package that avoids the question; the command
+  line says which command to use.
 - When an app stops right after starting, the notification has a *Show the
   fix* button that opens SAM at that app; its page shows *What went wrong
   last time* first, with the fix one click away.

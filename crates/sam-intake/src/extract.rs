@@ -87,7 +87,7 @@ impl std::fmt::Display for NeedsFallbackConsent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "static extraction failed ({}). The AppImage's own extractor can be tried, but that runs code from the AppImage (inside a restricted sandbox). Re-run with consent to allow it.",
+            "SAM could not unpack it by itself ({}). The AppImage can unpack itself instead, which runs code from it inside a sandbox with no network and no access to your files: allow that in SAM's window, or with `sam-jail reextract APP --allow-fallback`.",
             self.attempts.join("; ")
         )
     }

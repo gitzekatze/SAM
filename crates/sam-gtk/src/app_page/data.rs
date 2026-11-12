@@ -180,8 +180,18 @@ impl AppPage {
                     app.refresh_apps().await;
                     app.open_app(&id);
                     if util::bool_of(&r, "needs_fallback_consent") {
-                        let body = format!("SAM could not unpack {} without running it. It can try the AppImage's own extractor instead. That runs code from the AppImage, inside a sandbox with no network and no access to your files.\n\nOnly continue if you trust where this file came from.", util::plain(&name));
-                        if window::confirm(&app.window, "Static Extraction Failed", &body, "Use the AppImage's Extractor", false).await {
+                        // DwarFS AppImages (\"anylinux\", uruntime) need the dwarfs tools for
+                        // SAM to unpack them itself: say so, it avoids the question.
+                        let dwarfs = r.get("warnings").is_some_and(|w| w.to_string().contains("DwarFS"));
+                        let why = if dwarfs {
+                            format!("{} is packed in the newer DwarFS format. SAM can unpack it by itself once the dwarfs tools are installed (package \u{201c}dwarfs\u{201d}).", util::plain(&name))
+                        } else {
+                            format!("SAM could not unpack {} by itself.", util::plain(&name))
+                        };
+                        let body = format!(
+                            "{why}\n\nInstead, the AppImage can unpack itself. That runs code from the AppImage, inside a sandbox with no network and no access to your files. Only continue if you trust where this file came from."
+                        );
+                        if window::confirm(&app.window, &tr("Let the AppImage Unpack Itself?"), &body, &tr("Unpack"), false).await {
                             app.reextract(&id, true).await;
                             app.open_app(&id);
                         }

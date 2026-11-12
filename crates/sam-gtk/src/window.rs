@@ -70,6 +70,8 @@ pub struct App {
 struct Sidebar {
     locations: gtk::ListBox,
     downloads: gtk::Switch,
+    /// "Also search the Downloads folder", with a count while it is off.
+    downloads_label: gtk::Label,
     list: gtk::ListBox,
     stack: gtk::Stack,
     empty: adw::StatusPage,
@@ -170,6 +172,33 @@ impl App {
         }
         self.state.borrow_mut().loaded = true;
         self.rebuild_list();
+        self.count_downloads().await;
+    }
+
+    /// While Downloads is not searched, say how many AppImages wait there:
+    /// browsers save new AppImages to Downloads, and an empty list would
+    /// not tell a new user where theirs went.
+    async fn count_downloads(self: &Rc<Self>) {
+        let Some(sb) = self.sidebar.get() else { return };
+        let base = tr("Also search the Downloads folder");
+        let searched = util::bool_of(&self.state.borrow().config, "general.scan_downloads");
+        // The same folder SAM searches when the switch is on.
+        let dir = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads").cloned();
+        let count = match (searched, dir) {
+            (false, Some(d)) if d.is_dir() => self
+                .backend
+                .call(&["scan", &d.to_string_lossy()], None)
+                .await
+                .ok()
+                .and_then(|v| v.get("found").and_then(Value::as_array).map(|a| a.iter().filter(|x| x.get("registered").is_none_or(Value::is_null)).count()))
+                .unwrap_or(0),
+            _ => 0,
+        };
+        sb.downloads_label.set_text(&match count {
+            0 => base,
+            1 => format!("{base} · 1 AppImage there"),
+            n => format!("{base} · {n} AppImages there"),
+        });
     }
 
     /// After a change to one sandboxed app (settings, review, repair):
@@ -317,7 +346,7 @@ impl App {
         locations.set_margin_top(HEAD_GAP);
         loc_box.append(&locations);
         let dl_row = gtk::Box::builder().spacing(8).margin_top(8).build();
-        let dl_label = gtk::Label::builder().label(tr("Also search the Downloads folder")).xalign(0.0).hexpand(true).build();
+        let dl_label = gtk::Label::builder().label(tr("Also search the Downloads folder")).xalign(0.0).hexpand(true).wrap(true).build();
         dl_label.add_css_class("caption");
         let downloads = gtk::Switch::builder().valign(gtk::Align::Center).build();
         downloads.update_property(&[gtk::accessible::Property::Label(&tr("Also search the Downloads folder"))]);
@@ -460,7 +489,16 @@ impl App {
             }
         });
 
-        let _ = self.sidebar.set(Sidebar { locations, downloads, list, stack, empty, rows: RefCell::new(Vec::new()), selecting: std::cell::Cell::new(false) });
+        let _ = self.sidebar.set(Sidebar {
+            locations,
+            downloads,
+            downloads_label: dl_label.clone(),
+            list,
+            stack,
+            empty,
+            rows: RefCell::new(Vec::new()),
+            selecting: std::cell::Cell::new(false),
+        });
     }
 
     fn refresh_locations(self: &Rc<Self>) {
@@ -514,8 +552,8 @@ impl App {
         let mut paths: Vec<std::path::PathBuf> = util::list_of(cfg, "general.scan_directories").iter().map(|p| sam_core::util::expand_home(p)).collect();
         paths.extend(util::list_of(cfg, "general.scan_files").iter().map(|p| sam_core::util::expand_home(p)));
         if util::bool_of(cfg, "general.scan_downloads") {
-            if let Some(d) = glib::user_special_dir(glib::UserDirectory::Downloads) {
-                paths.push(d);
+            if let Some(d) = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads") {
+                paths.push(d.clone());
             }
         }
         let mut monitors = Vec::new();
