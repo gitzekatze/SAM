@@ -35,6 +35,7 @@ SAM assumes that **you are trusted** and that **an AppImage may not be**.
 | `/usr/lib`, `/usr/bin` | the system's libraries and programs, read-only (all of `/usr` with `advanced.host_runtime full` or compatibility mode) |
 | `/usr/share/…` | selected shared data (fonts, icons, locales, themes), read-only |
 | `/etc/…` | selected configuration; `passwd` and `group` are generated and list only you |
+| `/var/cache/fontconfig` | the system's font cache (names and paths of the fonts above), read-only |
 | `/tmp`, `/var/tmp`, `$XDG_RUNTIME_DIR` | empty and private |
 | `/` | read-only once the sandbox is set up |
 

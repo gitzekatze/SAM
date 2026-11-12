@@ -7,6 +7,7 @@
 //! /usr/lib, /usr/bin    host runtime, read-only (all of /usr in compatibility mode)
 //! /usr/share/<x>        whitelisted shared data (fonts, icons, locale, ...)
 //! /etc/<x>              whitelisted configuration, generated passwd/group
+//! /var/cache/fontconfig the system's font cache, read-only
 //! /tmp, /var/tmp        private tmpfs
 //! /run/user/<uid>       only the sockets that are granted
 //! $HOME                 private per-app home (or tmpfs), plus granted folders
@@ -628,6 +629,11 @@ impl Section<'_> {
         for e in etc {
             ro_follow(a, &Path::new("/etc").join(e));
         }
+        // The system's font cache: only names, paths and properties of the
+        // fonts above. Without it every app builds its own on its first
+        // start, which takes half a minute with many fonts (WezTerm: 35 s
+        // before its window appeared).
+        a.ro("/var/cache/fontconfig");
     }
 
     /// Generated passwd/group, the app folder (read-only or an overlay) and /sys.

@@ -142,6 +142,10 @@ version.
     Audacity 4, which name their own `MU_`/`AU_QT_QPA_PLATFORM`) and Qt
     apps whose Wayland plugin lacks its bundled Qt Wayland library
     (OpenShot) get X11 from the start instead of after a repair step.
+  - First starts are faster: the sandbox includes the system's font cache
+    (`/var/cache/fontconfig`, read-only), so an app no longer builds its
+    own for every installed font (WezTerm's window took 35 s to appear,
+    now under 5 s).
   - Apps whose start script launches the real program in the background
     and exits (Pulsar) stay alive: SAM's helper waits for the app's last
     process, not its first.
