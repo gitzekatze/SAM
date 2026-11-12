@@ -84,7 +84,8 @@ struct Walk {
     elfs: Vec<PathBuf>,
     electron: bool,
     java: bool,
-    qt_wayland_plugin: bool,
+    /// Qt's Wayland platform plugins (libqwayland*.so).
+    qt_wayland_plugins: Vec<PathBuf>,
     /// Qt's X11 platform plugin (libqxcb.so) is bundled.
     qt_xcb_plugin: bool,
     kernel_modules: Vec<String>,
@@ -116,7 +117,7 @@ fn walk(root: &Path, dir: &Path, w: &mut Walk, opts: &AnalyzeOptions) {
             w.java = true;
         }
         if name.starts_with("libqwayland") {
-            w.qt_wayland_plugin = true;
+            w.qt_wayland_plugins.push(path.clone());
         }
         if name.starts_with("libqxcb.so") {
             w.qt_xcb_plugin = true;
@@ -285,14 +286,46 @@ fn start_scripts_force_x11(appdir: &Path) -> bool {
     })
 }
 
-/// Whether one of the app's programs (not its bundled libraries, which
-/// often name every graphics backend) contains the name of a graphics
-/// library it would load at run time.
-fn programs_load_graphics(elfs: &[PathBuf]) -> bool {
-    const NAMES: [&[u8]; 4] = [b"libEGL.so", b"libGL.so", b"libGLX.so", b"libvulkan.so"];
-    elfs.iter()
-        .filter(|p| p.file_name().is_some_and(|n| !n.to_string_lossy().contains(".so")))
-        .any(|p| fs::read(p).is_ok_and(|data| NAMES.iter().any(|n| data.windows(n.len()).any(|w| w == *n))))
+/// What the app's programs (not its bundled libraries, which often name
+/// every graphics backend and platform) reveal through the strings in them.
+#[derive(Debug, Default, PartialEq)]
+struct ProgramStrings {
+    /// Names a graphics library it would load at run time (dlopen).
+    loads_graphics: bool,
+    /// Names its own variable for Qt's platform, such as MuseScore's
+    /// `MU_QT_QPA_PLATFORM`: the program sets QT_QPA_PLATFORM itself
+    /// (to X11) unless that variable says otherwise.
+    qt_platform_override: Option<String>,
+}
+
+fn scan_programs(elfs: &[PathBuf]) -> ProgramStrings {
+    const GRAPHICS: [&[u8]; 4] = [b"libEGL.so", b"libGL.so", b"libGLX.so", b"libvulkan.so"];
+    const QPA: &[u8] = b"_QT_QPA_PLATFORM\0";
+    let mut found = ProgramStrings::default();
+    for p in elfs.iter().filter(|p| p.file_name().is_some_and(|n| !n.to_string_lossy().contains(".so"))) {
+        let Ok(data) = fs::read(p) else { continue };
+        found.loads_graphics |= GRAPHICS.iter().any(|n| data.windows(n.len()).any(|w| w == *n));
+        if found.qt_platform_override.is_none() {
+            found.qt_platform_override = data.windows(QPA.len()).enumerate().filter(|(_, w)| *w == QPA).find_map(|(i, _)| {
+                // The whole string: an upper-case prefix right after a NUL.
+                let start = data[..i].iter().rposition(|b| !(b.is_ascii_uppercase() || b.is_ascii_digit() || *b == b'_')).map_or(0, |z| z + 1);
+                let prefix = &data[start..i];
+                (start > 0 && data[start - 1] == 0 && prefix.first().is_some_and(u8::is_ascii_uppercase))
+                    .then(|| format!("{}_QT_QPA_PLATFORM", String::from_utf8_lossy(prefix)))
+            });
+        }
+    }
+    found
+}
+
+/// Whether one of Qt's Wayland platform plugins can load: Qt's Wayland
+/// client library it needs is bundled too. OpenShot ships the plugins
+/// without it, and the host's copy does not match the bundled Qt.
+fn qt_wayland_usable(plugins: &[PathBuf], bundled: &BTreeSet<String>) -> bool {
+    plugins.iter().any(|p| match parse_elf(p) {
+        Some(f) => f.needed.iter().filter(|n| n.starts_with("libQt") && n.contains("WaylandClient")).all(|n| bundled.contains(n)),
+        None => true,
+    })
 }
 
 /// Static analysis of an unpacked AppImage: what its programs link and
@@ -412,16 +445,23 @@ fn requirements(appdir: &Path, w: &Walk, needed: &BTreeMap<String, Vec<String>>,
     // with Qt 6 (Gittyup, Nextcloud, nheko, RPCS3, Subsurface).
     // (A linked libwayland-client says nothing here: Qt only uses Wayland
     // through its plugin.)
-    let qt_x11_only = w.qt_xcb_plugin && !w.qt_wayland_plugin;
+    let qt_wayland = qt_wayland_usable(&w.qt_wayland_plugins, &w.bundled);
+    let qt_x11_only = w.qt_xcb_plugin && !qt_wayland;
+    let programs = scan_programs(&w.elfs);
     if start_scripts_force_x11(appdir) {
         // The app's own start script insists on X11 (linuxdeploy's GTK
         // hook does, and so every Tauri AppImage); SAM's choice is overridden.
         req.x11 = true;
         req.wayland = false;
+    } else if let Some(var) = programs.qt_platform_override.as_ref().filter(|_| w.qt_xcb_plugin) {
+        // So does the program itself (MuseScore and Audacity 4).
+        req.x11 = true;
+        req.wayland = false;
+        notes.push(format!("The app sets Qt to X11 itself (unless {var} says otherwise)"));
     } else if qt_x11_only {
         req.x11 = true;
         req.wayland = false;
-    } else if w.qt_wayland_plugin || matches!(toolkit, Some("GTK3") | Some("GTK4") | Some("Qt6")) {
+    } else if qt_wayland || matches!(toolkit, Some("GTK3") | Some("GTK4") | Some("Qt6")) {
         req.wayland = true;
     }
     // Engines that build their own sandbox from namespaces.
@@ -432,7 +472,7 @@ fn requirements(appdir: &Path, w: &Walk, needed: &BTreeMap<String, Vec<String>>,
     // Programs that load OpenGL or Vulkan at run time (dlopen) link no
     // graphics library, but name one (WezTerm, Rust/wgpu apps). Without the
     // GPU their EGL setup fails and no window appears.
-    if !req.gpu && programs_load_graphics(&w.elfs) {
+    if !req.gpu && programs.loads_graphics {
         req.gpu = true;
         notes.push("A program of the app loads OpenGL or Vulkan at run time".into());
     }
@@ -638,10 +678,36 @@ mod tests {
         let lib = d.path().join("libQt5Gui.so.5");
         std::fs::write(&prog, b"\x7fELF....with_egl_lib(libEGL.so.1)....").unwrap();
         std::fs::write(&lib, b"\x7fELF....libEGL.so.1....").unwrap();
-        assert!(super::programs_load_graphics(std::slice::from_ref(&prog)));
-        assert!(!super::programs_load_graphics(&[lib]), "bundled libraries do not count");
+        assert!(super::scan_programs(std::slice::from_ref(&prog)).loads_graphics);
+        assert!(!super::scan_programs(&[lib]).loads_graphics, "bundled libraries do not count");
         std::fs::write(&prog, b"\x7fELF....nothing....").unwrap();
-        assert!(!super::programs_load_graphics(&[prog]));
+        assert!(!super::scan_programs(&[prog]).loads_graphics);
+    }
+
+    #[test]
+    fn programs_that_choose_the_qt_platform() {
+        let d = tempfile::tempdir().unwrap();
+        let prog = d.path().join("mscore4portable");
+        let scan = |data: &[u8]| {
+            std::fs::write(&prog, data).unwrap();
+            super::scan_programs(std::slice::from_ref(&prog)).qt_platform_override
+        };
+        assert_eq!(scan(b"\x7fELF\0MU_QT_QPA_PLATFORM\0QT_QPA_PLATFORMTHEME\0xcb\0").as_deref(), Some("MU_QT_QPA_PLATFORM"));
+        // Qt's own variable, read or set by many programs, does not count.
+        assert_eq!(scan(b"\x7fELF\0QT_QPA_PLATFORM\0xcb\0"), None);
+        // Neither does a longer string that merely ends like it.
+        assert_eq!(scan(b"\x7fELF\0see MY_QT_QPA_PLATFORM\0"), None);
+        assert_eq!(scan(b"\x7fELF\0lower_QT_QPA_PLATFORM\0"), None);
+    }
+
+    #[test]
+    fn qt_wayland_plugin_needs_its_client_library() {
+        let d = tempfile::tempdir().unwrap();
+        // Not an ELF file: cannot be checked, so it counts as usable.
+        let unknown = d.path().join("libqwayland-generic.so");
+        std::fs::write(&unknown, b"not elf").unwrap();
+        assert!(super::qt_wayland_usable(std::slice::from_ref(&unknown), &Default::default()));
+        assert!(!super::qt_wayland_usable(&[], &Default::default()));
     }
 
     #[test]

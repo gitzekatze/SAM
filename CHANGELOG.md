@@ -138,6 +138,10 @@ version.
     Flatpak); a refused name in the log is offered as a repair step.
   - Programs that load OpenGL or Vulkan only at run time (WezTerm, Rust
     apps) get the GPU; their EGL setup failed and no window appeared.
+  - Qt apps that switch Qt to X11 in their own code (MuseScore and
+    Audacity 4, which name their own `MU_`/`AU_QT_QPA_PLATFORM`) and Qt
+    apps whose Wayland plugin lacks its bundled Qt Wayland library
+    (OpenShot) get X11 from the start instead of after a repair step.
   - Apps whose start script launches the real program in the background
     and exits (Pulsar) stay alive: SAM's helper waits for the app's last
     process, not its first.
