@@ -580,7 +580,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                             }
                             let row = adw::ActionRow::builder().title(esc(util::str_of(&c, "label"))).subtitle(sub).build();
                             let (icon, class) = match status {
-                                "ok" => ("emblem-ok-symbolic", "success"),
+                                "ok" => ("object-select-symbolic", "success"),
                                 "info" => ("dialog-information-symbolic", "dim-label"),
                                 "warn" => ("dialog-warning-symbolic", "warning"),
                                 _ => ("dialog-error-symbolic", "error"),

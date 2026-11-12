@@ -91,6 +91,9 @@ version.
 
 ### Changed
 
+- When an app stops right after starting, the notification has a *Show the
+  fix* button that opens SAM at that app; its page shows *What went wrong
+  last time* first, with the fix one click away.
 - SAM's files carry a format number: old ones are migrated (original kept),
   newer ones are never changed, damaged ones are moved aside and reported.
 - Risk is shown with the permission that sets it (*High risk · Network +1*)
@@ -150,6 +153,8 @@ version.
   a second line.
 - Unpacking tools installed outside `/usr` (e.g. `~/.local/bin`) now work
   inside the unpacking sandbox.
+- Icons that some themes lack (a tick, a tool) replaced by ones every
+  theme has.
 - Keyboard: Tab no longer gets stuck at the "⋮" button of an app page (a
   label under the app's name could take the focus); greyed-out settings are
   skipped by Tab; the Downloads switch

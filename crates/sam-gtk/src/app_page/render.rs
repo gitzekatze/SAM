@@ -260,7 +260,7 @@ impl AppPage {
         self.hints.set_visible(!hints.is_empty());
         let findings: Vec<Value> = entry.as_ref().and_then(|e| util::get(e, "last_launch.findings")).and_then(Value::as_array).cloned().unwrap_or_default();
         for f in &findings {
-            let row = self.suggestion_row(f, "tools-symbolic", true, true);
+            let row = self.suggestion_row(f, "dialog-warning-symbolic", true, true);
             self.add_dynamic(&self.findings, &row);
         }
         self.findings.set_visible(!findings.is_empty());
@@ -387,7 +387,8 @@ impl AppPage {
     pub(super) fn suggestion_row(self: &Rc<Self>, s: &Value, icon: &str, as_repair: bool, then_run: bool) -> adw::ActionRow {
         let none = util::str_of(s, "action.kind") == "none";
         let row = adw::ActionRow::builder().title(esc(util::str_of(s, "title"))).subtitle(esc(util::str_of(s, "explanation"))).activatable(!none).build();
-        row.add_prefix(&status_icon(icon, "accent"));
+        // Problems from the last start in amber, general hints in the accent.
+        row.add_prefix(&status_icon(icon, if as_repair { "warning" } else { "accent" }));
         if !none {
             row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
             let w = Rc::downgrade(self);
@@ -457,7 +458,7 @@ impl AppPage {
                 let status = util::str_of(c, "status");
                 let row = adw::ActionRow::builder().title(esc(util::str_of(c, "label"))).subtitle(esc(util::str_of(c, "detail"))).build();
                 let (icon, class) = match status {
-                    "ok" => ("emblem-ok-symbolic", "success"),
+                    "ok" => ("object-select-symbolic", "success"),
                     "warn" => ("dialog-warning-symbolic", "warning"),
                     "fail" | "error" => ("dialog-error-symbolic", "error"),
                     _ => ("dialog-information-symbolic", "dim-label"),
@@ -485,7 +486,7 @@ impl AppPage {
                 .title(if ok { "The app started and kept running" } else { "The app did not keep running" })
                 .subtitle(esc(util::str_of(r, "detail")))
                 .build();
-            let img = gtk::Image::from_icon_name(if ok { "emblem-ok-symbolic" } else { "dialog-error-symbolic" });
+            let img = gtk::Image::from_icon_name(if ok { "object-select-symbolic" } else { "dialog-error-symbolic" });
             img.add_css_class(if ok { "success" } else { "error" });
             img.set_margin_start(24);
             row.add_prefix(&img);

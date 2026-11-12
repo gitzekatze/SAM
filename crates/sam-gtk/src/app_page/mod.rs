@@ -205,8 +205,10 @@ impl AppPage {
         preset_group.add(&preset_row);
         preset_group.add(&save_preset_row);
         pref.add(&notices);
-        pref.add(&hints);
+        // What went wrong comes first: after a failed start it holds the fix
+        // (and stays hidden otherwise).
         pref.add(&findings);
+        pref.add(&hints);
         pref.add(&preset_group);
         editor.add_to(&pref);
 

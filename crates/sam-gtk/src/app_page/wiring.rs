@@ -389,7 +389,7 @@ impl AppPage {
                 .subtitle(tr("What the test program found inside the sandbox"))
                 .build();
             exp.add_prefix(&{
-                let i = gtk::Image::from_icon_name("emblem-ok-symbolic");
+                let i = gtk::Image::from_icon_name("object-select-symbolic");
                 i.add_css_class("success");
                 i
             });

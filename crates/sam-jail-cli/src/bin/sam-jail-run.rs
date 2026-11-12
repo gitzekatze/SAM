@@ -15,6 +15,42 @@ fn usage() -> ! {
     std::process::exit(2);
 }
 
+/// Like `notify`, with a "Show the fix" button that opens SAM at the app.
+/// The button is waited for in a background process, so the launcher can
+/// exit; names and messages are passed as arguments, never as shell code.
+fn notify_with_fix(title: &str, body: &str, app_id: &str) {
+    if std::io::IsTerminal::is_terminal(&std::io::stderr()) {
+        return;
+    }
+    let (Some(n), Some(gui)) = (which("notify-send"), sam_gui()) else {
+        return notify(title, body);
+    };
+    let clean = |s: &str| sam_core::util::display_safe(s, 400).replace('&', "&amp;");
+    let script = r#"a=$("$1" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning --action=open="Show the fix" "$2" "$3") && [ "$a" = open ] && exec "$4" --page app-repair --app "$5""#;
+    let spawned = Command::new("/bin/sh")
+        .args(["-c", script, "sh"])
+        .arg(n)
+        .args([clean(title), clean(body)])
+        .arg(gui)
+        .arg(app_id)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if spawned.is_err() {
+        notify(title, body);
+    }
+}
+
+/// SAM's window: SAM's own AppImage, next to this program, or on $PATH.
+fn sam_gui() -> Option<PathBuf> {
+    if let Some(a) = std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()) {
+        return Some(a);
+    }
+    let here = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("sam-jail-gui"))).filter(|p| p.is_file());
+    here.or_else(|| which("sam-jail-gui"))
+}
+
 /// Desktop launches have no terminal: tell the user through a notification.
 fn notify(title: &str, body: &str) {
     if std::io::IsTerminal::is_terminal(&std::io::stderr()) {
@@ -88,17 +124,17 @@ fn launch(args: Vec<String>) -> Result<i32> {
     }
     let rec = run(&mut entry, &LaunchOptions { args: rest, ..Default::default() }, &app.config, &app.paths, &host)?;
     if rec.sandbox_failure {
-        notify(&format!("{} failed to start", entry.display_name()), &format!("{}\nOpen SAM → {} → Details & Repair.", rec.summary, entry.display_name()));
+        notify_with_fix(&format!("{} failed to start", entry.display_name()), &rec.summary, &entry.id);
         bail!("{}", rec.summary);
     }
     // A crash within the first seconds usually means the sandbox is missing
     // something: say what the output suggests.
     if !rec.success && rec.finished_at - rec.started_at <= 10 {
-        let hint = rec.findings.first().map(|f| format!("Likely cause: {}.", f.title)).unwrap_or_else(|| "Try the repair steps.".into());
-        notify(
-            &format!("{} stopped right after starting", entry.display_name()),
-            &format!("{} {hint}\nOpen SAM → {} → Details & Repair.", rec.summary, entry.display_name()),
-        );
+        let hint = match rec.findings.first() {
+            Some(f) => format!("SAM found a likely fix: {}.", f.title),
+            None => "SAM's repair steps may help.".into(),
+        };
+        notify_with_fix(&format!("{} stopped right after starting", entry.display_name()), &format!("{} {hint}", rec.summary), &entry.id);
     }
     Ok(rec.exit_code.unwrap_or(if rec.success { 0 } else { 1 }))
 }
