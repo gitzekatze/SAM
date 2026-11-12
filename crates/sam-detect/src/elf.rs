@@ -285,6 +285,16 @@ fn start_scripts_force_x11(appdir: &Path) -> bool {
     })
 }
 
+/// Whether one of the app's programs (not its bundled libraries, which
+/// often name every graphics backend) contains the name of a graphics
+/// library it would load at run time.
+fn programs_load_graphics(elfs: &[PathBuf]) -> bool {
+    const NAMES: [&[u8]; 4] = [b"libEGL.so", b"libGL.so", b"libGLX.so", b"libvulkan.so"];
+    elfs.iter()
+        .filter(|p| p.file_name().is_some_and(|n| !n.to_string_lossy().contains(".so")))
+        .any(|p| fs::read(p).is_ok_and(|data| NAMES.iter().any(|n| data.windows(n.len()).any(|w| w == *n))))
+}
+
 pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<DependencyReport> {
     let appdir = fs::canonicalize(appdir)?;
     let mut w = Walk::default();
@@ -389,6 +399,13 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     let nested = ["libwebkit2gtk", "libwebkitgtk", "libcef", "libQt5WebEngineCore", "libQt6WebEngineCore"];
     if needed.keys().chain(w.bundled.iter()).any(|n| nested.iter().any(|p| n.starts_with(p))) {
         req.nested_sandbox = true;
+    }
+    // Programs that load OpenGL or Vulkan at run time (dlopen) link no
+    // graphics library, but name one (WezTerm, Rust/wgpu apps). Without the
+    // GPU their EGL setup fails and no window appears.
+    if !req.gpu && programs_load_graphics(&w.elfs) {
+        req.gpu = true;
+        report.notes.push("A program of the app loads OpenGL or Vulkan at run time".into());
     }
     if w.electron {
         req.electron = true;
@@ -573,6 +590,19 @@ fn list(v: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn programs_that_load_graphics_at_run_time() {
+        let d = tempfile::tempdir().unwrap();
+        let prog = d.path().join("wezterm-gui");
+        let lib = d.path().join("libQt5Gui.so.5");
+        std::fs::write(&prog, b"\x7fELF....with_egl_lib(libEGL.so.1)....").unwrap();
+        std::fs::write(&lib, b"\x7fELF....libEGL.so.1....").unwrap();
+        assert!(super::programs_load_graphics(std::slice::from_ref(&prog)));
+        assert!(!super::programs_load_graphics(&[lib]), "bundled libraries do not count");
+        std::fs::write(&prog, b"\x7fELF....nothing....").unwrap();
+        assert!(!super::programs_load_graphics(&[prog]));
+    }
+
     #[test]
     fn start_scripts_that_force_x11() {
         let d = tempfile::tempdir().unwrap();

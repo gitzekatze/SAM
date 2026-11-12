@@ -128,6 +128,8 @@ version.
     the system's GTK aborted at the first icon.
   - Apps may own the D-Bus name of their own reverse-DNS ID (as with
     Flatpak); a refused name in the log is offered as a repair step.
+  - Programs that load OpenGL or Vulkan only at run time (WezTerm, Rust
+    apps) get the GPU; their EGL setup failed and no window appeared.
   - Apps whose start script launches the real program in the background
     and exits (Pulsar) stay alive: SAM's helper waits for the app's last
     process, not its first.
