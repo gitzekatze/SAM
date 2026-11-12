@@ -295,6 +295,9 @@ fn programs_load_graphics(elfs: &[PathBuf]) -> bool {
         .any(|p| fs::read(p).is_ok_and(|data| NAMES.iter().any(|n| data.windows(n.len()).any(|w| w == *n))))
 }
 
+/// Static analysis of an unpacked AppImage: what its programs link and
+/// bundle, what that tells about the access it needs, whether it can run
+/// on this system, and how well a sandbox can isolate it. Nothing is run.
 pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<DependencyReport> {
     let appdir = fs::canonicalize(appdir)?;
     let mut w = Walk::default();
@@ -305,34 +308,62 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     report.entry_is_script = is_script;
     report.entry_binary = entry_bin.as_ref().map(|p| p.strip_prefix(&appdir).unwrap_or(p).display().to_string());
 
-    let mut needed: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut glibc_max: Option<(u32, u32)> = None;
-    let mut arch: Option<&'static str> = None;
+    let links = read_links(&appdir, &w.elfs, entry_bin.as_ref());
+    report.elf_count = links.parsed;
+    if links.musl_variants > 0 {
+        report.notes.push(format!("{} bundled program(s) built for musl (Alpine) skipped: alternatives that only run on musl systems", links.musl_variants));
+    }
+    report.bundled_libraries = w.bundled.len() as u64;
+    report.arch = links.arch.unwrap_or("unknown").to_string();
+
+    report.requirements = requirements(&appdir, &w, &links.needed, &mut report.notes);
+    let compat = check_compatibility(&mut report, &w, &links, opts);
+    report.verdict = isolation_verdict(&mut report, &w, &links.needed, compat, script_text.as_deref());
+    report.compatibility = compat;
+    report.resources = host_resources(&report.requirements);
+    if report.requirements.electron {
+        report.notes.push("Electron app: Chromium's internal sandbox needs nested user namespaces".into());
+    }
+    Ok(report)
+}
+
+/// What the app's programs link against (read from their ELF headers).
+struct Links {
+    /// Library name → up to five programs or libraries that need it.
+    needed: BTreeMap<String, Vec<String>>,
+    /// Highest glibc symbol version used.
+    glibc_max: Option<(u32, u32)>,
+    /// CPU architecture of the entry binary (or the first parsed program).
+    arch: Option<&'static str>,
+    parsed: u64,
+    /// Programs built for musl (Alpine): bundled as alternatives (Node and
+    /// Python packages ship both), never used on a glibc system. Their
+    /// libraries are not missing for the app.
+    musl_variants: u64,
+}
+
+fn read_links(appdir: &Path, elfs: &[PathBuf], entry_bin: Option<&PathBuf>) -> Links {
+    let mut l = Links { needed: BTreeMap::new(), glibc_max: None, arch: None, parsed: 0, musl_variants: 0 };
     // Parse the entry binary first so its architecture wins.
-    let mut ordered = w.elfs.clone();
-    if let Some(e) = &entry_bin {
+    let mut ordered = elfs.to_vec();
+    if let Some(e) = entry_bin {
         ordered.retain(|p| p != e);
         ordered.insert(0, e.clone());
     }
-    let mut parsed = 0u64;
-    // Programs built for musl (Alpine): bundled as alternatives (Node and
-    // Python packages ship both), never used on a glibc system. Their
-    // libraries are not missing for the app.
-    let mut musl_variants = 0u64;
     for p in &ordered {
         let Some(f) = parse_elf(p) else { continue };
-        parsed += 1;
+        l.parsed += 1;
         if f.needed.iter().any(|n| n.starts_with("libc.musl") || n.starts_with("ld-musl")) {
-            musl_variants += 1;
+            l.musl_variants += 1;
             continue;
         }
-        if arch.is_none() {
-            arch = f.arch;
+        if l.arch.is_none() {
+            l.arch = f.arch;
         }
         if let Some(v) = f.glibc_max {
-            glibc_max = Some(glibc_max.map_or(v, |m| m.max(v)));
+            l.glibc_max = Some(l.glibc_max.map_or(v, |m| m.max(v)));
         }
-        let rel = p.strip_prefix(&appdir).unwrap_or(p).display().to_string();
+        let rel = p.strip_prefix(appdir).unwrap_or(p).display().to_string();
         for n in f.needed {
             // A DT_NEEDED entry with a slash is a path, usually `$ORIGIN/...`
             // relative to the binary. If it exists in the payload it is bundled.
@@ -344,20 +375,18 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
             } else {
                 n
             };
-            let by = needed.entry(n).or_default();
+            let by = l.needed.entry(n).or_default();
             if by.len() < 5 {
                 by.push(rel.clone());
             }
         }
     }
-    report.elf_count = parsed;
-    if musl_variants > 0 {
-        report.notes.push(format!("{musl_variants} bundled program(s) built for musl (Alpine) skipped: alternatives that only run on musl systems"));
-    }
-    report.bundled_libraries = w.bundled.len() as u64;
-    report.arch = arch.unwrap_or("unknown").to_string();
+    l
+}
 
-    // Requirements from every library name we know about (needed or bundled).
+/// The access the app needs, from every library name we know about
+/// (needed or bundled), the files found in the payload and its start scripts.
+fn requirements(appdir: &Path, w: &Walk, needed: &BTreeMap<String, Vec<String>>, notes: &mut Vec<String>) -> Requirements {
     let mut req = Requirements::default();
     let mut toolkit: Option<&str> = None;
     for name in needed.keys().chain(w.bundled.iter()) {
@@ -384,7 +413,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     // (A linked libwayland-client says nothing here: Qt only uses Wayland
     // through its plugin.)
     let qt_x11_only = w.qt_xcb_plugin && !w.qt_wayland_plugin;
-    if start_scripts_force_x11(&appdir) {
+    if start_scripts_force_x11(appdir) {
         // The app's own start script insists on X11 (linuxdeploy's GTK
         // hook does, and so every Tauri AppImage); SAM's choice is overridden.
         req.x11 = true;
@@ -405,7 +434,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     // GPU their EGL setup fails and no window appears.
     if !req.gpu && programs_load_graphics(&w.elfs) {
         req.gpu = true;
-        report.notes.push("A program of the app loads OpenGL or Vulkan at run time".into());
+        notes.push("A program of the app loads OpenGL or Vulkan at run time".into());
     }
     if w.electron {
         req.electron = true;
@@ -422,26 +451,31 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
         toolkit = toolkit.or(Some("Java"));
     }
     req.toolkit = toolkit.unwrap_or("Unknown").to_string();
-    report.requirements = req;
+    req
+}
 
-    // Missing libraries.
-    let mut compat = Compatibility::Good;
-    let worsen = |c: &mut Compatibility, to: Compatibility| {
-        let rank = |c: Compatibility| match c {
-            Compatibility::Good => 0,
-            Compatibility::Risk => 1,
-            Compatibility::LikelyBroken => 2,
-        };
-        if rank(to) > rank(*c) {
-            *c = to;
-        }
+/// Raises `c` to `to` if that is worse.
+fn worsen(c: &mut Compatibility, to: Compatibility) {
+    let rank = |c: Compatibility| match c {
+        Compatibility::Good => 0,
+        Compatibility::Risk => 1,
+        Compatibility::LikelyBroken => 2,
     };
+    if rank(to) > rank(*c) {
+        *c = to;
+    }
+}
+
+/// Whether the app can run on this system: missing libraries, glibc
+/// version, CPU architecture. Adds the warnings and notes to the report.
+fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, opts: &AnalyzeOptions) -> Compatibility {
+    let mut compat = Compatibility::Good;
     let mut not_found = Vec::new();
     // Missing, but only bundled libraries need them (e.g. libappindicator's
     // GTK2 deps). Those libraries are often loaded optionally via dlopen.
     let mut lib_only_missing = Vec::new();
     let mut abi_sensitive = Vec::new();
-    for (name, by) in &needed {
+    for (name, by) in &links.needed {
         if w.bundled.contains(name) || name.starts_with("ld-linux") || name.starts_with("ld64") {
             continue;
         }
@@ -488,7 +522,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
         ));
     }
 
-    if let (Some(need), Some(have)) = (glibc_max, host_glibc_version()) {
+    if let (Some(need), Some(have)) = (links.glibc_max, host_glibc_version()) {
         report.notes.push(format!("requires glibc {}.{} (host has {}.{})", need.0, need.1, have.0, have.1));
         if need > have {
             worsen(&mut compat, Compatibility::LikelyBroken);
@@ -499,7 +533,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
             ));
         }
     }
-    if let Some(a) = arch {
+    if let Some(a) = links.arch {
         if a != opts.host_arch && !(a == "i686" && opts.host_arch == "x86_64") {
             worsen(&mut compat, Compatibility::LikelyBroken);
             report.warnings.push(Warning::danger(
@@ -509,20 +543,28 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
             ));
         }
     }
-    if parsed == 0 {
+    if links.parsed == 0 {
         worsen(&mut compat, Compatibility::LikelyBroken);
         report.warnings.push(Warning::warn("no-elf", "No executables found", "No ELF executables were found in the AppImage payload."));
     }
-    if is_script && report.entry_binary.is_none() {
+    if report.entry_is_script && report.entry_binary.is_none() {
         report.notes.push("AppRun is a script; the main binary could not be determined".into());
     }
     if w.truncated {
         report.notes.push("analysis was truncated because the payload is very large".into());
     }
+    compat
+}
 
-    // Isolation verdict.
-    let privileged = script_text.as_deref().and_then(script_privileged);
-    report.verdict = if let Some(tool) = privileged {
+/// How well a sandbox can isolate the app (None: no concerns).
+fn isolation_verdict(
+    report: &mut DependencyReport,
+    w: &Walk,
+    needed: &BTreeMap<String, Vec<String>>,
+    compat: Compatibility,
+    script_text: Option<&str>,
+) -> Option<IsolationVerdict> {
+    if let Some(tool) = script_text.and_then(script_privileged) {
         report.warnings.push(Warning::danger(
             "privileged",
             "Requires privileged access",
@@ -545,39 +587,38 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
         Some(IsolationVerdict::WeaklyIsolated)
     } else {
         None
-    };
-    report.compatibility = compat;
+    }
+}
 
-    // Host resources.
+/// The host resources the app's sandbox would use, and why.
+fn host_resources(req: &Requirements) -> Vec<HostResource> {
+    let mut resources = Vec::new();
     for (res, why) in SAFE_HOST_RESOURCES {
         let relevant = match *why {
-            "TLS certificates" => report.requirements.certificates || report.requirements.network,
+            "TLS certificates" => req.certificates || req.network,
             _ => true,
         };
         if relevant {
-            report.resources.push(HostResource { resource: res.to_string(), class: ResourceClass::Safe, reason: why.to_string(), auto: true });
+            resources.push(HostResource { resource: res.to_string(), class: ResourceClass::Safe, reason: why.to_string(), auto: true });
         }
     }
-    if report.requirements.gpu {
+    if req.gpu {
         for (res, why) in GRAPHICS_HOST_RESOURCES {
-            report.resources.push(HostResource { resource: res.to_string(), class: ResourceClass::Graphics, reason: why.to_string(), auto: false });
+            resources.push(HostResource { resource: res.to_string(), class: ResourceClass::Graphics, reason: why.to_string(), auto: false });
         }
     }
     let controlled = [
-        (report.requirements.wayland, "Wayland socket", "Wayland client libraries / toolkit support"),
-        (report.requirements.x11, "X11 socket", "links X11 libraries"),
-        (report.requirements.audio, "PipeWire / PulseAudio socket", "links audio libraries"),
-        (report.requirements.dbus, "D-Bus session socket", "links D-Bus libraries"),
+        (req.wayland, "Wayland socket", "Wayland client libraries / toolkit support"),
+        (req.x11, "X11 socket", "links X11 libraries"),
+        (req.audio, "PipeWire / PulseAudio socket", "links audio libraries"),
+        (req.dbus, "D-Bus session socket", "links D-Bus libraries"),
     ];
     for (needed, res, why) in controlled {
         if needed {
-            report.resources.push(HostResource { resource: res.into(), class: ResourceClass::Controlled, reason: why.into(), auto: false });
+            resources.push(HostResource { resource: res.into(), class: ResourceClass::Controlled, reason: why.into(), auto: false });
         }
     }
-    if report.requirements.electron {
-        report.notes.push("Electron app: Chromium's internal sandbox needs nested user namespaces".into());
-    }
-    Ok(report)
+    resources
 }
 
 fn list(v: &[String]) -> String {
