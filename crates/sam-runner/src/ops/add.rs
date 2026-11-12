@@ -170,16 +170,16 @@ impl Sam {
     /// Metadata, icon, dependency detection and recommendation for an
     /// extracted entry. Keeps user-modified profiles intact.
     pub(super) fn finish_intake(&self, entry: &mut AppEntry, extract_log: &[u8]) -> Result<()> {
-        let x = entry.extraction.clone().context("not extracted")?;
+        let mut x = entry.extraction.clone().context("not extracted")?;
         if !x.appdir.join("AppRun").exists() {
             // Some AppImages ship without AppRun; fall back to the desktop Exec.
             let exec = entry.metadata.exec.split_whitespace().next().unwrap_or("").to_string();
             let cand = ["usr/bin", "", "bin"].iter().map(|d| Path::new(d).join(&exec)).find(|p| !exec.is_empty() && x.appdir.join(p).is_file());
             if let Some(c) = cand {
-                entry.extraction.as_mut().unwrap().entry = c.display().to_string();
+                x.entry = c.display().to_string();
+                entry.extraction = Some(x.clone());
             }
         }
-        let x = entry.extraction.clone().unwrap();
         entry.metadata.icon_path = metadata::cache_icon(&x.appdir, &entry.metadata.icon_name, &entry.id, &self.paths.icons_dir(), &x.root).ok().flatten();
         if (entry.name.is_empty() || entry.name == id::slug_from_filename(&entry.source_path)) && !entry.metadata.name.is_empty() {
             entry.name = entry.metadata.name.clone();

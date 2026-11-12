@@ -30,6 +30,12 @@ use output::*;
 use presets::preset_cmd;
 
 fn main() {
+    // Like other command-line tools, end quietly when the reader of the
+    // output goes away (`sam-jail list | head`) instead of panicking.
+    // Rust ignores SIGPIPE by default; started apps get the default back
+    // from std::process::Command either way.
+    // SAFETY: called first in main, before any other thread exists.
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
     let cli = Cli::parse();
     let json_mode = cli.json;
     if let Err(e) = real_main(cli) {

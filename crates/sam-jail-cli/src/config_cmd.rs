@@ -35,7 +35,7 @@ pub(crate) fn config_cmd(app: &Sam, out: &Out, cmd: ConfigCmd) -> Result<()> {
                 "applications": app.paths.applications_dir,
             });
             out.emit(&v, || {
-                for (k, val) in v.as_object().unwrap() {
+                for (k, val) in v.as_object().into_iter().flatten() {
                     println!("{k:<14} {}", val.as_str().unwrap_or_default());
                 }
             });

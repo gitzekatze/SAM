@@ -127,12 +127,11 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
             Some(("filesystem.custom_read", dir.display().to_string())),
         ));
     }
-    if p.starts_with(&host.home) {
+    if let Ok(rel) = p.strip_prefix(&host.home) {
         if is_sensitive_path(path) {
             return Some(mk(RiskLevel::Dangerous, format!("The app tried to access {} (sensitive; left denied).", tildify(p)), None));
         }
         // Suggest the closest top-level folder in home.
-        let rel = p.strip_prefix(&host.home).unwrap();
         let first: PathBuf = host.home.join(rel.components().next().map(|c| c.as_os_str()).unwrap_or_default());
         let key = if err == "EROFS" { "filesystem.custom_write" } else { "filesystem.custom_read" };
         return Some(mk(

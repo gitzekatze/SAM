@@ -329,6 +329,9 @@ fn classify_failure(code: Option<i32>, stderr_head: &str) -> (bool, String) {
 
 const STDERR_HEAD_LIMIT: usize = 16 * 1024;
 
+/// Starts the app in its sandbox and waits until it ends (or until
+/// `opts.timeout_secs`). Writes the launch log and saves the outcome in the
+/// app's entry.
 pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths, host: &HostInfo) -> Result<LaunchRecord> {
     let logs = Logs::new(paths);
     let log_path = logs.new_log_path(&app.id, if opts.tracer.is_some() { LogKind::Diagnose } else { LogKind::Launch })?;
@@ -355,6 +358,88 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             return Err(e);
         }
     };
+    write_log_header(&mut log, &prepared)?;
+    for w in &prepared.warnings {
+        if !opts.quiet && w.severity != sam_core::Severity::Info {
+            eprintln!("sam-jail: warning: {}", w.message);
+        }
+    }
+
+    // Start the sandbox.
+    let channels = StatusChannels::new(&prepared, host)?;
+    let mut cmd = Command::new(&prepared.command.program);
+    cmd.args(channels.args.as_ref().unwrap_or(&prepared.command.args)).stdin(Stdio::inherit()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    if prepared.command.clear_env {
+        cmd.env_clear();
+    }
+    for (k, v) in &prepared.command.env {
+        cmd.env(k, v);
+    }
+    cmd.current_dir(&host.home);
+    // Held until this launch is over: `Sam::running` sees the app as running.
+    let _running = hold_lock(&prepared.context.runtime_dir.join("running.lock"))?;
+    let spawned = cmd.spawn().with_context(|| format!("starting {}", prepared.command.program.display()));
+    // Close our copies of the write ends so the readers see EOF.
+    for fd in channels.close_after_spawn.iter().chain(prepared.context.seccomp_fd.as_ref()) {
+        unsafe { libc::close(*fd) };
+    }
+    let mut child = spawned?;
+    let child_done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let bwrap_status_reader = channels.bwrap_status.map(|r| read_fd_in_thread(r, child_done.clone()));
+    let helper_status_reader = channels.helper_status.map(|r| read_fd_in_thread(r, child_done.clone()));
+
+    // Collect its output while it runs. The first part of each stream:
+    // stderr decides whether the sandbox failed; both are searched for known
+    // problems (some apps, such as Audacity, log errors to stdout).
+    let log = Arc::new(Mutex::new(log));
+    let err_head = Arc::new(Mutex::new(String::new()));
+    let out_head = Arc::new(Mutex::new(String::new()));
+    let t1 = pump_output(Box::new(child.stdout.take().context("no stdout pipe")?), false, log.clone(), out_head.clone(), opts.quiet);
+    let t2 = pump_output(Box::new(child.stderr.take().context("no stderr pipe")?), true, log.clone(), err_head.clone(), opts.quiet);
+    let (status, timed_out) = wait_until(&mut child, opts.timeout_secs)?;
+    child_done.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _ = t1.join();
+    let _ = t2.join();
+    drop(prepared.proxy);
+    drop(prepared.wayland);
+
+    // Judge the outcome.
+    let err_head = err_head.lock().map(|h| h.clone()).unwrap_or_default();
+    let out_head = out_head.lock().map(|h| h.clone()).unwrap_or_default();
+    let bwrap_json = bwrap_status_reader.and_then(|t| t.join().ok());
+    let enforcement = helper_status_reader.and_then(|t| t.join().ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let closed_by_sam = prepared.context.runtime_dir.join(STOP_MARKER).exists();
+    let outcome = judge_outcome(status, &err_head, bwrap_json.as_deref(), closed_by_sam, timed_out.then_some(opts.timeout_secs.unwrap_or(0)));
+    if let Ok(mut l) = log.lock() {
+        if let Some(e) = &enforcement {
+            writeln!(l, "# enforced: {e}")?;
+        } else if prepared.landlock || prepared.seccomp {
+            writeln!(l, "# enforced: unknown (no status from SAM's helper)")?;
+        }
+        writeln!(l, "# ---- end ----\n# finished: {}\n# result: {}", format_ts(now()), outcome.summary)?;
+    }
+
+    let rec = LaunchRecord {
+        started_at,
+        finished_at: now(),
+        exit_code: status.code(),
+        signal: status.signal(),
+        success: outcome.success,
+        sandbox_failure: outcome.sandbox_failure,
+        setup_failed: outcome.setup_failed,
+        enforcement,
+        log_file: Some(log_path),
+        findings: if outcome.success { vec![] } else { crate::repair::analyze(&format!("{err_head}\n{out_head}"), &app.profile.permissions, status.signal()) },
+        summary: outcome.summary,
+    };
+    save_launch(app, &rec, paths)?;
+    let _ = logs.prune(&app.id, LogKind::Launch, cfg.diagnostics.keep_logs);
+    Ok(rec)
+}
+
+/// What the launch log says before the app's output: how the sandbox is
+/// built and the full command.
+fn write_log_header(log: &mut fs::File, prepared: &Prepared) -> Result<()> {
     writeln!(log, "# sandbox: {}", prepared.sandbox.reason)?;
     writeln!(log, "# landlock: {}  seccomp: {}  wayland security context: {}", prepared.landlock, prepared.seccomp, prepared.wayland_context)?;
     if let Some(p) = &prepared.proxy {
@@ -369,180 +454,148 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     writeln!(log, "# command: {}", prepared.command.display())?;
     writeln!(log, "# ---- output ----")?;
     log.flush()?;
+    Ok(())
+}
 
-    for w in &prepared.warnings {
-        if !opts.quiet && w.severity != sam_core::Severity::Info {
-            eprintln!("sam-jail: warning: {}", w.message);
-        }
-    }
+/// Status channels the app cannot write to (H1/M3 in the audit): bwrap's
+/// --json-status-fd announces "child-pid" once the sandbox exists, and SAM's
+/// helper reports what it enforced before it execs the app.
+///
+/// Started directly, bwrap inherits two pipes. pasta (local network only)
+/// closes every inherited fd, so there the channels are FIFOs in the private
+/// runtime dir, which a shell inside pasta's namespace opens as fds 3 and 4
+/// right before it execs bwrap.
+struct StatusChannels {
+    /// The command's arguments with the status options added (None: unchanged).
+    args: Option<Vec<String>>,
+    /// Write ends to close in SAM once the child has its copies.
+    close_after_spawn: Vec<i32>,
+    bwrap_status: Option<i32>,
+    helper_status: Option<i32>,
+}
 
-    let mut cmd = Command::new(&prepared.command.program);
-    cmd.args(&prepared.command.args).stdin(Stdio::inherit()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    if prepared.command.clear_env {
-        cmd.env_clear();
-    }
-    for (k, v) in &prepared.command.env {
-        cmd.env(k, v);
-    }
-    cmd.current_dir(&host.home);
-    // Status channels the app cannot write to (H1/M3 in the audit):
-    // bwrap's --json-status-fd announces "child-pid" once the sandbox exists,
-    // and SAM's helper reports what it enforced before it execs the app.
-    // Started directly, bwrap inherits two pipes. pasta (local network only)
-    // closes every inherited fd, so there the channels are FIFOs in the
-    // private runtime dir, which a shell inside pasta's namespace opens as
-    // fds 3 and 4 right before it execs bwrap.
-    let bwrap_path = host.tools.bwrap.as_ref().map(|b| b.path.clone());
-    let direct_bwrap = bwrap_path.as_ref() == Some(&prepared.command.program);
-    let pasta_bwrap = !direct_bwrap
-        && prepared.command.program.file_name().is_some_and(|n| n == "pasta")
-        && bwrap_path.as_ref().is_some_and(|b| prepared.command.args.iter().any(|a| Path::new(a) == b));
-    let with_helper = prepared.context.helper.is_some();
-    // Inserts the status options into bwrap's own arguments.
-    let add_status = |bwrap_args: &[String], status_fd: i32, helper_fd: Option<i32>| -> Vec<String> {
-        let mut args = vec!["--json-status-fd".to_string(), status_fd.to_string()];
-        args.extend(bwrap_args.iter().cloned());
-        if let Some(hw) = helper_fd {
-            // After --clearenv: right before bwrap's "--" separator.
-            let sep = args.iter().position(|a| a == "--").unwrap_or(args.len());
-            args.splice(sep..sep, ["--setenv".to_string(), "SAM_STATUS_FD".into(), hw.to_string()]);
+impl StatusChannels {
+    fn new(prepared: &Prepared, host: &HostInfo) -> Result<Self> {
+        let command = &prepared.command;
+        let bwrap_path = host.tools.bwrap.as_ref().map(|b| b.path.clone());
+        let direct_bwrap = bwrap_path.as_ref() == Some(&command.program);
+        let pasta_bwrap = !direct_bwrap
+            && command.program.file_name().is_some_and(|n| n == "pasta")
+            && bwrap_path.as_ref().is_some_and(|b| command.args.iter().any(|a| Path::new(a) == b));
+        let with_helper = prepared.context.helper.is_some();
+        let mut ch = StatusChannels { args: None, close_after_spawn: Vec::new(), bwrap_status: None, helper_status: None };
+        if direct_bwrap {
+            let (r, w) = status_pipe()?;
+            ch.bwrap_status = Some(r);
+            ch.close_after_spawn.push(w);
+            let mut helper_w = None;
+            if with_helper {
+                let (hr, hw) = status_pipe()?;
+                ch.helper_status = Some(hr);
+                ch.close_after_spawn.push(hw);
+                helper_w = Some(hw);
+            }
+            ch.args = Some(with_status_options(&command.args, w, helper_w));
+        } else if pasta_bwrap {
+            let rt = &prepared.context.runtime_dir;
+            let status_fifo = rt.join("bwrap-status");
+            let helper_fifo = rt.join("helper-status");
+            ch.bwrap_status = Some(open_fifo_reader(&status_fifo)?);
+            if with_helper {
+                ch.helper_status = Some(open_fifo_reader(&helper_fifo)?);
+            }
+            let args = &command.args;
+            let sep = args.iter().position(|a| a == "--").context("pasta command without '--'")?;
+            let mut out: Vec<String> = args[..=sep].to_vec();
+            out.extend([
+                "/bin/sh".into(),
+                "-c".into(),
+                r#"exec 3>"$1"; if [ -n "$2" ]; then exec 4>"$2"; fi; shift 2; exec "$@""#.into(),
+                "sh".into(),
+                status_fifo.display().to_string(),
+                if with_helper { helper_fifo.display().to_string() } else { String::new() },
+                args[sep + 1].clone(),
+            ]);
+            out.extend(with_status_options(&args[sep + 2..], 3, with_helper.then_some(4)));
+            ch.args = Some(out);
         }
-        args
-    };
-    let mut new_args: Option<Vec<String>> = None;
-    let mut close_after_spawn: Vec<i32> = Vec::new();
-    let mut bwrap_status = None;
-    let mut helper_status = None;
-    if direct_bwrap {
-        let (r, w) = status_pipe()?;
-        let mut helper_w = None;
-        if with_helper {
-            let (hr, hw) = status_pipe()?;
-            helper_status = Some(hr);
-            helper_w = Some(hw);
-            close_after_spawn.push(hw);
-        }
-        close_after_spawn.push(w);
-        new_args = Some(add_status(&prepared.command.args, w, helper_w));
-        bwrap_status = Some(r);
-    } else if pasta_bwrap {
-        let rt = &prepared.context.runtime_dir;
-        let status_fifo = rt.join("bwrap-status");
-        let helper_fifo = rt.join("helper-status");
-        let r = open_fifo_reader(&status_fifo)?;
-        let hr = if with_helper { Some(open_fifo_reader(&helper_fifo)?) } else { None };
-        let args = &prepared.command.args;
-        let sep = args.iter().position(|a| a == "--").context("pasta command without '--'")?;
-        let bwrap_args: Vec<String> = args[sep + 2..].to_vec();
-        let mut out: Vec<String> = args[..=sep].to_vec();
-        out.extend([
-            "/bin/sh".into(),
-            "-c".into(),
-            r#"exec 3>"$1"; if [ -n "$2" ]; then exec 4>"$2"; fi; shift 2; exec "$@""#.into(),
-            "sh".into(),
-            status_fifo.display().to_string(),
-            if with_helper { helper_fifo.display().to_string() } else { String::new() },
-            args[sep + 1].clone(),
-        ]);
-        out.extend(add_status(&bwrap_args, 3, with_helper.then_some(4)));
-        new_args = Some(out);
-        bwrap_status = Some(r);
-        helper_status = hr;
+        Ok(ch)
     }
-    if let Some(args) = new_args {
-        cmd = Command::new(&prepared.command.program);
-        cmd.args(&args).stdin(Stdio::inherit()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        if prepared.command.clear_env {
-            cmd.env_clear();
-        }
-        for (k, v) in &prepared.command.env {
-            cmd.env(k, v);
-        }
-        cmd.current_dir(&host.home);
-    }
-    // Held until this launch is over: `Sam::running` sees the app as running.
-    let _running = hold_lock(&prepared.context.runtime_dir.join("running.lock"))?;
-    let mut child = cmd.spawn().with_context(|| format!("starting {}", prepared.command.program.display()))?;
-    // Close our copies of the write ends so the readers see EOF.
-    for fd in close_after_spawn {
-        unsafe { libc::close(fd) };
-    }
-    let child_done = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let bwrap_status_reader = bwrap_status.map(|r| read_fd_in_thread(r, child_done.clone()));
-    let helper_status_reader = helper_status.map(|r| read_fd_in_thread(r, child_done.clone()));
-    if let Some(fd) = prepared.context.seccomp_fd {
-        unsafe { libc::close(fd) };
-    }
-    let prepared = prepared;
+}
 
-    let log = Arc::new(Mutex::new(log));
-    // The first part of each stream: stderr decides whether the sandbox
-    // failed; both are searched for known problems (some apps, such as
-    // Audacity, log errors to stdout).
-    let head = Arc::new(Mutex::new(String::new()));
-    let out_head = Arc::new(Mutex::new(String::new()));
-    let pump = |src: Box<dyn Read + Send>, is_err: bool, log: Arc<Mutex<fs::File>>, head: Arc<Mutex<String>>, quiet: bool| {
-        std::thread::spawn(move || {
-            let reader = BufReader::new(src);
-            for line in reader.split(b'\n') {
-                let Ok(line) = line else { break };
-                let text = String::from_utf8_lossy(&line);
-                if let Ok(mut l) = log.lock() {
-                    let _ = writeln!(l, "{}{text}", if is_err { "[err] " } else { "" });
-                }
-                if let Ok(mut h) = head.lock() {
-                    if h.len() < STDERR_HEAD_LIMIT {
-                        h.push_str(&text);
-                        h.push('\n');
-                    }
-                }
-                if !quiet {
-                    if is_err {
-                        eprintln!("{text}");
-                    } else {
-                        println!("{text}");
-                    }
+/// bwrap's own arguments with the status options inserted.
+fn with_status_options(bwrap_args: &[String], status_fd: i32, helper_fd: Option<i32>) -> Vec<String> {
+    let mut args = vec!["--json-status-fd".to_string(), status_fd.to_string()];
+    args.extend(bwrap_args.iter().cloned());
+    if let Some(hw) = helper_fd {
+        // After --clearenv: right before bwrap's "--" separator.
+        let sep = args.iter().position(|a| a == "--").unwrap_or(args.len());
+        args.splice(sep..sep, ["--setenv".to_string(), "SAM_STATUS_FD".into(), hw.to_string()]);
+    }
+    args
+}
+
+/// Copies one output stream of the app into the launch log (and, unless
+/// quiet, to SAM's own output), keeping its first part in `head`.
+fn pump_output(src: Box<dyn Read + Send>, is_err: bool, log: Arc<Mutex<fs::File>>, head: Arc<Mutex<String>>, quiet: bool) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let reader = BufReader::new(src);
+        for line in reader.split(b'\n') {
+            let Ok(line) = line else { break };
+            let text = String::from_utf8_lossy(&line);
+            if let Ok(mut l) = log.lock() {
+                let _ = writeln!(l, "{}{text}", if is_err { "[err] " } else { "" });
+            }
+            if let Ok(mut h) = head.lock() {
+                if h.len() < STDERR_HEAD_LIMIT {
+                    h.push_str(&text);
+                    h.push('\n');
                 }
             }
-        })
-    };
-    let t1 = pump(Box::new(child.stdout.take().context("no stdout pipe")?), false, log.clone(), out_head.clone(), opts.quiet);
-    let t2 = pump(Box::new(child.stderr.take().context("no stderr pipe")?), true, log.clone(), head.clone(), opts.quiet);
-
-    // A time-limited start (test start, diagnostic run) that SAM ended.
-    let mut timed_out = false;
-    let status = match opts.timeout_secs {
-        None => child.wait()?,
-        Some(secs) => {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
-            loop {
-                if let Some(st) = child.try_wait()? {
-                    break st;
+            if !quiet {
+                if is_err {
+                    eprintln!("{text}");
+                } else {
+                    println!("{text}");
                 }
-                if std::time::Instant::now() > deadline {
-                    let _ = child.kill();
-                    timed_out = true;
-                    break child.wait()?;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
             }
         }
-    };
-    child_done.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _ = t1.join();
-    let _ = t2.join();
-    drop(prepared.proxy);
-    drop(prepared.wayland);
+    })
+}
 
+/// Waits for the child; with a time limit, ends it when the time is up
+/// (a test start or diagnostic run). Returns whether SAM ended it.
+fn wait_until(child: &mut std::process::Child, timeout_secs: Option<u64>) -> Result<(std::process::ExitStatus, bool)> {
+    let Some(secs) = timeout_secs else { return Ok((child.wait()?, false)) };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    loop {
+        if let Some(st) = child.try_wait()? {
+            return Ok((st, false));
+        }
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            return Ok((child.wait()?, true));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+struct Outcome {
+    success: bool,
+    sandbox_failure: bool,
+    setup_failed: bool,
+    summary: String,
+}
+
+/// Whether a finished launch worked, failed in the app, or failed to build
+/// the sandbox. `bwrap_json` is bwrap's status channel (None when there was
+/// none), `kept_running_for` the time limit when SAM ended the app.
+fn judge_outcome(status: std::process::ExitStatus, err_head: &str, bwrap_json: Option<&str>, stop_marker: bool, kept_running_for: Option<u64>) -> Outcome {
     let code = status.code();
     let signal = status.signal();
-    let head = head.lock().map(|h| h.clone()).unwrap_or_default();
-    let out_head = out_head.lock().map(|h| h.clone()).unwrap_or_default();
-    let bwrap_json = bwrap_status_reader.and_then(|t| t.join().ok());
-    let enforcement = helper_status_reader.and_then(|t| t.join().ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-    let (mut sandbox_failure, mut summary) = classify_failure(code, &head);
+    let (mut sandbox_failure, mut summary) = classify_failure(code, err_head);
     // Verified setup failure: bwrap never announced the app's process.
-    let setup_failed = bwrap_json.as_ref().is_some_and(|j| !j.contains("\"child-pid\""));
+    let setup_failed = bwrap_json.is_some_and(|j| !j.contains("\"child-pid\""));
     if bwrap_json.is_some() && summary.starts_with("sandbox setup failed") && !setup_failed {
         // The sandbox was built; "bwrap:" lines came from the app itself.
         sandbox_failure = false;
@@ -556,65 +609,41 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     }
     // `Sam::stop` (Close and Remove, `sam-jail stop`) asked the app to quit:
     // however it exits, that is not a failed start.
-    let closed_by_sam = !setup_failed && prepared.context.runtime_dir.join(STOP_MARKER).exists();
+    let closed_by_sam = !setup_failed && stop_marker;
     if closed_by_sam {
         sandbox_failure = false;
         summary = "closed by SAM".into();
     }
     // Still running when the time was up: it started fine.
-    let kept_running = timed_out && !setup_failed && !sandbox_failure;
+    let kept_running = kept_running_for.is_some() && !setup_failed && !sandbox_failure;
     if kept_running {
-        summary = format!("kept running for {} s (test start, ended by SAM)", opts.timeout_secs.unwrap_or(0));
+        summary = format!("kept running for {} s (test start, ended by SAM)", kept_running_for.unwrap_or(0));
     }
     let success = status.success() || closed_by_sam || kept_running;
     if summary.is_empty() {
         summary = match (code, signal) {
             (Some(0), _) => "exited normally".into(),
             (Some(c), _) => format!("exited with code {c}"),
-            (None, Some(s)) => format!(
-                "terminated by signal {s}{}",
-                if s == 11 {
-                    " (segmentation fault)"
-                } else if s == 6 {
-                    " (abort)"
-                } else {
-                    ""
-                }
-            ),
+            (None, Some(11)) => "terminated by signal 11 (segmentation fault)".into(),
+            (None, Some(6)) => "terminated by signal 6 (abort)".into(),
+            (None, Some(s)) => format!("terminated by signal {s}"),
             _ => "finished".into(),
         };
     }
-    if let Ok(mut l) = log.lock() {
-        if let Some(e) = &enforcement {
-            writeln!(l, "# enforced: {e}")?;
-        } else if prepared.landlock || prepared.seccomp {
-            writeln!(l, "# enforced: unknown (no status from SAM's helper)")?;
-        }
-        writeln!(l, "# ---- end ----\n# finished: {}\n# result: {summary}", format_ts(now()))?;
-    }
+    Outcome { success, sandbox_failure, setup_failed, summary }
+}
 
-    let rec = LaunchRecord {
-        started_at,
-        finished_at: now(),
-        exit_code: code,
-        signal,
-        success,
-        sandbox_failure,
-        setup_failed,
-        enforcement,
-        log_file: Some(log_path),
-        findings: if success { vec![] } else { crate::repair::analyze(&format!("{head}\n{out_head}"), &app.profile.permissions, signal) },
-        summary,
-    };
-    app.last_launched = Some(started_at);
+/// Stores the launch in the app's entry. Saves against the latest on-disk
+/// entry so concurrent GUI edits survive.
+fn save_launch(app: &mut AppEntry, rec: &LaunchRecord, paths: &Paths) -> Result<()> {
+    app.last_launched = Some(rec.started_at);
     app.last_launch = Some(rec.clone());
-    if sandbox_failure {
+    if rec.sandbox_failure {
         app.last_error = Some(rec.summary.clone());
     } else if app.state == AppState::Broken && app.extraction.is_some() {
         app.state = AppState::Ready;
         app.last_error = None;
     }
-    // Save against the latest on-disk entry so concurrent GUI edits survive.
     let reg = Registry::new(paths);
     if let Some(mut fresh) = reg.get(&app.id)? {
         fresh.last_launched = app.last_launched;
@@ -623,8 +652,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         fresh.state = app.state;
         reg.save(&mut fresh)?;
     }
-    let _ = logs.prune(&app.id, LogKind::Launch, cfg.diagnostics.keep_logs);
-    Ok(rec)
+    Ok(())
 }
 
 /// A pipe whose write end is inherited by child processes.
@@ -723,5 +751,40 @@ mod tests {
         assert!(classify_failure(Some(127), "").0);
         assert!(!classify_failure(Some(1), "app error").0);
         assert!(!classify_failure(None, "").0);
+    }
+
+    fn exited(code: i32) -> std::process::ExitStatus {
+        std::process::ExitStatus::from_raw(code << 8)
+    }
+
+    #[test]
+    fn launch_outcomes() {
+        let started = Some(r#"{"child-pid": 7}"#);
+        let never_started = Some(r#"{"exit-code": 1}"#);
+
+        let o = judge_outcome(exited(0), "", started, false, None);
+        assert!(o.success && !o.sandbox_failure && o.summary == "exited normally");
+
+        // bwrap never announced the app: a setup failure, whatever stderr says.
+        let o = judge_outcome(exited(1), "", never_started, false, None);
+        assert!(!o.success && o.sandbox_failure && o.setup_failed);
+        // Even a stop request does not turn that into "closed by SAM".
+        assert!(judge_outcome(exited(1), "", never_started, true, None).setup_failed);
+
+        // "bwrap:" lines from inside a sandbox that was built (nested bwrap).
+        let o = judge_outcome(exited(1), "bwrap: Creating new namespace failed", started, false, None);
+        assert!(!o.sandbox_failure && o.summary == "exited with code 1");
+        // Without the status channel, such lines count as a setup failure.
+        assert!(judge_outcome(exited(1), "bwrap: Can't mount proc", None, false, None).sandbox_failure);
+
+        let o = judge_outcome(std::process::ExitStatus::from_raw(15), "", started, true, None);
+        assert!(o.success && o.summary == "closed by SAM");
+
+        let o = judge_outcome(std::process::ExitStatus::from_raw(9), "", started, false, Some(20));
+        assert!(o.success && o.summary.starts_with("kept running for 20 s"));
+        // A time limit does not hide an entry point that could not run.
+        assert!(!judge_outcome(exited(127), "", started, false, Some(20)).success);
+
+        assert_eq!(judge_outcome(std::process::ExitStatus::from_raw(11), "", started, false, None).summary, "terminated by signal 11 (segmentation fault)");
     }
 }
