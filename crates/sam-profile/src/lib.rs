@@ -370,7 +370,6 @@ pub fn needs_network_by_purpose(md: &AppImageMetadata, file_name: &str) -> bool 
         " openai",
         " webui ",
         " web ui ",
-        " comfy",
         " comfyui",
         " stable diffusion",
         " diffusion ",
@@ -386,8 +385,6 @@ pub fn needs_network_by_purpose(md: &AppImageMetadata, file_name: &str) -> bool 
         " model ",
         " models ",
         " inference ",
-        " unsloth",
-        " anythingllm",
     ];
     if words.iter().any(|w| text.contains(w)) {
         return true;
