@@ -644,6 +644,12 @@ impl Section<'_> {
         for d in ["/bin", "/sbin", "/lib", "/lib64", "/lib32"] {
             mirror(a, d);
         }
+        // Library folders the system's loader searches outside /usr (CUDA in
+        // /opt/cuda/lib64, /usr/local/lib): /etc/ld.so.cache points there,
+        // and SAM's analysis counts libraries found there as present.
+        for d in &ctx.host.extra_lib_dirs {
+            a.ro(d);
+        }
         // Tools that ask a service outside the sandbox to start a program
         // (systemd, Flatpak). They would run it unsandboxed if the service
         // is reachable, and otherwise fail: some AppRun scripts use
@@ -1294,6 +1300,13 @@ mod tests {
 
     fn has_seq(v: &[String], seq: &[&str]) -> bool {
         v.windows(seq.len()).any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
+    }
+
+    #[test]
+    fn the_loaders_extra_library_folders_are_shown_read_only() {
+        let mut ctx = sample_context();
+        ctx.host.extra_lib_dirs = vec!["/opt/cuda/lib64".into()];
+        assert!(has_seq(&args_of(&ctx), &["--ro-bind-try", "/opt/cuda/lib64", "/opt/cuda/lib64"]));
     }
 
     #[test]

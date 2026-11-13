@@ -159,6 +159,22 @@ version.
     arguments) no longer counts as a failed start, so repair steps no
     longer weaken their sandbox for nothing. From the menu, the window stays
     open after an error until Enter is pressed.
+  - "May not start" only for real reasons. It showed for 44 of the 71
+    test AppImages, of which 69 start: for using the system's GTK or
+    OpenSSL (now an information note), for libraries only bundled
+    libraries or Node add-ons need (now a notice naming the feature), and
+    for add-ons built for another CPU (now ignored). A missing library
+    counts as a start problem only when the app's main program needs it;
+    for another program inside the app the label says so. On the test set,
+    70 of 71 are now rated fine before their first start.
+  - Missing GPU acceleration is explained: an app that bundles CUDA or
+    ROCm code (local AI models) says whether this computer has such a
+    graphics card, which CUDA version it has and which one the app needs,
+    and how to get it working. Missing tray-menu or OpenCL libraries get
+    their own short notes.
+  - The sandbox shows the library folders the system's loader uses
+    outside /usr (CUDA in /opt/cuda/lib64, /usr/local/lib), read-only:
+    the analysis already counted libraries there as present.
   - Creating a sandbox shows its progress: step, a progress bar and what
     happens ("1.2 GB unpacked", "40 of 115 program files read"), and the
     settings are locked meanwhile (`sam-jail add --progress` for scripts).

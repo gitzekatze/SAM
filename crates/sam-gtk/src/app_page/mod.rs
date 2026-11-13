@@ -494,16 +494,16 @@ fn framed(v: &gtk::TextView, height: i32) -> gtk::Widget {
 fn compat_risk_label(entry: Option<&Value>) -> (&'static str, &'static str, String) {
     let det = entry.and_then(|e| e.get("detection")).cloned().unwrap_or_default();
     let likely_broken = util::str_of(&det, "compatibility") == "likely-broken";
-    let missing: Vec<String> =
-        det.get("missing").and_then(Value::as_array).into_iter().flatten().map(|m| util::str_of(m, "name").to_string()).filter(|n| !n.is_empty()).collect();
-    let mut tip = if missing.is_empty() {
-        let found: Vec<String> = det.get("warnings").and_then(Value::as_array).into_iter().flatten().map(|w| util::str_of(w, "title").to_string()).collect();
-        format!("SAM's analysis of this AppImage found: {}.", if found.is_empty() { "possible problems".to_string() } else { found.join("; ") })
-    } else {
-        let shown: Vec<&str> = missing.iter().take(4).map(String::as_str).collect();
-        let more = if missing.len() > 4 { format!(" and {} more", missing.len() - 4) } else { String::new() };
-        format!("This AppImage does not bring all the libraries it needs ({}{more}) and expects them on this computer. SAM shows them inside the sandbox, but if one is missing here the app will not start.", shown.join(", "))
-    };
+    // The warnings that set the label (not notices about optional features).
+    let found: Vec<String> = det
+        .get("warnings")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|w| util::str_of(w, "severity") != "info" && !util::str_of(w, "code").starts_with("feature-"))
+        .map(|w| util::str_of(w, "message").to_string())
+        .collect();
+    let mut tip = if found.is_empty() { "SAM's analysis found possible problems.".to_string() } else { found.join(" ") };
     tip.push_str(" Just launch it: if it starts, this label goes away. If not, see Troubleshooting below.");
     if likely_broken {
         ("Likely won't start", "bad", tip)

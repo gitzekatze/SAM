@@ -48,18 +48,9 @@ pub fn default_host_lib_dirs() -> Vec<PathBuf> {
             .iter()
             .map(PathBuf::from)
             .collect();
-    // ld.so.conf.d entries (e.g. /usr/lib/nvidia, /opt/... on some distros).
-    if let Ok(rd) = fs::read_dir("/etc/ld.so.conf.d") {
-        for e in rd.flatten() {
-            if let Ok(s) = fs::read_to_string(e.path()) {
-                for l in s.lines().map(str::trim) {
-                    if l.starts_with('/') {
-                        dirs.push(PathBuf::from(l));
-                    }
-                }
-            }
-        }
-    }
+    // ld.so.conf.d entries (e.g. /usr/lib/nvidia, /opt/cuda/lib64), which
+    // the sandbox shows too (`HostInfo::extra_lib_dirs`).
+    dirs.extend(sam_core::host::loader_lib_dirs());
     dirs.retain(|d| d.is_dir());
     dirs.dedup();
     dirs
@@ -371,6 +362,9 @@ pub fn analyze_appdir_with(appdir: &Path, opts: &AnalyzeOptions, progress: &dyn 
     if links.musl_variants > 0 {
         report.notes.push(format!("{} bundled program(s) built for musl (Alpine) skipped: alternatives that only run on musl systems", links.musl_variants));
     }
+    if links.foreign_variants > 0 {
+        report.notes.push(format!("{} bundled file(s) built for another CPU skipped: they are never loaded here", links.foreign_variants));
+    }
     report.bundled_libraries = w.bundled.len() as u64;
     report.arch = links.arch.unwrap_or("unknown").to_string();
 
@@ -391,38 +385,54 @@ struct Links {
     needed: BTreeMap<String, Vec<String>>,
     /// Highest glibc symbol version used.
     glibc_max: Option<(u32, u32)>,
-    /// CPU architecture of the entry binary (or the first parsed program).
+    /// CPU architecture of the entry binary (or the most common one).
     arch: Option<&'static str>,
     parsed: u64,
     /// Programs built for musl (Alpine): bundled as alternatives (Node and
     /// Python packages ship both), never used on a glibc system. Their
     /// libraries are not missing for the app.
     musl_variants: u64,
+    /// Files built for another CPU (Android/ARM builds of a Node add-on in
+    /// an x86_64 app): never loaded, so their libraries are not missing.
+    foreign_variants: u64,
+    /// The entry binary relative to the AppDir, as in `needed`.
+    entry: Option<String>,
 }
 
 fn read_links(appdir: &Path, elfs: &[PathBuf], entry_bin: Option<&PathBuf>, progress: &dyn Fn(usize)) -> Links {
-    let mut l = Links { needed: BTreeMap::new(), glibc_max: None, arch: None, parsed: 0, musl_variants: 0 };
-    // Parse the entry binary first so its architecture wins.
-    let mut ordered = elfs.to_vec();
-    if let Some(e) = entry_bin {
-        ordered.retain(|p| p != e);
-        ordered.insert(0, e.clone());
-    }
-    for (n, p) in ordered.iter().enumerate() {
+    let rel = |p: &Path| p.strip_prefix(appdir).unwrap_or(p).display().to_string();
+    let mut l =
+        Links { needed: BTreeMap::new(), glibc_max: None, arch: None, parsed: 0, musl_variants: 0, foreign_variants: 0, entry: entry_bin.map(|e| rel(e)) };
+    let mut files: Vec<(&PathBuf, ElfFacts)> = Vec::new();
+    for (n, p) in elfs.iter().enumerate() {
         progress(n + 1);
-        let Some(f) = parse_elf(p) else { continue };
-        l.parsed += 1;
-        if f.needed.iter().any(|n| n.starts_with("libc.musl") || n.starts_with("ld-musl")) {
+        if let Some(f) = parse_elf(p) {
+            l.parsed += 1;
+            files.push((p, f));
+        }
+    }
+    // The app's architecture: its entry binary's, else the most common one.
+    let musl = |f: &ElfFacts| f.needed.iter().any(|n| n.starts_with("libc.musl") || n.starts_with("ld-musl"));
+    l.arch = entry_bin.and_then(|e| files.iter().find(|(p, _)| *p == e)).and_then(|(_, f)| f.arch).or_else(|| {
+        let mut count: BTreeMap<&'static str, usize> = BTreeMap::new();
+        for a in files.iter().filter(|(_, f)| !musl(f)).filter_map(|(_, f)| f.arch) {
+            *count.entry(a).or_default() += 1;
+        }
+        count.into_iter().max_by_key(|(_, n)| *n).map(|(a, _)| a)
+    });
+    for (p, f) in files {
+        if musl(&f) {
             l.musl_variants += 1;
             continue;
         }
-        if l.arch.is_none() {
-            l.arch = f.arch;
+        if f.arch.is_some() && l.arch.is_some() && f.arch != l.arch {
+            l.foreign_variants += 1;
+            continue;
         }
         if let Some(v) = f.glibc_max {
             l.glibc_max = Some(l.glibc_max.map_or(v, |m| m.max(v)));
         }
-        let rel = p.strip_prefix(appdir).unwrap_or(p).display().to_string();
+        let r = rel(p);
         for n in f.needed {
             // A DT_NEEDED entry with a slash is a path, usually `$ORIGIN/...`
             // relative to the binary. If it exists in the payload it is bundled.
@@ -436,7 +446,7 @@ fn read_links(appdir: &Path, elfs: &[PathBuf], entry_bin: Option<&PathBuf>, prog
             };
             let by = l.needed.entry(n).or_default();
             if by.len() < 5 {
-                by.push(rel.clone());
+                by.push(r.clone());
             }
         }
     }
@@ -535,53 +545,68 @@ fn worsen(c: &mut Compatibility, to: Compatibility) {
 /// version, CPU architecture. Adds the warnings and notes to the report.
 fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, opts: &AnalyzeOptions) -> Compatibility {
     let mut compat = Compatibility::Good;
-    let mut not_found = Vec::new();
-    // Missing, but only bundled libraries need them (e.g. libappindicator's
-    // GTK2 deps). Those libraries are often loaded optionally via dlopen.
-    let mut lib_only_missing = Vec::new();
+    // Missing, by who needs them: the entry binary (it will not start),
+    // another program (often a helper tool), or only libraries and Node
+    // add-ons (an optional feature, often loaded only when used).
+    let mut for_entry = Vec::new();
+    let mut for_programs: Vec<(String, String)> = Vec::new();
+    let mut for_libraries = Vec::new();
     let mut abi_sensitive = Vec::new();
+    let is_library = |f: &str| f.rsplit('/').next().is_some_and(|n| n.contains(".so") || n.ends_with(".node"));
     for (name, by) in &links.needed {
         if w.bundled.contains(name) || name.starts_with("ld-linux") || name.starts_with("ld64") {
             continue;
         }
         let info = classify_library(name);
         let host = host_has_lib(&opts.host_lib_dirs, name);
-        let only_libs_need_it = by.iter().all(|f| f.rsplit('/').next().is_some_and(|n| n.contains(".so")));
-        if !host && only_libs_need_it {
-            lib_only_missing.push(name.clone());
-            worsen(&mut compat, Compatibility::Risk);
-        } else if !host {
-            not_found.push(name.clone());
-            worsen(&mut compat, Compatibility::LikelyBroken);
+        if !host {
+            if links.entry.as_ref().is_some_and(|e| by.contains(e)) {
+                for_entry.push(name.clone());
+            } else if let Some(program) = by.iter().find(|f| !is_library(f)) {
+                for_programs.push((name.clone(), program.clone()));
+            } else {
+                // Only tray libraries need it (their GTK 2): part of the tray feature.
+                let for_tray = by.iter().all(|f| f.rsplit('/').next().is_some_and(|n| feature_of(n) == "tray"));
+                for_libraries.push((name.clone(), for_tray));
+            }
         } else if info.class == ResourceClass::Dangerous {
             abi_sensitive.push(name.clone());
-            worsen(&mut compat, Compatibility::Risk);
         }
         report.missing.push(MissingLibrary { name: name.clone(), class: info.class, host_available: host, needed_by: by.clone() });
     }
-    if !not_found.is_empty() {
+    if !for_entry.is_empty() {
+        worsen(&mut compat, Compatibility::LikelyBroken);
         report.warnings.push(Warning::danger(
             "libs-not-found",
             "Libraries not found",
-            format!("These libraries are neither bundled nor installed on this system: {}. The app will probably fail to start.", list(&not_found)),
-        ));
-    }
-    if !lib_only_missing.is_empty() {
-        report.warnings.push(Warning::warn(
-            "libs-not-found-optional",
-            "Libraries not found (used by bundled libraries)",
             format!(
-                "These libraries are neither bundled nor installed: {}. Only bundled libraries need them, and those are often optional (e.g. tray support), so the app may still start.",
-                list(&lib_only_missing)
+                "The app's main program needs libraries that are neither bundled nor installed on this computer: {}. It will probably not start.",
+                list(&for_entry)
             ),
         ));
     }
-    if !abi_sensitive.is_empty() {
+    if !for_programs.is_empty() {
+        worsen(&mut compat, Compatibility::Risk);
+        let names: Vec<String> = for_programs.iter().map(|(n, _)| n.clone()).collect();
+        let mut programs: Vec<String> = for_programs.iter().map(|(_, p)| p.clone()).collect();
+        programs.dedup();
         report.warnings.push(Warning::warn(
-            "host-abi-libs",
-            "Relies on host system libraries",
+            "libs-not-found-program",
+            "Libraries not found for a program inside the app",
             format!(
-                "This AppImage uses the host's copy of {}. These are ABI-sensitive; a version mismatch can cause crashes. The AppImage may be incompatible with this system.",
+                "{} inside the app needs libraries that are neither bundled nor installed: {}. If the app uses that program, that part fails; often it is a helper tool the app does not need to start.",
+                list(&programs),
+                list(&names)
+            ),
+        ));
+    }
+    report.warnings.extend(optional_features(&for_libraries, &opts.host_lib_dirs, Path::new("/dev"), w.electron));
+    if !abi_sensitive.is_empty() {
+        report.warnings.push(Warning::info(
+            "host-abi-libs",
+            "Uses this computer's system libraries",
+            format!(
+                "Like most AppImages, it uses this computer's copy of {} instead of bringing its own. If it ever crashes right at the start after a system update, this is a likely cause.",
                 list(&abi_sensitive)
             ),
         ));
@@ -619,6 +644,160 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
         report.notes.push("analysis was truncated because the payload is very large".into());
     }
     compat
+}
+
+/// What libraries that only bundled libraries need are for, by name
+/// prefix: missing ones mean a feature is missing, not that the app fails.
+const FEATURES: &[(&str, &[&str])] = &[
+    (
+        "cuda",
+        &[
+            "libcuda.",
+            "libcudart.",
+            "libcublas",
+            "libcudnn",
+            "libcufft",
+            "libcurand",
+            "libcusparse",
+            "libcusolver",
+            "libnvrtc",
+            "libnvinfer",
+            "libnccl",
+            "libnvJitLink",
+            "libcupti",
+            "libnvToolsExt",
+            "libnvonnxparser",
+            "libnvparsers",
+        ],
+    ),
+    (
+        "rocm",
+        &[
+            "libamdhip64",
+            "librocblas",
+            "libhipblas",
+            "libMIOpen",
+            "librocm",
+            "libhsa-runtime64",
+            "librccl",
+            "libhipfft",
+            "librocfft",
+            "librocsolver",
+            "librocsparse",
+        ],
+    ),
+    ("opencl", &["libOpenCL."]),
+    ("tray", &["libdbusmenu", "libappindicator", "libindicator", "libayatana-appindicator", "libayatana-indicator"]),
+];
+
+/// The feature a library belongs to (`FEATURES`), or "other".
+fn feature_of(name: &str) -> &'static str {
+    FEATURES.iter().find(|(_, prefixes)| prefixes.iter().any(|p| name.starts_with(p))).map_or("other", |(f, _)| *f)
+}
+
+/// "12" for "libcudart.so.12".
+fn major_version(name: &str) -> Option<String> {
+    name.split_once(".so.").map(|(_, v)| v.split('.').next().unwrap_or(v).to_string()).filter(|v| !v.is_empty())
+}
+
+/// Other major versions of `name` this computer has ("13" for a missing
+/// "libcudart.so.12" when libcudart.so.13 is installed).
+fn installed_versions(name: &str, host_dirs: &[PathBuf]) -> BTreeSet<String> {
+    let Some((stem, _)) = name.split_once(".so") else { return BTreeSet::new() };
+    let prefix = format!("{stem}.so.");
+    host_dirs
+        .iter()
+        .flat_map(|d| fs::read_dir(d).into_iter().flatten().flatten())
+        .filter_map(|e| e.file_name().to_str().and_then(|f| f.strip_prefix(&prefix)).and_then(|v| v.split('.').next()).map(str::to_string))
+        .filter(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit()))
+        .collect()
+}
+
+/// Notices for libraries that only bundled libraries need: which feature
+/// is missing and what that means on this computer. `dev` is where the
+/// GPU devices are (`/dev`).
+/// `electron`: Electron draws tray menus itself, so the tray libraries that
+/// electron-builder bundles for old systems do not matter.
+/// `missing`: name, and whether only tray libraries need it.
+fn optional_features(missing: &[(String, bool)], host_dirs: &[PathBuf], dev: &Path, electron: bool) -> Vec<Warning> {
+    let mut groups: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for (name, for_tray) in missing {
+        let feature = if *for_tray { "tray" } else { feature_of(name) };
+        if feature == "tray" && electron {
+            continue;
+        }
+        groups.entry(feature).or_default().push(name.clone());
+    }
+    let versions = |libs: &[String], key: &str| -> (BTreeSet<String>, BTreeSet<String>) {
+        let wanted: BTreeSet<String> = libs.iter().filter(|n| n.starts_with(key)).filter_map(|n| major_version(n)).collect();
+        let have = libs.iter().filter(|n| n.starts_with(key)).flat_map(|n| installed_versions(n, host_dirs)).collect();
+        (wanted, have)
+    };
+    let join = |v: &BTreeSet<String>| v.iter().cloned().collect::<Vec<_>>().join(" or ");
+    let mut out = Vec::new();
+    for (feature, libs) in groups {
+        let w = match feature {
+            "cuda" => {
+                let (wanted, have) = versions(&libs, "libcudart.");
+                let wanted_s = if wanted.is_empty() { String::new() } else { format!(" {}", join(&wanted)) };
+                let what = format!("This app can use an NVIDIA graphics card for heavy work such as local AI models, through CUDA{wanted_s}.");
+                if !dev.join("nvidiactl").exists() {
+                    Warning::info("feature-cuda", "No NVIDIA GPU acceleration", format!("{what} This computer has no NVIDIA graphics card, so that work runs on the processor."))
+                } else {
+                    let state = if have.is_empty() {
+                        format!("The CUDA{wanted_s} libraries are not installed")
+                    } else {
+                        format!("This computer has CUDA {}, which the app cannot use", join(&have))
+                    };
+                    Warning::warn(
+                        "feature-cuda",
+                        "No NVIDIA GPU acceleration",
+                        format!(
+                            "{what} {state}, so that work runs on the processor: much slower. To use the graphics card, install the CUDA{wanted_s} runtime libraries \
+                             (from your distribution or NVIDIA; they can be installed next to another version), keep GPU acceleration on in this app's Devices settings, \
+                             then choose Re-run detection under Troubleshooting. Missing: {}.",
+                            list(&libs)
+                        ),
+                    )
+                }
+            }
+            "rocm" => {
+                let what = "This app can use an AMD graphics card for heavy work such as local AI models, through ROCm.";
+                if !dev.join("kfd").exists() {
+                    Warning::info("feature-rocm", "No AMD GPU acceleration", format!("{what} This computer offers no AMD compute device, so that work runs on the processor."))
+                } else {
+                    Warning::warn(
+                        "feature-rocm",
+                        "No AMD GPU acceleration",
+                        format!(
+                            "{what} The ROCm libraries it needs are not installed, so that work runs on the processor: much slower. Install ROCm (from your distribution or AMD), keep GPU acceleration on, then choose Re-run detection under Troubleshooting. Missing: {}.",
+                            list(&libs)
+                        ),
+                    )
+                }
+            }
+            "opencl" => Warning::info(
+                "feature-opencl",
+                "No OpenCL acceleration",
+                "This app can speed up some work with OpenCL, which is not installed. Install the OpenCL loader (ocl-icd) and your graphics card's OpenCL driver to use it.",
+            ),
+            "tray" => Warning::info(
+                "feature-tray-menu",
+                "The tray icon may have no menu",
+                format!("The libraries for menus on tray icons are not installed ({}). The app works; its tray icon may show without a menu.", list(&libs)),
+            ),
+            _ => Warning::info(
+                "libs-not-found-optional",
+                "Libraries for optional parts not found",
+                format!(
+                    "Only libraries bundled in the app need these, and they are often loaded only for one feature: {}. The app starts; the part that uses them may not work.",
+                    list(&libs)
+                ),
+            ),
+        };
+        out.push(w);
+    }
+    out
 }
 
 /// How well a sandbox can isolate the app (None: no concerns).
@@ -710,6 +889,38 @@ mod tests {
         assert!(super::programs(&[addon]).is_empty(), "Node add-ons are libraries");
         std::fs::write(&prog, b"\x7fELF....nothing....").unwrap();
         assert!(!super::scan_programs(&super::programs(&[prog]), &|_| {}).loads_graphics);
+    }
+
+    #[test]
+    fn missing_optional_libraries_name_the_feature() {
+        let d = tempfile::tempdir().unwrap();
+        let (dev, lib) = (d.path().join("dev"), d.path().join("lib"));
+        std::fs::create_dir_all(&dev).unwrap();
+        std::fs::create_dir_all(&lib).unwrap();
+        let missing: Vec<(String, bool)> = ["libcudart.so.12", "libcublas.so.12", "libdbusmenu-gtk.so.4", "libfoo.so.1"]
+            .iter()
+            .map(|s| (s.to_string(), false))
+            .chain([("libgtk-x11-2.0.so.0".into(), true)])
+            .collect();
+        let by_code = |w: &[Warning], c: &str| w.iter().find(|x| x.code == c).cloned();
+        // No NVIDIA card: only information.
+        let w = super::optional_features(&missing, std::slice::from_ref(&lib), &dev, false);
+        let cuda = by_code(&w, "feature-cuda").unwrap();
+        assert_eq!(cuda.severity, sam_core::Severity::Info);
+        assert!(cuda.message.contains("CUDA 12") && cuda.message.contains("no NVIDIA graphics card"));
+        assert!(by_code(&w, "feature-tray-menu").is_some());
+        let other = by_code(&w, "libs-not-found-optional").unwrap().message;
+        assert!(other.contains("libfoo.so.1") && !other.contains("gtk-x11"), "GTK 2 of a tray library counts as the tray feature");
+        // An NVIDIA card, CUDA 13 installed: a warning that says so and how to fix it.
+        std::fs::write(dev.join("nvidiactl"), "").unwrap();
+        std::fs::write(lib.join("libcudart.so.13"), "").unwrap();
+        let cuda = by_code(&super::optional_features(&missing, std::slice::from_ref(&lib), &dev, false), "feature-cuda").unwrap();
+        assert_eq!(cuda.severity, sam_core::Severity::Warning);
+        assert!(cuda.message.contains("This computer has CUDA 13, which the app cannot use"), "{}", cuda.message);
+        assert!(cuda.message.contains("install the CUDA 12 runtime libraries"));
+        assert_eq!(super::major_version("libcudart.so.12.4.1").as_deref(), Some("12"));
+        let electron = super::optional_features(&missing, std::slice::from_ref(&lib), &dev, true);
+        assert!(by_code(&electron, "feature-tray-menu").is_none(), "Electron draws its own tray menus");
     }
 
     #[test]

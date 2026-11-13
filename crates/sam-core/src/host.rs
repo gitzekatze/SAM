@@ -125,6 +125,10 @@ pub struct HostInfo {
     pub seccomp: bool,
     pub tools: Tools,
     pub gpu_devices: Vec<PathBuf>,
+    /// Library folders outside `/usr` and `/lib` that the system's loader
+    /// searches (see [`extra_lib_dirs`]), e.g. `/opt/cuda/lib64`.
+    #[serde(default)]
+    pub extra_lib_dirs: Vec<PathBuf>,
     pub xdg_dirs: BTreeMap<String, PathBuf>,
 }
 
@@ -192,6 +196,7 @@ impl HostInfo {
             seccomp: read_trim("/proc/self/status").map(|s| s.lines().any(|l| l.starts_with("Seccomp:"))).unwrap_or(false),
             tools,
             gpu_devices: gpu_devices(),
+            extra_lib_dirs: extra_lib_dirs(&home),
             xdg_dirs: xdg_user_dirs(&home),
             home,
         }
@@ -273,6 +278,38 @@ pub fn dbus_unix_path(addr: &str) -> Option<PathBuf> {
         let a = a.strip_prefix("unix:")?;
         a.split(',').find_map(|kv| kv.strip_prefix("path=").map(PathBuf::from))
     })
+}
+
+/// Library folders listed in `/etc/ld.so.conf.d` (the loader's search
+/// path, set up by packages such as CUDA or ROCm), plus `/usr/local/lib`.
+pub fn loader_lib_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![PathBuf::from("/usr/local/lib")];
+    if let Ok(rd) = fs::read_dir("/etc/ld.so.conf.d") {
+        let mut files: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
+        files.sort();
+        for f in files {
+            if let Ok(s) = fs::read_to_string(&f) {
+                dirs.extend(s.lines().map(str::trim).filter(|l| l.starts_with('/')).map(PathBuf::from));
+            }
+        }
+    }
+    dirs.retain(|d| d.is_dir());
+    dirs.dedup();
+    dirs
+}
+
+/// [`loader_lib_dirs`] that a sandbox does not show otherwise (outside
+/// `/usr/lib*` and `/lib*`) and that may be shown read-only: never below the
+/// home folder or a system area like `/etc`, `/var` or `/run`.
+pub fn extra_lib_dirs(home: &Path) -> Vec<PathBuf> {
+    loader_lib_dirs()
+        .into_iter()
+        .filter(|d| {
+            let shown = ["/usr/lib", "/usr/lib32", "/usr/lib64", "/lib", "/lib32", "/lib64"].iter().any(|s| d.starts_with(s));
+            let allowed = ["/opt", "/usr/local"].iter().any(|r| d.starts_with(r));
+            !shown && allowed && !d.starts_with(home)
+        })
+        .collect()
 }
 
 fn gpu_devices() -> Vec<PathBuf> {

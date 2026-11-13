@@ -36,6 +36,7 @@ SAM assumes that **you are trusted** and that **an AppImage may not be**.
 | `/usr/share/…` | selected shared data (fonts, icons, locales, themes), read-only |
 | `/etc/…` | selected configuration; `passwd` and `group` are generated and list only you |
 | `/var/cache/fontconfig` | the system's font cache (names and paths of the fonts above), read-only |
+| `/usr/local/lib`, `/opt/…` library folders | the library folders the system's loader searches outside `/usr` (from `/etc/ld.so.conf.d`, such as `/opt/cuda/lib64`), read-only; only below `/opt` and `/usr/local` |
 | `/tmp`, `/var/tmp`, `$XDG_RUNTIME_DIR` | empty and private |
 | `/` | read-only once the sandbox is set up |
 
