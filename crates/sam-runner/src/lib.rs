@@ -19,6 +19,7 @@ pub mod launch;
 pub mod netns;
 pub mod ops;
 pub mod probe;
+pub mod progress;
 pub mod pty;
 pub mod repair;
 pub mod updates;

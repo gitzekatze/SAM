@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::progress::{self, ProgressSink, ADD_STEPS};
 use anyhow::{bail, Context, Result};
 use sam_core::model::{UpdateBackup, UpdateStatus};
 use sam_core::permissions::*;
@@ -10,7 +11,7 @@ use sam_core::risk::{assess, RiskAssessment};
 use sam_core::util::{now, tildify};
 use sam_core::warnings::{evaluate, WarningContext};
 use sam_core::*;
-use sam_detect::{analyze_appdir, inspect, looks_like_appimage, AnalyzeOptions};
+use sam_detect::{analyze_appdir_with, inspect, looks_like_appimage, AnalyzeOptions};
 use sam_intake::extract::{extract, ExtractRequest, NeedsFallbackConsent};
 use sam_intake::fingerprint::{self, SourceStatus};
 use sam_intake::normalize::Limits;
@@ -43,6 +44,8 @@ pub struct AddOptions {
     /// Use these permissions instead of the recommendation (the settings
     /// the user saw and adjusted before creating the sandbox).
     pub permissions: Option<PermissionSet>,
+    /// Where the steps report how far they are (`progress::ADD_STEPS`).
+    pub progress: crate::progress::ProgressSink,
 }
 
 /// An AppImage found on disk, sandboxed or not (the overview).

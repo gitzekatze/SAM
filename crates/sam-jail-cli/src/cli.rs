@@ -57,6 +57,10 @@ pub(crate) enum Cmd {
         /// Use the permissions given as JSON on stdin instead of the recommendation.
         #[arg(long)]
         permissions_stdin: bool,
+        /// Report progress on stderr, one JSON object per line:
+        /// {"progress": {"step", "steps", "title", "detail", "fraction"}}.
+        #[arg(long)]
+        progress: bool,
     },
     /// Settings SAM would use for an AppImage without a sandbox (nothing is
     /// unpacked). With --permissions-stdin, evaluates adjusted settings.

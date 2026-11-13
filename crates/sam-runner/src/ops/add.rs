@@ -10,6 +10,9 @@ impl Sam {
         if !source.is_file() {
             bail!("{} is not a file", source.display());
         }
+        let pr = &opts.progress;
+        let file_size = fs::metadata(&source).map(|m| m.len()).unwrap_or(0);
+        pr.step(ADD_STEPS, 0, 0.0, format!("{} AppImage: format, checksum and signature", progress::size(file_size)));
         let reg = self.registry();
         let all = reg.list()?;
         if let Some(existing) = all.iter().find(|a| a.source_path == source) {
@@ -60,7 +63,17 @@ impl Sam {
             allow_fallback: opts.consent_fallback && self.config.extraction.allow_fallback,
             isolation: self.extract_isolation(),
         };
-        let extracted = extract(&req, &mut log);
+        pr.step(ADD_STEPS, 1, 0.0, "");
+        // How much is unpacked so far. The final size is unknown until the
+        // end; AppImages unpack to about 2.5 times their file size, so the
+        // bar moves by that estimate and waits at 95 % if it is bigger.
+        let sink = pr.clone();
+        let expected = (file_size as f64 * 2.5).max(1.0);
+        let extracted = progress::watch_bytes(
+            &incoming,
+            move |b| sink.step(ADD_STEPS, 1, (b as f64 / expected).min(0.95), format!("{} unpacked", progress::size(b))),
+            || extract(&req, &mut log),
+        );
         let md = match &extracted {
             Ok(out) => metadata::read_metadata(&out.appdir).unwrap_or_default(),
             Err(_) => AppImageMetadata::default(),
@@ -80,7 +93,7 @@ impl Sam {
                 let appdir = root.join("AppDir");
                 entry.extraction = Some(self.extraction_info(&root, &appdir, &out, &info, &fp));
                 entry.state = AppState::Extracted;
-                self.finish_intake(&mut entry, &log)?;
+                self.finish_intake(&mut entry, &log, pr)?;
             }
             Err(e) => {
                 let _ = fs::remove_dir_all(&incoming);
@@ -114,6 +127,7 @@ impl Sam {
             entry.profile.user_modified = entry.profile.permissions != entry.recommended;
         }
         entry.reviewed = opts.accept;
+        pr.step(ADD_STEPS, 4, 0.0, "");
         if entry.extraction.is_some() && opts.launcher.unwrap_or(self.config.general.desktop_integration) {
             match desktop::install_launcher(&self.paths, &entry) {
                 Ok(p) => entry.desktop_entry = Some(p),
@@ -125,6 +139,7 @@ impl Sam {
         }
         reg.save(&mut entry)?;
         let warnings = self.app_warnings(&entry, &self.host());
+        pr.step(ADD_STEPS, 4, 1.0, "");
         Ok(AddOutcome { entry, created: true, relocated: false, needs_fallback_consent: needs_consent, warnings })
     }
 
@@ -169,7 +184,8 @@ impl Sam {
 
     /// Metadata, icon, dependency detection and recommendation for an
     /// extracted entry. Keeps user-modified profiles intact.
-    pub(super) fn finish_intake(&self, entry: &mut AppEntry, extract_log: &[u8]) -> Result<()> {
+    pub(super) fn finish_intake(&self, entry: &mut AppEntry, extract_log: &[u8], pr: &ProgressSink) -> Result<()> {
+        pr.step(ADD_STEPS, 2, 0.0, "");
         let mut x = entry.extraction.clone().context("not extracted")?;
         if !x.appdir.join("AppRun").exists() {
             // Some AppImages ship without AppRun; fall back to the desktop Exec.
@@ -193,11 +209,11 @@ impl Sam {
                 let _ = fs::copy(src, x.root.join("desktop").join(Path::new(df).file_name().unwrap_or_default()));
             }
         }
-        self.detect(entry)?;
+        self.detect(entry, pr)?;
         Ok(())
     }
 
-    pub(super) fn detect(&self, entry: &mut AppEntry) -> Result<()> {
+    pub(super) fn detect(&self, entry: &mut AppEntry, pr: &ProgressSink) -> Result<()> {
         let x = entry.extraction.clone().context("not extracted")?;
         let report = if self.config.dependencies.static_analysis {
             let opts = AnalyzeOptions {
@@ -205,7 +221,9 @@ impl Sam {
                 exec_hint: (!entry.metadata.exec.is_empty()).then(|| entry.metadata.exec.clone()),
                 ..Default::default()
             };
-            match analyze_appdir(&x.appdir, &opts) {
+            pr.step(ADD_STEPS, 3, 0.0, "Looking for the app's programs and libraries");
+            let report = |n: usize, total: usize| pr.step(ADD_STEPS, 3, n as f64 / total.max(1) as f64, format!("{n} of {total} program files read"));
+            match analyze_appdir_with(&x.appdir, &opts, &report) {
                 Ok(r) => Some(r),
                 Err(e) => {
                     entry.last_error = Some(format!("dependency detection failed: {e:#}"));

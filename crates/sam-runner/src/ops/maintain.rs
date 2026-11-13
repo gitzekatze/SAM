@@ -46,7 +46,7 @@ impl Sam {
                     entry.metadata.icon_name = icon_name;
                 }
                 entry.last_error = None;
-                self.finish_intake(&mut entry, &log)?;
+                self.finish_intake(&mut entry, &log, &ProgressSink::default())?;
                 if entry.desktop_entry.is_some() || self.config.general.desktop_integration {
                     entry.desktop_entry = desktop::install_launcher(&self.paths, &entry).ok();
                 }
@@ -66,7 +66,7 @@ impl Sam {
 
     pub fn redetect(&self, query: &str) -> Result<AppEntry> {
         let mut entry = self.resolve(query)?;
-        self.detect(&mut entry)?;
+        self.detect(&mut entry, &ProgressSink::default())?;
         self.registry().save(&mut entry)?;
         Ok(entry)
     }

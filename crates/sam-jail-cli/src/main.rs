@@ -29,6 +29,20 @@ use man::write_man_pages;
 use output::*;
 use presets::preset_cmd;
 
+/// Progress as JSON lines on stderr, at most about ten per second (the
+/// first report of each step and the last one always pass).
+fn progress_lines() -> sam_runner::progress::ProgressSink {
+    let last = std::sync::Mutex::new((0usize, std::time::Instant::now()));
+    sam_runner::progress::ProgressSink::new(move |p| {
+        let Ok(mut l) = last.lock() else { return };
+        if l.0 == p.step && l.1.elapsed() < std::time::Duration::from_millis(100) && p.fraction < 1.0 {
+            return;
+        }
+        *l = (p.step, std::time::Instant::now());
+        eprintln!("{}", json!({ "progress": p }));
+    })
+}
+
 fn main() {
     // Like other command-line tools, end quietly when the reader of the
     // output goes away (`sam-jail list | head`) instead of panicking.
@@ -234,12 +248,21 @@ fn real_main(cli: Cli) -> Result<()> {
             let v = app.preview(&path, perms)?;
             out.emit(&v, || println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()));
         }
-        Cmd::Add { path, allow_fallback, no_launcher, preset, accept, hide_duplicates, permissions_stdin } => {
+        Cmd::Add { path, allow_fallback, no_launcher, preset, accept, hide_duplicates, permissions_stdin, progress } => {
             let permissions: Option<PermissionSet> =
                 if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
+            let progress = if progress { progress_lines() } else { Default::default() };
             let o = app.add(
                 &path,
-                &AddOptions { consent_fallback: allow_fallback, launcher: no_launcher.then_some(false), preset, accept, hide_duplicates, permissions },
+                &AddOptions {
+                    consent_fallback: allow_fallback,
+                    launcher: no_launcher.then_some(false),
+                    preset,
+                    accept,
+                    hide_duplicates,
+                    permissions,
+                    progress,
+                },
             )?;
             let summary = AppSummary::from_entry(&o.entry);
             out.emit(&json!({"app": summary, "entry": o.entry, "relocated": o.relocated, "needs_fallback_consent": o.needs_fallback_consent, "warnings": o.warnings}), || {

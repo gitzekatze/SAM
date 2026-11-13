@@ -45,6 +45,73 @@ impl Backend {
         r
     }
 
+    /// Like [`Backend::call`], for commands run with `--progress`: each
+    /// `{"progress": …}` line they print on stderr goes to `on_progress`
+    /// while they run.
+    pub async fn call_with_progress(&self, args: &[&str], input: Option<String>, on_progress: impl Fn(&Value) + 'static) -> Reply {
+        self.busy.set(self.busy.get() + 1);
+        (self.busy_changed)(true);
+        let r = self.call_progress_inner(args, input, on_progress).await;
+        self.busy.set(self.busy.get() - 1);
+        (self.busy_changed)(self.busy.get() > 0);
+        r
+    }
+
+    async fn call_progress_inner(&self, args: &[&str], input: Option<String>, on_progress: impl Fn(&Value) + 'static) -> Reply {
+        use gtk::gio::prelude::*;
+        let mut argv: Vec<OsString> = vec![self.cli.clone().into(), "--json".into()];
+        argv.extend(args.iter().map(OsString::from));
+        let argv_ref: Vec<&std::ffi::OsStr> = argv.iter().map(|a| a.as_os_str()).collect();
+        let mut flags = gio::SubprocessFlags::STDOUT_PIPE | gio::SubprocessFlags::STDERR_PIPE;
+        if input.is_some() {
+            flags |= gio::SubprocessFlags::STDIN_PIPE;
+        }
+        let proc =
+            gio::Subprocess::newv(&argv_ref, flags).map_err(|e| format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e))?;
+        if let (Some(text), Some(stdin)) = (input, proc.stdin_pipe()) {
+            let _ = stdin.write_all_future(text.into_bytes(), glib::Priority::DEFAULT).await;
+            let _ = stdin.close_future(glib::Priority::DEFAULT).await;
+        }
+        // stderr: progress lines as they come, everything else kept for an
+        // error message.
+        let errors = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+        let stderr_done = proc.stderr_pipe().map(|err| {
+            let errors = errors.clone();
+            glib::spawn_future_local(async move {
+                let lines = gio::DataInputStream::new(&err);
+                while let Ok(Some(line)) = lines.read_line_utf8_future(glib::Priority::DEFAULT).await {
+                    match serde_json::from_str::<Value>(line.trim()) {
+                        Ok(v) if v.get("progress").is_some() => on_progress(&v["progress"]),
+                        _ => {
+                            let mut e = errors.borrow_mut();
+                            e.push_str(&line);
+                            e.push('\n');
+                        }
+                    }
+                }
+            })
+        });
+        let mut out = Vec::new();
+        if let Some(stdout) = proc.stdout_pipe() {
+            while let Ok(chunk) = stdout.read_bytes_future(64 * 1024, glib::Priority::DEFAULT).await {
+                if chunk.is_empty() {
+                    break;
+                }
+                out.extend_from_slice(&chunk);
+            }
+        }
+        let _ = proc.wait_future().await;
+        if let Some(h) = stderr_done {
+            let _ = h.await;
+        }
+        let out = String::from_utf8_lossy(&out);
+        if let Some(r) = envelope(&out) {
+            return r;
+        }
+        let err = errors.borrow().trim().to_string();
+        Err(if err.is_empty() { "No response from the sam-jail command line tool.".into() } else { err })
+    }
+
     async fn call_inner(&self, args: &[&str], input: Option<String>) -> Reply {
         let mut argv: Vec<OsString> = vec![self.cli.clone().into(), "--json".into()];
         argv.extend(args.iter().map(OsString::from));
@@ -57,17 +124,8 @@ impl Backend {
             gio::Subprocess::newv(&argv_ref, flags).map_err(|e| format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e))?;
         let (out, err) = proc.communicate_utf8_future(input).await.map_err(|e| format!("sam-jail failed: {e}"))?;
         let out = out.map(|s| s.to_string()).unwrap_or_default();
-        // The envelope is the last JSON object line on stdout.
-        for line in out.lines().rev() {
-            if let Ok(Value::Object(m)) = serde_json::from_str::<Value>(line.trim()) {
-                if let Some(ok) = m.get("ok").and_then(Value::as_bool) {
-                    return if ok {
-                        Ok(m.get("data").cloned().unwrap_or(Value::Null))
-                    } else {
-                        Err(m.get("error").and_then(Value::as_str).unwrap_or("Unknown error").to_string())
-                    };
-                }
-            }
+        if let Some(r) = envelope(&out) {
+            return r;
         }
         let err = err.map(|s| s.trim().to_string()).unwrap_or_default();
         Err(if err.is_empty() { "No response from the sam-jail command line tool.".into() } else { err })
@@ -125,4 +183,21 @@ fn find_tool(name: &str, env: &str) -> PathBuf {
         }
     }
     PathBuf::from(name)
+}
+
+/// The reply in `sam-jail --json` output: the last JSON object line on
+/// stdout with an `ok` field.
+fn envelope(out: &str) -> Option<Reply> {
+    for line in out.lines().rev() {
+        if let Ok(Value::Object(m)) = serde_json::from_str::<Value>(line.trim()) {
+            if let Some(ok) = m.get("ok").and_then(Value::as_bool) {
+                return Some(if ok {
+                    Ok(m.get("data").cloned().unwrap_or(Value::Null))
+                } else {
+                    Err(m.get("error").and_then(Value::as_str).unwrap_or("Unknown error").to_string())
+                });
+            }
+        }
+    }
+    None
 }

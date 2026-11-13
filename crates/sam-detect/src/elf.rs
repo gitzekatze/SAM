@@ -298,15 +298,31 @@ struct ProgramStrings {
     qt_platform_override: Option<String>,
 }
 
-fn scan_programs(elfs: &[PathBuf]) -> ProgramStrings {
+/// The app's programs among its ELF files: not libraries (`.so`, and Node
+/// add-ons, `.node`, which can be hundreds of megabytes).
+fn programs(elfs: &[PathBuf]) -> Vec<&PathBuf> {
+    elfs.iter()
+        .filter(|p| {
+            p.file_name().is_some_and(|n| {
+                let n = n.to_string_lossy();
+                !n.contains(".so") && !n.ends_with(".node")
+            })
+        })
+        .collect()
+}
+
+fn scan_programs(programs: &[&PathBuf], progress: &dyn Fn(usize)) -> ProgramStrings {
+    use memchr::memmem;
     const GRAPHICS: [&[u8]; 4] = [b"libEGL.so", b"libGL.so", b"libGLX.so", b"libvulkan.so"];
+    let graphics: Vec<memmem::Finder<'static>> = GRAPHICS.iter().map(|n| memmem::Finder::new(*n)).collect();
     const QPA: &[u8] = b"_QT_QPA_PLATFORM\0";
     let mut found = ProgramStrings::default();
-    for p in elfs.iter().filter(|p| p.file_name().is_some_and(|n| !n.to_string_lossy().contains(".so"))) {
+    for (n, p) in programs.iter().enumerate() {
+        progress(n + 1);
         let Ok(data) = fs::read(p) else { continue };
-        found.loads_graphics |= GRAPHICS.iter().any(|n| data.windows(n.len()).any(|w| w == *n));
+        found.loads_graphics |= graphics.iter().any(|f| f.find(&data).is_some());
         if found.qt_platform_override.is_none() {
-            found.qt_platform_override = data.windows(QPA.len()).enumerate().filter(|(_, w)| *w == QPA).find_map(|(i, _)| {
+            found.qt_platform_override = memmem::find_iter(&data, QPA).find_map(|i| {
                 // The whole string: an upper-case prefix right after a NUL.
                 let start = data[..i].iter().rposition(|b| !(b.is_ascii_uppercase() || b.is_ascii_digit() || *b == b'_')).map_or(0, |z| z + 1);
                 let prefix = &data[start..i];
@@ -332,6 +348,12 @@ fn qt_wayland_usable(plugins: &[PathBuf], bundled: &BTreeSet<String>) -> bool {
 /// bundle, what that tells about the access it needs, whether it can run
 /// on this system, and how well a sandbox can isolate it. Nothing is run.
 pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<DependencyReport> {
+    analyze_appdir_with(appdir, opts, &|_, _| {})
+}
+
+/// [`analyze_appdir`], reporting `(files read, files to read)` as it goes:
+/// every ELF file once, then every program once more.
+pub fn analyze_appdir_with(appdir: &Path, opts: &AnalyzeOptions, progress: &dyn Fn(usize, usize)) -> Result<DependencyReport> {
     let appdir = fs::canonicalize(appdir)?;
     let mut w = Walk::default();
     walk(&appdir, &appdir, &mut w, opts);
@@ -341,7 +363,10 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     report.entry_is_script = is_script;
     report.entry_binary = entry_bin.as_ref().map(|p| p.strip_prefix(&appdir).unwrap_or(p).display().to_string());
 
-    let links = read_links(&appdir, &w.elfs, entry_bin.as_ref());
+    let programs = programs(&w.elfs);
+    let total = w.elfs.len() + programs.len();
+    let links = read_links(&appdir, &w.elfs, entry_bin.as_ref(), &|n| progress(n, total));
+    let strings = scan_programs(&programs, &|n| progress(w.elfs.len() + n, total));
     report.elf_count = links.parsed;
     if links.musl_variants > 0 {
         report.notes.push(format!("{} bundled program(s) built for musl (Alpine) skipped: alternatives that only run on musl systems", links.musl_variants));
@@ -349,7 +374,7 @@ pub fn analyze_appdir(appdir: &Path, opts: &AnalyzeOptions) -> Result<Dependency
     report.bundled_libraries = w.bundled.len() as u64;
     report.arch = links.arch.unwrap_or("unknown").to_string();
 
-    report.requirements = requirements(&appdir, &w, &links.needed, &mut report.notes);
+    report.requirements = requirements(&appdir, &w, &links.needed, &strings, &mut report.notes);
     let compat = check_compatibility(&mut report, &w, &links, opts);
     report.verdict = isolation_verdict(&mut report, &w, &links.needed, compat, script_text.as_deref());
     report.compatibility = compat;
@@ -375,7 +400,7 @@ struct Links {
     musl_variants: u64,
 }
 
-fn read_links(appdir: &Path, elfs: &[PathBuf], entry_bin: Option<&PathBuf>) -> Links {
+fn read_links(appdir: &Path, elfs: &[PathBuf], entry_bin: Option<&PathBuf>, progress: &dyn Fn(usize)) -> Links {
     let mut l = Links { needed: BTreeMap::new(), glibc_max: None, arch: None, parsed: 0, musl_variants: 0 };
     // Parse the entry binary first so its architecture wins.
     let mut ordered = elfs.to_vec();
@@ -383,7 +408,8 @@ fn read_links(appdir: &Path, elfs: &[PathBuf], entry_bin: Option<&PathBuf>) -> L
         ordered.retain(|p| p != e);
         ordered.insert(0, e.clone());
     }
-    for p in &ordered {
+    for (n, p) in ordered.iter().enumerate() {
+        progress(n + 1);
         let Some(f) = parse_elf(p) else { continue };
         l.parsed += 1;
         if f.needed.iter().any(|n| n.starts_with("libc.musl") || n.starts_with("ld-musl")) {
@@ -419,7 +445,7 @@ fn read_links(appdir: &Path, elfs: &[PathBuf], entry_bin: Option<&PathBuf>) -> L
 
 /// The access the app needs, from every library name we know about
 /// (needed or bundled), the files found in the payload and its start scripts.
-fn requirements(appdir: &Path, w: &Walk, needed: &BTreeMap<String, Vec<String>>, notes: &mut Vec<String>) -> Requirements {
+fn requirements(appdir: &Path, w: &Walk, needed: &BTreeMap<String, Vec<String>>, programs: &ProgramStrings, notes: &mut Vec<String>) -> Requirements {
     let mut req = Requirements::default();
     let mut toolkit: Option<&str> = None;
     for name in needed.keys().chain(w.bundled.iter()) {
@@ -447,7 +473,6 @@ fn requirements(appdir: &Path, w: &Walk, needed: &BTreeMap<String, Vec<String>>,
     // through its plugin.)
     let qt_wayland = qt_wayland_usable(&w.qt_wayland_plugins, &w.bundled);
     let qt_x11_only = w.qt_xcb_plugin && !qt_wayland;
-    let programs = scan_programs(&w.elfs);
     if start_scripts_force_x11(appdir) {
         // The app's own start script insists on X11 (linuxdeploy's GTK
         // hook does, and so every Tauri AppImage); SAM's choice is overridden.
@@ -678,10 +703,13 @@ mod tests {
         let lib = d.path().join("libQt5Gui.so.5");
         std::fs::write(&prog, b"\x7fELF....with_egl_lib(libEGL.so.1)....").unwrap();
         std::fs::write(&lib, b"\x7fELF....libEGL.so.1....").unwrap();
-        assert!(super::scan_programs(std::slice::from_ref(&prog)).loads_graphics);
-        assert!(!super::scan_programs(&[lib]).loads_graphics, "bundled libraries do not count");
+        assert!(super::scan_programs(&super::programs(std::slice::from_ref(&prog)), &|_| {}).loads_graphics);
+        assert!(!super::scan_programs(&super::programs(&[lib]), &|_| {}).loads_graphics, "bundled libraries do not count");
+        let addon = d.path().join("bindings.linux-x64-gnu.node");
+        std::fs::write(&addon, b"\x7fELF....libEGL.so.1....").unwrap();
+        assert!(super::programs(&[addon]).is_empty(), "Node add-ons are libraries");
         std::fs::write(&prog, b"\x7fELF....nothing....").unwrap();
-        assert!(!super::scan_programs(&[prog]).loads_graphics);
+        assert!(!super::scan_programs(&super::programs(&[prog]), &|_| {}).loads_graphics);
     }
 
     #[test]
@@ -690,7 +718,7 @@ mod tests {
         let prog = d.path().join("mscore4portable");
         let scan = |data: &[u8]| {
             std::fs::write(&prog, data).unwrap();
-            super::scan_programs(std::slice::from_ref(&prog)).qt_platform_override
+            super::scan_programs(&super::programs(std::slice::from_ref(&prog)), &|_| {}).qt_platform_override
         };
         assert_eq!(scan(b"\x7fELF\0MU_QT_QPA_PLATFORM\0QT_QPA_PLATFORMTHEME\0xcb\0").as_deref(), Some("MU_QT_QPA_PLATFORM"));
         // Qt's own variable, read or set by many programs, does not count.

@@ -1145,6 +1145,7 @@ dependencies = [
  "anyhow",
  "goblin",
  "libc",
+ "memchr",
  "sam-core",
  "serde",
  "sha2",

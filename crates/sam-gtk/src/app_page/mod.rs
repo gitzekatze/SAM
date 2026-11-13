@@ -46,7 +46,10 @@ pub struct AppPage {
     main_button: gtk::Button,
     remove_button: gtk::Button,
     menu_button: gtk::MenuButton,
+    /// While a sandbox is being created: step, bar and details.
+    progress: CreationProgress,
     // Content.
+    content: adw::PreferencesPage,
     editor: Rc<Editor>,
     notices: adw::PreferencesGroup,
     hints: adw::PreferencesGroup,
@@ -187,6 +190,8 @@ impl AppPage {
         narrow.add_setter(&remove_button, "halign", Some(&gtk::Align::Center.to_value()));
         hero_bin.add_breakpoint(narrow);
         view.add_top_bar(&util::natural_height::Bin::new(&hero_bin));
+        let progress = CreationProgress::new();
+        view.add_top_bar(&progress.panel);
 
         // ---- settings
         let pref = adw::PreferencesPage::new();
@@ -306,6 +311,8 @@ impl AppPage {
             main_button,
             remove_button,
             menu_button,
+            progress,
+            content: pref.clone(),
             editor,
             notices,
             hints,
@@ -502,5 +509,71 @@ fn compat_risk_label(entry: Option<&Value>) -> (&'static str, &'static str, Stri
         ("Likely won't start", "bad", tip)
     } else {
         ("May not start", "warn", tip)
+    }
+}
+
+/// The panel under the header while a sandbox is being created: which step
+/// runs, a bar for the whole operation, and what the step is doing.
+pub(super) struct CreationProgress {
+    pub panel: gtk::Box,
+    step: gtk::Label,
+    bar: gtk::ProgressBar,
+    detail: gtk::Label,
+}
+
+impl CreationProgress {
+    fn new() -> Self {
+        let panel = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(6)
+            .margin_start(24)
+            .margin_end(24)
+            .margin_top(6)
+            .margin_bottom(12)
+            .visible(false)
+            .name("creation-progress")
+            .build();
+        let step = gtk::Label::builder().xalign(0.0).wrap(true).build();
+        step.add_css_class("heading");
+        let bar = gtk::ProgressBar::builder().show_text(true).build();
+        bar.update_property(&[gtk::accessible::Property::Label(&tr("Creating the sandbox"))]);
+        let detail = gtk::Label::builder().xalign(0.0).wrap(true).build();
+        detail.add_css_class("dim-label");
+        let note = gtk::Label::builder()
+            .label(tr("Large apps take a minute or two. You can keep using SAM meanwhile; you will see a message when it is done."))
+            .xalign(0.0)
+            .wrap(true)
+            .build();
+        note.add_css_class("dim-label");
+        note.add_css_class("caption");
+        panel.append(&step);
+        panel.append(&bar);
+        panel.append(&detail);
+        panel.append(&note);
+        CreationProgress { panel, step, bar, detail }
+    }
+
+    /// Shows the panel at the start.
+    pub fn start(&self) {
+        self.step.set_label(&tr("Creating the sandbox…"));
+        self.bar.set_fraction(0.0);
+        self.bar.set_text(Some("0 %"));
+        self.detail.set_label("");
+        self.panel.set_visible(true);
+    }
+
+    /// One `{"step", "steps", "title", "detail", "fraction"}` report.
+    pub fn update(&self, p: &Value) {
+        let n = p.get("step").and_then(Value::as_u64).unwrap_or(0);
+        let total = p.get("steps").and_then(Value::as_u64).unwrap_or(0);
+        let fraction = p.get("fraction").and_then(Value::as_f64).unwrap_or(0.0).clamp(0.0, 1.0);
+        self.step.set_label(&format!("Step {n} of {total}: {}", tr(util::str_of(p, "title"))));
+        self.bar.set_fraction(fraction);
+        self.bar.set_text(Some(&format!("{:.0} %", fraction * 100.0)));
+        self.detail.set_label(util::str_of(p, "detail"));
+    }
+
+    pub fn finish(&self) {
+        self.panel.set_visible(false);
     }
 }

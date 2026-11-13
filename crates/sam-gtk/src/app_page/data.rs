@@ -166,13 +166,19 @@ impl AppPage {
         if self.hide_duplicates.get() && self.found().and_then(|f| f.get("menu_entries").and_then(Value::as_array).map(|m| !m.is_empty())).unwrap_or(false) {
             args.push("--hide-duplicates".into());
         }
+        args.push("--progress".into());
         let name = self.name();
-        app.toast(&format!("Creating the sandbox for {}…", util::plain(&name)));
         self.main_button.set_sensitive(false);
+        // The settings below would not take effect while it is created.
+        self.content.set_sensitive(false);
+        self.progress.start();
         let me = self.clone();
         glib::spawn_future_local(async move {
             let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            let r = app.backend.call(&refs, Some(perms.to_string())).await;
+            let shown = me.clone();
+            let r = app.backend.call_with_progress(&refs, Some(perms.to_string()), move |p| shown.progress.update(p)).await;
+            me.progress.finish();
+            me.content.set_sensitive(true);
             me.main_button.set_sensitive(true);
             match r {
                 Ok(r) => {

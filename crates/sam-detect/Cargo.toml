@@ -11,6 +11,7 @@ sam-core.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 goblin.workspace = true
+memchr.workspace = true
 libc.workspace = true
 sha2.workspace = true
 tempfile.workspace = true

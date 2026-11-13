@@ -39,6 +39,7 @@ md4 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 libc = "0.2"
 goblin = { version = "0.10", default-features = false, features = ["elf32", "elf64", "endian_fd", "std"] }
+memchr = "2"
 backhand = { version = "0.25", default-features = false, features = ["xz", "gzip", "zstd", "lz4"] }
 landlock = "0.4"
 seccompiler = "0.5"
@@ -53,6 +54,9 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+# Libraries optimized also in development builds: checksums, unpacking and
+# ELF parsing of large AppImages otherwise take many times longer.
+opt-level = 2
 
 [profile.release]
 lto = "thin"

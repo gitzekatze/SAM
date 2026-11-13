@@ -159,6 +159,11 @@ version.
     arguments) no longer counts as a failed start, so repair steps no
     longer weaken their sandbox for nothing. From the menu, the window stays
     open after an error until Enter is pressed.
+  - Creating a sandbox shows its progress: step, a progress bar and what
+    happens ("1.2 GB unpacked", "40 of 115 program files read"), and the
+    settings are locked meanwhile (`sam-jail add --progress` for scripts).
+    It is also much faster for large AppImages: AnythingLLM took over two
+    minutes (in development builds), now 13 s.
   - First starts are faster: the sandbox includes the system's font cache
     (`/var/cache/fontconfig`, read-only), so an app no longer builds its
     own for every installed font (WezTerm's window took 35 s to appear,

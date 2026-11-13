@@ -21,6 +21,20 @@ people, not for parsing.
 Commands that take a whole object (a profile, a preset, the configuration)
 read it as JSON on stdin; the flag or subcommand is named in the table below.
 
+### Progress
+
+`add --progress` also reports while it works, on **stderr**, one JSON object
+per line (at most about ten per second), before the envelope on stdout:
+
+```json
+{"progress": {"step": 2, "steps": 5, "title": "Unpacking", "detail": "1.2 GB unpacked", "fraction": 0.31}}
+```
+
+`fraction` is the whole operation (0..1). The unpacking step estimates it
+from the file size (AppImages unpack to about 2.5 times their size) and
+waits at 95 % of the step if the app turns out bigger; `detail` always has
+the real figure. Other stderr lines are messages, not progress.
+
 ## Versions
 
 ```sh
@@ -84,7 +98,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `list [filters]` | `[app summary]` |
 | `info APP` | the full app record: profile, detection, warnings, logs, … |
 | `preview PATH [--permissions-stdin]` | recommendation for an AppImage without a sandbox |
-| `add PATH [--permissions-stdin] […]` | `{app, entry, relocated, needs_fallback_consent, warnings}` |
+| `add PATH [--permissions-stdin] [--progress] […]` | `{app, entry, relocated, needs_fallback_consent, warnings}` |
 | `remove APP [--keep-data] [--stop]` | `{removed, warnings}` |
 | `stop APP` | `{stopped}` (number of processes) |
 | `run APP [ARGS]` | the launch record |
