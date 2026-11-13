@@ -445,6 +445,52 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, writable: bool) 
     }
 }
 
+/// Files and folders named on the command line ("Open with", or typed in a
+/// terminal: `hx notes.txt`, `hx .`), granted for this launch only, like a
+/// document portal; `true` means writable (`filesystem.opened_files`).
+/// Relative names count from the folder the app was started in.
+///
+/// Never granted this way: options (`-x`), sensitive paths (keys, `~/.config`,
+/// `~/.local`, system folders), files and folders that can make the desktop
+/// run something outside the sandbox (start files of shells and the session,
+/// menu entries, SAM's own settings), the root, the home folder or a folder
+/// that contains it, and folders outside the home folder and mounted drives.
+pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
+    let rw = ctx.permissions.filesystem.opened_files == Access::Rw;
+    let home = &ctx.host.home;
+    let on_drive = |p: &Path| ["/media", "/mnt", "/run/media"].iter().any(|d| p.starts_with(d));
+    let mut out: Vec<(PathBuf, bool)> = Vec::new();
+    for arg in &ctx.args {
+        if arg.is_empty() || arg.starts_with('-') {
+            continue;
+        }
+        let given = Path::new(arg);
+        let joined = if given.is_absolute() { given.to_path_buf() } else { ctx.owd.join(given) };
+        let Ok(real) = fs::canonicalize(&joined) else { continue };
+        let Ok(meta) = fs::metadata(&real) else { continue };
+        let sensitive = |p: &Path| sam_core::risk::is_sensitive_path(&p.to_string_lossy()) && !on_drive(p);
+        if sensitive(&joined) || sensitive(&real) || visible_in_sandbox(&real, ctx) {
+            continue;
+        }
+        let protected = PROTECTED_RO.iter().map(|p| home.join(p)).any(|p| real.starts_with(&p) || (meta.is_dir() && p.starts_with(&real)));
+        if protected {
+            continue;
+        }
+        if meta.is_dir() {
+            if home.starts_with(&real) || !(real.starts_with(home) || on_drive(&real)) {
+                continue;
+            }
+        } else if !meta.is_file() {
+            continue;
+        }
+        if !out.iter().any(|(p, _)| real.starts_with(p)) {
+            out.retain(|(p, _)| !p.starts_with(&real));
+            out.push((real, rw));
+        }
+    }
+    out
+}
+
 fn visible_in_sandbox(p: &Path, ctx: &LaunchContext) -> bool {
     let fs = &ctx.permissions.filesystem;
     if fs.home && p.starts_with(&ctx.host.home) {
@@ -523,7 +569,10 @@ impl Section<'_> {
         let h = &ctx.host;
         let a = &mut self.a;
         // Namespaces & process hygiene.
-        a.push("--die-with-parent").push("--new-session");
+        a.push("--die-with-parent");
+        if !ctx.own_terminal {
+            a.push("--new-session");
+        }
         a.push("--unshare-user").push("--unshare-pid").push("--unshare-uts").push("--unshare-cgroup-try");
         // X11 apps share the IPC namespace (as with Flatpak's --share=ipc):
         // X11's shared-memory extension (MIT-SHM) needs the X server to see
@@ -744,15 +793,10 @@ impl Section<'_> {
                 guard_home(a, &home, fsp, rw);
             }
         }
-        // Files explicitly passed on the command line (e.g. "Open with") are
-        // granted individually, like a document portal.
-        for arg in &ctx.args {
-            let ap = Path::new(arg);
-            if ap.is_absolute() && ap.is_file() && !visible_in_sandbox(ap, ctx) && !sam_core::risk::is_sensitive_path(arg) {
-                let op = if fsp.opened_files == Access::Rw { "--bind-try" } else { "--ro-bind-try" };
-                a.op2(op, ap, ap);
-                notes.push(format!("granted access to the opened file {arg}"));
-            }
+        // Files and folders named on the command line, one by one.
+        for (path, rw) in opened_paths(ctx) {
+            a.op2(if rw { "--bind-try" } else { "--ro-bind-try" }, &path, &path);
+            notes.push(format!("granted access to the opened {} {}", if path.is_dir() { "folder" } else { "file" }, path.display()));
         }
         for (host_p, sb, rw) in &ctx.extra_binds {
             a.op2(if *rw { "--bind" } else { "--ro-bind" }, host_p, sb);
@@ -1038,7 +1082,11 @@ impl Section<'_> {
         let a = &mut self.a;
         let keep_fds = &mut self.keep_fds;
         // Working directory.
-        let chdir = if visible_in_sandbox(&ctx.owd, ctx) { ctx.owd.clone() } else { home.clone() };
+        // The folder it was started in, if the app sees it: granted, or
+        // holding a file named on the command line (`hx notes.txt`), so that
+        // relative names find the file.
+        let in_owd = opened_paths(ctx).iter().any(|(p, _)| p.starts_with(&ctx.owd) || ctx.owd.starts_with(p));
+        let chdir = if visible_in_sandbox(&ctx.owd, ctx) || in_owd { ctx.owd.clone() } else { home.clone() };
         a.push("--chdir").push(chdir.to_string_lossy());
 
         // Seccomp.
@@ -1246,6 +1294,70 @@ mod tests {
 
     fn has_seq(v: &[String], seq: &[&str]) -> bool {
         v.windows(seq.len()).any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
+    }
+
+    #[test]
+    fn a_new_session_unless_the_app_is_on_sams_own_terminal() {
+        let mut ctx = sample_context();
+        assert!(args_of(&ctx).iter().any(|a| a == "--new-session"));
+        ctx.own_terminal = true;
+        assert!(!args_of(&ctx).iter().any(|a| a == "--new-session"));
+    }
+
+    #[test]
+    fn files_and_folders_named_on_the_command_line() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let proj = home.join("proj");
+        fs::create_dir_all(proj.join("src")).unwrap();
+        fs::create_dir_all(home.join(".config/autostart")).unwrap();
+        fs::write(proj.join("notes.txt"), "x").unwrap();
+        fs::write(home.join(".bashrc"), "x").unwrap();
+        let outside = fs::canonicalize(t.path()).unwrap().join("elsewhere");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("file.txt"), "x").unwrap();
+        let mut ctx = sample_context();
+        ctx.host.home = home.clone();
+        ctx.host.xdg_dirs.clear();
+        ctx.owd = proj.clone();
+        let granted = |args: &[&str], ctx: &mut LaunchContext| {
+            ctx.args = args.iter().map(|a| a.to_string()).collect();
+            opened_paths(ctx).into_iter().map(|(p, _)| p).collect::<Vec<_>>()
+        };
+        // Relative to the start folder, and absolute; a folder covers its files.
+        assert_eq!(granted(&["notes.txt"], &mut ctx), vec![proj.join("notes.txt")]);
+        assert_eq!(granted(&["."], &mut ctx), vec![proj.clone()]);
+        assert_eq!(granted(&["notes.txt", ".", "src"], &mut ctx), vec![proj.clone()]);
+        assert_eq!(granted(&[outside.join("file.txt").to_str().unwrap()], &mut ctx), vec![outside.join("file.txt")], "a file anywhere");
+        // Never: options, missing files, the home folder or above, the
+        // root, start files of the shell and the session, sensitive system
+        // paths, folders outside the home folder and mounted drives.
+        for args in [
+            &["-c"][..],
+            &["missing.txt"],
+            &[".."],
+            &[home.to_str().unwrap()],
+            &["/"],
+            &["../.bashrc"],
+            &["../.config/autostart"],
+            &["/etc/hosts"],
+            &[outside.to_str().unwrap()],
+        ] {
+            assert_eq!(granted(args, &mut ctx), Vec::<PathBuf>::new(), "{args:?}");
+        }
+        // Writable unless the profile shares opened files read-only.
+        ctx.args = vec!["notes.txt".into()];
+        assert!(opened_paths(&ctx)[0].1);
+        ctx.permissions.filesystem.opened_files = Access::Ro;
+        assert!(!opened_paths(&ctx)[0].1);
+        // The sandbox binds it, and starts the app in that folder so the
+        // relative name finds it.
+        let a = args_of(&ctx);
+        let f = proj.join("notes.txt").display().to_string();
+        assert!(has_seq(&a, &["--ro-bind-try", &f, &f]));
+        assert!(has_seq(&a, &["--chdir", proj.to_str().unwrap()]));
+        ctx.args.clear();
+        assert!(has_seq(&args_of(&ctx), &["--chdir", home.to_str().unwrap()]), "nothing named: the private home");
     }
 
     #[test]

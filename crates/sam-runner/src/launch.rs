@@ -3,7 +3,7 @@
 
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::process::ExitStatusExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -20,6 +20,7 @@ use serde::Serialize;
 use crate::bwrap::SandboxInfo;
 use crate::dbus_proxy::DbusProxy;
 use crate::kernel;
+use crate::pty::{self, Pty, TerminalMode};
 
 #[derive(Debug, Clone, Default)]
 pub struct LaunchOptions {
@@ -47,6 +48,8 @@ pub struct Prepared {
     pub warnings: Vec<Warning>,
     pub landlock: bool,
     pub seccomp: bool,
+    /// How the app's terminal is handled (see `pty`).
+    pub terminal: TerminalMode,
     proxy: Option<DbusProxy>,
     /// Whether the app's Wayland socket carries a security context.
     pub wayland_context: bool,
@@ -146,8 +149,13 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         host: Some(host),
         warn_x11: cfg.security.warn_x11,
         warn_full_home: cfg.security.warn_full_home,
+        terminal_program: app.metadata.terminal,
     };
     warnings.extend(evaluate(perms, &ctx_w));
+    // A terminal of its own for a user's start from a terminal, and for a
+    // terminal program's test start (see `pty`).
+    let interactive = opts.timeout_secs.is_none() && opts.probe.is_none();
+    let terminal = TerminalMode::choose(app.metadata.terminal, pty::is_tty(0), interactive);
 
     // One runtime directory per launch (two instances of an app never share
     // proxy sockets or spec files); removed when `Prepared` is dropped.
@@ -194,6 +202,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         wayland_socket: None,
         helper: None,
         seccomp_fd: None,
+        own_terminal: terminal != TerminalMode::None,
         compatibility_mode: app.profile.compatibility_mode,
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
@@ -298,17 +307,13 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         }
     }
     let wayland_context = wayland.is_some();
-    Ok(Prepared { sandbox, command, context: ctx, warnings, landlock, seccomp, proxy, wayland_context, wayland, _runtime: runtime_guard })
+    Ok(Prepared { sandbox, command, context: ctx, warnings, landlock, seccomp, terminal, proxy, wayland_context, wayland, _runtime: runtime_guard })
 }
 
-/// Paths mounted writable only for this launch: files passed on the command
-/// line ("Open with") and writable extra binds.
+/// Paths mounted writable only for this launch: files and folders named on
+/// the command line and writable extra binds.
 fn launch_writable_paths(ctx: &LaunchContext) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = if ctx.permissions.filesystem.opened_files == sam_core::permissions::Access::Rw {
-        ctx.args.iter().map(PathBuf::from).filter(|p| p.is_absolute() && p.is_file()).collect()
-    } else {
-        vec![]
-    };
+    let mut out: Vec<PathBuf> = sam_sandbox::opened_paths(ctx).into_iter().filter(|(_, rw)| *rw).map(|(p, _)| p).collect();
     out.extend(ctx.extra_binds.iter().filter(|(_, _, rw)| *rw).map(|(_, dest, _)| dest.clone()));
     if ctx.permissions.advanced.writable_appdir {
         out.push(ctx.sandbox_appdir.clone());
@@ -360,7 +365,8 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     };
     write_log_header(&mut log, &prepared)?;
     for w in &prepared.warnings {
-        if !opts.quiet && w.severity != sam_core::Severity::Info {
+        // A terminal program's start shows its own line (`terminal_banner`).
+        if !opts.quiet && w.severity != sam_core::Severity::Info && w.code != "terminal-program" {
             eprintln!("sam-jail: warning: {}", w.message);
         }
     }
@@ -368,7 +374,27 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     // Start the sandbox.
     let channels = StatusChannels::new(&prepared, host)?;
     let mut cmd = Command::new(&prepared.command.program);
-    cmd.args(channels.args.as_ref().unwrap_or(&prepared.command.args)).stdin(Stdio::inherit()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.args(channels.args.as_ref().unwrap_or(&prepared.command.args));
+    // The app never gets the user's terminal itself (see `pty`).
+    let mode = prepared.terminal;
+    let pty = match mode {
+        TerminalMode::None => None,
+        TerminalMode::Relay => {
+            pty::end_with_the_terminal();
+            Some(Pty::open(Some(pty::Outer::STDIO))?)
+        }
+        TerminalMode::Headless => Some(Pty::open(None)?),
+    };
+    if let Some(p) = &pty {
+        cmd.stdin(p.stdio()?).stdout(p.stdio()?).stderr(p.stdio()?);
+        // SAFETY: only async-signal-safe calls (setsid, ioctl).
+        unsafe { cmd.pre_exec(Pty::become_controlling_terminal) };
+        if mode == TerminalMode::Relay && app.metadata.terminal && !opts.quiet {
+            eprintln!("{}", terminal_banner(app, &prepared));
+        }
+    } else {
+        cmd.stdin(if pty::is_tty(0) { Stdio::null() } else { Stdio::inherit() }).stdout(Stdio::piped()).stderr(Stdio::piped());
+    }
     if prepared.command.clear_env {
         cmd.env_clear();
     }
@@ -384,6 +410,9 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         unsafe { libc::close(*fd) };
     }
     let mut child = spawned?;
+    // `cmd` holds copies of the app's terminal: without them, the relay
+    // sees when the app's side is closed.
+    drop(cmd);
     let child_done = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let bwrap_status_reader = channels.bwrap_status.map(|r| read_fd_in_thread(r, child_done.clone()));
     let helper_status_reader = channels.helper_status.map(|r| read_fd_in_thread(r, child_done.clone()));
@@ -394,12 +423,22 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let log = Arc::new(Mutex::new(log));
     let err_head = Arc::new(Mutex::new(String::new()));
     let out_head = Arc::new(Mutex::new(String::new()));
-    let t1 = pump_output(Box::new(child.stdout.take().context("no stdout pipe")?), false, log.clone(), out_head.clone(), opts.quiet);
-    let t2 = pump_output(Box::new(child.stderr.take().context("no stderr pipe")?), true, log.clone(), err_head.clone(), opts.quiet);
+    let mut pumps = Vec::new();
+    let relay = match pty {
+        // On a terminal both streams are one.
+        Some(p) => Some(p.start(pty::OutputSink { head: err_head.clone(), head_limit: STDERR_HEAD_LIMIT, log: log.clone(), log_limit: 256 * 1024 })),
+        None => {
+            pumps.push(pump_output(Box::new(child.stdout.take().context("no stdout pipe")?), false, log.clone(), out_head.clone(), opts.quiet));
+            pumps.push(pump_output(Box::new(child.stderr.take().context("no stderr pipe")?), true, log.clone(), err_head.clone(), opts.quiet));
+            None
+        }
+    };
     let (status, timed_out) = wait_until(&mut child, opts.timeout_secs)?;
     child_done.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _ = t1.join();
-    let _ = t2.join();
+    for t in pumps {
+        let _ = t.join();
+    }
+    let relay_end = relay.map(pty::Relay::finish);
     drop(prepared.proxy);
     drop(prepared.wayland);
 
@@ -409,8 +448,25 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let bwrap_json = bwrap_status_reader.and_then(|t| t.join().ok());
     let enforcement = helper_status_reader.and_then(|t| t.join().ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
     let closed_by_sam = prepared.context.runtime_dir.join(STOP_MARKER).exists();
-    let outcome = judge_outcome(status, &err_head, bwrap_json.as_deref(), closed_by_sam, timed_out.then_some(opts.timeout_secs.unwrap_or(0)));
+    let mut outcome = judge_outcome(status, &err_head, bwrap_json.as_deref(), closed_by_sam, timed_out.then_some(opts.timeout_secs.unwrap_or(0)));
+    if relay_end.as_ref().is_some_and(|r| r.hung_up) && !outcome.sandbox_failure && !outcome.setup_failed {
+        // The user closed the terminal window: not a failed start.
+        outcome.success = true;
+        outcome.summary = "ended when its terminal was closed".into();
+    } else if app.metadata.terminal && ran_to_its_end(&outcome, status) {
+        // A command-line tool that ends with an error code (wrong
+        // arguments, nothing to do) has run fine in its sandbox; the code
+        // stays in the record for scripts.
+        outcome.success = true;
+    }
     if let Ok(mut l) = log.lock() {
+        if mode != TerminalMode::None {
+            let what = if mode == TerminalMode::Relay { "connected to the user's terminal" } else { "80x24, no input (test start)" };
+            writeln!(l, "\n# terminal: a terminal of its own, {what}")?;
+        }
+        if let Some(b) = relay_end.as_ref().map(|r| &r.blocked).filter(|b| !b.is_empty()) {
+            writeln!(l, "# terminal: blocked escape codes for {}", b.iter().copied().collect::<Vec<_>>().join(", "))?;
+        }
         if let Some(e) = &enforcement {
             writeln!(l, "# enforced: {e}")?;
         } else if prepared.landlock || prepared.seccomp {
@@ -435,6 +491,31 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     save_launch(app, &rec, paths)?;
     let _ = logs.prune(&app.id, LogKind::Launch, cfg.diagnostics.keep_logs);
     Ok(rec)
+}
+
+/// The line a terminal program's start shows first: what it can reach.
+fn terminal_banner(app: &AppEntry, prepared: &Prepared) -> String {
+    let ctx = &prepared.context;
+    let fs = &ctx.permissions.filesystem;
+    let mut sees: Vec<String> = Vec::new();
+    if fs.home {
+        sees.push("your home folder".into());
+    }
+    for key in sam_core::permissions::XDG_DIR_KEYS {
+        if !fs.home && fs.xdg_access(key).is_granted() {
+            if let Some(d) = ctx.host.xdg_dir(key) {
+                sees.push(sam_core::util::tildify(d));
+            }
+        }
+    }
+    sees.extend(fs.custom_read.iter().chain(&fs.custom_write).cloned());
+    sees.extend(sam_sandbox::opened_paths(ctx).iter().map(|(p, _)| sam_core::util::tildify(p)));
+    let sees = if sees.is_empty() { "only its private home".to_string() } else { format!("{} and its private home", sees.join(", ")) };
+    format!(
+        "\x1b[2msam-jail: {} runs sandboxed, in a terminal of its own. It sees {sees} (files it saves anywhere else stay there). \
+         It cannot type into this shell or use the clipboard through the terminal.\x1b[0m",
+        app.display_name()
+    )
 }
 
 /// What the launch log says before the app's output: how the sandbox is
@@ -633,6 +714,12 @@ fn judge_outcome(status: std::process::ExitStatus, err_head: &str, bwrap_json: O
     Outcome { success, sandbox_failure, setup_failed, summary }
 }
 
+/// For a terminal program: it started in the sandbox and ended by itself
+/// (any exit code), rather than failing to start or crashing.
+fn ran_to_its_end(o: &Outcome, status: std::process::ExitStatus) -> bool {
+    !o.sandbox_failure && !o.setup_failed && status.signal().is_none()
+}
+
 /// Stores the launch in the app's entry. Saves against the latest on-disk
 /// entry so concurrent GUI edits survive.
 fn save_launch(app: &mut AppEntry, rec: &LaunchRecord, paths: &Paths) -> Result<()> {
@@ -786,5 +873,12 @@ mod tests {
         assert!(!judge_outcome(exited(127), "", started, false, Some(20)).success);
 
         assert_eq!(judge_outcome(std::process::ExitStatus::from_raw(11), "", started, false, None).summary, "terminated by signal 11 (segmentation fault)");
+
+        // Terminal programs: an exit code of their own is no failed start;
+        // a crash, a missing entry point or a sandbox failure is.
+        let ran = |st: std::process::ExitStatus| ran_to_its_end(&judge_outcome(st, "", started, false, None), st);
+        assert!(ran(exited(1)) && ran(exited(2)));
+        assert!(!ran(exited(127)) && !ran(std::process::ExitStatus::from_raw(11)));
+        assert!(!ran_to_its_end(&judge_outcome(exited(1), "", never_started, false, None), exited(1)));
     }
 }

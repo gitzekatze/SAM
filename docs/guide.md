@@ -109,6 +109,10 @@ The SSH agent, printing, **extra sockets** (only real socket files are passed in
 
 How much of the system is visible (*Minimal* or *All of /usr*), whether the app keeps its private settings, a writable app folder for portable apps, theme settings, nested sandboxes for Chromium and Electron, Landlock, the syscall filters and raw Bubblewrap arguments. Change these only if an app does not work.
 
+### Terminal programs
+
+Programs that run in a terminal (Helix, Neovim, command-line tools) open in your terminal from the menu, or start with `sam-jail run <app> [files or folders]`. They get a terminal of SAM's own, so they cannot type into your shell or use the clipboard through the terminal. They see their private home, the folders allowed in their settings, and the files and folders you name: `sam-jail run helix notes.txt` opens that file, `sam-jail run helix .` the folder you are in. See [Terminal programs](security.md#terminal-programs) for what this protects against and what it does not.
+
 ### Launching
 
 **Launch arguments** passed every time the app starts (for example `--no-sandbox` for Electron apps), and **Compatibility mode**, which gives broad access when nothing else works. Turning compatibility mode off brings back your previous settings.

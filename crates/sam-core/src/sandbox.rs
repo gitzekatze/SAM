@@ -62,6 +62,11 @@ pub struct LaunchContext {
     pub helper: Option<SandboxHelper>,
     /// File descriptor holding a compiled seccomp program (bwrap `--seccomp`).
     pub seccomp_fd: Option<i32>,
+    /// The app's standard streams are a terminal of SAM's own (`sam_runner::pty`),
+    /// never the user's: the sandbox keeps the session, so resizing and
+    /// Ctrl+C reach the app. Otherwise it gets a new session, cut off from
+    /// any terminal (Bubblewrap's protection against typed-in commands).
+    pub own_terminal: bool,
     pub compatibility_mode: bool,
     /// Diagnostic mode: wrap the entry point with this tracer command.
     pub tracer: Option<Vec<String>>,
@@ -174,6 +179,7 @@ pub fn sample_context() -> LaunchContext {
         wayland_socket: None,
         helper: None,
         seccomp_fd: None,
+        own_terminal: false,
         compatibility_mode: false,
         tracer: None,
         extra_binds: vec![],

@@ -53,6 +53,8 @@ pub struct WarningContext<'a> {
     pub host: Option<&'a HostInfo>,
     pub warn_x11: bool,
     pub warn_full_home: bool,
+    /// The app runs in a terminal (`Terminal=true`).
+    pub terminal_program: bool,
 }
 
 impl WarningContext<'_> {
@@ -60,6 +62,12 @@ impl WarningContext<'_> {
         WarningContext { warn_x11: true, warn_full_home: true, ..Default::default() }
     }
 }
+
+/// What a terminal program can and cannot do in SAM's sandbox.
+pub const TERMINAL_PROGRAM: &str = "It runs in a terminal window and sees everything you type there while it runs. \
+SAM gives it a terminal of its own: it cannot type commands into your shell, read or change the clipboard through the terminal, or send desktop notifications. \
+Besides the folders allowed below, it sees its private home and the files and folders you name when you start it (for example: hx notes.txt). \
+Not covered: output that misleads you (a fake prompt, a link whose text hides where it goes) and security bugs in your terminal program.";
 
 pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     let mut w = Vec::new();
@@ -88,7 +96,9 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             .with_key("display.x11"),
         );
     }
-    if !p.display.x11 && !p.display.wayland {
+    if ctx.terminal_program {
+        w.push(Warning::warn("terminal-program", "Terminal program", TERMINAL_PROGRAM));
+    } else if !p.display.x11 && !p.display.wayland {
         w.push(Warning::info("no-display", "No display access", "The app cannot open windows. This is only correct for command-line tools."));
     }
     if p.filesystem.home && ctx.warn_full_home {

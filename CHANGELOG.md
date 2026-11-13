@@ -11,6 +11,15 @@ version.
 
 ### Security
 
+- Apps started from a terminal never get the user's terminal: SAM puts them
+  on a pseudo-terminal of its own and passes the bytes on. As before, they
+  cannot type commands into the shell (`TIOCSTI`); now escape codes for the
+  clipboard, desktop notifications, tmux passthrough and window-title
+  reports are removed from their output too, and terminal replies still
+  queued when they end are discarded. (Before, Bubblewrap's new session
+  stopped typed-in commands, but passed every escape code on and cut
+  terminal programs off from resizing.) The app page and each start say
+  what a terminal program can and cannot reach.
 - Nested namespaces are off by default; only apps whose engine builds its own
   sandbox (Electron, CEF, Qt WebEngine, WebKitGTK) get them.
 - Full home read/write: more persistence paths stay read-only (`~/.local/bin`,
@@ -142,6 +151,14 @@ version.
     Audacity 4, which name their own `MU_`/`AU_QT_QPA_PLATFORM`) and Qt
     apps whose Wayland plugin lacks its bundled Qt Wayland library
     (OpenShot) get X11 from the start instead of after a repair step.
+  - Terminal programs (Helix, Neovim, command-line tools) work in the
+    terminal: they get a terminal of SAM's own, see the files and folders
+    named when they start (`hx notes.txt`, `hx .`, relative to the folder
+    they start in) and adapt to window resizing. A test start gives them a
+    terminal too, and a tool that ends with an error code of its own (wrong
+    arguments) no longer counts as a failed start, so repair steps no
+    longer weaken their sandbox for nothing. From the menu, the window stays
+    open after an error until Enter is pressed.
   - First starts are faster: the sandbox includes the system's font cache
     (`/var/cache/fontconfig`, read-only), so an app no longer builds its
     own for every installed font (WezTerm's window took 35 s to appear,

@@ -483,7 +483,11 @@ impl AppPage {
         if let Some(r) = self.test_result.borrow().as_ref() {
             let ok = util::str_of(r, "status") == "ok";
             let row = adw::ActionRow::builder()
-                .title(if ok { "The app started and kept running" } else { "The app did not keep running" })
+                .title(match (ok, util::str_of(r, "detail").starts_with("ran in its sandbox")) {
+                    (true, true) => "The program ran in its sandbox",
+                    (true, false) => "The app started and kept running",
+                    (false, _) => "The app did not keep running",
+                })
                 .subtitle(esc(util::str_of(r, "detail")))
                 .build();
             let img = gtk::Image::from_icon_name(if ok { "object-select-symbolic" } else { "dialog-error-symbolic" });

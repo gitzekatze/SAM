@@ -43,8 +43,12 @@ SAM assumes that **you are trusted** and that **an AppImage may not be**.
 
 - **Namespaces:** user, PID, IPC, UTS and cgroup are always separate. The
   network is separate too, unless the app has full network access.
-- **No privileges:** all capabilities dropped, a new session (stops terminal
-  injection through `TIOCSTI`), and the sandbox ends when SAM's runner ends.
+- **No privileges:** all capabilities dropped, and the sandbox ends when
+  SAM's runner ends.
+- **Never your terminal:** an app started without a terminal gets a new
+  session, cut off from any terminal. An app started from a terminal gets a
+  terminal of SAM's own instead (see [Terminal programs](#terminal-programs)).
+  Either way it cannot type commands into your shell (`TIOCSTI`).
 - **Clean environment:** cleared, then only safe variables are set.
 - **Your ids:** the app runs with your user and group id, also with *Local
   network only*, where it would otherwise appear as root.
@@ -176,6 +180,49 @@ Missing folders from this list, and `.bashrc`, `.profile`, `.gitconfig` and
 `mimeapps.list`, are created empty first so they can be protected. Files
 whose mere presence changes behaviour (`.bash_profile`, `.zshrc`,
 `.xinitrc`, `.xprofile`, `.vimrc`) are protected only if they exist.
+
+---
+
+## Terminal programs
+
+Programs that run in a terminal (`Terminal=true` in their menu entry, such
+as Helix, Neovim or appimagetool) share the terminal with the shell that
+started them, unless something is in between. A program with your terminal
+can type commands into your shell that run unsandboxed once it ends, keep
+reading what you type after it seems to have ended, or send escape codes
+that reach past the terminal. So SAM puts every app started from a terminal
+(GUI apps too) on a pseudo-terminal of its own and passes the bytes on:
+
+| What the app could try | What SAM does |
+|---|---|
+| Type into your shell (`TIOCSTI`, `TIOCLINUX`) | It only reaches its own terminal. The syscall filter blocks both as well, but this does not depend on it: a repair step can turn the filter off. |
+| Change your terminal's settings, keep reading after it ends | It never gets your terminal. SAM restores your terminal's settings afterwards. |
+| Read or change the clipboard (OSC 52, kitty's OSC 5522, iTerm2/WezTerm's OSC 1337) | Removed from its output. |
+| Desktop notifications (OSC 9, 99, 777) | Removed. |
+| Reach the terminal outside tmux (tmux passthrough) | Removed. |
+| Set the window title, then ask for it back (`CSI 21 t`), so the terminal "types" text the app chose | The report request is removed; the title itself may be set. |
+| Leave a query unanswered until it has ended, so the reply lands in your shell | Replies still queued when it ends are discarded. |
+
+Inside, the app has no display, GPU or desktop services. It sees its private
+home, the folders its settings allow (text editors get Documents by
+default), and the files and folders you name when you start it
+(`sam-jail run helix notes.txt`, `… helix .`), with the folder you started in
+as its working folder. Named folders must be inside your home folder or on a
+mounted drive; your home folder itself, the folders above it, sensitive
+paths (keys, `~/.config`, `~/.local`) and files that make the desktop run
+something (shell start files, menu entries, SAM's settings) are never shared
+this way. Files it saves anywhere else stay in its private home. Each start
+shows one line with what it can see, and the app's page shows the same
+warning.
+
+When the terminal window is closed (or SAM is asked to quit), SAM hangs up
+the app's terminal, so the app ends, and finishes the launch normally.
+
+**Not covered:** output that misleads you (a fake prompt, a link whose text
+hides where it goes, a fake "sudo" password question: the app cannot run
+`sudo`, but it can ask for your password), and security bugs in your
+terminal program itself. 8-bit control codes are passed on unchanged, as
+terminals in UTF-8 mode do not treat them as escape codes.
 
 ---
 

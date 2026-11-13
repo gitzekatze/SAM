@@ -7,11 +7,17 @@ impl Sam {
     // ----------------------------------------------------------- queries
 
     pub fn evaluate(&self, perms: &PermissionSet, app: Option<&AppEntry>, host: &HostInfo) -> Evaluation {
+        self.evaluate_as(perms, app, app.is_some_and(|a| a.metadata.terminal), host)
+    }
+
+    /// `terminal_program`: for an AppImage without a sandbox, from its metadata.
+    fn evaluate_as(&self, perms: &PermissionSet, app: Option<&AppEntry>, terminal_program: bool, host: &HostInfo) -> Evaluation {
         let ctx = WarningContext {
             app_needs_network: app.map(app_needs_network),
             host: Some(host),
             warn_x11: self.config.security.warn_x11,
             warn_full_home: self.config.security.warn_full_home,
+            terminal_program,
         };
         Evaluation { risk: assess(perms), warnings: evaluate(perms, &ctx) }
     }
@@ -191,7 +197,7 @@ impl Sam {
         let permissions = perms.unwrap_or_else(|| rec.permissions.clone());
         let host = self.host();
         let selection = crate::bwrap::check(&host).ok();
-        let ev = self.evaluate(&permissions, None, &host);
+        let ev = self.evaluate_as(&permissions, None, md.terminal, &host);
         Ok(serde_json::json!({
             "category": rec.category.as_str(),
             "category_label": rec.category.label(),

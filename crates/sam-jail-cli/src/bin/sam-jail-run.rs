@@ -123,6 +123,20 @@ fn launch(args: Vec<String>) -> Result<i32> {
         }
     }
     let rec = run(&mut entry, &LaunchOptions { args: rest, ..Default::default() }, &app.config, &app.paths, &host)?;
+    // A terminal program from the menu: its window closes with it, so a
+    // failure would flash by unread.
+    if entry.metadata.terminal && rec.exit_code != Some(0) && sam_runner::pty::is_tty(0) {
+        if rec.success {
+            eprintln!("\n{} ended: {}", entry.display_name(), rec.summary);
+        } else {
+            eprintln!("\n{} did not run: {}", entry.display_name(), rec.summary);
+            if let Some(f) = rec.findings.first() {
+                eprintln!("SAM found a likely fix: {}. Open SAM to apply it.", f.title);
+            }
+        }
+        eprint!("Press Enter to close this window.");
+        let _ = std::io::stdin().read_line(&mut String::new());
+    }
     if rec.sandbox_failure {
         notify_with_fix(&format!("{} failed to start", entry.display_name()), &rec.summary, &entry.id);
         bail!("{}", rec.summary);

@@ -180,7 +180,12 @@ fn real_main(cli: Cli) -> Result<()> {
                         if rec.sandbox_failure {
                             ("fail", rec.summary.clone(), rec.findings.clone())
                         } else if rec.success || (rec.signal == Some(9) && ran + 1 >= seconds as i64) {
-                            ("ok", if rec.signal.is_none() { "exited normally".into() } else { format!("kept running for {seconds}s") }, vec![])
+                            let detail = match (rec.signal, e.metadata.terminal) {
+                                (Some(_), _) => format!("kept running for {seconds}s"),
+                                (None, true) => format!("ran in its sandbox and ended by itself ({})", rec.summary),
+                                (None, false) => rec.summary.clone(),
+                            };
+                            ("ok", detail, vec![])
                         } else {
                             ("fail", rec.summary.clone(), rec.findings.clone())
                         }
@@ -449,7 +454,9 @@ fn real_main(cli: Cli) -> Result<()> {
                     eprintln!("  try: sam-jail doctor {} / sam-jail diagnose {} / sam-jail compat {} on", e.id, e.id, e.id);
                 }
             });
-            if !out.json && !rec.success {
+            // The app's own exit code (a terminal program's error code counts
+            // as a successful start, but scripts still see it).
+            if !out.json && (!rec.success || rec.exit_code.is_some_and(|c| c != 0)) {
                 std::process::exit(rec.exit_code.unwrap_or(1).max(1));
             }
         }
