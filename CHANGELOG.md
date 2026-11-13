@@ -167,11 +167,12 @@ version.
     counts as a start problem only when the app's main program needs it;
     for another program inside the app the label says so. On the test set,
     70 of 71 are now rated fine before their first start.
-  - Missing GPU acceleration is explained: an app that bundles CUDA or
-    ROCm code (local AI models) says whether this computer has such a
-    graphics card, which CUDA version it has and which one the app needs,
-    and how to get it working. Missing tray-menu or OpenCL libraries get
-    their own short notes.
+  - Bundled parts built for a CUDA or ROCm version this computer lacks
+    get a short note naming the part (e.g. "foundry-local-sdk, bundled in
+    this app, is built for CUDA 12. This computer has CUDA 13, which it
+    cannot load ..."), saying that other ways the app uses the graphics
+    card are not affected. Missing tray-menu or OpenCL libraries get their
+    own short notes.
   - The sandbox shows the library folders the system's loader uses
     outside /usr (CUDA in /opt/cuda/lib64, /usr/local/lib), read-only:
     the analysis already counted libraries there as present.

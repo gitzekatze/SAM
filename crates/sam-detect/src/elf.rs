@@ -567,7 +567,7 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
             } else {
                 // Only tray libraries need it (their GTK 2): part of the tray feature.
                 let for_tray = by.iter().all(|f| f.rsplit('/').next().is_some_and(|n| feature_of(n) == "tray"));
-                for_libraries.push((name.clone(), for_tray));
+                for_libraries.push((name.clone(), for_tray, by.clone()));
             }
         } else if info.class == ResourceClass::Dangerous {
             abi_sensitive.push(name.clone());
@@ -695,6 +695,21 @@ fn feature_of(name: &str) -> &'static str {
     FEATURES.iter().find(|(_, prefixes)| prefixes.iter().any(|p| name.starts_with(p))).map_or("other", |(f, _)| *f)
 }
 
+/// The bundled package a file belongs to: the Node package for files in
+/// `node_modules` ("foundry-local-sdk", "@node-llama-cpp/linux-x64-cuda-ext"),
+/// else the file's name.
+fn component(path: &str) -> String {
+    if let Some(i) = path.rfind("node_modules/") {
+        let mut parts = path[i + "node_modules/".len()..].split('/');
+        let first = parts.next().unwrap_or_default();
+        return match (first.starts_with('@'), parts.next()) {
+            (true, Some(second)) => format!("{first}/{second}"),
+            _ => first.to_string(),
+        };
+    }
+    path.rsplit('/').next().unwrap_or(path).to_string()
+}
+
 /// "12" for "libcudart.so.12".
 fn major_version(name: &str) -> Option<String> {
     name.split_once(".so.").map(|(_, v)| v.split('.').next().unwrap_or(v).to_string()).filter(|v| !v.is_empty())
@@ -718,16 +733,23 @@ fn installed_versions(name: &str, host_dirs: &[PathBuf]) -> BTreeSet<String> {
 /// GPU devices are (`/dev`).
 /// `electron`: Electron draws tray menus itself, so the tray libraries that
 /// electron-builder bundles for old systems do not matter.
-/// `missing`: name, and whether only tray libraries need it.
-fn optional_features(missing: &[(String, bool)], host_dirs: &[PathBuf], dev: &Path, electron: bool) -> Vec<Warning> {
+/// `missing`: name, whether only tray libraries need it, and who needs it.
+fn optional_features(missing: &[(String, bool, Vec<String>)], host_dirs: &[PathBuf], dev: &Path, electron: bool) -> Vec<Warning> {
     let mut groups: BTreeMap<&str, Vec<String>> = BTreeMap::new();
-    for (name, for_tray) in missing {
+    let mut users: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    for (name, for_tray, by) in missing {
         let feature = if *for_tray { "tray" } else { feature_of(name) };
         if feature == "tray" && electron {
             continue;
         }
         groups.entry(feature).or_default().push(name.clone());
+        users.entry(feature).or_default().extend(by.iter().map(|b| component(b)));
     }
+    // "foundry-local-sdk", "@node-llama-cpp/linux-x64-cuda-ext and 1 more".
+    let engines = |feature: &str| {
+        let v: Vec<String> = users.get(feature).map(|s| s.iter().cloned().collect()).unwrap_or_default();
+        list(&v)
+    };
     let versions = |libs: &[String], key: &str| -> (BTreeSet<String>, BTreeSet<String>) {
         let wanted: BTreeSet<String> = libs.iter().filter(|n| n.starts_with(key)).filter_map(|n| major_version(n)).collect();
         let have = libs.iter().filter(|n| n.starts_with(key)).flat_map(|n| installed_versions(n, host_dirs)).collect();
@@ -737,44 +759,33 @@ fn optional_features(missing: &[(String, bool)], host_dirs: &[PathBuf], dev: &Pa
     let mut out = Vec::new();
     for (feature, libs) in groups {
         let w = match feature {
+            // Only the bundled engine that is built for it is affected:
+            // the app may use the graphics card in other ways (a local
+            // Ollama server brings its own CUDA), so these are notes.
             "cuda" => {
                 let (wanted, have) = versions(&libs, "libcudart.");
-                let wanted_s = if wanted.is_empty() { String::new() } else { format!(" {}", join(&wanted)) };
-                let what = format!("This app can use an NVIDIA graphics card for heavy work such as local AI models, through CUDA{wanted_s}.");
-                if !dev.join("nvidiactl").exists() {
-                    Warning::info("feature-cuda", "No NVIDIA GPU acceleration", format!("{what} This computer has no NVIDIA graphics card, so that work runs on the processor."))
-                } else {
-                    let state = if have.is_empty() {
-                        format!("The CUDA{wanted_s} libraries are not installed")
-                    } else {
-                        format!("This computer has CUDA {}, which the app cannot use", join(&have))
-                    };
-                    Warning::warn(
-                        "feature-cuda",
-                        "No NVIDIA GPU acceleration",
-                        format!(
-                            "{what} {state}, so that work runs on the processor: much slower. To use the graphics card, install the CUDA{wanted_s} runtime libraries \
-                             (from your distribution or NVIDIA; they can be installed next to another version), keep GPU acceleration on in this app's Devices settings, \
-                             then choose Re-run detection under Troubleshooting. Missing: {}.",
-                            list(&libs)
-                        ),
+                let cuda = if wanted.is_empty() { "CUDA".to_string() } else { format!("CUDA {}", join(&wanted)) };
+                let who = engines("cuda");
+                let msg = if !dev.join("nvidiactl").exists() {
+                    format!("{who}, bundled in this app, can use NVIDIA graphics cards ({cuda}). This computer has none, so it runs without one.")
+                } else if !have.is_empty() {
+                    format!(
+                        "{who}, bundled in this app, is built for {cuda}. This computer has CUDA {}, which it cannot load, so this part cannot use the graphics card. Other ways the app uses the graphics card are not affected.",
+                        join(&have)
                     )
-                }
+                } else {
+                    format!("{who}, bundled in this app, is built for {cuda}, which is not installed, so this part cannot use the graphics card. Other ways the app uses the graphics card are not affected.")
+                };
+                Warning::info("feature-cuda", &format!("A bundled part needs {cuda}"), msg)
             }
             "rocm" => {
-                let what = "This app can use an AMD graphics card for heavy work such as local AI models, through ROCm.";
-                if !dev.join("kfd").exists() {
-                    Warning::info("feature-rocm", "No AMD GPU acceleration", format!("{what} This computer offers no AMD compute device, so that work runs on the processor."))
+                let who = engines("rocm");
+                let msg = if !dev.join("kfd").exists() {
+                    format!("{who}, bundled in this app, can use AMD graphics cards (ROCm). This computer offers no AMD compute device, so it runs without one.")
                 } else {
-                    Warning::warn(
-                        "feature-rocm",
-                        "No AMD GPU acceleration",
-                        format!(
-                            "{what} The ROCm libraries it needs are not installed, so that work runs on the processor: much slower. Install ROCm (from your distribution or AMD), keep GPU acceleration on, then choose Re-run detection under Troubleshooting. Missing: {}.",
-                            list(&libs)
-                        ),
-                    )
-                }
+                    format!("{who}, bundled in this app, needs ROCm, which is not installed, so this part cannot use the graphics card. Other ways the app uses the graphics card are not affected.")
+                };
+                Warning::info("feature-rocm", "A bundled part needs ROCm", msg)
             }
             "opencl" => Warning::info(
                 "feature-opencl",
@@ -897,28 +908,29 @@ mod tests {
         let (dev, lib) = (d.path().join("dev"), d.path().join("lib"));
         std::fs::create_dir_all(&dev).unwrap();
         std::fs::create_dir_all(&lib).unwrap();
-        let missing: Vec<(String, bool)> = ["libcudart.so.12", "libcublas.so.12", "libdbusmenu-gtk.so.4", "libfoo.so.1"]
-            .iter()
-            .map(|s| (s.to_string(), false))
-            .chain([("libgtk-x11-2.0.so.0".into(), true)])
-            .collect();
+        let engine = vec!["resources/node_modules/foundry-local-sdk/core/libonnxruntime_providers_cuda.so".to_string()];
+        let mut missing: Vec<(String, bool, Vec<String>)> =
+            ["libcudart.so.12", "libcublas.so.12", "libdbusmenu-gtk.so.4", "libfoo.so.1"].iter().map(|s| (s.to_string(), false, engine.clone())).collect();
+        missing.push(("libgtk-x11-2.0.so.0".into(), true, vec!["usr/lib/libappindicator.so.1".into()]));
         let by_code = |w: &[Warning], c: &str| w.iter().find(|x| x.code == c).cloned();
-        // No NVIDIA card: only information.
+        // No NVIDIA card.
         let w = super::optional_features(&missing, std::slice::from_ref(&lib), &dev, false);
         let cuda = by_code(&w, "feature-cuda").unwrap();
         assert_eq!(cuda.severity, sam_core::Severity::Info);
-        assert!(cuda.message.contains("CUDA 12") && cuda.message.contains("no NVIDIA graphics card"));
+        assert_eq!(cuda.title, "A bundled part needs CUDA 12");
+        assert!(cuda.message.starts_with("foundry-local-sdk, bundled in this app,") && cuda.message.contains("has none"), "{}", cuda.message);
         assert!(by_code(&w, "feature-tray-menu").is_some());
         let other = by_code(&w, "libs-not-found-optional").unwrap().message;
         assert!(other.contains("libfoo.so.1") && !other.contains("gtk-x11"), "GTK 2 of a tray library counts as the tray feature");
-        // An NVIDIA card, CUDA 13 installed: a warning that says so and how to fix it.
+        // An NVIDIA card with CUDA 13: says why this part cannot use it, and
+        // that the rest of the app is not affected.
         std::fs::write(dev.join("nvidiactl"), "").unwrap();
         std::fs::write(lib.join("libcudart.so.13"), "").unwrap();
         let cuda = by_code(&super::optional_features(&missing, std::slice::from_ref(&lib), &dev, false), "feature-cuda").unwrap();
-        assert_eq!(cuda.severity, sam_core::Severity::Warning);
-        assert!(cuda.message.contains("This computer has CUDA 13, which the app cannot use"), "{}", cuda.message);
-        assert!(cuda.message.contains("install the CUDA 12 runtime libraries"));
+        assert_eq!(cuda.severity, sam_core::Severity::Info, "a note: only one bundled part is affected");
+        assert!(cuda.message.contains("This computer has CUDA 13, which it cannot load") && cuda.message.contains("not affected"), "{}", cuda.message);
         assert_eq!(super::major_version("libcudart.so.12.4.1").as_deref(), Some("12"));
+        assert_eq!(super::component("a/node_modules/@node-llama-cpp/linux-x64-cuda-ext/bins/x.so"), "@node-llama-cpp/linux-x64-cuda-ext");
         let electron = super::optional_features(&missing, std::slice::from_ref(&lib), &dev, true);
         assert!(by_code(&electron, "feature-tray-menu").is_none(), "Electron draws its own tray menus");
     }
