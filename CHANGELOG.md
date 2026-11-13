@@ -159,6 +159,23 @@ version.
     arguments) no longer counts as a failed start, so repair steps no
     longer weaken their sandbox for nothing. From the menu, the window stays
     open after an error until Enter is pressed.
+  - Second test set of 26 AppImages from groups the first lacked
+    (Flutter, Tauri, Wails, sharun/anylinux, Wine, .NET/Avalonia, Java
+    launcher, GTK4, Python): 20 started at once. Group-wide fixes:
+    - Apps may own the D-Bus name of their window class (GTK and Flutter
+      apps register their application ID there: Hiddify could not start)
+      and KDE apps their org.kde.<app> name with its numbered variants
+      (Kdenlive could not start). Names a service on this computer starts
+      on demand are refused at every start.
+    - The EGL driver configuration is shown without GPU access too, so
+      apps that draw with OpenGL fall back to software instead of
+      aborting (LocalSend); Flutter apps get the GPU recommended.
+    - A library missing for what the main program loads at start, also
+      through its bundled libraries (a Flutter plugin), counts as a start
+      problem (AppFlowy was rated fine).
+    - Without sound access, SDL gets its silent driver, so games and
+      emulators start instead of quitting.
+    - sharun's .env file counts when checking whether an app forces X11.
   - "May not start" only for real reasons. It showed for 44 of the 71
     test AppImages, of which 69 start: for using the system's GTK or
     OpenSSL (now an information note), for libraries only bundled

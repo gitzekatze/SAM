@@ -68,6 +68,8 @@ const GRAPHICS: &[&str] = &[
     "libOpenGL.so",
     "libvulkan.so",
     "libdrm.so",
+    // Flutter's Linux engine draws with OpenGL, which it loads at run time.
+    "libflutter_linux_gtk.so",
     "libgbm.so",
     "libnvidia",
     "libva.so",

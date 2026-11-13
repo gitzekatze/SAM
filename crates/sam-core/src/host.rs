@@ -280,6 +280,26 @@ pub fn dbus_unix_path(addr: &str) -> Option<PathBuf> {
     })
 }
 
+/// D-Bus names that services on this computer start on demand (their
+/// `.service` files, e.g. `org.kde.kwalletd6`). Such a name is free until
+/// something asks for the service, so an app must never take one: it would
+/// receive what is meant for the service (a password manager's requests).
+pub fn activatable_bus_names(home: &Path) -> std::collections::BTreeSet<String> {
+    let mut dirs: Vec<PathBuf> =
+        vec![home.join(".local/share/dbus-1/services"), PathBuf::from("/usr/local/share/dbus-1/services"), PathBuf::from("/usr/share/dbus-1/services")];
+    if let Ok(x) = std::env::var("XDG_DATA_DIRS") {
+        dirs.extend(x.split(':').filter(|d| d.starts_with('/')).map(|d| Path::new(d).join("dbus-1/services")));
+    }
+    let mut names = std::collections::BTreeSet::new();
+    for d in dirs {
+        for e in fs::read_dir(&d).into_iter().flatten().flatten() {
+            let Ok(text) = fs::read_to_string(e.path()) else { continue };
+            names.extend(text.lines().filter_map(|l| l.trim().strip_prefix("Name=")).map(|n| n.trim().to_string()));
+        }
+    }
+    names
+}
+
 /// Library folders listed in `/etc/ld.so.conf.d` (the loader's search
 /// path, set up by packages such as CUDA or ROCm), plus `/usr/local/lib`.
 pub fn loader_lib_dirs() -> Vec<PathBuf> {

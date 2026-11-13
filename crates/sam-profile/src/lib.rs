@@ -247,20 +247,27 @@ fn base_for(cat: Category) -> PermissionSet {
 }
 
 /// Generate the recommended profile for an app.
-/// The app's own D-Bus name: its desktop file ID when that is a reverse-DNS
-/// name (`com.example.App`), never one in a desktop's namespace or one SAM
-/// treats as dangerous.
-pub fn own_bus_name(md: &AppImageMetadata) -> Option<String> {
-    let file = md.desktop_file.as_deref()?;
-    let id = std::path::Path::new(file).file_name()?.to_str()?.strip_suffix(".desktop")?;
-    let parts: Vec<&str> = id.split('.').collect();
-    let valid = parts.len() >= 3
-        && id.len() <= 200
-        && parts
-            .iter()
-            .all(|p| !p.is_empty() && !p.starts_with(|c: char| c.is_ascii_digit()) && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
-    let reserved = ["org.freedesktop.", "org.kde.", "org.gnome.", "org.gtk.", "org.mpris.", "ca.desrt.", "org.a11y.", "io.github.gitzekatze.SAM"];
-    (valid && !reserved.iter().any(|r| id.starts_with(r)) && sam_core::permissions::dangerous_bus_name(id).is_none()).then(|| id.to_string())
+/// The app's own D-Bus names: its desktop file ID and its window class
+/// (`StartupWMClass`, which GTK and Flutter apps set to their application
+/// ID) when they are reverse-DNS names (`com.example.App`). Names of the
+/// D-Bus protocols and services SAM treats as dangerous are left out here;
+/// services this computer starts on demand are refused at every start
+/// (`refuse_own_name`).
+pub fn own_bus_names(md: &AppImageMetadata) -> Vec<String> {
+    let id = md.desktop_file.as_deref().and_then(|f| std::path::Path::new(f).file_name()?.to_str()?.strip_suffix(".desktop").map(str::to_string));
+    let mut names = Vec::new();
+    for cand in id.into_iter().chain(Some(md.startup_wm_class.clone())) {
+        let parts: Vec<&str> = cand.split('.').collect();
+        let valid = parts.len() >= 3
+            && cand.len() <= 200
+            && parts
+                .iter()
+                .all(|p| !p.is_empty() && !p.starts_with(|c: char| c.is_ascii_digit()) && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
+        if valid && sam_core::permissions::refuse_own_name(&cand, &Default::default()).is_none() && !names.contains(&cand) {
+            names.push(cand);
+        }
+    }
+    names
 }
 
 pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&DependencyReport>) -> Recommendation {
@@ -346,7 +353,7 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
     }
     // The app may own the D-Bus name of its own ID (as Flatpak allows): many
     // apps register it to hand a second start over to the first one.
-    if let Some(name) = own_bus_name(md) {
+    for name in own_bus_names(md) {
         if !p.dbus.session.own.contains(&name) {
             notes.push(format!("D-Bus: may own its own name {name}"));
             p.dbus.session.own.push(name);
@@ -609,22 +616,27 @@ mod tests {
 
 #[cfg(test)]
 mod own_name_tests {
-    use super::own_bus_name;
+    use super::own_bus_names;
     use sam_core::model::AppImageMetadata;
 
-    fn md(file: &str) -> AppImageMetadata {
-        AppImageMetadata { desktop_file: Some(file.into()), ..Default::default() }
+    fn md(file: &str, wm_class: &str) -> AppImageMetadata {
+        AppImageMetadata { desktop_file: Some(file.into()), startup_wm_class: wm_class.into(), ..Default::default() }
     }
 
     #[test]
-    fn own_name_only_for_reverse_dns_ids() {
+    fn own_names_from_the_id_and_the_window_class() {
         assert_eq!(
-            own_bus_name(&md("usr/share/applications/com.nextcloud.desktopclient.nextcloud.desktop")).as_deref(),
-            Some("com.nextcloud.desktopclient.nextcloud")
+            own_bus_names(&md("usr/share/applications/com.nextcloud.desktopclient.nextcloud.desktop", "")),
+            vec!["com.nextcloud.desktopclient.nextcloud"]
         );
-        assert_eq!(own_bus_name(&md("nheko.desktop")), None, "not reverse DNS");
-        assert_eq!(own_bus_name(&md("org.freedesktop.Notifications.desktop")), None, "desktop service");
-        assert_eq!(own_bus_name(&md("org.kde.kwin.desktop")), None);
-        assert_eq!(own_bus_name(&AppImageMetadata::default()), None);
+        // GTK and Flutter apps register their application ID, the window class.
+        assert_eq!(own_bus_names(&md("hiddify.desktop", "app.hiddify.com")), vec!["app.hiddify.com"]);
+        // KDE apps own org.kde.<app> (services that start on demand are
+        // refused at launch, against this computer's service files).
+        assert_eq!(own_bus_names(&md("org.kde.kdenlive.desktop", "kdenlive")), vec!["org.kde.kdenlive"]);
+        assert!(own_bus_names(&md("nheko.desktop", "nheko")).is_empty(), "not reverse DNS");
+        assert!(own_bus_names(&md("org.freedesktop.Notifications.desktop", "")).is_empty(), "D-Bus protocol names");
+        assert!(own_bus_names(&md("org.kde.KWin.desktop", "")).is_empty(), "dangerous desktop services");
+        assert!(own_bus_names(&AppImageMetadata::default()).is_empty());
     }
 }

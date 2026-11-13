@@ -127,6 +127,15 @@ you picked. The sandbox check confirms that the socket is absent.
 
 - **D-Bus** goes through `xdg-dbus-proxy`. The app sees only the names it is
   allowed to talk to.
+- **Its own name:** an app may own the D-Bus name of its ID (its menu
+  entry's file name, or its window class, which GTK and Flutter apps use as
+  their ID) when that is a reverse-DNS name, plus KDE's numbered variants
+  (`org.kde.kdenlive-3`). Never: names of the D-Bus protocols
+  (`org.freedesktop.*`, `org.gtk.*`, …), desktop services SAM treats as
+  dangerous (KWin, Plasma, KRunner, GNOME Shell, …), and any service this
+  computer starts on demand (its `dbus-1/services` files, e.g. KWallet).
+  Taking such a name would let the app receive what is meant for the
+  service. This is checked at every start, also for names you add.
 - **Blocked names always win.** The proxy cannot make exceptions, so a
   wildcard allow entry that would also reach a blocked name is not used; the
   app page warns about it.

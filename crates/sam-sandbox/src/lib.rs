@@ -54,6 +54,11 @@ exec "$@"
 ];
 
 const SHARE_BASE: &[&str] = &[
+    // Which OpenGL/EGL driver to load: without these, an app that draws
+    // with OpenGL (Flutter, GTK's GL area) finds no EGL at all, even for
+    // drawing in software when it has no GPU access.
+    "glvnd",
+    "egl",
     "fonts",
     "fontconfig",
     "icons",
@@ -96,7 +101,7 @@ const SHARE_BASE: &[&str] = &[
     "xkeyboard-config-2",
     "xkeyboard-config",
 ];
-const SHARE_GPU: &[&str] = &["vulkan", "glvnd", "egl", "drirc.d", "libdrm", "nvidia"];
+const SHARE_GPU: &[&str] = &["vulkan", "drirc.d", "libdrm", "nvidia"];
 const SHARE_AUDIO: &[&str] = &["alsa", "pipewire", "pulseaudio"];
 const SHARE_DBUS: &[&str] = &["dbus-1"];
 
@@ -1062,6 +1067,13 @@ impl Section<'_> {
         }
         a.setenv("XDG_RUNTIME_DIR", &run);
         a.setenv("SAM_SANDBOX", "bubblewrap");
+        if !p.audio.enabled && !p.audio.alsa_raw {
+            // Without sound access, SDL (games, emulators) finds no audio
+            // output and refuses to start; its silent driver lets it run.
+            // Before the settings below, which may choose otherwise.
+            a.setenv("SDL_AUDIODRIVER", "dummy");
+            a.setenv("SDL_AUDIO_DRIVER", "dummy");
+        }
         for k in ENV_FORWARD.iter().map(|s| s.to_string()).chain(p.environment.passthrough.iter().cloned()) {
             if let Ok(v) = std::env::var(&k) {
                 a.setenv(&k, v);
@@ -1300,6 +1312,14 @@ mod tests {
 
     fn has_seq(v: &[String], seq: &[&str]) -> bool {
         v.windows(seq.len()).any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
+    }
+
+    #[test]
+    fn sdl_gets_its_silent_driver_without_sound_access() {
+        let mut ctx = sample_context();
+        assert!(has_seq(&args_of(&ctx), &["--setenv", "SDL_AUDIODRIVER", "dummy"]));
+        ctx.permissions.audio.enabled = true;
+        assert!(!args_of(&ctx).iter().any(|x| x == "SDL_AUDIODRIVER"));
     }
 
     #[test]

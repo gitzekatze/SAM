@@ -313,6 +313,22 @@ pub fn blocked_wildcards(b: &DbusBusPerms) -> Vec<String> {
     b.allow.iter().filter(|a| a.ends_with('*') && b.deny.iter().any(|d| bus_pattern_matches(a, d))).cloned().collect()
 }
 
+/// Why an app may not own `name` on the session bus, if it may not:
+/// a name of the D-Bus protocols themselves, a service SAM treats as
+/// dangerous, or one a service on this computer starts on demand
+/// (`activatable`, see `host::activatable_bus_names`). Checked at every
+/// start, also for names the user added.
+pub fn refuse_own_name(name: &str, activatable: &std::collections::BTreeSet<String>) -> Option<String> {
+    const PROTOCOL: [&str; 6] = ["org.freedesktop.", "org.gtk.", "org.mpris.", "ca.desrt.", "org.a11y.", "io.github.gitzekatze.SAM"];
+    if PROTOCOL.iter().any(|p| name.starts_with(p)) {
+        return Some(format!("{name} belongs to the desktop's own protocols"));
+    }
+    if let Some(why) = dangerous_bus_name(name) {
+        return Some(why);
+    }
+    activatable.contains(name).then(|| format!("{name} is a service on this computer that starts on demand; owning it would intercept its requests"))
+}
+
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
     let name = name.trim();
     if name == "*" || name == "org.*" || name == "org.freedesktop.*" || name.starts_with("org.freedesktop.portal.*") {
@@ -801,6 +817,17 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn own_names_that_are_refused() {
+        let activatable: std::collections::BTreeSet<String> = ["org.kde.kwalletd6".to_string()].into();
+        assert!(refuse_own_name("org.kde.kdenlive", &activatable).is_none());
+        assert!(refuse_own_name("app.hiddify.com", &activatable).is_none());
+        assert!(refuse_own_name("org.kde.kwalletd6", &activatable).unwrap().contains("starts on demand"));
+        assert!(refuse_own_name("org.freedesktop.Notifications", &activatable).is_some());
+        assert!(refuse_own_name("org.kde.KWin", &activatable).is_some());
+        assert!(refuse_own_name("org.gnome.Shell", &activatable).is_some());
+    }
 
     #[test]
     fn access_from_bool_and_str() {

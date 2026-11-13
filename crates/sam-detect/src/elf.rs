@@ -245,8 +245,9 @@ fn resolve_entry_binary(appdir: &Path, opts: &AnalyzeOptions) -> (Option<PathBuf
 /// X11 only (GDK_BACKEND=x11, QT_QPA_PLATFORM=xcb, SDL_VIDEODRIVER=x11),
 /// ignoring comments.
 fn start_scripts_force_x11(appdir: &Path) -> bool {
-    // AppRun.env: appimage-builder's environment file.
-    let mut scripts = vec![appdir.join("AppRun"), appdir.join("AppRun.env")];
+    // AppRun.env: appimage-builder's environment file; .env: sharun's
+    // (anylinux AppImages), which it applies over the environment.
+    let mut scripts = vec![appdir.join("AppRun"), appdir.join("AppRun.env"), appdir.join(".env")];
     if let Ok(rd) = fs::read_dir(appdir.join("apprun-hooks")) {
         scripts.extend(rd.flatten().map(|e| e.path()));
     }
@@ -397,12 +398,24 @@ struct Links {
     foreign_variants: u64,
     /// The entry binary relative to the AppDir, as in `needed`.
     entry: Option<String>,
+    /// Libraries loaded when the entry binary starts: what it needs, and
+    /// what the bundled libraries among those need, all the way down.
+    /// A missing one stops the start, unlike a library loaded later.
+    at_start: BTreeSet<String>,
 }
 
 fn read_links(appdir: &Path, elfs: &[PathBuf], entry_bin: Option<&PathBuf>, progress: &dyn Fn(usize)) -> Links {
     let rel = |p: &Path| p.strip_prefix(appdir).unwrap_or(p).display().to_string();
-    let mut l =
-        Links { needed: BTreeMap::new(), glibc_max: None, arch: None, parsed: 0, musl_variants: 0, foreign_variants: 0, entry: entry_bin.map(|e| rel(e)) };
+    let mut l = Links {
+        needed: BTreeMap::new(),
+        glibc_max: None,
+        arch: None,
+        parsed: 0,
+        musl_variants: 0,
+        foreign_variants: 0,
+        entry: entry_bin.map(|e| rel(e)),
+        at_start: BTreeSet::new(),
+    };
     let mut files: Vec<(&PathBuf, ElfFacts)> = Vec::new();
     for (n, p) in elfs.iter().enumerate() {
         progress(n + 1);
@@ -420,6 +433,22 @@ fn read_links(appdir: &Path, elfs: &[PathBuf], entry_bin: Option<&PathBuf>, prog
         }
         count.into_iter().max_by_key(|(_, n)| *n).map(|(a, _)| a)
     });
+    // What each bundled file needs, by file name (the loader finds bundled
+    // libraries by name), for the libraries loaded at start.
+    let mut needs_of: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (p, f) in &files {
+        if let Some(n) = p.file_name().and_then(|n| n.to_str()) {
+            needs_of.entry(n.to_string()).or_insert_with(|| f.needed.iter().map(|x| x.rsplit('/').next().unwrap_or(x).to_string()).collect());
+        }
+    }
+    if let Some(start) = entry_bin.and_then(|e| e.file_name()).and_then(|n| n.to_str()) {
+        let mut todo: Vec<String> = needs_of.get(start).cloned().unwrap_or_default();
+        while let Some(lib) = todo.pop() {
+            if l.at_start.insert(lib.clone()) {
+                todo.extend(needs_of.get(&lib).cloned().unwrap_or_default());
+            }
+        }
+    }
     for (p, f) in files {
         if musl(&f) {
             l.musl_variants += 1;
@@ -560,7 +589,7 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
         let info = classify_library(name);
         let host = host_has_lib(&opts.host_lib_dirs, name);
         if !host {
-            if links.entry.as_ref().is_some_and(|e| by.contains(e)) {
+            if links.entry.as_ref().is_some_and(|e| by.contains(e)) || links.at_start.contains(name) {
                 for_entry.push(name.clone());
             } else if let Some(program) = by.iter().find(|f| !is_library(f)) {
                 for_programs.push((name.clone(), program.clone()));
@@ -580,7 +609,7 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
             "libs-not-found",
             "Libraries not found",
             format!(
-                "The app's main program needs libraries that are neither bundled nor installed on this computer: {}. It will probably not start.",
+                "The app's main program needs libraries, directly or through the libraries it brings, that are neither bundled nor installed on this computer: {}. It will probably not start.",
                 list(&for_entry)
             ),
         ));
@@ -975,6 +1004,9 @@ mod tests {
         std::fs::write(d.path().join("AppRun"), "export QT_QPA_PLATFORM=\"${FREECAD_QT_QPA_PLATFORM:-xcb}\"\n").unwrap();
         assert!(super::start_scripts_force_x11(d.path()), "FreeCAD's own override variable still forces X11");
         std::fs::write(d.path().join("AppRun"), "#!/bin/sh\n").unwrap();
+        std::fs::write(d.path().join(".env"), "SDL_AUDIODRIVER=pulseaudio\nQT_QPA_PLATFORM=xcb\n").unwrap();
+        assert!(super::start_scripts_force_x11(d.path()), "sharun's .env counts too");
+        std::fs::remove_file(d.path().join(".env")).unwrap();
         std::fs::write(d.path().join("AppRun.env"), "QT_QPA_PLATFORMTHEME=xdgdesktopportal\nQT_QPA_PLATFORM=xcb\n").unwrap();
         assert!(super::start_scripts_force_x11(d.path()), "appimage-builder's AppRun.env (Cura)");
     }

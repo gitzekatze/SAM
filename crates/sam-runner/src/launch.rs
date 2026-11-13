@@ -238,6 +238,9 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             match DbusProxy::start(host, &bus, &runtime_dir, &app.id) {
                 Ok(p) => {
                     ctx.dbus_proxy_socket = Some(p.socket.clone());
+                    for (name, why) in &p.refused {
+                        warnings.push(Warning::warn("dbus-own-refused", "D-Bus name not allowed", format!("The app may not own {name}: {why}.")));
+                    }
                     proxy = Some(p);
                 }
                 Err(e) => warnings.push(Warning::warn("dbus-proxy-failed", "D-Bus proxy failed", format!("{e:#}; session bus disabled"))),

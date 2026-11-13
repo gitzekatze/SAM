@@ -308,9 +308,14 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
     for marker in ["Failed to register name '", "failed to acquire bus name '", "Could not register D-Bus service '", "Unable to register service '"] {
         let Some(rest) = after(output, marker) else { continue };
         let name = display_safe(rest.split('\'').next().unwrap_or(""), 200);
-        let desktop = ["org.freedesktop.", "org.kde.", "org.gnome.", "org.gtk.", "org.mpris.", "ca.desrt.", "org.a11y."].iter().any(|r| name.starts_with(r));
+        // KDE's per-instance name "org.kde.kdenlive-3": the base name covers
+        // it (SAM allows the numbered variants with it).
+        let name = match name.rsplit_once('-') {
+            Some((base, n)) if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) => base.to_string(),
+            _ => name,
+        };
         let valid = name.split('.').count() >= 2 && name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c));
-        if valid && !desktop && dangerous_bus_name(&name).is_none() && !p.dbus.session.own.contains(&name) {
+        if valid && sam_core::permissions::refuse_own_name(&name, &Default::default()).is_none() && !p.dbus.session.own.contains(&name) {
             push(s(
                 "dbus-own",
                 "The app wants its own D-Bus name",
@@ -440,6 +445,11 @@ mod tests {
         assert!(matches!(&own.action, FixAction::Add { key, value } if key == "dbus.session.own" && value == "com.nextcloud.desktopclient.nextcloud"));
         let bad = analyze("Failed to register name 'org.freedesktop.Notifications' with DBUS", &p, None);
         assert!(!bad.iter().any(|x| x.id == "dbus-own"), "desktop services are never offered");
+        let kde = analyze("kf.dbusaddons: Failed to register name 'org.kde.kdenlive-3' with DBUS", &p, None);
+        assert!(
+            kde.iter().any(|x| matches!(&x.action, FixAction::Add { value, .. } if value == "org.kde.kdenlive")),
+            "the base name, not this instance's number"
+        );
     }
 
     #[test]

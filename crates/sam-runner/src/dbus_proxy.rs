@@ -13,6 +13,8 @@ pub struct DbusProxy {
     child: Child,
     pub socket: PathBuf,
     pub args: Vec<String>,
+    /// Names the settings allow but SAM refused (name, why).
+    pub refused: Vec<(String, String)>,
 }
 
 impl DbusProxy {
@@ -33,8 +35,22 @@ impl DbusProxy {
             }
             args.push(format!("--talk={name}"));
         }
+        let activatable = sam_core::host::activatable_bus_names(&host.home);
+        let mut refused = Vec::new();
         for name in &perms.own {
+            // The tray's item names are SAM's own choice, never refused.
+            let tray = name.starts_with("org.kde.StatusNotifierItem-") || name.starts_with("org.freedesktop.StatusNotifierItem-");
+            if let Some(why) = (!tray).then(|| sam_core::permissions::refuse_own_name(name, &activatable)).flatten() {
+                refused.push((name.clone(), why));
+                continue;
+            }
             args.push(format!("--own={name}"));
+            if !tray && !name.ends_with('*') {
+                // KDE apps that allow several instances register their name
+                // with the process number ("org.kde.kdenlive-3"); in the
+                // sandbox's own process list it is small.
+                args.extend((2..=16).map(|pid| format!("--own={name}-{pid}")));
+            }
         }
         for rule in &perms.calls {
             args.push(format!("--call={rule}"));
@@ -66,7 +82,7 @@ impl DbusProxy {
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        Ok(DbusProxy { child, socket, args })
+        Ok(DbusProxy { child, socket, args, refused })
     }
 }
 
