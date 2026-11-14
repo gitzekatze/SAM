@@ -144,15 +144,23 @@ jobs:
             bubblewrap xdg-dbus-proxy passt bsdtar squashfs-tools \
             python3 python3-gobject glib2 dbus-daemon
 
-      - name: Bubblewrap works here
+      # SAM runs as an ordinary user; as root, pasta ("This computer only")
+      # switches to "nobody" on purpose and cannot join the sandbox's
+      # network. So the build and the tests run as a user.
+      - name: Ordinary user
+        run: |
+          useradd -m tester
+          chown -R tester "$GITHUB_WORKSPACE"
+
+      - name: Bubblewrap works here (as that user)
         # Without this check every sandbox test would skip and the job would
         # pass without testing anything.
-        run: bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all true
+        run: su tester -c "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all true"
 
       - name: Build
-        run: cargo build --locked -p sam-jail-cli
+        run: su tester -c "cd '$GITHUB_WORKSPACE' && cargo build --locked -p sam-jail-cli"
 
       - name: Sandbox tests
         run: >
-          PATH="$PWD/target/debug:$PATH" cargo test --locked -p sam-runner
-          --test breakout --test evil --test matrix --test sandbox --test fuzz
+          su tester -c "cd '$GITHUB_WORKSPACE' && PATH=\"$GITHUB_WORKSPACE/target/debug:\$PATH\" cargo test --locked -p sam-runner
+          --test breakout --test evil --test matrix --test sandbox --test fuzz"
