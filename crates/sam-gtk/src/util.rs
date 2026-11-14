@@ -62,11 +62,13 @@ pub fn list_of(v: &Value, key: &str) -> Vec<String> {
     get(v, key).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
 }
 
+/// SAM shows risk in three levels everywhere (tags, badges, lists): the
+/// four levels of the risk model map onto them the same way as the
+/// permission tags do (sam-profile::tags::TagLevel).
 pub fn risk_label(level: &str) -> String {
     match level {
-        "low" => "Low risk",
-        "medium" => "Medium risk",
-        "high" => "High risk",
+        "low" | "medium" => "Harmless",
+        "high" => "Think twice",
         "dangerous" => "Dangerous",
         _ => "",
     }
@@ -132,18 +134,6 @@ pub fn risk_items(risk: &Value) -> Vec<(String, String)> {
     items
 }
 
-/// Label text: "High risk · Network", "High risk · Network +1", "Low risk".
-pub fn risk_headline(risk: &Value) -> String {
-    let level = str_of(risk, "level");
-    let top: Vec<String> = risk_items(risk).into_iter().filter(|(_, l)| l == level).map(|(t, _)| t).collect();
-    let label = risk_label(level);
-    match top.len() {
-        0 => label,
-        1 => format!("{label} · {}", top[0]),
-        n => format!("{label} · {} +{}", top[0], n - 1),
-    }
-}
-
 /// Hover text: what each level means for this app.
 pub fn risk_tooltip(risk: &Value) -> String {
     let items = risk_items(risk);
@@ -163,9 +153,8 @@ pub fn risk_tooltip(risk: &Value) -> String {
 
 pub fn risk_tone(level: &str) -> &'static str {
     match level {
-        "low" => "good",
-        "medium" => "warn",
-        "high" => "bad",
+        "low" | "medium" => "harmless",
+        "high" => "caution",
         "dangerous" => "danger",
         _ => "neutral",
     }

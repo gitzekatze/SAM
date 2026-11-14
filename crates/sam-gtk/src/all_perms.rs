@@ -114,9 +114,12 @@ pub fn tag_label(t: &Value) -> gtk::Label {
     let l = gtk::Label::new(Some(util::str_of(t, "label")));
     l.add_css_class("sam-tag");
     l.add_css_class(&format!("sam-tag-{}", util::str_of(t, "level")));
+    let mut tip = util::str_of(t, "description").to_string();
     if util::bool_of(t, "read_only") {
         l.add_css_class("sam-tag-outline");
+        tip.push_str(" (Read-only or limited access: shown as an outline.)");
     }
+    l.set_tooltip_text(Some(&tip));
     l.set_valign(gtk::Align::Center);
     l
 }
@@ -180,7 +183,6 @@ impl PermsPage {
 
         // Right: the switches.
         let side = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).build();
-        side.add_css_class("sam-perms-side");
         let intro = adw::StatusPage::builder()
             .icon_name("io.github.gitzekatze.SAM")
             .title(tr("Permissions"))
@@ -442,14 +444,20 @@ impl PermsPage {
             b.remove_css_class(c);
         }
         let (markup, tip) = match state {
-            None => (esc(label), format!("Show only apps with {label}")),
+            None => (esc(label), format!("Filter: click to show only the apps that have the permission “{label}”.")),
             Some(true) => {
                 b.add_css_class("sam-filter-has");
-                (format!("✓ {}", esc(label)), format!("Showing apps with {label}. Click to show apps without it."))
+                (
+                    format!("✓ {}", esc(label)),
+                    format!("Filter on: the list shows only the apps that have the permission “{label}”. Click to show only the apps that do not have it."),
+                )
             }
             Some(false) => {
                 b.add_css_class("sam-filter-not");
-                (format!("✗ <s>{}</s>", esc(label)), format!("Showing apps without {label}. Click to turn this filter off."))
+                (
+                    format!("✗ <s>{}</s>", esc(label)),
+                    format!("Filter on: the list shows only the apps that do not have the permission “{label}”. Click to turn this filter off."),
+                )
             }
         };
         l.set_markup(&markup);
@@ -683,7 +691,7 @@ impl PermsPage {
         let head = adw::PreferencesGroup::builder()
             .title(format!("{total} Apps Selected"))
             .description(tr(
-                "Where the selected apps differ, a permission appears once for each value, with the apps that have it below. The switch of a row changes all its apps; the small switch next to an app changes only that app.",
+                "Each row shows one permission and the setting that the apps in that row have. If the selected apps have different settings for a permission, that permission gets one row for each setting. The control at the end of a row changes every app in that row; to change one app on its own, unfold the row with the arrow. Changes apply at once and can be undone from the message at the bottom of the window. SAM asks first only when an app would probably stop working.",
             ))
             .build();
         self.many_page.add(&head);
@@ -715,7 +723,7 @@ impl PermsPage {
     fn value_row(self: &Rc<Self>, key: &'static str, ptitle: &str, opts: Opts, tok: &str, members: &[Value], total: usize) -> adw::ExpanderRow {
         let n = members.len();
         let vlabel = opt_label(opts, tok);
-        let subtitle = if n == total { format!("{vlabel} for all {n} apps") } else { format!("{vlabel} for {n} of {total} apps") };
+        let subtitle = if n == total { format!("{vlabel} for all {n} selected apps") } else { format!("{vlabel} for {n} of the {total} selected apps") };
         let row = adw::ExpanderRow::builder().title(esc(ptitle)).subtitle(esc(&subtitle)).build();
         let icons = gtk::Box::builder().spacing(2).valign(gtk::Align::Center).build();
         for a in members.iter().take(3) {
@@ -727,7 +735,6 @@ impl PermsPage {
             more.add_css_class("dim-label");
             icons.append(&more);
         }
-        row.add_prefix(&icons);
         let ids: Vec<String> = members.iter().map(|a| util::str_of(a, "id").to_string()).collect();
         let what = match n {
             _ if n == total => format!("{ptitle} for all selected apps"),
@@ -735,6 +742,9 @@ impl PermsPage {
             _ => format!("{ptitle} for {n} apps"),
         };
         row.add_suffix(&self.control(key, opts, tok, ids, &what));
+        // The apps' icons follow the name (the row puts later suffixes in
+        // front of earlier ones); unfolded, each app leads with its icon.
+        row.add_suffix(&icons);
         for a in members {
             let name = util::plain(util::str_of(a, "name"));
             let r = adw::ActionRow::builder().title(esc(&name)).build();

@@ -126,7 +126,7 @@ Programs that run in a terminal (Helix, Neovim, command-line tools) open in your
 
 ## Permissions of All Apps
 
-The button **Permissions of All Apps** above the list of AppImages opens a page that shows every sandboxed app with tags for what it may access. The tags use the same words as the switches and come in four groups: Network, Files, Devices and Desktop. Their color shows the risk (calm, think twice, dangerous); a filled tag means read and write access, an outlined tag means read-only or limited access.
+The button **Permissions of All Apps** above the list of AppImages opens a page that shows every sandboxed app with tags for what it may access. The tags use the same words as the switches and come in four groups: Network, Files, Devices and Desktop. Their color shows the risk, the same way everywhere in SAM: grey means harmless, amber means think twice, and red means dangerous. A filled tag means read and write access, an outlined tag means read-only or limited access. Hovering over a tag explains what the permission allows. The app's own page shows the same tags under its name.
 
 - **Filter** by clicking a tag above the list: the first click shows only the apps that have this permission, the second click shows only the apps without it, and the third click turns the filter off. *Running*, *Needs review* and *May not start* filter by state.
 - **Select** apps with the check boxes. Shift-click selects a range, and *Select all* selects every app the filter shows. Clicking an app selects only that app.

@@ -19,7 +19,7 @@ impl Sam {
             warn_full_home: self.config.security.warn_full_home,
             terminal_program,
         };
-        Evaluation { risk: assess(perms), warnings: evaluate(perms, &ctx) }
+        Evaluation { risk: assess(perms), tags: sam_profile::tags::permission_tags(perms), warnings: evaluate(perms, &ctx) }
     }
 
     /// All warnings relevant to an app: permissions, extraction, detection, state.
@@ -206,6 +206,7 @@ impl Sam {
             "notes": rec.notes,
             "selection": selection,
             "risk": ev.risk,
+            "tags": ev.tags,
             "warnings": ev.warnings,
         }))
     }

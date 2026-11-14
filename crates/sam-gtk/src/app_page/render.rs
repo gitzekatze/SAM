@@ -22,12 +22,21 @@ impl AppPage {
         self.add_dynamic(&self.notices, &row);
     }
 
-    pub(super) fn set_risk_badge(&self, ev: &Value) {
-        let risk = ev.get("risk").cloned().unwrap_or_default();
-        let level = util::str_of(&risk, "level").to_string();
-        set_badge_visible(&self.risk_badge, !level.is_empty());
-        util::set_badge(&self.risk_badge, &util::risk_headline(&risk), util::risk_tone(&level));
-        self.risk_badge.set_tooltip_text(Some(&util::risk_tooltip(&risk)));
+    /// Shows the permission tags of an evaluation (or a preview) in the
+    /// header: the same tags, words and colors as on the Permissions page.
+    pub(super) fn set_tags(&self, ev: Option<&Value>) {
+        self.tags_box.remove_all();
+        let tags = ev.and_then(|e| e.get("tags")).and_then(Value::as_array).cloned().unwrap_or_default();
+        for t in &tags {
+            let child = gtk::FlowBoxChild::new();
+            child.set_child(Some(&crate::all_perms::tag_label(t)));
+            child.set_can_focus(false);
+            child.set_halign(gtk::Align::Start);
+            self.tags_box.append(&child);
+        }
+        self.tags_box.set_visible(!tags.is_empty());
+        let risk = ev.and_then(|e| e.get("risk")).cloned().unwrap_or_default();
+        self.tags_box.set_tooltip_text(Some(&util::risk_tooltip(&risk)));
     }
 
     pub(super) fn add_dynamic(&self, g: &adw::PreferencesGroup, w: &impl IsA<gtk::Widget>) {
@@ -109,13 +118,9 @@ impl AppPage {
             ));
         }
         if !sandboxed {
-            if let Some(pv) = self.preview.borrow().as_ref() {
-                self.set_risk_badge(pv);
-            } else {
-                set_badge_visible(&self.risk_badge, false);
-            }
+            self.set_tags(self.preview.borrow().as_ref());
         } else if info.is_none() {
-            set_badge_visible(&self.risk_badge, false);
+            self.set_tags(None);
         }
         let badge = summary.as_ref().map(|s| util::str_of(s, "badge").to_string()).unwrap_or_default();
         self.remove_button.set_visible(sandboxed);

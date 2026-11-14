@@ -42,37 +42,32 @@ const ACCENT_VARS_CSS: &str = r#"
 "#;
 
 const CSS: &str = r#"
-/* Permission tags: color = risk, filled = read & write, outline = read-only. */
-.sam-tag {
+/* Tags and badges use fixed colors, so they look the same with every
+   desktop theme. The text keeps the theme's text color and stays readable
+   in light and dark style; the tint and the border carry the meaning. */
+/* One color per meaning throughout SAM. Risk has three levels, shared by
+   permission tags (.sam-tag-*) and risk badges (.sam-badge-*): harmless
+   (grey), think twice (amber), dangerous (red). Status badges reuse the
+   same hues: green = protected, amber = needs attention, red = broken,
+   blue = the sandbox technology. Tags: filled = read & write, outline =
+   read-only or limited. */
+.sam-tag, .sam-badge {
     padding: 1px 8px;
     border-radius: 999px;
     font-size: 0.8em;
     font-weight: 600;
     border: 1px solid transparent;
 }
-.sam-tag-harmless { background-color: alpha(@window_fg_color, 0.09); color: alpha(@window_fg_color, 0.85); }
-.sam-tag-caution  { background-color: alpha(@warning_color, 0.20); color: mix(@warning_color, @window_fg_color, 0.45); }
-.sam-tag-danger   { background-color: alpha(@error_color, 0.18);   color: mix(@error_color, @window_fg_color, 0.3); }
-.sam-tag-outline  { background-color: transparent; border-color: currentColor; }
+.sam-badge { font-weight: 700; padding: 2px 9px; }
+.sam-tag-harmless, .sam-badge-harmless, .sam-badge-neutral { background-color: rgba(128, 128, 128, 0.32); border-color: rgba(128, 128, 128, 0.6); }
+.sam-tag-caution, .sam-badge-caution, .sam-badge-warn      { background-color: rgba(229, 165, 10, 0.32);  border-color: rgb(200, 140, 0); }
+.sam-tag-danger, .sam-badge-danger, .sam-badge-bad         { background-color: rgba(224, 27, 36, 0.30);   border-color: rgb(214, 40, 57); }
+.sam-badge-good, .sam-badge-accent                          { background-color: rgba(38, 162, 105, 0.28);  border-color: rgb(38, 162, 105); }
+.sam-badge-blue                                             { background-color: rgba(53, 132, 228, 0.28);  border-color: rgb(53, 132, 228); }
+.sam-tag-outline { background-color: transparent; }
 .sam-tag-button { padding: 2px; min-height: 0; }
-.sam-tag-button.sam-filter-has .sam-tag { border-color: currentColor; }
-.sam-tag-button.sam-filter-not .sam-tag { background-color: alpha(@window_fg_color, 0.08); color: alpha(@window_fg_color, 0.7); }
-.sam-perms-side { background-color: @sidebar_bg_color; }
-.sam-badge {
-    padding: 2px 9px;
-    border-radius: 999px;
-    font-size: 0.82em;
-    font-weight: 700;
-}
-.sam-badge-accent  { background-color: alpha(@accent_color, 0.15);  color: @accent_color; }
-.sam-badge-good    { background-color: alpha(@success_color, 0.15); color: @success_color; }
-.sam-badge-warn    { background-color: alpha(@warning_color, 0.18); color: @warning_color; }
-.sam-badge-bad     { background-color: alpha(@error_color, 0.15);   color: @error_color; }
-.sam-badge-danger  { background-color: @error_bg_color;             color: @error_fg_color; }
-.sam-badge-neutral { background-color: alpha(@window_fg_color, 0.10); color: alpha(@window_fg_color, 0.85); }
-/* Text mixed towards the window text colour: darker in light style, lighter
-   in dark style, so it keeps a contrast of at least 4.5:1 in both. */
-.sam-badge-blue    { background-color: alpha(#3584e4, 0.20);        color: mix(#3584e4, @window_fg_color, 0.45); }
+.sam-tag-button.sam-filter-has .sam-tag { border-width: 2px; }
+.sam-tag-button.sam-filter-not .sam-tag { background-color: transparent; border-style: dashed; opacity: 0.75; }
 
 .sam-chip {
     padding: 1px 2px 1px 10px;
@@ -155,29 +150,9 @@ fn main() -> glib::ExitCode {
     let separate = opts.screenshot.is_some() || std::env::var_os("SAM_CONFIG_DIR").is_some() || std::env::var_os("SAM_DATA_DIR").is_some();
     let flags = if separate { gio::ApplicationFlags::NON_UNIQUE } else { gio::ApplicationFlags::HANDLES_OPEN };
     let app = adw::Application::builder().application_id(APP_ID).flags(flags).build();
-    if !separate && app.register(gio::Cancellable::NONE).is_ok() && app.is_remote() {
-        if opts.startup.files.is_empty() {
-            app.activate();
-        } else {
-            let files: Vec<gio::File> = opts.startup.files.iter().map(gio::File::for_path).collect();
-            app.open(&files, "");
-        }
-        return glib::ExitCode::SUCCESS;
-    }
-    let opts = std::rc::Rc::new(std::cell::RefCell::new(Some(opts)));
-    // The window, once open: a second start brings it forward.
-    let current: std::rc::Rc<std::cell::RefCell<Option<std::rc::Rc<window::App>>>> = Default::default();
-    let cur = current.clone();
-    app.connect_open(move |app, files, _| {
-        let paths: Vec<String> = files.iter().filter_map(|f| f.path()).map(|p| p.to_string_lossy().into_owned()).collect();
-        match cur.borrow().as_ref() {
-            Some(win) => {
-                win.window.present();
-                win.add_files(paths);
-            }
-            None => app.activate(),
-        }
-    });
+    // Connected before `register`: registering the first instance emits
+    // "startup" at once, and a handler connected later never runs (SAM's
+    // style sheet and icon folder were then missing on every normal start).
     app.connect_startup(|_| {
         desktop_identity();
         gtk::Window::set_default_icon_name(APP_ID);
@@ -206,6 +181,29 @@ fn main() -> glib::ExitCode {
             // builds never contain the build folder's path.
             #[cfg(debug_assertions)]
             gtk::IconTheme::for_display(&display).add_search_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data"));
+        }
+    });
+    if !separate && app.register(gio::Cancellable::NONE).is_ok() && app.is_remote() {
+        if opts.startup.files.is_empty() {
+            app.activate();
+        } else {
+            let files: Vec<gio::File> = opts.startup.files.iter().map(gio::File::for_path).collect();
+            app.open(&files, "");
+        }
+        return glib::ExitCode::SUCCESS;
+    }
+    let opts = std::rc::Rc::new(std::cell::RefCell::new(Some(opts)));
+    // The window, once open: a second start brings it forward.
+    let current: std::rc::Rc<std::cell::RefCell<Option<std::rc::Rc<window::App>>>> = Default::default();
+    let cur = current.clone();
+    app.connect_open(move |app, files, _| {
+        let paths: Vec<String> = files.iter().filter_map(|f| f.path()).map(|p| p.to_string_lossy().into_owned()).collect();
+        match cur.borrow().as_ref() {
+            Some(win) => {
+                win.window.present();
+                win.add_files(paths);
+            }
+            None => app.activate(),
         }
     });
     app.connect_activate(move |app| {

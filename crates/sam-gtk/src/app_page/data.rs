@@ -47,7 +47,7 @@ impl AppPage {
         let Some(app) = self.app() else { return };
         if let Ok(ev) = app.backend.call(&["evaluate", &self.app_id], Some(p.to_string())).await {
             self.editor.set_evaluation(Some(ev.clone()));
-            self.set_risk_badge(&ev);
+            self.set_tags(Some(&ev));
         }
     }
 

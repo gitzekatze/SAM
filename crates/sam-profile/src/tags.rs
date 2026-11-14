@@ -55,6 +55,8 @@ pub struct Tag {
     pub level: TagLevel,
     /// Read-only (or otherwise limited) access: drawn as an outline.
     pub read_only: bool,
+    /// What the permission allows, in the words of the switch's explanation.
+    pub description: String,
     /// Position of the switch among all switches, for a stable order.
     pub order: usize,
 }
@@ -92,6 +94,8 @@ pub fn permission_tags(p: &PermissionSet) -> Vec<Tag> {
         }
         let Ok(v) = p.get_key(info.key) else { continue };
         let (granted, read_only, label) = match (info.key, &v) {
+            ("dbus.session.mode", Value::String(m)) => (m == "full", false, "Session bus: full access"),
+            ("dbus.system.mode", Value::String(m)) => (m == "full", false, "System bus: full access"),
             ("network.mode", Value::String(m)) => match m.as_str() {
                 "full" => (true, false, "Full network"),
                 "localhost" => (true, true, "Local network only"),
@@ -109,7 +113,15 @@ pub fn permission_tags(p: &PermissionSet) -> Vec<Tag> {
             _ => (false, false, info.title),
         };
         if granted {
-            out.push(Tag { key: info.key.to_string(), label: label.to_string(), family, level: info.risk.into(), read_only, order });
+            out.push(Tag {
+                key: info.key.to_string(),
+                label: label.to_string(),
+                family,
+                level: info.risk.into(),
+                read_only,
+                description: info.description.to_string(),
+                order,
+            });
         }
     }
     out.sort_by_key(|t| t.family);

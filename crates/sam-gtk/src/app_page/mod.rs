@@ -41,7 +41,8 @@ pub struct AppPage {
     subtitle: gtk::Label,
     status_badge: gtk::Label,
     state_badge: gtk::Label,
-    risk_badge: gtk::Label,
+    /// The permission tags, the same as on the Permissions page.
+    tags_box: gtk::FlowBox,
     sandbox_badge: gtk::Label,
     main_button: gtk::Button,
     remove_button: gtk::Button,
@@ -133,18 +134,16 @@ impl AppPage {
         let status_badge = util::badge("", "neutral");
         let state_badge = util::badge("", "warn");
         state_badge.set_visible(false);
-        let risk_badge = util::badge("", "neutral");
         let sandbox_badge = util::badge("Bubblewrap", "blue");
         let check_badge = util::badge("", "good");
         badges.append(&status_badge);
         badges.append(&state_badge);
-        badges.append(&risk_badge);
         badges.append(&sandbox_badge);
         badges.append(&check_badge);
         // Each label keeps its own width when they wrap into a column. The
         // labels are not controls: none takes the keyboard focus (a
         // focusable one made Tab stop for good at the button before them).
-        for b in [&status_badge, &state_badge, &risk_badge, &sandbox_badge, &check_badge] {
+        for b in [&status_badge, &state_badge, &sandbox_badge, &check_badge] {
             if let Some(child) = b.parent() {
                 child.set_halign(gtk::Align::Start);
                 child.set_can_focus(false);
@@ -154,6 +153,18 @@ impl AppPage {
         meta.append(&title);
         meta.append(&subtitle);
         meta.append(&badges);
+        // What the app may access, in the words of the switches below.
+        let tags_box = gtk::FlowBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .column_spacing(4)
+            .row_spacing(4)
+            .max_children_per_line(30)
+            .halign(gtk::Align::Start)
+            .margin_top(2)
+            .build();
+        tags_box.set_can_focus(false);
+        tags_box.set_can_target(false);
+        meta.append(&tags_box);
         hero.append(&meta);
         // Check and Launch (or Create Sandbox), Remove Sandbox under them.
         let buttons = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).valign(gtk::Align::Center).build();
@@ -302,7 +313,7 @@ impl AppPage {
             subtitle,
             status_badge,
             state_badge,
-            risk_badge,
+            tags_box,
             sandbox_badge,
             main_button,
             remove_button,

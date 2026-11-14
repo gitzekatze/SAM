@@ -123,6 +123,8 @@ pub struct RefreshItem {
 #[derive(Debug, Clone, Serialize)]
 pub struct Evaluation {
     pub risk: RiskAssessment,
+    /// The permission tags, as on the Permissions page.
+    pub tags: Vec<sam_profile::tags::Tag>,
     pub warnings: Vec<Warning>,
 }
 

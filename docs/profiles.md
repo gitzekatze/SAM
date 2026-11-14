@@ -61,7 +61,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `integrations.keyring` | `true` / `false`: Secret Service / KWallet (exposes every stored password) |
 | `integrations.media_controls` | `true` / `false`: MPRIS media keys, screen-saver inhibit |
 | `integrations.input_method` | `true` / `false` (default `true`): Fcitx5 and IBus through their sandbox frontends |
-| `integrations.file_manager` | `true` / `false`: "Show in folder" |
+| `integrations.file_manager` | `true` / `false`: "Open the file manager" (shows a saved file in its folder) |
 | `advanced.extra_bwrap_args` | list of raw backend arguments |
 
 `sam-jail permissions` prints the same list with plain-language explanations and risk levels.

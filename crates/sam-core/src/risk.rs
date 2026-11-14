@@ -93,16 +93,16 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     let fs = &p.filesystem;
     if fs.home {
         let lvl = if fs.home_access == Access::Rw { RiskLevel::Dangerous } else { RiskLevel::High };
-        let t = if fs.home_access == Access::Rw { "Full home read/write" } else { "Full home read-only" };
+        let t = if fs.home_access == Access::Rw { "Full home access" } else { "Full home access (read-only)" };
         item(&mut items, "filesystem.home", t, lvl);
         if fs.ssh {
-            item(&mut items, "filesystem.ssh", "SSH keys exposed", RiskLevel::Dangerous);
+            item(&mut items, "filesystem.ssh", "SSH keys", RiskLevel::Dangerous);
         }
         if fs.gnupg {
-            item(&mut items, "filesystem.gnupg", "GnuPG keys exposed", RiskLevel::Dangerous);
+            item(&mut items, "filesystem.gnupg", "GnuPG keys", RiskLevel::Dangerous);
         }
         if fs.hidden_files {
-            item(&mut items, "filesystem.hidden_files", "Sensitive dotfiles exposed", RiskLevel::Dangerous);
+            item(&mut items, "filesystem.hidden_files", "Sensitive dotfiles", RiskLevel::Dangerous);
         }
     }
     for key in XDG_DIR_KEYS {
@@ -120,13 +120,13 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     }
 
     match p.network.mode {
-        NetworkMode::Full => item(&mut items, "network.mode", "Network", RiskLevel::High),
-        NetworkMode::Localhost => item(&mut items, "network.mode", "Local network only (no internet)", RiskLevel::Low),
+        NetworkMode::Full => item(&mut items, "network.mode", "Full network", RiskLevel::High),
+        NetworkMode::Localhost => item(&mut items, "network.mode", "Local network only", RiskLevel::Low),
         NetworkMode::None => {}
     }
 
     if p.devices.gpu {
-        item(&mut items, "devices.gpu", "GPU", RiskLevel::Medium);
+        item(&mut items, "devices.gpu", "GPU acceleration", RiskLevel::Medium);
     }
     if p.devices.webcam {
         item(&mut items, "devices.webcam", "Webcam", RiskLevel::High);
@@ -135,16 +135,16 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
         item(&mut items, "devices.gamepads", "Game controllers", RiskLevel::Medium);
     }
     if p.devices.input {
-        item(&mut items, "devices.input", "Raw input devices", RiskLevel::Dangerous);
+        item(&mut items, "devices.input", "All input devices", RiskLevel::Dangerous);
     }
     if p.devices.usb {
-        item(&mut items, "devices.usb", "Raw USB devices", RiskLevel::Dangerous);
+        item(&mut items, "devices.usb", "Raw USB", RiskLevel::Dangerous);
     }
     if p.devices.bluetooth {
         item(&mut items, "devices.bluetooth", "Bluetooth", RiskLevel::Dangerous);
     }
     if p.audio.enabled {
-        item(&mut items, "audio.enabled", "Audio", RiskLevel::Medium);
+        item(&mut items, "audio.enabled", "Sound", RiskLevel::Medium);
     }
     if p.display.wayland && p.display.wayland_privileged {
         item(&mut items, "display.wayland_privileged", "Privileged Wayland protocols", RiskLevel::High);
@@ -165,13 +165,13 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
         item(&mut items, "integrations.media_controls", "Media controls", RiskLevel::Low);
     }
     if p.integrations.screen_sharing {
-        item(&mut items, "integrations.screen_sharing", "Screen sharing (asks each time)", RiskLevel::Medium);
+        item(&mut items, "integrations.screen_sharing", "Screen sharing", RiskLevel::Medium);
     }
     if p.integrations.input_method {
         item(&mut items, "integrations.input_method", "Input method", RiskLevel::Low);
     }
     if p.integrations.file_manager {
-        item(&mut items, "integrations.file_manager", "Show in folder", RiskLevel::Low);
+        item(&mut items, "integrations.file_manager", "Open the file manager", RiskLevel::Low);
     }
     if p.advanced.writable_appdir {
         item(&mut items, "advanced.writable_appdir", "Writable app folder", RiskLevel::Low);
@@ -181,8 +181,8 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     }
     match p.dbus.session.mode {
         DbusMode::None => {}
-        DbusMode::Filtered => item(&mut items, "dbus.session.mode", "Filtered session D-Bus (portals)", RiskLevel::Low),
-        DbusMode::Full => item(&mut items, "dbus.session.mode", "Full session D-Bus", RiskLevel::High),
+        DbusMode::Filtered => item(&mut items, "dbus.session.mode", "Session bus: filtered", RiskLevel::Low),
+        DbusMode::Full => item(&mut items, "dbus.session.mode", "Session bus: full access", RiskLevel::High),
     }
     for name in &p.dbus.session.allow {
         if crate::permissions::dangerous_bus_name(name).is_some() {
@@ -198,7 +198,7 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     match p.dbus.system.mode {
         DbusMode::None => {}
         DbusMode::Filtered => {} // not possible for the system bus (loads as none)
-        DbusMode::Full => item(&mut items, "dbus.system.mode", "System D-Bus", RiskLevel::Dangerous),
+        DbusMode::Full => item(&mut items, "dbus.system.mode", "System bus: full access", RiskLevel::Dangerous),
     }
     if p.sockets.ssh_agent {
         item(&mut items, "sockets.ssh_agent", "SSH agent", RiskLevel::High);
@@ -211,10 +211,10 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
         item(&mut items, "sockets.custom", &format!("Socket {s}"), level);
     }
     if p.advanced.host_runtime == HostRuntime::Full {
-        item(&mut items, "advanced.host_runtime", "Full /usr exposure", RiskLevel::Medium);
+        item(&mut items, "advanced.host_runtime", "All of /usr", RiskLevel::Medium);
     }
     if !p.advanced.extra_bwrap_args.is_empty() {
-        item(&mut items, "advanced.extra_bwrap_args", "Raw backend arguments", RiskLevel::High);
+        item(&mut items, "advanced.extra_bwrap_args", "Raw Bubblewrap arguments", RiskLevel::High);
     }
 
     let level = items.iter().map(|i| i.level).max().unwrap_or_default();

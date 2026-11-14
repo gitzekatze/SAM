@@ -288,6 +288,10 @@ impl Editor {
         drop.set_valign(gtk::Align::Center);
         drop.set_widget_name(&format!("perm:{key}"));
         drop.add_css_class("flat");
+        // GTK names a drop-down after its value ("No access") through a
+        // "labelled by" relation; a screen reader should hear the setting.
+        drop.reset_relation(gtk::AccessibleRelation::LabelledBy);
+        drop.update_property(&[gtk::accessible::Property::Label(&self.info(key).title)]);
         row.add_suffix(&drop);
         row.set_activatable_widget(Some(&drop));
         let me = Rc::downgrade(self);
