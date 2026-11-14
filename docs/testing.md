@@ -9,7 +9,11 @@ got no answer (an app waiting on them feels slow), the windows after 20
 seconds and whether a title reads like an error dialog, whether the
 recommendation is the same twice, and leftovers after closing. With
 `CHECKS="netoff second lang"` it also starts each app without network and
-sound, a second time while the first runs, and in German.
+sound, a second time while the first runs, in German, with display
+scaling 2, and (`missing`, needs strace) under strace to list files the app
+looked for in vain. Every run also notes the time until the first window,
+the memory after 20 seconds, whether a tray icon
+was registered, and which portals the app called.
 `python3 tests/real-apps/checks.py WORK [BASELINE]` prints one line per app,
 or with a baseline only what changed. The smoke subset (one app per family,
 16 apps) passed every check on 2026-11-15.
@@ -71,6 +75,19 @@ found in 0.8 s cold and 30 ms warm; with 40 sandboxes `list`, `doctor` and
 steps) on real AppImages in an invisible KWin session with a fake home;
 `python3 tests/real-apps/analyze.py "$WORK"` summarises it. Results of the
 first run: [real-apps-2026-11-10.md](real-apps-2026-11-10.md).
+
+## 0c. What an app does, checked by hand
+
+Sandboxed apps cannot be driven through the accessibility interface: SAM
+blocks it inside the sandbox, because an app could read other windows
+through it. So the harness measures what can be seen from outside (a
+tray icon, the portals an app calls, D-Bus calls it waits
+on) and these checks stay manual. For each app tested, note one letter per
+column (✓ works, ✗ fails, – does not apply) in this form:
+
+| App | Open a file | Save into a granted folder | Saving elsewhere is refused | Internet when on | No internet when off | Sound | Link opens in the browser | File dialog | Tray menu | Notification | Clipboard |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| (name) | | | | | | | | | | | |
 
 ## 1. Environment
 

@@ -43,6 +43,18 @@ def line(base):
     wins = [l[len("window "):] for l in open(base + ".windows", errors="replace").read().splitlines()] if os.path.exists(base + ".windows") else []
     err = [w for w in wins if ERROR_WORDS.search(w)]
     m = re.search(r"(\d+) got no answer", checks.get("dbus", ""))
+    # Start time: the first window KWin reported after the start began.
+    start_ms = None
+    try:
+        t0 = int(open(base + ".t0").read().strip())
+        app_id = load(base + ".info.json").get("entry", {}).get("id", "")
+        log = open(os.path.join(os.path.dirname(os.path.dirname(base)), "kwin.log"), errors="replace").read()
+        added = [int(t) for t in re.findall(rf"SAMADD {re.escape(app_id)} (\d+)", log) if int(t) >= t0]
+        start_ms = min(added) - t0 if added else None
+    except (OSError, ValueError):
+        pass
+    memf = dict(l.split(" ", 1) for l in open(base + ".mem").read().splitlines() if " " in l) if os.path.exists(base + ".mem") else {}
+    mem = memf.get("memory", "?")
     cols = [
         "start=" + ("ok" if started is True else (started if started else "FAIL")),
         f"windows={len(wins)}" + (f" ERROR-TITLE={err[0][:40]!r}" if err else ""),
@@ -50,28 +62,55 @@ def line(base):
         "dbus-unanswered=" + (m.group(1) if m else "?"),
         "leftovers=" + checks.get("leftovers", "?"),
     ]
-    for k in ("netoff", "second", "lang"):
+    # Timing and memory change from run to run: shown, but kept out of the
+    # comparison with a baseline unless they change a lot (see main).
+    extra = f"first-window={start_ms / 1000:.1f}s" if start_ms is not None else "first-window=none"
+    # (Whether the GPU is in use cannot be seen from outside: sandboxed
+    # processes are not dumpable, so their open files are hidden.)
+    extra += f"  memory={mem}MiB"
+    extra += f"  tray={checks.get('tray', '?')}  portals={checks.get('portals') or '-'}"
+    for k in ("netoff", "second", "lang", "scale", "missing"):
         if k in checks:
             cols.append(f"{k}={checks[k]}")
-    return name, "  ".join(cols)
+    return name, "  ".join(cols), extra
 
 
 def lines(work):
-    return dict(line(t[:-4]) for t in sorted(glob.glob(f"{work}/results/*.txt")) if not t.endswith((".add.txt", "session.txt")))
+    out = {}
+    for t in sorted(glob.glob(f"{work}/results/*.txt")):
+        if not t.endswith((".add.txt", "session.txt")):
+            name, cols, extra = line(t[:-4])
+            out[name] = (cols, extra)
+    return out
+
+
+def number(extra, key):
+    m = re.search(rf"{key}=([\d.]+)", extra)
+    return float(m.group(1)) if m else None
 
 
 def main():
     cur = lines(sys.argv[1])
     if len(sys.argv) > 2:
         base = lines(sys.argv[2])
-        changed = {n: l for n, l in cur.items() if base.get(n) != l}
+        changed = {}
+        for n, (cols, extra) in cur.items():
+            b = base.get(n)
+            # Start time or memory count as changed only at +50 % and more.
+            grew = b and any(
+                (x := number(extra, k)) and (y := number(b[1], k)) and x > y * 1.5 and x - y > (2 if k == "first-window" else 50)
+                for k in ("first-window", "memory")
+            )
+            if b is None or b[0] != cols or grew:
+                changed[n] = (cols, extra)
         print(f"{len(cur)} apps, {len(changed)} changed since the baseline")
-        for n, l in changed.items():
-            print(f"{n}\n  now:    {l}\n  before: {base.get(n, '(not in the baseline)')}")
+        for n, (cols, extra) in changed.items():
+            b = base.get(n)
+            print(f"{n}\n  now:    {cols}  {extra}\n  before: {b[0] + '  ' + b[1] if b else '(not in the baseline)'}")
     else:
-        for n, l in cur.items():
-            print(f"{n:60.60}  {l}")
-        bad = sum(1 for l in cur.values() if "start=FAIL" in l or "ERROR-TITLE" in l or "stable=no" in l or not l.split("leftovers=")[1].startswith("0"))
+        for n, (cols, extra) in cur.items():
+            print(f"{n:52.52}  {cols}  {extra}")
+        bad = sum(1 for cols, _ in cur.values() if "start=FAIL" in cols or "ERROR-TITLE" in cols or "stable=no" in cols or not cols.split("leftovers=")[1].startswith("0"))
         print(f"\n{len(cur)} apps, {bad} with something to look at")
 
 

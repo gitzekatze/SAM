@@ -266,6 +266,8 @@ AppImage.
 | [Profiles and presets](docs/profiles.md) | the permission file format |
 | [Packaging](docs/packaging.md) | building packages and the AppImage |
 | [JSON interface](docs/json-interface.md) | scripts: the `--json` output of every command |
+| [Development dashboard](DEVELOPMENT.md) | developers: the current state, every test, the version reports and the latest commits |
+| [Threat model](docs/threat-model.md) | what SAM protects, against whom, how, and where that ends |
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |
 | [Translating](docs/translating.md) | adding a language |
