@@ -122,7 +122,7 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
 
     match p.network.mode {
         NetworkMode::Full => item(&mut items, "network.mode", "Full network", RiskLevel::High),
-        NetworkMode::Localhost => item(&mut items, "network.mode", "Local network only", RiskLevel::Low),
+        NetworkMode::Localhost => item(&mut items, "network.mode", "This computer only", RiskLevel::Low),
         NetworkMode::None => {}
     }
 

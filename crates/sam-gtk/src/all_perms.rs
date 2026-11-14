@@ -30,7 +30,7 @@ use crate::window::{self, App};
 /// words of its switch. A permission with on/off values is drawn as a switch.
 type Opts = &'static [(&'static str, &'static str)];
 const SWITCH: Opts = &[("false", "Off"), ("true", "On")];
-const NETWORK: Opts = &[("none", "No network"), ("localhost", "Local network only"), ("full", "Full network")];
+const NETWORK: Opts = &[("none", "No network"), ("localhost", "This computer only"), ("full", "Full network")];
 const FOLDER: Opts = &[("none", "No access"), ("ro", "Read-only"), ("rw", "Read & write")];
 const BUS: Opts = &[("none", "No access"), ("filtered", "Filtered"), ("full", "Full access")];
 

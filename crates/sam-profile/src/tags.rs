@@ -98,7 +98,7 @@ pub fn permission_tags(p: &PermissionSet) -> Vec<Tag> {
             ("dbus.system.mode", Value::String(m)) => (m == "full", false, "System bus: full access"),
             ("network.mode", Value::String(m)) => match m.as_str() {
                 "full" => (true, false, "Full network"),
-                "localhost" => (true, true, "Local network only"),
+                "localhost" => (true, true, "This computer only"),
                 _ => (false, false, ""),
             },
             ("filesystem.home", Value::Bool(on)) => (*on, p.filesystem.home_access == sam_core::permissions::Access::Ro, info.title),

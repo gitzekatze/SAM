@@ -217,26 +217,69 @@ impl AppPage {
         glib::spawn_future_local(async move {
             // Asked fresh: the app may have been started or closed meanwhile.
             let running = app.backend.call(&["info", &me.app_id], None).await.ok().and_then(|i| i.get("running").and_then(Value::as_u64)).unwrap_or(0) > 0;
+            // Three clearly named choices; nothing is preselected, and the
+            // button names the chosen action.
             let body = if running {
-                format!("{name} is running right now (maybe only in the system tray). It is closed first and gets the chance to save. Then the unpacked app and SAM's menu entry are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again.")
+                format!("{name} is running right now (maybe only in the system tray). It is closed first and gets the chance to save. Choose what to remove; the AppImage file itself is always kept.")
             } else {
-                "The unpacked app and SAM's menu entry are deleted. The AppImage file itself is kept, and any menu entry SAM hid is shown again.".to_string()
+                "Choose what to remove. The AppImage file itself is always kept, and any menu entry SAM hid is shown again when the sandbox goes.".to_string()
             };
-            let d = adw::AlertDialog::new(Some(&format!("Remove the Sandbox for {name}?")), Some(&body));
-            let keep = gtk::CheckButton::builder()
-                .label(tr("Keep the app's settings and files"))
-                .tooltip_text(tr("Its private folder (logins, settings, saved files) and logs stay. A new sandbox for this AppImage picks them up again."))
-                .name("keep-data")
-                .build();
-            d.set_extra_child(Some(&keep));
-            d.add_responses(&[("cancel", "Cancel"), ("ok", if running { "Close and Remove" } else { "Remove Sandbox" })]);
+            let d = adw::AlertDialog::new(Some(&format!("Remove {name}?")), Some(&body));
+            let choices = [
+                ("unpacked", "Only the unpacked copy", "Frees disk space. The sandbox and the app's settings stay; SAM unpacks the app again at its next start.", "Free Space"),
+                ("sandbox", "The sandbox, but keep the app's settings and files", "Removes the sandbox and SAM's menu entry. The app's private folder (logins, settings, saved files) stays, and a new sandbox for this AppImage picks it up again.", "Remove Sandbox"),
+                ("everything", "Everything", "Removes the sandbox and the app's private folder with its logins, settings and saved files.", "Delete Everything"),
+            ];
+            let list = gtk::Box::new(gtk::Orientation::Vertical, 10);
+            let mut first: Option<gtk::CheckButton> = None;
+            let chosen = Rc::new(std::cell::RefCell::new(String::new()));
+            d.add_responses(&[("cancel", "Cancel"), ("ok", "Choose an option")]);
+            d.set_response_enabled("ok", false);
+            for (key, title, detail, action) in choices {
+                let label = gtk::Label::builder()
+                    .label(format!("<b>{}</b>\n<small>{}</small>", esc(title), esc(detail)))
+                    .use_markup(true)
+                    .wrap(true)
+                    .xalign(0.0)
+                    .build();
+                let b = gtk::CheckButton::builder().child(&label).name(format!("remove-{key}")).build();
+                b.update_property(&[gtk::accessible::Property::Label(title)]);
+                if let Some(f) = &first {
+                    b.set_group(Some(f));
+                } else {
+                    first = Some(b.clone());
+                }
+                let (d2, chosen) = (d.clone(), chosen.clone());
+                let action = if running { format!("Close and {action}") } else { action.to_string() };
+                b.connect_toggled(move |b| {
+                    if b.is_active() {
+                        *chosen.borrow_mut() = key.to_string();
+                        d2.set_response_label("ok", &action);
+                        d2.set_response_enabled("ok", true);
+                    }
+                });
+                list.append(&b);
+            }
+            d.set_extra_child(Some(&list));
             d.set_response_appearance("ok", adw::ResponseAppearance::Destructive);
             d.set_default_response(Some("cancel"));
             d.set_close_response("cancel");
             if d.choose_future(Some(&app.window)).await != "ok" {
                 return;
             }
-            let keep_data = keep.is_active();
+            let choice = chosen.borrow().clone();
+            if choice == "unpacked" {
+                if running {
+                    let _ = app.backend.call(&["stop", &me.app_id], None).await;
+                }
+                match app.backend.call(&["free-space", &me.app_id], None).await {
+                    Ok(_) => app.toast(&format!("Freed the space of the unpacked copy of {name}. SAM unpacks it again at the next start.")),
+                    Err(e) => app.report_error(&e),
+                }
+                me.reload();
+                return;
+            }
+            let keep_data = choice == "sandbox";
             let mut args = vec!["remove", &me.app_id];
             if keep_data {
                 args.push("--keep-data");

@@ -61,7 +61,7 @@ Every permission has a plain-language explanation and a risk level
 
 - **Files:** private home, XDG folders (read-only or read/write), your own
   paths. Files you open with an app are granted one by one.
-- **Network:** none, *Local network only* (no internet, but the app's own web
+- **Network:** none, *This computer only* (no internet, but the app's own web
   page and the local services you list, such as Ollama), or full.
 - **Display and devices:** Wayland, X11, GPU, sound (without access to
   cameras), webcam, game controllers
@@ -138,7 +138,7 @@ Recommended extras:
 | Package | Needed for |
 |---|---|
 | `xdg-dbus-proxy` | filtered D-Bus and the portal filter |
-| `passt` (provides `pasta`) | *Local network only* |
+| `passt` (provides `pasta`) | *This computer only* |
 | `strace` | diagnostic runs |
 
 ### Fedora
@@ -281,7 +281,7 @@ AppImage.
 | `sam-intake` | unpacking, metadata, icons, menu entries |
 | `sam-profile` | categories, recommendations, presets |
 | `sam-sandbox` | the Bubblewrap command builder |
-| `sam-runner` | everything that runs: launch, D-Bus proxy, Landlock and seccomp, local network, sandbox check, repair, diagnostics |
+| `sam-runner` | everything that runs: launch, D-Bus proxy, Landlock and seccomp, "this computer only" network, sandbox check, repair, diagnostics |
 | `sam-jail-cli` | the `sam-jail` and `sam-jail-run` programs |
 | `sam-gtk` | `sam-jail-gui`, the window (talks to the core through `sam-jail --json`) |
 

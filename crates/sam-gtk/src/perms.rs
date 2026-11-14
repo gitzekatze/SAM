@@ -223,7 +223,7 @@ impl Editor {
                 "ro" => "read-only",
                 "rw" => "read & write",
                 "full" => "full",
-                "localhost" => "local network only",
+                "localhost" => "this computer only",
                 "filtered" => "filtered",
                 "minimal" => "minimal",
                 o => o,
@@ -476,7 +476,7 @@ impl Editor {
                 opt(json!("none"), "No network", "No connection at all, not even to this computer."),
                 opt(
                     json!("localhost"),
-                    "Local network only",
+                    "This computer only",
                     "No internet. The app can reach the services on this computer you list below, and its own web page opens in your browser.",
                 ),
                 opt(json!("full"), "Full network", "The app uses your internet connection like any other program."),
@@ -583,6 +583,16 @@ impl Editor {
         self.switch(&g, "advanced.writable_appdir", Always);
         self.switch(&g, "advanced.host_themes", Always);
         self.switch(&g, "advanced.allow_userns", Always);
+        self.list(&g, "advanced.extra_bwrap_args", "Raw bwrap argument, e.g. --setenv FOO 1", false, Always);
+
+        // The security engine's extra layers, apart from the other expert
+        // settings and with an explanation: turning one off weakens the
+        // sandbox for every permission at once.
+        let g = self.group(
+            "Extra Protection Layers",
+            "Protection on top of the sandbox: a filter that blocks dangerous system calls, and Landlock, which lets the kernel itself stop writes outside the granted folders. They cost nothing while an app works. Turn one off only when an app's log shows it fails because of it, and only for that app; SAM's repair steps say so when that is the case.",
+        );
+        self.switch(&g, "advanced.seccomp_baseline", Always);
         self.choice(
             &g,
             "advanced.landlock",
@@ -593,9 +603,7 @@ impl Editor {
             ],
             Always,
         );
-        self.switch(&g, "advanced.seccomp_baseline", Always);
         self.switch(&g, "advanced.seccomp_strict", Always);
-        self.list(&g, "advanced.extra_bwrap_args", "Raw bwrap argument, e.g. --setenv FOO 1", false, Always);
     }
 
     // ------------------------------------------------------------ refresh

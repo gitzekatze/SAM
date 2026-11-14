@@ -149,7 +149,7 @@ you picked. The sandbox check confirms that the socket is absent.
 - **No Flatpak identity.** SAM never presents its apps as Flatpak apps, so
   portals see an ordinary program and the filter above is what limits it.
 
-### Local network only
+### This computer only
 
 The app has no internet and no DNS. It can reach only the host ports listed
 in `network.host_ports`. It needs `pasta` with `--splice-only`; an older
@@ -388,11 +388,11 @@ was easily misread.
   XWayland's socket is reachable for apps with full network (X11
   authorization still applies).
 - **No filtering by domain.** An app gets no network, only this computer
-  (*Local network only*), or the full network.
+  (*This computer only*), or the full network.
 - **File dialogs:** a file picked outside the folders an app may use is not
   visible to it, because the portal hands over the host path. Grant the
   folder, or open the file with the app (which grants that one file).
-- **Local network only** forwards the app's own ports to this computer
+- **This computer only** forwards the app's own ports to this computer
   automatically, except privileged ports and well-known local services. List
   `network.app_ports` to restrict it further.
 - **Hostname:** the sandbox keeps the computer's hostname, because changing

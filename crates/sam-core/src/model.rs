@@ -280,6 +280,18 @@ pub struct Suggestion {
     pub from_app_output: bool,
 }
 
+/// A repair step that was applied, and what undoing exactly this step
+/// needs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AppliedRepair {
+    pub step: Option<Suggestion>,
+    /// Permission values from before the step (key, JSON value).
+    pub before: Vec<(String, serde_json::Value)>,
+    /// The step added this list entry or argument (so undo removes it).
+    pub added: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum FixAction {
@@ -352,6 +364,9 @@ pub struct AppEntry {
     pub repair_backup: Option<SandboxProfile>,
     /// Repair step ids already applied (the ladder skips them).
     pub repairs_applied: Vec<String>,
+    /// The applied repair steps with what each changed, so each one can be
+    /// switched off on its own.
+    pub applied_repairs: Vec<AppliedRepair>,
     /// Unsandboxed menu entries for this AppImage (made by AppImageLauncher,
     /// Gear Lever, ...) that SAM hid when the sandbox was created.
     pub hidden_entries: Vec<HiddenEntry>,

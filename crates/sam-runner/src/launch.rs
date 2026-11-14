@@ -307,7 +307,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             command.args.insert(0, "--unshare-net".into());
             warnings.push(Warning::warn(
                 "localhost-unavailable",
-                "Local network unavailable",
+                "\"This computer only\" unavailable",
                 format!("{e:#}. Until then the app starts with no network at all, never with internet access."),
             ));
         }
@@ -548,7 +548,7 @@ fn write_log_header(log: &mut fs::File, prepared: &Prepared) -> Result<()> {
 /// --json-status-fd announces "child-pid" once the sandbox exists, and SAM's
 /// helper reports what it enforced before it execs the app.
 ///
-/// Started directly, bwrap inherits two pipes. pasta (local network only)
+/// Started directly, bwrap inherits two pipes. pasta (this computer only)
 /// closes every inherited fd, so there the channels are FIFOs in the private
 /// runtime dir, which a shell inside pasta's namespace opens as fds 3 and 4
 /// right before it execs bwrap.

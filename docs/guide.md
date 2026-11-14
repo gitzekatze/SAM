@@ -13,12 +13,12 @@
 | Sandbox an AppImage | Select it on the left, then **Create Sandbox** |
 | Start a sandboxed app | **Launch** on its page, or from your application menu |
 | Give an app access to a folder | Its page → **Files** |
-| Confirm the sandbox really applies your settings | **Check** next to Launch, results under **Sandbox Check** |
+| Confirm the sandbox really applies your settings and the app starts | **Test** next to Launch, results under **Test** |
 | Fix an app that does not start | Its page → **Troubleshooting** |
 | Change a permission for several apps | **Permissions of All Apps** above the list, select the apps, change the switch |
 | Reuse settings for other apps | Its page → **My Presets** → *Name for the new preset* |
 | Find out what a label means | Hover over it |
-| Remove a sandbox | The round trash button left of **Check** |
+| Remove a sandbox | The round trash button left of **Test** |
 | Close an app that hides in the tray | The trash button offers *Close and Remove*, or `sam-jail stop app` |
 | Use changed settings while the app runs | The bar "… is running" at the top of its page → **Restart** |
 | Go back to the start page | Click SAM's logo at the top left |
@@ -40,7 +40,7 @@
 
 **Left column**
 
-- **AppImage locations:** the folders and single files SAM searches. The ✕ removes a location (your files are not touched). *Also search the Downloads folder* adds your Downloads folder. The list grows with every location you add; the whole left column scrolls. New AppImages in these locations appear by themselves.
+- **AppImage locations:** the folders and single files SAM searches. The ✕ removes a location (your files are not touched). When your Downloads folder holds AppImages but is not a location, a line says so and **Add Downloads** adds it like any other folder. The list grows with every location you add; the whole left column scrolls. New AppImages in these locations appear by themselves.
 - **AppImages found:** every AppImage in those locations, grouped into *Sandboxed* and *Not sandboxed*. Use **All / Sandboxed / Unsandboxed** to filter and the search field to find one by name or path.
 - Each row shows the app's icon, name, file name and a status. Hover over any status to see what it means.
   - *Sandboxed* / *Not sandboxed*: whether the app has a sandbox yet.
@@ -54,11 +54,11 @@
 
 - **The header** shows the app, its file and labels for its state. Hover over a label to see what it means.
   - *Sandboxed* (green) or *Not sandboxed*.
-  - The risk, for example *High risk · Network +1*: the level and the permission that sets it (see Overview below).
   - *Bubblewrap* (blue): the sandbox technology.
-  - *Checked* or *Check failed*: the result of the last sandbox check.
+  - The test state: *Not tested yet*, *Tested* with the date, *Test out of date* (the settings, SAM or the computer changed since) or *Test failed*.
+  - Below them, the same permission tags as on the Permissions page.
   - Anything that needs attention, such as *Needs review* or *May not start*.
-- The round trash button, **Check** and **Launch** (or **Create Sandbox**) sit on the right of the header; the trash button stays away from Launch so it is not hit by mistake. In a narrow window, the buttons stack. Every button explains itself when you hover over it.
+- The round trash button, **Test** and **Launch** (or **Create Sandbox**) sit on the right of the header; the trash button stays away from Launch so it is not hit by mistake. In a narrow window, the buttons stack. Every button explains itself when you hover over it.
 - While the app runs, a bar at the top of its page says that changed settings apply the next time it starts, and **Restart** closes the app (it may save first) and starts it again with the new settings.
 - **Below the header** come all settings and tools for the app, always visible. Settings that do not apply right now are greyed out, never hidden.
 - **SAM's logo** at the top left opens the start page (no AppImage selected).
@@ -77,7 +77,7 @@ The **risk** of the current settings: *low*, *medium*, *high* or *dangerous*. It
 ### Network
 
 - **No network:** no connection at all, not even to this computer.
-- **Local network only:** no internet, but the app can reach the services on this computer you list (for example port 11434 for Ollama), and its own web page opens in your browser.
+- **This computer only:** no internet, but the app can reach the services on this computer you list (for example port 11434 for Ollama), and its own web page opens in your browser.
 - **Full network:** the app uses your internet connection like any other program.
 
 ### Display
@@ -149,22 +149,24 @@ A preset is a named set of permissions you saved yourself. SAM ships no ready-ma
 
 ---
 
-## Sandbox Check
+## Test
 
-Does the sandbox really give the app exactly what its settings say? **Check**, next to **Launch** at the top, starts the app's real sandbox with a small test program instead of the app. From inside, it confirms every setting: which folders are visible and writable, the network, devices, display and sound, which desktop services are reachable, and that Landlock, the syscall filter and the other protections are active.
+Does the sandbox really give the app exactly what its settings say, and does the app start in it? **Test**, next to **Launch** at the top, first starts the app's real sandbox with a small test program instead of the app, then starts the app itself for a few seconds. From inside, it confirms every setting: which folders are visible and writable, the network, devices, display and sound, which desktop services are reachable, and that Landlock, the syscall filter and the other protections are active.
 
 - It works before the sandbox exists too: then it checks the settings shown on the page, without unpacking or running the AppImage. That result is not stored.
 - Nothing is changed and nothing leaves your computer. Write tests use invisible temporary files.
-- A ✓ **Checked** pill appears in the header when everything applies. Failed checks are listed in red; checks that do not apply to your computer (for example no webcam) are shown as not applicable.
+- The header shows **Tested** with the date when everything applies, and the result of the short start appears under **Test**. Failed checks are listed in red; checks that do not apply to your computer (for example no webcam) are shown as not applicable.
 - **Preferences → Check the sandbox before each start** runs the check automatically, only when something changed since the last passing check. A failed check stops the start.
 
 ---
 
 ## When an app does not work
 
-- **Worth checking** lists common reasons apps misbehave in a sandbox, with one-click fixes.
-- **What went wrong last time** reads the app's own error messages and suggests a fix. Suggestions based on what the app printed always ask first, because an app could print misleading messages.
-- **Troubleshooting** has *Try the next fix and start*, more repair steps, *Undo all repairs*, *Re-run detection*, a diagnostic run (needs `strace`) and a redacted bug report.
+- **Advice** is the one place for help: what went wrong last time (read from the app's own error messages, with *fix and start*), the repair steps, common reasons apps misbehave in a sandbox, and a warning when another menu entry still starts the AppImage without a sandbox (**Hide It** fixes that). Suggestions based on what the app printed always ask first, because an app could print misleading messages.
+- **Repair steps** are switches and appear after a start failed. Each says what it turns on or off and what protection that costs. Switching a step off undoes exactly that step; *Switch off all repair steps* under Troubleshooting undoes them all.
+- **Compatibility mode** (under Launching) names exactly which switches it turns on.
+- **Troubleshooting** has *Re-run detection*, a diagnostic run (needs `strace`), the setup check and a redacted bug report.
+- **Extra Protection Layers** (the syscall filters and Landlock) are a group of their own at the end of the settings. Turn one off only when an app's log shows it fails because of it.
 - **Logs** shows every log: starts, unpacking, detection and diagnostic runs.
 
 > **Tip:** start with the sandbox check. If every setting applies but the app still fails, the app needs a permission it does not have yet. *What went wrong last time* usually names it.
@@ -173,9 +175,15 @@ Does the sandbox really give the app exactly what its settings say? **Check**, n
 
 ## Removing a sandbox
 
-The trash button (**Remove Sandbox**) deletes the unpacked app and SAM's menu entry, and shows again any menu entry SAM hid. Your AppImage file always stays. Tick **Keep the app's settings and files** to keep its private folder: a new sandbox for the same AppImage picks it up again. Data kept this way is listed under **☰ → Diagnostics → Data of removed sandboxes**.
+The trash button asks what to remove; nothing is preselected, and the button names the action you chose:
 
-If the app is still running, often only as an icon in the system tray, the dialog says so and the button becomes **Close and Remove**. SAM asks the app to quit so it can save its data, and only ends it if it is still running after ten seconds.
+- **Only the unpacked copy** (*Free Space*): frees disk space; the sandbox and the app's settings stay, and SAM unpacks the app again at its next start.
+- **The sandbox, but keep the app's settings and files** (*Remove Sandbox*): removes the sandbox and SAM's menu entry and shows again any menu entry SAM hid; a new sandbox for the same AppImage picks up the kept private folder.
+- **Everything** (*Delete Everything*): also deletes the app's private folder with its logins, settings and saved files.
+
+Your AppImage file always stays. Data kept this way is listed under **☰ → Diagnostics → Data of removed sandboxes**.
+
+If the app is still running, often only as an icon in the system tray, the dialog says so and the button starts with **Close and …**. SAM asks the app to quit so it can save its data, and only ends it if it is still running after ten seconds.
 
 ---
 
@@ -187,7 +195,7 @@ Style (follow the system, light or dark), menu entries, repair options, warnings
 
 A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets), *Check all AppImages for changes*, *Remove unused extractions*, the disk space of sandboxed apps, data of removed sandboxes, and a redacted bug report.
 
-**Updates:** under *Details*, **Check** asks the update source the AppImage names (GitHub or the app's own server) whether a newer version is published. If so, the page says which one and offers **Update Now**: SAM downloads it, checks it, puts it in place of the old file and unpacks it, keeping your settings. The old version is kept; **Go back to the previous version** under *Troubleshooting* restores it. (**Open Download Page** is there if you prefer to do it yourself.) *Preferences → Updates* can check every app once a day when SAM opens. When an update description is published (most do), only the changed parts are downloaded.
+**Updates:** under *Details*, **Check for Updates** asks the update source the AppImage names (GitHub or the app's own server) whether a newer version is published. If so, the page says which one and offers **Update Now**: SAM downloads it, checks it, puts it in place of the old file and unpacks it, keeping your settings. The old version is kept; **Go back to the previous version** under *Troubleshooting* restores it. (**Open Download Page** is there if you prefer to do it yourself.) *Preferences → Updates* can check every app once a day when SAM opens. When an update description is published (most do), only the changed parts are downloaded.
 
 **SAM itself:** if you use SAM's AppImage, *Check for SAM Updates* in the main menu updates SAM the same way. Packages from your distribution update through its package manager.
 

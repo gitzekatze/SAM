@@ -88,6 +88,9 @@ pub(crate) enum Cmd {
         /// Restore the profile from before the first repair step.
         #[arg(long, conflicts_with_all = ["apply", "next"])]
         undo: bool,
+        /// Switch off one applied repair step (by id), keeping the others.
+        #[arg(long, conflicts_with_all = ["apply", "next", "undo"])]
+        undo_step: Option<String>,
     },
     /// Start sandboxed apps briefly and report which ones keep running.
     /// Opens their windows for a few seconds.

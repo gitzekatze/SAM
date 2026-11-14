@@ -587,7 +587,7 @@ impl Section<'_> {
             a.push("--unshare-ipc");
         }
         // The user's own ids, also when bwrap runs inside pasta's namespace
-        // (Local network only), where it would otherwise map to root: apps
+        // (This computer only), where it would otherwise map to root: apps
         // then refuse to run (Electron) and the D-Bus proxy rejects them.
         a.push("--uid").push(ctx.host.uid.to_string()).push("--gid").push(ctx.host.gid.to_string());
         match p.network.mode {
@@ -1503,7 +1503,7 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ran");
     }
 
-    /// With "local network only", the network namespace is left to pasta.
+    /// With "this computer only", the network namespace is left to pasta.
     #[test]
     fn localhost_network_leaves_netns_to_pasta() {
         let mut ctx = sample_context();

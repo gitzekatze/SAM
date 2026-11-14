@@ -268,7 +268,7 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let mut p = base();
         p.network.mode = NetworkMode::Localhost;
         let r = launch("localhost", p);
-        assert!(r["NET"].contains("lo"), "local network only: {}", r["NET"]);
+        assert!(r["NET"].contains("lo"), "this computer only: {}", r["NET"]);
         let rec = last.borrow().clone().unwrap();
         assert!(!rec.setup_failed, "bwrap status reached SAM through pasta");
         if sam_runner::find_helper().is_some() {

@@ -57,8 +57,13 @@ pub struct AppPage {
     content: adw::PreferencesPage,
     editor: Rc<Editor>,
     notices: adw::PreferencesGroup,
+    /// One place for advice: what went wrong, the repair switches, hints
+    /// and the warning about unsandboxed menu entries.
     hints: adw::PreferencesGroup,
+    files_row: adw::ActionRow,
     findings: adw::PreferencesGroup,
+    /// "This AppImage can still be started without its sandbox …".
+    dup_row: adw::ActionRow,
     preset_group: adw::PreferencesGroup,
     save_preset_row: adw::EntryRow,
     presets: RefCell<Vec<Value>>,
@@ -155,8 +160,8 @@ impl AppPage {
         // (the breakpoint below).
         let top_buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::End).build();
         let check_button = gtk::Button::builder()
-            .child(&button_content("security-high-symbolic", "Check"))
-            .tooltip_text(tr("Start the sandbox with a test program and confirm that every setting applies"))
+            .child(&button_content("security-high-symbolic", "Test"))
+            .tooltip_text(tr("Test the sandbox: confirm from inside that every setting applies, then start the app for a few seconds to see that it runs"))
             .name("check-button")
             .build();
         check_button.add_css_class("pill");
@@ -191,8 +196,21 @@ impl AppPage {
         let pref = adw::PreferencesPage::new();
         pref.add_css_class("sam-wide");
         let notices = adw::PreferencesGroup::new();
-        let hints =
-            adw::PreferencesGroup::builder().title(tr("Worth Checking")).description(tr("Things that often stop apps from working in a sandbox.")).build();
+        let hints = adw::PreferencesGroup::builder()
+            .title(tr("Advice"))
+            .description(tr(
+                "What can stop this app from working in its sandbox, and how to fix it. Fixes are switches: each says what protection it costs, and you can switch it off again.",
+            ))
+            .build();
+        let dup_row = adw::ActionRow::builder().title(tr("This AppImage can also start without its sandbox")).visible(false).build();
+        dup_row.add_prefix(&gtk::Image::from_icon_name("dialog-warning-symbolic"));
+        let dup_hide = gtk::Button::builder()
+            .label(tr("Hide It"))
+            .valign(gtk::Align::Center)
+            .tooltip_text(tr("Hide the other menu entries that start this AppImage without a sandbox"))
+            .build();
+        dup_row.add_suffix(&dup_hide);
+        hints.add(&dup_row);
         let findings = adw::PreferencesGroup::builder().title(tr("What Went Wrong Last Time")).build();
         let preset_group = adw::PreferencesGroup::builder()
             .title(tr("My Presets"))
@@ -215,6 +233,13 @@ impl AppPage {
             "Passed to the app every time it starts, e.g. --no-sandbox for Electron apps that cannot start their own sandbox.",
             "Argument, e.g. --disable-gpu",
         );
+        // Where the app keeps what it saved outside the granted folders.
+        let files_row = adw::ActionRow::builder().title(tr("Files This App Saved")).build();
+        files_row.add_prefix(&gtk::Image::from_icon_name("folder-open-symbolic"));
+        let files_open =
+            gtk::Button::builder().label(tr("Open")).valign(gtk::Align::Center).tooltip_text(tr("Open the app's private folder in the file manager")).build();
+        files_row.add_suffix(&files_open);
+        launch_group.add(&files_row);
         launch_group.add(&args_row);
         let compat_row = adw::ActionRow::builder().title(tr("Compatibility mode")).build();
         let compat_badge = util::badge("High risk", "bad");
@@ -242,7 +267,7 @@ impl AppPage {
 
         // Sandbox check: start the sandbox with a probe and confirm every setting.
         let check_group = adw::PreferencesGroup::builder()
-            .title(tr("Sandbox Check"))
+            .title(tr("Test"))
             .description(tr("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed."))
             .build();
         let check_summary = adw::ActionRow::builder().title(tr("Not checked yet")).build();
@@ -310,6 +335,7 @@ impl AppPage {
             notices,
             hints,
             findings,
+            dup_row,
             preset_group,
             save_preset_row,
             presets: RefCell::new(Vec::new()),
@@ -323,6 +349,7 @@ impl AppPage {
             setup_report: RefCell::new(None),
             test_result: RefCell::new(None),
             launch_group,
+            files_row,
             args_row,
             args_chips,
             args_entry,
@@ -364,6 +391,24 @@ impl AppPage {
             }
         });
         me.wire();
+        let w = Rc::downgrade(&me);
+        files_open.connect_clicked(move |_| {
+            if let Some(me) = w.upgrade() {
+                me.open_private_folder();
+            }
+        });
+        let w = Rc::downgrade(&me);
+        dup_hide.connect_clicked(move |_| {
+            let Some(me) = w.upgrade() else { return };
+            let Some(app) = me.app() else { return };
+            glib::spawn_future_local(async move {
+                match app.backend.call(&["menu", "hide", &me.app_id], None).await {
+                    Ok(_) => app.toast(&tr("The other menu entries are hidden; the app now starts only in its sandbox")),
+                    Err(e) => app.report_error(&e),
+                }
+                me.reload();
+            });
+        });
         me.render();
         me.reload();
         me

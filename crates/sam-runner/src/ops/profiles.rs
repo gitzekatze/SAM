@@ -34,6 +34,9 @@ impl Sam {
         let mut e = self.resolve(query)?;
         e.profile.permissions = e.recommended.clone();
         e.profile.compatibility_mode = false;
+        e.repairs_applied.clear();
+        e.applied_repairs.clear();
+        e.repair_backup = None;
         e.profile.preset = None;
         self.save_profile(&mut e)?;
         Ok(e)
@@ -144,12 +147,17 @@ impl Sam {
         if as_repair && e.repair_backup.is_none() {
             e.repair_backup = Some(e.profile.clone());
         }
+        let mut undo = sam_core::model::AppliedRepair { step: Some(sug.clone()), ..Default::default() };
         match &sug.action {
-            FixAction::Set { key, value } => e.profile.permissions.set_key(key, value)?,
+            FixAction::Set { key, value } => {
+                undo.before.push((key.clone(), e.profile.permissions.get_key(key)?));
+                e.profile.permissions.set_key(key, value)?
+            }
             FixAction::Add { key, value } => {
                 let mut list: Vec<String> = serde_json::from_value(e.profile.permissions.get_key(key)?).with_context(|| format!("{key} is not a list"))?;
                 if !list.contains(value) {
                     list.push(value.clone());
+                    undo.added = Some(value.clone());
                 }
                 e.profile.permissions.set_key(key, &serde_json::to_string(&list)?)?;
             }
@@ -163,6 +171,7 @@ impl Sam {
             FixAction::AddArg { value } => {
                 if !e.profile.args.contains(value) {
                     e.profile.args.push(value.clone());
+                    undo.added = Some(value.clone());
                 }
             }
             FixAction::None => bail!("“{}” is an explanation only; there is nothing to apply", sug.title),
@@ -170,6 +179,7 @@ impl Sam {
         e.profile.preset = None;
         if as_repair && !e.repairs_applied.contains(&sug.id) {
             e.repairs_applied.push(sug.id.clone());
+            e.applied_repairs.push(undo);
         }
         self.save_profile(&mut e)?;
         Ok(e)
@@ -184,12 +194,56 @@ impl Sam {
             .find(|s| s.id == id)
     }
 
+    /// Switches off one applied repair step: puts back exactly what that
+    /// step changed and keeps the other steps.
+    pub fn undo_repair_step(&self, query: &str, step_id: &str) -> Result<AppEntry> {
+        let mut e = self.resolve(query)?;
+        let i = e
+            .applied_repairs
+            .iter()
+            .position(|r| r.step.as_ref().is_some_and(|s| s.id == step_id))
+            .with_context(|| format!("the repair step '{step_id}' is not applied"))?;
+        let r = e.applied_repairs.remove(i);
+        let step = r.step.clone().context("damaged repair record")?;
+        match &step.action {
+            FixAction::Set { .. } => {
+                for (key, old) in &r.before {
+                    e.profile.permissions.set_key(key, &serde_json::to_string(old)?)?;
+                }
+            }
+            FixAction::Add { key, .. } => {
+                if let Some(v) = &r.added {
+                    let mut list: Vec<String> = serde_json::from_value(e.profile.permissions.get_key(key)?)?;
+                    list.retain(|x| x != v);
+                    e.profile.permissions.set_key(key, &serde_json::to_string(&list)?)?;
+                }
+            }
+            FixAction::Compat => {
+                e.profile.permissions = e.profile.before_compat.take().unwrap_or_else(|| e.recommended.clone());
+                e.profile.compatibility_mode = false;
+            }
+            FixAction::AddArg { .. } => {
+                if let Some(v) = &r.added {
+                    e.profile.args.retain(|x| x != v);
+                }
+            }
+            FixAction::None => {}
+        }
+        e.repairs_applied.retain(|id| id != step_id);
+        if e.applied_repairs.is_empty() {
+            e.repair_backup = None;
+        }
+        self.save_profile(&mut e)?;
+        Ok(e)
+    }
+
     /// Restore the profile from before the first repair step.
     pub fn undo_repairs(&self, query: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         let Some(backup) = e.repair_backup.take() else { bail!("no repairs to undo for {}", e.display_name()) };
         e.profile = backup;
         e.repairs_applied.clear();
+        e.applied_repairs.clear();
         self.save_profile(&mut e)?;
         Ok(e)
     }

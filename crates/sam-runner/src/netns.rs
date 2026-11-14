@@ -1,4 +1,4 @@
-//! "Local network only" (`network.mode = localhost`) for the Bubblewrap
+//! "This computer only" (`network.mode = localhost`) for the Bubblewrap
 //! backend. `pasta --splice-only` creates the network namespace and starts
 //! Bubblewrap inside it (Bubblewrap then does not create its own). The
 //! namespace has only loopback, no route to the internet. pasta forwards:
@@ -18,7 +18,7 @@ use anyhow::{bail, Result};
 use sam_core::util::which;
 use sam_core::SandboxCommand;
 
-/// The pasta to use for "Local network only", or why there is none.
+/// The pasta to use for "This computer only", or why there is none.
 /// `--splice-only` is what keeps the app off the internet; pasta versions
 /// without it (Ubuntu 24.04 ships one) would give the app internet access,
 /// so they are not used: the launcher then starts the app with no network at
@@ -26,11 +26,11 @@ use sam_core::SandboxCommand;
 pub fn pasta_usable() -> Result<PathBuf> {
     static CHECKED: OnceLock<Result<PathBuf, String>> = OnceLock::new();
     let r = CHECKED.get_or_init(|| {
-        let pasta = which("pasta").ok_or("'Local network only' needs pasta (package 'passt'), which is not installed")?;
+        let pasta = which("pasta").ok_or("'This computer only' needs pasta (package 'passt'), which is not installed")?;
         let help = Command::new(&pasta).arg("--help").stdin(Stdio::null()).output().map_err(|e| format!("cannot run {}: {e}", pasta.display()))?;
         let text = format!("{}{}", String::from_utf8_lossy(&help.stdout), String::from_utf8_lossy(&help.stderr));
         if !text.contains("--splice-only") {
-            return Err("'Local network only' needs a newer pasta (package 'passt'): the installed one has no --splice-only, which is what keeps the app off the internet. Update passt, or choose 'No network' or 'Full network' for this app".into());
+            return Err("'This computer only' needs a newer pasta (package 'passt'): the installed one has no --splice-only, which is what keeps the app off the internet. Update passt, or choose 'No network' or 'Full network' for this app".into());
         }
         Ok(pasta)
     });
@@ -64,7 +64,7 @@ pub fn wrap_localhost(cmd: &mut SandboxCommand, host_ports: &[u16], app_ports: &
     cmd.program = pasta;
     cmd.args = args;
     cmd.notes.push(format!(
-        "local network only (pasta --splice-only): no internet, no DNS; host ports reachable: {}",
+        "this computer only (pasta --splice-only): no internet, no DNS; host ports reachable: {}",
         if host_ports.is_empty() { "none".to_string() } else { host_ports.iter().map(u16::to_string).collect::<Vec<_>>().join(", ") }
     ));
     Ok(())
@@ -74,7 +74,7 @@ pub fn wrap_localhost(cmd: &mut SandboxCommand, host_ports: &[u16], app_ports: &
 mod tests {
     use super::*;
 
-    /// With "local network only", the app reaches only the ports on this computer the user lists.
+    /// With "this computer only", the app reaches only the ports on this computer the user lists.
     #[test]
     fn only_listed_host_ports() {
         let a = pasta_args(&[], &[]);

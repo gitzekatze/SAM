@@ -50,7 +50,8 @@ pub struct General {
     pub theme: String,
     /// Folders the overview searches for AppImages (two levels deep).
     pub scan_directories: Vec<String>,
-    /// Also search the Downloads folder (opt-in: it often holds old copies).
+    /// The old "Also search the Downloads folder" switch. The window turns
+    /// it into an ordinary location once; the command line still honours it.
     pub scan_downloads: bool,
     /// Single AppImage files added by hand to the overview.
     pub scan_files: Vec<String>,

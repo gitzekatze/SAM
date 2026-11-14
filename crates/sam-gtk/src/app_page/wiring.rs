@@ -198,8 +198,8 @@ impl AppPage {
             return;
         }
         self.check_button.set_sensitive(false);
-        self.check_summary.set_title("Checking…");
-        self.check_summary.set_subtitle("Starting the sandbox with the test program.");
+        self.check_summary.set_title("Testing…");
+        self.check_summary.set_subtitle("Starting the sandbox with SAM's test program, then the app itself for a few seconds.");
         let me = self.clone();
         glib::spawn_future_local(async move {
             let reply = if sandboxed {
@@ -211,13 +211,25 @@ impl AppPage {
             match reply {
                 Ok(r) => {
                     let failed = r.get("record").and_then(|x| x.get("failed")).and_then(Value::as_array).map(Vec::len).unwrap_or(0);
-                    app.toast(&if failed == 0 {
-                        "Sandbox check passed: every setting applies".to_string()
-                    } else {
-                        format!("Sandbox check: {failed} setting(s) do not apply")
-                    });
                     *me.check_report.borrow_mut() = r.get("report").cloned();
                     *me.check_settings.borrow_mut() = settings;
+                    // Then a short real start of the app (only with a sandbox).
+                    let started = if sandboxed {
+                        let secs = TEST_SECONDS.to_string();
+                        let res = app.backend.call(&["selftest", &me.app_id, "--seconds", &secs], None).await.ok();
+                        let first = res.and_then(|r| r.get("results").and_then(Value::as_array).and_then(|a| a.first().cloned()));
+                        let ok = first.as_ref().is_some_and(|f| util::str_of(f, "status") == "ok");
+                        *me.test_result.borrow_mut() = first;
+                        Some(ok)
+                    } else {
+                        None
+                    };
+                    app.toast(&match (failed, started) {
+                        (0, Some(true)) => "Test passed: every setting applies, and the app started".to_string(),
+                        (0, Some(false)) => "Every setting applies, but the app did not keep running; see Test below".to_string(),
+                        (0, None) => "Test passed: every setting applies".to_string(),
+                        (n, _) => format!("Test: {n} setting(s) do not apply; see Test below"),
+                    });
                 }
                 Err(e) => app.report_error(&e),
             }
@@ -242,9 +254,9 @@ impl AppPage {
         }
         let sandboxed = self.entry().is_some();
         self.check_button.set_sensitive(sandboxed);
-        self.check_group.set_description(Some("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed. Use the Check button at the top."));
+        self.check_group.set_description(Some("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed. Use the Test button at the top; it also starts the app for a few seconds."));
         if !sandboxed {
-            self.check_summary.set_title("Not checked yet");
+            self.check_summary.set_title("Not tested yet");
             self.check_summary.set_subtitle("");
             set_badge_visible(&self.check_badge, false);
             return;
@@ -253,9 +265,11 @@ impl AppPage {
         let current = self.info.borrow().as_ref().is_some_and(|i| util::bool_of(i, "check_current"));
         match &rec {
             None => {
-                self.check_summary.set_title("Not checked yet");
-                self.check_summary.set_subtitle("Check that the sandbox gives the app exactly what its settings say.");
-                set_badge_visible(&self.check_badge, false);
+                self.check_summary.set_title("Not tested yet");
+                self.check_summary.set_subtitle("Test that the sandbox gives the app exactly what its settings say, and that the app starts.");
+                set_badge_visible(&self.check_badge, true);
+                util::set_badge(&self.check_badge, "Not tested yet", "neutral");
+                self.check_badge.set_tooltip_text(Some("Press Test to confirm that every setting applies and that the app starts"));
             }
             Some(r) => {
                 let passed = util::get(r, "passed").and_then(Value::as_u64).unwrap_or(0);
@@ -264,24 +278,39 @@ impl AppPage {
                 let total = passed as usize + failed.len();
                 if !current {
                     self.check_summary.set_title("Out of date");
-                    self.check_summary.set_subtitle(&esc(&format!("The settings, SAM or this computer changed since the last check ({when}). Check again.")));
-                    set_badge_visible(&self.check_badge, false);
-                } else if failed.is_empty() {
-                    self.check_summary.set_title(&format!("All {total} checks passed"));
-                    self.check_summary.set_subtitle(&esc(&format!("Every setting applies. Checked {when}.")));
+                    self.check_summary.set_subtitle(&esc(&format!("The settings, SAM or this computer changed since the last test ({when}). Test again.")));
                     set_badge_visible(&self.check_badge, true);
-                    util::set_badge(&self.check_badge, "Checked", "good");
-                    self.check_badge.set_tooltip_text(Some("The sandbox check confirmed that every setting applies; see Sandbox Check below"));
+                    util::set_badge(&self.check_badge, "Test out of date", "warn");
+                    self.check_badge.set_tooltip_text(Some("The settings, SAM or this computer changed since the last test; press Test again"));
+                } else if failed.is_empty() {
+                    self.check_summary.set_title(&format!("All {total} settings apply"));
+                    self.check_summary.set_subtitle(&esc(&format!("Tested {when}.")));
+                    set_badge_visible(&self.check_badge, true);
+                    util::set_badge(&self.check_badge, &format!("Tested {when}"), "good");
+                    self.check_badge.set_tooltip_text(Some("The test confirmed that every setting applies; see Test below"));
                 } else {
                     self.check_summary.set_title(&format!("{} of {total} checks failed", failed.len()));
-                    self.check_summary.set_subtitle(&esc(&format!("Not applied: {}. Checked {when}.", failed.join(", "))));
+                    self.check_summary.set_subtitle(&esc(&format!("Not applied: {}. Tested {when}.", failed.join(", "))));
                     set_badge_visible(&self.check_badge, true);
-                    util::set_badge(&self.check_badge, "Check failed", "bad");
-                    self.check_badge.set_tooltip_text(Some("The sandbox check found settings that do not apply; see Sandbox Check below"));
+                    util::set_badge(&self.check_badge, "Test failed", "bad");
+                    self.check_badge.set_tooltip_text(Some("The test found settings that do not apply; see Test below"));
                 }
             }
         }
-        // Results of the check run in this session.
+        // The short real start of the last test in this session.
+        if let Some(r) = self.test_result.borrow().clone() {
+            let ok = util::str_of(&r, "status") == "ok";
+            let row = adw::ActionRow::builder()
+                .title(if ok { "The app started and kept running" } else { "The app did not keep running" })
+                .subtitle(esc(util::str_of(&r, "detail")))
+                .build();
+            let img = gtk::Image::from_icon_name(if ok { "object-select-symbolic" } else { "dialog-error-symbolic" });
+            img.add_css_class(if ok { "success" } else { "error" });
+            row.add_prefix(&img);
+            self.check_group.add(&row);
+            self.check_rows.borrow_mut().push(row.upcast());
+        }
+        // Results of the settings check run in this session.
         let Some(report) = self.check_report.borrow().clone() else { return };
         self.render_check_results(&report);
     }
@@ -291,13 +320,13 @@ impl AppPage {
     pub(super) fn render_check_preview(self: &Rc<Self>) {
         let pending = self.pending.borrow().clone();
         self.check_button.set_sensitive(pending.is_some());
-        self.check_group.set_description(Some("Starts the sandbox this AppImage would get with a test program and confirms from inside that every setting below really applies. The AppImage is not unpacked or run. Use the Check button at the top."));
+        self.check_group.set_description(Some("Starts the sandbox this AppImage would get with a test program and confirms from inside that every setting below really applies. The AppImage is not unpacked or run. Use the Test button at the top; it also starts the app for a few seconds."));
         let report = self.check_report.borrow().clone();
         let current = report.is_some() && *self.check_settings.borrow() == pending;
         match report.as_ref() {
             None => {
-                self.check_summary.set_title("Not checked yet");
-                self.check_summary.set_subtitle("You can check the settings before you create the sandbox.");
+                self.check_summary.set_title("Not tested yet");
+                self.check_summary.set_subtitle("You can test the settings before you create the sandbox.");
                 set_badge_visible(&self.check_badge, false);
             }
             Some(_) if !current => {

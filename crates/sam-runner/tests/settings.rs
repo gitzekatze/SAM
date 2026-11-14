@@ -129,3 +129,32 @@ fn a_moved_appimage_is_recognized_by_its_content() {
     let e = sam.relocate(&id, &new).unwrap();
     assert_eq!(e.source_path, fs::canonicalize(&new).unwrap());
 }
+
+/// A repair step can be switched off on its own: exactly what that step
+/// changed goes back, and the other applied steps stay.
+#[test]
+fn switching_off_one_repair_step_keeps_the_others() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = named_app(tmp.path(), "Steps");
+    let e = sam.resolve(&id).unwrap();
+    let steps: Vec<_> =
+        sam_runner::repair::ladder(&e, &sam.config).into_iter().filter(|s| matches!(s.action, sam_core::FixAction::Set { .. })).take(2).collect();
+    assert_eq!(steps.len(), 2, "two setting steps to apply");
+    let before = sam.resolve(&id).unwrap().profile.permissions;
+    for s in &steps {
+        sam.apply_suggestion(&id, s, true).unwrap();
+    }
+    let both = sam.resolve(&id).unwrap().profile.permissions;
+    let e = sam.undo_repair_step(&id, &steps[0].id).unwrap();
+    assert_eq!(e.repairs_applied, vec![steps[1].id.clone()]);
+    let key = |s: &sam_core::Suggestion| match &s.action {
+        sam_core::FixAction::Set { key, .. } => key.clone(),
+        _ => unreachable!(),
+    };
+    let p = &e.profile.permissions;
+    assert_eq!(p.get_key(&key(&steps[0])).unwrap(), before.get_key(&key(&steps[0])).unwrap(), "the first step is undone");
+    assert_eq!(p.get_key(&key(&steps[1])).unwrap(), both.get_key(&key(&steps[1])).unwrap(), "the second step stays");
+    let e = sam.undo_repair_step(&id, &steps[1].id).unwrap();
+    assert_eq!(e.profile.permissions, before, "with every step off, the settings are as before");
+    assert!(e.repair_backup.is_none());
+}

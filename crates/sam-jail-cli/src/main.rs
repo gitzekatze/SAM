@@ -145,11 +145,14 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Repair { app: query, apply, next, undo } => {
+        Cmd::Repair { app: query, apply, next, undo, undo_step } => {
             let e = app.resolve(&query)?;
             let applied = if undo {
                 app.undo_repairs(&query)?;
                 Some("undo".to_string())
+            } else if let Some(id) = undo_step {
+                app.undo_repair_step(&query, &id)?;
+                Some(format!("undo {id}"))
             } else if let Some(id) = apply.or_else(|| next.then(|| sam_runner::repair::ladder(&e, &app.config).first().map(|s| s.id.clone())).flatten()) {
                 let sug = app.find_suggestion(&e, &id).with_context(|| format!("no repair step '{id}' for {}", e.display_name()))?;
                 app.apply_suggestion(&query, &sug, true)?;
@@ -342,8 +345,19 @@ fn real_main(cli: Cli) -> Result<()> {
             let selection = sam_runner::bwrap::check(&host).ok();
             let hints = sam_runner::repair::first_run_hints(&e);
             let steps = sam_runner::repair::ladder(&e, &app.config);
+            // What each repair step changes and costs, for the step switches;
+            // what compatibility mode turns on (or turned on).
+            let p = &e.profile.permissions;
+            let mut effects = serde_json::Map::new();
+            for s in steps.iter().chain(e.applied_repairs.iter().filter_map(|r| r.step.as_ref())) {
+                effects.insert(s.id.clone(), json!(sam_runner::repair::effect(s, p)));
+            }
+            let compat_changes = match (&e.profile.compatibility_mode, &e.profile.before_compat) {
+                (true, Some(before)) => sam_runner::repair::compat_changes(before),
+                _ => sam_runner::repair::compat_changes(p),
+            };
             out.emit(
-                &json!({"app": summary, "entry": e, "warnings": warnings, "selection": selection, "hints": hints, "repair_steps": steps, "private_home": app.paths.app_home(&e.id), "running": app.running(&e.id).len(),
+                &json!({"app": summary, "entry": e, "warnings": warnings, "selection": selection, "hints": hints, "repair_steps": steps, "repair_effects": effects, "compat_changes": compat_changes, "private_home": app.paths.app_home(&e.id), "running": app.running(&e.id).len(),
                     "check_current": e.last_check.as_ref().is_some_and(|c| c.key == sam_runner::verify::check_key(&e, &app.config, &host))}),
                 || print_info(&e, &summary, &warnings, selection.as_ref()),
             );

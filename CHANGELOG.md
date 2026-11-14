@@ -9,6 +9,33 @@ version.
 
 ## Unreleased
 
+### Clear decisions on the app page
+
+- **Test** replaces Check and Test start: the settings check, then a short
+  real start; the header always shows the test state (not tested yet,
+  tested with the date, out of date, failed). The update check's button is
+  now *Check for Updates*.
+- One place for advice: what went wrong, repair steps, hints and a warning
+  about unsandboxed menu entries (with *Hide It*) in one group. Repair
+  steps are switches that say what they change and what protection that
+  costs; each can be switched off on its own (`sam-jail repair APP
+  --undo-step ID`). Compatibility mode names the switches it turns on.
+- "Local network only" is now called "This computer only", which is what
+  it means: no internet and no local network, only the listed services on
+  this computer.
+- The syscall filters and Landlock are a group of their own, "Extra
+  Protection Layers", with an explanation of when turning one off is right.
+- "Files This App Saved" is a visible row with the folder's path.
+- The remove dialog offers three named choices (only the unpacked copy;
+  the sandbox but keep the settings; everything); none is preselected and
+  the button names the action.
+- Downloads is an ordinary location; *Add Downloads* replaces the switch,
+  and a switch that was on becomes a location once.
+- The CUDA and ROCm notes say what a missing part means for local AI
+  models: they run on the processor, which is much slower.
+- "Recognized as" appears only when the category explains the
+  recommendation.
+
 ### A calmer main window
 
 - Sandboxed apps show their own icon and name in the taskbar. The app ID

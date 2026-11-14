@@ -122,6 +122,8 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `doctor [APP]` | `{checks: [{id, label, status, detail, hint}], …}` |
 | `report APP` | `{report}`: redacted text for a bug report |
 | `preset list/show/template/apply/save/delete/duplicate/import/export/put` | the user's preset objects; `put` reads one on stdin |
+| `info APP` | also `repair_effects` (step id → what the step changes and costs) and `compat_changes` (the switches compatibility mode turns on, or turned on) |
+| `repair APP [--apply ID / --next / --undo / --undo-step ID]` | `--undo-step` switches off one applied step and keeps the others |
 | `group list` | every sandboxed app: the app summary plus `permissions`, `tags: [{key, label, family, level, read_only}]`, `running`, `needs_review`, `may_not_start` |
 | `group set KEY VALUE APP… [--dry-run]` | `{key, value, applied, apps: [{id, name, check, running, changed}], previous: {id: permissions}}` |
 | `group restore` | reads `previous` on stdin → `{restored}` |

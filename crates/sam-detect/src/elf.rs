@@ -796,23 +796,23 @@ fn optional_features(missing: &[(String, bool, Vec<String>)], host_dirs: &[PathB
                 let cuda = if wanted.is_empty() { "CUDA".to_string() } else { format!("CUDA {}", join(&wanted)) };
                 let who = engines("cuda");
                 let msg = if !dev.join("nvidiactl").exists() {
-                    format!("{who}, bundled in this app, can use NVIDIA graphics cards ({cuda}). This computer has none, so it runs without one.")
+                    format!("{who}, bundled in this app, can use NVIDIA graphics cards ({cuda}). This computer has none, so it runs without one: if you use this part to run local AI models, they run on the processor, which is much slower.")
                 } else if !have.is_empty() {
                     format!(
-                        "{who}, bundled in this app, is built for {cuda}. This computer has CUDA {}, which it cannot load, so this part cannot use the graphics card. Other ways the app uses the graphics card are not affected.",
+                        "{who}, bundled in this app, is built for {cuda}. This computer has CUDA {}, which it cannot load, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.",
                         join(&have)
                     )
                 } else {
-                    format!("{who}, bundled in this app, is built for {cuda}, which is not installed, so this part cannot use the graphics card. Other ways the app uses the graphics card are not affected.")
+                    format!("{who}, bundled in this app, is built for {cuda}, which is not installed, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.")
                 };
                 Warning::info("feature-cuda", &format!("A bundled part needs {cuda}"), msg)
             }
             "rocm" => {
                 let who = engines("rocm");
                 let msg = if !dev.join("kfd").exists() {
-                    format!("{who}, bundled in this app, can use AMD graphics cards (ROCm). This computer offers no AMD compute device, so it runs without one.")
+                    format!("{who}, bundled in this app, can use AMD graphics cards (ROCm). This computer offers no AMD compute device, so it runs without one: if you use this part to run local AI models, they run on the processor, which is much slower.")
                 } else {
-                    format!("{who}, bundled in this app, needs ROCm, which is not installed, so this part cannot use the graphics card. Other ways the app uses the graphics card are not affected.")
+                    format!("{who}, bundled in this app, needs ROCm, which is not installed, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.")
                 };
                 Warning::info("feature-rocm", "A bundled part needs ROCm", msg)
             }
@@ -960,6 +960,8 @@ mod tests {
         let cuda = by_code(&super::optional_features(&missing, std::slice::from_ref(&lib), &dev, false), "feature-cuda").unwrap();
         assert_eq!(cuda.severity, sam_core::Severity::Info, "a note: only one bundled part is affected");
         assert!(cuda.message.contains("This computer has CUDA 13, which it cannot load") && cuda.message.contains("not affected"), "{}", cuda.message);
+        // The consequence for local AI models is named.
+        assert!(cuda.message.contains("run on the processor instead, which is much slower"), "{}", cuda.message);
         assert_eq!(super::major_version("libcudart.so.12.4.1").as_deref(), Some("12"));
         assert_eq!(super::component("a/node_modules/@node-llama-cpp/linux-x64-cuda-ext/bins/x.so"), "@node-llama-cpp/linux-x64-cuda-ext");
         let electron = super::optional_features(&missing, std::slice::from_ref(&lib), &dev, true);

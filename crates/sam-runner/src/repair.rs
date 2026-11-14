@@ -39,11 +39,11 @@ pub fn first_run_hints(e: &AppEntry) -> Vec<Suggestion> {
         out.push(s("network", "No online play", "The game has no network access, so multiplayer, online accounts and downloads of extra content will not work. Single-player games run fine without it.", set("network.mode", "full"), RiskLevel::High));
     }
     if p.network.mode == NetworkMode::None && (req.network || req.electron) {
-        out.push(s("network", "No internet", "The app has no network access. If it loads web content, syncs, signs in or talks to an AI model, it will seem broken. 'Local network only' is a middle ground for apps that use local servers.", set("network.mode", "full"), RiskLevel::High));
+        out.push(s("network", "No internet", "The app has no network access. If it loads web content, syncs, signs in or talks to an AI model, it will seem broken. 'This computer only' is a middle ground for apps that use local servers.", set("network.mode", "full"), RiskLevel::High));
     }
     let any_folder = p.filesystem.home || XDG_DIR_KEYS.iter().any(|k| p.filesystem.xdg_access(k).is_granted());
     if !any_folder {
-        out.push(s("files", "Files stay inside the sandbox", "The app cannot see your folders. Files it saves land in its private folder (open it with 'Files this app saved'). Grant Downloads to save there instead.", set("filesystem.downloads", "rw"), RiskLevel::Medium));
+        out.push(s("files", "Files stay inside the sandbox", "The app cannot see your folders. Files it saves land in its private folder (open it with \"Files This App Saved\" under Launching). Grant Downloads to save there instead.", set("filesystem.downloads", "rw"), RiskLevel::Medium));
     }
     let windowed = !e.metadata.terminal;
     if windowed && !p.display.x11 && !req.wayland && matches!(toolkit, "Unknown" | "") && e.detection.as_ref().is_some_and(|d| d.elf_count > 0) {
@@ -374,6 +374,59 @@ fn denied_home_path(line: &str) -> Option<String> {
 /// Repair steps to try, best first: what the last launch's output suggests,
 /// then generic steps. Steps already applied, or that change nothing, are
 /// left out.
+/// The words of a permission as the switches and tags use them.
+fn words(key: &str) -> (String, String) {
+    let info = sam_core::permissions::permission_catalog().into_iter().find(|i| i.key == key);
+    let title = match key {
+        "network.mode" => "Full network".to_string(),
+        "dbus.session.mode" => "Session bus: full access".to_string(),
+        "advanced.host_runtime" => "All of /usr".to_string(),
+        _ => info.as_ref().map(|i| i.title.to_string()).unwrap_or_else(|| key.to_string()),
+    };
+    (title, info.map(|i| i.description.to_string()).unwrap_or_default())
+}
+
+/// What compatibility mode turns on for these settings, in the switches'
+/// words (only what it actually changes).
+pub fn compat_changes(p: &PermissionSet) -> Vec<String> {
+    let wide = sam_profile::compatibility_profile(p);
+    sam_core::permissions::permission_catalog().into_iter().filter(|i| p.get_key(i.key).ok() != wide.get_key(i.key).ok()).map(|i| words(i.key).0).collect()
+}
+
+/// What applying a repair step changes, in one or two complete sentences,
+/// including the protection it costs.
+pub fn effect(s: &Suggestion, p: &PermissionSet) -> String {
+    match &s.action {
+        FixAction::Set { key, value } => {
+            let (title, desc) = words(key);
+            let off = matches!(value.as_str(), "false" | "none" | "minimal");
+            format!("{} “{}”. {}", if off { "Turns off" } else { "Turns on" }, if off { words_plain(key) } else { title }, desc)
+        }
+        FixAction::Add { key, value } => {
+            let (title, desc) = words(key);
+            format!("Adds {value} to “{title}”. {desc}")
+        }
+        FixAction::Compat => {
+            let c = compat_changes(p);
+            if c.is_empty() {
+                "Compatibility mode changes nothing more for these settings.".into()
+            } else {
+                format!("Turns on: {}. Each of these weakens the sandbox; once the app works, try turning them off one by one.", c.join(", "))
+            }
+        }
+        FixAction::AddArg { value } if value == "--no-sandbox" => {
+            "Starts the app with --no-sandbox, which turns off the app's own internal sandbox; SAM's sandbox stays.".into()
+        }
+        FixAction::AddArg { value } => format!("Starts the app with {value} every time."),
+        FixAction::None => String::new(),
+    }
+}
+
+/// The catalog title of a key (for a switch being turned off).
+fn words_plain(key: &str) -> String {
+    sam_core::permissions::permission_catalog().into_iter().find(|i| i.key == key).map(|i| i.title.to_string()).unwrap_or_else(|| key.to_string())
+}
+
 pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
     let p = &e.profile.permissions;
     let mut steps: Vec<Suggestion> = e.last_launch.as_ref().map(|l| l.findings.clone()).unwrap_or_default();
@@ -435,6 +488,38 @@ pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Compatibility mode lists only what it actually changes, in the words
+    /// of the switches.
+    #[test]
+    fn compatibility_mode_names_only_what_it_changes() {
+        let mut p = PermissionSet::strict_gui();
+        let all = compat_changes(&p);
+        assert!(all.contains(&"Full network".to_string()) && all.contains(&"X11 / XWayland".to_string()), "{all:?}");
+        p.display.x11 = true;
+        assert!(!compat_changes(&p).contains(&"X11 / XWayland".to_string()), "already on, so not listed");
+    }
+
+    /// A repair step says in a sentence what it turns on or off, with the
+    /// switch's own explanation of what that allows.
+    #[test]
+    fn a_repair_step_says_what_it_changes_and_costs() {
+        let p = PermissionSet::strict_gui();
+        let x11 = Suggestion {
+            id: "x11".into(),
+            title: "X11".into(),
+            explanation: String::new(),
+            action: FixAction::Set { key: "display.x11".into(), value: "true".into() },
+            risk: RiskLevel::High,
+            from_app_output: false,
+        };
+        let t = effect(&x11, &p);
+        assert!(t.starts_with("Turns on “X11 / XWayland”.") && t.contains("observe input"), "{t}");
+        let off = Suggestion { action: FixAction::Set { key: "advanced.seccomp_baseline".into(), value: "false".into() }, ..x11.clone() };
+        assert!(effect(&off, &p).starts_with("Turns off “Baseline syscall filter”."), "{}", effect(&off, &p));
+        let compat = Suggestion { action: FixAction::Compat, ..x11 };
+        assert!(effect(&compat, &p).contains("Full network"));
+    }
 
     /// An app that fails to register its bus name gets a repair step that allows exactly that name.
     #[test]

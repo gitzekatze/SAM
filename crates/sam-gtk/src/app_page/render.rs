@@ -295,18 +295,46 @@ impl AppPage {
             }
         }
 
+        // Advice, in one place: what went wrong last time (with "fix and
+        // start"), the repair switches, then general hints.
+        let findings: Vec<Value> = entry.as_ref().and_then(|e| util::get(e, "last_launch.findings")).and_then(Value::as_array).cloned().unwrap_or_default();
+        for f in &findings {
+            let row = self.suggestion_row(f, "dialog-warning-symbolic", true, true);
+            self.add_dynamic(&self.hints, &row);
+        }
+        let mut advice = findings.len();
+        if let Some(e) = entry.as_ref() {
+            let effects = info.as_ref().and_then(|i| i.get("repair_effects")).cloned().unwrap_or_default();
+            let applied: Vec<Value> = e.get("applied_repairs").and_then(Value::as_array).cloned().unwrap_or_default();
+            let failed = e.get("last_launch").is_some_and(|l| !l.is_null() && !util::bool_of(l, "success"));
+            // Repair steps only after a failed start, or while one is on.
+            let steps: Vec<Value> = if failed || !applied.is_empty() {
+                info.as_ref().and_then(|i| i.get("repair_steps")).and_then(Value::as_array).cloned().unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let finding_ids: Vec<String> = findings.iter().map(|f| util::str_of(f, "id").to_string()).collect();
+            for a in &applied {
+                if let Some(step) = a.get("step").filter(|s| !s.is_null()) {
+                    let row = self.repair_switch(step, true, util::str_of(&effects, util::str_of(step, "id")));
+                    self.add_dynamic(&self.hints, &row);
+                    advice += 1;
+                }
+            }
+            for s in steps.iter().filter(|s| !finding_ids.contains(&util::str_of(s, "id").to_string())) {
+                let row = self.repair_switch(s, false, util::str_of(&effects, util::str_of(s, "id")));
+                self.add_dynamic(&self.hints, &row);
+                advice += 1;
+            }
+        }
         let hints: Vec<Value> = info.as_ref().and_then(|i| i.get("hints")).and_then(Value::as_array).cloned().unwrap_or_default();
         for h in &hints {
             let row = self.suggestion_row(h, "dialog-information-symbolic", false, false);
             self.add_dynamic(&self.hints, &row);
         }
-        self.hints.set_visible(!hints.is_empty());
-        let findings: Vec<Value> = entry.as_ref().and_then(|e| util::get(e, "last_launch.findings")).and_then(Value::as_array).cloned().unwrap_or_default();
-        for f in &findings {
-            let row = self.suggestion_row(f, "dialog-warning-symbolic", true, true);
-            self.add_dynamic(&self.findings, &row);
-        }
-        self.findings.set_visible(!findings.is_empty());
+        advice += hints.len();
+        self.hints.set_visible(advice > 0 || self.dup_row.is_visible());
+        self.findings.set_visible(false);
         self.notices.set_visible(true);
 
         self.preset_group.set_visible(have_data);
@@ -320,7 +348,7 @@ impl AppPage {
             g.set_visible(sandboxed);
         }
         if let Some(e) = entry.as_ref() {
-            self.render_troubleshooting(e, &info);
+            self.render_troubleshooting(e);
             self.render_details(e);
         }
         let _ = app;
@@ -362,11 +390,26 @@ impl AppPage {
         self.updating.set(false);
         self.compat_badge.set_visible(on);
         self.compat_row.set_sensitive(sandboxed && (on || !never));
-        let mut sub = String::from("Broad access (network, the whole session bus, all of /usr, X11, GPU, sound) for apps that work no other way. Turning it off restores your previous settings.");
+        // Name exactly the switches it turns on (or turned on).
+        let changes = self.info.borrow().as_ref().map(|i| util::list_of(i, "compat_changes")).unwrap_or_default();
+        let mut sub = match (on, changes.is_empty()) {
+            (_, true) => "Broad access for apps that work no other way. For these settings it changes nothing more.".to_string(),
+            (true, false) => format!("Turned on: {}. Each weakens the sandbox. Turning the mode off restores your previous settings.", changes.join(", ")),
+            (false, false) => format!(
+                "For apps that work no other way. Turns on: {}. Each weakens the sandbox. Turning it off again restores your settings.",
+                changes.join(", ")
+            ),
+        };
         if never && !on {
             sub.push_str(" Turned off in Preferences → Repair.");
         }
         self.compat_row.set_subtitle(&esc(&sub));
+        let home = self.info.borrow().as_ref().map(|i| util::str_of(i, "private_home").to_string()).unwrap_or_default();
+        self.files_row.set_visible(sandboxed);
+        self.files_row.set_subtitle(&esc(&format!(
+            "Settings and files the app saved outside the folders you granted stay in its private folder: {}",
+            util::tildify(&home)
+        )));
     }
 
     /// SAM's menu entry and other tools' entries for this AppImage.
@@ -390,6 +433,16 @@ impl AppPage {
                 .chain(hidden.iter().map(|h| util::tildify(util::str_of(h, "original"))))
                 .collect();
             self.hide_switch.set_active(!hidden.is_empty() && visible.is_empty());
+            // Advice: another menu entry still starts the AppImage unsandboxed.
+            self.dup_row.set_visible(!visible.is_empty());
+            if !visible.is_empty() {
+                let files: Vec<String> = visible.iter().map(|v| util::tildify(util::str_of(v, "file"))).collect();
+                self.dup_row.set_subtitle(&esc(&format!(
+                    "Another menu entry starts it without any sandbox: {}. Hide it, so the app always starts in its sandbox; the switch under Menu Entries shows it again.",
+                    files.join(", ")
+                )));
+                self.hints.set_visible(true);
+            }
             self.hide_row.set_sensitive(!names.is_empty());
             self.hide_row.set_subtitle(&esc(&if names.is_empty() {
                 "No other menu entry starts this AppImage.".to_string()
@@ -399,6 +452,7 @@ impl AppPage {
                 format!("Hidden by SAM, shown again when you turn this off or remove the sandbox: {}", names.join(", "))
             }));
         } else {
+            self.dup_row.set_visible(false);
             self.sam_menu_row.set_sensitive(false);
             self.sam_menu_switch.set_active(false);
             self.sam_menu_row.set_subtitle("Created together with the sandbox (see Preferences → Menu Entries).");
@@ -418,6 +472,36 @@ impl AppPage {
             }));
         }
         self.updating.set(false);
+    }
+
+    /// A repair step as a switch: on means applied. The subtitle says what
+    /// the step changes and what protection that costs; switching it off
+    /// undoes exactly this step.
+    pub(super) fn repair_switch(self: &Rc<Self>, s: &Value, on: bool, effect: &str) -> adw::ActionRow {
+        let title = util::str_of(s, "title").to_string();
+        let mut sub = util::str_of(s, "explanation").to_string();
+        if !effect.is_empty() {
+            sub.push_str(&format!("\n{effect}"));
+        }
+        let row = adw::ActionRow::builder().title(esc(&title)).subtitle(esc(&sub)).build();
+        row.add_prefix(&status_icon("applications-utilities-symbolic", if on { "warning" } else { "accent" }));
+        let sw = gtk::Switch::builder().active(on).valign(gtk::Align::Center).build();
+        sw.update_property(&[gtk::accessible::Property::Label(&format!("Repair step: {title}"))]);
+        row.add_suffix(&sw);
+        row.set_activatable_widget(Some(&sw));
+        let w = Rc::downgrade(self);
+        let s = s.clone();
+        sw.connect_state_set(move |_, want| {
+            let Some(me) = w.upgrade() else { return glib::Propagation::Stop };
+            if want {
+                me.apply_suggestion(s.clone(), true, false);
+            } else {
+                let id = util::str_of(&s, "id").to_string();
+                me.simple(vec!["repair".into(), me.app_id.clone(), "--undo-step".into(), id], "Repair step switched off");
+            }
+            glib::Propagation::Stop
+        });
+        row
     }
 
     pub(super) fn suggestion_row(self: &Rc<Self>, s: &Value, icon: &str, as_repair: bool, then_run: bool) -> adw::ActionRow {
@@ -451,7 +535,7 @@ impl AppPage {
         self.add_dynamic(g, &row);
     }
 
-    pub(super) fn render_troubleshooting(self: &Rc<Self>, e: &Value, info: &Option<Value>) {
+    pub(super) fn render_troubleshooting(self: &Rc<Self>, e: &Value) {
         let g = self.trouble.clone();
         let last = e.get("last_launch").filter(|l| !l.is_null());
         let last_text = match last {
@@ -506,54 +590,16 @@ impl AppPage {
                 self.add_dynamic(&g, &row);
             }
         }
-        // Test start (sam-jail selftest <app>): a short real start.
-        self.button_row(
-            &g,
-            "media-playback-start-symbolic",
-            "Test start",
-            &format!(
-                "Starts the app for {TEST_SECONDS} seconds (its window opens) and reports whether it keeps running. A quick way to see if a change helped."
-            ),
-            |me| me.run_test_start(),
-        );
-        if let Some(r) = self.test_result.borrow().as_ref() {
-            let ok = util::str_of(r, "status") == "ok";
-            let row = adw::ActionRow::builder()
-                .title(match (ok, util::str_of(r, "detail").starts_with("ran in its sandbox")) {
-                    (true, true) => "The program ran in its sandbox",
-                    (true, false) => "The app started and kept running",
-                    (false, _) => "The app did not keep running",
-                })
-                .subtitle(esc(util::str_of(r, "detail")))
-                .build();
-            let img = gtk::Image::from_icon_name(if ok { "object-select-symbolic" } else { "dialog-error-symbolic" });
-            img.add_css_class(if ok { "success" } else { "error" });
-            img.set_margin_start(24);
-            row.add_prefix(&img);
-            self.add_dynamic(&g, &row);
-        }
-        let steps: Vec<Value> = info.as_ref().and_then(|i| i.get("repair_steps")).and_then(Value::as_array).cloned().unwrap_or_default();
-        if let Some(first) = steps.first().cloned() {
-            let sub = format!("Next: {}. {}", util::str_of(&first, "title"), util::str_of(&first, "explanation"));
-            self.button_row(&g, "media-playback-start-symbolic", "Try the next fix and start", &sub, move |me| me.apply_suggestion(first.clone(), true, true));
-        }
-        for s in steps.into_iter().skip(1) {
-            let (t, x) = (util::str_of(&s, "title").to_string(), util::str_of(&s, "explanation").to_string());
-            self.button_row(&g, "applications-utilities-symbolic", &t, &x, move |me| me.apply_suggestion(s.clone(), true, false));
-        }
         if e.get("repair_backup").is_some_and(|b| !b.is_null()) {
             let applied = util::list_of(e, "repairs_applied").join(", ");
-            self.button_row(&g, "edit-undo-symbolic", "Undo all repairs", &format!("Applied: {applied}"), |me| {
-                me.simple(vec!["repair".into(), me.app_id.clone(), "--undo".into()], "Repairs undone")
-            });
+            self.button_row(
+                &g,
+                "edit-undo-symbolic",
+                "Switch off all repair steps",
+                &format!("Puts back the settings from before the first step. Applied: {applied}"),
+                |me| me.simple(vec!["repair".into(), me.app_id.clone(), "--undo".into()], "Repairs undone"),
+            );
         }
-        self.button_row(
-            &g,
-            "folder-open-symbolic",
-            "Files this app saved",
-            "The app's private folder, where it keeps settings and files it saved outside your granted folders.",
-            |me| me.open_private_folder(),
-        );
         self.button_row(
             &g,
             "system-search-symbolic",
@@ -604,24 +650,6 @@ impl AppPage {
         });
     }
 
-    pub(super) fn run_test_start(self: &Rc<Self>) {
-        let Some(app) = self.app() else { return };
-        let me = self.clone();
-        app.toast(&format!("Starting {} for {TEST_SECONDS} seconds…", util::plain(&self.name())));
-        glib::spawn_future_local(async move {
-            let secs = TEST_SECONDS.to_string();
-            match app.backend.call(&["selftest", &me.app_id, "--seconds", &secs], None).await {
-                Ok(r) => {
-                    let first = r.get("results").and_then(Value::as_array).and_then(|a| a.first().cloned());
-                    *me.test_result.borrow_mut() = first;
-                    me.reload();
-                    app.refresh_registered().await;
-                }
-                Err(e) => app.report_error(&e),
-            }
-        });
-    }
-
     pub(super) fn render_details(self: &Rc<Self>, e: &Value) {
         let g = self.details.clone();
         let text_row = |title: &str, value: &str| {
@@ -629,7 +657,14 @@ impl AppPage {
             r.add_css_class("property");
             r
         };
-        self.add_dynamic(&g, &text_row("Category", &util::category_label(util::str_of(e, "category"))));
+        // The category only where it explains the recommendation; "Utility"
+        // or an unknown category would tell nothing.
+        let cat = util::str_of(e, "category");
+        if !matches!(cat, "" | "utility" | "other" | "unknown") {
+            let row = text_row("Recognized as", &util::category_label(cat));
+            row.set_tooltip_text(Some("SAM's recommendation starts from what apps of this kind usually need, then adjusts it to what it found in this app."));
+            self.add_dynamic(&g, &row);
+        }
         self.add_dynamic(&g, &text_row("AppImage type", util::str_of(e, "appimage_type")));
         let extraction = match e.get("extraction").filter(|x| !x.is_null()) {
             Some(x) => format!("{} files via {}", util::get(x, "file_count").and_then(Value::as_u64).unwrap_or(0), util::str_of(x, "method")),
@@ -659,7 +694,7 @@ impl AppPage {
             .build();
         update.add_css_class("property");
         let check = gtk::Button::builder()
-            .label(tr("Check"))
+            .label(tr("Check for Updates"))
             .valign(gtk::Align::Center)
             .tooltip_text(tr("Ask the update source whether a newer version is published"))
             .build();

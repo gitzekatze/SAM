@@ -141,6 +141,10 @@ Electron app, Qt app, GTK app):
 - [ ] Preferences → Style (Follow system, Light, Dark) applies instantly.
 - [ ] Turning on full home, the system bus or raw devices asks for confirmation.
 - [ ] Applying a preset without network access to a browser warns that it removes network access.
+- [ ] **Test** runs the settings check and a short start; the header shows *Tested* with the date, *Test out of date* after a change.
+- [ ] After a failed start, repair steps appear as switches under **Advice**; switching one off undoes only that step.
+- [ ] The remove dialog has three choices, none preselected; the button names the chosen action (*Free Space*, *Remove Sandbox*, *Delete Everything*).
+- [ ] With the old "Also search the Downloads folder" switch on, Downloads appears once as an ordinary location; otherwise *Add Downloads* adds it.
 - [ ] While a sandboxed app runs, its page shows "… is running. Changed settings apply the next time it starts."; **Restart** closes it and starts it again; the bar disappears a few seconds after the app is closed.
 - [ ] The round trash button left of **Check** asks before removing a sandbox; every header button explains itself on hover.
 - [ ] A sandboxed Wayland app shows its own icon and name in the taskbar (KDE Plasma).
@@ -150,14 +154,14 @@ Electron app, Qt app, GTK app):
 ## 10. Compatibility helpers
 
 - [ ] A link clicked in a sandboxed app opens in the normal browser.
-- [ ] *Local network only*: the app reaches a host server on 127.0.0.1, the
+- [ ] *This computer only*: the app reaches a host server on 127.0.0.1, the
       host browser reaches the app's own port, websites do not load.
 - [ ] *Writable app folder*: a portable app keeps its settings; the extracted
       copy under `extracted/` is unchanged.
 - [ ] An app that fails at start shows a notification with the likely cause,
       and *Details & Repair → Try the next fix and start* fixes it.
 - [ ] `sam-jail selftest` lists every sandboxed app as ✓ or ✗.
-- [ ] *Local network only*: the log shows `# enforced: landlock …`.
+- [ ] *This computer only*: the log shows `# enforced: landlock …`.
 - [ ] After using SAM, nothing named `io.github.gitzekatze.SAM` exists under
       `/run/user/<uid>/.flatpak` or `~/.local/share/flatpak`.
 - [ ] Removing or re-extracting an app while it runs is refused with

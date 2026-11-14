@@ -159,8 +159,8 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         check("overlay", "Writable app folder", CheckStatus::Info, "needs Bubblewrap 0.10 or newer; app folders stay read-only")
     });
     c.push(match crate::netns::pasta_usable() {
-        Ok(p) => check("pasta", "Local network only", CheckStatus::Ok, format!("pasta with --splice-only ({})", tildify(&p))),
-        Err(e) => check("pasta", "Local network only", CheckStatus::Warn, format!("{e:#}")),
+        Ok(p) => check("pasta", "This computer only", CheckStatus::Ok, format!("pasta with --splice-only ({})", tildify(&p))),
+        Err(e) => check("pasta", "This computer only", CheckStatus::Warn, format!("{e:#}")),
     });
     c.push(match crate::find_helper() {
         Some(p) => check("helper", "sam-jail-run", CheckStatus::Ok, tildify(&p)),

@@ -73,7 +73,9 @@ pub struct App {
 
 struct Sidebar {
     locations: gtk::ListBox,
-    downloads: gtk::Switch,
+    /// "Your Downloads folder has … AppImages" with "Add Downloads", shown
+    /// only while Downloads is not a location and holds AppImages.
+    downloads: gtk::Box,
     /// "Also search the Downloads folder", with a count while it is off.
     downloads_label: gtk::Label,
     list: gtk::ListBox,
@@ -153,7 +155,23 @@ impl App {
     }
 
     pub async fn load_config(self: &Rc<Self>) {
-        match self.backend.call(&["config", "show"], None).await {
+        let mut cfg = self.backend.call(&["config", "show"], None).await;
+        // The old "Also search the Downloads folder" switch becomes an
+        // ordinary location, once.
+        if let Ok(v) = &cfg {
+            if util::bool_of(v, "general.scan_downloads") {
+                if let Some(d) = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads") {
+                    let mut dirs = util::list_of(v, "general.scan_directories");
+                    if !dirs.iter().any(|p| sam_core::util::expand_home(p) == *d) {
+                        dirs.push(util::tildify(&d.to_string_lossy()));
+                    }
+                    let _ = self.backend.call(&["config", "set", "general.scan_directories", &serde_json::to_string(&dirs).unwrap()], None).await;
+                }
+                let _ = self.backend.call(&["config", "set", "general.scan_downloads", "false"], None).await;
+                cfg = self.backend.call(&["config", "show"], None).await;
+            }
+        }
+        match cfg {
             Ok(v) => {
                 apply_theme(util::str_of(&v, "general.theme"));
                 self.state.borrow_mut().config = v;
@@ -188,10 +206,12 @@ impl App {
     /// not tell a new user where theirs went.
     async fn count_downloads(self: &Rc<Self>) {
         let Some(sb) = self.sidebar.get() else { return };
-        let base = tr("Also search the Downloads folder");
-        let searched = util::bool_of(&self.state.borrow().config, "general.scan_downloads");
-        // The same folder SAM searches when the switch is on.
         let dir = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads").cloned();
+        // Downloads is an ordinary location; the hint shows only while it
+        // is not one.
+        let searched = dir
+            .as_ref()
+            .is_some_and(|d| util::list_of(&self.state.borrow().config, "general.scan_directories").iter().any(|p| sam_core::util::expand_home(p) == *d));
         let count = match (searched, dir) {
             (false, Some(d)) if d.is_dir() => self
                 .backend
@@ -202,10 +222,10 @@ impl App {
                 .unwrap_or(0),
             _ => 0,
         };
+        sb.downloads.set_visible(count > 0);
         sb.downloads_label.set_text(&match count {
-            0 => base,
-            1 => format!("{base} · 1 AppImage there"),
-            n => format!("{base} · {n} AppImages there"),
+            1 => tr("Your Downloads folder has 1 AppImage that SAM does not list yet."),
+            n => format!("Your Downloads folder has {n} AppImages that SAM does not list yet."),
         });
     }
 
@@ -364,14 +384,19 @@ impl App {
         locations.add_css_class("sam-location-list");
         locations.set_margin_top(HEAD_GAP);
         loc_box.append(&locations);
-        let dl_row = gtk::Box::builder().spacing(8).margin_top(8).build();
-        let dl_label = gtk::Label::builder().label(tr("Also search the Downloads folder")).xalign(0.0).hexpand(true).wrap(true).build();
+        let dl_row = gtk::Box::builder().spacing(8).margin_top(8).visible(false).build();
+        let dl_label = gtk::Label::builder().xalign(0.0).hexpand(true).wrap(true).build();
         dl_label.add_css_class("caption");
-        let downloads = gtk::Switch::builder().valign(gtk::Align::Center).build();
-        downloads.update_property(&[gtk::accessible::Property::Label(&tr("Also search the Downloads folder"))]);
+        let dl_add = gtk::Button::builder()
+            .label(tr("Add Downloads"))
+            .valign(gtk::Align::Center)
+            .tooltip_text(tr("Add the Downloads folder to the AppImage locations"))
+            .build();
+        dl_add.add_css_class("flat");
         dl_row.append(&dl_label);
-        dl_row.append(&downloads);
+        dl_row.append(&dl_add);
         loc_box.append(&dl_row);
+        let downloads = dl_row.clone();
         let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
         column.append(&loc_box);
 
@@ -475,17 +500,14 @@ impl App {
             }
         });
         let w = Rc::downgrade(self);
-        downloads.connect_state_set(move |_, on| {
-            if let Some(me) = w.upgrade() {
-                let cur = util::bool_of(&me.state.borrow().config, "general.scan_downloads");
-                if cur != on {
-                    glib::spawn_future_local(async move {
-                        me.set_config("general.scan_downloads", if on { "true" } else { "false" }).await;
-                        me.refresh_apps().await;
-                    });
-                }
+        dl_add.connect_clicked(move |_| {
+            let Some(me) = w.upgrade() else { return };
+            if let Some(d) = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads") {
+                let cfg = me.state.borrow().config.clone();
+                let mut dirs = util::list_of(&cfg, "general.scan_directories");
+                dirs.push(util::tildify(&d.to_string_lossy()));
+                me.set_locations(dirs, util::list_of(&cfg, "general.scan_files"));
             }
-            glib::Propagation::Proceed
         });
         let w = Rc::downgrade(self);
         search.connect_search_changed(move |s| {
@@ -585,8 +607,6 @@ impl App {
             row.set_child(Some(&l));
             sb.locations.append(&row);
         }
-        sb.downloads.set_state(util::bool_of(&cfg, "general.scan_downloads"));
-        sb.downloads.set_active(util::bool_of(&cfg, "general.scan_downloads"));
         self.watch_locations(&cfg);
     }
 

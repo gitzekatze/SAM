@@ -341,7 +341,7 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
     }
     if p.network.mode == NetworkMode::None && needs_network_by_purpose(md, file_name) {
         p.network.mode = NetworkMode::Full;
-        notes.push("Network enabled: this looks like an AI, web-UI or server app, which talks to models or services over the network. If it only uses local models, 'Local network only' blocks the internet but keeps local servers reachable.".into());
+        notes.push("Network enabled: this looks like an AI, web-UI or server app, which talks to models or services over the network. If it only uses local models, 'This computer only' blocks the internet but keeps local servers reachable.".into());
     }
     // Desktop integrations.
     if category == Category::MediaPlayer {
@@ -473,7 +473,7 @@ pub fn check_change(app: &AppEntry, new: &PermissionSet) -> ChangeCheck {
     removed(need.devices.gpu && !new.devices.gpu, "GPU acceleration");
     removed(need.audio.enabled && !new.audio.enabled, "sound");
     removed(need.network.mode == NetworkMode::Full && new.network.mode != NetworkMode::Full, "network access");
-    removed(need.network.mode == NetworkMode::Localhost && new.network.mode == NetworkMode::None, "the local network");
+    removed(need.network.mode == NetworkMode::Localhost && new.network.mode == NetworkMode::None, "connections to this computer");
     removed(need.display.x11 && !new.display.x11 && !(need.display.wayland && new.display.wayland && !needs_x11_only(app)), "X11 display");
     removed(!new.display.x11 && !new.display.wayland && (need.display.x11 || need.display.wayland), "any display access");
     removed(need.dbus.session.mode != DbusMode::None && new.dbus.session.mode == DbusMode::None, "desktop services (D-Bus)");
@@ -600,7 +600,7 @@ mod tests {
         new.network.mode = NetworkMode::None;
         new.dbus.session.mode = DbusMode::None;
         let c = check_change(&app, &new);
-        assert!(c.removes_needed.iter().any(|s| s == "the local network"));
+        assert!(c.removes_needed.iter().any(|s| s == "connections to this computer"));
         assert!(c.removes_needed.iter().any(|s| s.contains("D-Bus")));
     }
 
