@@ -241,6 +241,7 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    /// An ordinary program file is not taken for an AppImage.
     #[test]
     fn plain_elf_is_not_appimage() {
         let info = inspect(Path::new("/bin/sh")).unwrap();
@@ -250,7 +251,7 @@ mod tests {
 
     /// A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized.
     #[test]
-    fn detects_type2_layout() {
+    fn a_type_2_appimage_is_recognized() {
         // Take a real ELF, set the magic and append a fake superblock.
         let elf = std::fs::read("/bin/true").unwrap();
         let end = elf_end_offset(&elf).unwrap() as usize;
@@ -277,7 +278,7 @@ mod tests {
 
     /// An AppImage with a DwarFS image instead of squashfs is recognized.
     #[test]
-    fn detects_dwarfs_payload() {
+    fn an_appimage_with_a_dwarfs_image_is_recognized() {
         let elf = std::fs::read("/bin/true").unwrap();
         let end = elf_end_offset(&elf).unwrap() as usize;
         let mut data = elf[..end.min(elf.len())].to_vec();
@@ -298,7 +299,7 @@ mod tests {
 
     /// A file that is not an ELF program is not taken for an AppImage.
     #[test]
-    fn non_elf() {
+    fn a_file_that_is_no_program_is_not_an_appimage() {
         let mut t = tempfile::NamedTempFile::new().unwrap();
         t.write_all(&[0u8; 128]).unwrap();
         let info = inspect(t.path()).unwrap();

@@ -98,6 +98,7 @@ impl Drop for DbusProxy {
 mod tests {
     use sam_core::permissions::DbusPerms;
 
+    /// An app may register a tray icon only while the tray service is allowed.
     #[test]
     fn tray_names_follow_watcher_permission() {
         let mut p = DbusPerms::default().session;

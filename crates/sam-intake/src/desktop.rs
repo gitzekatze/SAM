@@ -55,6 +55,12 @@ pub fn exec_quote(arg: &str) -> String {
     s.replace('\\', "\\\\")
 }
 
+/// A category or file type ("Graphics", "image/png"): letters, digits and
+/// "-_.+/" only.
+fn list_item_ok(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.+/".contains(c))
+}
+
 fn value(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "")
 }
@@ -69,10 +75,14 @@ pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
     s += &format!("Comment={}\n", value(&comment));
     s += &format!("Exec={} --app-id {} %F\n", exec_quote(runner), entry.id);
     s += &format!("Icon={}\n", value(&icon));
-    if !entry.metadata.categories.is_empty() {
-        s += &format!("Categories={};\n", entry.metadata.categories.join(";"));
+    // List values keep only the characters categories and file types use:
+    // a line break or "=" from a changed record could otherwise add a line
+    // (a second Exec=) to SAM's own menu entry.
+    let categories: Vec<&String> = entry.metadata.categories.iter().filter(|c| list_item_ok(c)).collect();
+    if !categories.is_empty() {
+        s += &format!("Categories={};\n", categories.iter().map(|c| c.as_str()).collect::<Vec<_>>().join(";"));
     }
-    let mimes = launcher_mime_types(&entry.metadata.mime_types);
+    let mimes: Vec<String> = launcher_mime_types(&entry.metadata.mime_types).into_iter().filter(|m| list_item_ok(m)).collect();
     if !mimes.is_empty() {
         s += &format!("MimeType={};\n", mimes.join(";"));
     }
@@ -229,9 +239,30 @@ pub(crate) fn refresh_desktop_database(dir: &Path) {
 mod tests {
     use super::*;
 
+    /// SAM's menu entry starts the app only through SAM's sandbox: no value
+    /// taken from the app (name, comment, categories, file types, window
+    /// class) can add a line such as a second "Exec=" to it, even from a
+    /// record changed outside SAM.
+    #[test]
+    fn app_metadata_cannot_add_lines_to_sams_menu_entry() {
+        let mut e = AppEntry { id: "appimage-x-1".into(), ..Default::default() };
+        let evil = "x\nExec=/tmp/evil\r\nTerminal=true";
+        e.metadata.name = evil.into();
+        e.metadata.comment = evil.into();
+        e.metadata.startup_wm_class = evil.into();
+        e.metadata.categories = vec!["Graphics".into(), evil.into(), "A=B".into()];
+        e.metadata.mime_types = vec!["image/png".into(), format!("image/x{evil}")];
+        let text = launcher_contents(&e, "sam-jail-run");
+        let exec: Vec<&str> = text.lines().filter(|l| l.starts_with("Exec=")).collect();
+        assert_eq!(exec, vec!["Exec=sam-jail-run --app-id appimage-x-1 %F"], "{text}");
+        assert_eq!(text.lines().filter(|l| l.starts_with("Terminal=")).count(), 1, "{text}");
+        assert!(text.contains("Categories=Graphics;\n"), "only clean categories stay: {text}");
+        assert!(text.contains("MimeType=image/png;\n"), "only clean file types stay: {text}");
+    }
+
     /// Program paths in menu entries are quoted so spaces and dollar signs cannot change the command.
     #[test]
-    fn exec_quoting() {
+    fn menu_entry_paths_are_quoted_against_spaces_and_dollar_signs() {
         assert_eq!(exec_quote("sam-jail-run"), "sam-jail-run");
         assert_eq!(exec_quote("/opt/My Apps/sam-jail-run"), "\"/opt/My Apps/sam-jail-run\"");
         assert_eq!(exec_quote("a$b"), "\"a\\\\$b\"");
@@ -239,7 +270,7 @@ mod tests {
 
     /// SAM's menu entry starts the app through sam-jail-run, never the AppImage directly.
     #[test]
-    fn launcher_uses_runner() {
+    fn sams_menu_entry_starts_the_app_only_through_sam() {
         let tmp = tempfile::tempdir().unwrap();
         let paths = Paths::rooted(tmp.path());
         let mut e = AppEntry { id: "appimage-hello-1234".into(), name: "Hello".into(), ..Default::default() };
@@ -254,6 +285,7 @@ mod tests {
         assert!(!p.exists());
     }
 
+    /// SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them.
     #[test]
     fn launcher_mime_types_drop_hijack_targets() {
         let d: Vec<String> = ["x-scheme-handler/https", "inode/directory", "text/html", "application/pdf", "image/png", "application/x-desktop"]

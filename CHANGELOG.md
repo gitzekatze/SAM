@@ -55,6 +55,12 @@ version.
   after resolving its real path inside SAM's unpack folder. Before, an id
   like `../../.ssh` or an unpack folder like `extracted/../../Documents`
   in a tampered or damaged record would have been deleted on removal.
+- SAM's own menu entry keeps only clean categories and file types: a
+  changed record could otherwise have added a line such as a second
+  `Exec=`, which would start the app without a sandbox.
+- "Go back to the earlier version" moves only files in SAM's backup folder;
+  a changed record could otherwise have made SAM move any of the user's
+  files.
 
 - Apps started from a terminal never get the user's terminal: SAM puts them
   on a pseudo-terminal of its own and passes the bytes on. As before, they

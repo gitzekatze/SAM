@@ -311,7 +311,7 @@ mod tests {
 
     /// The Landlock rules allow writing exactly in the folders the permissions grant.
     #[test]
-    fn spec_follows_permissions() {
+    fn landlock_allows_writing_exactly_in_granted_folders() {
         let ctx = sample_context();
         let mut p = PermissionSet::strict_gui();
         p.filesystem.documents = Access::Rw;
@@ -328,7 +328,7 @@ mod tests {
 
     /// The syscall filter compiles in every variant and always blocks mount and io_uring.
     #[test]
-    fn seccomp_compiles() {
+    fn the_syscall_filter_compiles_and_blocks_mount_and_io_uring() {
         for (strict, allow_userns) in [(false, true), (false, false), (true, true)] {
             assert!(!seccomp_program(&SeccompSpec { strict, allow_userns }).unwrap().is_empty());
         }

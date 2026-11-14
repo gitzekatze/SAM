@@ -168,6 +168,7 @@ fn read_message(r: &mut impl Read) -> Result<(u8, Option<u32>)> {
 mod tests {
     use super::*;
 
+    /// SAM's own bus check reaches the session bus on a desktop.
     #[test]
     fn reaches_the_session_bus() {
         // Only where a session bus exists (desktop sessions, not CI).
@@ -181,7 +182,7 @@ mod tests {
 
     /// SAM's own D-Bus message for the bus check has the correct wire format.
     #[test]
-    fn method_call_layout() {
+    fn the_bus_check_message_has_the_correct_wire_format() {
         let m = method_call(7, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", Some("x.y"));
         assert_eq!(&m[..4], &[b'l', 1, 0, 1]);
         assert_eq!(u32::from_le_bytes([m[8], m[9], m[10], m[11]]), 7);

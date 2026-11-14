@@ -31,6 +31,7 @@ fn perms(sam: &Sam, id: &str) -> PermissionSet {
     sam.resolve(id).unwrap().profile.permissions
 }
 
+/// A dry run of a group change saves nothing and names what each app would lose.
 #[test]
 fn a_dry_run_changes_nothing_and_names_what_would_stop_working() {
     let tmp = tempfile::tempdir().unwrap();
@@ -46,6 +47,7 @@ fn a_dry_run_changes_nothing_and_names_what_would_stop_working() {
     assert!(browser.check.removes_needed.iter().any(|s| s == "network access"), "{:?}", browser.check);
 }
 
+/// A group change saves only the apps whose value changes, and one undo restores all of them.
 #[test]
 fn only_changed_apps_are_saved_and_one_undo_restores_all_of_them() {
     let tmp = tempfile::tempdir().unwrap();
@@ -65,6 +67,7 @@ fn only_changed_apps_are_saved_and_one_undo_restores_all_of_them() {
     }
 }
 
+/// A group change with an invalid value or an unknown app changes no app.
 #[test]
 fn an_invalid_value_or_unknown_app_changes_no_app() {
     let tmp = tempfile::tempdir().unwrap();
@@ -78,6 +81,7 @@ fn an_invalid_value_or_unknown_app_changes_no_app() {
     assert_eq!(before, after, "a failing group change leaves every app as it was");
 }
 
+/// The Permissions overview lists every sandboxed app with its tags and states.
 #[test]
 fn the_overview_lists_every_sandboxed_app_with_tags_and_states() {
     let tmp = tempfile::tempdir().unwrap();
@@ -89,6 +93,7 @@ fn the_overview_lists_every_sandboxed_app_with_tags_and_states() {
     assert!(list.iter().all(|a| !a.running && !a.needs_review && !a.may_not_start));
 }
 
+/// SAM ships no presets; old built-in names are free for the user, and applying a preset asks before it removes something an app needs.
 #[test]
 fn sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user() {
     let tmp = tempfile::tempdir().unwrap();
@@ -107,6 +112,7 @@ fn sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user() {
     assert_eq!(perms(&sam, &ids[0]).network.mode, NetworkMode::None);
 }
 
+/// Saving an app's settings as a preset keeps them exactly.
 #[test]
 fn saving_an_apps_settings_as_a_preset_keeps_them_exactly() {
     let tmp = tempfile::tempdir().unwrap();

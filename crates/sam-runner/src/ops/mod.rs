@@ -383,6 +383,7 @@ pub fn merge_adjustments(base: &PermissionSet, user: &PermissionSet, newer: &Per
 mod tests {
     use super::*;
 
+    /// When SAM's recommendation improves, the user's own changes are kept.
     #[test]
     fn user_changes_survive_better_recommendation() {
         let base = PermissionSet::strict_gui();
@@ -434,6 +435,7 @@ mod signature_tests {
         SignatureInfo { state, fingerprint: fp.map(str::to_string), detail: String::new() }
     }
 
+    /// An update signed with another key, or not signed at all, is noticed.
     #[test]
     fn key_changes_are_noticed() {
         let a = sig(S::Valid, Some("AAAA"));

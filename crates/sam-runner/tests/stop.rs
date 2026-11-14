@@ -45,6 +45,7 @@ fn start(app: &Sam, root: &std::path::Path, name: &str, apprun: &str) -> (String
     (id, child)
 }
 
+/// Closing an app ends all of its running starts.
 #[test]
 fn stop_closes_running_apps() {
     if !usable() {

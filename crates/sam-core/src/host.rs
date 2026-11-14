@@ -85,7 +85,7 @@ fn version_at_least(text: &str, want: (u32, u32)) -> bool {
 mod version_tests {
     /// Bubblewrap versions are compared correctly, including missing or malformed version text.
     #[test]
-    fn bubblewrap_versions() {
+    fn bubblewrap_versions_are_compared_correctly() {
         assert!(super::version_at_least("bubblewrap 0.13.1", (0, 10)));
         assert!(super::version_at_least("bubblewrap 0.10.0\n", (0, 10)));
         assert!(!super::version_at_least("bubblewrap 0.9.0", (0, 10)));
@@ -409,7 +409,7 @@ mod tests {
 
     /// The X11 display number is read from every common DISPLAY form, and remote displays are refused.
     #[test]
-    fn display_numbers() {
+    fn the_x11_display_number_is_read_from_every_display_form() {
         assert_eq!(x11_display_number(":0").as_deref(), Some("0"));
         assert_eq!(x11_display_number(":1.0").as_deref(), Some("1"));
         assert_eq!(x11_display_number("unix:2").as_deref(), Some("2"));
@@ -418,7 +418,7 @@ mod tests {
 
     /// Only real socket paths are taken from a D-Bus address; abstract sockets are not.
     #[test]
-    fn dbus_paths() {
+    fn only_real_socket_paths_are_taken_from_a_dbus_address() {
         assert_eq!(dbus_unix_path("unix:path=/run/user/1000/bus,guid=abc"), Some(PathBuf::from("/run/user/1000/bus")));
         assert_eq!(dbus_unix_path("unix:abstract=/tmp/dbus-x"), None);
     }

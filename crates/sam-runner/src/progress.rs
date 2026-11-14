@@ -127,6 +127,7 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    /// The progress bar follows the weights of the steps of creating a sandbox.
     #[test]
     fn fractions_follow_the_step_weights() {
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -145,6 +146,7 @@ mod tests {
         ProgressSink::default().step(ADD_STEPS, 1, 0.5, "nobody listens");
     }
 
+    /// Unpacking progress counts the bytes written.
     #[test]
     fn bytes_written_are_counted() {
         let d = tempfile::tempdir().unwrap();

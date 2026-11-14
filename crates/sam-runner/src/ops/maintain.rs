@@ -551,6 +551,12 @@ impl Sam {
         if !b.file.exists() {
             bail!("the earlier version is no longer there ({})", tildify(&b.file));
         }
+        // SAM keeps earlier versions only in its own backup folder; a record
+        // changed outside SAM must not make it move any other file.
+        let backups = fs::canonicalize(self.paths.data_dir.join("update-backups")).ok();
+        if !backups.is_some_and(|dir| fs::canonicalize(&b.file).is_ok_and(|f| f.starts_with(&dir))) {
+            bail!("the earlier version is not in SAM's backup folder ({}); SAM does not move it", tildify(&b.file));
+        }
         if b.original_path.exists() && b.original_path != entry.source_path {
             bail!("{} exists again; move it away first", tildify(&b.original_path));
         }

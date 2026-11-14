@@ -15,8 +15,9 @@ fn usable() -> bool {
     host.tools.bwrap.is_some() && sam_runner::doctor::bwrap_functional(&host).is_ok() && sam_runner::find_helper().is_some()
 }
 
+/// The sandbox check passes when the settings apply, and catches a setting that does not apply.
 #[test]
-fn check_passes_and_catches_mismatches() {
+fn the_sandbox_check_passes_and_catches_mismatches() {
     if !usable() {
         eprintln!("skipping: bubblewrap or sam-jail-run not available");
         return;

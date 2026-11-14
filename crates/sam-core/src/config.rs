@@ -301,7 +301,7 @@ mod tests {
 
     /// A complete configuration file with every section loads without loss.
     #[test]
-    fn parses_full_example() {
+    fn a_complete_configuration_file_loads_every_setting() {
         let s = r#"
 [general]
 theme = "dark"
@@ -335,7 +335,7 @@ cleanup_stale = true
 
     /// Settings can be changed by key, and old theme names are migrated to Light, Dark or System.
     #[test]
-    fn set_keys() {
+    fn settings_change_by_key_and_old_theme_names_are_migrated() {
         let mut c = Config::default();
         c.set_key("general.theme", "dark").unwrap();
         assert_eq!(migrate_theme("breeze-light"), "light");

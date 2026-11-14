@@ -112,6 +112,7 @@ mod tests {
     use super::*;
     use crate::testkit;
 
+    /// The name and icon of an AppImage are read without unpacking or running it.
     #[test]
     fn peeks_name_and_icon_without_extracting() {
         let dir = tempfile::tempdir().unwrap();
@@ -127,7 +128,7 @@ mod tests {
 
     /// Icon paths from the AppImage cannot climb out of the unpacked app.
     #[test]
-    fn normalize_stays_inside() {
+    fn icon_paths_cannot_climb_out_of_the_app() {
         assert_eq!(normalize(Path::new("usr/../a.png")), Some(PathBuf::from("a.png")));
         assert_eq!(normalize(Path::new("../etc/passwd")), None);
     }

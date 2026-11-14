@@ -229,12 +229,13 @@ mod tests {
 
     /// The AppImage a foreign menu entry starts is found in its Exec line, also behind env and with quotes.
     #[test]
-    fn exec_parsing() {
+    fn the_appimage_behind_a_foreign_menu_entry_is_found() {
         assert_eq!(split_exec(r#""/a b/X.AppImage" --flag %U"#), vec!["/a b/X.AppImage", "--flag", "%U"]);
         assert_eq!(appimage_in("firefox %u"), None);
         assert_eq!(appimage_in("env FOO=1 /nope/X.AppImage %U"), Some(PathBuf::from("/nope/X.AppImage")));
     }
 
+    /// An unsandboxed menu entry in the user's folder is hidden on request and restored exactly as it was.
     #[test]
     fn hide_and_restore_user_entry() {
         let d = tempfile::tempdir().unwrap();
@@ -262,6 +263,7 @@ mod tests {
         assert!(back.contains("NoDisplay=false") && !back.contains("NoDisplay=true") && !back.contains(MARKER), "{back}");
     }
 
+    /// An unsandboxed menu entry in a system folder is hidden through an entry in the user's folder, without touching the system file.
     #[test]
     fn system_entry_gets_override() {
         let d = tempfile::tempdir().unwrap();

@@ -818,6 +818,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
 mod tests {
     use super::*;
 
+    /// An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed.
     #[test]
     fn own_names_that_are_refused() {
         let activatable: std::collections::BTreeSet<String> = ["org.kde.kwalletd6".to_string()].into();
@@ -829,6 +830,7 @@ mod tests {
         assert!(refuse_own_name("org.gnome.Shell", &activatable).is_some());
     }
 
+    /// Folder access is read from both the old form (true/false) and the current form ("ro", "rw").
     #[test]
     fn access_from_bool_and_str() {
         #[derive(Deserialize)]
@@ -841,6 +843,7 @@ mod tests {
         assert_eq!((t.a, t.b, t.c), (Access::None, Access::Ro, Access::Rw));
     }
 
+    /// Permissions can be read and set by key, and unknown keys or values are refused.
     #[test]
     fn set_and_get_keys() {
         let mut p = PermissionSet::default();
@@ -859,6 +862,7 @@ mod tests {
         assert_eq!(p.get_key("network.mode").unwrap(), "full");
     }
 
+    /// A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it.
     #[test]
     fn blocked_names_win_over_wildcards() {
         let mut p = PermissionSet::strict_gui();
@@ -870,6 +874,7 @@ mod tests {
         assert!(bus_pattern_matches("org.kde.*", "org.kde.KWin") && !bus_pattern_matches("org.kde.*", "org.kdex"));
     }
 
+    /// Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning.
     #[test]
     fn old_profiles_with_removed_options_still_load() {
         // "filtered" network (never enforced, meant no network) with its
@@ -885,7 +890,7 @@ mod tests {
 
     /// Permissions saved as TOML load back unchanged.
     #[test]
-    fn toml_roundtrip() {
+    fn permissions_saved_as_toml_load_back_unchanged() {
         let mut p = PermissionSet::strict_gui();
         p.filesystem.downloads = Access::Rw;
         let s = toml::to_string(&p).unwrap();
@@ -896,6 +901,7 @@ mod tests {
 
 #[cfg(test)]
 mod rename_tests {
+    /// Raw sandbox arguments saved under their old name still load.
     #[test]
     fn old_extra_backend_args_still_load() {
         let a: super::AdvancedPerms = serde_json::from_str(r#"{"extra_backend_args": ["--setenv", "A", "1"]}"#).unwrap();

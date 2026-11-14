@@ -270,6 +270,7 @@ fn table_widget(t: &Table) -> gtk::Widget {
 
 #[cfg(test)]
 mod tests {
+    /// The user guide keeps the text of a list item that has a nested list below it.
     #[test]
     fn nested_items_keep_their_text() {
         // The parent text must be in a row before the nested list's rows.

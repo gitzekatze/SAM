@@ -605,6 +605,7 @@ impl AppSummary {
 mod tests {
     use super::*;
 
+    /// Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken.
     #[test]
     fn profile_change_clears_broken_launch() {
         let mut a = AppEntry {
@@ -624,7 +625,7 @@ mod badge_tests {
 
     /// An app with compatibility risk carries a warning badge until it has started successfully once.
     #[test]
-    fn compatibility_labels() {
+    fn apps_with_compatibility_risk_are_marked_until_they_start() {
         let mut e = AppEntry { extraction: Some(ExtractionInfo::default()), reviewed: true, ..Default::default() };
         e.detection = Some(DependencyReport { compatibility: Compatibility::Risk, ..Default::default() });
         assert_eq!(e.badge(), Badge::CompatibilityRisk, "warning until it has started");

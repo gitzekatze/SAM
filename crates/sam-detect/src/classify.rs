@@ -219,7 +219,7 @@ mod tests {
 
     /// Bundled libraries are sorted into system, graphics, display-controlled and dangerous classes.
     #[test]
-    fn classes() {
+    fn bundled_libraries_are_sorted_by_what_they_reach() {
         assert_eq!(classify_library("libc.so.6").class, ResourceClass::System);
         assert_eq!(classify_library("libQt5Core.so.5").class, ResourceClass::Dangerous);
         assert_eq!(classify_library("libGL.so.1").class, ResourceClass::Graphics);

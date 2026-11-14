@@ -207,7 +207,7 @@ mod tests {
 
     /// Failed file and socket accesses are read from a diagnostic trace.
     #[test]
-    fn parses_strace_output() {
+    fn failed_accesses_are_read_from_a_trace() {
         let t = r#"12 openat(AT_FDCWD, "/usr/share/X11/xkb/rules/evdev", O_RDONLY) = -1 ENOENT (No such file or directory)
 12 openat(AT_FDCWD, "/opt/app/usr/lib/libfoo.so", O_RDONLY) = -1 ENOENT (No such file or directory)
 12 connect(5, {sa_family=AF_UNIX, sun_path="/tmp/.X11-unix/X0"}, 20) = -1 ENOENT (No such file or directory)
@@ -222,7 +222,7 @@ mod tests {
 
     /// Failed accesses are mapped to the permission that would fix them (X11 socket, GPU device), and unknown paths to none.
     #[test]
-    fn classifies() {
+    fn failed_accesses_map_to_the_permission_that_fixes_them() {
         let host = sample_context().host;
         let f = classify("/tmp/.X11-unix/X0", "ENOENT", &host).unwrap();
         assert_eq!(f.fix.unwrap().0, "display.x11");

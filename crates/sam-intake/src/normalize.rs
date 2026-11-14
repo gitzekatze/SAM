@@ -170,9 +170,21 @@ mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
 
+    /// Unpacking stops with a clear error when it takes longer than the time
+    /// limit, so a huge or hostile AppImage cannot keep SAM busy forever.
+    #[test]
+    fn unpacking_stops_at_the_time_limit() {
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("f"), b"").unwrap();
+        let lim = Limits { max_seconds: 0, ..Default::default() };
+        let started = Instant::now() - std::time::Duration::from_secs(2);
+        let err = normalize(d.path(), &lim, started).unwrap_err().to_string();
+        assert!(err.contains("took longer than 0 seconds"), "{err}");
+    }
+
     /// A symlink that points outside the unpacked app is recognized.
     #[test]
-    fn escape_detection() {
+    fn symlinks_pointing_outside_the_app_are_recognized() {
         assert!(!escapes(Path::new("usr/lib"), Path::new("libfoo.so.1")));
         assert!(!escapes(Path::new("usr/lib"), Path::new("../../AppRun")));
         assert!(escapes(Path::new("usr/lib"), Path::new("../../../etc/passwd")));
@@ -182,7 +194,7 @@ mod tests {
 
     /// Paths from the AppImage image are made relative, and paths that climb out with .. are refused.
     #[test]
-    fn sanitizes_paths() {
+    fn paths_climbing_out_of_the_image_are_refused() {
         assert_eq!(sanitize_archive_path(Path::new("/usr/bin/x")), Some(PathBuf::from("usr/bin/x")));
         assert_eq!(sanitize_archive_path(Path::new("/")), None);
         assert_eq!(sanitize_archive_path(Path::new("a/../../b")), None);
@@ -190,7 +202,7 @@ mod tests {
 
     /// Unpacking removes setuid bits and makes files read-only for others.
     #[test]
-    fn normalizes_tree() {
+    fn unpacking_removes_setuid_bits() {
         let d = tempfile::tempdir().unwrap();
         let root = d.path();
         fs::create_dir_all(root.join("usr/lib")).unwrap();
@@ -220,7 +232,7 @@ mod tests {
 
     /// Unpacking stops when the AppImage contains more files than the limit.
     #[test]
-    fn enforces_file_limit() {
+    fn unpacking_stops_at_the_file_limit() {
         let d = tempfile::tempdir().unwrap();
         for i in 0..5 {
             fs::write(d.path().join(format!("f{i}")), b"").unwrap();

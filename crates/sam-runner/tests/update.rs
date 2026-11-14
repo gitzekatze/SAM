@@ -10,6 +10,7 @@ use sam_core::Paths;
 use sam_intake::testkit::{build, FixtureSpec};
 use sam_runner::ops::{AddOptions, Sam};
 
+/// Undoing an update puts the previous version back.
 #[test]
 fn undo_puts_the_previous_version_back() {
     let tmp = tempfile::tempdir().unwrap();

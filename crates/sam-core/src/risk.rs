@@ -306,11 +306,12 @@ mod tests {
 
     /// SAM's strictest window profile counts as low risk.
     #[test]
-    fn strict_is_low() {
+    fn the_strictest_window_profile_is_low_risk() {
         let a = assess(&PermissionSet::strict_gui());
         assert_eq!(a.level, RiskLevel::Low);
     }
 
+    /// Full home access counts as dangerous, and as think twice when it is read-only.
     #[test]
     fn full_home_is_dangerous() {
         let mut p = PermissionSet::strict_gui();
@@ -320,6 +321,7 @@ mod tests {
         assert_eq!(assess(&p).level, RiskLevel::High);
     }
 
+    /// Full network together with X11 makes the settings think twice (high risk).
     #[test]
     fn network_and_x11_high() {
         let mut p = PermissionSet::strict_gui();
@@ -332,7 +334,7 @@ mod tests {
 
     /// Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not.
     #[test]
-    fn sensitive_paths() {
+    fn key_and_system_folders_count_as_sensitive() {
         assert!(is_sensitive_path("~/.ssh"));
         assert!(is_sensitive_path("~/.ssh/id_rsa"));
         assert!(is_sensitive_path("/etc"));

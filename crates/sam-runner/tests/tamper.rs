@@ -53,3 +53,22 @@ fn a_record_with_a_climbing_id_reaches_nothing() {
     assert!(sam.remove("../../victim", false).is_err());
     assert!(victim.exists());
 }
+
+/// Regression (found in the test audit): "go back to the earlier version"
+/// moved the file a record named as the backup, wherever it was. A record
+/// changed outside SAM could make SAM move any of the user's files. Only
+/// files in SAM's own backup folder are moved now.
+#[test]
+fn undoing_an_update_never_moves_files_outside_sams_backup_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = one_app(tmp.path());
+    let victim = tmp.path().join("id_rsa");
+    fs::write(&victim, "secret").unwrap();
+    let file = sam.paths.app_file(&id);
+    let mut rec: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    rec["update_backup"] = serde_json::json!({"file": victim, "original_path": tmp.path().join("stolen"), "replaced_at": 0});
+    fs::write(&file, rec.to_string()).unwrap();
+    assert!(sam.undo_update(&id).is_err());
+    assert!(victim.exists(), "the user's file was moved");
+    assert!(!tmp.path().join("stolen").exists());
+}

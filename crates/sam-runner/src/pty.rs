@@ -596,6 +596,7 @@ mod tests {
         (out, f)
     }
 
+    /// Ordinary terminal output, colors and links pass through the relay unchanged.
     #[test]
     fn ordinary_output_passes_unchanged() {
         let s: &[u8] =
@@ -605,6 +606,7 @@ mod tests {
         assert!(f.blocked.is_empty());
     }
 
+    /// Escape codes that read or write the clipboard are removed from an app's terminal output.
     #[test]
     fn clipboard_codes_are_removed() {
         // Write (BEL- and ST-terminated) and the read request.
@@ -623,6 +625,7 @@ mod tests {
         assert_eq!(f.blocked.len(), 3);
     }
 
+    /// Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed.
     #[test]
     fn title_reports_and_tmux_passthrough_are_removed() {
         let (out, f) = run(&[b"\x1b]2;rm -rf ~\x07\x1b[21t\x1b[20tok\x1b[8;24;80t"]);
@@ -636,6 +639,7 @@ mod tests {
         assert_eq!(out, b"\x1bPq#0;2;0;0;0\x1b\\");
     }
 
+    /// An escape code hidden inside a removed code cannot slip through.
     #[test]
     fn an_escape_inside_a_removed_code_starts_a_new_sequence() {
         let (out, _) = run(&[b"\x1b]52;c;abc\x1b[31mred"]);
@@ -644,6 +648,7 @@ mod tests {
         assert_eq!(out, b"after");
     }
 
+    /// Logs get plain text without escape codes.
     #[test]
     fn plain_text_for_the_log() {
         assert_eq!(plain_text(b"\x1b[1mbold\x1b[0m\r\n\x1b]0;t\x07x\ty\x1b(B"), "bold\nx\ty");
@@ -651,7 +656,7 @@ mod tests {
 
     /// Apps started from a terminal get SAM's terminal relay; apps without a terminal get none.
     #[test]
-    fn mode_choice() {
+    fn terminal_apps_get_sams_terminal_relay() {
         assert_eq!(TerminalMode::choose(true, true, true), TerminalMode::Relay);
         assert_eq!(TerminalMode::choose(false, true, true), TerminalMode::Relay, "GUI apps started from a terminal too");
         assert_eq!(TerminalMode::choose(true, false, true), TerminalMode::Headless);
@@ -713,6 +718,7 @@ mod tests {
         assert_eq!(queued, 0, "leftover terminal replies were discarded");
     }
 
+    /// An app on SAM's terminal relay cannot type into the user's real terminal.
     #[test]
     fn the_app_cannot_reach_the_outer_terminal() {
         // A program on SAM's pseudo-terminal: its output arrives filtered,

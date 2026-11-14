@@ -257,7 +257,7 @@ mod tests {
 
     /// Dangerous settings (X11, full home, system bus, network an app does not need) each produce a warning.
     #[test]
-    fn required_warnings() {
+    fn each_dangerous_setting_produces_its_warning() {
         let mut p = PermissionSet::strict_gui();
         p.display.x11 = true;
         p.filesystem.home = true;
@@ -272,12 +272,14 @@ mod tests {
         }
     }
 
+    /// SAM's strictest window profile produces no danger warning.
     #[test]
     fn strict_has_no_danger() {
         let w = evaluate(&PermissionSet::strict_gui(), &WarningContext::all_enabled());
         assert!(w.iter().all(|w| w.severity != Severity::Danger));
     }
 
+    /// The X11 warning disappears when the user turns it off in the preferences.
     #[test]
     fn x11_warning_can_be_disabled() {
         let mut p = PermissionSet::strict_gui();

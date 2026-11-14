@@ -452,6 +452,22 @@ fn log_stamp(path: &Path) -> (String, String, u32) {
 mod tests {
     use super::*;
 
+    /// A preset is always stored inside the presets folder, whatever its name:
+    /// names like "../../evil" or "/etc/x" (typed, or from an imported file)
+    /// cannot place a file elsewhere.
+    #[test]
+    fn preset_names_cannot_place_files_outside_the_presets_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let store = PresetStore::new(&paths);
+        for name in ["../../evil", "/etc/evil", "..", "a/../../b"] {
+            let mut p = Preset { name: name.into(), ..Default::default() };
+            let file = store.save(&mut p).unwrap();
+            assert_eq!(file.parent(), Some(paths.presets_dir().as_path()), "{name} → {}", file.display());
+        }
+        assert!(!tmp.path().join("evil.toml").exists() && !tmp.path().parent().unwrap().join("evil.toml").exists());
+    }
+
     /// Regression (found in the test audit): a record changed outside SAM
     /// with an id like "../../.ssh" would have pointed the folders SAM
     /// deletes on removal (private home, logs) outside SAM's own folders.
@@ -469,8 +485,9 @@ mod tests {
         assert_eq!(ids, vec!["appimage-ok-1"]);
     }
 
+    /// The newest log is found even when two logs start within the same second.
     #[test]
-    fn latest_log_within_one_second() {
+    fn the_newest_log_is_found_even_within_one_second() {
         let tmp = tempfile::tempdir().unwrap();
         let logs = Logs::new(&Paths::rooted(tmp.path()));
         let first = logs.new_log_path("appimage-x-1", LogKind::Launch).unwrap();
@@ -483,8 +500,9 @@ mod tests {
         assert_eq!(logs.latest("appimage-x-1", None).unwrap().unwrap().path, second);
     }
 
+    /// Apps are found by name or ID, and an ambiguous name is refused.
     #[test]
-    fn registry_roundtrip_and_resolve() {
+    fn apps_are_found_by_name_or_id_and_ambiguous_names_are_refused() {
         let tmp = tempfile::tempdir().unwrap();
         let paths = Paths::rooted(tmp.path());
         let reg = Registry::new(&paths);
@@ -504,7 +522,7 @@ mod tests {
 
     /// Presets in the older flat format still load.
     #[test]
-    fn flat_preset_format() {
+    fn presets_in_the_older_flat_format_still_load() {
         let s = r#"
 [preset]
 name = "My Browser"
@@ -531,7 +549,7 @@ dbus_system = "none"
 
     /// A saved preset loads back unchanged, found by its name in any letter case.
     #[test]
-    fn preset_store_roundtrip() {
+    fn a_saved_preset_loads_back_unchanged() {
         let tmp = tempfile::tempdir().unwrap();
         let store = PresetStore::new(&Paths::rooted(tmp.path()));
         let mut p = Preset { name: "My Preset".into(), permissions: PermissionSet::strict_gui(), ..Default::default() };

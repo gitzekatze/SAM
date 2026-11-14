@@ -353,7 +353,7 @@ mod tests {
 
     /// The header of a zsync file is read (file name, size, checksum).
     #[test]
-    fn reads_zsync_header() {
+    fn the_zsync_header_is_read() {
         let z = b"zsync: 0.6.2\nFilename: App-2.0-x86_64.AppImage\nMTime: Tue, 10 Nov 2026 10:00:00 +0000\nBlocksize: 2048\nLength: 123\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n\n\x00\x01binary";
         let h = zsync_header(z).unwrap();
         assert_eq!(h.sha1, "0123456789abcdef0123456789abcdef01234567");
@@ -363,7 +363,7 @@ mod tests {
 
     /// Download addresses in zsync files are resolved, and plain-HTTP addresses are refused.
     #[test]
-    fn resolves_file_addresses() {
+    fn update_download_addresses_are_resolved_and_http_refused() {
         let z = "https://github.com/o/r/releases/download/v1/App.AppImage.zsync";
         assert_eq!(resolve(z, "App.AppImage").unwrap(), "https://github.com/o/r/releases/download/v1/App.AppImage");
         assert_eq!(resolve(z, "https://cdn.example.org/App.AppImage").unwrap(), "https://cdn.example.org/App.AppImage");
@@ -374,7 +374,7 @@ mod tests {
 
     /// Update downloads use HTTPS only; HTTP and file addresses are refused.
     #[test]
-    fn only_https() {
+    fn updates_are_downloaded_over_https_only() {
         assert!(fetch("http://example.org/App.zsync", None).is_err());
         assert!(fetch("file:///etc/passwd", None).is_err());
     }

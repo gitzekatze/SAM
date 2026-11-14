@@ -79,7 +79,7 @@ fn runtime_has(name: &str) -> bool {
 
 /// Inside a real sandbox, each permission grants exactly its access and nothing more.
 #[test]
-fn permission_matrix() {
+fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     if !bwrap_works() {
         eprintln!("skipping: bubblewrap is not functional here");
         return;

@@ -201,7 +201,7 @@ mod tests {
 
     /// The desktop file inside an AppImage is read with name, translations, categories and file types.
     #[test]
-    fn parses_desktop_entry() {
+    fn the_desktop_file_inside_an_appimage_is_read() {
         let t = "[Desktop Entry]\nName=Krita\nName[de]=Krita DE\nComment=Digital painting\nIcon=krita\nExec=krita %F\nCategories=Graphics;2DGraphics;\nMimeType=image/png;\n[Desktop Action new]\nName=New\n";
         let m = parse_desktop(t);
         assert_eq!(m["Name"], "Krita");
@@ -209,6 +209,7 @@ mod tests {
         assert_eq!(split_list(m.get("Categories")), vec!["Graphics", "2DGraphics"]);
     }
 
+    /// Name, icon and categories are read from the unpacked app.
     #[test]
     fn reads_metadata_and_icon() {
         let d = tempfile::tempdir().unwrap();

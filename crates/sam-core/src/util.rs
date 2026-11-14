@@ -173,14 +173,14 @@ mod tests {
 
     /// Names become safe identifiers made of lowercase letters, digits and dashes.
     #[test]
-    fn slug() {
+    fn names_become_safe_identifiers() {
         assert_eq!(slugify("Krita 5.2 (x86_64)"), "krita-5-2-x86-64");
         assert_eq!(slugify("--Hello__World--"), "hello-world");
     }
 
     /// Shell quoting keeps spaces, quotes and empty strings intact.
     #[test]
-    fn quote() {
+    fn shell_quoting_keeps_spaces_and_quotes_intact() {
         assert_eq!(shell_quote("abc"), "abc");
         assert_eq!(shell_quote("a b"), "'a b'");
         assert_eq!(shell_quote("it's"), "'it'\\''s'");
@@ -192,6 +192,7 @@ mod tests {
 mod display_safe_tests {
     use super::display_safe;
 
+    /// Text from an app is shown without markup or control characters, and long text is shortened.
     #[test]
     fn neutralizes_markup_and_controls() {
         assert_eq!(display_safe("<b>X</b>\u{7}", 100), "‹b›X‹/b›");

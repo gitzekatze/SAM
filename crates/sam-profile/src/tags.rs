@@ -137,11 +137,13 @@ mod tests {
         permission_tags(p).into_iter().map(|t| t.label).collect()
     }
 
+    /// An app with SAM's strictest window profile shows no tags, because it has nothing beyond the basics.
     #[test]
     fn a_strict_window_app_has_no_tags() {
         assert!(labels(&PermissionSet::strict_gui()).is_empty(), "{:?}", labels(&PermissionSet::strict_gui()));
     }
 
+    /// Tags appear in the family order Network, Files, Devices, Desktop, and read-only access is marked.
     #[test]
     fn tags_follow_the_family_order_and_mark_read_only() {
         let mut p = PermissionSet::strict_gui();
@@ -164,6 +166,7 @@ mod tests {
         assert!(tags.iter().any(|t| t.key == "display.x11" && t.family == Family::Desktop));
     }
 
+    /// Dangerous access gets red tags, and the filtered desktop bus, which every app has, gets none.
     #[test]
     fn dangerous_access_is_red_and_filtered_bus_has_no_tag() {
         let mut p = PermissionSet::strict_gui();

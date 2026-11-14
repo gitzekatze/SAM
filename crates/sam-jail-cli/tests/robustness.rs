@@ -44,6 +44,7 @@ fn damaged_in(dir: &Path) -> usize {
 
 const RECORD: &str = r#"{"id": "appimage-demo-1234", "name": "Demo", "source_path": "/nonexistent/Demo.AppImage"}"#;
 
+/// Files from older SAM versions are migrated to the current format, and the originals are kept.
 #[test]
 fn old_formats_are_migrated_and_kept() {
     let e = env();
@@ -65,6 +66,7 @@ fn old_formats_are_migrated_and_kept() {
     assert_eq!(fs::read_to_string(e.data.join("apps/appimage-demo-1234.json.format0.bak")).unwrap(), RECORD);
 }
 
+/// Files from a newer SAM are never changed by an older one.
 #[test]
 fn newer_formats_are_left_untouched() {
     let e = env();
@@ -89,6 +91,7 @@ fn newer_formats_are_left_untouched() {
     assert_eq!(damaged_in(&e.data.join("apps")), 0, "a newer record is not damaged");
 }
 
+/// Damaged files are moved aside and reported, and SAM carries on.
 #[test]
 fn damaged_files_are_moved_aside_and_reported() {
     let e = env();
@@ -118,6 +121,7 @@ fn damaged_files_are_moved_aside_and_reported() {
     assert_eq!(damaged_in(&e.config), 0);
 }
 
+/// Mangled files never make SAM crash.
 #[test]
 fn mangled_files_never_crash() {
     let cfg = "format = 1\n[general]\ntheme = \"dark\"\nscan_directories = [\"~/Applications\"]\n[security]\nwarn_x11 = true\n[extraction]\nmax_files = 1000\n";
@@ -146,6 +150,7 @@ fn mangled_files_never_crash() {
     }
 }
 
+/// `sam-jail version` answers with the JSON interface version even when the configuration cannot be read.
 #[test]
 fn version_reports_the_json_interface() {
     let e = env();

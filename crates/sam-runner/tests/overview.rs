@@ -8,8 +8,9 @@ use sam_core::Paths;
 use sam_intake::testkit::{build, FixtureSpec};
 use sam_runner::ops::{AddOptions, Sam};
 
+/// AppImages are listed before they have a sandbox; only creating the sandbox adds SAM's menu entry and hides unsandboxed ones, and removing it puts them back.
 #[test]
-fn discover_sandbox_hide_and_restore() {
+fn found_appimages_get_a_menu_entry_only_with_a_sandbox() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let apps_dir = root.join("Applications");

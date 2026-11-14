@@ -858,7 +858,7 @@ mod tests {
 
     /// Bubblewrap setup errors are told apart from errors of the app itself.
     #[test]
-    fn failure_classification() {
+    fn sandbox_setup_errors_are_told_apart_from_app_errors() {
         assert!(classify_failure(Some(1), "bwrap: Can't mount proc").0);
         assert!(classify_failure(Some(127), "").0);
         assert!(!classify_failure(Some(1), "app error").0);
@@ -871,7 +871,7 @@ mod tests {
 
     /// A start is judged by whether Bubblewrap announced the app, not by what the app printed.
     #[test]
-    fn launch_outcomes() {
+    fn a_start_is_judged_by_whether_the_app_started() {
         let started = Some(r#"{"child-pid": 7}"#);
         let never_started = Some(r#"{"exit-code": 1}"#);
 

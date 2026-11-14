@@ -145,7 +145,7 @@ mod tests {
     /// its only Rust decoder is GPL-2.0-only, which SAM's GPL-3.0-or-later
     /// cannot include; such rare images go to the host's unsquashfs.)
     #[test]
-    fn every_compression_unpacks() {
+    fn appimages_with_every_compression_unpack() {
         for (c, name) in [(Compressor::Gzip, "gzip"), (Compressor::Xz, "xz"), (Compressor::Lz4, "lz4"), (Compressor::Zstd, "zstd")] {
             let d = tempfile::tempdir().unwrap();
             let img = d.path().join("Hello-1.0-x86_64.AppImage");
@@ -162,8 +162,9 @@ mod tests {
         }
     }
 
+    /// A built AppImage is recognized and unpacked, with setuid bits removed.
     #[test]
-    fn build_detect_extract_roundtrip() {
+    fn a_built_appimage_is_detected_and_unpacked_safely() {
         let d = tempfile::tempdir().unwrap();
         let img = d.path().join("Hello-1.0-x86_64.AppImage");
         let mut spec = FixtureSpec::hello("Hello");
@@ -198,6 +199,7 @@ mod tests {
         assert!(out2.appdir.join("AppRun").is_file());
     }
 
+    /// Unpacking stops at the size limit and leaves no partial files behind.
     #[test]
     fn size_limit_aborts_and_cleans_up() {
         let d = tempfile::tempdir().unwrap();

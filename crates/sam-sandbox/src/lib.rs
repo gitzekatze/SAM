@@ -1314,6 +1314,7 @@ mod tests {
         v.windows(seq.len()).any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
     }
 
+    /// Games built with SDL get a silent sound driver when sound is off, so they start instead of failing.
     #[test]
     fn sdl_gets_its_silent_driver_without_sound_access() {
         let mut ctx = sample_context();
@@ -1322,6 +1323,7 @@ mod tests {
         assert!(!args_of(&ctx).iter().any(|x| x == "SDL_AUDIODRIVER"));
     }
 
+    /// Extra library folders of the system loader (for example CUDA) are visible to the app read-only.
     #[test]
     fn the_loaders_extra_library_folders_are_shown_read_only() {
         let mut ctx = sample_context();
@@ -1329,6 +1331,7 @@ mod tests {
         assert!(has_seq(&args_of(&ctx), &["--ro-bind-try", "/opt/cuda/lib64", "/opt/cuda/lib64"]));
     }
 
+    /// The app gets a new terminal session, unless it runs on SAM's terminal relay.
     #[test]
     fn a_new_session_unless_the_app_is_on_sams_own_terminal() {
         let mut ctx = sample_context();
@@ -1337,6 +1340,7 @@ mod tests {
         assert!(!args_of(&ctx).iter().any(|a| a == "--new-session"));
     }
 
+    /// Files and folders named when starting an app are passed in, but never sensitive folders like autostart.
     #[test]
     fn files_and_folders_named_on_the_command_line() {
         let t = tempfile::tempdir().unwrap();
@@ -1395,7 +1399,7 @@ mod tests {
 
     /// The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only.
     #[test]
-    fn strict_profile() {
+    fn the_strictest_profile_shares_nothing_and_keeps_the_app_read_only() {
         let ctx = sample_context();
         let a = args_of(&ctx);
         assert!(a.contains(&"--unshare-net".to_string()));
@@ -1414,6 +1418,7 @@ mod tests {
         assert!(!a.iter().any(|x| x == "/run/dbus/system_bus_socket"));
     }
 
+    /// The X11 login cookie is rewritten for the display number inside the sandbox.
     #[test]
     fn xauthority_gets_the_sandbox_display_number() {
         fn rec(num: &str, cookie: &[u8]) -> Vec<u8> {
@@ -1431,6 +1436,7 @@ mod tests {
         assert!(rewrite_xauthority(&[1, 2, 3], "0", "99").is_empty(), "garbage is dropped");
     }
 
+    /// With a Wayland security context, the app sees only that socket, not the desktop's own.
     #[test]
     fn wayland_security_context_socket_is_used() {
         let mut ctx = sample_context();
@@ -1442,7 +1448,7 @@ mod tests {
 
     /// Each granted permission adds exactly its part to the Bubblewrap command.
     #[test]
-    fn permissions_change_command() {
+    fn each_permission_adds_exactly_its_part_to_the_command() {
         let mut ctx = sample_context();
         let p = &mut ctx.permissions;
         p.network.mode = NetworkMode::Full;
@@ -1465,6 +1471,7 @@ mod tests {
         assert!(!has_seq(&a, &["--bind-try", "/home/tester/Documents"]));
     }
 
+    /// The filtered desktop bus reaches the app only through SAM's proxy.
     #[test]
     fn filtered_dbus_uses_proxy() {
         let mut ctx = sample_context();
@@ -1477,8 +1484,9 @@ mod tests {
         assert!(!has_seq(&cmd.args, &["--setenv", "DBUS_SESSION_BUS_ADDRESS"]));
     }
 
+    /// The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins.
     #[test]
-    fn own_ids_and_tool_stand_ins() {
+    fn the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins() {
         let ctx = sample_context();
         let a = Bubblewrap.build(&ctx).unwrap().args;
         assert!(has_seq(&a, &["--uid", &ctx.host.uid.to_string(), "--gid", &ctx.host.gid.to_string()]));
@@ -1495,6 +1503,7 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ran");
     }
 
+    /// With "local network only", the network namespace is left to pasta.
     #[test]
     fn localhost_network_leaves_netns_to_pasta() {
         let mut ctx = sample_context();
@@ -1503,6 +1512,7 @@ mod tests {
         assert!(!Bubblewrap.build(&ctx).unwrap().args.contains(&"--unshare-net".to_string()));
     }
 
+    /// A writable app folder uses an overlay; the unpacked app itself stays unchanged.
     #[test]
     fn writable_appdir_uses_overlay() {
         let mut ctx = sample_context();
@@ -1517,7 +1527,7 @@ mod tests {
 
     /// Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper.
     #[test]
-    fn helper_and_userns() {
+    fn without_nested_namespaces_user_namespaces_are_disabled() {
         let mut ctx = sample_context();
         ctx.permissions.advanced.allow_userns = false;
         ctx.helper = Some(sam_core::sandbox::SandboxHelper { binary: "/usr/bin/sam-jail-run".into(), spec: "/tmp/spec.json".into() });
@@ -1526,6 +1536,7 @@ mod tests {
         assert!(has_seq(&a, &["--", "/run/sam/sam-jail-run", "--sandbox-exec", "/run/sam/sandbox.json", "--", "/opt/app/AppRun"]));
     }
 
+    /// "Game controllers" exposes only joysticks, never keyboards or mice.
     #[test]
     fn gamepads_only_exposes_joysticks() {
         let t = tempfile::tempdir().unwrap();
@@ -1543,6 +1554,7 @@ mod tests {
         assert_eq!(got, vec![dev.join("event7"), dev.join("js0")]);
     }
 
+    /// With the GPU, the NVIDIA driver modules are visible; other kernel modules are not.
     #[test]
     fn nvidia_modules_are_exposed_with_the_gpu() {
         let t = tempfile::tempdir().unwrap();
@@ -1553,6 +1565,7 @@ mod tests {
         assert!(gpu_module_dirs(&t.path().join("missing")).is_empty());
     }
 
+    /// Extra sockets are passed in only when they really are sockets.
     #[test]
     fn extra_sockets_must_be_sockets() {
         let t = tempfile::tempdir().unwrap();

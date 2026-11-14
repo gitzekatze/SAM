@@ -95,7 +95,7 @@ mod tests {
 
     /// SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0.
     #[test]
-    fn format_rules() {
+    fn files_from_a_newer_sam_are_never_overwritten() {
         assert_eq!(of_json(&serde_json::json!({})), 0);
         assert_eq!(of_json(&serde_json::json!({"format": 1})), 1);
         let d = tempfile::tempdir().unwrap();

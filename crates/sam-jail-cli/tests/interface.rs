@@ -52,6 +52,7 @@ impl Env {
     }
 }
 
+/// The JSON interface lists apps with their tags, changes a permission for several apps, and restores them with the returned "previous" object.
 #[test]
 fn group_list_set_and_restore_round_trip() {
     let e = Env::new();
@@ -79,6 +80,7 @@ fn group_list_set_and_restore_round_trip() {
     assert!(back.as_array().unwrap().iter().all(|x| x["permissions"]["devices"]["webcam"] == false));
 }
 
+/// A group change with an invalid value, an unknown key or no app is refused, and no app changes.
 #[test]
 fn group_set_refuses_bad_input_without_changing_anything() {
     let e = Env::new();
@@ -90,6 +92,7 @@ fn group_set_refuses_bad_input_without_changing_anything() {
     assert_eq!(e.json(&["group", "list"], None), before);
 }
 
+/// The command line lists only the user's own presets; the template is strict, and saved presets carry no built-in flag.
 #[test]
 fn presets_are_the_users_own_only() {
     let e = Env::new();

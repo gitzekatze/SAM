@@ -52,8 +52,9 @@ fn parse(log: &Path) -> HashMap<String, String> {
         .collect()
 }
 
+/// Inside a real sandbox, each profile shows exactly the files and services it allows.
 #[test]
-fn sandbox_end_to_end() {
+fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     if !bwrap_works() {
         eprintln!("skipping: bubblewrap is not functional here");
         return;

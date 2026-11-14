@@ -102,7 +102,7 @@ mod tests {
 
     /// Both forms of update information (a direct zsync address and GitHub releases) are understood.
     #[test]
-    fn parses_both_forms() {
+    fn both_forms_of_update_information_are_understood() {
         assert_eq!(parse("zsync|https://example.org/App.AppImage.zsync"), Some(UpdateSource::Zsync { url: "https://example.org/App.AppImage.zsync".into() }));
         assert_eq!(
             parse("gh-releases-zsync|neovim|neovim|latest|nvim-linux-x86_64.appimage.zsync"),
@@ -120,7 +120,7 @@ mod tests {
 
     /// Wildcards in update information match the right file name and not the build for another processor.
     #[test]
-    fn wildcards() {
+    fn update_wildcards_match_only_the_right_build() {
         assert!(matches("KeePassXC-*-x86_64.AppImage.zsync", "KeePassXC-2.8.1-x86_64.AppImage.zsync"));
         assert!(matches("App-*x86_64.AppImage.zsync", "App-1.2-x86_64.AppImage.zsync"));
         assert!(!matches("App-*x86_64.AppImage.zsync", "App-1.2-aarch64.AppImage.zsync"));

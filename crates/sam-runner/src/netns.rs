@@ -74,6 +74,7 @@ pub fn wrap_localhost(cmd: &mut SandboxCommand, host_ports: &[u16], app_ports: &
 mod tests {
     use super::*;
 
+    /// With "local network only", the app reaches only the ports on this computer the user lists.
     #[test]
     fn only_listed_host_ports() {
         let a = pasta_args(&[], &[]);

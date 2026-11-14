@@ -436,6 +436,7 @@ pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
 mod tests {
     use super::*;
 
+    /// An app that fails to register its bus name gets a repair step that allows exactly that name.
     #[test]
     fn own_name_requests_become_a_repair() {
         let p = PermissionSet::default();
@@ -452,6 +453,7 @@ mod tests {
         );
     }
 
+    /// Error messages in an app's output are mapped to the repair step that fixes them.
     #[test]
     fn analyzer_maps_errors_to_fixes() {
         let p = PermissionSet::strict_gui();
@@ -490,6 +492,7 @@ mod tests {
         assert_eq!(zygote(&nested), vec!["chromium-no-sandbox"]);
     }
 
+    /// The repair ladder leaves out steps already applied and steps that would change nothing.
     #[test]
     fn ladder_skips_applied_and_noop_steps() {
         let mut e = AppEntry::default();

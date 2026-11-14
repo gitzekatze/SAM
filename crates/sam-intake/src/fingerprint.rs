@@ -92,7 +92,7 @@ mod tests {
 
     /// A changed AppImage file is noticed by its fingerprint.
     #[test]
-    fn detects_changes() {
+    fn a_changed_appimage_file_is_noticed() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("a.AppImage");
         fs::write(&p, b"one").unwrap();

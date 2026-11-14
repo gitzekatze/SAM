@@ -62,7 +62,7 @@ mod tests {
 
     /// A readable name is taken from an AppImage's file name, without version and architecture.
     #[test]
-    fn slugs() {
+    fn a_readable_name_is_taken_from_the_file_name() {
         assert_eq!(slug_from_filename(Path::new("krita-5.2.6-x86_64.AppImage")), "krita");
         assert_eq!(slug_from_filename(Path::new("Obsidian-1.6.7.AppImage")), "obsidian");
         assert_eq!(slug_from_filename(Path::new("Some_Great_App-v2-linux-amd64.AppImage")), "some-great-app");
@@ -70,7 +70,7 @@ mod tests {
 
     /// App IDs are stable and unique, also when two AppImages have the same name.
     #[test]
-    fn ids_and_collisions() {
+    fn app_ids_stay_unique_when_names_collide() {
         let id = generate_id("Krita", Path::new("x.AppImage"), "9f3c11223344", |_| false);
         assert_eq!(id, "appimage-krita-9f3c");
         let id2 = generate_id("Krita", Path::new("x.AppImage"), "9f3c11223344", |i| i == "appimage-krita-9f3c");

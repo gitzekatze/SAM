@@ -915,6 +915,7 @@ fn list(v: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Programs that load graphics libraries only at run time are recognized as needing the GPU.
     #[test]
     fn programs_that_load_graphics_at_run_time() {
         let d = tempfile::tempdir().unwrap();
@@ -931,6 +932,7 @@ mod tests {
         assert!(!super::scan_programs(&super::programs(&[prog]), &|_| {}).loads_graphics);
     }
 
+    /// A missing optional library is reported with the feature it provides, not as a broken app.
     #[test]
     fn missing_optional_libraries_name_the_feature() {
         let d = tempfile::tempdir().unwrap();
@@ -964,6 +966,7 @@ mod tests {
         assert!(by_code(&electron, "feature-tray-menu").is_none(), "Electron draws its own tray menus");
     }
 
+    /// Programs that choose the Qt platform themselves (X11 or Wayland) are recognized.
     #[test]
     fn programs_that_choose_the_qt_platform() {
         let d = tempfile::tempdir().unwrap();
@@ -980,6 +983,7 @@ mod tests {
         assert_eq!(scan(b"\x7fELF\0lower_QT_QPA_PLATFORM\0"), None);
     }
 
+    /// A bundled Qt Wayland plugin counts as usable only when its Wayland client library is present.
     #[test]
     fn qt_wayland_plugin_needs_its_client_library() {
         let d = tempfile::tempdir().unwrap();
@@ -990,6 +994,7 @@ mod tests {
         assert!(!super::qt_wayland_usable(&[], &Default::default()));
     }
 
+    /// Start scripts that force X11 are recognized, so SAM grants X11 to those apps.
     #[test]
     fn start_scripts_that_force_x11() {
         let d = tempfile::tempdir().unwrap();
@@ -1025,7 +1030,7 @@ mod tests {
 
     /// When the AppImage starts through a shell script, SAM finds the program the script starts.
     #[test]
-    fn analyzes_script_apprun() {
+    fn the_program_behind_a_start_script_is_found() {
         let d = fake_appdir("#!/bin/sh\nexec \"$APPDIR/usr/bin/app\" \"$@\"\n");
         let opts = AnalyzeOptions { exec_hint: Some("app %F".into()), ..Default::default() };
         let r = analyze_appdir(d.path(), &opts).unwrap();
@@ -1039,12 +1044,13 @@ mod tests {
 
     /// An AppImage that asks for administrator rights (pkexec) is marked as unsafe to sandbox.
     #[test]
-    fn flags_privileged_launcher() {
+    fn an_appimage_asking_for_admin_rights_is_unsafe_to_sandbox() {
         let d = fake_appdir("#!/bin/sh\npkexec \"$APPDIR/usr/bin/app\"\n");
         let r = analyze_appdir(d.path(), &AnalyzeOptions::default()).unwrap();
         assert_eq!(r.verdict, Some(IsolationVerdict::UnsafeToSandbox));
     }
 
+    /// Electron apps are recognized by their markers, and bundled library symlinks are followed.
     #[test]
     fn electron_markers_and_bundled_symlinks() {
         let d = fake_appdir("#!/bin/sh\n");
@@ -1057,6 +1063,7 @@ mod tests {
         assert_eq!(r.bundled_libraries, 2);
     }
 
+    /// Libraries an app finds relative to its own folder ($ORIGIN) are counted as bundled, not as missing.
     #[test]
     fn origin_relative_needed_paths() {
         let d = fake_appdir("#!/bin/sh\n");
@@ -1071,7 +1078,7 @@ mod tests {
 
     /// The C library version an app needs is read from its symbol versions.
     #[test]
-    fn glibc_version_parse() {
+    fn the_c_library_version_an_app_needs_is_read() {
         assert_eq!(parse_glibc_version("GLIBC_2.34"), Some((2, 34)));
         assert_eq!(parse_glibc_version("GLIBC_PRIVATE"), None);
         assert!(host_glibc_version().is_some());

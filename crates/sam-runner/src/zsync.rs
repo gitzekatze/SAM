@@ -307,8 +307,9 @@ mod tests {
             .collect()
     }
 
+    /// An update is rebuilt from the old version plus the changed blocks.
     #[test]
-    fn make_parse_and_rebuild_from_old_version() {
+    fn an_update_is_rebuilt_from_the_old_version_and_changed_blocks() {
         let d = tempfile::tempdir().unwrap();
         // New = old with a changed stretch in the middle, bytes inserted
         // near the start (so the rest shifts) and a different tail.
@@ -344,7 +345,7 @@ mod tests {
 
     /// The rolling checksum of the update transfer matches a direct computation at every offset.
     #[test]
-    fn rolling_matches_direct() {
+    fn the_rolling_checksum_matches_a_direct_computation() {
         let data = sample(10_000, 3);
         let bs = 2048;
         let mut r = rsum(&data[..bs]);
@@ -356,6 +357,7 @@ mod tests {
         }
     }
 
+    /// Compressed or incomplete zsync files are refused.
     #[test]
     fn refuses_compressed_and_broken_files() {
         assert!(parse(b"zsync: 0.6.2\nZ-URL: x.gz\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n\n").is_err());

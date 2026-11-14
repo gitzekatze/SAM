@@ -12,6 +12,7 @@ use sam_runner::ops::{AddOptions, Sam};
 /// Both tests change $HOME: one at a time.
 static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// Uninstalling SAM removes all of its files and restores the menu entries it had hidden.
 #[test]
 fn uninstall_removes_everything_and_restores_menus() {
     let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -62,6 +63,7 @@ fn uninstall_removes_everything_and_restores_menus() {
     assert!(home.exists() && apps_dir.exists(), "nothing else removed");
 }
 
+/// Uninstalling refuses to delete a folder that is not SAM's, such as the home folder.
 #[test]
 fn uninstall_refuses_folders_that_are_not_sams() {
     let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());

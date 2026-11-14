@@ -15,6 +15,7 @@ fn have(tool: &str) -> bool {
     sam_core::util::which(tool).is_some()
 }
 
+/// The signature of a signed AppImage is checked with GnuPG.
 #[test]
 fn signed_appimage_is_checked() {
     if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") || !["gpg", "gpgv", "objcopy"].iter().all(|t| have(t)) {

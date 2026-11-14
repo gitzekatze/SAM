@@ -141,7 +141,7 @@ fn parse(log: &Path) -> HashMap<String, String> {
 
 /// Every security promise holds inside a real sandbox: each breakout attempt fails.
 #[test]
-fn breakout_attempts_fail() {
+fn every_breakout_attempt_from_a_real_sandbox_fails() {
     if !usable() {
         eprintln!("skipping: bubblewrap, sam-jail-run or python3 not available");
         return;

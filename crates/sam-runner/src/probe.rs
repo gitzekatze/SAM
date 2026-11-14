@@ -372,6 +372,7 @@ pub fn listening_ports() -> Vec<u16> {
 mod tests {
     use super::*;
 
+    /// The sandbox check tells a real folder of the user from a private stand-in.
     #[test]
     fn folder_check_tells_real_from_private() {
         let t = tempfile::tempdir().unwrap();

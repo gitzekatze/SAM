@@ -130,6 +130,39 @@ pub fn tag_label(t: &Value) -> gtk::Label {
     l
 }
 
+/// Shift-click: the apps from the anchor (the app clicked before) to `id`,
+/// both included, in the order the list shows them. Without an anchor in
+/// the list, only `id`.
+fn shift_range(shown: &[String], anchor: Option<&str>, id: &str) -> Vec<String> {
+    let Some(to) = shown.iter().position(|s| s == id) else { return Vec::new() };
+    let from = anchor.and_then(|a| shown.iter().position(|s| s == a)).unwrap_or(to);
+    shown[from.min(to)..=from.max(to)].to_vec()
+}
+
+/// Clicking a tag in the filter bar: off → only apps that have it (true) →
+/// only apps that do not have it (false) → off.
+fn next_filter_state(current: Option<bool>) -> Option<bool> {
+    match current {
+        None => Some(true),
+        Some(true) => Some(false),
+        Some(false) => None,
+    }
+}
+
+/// Whether an app is shown: its name contains the search text, it has every
+/// state filter that is on (running, needs review, may not start), and for
+/// each tag filter it has (true) or lacks (false) that permission.
+fn passes_filters(app: &Value, search: &str, states: &BTreeSet<&str>, tags: &BTreeMap<String, bool>) -> bool {
+    if !search.is_empty() && !util::str_of(app, "name").to_lowercase().contains(search) {
+        return false;
+    }
+    if states.iter().any(|s| !util::bool_of(app, s)) {
+        return false;
+    }
+    let have = app.get("tags").and_then(Value::as_array).cloned().unwrap_or_default();
+    tags.iter().all(|(k, want)| have.iter().any(|t| util::str_of(t, "key") == k) == *want)
+}
+
 impl PermsPage {
     pub fn new(app: &Rc<App>) -> Rc<PermsPage> {
         let root = adw::ToolbarView::new();
@@ -424,15 +457,11 @@ impl PermsPage {
                 let Some(me) = w.upgrade() else { return };
                 {
                     let mut f = me.tag_filter.borrow_mut();
-                    // Has → has not → off.
-                    match f.get(&key).copied() {
+                    match next_filter_state(f.get(&key).copied()) {
+                        Some(want) => {
+                            f.insert(key.clone(), want);
+                        }
                         None => {
-                            f.insert(key.clone(), true);
-                        }
-                        Some(true) => {
-                            f.insert(key.clone(), false);
-                        }
-                        Some(false) => {
                             f.remove(&key);
                         }
                     }
@@ -472,15 +501,7 @@ impl PermsPage {
     }
 
     fn matches(&self, a: &Value) -> bool {
-        let q = self.search.borrow();
-        if !q.is_empty() && !util::str_of(a, "name").to_lowercase().contains(q.as_str()) {
-            return false;
-        }
-        if self.status_filter.borrow().iter().any(|s| !util::bool_of(a, s)) {
-            return false;
-        }
-        let tags = a.get("tags").and_then(Value::as_array).cloned().unwrap_or_default();
-        self.tag_filter.borrow().iter().all(|(k, want)| tags.iter().any(|t| util::str_of(t, "key") == k) == *want)
+        passes_filters(a, &self.search.borrow(), &self.status_filter.borrow(), &self.tag_filter.borrow())
     }
 
     // ------------------------------------------------------------ list
@@ -567,17 +588,13 @@ impl PermsPage {
 
     /// Selects (or clears) every app shown between the anchor and `id`.
     fn select_range(&self, id: &str, on: bool) {
-        let shown = self.shown.borrow();
-        let to = shown.iter().position(|s| s == id);
-        let from = self.anchor.borrow().as_ref().and_then(|a| shown.iter().position(|s| s == a)).or(to);
-        if let (Some(a), Some(b)) = (from, to) {
-            let mut sel = self.selected.borrow_mut();
-            for s in &shown[a.min(b)..=a.max(b)] {
-                if on {
-                    sel.insert(s.clone());
-                } else {
-                    sel.remove(s);
-                }
+        let range = shift_range(&self.shown.borrow(), self.anchor.borrow().as_deref(), id);
+        let mut sel = self.selected.borrow_mut();
+        for s in range {
+            if on {
+                sel.insert(s);
+            } else {
+                sel.remove(&s);
             }
         }
     }
@@ -943,6 +960,50 @@ mod tests {
                 assert_eq!(toks.len(), opts.len());
             }
         }
+    }
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Shift-click selects every app between the app clicked before and the
+    /// app clicked now, in either direction; without an earlier click, only
+    /// the app clicked now.
+    #[test]
+    fn shift_click_selects_the_apps_between_two_clicks() {
+        let shown = ids(&["a", "b", "c", "d"]);
+        assert_eq!(shift_range(&shown, Some("b"), "d"), ids(&["b", "c", "d"]));
+        assert_eq!(shift_range(&shown, Some("d"), "b"), ids(&["b", "c", "d"]));
+        assert_eq!(shift_range(&shown, None, "c"), ids(&["c"]));
+        assert_eq!(shift_range(&shown, Some("hidden-by-filter"), "c"), ids(&["c"]));
+        assert!(shift_range(&shown, Some("a"), "not-shown").is_empty());
+    }
+
+    /// A tag filter cycles through three states with each click: only apps
+    /// with the permission, only apps without it, and off.
+    #[test]
+    fn a_tag_filter_cycles_through_has_has_not_and_off() {
+        assert_eq!(next_filter_state(None), Some(true));
+        assert_eq!(next_filter_state(Some(true)), Some(false));
+        assert_eq!(next_filter_state(Some(false)), None);
+    }
+
+    /// The list shows an app only when it passes every filter at once: the
+    /// search text, each state filter, and each tag filter in its state.
+    #[test]
+    fn the_list_shows_only_apps_that_pass_every_filter() {
+        let app = serde_json::json!({"name": "Krita", "running": true, "needs_review": false,
+            "tags": [{"key": "filesystem.pictures"}, {"key": "devices.gpu"}]});
+        let none = BTreeSet::new();
+        let tags = |v: &[(&str, bool)]| v.iter().map(|(k, w)| (k.to_string(), *w)).collect::<BTreeMap<_, _>>();
+        assert!(passes_filters(&app, "", &none, &tags(&[])));
+        assert!(passes_filters(&app, "kri", &none, &tags(&[])), "search ignores case");
+        assert!(!passes_filters(&app, "gimp", &none, &tags(&[])));
+        assert!(passes_filters(&app, "", &BTreeSet::from(["running"]), &tags(&[])));
+        assert!(!passes_filters(&app, "", &BTreeSet::from(["running", "needs_review"]), &tags(&[])), "all states must hold");
+        assert!(passes_filters(&app, "", &none, &tags(&[("filesystem.pictures", true), ("network.mode", false)])));
+        assert!(!passes_filters(&app, "", &none, &tags(&[("devices.gpu", false)])), "has-not filter hides apps with it");
+        assert!(!passes_filters(&app, "", &none, &tags(&[("network.mode", true)])), "has filter hides apps without it");
     }
 
     /// Personal folders explain where they are; other permissions keep

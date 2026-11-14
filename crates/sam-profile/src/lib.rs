@@ -499,6 +499,7 @@ fn needs_x11_only(app: &AppEntry) -> bool {
 #[cfg(test)]
 mod tests {
 
+    /// Terminal programs get no display, GPU or desktop bus access.
     #[test]
     fn terminal_programs_get_no_display() {
         let md = AppImageMetadata { name: "Neovim".into(), categories: vec!["Utility".into(), "TextEditor".into()], terminal: true, ..Default::default() };
@@ -516,7 +517,7 @@ mod tests {
 
     /// The category of an app is recognized from its desktop categories.
     #[test]
-    fn categories() {
+    fn the_app_category_is_recognized_from_its_desktop_categories() {
         assert_eq!(infer_category(&md("Firefox", &["Network", "WebBrowser"]), "", None), Category::Browser);
         assert_eq!(infer_category(&md("Krita", &["Graphics", "2DGraphics"]), "", None), Category::ImageEditor);
         assert_eq!(infer_category(&md("VLC", &["AudioVideo", "Player"]), "", None), Category::MediaPlayer);
@@ -534,7 +535,7 @@ mod tests {
 
     /// Recommended permissions fit the category: a browser gets the network and Downloads, an editor no network.
     #[test]
-    fn recommendations_by_category() {
+    fn recommendations_fit_the_category() {
         let r = recommend(&md("Firefox", &["WebBrowser"]), "", None);
         let p = &r.permissions;
         assert_eq!(p.network.mode, NetworkMode::Full);
@@ -549,7 +550,7 @@ mod tests {
 
     /// What SAM finds in the app (GPU, X11-only toolkit) adjusts the recommendation.
     #[test]
-    fn detection_adjusts_profile() {
+    fn what_sam_finds_in_the_app_adjusts_the_recommendation() {
         let rep = DependencyReport { requirements: Requirements { gpu: true, x11: true, toolkit: "Qt5".into(), ..Default::default() }, ..Default::default() };
         let r = recommend(&md("Tool", &["Utility"]), "", Some(&rep));
         assert!(r.permissions.devices.gpu);
@@ -557,6 +558,7 @@ mod tests {
         assert_eq!(r.permissions.network.mode, NetworkMode::None);
     }
 
+    /// The change check names what an app would lose that it needs, and the dangerous access it would gain.
     #[test]
     fn change_check_flags_removals_and_additions() {
         let recommended = recommend(&md("Firefox", &["WebBrowser"]), "", None).permissions;
@@ -614,6 +616,7 @@ mod tests {
         assert_eq!(check_change(&app, &new).removes_needed, vec!["sound"]);
     }
 
+    /// A new preset starts without home, network or system bus access.
     #[test]
     fn preset_template_is_strict() {
         let p = preset_template().permissions;
@@ -632,6 +635,7 @@ mod own_name_tests {
         AppImageMetadata { desktop_file: Some(file.into()), startup_wm_class: wm_class.into(), ..Default::default() }
     }
 
+    /// The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names.
     #[test]
     fn own_names_from_the_id_and_the_window_class() {
         assert_eq!(

@@ -8,8 +8,9 @@ use sam_core::Paths;
 use sam_intake::testkit::{build, FixtureSpec};
 use sam_runner::ops::{AddOptions, Sam};
 
+/// Freeing space deletes the unpacked copy, and unpacking again brings the app back.
 #[test]
-fn free_space_and_unpack_again() {
+fn freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let img = root.join("Roomy.AppImage");
