@@ -515,9 +515,6 @@ pub struct Preset {
     pub created_at: i64,
     pub modified_at: i64,
     pub compatibility_notes: String,
-    /// Shipped with SAM (read-only; duplicating creates a user copy).
-    #[serde(skip_deserializing)]
-    pub builtin: bool,
 }
 
 /// Summary of a backend's availability on this machine.

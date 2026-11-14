@@ -70,7 +70,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 
 ```toml
 [preset]
-name = "Strict Browser"
+name = "My Browser"
 description = "Browser profile with no home access except Downloads"
 compatibility_notes = ""
 
@@ -93,8 +93,19 @@ and with your current profile. It asks for confirmation if the preset removes
 something the app needs (e.g. the network for a browser) or adds high-risk
 permissions.
 
-## Built-in presets
+## Your own presets only
 
-Strict Browser, Media Player Safe, Game Performance, Untrusted Utility,
-Office Documents Only, Image Editor. Built-in presets are read-only;
-duplicate one to make your own version.
+SAM ships no ready-made presets. SAM's recommendation is made for each app
+from what the app declares and contains, so a set made for a whole category
+(such as "browser" or "game") would replace a fitting recommendation with a
+guess. The category SAM recognizes stays visible as an explanation of the
+recommendation. Save an app's settings with `sam-jail preset save APP NAME`
+or on the app's page, and apply them with `sam-jail preset apply NAME APP`.
+
+## Changing several apps at once
+
+`sam-jail group set KEY VALUE APP…` sets one permission for several apps.
+With `--dry-run` it only lists what each app would lose that it likely needs.
+It prints the settings from before as `previous`; `sam-jail group restore`
+reads that object on stdin and puts them back. `sam-jail group list` shows
+every sandboxed app with its permission tags.

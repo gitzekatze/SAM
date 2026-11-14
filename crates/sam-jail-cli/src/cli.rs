@@ -211,7 +211,12 @@ pub(crate) enum Cmd {
         #[arg(long, default_value_t = 200)]
         tail: usize,
     },
-    /// Manage presets.
+    /// Change permissions of several sandboxed apps at once.
+    Group {
+        #[command(subcommand)]
+        cmd: GroupCmd,
+    },
+    /// Manage your own presets.
     Preset {
         #[command(subcommand)]
         cmd: PresetCmd,
@@ -313,7 +318,30 @@ pub(crate) enum Cmd {
 }
 
 #[derive(Subcommand)]
+pub(crate) enum GroupCmd {
+    /// Every sandboxed app with its permissions and permission tags.
+    List,
+    /// Set one permission to the same value for several apps. Prints the
+    /// settings from before as "previous", for `group restore`.
+    Set {
+        /// Permission key, e.g. network.mode or filesystem.documents.
+        key: String,
+        /// New value, e.g. none, ro, rw, true or false.
+        value: String,
+        #[arg(required = true)]
+        apps: Vec<String>,
+        /// Only report what each app would lose; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Put back the settings that `group set` printed as "previous"
+    /// (JSON on stdin).
+    Restore,
+}
+
+#[derive(Subcommand)]
 pub(crate) enum PresetCmd {
+    /// List your own presets.
     List,
     Show {
         name: String,
@@ -325,15 +353,8 @@ pub(crate) enum PresetCmd {
         #[arg(long, short)]
         yes: bool,
     },
-    /// What applying a preset would change for an AppImage without a
-    /// sandbox (the settings shown now as a PermissionSet on stdin with
-    /// --current-stdin). Changes nothing.
-    Check {
-        name: String,
-        appimage: PathBuf,
-        #[arg(long)]
-        current_stdin: bool,
-    },
+    /// Print a starting point for a new preset (SAM's strictest settings).
+    Template,
     /// Save an app's current permissions as a new preset.
     Save {
         app: String,

@@ -24,7 +24,7 @@ printf '[general]\nscan_directories = ["%s"]\n' "$out/apps-folder" > "$SAM_CONFI
 fail=0
 shot() {
     name=$1; shift
-    "$bin/sam-jail-gui" --screenshot "$out/$name.png" --size 1180x800 --delay 2500 "$@" > "$out/$name.log" 2>&1 || {
+    "$bin/sam-jail-gui" --screenshot "$out/$name.png" --size 1180x800 --delay "${DELAY:-2500}" "$@" > "$out/$name.log" 2>&1 || {
         echo "FAIL $name: exited with $?"; tail -n 30 "$out/$name.log"; fail=1; return; }
     if [ ! -s "$out/$name.png" ]; then
         echo "FAIL $name: no screenshot"; fail=1
@@ -40,6 +40,8 @@ shot start
 shot app --page app
 shot file --page file
 shot presets --page presets
+DELAY=4000 shot permissions --page permissions
+DELAY=4000 shot permissions-narrow --page permissions --size 360x700
 shot preferences --page preferences
 shot diagnostics --page diagnostics
 shot guide --page guide

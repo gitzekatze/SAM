@@ -106,7 +106,10 @@ Every permission has a plain-language explanation and a risk level
   greyed out, so you always see what is on and what is off.
 - **Before a sandbox exists,** the right column shows SAM's recommendation,
   ready to adjust.
-- **Everything else:** presets, troubleshooting, logs, diagnostics and a
+- **All apps at a glance:** *Permissions of All Apps* shows what every
+  sandboxed app may access and changes a permission for several apps at
+  once, with Undo.
+- **Everything else:** your own presets, troubleshooting, logs, diagnostics and a
   built-in user guide (☰ → *User Guide*, also at
   [docs/guide.md](docs/guide.md)).
 - **Handy:** drag and drop folders and AppImages onto the window, with
@@ -187,7 +190,7 @@ sam-jail discover                               # AppImages found, sandboxed or 
 sam-jail sandbox ~/Applications/Krita.AppImage  # create a sandbox
 sam-jail info krita                             # permissions, warnings, dependencies
 sam-jail set krita network.mode none            # change one permission
-sam-jail preset apply "Image Editor" krita      # apply a preset
+sam-jail group set network.mode none krita gimp # one change for several apps
 sam-jail run krita                              # start it (or use the menu entry)
 sam-jail verify krita                           # check that every setting applies
 sam-jail remove krita                           # remove the sandbox; the AppImage stays

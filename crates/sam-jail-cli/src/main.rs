@@ -27,7 +27,7 @@ use cli::*;
 use config_cmd::config_cmd;
 use man::write_man_pages;
 use output::*;
-use presets::preset_cmd;
+use presets::{group_cmd, preset_cmd};
 
 /// Progress as JSON lines on stderr, at most about ten per second (the
 /// first report of each step and the last one always pass).
@@ -549,6 +549,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
         }
         Cmd::Preset { cmd } => preset_cmd(&app, &out, cmd)?,
+        Cmd::Group { cmd } => group_cmd(&app, &out, cmd)?,
         Cmd::Set { app: q, key, value } => {
             let e = app.set_permission(&q, &key, &value)?;
             let v = e.profile.permissions.get_key(&key)?;

@@ -205,7 +205,7 @@ impl Sam {
     pub fn apply_preset(&self, query: &str, preset_name: &str, confirm: bool) -> Result<PresetApply> {
         let mut e = self.resolve(query)?;
         let preset = find_preset(&self.paths, preset_name)?.with_context(|| format!("unknown preset '{preset_name}'"))?;
-        let check = check_preset(&e, &preset);
+        let check = check_change(&e, &preset.permissions);
         if check.needs_confirmation() && !confirm {
             return Ok(PresetApply { preset: preset.name, check, applied: false });
         }
@@ -215,31 +215,8 @@ impl Sam {
         Ok(PresetApply { preset: preset.name, check, applied: true })
     }
 
-    /// The preset check for an AppImage without a sandbox: against SAM's
-    /// recommendation for it and the settings shown now (`current`, else the
-    /// recommendation). Nothing is changed.
-    pub fn check_preset_preview(&self, path: &Path, preset_name: &str, current: Option<PermissionSet>) -> Result<(Preset, sam_profile::PresetCheck)> {
-        let path = fs::canonicalize(path).with_context(|| format!("{} does not exist", path.display()))?;
-        let preset = find_preset(&self.paths, preset_name)?.with_context(|| format!("unknown preset '{preset_name}'"))?;
-        let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
-        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let rec = recommend(&md, &file_name, None);
-        let entry = AppEntry {
-            source_path: path,
-            metadata: md,
-            profile: SandboxProfile { permissions: current.unwrap_or_else(|| rec.permissions.clone()), ..Default::default() },
-            recommended: rec.permissions,
-            ..Default::default()
-        };
-        let check = check_preset(&entry, &preset);
-        Ok((preset, check))
-    }
-
     pub fn save_preset_from_app(&self, query: &str, name: &str, description: &str) -> Result<Preset> {
         let e = self.resolve(query)?;
-        if sam_profile::builtin_presets().iter().any(|b| b.name.eq_ignore_ascii_case(name)) {
-            bail!("'{name}' is a built-in preset name; choose another name");
-        }
         let mut p = Preset {
             name: name.into(),
             description: description.into(),
@@ -249,5 +226,68 @@ impl Sam {
         };
         PresetStore::new(&self.paths).save(&mut p)?;
         Ok(p)
+    }
+
+    // ---------------------------------------------------------- groups
+
+    /// All sandboxed apps with their permissions and tags, for the
+    /// Permissions page.
+    pub fn permission_overview(&self) -> Result<Vec<OverviewApp>> {
+        Ok(self
+            .registry()
+            .list()?
+            .into_iter()
+            .map(|e| {
+                let summary = AppSummary::from_entry(&e);
+                OverviewApp {
+                    tags: sam_profile::tags::permission_tags(&e.profile.permissions),
+                    running: !self.running(&e.id).is_empty(),
+                    needs_review: !e.reviewed,
+                    may_not_start: summary.last_problem.is_some() || matches!(summary.badge, Badge::Broken | Badge::Missing),
+                    permissions: e.profile.permissions.clone(),
+                    summary,
+                }
+            })
+            .collect())
+    }
+
+    /// Sets one permission to the same value for several apps. With
+    /// `dry_run`, only reports what SAM's analysis says each app would lose;
+    /// otherwise saves the apps whose value changes and returns their
+    /// settings from before, so the whole change can be undone at once.
+    pub fn group_change(&self, key: &str, value: &str, ids: &[String], dry_run: bool) -> Result<GroupChange> {
+        let mut out = GroupChange { key: key.into(), value: value.into(), applied: !dry_run, apps: Vec::new(), previous: Default::default() };
+        let mut entries = Vec::new();
+        for id in ids {
+            let e = self.resolve(id)?;
+            let mut new = e.profile.permissions.clone();
+            new.set_key(key, value)?;
+            entries.push((e, new));
+        }
+        for (mut e, new) in entries {
+            let changed = new != e.profile.permissions;
+            out.apps.push(GroupApp {
+                id: e.id.clone(),
+                name: e.display_name().to_string(),
+                check: check_change(&e, &new),
+                running: !self.running(&e.id).is_empty(),
+                changed,
+            });
+            if changed && !dry_run {
+                out.previous.insert(e.id.clone(), std::mem::replace(&mut e.profile.permissions, new));
+                e.profile.preset = None;
+                self.save_profile(&mut e)?;
+            }
+        }
+        Ok(out)
+    }
+
+    /// Puts back the settings a group change returned in `previous`.
+    pub fn group_restore(&self, previous: BTreeMap<String, PermissionSet>) -> Result<usize> {
+        let n = previous.len();
+        for (id, perms) in previous {
+            self.set_permissions(&id, perms)?;
+        }
+        Ok(n)
     }
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Signals of the app page, the sandbox check, launch arguments,
-//! compatibility mode and presets.
+//! compatibility mode and saving the settings as a preset.
 
 use super::*;
 
@@ -28,53 +28,6 @@ impl AppPage {
         self.remove_button.connect_clicked(move |_| {
             if let Some(me) = w.upgrade() {
                 me.remove_sandbox();
-            }
-        });
-        let w = Rc::downgrade(self);
-        self.preset_row.connect_selected_notify(move |r| {
-            let Some(me) = w.upgrade() else { return };
-            if me.updating.get() || r.selected() == 0 {
-                return;
-            }
-            let preset = me.presets.borrow().get(r.selected() as usize - 1).cloned();
-            me.updating.set(true);
-            r.set_selected(0);
-            me.updating.set(false);
-            let (Some(preset), Some(app)) = (preset, me.app()) else { return };
-            let name = util::str_of(&preset, "name").to_string();
-            if me.sandboxed() {
-                let id = me.app_id.clone();
-                glib::spawn_future_local(async move {
-                    if app.apply_preset(&name, &id).await {
-                        me.reload();
-                    }
-                });
-            } else if let Some(p) = preset.get("permissions").cloned() {
-                // No sandbox yet: the preset replaces the settings shown,
-                // after the same check a sandboxed app gets.
-                let current = me.pending.borrow().as_ref().map(|v| v.to_string());
-                let path = me.path.clone();
-                glib::spawn_future_local(async move {
-                    let mut args = vec!["preset", "check", name.as_str(), path.as_str()];
-                    if current.is_some() {
-                        args.push("--current-stdin");
-                    }
-                    match app.backend.call(&args, current).await {
-                        Ok(r) if util::bool_of(&r, "needs_confirmation") => {
-                            let c = r.get("check").cloned().unwrap_or_default();
-                            if !app.confirm_preset(&name, &c).await {
-                                return;
-                            }
-                        }
-                        Ok(_) => {}
-                        Err(e) => {
-                            app.report_error(&e);
-                            return;
-                        }
-                    }
-                    app.toast(&format!("Settings from “{name}”"));
-                    me.on_perms_edited(p);
-                });
             }
         });
         let w = Rc::downgrade(self);
@@ -443,22 +396,14 @@ impl AppPage {
         });
     }
 
-    /// Fills the preset picker.
+    /// Reads the user's presets (to ask before replacing one by name).
     pub(super) fn load_presets(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
         let w = Rc::downgrade(self);
         glib::spawn_future_local(async move {
             if let Ok(list) = app.backend.call(&["preset", "list"], None).await {
                 if let Some(me) = w.upgrade() {
-                    let presets: Vec<Value> = list.as_array().cloned().unwrap_or_default();
-                    let mut labels = vec!["Choose…".to_string()];
-                    labels.extend(presets.iter().map(|p| util::str_of(p, "name").to_string()));
-                    let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-                    me.updating.set(true);
-                    me.preset_row.set_model(Some(&gtk::StringList::new(&refs)));
-                    me.preset_row.set_selected(0);
-                    me.updating.set(false);
-                    *me.presets.borrow_mut() = presets;
+                    *me.presets.borrow_mut() = list.as_array().cloned().unwrap_or_default();
                 }
             }
         });
@@ -472,16 +417,12 @@ impl AppPage {
             return;
         }
         let Some(perms) = self.perms() else { return };
-        let existing = self.presets.borrow().iter().find(|p| util::str_of(p, "name").eq_ignore_ascii_case(&name)).cloned();
+        let exists = self.presets.borrow().iter().any(|p| util::str_of(p, "name").eq_ignore_ascii_case(&name));
         let me = self.clone();
         let app_name = util::plain(&self.name());
         glib::spawn_future_local(async move {
-            if let Some(e) = &existing {
-                if util::bool_of(e, "builtin") {
-                    app.toast(&format!("“{name}” is a built-in preset. Choose another name."));
-                    return;
-                }
-                if !window::confirm(
+            if exists
+                && !window::confirm(
                     &app.window,
                     &format!("Replace “{name}”?"),
                     "A preset with this name exists. Its settings are replaced by the ones shown here. Apps that used it keep their current settings.",
@@ -489,9 +430,8 @@ impl AppPage {
                     true,
                 )
                 .await
-                {
-                    return;
-                }
+            {
+                return;
             }
             let preset = serde_json::json!({
                 "name": name,
@@ -504,7 +444,7 @@ impl AppPage {
             });
             match app.backend.call(&["preset", "put"], Some(preset.to_string())).await {
                 Ok(_) => {
-                    app.toast(&format!("Saved preset “{name}”. Apply it to any app from its Presets section."));
+                    app.toast(&format!("Saved preset “{name}”. Apply it to other apps from the main menu → My Presets."));
                     me.save_preset_row.set_text("");
                     me.load_presets();
                 }

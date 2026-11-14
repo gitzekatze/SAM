@@ -1207,6 +1207,7 @@ dependencies = [
  "sam-core",
  "sam-storage",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

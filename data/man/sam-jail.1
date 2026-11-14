@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail 1 2026-11-10 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail 1 2026-11-14 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail \- SAM \- Sandboxed AppImage Manager: Flatseal\-style permission manager and sandbox launcher for AppImages
 .SH SYNOPSIS
@@ -88,8 +88,11 @@ Delete an app\*(Aqs unpacked copy; the next start unpacks it again
 sam\-jail\-logs(1)
 Show logs for an app
 .TP
+sam\-jail\-group(1)
+Change permissions of several sandboxed apps at once
+.TP
 sam\-jail\-preset(1)
-Manage presets
+Manage your own presets
 .TP
 sam\-jail\-set(1)
 Set one permission, e.g. `sam\-jail set krita network.mode none`

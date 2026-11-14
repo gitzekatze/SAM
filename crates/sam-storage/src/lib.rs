@@ -287,7 +287,6 @@ pub fn parse_preset_toml(s: &str) -> Result<Preset> {
         created_at: file.preset.created_at,
         modified_at: file.preset.modified_at,
         compatibility_notes: file.preset.compatibility_notes,
-        builtin: false,
     })
 }
 
@@ -483,7 +482,7 @@ mod tests {
     fn flat_preset_format() {
         let s = r#"
 [preset]
-name = "Strict Browser"
+name = "My Browser"
 description = "Browser profile with no home access except Downloads"
 
 [permissions]
@@ -499,7 +498,7 @@ dbus_session = "filtered"
 dbus_system = "none"
 "#;
         let p = parse_preset_toml(s).unwrap();
-        assert_eq!(p.name, "Strict Browser");
+        assert_eq!(p.name, "My Browser");
         assert_eq!(p.permissions.network.mode, sam_core::NetworkMode::Full);
         assert_eq!(p.permissions.filesystem.downloads, sam_core::Access::Rw);
         assert!(p.permissions.devices.gpu && p.permissions.audio.enabled && p.permissions.display.x11);

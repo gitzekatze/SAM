@@ -1,5 +1,7 @@
-//! sam-profile: category inference, recommended profiles,
-//! built-in and user presets and preset compatibility checks.
+//! sam-profile: category inference, recommended profiles, the user's
+//! presets, checks of changed settings, and the permission tags.
+
+pub mod tags;
 
 use anyhow::Result;
 use sam_core::permissions::*;
@@ -417,99 +419,67 @@ pub fn compatibility_profile(base: &PermissionSet) -> PermissionSet {
 pub const COMPAT_WARNING: &str =
     "This AppImage may require broader host access to function correctly. SAM can grant additional permissions, but this reduces isolation.";
 
-/// Built-in presets.
-pub fn builtin_presets() -> Vec<Preset> {
-    let mk = |name: &str, desc: &str, notes: &str, p: PermissionSet| {
-        let risk = assess(&p).level;
-        Preset {
-            name: name.into(),
-            description: desc.into(),
-            permissions: p,
-            risk,
-            created_at: 0,
-            modified_at: 0,
-            compatibility_notes: notes.into(),
-            builtin: true,
-        }
-    };
-    let mut strict_browser = base_for(Category::Browser);
-    strict_browser.display.x11 = true;
-    let mut media = base_for(Category::MediaPlayer);
-    media.network.mode = NetworkMode::None;
-    let mut game = base_for(Category::Game);
-    game.network.mode = NetworkMode::Full;
-    game.display.x11 = true;
-    game.devices.input = false;
-    game.devices.gamepads = true;
-    let mut untrusted = PermissionSet::strict_gui();
-    untrusted.dbus.session.mode = DbusMode::None;
-    untrusted.advanced.persistent_home = false;
-    untrusted.advanced.host_themes = false;
-    let office = base_for(Category::Office);
-    let image = base_for(Category::ImageEditor);
-    vec![
-        mk("Strict Browser", "Browser profile with no home access except Downloads", "Enables X11 for browsers without native Wayland.", strict_browser),
-        mk("Media Player Safe", "Offline playback of local Music and Videos", "Streaming services need network access.", media),
-        mk("Game Performance", "GPU, audio, network and XWayland for games", "Controllers need 'Input devices', which is not enabled by default.", game),
-        mk(
-            "Untrusted Utility",
-            "Wayland window only: no files, network, audio or D-Bus. Fresh home on each run.",
-            "Settings are not kept between runs.",
-            untrusted,
-        ),
-        mk("Office Documents Only", "Read and write Documents, nothing else", "", office),
-        mk("Image Editor", "Pictures and Documents with GPU acceleration, offline", "", image),
-    ]
-}
-
-/// Built-in + user presets. User presets with the same name shadow built-ins.
+/// The user's own presets. SAM ships none: the recommendation already
+/// fits each app, and a ready-made category set would only replace it with
+/// a guess.
 pub fn all_presets(paths: &Paths) -> Result<Vec<Preset>> {
-    let user = PresetStore::new(paths).list()?;
-    let mut out: Vec<Preset> = builtin_presets().into_iter().filter(|b| !user.iter().any(|u| u.name.eq_ignore_ascii_case(&b.name))).collect();
-    out.extend(user);
-    Ok(out)
+    PresetStore::new(paths).list()
 }
 
 pub fn find_preset(paths: &Paths, name: &str) -> Result<Option<Preset>> {
     Ok(all_presets(paths)?.into_iter().find(|p| p.name.eq_ignore_ascii_case(name)))
 }
 
+/// A new preset starts from SAM's strictest settings for a window app.
+pub fn preset_template() -> Preset {
+    let permissions = PermissionSet::strict_gui();
+    Preset { risk: assess(&permissions).level, permissions, ..Default::default() }
+}
+
+/// What SAM's analysis says about new settings for an app: what the app
+/// would lose that it likely needs, and what dangerous access it would gain.
+/// Used before a preset or a change on the Permissions page is applied.
 #[derive(Debug, Clone, Serialize, Default)]
-pub struct PresetCheck {
-    /// Permissions the app likely needs that the preset removes.
+pub struct ChangeCheck {
+    /// Things the app likely needs to work that the new settings remove
+    /// ("network access", "X11 display", …): the app may stop working.
     pub removes_needed: Vec<String>,
-    /// High-risk permissions the preset adds compared to the current profile.
+    /// Folders the app was recommended that the new settings hide. The app
+    /// keeps working, but cannot open or save files there.
+    pub removes_folders: Vec<String>,
+    /// High-risk permissions the new settings add compared to the current profile.
     pub adds_dangerous: Vec<String>,
     pub risk_before: RiskLevel,
     pub risk_after: RiskLevel,
 }
 
-impl PresetCheck {
+impl ChangeCheck {
     pub fn needs_confirmation(&self) -> bool {
-        !self.removes_needed.is_empty() || !self.adds_dangerous.is_empty()
+        !self.removes_needed.is_empty() || !self.removes_folders.is_empty() || !self.adds_dangerous.is_empty()
     }
 }
 
-/// Compare a preset against what the app likely needs (its recommendation)
-/// and against its current profile.
-pub fn check_preset(app: &AppEntry, preset: &Preset) -> PresetCheck {
+/// Compares new settings against what the app likely needs (its
+/// recommendation) and against its current profile.
+pub fn check_change(app: &AppEntry, new: &PermissionSet) -> ChangeCheck {
     let need = &app.recommended;
-    let new = &preset.permissions;
     let cur = &app.profile.permissions;
-    let mut c = PresetCheck { risk_before: assess(cur).level, risk_after: assess(new).level, ..Default::default() };
+    let mut c = ChangeCheck { risk_before: assess(cur).level, risk_after: assess(new).level, ..Default::default() };
     let mut removed = |cond: bool, what: &str| {
         if cond {
             c.removes_needed.push(what.to_string());
         }
     };
     removed(need.devices.gpu && !new.devices.gpu, "GPU acceleration");
-    removed(need.audio.enabled && !new.audio.enabled, "audio");
+    removed(need.audio.enabled && !new.audio.enabled, "sound");
     removed(need.network.mode == NetworkMode::Full && new.network.mode != NetworkMode::Full, "network access");
+    removed(need.network.mode == NetworkMode::Localhost && new.network.mode == NetworkMode::None, "the local network");
     removed(need.display.x11 && !new.display.x11 && !(need.display.wayland && new.display.wayland && !needs_x11_only(app)), "X11 display");
     removed(!new.display.x11 && !new.display.wayland && (need.display.x11 || need.display.wayland), "any display access");
+    removed(need.dbus.session.mode != DbusMode::None && new.dbus.session.mode == DbusMode::None, "desktop services (D-Bus)");
     for key in XDG_DIR_KEYS {
         if need.filesystem.xdg_access(key).is_granted() && !new.filesystem.xdg_access(key).is_granted() {
-            c.removes_needed.push(format!("{key} folder"));
+            c.removes_folders.push(format!("{key} folder"));
         }
     }
 
@@ -585,32 +555,33 @@ mod tests {
     }
 
     #[test]
-    fn preset_check_flags_removals_and_additions() {
+    fn change_check_flags_removals_and_additions() {
         let recommended = recommend(&md("Firefox", &["WebBrowser"]), "", None).permissions;
         let app = AppEntry { profile: sam_core::SandboxProfile { permissions: recommended.clone(), ..Default::default() }, recommended, ..Default::default() };
-        let untrusted = builtin_presets().into_iter().find(|p| p.name == "Untrusted Utility").unwrap();
-        let c = check_preset(&app, &untrusted);
+        let mut offline = app.profile.permissions.clone();
+        offline.network.mode = NetworkMode::None;
+        let c = check_change(&app, &offline);
         assert!(c.removes_needed.iter().any(|s| s == "network access"));
         assert!(c.needs_confirmation());
+        assert!(!check_change(&app, &app.profile.permissions).needs_confirmation(), "no change, nothing to report");
 
         let app2 = AppEntry {
             recommended: PermissionSet::strict_gui(),
             profile: sam_core::SandboxProfile { permissions: PermissionSet::strict_gui(), ..Default::default() },
             ..Default::default()
         };
-        let browser = builtin_presets().into_iter().find(|p| p.name == "Strict Browser").unwrap();
-        let c2 = check_preset(&app2, &browser);
-        assert!(c2.adds_dangerous.iter().any(|s| s == "Network"), "{:?}", c2.adds_dangerous);
+        let mut x11 = PermissionSet::strict_gui();
+        x11.display.x11 = true;
+        let c2 = check_change(&app2, &x11);
+        assert!(!c2.adds_dangerous.is_empty(), "{:?}", c2.adds_dangerous);
     }
 
     #[test]
-    fn builtin_presets_are_sane() {
-        let all = builtin_presets();
-        assert_eq!(all.len(), 6);
-        for p in &all {
-            assert!(!p.permissions.filesystem.home, "{} must not grant full home", p.name);
-            assert_eq!(p.permissions.dbus.system.mode, DbusMode::None);
-        }
+    fn preset_template_is_strict() {
+        let p = preset_template().permissions;
+        assert!(!p.filesystem.home);
+        assert_eq!(p.network.mode, NetworkMode::None);
+        assert_eq!(p.dbus.system.mode, DbusMode::None);
     }
 }
 

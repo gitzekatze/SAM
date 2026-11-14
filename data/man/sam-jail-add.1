@@ -1,10 +1,10 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-add 1 2026-11-10 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-add 1 2026-11-14 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-add \- Create a sandbox for an AppImage: extract, profile, add a menu entry
 .SH SYNOPSIS
-\fBsam\-jail add\fR [\fB\-\-allow\-fallback\fR] [\fB\-\-no\-launcher\fR] [\fB\-\-preset\fR] [\fB\-\-accept\fR] [\fB\-\-hide\-duplicates\fR] [\fB\-\-permissions\-stdin\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIPATH\fR> 
+\fBsam\-jail add\fR [\fB\-\-allow\-fallback\fR] [\fB\-\-no\-launcher\fR] [\fB\-\-preset\fR] [\fB\-\-accept\fR] [\fB\-\-hide\-duplicates\fR] [\fB\-\-permissions\-stdin\fR] [\fB\-\-progress\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIPATH\fR> 
 .SH DESCRIPTION
 Create a sandbox for an AppImage: extract, profile, add a menu entry
 .SH OPTIONS
@@ -26,6 +26,9 @@ Hide other menu entries that start this AppImage without a sandbox
 .TP
 \fB\-\-permissions\-stdin\fR
 Use the permissions given as JSON on stdin instead of the recommendation
+.TP
+\fB\-\-progress\fR
+Report progress on stderr, one JSON object per line: {"progress": {"step", "steps", "title", "detail", "fraction"}}
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

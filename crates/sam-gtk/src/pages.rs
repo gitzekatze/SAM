@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SAM's own pages in the right column: preferences, presets (with the
-//! preset editor) and diagnostics.
+//! SAM's own pages in the right column: preferences, the user's own
+//! presets (with the preset editor) and diagnostics.
 
 use crate::i18n::tr;
 use std::cell::RefCell;
@@ -246,25 +246,24 @@ pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
     header.pack_start(&new_btn);
     header.pack_end(&import_btn);
     let list = adw::PreferencesGroup::builder()
-        .title(tr("Presets"))
-        .description(tr("Ready-made sets of permissions. Apply one to an app from its page, or from the menu of a preset."))
+        .title(tr("My Presets"))
+        .description(tr("Sets of permissions you saved under a name. Apply one to an app from the menu of the preset."))
         .build();
     pref.add(&list);
-    let page = page_with("Presets", &pref, &header);
+    let page = page_with("My Presets", &pref, &header);
     let me = Rc::new(Presets { app: Rc::downgrade(app), list, rows: RefCell::default(), presets: RefCell::default() });
 
     let w = Rc::downgrade(&me);
     new_btn.connect_clicked(move |_| {
         if let Some(me) = w.upgrade() {
-            let base = me.presets.borrow().iter().find(|p| util::str_of(p, "name") == "Untrusted Utility").or(me.presets.borrow().first()).cloned();
-            if let Some(mut p) = base {
-                p["name"] = "".into();
-                p["description"] = "".into();
-                p["builtin"] = false.into();
-                p["compatibility_notes"] = "".into();
-                p["created_at"] = 0.into();
-                me.edit(p, true);
-            }
+            let Some(app) = me.app.upgrade() else { return };
+            glib::spawn_future_local(async move {
+                // A new preset starts from SAM's strictest settings.
+                match app.backend.call(&["preset", "template"], None).await {
+                    Ok(p) => me.edit(p, true),
+                    Err(e) => app.report_error(&e),
+                }
+            });
         }
     });
     let w = Rc::downgrade(&me);
@@ -309,16 +308,19 @@ impl Presets {
         }
         let Some(app) = self.app.upgrade() else { return };
         let apps = app.state.borrow().apps.clone();
+        if self.presets.borrow().is_empty() {
+            let row = adw::ActionRow::builder()
+                .title(tr("You have no presets yet"))
+                .subtitle(tr("Save the settings of an app on its page under “My Presets”, or create a new preset with the + button."))
+                .build();
+            self.list.add(&row);
+            self.rows.borrow_mut().push(row);
+        }
         for (i, p) in self.presets.borrow().iter().enumerate() {
-            let builtin = util::bool_of(p, "builtin");
             let row = adw::ActionRow::builder().title(esc(util::str_of(p, "name"))).subtitle(esc(util::str_of(p, "description"))).activatable(true).build();
-            row.add_prefix(&gtk::Image::from_icon_name(if builtin { "starred-symbolic" } else { "document-edit-symbolic" }));
+            row.add_prefix(&gtk::Image::from_icon_name("document-edit-symbolic"));
             let risk = util::str_of(p, "risk");
             row.add_suffix(&util::badge(&util::risk_label(risk), util::risk_tone(risk)));
-            let kind = gtk::Label::new(Some(if builtin { "Built-in" } else { "Custom" }));
-            kind.add_css_class("dim-label");
-            kind.add_css_class("caption");
-            row.add_suffix(&kind);
 
             // Row menu.
             let group = gio::SimpleActionGroup::new();
@@ -333,15 +335,13 @@ impl Presets {
                 menu.append_submenu(Some("Apply to"), &apply_menu);
             }
             let edit = gio::Menu::new();
-            edit.append(Some(if builtin { "View" } else { "Edit" }), Some("row.edit"));
+            edit.append(Some(&tr("Edit")), Some("row.edit"));
             edit.append(Some(&tr("Duplicate")), Some("row.duplicate"));
             edit.append(Some(&tr("Export…")), Some("row.export"));
             menu.append_section(None, &edit);
-            if !builtin {
-                let del = gio::Menu::new();
-                del.append(Some(&tr("Delete")), Some("row.delete"));
-                menu.append_section(None, &del);
-            }
+            let del = gio::Menu::new();
+            del.append(Some(&tr("Delete")), Some("row.delete"));
+            menu.append_section(None, &del);
             let w = Rc::downgrade(self);
             let act = |name: &str, ty: Option<&glib::VariantTy>, f: Box<dyn Fn(&Rc<Presets>, Option<String>)>| {
                 let a = gio::SimpleAction::new(name, ty);
@@ -465,7 +465,6 @@ struct PresetEditor {
 
 impl PresetEditor {
     fn new(app: &Rc<App>, list: &Rc<Presets>, preset: Value, is_new: bool) -> Rc<PresetEditor> {
-        let read_only = util::bool_of(&preset, "builtin");
         let catalog = app.state.borrow().catalog.clone();
         let editor = Editor::new(catalog, &app.window);
         let pref = adw::PreferencesPage::new();
@@ -474,16 +473,11 @@ impl PresetEditor {
         header.pack_start(&back);
         let save = gtk::Button::builder().label(tr("Save")).build();
         save.add_css_class("suggested-action");
-        if !read_only {
-            header.pack_end(&save);
-        }
-        let g = adw::PreferencesGroup::builder()
-            .title(if is_new { "New Preset" } else { "Preset" })
-            .description(if read_only { "Built-in presets cannot be changed. Duplicate it to make your own version." } else { "" })
-            .build();
-        let name = adw::EntryRow::builder().title(tr("Name")).text(util::str_of(&preset, "name")).sensitive(!read_only && is_new).build();
-        let desc = adw::EntryRow::builder().title(tr("Description")).text(util::str_of(&preset, "description")).sensitive(!read_only).build();
-        let notes = adw::EntryRow::builder().title(tr("Compatibility notes")).text(util::str_of(&preset, "compatibility_notes")).sensitive(!read_only).build();
+        header.pack_end(&save);
+        let g = adw::PreferencesGroup::builder().title(if is_new { "New Preset" } else { "Preset" }).build();
+        let name = adw::EntryRow::builder().title(tr("Name")).text(util::str_of(&preset, "name")).sensitive(is_new).build();
+        let desc = adw::EntryRow::builder().title(tr("Description")).text(util::str_of(&preset, "description")).build();
+        let notes = adw::EntryRow::builder().title(tr("Compatibility notes")).text(util::str_of(&preset, "compatibility_notes")).build();
         g.add(&name);
         g.add(&desc);
         g.add(&notes);
@@ -492,7 +486,6 @@ impl PresetEditor {
         let title = if is_new { "New Preset".to_string() } else { util::str_of(&preset, "name").to_string() };
         let page = page_with(&title, &pref, &header);
         let me = Rc::new(PresetEditor { page, preset: RefCell::new(preset), editor });
-        me.editor.set_editable(!read_only);
         me.refresh(app);
 
         let (w, wa) = (Rc::downgrade(&me), Rc::downgrade(app));

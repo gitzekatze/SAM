@@ -15,7 +15,8 @@
 | Give an app access to a folder | Its page → **Files** |
 | Confirm the sandbox really applies your settings | **Check** next to Launch, results under **Sandbox Check** |
 | Fix an app that does not start | Its page → **Troubleshooting** |
-| Reuse settings for other apps | Its page → **Presets** → *Save these settings as a preset* |
+| Change a permission for several apps | **Permissions of All Apps** above the list, select the apps, change the switch |
+| Reuse settings for other apps | Its page → **My Presets** → *Name for the new preset* |
 | Find out what a label means | Hover over it |
 | Remove a sandbox | **Remove Sandbox** under the Launch button |
 | Close an app that hides in the tray | **Remove Sandbox** offers *Close and Remove*, or `sam-jail stop app` |
@@ -59,7 +60,7 @@
 - **Check**, **Launch** (or **Create Sandbox**) and **Remove Sandbox** sit on the right of the header. In a narrow window, Check moves above Launch.
 - **Below the header** come all settings and tools for the app, always visible. Settings that do not apply right now are greyed out, never hidden.
 - **SAM's logo** at the top left opens the start page (no AppImage selected).
-- The **☰ menu** at the top left opens this guide, **Presets**, **Diagnostics**, **Preferences** and *About SAM* in the right column.
+- The **☰ menu** at the top left opens this guide, **My Presets**, **Diagnostics**, **Preferences** and *About SAM* in the right column.
 
 ---
 
@@ -123,13 +124,26 @@ Programs that run in a terminal (Helix, Neovim, command-line tools) open in your
 
 ---
 
-## Presets
+## Permissions of All Apps
 
-A preset is a named set of permissions you can apply to any app.
+The button **Permissions of All Apps** above the list of AppImages opens a page that shows every sandboxed app with tags for what it may access. The tags use the same words as the switches and come in four groups: Network, Files, Devices and Desktop. Their color shows the risk (calm, think twice, dangerous); a filled tag means read and write access, an outlined tag means read-only or limited access.
 
-- **Start from a preset** applies one. Before the sandbox exists, it replaces the recommended settings shown.
-- **Save these settings as a preset** stores the current settings under a name of your choice.
-- **☰ → Presets** lists all presets. Built-in ones can be viewed and duplicated; your own can be edited, exported, imported and deleted.
+- **Filter** by clicking a tag above the list: the first click shows only the apps that have this permission, the second click shows only the apps without it, and the third click turns the filter off. *Running*, *Needs review* and *May not start* filter by state.
+- **Select** apps with the check boxes. Shift-click selects a range, and *Select all* selects every app the filter shows. Clicking an app selects only that app.
+- **One app selected:** the right side shows the same permission settings as the app's own page.
+- **Several apps selected:** the right side shows the permissions that make sense for a group (network, personal folders, sound, camera, game controllers, X11 and desktop services). Where the selected apps differ, a permission appears once per value, with the apps that have that value listed below it. Changing the big switch changes all apps of that row; changing the small switch next to an app moves only that app.
+- Changes apply at once. A message at the bottom offers **Undo** for the whole change. SAM asks first only when its analysis says that an app would stop working, for example when a chat app would lose the internet or an X11-only app would lose X11.
+- Apps that are running keep their old settings until they start the next time.
+
+---
+
+## My Presets
+
+A preset is a named set of permissions you saved yourself. SAM ships no ready-made presets, because the settings SAM recommends for each app already fit that app better than a set made for a whole category.
+
+- On an app's page, **My Presets** → *Name for the new preset* saves the app's current settings under that name.
+- **☰ → My Presets** lists your presets. From the menu of a preset you can apply it to an app, edit, duplicate, export or delete it; the buttons in the header create a new preset or import one.
+- Before a preset is applied, SAM compares it with what the app likely needs and asks if the preset would remove something important.
 
 ---
 

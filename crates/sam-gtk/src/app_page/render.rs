@@ -267,13 +267,6 @@ impl AppPage {
         self.notices.set_visible(true);
 
         self.preset_group.set_visible(have_data);
-        if let Some(e) = entry.as_ref() {
-            let p = util::get(e, "profile.preset").and_then(Value::as_str).map(String::from);
-            self.preset_row.set_subtitle(&match p {
-                Some(p) => format!("Current settings come from “{}”.", esc(&p)),
-                None => "Replaces the settings below.".into(),
-            });
-        }
 
         self.render_launch_group(entry.as_ref(), &app);
         self.render_menu_group();

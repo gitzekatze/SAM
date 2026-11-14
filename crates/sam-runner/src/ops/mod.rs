@@ -1,5 +1,6 @@
 //! The [`SAM`] facade: every user-level operation, shared by CLI and GUI.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -16,7 +17,7 @@ use sam_intake::extract::{extract, ExtractRequest, NeedsFallbackConsent};
 use sam_intake::fingerprint::{self, SourceStatus};
 use sam_intake::normalize::Limits;
 use sam_intake::{desktop, id, menu, metadata, peek};
-use sam_profile::{check_preset, compatibility_profile, find_preset, recommend, PresetCheck};
+use sam_profile::{check_change, compatibility_profile, find_preset, recommend, ChangeCheck};
 use sam_storage::{LogKind, Logs, PresetStore, Registry};
 use serde::Serialize;
 
@@ -128,8 +129,42 @@ pub struct Evaluation {
 #[derive(Debug, Clone, Serialize)]
 pub struct PresetApply {
     pub preset: String,
-    pub check: PresetCheck,
+    pub check: ChangeCheck,
     pub applied: bool,
+}
+
+/// A sandboxed app as the Permissions page shows it.
+#[derive(Debug, Clone, Serialize)]
+pub struct OverviewApp {
+    #[serde(flatten)]
+    pub summary: AppSummary,
+    pub permissions: PermissionSet,
+    pub tags: Vec<sam_profile::tags::Tag>,
+    pub running: bool,
+    pub needs_review: bool,
+    /// The last start failed, or the AppImage file is missing or damaged.
+    pub may_not_start: bool,
+}
+
+/// One permission changed for several apps (see `Sam::group_change`).
+#[derive(Debug, Clone, Serialize)]
+pub struct GroupChange {
+    pub key: String,
+    pub value: String,
+    pub applied: bool,
+    pub apps: Vec<GroupApp>,
+    /// The settings of the changed apps from before the change, for Undo.
+    pub previous: BTreeMap<String, PermissionSet>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GroupApp {
+    pub id: String,
+    pub name: String,
+    pub check: ChangeCheck,
+    pub running: bool,
+    /// The app had another value before.
+    pub changed: bool,
 }
 
 impl Sam {

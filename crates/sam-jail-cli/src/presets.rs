@@ -8,8 +8,11 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
         PresetCmd::List => {
             let all = sam_profile::all_presets(&app.paths)?;
             out.emit(&all, || {
+                if all.is_empty() {
+                    println!("You have no presets yet. Save an app's settings with `sam-jail preset save APP NAME`.");
+                }
                 for p in &all {
-                    println!("{:<26} {:<10} {}{}", p.name, risk_str(p.risk), p.description, if p.builtin { "  (built-in)" } else { "" });
+                    println!("{:<26} {:<10} {}", p.name, risk_str(p.risk), p.description);
                 }
             });
         }
@@ -34,28 +37,15 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                 }
             });
         }
-        PresetCmd::Check { name, appimage, current_stdin } => {
-            let current: Option<PermissionSet> =
-                if current_stdin { Some(serde_json::from_str(&read_stdin()?).context("expected a PermissionSet as JSON on stdin")?) } else { None };
-            let (p, c) = app.check_preset_preview(&appimage, &name, current)?;
-            out.emit(&json!({"preset": p.name, "permissions": p.permissions, "check": c, "needs_confirmation": c.needs_confirmation()}), || {
-                for s in &c.removes_needed {
-                    println!("  {} removes {s}, which the app likely needs", paint("warning:", "33"));
-                }
-                for s in &c.adds_dangerous {
-                    println!("  {} adds high-risk permission: {s}", paint("warning:", "31"));
-                }
-                println!("'{}': risk {} → {}", p.name, c.risk_before, c.risk_after);
-            });
+        PresetCmd::Template => {
+            let p = sam_profile::preset_template();
+            out.emit(&p, || print!("{}", preset_to_toml(&p).unwrap_or_default()));
         }
         PresetCmd::Save { app: q, name, description } => {
             let p = app.save_preset_from_app(&q, &name, &description)?;
             out.emit(&p, || println!("Saved preset '{}' ({})", p.name, p.risk));
         }
         PresetCmd::Delete { name } => {
-            if sam_profile::builtin_presets().iter().any(|b| b.name.eq_ignore_ascii_case(&name)) && store.get(&name)?.is_none() {
-                bail!("built-in presets cannot be deleted");
-            }
             let ok = store.delete(&name)?;
             if !ok {
                 bail!("no user preset named '{name}'");
@@ -68,16 +58,12 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                 bail!("a preset named '{new_name}' already exists");
             }
             p.name = new_name;
-            p.builtin = false;
             p.created_at = 0;
             store.save(&mut p)?;
             out.emit(&p, || println!("Created preset '{}'", p.name));
         }
         PresetCmd::Import { file } => {
             let mut p = read_preset_file(&file)?;
-            if sam_profile::builtin_presets().iter().any(|b| b.name.eq_ignore_ascii_case(&p.name)) {
-                p.name = format!("{} (imported)", p.name);
-            }
             let path = store.save(&mut p)?;
             out.emit(&p, || println!("Imported '{}' → {}", p.name, tildify(&path)));
         }
@@ -101,14 +87,51 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                 Ok(p) => p,
                 Err(_) => parse_preset_toml(&input).context("expected a preset as JSON or TOML on stdin")?,
             };
-            if sam_profile::builtin_presets().iter().any(|b| b.name.eq_ignore_ascii_case(&p.name)) {
-                bail!("'{}' is a built-in preset; duplicate it to make changes", p.name);
-            }
             if let Some(existing) = store.get(&p.name)? {
                 p.created_at = existing.created_at;
             }
             store.save(&mut p)?;
             out.emit(&p, || println!("Saved preset '{}'", p.name));
+        }
+    }
+    Ok(())
+}
+
+/// `sam-jail group …`
+pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
+    match cmd {
+        GroupCmd::List => {
+            let apps = app.permission_overview()?;
+            out.emit(&apps, || {
+                for a in &apps {
+                    let tags: Vec<&str> = a.tags.iter().map(|t| t.label.as_str()).collect();
+                    println!("{:<28} {}", truncate(&a.summary.name, 28), if tags.is_empty() { "-".to_string() } else { tags.join(", ") });
+                }
+            });
+        }
+        GroupCmd::Set { key, value, apps, dry_run } => {
+            let r = app.group_change(&key, &value, &apps, dry_run)?;
+            out.emit(&r, || {
+                for a in &r.apps {
+                    for s in &a.check.removes_needed {
+                        println!("  {} {} loses {s}, which it likely needs", paint("warning:", "33"), a.name);
+                    }
+                }
+                let n = r.apps.iter().filter(|a| a.changed).count();
+                if dry_run {
+                    println!("Would change {key} to {value} for {n} app(s)");
+                } else {
+                    println!("Changed {key} to {value} for {n} app(s)");
+                    if r.apps.iter().any(|a| a.changed && a.running) {
+                        println!("Running apps use the new settings the next time they start.");
+                    }
+                }
+            });
+        }
+        GroupCmd::Restore => {
+            let previous = serde_json::from_str(&read_stdin()?).context("expected the \"previous\" object of `group set` as JSON on stdin")?;
+            let n = app.group_restore(previous)?;
+            out.emit(&json!({"restored": n}), || println!("Restored the settings of {n} app(s)"));
         }
     }
     Ok(())

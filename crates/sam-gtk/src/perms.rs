@@ -100,7 +100,6 @@ pub struct Editor {
     perms: RefCell<Option<Value>>,
     recommended: RefCell<Option<Value>>,
     evaluation: RefCell<Option<Value>>,
-    editable: Cell<bool>,
     updating: Cell<bool>,
     on_edit: RefCell<Option<Box<dyn Fn(Value)>>>,
     ctls: RefCell<Vec<Ctl>>,
@@ -124,7 +123,6 @@ impl Editor {
             perms: RefCell::new(None),
             recommended: RefCell::new(None),
             evaluation: RefCell::new(None),
-            editable: Cell::new(true),
             updating: Cell::new(false),
             on_edit: RefCell::new(None),
             ctls: RefCell::new(Vec::new()),
@@ -148,11 +146,6 @@ impl Editor {
 
     pub fn connect_edited(&self, f: impl Fn(Value) + 'static) {
         *self.on_edit.borrow_mut() = Some(Box::new(f));
-    }
-
-    pub fn set_editable(self: &Rc<Self>, e: bool) {
-        self.editable.set(e);
-        self.refresh();
     }
 
     pub fn set_data(self: &Rc<Self>, perms: Option<Value>, recommended: Option<Value>, evaluation: Option<Value>) {
@@ -606,7 +599,7 @@ impl Editor {
     pub fn refresh(self: &Rc<Self>) {
         self.updating.set(true);
         let has = self.perms.borrow().is_some();
-        let editable = self.editable.get() && has;
+        let editable = has;
         for c in self.ctls.borrow().iter() {
             match c {
                 Ctl::Switch { key, row, sw, badge, avail } => {

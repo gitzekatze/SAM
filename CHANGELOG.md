@@ -9,6 +9,28 @@ version.
 
 ## Unreleased
 
+### Permissions of All Apps
+
+- A new page, opened with *Permissions of All Apps* above the list of
+  AppImages, shows every sandboxed app with tags for what it may access
+  (Network, Files, Devices, Desktop; the color shows the risk, an outline
+  means read-only). Tags above the list filter by permission (has / has
+  not / off) and by state (running, needs review, may not start).
+- Several apps can be selected (check boxes, Shift-click for a range,
+  *Select all* for the filtered apps) and changed together. Where the apps
+  differ, each value gets its own row with the apps below it, and each app
+  has a small switch of its own. Changes apply at once with one Undo for
+  the whole change; SAM asks first only when an app would stop working.
+- `sam-jail group list/set/restore` do the same on the command line.
+
+### Removed
+
+- The six built-in presets (Strict Browser, Media Player Safe, Game
+  Performance, Untrusted Utility, Office Documents Only, Image Editor) and
+  the preset picker on the app page. SAM's recommendation for each app fits
+  better than a set made for a whole category. Your own presets stay, under
+  ☰ → *My Presets*; `sam-jail preset check` is gone with the picker.
+
 ### Security
 
 - Apps started from a terminal never get the user's terminal: SAM puts them

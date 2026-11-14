@@ -56,6 +56,10 @@ pub struct App {
     pub backend: Backend,
     pub toasts: adw::ToastOverlay,
     pub split: adw::NavigationSplitView,
+    /// The two-column window ("main") or the Permissions page, which covers
+    /// both columns ("permissions").
+    top: gtk::Stack,
+    permissions: RefCell<Option<Rc<crate::all_perms::PermsPage>>>,
     pub state: RefCell<State>,
     sidebar: OnceCell<Sidebar>,
     /// The page shown on the right, kept alive while it is shown.
@@ -91,7 +95,9 @@ impl App {
             .build();
         let split = adw::NavigationSplitView::builder().min_sidebar_width(300.0).max_sidebar_width(460.0).sidebar_width_fraction(0.38).build();
         let toasts = adw::ToastOverlay::new();
-        toasts.set_child(Some(&split));
+        let top = gtk::Stack::builder().transition_type(gtk::StackTransitionType::SlideLeftRight).build();
+        top.add_named(&split, Some("main"));
+        toasts.set_child(Some(&top));
         window.set_content(Some(&toasts));
         // px, not sp: libadwaita 1.5 (Ubuntu 24.04) did not apply an `sp`
         // condition here, so narrow windows kept both columns and overflowed.
@@ -108,6 +114,8 @@ impl App {
             backend,
             toasts,
             split,
+            top,
+            permissions: RefCell::new(None),
             state: RefCell::new(State { filter: "all".into(), ..Default::default() }),
             sidebar: OnceCell::new(),
             current: RefCell::new(None),
@@ -280,7 +288,7 @@ impl App {
         header.set_title_widget(Some(&adw::WindowTitle::new("SAM", &tr("Sandboxed AppImage Manager"))));
         let menu = gio::Menu::new();
         let sect = gio::Menu::new();
-        sect.append(Some(&tr("Presets")), Some("win.show-presets"));
+        sect.append(Some(&tr("My Presets")), Some("win.show-presets"));
         sect.append(Some(&tr("Diagnostics")), Some("win.show-diagnostics"));
         sect.append(Some(&tr("User Guide")), Some("win.show-guide"));
         sect.append(Some(&tr("Preferences")), Some("win.show-preferences"));
@@ -365,10 +373,18 @@ impl App {
         found_title.add_css_class("heading");
         found_head.append(&found_title);
         filter_box.append(&found_head);
+        let all_perms = gtk::Button::builder()
+            .label(tr("Permissions of All Apps"))
+            .tooltip_text(tr("See what every sandboxed app may access, and change several apps at once"))
+            .action_name("win.show-permissions")
+            .margin_top(HEAD_GAP)
+            .name("all-permissions")
+            .build();
+        filter_box.append(&all_perms);
         // Segmented filter: linked toggle buttons (works with libadwaita 1.5).
         // Not homogeneous: three equal widths would need more room than the
         // narrowest window has. Each button expands, so the row stays full.
-        let toggles = gtk::Box::builder().margin_top(HEAD_GAP).build();
+        let toggles = gtk::Box::builder().margin_top(8).build();
         toggles.add_css_class("linked");
         let mut first: Option<gtk::ToggleButton> = None;
         for (name, label) in [("all", "All"), ("sandboxed", "Sandboxed"), ("unsandboxed", "Unsandboxed")] {
@@ -792,6 +808,39 @@ impl App {
         }
     }
 
+    /// Opens the Permissions page over both columns.
+    pub fn show_permissions(self: &Rc<Self>) {
+        let page = crate::all_perms::PermsPage::new(self);
+        if let Some(old) = self.top.child_by_name("permissions") {
+            self.top.remove(&old);
+        }
+        self.top.add_named(&page.root, Some("permissions"));
+        self.top.set_visible_child_name("permissions");
+        *self.permissions.borrow_mut() = Some(page);
+    }
+
+    /// Back from the Permissions page to the two columns.
+    pub fn close_permissions(self: &Rc<Self>) {
+        self.top.set_visible_child_name("main");
+        self.permissions.borrow_mut().take();
+        let me = self.clone();
+        // The page stays until the slide ends; then it goes.
+        glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+            if me.permissions.borrow().is_none() {
+                if let Some(old) = me.top.child_by_name("permissions") {
+                    me.top.remove(&old);
+                }
+            }
+        });
+        let me = self.clone();
+        glib::spawn_future_local(async move { me.refresh_registered().await });
+        // The app page shown may have changed settings.
+        let sel = self.state.borrow().selected.clone();
+        if !sel.is_empty() && self.state.borrow().apps.iter().any(|a| util::str_of(a, "id") == sel) {
+            self.open_app(&sel);
+        }
+    }
+
     /// Shows a page that is not tied to an app (preset editor).
     pub fn show_page(self: &Rc<Self>, page: &adw::NavigationPage, keep: Option<Rc<dyn std::any::Any>>) {
         self.show(page, keep);
@@ -812,6 +861,7 @@ impl App {
         };
         add("show-guide", Box::new(|me| me.show_section("guide")));
         add("show-presets", Box::new(|me| me.show_section("presets")));
+        add("show-permissions", Box::new(|me| me.show_permissions()));
         add("show-diagnostics", Box::new(|me| me.show_section("diagnostics")));
         add("show-preferences", Box::new(|me| me.show_section("preferences")));
         add("refresh", Box::new(|me| me.refresh_apps_later()));
@@ -1109,6 +1159,13 @@ impl App {
                 "file" => {
                     if let Some(p) = first_file {
                         me.open_file(&p)
+                    }
+                }
+                "permissions" => {
+                    me.show_permissions();
+                    // `--app a,b` selects those apps on the page.
+                    if let Some(p) = me.permissions.borrow().as_ref() {
+                        p.preselect(s.app.split(',').filter(|i| !i.is_empty()).map(String::from).collect());
                     }
                 }
                 "presets" | "preferences" | "settings" | "diagnostics" | "guide" => me.show_section(if s.page == "settings" { "preferences" } else { &s.page }),

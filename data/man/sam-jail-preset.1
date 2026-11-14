@@ -1,12 +1,12 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-preset 1 2026-11-10 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-preset 1 2026-11-14 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
-sam\-jail\-preset \- Manage presets
+sam\-jail\-preset \- Manage your own presets
 .SH SYNOPSIS
 \fBsam\-jail preset\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIsubcommands\fR>
 .SH DESCRIPTION
-Manage presets
+Manage your own presets
 .SH OPTIONS
 .TP
 \fB\-h\fR, \fB\-\-help\fR
@@ -14,14 +14,15 @@ Print help
 .SH SUBCOMMANDS
 .TP
 sam\-jail\-preset\-list(1)
+List your own presets
 .TP
 sam\-jail\-preset\-show(1)
 .TP
 sam\-jail\-preset\-apply(1)
 Apply a preset to an app (asks for confirmation when it conflicts)
 .TP
-sam\-jail\-preset\-check(1)
-What applying a preset would change for an AppImage without a sandbox (the settings shown now as a PermissionSet on stdin with \-\-current\-stdin). Changes nothing
+sam\-jail\-preset\-template(1)
+Print a starting point for a new preset (SAM\*(Aqs strictest settings)
 .TP
 sam\-jail\-preset\-save(1)
 Save an app\*(Aqs current permissions as a new preset

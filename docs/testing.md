@@ -135,7 +135,8 @@ Electron app, Qt app, GTK app):
       (e.g. ~/.ssh without full home) are greyed out, never hidden.
 - [ ] Preferences → Style (Follow system, Light, Dark) applies instantly.
 - [ ] Turning on full home, the system bus or raw devices asks for confirmation.
-- [ ] Applying the "Untrusted Utility" preset to a browser warns that it removes network access.
+- [ ] Applying a preset without network access to a browser warns that it removes network access.
+- [ ] *Permissions of All Apps*: a tag filter cycles has / has not / off; Shift-click selects a range; turning the internet off for several apps shows one toast with Undo, and Undo restores every app.
 - [ ] *Copy bug report* produces a report without your username or home path.
 
 ## 10. Compatibility helpers

@@ -121,7 +121,10 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `logs APP [--list/--file/--kind]` | file list, or `{file, kind, text}` |
 | `doctor [APP]` | `{checks: [{id, label, status, detail, hint}], …}` |
 | `report APP` | `{report}`: redacted text for a bug report |
-| `preset list/show/apply/check/save/delete/duplicate/import/export/put` | preset objects; `put` reads one on stdin |
+| `preset list/show/template/apply/save/delete/duplicate/import/export/put` | the user's preset objects; `put` reads one on stdin |
+| `group list` | every sandboxed app: the app summary plus `permissions`, `tags: [{key, label, family, level, read_only}]`, `running`, `needs_review`, `may_not_start` |
+| `group set KEY VALUE APP… [--dry-run]` | `{key, value, applied, apps: [{id, name, check, running, changed}], previous: {id: permissions}}` |
+| `group restore` | reads `previous` on stdin → `{restored}` |
 | `config show/get/set/put/path` | configuration; `put` reads it on stdin |
 | `permissions` | the catalogue: every key with title, explanation, risk |
 | `updates [APP] [--if-due]` | `{apps: [{id, update: {state, latest, download_page, detail, checked_at}}]}`; `state` is `available`, `current`, `failed` or `unsupported` |

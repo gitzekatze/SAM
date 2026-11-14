@@ -55,7 +55,6 @@ pub struct AppPage {
     hints: adw::PreferencesGroup,
     findings: adw::PreferencesGroup,
     preset_group: adw::PreferencesGroup,
-    preset_row: adw::ComboRow,
     save_preset_row: adw::EntryRow,
     presets: RefCell<Vec<Value>>,
     launch_group: adw::PreferencesGroup,
@@ -201,13 +200,10 @@ impl AppPage {
             adw::PreferencesGroup::builder().title(tr("Worth Checking")).description(tr("Things that often stop apps from working in a sandbox.")).build();
         let findings = adw::PreferencesGroup::builder().title(tr("What Went Wrong Last Time")).build();
         let preset_group = adw::PreferencesGroup::builder()
-            .title(tr("Presets"))
-            .description(tr("Reuse settings between apps. Manage all presets from the main menu → Presets."))
+            .title(tr("My Presets"))
+            .description(tr("Save these settings under a name to use them for other apps. Apply and edit your presets from the main menu → My Presets."))
             .build();
-        let preset_row = adw::ComboRow::builder().title(tr("Start from a preset")).subtitle(tr("Replaces the settings below.")).build();
-        preset_row.set_widget_name("preset-picker");
-        let save_preset_row = adw::EntryRow::builder().title(tr("Save these settings as a preset (name)")).show_apply_button(true).name("save-preset").build();
-        preset_group.add(&preset_row);
+        let save_preset_row = adw::EntryRow::builder().title(tr("Name for the new preset")).show_apply_button(true).name("save-preset").build();
         preset_group.add(&save_preset_row);
         pref.add(&notices);
         // What went wrong comes first: after a failed start it holds the fix
@@ -318,7 +314,6 @@ impl AppPage {
             hints,
             findings,
             preset_group,
-            preset_row,
             save_preset_row,
             presets: RefCell::new(Vec::new()),
             check_group,

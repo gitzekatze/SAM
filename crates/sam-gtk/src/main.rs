@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! SAM's GUI (GTK 4 / libadwaita).
 //!
-//!   sam-jail-gui [--page app|file|presets|preferences|diagnostics] [--app <id>] [FILES…]
+//!   sam-jail-gui [--page app|file|permissions|presets|preferences|diagnostics] [--app <id>[,<id>…]] [FILES…]
 //!   sam-jail-gui --screenshot out.png [--size 1180x800] [--delay 3000] [--page …] [--focus-walk]
 //!
 //! --screenshot renders the window once it has loaded, saves it as PNG and
@@ -10,6 +10,7 @@
 // GTK callbacks (Box<dyn Fn(&Rc<…>)>) are complex types by nature.
 #![allow(clippy::type_complexity)]
 
+mod all_perms;
 mod app_page;
 mod backend;
 mod guide;
@@ -41,6 +42,22 @@ const ACCENT_VARS_CSS: &str = r#"
 "#;
 
 const CSS: &str = r#"
+/* Permission tags: color = risk, filled = read & write, outline = read-only. */
+.sam-tag {
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 0.8em;
+    font-weight: 600;
+    border: 1px solid transparent;
+}
+.sam-tag-harmless { background-color: alpha(@window_fg_color, 0.09); color: alpha(@window_fg_color, 0.85); }
+.sam-tag-caution  { background-color: alpha(@warning_color, 0.20); color: mix(@warning_color, @window_fg_color, 0.45); }
+.sam-tag-danger   { background-color: alpha(@error_color, 0.18);   color: mix(@error_color, @window_fg_color, 0.3); }
+.sam-tag-outline  { background-color: transparent; border-color: currentColor; }
+.sam-tag-button { padding: 2px; min-height: 0; }
+.sam-tag-button.sam-filter-has .sam-tag { border-color: currentColor; }
+.sam-tag-button.sam-filter-not .sam-tag { background-color: alpha(@window_fg_color, 0.08); color: alpha(@window_fg_color, 0.7); }
+.sam-perms-side { background-color: @sidebar_bg_color; }
 .sam-badge {
     padding: 2px 9px;
     border-radius: 999px;
@@ -114,7 +131,7 @@ fn parse_args() -> Options {
             "--delay" => o.delay = args.next().and_then(|s| s.parse().ok()).unwrap_or(3000),
             "--focus-walk" => o.focus_walk = true,
             "-h" | "--help" => {
-                println!("Usage: sam-jail-gui [--page app|file|presets|preferences|diagnostics] [--app ID] [FILES…]");
+                println!("Usage: sam-jail-gui [--page app|file|permissions|presets|preferences|diagnostics] [--app ID] [FILES…]");
                 std::process::exit(0);
             }
             "--version" => {
