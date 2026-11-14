@@ -143,7 +143,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-70 tests.
+71 tests.
 
 | Promise | Test |
 |---|---|
@@ -192,6 +192,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | M1: a launcher never registers URL schemes, directories or executables. | [`launcher_drops_hijack_mime_types`](../crates/sam-runner/tests/adversarial.rs#L72) |
 | Robustness: malformed desktop files and files that only look like AppImages must not crash the parsers (simple deterministic fuzzing). | [`parsers_survive_garbage`](../crates/sam-runner/tests/adversarial.rs#L83) |
 | Every security promise holds inside a real sandbox: each breakout attempt fails. | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L143) |
+| Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L127) |
 | A dry run of a group change saves nothing and names what each app would lose. | [`a_dry_run_changes_nothing_and_names_what_would_stop_working`](../crates/sam-runner/tests/groups.rs#L35) |
 | A group change saves only the apps whose value changes, and one undo restores all of them. | [`only_changed_apps_are_saved_and_one_undo_restores_all_of_them`](../crates/sam-runner/tests/groups.rs#L51) |
 | A group change with an invalid value or an unknown app changes no app. | [`an_invalid_value_or_unknown_app_changes_no_app`](../crates/sam-runner/tests/groups.rs#L71) |
@@ -277,4 +278,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `tests/gui/taskbar-kwin.sh` | In a hidden KWin session, a sandboxed app's window is named after SAM's menu entry, so the taskbar shows the app's own icon and name. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 193 automated Rust tests plus 5 scripted checks.
+Total: 194 automated Rust tests plus 5 scripted checks.

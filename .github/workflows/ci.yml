@@ -51,7 +51,8 @@ jobs:
           sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
             libgtk-4-dev libadwaita-1-dev pkg-config \
             bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3 \
-            desktop-file-utils appstream gettext libgtk-4-bin dbus
+            desktop-file-utils appstream gettext libgtk-4-bin dbus \
+            python3-gi libglib2.0-bin
 
       # Ubuntu restricts unprivileged user namespaces through AppArmor, so
       # Bubblewrap cannot run and the end-to-end sandbox tests would skip.
