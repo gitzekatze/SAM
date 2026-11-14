@@ -71,7 +71,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 
-22 tests.
+23 tests.
 
 | Promise | Test |
 |---|---|
@@ -92,11 +92,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Paths from the AppImage image are made relative, and paths that climb out with .. | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L196) |
 | Unpacking removes setuid bits and makes files read-only for others. | [`unpacking_removes_setuid_bits`](../crates/sam-intake/src/normalize.rs#L204) |
 | Unpacking stops when the AppImage contains more files than the limit. | [`unpacking_stops_at_the_file_limit`](../crates/sam-intake/src/normalize.rs#L234) |
-| The name and icon of an AppImage are read without unpacking or running it. | [`peeks_name_and_icon_without_extracting`](../crates/sam-intake/src/peek.rs#L116) |
-| Icon paths from the AppImage cannot climb out of the unpacked app. | [`icon_paths_cannot_climb_out_of_the_app`](../crates/sam-intake/src/peek.rs#L130) |
+| The name and icon of an AppImage are read without unpacking or running it. | [`peeks_name_and_icon_without_extracting`](../crates/sam-intake/src/peek.rs#L125) |
+| Icon paths from the AppImage cannot climb out of the unpacked app. | [`icon_paths_cannot_climb_out_of_the_app`](../crates/sam-intake/src/peek.rs#L139) |
 | Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L147) |
 | A built AppImage is recognized and unpacked, with setuid bits removed. | [`a_built_appimage_is_detected_and_unpacked_safely`](../crates/sam-intake/src/testkit.rs#L166) |
 | Unpacking stops at the size limit and leaves no partial files behind. | [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L203) |
+| ⟲ Regression: reading the name and icon of an AppImage whose SquashFS image makes the reader panic gives an error instead of crashing SAM. | [`a_damaged_squashfs_image_gives_an_error_instead_of_a_crash`](../crates/sam-intake/tests/damaged.rs#L14) |
 
 ## sam-profile: Recommendations, the user's presets, change checks, permission tags
 
@@ -143,7 +144,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-72 tests.
+75 tests.
 
 | Promise | Test |
 |---|---|
@@ -164,7 +165,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | With "this computer only", the app reaches only the ports on this computer the user lists. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L78) |
 | When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L387) |
 | An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L439) |
-| The sandbox check tells a real folder of the user from a private stand-in. | [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L376) |
+| The sandbox check tells a real folder of the user from a private stand-in. | [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L389) |
 | The progress bar follows the weights of the steps of creating a sandbox. | [`fractions_follow_the_step_weights`](../crates/sam-runner/src/progress.rs#L131) |
 | Unpacking progress counts the bytes written. | [`bytes_written_are_counted`](../crates/sam-runner/src/progress.rs#L150) |
 | Ordinary terminal output, colors and links pass through the relay unchanged. | [`ordinary_output_passes_unchanged`](../crates/sam-runner/src/pty.rs#L600) |
@@ -193,6 +194,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Robustness: malformed desktop files and files that only look like AppImages must not crash the parsers (simple deterministic fuzzing). | [`parsers_survive_garbage`](../crates/sam-runner/tests/adversarial.rs#L83) |
 | Every security promise holds inside a real sandbox: each breakout attempt fails. | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L143) |
 | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L127) |
+| Changed AppImages are recognized or refused, and unpacked or refused, without a panic; unpacking writes only inside its own folder and keeps its time limit. | [`changed_appimages_never_crash_or_escape_the_unpacker`](../crates/sam-runner/tests/fuzz.rs#L119) |
+| Changed desktop files, zsync files and update information are parsed or refused without a panic. | [`changed_text_inputs_never_crash_the_parsers`](../crates/sam-runner/tests/fuzz.rs#L170) |
+| Changed ELF programs inside an unpacked app are analyzed or skipped without a panic. | [`changed_programs_never_crash_the_analysis`](../crates/sam-runner/tests/fuzz.rs#L198) |
 | A dry run of a group change saves nothing and names what each app would lose. | [`a_dry_run_changes_nothing_and_names_what_would_stop_working`](../crates/sam-runner/tests/groups.rs#L35) |
 | A group change saves only the apps whose value changes, and one undo restores all of them. | [`only_changed_apps_are_saved_and_one_undo_restores_all_of_them`](../crates/sam-runner/tests/groups.rs#L51) |
 | A group change with an invalid value or an unknown app changes no app. | [`an_invalid_value_or_unknown_app_changes_no_app`](../crates/sam-runner/tests/groups.rs#L71) |
@@ -236,7 +240,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-13 tests.
+14 tests.
 
 | Promise | Test |
 |---|---|
@@ -248,6 +252,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The JSON interface lists apps with their tags, changes a permission for several apps, and restores them with the returned "previous" object. | [`group_list_set_and_restore_round_trip`](../crates/sam-jail-cli/tests/interface.rs#L56) |
 | A group change with an invalid value, an unknown key or no app is refused, and no app changes. | [`group_set_refuses_bad_input_without_changing_anything`](../crates/sam-jail-cli/tests/interface.rs#L84) |
 | The command line lists only the user's own presets; the template is strict, and saved presets carry no built-in flag. | [`presets_are_the_users_own_only`](../crates/sam-jail-cli/tests/interface.rs#L96) |
+| ⟲ Regression (found by the fuzzer): one damaged AppImage in a searched folder made `sam-jail discover` crash, so the window's list stayed empty. | [`one_damaged_appimage_does_not_stop_the_list`](../crates/sam-jail-cli/tests/interface.rs#L115) |
 | Files from older SAM versions are migrated to the current format, and the originals are kept. | [`old_formats_are_migrated_and_kept`](../crates/sam-jail-cli/tests/robustness.rs#L48) |
 | Files from a newer SAM are never changed by an older one. | [`newer_formats_are_left_untouched`](../crates/sam-jail-cli/tests/robustness.rs#L70) |
 | Damaged files are moved aside and reported, and SAM carries on. | [`damaged_files_are_moved_aside_and_reported`](../crates/sam-jail-cli/tests/robustness.rs#L95) |
@@ -278,6 +283,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `tests/gui/permissions-atspi.sh` | Through the accessibility interface: the Permissions page selects apps, names its controls, warns before an app loses something it needs, applies a group change, and Undo restores every app; tag filters cycle. |
 | `tests/gui/app-page-atspi.sh` | Through the accessibility interface: the app page has one Test button with a visible test state, the trash button as high as Test and Launch, advice in one group, a visible "Files This App Saved" row, and a remove dialog whose three choices are not preselected and whose button cannot be pressed before a choice. |
 | `tests/gui/taskbar-kwin.sh` | In a hidden KWin session, a sandboxed app's window is named after SAM's menu entry, so the taskbar shows the app's own icon and name. |
+| `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 196 automated Rust tests plus 5 scripted checks.
+Total: 201 automated Rust tests plus 6 scripted checks.

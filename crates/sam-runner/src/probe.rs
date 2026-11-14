@@ -111,6 +111,10 @@ pub enum ProbeTest {
     SyscallFilter {
         active: bool,
     },
+    /// Typing into the terminal (TIOCSTI) is refused by the syscall filter.
+    NoTerminalInjection {
+        active: bool,
+    },
     /// The kernel-level write protection reported by the helper.
     Landlock {
         expect: bool,
@@ -324,6 +328,15 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             let filtered = r < 0 && e == libc::EPERM;
             (Some(filtered == *active), if filtered { "active".into() } else { "not active".to_string() })
+        }
+        ProbeTest::NoTerminalInjection { active } => {
+            // ioctl(0, TIOCSTI): the baseline filter answers EPERM before the
+            // kernel looks at the descriptor.
+            let c: u8 = 0;
+            let r = unsafe { libc::ioctl(0, libc::TIOCSTI, &c) };
+            let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            let blocked = r < 0 && e == libc::EPERM;
+            (Some(blocked == *active), if blocked { "blocked".into() } else { "not blocked by the filter".to_string() })
         }
         ProbeTest::Landlock { expect } => {
             let on = enforcement.contains("landlock: fully enforced") || enforcement.contains("landlock: partially enforced");

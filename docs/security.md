@@ -13,6 +13,8 @@ starts an app without a sandbox.
 ## Threat model
 
 SAM assumes that **you are trusted** and that **an AppImage may not be**.
+The full threat model, with each threat, what stops it and the test that
+proves it, is in [threat-model.md](threat-model.md).
 
 | SAM protects against | SAM cannot fully protect against |
 |---|---|

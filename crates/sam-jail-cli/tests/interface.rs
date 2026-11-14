@@ -108,3 +108,21 @@ fn presets_are_the_users_own_only() {
     assert!(list[0].get("builtin").is_none(), "presets no longer carry a built-in flag");
     fs::metadata(e.tmp.path().join("config/presets")).expect("stored as a file in the presets folder");
 }
+
+/// Regression (found by the fuzzer): one damaged AppImage in a searched
+/// folder made `sam-jail discover` crash, so the window's list stayed empty.
+/// The list still loads, and the other AppImages are in it.
+#[test]
+fn one_damaged_appimage_does_not_stop_the_list() {
+    let e = Env::new();
+    let dir = e.tmp.path().join("apps");
+    fs::create_dir_all(&dir).unwrap();
+    let damaged = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../sam-intake/tests/data/squashfs-reader-panic.AppImage");
+    fs::copy(&damaged, dir.join("Damaged.AppImage")).unwrap();
+    assert!(e.run(&["dev", "make-fixture", "--name", "Good", dir.join("Good.AppImage").to_str().unwrap()], None).status.success());
+    fs::create_dir_all(e.tmp.path().join("config")).unwrap();
+    fs::write(e.tmp.path().join("config/config.toml"), format!("[general]\nscan_directories = [\"{}\"]\n", dir.display())).unwrap();
+    let list = e.json(&["discover"], None);
+    let names: Vec<String> = list["apps"].as_array().unwrap().iter().map(|a| a["path"].as_str().unwrap_or("").to_string()).collect();
+    assert!(names.iter().any(|n| n.ends_with("Good.AppImage")), "{names:?}");
+}

@@ -97,6 +97,16 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
             v.push(c("keys", "Files", title, ProbeTest::Folder { host_id: probe::identity(&path), path, expect: want }));
         }
     }
+    // With full home access, the places that would start code later stay
+    // closed (SAM mounts them read-only).
+    if fs.home {
+        for (rel, title) in [(".config/autostart", "Autostart entries cannot be created"), (".local/share/applications", "Menu entries cannot be created")] {
+            let path = host.home.join(rel);
+            if path.is_dir() {
+                v.push(c("persist", "Files", title, ProbeTest::NotWritable { path }));
+            }
+        }
+    }
     v.push(c("usr", "System", "System files are read-only", ProbeTest::NotWritable { path: "/usr".into() }));
     v.push(c("etc", "System", "System settings are read-only", ProbeTest::NotWritable { path: "/etc".into() }));
     v.push(c("shadow", "System", "Password hashes are unreadable", ProbeTest::Unreadable { path: "/etc/shadow".into() }));
@@ -245,6 +255,7 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     let filter = (cfg.security.baseline_seccomp && p.advanced.seccomp_baseline) || strict;
     v.push(c("landlock", "Security", "Landlock write protection", ProbeTest::Landlock { expect: landlock }));
     v.push(c("seccomp", "Security", "Syscall filter", ProbeTest::SyscallFilter { active: filter }));
+    v.push(c("tiocsti", "Security", "Typing into the terminal is blocked", ProbeTest::NoTerminalInjection { active: filter }));
     v.push(c("nnp", "Security", "Cannot gain privileges", ProbeTest::NoNewPrivileges));
     v.push(c("caps", "Security", "No special capabilities", ProbeTest::NoCapabilities));
     v.push(c("pidns", "Security", "Own process list", ProbeTest::OwnProcesses));

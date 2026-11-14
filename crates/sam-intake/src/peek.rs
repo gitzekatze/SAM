@@ -27,6 +27,15 @@ pub struct Peek {
 }
 
 pub fn peek(path: &Path) -> Result<Peek> {
+    // The SquashFS reader may panic on a damaged or hostile image instead of
+    // returning an error (found by tests/fuzz.rs). SAM reads names and icons
+    // in its own process for every AppImage in the searched folders, so one
+    // such file must not take down the whole list: treat it as unreadable.
+    std::panic::catch_unwind(|| peek_unguarded(path))
+        .unwrap_or_else(|_| Err(anyhow!("the AppImage's SquashFS image is damaged, so SAM cannot read its name and icon")))
+}
+
+fn peek_unguarded(path: &Path) -> Result<Peek> {
     let info = inspect(path)?;
     // Names and icons are read from SquashFS only; DwarFS images show their
     // file name until they are unpacked.

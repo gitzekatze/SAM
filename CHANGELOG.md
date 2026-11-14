@@ -9,6 +9,28 @@ version.
 
 ## Unreleased
 
+### Security tests that prove every promise
+
+- The evil-AppImage suite: 18 hostile AppImages, each trying one escape,
+  go through the normal path (added, started with the recommended
+  settings); every attempt fails, writes are judged on the host, and
+  desktop-service attempts run against stand-ins on a private test bus.
+- SAM notices app records changed outside SAM (a checksum in every record
+  SAM saves) and does not start such an app until you confirm its
+  settings ("Confirm Settings", or `sam-jail review APP`).
+- Mutation fuzzing of the parsers for untrusted input (AppImage images,
+  desktop files, zsync files, update information, ELF programs). It found
+  a crash: a damaged SquashFS image made the reader panic, and because SAM
+  reads names and icons in its own process, one such file in a searched
+  folder emptied the whole list. Fixed; a regression test keeps the file.
+- The threat model (docs/threat-model.md): what SAM protects, whom it
+  trusts, each threat with what stops it and the test that proves it, and
+  plainly what it cannot protect against, including programs that run
+  outside any sandbox.
+- **Test** also checks that typing into the terminal is blocked and, with
+  full home access, that autostart and menu entries cannot be created.
+- CI runs the sandbox tests on Fedora too.
+
 ### Clear decisions on the app page
 
 - **Test** replaces Check and Test start: the settings check, then a short
