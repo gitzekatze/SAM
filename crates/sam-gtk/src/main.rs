@@ -68,7 +68,7 @@ const CSS: &str = r#"
 /* Logo and main menu button in the header bar: the same square size. */
 .sam-header-square { min-width: 40px; min-height: 40px; padding: 2px; }
 /* The round trash button on the app page. */
-button.sam-trash { color: rgb(214, 40, 57); }
+button.sam-trash { color: rgb(214, 40, 57); border-radius: 9999px; padding: 0 13px; }
 button.sam-trash:hover { background-color: rgba(224, 27, 36, 0.15); }
 /* The drop-downs of the group permissions: one font size for all. */
 .sam-perm-choice { font-size: 0.9em; }

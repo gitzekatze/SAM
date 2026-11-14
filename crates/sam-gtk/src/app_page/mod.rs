@@ -172,10 +172,13 @@ impl AppPage {
             .icon_name("user-trash-symbolic")
             .tooltip_text(tr("Remove the sandbox. SAM asks first; the AppImage file is kept."))
             .name("remove-button")
-            .valign(gtk::Align::Center)
             .build();
-        remove_button.add_css_class("circular");
         remove_button.add_css_class("sam-trash");
+        // The trash button, Test and Launch have the same height.
+        let same_height = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
+        same_height.add_widget(&remove_button);
+        same_height.add_widget(&check_button);
+        same_height.add_widget(&main_button);
         top_buttons.append(&remove_button);
         top_buttons.append(&check_button);
         top_buttons.append(&main_button);

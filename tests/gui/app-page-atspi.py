@@ -63,6 +63,10 @@ check("advice is in one group", find(app, lambda s: s == "Advice") is not None a
 check("Files This App Saved is visible on the page", find(app, lambda s: s == "Files This App Saved") is not None)
 trash = find(app, lambda s: s.startswith("Remove the sandbox"), "button")
 check("the trash button is named by its explanation", trash is not None)
+launch = find(app, lambda s: s == "Launch", "button")
+if trash and test and launch:
+    hs = [b.get_component_iface().get_extents(Atspi.CoordType.WINDOW).height for b in (trash, test, launch)]
+    check("the trash button, Test and Launch have the same height", len(set(hs)) == 1, hs)
 if trash:
     trash.get_action_iface().do_action(0)
     apply = wait(lambda: find(app, lambda s: s == "Choose an option", "button"))
