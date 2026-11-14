@@ -1,74 +1,110 @@
-# SAM development dashboard
+# 🛠️ SAM development dashboard
 
-The state of SAM for people who work on it: tests, results, history.
-For users, the front page is [README.md](README.md).
-Generated 2026-11-15T00:50 by `scripts/dashboard.py`
-(with every version report, `make report`).
+> **What this page is:** the front page for people who work on SAM. It shows
+> whether SAM is healthy right now, every test with the promise it keeps, how
+> the version reports changed over time, and the latest commits. For people
+> who use SAM, the front page is [README.md](README.md).
+>
+> Generated on 2026-11-15 at 00:51 by `scripts/dashboard.py`. It is
+> regenerated with every version report (`make report`), so it shows the state
+> at the end of the last phase of work.
 
-## Current state
+## At a glance
 
 [![CI](https://github.com/gitzekatze/SAM/actions/workflows/ci.yml/badge.svg)](https://github.com/gitzekatze/SAM/actions/workflows/ci.yml)
 
-- **Version:** 0.1.0 (the number changes only when a version is published).
-- **Latest commit:** `872f0bd Phase 6, part 1: full disk, clearer errors, real-app checks; CI fixes`.
-- **Latest version report:** [0.1.0-c20b843](docs/reports/0.1.0-c20b843.md), 2026-11-15T00:08:58: 201 tests pass, 0 fail.
-
-| Part | Tests passing | Failing | Line coverage |
-|---|---|---|---|
-| sam-core | 26 | 0 | 85.8 % |
-| sam-detect | 18 | 0 | 75.0 % |
-| sam-intake | 23 | 0 | 83.5 % |
-| sam-profile | 13 | 0 | 85.6 % |
-| sam-sandbox | 16 | 0 | 95.6 % |
-| sam-runner | 75 | 0 | 71.0 % |
-| sam-storage | 7 | 0 | 93.4 % |
-| sam-jail-cli | 14 | 0 | 15.8 % |
-| sam-gtk | 9 | 0 | 2.7 % |
-
-| Step | Fastest run |
+| | |
 |---|---|
-| Recognizing the AppImage format of a file (reading its headers). | 0.006 ms |
-| Unpacking an AppImage with 2,000 files (16 MB) safely, without running it. | 140.067 ms |
-| Analyzing the unpacked app: its programs, libraries and toolkit. | 8.397 ms |
-| Recommending permissions from the app's metadata and analysis. | 0.001 ms |
-| Building the Bubblewrap command from a set of permissions. | 0.296 ms |
-| Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save). | 218.112 ms |
-| Starting an app in a real sandbox until it has exited (an app that exits at once). | 54.024 ms |
-| Listing 120 sandboxed apps with their tags for the Permissions page. | 29.300 ms |
+| **Tests** | ✅ 201 pass, 0 fail in the latest version report |
+| **Version** | 0.1.0 (the number changes only when a version is published) |
+| **Latest commit** | `2df2a41` Development dashboard (DEVELOPMENT.md); harness: start time, memory, tray, portals, missing files |
+| **Commits so far** | 127 |
+| **Version reports** | 4; the newest is [0.1.0-c20b843](docs/reports/0.1.0-c20b843.md) |
 
-Line coverage is a gap finder, not a score: it shows code that no test runs.
+> **How to read the badge:** it shows the last CI run on GitHub (unit,
+> integration, sandbox and window tests on Ubuntu; sandbox tests on Fedora).
+> Green means every test passed there; click it for the details.
+
+## Health of each part
+
+> **What you see:** for each part of SAM, its tests in the latest version
+> report, and how much of its code those tests run (line coverage, the bar).
+> Low coverage hints where a regression test may be missing; it is not a
+> grade. The window (sam-gtk) is mostly checked by the scripted window tests
+> further down, which line coverage does not count.
+
+| Part | What it does | Tests | Line coverage |
+|---|---|---|---|
+| **sam-core** | Permission model, risk, warnings, configuration and file formats | ✅ 26 passing | `█████████████████░░░` 85.8 % |
+| **sam-detect** | Recognizing AppImages and what they need (ELF, toolkits, signatures) | ✅ 18 passing | `███████████████░░░░░` 75.0 % |
+| **sam-intake** | Unpacking AppImages safely, metadata, menu entries | ✅ 23 passing | `█████████████████░░░` 83.5 % |
+| **sam-profile** | Recommendations, the user's presets, change checks, permission tags | ✅ 13 passing | `█████████████████░░░` 85.6 % |
+| **sam-sandbox** | Building the Bubblewrap command from the permissions | ✅ 16 passing | `███████████████████░` 95.6 % |
+| **sam-runner** | Operations: add, launch, verify, repair, update, group changes; the sandbox at run time | ✅ 75 passing | `██████████████░░░░░░` 71.0 % |
+| **sam-storage** | App records, presets and logs on disk | ✅ 7 passing | `███████████████████░` 93.4 % |
+| **sam-jail-cli** | The command line and its JSON interface | ✅ 14 passing | `███░░░░░░░░░░░░░░░░░` 15.8 % |
+| **sam-gtk** | The window (logic that runs without a display) | ✅ 9 passing | `█░░░░░░░░░░░░░░░░░░░` 2.7 % |
+
+## Speed
+
+> **What you see:** how long SAM's steps take, measured by `sam-jail dev bench`
+> on a test AppImage with 2,000 files and on 120 sandboxed apps. Each step runs
+> several times after a warm-up run; the fastest run is shown, because it is the
+> one least disturbed by other programs. The last column compares with the
+> previous report: 🔺 means more than 25 % slower, 🔻 more than 25 % faster.
+> A busy computer can cause such a change, so measure twice before you believe it.
+
+| Step | Fastest run | Since the previous report |
+|---|---|---|
+| Recognizing the AppImage format of a file (reading its headers). | 0.006 ms | ≈ -17 % |
+| Unpacking an AppImage with 2,000 files (16 MB) safely, without running it. | 140.067 ms | 🔺 +189 % |
+| Analyzing the unpacked app: its programs, libraries and toolkit. | 8.397 ms | 🔺 +37 % |
+| Recommending permissions from the app's metadata and analysis. | 0.001 ms | ≈ +16 % |
+| Building the Bubblewrap command from a set of permissions. | 0.296 ms | ≈ +1 % |
+| Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save). | 218.112 ms | ≈ -2 % |
+| Starting an app in a real sandbox until it has exited (an app that exits at once). | 54.024 ms | ≈ -4 % |
+| Listing 120 sandboxed apps with their tags for the Permissions page. | 29.300 ms | 🔺 +30 % |
 
 ## Tests
 
-Every test keeps one promise, stated in a complete sentence; ⟲ marks a
-regression test, which guards against a bug that happened. The same list
-with links to the code is the [test library](docs/test-library.md).
+> **What you see:** every automated test, counted per part. A **unit test** checks
+> one piece of code on its own. An **integration test** runs the real program end
+> to end, often inside a real sandbox. A **regression test** ⟲ guards against a bug
+> that really happened, and fails without its fix. Every test keeps one promise,
+> stated in a complete sentence. The same list with links to the code is the
+> [test library](docs/test-library.md).
 
-| Part | Unit tests | Integration tests | Regression tests | Total |
-|---|---|---|---|---|
-| sam-core | 26 | 0 | 1 | 26 |
-| sam-detect | 17 | 1 | 0 | 18 |
-| sam-intake | 24 | 1 | 1 | 25 |
-| sam-profile | 13 | 0 | 0 | 13 |
-| sam-sandbox | 16 | 0 | 0 | 16 |
-| sam-runner | 39 | 36 | 2 | 75 |
-| sam-storage | 7 | 0 | 1 | 7 |
-| sam-jail-cli | 0 | 14 | 1 | 14 |
-| sam-gtk | 9 | 0 | 1 | 9 |
-| **all** | **151** | **52** | **7** | **203** |
+| Part | Unit | Integration | Regression ⟲ | Total | |
+|---|---|---|---|---|---|
+| **sam-core** | 26 | 0 | 1 | 26 | `█████░░░░░░░░░░` |
+| **sam-detect** | 17 | 1 | 0 | 18 | `████░░░░░░░░░░░` |
+| **sam-intake** | 24 | 1 | 1 | 25 | `█████░░░░░░░░░░` |
+| **sam-profile** | 13 | 0 | 0 | 13 | `███░░░░░░░░░░░░` |
+| **sam-sandbox** | 16 | 0 | 0 | 16 | `███░░░░░░░░░░░░` |
+| **sam-runner** | 39 | 36 | 2 | 75 | `███████████████` |
+| **sam-storage** | 7 | 0 | 1 | 7 | `█░░░░░░░░░░░░░░` |
+| **sam-jail-cli** | 0 | 14 | 1 | 14 | `███░░░░░░░░░░░░` |
+| **sam-gtk** | 9 | 0 | 1 | 9 | `██░░░░░░░░░░░░░` |
+| **all parts** | **151** | **52** | **7** | **203** | |
 
-Scripted checks of the window and of real AppImages:
+### Scripted checks of the window and of real AppImages
 
-- `tests/gui/smoke.sh`: Every page of the window opens without GTK warnings, criticals or panics, in a wide and a narrow window.
-- `tests/gui/permissions-atspi.sh`: Through the accessibility interface: the Permissions page selects apps, names its controls, warns before an app loses something it needs, applies a group change, and Undo restores every app; tag filters cycle.
-- `tests/gui/app-page-atspi.sh`: Through the accessibility interface: the app page has one Test button with a visible test state, the trash button as high as Test and Launch, advice in one group, a visible "Files This App Saved" row, and a remove dialog whose three choices are not preselected and whose button cannot be pressed before a choice.
-- `tests/gui/taskbar-kwin.sh`: In a hidden KWin session, a sandboxed app's window is named after SAM's menu entry, so the taskbar shows the app's own icon and name.
-- `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000`: A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash.
-- `tests/real-apps/run.sh`: Real AppImages from the test sets start in their sandbox; results are compared with the last baseline.
+> These run SAM's window or real AppImages in an invisible desktop session. The
+> window smoke test runs in CI; the others are started by hand.
+
+- `tests/gui/smoke.sh` — Every page of the window opens without GTK warnings, criticals or panics, in a wide and a narrow window.
+- `tests/gui/permissions-atspi.sh` — Through the accessibility interface: the Permissions page selects apps, names its controls, warns before an app loses something it needs, applies a group change, and Undo restores every app; tag filters cycle.
+- `tests/gui/app-page-atspi.sh` — Through the accessibility interface: the app page has one Test button with a visible test state, the trash button as high as Test and Launch, advice in one group, a visible "Files This App Saved" row, and a remove dialog whose three choices are not preselected and whose button cannot be pressed before a choice.
+- `tests/gui/taskbar-kwin.sh` — In a hidden KWin session, a sandboxed app's window is named after SAM's menu entry, so the taskbar shows the app's own icon and name.
+- `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` — A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash.
+- `tests/real-apps/run.sh` — Real AppImages from the test sets start in their sandbox; results are compared with the last baseline.
 
 ### Every test
 
-<details><summary><b>sam-core</b>: Permission model, risk, warnings, configuration and file formats (26 tests)</summary>
+> Click a part to unfold its tests. The promise is the first sentence of the test's
+> own comment; the name links to the code.
+
+<details><summary><b>sam-core</b> — Permission model, risk, warnings, configuration and file formats (26 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -101,7 +137,7 @@ Scripted checks of the window and of real AppImages:
 
 </details>
 
-<details><summary><b>sam-detect</b>: Recognizing AppImages and what they need (ELF, toolkits, signatures) (18 tests)</summary>
+<details><summary><b>sam-detect</b> — Recognizing AppImages and what they need (ELF, toolkits, signatures) (18 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -126,7 +162,7 @@ Scripted checks of the window and of real AppImages:
 
 </details>
 
-<details><summary><b>sam-intake</b>: Unpacking AppImages safely, metadata, menu entries (25 tests)</summary>
+<details><summary><b>sam-intake</b> — Unpacking AppImages safely, metadata, menu entries (25 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -158,7 +194,7 @@ Scripted checks of the window and of real AppImages:
 
 </details>
 
-<details><summary><b>sam-profile</b>: Recommendations, the user's presets, change checks, permission tags (13 tests)</summary>
+<details><summary><b>sam-profile</b> — Recommendations, the user's presets, change checks, permission tags (13 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -178,7 +214,7 @@ Scripted checks of the window and of real AppImages:
 
 </details>
 
-<details><summary><b>sam-sandbox</b>: Building the Bubblewrap command from the permissions (16 tests)</summary>
+<details><summary><b>sam-sandbox</b> — Building the Bubblewrap command from the permissions (16 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -201,7 +237,7 @@ Scripted checks of the window and of real AppImages:
 
 </details>
 
-<details><summary><b>sam-runner</b>: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time (75 tests)</summary>
+<details><summary><b>sam-runner</b> — Operations: add, launch, verify, repair, update, group changes; the sandbox at run time (75 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -283,7 +319,7 @@ Scripted checks of the window and of real AppImages:
 
 </details>
 
-<details><summary><b>sam-storage</b>: App records, presets and logs on disk (7 tests)</summary>
+<details><summary><b>sam-storage</b> — App records, presets and logs on disk (7 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -297,7 +333,7 @@ Scripted checks of the window and of real AppImages:
 
 </details>
 
-<details><summary><b>sam-jail-cli</b>: The command line and its JSON interface (14 tests)</summary>
+<details><summary><b>sam-jail-cli</b> — The command line and its JSON interface (14 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -318,7 +354,7 @@ Scripted checks of the window and of real AppImages:
 
 </details>
 
-<details><summary><b>sam-gtk</b>: The window (logic that runs without a display) (9 tests)</summary>
+<details><summary><b>sam-gtk</b> — The window (logic that runs without a display) (9 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -336,17 +372,25 @@ Scripted checks of the window and of real AppImages:
 
 ## Version reports
 
+> **What you see:** every version report, newest first. A report is made at the end
+> of each phase of work and before each published version; it compares the tests,
+> the coverage, the speed and the dependencies with the report before.
+
 | Report | Generated | Tests passing | Failing |
 |---|---|---|---|
-| [0.1.0-c20b843](docs/reports/0.1.0-c20b843.md) | 2026-11-15T00:08:58 | 201 | 0 |
-| [0.1.0-26c4617](docs/reports/0.1.0-26c4617.md) | 2026-11-14T21:22:22 | 193 | 0 |
-| [0.1.0-984380d](docs/reports/0.1.0-984380d.md) | 2026-11-14T20:56:07 | 190 | 0 |
-| [0.1.0-36e9b42](docs/reports/0.1.0-36e9b42.md) | 2026-11-14T20:40:46 | 189 | 0 |
+| [0.1.0-c20b843](docs/reports/0.1.0-c20b843.md) | 2026-11-15 00:08:58 | 201 | 0 |
+| [0.1.0-26c4617](docs/reports/0.1.0-26c4617.md) | 2026-11-14 21:22:22 | 193 | 0 |
+| [0.1.0-984380d](docs/reports/0.1.0-984380d.md) | 2026-11-14 20:56:07 | 190 | 0 |
+| [0.1.0-36e9b42](docs/reports/0.1.0-36e9b42.md) | 2026-11-14 20:40:46 | 189 | 0 |
 
 ## Latest commits
 
+> **What you see:** the 30 newest changes to SAM, newest first. Each commit message
+> explains what changed and why; the hash links to the change on GitHub.
+
 | Commit | Date | Change |
 |---|---|---|
+| [`2df2a41`](https://github.com/gitzekatze/SAM/commit/2df2a41) | 2026-11-15 | Development dashboard (DEVELOPMENT.md); harness: start time, memory, tray, portals, missing files |
 | [`872f0bd`](https://github.com/gitzekatze/SAM/commit/872f0bd) | 2026-11-15 | Phase 6, part 1: full disk, clearer errors, real-app checks; CI fixes |
 | [`42ee8c4`](https://github.com/gitzekatze/SAM/commit/42ee8c4) | 2026-11-15 | Version report at the end of Phase 5 (0.1.0, c20b843) |
 | [`c20b843`](https://github.com/gitzekatze/SAM/commit/c20b843) | 2026-11-15 | Phase 5, part 3: fuzzing (and the crash it found), threat model, Fedora CI |
@@ -376,6 +420,5 @@ Scripted checks of the window and of real AppImages:
 | [`48a8075`](https://github.com/gitzekatze/SAM/commit/48a8075) | 2026-11-13 | Sandbox: the system's font cache, read-only |
 | [`d739194`](https://github.com/gitzekatze/SAM/commit/d739194) | 2026-11-12 | Detection: X11 for Qt apps that pick it themselves or cannot load Qt's Wayland plugin |
 | [`f85f527`](https://github.com/gitzekatze/SAM/commit/f85f527) | 2026-11-12 | sam-detect: analyze_appdir as its five steps |
-| [`4e94f86`](https://github.com/gitzekatze/SAM/commit/4e94f86) | 2026-11-12 | Launch code split into named steps; fewer unwraps; quiet exit on a closed pipe |
 
-Full history: [https://github.com/gitzekatze/SAM/commits/main](https://github.com/gitzekatze/SAM/commits/main).
+The full history is at [https://github.com/gitzekatze/SAM/commits/main](https://github.com/gitzekatze/SAM/commits/main).

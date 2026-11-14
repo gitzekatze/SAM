@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Writes DEVELOPMENT.md, the development dashboard: the current state of
-SAM (CI, the latest version report), every test grouped by part, the
-history of version reports, and the latest commits.
+"""Writes DEVELOPMENT.md, the development dashboard: whether SAM is
+healthy right now (CI, the latest version report), every test grouped by
+part, the history of version reports, and the latest commits.
 
     scripts/dashboard.py
 
-It is regenerated with every version report (scripts/version-report.py
-calls it), so it shows the state at the end of the last phase of work.
+The version report (scripts/version-report.py, `make report`) calls it,
+so the page shows the state at the end of the last phase of work. Each
+section starts with a short note on what it shows and how to read it.
 """
 import datetime
 import importlib.util
@@ -18,7 +19,7 @@ import subprocess
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REPO = "https://github.com/gitzekatze/SAM"
 
-# The test library's parser, to list the same tests with the same promises.
+# The test library's parser, so both pages list the same tests and promises.
 spec = importlib.util.spec_from_file_location("test_library", ROOT / "scripts" / "test-library.py")
 lib = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lib)
@@ -29,19 +30,30 @@ def git(*args):
 
 
 def reports():
+    """All version reports, oldest first: (path, report)."""
     out = []
     for p in (ROOT / "docs" / "reports").glob("*.json"):
         try:
-            r = json.loads(p.read_text())
+            out.append((p, json.loads(p.read_text())))
         except json.JSONDecodeError:
             continue
-        out.append((r.get("generated", ""), p, r))
-    return [(p, r) for _, p, r in sorted(out, key=lambda x: x[0])]
+    return sorted(out, key=lambda x: x[1].get("generated", ""))
 
 
 def test_counts(r):
     tests = [t for t in r.get("tests", []) if "test" in t]
     return sum(t["result"] == "ok" for t in tests), sum(t["result"] == "FAILED" for t in tests)
+
+
+def bar(fraction, width=20):
+    """A small bar chart made of characters (GitHub pages allow no styles)."""
+    full = round(max(0.0, min(1.0, fraction)) * width)
+    return "█" * full + "░" * (width - full)
+
+
+def note(*lines):
+    """The explanation above a section, as a quote block."""
+    return [f"> {l}" if l else ">" for l in lines] + [""]
 
 
 def kind_of(path: pathlib.Path) -> str:
@@ -50,93 +62,159 @@ def kind_of(path: pathlib.Path) -> str:
 
 def main():
     version = re.search(r'^version = "([^"]+)"', (ROOT / "Cargo.toml").read_text(), re.M).group(1)
-    L = [
-        "# SAM development dashboard",
-        "",
-        "The state of SAM for people who work on it: tests, results, history.",
-        "For users, the front page is [README.md](README.md).",
-        f"Generated {datetime.datetime.now().isoformat(timespec='minutes')} by `scripts/dashboard.py`",
-        "(with every version report, `make report`).",
-        "",
-        "## Current state",
-        "",
-        f"[![CI]({REPO}/actions/workflows/ci.yml/badge.svg)]({REPO}/actions/workflows/ci.yml)",
-        "",
-        f"- **Version:** {version} (the number changes only when a version is published).",
-        f"- **Latest commit:** `{git('log', '-1', '--format=%h %s')}`.",
-    ]
     reps = reports()
-    if reps:
-        p, r = reps[-1]
-        ok, failed = test_counts(r)
-        L += [
-            f"- **Latest version report:** [{p.stem}](docs/reports/{p.stem}.md), {r.get('generated', '')}:"
-            f" {ok} tests pass, {failed} fail.",
-            "",
-            "| Part | Tests passing | Failing | Line coverage |",
-            "|---|---|---|---|",
-        ]
+    latest = reps[-1] if reps else None
+    previous = reps[-2] if len(reps) > 1 else None
+    ok, failed = test_counts(latest[1]) if latest else (0, 0)
+
+    L = ["# 🛠️ SAM development dashboard", ""]
+    L += note(
+        "**What this page is:** the front page for people who work on SAM. It shows",
+        "whether SAM is healthy right now, every test with the promise it keeps, how",
+        "the version reports changed over time, and the latest commits. For people",
+        "who use SAM, the front page is [README.md](README.md).",
+        "",
+        f"Generated on {datetime.datetime.now().strftime('%Y-%m-%d at %H:%M')} by `scripts/dashboard.py`. It is",
+        "regenerated with every version report (`make report`), so it shows the state",
+        "at the end of the last phase of work.",
+    )
+
+    # ---- at a glance
+    L += ["## At a glance", "", f"[![CI]({REPO}/actions/workflows/ci.yml/badge.svg)]({REPO}/actions/workflows/ci.yml)", ""]
+    L += [
+        "| | |",
+        "|---|---|",
+        f"| **Tests** | {'✅' if failed == 0 else '❌'} {ok} pass, {failed} fail in the latest version report |",
+        f"| **Version** | {version} (the number changes only when a version is published) |",
+        f"| **Latest commit** | `{git('log', '-1', '--format=%h')}` {git('log', '-1', '--format=%s').replace('|', '/')} |",
+        f"| **Commits so far** | {git('rev-list', '--count', 'HEAD')} |",
+        (f"| **Version reports** | {len(reps)}; the newest is [{latest[0].stem}](docs/reports/{latest[0].stem}.md) |" if latest else "| **Version reports** | none yet |"),
+        "",
+    ]
+    L += note(
+        "**How to read the badge:** it shows the last CI run on GitHub (unit,",
+        "integration, sandbox and window tests on Ubuntu; sandbox tests on Fedora).",
+        "Green means every test passed there; click it for the details.",
+    )
+
+    # ---- health of each part
+    if latest:
+        r = latest[1]
+        L += ["## Health of each part", ""]
+        L += note(
+            "**What you see:** for each part of SAM, its tests in the latest version",
+            "report, and how much of its code those tests run (line coverage, the bar).",
+            "Low coverage hints where a regression test may be missing; it is not a",
+            "grade. The window (sam-gtk) is mostly checked by the scripted window tests",
+            "further down, which line coverage does not count.",
+        )
+        L += ["| Part | What it does | Tests | Line coverage |", "|---|---|---|---|"]
         by = {}
         for t in r.get("tests", []):
             if "test" in t:
                 b = by.setdefault(t["part"], [0, 0])
-                b[0 if t["result"] == "ok" else 1] += t["result"] in ("ok", "FAILED")
-        for part in lib.PARTS:
+                b[0] += t["result"] == "ok"
+                b[1] += t["result"] == "FAILED"
+        for part, what in lib.PARTS.items():
             b = by.get(part, [0, 0])
-            cov = r.get("coverage", {}).get(part, {})
-            L.append(f"| {part} | {b[0]} | {b[1]} | {str(cov['percent']) + ' %' if cov else 'not measured'} |")
+            cov = r.get("coverage", {}).get(part)
+            covtxt = f"`{bar(cov['percent'] / 100)}` {cov['percent']} %" if cov else "not measured"
+            state = "✅" if b[1] == 0 else f"❌ {b[1]} failing,"
+            L.append(f"| **{part}** | {what} | {state} {b[0]} passing | {covtxt} |")
+        L.append("")
+
+        # ---- speed
         if r.get("bench"):
-            L += ["", "| Step | Fastest run |", "|---|---|"]
+            L += ["## Speed", ""]
+            L += note(
+                "**What you see:** how long SAM's steps take, measured by `sam-jail dev bench`",
+                "on a test AppImage with 2,000 files and on 120 sandboxed apps. Each step runs",
+                "several times after a warm-up run; the fastest run is shown, because it is the",
+                "one least disturbed by other programs. The last column compares with the",
+                "previous report: 🔺 means more than 25 % slower, 🔻 more than 25 % faster.",
+                "A busy computer can cause such a change, so measure twice before you believe it.",
+            )
+            pb = {m["key"]: m for m in (previous[1].get("bench", []) if previous else [])}
+            L += ["| Step | Fastest run | Since the previous report |", "|---|---|---|"]
             for m in r["bench"]:
                 v = m.get("best_ms", m.get("median_ms"))
-                L.append(f"| {m['what']} | {f'{v:.3f} ms' if v is not None else 'not measured'} |")
-    L += [
-        "",
-        "Line coverage is a gap finder, not a score: it shows code that no test runs.",
-        "",
-        "## Tests",
-        "",
-        "Every test keeps one promise, stated in a complete sentence; ⟲ marks a",
-        "regression test, which guards against a bug that happened. The same list",
-        "with links to the code is the [test library](docs/test-library.md).",
-        "",
-        "| Part | Unit tests | Integration tests | Regression tests | Total |",
-        "|---|---|---|---|---|",
-    ]
-    all_rows = {}
-    totals = [0, 0, 0]
+                old = pb.get(m["key"], {}).get("best_ms")
+                change = "first measurement"
+                if v is not None and old:
+                    pct = (v - old) / old * 100
+                    change = f"{'🔺' if pct > 25 else ('🔻' if pct < -25 else '≈')} {pct:+.0f} %"
+                L.append(f"| {m['what']} | {f'{v:.3f} ms' if v is not None else 'not measured here'} | {change} |")
+            L.append("")
+
+    # ---- tests
+    L += ["## Tests", ""]
+    L += note(
+        "**What you see:** every automated test, counted per part. A **unit test** checks",
+        "one piece of code on its own. An **integration test** runs the real program end",
+        "to end, often inside a real sandbox. A **regression test** ⟲ guards against a bug",
+        "that really happened, and fails without its fix. Every test keeps one promise,",
+        "stated in a complete sentence. The same list with links to the code is the",
+        "[test library](docs/test-library.md).",
+    )
+    groups = {}
     for part, what in lib.PARTS.items():
         rows = []
         for f in sorted((ROOT / "crates" / part).rglob("*.rs")):
             for name, promise, line, reg in lib.tests_in(f):
                 rows.append((kind_of(f), reg, name, promise, f.relative_to(ROOT), line))
-        if not rows:
-            continue
-        all_rows[part] = (what, rows)
+        if rows:
+            groups[part] = (what, rows)
+    most = max((len(rows) for _, rows in groups.values()), default=1)
+    totals = [0, 0, 0]
+    L += ["| Part | Unit | Integration | Regression ⟲ | Total | |", "|---|---|---|---|---|---|"]
+    for part, (_, rows) in groups.items():
         u = sum(k == "unit" for k, *_ in rows)
-        i = sum(k == "integration" for k, *_ in rows)
+        i = len(rows) - u
         g = sum(1 for _, reg, *_ in rows if reg)
         totals = [totals[0] + u, totals[1] + i, totals[2] + g]
-        L.append(f"| {part} | {u} | {i} | {g} | {len(rows)} |")
-    L.append(f"| **all** | **{totals[0]}** | **{totals[1]}** | **{totals[2]}** | **{totals[0] + totals[1]}** |")
-    L += ["", "Scripted checks of the window and of real AppImages:", ""]
-    L += [f"- `{p}`: {t}" for p, t in lib.GUI_CHECKS]
-    L += ["", "### Every test", ""]
-    for part, (what, rows) in all_rows.items():
-        L += [f"<details><summary><b>{part}</b>: {what} ({len(rows)} tests)</summary>", "", "| Kind | Promise | Test |", "|---|---|---|"]
+        L.append(f"| **{part}** | {u} | {i} | {g} | {len(rows)} | `{bar(len(rows) / most, 15)}` |")
+    L += [f"| **all parts** | **{totals[0]}** | **{totals[1]}** | **{totals[2]}** | **{totals[0] + totals[1]}** | |", ""]
+
+    L += ["### Scripted checks of the window and of real AppImages", ""]
+    L += note(
+        "These run SAM's window or real AppImages in an invisible desktop session. The",
+        "window smoke test runs in CI; the others are started by hand.",
+    )
+    L += [f"- `{p}` — {t}" for p, t in lib.GUI_CHECKS] + [""]
+
+    L += ["### Every test", ""]
+    L += note("Click a part to unfold its tests. The promise is the first sentence of the test's", "own comment; the name links to the code.")
+    for part, (what, rows) in groups.items():
+        L += [f"<details><summary><b>{part}</b> — {what} ({len(rows)} tests)</summary>", "", "| Kind | Promise | Test |", "|---|---|---|"]
         for kind, reg, name, promise, rel, line in rows:
             L.append(f"| {kind}{' ⟲' if reg else ''} | {promise} | [`{name}`]({rel}#L{line}) |")
         L += ["", "</details>", ""]
-    L += ["## Version reports", "", "| Report | Generated | Tests passing | Failing |", "|---|---|---|---|"]
+
+    # ---- version reports
+    L += ["## Version reports", ""]
+    L += note(
+        "**What you see:** every version report, newest first. A report is made at the end",
+        "of each phase of work and before each published version; it compares the tests,",
+        "the coverage, the speed and the dependencies with the report before.",
+    )
+    L += ["| Report | Generated | Tests passing | Failing |", "|---|---|---|---|"]
     for p, r in reversed(reps):
-        ok, failed = test_counts(r)
-        L.append(f"| [{p.stem}](docs/reports/{p.stem}.md) | {r.get('generated', '')} | {ok} | {failed} |")
-    L += ["", "## Latest commits", "", "| Commit | Date | Change |", "|---|---|---|"]
+        o, f = test_counts(r)
+        L.append(f"| [{p.stem}](docs/reports/{p.stem}.md) | {r.get('generated', '').replace('T', ' ')} | {o} | {f} |")
+    L.append("")
+
+    # ---- commits
+    L += ["## Latest commits", ""]
+    L += note(
+        "**What you see:** the 30 newest changes to SAM, newest first. Each commit message",
+        "explains what changed and why; the hash links to the change on GitHub.",
+    )
+    L += ["| Commit | Date | Change |", "|---|---|---|"]
     for line in git("log", "-30", "--format=%h%x09%ad%x09%s", "--date=short").splitlines():
         h, d, s = line.split("\t", 2)
-        s = s.replace("|", "\\|")
-        L.append(f"| [`{h}`]({REPO}/commit/{h}) | {d} | {s} |")
-    L += ["", f"Full history: [{REPO}/commits/main]({REPO}/commits/main).", ""]
+        L.append(f"| [`{h}`]({REPO}/commit/{h}) | {d} | {s.replace('|', '/')} |")
+    L += ["", f"The full history is at [{REPO}/commits/main]({REPO}/commits/main).", ""]
+
     (ROOT / "DEVELOPMENT.md").write_text("\n".join(L))
     print("wrote DEVELOPMENT.md")
 
