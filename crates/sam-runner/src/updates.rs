@@ -209,7 +209,7 @@ fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
         bail!("not HTTPS");
     }
-    let curl = sam_core::util::which("curl").context("curl is not installed")?;
+    let curl = sam_core::util::which("curl").context("curl is not installed, so SAM cannot check for or download updates. Install the package curl.")?;
     let out = Command::new(curl)
         .args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
         .args(["--max-redirs", "5", "--connect-timeout", "15", "--speed-limit", "1024", "--speed-time", "60"])
@@ -235,7 +235,7 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
     if !p.file_url.starts_with("https://") {
         bail!("the update file is not offered over HTTPS");
     }
-    let curl = sam_core::util::which("curl").context("curl is not installed")?;
+    let curl = sam_core::util::which("curl").context("curl is not installed, so SAM cannot check for or download updates. Install the package curl.")?;
     let mut cmd = Command::new(curl);
     cmd.args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
         .args(["--max-redirs", "5", "--connect-timeout", "15", "--speed-limit", "1024", "--speed-time", "60"])
@@ -319,7 +319,7 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
         bail!("the update address is not HTTPS ({})", sam_core::util::display_safe(url, 120));
     }
-    let curl = sam_core::util::which("curl").context("curl is not installed")?;
+    let curl = sam_core::util::which("curl").context("curl is not installed, so SAM cannot check for or download updates. Install the package curl.")?;
     let mut cmd = Command::new(curl);
     cmd.args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
         .args(["--max-redirs", "5", "--connect-timeout", "10", "--max-time", "30"])

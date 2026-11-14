@@ -186,7 +186,7 @@ impl Sam {
     /// extracted entry. Keeps user-modified profiles intact.
     pub(super) fn finish_intake(&self, entry: &mut AppEntry, extract_log: &[u8], pr: &ProgressSink) -> Result<()> {
         pr.step(ADD_STEPS, 2, 0.0, "");
-        let mut x = entry.extraction.clone().context("not extracted")?;
+        let mut x = entry.extraction.clone().context("the AppImage has not been unpacked yet; unpack it again with Re-extract (sam-jail reextract APP)")?;
         if !x.appdir.join("AppRun").exists() {
             // Some AppImages ship without AppRun; fall back to the desktop Exec.
             let exec = entry.metadata.exec.split_whitespace().next().unwrap_or("").to_string();
@@ -214,7 +214,7 @@ impl Sam {
     }
 
     pub(super) fn detect(&self, entry: &mut AppEntry, pr: &ProgressSink) -> Result<()> {
-        let x = entry.extraction.clone().context("not extracted")?;
+        let x = entry.extraction.clone().context("the AppImage has not been unpacked yet; unpack it again with Re-extract (sam-jail reextract APP)")?;
         let report = if self.config.dependencies.static_analysis {
             let opts = AnalyzeOptions {
                 entry: x.entry.clone(),

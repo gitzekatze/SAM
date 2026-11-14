@@ -109,8 +109,12 @@ except OSError as e:
     print("SHM=" + str(e.errno))
 print("ENV_SECRET=" + ("leaked" if "SAM_TEST_HOST_SECRET" in os.environ else "absent"))
 # systemd-run runs the command inside the sandbox.
-out = subprocess.run(["systemd-run", "--user", "--scope", "--unit=x.scope", "sh", "-c", "echo ${SAM_SANDBOX:-outside}"], capture_output=True, text=True)
-print("SYSTEMD_RUN=" + (out.stdout.strip() or "error:" + out.stderr.strip()[:60]))
+# (Hosts without systemd, such as containers, have no systemd-run at all.)
+try:
+    out = subprocess.run(["systemd-run", "--user", "--scope", "--unit=x.scope", "sh", "-c", "echo ${SAM_SANDBOX:-outside}"], capture_output=True, text=True)
+    print("SYSTEMD_RUN=" + (out.stdout.strip() or "error:" + out.stderr.strip()[:60]))
+except FileNotFoundError:
+    print("SYSTEMD_RUN=absent")
 st = open("/proc/self/status").read()
 for line in st.splitlines():
     k, _, v = line.partition(":")
@@ -256,7 +260,14 @@ fn every_breakout_attempt_from_a_real_sandbox_fails() {
     assert_eq!(r["SHM"], "written", "the app has a /dev/shm of its own");
     assert!(!Path::new(&format!("/dev/shm/sam-breakout-{token}")).exists(), "/dev/shm is private");
     assert_eq!(r["ENV_SECRET"], "absent", "host environment is not passed in");
-    assert_eq!(r["SYSTEMD_RUN"], "bubblewrap", "systemd-run runs the command inside the sandbox");
+    // Where the host has systemd-run, SAM's stand-in runs the command inside
+    // the sandbox; where it has none (containers), it cannot be misused.
+    let host_has_systemd_run = Path::new("/usr/bin/systemd-run").exists();
+    if host_has_systemd_run {
+        assert_eq!(r["SYSTEMD_RUN"], "bubblewrap", "systemd-run runs the command inside the sandbox");
+    } else {
+        assert_eq!(r["SYSTEMD_RUN"], "absent", "no systemd-run on this host, none inside");
+    }
     // Strict profile: credential stores live in the real home, which is not there.
     assert!(!r["H_SSH"].starts_with("readable"));
 

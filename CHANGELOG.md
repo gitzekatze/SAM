@@ -9,6 +9,21 @@ version.
 
 ## Unreleased
 
+### Reliability beyond the first start
+
+- Unpacking checks the free space first and refuses with what to do
+  instead of filling the disk; if the disk still fills up, SAM removes
+  what was unpacked and says so.
+- Clearer messages for the unpack limits (why they exist, how to raise
+  them), a missing xdg-dbus-proxy or curl, and an app that is not
+  unpacked.
+- The real-app harness checks more than the first start: unanswered D-Bus
+  calls, error dialogs, recommendation stability, leftovers, and with
+  CHECKS a start without network and sound, a second start and a start in
+  German; tests/real-apps/checks.py summarizes a run in one line per app.
+- The header bar no longer uses strict centering, which made libadwaita
+  1.5 (Ubuntu 24.04) need 409 px in a 360 px window.
+
 ### Security tests that prove every promise
 
 - The evil-AppImage suite: 18 hostile AppImages, each trying one escape,

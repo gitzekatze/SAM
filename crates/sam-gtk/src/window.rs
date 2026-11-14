@@ -345,7 +345,6 @@ impl App {
             }
         });
         header.pack_start(&home);
-        header.set_centering_policy(adw::CenteringPolicy::Strict);
         view.add_top_bar(&header);
 
         // The left column scrolls as a whole: the AppImage locations (the

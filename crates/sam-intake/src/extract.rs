@@ -94,8 +94,54 @@ impl std::fmt::Display for NeedsFallbackConsent {
 }
 impl std::error::Error for NeedsFallbackConsent {}
 
+/// Free bytes for an unprivileged user in the file system that holds `dir`.
+pub fn free_bytes(dir: &Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    (unsafe { libc::statvfs(c.as_ptr(), &mut st) } == 0).then(|| st.f_bavail as u64 * st.f_frsize as u64)
+}
+
+/// About how much space unpacking an AppImage of `source_size` bytes takes:
+/// SquashFS and DwarFS images usually unpack to two or three times their
+/// size; never more than the unpack limit allows.
+pub fn space_needed(source_size: u64, limits: &Limits) -> u64 {
+    source_size.saturating_mul(3).saturating_add(64 * 1024 * 1024).min(limits.max_bytes.saturating_add(64 * 1024 * 1024))
+}
+
+/// Refuses to start unpacking when the folder clearly has too little room,
+/// with what to do about it, instead of failing halfway with a full disk.
+pub fn check_space(root: &Path, source_size: u64, limits: &Limits, free: Option<u64>) -> Result<()> {
+    let needed = space_needed(source_size, limits);
+    match free {
+        Some(free) if free < needed => bail!(
+            "There is not enough free space to unpack this AppImage: it needs about {}, but the folder {} has only {} free. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location.",
+            sam_core::util::human_size(needed),
+            root.display(),
+            sam_core::util::human_size(free)
+        ),
+        _ => Ok(()),
+    }
+}
+
+/// A limit error with why the limit exists and how to raise it.
+fn explain_limit(e: anyhow::Error) -> anyhow::Error {
+    anyhow!(
+        "SAM stopped unpacking this AppImage: {e:#}. The limits protect your computer from AppImages built to fill the disk or keep SAM busy. If you trust this AppImage, raise the limit, for example with `sam-jail config set extraction.max_files 400000` (also extraction.max_size_mb and extraction.max_seconds), then create the sandbox again."
+    )
+}
+
+/// Whether an unpacking error came from a full disk.
+fn is_disk_full(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| {
+        c.downcast_ref::<std::io::Error>().is_some_and(|io| io.raw_os_error() == Some(libc::ENOSPC)) || c.to_string().contains("No space left on device")
+    })
+}
+
 pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutcome> {
     fs::create_dir_all(req.root)?;
+    let source_size = fs::metadata(req.source).map(|m| m.len()).unwrap_or(0);
+    check_space(req.root, source_size, &req.limits, free_bytes(req.root))?;
     let staging = req.root.join(format!(".staging-{}", std::process::id()));
     if staging.exists() {
         fs::remove_dir_all(&staging)?;
@@ -225,7 +271,16 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                 writeln!(log, "[extract] {name} failed: {e:#}")?;
                 if is_limit_error(&e) {
                     let _ = fs::remove_dir_all(&staging);
-                    return Err(e);
+                    return Err(explain_limit(e));
+                }
+                // A full disk: remove what was unpacked so far and say so;
+                // the next method would fail the same way.
+                if is_disk_full(&e) {
+                    let _ = fs::remove_dir_all(&staging);
+                    bail!(
+                        "The disk became full while unpacking this AppImage into {}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location.",
+                        req.root.display()
+                    );
                 }
                 attempts.push(format!("{name}: {e:#}"));
             }
@@ -255,7 +310,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         Ok(r) => r,
         Err(e) => {
             let _ = fs::remove_dir_all(&staging);
-            return Err(e);
+            return Err(if is_limit_error(&e) { explain_limit(e) } else { e });
         }
     };
     writeln!(
@@ -465,4 +520,32 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
     fs::rename(&out, staging).with_context(|| format!("moving the unpacked app to {}", staging.display()))?;
     let _ = fs::remove_dir_all(&work);
     Ok(())
+}
+
+#[cfg(test)]
+mod space_tests {
+    use super::*;
+
+    /// Unpacking does not start when the folder clearly has too little room;
+    /// the message names the folder, both sizes, and where to choose another
+    /// folder. With enough room, or when the free space is unknown, it starts.
+    #[test]
+    fn unpacking_refuses_to_start_without_enough_free_space() {
+        let lim = Limits::default();
+        let size = 500 * 1024 * 1024;
+        let err = check_space(Path::new("/data/unpacked"), size, &lim, Some(100 * 1024 * 1024)).unwrap_err().to_string();
+        assert!(err.contains("/data/unpacked") && err.contains("100.0 MiB") && err.contains("Preferences → Extraction → Location"), "{err}");
+        assert!(check_space(Path::new("/x"), size, &lim, Some(10 * 1024 * 1024 * 1024)).is_ok());
+        assert!(check_space(Path::new("/x"), size, &lim, None).is_ok(), "unknown free space does not block");
+        assert!(space_needed(u64::MAX / 2, &lim) <= lim.max_bytes + 64 * 1024 * 1024, "never more than the unpack limit");
+    }
+
+    /// A full disk during unpacking is recognized, also inside an error
+    /// chain, so SAM can clean up and say what happened.
+    #[test]
+    fn a_full_disk_during_unpacking_is_recognized() {
+        let e = anyhow::Error::from(std::io::Error::from_raw_os_error(libc::ENOSPC)).context("writing usr/lib/libbig.so");
+        assert!(is_disk_full(&e));
+        assert!(!is_disk_full(&anyhow!("some other problem")));
+    }
 }

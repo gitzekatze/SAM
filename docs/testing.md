@@ -2,6 +2,18 @@
 
 The complete list of automated tests, each with the promise it keeps, is the
 [test library](test-library.md). How each part of SAM does from version to
+
+**Real AppImages beyond the first start:** `WORK=… tests/real-apps/run.sh
+APP…` also records, for every app, the D-Bus calls of the first start that
+got no answer (an app waiting on them feels slow), the windows after 20
+seconds and whether a title reads like an error dialog, whether the
+recommendation is the same twice, and leftovers after closing. With
+`CHECKS="netoff second lang"` it also starts each app without network and
+sound, a second time while the first runs, and in German.
+`python3 tests/real-apps/checks.py WORK [BASELINE]` prints one line per app,
+or with a baseline only what changed. The smoke subset (one app per family,
+16 apps) passed every check on 2026-11-15.
+
 version (tests, line coverage, timings, dependencies) is in the
 [version reports](reports/), made with `make report`.
 

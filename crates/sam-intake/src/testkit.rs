@@ -213,6 +213,8 @@ mod tests {
         let req = ExtractRequest { source: &img, info: &info, root: &root, limits, allow_fallback: false, isolation: None };
         let err = extract(&req, &mut Vec::new()).unwrap_err();
         assert!(format!("{err:#}").contains("limit"), "{err:#}");
+        // The message says why the limit exists and how to raise it.
+        assert!(format!("{err:#}").contains("sam-jail config set extraction."), "{err:#}");
         assert!(!root.join("AppDir").exists());
         assert!(std::fs::read_dir(&root).unwrap().next().is_none(), "staging removed");
     }

@@ -19,7 +19,7 @@ pub struct DbusProxy {
 
 impl DbusProxy {
     pub fn start(host: &HostInfo, perms: &DbusBusPerms, runtime_dir: &Path, app_id: &str) -> Result<DbusProxy> {
-        let tool = host.tools.xdg_dbus_proxy.as_ref().context("xdg-dbus-proxy is not installed")?;
+        let tool = host.tools.xdg_dbus_proxy.as_ref().context("xdg-dbus-proxy is not installed, so SAM cannot give the app filtered access to desktop services (file dialogs, notifications, the tray). Install the package xdg-dbus-proxy, or turn the app's session bus to No access.")?;
         let address = host
             .sockets
             .dbus_session_address

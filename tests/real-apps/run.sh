@@ -37,7 +37,9 @@ cat > "$run/queue" <<'Q'
 while IFS= read -r img; do [ -n "$img" ] && "$TEST_ONE" "$img" < /dev/null; done < "$R/queue.txt"
 Q
 chmod +x "$run/queue"
-export TEST_ONE="$here/test-one.sh"
+export TEST_ONE="$here/test-one.sh" TOOLS="$here" CHECKS="${CHECKS:-}"
+# KWin script output (window titles) goes to kwin.log.
+export QT_FORCE_STDERR_LOGGING=1 QT_LOGGING_RULES="js.debug=true"
 # KWin splits the session command at spaces: start it through a link.
 ln -sf "${SESSION_SCRIPT:-$run/queue}" "$run/start"
 dbus-run-session --config-file="$R/session.conf" -- \
