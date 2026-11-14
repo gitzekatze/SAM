@@ -98,7 +98,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-profile: Recommendations, the user's presets, change checks, permission tags
 
-15 tests.
+13 tests.
 
 | Promise | Test |
 |---|---|
@@ -115,8 +115,6 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Tags follow the family order and mark read only. | [`tags_follow_the_family_order_and_mark_read_only`](../crates/sam-profile/src/tags.rs#L145) |
 | Dangerous access is red and filtered bus has no tag. | [`dangerous_access_is_red_and_filtered_bus_has_no_tag`](../crates/sam-profile/src/tags.rs#L167) |
 | One name per permission: where the risk list names a permission that also has a tag, both use the same words (regression: "Audio" vs "Sound", "GPU" vs "GPU acceleration", "Show in folder"). | [`tags_and_the_risk_list_use_the_same_words`](../crates/sam-profile/src/tags.rs#L213) |
-| Tags explain themselves: every tag carries the description of its switch, and the order follows the families. | [`every_tag_has_an_explanation`](../crates/sam-profile/src/tags.rs#L232) |
-| Three colors for four risk levels, the same mapping SAM's window uses for badges (util::risk_tone). | [`risk_levels_map_onto_three_colors`](../crates/sam-profile/src/tags.rs#L242) |
 
 ## sam-sandbox: Building the Bubblewrap command from the permissions
 
@@ -143,11 +141,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-54 tests.
+53 tests.
 
 | Promise | Test |
 |---|---|
-| Without Bubblewrap, SAM explains what is missing instead of starting anything. | [`bubblewrap_or_guidance`](../crates/sam-runner/src/bwrap.rs#L35) |
 | Reaches the session bus. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L171) |
 | SAM's own D-Bus message for the bus check has the correct wire format. | [`method_call_layout`](../crates/sam-runner/src/dbus_check.rs#L183) |
 | Tray names follow watcher permission. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L101) |
@@ -230,17 +227,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-gtk: The window (logic that runs without a display)
 
-8 tests.
+6 tests.
 
 | Promise | Test |
 |---|---|
 | The group switches offer only permissions and values SAM accepts (`sam-jail group set` would refuse anything else), and each value of a permission appears once. | [`group_switches_offer_only_valid_values`](../crates/sam-gtk/src/all_perms.rs#L930) |
 | Personal folders explain where they are; other permissions keep their description unchanged. | [`folder_explanations_name_the_path`](../crates/sam-gtk/src/all_perms.rs#L950) |
 | Nested items keep their text. | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L273) |
-| The built-in user guide is present and has its sections. | [`guide_parses`](../crates/sam-gtk/src/guide.rs#L292) |
 | ⟲ Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | [`the_style_sheet_handler_is_connected_before_register`](../crates/sam-gtk/src/main.rs#L425) |
 | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L436) |
-| Risk words have three levels. | [`risk_words_have_three_levels`](../crates/sam-gtk/src/main.rs#L460) |
 | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`watched_names`](../crates/sam-gtk/src/window.rs#L1296) |
 
 ## The window and real AppImages
@@ -251,4 +246,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `tests/gui/permissions-atspi.sh` | Through the accessibility interface: the Permissions page selects apps, names its controls, warns before an app loses something it needs, applies a group change, and Undo restores every app; tag filters cycle. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 169 automated Rust tests plus 3 scripted checks.
+Total: 164 automated Rust tests plus 3 scripted checks.

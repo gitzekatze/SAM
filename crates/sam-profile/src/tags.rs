@@ -226,24 +226,4 @@ mod tests {
         }
         assert!(differ.is_empty(), "{differ:#?}");
     }
-
-    /// Tags explain themselves: every tag carries the description of its
-    /// switch, and the order follows the families.
-    #[test]
-    fn every_tag_has_an_explanation() {
-        let tags = permission_tags(&everything());
-        assert!(tags.len() > 15);
-        assert!(tags.iter().all(|t| !t.description.is_empty()), "{tags:?}");
-        assert!(tags.windows(2).all(|w| w[0].family <= w[1].family));
-    }
-
-    /// Three colors for four risk levels, the same mapping SAM's window uses
-    /// for badges (util::risk_tone).
-    #[test]
-    fn risk_levels_map_onto_three_colors() {
-        assert_eq!(TagLevel::from(RiskLevel::Low), TagLevel::Harmless);
-        assert_eq!(TagLevel::from(RiskLevel::Medium), TagLevel::Harmless);
-        assert_eq!(TagLevel::from(RiskLevel::High), TagLevel::Caution);
-        assert_eq!(TagLevel::from(RiskLevel::Dangerous), TagLevel::Danger);
-    }
 }

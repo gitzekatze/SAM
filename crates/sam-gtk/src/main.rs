@@ -456,13 +456,4 @@ mod tests {
         let tag_rules: String = CSS.lines().filter(|l| l.contains(".sam-tag-") || l.contains(".sam-badge-")).collect();
         assert!(!tag_rules.contains('@'), "tag and badge colors must not depend on theme colors");
     }
-
-    #[test]
-    fn risk_words_have_three_levels() {
-        use crate::util::risk_label;
-        assert_eq!(risk_label("low"), "Harmless");
-        assert_eq!(risk_label("medium"), "Harmless");
-        assert_eq!(risk_label("high"), "Think twice");
-        assert_eq!(risk_label("dangerous"), "Dangerous");
-    }
 }

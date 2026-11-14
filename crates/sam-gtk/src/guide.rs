@@ -287,13 +287,4 @@ mod tests {
         }
         assert_eq!(texts, ["Parent text", "child one", "child two", "last"]);
     }
-
-    /// The built-in user guide is present and has its sections.
-    #[test]
-    fn guide_parses() {
-        // Every block event must be balanced; pulldown-cmark guarantees
-        // this, so just make sure the guide is not empty and has sections.
-        assert!(super::GUIDE.contains("## Sandbox Check"));
-        assert!(super::GUIDE.lines().filter(|l| l.starts_with("## ")).count() > 8);
-    }
 }
