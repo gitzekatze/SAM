@@ -1,0 +1,1447 @@
+{
+ "version": "0.1.0",
+ "commit": "984380d",
+ "generated": "2026-11-14T20:56:07",
+ "tests": [
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "only_real_socket_paths_are_taken_from_a_dbus_address",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "the_x11_display_number_is_read_from_every_display_form",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "profile_change_clears_broken_launch",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "apps_with_compatibility_risk_are_marked_until_they_start",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "bubblewrap_versions_are_compared_correctly",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "the_window_id_matches_the_name_of_sams_menu_entry",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "files_from_a_newer_sam_are_never_overwritten",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "a_complete_configuration_file_loads_every_setting",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "old_extra_backend_args_still_load",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "settings_change_by_key_and_old_theme_names_are_migrated",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "blocked_names_win_over_wildcards",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "access_from_bool_and_str",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "old_profiles_with_removed_options_still_load",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "own_names_that_are_refused",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "full_home_is_dangerous",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "neutralizes_markup_and_controls",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "key_and_system_folders_count_as_sensitive",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "the_strictest_window_profile_is_low_risk",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "network_and_x11_high",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "names_become_safe_identifiers",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "shell_quoting_keeps_spaces_and_quotes_intact",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "each_dangerous_setting_produces_its_warning",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "strict_has_no_danger",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "x11_warning_can_be_disabled",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "set_and_get_keys",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "unit",
+   "test": "permissions_saved_as_toml_load_back_unchanged",
+   "result": "ok"
+  },
+  {
+   "part": "sam-core",
+   "suite": "sam_core",
+   "binary_seconds": 0.01
+  },
+  {
+   "part": "sam-storage",
+   "suite": "unit",
+   "test": "the_newest_log_is_found_even_within_one_second",
+   "result": "ok"
+  },
+  {
+   "part": "sam-storage",
+   "suite": "unit",
+   "test": "records_with_unsafe_or_mismatched_ids_are_not_loaded",
+   "result": "ok"
+  },
+  {
+   "part": "sam-storage",
+   "suite": "unit",
+   "test": "presets_in_the_older_flat_format_still_load",
+   "result": "ok"
+  },
+  {
+   "part": "sam-storage",
+   "suite": "unit",
+   "test": "a_saved_preset_loads_back_unchanged",
+   "result": "ok"
+  },
+  {
+   "part": "sam-storage",
+   "suite": "unit",
+   "test": "preset_names_cannot_place_files_outside_the_presets_folder",
+   "result": "ok"
+  },
+  {
+   "part": "sam-storage",
+   "suite": "unit",
+   "test": "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused",
+   "result": "ok"
+  },
+  {
+   "part": "sam-storage",
+   "suite": "sam_storage",
+   "binary_seconds": 0.03
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "a_file_that_is_no_program_is_not_an_appimage",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "bundled_libraries_are_sorted_by_what_they_reach",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "the_c_library_version_an_app_needs_is_read",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "update_wildcards_match_only_the_right_build",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "both_forms_of_update_information_are_understood",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "a_type_2_appimage_is_recognized",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "an_appimage_with_a_dwarfs_image_is_recognized",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "qt_wayland_plugin_needs_its_client_library",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "programs_that_choose_the_qt_platform",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "missing_optional_libraries_name_the_feature",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "programs_that_load_graphics_at_run_time",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "origin_relative_needed_paths",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "start_scripts_that_force_x11",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "an_appimage_asking_for_admin_rights_is_unsafe_to_sandbox",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "electron_markers_and_bundled_symlinks",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "the_program_behind_a_start_script_is_found",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "unit",
+   "test": "plain_elf_is_not_appimage",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "sam_detect",
+   "binary_seconds": 0.08
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "xauthority_gets_the_sandbox_display_number",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "nvidia_modules_are_exposed_with_the_gpu",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "gamepads_only_exposes_joysticks",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "wayland_security_context_socket_is_used",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "the_loaders_extra_library_folders_are_shown_read_only",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "without_nested_namespaces_user_namespaces_are_disabled",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "extra_sockets_must_be_sockets",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "localhost_network_leaves_netns_to_pasta",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "writable_appdir_uses_overlay",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "sdl_gets_its_silent_driver_without_sound_access",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "filtered_dbus_uses_proxy",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "each_permission_adds_exactly_its_part_to_the_command",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "a_new_session_unless_the_app_is_on_sams_own_terminal",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "unit",
+   "test": "files_and_folders_named_on_the_command_line",
+   "result": "ok"
+  },
+  {
+   "part": "sam-sandbox",
+   "suite": "sam_sandbox",
+   "binary_seconds": 0.02
+  },
+  {
+   "part": "sam-detect",
+   "suite": "signature",
+   "test": "signed_appimage_is_checked",
+   "result": "ok"
+  },
+  {
+   "part": "sam-detect",
+   "suite": "signature",
+   "binary_seconds": 0.0
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "own_names_from_the_id_and_the_window_class",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "preset_template_is_strict",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "lost_sound_is_named_sound",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "folders_are_not_breakage_but_lost_local_network_and_bus_are",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "recommendations_fit_the_category",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "terminal_programs_get_no_display",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "what_sam_finds_in_the_app_adjusts_the_recommendation",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "change_check_flags_removals_and_additions",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "the_app_category_is_recognized_from_its_desktop_categories",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "tags_follow_the_family_order_and_mark_read_only",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "a_strict_window_app_has_no_tags",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "tags_and_the_risk_list_use_the_same_words",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "unit",
+   "test": "dangerous_access_is_red_and_filtered_bus_has_no_tag",
+   "result": "ok"
+  },
+  {
+   "part": "sam-profile",
+   "suite": "sam_profile",
+   "binary_seconds": 0.02
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "launcher_mime_types_drop_hijack_targets",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "app_metadata_cannot_add_lines_to_sams_menu_entry",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "a_readable_name_is_taken_from_the_file_name",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "app_ids_stay_unique_when_names_collide",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "the_appimage_behind_a_foreign_menu_entry_is_found",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "paths_climbing_out_of_the_image_are_refused",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "the_desktop_file_inside_an_appimage_is_read",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "symlinks_pointing_outside_the_app_are_recognized",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "a_changed_appimage_file_is_noticed",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "icon_paths_cannot_climb_out_of_the_app",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "unpacking_stops_at_the_time_limit",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "reads_metadata_and_icon",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "unpacking_stops_at_the_file_limit",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "unpacking_removes_setuid_bits",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "peeks_name_and_icon_without_extracting",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "size_limit_aborts_and_cleans_up",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "a_built_appimage_is_detected_and_unpacked_safely",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "system_entry_gets_override",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "sams_menu_entry_starts_the_app_only_through_sam",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "hide_and_restore_user_entry",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "unit",
+   "test": "appimages_with_every_compression_unpack",
+   "result": "ok"
+  },
+  {
+   "part": "sam-intake",
+   "suite": "sam_intake",
+   "binary_seconds": 0.15
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "missing_bubblewrap_names_the_package_to_install",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "disabled_user_namespaces_are_explained_not_called_missing",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "setuid_bubblewrap_works_without_user_namespaces",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "failed_accesses_are_read_from_a_trace",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "the_bus_check_message_has_the_correct_wire_format",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "bug_reports_hide_the_user_name_and_home_path",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "tray_names_follow_watcher_permission",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "failed_accesses_map_to_the_permission_that_fixes_them",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "a_start_is_judged_by_whether_the_app_started",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "reaches_the_session_bus",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "sandbox_setup_errors_are_told_apart_from_app_errors",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "the_syscall_filter_compiles_and_blocks_mount_and_io_uring",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "key_changes_are_noticed",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "only_listed_host_ports",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "landlock_allows_writing_exactly_in_granted_folders",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "a_start_without_bubblewrap_stops_before_anything_runs",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "fractions_follow_the_step_weights",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "folder_check_tells_real_from_private",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "an_escape_inside_a_removed_code_starts_a_new_sequence",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "user_changes_survive_better_recommendation",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "plain_text_for_the_log",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "ordinary_output_passes_unchanged",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "terminal_apps_get_sams_terminal_relay",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "clipboard_codes_are_removed",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "title_reports_and_tmux_passthrough_are_removed",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "the_zsync_header_is_read",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "update_download_addresses_are_resolved_and_http_refused",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "updates_are_downloaded_over_https_only",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "own_name_requests_become_a_repair",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "refuses_compressed_and_broken_files",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "analyzer_maps_errors_to_fixes",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "ladder_skips_applied_and_noop_steps",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "the_app_cannot_reach_the_outer_terminal",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "an_update_is_rebuilt_from_the_old_version_and_changed_blocks",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "bytes_written_are_counted",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "typing_and_output_pass_and_leftover_replies_are_discarded",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "unit",
+   "test": "the_rolling_checksum_matches_a_direct_computation",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "sam_runner",
+   "binary_seconds": 0.31
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "robustness",
+   "test": "version_reports_the_json_interface",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "robustness",
+   "test": "newer_formats_are_left_untouched",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "robustness",
+   "test": "old_formats_are_migrated_and_kept",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "robustness",
+   "test": "damaged_files_are_moved_aside_and_reported",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "robustness",
+   "test": "mangled_files_never_crash",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "robustness",
+   "binary_seconds": 2.46
+  },
+  {
+   "part": "sam-runner",
+   "suite": "settings",
+   "test": "reset_to_recommendation_brings_back_the_recommended_settings",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "settings",
+   "test": "removing_a_sandbox_while_its_app_runs_is_refused",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "settings",
+   "test": "turning_compatibility_mode_off_restores_exactly_the_settings_from_before",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "settings",
+   "test": "a_moved_appimage_is_recognized_by_its_content",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "settings",
+   "test": "undoing_repair_steps_restores_the_settings_from_before_the_first_step",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "settings",
+   "test": "removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "settings",
+   "binary_seconds": 0.3
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "interface",
+   "test": "presets_are_the_users_own_only",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "interface",
+   "test": "group_set_refuses_bad_input_without_changing_anything",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "interface",
+   "test": "group_list_set_and_restore_round_trip",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "interface",
+   "binary_seconds": 0.38
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "architecture",
+   "test": "the_sandbox_builder_depends_only_on_the_permission_model",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "architecture",
+   "test": "the_permission_model_depends_on_no_other_part",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "architecture",
+   "test": "the_window_reaches_sam_only_through_the_command_line",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "architecture",
+   "test": "the_component_diagram_shows_the_real_dependencies",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "architecture",
+   "test": "lower_parts_never_depend_on_higher_ones",
+   "result": "ok"
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "architecture",
+   "binary_seconds": 0.01
+  },
+  {
+   "part": "sam-runner",
+   "suite": "overview",
+   "test": "found_appimages_get_a_menu_entry_only_with_a_sandbox",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "overview",
+   "binary_seconds": 0.35
+  },
+  {
+   "part": "sam-runner",
+   "suite": "groups",
+   "test": "a_dry_run_changes_nothing_and_names_what_would_stop_working",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "groups",
+   "test": "saving_an_apps_settings_as_a_preset_keeps_them_exactly",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "groups",
+   "test": "only_changed_apps_are_saved_and_one_undo_restores_all_of_them",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "groups",
+   "test": "sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "groups",
+   "test": "the_overview_lists_every_sandboxed_app_with_tags_and_states",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "groups",
+   "test": "an_invalid_value_or_unknown_app_changes_no_app",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "groups",
+   "binary_seconds": 0.47
+  },
+  {
+   "part": "sam-runner",
+   "suite": "update",
+   "test": "undo_puts_the_previous_version_back",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "update",
+   "binary_seconds": 0.22
+  },
+  {
+   "part": "sam-runner",
+   "suite": "adversarial",
+   "test": "launcher_drops_hijack_mime_types",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "adversarial",
+   "test": "app_output_cannot_buy_dangerous_grants",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "adversarial",
+   "test": "markup_in_metadata_is_neutralized",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "adversarial",
+   "test": "parsers_survive_garbage",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "adversarial",
+   "test": "fake_bwrap_error_is_not_a_sandbox_failure",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "adversarial",
+   "binary_seconds": 0.2
+  },
+  {
+   "part": "sam-runner",
+   "suite": "tamper",
+   "test": "removing_a_sandbox_never_deletes_outside_sams_unpack_folder",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "tamper",
+   "test": "undoing_an_update_never_moves_files_outside_sams_backup_folder",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "tamper",
+   "test": "a_record_with_a_climbing_id_reaches_nothing",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "tamper",
+   "binary_seconds": 0.15
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "sam-jail-run",
+   "binary_seconds": 0.0
+  },
+  {
+   "part": "sam-runner",
+   "suite": "space",
+   "test": "freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "space",
+   "binary_seconds": 0.17
+  },
+  {
+   "part": "sam-runner",
+   "suite": "sandbox",
+   "test": "a_real_sandbox_shows_exactly_what_each_profile_allows",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "sandbox",
+   "binary_seconds": 0.73
+  },
+  {
+   "part": "sam-runner",
+   "suite": "matrix",
+   "test": "each_permission_grants_exactly_its_access_in_a_real_sandbox",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "matrix",
+   "binary_seconds": 7.81
+  },
+  {
+   "part": "sam-runner",
+   "suite": "verify",
+   "test": "the_sandbox_check_passes_and_catches_mismatches",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "verify",
+   "binary_seconds": 0.72
+  },
+  {
+   "part": "sam-runner",
+   "suite": "breakout",
+   "test": "every_breakout_attempt_from_a_real_sandbox_fails",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "breakout",
+   "binary_seconds": 0.49
+  },
+  {
+   "part": "sam-runner",
+   "suite": "uninstall",
+   "test": "uninstall_refuses_folders_that_are_not_sams",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "uninstall",
+   "test": "uninstall_removes_everything_and_restores_menus",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "uninstall",
+   "binary_seconds": 0.22
+  },
+  {
+   "part": "sam-runner",
+   "suite": "stop",
+   "test": "stop_closes_running_apps",
+   "result": "ok"
+  },
+  {
+   "part": "sam-runner",
+   "suite": "stop",
+   "binary_seconds": 12.58
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "unit",
+   "test": "a_tag_filter_cycles_through_has_has_not_and_off",
+   "result": "ok"
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "unit",
+   "test": "every_color_in_use_has_a_style_rule",
+   "result": "ok"
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "unit",
+   "test": "the_list_shows_only_apps_that_pass_every_filter",
+   "result": "ok"
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "unit",
+   "test": "the_style_sheet_handler_is_connected_before_register",
+   "result": "ok"
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "unit",
+   "test": "shift_click_selects_the_apps_between_two_clicks",
+   "result": "ok"
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "unit",
+   "test": "folder_explanations_name_the_path",
+   "result": "ok"
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "unit",
+   "test": "the_folder_watcher_ignores_hidden_files_and_unfinished_downloads",
+   "result": "ok"
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "unit",
+   "test": "nested_items_keep_their_text",
+   "result": "ok"
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "unit",
+   "test": "group_switches_offer_only_valid_values",
+   "result": "ok"
+  },
+  {
+   "part": "sam-gtk",
+   "suite": "sam-jail-gui",
+   "binary_seconds": 0.02
+  },
+  {
+   "part": "sam-jail-cli",
+   "suite": "sam-jail",
+   "binary_seconds": 0.0
+  }
+ ],
+ "coverage": {
+  "sam-core": {
+   "lines": 1847,
+   "covered": 1583,
+   "untested_files": [],
+   "percent": 85.7
+  },
+  "sam-detect": {
+   "lines": 1345,
+   "covered": 997,
+   "untested_files": [],
+   "percent": 74.1
+  },
+  "sam-gtk": {
+   "lines": 6213,
+   "covered": 172,
+   "untested_files": [
+    "sam-gtk/src/app_page/data.rs",
+    "sam-gtk/src/app_page/mod.rs",
+    "sam-gtk/src/app_page/render.rs",
+    "sam-gtk/src/app_page/wiring.rs",
+    "sam-gtk/src/backend.rs",
+    "sam-gtk/src/i18n.rs",
+    "sam-gtk/src/pages.rs",
+    "sam-gtk/src/perms.rs"
+   ],
+   "percent": 2.8
+  },
+  "sam-intake": {
+   "lines": 1317,
+   "covered": 1069,
+   "untested_files": [],
+   "percent": 81.2
+  },
+  "sam-jail-cli": {
+   "lines": 1355,
+   "covered": 207,
+   "untested_files": [
+    "sam-jail-cli/src/bench.rs",
+    "sam-jail-cli/src/man.rs"
+   ],
+   "percent": 15.3
+  },
+  "sam-profile": {
+   "lines": 634,
+   "covered": 539,
+   "untested_files": [],
+   "percent": 85.0
+  },
+  "sam-runner": {
+   "lines": 5201,
+   "covered": 3680,
+   "untested_files": [],
+   "percent": 70.8
+  },
+  "sam-sandbox": {
+   "lines": 1001,
+   "covered": 956,
+   "untested_files": [],
+   "percent": 95.5
+  },
+  "sam-storage": {
+   "lines": 403,
+   "covered": 374,
+   "untested_files": [],
+   "percent": 92.8
+  }
+ },
+ "bench": [
+  {
+   "best_ms": 0.003069,
+   "key": "detect",
+   "median_ms": 0.003137,
+   "runs": 9,
+   "what": "Recognizing the AppImage format of a file (reading its headers)."
+  },
+  {
+   "best_ms": 49.726791,
+   "key": "unpack",
+   "median_ms": 105.870813,
+   "runs": 7,
+   "what": "Unpacking an AppImage with 2,000 files (16 MB) safely, without running it."
+  },
+  {
+   "best_ms": 5.953893,
+   "key": "analyze",
+   "median_ms": 6.335414999999999,
+   "runs": 5,
+   "what": "Analyzing the unpacked app: its programs, libraries and toolkit."
+  },
+  {
+   "best_ms": 0.001013,
+   "key": "recommend",
+   "median_ms": 0.00106,
+   "runs": 50,
+   "what": "Recommending permissions from the app's metadata and analysis."
+  },
+  {
+   "best_ms": 0.29553799999999997,
+   "key": "sandbox-command",
+   "median_ms": 0.303611,
+   "runs": 50,
+   "what": "Building the Bubblewrap command from a set of permissions."
+  },
+  {
+   "best_ms": 213.13700599999999,
+   "key": "add",
+   "median_ms": 295.349287,
+   "runs": 9,
+   "what": "Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save)."
+  },
+  {
+   "best_ms": 54.802577,
+   "key": "start",
+   "median_ms": 58.966162000000004,
+   "runs": 5,
+   "what": "Starting an app in a real sandbox until it has exited (an app that exits at once)."
+  },
+  {
+   "best_ms": 21.516572,
+   "key": "overview",
+   "median_ms": 53.577799,
+   "runs": 15,
+   "what": "Listing 120 sandboxed apps with their tags for the Permissions page."
+  }
+ ],
+ "dependencies": {
+  "sam-core": [],
+  "sam-detect": [
+   "sam-core"
+  ],
+  "sam-gtk": [
+   "sam-core"
+  ],
+  "sam-intake": [
+   "sam-core",
+   "sam-detect"
+  ],
+  "sam-jail-cli": [
+   "sam-core",
+   "sam-detect",
+   "sam-intake",
+   "sam-profile",
+   "sam-runner",
+   "sam-storage"
+  ],
+  "sam-profile": [
+   "sam-core",
+   "sam-storage"
+  ],
+  "sam-runner": [
+   "sam-core",
+   "sam-detect",
+   "sam-intake",
+   "sam-profile",
+   "sam-sandbox",
+   "sam-storage"
+  ],
+  "sam-sandbox": [
+   "sam-core"
+  ],
+  "sam-storage": [
+   "sam-core"
+  ]
+ }
+}
