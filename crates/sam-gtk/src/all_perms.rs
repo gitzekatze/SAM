@@ -919,3 +919,38 @@ impl PermsPage {
         app.toasts.add_toast(t);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The group switches offer only permissions and values SAM accepts
+    /// (`sam-jail group set` would refuse anything else), and each value of
+    /// a permission appears once.
+    #[test]
+    fn group_switches_offer_only_valid_values() {
+        let catalog: Vec<&str> = sam_core::permissions::permission_catalog().iter().map(|i| i.key).collect();
+        for (_, perms) in GROUPS {
+            for (key, opts) in perms.iter() {
+                assert!(catalog.contains(key), "{key} is not a known permission");
+                for (tok, _) in opts.iter() {
+                    let mut p = sam_core::permissions::PermissionSet::default();
+                    p.set_key(key, tok).unwrap_or_else(|e| panic!("{key}={tok}: {e}"));
+                    assert_eq!(value_token(&p.get_key(key).unwrap()), *tok, "{key} keeps {tok}");
+                }
+                let mut toks: Vec<&str> = opts.iter().map(|o| o.0).collect();
+                toks.dedup();
+                assert_eq!(toks.len(), opts.len());
+            }
+        }
+    }
+
+    /// Personal folders explain where they are; other permissions keep
+    /// their description unchanged.
+    #[test]
+    fn folder_explanations_name_the_path() {
+        let e = util::explain("filesystem.documents", "Lets the app open and save files in your Documents folder.");
+        assert!(e.contains("Folder: ~/") || e.contains("Folder: /"), "{e}");
+        assert_eq!(util::explain("audio.enabled", "Play sound."), "Play sound.");
+    }
+}

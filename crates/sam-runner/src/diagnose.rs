@@ -205,6 +205,7 @@ mod tests {
     use super::*;
     use sam_core::sandbox::sample_context;
 
+    /// Failed file and socket accesses are read from a diagnostic trace.
     #[test]
     fn parses_strace_output() {
         let t = r#"12 openat(AT_FDCWD, "/usr/share/X11/xkb/rules/evdev", O_RDONLY) = -1 ENOENT (No such file or directory)
@@ -219,6 +220,7 @@ mod tests {
         assert!(!m.contains_key("/etc/hosts"));
     }
 
+    /// Failed accesses are mapped to the permission that would fix them (X11 socket, GPU device), and unknown paths to none.
     #[test]
     fn classifies() {
         let host = sample_context().host;

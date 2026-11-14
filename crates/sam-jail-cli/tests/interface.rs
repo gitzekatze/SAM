@@ -1,0 +1,107 @@
+//! The JSON interface the window uses for the Permissions page and the
+//! user's presets, through the real `sam-jail` binary.
+
+use std::fs;
+use std::process::{Command, Output, Stdio};
+
+use serde_json::Value;
+
+struct Env {
+    tmp: tempfile::TempDir,
+}
+
+impl Env {
+    fn new() -> Env {
+        Env { tmp: tempfile::tempdir().unwrap() }
+    }
+
+    fn run(&self, args: &[&str], stdin: Option<&str>) -> Output {
+        let r = self.tmp.path();
+        let mut c = Command::new(env!("CARGO_BIN_EXE_sam-jail"))
+            .args(args)
+            .env("SAM_CONFIG_DIR", r.join("config"))
+            .env("SAM_DATA_DIR", r.join("data"))
+            .env("SAM_APPLICATIONS_DIR", r.join("applications"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        if let Some(s) = stdin {
+            use std::io::Write;
+            c.stdin.take().unwrap().write_all(s.as_bytes()).unwrap();
+        }
+        c.wait_with_output().unwrap()
+    }
+
+    /// `--json` output: the `data` of the envelope.
+    fn json(&self, args: &[&str], stdin: Option<&str>) -> Value {
+        let mut a = vec!["--json"];
+        a.extend_from_slice(args);
+        let o = self.run(&a, stdin);
+        assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+        v.get("data").cloned().unwrap_or(v)
+    }
+
+    fn add(&self, name: &str) -> String {
+        let img = self.tmp.path().join(format!("{name}.AppImage"));
+        assert!(self.run(&["dev", "make-fixture", "--name", name, img.to_str().unwrap()], None).status.success());
+        let v = self.json(&["add", img.to_str().unwrap(), "--no-launcher", "--accept"], None);
+        v["entry"]["id"].as_str().or(v["id"].as_str()).expect("id").to_string()
+    }
+}
+
+#[test]
+fn group_list_set_and_restore_round_trip() {
+    let e = Env::new();
+    let a = e.add("One");
+    let b = e.add("Two");
+    let list = e.json(&["group", "list"], None);
+    let list = list.as_array().unwrap();
+    assert_eq!(list.len(), 2);
+    for app in list {
+        for field in ["id", "name", "permissions", "tags", "running", "needs_review", "may_not_start"] {
+            assert!(app.get(field).is_some(), "group list lacks {field}");
+        }
+    }
+    let dry = e.json(&["group", "set", "devices.webcam", "true", &a, &b, "--dry-run"], None);
+    assert_eq!(dry["applied"], false);
+    let set = e.json(&["group", "set", "devices.webcam", "true", &a, &b], None);
+    assert_eq!(set["applied"], true);
+    let previous = set["previous"].clone();
+    assert_eq!(previous.as_object().unwrap().len(), 2);
+    let tagged = e.json(&["group", "list"], None);
+    assert!(tagged.as_array().unwrap().iter().all(|x| x["tags"].as_array().unwrap().iter().any(|t| t["key"] == "devices.webcam")));
+    let r = e.json(&["group", "restore"], Some(&previous.to_string()));
+    assert_eq!(r["restored"], 2);
+    let back = e.json(&["group", "list"], None);
+    assert!(back.as_array().unwrap().iter().all(|x| x["permissions"]["devices"]["webcam"] == false));
+}
+
+#[test]
+fn group_set_refuses_bad_input_without_changing_anything() {
+    let e = Env::new();
+    let a = e.add("One");
+    let before = e.json(&["group", "list"], None);
+    assert!(!e.run(&["group", "set", "network.mode", "sideways", &a], None).status.success());
+    assert!(!e.run(&["group", "set", "no.such.key", "true", &a], None).status.success());
+    assert!(!e.run(&["group", "set", "devices.webcam", "true"], None).status.success(), "at least one app is required");
+    assert_eq!(e.json(&["group", "list"], None), before);
+}
+
+#[test]
+fn presets_are_the_users_own_only() {
+    let e = Env::new();
+    assert_eq!(e.json(&["preset", "list"], None), Value::Array(vec![]), "no built-in presets");
+    assert!(!e.run(&["preset", "check", "x", "y"], None).status.success(), "`preset check` was removed");
+    let t = e.json(&["preset", "template"], None);
+    assert_eq!(t["permissions"]["network"]["mode"], "none");
+    let mut p = t.clone();
+    p["name"] = "Mine".into();
+    e.json(&["preset", "put"], Some(&p.to_string()));
+    let list = e.json(&["preset", "list"], None);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert!(list[0].get("builtin").is_none(), "presets no longer carry a built-in flag");
+    fs::metadata(e.tmp.path().join("config/presets")).expect("stored as a file in the presets folder");
+}

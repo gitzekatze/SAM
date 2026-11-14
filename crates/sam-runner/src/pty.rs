@@ -649,6 +649,7 @@ mod tests {
         assert_eq!(plain_text(b"\x1b[1mbold\x1b[0m\r\n\x1b]0;t\x07x\ty\x1b(B"), "bold\nx\ty");
     }
 
+    /// Apps started from a terminal get SAM's terminal relay; apps without a terminal get none.
     #[test]
     fn mode_choice() {
         assert_eq!(TerminalMode::choose(true, true, true), TerminalMode::Relay);

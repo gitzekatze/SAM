@@ -217,6 +217,7 @@ pub const GRAPHICS_HOST_RESOURCES: &[(&str, &str)] = &[
 mod tests {
     use super::*;
 
+    /// Bundled libraries are sorted into system, graphics, display-controlled and dangerous classes.
     #[test]
     fn classes() {
         assert_eq!(classify_library("libc.so.6").class, ResourceClass::System);

@@ -90,6 +90,7 @@ pub fn check(path: &Path, known: &Fingerprint, deep: bool) -> Result<SourceStatu
 mod tests {
     use super::*;
 
+    /// A changed AppImage file is noticed by its fingerprint.
     #[test]
     fn detects_changes() {
         let d = tempfile::tempdir().unwrap();

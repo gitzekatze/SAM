@@ -23,6 +23,22 @@ version.
   the whole change; SAM asks first only when an app would stop working.
 - `sam-jail group list/set/restore` do the same on the command line.
 
+### Tests and documentation
+
+- The test library (docs/test-library.md, made by `scripts/test-library.py`)
+  lists every automated test with the promise it keeps; CI fails when it is
+  out of date. Every change now comes with a test, every fixed bug with a
+  regression test (CONTRIBUTING.md).
+- New regression suites: group changes and Undo, the user's presets, the
+  JSON interface of `group` and `preset`, the change check, one name per
+  permission across tags and the risk list, colors and the startup order of
+  the window, valid values of the group switches.
+- The Permissions page is checked through the accessibility interface
+  (`tests/gui/permissions-atspi.sh`, in an invisible KWin session made by
+  `tests/gui/session.sh`).
+- docs/architecture.md describes SAM after the C4 model: context, programs
+  and stores, components with the untrusted input each one handles.
+
 ### Removed
 
 - The six built-in presets (Strict Browser, Media Player Safe, Game

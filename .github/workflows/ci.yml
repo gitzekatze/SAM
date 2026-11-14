@@ -110,6 +110,9 @@ jobs:
             ${{ runner.temp }}/gui/*.log
           if-no-files-found: ignore
 
+      - name: Test library is up to date
+        run: python3 scripts/test-library.py --check
+
       - name: Translations compile
         run: make mo
 

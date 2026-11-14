@@ -199,6 +199,7 @@ pub fn cache_icon(appdir: &Path, icon_name: &str, id: &str, icons_dir: &Path, ex
 mod tests {
     use super::*;
 
+    /// The desktop file inside an AppImage is read with name, translations, categories and file types.
     #[test]
     fn parses_desktop_entry() {
         let t = "[Desktop Entry]\nName=Krita\nName[de]=Krita DE\nComment=Digital painting\nIcon=krita\nExec=krita %F\nCategories=Graphics;2DGraphics;\nMimeType=image/png;\n[Desktop Action new]\nName=New\n";

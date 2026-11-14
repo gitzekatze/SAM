@@ -93,6 +93,7 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
 mod tests {
     use super::*;
 
+    /// SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0.
     #[test]
     fn format_rules() {
         assert_eq!(of_json(&serde_json::json!({})), 0);

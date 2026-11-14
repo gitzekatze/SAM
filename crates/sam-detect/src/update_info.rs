@@ -100,6 +100,7 @@ pub fn matches(pattern: &str, name: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// Both forms of update information (a direct zsync address and GitHub releases) are understood.
     #[test]
     fn parses_both_forms() {
         assert_eq!(parse("zsync|https://example.org/App.AppImage.zsync"), Some(UpdateSource::Zsync { url: "https://example.org/App.AppImage.zsync".into() }));
@@ -117,6 +118,7 @@ mod tests {
         assert_eq!(parse(""), None);
     }
 
+    /// Wildcards in update information match the right file name and not the build for another processor.
     #[test]
     fn wildcards() {
         assert!(matches("KeePassXC-*-x86_64.AppImage.zsync", "KeePassXC-2.8.1-x86_64.AppImage.zsync"));

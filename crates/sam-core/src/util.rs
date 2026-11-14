@@ -171,12 +171,14 @@ pub fn hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    /// Names become safe identifiers made of lowercase letters, digits and dashes.
     #[test]
     fn slug() {
         assert_eq!(slugify("Krita 5.2 (x86_64)"), "krita-5-2-x86-64");
         assert_eq!(slugify("--Hello__World--"), "hello-world");
     }
 
+    /// Shell quoting keeps spaces, quotes and empty strings intact.
     #[test]
     fn quote() {
         assert_eq!(shell_quote("abc"), "abc");

@@ -108,8 +108,9 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     for key in XDG_DIR_KEYS {
         match fs.xdg_access(key) {
             Access::None => {}
-            Access::Ro => item(&mut items, &format!("filesystem.{key}"), &format!("{} (read-only)", cap(key)), RiskLevel::Low),
-            Access::Rw => item(&mut items, &format!("filesystem.{key}"), &format!("{} (read/write)", cap(key)), RiskLevel::Medium),
+            // The switch's title and option words ("Desktop folder (read & write)").
+            Access::Ro => item(&mut items, &format!("filesystem.{key}"), &format!("{} (read-only)", switch_title(key)), RiskLevel::Low),
+            Access::Rw => item(&mut items, &format!("filesystem.{key}"), &format!("{} (read & write)", switch_title(key)), RiskLevel::Medium),
         }
     }
     for path in &fs.custom_read {
@@ -177,7 +178,7 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
         item(&mut items, "advanced.writable_appdir", "Writable app folder", RiskLevel::Low);
     }
     if p.display.x11 {
-        item(&mut items, "display.x11", "X11", RiskLevel::High);
+        item(&mut items, "display.x11", "X11 / XWayland", RiskLevel::High);
     }
     match p.dbus.session.mode {
         DbusMode::None => {}
@@ -222,12 +223,10 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     RiskAssessment { level, score, items }
 }
 
-fn cap(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-        None => String::new(),
-    }
+/// The title of a personal folder's switch (`desktop` → "Desktop folder").
+fn switch_title(folder: &str) -> String {
+    let key = format!("filesystem.{folder}");
+    crate::permissions::permission_catalog().into_iter().find(|i| i.key == key).map(|i| i.title.to_string()).unwrap_or_else(|| folder.to_string())
 }
 
 /// Paths that must never be granted casually.
@@ -305,6 +304,7 @@ fn path_risk(path: &str, write: bool) -> RiskLevel {
 mod tests {
     use super::*;
 
+    /// SAM's strictest window profile counts as low risk.
     #[test]
     fn strict_is_low() {
         let a = assess(&PermissionSet::strict_gui());
@@ -331,6 +331,7 @@ mod tests {
         assert!(a.score >= 30);
     }
 
+    /// Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not.
     #[test]
     fn sensitive_paths() {
         assert!(is_sensitive_path("~/.ssh"));

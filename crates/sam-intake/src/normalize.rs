@@ -170,6 +170,7 @@ mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
 
+    /// A symlink that points outside the unpacked app is recognized.
     #[test]
     fn escape_detection() {
         assert!(!escapes(Path::new("usr/lib"), Path::new("libfoo.so.1")));
@@ -179,6 +180,7 @@ mod tests {
         assert!(!escapes(Path::new("a"), Path::new("./b/../c")));
     }
 
+    /// Paths from the AppImage image are made relative, and paths that climb out with .. are refused.
     #[test]
     fn sanitizes_paths() {
         assert_eq!(sanitize_archive_path(Path::new("/usr/bin/x")), Some(PathBuf::from("usr/bin/x")));
@@ -186,6 +188,7 @@ mod tests {
         assert_eq!(sanitize_archive_path(Path::new("a/../../b")), None);
     }
 
+    /// Unpacking removes setuid bits and makes files read-only for others.
     #[test]
     fn normalizes_tree() {
         let d = tempfile::tempdir().unwrap();
@@ -215,6 +218,7 @@ mod tests {
         assert!(safe_resolve(root, Path::new("usr/lib/ok")).is_some());
     }
 
+    /// Unpacking stops when the AppImage contains more files than the limit.
     #[test]
     fn enforces_file_limit() {
         let d = tempfile::tempdir().unwrap();

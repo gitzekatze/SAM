@@ -835,6 +835,7 @@ pub fn tail(path: &Path, max_lines: usize) -> String {
 mod tests {
     use super::*;
 
+    /// Bubblewrap setup errors are told apart from errors of the app itself.
     #[test]
     fn failure_classification() {
         assert!(classify_failure(Some(1), "bwrap: Can't mount proc").0);
@@ -847,6 +848,7 @@ mod tests {
         std::process::ExitStatus::from_raw(code << 8)
     }
 
+    /// A start is judged by whether Bubblewrap announced the app, not by what the app printed.
     #[test]
     fn launch_outcomes() {
         let started = Some(r#"{"child-pid": 7}"#);

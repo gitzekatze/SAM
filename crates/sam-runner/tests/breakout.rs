@@ -139,6 +139,7 @@ fn parse(log: &Path) -> HashMap<String, String> {
         .collect()
 }
 
+/// Every security promise holds inside a real sandbox: each breakout attempt fails.
 #[test]
 fn breakout_attempts_fail() {
     if !usable() {

@@ -351,6 +351,7 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
+    /// The header of a zsync file is read (file name, size, checksum).
     #[test]
     fn reads_zsync_header() {
         let z = b"zsync: 0.6.2\nFilename: App-2.0-x86_64.AppImage\nMTime: Tue, 10 Nov 2026 10:00:00 +0000\nBlocksize: 2048\nLength: 123\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n\n\x00\x01binary";
@@ -360,6 +361,7 @@ mod tests {
         assert!(zsync_header(b"zsync: 0.6.2\n\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n").is_err(), "only the header counts");
     }
 
+    /// Download addresses in zsync files are resolved, and plain-HTTP addresses are refused.
     #[test]
     fn resolves_file_addresses() {
         let z = "https://github.com/o/r/releases/download/v1/App.AppImage.zsync";
@@ -370,6 +372,7 @@ mod tests {
         assert!(resolve(z, "").is_err());
     }
 
+    /// Update downloads use HTTPS only; HTTP and file addresses are refused.
     #[test]
     fn only_https() {
         assert!(fetch("http://example.org/App.zsync", None).is_err());

@@ -478,6 +478,7 @@ mod tests {
         assert!(reg.get("../etc/passwd").unwrap().is_none());
     }
 
+    /// Presets in the older flat format still load.
     #[test]
     fn flat_preset_format() {
         let s = r#"
@@ -504,6 +505,7 @@ dbus_system = "none"
         assert!(p.permissions.devices.gpu && p.permissions.audio.enabled && p.permissions.display.x11);
     }
 
+    /// A saved preset loads back unchanged, found by its name in any letter case.
     #[test]
     fn preset_store_roundtrip() {
         let tmp = tempfile::tempdir().unwrap();

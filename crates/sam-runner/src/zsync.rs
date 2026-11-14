@@ -342,6 +342,7 @@ mod tests {
         assert!(bad.is_err());
     }
 
+    /// The rolling checksum of the update transfer matches a direct computation at every offset.
     #[test]
     fn rolling_matches_direct() {
         let data = sample(10_000, 3);

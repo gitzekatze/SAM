@@ -31,6 +31,7 @@ mod tests {
     use super::*;
     use sam_core::sandbox::sample_context;
 
+    /// Without Bubblewrap, SAM explains what is missing instead of starting anything.
     #[test]
     fn bubblewrap_or_guidance() {
         let host = sample_context().host;

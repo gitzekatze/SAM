@@ -177,4 +177,73 @@ mod tests {
         p.network.mode = NetworkMode::Localhost;
         assert!(permission_tags(&p)[0].read_only);
     }
+
+    /// Every permission a tag can show, granted at once.
+    fn everything() -> PermissionSet {
+        let mut p = PermissionSet::strict_gui();
+        p.network.mode = NetworkMode::Full;
+        for k in ["documents", "downloads", "pictures", "music", "videos", "desktop"] {
+            p.set_key(&format!("filesystem.{k}"), "rw").unwrap();
+        }
+        p.filesystem.home = true;
+        p.filesystem.ssh = true;
+        p.filesystem.gnupg = true;
+        p.filesystem.hidden_files = true;
+        p.audio.enabled = true;
+        p.devices.gpu = true;
+        p.devices.webcam = true;
+        p.devices.gamepads = true;
+        p.devices.usb = true;
+        p.devices.bluetooth = true;
+        p.display.x11 = true;
+        p.dbus.session.mode = DbusMode::Full;
+        p.dbus.system.mode = DbusMode::Full;
+        p.integrations.keyring = true;
+        p.integrations.screen_sharing = true;
+        p.integrations.media_controls = true;
+        p.integrations.file_manager = true;
+        p.sockets.cups = true;
+        p.sockets.ssh_agent = true;
+        p
+    }
+
+    /// One name per permission: where the risk list names a permission that
+    /// also has a tag, both use the same words (regression: "Audio" vs
+    /// "Sound", "GPU" vs "GPU acceleration", "Show in folder").
+    #[test]
+    fn tags_and_the_risk_list_use_the_same_words() {
+        let p = everything();
+        let risk = sam_core::risk::assess(&p);
+        let mut differ = Vec::new();
+        for t in permission_tags(&p) {
+            if let Some(item) = risk.items.iter().find(|i| i.key == t.key) {
+                // The same words, optionally followed by the access in
+                // brackets ("Documents (read & write)").
+                if item.title != t.label && !item.title.starts_with(&format!("{} (", t.label)) {
+                    differ.push(format!("{}: risk list {:?}, tag {:?}", t.key, item.title, t.label));
+                }
+            }
+        }
+        assert!(differ.is_empty(), "{differ:#?}");
+    }
+
+    /// Tags explain themselves: every tag carries the description of its
+    /// switch, and the order follows the families.
+    #[test]
+    fn every_tag_has_an_explanation() {
+        let tags = permission_tags(&everything());
+        assert!(tags.len() > 15);
+        assert!(tags.iter().all(|t| !t.description.is_empty()), "{tags:?}");
+        assert!(tags.windows(2).all(|w| w[0].family <= w[1].family));
+    }
+
+    /// Three colors for four risk levels, the same mapping SAM's window uses
+    /// for badges (util::risk_tone).
+    #[test]
+    fn risk_levels_map_onto_three_colors() {
+        assert_eq!(TagLevel::from(RiskLevel::Low), TagLevel::Harmless);
+        assert_eq!(TagLevel::from(RiskLevel::Medium), TagLevel::Harmless);
+        assert_eq!(TagLevel::from(RiskLevel::High), TagLevel::Caution);
+        assert_eq!(TagLevel::from(RiskLevel::Dangerous), TagLevel::Danger);
+    }
 }

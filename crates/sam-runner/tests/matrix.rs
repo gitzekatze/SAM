@@ -77,6 +77,7 @@ fn runtime_has(name: &str) -> bool {
     std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|d| PathBuf::from(d).join(name).exists())
 }
 
+/// Inside a real sandbox, each permission grants exactly its access and nothing more.
 #[test]
 fn permission_matrix() {
     if !bwrap_works() {

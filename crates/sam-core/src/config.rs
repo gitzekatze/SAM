@@ -299,6 +299,7 @@ impl Config {
 mod tests {
     use super::*;
 
+    /// A complete configuration file with every section loads without loss.
     #[test]
     fn parses_full_example() {
         let s = r#"
@@ -329,6 +330,7 @@ cleanup_stale = true
         c.validate().unwrap();
     }
 
+    /// Settings can be changed by key, and old theme names are migrated to Light, Dark or System.
     #[test]
     fn set_keys() {
         let mut c = Config::default();

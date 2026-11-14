@@ -1,5 +1,8 @@
 # Manual test checklist
 
+The complete list of automated tests, each with the promise it keeps, is the
+[test library](test-library.md).
+
 These checks need a real desktop session: real AppImages, PipeWire, a GPU, an
 unfiltered session bus, and packages that may not be installed. They
 complement `cargo test --workspace` (unit tests plus the end-to-end sandbox

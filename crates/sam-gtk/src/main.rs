@@ -413,3 +413,56 @@ fn walk_focus(window: &adw::ApplicationWindow, app: adw::Application) {
         glib::ControlFlow::Continue
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::CSS;
+
+    /// Regression: the "startup" handler that loads SAM's style sheet was
+    /// connected after `register()`, which emits "startup" for the first
+    /// instance at once. On every normal start, tags and badges had no
+    /// colors. The handler must be connected before `register()`.
+    #[test]
+    fn the_style_sheet_handler_is_connected_before_register() {
+        let src = include_str!("main.rs");
+        let main = &src[src.find("fn main()").expect("main")..];
+        let startup = main.find("app.connect_startup(").expect("startup handler");
+        let register = main.find("app.register(").expect("register");
+        assert!(startup < register, "connect_startup must come before register");
+    }
+
+    /// Every color SAM's window uses has a style rule: the badge tones in
+    /// the code, the three risk levels of tags and badges, and the outline.
+    #[test]
+    fn every_color_in_use_has_a_style_rule() {
+        let tones = ["bad", "blue", "good", "neutral", "warn", "harmless", "caution", "danger", "accent"];
+        for t in tones {
+            assert!(CSS.contains(&format!(".sam-badge-{t}")), "no rule for badge tone {t}");
+        }
+        for level in ["harmless", "caution", "danger"] {
+            assert!(CSS.contains(&format!(".sam-tag-{level}")), "no rule for tag level {level}");
+            assert_eq!(
+                crate::util::risk_tone(match level {
+                    "harmless" => "medium",
+                    "caution" => "high",
+                    _ => "dangerous",
+                }),
+                level,
+                "badges and tags share the risk colors"
+            );
+        }
+        assert!(CSS.contains(".sam-tag-outline"));
+        // Fixed colors: a theme without a named color must not drop a rule.
+        let tag_rules: String = CSS.lines().filter(|l| l.contains(".sam-tag-") || l.contains(".sam-badge-")).collect();
+        assert!(!tag_rules.contains('@'), "tag and badge colors must not depend on theme colors");
+    }
+
+    #[test]
+    fn risk_words_have_three_levels() {
+        use crate::util::risk_label;
+        assert_eq!(risk_label("low"), "Harmless");
+        assert_eq!(risk_label("medium"), "Harmless");
+        assert_eq!(risk_label("high"), "Think twice");
+        assert_eq!(risk_label("dangerous"), "Dangerous");
+    }
+}

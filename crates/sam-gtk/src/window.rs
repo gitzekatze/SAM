@@ -1292,6 +1292,7 @@ fn watched_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// The folder watcher reacts to AppImages and ignores hidden files and downloads in progress.
     #[test]
     fn watched_names() {
         assert!(super::watched_name("Krita-5.2.AppImage"));

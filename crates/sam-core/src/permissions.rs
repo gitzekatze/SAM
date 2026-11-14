@@ -883,6 +883,7 @@ mod tests {
         assert_eq!(full.dbus.system.mode, DbusMode::Full);
     }
 
+    /// Permissions saved as TOML load back unchanged.
     #[test]
     fn toml_roundtrip() {
         let mut p = PermissionSet::strict_gui();

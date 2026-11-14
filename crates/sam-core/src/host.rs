@@ -83,6 +83,7 @@ fn version_at_least(text: &str, want: (u32, u32)) -> bool {
 
 #[cfg(test)]
 mod version_tests {
+    /// Bubblewrap versions are compared correctly, including missing or malformed version text.
     #[test]
     fn bubblewrap_versions() {
         assert!(super::version_at_least("bubblewrap 0.13.1", (0, 10)));
@@ -406,6 +407,7 @@ pub fn landlock_abi() -> Option<u32> {
 mod tests {
     use super::*;
 
+    /// The X11 display number is read from every common DISPLAY form, and remote displays are refused.
     #[test]
     fn display_numbers() {
         assert_eq!(x11_display_number(":0").as_deref(), Some("0"));
@@ -414,6 +416,7 @@ mod tests {
         assert_eq!(x11_display_number("remote:0"), None);
     }
 
+    /// Only real socket paths are taken from a D-Bus address; abstract sockets are not.
     #[test]
     fn dbus_paths() {
         assert_eq!(dbus_unix_path("unix:path=/run/user/1000/bus,guid=abc"), Some(PathBuf::from("/run/user/1000/bus")));

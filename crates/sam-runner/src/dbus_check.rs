@@ -179,6 +179,7 @@ mod tests {
         assert!(!name_reachable(&addr, "org.example.SamNoSuchName", Duration::from_secs(2)).unwrap());
     }
 
+    /// SAM's own D-Bus message for the bus check has the correct wire format.
     #[test]
     fn method_call_layout() {
         let m = method_call(7, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", Some("x.y"));

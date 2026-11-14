@@ -227,6 +227,7 @@ mod tests {
         fs::canonicalize(p).unwrap()
     }
 
+    /// The AppImage a foreign menu entry starts is found in its Exec line, also behind env and with quotes.
     #[test]
     fn exec_parsing() {
         assert_eq!(split_exec(r#""/a b/X.AppImage" --flag %U"#), vec!["/a b/X.AppImage", "--flag", "%U"]);

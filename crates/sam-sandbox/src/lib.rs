@@ -1393,6 +1393,7 @@ mod tests {
         assert!(has_seq(&args_of(&ctx), &["--chdir", home.to_str().unwrap()]), "nothing named: the private home");
     }
 
+    /// The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only.
     #[test]
     fn strict_profile() {
         let ctx = sample_context();
@@ -1439,6 +1440,7 @@ mod tests {
         assert!(!has_seq(&a, &["--ro-bind", "/run/user/1000/wayland-0", "/run/user/1000/wayland-0"]), "not the compositor's own socket");
     }
 
+    /// Each granted permission adds exactly its part to the Bubblewrap command.
     #[test]
     fn permissions_change_command() {
         let mut ctx = sample_context();
@@ -1513,6 +1515,7 @@ mod tests {
         ));
     }
 
+    /// Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper.
     #[test]
     fn helper_and_userns() {
         let mut ctx = sample_context();

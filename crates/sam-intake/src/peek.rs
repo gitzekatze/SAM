@@ -125,6 +125,7 @@ mod tests {
         assert!(p.icon.is_some(), "icon via .DirIcon or the named icon");
     }
 
+    /// Icon paths from the AppImage cannot climb out of the unpacked app.
     #[test]
     fn normalize_stays_inside() {
         assert_eq!(normalize(Path::new("usr/../a.png")), Some(PathBuf::from("a.png")));

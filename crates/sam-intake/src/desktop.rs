@@ -229,6 +229,7 @@ pub(crate) fn refresh_desktop_database(dir: &Path) {
 mod tests {
     use super::*;
 
+    /// Program paths in menu entries are quoted so spaces and dollar signs cannot change the command.
     #[test]
     fn exec_quoting() {
         assert_eq!(exec_quote("sam-jail-run"), "sam-jail-run");
@@ -236,6 +237,7 @@ mod tests {
         assert_eq!(exec_quote("a$b"), "\"a\\\\$b\"");
     }
 
+    /// SAM's menu entry starts the app through sam-jail-run, never the AppImage directly.
     #[test]
     fn launcher_uses_runner() {
         let tmp = tempfile::tempdir().unwrap();

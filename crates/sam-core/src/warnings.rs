@@ -255,6 +255,7 @@ mod tests {
         w.iter().map(|w| w.code.as_str()).collect()
     }
 
+    /// Dangerous settings (X11, full home, system bus, network an app does not need) each produce a warning.
     #[test]
     fn required_warnings() {
         let mut p = PermissionSet::strict_gui();

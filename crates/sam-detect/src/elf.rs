@@ -1023,6 +1023,7 @@ mod tests {
         d
     }
 
+    /// When the AppImage starts through a shell script, SAM finds the program the script starts.
     #[test]
     fn analyzes_script_apprun() {
         let d = fake_appdir("#!/bin/sh\nexec \"$APPDIR/usr/bin/app\" \"$@\"\n");
@@ -1036,6 +1037,7 @@ mod tests {
         assert!(r.verdict != Some(IsolationVerdict::UnsafeToSandbox));
     }
 
+    /// An AppImage that asks for administrator rights (pkexec) is marked as unsafe to sandbox.
     #[test]
     fn flags_privileged_launcher() {
         let d = fake_appdir("#!/bin/sh\npkexec \"$APPDIR/usr/bin/app\"\n");
@@ -1067,6 +1069,7 @@ mod tests {
         assert!(!needed_path_exists(&bin, "$ORIGIN/../lib/libmissing.so"));
     }
 
+    /// The C library version an app needs is read from its symbol versions.
     #[test]
     fn glibc_version_parse() {
         assert_eq!(parse_glibc_version("GLIBC_2.34"), Some((2, 34)));

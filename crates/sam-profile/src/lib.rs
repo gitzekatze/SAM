@@ -514,6 +514,7 @@ mod tests {
         AppImageMetadata { name: name.into(), categories: cats.iter().map(|s| s.to_string()).collect(), ..Default::default() }
     }
 
+    /// The category of an app is recognized from its desktop categories.
     #[test]
     fn categories() {
         assert_eq!(infer_category(&md("Firefox", &["Network", "WebBrowser"]), "", None), Category::Browser);
@@ -531,6 +532,7 @@ mod tests {
         assert_eq!(infer_category(&md("Obsidian", &[]), "", None), Category::Office);
     }
 
+    /// Recommended permissions fit the category: a browser gets the network and Downloads, an editor no network.
     #[test]
     fn recommendations_by_category() {
         let r = recommend(&md("Firefox", &["WebBrowser"]), "", None);
@@ -545,6 +547,7 @@ mod tests {
         assert_eq!(r.permissions.filesystem.documents, Access::Rw);
     }
 
+    /// What SAM finds in the app (GPU, X11-only toolkit) adjusts the recommendation.
     #[test]
     fn detection_adjusts_profile() {
         let rep = DependencyReport { requirements: Requirements { gpu: true, x11: true, toolkit: "Qt5".into(), ..Default::default() }, ..Default::default() };
@@ -574,6 +577,41 @@ mod tests {
         x11.display.x11 = true;
         let c2 = check_change(&app2, &x11);
         assert!(!c2.adds_dangerous.is_empty(), "{:?}", c2.adds_dangerous);
+    }
+
+    /// A hidden folder is not a reason to warn that an app stops working:
+    /// it is listed apart (regression for the group warning, which only
+    /// interrupts for breakage).
+    #[test]
+    fn folders_are_not_breakage_but_lost_local_network_and_bus_are() {
+        let mut need = PermissionSet::strict_gui();
+        need.filesystem.documents = Access::Rw;
+        need.network.mode = NetworkMode::Localhost;
+        need.dbus.session.mode = DbusMode::Filtered;
+        let app =
+            AppEntry { recommended: need.clone(), profile: sam_core::SandboxProfile { permissions: need.clone(), ..Default::default() }, ..Default::default() };
+        let mut new = need.clone();
+        new.filesystem.documents = Access::None;
+        let c = check_change(&app, &new);
+        assert!(c.removes_needed.is_empty(), "{:?}", c.removes_needed);
+        assert_eq!(c.removes_folders, vec!["documents folder"]);
+        new.network.mode = NetworkMode::None;
+        new.dbus.session.mode = DbusMode::None;
+        let c = check_change(&app, &new);
+        assert!(c.removes_needed.iter().any(|s| s == "the local network"));
+        assert!(c.removes_needed.iter().any(|s| s.contains("D-Bus")));
+    }
+
+    /// An app that needs sound is warned about in the switch's word.
+    #[test]
+    fn lost_sound_is_named_sound() {
+        let mut need = PermissionSet::strict_gui();
+        need.audio.enabled = true;
+        let app =
+            AppEntry { recommended: need.clone(), profile: sam_core::SandboxProfile { permissions: need.clone(), ..Default::default() }, ..Default::default() };
+        let mut new = need;
+        new.audio.enabled = false;
+        assert_eq!(check_change(&app, &new).removes_needed, vec!["sound"]);
     }
 
     #[test]

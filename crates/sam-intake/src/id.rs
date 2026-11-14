@@ -60,6 +60,7 @@ pub fn generate_id(name: &str, source: &Path, sha256: &str, taken: impl Fn(&str)
 mod tests {
     use super::*;
 
+    /// A readable name is taken from an AppImage's file name, without version and architecture.
     #[test]
     fn slugs() {
         assert_eq!(slug_from_filename(Path::new("krita-5.2.6-x86_64.AppImage")), "krita");
@@ -67,6 +68,7 @@ mod tests {
         assert_eq!(slug_from_filename(Path::new("Some_Great_App-v2-linux-amd64.AppImage")), "some-great-app");
     }
 
+    /// App IDs are stable and unique, also when two AppImages have the same name.
     #[test]
     fn ids_and_collisions() {
         let id = generate_id("Krita", Path::new("x.AppImage"), "9f3c11223344", |_| false);

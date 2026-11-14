@@ -309,6 +309,7 @@ mod tests {
     use super::*;
     use sam_core::sandbox::sample_context;
 
+    /// The Landlock rules allow writing exactly in the folders the permissions grant.
     #[test]
     fn spec_follows_permissions() {
         let ctx = sample_context();
@@ -325,6 +326,7 @@ mod tests {
         assert!(!s.write.contains(&PathBuf::from("/home/tester")), "read-only full home");
     }
 
+    /// The syscall filter compiles in every variant and always blocks mount and io_uring.
     #[test]
     fn seccomp_compiles() {
         for (strict, allow_userns) in [(false, true), (false, false), (true, true)] {

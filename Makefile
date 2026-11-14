@@ -52,6 +52,10 @@ pot:
 test:
 	$(CARGO) test --workspace --locked
 
+# The catalog of all tests (docs/test-library.md).
+test-library:
+	python3 scripts/test-library.py
+
 install-cli:
 	install -Dm755 target/release/sam-jail     "$(BINDIR)/sam-jail"
 	install -Dm755 target/release/sam-jail-run "$(BINDIR)/sam-jail-run"

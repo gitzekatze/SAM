@@ -248,6 +248,7 @@ mod tests {
         assert!(!info.is_appimage());
     }
 
+    /// A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized.
     #[test]
     fn detects_type2_layout() {
         // Take a real ELF, set the magic and append a fake superblock.
@@ -274,6 +275,7 @@ mod tests {
         assert!(looks_like_appimage(t.path()));
     }
 
+    /// An AppImage with a DwarFS image instead of squashfs is recognized.
     #[test]
     fn detects_dwarfs_payload() {
         let elf = std::fs::read("/bin/true").unwrap();
@@ -294,6 +296,7 @@ mod tests {
         assert_eq!(info.compression.as_deref(), Some("dwarfs"));
     }
 
+    /// A file that is not an ELF program is not taken for an AppImage.
     #[test]
     fn non_elf() {
         let mut t = tempfile::NamedTempFile::new().unwrap();

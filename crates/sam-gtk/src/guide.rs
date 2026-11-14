@@ -288,6 +288,7 @@ mod tests {
         assert_eq!(texts, ["Parent text", "child one", "child two", "last"]);
     }
 
+    /// The built-in user guide is present and has its sections.
     #[test]
     fn guide_parses() {
         // Every block event must be balanced; pulldown-cmark guarantees

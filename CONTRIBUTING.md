@@ -28,6 +28,27 @@ their own (`tests/real-apps/run.sh` with `SESSION_SCRIPT`), never in your
 desktop session: a private D-Bus started with your real runtime folder can
 stop the desktop portals that Flatpak apps rely on.
 
+## Tests for every change
+
+- Every change comes with a test that proves it. A fixed bug comes with a
+  regression test that fails without the fix; say "Regression:" and what
+  went wrong in the test's doc comment.
+- Name a test after the promise it keeps (`undo_restores_every_app`), or
+  give it a doc comment whose first sentence states that promise. Prefer
+  regression tests that guard a real promise over tests that only raise
+  line coverage.
+- Logic that runs without a display gets unit or integration tests; the
+  window is checked by `tests/gui/smoke.sh` and
+  `tests/gui/permissions-atspi.sh`.
+- After adding or renaming tests, run `scripts/test-library.py` and commit
+  `docs/test-library.md`; CI fails when it is out of date.
+
+## Version numbers
+
+The version changes only when a version is published. Small changes raise
+the last number (0.1.0 → 0.1.1); big changes raise the middle number and
+reset the last one (0.1.4 → 0.2.0).
+
 ## Ground rules
 
 - SAM and Flatpak are separate apps: SAM never reads or writes Flatpak's

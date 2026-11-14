@@ -622,6 +622,7 @@ mod tests {
 mod badge_tests {
     use super::*;
 
+    /// An app with compatibility risk carries a warning badge until it has started successfully once.
     #[test]
     fn compatibility_labels() {
         let mut e = AppEntry { extraction: Some(ExtractionInfo::default()), reviewed: true, ..Default::default() };
