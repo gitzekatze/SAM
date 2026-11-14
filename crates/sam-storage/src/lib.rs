@@ -67,6 +67,13 @@ impl Registry {
         sam_core::format::check_not_newer(p, found)?;
         let v = migrate_app(v, found);
         let mut e: AppEntry = serde_json::from_value(v)?;
+        // The id names folders SAM creates and deletes (private home, logs,
+        // runtime files). A record changed outside SAM must not point them
+        // elsewhere ("../../.ssh"), so only safe ids that match the file
+        // name are loaded.
+        if !valid_id(&e.id) || p.file_stem().and_then(|s| s.to_str()) != Some(e.id.as_str()) {
+            bail!("{}: the app id {:?} is not a safe name or does not match the file name; the record is ignored", p.display(), e.id);
+        }
         sam_core::format::backup_before_migration(p, found);
         e.format = sam_core::format::CURRENT;
         Ok(e)
@@ -444,6 +451,23 @@ fn log_stamp(path: &Path) -> (String, String, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression (found in the test audit): a record changed outside SAM
+    /// with an id like "../../.ssh" would have pointed the folders SAM
+    /// deletes on removal (private home, logs) outside SAM's own folders.
+    /// Such records, and records whose id differs from the file name, are
+    /// not loaded.
+    #[test]
+    fn records_with_unsafe_or_mismatched_ids_are_not_loaded() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        fs::create_dir_all(paths.apps_dir()).unwrap();
+        fs::write(paths.apps_dir().join("evil.json"), r#"{"id": "../../.ssh", "name": "Evil"}"#).unwrap();
+        fs::write(paths.apps_dir().join("other.json"), r#"{"id": "appimage-real-1", "name": "Other"}"#).unwrap();
+        fs::write(paths.apps_dir().join("appimage-ok-1.json"), r#"{"id": "appimage-ok-1", "name": "Ok"}"#).unwrap();
+        let ids: Vec<String> = Registry::new(&paths).list().unwrap().into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, vec!["appimage-ok-1"]);
+    }
 
     #[test]
     fn latest_log_within_one_second() {

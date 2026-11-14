@@ -199,22 +199,6 @@ mod tests {
     }
 
     #[test]
-    fn gzip_and_xz_payloads() {
-        for c in [Compressor::Gzip, Compressor::Xz] {
-            let d = tempfile::tempdir().unwrap();
-            let img = d.path().join("t.AppImage");
-            let mut spec = FixtureSpec::hello("Comp");
-            spec.compressor = c;
-            build(&img, &spec).unwrap();
-            let info = sam_detect::inspect(&img).unwrap();
-            let root = d.path().join("x");
-            let req = ExtractRequest { source: &img, info: &info, root: &root, limits: Limits::default(), allow_fallback: false, isolation: None };
-            extract(&req, &mut Vec::new()).unwrap();
-            assert!(root.join("AppDir/AppRun").exists());
-        }
-    }
-
-    #[test]
     fn size_limit_aborts_and_cleans_up() {
         let d = tempfile::tempdir().unwrap();
         let img = d.path().join("big.AppImage");

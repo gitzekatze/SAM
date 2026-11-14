@@ -835,6 +835,27 @@ pub fn tail(path: &Path, max_lines: usize) -> String {
 mod tests {
     use super::*;
 
+    /// Without Bubblewrap, starting an app stops while it is being prepared,
+    /// before any process is started, and the error says what to install.
+    #[test]
+    fn a_start_without_bubblewrap_stops_before_anything_runs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let appdir = tmp.path().join("AppDir");
+        std::fs::create_dir_all(&appdir).unwrap();
+        std::fs::write(appdir.join("AppRun"), "#!/bin/sh\n").unwrap();
+        let app = AppEntry {
+            id: "appimage-x-1".into(),
+            extraction: Some(sam_core::model::ExtractionInfo { root: tmp.path().into(), appdir, entry: "AppRun".into(), ..Default::default() }),
+            ..Default::default()
+        };
+        let mut host = sam_core::sandbox::sample_context().host;
+        host.tools.bwrap = None;
+        let paths = Paths::rooted(tmp.path());
+        let err = prepare(&app, &LaunchOptions::default(), &Config::default(), &paths, &host).err().expect("refused").to_string();
+        assert!(err.contains("bubblewrap"), "{err}");
+        assert!(!paths.runtime_dir(&app.id).exists(), "nothing was set up for a start");
+    }
+
     /// Bubblewrap setup errors are told apart from errors of the app itself.
     #[test]
     fn failure_classification() {

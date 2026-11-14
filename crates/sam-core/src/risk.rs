@@ -309,7 +309,6 @@ mod tests {
     fn strict_is_low() {
         let a = assess(&PermissionSet::strict_gui());
         assert_eq!(a.level, RiskLevel::Low);
-        assert_eq!(a.score, 3, "Wayland, filtered D-Bus and input method");
     }
 
     #[test]

@@ -49,6 +49,13 @@ version.
 
 ### Security
 
+- App records changed outside SAM can no longer make SAM delete folders
+  outside its own: a record whose id is not a safe name (or differs from its
+  file name) is ignored, and removing a sandbox deletes the unpacked app only
+  after resolving its real path inside SAM's unpack folder. Before, an id
+  like `../../.ssh` or an unpack folder like `extracted/../../Documents`
+  in a tampered or damaged record would have been deleted on removal.
+
 - Apps started from a terminal never get the user's terminal: SAM puts them
   on a pseudo-terminal of its own and passes the bytes on. As before, they
   cannot type commands into the shell (`TIOCSTI`); now escape codes for the

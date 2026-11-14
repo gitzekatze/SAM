@@ -324,3 +324,20 @@ pub fn bug_report(app: &Sam, e: Option<&AppEntry>, host: &HostInfo) -> String {
 fn toml_string<T: serde::Serialize>(v: &T) -> String {
     serde_json::to_value(v).ok().map(|j| serde_json::to_string_pretty(&j).unwrap_or_default()).unwrap_or_default() + "\n"
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A bug report never contains the user's name or home path: both are
+    /// replaced before the text is shown for copying.
+    #[test]
+    fn bug_reports_hide_the_user_name_and_home_path() {
+        let mut host = sam_core::sandbox::sample_context().host;
+        host.user = "erika".into();
+        host.home = "/home/erika".into();
+        let text = redact("open /home/erika/Documents/x.png failed for erika (uid of erika)", &host);
+        assert!(!text.contains("erika"), "{text}");
+        assert!(text.contains("~/Documents/x.png"), "paths stay readable: {text}");
+    }
+}

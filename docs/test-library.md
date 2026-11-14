@@ -18,7 +18,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Promise | Test |
 |---|---|
 | A complete configuration file with every section loads without loss. | [`parses_full_example`](../crates/sam-core/src/config.rs#L303) |
-| Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`set_keys`](../crates/sam-core/src/config.rs#L334) |
+| Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`set_keys`](../crates/sam-core/src/config.rs#L337) |
 | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`format_rules`](../crates/sam-core/src/format.rs#L97) |
 | Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions`](../crates/sam-core/src/host.rs#L87) |
 | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`display_numbers`](../crates/sam-core/src/host.rs#L411) |
@@ -33,9 +33,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Permissions saved as TOML load back unchanged. | [`toml_roundtrip`](../crates/sam-core/src/permissions.rs#L887) |
 | Old extra backend args still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L899) |
 | SAM's strictest window profile counts as low risk. | [`strict_is_low`](../crates/sam-core/src/risk.rs#L308) |
-| Full home is dangerous. | [`full_home_is_dangerous`](../crates/sam-core/src/risk.rs#L315) |
-| Network and x11 high. | [`network_and_x11_high`](../crates/sam-core/src/risk.rs#L324) |
-| Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not. | [`sensitive_paths`](../crates/sam-core/src/risk.rs#L335) |
+| Full home is dangerous. | [`full_home_is_dangerous`](../crates/sam-core/src/risk.rs#L314) |
+| Network and x11 high. | [`network_and_x11_high`](../crates/sam-core/src/risk.rs#L323) |
+| Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not. | [`sensitive_paths`](../crates/sam-core/src/risk.rs#L334) |
 | Names become safe identifiers made of lowercase letters, digits and dashes. | [`slug`](../crates/sam-core/src/util.rs#L175) |
 | Shell quoting keeps spaces, quotes and empty strings intact. | [`quote`](../crates/sam-core/src/util.rs#L182) |
 | Neutralizes markup and controls. | [`neutralizes_markup_and_controls`](../crates/sam-core/src/util.rs#L195) |
@@ -70,7 +70,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 
-21 tests.
+20 tests.
 
 | Promise | Test |
 |---|---|
@@ -93,8 +93,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Icon paths from the AppImage cannot climb out of the unpacked app. | [`normalize_stays_inside`](../crates/sam-intake/src/peek.rs#L129) |
 | Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | [`every_compression_unpacks`](../crates/sam-intake/src/testkit.rs#L147) |
 | Build detect extract roundtrip. | [`build_detect_extract_roundtrip`](../crates/sam-intake/src/testkit.rs#L165) |
-| Gzip and xz payloads. | [`gzip_and_xz_payloads`](../crates/sam-intake/src/testkit.rs#L201) |
-| Size limit aborts and cleans up. | [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L217) |
+| Size limit aborts and cleans up. | [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L201) |
 
 ## sam-profile: Recommendations, the user's presets, change checks, permission tags
 
@@ -141,19 +140,24 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-53 tests.
+60 tests.
 
 | Promise | Test |
 |---|---|
+| Without Bubblewrap, the message says which package to install. | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L35) |
+| When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L46) |
+| A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L62) |
 | Reaches the session bus. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L171) |
 | SAM's own D-Bus message for the bus check has the correct wire format. | [`method_call_layout`](../crates/sam-runner/src/dbus_check.rs#L183) |
 | Tray names follow watcher permission. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L101) |
 | Failed file and socket accesses are read from a diagnostic trace. | [`parses_strace_output`](../crates/sam-runner/src/diagnose.rs#L209) |
 | Failed accesses are mapped to the permission that would fix them (X11 socket, GPU device), and unknown paths to none. | [`classifies`](../crates/sam-runner/src/diagnose.rs#L224) |
+| A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L334) |
 | The Landlock rules allow writing exactly in the folders the permissions grant. | [`spec_follows_permissions`](../crates/sam-runner/src/kernel.rs#L313) |
 | The syscall filter compiles in every variant and always blocks mount and io_uring. | [`seccomp_compiles`](../crates/sam-runner/src/kernel.rs#L330) |
-| Bubblewrap setup errors are told apart from errors of the app itself. | [`failure_classification`](../crates/sam-runner/src/launch.rs#L839) |
-| A start is judged by whether Bubblewrap announced the app, not by what the app printed. | [`launch_outcomes`](../crates/sam-runner/src/launch.rs#L852) |
+| Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L840) |
+| Bubblewrap setup errors are told apart from errors of the app itself. | [`failure_classification`](../crates/sam-runner/src/launch.rs#L860) |
+| A start is judged by whether Bubblewrap announced the app, not by what the app printed. | [`launch_outcomes`](../crates/sam-runner/src/launch.rs#L873) |
 | Only listed host ports. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L77) |
 | User changes survive better recommendation. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L386) |
 | Key changes are noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L437) |
@@ -194,6 +198,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Sandbox end to end. | [`sandbox_end_to_end`](../crates/sam-runner/tests/sandbox.rs#L55) |
 | Free space and unpack again. | [`free_space_and_unpack_again`](../crates/sam-runner/tests/space.rs#L11) |
 | Stop closes running apps. | [`stop_closes_running_apps`](../crates/sam-runner/tests/stop.rs#L48) |
+| ⟲ Regression: the unpack folder in a record was only checked with Path::starts_with, which does not resolve "..": "extracted/../../victim" passed, and removing the sandbox deleted the victim folder. | [`removing_a_sandbox_never_deletes_outside_sams_unpack_folder`](../crates/sam-runner/tests/tamper.rs#L22) |
+| A record whose id climbs out of SAM's folders cannot be loaded, so no operation can reach the folders that id would name. | [`a_record_with_a_climbing_id_reaches_nothing`](../crates/sam-runner/tests/tamper.rs#L42) |
 | Uninstall removes everything and restores menus. | [`uninstall_removes_everything_and_restores_menus`](../crates/sam-runner/tests/uninstall.rs#L15) |
 | Uninstall refuses folders that are not sams. | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L65) |
 | Undo puts the previous version back. | [`undo_puts_the_previous_version_back`](../crates/sam-runner/tests/update.rs#L13) |
@@ -201,14 +207,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-storage: App records, presets and logs on disk
 
-4 tests.
+5 tests.
 
 | Promise | Test |
 |---|---|
-| Latest log within one second. | [`latest_log_within_one_second`](../crates/sam-storage/src/lib.rs#L448) |
-| Registry roundtrip and resolve. | [`registry_roundtrip_and_resolve`](../crates/sam-storage/src/lib.rs#L462) |
-| Presets in the older flat format still load. | [`flat_preset_format`](../crates/sam-storage/src/lib.rs#L482) |
-| A saved preset loads back unchanged, found by its name in any letter case. | [`preset_store_roundtrip`](../crates/sam-storage/src/lib.rs#L509) |
+| ⟲ Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L460) |
+| Latest log within one second. | [`latest_log_within_one_second`](../crates/sam-storage/src/lib.rs#L472) |
+| Registry roundtrip and resolve. | [`registry_roundtrip_and_resolve`](../crates/sam-storage/src/lib.rs#L486) |
+| Presets in the older flat format still load. | [`flat_preset_format`](../crates/sam-storage/src/lib.rs#L506) |
+| A saved preset loads back unchanged, found by its name in any letter case. | [`preset_store_roundtrip`](../crates/sam-storage/src/lib.rs#L533) |
 
 ## sam-jail-cli: The command line and its JSON interface
 
@@ -246,4 +253,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `tests/gui/permissions-atspi.sh` | Through the accessibility interface: the Permissions page selects apps, names its controls, warns before an app loses something it needs, applies a group change, and Undo restores every app; tag filters cycle. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 164 automated Rust tests plus 3 scripted checks.
+Total: 171 automated Rust tests plus 3 scripted checks.

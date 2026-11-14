@@ -326,7 +326,10 @@ location = "~/.local/share/sam/extracted"
 cleanup_stale = true
 "#;
         let c: Config = toml::from_str(s).unwrap();
-        assert_eq!(c.general.scan_directories.len(), 2);
+        assert_eq!(c.general.scan_directories, vec!["~/Applications", "~/.local/bin"]);
+        assert!(c.security.warn_x11 && c.security.warn_full_home && c.security.experimental_landlock);
+        assert!(c.dependencies.dynamic_fallback);
+        assert_eq!(c.extraction.location, "~/.local/share/sam/extracted");
         c.validate().unwrap();
     }
 

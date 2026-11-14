@@ -234,8 +234,13 @@ impl Sam {
             }
         }
         if let Some(x) = &entry.extraction {
-            if x.root.starts_with(self.extracted_root()) && x.root.exists() {
-                fs::remove_dir_all(&x.root)?;
+            // Only inside SAM's own unpack folder, after resolving "..":
+            // a record changed outside SAM must not make SAM delete
+            // anything else (Path::starts_with does not resolve "..").
+            if let (Ok(root), Ok(base)) = (fs::canonicalize(&x.root), fs::canonicalize(self.extracted_root())) {
+                if root.starts_with(&base) && root != base {
+                    fs::remove_dir_all(&root)?;
+                }
             }
         }
         for ext in ["png", "svg", "xpm"] {
