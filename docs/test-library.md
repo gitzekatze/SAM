@@ -23,8 +23,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L87) |
 | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L411) |
 | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L420) |
-| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L624) |
-| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L642) |
+| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L639) |
+| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L657) |
 | ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L113) |
 | An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L822) |
 | Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L834) |
@@ -143,7 +143,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-71 tests.
+72 tests.
 
 | Promise | Test |
 |---|---|
@@ -158,9 +158,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L334) |
 | The Landlock rules allow writing exactly in the folders the permissions grant. | [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L313) |
 | The syscall filter compiles in every variant and always blocks mount and io_uring. | [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L330) |
-| Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L843) |
-| Bubblewrap setup errors are told apart from errors of the app itself. | [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L863) |
-| A start is judged by whether Bubblewrap announced the app, not by what the app printed. | [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L876) |
+| Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L850) |
+| Bubblewrap setup errors are told apart from errors of the app itself. | [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L870) |
+| A start is judged by whether Bubblewrap announced the app, not by what the app printed. | [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L883) |
 | With "this computer only", the app reaches only the ports on this computer the user lists. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L78) |
 | When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L387) |
 | An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L439) |
@@ -214,6 +214,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression: the unpack folder in a record was only checked with Path::starts_with, which does not resolve "..": "extracted/../../victim" passed, and removing the sandbox deleted the victim folder. | [`removing_a_sandbox_never_deletes_outside_sams_unpack_folder`](../crates/sam-runner/tests/tamper.rs#L22) |
 | A record whose id climbs out of SAM's folders cannot be loaded, so no operation can reach the folders that id would name. | [`a_record_with_a_climbing_id_reaches_nothing`](../crates/sam-runner/tests/tamper.rs#L42) |
 | ⟲ Regression (found in the test audit): "go back to the earlier version" moved the file a record named as the backup, wherever it was. | [`undoing_an_update_never_moves_files_outside_sams_backup_folder`](../crates/sam-runner/tests/tamper.rs#L61) |
+| An app whose settings were changed outside SAM does not start until the user has confirmed them; changes SAM makes itself never count as such. | [`an_app_changed_outside_sam_starts_only_after_confirmation`](../crates/sam-runner/tests/tamper.rs#L78) |
 | Uninstalling SAM removes all of its files and restores the menu entries it had hidden. | [`uninstall_removes_everything_and_restores_menus`](../crates/sam-runner/tests/uninstall.rs#L16) |
 | Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L67) |
 | Undoing an update puts the previous version back. | [`undo_puts_the_previous_version_back`](../crates/sam-runner/tests/update.rs#L14) |
@@ -221,16 +222,17 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-storage: App records, presets and logs on disk
 
-6 tests.
+7 tests.
 
 | Promise | Test |
 |---|---|
-| A preset is always stored inside the presets folder, whatever its name: names like "../../evil" or "/etc/x" (typed, or from an imported file) cannot place a file elsewhere. | [`preset_names_cannot_place_files_outside_the_presets_folder`](../crates/sam-storage/src/lib.rs#L458) |
-| ⟲ Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L476) |
-| The newest log is found even when two logs start within the same second. | [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L489) |
-| Apps are found by name or ID, and an ambiguous name is refused. | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L504) |
-| Presets in the older flat format still load. | [`presets_in_the_older_flat_format_still_load`](../crates/sam-storage/src/lib.rs#L524) |
-| A saved preset loads back unchanged, found by its name in any letter case. | [`a_saved_preset_loads_back_unchanged`](../crates/sam-storage/src/lib.rs#L551) |
+| A record SAM saved loads as unchanged; a record changed afterwards by something else is recognized as changed outside SAM; a record from before the checksum existed still loads as unchanged; and saving it again through SAM makes it unchanged again. | [`records_changed_outside_sam_are_recognized`](../crates/sam-storage/src/lib.rs#L482) |
+| A preset is always stored inside the presets folder, whatever its name: names like "../../evil" or "/etc/x" (typed, or from an imported file) cannot place a file elsewhere. | [`preset_names_cannot_place_files_outside_the_presets_folder`](../crates/sam-storage/src/lib.rs#L507) |
+| ⟲ Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L525) |
+| The newest log is found even when two logs start within the same second. | [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L538) |
+| Apps are found by name or ID, and an ambiguous name is refused. | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L553) |
+| Presets in the older flat format still load. | [`presets_in_the_older_flat_format_still_load`](../crates/sam-storage/src/lib.rs#L573) |
+| A saved preset loads back unchanged, found by its name in any letter case. | [`a_saved_preset_loads_back_unchanged`](../crates/sam-storage/src/lib.rs#L600) |
 
 ## sam-jail-cli: The command line and its JSON interface
 
@@ -266,7 +268,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The user guide keeps the text of a list item that has a nested list below it. | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L274) |
 | ⟲ Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | [`the_style_sheet_handler_is_connected_before_register`](../crates/sam-gtk/src/main.rs#L428) |
 | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L439) |
-| The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1345) |
+| The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1347) |
 
 ## The window and real AppImages
 
@@ -278,4 +280,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `tests/gui/taskbar-kwin.sh` | In a hidden KWin session, a sandboxed app's window is named after SAM's menu entry, so the taskbar shows the app's own icon and name. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 194 automated Rust tests plus 5 scripted checks.
+Total: 196 automated Rust tests plus 5 scripted checks.

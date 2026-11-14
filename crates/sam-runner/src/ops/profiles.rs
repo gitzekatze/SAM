@@ -297,7 +297,7 @@ impl Sam {
                     tags: sam_profile::tags::permission_tags(&e.profile.permissions),
                     running: !self.running(&e.id).is_empty(),
                     needs_review: !e.reviewed,
-                    may_not_start: summary.last_problem.is_some() || matches!(summary.badge, Badge::Broken | Badge::Missing),
+                    may_not_start: summary.last_problem.is_some() || matches!(summary.badge, Badge::Broken | Badge::Missing | Badge::ChangedOutside),
                     permissions: e.profile.permissions.clone(),
                     summary,
                 }

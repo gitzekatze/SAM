@@ -75,6 +75,11 @@ impl Registry {
             bail!("{}: the app id {:?} is not a safe name or does not match the file name; the record is ignored", p.display(), e.id);
         }
         sam_core::format::backup_before_migration(p, found);
+        // Changed by something other than SAM? Only records that carry a
+        // checksum can tell; older ones get one at their next save.
+        if let Some(stored) = e.integrity.clone() {
+            e.changed_outside = found == sam_core::format::CURRENT && integrity_of(&e)? != stored;
+        }
         e.format = sam_core::format::CURRENT;
         Ok(e)
     }
@@ -131,6 +136,8 @@ impl Registry {
         }
         entry.updated_at = now();
         entry.format = sam_core::format::CURRENT;
+        entry.integrity = Some(integrity_of(entry)?);
+        entry.changed_outside = false;
         let s = serde_json::to_string_pretty(entry)?;
         atomic_write(&self.paths.app_file(&entry.id), s.as_bytes())
     }
@@ -146,6 +153,22 @@ impl Registry {
             Err(e) => Err(e.into()),
         }
     }
+}
+
+/// The checksum SAM writes into every app record it saves: SHA-256 over
+/// the record without the checksum, with the keys in a fixed order. A record
+/// whose checksum does not match was changed by something other than SAM
+/// (a script, another tool, a damaged file). It is no protection against a
+/// program that targets SAM on purpose: such a program can compute the
+/// checksum too (see docs/threat-model.md).
+pub fn integrity_of(e: &AppEntry) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut v = serde_json::to_value(e)?;
+    if let Some(o) = v.as_object_mut() {
+        o.remove("integrity");
+    }
+    let digest = Sha256::digest(serde_json::to_vec(&v)?);
+    Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// App ids are used as file names; keep them to a safe alphabet.
@@ -451,6 +474,32 @@ fn log_stamp(path: &Path) -> (String, String, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A record SAM saved loads as unchanged; a record changed afterwards
+    /// by something else is recognized as changed outside SAM; a record
+    /// from before the checksum existed still loads as unchanged; and
+    /// saving it again through SAM makes it unchanged again.
+    #[test]
+    fn records_changed_outside_sam_are_recognized() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let reg = Registry::new(&paths);
+        let mut e = AppEntry { id: "appimage-x-1".into(), name: "X".into(), ..Default::default() };
+        reg.save(&mut e).unwrap();
+        assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside);
+        let file = paths.app_file("appimage-x-1");
+        let mut v: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        v["profile"]["permissions"]["network"]["mode"] = "full".into();
+        fs::write(&file, v.to_string()).unwrap();
+        let mut changed = reg.get("appimage-x-1").unwrap().unwrap();
+        assert!(changed.changed_outside, "a change made outside SAM is noticed");
+        assert_eq!(changed.badge(), sam_core::Badge::ChangedOutside);
+        reg.save(&mut changed).unwrap();
+        assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside, "saving through SAM confirms it");
+        v.as_object_mut().unwrap().remove("integrity");
+        fs::write(&file, v.to_string()).unwrap();
+        assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside, "records from before the check still work");
+    }
 
     /// A preset is always stored inside the presets folder, whatever its name:
     /// names like "../../evil" or "/etc/x" (typed, or from an imported file)

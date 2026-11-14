@@ -124,6 +124,7 @@ impl AppPage {
         // Anything that needs attention, next to the status.
         let badge_state = summary.as_ref().map(|s| util::str_of(s, "badge").to_string()).unwrap_or_default();
         let state = match badge_state.as_str() {
+            "changed-outside" => Some(("Changed outside SAM", "bad", "Something other than SAM changed this app's settings; it does not start until you confirm them".to_string())),
             "needs-review" => Some(("Needs review", "warn", "Look over the settings below; SAM chose them automatically or the app asks for new access".to_string())),
             "compatibility-mode" => Some(("Compatibility mode", "warn", "Compatibility mode is on: so that the app works, it gets broad access (internet, the whole session bus, all of /usr, X11, GPU and sound). Turn it off under Launching → Compatibility mode once a narrower setting works; your previous settings come back".to_string())),
             "compatibility-risk" => Some(compat_risk_label(entry.as_ref())),
@@ -255,6 +256,25 @@ impl AppPage {
                         } else {
                             me.menu_button.activate_action("page.reextract", None).ok();
                         }
+                    }
+                });
+                row.add_suffix(&btn);
+                self.add_dynamic(&self.notices, &row);
+            }
+            if badge == "changed-outside" {
+                let row = adw::ActionRow::builder()
+                    .title(tr("Settings changed outside SAM"))
+                    .subtitle(tr(
+                        "Something other than SAM (a script, another program or a damaged file) changed this app's settings. SAM does not start the app until you have looked through the settings below and confirmed them.",
+                    ))
+                    .build();
+                row.add_prefix(&status_icon("dialog-warning-symbolic", "error"));
+                let btn = gtk::Button::builder().label(tr("Confirm Settings")).valign(gtk::Align::Center).name("confirm-outside-button").build();
+                btn.add_css_class("suggested-action");
+                let w = Rc::downgrade(self);
+                btn.connect_clicked(move |_| {
+                    if let Some(me) = w.upgrade() {
+                        me.simple(vec!["review".into(), me.app_id.clone()], "Settings confirmed; the app starts again");
                     }
                 });
                 row.add_suffix(&btn);

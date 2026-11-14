@@ -40,6 +40,9 @@ pub enum Badge {
     Broken,
     Unsafe,
     Missing,
+    /// The record was changed by something other than SAM; the app does not
+    /// start until the user confirms the settings.
+    ChangedOutside,
 }
 
 impl Badge {
@@ -53,6 +56,7 @@ impl Badge {
             Badge::Broken => "Broken",
             Badge::Unsafe => "Unsafe",
             Badge::Missing => "Missing",
+            Badge::ChangedOutside => "Changed Outside SAM",
         }
     }
 }
@@ -364,6 +368,14 @@ pub struct AppEntry {
     pub repair_backup: Option<SandboxProfile>,
     /// Repair step ids already applied (the ladder skips them).
     pub repairs_applied: Vec<String>,
+    /// Checksum SAM writes with every save of this record (see
+    /// sam_storage::integrity_of). Records without one predate the check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub integrity: Option<String>,
+    /// Set when loading: the record does not match the checksum SAM wrote,
+    /// so something other than SAM changed it. Never saved.
+    #[serde(skip)]
+    pub changed_outside: bool,
     /// The applied repair steps with what each changed, so each one can be
     /// switched off on its own.
     pub applied_repairs: Vec<AppliedRepair>,
@@ -473,6 +485,9 @@ impl AppEntry {
 
     /// Compute the badge shown in the UI.
     pub fn badge(&self) -> Badge {
+        if self.changed_outside {
+            return Badge::ChangedOutside;
+        }
         match self.state {
             AppState::Missing => return Badge::Missing,
             AppState::Broken => return Badge::Broken,

@@ -34,7 +34,7 @@ pub(crate) fn badge_str(b: Badge) -> String {
         Badge::Ready => "32",
         Badge::NeedsReview => "36",
         Badge::CompatibilityMode | Badge::CompatibilityRisk | Badge::Stale => "33",
-        Badge::Broken | Badge::Unsafe | Badge::Missing => "31",
+        Badge::Broken | Badge::Unsafe | Badge::Missing | Badge::ChangedOutside => "31",
     };
     paint(b.label(), code)
 }

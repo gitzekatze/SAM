@@ -1262,6 +1262,7 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
     // Status, or what needs attention.
     let (text, tone) = match (r.sandboxed, r.badge.as_str()) {
         (false, _) => ("Not sandboxed", "neutral"),
+        (true, "changed-outside") => ("Changed outside SAM", "bad"),
         (true, "needs-review") => ("Needs review", "warn"),
         (true, "compatibility-mode") => ("Compatibility mode", "warn"),
         (true, "compatibility-risk") => ("May not start", "warn"),
@@ -1274,6 +1275,7 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
     let label = util::badge(text, tone);
     label.set_tooltip_text(Some(match (r.sandboxed, r.badge.as_str()) {
         (false, _) => "No sandbox yet",
+        (true, "changed-outside") => "Something other than SAM changed its settings; it does not start until you confirm them on its page",
         (true, "needs-review") => "Look over its settings: SAM chose them automatically or the app asks for new access",
         (true, "compatibility-mode") => "Compatibility mode is on: the app has broad access so that it works",
         (true, "compatibility-risk") => "SAM's analysis found it may not start in its sandbox; this goes away after the first successful start",

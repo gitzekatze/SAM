@@ -72,3 +72,21 @@ fn undoing_an_update_never_moves_files_outside_sams_backup_folder() {
     assert!(victim.exists(), "the user's file was moved");
     assert!(!tmp.path().join("stolen").exists());
 }
+
+/// An app whose settings were changed outside SAM does not start until the
+/// user has confirmed them; changes SAM makes itself never count as such.
+#[test]
+fn an_app_changed_outside_sam_starts_only_after_confirmation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = one_app(tmp.path());
+    sam.set_permission(&id, "devices.gpu", "true").unwrap();
+    assert!(sam_runner::launch::preflight(&sam.resolve(&id).unwrap()).0.is_empty(), "SAM's own change is fine");
+    let file = sam.paths.app_file(&id);
+    let mut rec: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    rec["profile"]["permissions"]["filesystem"]["home"] = true.into();
+    fs::write(&file, rec.to_string()).unwrap();
+    let errors = sam_runner::launch::preflight(&sam.resolve(&id).unwrap()).0;
+    assert!(errors.iter().any(|e| e.contains("changed outside SAM") && e.contains(&format!("sam-jail review {id}"))), "{errors:?}");
+    sam.mark_reviewed(&id).unwrap();
+    assert!(sam_runner::launch::preflight(&sam.resolve(&id).unwrap()).0.is_empty(), "after confirming, it starts again");
+}

@@ -109,6 +109,13 @@ impl Prepared {
 pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
     let mut errors = Vec::new();
     let mut warns = Vec::new();
+    if app.changed_outside {
+        errors.push(format!(
+            "The settings of {} were changed outside SAM (by a script, another program or a damaged file). SAM does not start the app until you have looked at them: open the app in SAM and confirm its settings, or run `sam-jail review {}`.",
+            sam_core::util::display_safe(app.display_name(), 80),
+            app.id
+        ));
+    }
     match &app.extraction {
         None => errors.push("The AppImage has not been extracted. Use 'Re-extract' (sam-jail reextract).".into()),
         Some(x) => {
