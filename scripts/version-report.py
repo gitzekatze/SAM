@@ -182,17 +182,17 @@ def markdown(rep, prev):
     untested = [(p, f) for p, c in rep["coverage"].items() for f in c.get("untested_files", [])]
     if untested:
         L += ["Files with more than 20 lines that no test runs at all:", ""] + [f"- `{f}`" for _, f in sorted(untested)] + [""]
-    L += ["## How long the steps take", "", "| Step | Median | Previous | Change |", "|---|---|---|---|"]
+    L += ["## How long the steps take", "", "Each step runs several times after a warm-up run; the fastest run is compared, because it is the one least disturbed by other programs.", "", "| Step | Fastest | Median | Previous fastest | Change |", "|---|---|---|---|---|"]
     pb = {m["key"]: m for m in prev.get("bench", [])} if prev else {}
     for m in rep["bench"]:
-        cur = m["median_ms"]
-        old = pb.get(m["key"], {}).get("median_ms")
-        mark = ""
+        cur = m.get("best_ms", m["median_ms"])
+        old = pb.get(m["key"], {}).get("best_ms")
+        mark = "" if old is not None or not prev else "the previous report has no fastest run"
         if cur is not None and old:
             ch = (cur - old) / old * 100
             mark = f"{ch:+.0f} %" + (" ⚠ slower" if cur > old * SLOWER and cur - old > MIN_MS else "")
         fmt = lambda x: f"{x:.3f} ms" if x is not None else "not measured here"
-        L.append(f"| {m['what']} | {fmt(cur)} | {fmt(old) if old is not None else ''} | {mark} |")
+        L.append(f"| {m['what']} | {fmt(cur)} | {fmt(m['median_ms'])} | {fmt(old) if old is not None else ''} | {mark} |")
     L += ["", "## Relations between the parts", ""]
     pdeps = prev["dependencies"] if prev else rep["dependencies"]
     changes = []

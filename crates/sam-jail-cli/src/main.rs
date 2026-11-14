@@ -797,7 +797,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let r = bench::bench(apps)?;
             out.emit(&r, || {
                 for m in &r {
-                    let ms = serde_json::to_value(m).ok().and_then(|v| v["median_ms"].as_f64());
+                    let ms = serde_json::to_value(m).ok().and_then(|v| v["best_ms"].as_f64());
                     let v = serde_json::to_value(m).unwrap_or_default();
                     match ms {
                         Some(ms) => println!("{:<16} {:>10.3} ms  {}", v["key"].as_str().unwrap_or(""), ms, v["what"].as_str().unwrap_or("")),

@@ -18,23 +18,24 @@ pub(crate) struct Measure {
     what: &'static str,
     /// Median in milliseconds; None when the measurement could not run here.
     median_ms: Option<f64>,
+    /// The fastest run: the one least disturbed by other programs, so the
+    /// version report compares this value.
+    best_ms: Option<f64>,
     runs: usize,
 }
 
-fn median(mut v: Vec<f64>) -> f64 {
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    v[v.len() / 2]
-}
-
-/// Runs `f` `runs` times and returns the median in milliseconds.
-fn time(runs: usize, mut f: impl FnMut() -> Result<()>) -> Result<f64> {
+/// Runs `f` once to warm caches, then `runs` times; returns (median,
+/// fastest) in milliseconds.
+fn time(runs: usize, mut f: impl FnMut() -> Result<()>) -> Result<(f64, f64)> {
+    f()?;
     let mut v = Vec::with_capacity(runs);
     for _ in 0..runs {
         let t = Instant::now();
         f()?;
         v.push(t.elapsed().as_secs_f64() * 1000.0);
     }
-    Ok(median(v))
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    Ok((v[v.len() / 2], v[0]))
 }
 
 pub(crate) fn bench(apps: usize) -> Result<Vec<Measure>> {
@@ -47,7 +48,7 @@ pub(crate) fn bench(apps: usize) -> Result<Vec<Measure>> {
 
 fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
     let mut out = Vec::new();
-    let mut m = |key, what, runs, ms: Option<f64>| out.push(Measure { key, what, median_ms: ms, runs });
+    let mut m = |key, what, runs, t: Option<(f64, f64)>| out.push(Measure { key, what, median_ms: t.map(|t| t.0), best_ms: t.map(|t| t.1), runs });
 
     // A realistic AppImage: 2,000 files of 8 KB and a real program to analyze.
     let img = dir.join("Bench-1.0-x86_64.AppImage");
@@ -62,7 +63,7 @@ fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
     m("detect", "Recognizing the AppImage format of a file (reading its headers).", 9, Some(time(9, || sam_detect::inspect(&img).map(|_| ()))?));
 
     let mut n = 0;
-    let unpack = time(3, || {
+    let unpack = time(7, || {
         n += 1;
         let root = dir.join(format!("unpack-{n}"));
         let req = sam_intake::extract::ExtractRequest {
@@ -76,7 +77,7 @@ fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
         sam_intake::extract::extract(&req, &mut Vec::new())?;
         Ok(())
     })?;
-    m("unpack", "Unpacking an AppImage with 2,000 files (16 MB) safely, without running it.", 3, Some(unpack));
+    m("unpack", "Unpacking an AppImage with 2,000 files (16 MB) safely, without running it.", 7, Some(unpack));
 
     let appdir = dir.join("unpack-1/AppDir");
     let opts = sam_detect::AnalyzeOptions::default();
@@ -109,13 +110,13 @@ fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
 
     // Creating a sandbox end to end, each time in a fresh SAM folder.
     let mut k = 0;
-    let add = time(3, || {
+    let add = time(9, || {
         k += 1;
         let sam = Sam::with_paths(Paths::rooted(&dir.join(format!("sam-{k}"))))?;
         sam.add(&img, &sam_runner::ops::AddOptions { accept: true, launcher: Some(false), ..Default::default() })?;
         Ok(())
     })?;
-    m("add", "Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save).", 3, Some(add));
+    m("add", "Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save).", 9, Some(add));
 
     // A real start: an app that exits at once, inside a real sandbox.
     let sam = Sam::with_paths(Paths::rooted(&dir.join("sam-start")))?;
@@ -141,6 +142,6 @@ fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
         many.add(&p, &sam_runner::ops::AddOptions { accept: true, launcher: Some(false), ..Default::default() })?;
     }
     let what: &'static str = Box::leak(format!("Listing {apps} sandboxed apps with their tags for the Permissions page.").into_boxed_str());
-    m("overview", what, 5, Some(time(5, || many.permission_overview().map(|_| ()))?));
+    m("overview", what, 15, Some(time(15, || many.permission_overview().map(|_| ()))?));
     Ok(out)
 }
