@@ -249,7 +249,10 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         if perms.display.wayland && !perms.display.wayland_privileged {
             if let Some(display) = &host.sockets.wayland {
                 let instance = runtime_dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                match crate::wayland_ctx::start(display, &runtime_dir, &app.id, &instance) {
+                // The compositor names the app's windows after this ID (KWin
+                // uses it instead of the app's own); it must be the name of
+                // SAM's menu entry, or the taskbar shows a generic icon.
+                match crate::wayland_ctx::start(display, &runtime_dir, &Paths::launcher_id(&app.id), &instance) {
                     Ok(Some(w)) => {
                         ctx.wayland_socket = Some(w.socket.clone());
                         wayland = Some(w);

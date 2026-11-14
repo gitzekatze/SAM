@@ -9,6 +9,22 @@ version.
 
 ## Unreleased
 
+### A calmer main window
+
+- Sandboxed apps show their own icon and name in the taskbar. The app ID
+  SAM gives the compositor is now the name of SAM's menu entry; KWin names
+  sandboxed windows after it, and before found no matching entry.
+- The reload button sits at "AppImages found", next to the busy indicator;
+  the header bar holds only the logo, the title and the menu, with the
+  title exactly between them and the logo as tall as the title.
+- On an app's page, a round trash button left of Check replaces the
+  "Remove Sandbox" text button (the confirmation stays); icon, title and
+  buttons line up at the top, and every button explains itself on hover.
+- While an app runs, its page says that changed settings apply at the next
+  start and offers "Restart".
+- Diagnostics: `SAM_DBUS_LOG=FILE` makes SAM's D-Bus proxy log every call;
+  `scripts/dbus-log-summary.py FILE` lists unanswered and blocked calls.
+
 ### Permissions of All Apps
 
 - A new page, opened with *Permissions of All Apps* above the list of

@@ -60,9 +60,21 @@ impl DbusProxy {
         }
         // Let the app own names under its own id.
         args.push(format!("--own=io.github.gitzekatze.SAM.{}.*", app_id.replace('-', "_")));
+        // Diagnostics: with SAM_DBUS_LOG set to a file, the proxy logs every
+        // call it passes, filters or answers itself (for finding calls an
+        // app waits on, such as a blocked service it expects to exist).
+        let log = std::env::var_os("SAM_DBUS_LOG").and_then(|p| std::fs::OpenOptions::new().create(true).append(true).open(p).ok());
+        if log.is_some() {
+            args.push("--log".into());
+        }
         let (program, argv) = (tool.path.clone(), args.clone());
         let mut cmd = Command::new(&program);
         cmd.args(&argv).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        if let Some(f) = log {
+            if let Ok(f2) = f.try_clone() {
+                cmd.stdout(f).stderr(f2);
+            }
+        }
         unsafe {
             cmd.pre_exec(|| {
                 // Die together with sam-jail-run.

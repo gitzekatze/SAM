@@ -302,6 +302,10 @@ impl App {
         about.append(Some(&tr("About SAM")), Some("win.about"));
         menu.append_section(None, &about);
         let menu_btn = gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).tooltip_text(tr("Main menu")).primary(true).build();
+        // Logo and menu button have the same size, so the title block sits
+        // exactly in the middle between them; the logo is as tall as the
+        // two lines of the title.
+        menu_btn.add_css_class("sam-header-square");
         header.pack_end(&menu_btn);
         // SAM's logo opens the start page. It replaces the window icon of the
         // desktop's button layout (`icon:…`), which cannot be clicked.
@@ -310,9 +314,10 @@ impl App {
             layout.split(':').map(|side| side.split(',').filter(|b| !b.is_empty() && *b != "icon").collect::<Vec<_>>().join(",")).collect::<Vec<_>>().join(":");
         header.set_decoration_layout(Some(&stripped));
         let logo = gtk::Image::from_icon_name("io.github.gitzekatze.SAM");
-        logo.set_pixel_size(24);
+        logo.set_pixel_size(34);
         let home = gtk::Button::builder().child(&logo).tooltip_text(tr("Start page")).name("home-button").build();
         home.add_css_class("flat");
+        home.add_css_class("sam-header-square");
         let w = Rc::downgrade(self);
         home.connect_clicked(move |_| {
             if let Some(me) = w.upgrade() {
@@ -320,10 +325,7 @@ impl App {
             }
         });
         header.pack_start(&home);
-        let refresh =
-            gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text(tr("Search the locations again")).action_name("win.refresh").build();
-        header.pack_start(&refresh);
-        header.pack_start(&self.spinner);
+        header.set_centering_policy(adw::CenteringPolicy::Strict);
         view.add_top_bar(&header);
 
         // The left column scrolls as a whole: the AppImage locations (the
@@ -333,8 +335,17 @@ impl App {
         // to what follows them.
         const HEAD_GAP: i32 = 8;
         let heads = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
-        let loc_box =
-            gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(6).margin_bottom(14).build();
+        // The same gap (BLOCK_GAP) above the first heading as between the
+        // two blocks.
+        const BLOCK_GAP: i32 = 18;
+        let loc_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(0)
+            .margin_start(12)
+            .margin_end(12)
+            .margin_top(BLOCK_GAP)
+            .margin_bottom(0)
+            .build();
         loc_box.add_css_class("sam-locations");
         let loc_head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heads.add_widget(&loc_head);
@@ -365,13 +376,31 @@ impl App {
         column.append(&loc_box);
 
         // Headline, filter, then search.
-        let filter_box =
-            gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(0).margin_start(12).margin_end(12).margin_top(16).margin_bottom(6).build();
-        let found_head = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        let filter_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(0)
+            .margin_start(12)
+            .margin_end(12)
+            .margin_top(BLOCK_GAP)
+            .margin_bottom(6)
+            .build();
+        let found_head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heads.add_widget(&found_head);
         let found_title = gtk::Label::builder().label(tr("AppImages found")).xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
         found_title.add_css_class("heading");
         found_head.append(&found_title);
+        // The locations are watched, so this is a manual fallback; it sits
+        // where the "+" sits at "AppImage locations", with the busy
+        // indicator beside it.
+        found_head.append(&self.spinner);
+        let refresh = gtk::Button::builder()
+            .icon_name("view-refresh-symbolic")
+            .tooltip_text(tr("Search the locations again"))
+            .action_name("win.refresh")
+            .valign(gtk::Align::Center)
+            .build();
+        refresh.add_css_class("flat");
+        found_head.append(&refresh);
         filter_box.append(&found_head);
         let all_perms = gtk::Button::builder()
             .label(tr("Permissions of All Apps"))

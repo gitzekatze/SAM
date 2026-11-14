@@ -18,8 +18,9 @@
 | Change a permission for several apps | **Permissions of All Apps** above the list, select the apps, change the switch |
 | Reuse settings for other apps | Its page → **My Presets** → *Name for the new preset* |
 | Find out what a label means | Hover over it |
-| Remove a sandbox | **Remove Sandbox** under the Launch button |
-| Close an app that hides in the tray | **Remove Sandbox** offers *Close and Remove*, or `sam-jail stop app` |
+| Remove a sandbox | The round trash button left of **Check** |
+| Close an app that hides in the tray | The trash button offers *Close and Remove*, or `sam-jail stop app` |
+| Use changed settings while the app runs | The bar "… is running" at the top of its page → **Restart** |
 | Go back to the start page | Click SAM's logo at the top left |
 
 ---
@@ -57,7 +58,8 @@
   - *Bubblewrap* (blue): the sandbox technology.
   - *Checked* or *Check failed*: the result of the last sandbox check.
   - Anything that needs attention, such as *Needs review* or *May not start*.
-- **Check**, **Launch** (or **Create Sandbox**) and **Remove Sandbox** sit on the right of the header. In a narrow window, Check moves above Launch.
+- The round trash button, **Check** and **Launch** (or **Create Sandbox**) sit on the right of the header; the trash button stays away from Launch so it is not hit by mistake. In a narrow window, the buttons stack. Every button explains itself when you hover over it.
+- While the app runs, a bar at the top of its page says that changed settings apply the next time it starts, and **Restart** closes the app (it may save first) and starts it again with the new settings.
 - **Below the header** come all settings and tools for the app, always visible. Settings that do not apply right now are greyed out, never hidden.
 - **SAM's logo** at the top left opens the start page (no AppImage selected).
 - The **☰ menu** at the top left opens this guide, **My Presets**, **Diagnostics**, **Preferences** and *About SAM* in the right column.
@@ -171,7 +173,7 @@ Does the sandbox really give the app exactly what its settings say? **Check**, n
 
 ## Removing a sandbox
 
-**Remove Sandbox** deletes the unpacked app and SAM's menu entry, and shows again any menu entry SAM hid. Your AppImage file always stays. Tick **Keep the app's settings and files** to keep its private folder: a new sandbox for the same AppImage picks it up again. Data kept this way is listed under **☰ → Diagnostics → Data of removed sandboxes**.
+The trash button (**Remove Sandbox**) deletes the unpacked app and SAM's menu entry, and shows again any menu entry SAM hid. Your AppImage file always stays. Tick **Keep the app's settings and files** to keep its private folder: a new sandbox for the same AppImage picks it up again. Data kept this way is listed under **☰ → Diagnostics → Data of removed sandboxes**.
 
 If the app is still running, often only as an icon in the system tray, the dialog says so and the button becomes **Close and Remove**. SAM asks the app to quit so it can save its data, and only ends it if it is still running after ten seconds.
 

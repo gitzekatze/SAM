@@ -80,8 +80,14 @@ impl Paths {
             .unwrap_or_else(|| self.data_dir.join("runtime"));
         base.join(id)
     }
+    /// The desktop file ID of SAM's menu entry for an app ("sam-<id>"). The
+    /// sandboxed app's windows carry the same ID, so the taskbar finds the
+    /// menu entry and shows the app's icon and name.
+    pub fn launcher_id(id: &str) -> String {
+        format!("sam-{id}")
+    }
     pub fn launcher_file(&self, id: &str) -> PathBuf {
-        self.applications_dir.join(format!("sam-{id}.desktop"))
+        self.applications_dir.join(format!("{}.desktop", Self::launcher_id(id)))
     }
     pub fn onboarding_marker(&self) -> PathBuf {
         self.config_dir.join(".onboarding-done")
@@ -93,5 +99,21 @@ impl Paths {
         } else {
             expand_home(cfg_location)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: sandboxed windows carried the app's id as their app ID
+    /// while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no
+    /// entry and showed a generic icon. The ID given to the compositor is
+    /// exactly the menu entry's file name without ".desktop".
+    #[test]
+    fn the_window_id_matches_the_name_of_sams_menu_entry() {
+        let p = Paths::rooted(Path::new("/x"));
+        let file = p.launcher_file("appimage-krita-9f3c");
+        assert_eq!(file.file_stem().unwrap(), Paths::launcher_id("appimage-krita-9f3c").as_str());
     }
 }

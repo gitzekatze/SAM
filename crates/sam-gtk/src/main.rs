@@ -65,6 +65,11 @@ const CSS: &str = r#"
 .sam-badge-good, .sam-badge-accent                          { background-color: rgba(38, 162, 105, 0.28);  border-color: rgb(38, 162, 105); }
 .sam-badge-blue                                             { background-color: rgba(53, 132, 228, 0.28);  border-color: rgb(53, 132, 228); }
 .sam-tag-outline { background-color: transparent; }
+/* Logo and main menu button in the header bar: the same square size. */
+.sam-header-square { min-width: 40px; min-height: 40px; padding: 2px; }
+/* The round trash button on the app page. */
+button.sam-trash { color: rgb(214, 40, 57); }
+button.sam-trash:hover { background-color: rgba(224, 27, 36, 0.15); }
 /* The drop-downs of the group permissions: one font size for all. */
 .sam-perm-choice { font-size: 0.9em; }
 .sam-tag-button { padding: 2px; min-height: 0; }
@@ -83,7 +88,6 @@ const CSS: &str = r#"
 
 .sam-mono { font-size: 0.86em; background: transparent; }
 
-button.sam-remove { color: @error_color; font-size: 0.9em; padding: 2px 10px; }
 
 /* User guide */
 .sam-guide label { line-height: 1.35; }
@@ -98,7 +102,6 @@ button.sam-remove { color: @error_color; font-size: 0.9em; padding: 2px 10px; }
 .sam-table .sam-td { padding: 8px 12px; border-bottom: 1px solid alpha(@window_fg_color, 0.08); }
 .sam-table .sam-td-last { border-bottom: none; }
 .sam-table .sam-th { font-weight: 700; background-color: alpha(@window_fg_color, 0.05); }
-button.sam-remove:hover { background-color: alpha(@error_color, 0.12); }
 textview.sam-mono text { background: transparent; }
 "#;
 

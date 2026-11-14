@@ -49,6 +49,10 @@ pub struct AppPage {
     menu_button: gtk::MenuButton,
     /// While a sandbox is being created: step, bar and details.
     progress: CreationProgress,
+    /// "<App> is running. Changed settings apply the next time it starts."
+    running_banner: adw::Banner,
+    /// The page checks every few seconds whether the app still runs.
+    watching: std::cell::Cell<bool>,
     // Content.
     content: adw::PreferencesPage,
     editor: Rc<Editor>,
@@ -113,24 +117,18 @@ impl AppPage {
             gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(18).margin_start(24).margin_end(24).margin_top(4).margin_bottom(14).build();
         hero.add_css_class("sam-hero");
         let icon_slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        icon_slot.set_valign(gtk::Align::Center);
+        // Icon, title and buttons line up at the top.
+        icon_slot.set_valign(gtk::Align::Start);
         hero.append(&icon_slot);
-        let meta = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).hexpand(true).valign(gtk::Align::Center).build();
+        let meta = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).hexpand(true).valign(gtk::Align::Start).build();
         let title = gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build();
         title.add_css_class("title-1");
         let subtitle = gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::Middle).build();
         subtitle.add_css_class("caption");
         subtitle.add_css_class("dim-label");
         // Wraps onto a second line when the column is narrow.
-        let badges = gtk::FlowBox::builder()
-            .selection_mode(gtk::SelectionMode::None)
-            .column_spacing(6)
-            .row_spacing(6)
-            .max_children_per_line(8)
-            .homogeneous(false)
-            .halign(gtk::Align::Start)
-            .margin_top(4)
-            .build();
+        let badges = util::wrap_box(6, 6);
+        badges.set_margin_top(4);
         let status_badge = util::badge("", "neutral");
         let state_badge = util::badge("", "warn");
         state_badge.set_visible(false);
@@ -140,15 +138,7 @@ impl AppPage {
         badges.append(&state_badge);
         badges.append(&sandbox_badge);
         badges.append(&check_badge);
-        // Each label keeps its own width when they wrap into a column. The
-        // labels are not controls: none takes the keyboard focus (a
-        // focusable one made Tab stop for good at the button before them).
-        for b in [&status_badge, &state_badge, &sandbox_badge, &check_badge] {
-            if let Some(child) = b.parent() {
-                child.set_halign(gtk::Align::Start);
-                child.set_can_focus(false);
-            }
-        }
+        // The labels are not controls: none takes the keyboard focus.
         badges.set_can_focus(false);
         meta.append(&title);
         meta.append(&subtitle);
@@ -158,8 +148,9 @@ impl AppPage {
         tags_box.set_margin_top(2);
         meta.append(&tags_box);
         hero.append(&meta);
-        // Check and Launch (or Create Sandbox), Remove Sandbox under them.
-        let buttons = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).valign(gtk::Align::Center).build();
+        // The trash button, Check and Launch (or Create Sandbox). The trash
+        // button stays away from Launch, so it is not hit by mistake.
+        let buttons = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).valign(gtk::Align::Start).build();
         // Side by side; Check moves above Launch when the header is narrow
         // (the breakpoint below).
         let top_buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::End).build();
@@ -173,27 +164,28 @@ impl AppPage {
         main_button.add_css_class("suggested-action");
         main_button.add_css_class("pill");
         let remove_button = gtk::Button::builder()
-            .child(&button_content("user-trash-symbolic", "Remove Sandbox"))
-            .tooltip_text(tr("Remove the sandbox (the AppImage file is kept)"))
+            .icon_name("user-trash-symbolic")
+            .tooltip_text(tr("Remove the sandbox. SAM asks first; the AppImage file is kept."))
             .name("remove-button")
+            .valign(gtk::Align::Center)
             .build();
-        remove_button.add_css_class("flat");
-        remove_button.add_css_class("sam-remove");
-        remove_button.set_halign(gtk::Align::End);
+        remove_button.add_css_class("circular");
+        remove_button.add_css_class("sam-trash");
+        top_buttons.append(&remove_button);
         top_buttons.append(&check_button);
         top_buttons.append(&main_button);
         buttons.append(&top_buttons);
-        buttons.append(&remove_button);
         hero.append(&buttons);
         let hero_bin = adw::BreakpointBin::builder().width_request(320).height_request(96).child(&hero).build();
         let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse(&format!("max-width: {}px", HERO_SIDE_BY_SIDE)).unwrap());
         narrow.add_setter(&top_buttons, "orientation", Some(&gtk::Orientation::Vertical.to_value()));
         narrow.add_setter(&top_buttons, "spacing", Some(&6.to_value()));
-        narrow.add_setter(&remove_button, "halign", Some(&gtk::Align::Center.to_value()));
         hero_bin.add_breakpoint(narrow);
         view.add_top_bar(&util::natural_height::Bin::new(&hero_bin));
         let progress = CreationProgress::new();
         view.add_top_bar(&progress.panel);
+        let running_banner = adw::Banner::new("");
+        view.add_top_bar(&running_banner);
 
         // ---- settings
         let pref = adw::PreferencesPage::new();
@@ -311,6 +303,8 @@ impl AppPage {
             remove_button,
             menu_button,
             progress,
+            running_banner,
+            watching: std::cell::Cell::new(false),
             content: pref.clone(),
             editor,
             notices,
@@ -440,9 +434,6 @@ fn chip_editor(title: &str, description: &str, placeholder: &str) -> (gtk::ListB
 /// Shows or hides a header badge together with its FlowBox slot.
 fn set_badge_visible(b: &gtk::Label, v: bool) {
     b.set_visible(v);
-    if let Some(slot) = b.parent() {
-        slot.set_visible(v);
-    }
 }
 
 fn button_content(icon: &str, label: &str) -> adw::ButtonContent {

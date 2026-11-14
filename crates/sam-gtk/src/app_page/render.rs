@@ -46,11 +46,51 @@ impl AppPage {
         }
     }
 
+    /// Shows or hides the banner that says the app is running: the sandbox
+    /// is built when the app starts, so changed settings apply at its next
+    /// start.
+    pub(super) fn show_running(self: &Rc<Self>, running: bool) {
+        let name = util::plain(&self.name());
+        self.running_banner.set_title(&esc(&format!("{name} is running. Changed settings apply the next time it starts.")));
+        self.running_banner.set_button_label(Some(&format!("Restart {name}")));
+        self.running_banner.set_revealed(running && self.sandboxed());
+        if running {
+            self.watch_running();
+        }
+    }
+
+    /// While the app runs, asks every 3 seconds whether it still does, and
+    /// hides the banner when it has ended.
+    pub(super) fn watch_running(self: &Rc<Self>) {
+        if self.watching.replace(true) {
+            return;
+        }
+        let w = Rc::downgrade(self);
+        glib::timeout_add_seconds_local(3, move || {
+            let Some(me) = w.upgrade() else { return glib::ControlFlow::Break };
+            let Some(app) = me.app() else { return glib::ControlFlow::Break };
+            let me2 = me.clone();
+            glib::spawn_future_local(async move {
+                let running = app.backend.call(&["info", &me2.app_id], None).await.ok().and_then(|i| i.get("running").and_then(Value::as_u64)).unwrap_or(0) > 0;
+                me2.running_banner.set_revealed(running && me2.sandboxed());
+                if !running {
+                    me2.watching.set(false);
+                }
+            });
+            if me.watching.get() {
+                glib::ControlFlow::Continue
+            } else {
+                glib::ControlFlow::Break
+            }
+        });
+    }
+
     pub(super) fn render(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
         let sandboxed = self.sandboxed();
         let entry = self.entry();
         let info = self.info.borrow().clone();
+        self.show_running(info.as_ref().and_then(|i| i.get("running")).and_then(Value::as_u64).unwrap_or(0) > 0);
         let summary = info.as_ref().and_then(|i| i.get("app").cloned());
         let found = self.found();
 
@@ -122,9 +162,11 @@ impl AppPage {
         self.remove_button.set_visible(sandboxed);
         if sandboxed {
             self.main_button.set_child(Some(&button_content("media-playback-start-symbolic", "Launch")));
+            self.main_button.set_tooltip_text(Some("Start the app in its sandbox, with exactly the access listed below"));
             self.main_button.set_sensitive(summary.is_some() && badge != "missing");
         } else {
             self.main_button.set_child(Some(&button_content("security-high-symbolic", "Create Sandbox")));
+            self.main_button.set_tooltip_text(Some("Unpack the AppImage without running it and create its sandbox with the settings below"));
             self.main_button.set_sensitive(self.pending.borrow().is_some());
         }
 

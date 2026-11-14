@@ -20,9 +20,27 @@ impl AppPage {
             let Some(app) = me.app() else { return };
             if me.sandboxed() {
                 app.launch(&me.app_id);
+                me.watch_running();
             } else {
                 me.create_sandbox();
             }
+        });
+        // Restart: close the app (it may save first), then start it again
+        // with the changed settings.
+        let w = Rc::downgrade(self);
+        self.running_banner.connect_button_clicked(move |_| {
+            let Some(me) = w.upgrade() else { return };
+            let Some(app) = me.app() else { return };
+            glib::spawn_future_local(async move {
+                match app.backend.call(&["stop", &me.app_id], None).await {
+                    Ok(_) => {
+                        me.running_banner.set_revealed(false);
+                        app.launch(&me.app_id);
+                        me.watch_running();
+                    }
+                    Err(e) => app.report_error(&e),
+                }
+            });
         });
         let w = Rc::downgrade(self);
         self.remove_button.connect_clicked(move |_| {

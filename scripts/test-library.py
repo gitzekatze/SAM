@@ -34,6 +34,7 @@ PARTS = {
 GUI_CHECKS = [
     ("tests/gui/smoke.sh", "Every page of the window opens without GTK warnings, criticals or panics, in a wide and a narrow window."),
     ("tests/gui/permissions-atspi.sh", "Through the accessibility interface: the Permissions page selects apps, names its controls, warns before an app loses something it needs, applies a group change, and Undo restores every app; tag filters cycle."),
+    ("tests/gui/taskbar-kwin.sh", "In a hidden KWin session, a sandboxed app's window is named after SAM's menu entry, so the taskbar shows the app's own icon and name."),
     ("tests/real-apps/run.sh", "Real AppImages from the test sets start in their sandbox; results are compared with the last baseline."),
 ]
 
@@ -81,7 +82,7 @@ def build() -> str:
         "fix. Tests are named after the promise they keep. ⟲ marks regression tests.",
         "",
         "Run everything: `cargo test --workspace` (unit and integration tests),",
-        "`tests/gui/smoke.sh OUTDIR` and `tests/gui/permissions-atspi.sh OUTDIR` (window).",
+        "`tests/gui/smoke.sh OUTDIR`, `tests/gui/permissions-atspi.sh OUTDIR` and `tests/gui/taskbar-kwin.sh OUTDIR` (window).",
         "",
     ]
     total = 0

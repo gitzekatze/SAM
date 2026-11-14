@@ -9,11 +9,11 @@ proves it, and every fixed bug with a regression test that fails without the
 fix. Tests are named after the promise they keep. ⟲ marks regression tests.
 
 Run everything: `cargo test --workspace` (unit and integration tests),
-`tests/gui/smoke.sh OUTDIR` and `tests/gui/permissions-atspi.sh OUTDIR` (window).
+`tests/gui/smoke.sh OUTDIR`, `tests/gui/permissions-atspi.sh OUTDIR` and `tests/gui/taskbar-kwin.sh OUTDIR` (window).
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-25 tests.
+26 tests.
 
 | Promise | Test |
 |---|---|
@@ -25,6 +25,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L420) |
 | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L609) |
 | An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L627) |
+| ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L113) |
 | An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L822) |
 | Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L834) |
 | Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L847) |
@@ -151,15 +152,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L69) |
 | SAM's own bus check reaches the session bus on a desktop. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L172) |
 | SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L184) |
-| An app may register a tray icon only while the tray service is allowed. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L102) |
+| An app may register a tray icon only while the tray service is allowed. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L114) |
 | Failed file and socket accesses are read from a diagnostic trace. | [`failed_accesses_are_read_from_a_trace`](../crates/sam-runner/src/diagnose.rs#L209) |
 | Failed accesses are mapped to the permission that would fix them (X11 socket, GPU device), and unknown paths to none. | [`failed_accesses_map_to_the_permission_that_fixes_them`](../crates/sam-runner/src/diagnose.rs#L224) |
 | A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L334) |
 | The Landlock rules allow writing exactly in the folders the permissions grant. | [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L313) |
 | The syscall filter compiles in every variant and always blocks mount and io_uring. | [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L330) |
-| Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L840) |
-| Bubblewrap setup errors are told apart from errors of the app itself. | [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L860) |
-| A start is judged by whether Bubblewrap announced the app, not by what the app printed. | [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L873) |
+| Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L843) |
+| Bubblewrap setup errors are told apart from errors of the app itself. | [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L863) |
+| A start is judged by whether Bubblewrap announced the app, not by what the app printed. | [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L876) |
 | With "local network only", the app reaches only the ports on this computer the user lists. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L78) |
 | When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L387) |
 | An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L439) |
@@ -259,9 +260,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The list shows an app only when it passes every filter at once: the search text, each state filter, and each tag filter in its state. | [`the_list_shows_only_apps_that_pass_every_filter`](../crates/sam-gtk/src/all_perms.rs#L993) |
 | Personal folders explain where they are; other permissions keep their description unchanged. | [`folder_explanations_name_the_path`](../crates/sam-gtk/src/all_perms.rs#L1011) |
 | The user guide keeps the text of a list item that has a nested list below it. | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L274) |
-| ⟲ Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | [`the_style_sheet_handler_is_connected_before_register`](../crates/sam-gtk/src/main.rs#L425) |
-| Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L436) |
-| The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1296) |
+| ⟲ Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | [`the_style_sheet_handler_is_connected_before_register`](../crates/sam-gtk/src/main.rs#L428) |
+| Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L439) |
+| The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1325) |
 
 ## The window and real AppImages
 
@@ -269,6 +270,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 |---|---|
 | `tests/gui/smoke.sh` | Every page of the window opens without GTK warnings, criticals or panics, in a wide and a narrow window. |
 | `tests/gui/permissions-atspi.sh` | Through the accessibility interface: the Permissions page selects apps, names its controls, warns before an app loses something it needs, applies a group change, and Undo restores every app; tag filters cycle. |
+| `tests/gui/taskbar-kwin.sh` | In a hidden KWin session, a sandboxed app's window is named after SAM's menu entry, so the taskbar shows the app's own icon and name. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 189 automated Rust tests plus 3 scripted checks.
+Total: 190 automated Rust tests plus 4 scripted checks.
