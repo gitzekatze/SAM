@@ -80,18 +80,32 @@ flowchart TB
     storage[sam-storage: app records, presets, logs]
     core[sam-core: permission model, risk, warnings, configuration, file formats, host facts]
     gtk -->|JSON| clic
+    gtk --> core
     clic --> runner
+    clic --> intake
+    clic --> detect
+    clic --> profile
+    clic --> storage
+    clic --> core
     runner --> intake
     runner --> detect
     runner --> profile
     runner --> sandbox
     runner --> storage
+    runner --> core
+    intake --> detect
     intake --> core
     detect --> core
+    profile --> storage
     profile --> core
     sandbox --> core
     storage --> core
 ```
+
+Every arrow is a real dependency; the test
+`the_component_diagram_shows_the_real_dependencies` fails when the diagram
+and the code disagree. The window uses sam-core only for shared names (the
+permission catalog); everything it does goes through `sam-jail --json`.
 
 | Component | Responsibility | Untrusted input it handles |
 |---|---|---|

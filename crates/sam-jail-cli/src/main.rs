@@ -17,6 +17,7 @@ use sam_storage::{parse_preset_toml, preset_to_toml, read_preset_file, LogKind, 
 use serde::Serialize;
 use serde_json::{json, Value};
 
+mod bench;
 mod cli;
 mod config_cmd;
 mod man;
@@ -791,6 +792,19 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Dev { cmd: DevCmd::ExtractSquashfs { source, offset, dest, max_files, max_bytes, max_seconds } } => {
             let limits = sam_intake::normalize::Limits { max_files, max_bytes, max_seconds };
             sam_intake::extract::builtin_squashfs_entry(&source, offset, &dest, &limits)?;
+        }
+        Cmd::Dev { cmd: DevCmd::Bench { apps } } => {
+            let r = bench::bench(apps)?;
+            out.emit(&r, || {
+                for m in &r {
+                    let ms = serde_json::to_value(m).ok().and_then(|v| v["median_ms"].as_f64());
+                    let v = serde_json::to_value(m).unwrap_or_default();
+                    match ms {
+                        Some(ms) => println!("{:<16} {:>10.3} ms  {}", v["key"].as_str().unwrap_or(""), ms, v["what"].as_str().unwrap_or("")),
+                        None => println!("{:<16} {:>13}  {}", v["key"].as_str().unwrap_or(""), "not here", v["what"].as_str().unwrap_or("")),
+                    }
+                }
+            });
         }
         Cmd::Dev { cmd: DevCmd::SetUpdateInfo { runtime, info } } => {
             sam_detect::update_info::write(&runtime, &info)?;

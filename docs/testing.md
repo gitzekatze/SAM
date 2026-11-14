@@ -1,7 +1,9 @@
 # Manual test checklist
 
 The complete list of automated tests, each with the promise it keeps, is the
-[test library](test-library.md).
+[test library](test-library.md). How each part of SAM does from version to
+version (tests, line coverage, timings, dependencies) is in the
+[version reports](reports/), made with `make report`.
 
 These checks need a real desktop session: real AppImages, PipeWire, a GPU, an
 unfiltered session bus, and packages that may not be installed. They

@@ -12,6 +12,13 @@ pub struct SandboxInfo {
     pub reason: String,
 }
 
+/// The Bubblewrap command for a launch context (for callers above the
+/// operations layer, such as the benchmark, which do not depend on the
+/// sandbox builder directly).
+pub fn build_command(ctx: &sam_core::LaunchContext) -> Result<sam_core::SandboxCommand> {
+    sam_sandbox::Bubblewrap.build(ctx)
+}
+
 pub fn status(host: &HostInfo) -> BubblewrapStatus {
     sam_sandbox::Bubblewrap.status(host)
 }

@@ -26,7 +26,7 @@ else
 CARGO ?= cargo
 endif
 
-.PHONY: all cli gui test install install-cli install-gui clean dist appimage man pot mo
+.PHONY: all cli gui test test-library report install install-cli install-gui clean dist appimage man pot mo
 
 # Languages with a translation (po/LINGUAS).
 LINGUAS := $(shell cat po/LINGUAS 2>/dev/null)
@@ -55,6 +55,12 @@ test:
 # The catalog of all tests (docs/test-library.md).
 test-library:
 	python3 scripts/test-library.py
+
+# The version report (docs/reports/): tests, line coverage and timings per
+# part, the dependencies between the parts, and the differences to the
+# previous report.
+report:
+	python3 scripts/version-report.py
 
 install-cli:
 	install -Dm755 target/release/sam-jail     "$(BINDIR)/sam-jail"

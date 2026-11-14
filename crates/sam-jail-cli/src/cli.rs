@@ -423,6 +423,13 @@ pub(crate) enum DevCmd {
         #[arg(long)]
         apprun: Option<PathBuf>,
     },
+    /// Time the parts of SAM on a realistic test AppImage (for the version
+    /// report). Uses a fresh folder under $TMPDIR and removes it.
+    Bench {
+        /// How many apps to create for the Permissions-page measurement.
+        #[arg(long, default_value_t = 120)]
+        apps: usize,
+    },
     /// Write update information into an AppImage runtime (release builds).
     SetUpdateInfo { runtime: PathBuf, info: String },
     /// Write the .zsync update description of a file (release builds).

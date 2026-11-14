@@ -36,6 +36,14 @@ version.
 - The Permissions page is checked through the accessibility interface
   (`tests/gui/permissions-atspi.sh`, in an invisible KWin session made by
   `tests/gui/session.sh`).
+- The version report (`make report`, docs/reports/): for each part of SAM
+  the passing and failing tests, its line coverage, how long its steps take
+  (`sam-jail dev bench`: unpacking, analysis, the sandbox command, creating
+  a sandbox, a real start, the Permissions page with 120 apps) and its
+  dependencies, compared with the previous report.
+- A test checks the relations between the parts against the C4 rules: the
+  window depends only on sam-core, lower parts never on higher ones, and
+  the component diagram shows exactly the real dependencies.
 - docs/architecture.md describes SAM after the C4 model: context, programs
   and stores, components with the untrusted input each one handles.
 

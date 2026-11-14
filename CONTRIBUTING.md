@@ -43,6 +43,19 @@ stop the desktop portals that Flatpak apps rely on.
 - After adding or renaming tests, run `scripts/test-library.py` and commit
   `docs/test-library.md`; CI fails when it is out of date.
 
+## The version report
+
+`make report` (`scripts/version-report.py`) runs every test in a build that
+records which code runs, then the benchmarks (`sam-jail dev bench`), and
+writes `docs/reports/<version>-<commit>.md` and `.json`. The report shows for
+each part of SAM the tests that pass and fail, its line coverage, how long
+its steps take, and which parts it depends on, each compared with the
+previous report: new and removed tests, coverage up or down, steps that got
+more than 25 % slower, dependencies added or removed. Make a report at the
+end of each phase of work and before every published version, and commit
+it. Line coverage is a gap finder, not a score: it points at code no test
+runs, where a regression test may be missing.
+
 ## Version numbers
 
 The version changes only when a version is published. Small changes raise
