@@ -65,6 +65,8 @@ const CSS: &str = r#"
 .sam-badge-good, .sam-badge-accent                          { background-color: rgba(38, 162, 105, 0.28);  border-color: rgb(38, 162, 105); }
 .sam-badge-blue                                             { background-color: rgba(53, 132, 228, 0.28);  border-color: rgb(53, 132, 228); }
 .sam-tag-outline { background-color: transparent; }
+/* The drop-downs of the group permissions: one font size for all. */
+.sam-perm-choice { font-size: 0.9em; }
 .sam-tag-button { padding: 2px; min-height: 0; }
 .sam-tag-button.sam-filter-has .sam-tag { border-width: 2px; }
 .sam-tag-button.sam-filter-not .sam-tag { background-color: transparent; border-style: dashed; opacity: 0.75; }

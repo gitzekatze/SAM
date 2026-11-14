@@ -237,7 +237,7 @@ impl Editor {
     /// Grey subtitle (markup): the description, plus SAM's recommendation
     /// when the current value differs from it.
     fn describe(&self, key: &str, text: &str) -> String {
-        let mut s = esc(text);
+        let mut s = esc(&util::explain(key, text));
         if let Some(rec) = self.recommended.borrow().as_ref() {
             if let Some(rv) = util::get(rec, key) {
                 if !rv.is_object() && !rv.is_array() && *rv != self.value(key) {

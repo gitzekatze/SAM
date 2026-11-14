@@ -25,14 +25,10 @@ impl AppPage {
     /// Shows the permission tags of an evaluation (or a preview) in the
     /// header: the same tags, words and colors as on the Permissions page.
     pub(super) fn set_tags(&self, ev: Option<&Value>) {
-        self.tags_box.remove_all();
+        util::clear_box(&self.tags_box);
         let tags = ev.and_then(|e| e.get("tags")).and_then(Value::as_array).cloned().unwrap_or_default();
         for t in &tags {
-            let child = gtk::FlowBoxChild::new();
-            child.set_child(Some(&crate::all_perms::tag_label(t)));
-            child.set_can_focus(false);
-            child.set_halign(gtk::Align::Start);
-            self.tags_box.append(&child);
+            self.tags_box.append(&crate::all_perms::tag_label(t));
         }
         self.tags_box.set_visible(!tags.is_empty());
         let risk = ev.and_then(|e| e.get("risk")).cloned().unwrap_or_default();

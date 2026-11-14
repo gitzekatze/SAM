@@ -42,7 +42,7 @@ pub struct AppPage {
     status_badge: gtk::Label,
     state_badge: gtk::Label,
     /// The permission tags, the same as on the Permissions page.
-    tags_box: gtk::FlowBox,
+    tags_box: gtk::Box,
     sandbox_badge: gtk::Label,
     main_button: gtk::Button,
     remove_button: gtk::Button,
@@ -154,16 +154,8 @@ impl AppPage {
         meta.append(&subtitle);
         meta.append(&badges);
         // What the app may access, in the words of the switches below.
-        let tags_box = gtk::FlowBox::builder()
-            .selection_mode(gtk::SelectionMode::None)
-            .column_spacing(4)
-            .row_spacing(4)
-            .max_children_per_line(30)
-            .halign(gtk::Align::Start)
-            .margin_top(2)
-            .build();
-        tags_box.set_can_focus(false);
-        tags_box.set_can_target(false);
+        let tags_box = util::wrap_box(6, 6);
+        tags_box.set_margin_top(2);
         meta.append(&tags_box);
         hero.append(&meta);
         // Check and Launch (or Create Sandbox), Remove Sandbox under them.

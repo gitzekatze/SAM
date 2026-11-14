@@ -21,6 +21,32 @@ pub fn tildify(path: &str) -> String {
 
 /// Text from AppImages, apps or file names: no control characters, capped
 /// length. GTK labels show it as plain text (markup is never enabled for it).
+/// The folder behind a personal-folder permission (`filesystem.documents`
+/// → `~/Documents`), as this computer names it (it may be translated).
+pub fn folder_path(key: &str) -> Option<String> {
+    use gtk::glib::UserDirectory as D;
+    let (dir, fallback) = match key {
+        "filesystem.documents" => (D::Documents, "Documents"),
+        "filesystem.downloads" => (D::Downloads, "Downloads"),
+        "filesystem.pictures" => (D::Pictures, "Pictures"),
+        "filesystem.music" => (D::Music, "Music"),
+        "filesystem.videos" => (D::Videos, "Videos"),
+        "filesystem.desktop" => (D::Desktop, "Desktop"),
+        _ => return None,
+    };
+    let path = gtk::glib::user_special_dir(dir).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| format!("{}/{fallback}", home()));
+    Some(tildify(&path))
+}
+
+/// The explanation of a permission for a tooltip or subtitle: the switch's
+/// description, with the folder's path for personal folders.
+pub fn explain(key: &str, description: &str) -> String {
+    match folder_path(key) {
+        Some(p) => format!("{description} Folder: {p}"),
+        None => description.to_string(),
+    }
+}
+
 pub fn plain(s: &str) -> String {
     let mut out: String = s.chars().filter(|c| !c.is_control() || *c == '\n').take(400).collect();
     if s.chars().count() > 400 {
@@ -295,5 +321,123 @@ pub mod natural_height {
             child.set_parent(&bin);
             bin
         }
+    }
+}
+
+/// A container that lines its children up like words in a sentence and
+/// starts a new line when the next one does not fit (for tags). GTK's flow
+/// box would align them in columns, and libadwaita's wrap box needs
+/// libadwaita 1.7, newer than SAM requires.
+pub fn wrap_box(hspace: i32, vspace: i32) -> gtk::Box {
+    let b = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    b.set_layout_manager(Some(wrap::WrapLayout::new(hspace, vspace)));
+    b
+}
+
+pub mod wrap {
+    use gtk::glib;
+    use gtk::prelude::*;
+    use gtk::subclass::prelude::*;
+    use std::cell::Cell;
+
+    mod imp {
+        use super::*;
+
+        #[derive(Default)]
+        pub struct WrapLayout {
+            pub hspace: Cell<i32>,
+            pub vspace: Cell<i32>,
+        }
+
+        #[glib::object_subclass]
+        impl ObjectSubclass for WrapLayout {
+            const NAME: &'static str = "SamWrapLayout";
+            type Type = super::WrapLayout;
+            type ParentType = gtk::LayoutManager;
+        }
+
+        impl ObjectImpl for WrapLayout {}
+
+        impl WrapLayout {
+            fn children(w: &gtk::Widget) -> Vec<gtk::Widget> {
+                let mut out = Vec::new();
+                let mut c = w.first_child();
+                while let Some(ch) = c {
+                    c = ch.next_sibling();
+                    if ch.should_layout() {
+                        out.push(ch);
+                    }
+                }
+                out
+            }
+
+            /// Positions (x, y, width, height) for `width`, and the height used.
+            fn lines(&self, w: &gtk::Widget, width: i32) -> (Vec<(i32, i32, i32, i32)>, i32) {
+                let (hs, vs) = (self.hspace.get(), self.vspace.get());
+                let (mut x, mut y, mut line_h) = (0, 0, 0);
+                let mut out = Vec::new();
+                for ch in Self::children(w) {
+                    let (min_w, nat_w, _, _) = ch.measure(gtk::Orientation::Horizontal, -1);
+                    let cw = nat_w.min(width.max(min_w));
+                    let (_, ch_h, _, _) = ch.measure(gtk::Orientation::Vertical, cw);
+                    if x > 0 && x + cw > width {
+                        x = 0;
+                        y += line_h + vs;
+                        line_h = 0;
+                    }
+                    out.push((x, y, cw, ch_h));
+                    x += cw + hs;
+                    line_h = line_h.max(ch_h);
+                }
+                (out, y + line_h)
+            }
+        }
+
+        impl LayoutManagerImpl for WrapLayout {
+            fn request_mode(&self, _widget: &gtk::Widget) -> gtk::SizeRequestMode {
+                gtk::SizeRequestMode::HeightForWidth
+            }
+
+            fn measure(&self, widget: &gtk::Widget, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
+                if orientation == gtk::Orientation::Horizontal {
+                    let kids = Self::children(widget);
+                    let min = kids.iter().map(|c| c.measure(gtk::Orientation::Horizontal, -1).0).max().unwrap_or(0);
+                    let gaps = self.hspace.get() * (kids.len() as i32 - 1).max(0);
+                    let nat: i32 = kids.iter().map(|c| c.measure(gtk::Orientation::Horizontal, -1).1).sum::<i32>() + gaps;
+                    (min, nat.max(min), -1, -1)
+                } else {
+                    let width = if for_size < 0 { i32::MAX / 2 } else { for_size };
+                    let h = self.lines(widget, width).1;
+                    (h, h, -1, -1)
+                }
+            }
+
+            fn allocate(&self, widget: &gtk::Widget, width: i32, _height: i32, _baseline: i32) {
+                let (pos, _) = self.lines(widget, width);
+                for (ch, (x, y, w, h)) in Self::children(widget).iter().zip(pos) {
+                    ch.size_allocate(&gtk::Allocation::new(x, y, w, h), -1);
+                }
+            }
+        }
+    }
+
+    glib::wrapper! {
+        pub struct WrapLayout(ObjectSubclass<imp::WrapLayout>) @extends gtk::LayoutManager;
+    }
+
+    impl WrapLayout {
+        pub fn new(hspace: i32, vspace: i32) -> Self {
+            let l: Self = glib::Object::new();
+            l.imp().hspace.set(hspace);
+            l.imp().vspace.set(vspace);
+            l
+        }
+    }
+}
+
+/// Removes every child of a box.
+pub fn clear_box(b: &gtk::Box) {
+    while let Some(c) = b.first_child() {
+        b.remove(&c);
     }
 }

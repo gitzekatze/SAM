@@ -53,6 +53,12 @@ const GROUPS: &[(&str, &[(&str, Opts)])] = &[
     ("Desktop", &[("display.x11", SWITCH), ("dbus.session.mode", BUS)]),
 ];
 
+/// Every group row has three sections of fixed size: the text (the rest of
+/// the row), the apps' icons, and the control. All controls on the page
+/// have the same width and the same font size.
+const ICONS_WIDTH: i32 = 56;
+const CONTROL_WIDTH: i32 = 148;
+
 const STATUS: &[(&str, &str, &str)] = &[
     ("running", "Running", "Show only apps that are running now"),
     ("needs_review", "Needs review", "Show only apps whose settings nobody has confirmed yet"),
@@ -75,7 +81,7 @@ pub struct PermsPage {
     /// Ids of the apps shown, in list order.
     shown: RefCell<Vec<String>>,
     checks: RefCell<Vec<gtk::CheckButton>>,
-    filter_bar: gtk::FlowBox,
+    filter_bar: gtk::Box,
     list: gtk::ListBox,
     list_stack: gtk::Stack,
     select_all: gtk::CheckButton,
@@ -114,7 +120,7 @@ pub fn tag_label(t: &Value) -> gtk::Label {
     let l = gtk::Label::new(Some(util::str_of(t, "label")));
     l.add_css_class("sam-tag");
     l.add_css_class(&format!("sam-tag-{}", util::str_of(t, "level")));
-    let mut tip = util::str_of(t, "description").to_string();
+    let mut tip = util::explain(util::str_of(t, "key"), util::str_of(t, "description"));
     if util::bool_of(t, "read_only") {
         l.add_css_class("sam-tag-outline");
         tip.push_str(" (Read-only or limited access: shown as an outline.)");
@@ -149,7 +155,7 @@ impl PermsPage {
         let status_box = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).column_spacing(4).row_spacing(4).max_children_per_line(3).build();
         status_box.update_property(&[gtk::accessible::Property::Label(&tr("Filter by state"))]);
         left.append(&status_box);
-        let filter_bar = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).column_spacing(4).row_spacing(4).max_children_per_line(30).build();
+        let filter_bar = util::wrap_box(6, 6);
         filter_bar.update_property(&[gtk::accessible::Property::Label(&tr("Filter by permission"))]);
         left.append(&filter_bar);
         let sel_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -504,9 +510,8 @@ impl PermsPage {
             let title = gtk::Label::builder().label(&name).xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build();
             title.add_css_class("heading");
             text.append(&title);
-            let tags = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).column_spacing(4).row_spacing(4).max_children_per_line(30).build();
+            let tags = util::wrap_box(6, 6);
             tags.set_can_target(false);
-            tags.set_can_focus(false);
             let list = a.get("tags").and_then(Value::as_array).cloned().unwrap_or_default();
             for t in &list {
                 tags.append(&tag_label(t));
@@ -700,6 +705,7 @@ impl PermsPage {
             let g = adw::PreferencesGroup::builder().title(tr(title)).build();
             for &(key, opts) in perms.iter() {
                 let ptitle = catalog.get(key).map(|i| i.title.clone()).unwrap_or_else(|| key.to_string());
+                let tip = format!("{ptitle}: {}", util::explain(key, &catalog.get(key).map(|i| i.description.clone()).unwrap_or_default()));
                 // Value → apps with it, in the order of the values.
                 let mut by_value: Vec<(String, Vec<Value>)> = opts.iter().map(|o| (o.0.to_string(), Vec::new())).collect();
                 for a in &apps {
@@ -710,7 +716,7 @@ impl PermsPage {
                     }
                 }
                 for (tok, members) in by_value.into_iter().filter(|(_, m)| !m.is_empty()) {
-                    g.add(&self.value_row(key, &ptitle, opts, &tok, &members, total));
+                    g.add(&self.value_row(key, &ptitle, &tip, opts, &tok, &members, total));
                 }
             }
             self.many_page.add(&g);
@@ -720,12 +726,18 @@ impl PermsPage {
 
     /// One row of a permission for the apps that have value `tok`: a big
     /// control for all of them and, when unfolded, a small one per app.
-    fn value_row(self: &Rc<Self>, key: &'static str, ptitle: &str, opts: Opts, tok: &str, members: &[Value], total: usize) -> adw::ExpanderRow {
+    #[allow(clippy::too_many_arguments)]
+    fn value_row(self: &Rc<Self>, key: &'static str, ptitle: &str, tip: &str, opts: Opts, tok: &str, members: &[Value], total: usize) -> adw::ExpanderRow {
         let n = members.len();
         let vlabel = opt_label(opts, tok);
         let subtitle = if n == total { format!("{vlabel} for all {n} selected apps") } else { format!("{vlabel} for {n} of the {total} selected apps") };
-        let row = adw::ExpanderRow::builder().title(esc(ptitle)).subtitle(esc(&subtitle)).build();
-        let icons = gtk::Box::builder().spacing(2).valign(gtk::Align::Center).build();
+        // The title stays on one line (shortened with "…" when narrow); the
+        // subtitle wraps.
+        let row = adw::ExpanderRow::builder().title(esc(ptitle)).title_lines(1).subtitle(esc(&subtitle)).tooltip_text(tip).build();
+        // The icon section has a fixed width; the icons sit in its middle.
+        let icon_section = gtk::Box::builder().width_request(ICONS_WIDTH).valign(gtk::Align::Center).build();
+        let icons = gtk::Box::builder().spacing(2).halign(gtk::Align::Center).hexpand(true).build();
+        icon_section.append(&icons);
         for a in members.iter().take(3) {
             icons.append(&window::app_icon(util::str_of(a, "icon_path"), 16));
         }
@@ -744,7 +756,7 @@ impl PermsPage {
         row.add_suffix(&self.control(key, opts, tok, ids, &what));
         // The apps' icons follow the name (the row puts later suffixes in
         // front of earlier ones); unfolded, each app leads with its icon.
-        row.add_suffix(&icons);
+        row.add_suffix(&icon_section);
         for a in members {
             let name = util::plain(util::str_of(a, "name"));
             let r = adw::ActionRow::builder().title(esc(&name)).build();
@@ -770,9 +782,16 @@ impl PermsPage {
     /// A switch (on/off) or a drop-down (several values) set to `tok`;
     /// changing it changes `ids`.
     fn control(self: &Rc<Self>, key: &'static str, opts: Opts, tok: &str, ids: Vec<String>, accessible: &str) -> gtk::Widget {
+        // The control section: the same width for every control on the page.
+        let section = gtk::Box::builder().width_request(CONTROL_WIDTH).valign(gtk::Align::Center).build();
+        section.append(&self.control_widget(key, opts, tok, ids, accessible));
+        section.upcast()
+    }
+
+    fn control_widget(self: &Rc<Self>, key: &'static str, opts: Opts, tok: &str, ids: Vec<String>, accessible: &str) -> gtk::Widget {
         let w = Rc::downgrade(self);
         if opts == SWITCH {
-            let sw = gtk::Switch::builder().active(tok == "true").valign(gtk::Align::Center).build();
+            let sw = gtk::Switch::builder().active(tok == "true").valign(gtk::Align::Center).halign(gtk::Align::Center).hexpand(true).build();
             sw.update_property(&[gtk::accessible::Property::Label(accessible)]);
             sw.connect_state_set(move |_, on| {
                 if let Some(me) = w.upgrade() {
@@ -785,6 +804,8 @@ impl PermsPage {
             let labels: Vec<&str> = opts.iter().map(|o| o.1).collect();
             let dd = gtk::DropDown::from_strings(&labels);
             dd.set_valign(gtk::Align::Center);
+            dd.set_hexpand(true);
+            dd.add_css_class("sam-perm-choice");
             if let Some(i) = opts.iter().position(|o| o.0 == tok) {
                 dd.set_selected(i as u32);
             }
