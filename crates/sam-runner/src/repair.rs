@@ -427,7 +427,7 @@ fn words_plain(key: &str) -> String {
     sam_core::permissions::permission_catalog().into_iter().find(|i| i.key == key).map(|i| i.title.to_string()).unwrap_or_else(|| key.to_string())
 }
 
-pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
+pub fn ladder(e: &AppEntry, _cfg: &Config, paths: &sam_core::Paths) -> Vec<Suggestion> {
     let p = &e.profile.permissions;
     let mut steps: Vec<Suggestion> = e.last_launch.as_ref().map(|l| l.findings.clone()).unwrap_or_default();
     steps.extend([
@@ -476,8 +476,9 @@ pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
             && !matches!(st.action, FixAction::None)
             // A terminal program has no window: display steps cannot help.
             && !(e.metadata.terminal && matches!(st.id.as_str(), "x11" | "gpu"))
-            // Needs Bubblewrap 0.10+ (overlays).
-            && !(st.id == "writable-appdir" && !sam_core::host::bwrap_supports_overlay())
+            // Needs overlays: Bubblewrap 0.10+ and a filesystem that can
+            // hold the app's changes.
+            && !(st.id == "writable-appdir" && !sam_core::host::overlay_works_in(&paths.overlays_dir()))
             && changes_something(p, e.profile.compatibility_mode, &e.profile.args, &st.action);
         seen.push(st.id.clone());
         keep
@@ -488,6 +489,7 @@ pub fn ladder(e: &AppEntry, _cfg: &Config) -> Vec<Suggestion> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sam_core::Paths;
 
     /// Compatibility mode lists only what it actually changes, in the words
     /// of the switches.
@@ -583,13 +585,34 @@ mod tests {
         let mut e = AppEntry::default();
         e.profile.permissions = PermissionSet::strict_gui();
         let cfg = Config::default();
-        let ids: Vec<String> = ladder(&e, &cfg).into_iter().map(|s| s.id).collect();
+        let tmp = tempfile::tempdir().unwrap();
+        let ids: Vec<String> = ladder(&e, &cfg, &Paths::rooted(tmp.path())).into_iter().map(|s| s.id).collect();
         assert_eq!(ids.first().map(String::as_str), Some("full-usr"));
         assert!(ids.contains(&"userns".to_string()), "offered: nested namespaces are off by default");
         e.profile.permissions.advanced.allow_userns = true;
-        assert!(!ladder(&e, &cfg).iter().any(|s| s.id == "userns"), "not offered once allowed");
+        assert!(!ladder(&e, &cfg, &Paths::rooted(tmp.path())).iter().any(|s| s.id == "userns"), "not offered once allowed");
         e.profile.permissions.advanced.allow_userns = false;
         e.repairs_applied.push("full-usr".into());
-        assert_ne!(ladder(&e, &cfg)[0].id, "full-usr");
+        assert_ne!(ladder(&e, &cfg, &Paths::rooted(tmp.path()))[0].id, "full-usr");
+    }
+
+    /// The repair steps offer a writable app folder only where an overlay
+    /// can work: not where SAM's overlay folder cannot hold one
+    /// (regression: the step was offered by Bubblewrap's version alone, and
+    /// on such disks the app then started read-only anyway).
+    #[test]
+    fn a_writable_app_folder_is_offered_only_where_it_can_work() {
+        let mut e = AppEntry::default();
+        e.profile.permissions = PermissionSet::strict_gui();
+        let cfg = Config::default();
+        let tmp = tempfile::tempdir().unwrap();
+        let good = Paths::rooted(&tmp.path().join("good"));
+        let offered = ladder(&e, &cfg, &good).iter().any(|s| s.id == "writable-appdir");
+        assert_eq!(offered, sam_core::host::overlay_works_in(&good.overlays_dir()));
+        // A file where the overlay folder belongs: no overlay can work there.
+        let bad = Paths::rooted(&tmp.path().join("bad"));
+        std::fs::create_dir_all(&bad.data_dir).unwrap();
+        std::fs::write(bad.overlays_dir(), "not a folder").unwrap();
+        assert!(!ladder(&e, &cfg, &bad).iter().any(|s| s.id == "writable-appdir"));
     }
 }

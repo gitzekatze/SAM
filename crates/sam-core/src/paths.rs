@@ -65,6 +65,10 @@ impl Paths {
     pub fn desktop_dir(&self) -> PathBuf {
         self.data_dir.join("desktop")
     }
+    /// Where the writable app folders keep each app's changes.
+    pub fn overlays_dir(&self) -> PathBuf {
+        self.data_dir.join("overlays")
+    }
     /// Private per-app home directories mounted as `$HOME` inside the sandbox.
     pub fn homes_dir(&self) -> PathBuf {
         self.data_dir.join("homes")

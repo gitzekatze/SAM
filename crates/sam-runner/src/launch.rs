@@ -222,17 +222,17 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             "Writable app folder unavailable",
             "The writable app folder needs Bubblewrap 0.10 or newer; the installed one is older, so the app folder stays read-only. Update Bubblewrap to use this setting.",
         ));
-    } else if perms.advanced.writable_appdir && !sam_core::host::overlay_works_in(&paths.data_dir.join("overlays")) {
+    } else if perms.advanced.writable_appdir && !sam_core::host::overlay_works_in(&paths.overlays_dir()) {
         warnings.push(Warning::warn(
             "writable-appdir-unavailable",
             "Writable app folder unavailable",
             format!(
                 "The writable app folder keeps the app's changes in {}, but that folder is on a filesystem that cannot hold them (for example a network drive, an encrypted folder or a container's filesystem). The app starts with a read-only app folder instead. Moving SAM's data folder to a local disk makes this setting work.",
-                sam_core::util::tildify(&paths.data_dir.join("overlays"))
+                sam_core::util::tildify(&paths.overlays_dir())
             ),
         ));
     } else if perms.advanced.writable_appdir {
-        let base = paths.data_dir.join("overlays").join(&app.id);
+        let base = paths.overlays_dir().join(&app.id);
         fs::create_dir_all(base.join("upper"))?;
         fs::create_dir_all(base.join("work"))?;
         ctx.appdir_overlay = Some(base);
@@ -507,7 +507,14 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         setup_failed: outcome.setup_failed,
         enforcement,
         log_file: Some(log_path),
-        findings: if outcome.success { vec![] } else { crate::repair::analyze(&format!("{err_head}\n{out_head}"), &app.profile.permissions, status.signal()) },
+        findings: if outcome.success {
+            vec![]
+        } else {
+            let mut f = crate::repair::analyze(&format!("{err_head}\n{out_head}"), &app.profile.permissions, status.signal());
+            // Suggested only where it can work (see overlay_works_in).
+            f.retain(|s| s.id != "writable-appdir" || sam_core::host::overlay_works_in(&paths.overlays_dir()));
+            f
+        },
         summary: outcome.summary,
     };
     save_launch(app, &rec, paths)?;

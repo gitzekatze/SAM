@@ -153,7 +153,9 @@ fn real_main(cli: Cli) -> Result<()> {
             } else if let Some(id) = undo_step {
                 app.undo_repair_step(&query, &id)?;
                 Some(format!("undo {id}"))
-            } else if let Some(id) = apply.or_else(|| next.then(|| sam_runner::repair::ladder(&e, &app.config).first().map(|s| s.id.clone())).flatten()) {
+            } else if let Some(id) =
+                apply.or_else(|| next.then(|| sam_runner::repair::ladder(&e, &app.config, &app.paths).first().map(|s| s.id.clone())).flatten())
+            {
                 let sug = app.find_suggestion(&e, &id).with_context(|| format!("no repair step '{id}' for {}", e.display_name()))?;
                 app.apply_suggestion(&query, &sug, true)?;
                 Some(sug.title)
@@ -161,7 +163,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 None
             };
             let e = app.resolve(&query)?;
-            let steps = sam_runner::repair::ladder(&e, &app.config);
+            let steps = sam_runner::repair::ladder(&e, &app.config, &app.paths);
             let findings = e.last_launch.as_ref().map(|l| l.findings.clone()).unwrap_or_default();
             out.emit(
                 &json!({"applied": applied, "findings": findings, "steps": steps, "applied_steps": e.repairs_applied, "can_undo": e.repair_backup.is_some()}),
@@ -344,7 +346,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let summary = AppSummary::from_entry(&e);
             let selection = sam_runner::bwrap::check(&host).ok();
             let hints = sam_runner::repair::first_run_hints(&e);
-            let steps = sam_runner::repair::ladder(&e, &app.config);
+            let steps = sam_runner::repair::ladder(&e, &app.config, &app.paths);
             // What each repair step changes and costs, for the step switches;
             // what compatibility mode turns on (or turned on).
             let p = &e.profile.permissions;

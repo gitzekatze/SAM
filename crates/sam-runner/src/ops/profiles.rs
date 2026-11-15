@@ -189,7 +189,7 @@ impl Sam {
     pub fn find_suggestion(&self, e: &AppEntry, id: &str) -> Option<Suggestion> {
         crate::repair::first_run_hints(e)
             .into_iter()
-            .chain(crate::repair::ladder(e, &self.config))
+            .chain(crate::repair::ladder(e, &self.config, &self.paths))
             .chain(e.last_launch.iter().flat_map(|l| l.findings.clone()))
             .find(|s| s.id == id)
     }

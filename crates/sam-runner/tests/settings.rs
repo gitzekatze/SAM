@@ -46,7 +46,7 @@ fn undoing_repair_steps_restores_the_settings_from_before_the_first_step() {
     let tmp = tempfile::tempdir().unwrap();
     let (sam, id) = one_app(tmp.path());
     let before = sam.resolve(&id).unwrap().profile;
-    let steps = sam_runner::repair::ladder(&sam.resolve(&id).unwrap(), &sam.config);
+    let steps = sam_runner::repair::ladder(&sam.resolve(&id).unwrap(), &sam.config, &sam.paths);
     assert!(!steps.is_empty(), "the repair ladder offers steps");
     for step in steps.iter().take(2) {
         let e = sam.resolve(&id).unwrap();
@@ -138,7 +138,7 @@ fn switching_off_one_repair_step_keeps_the_others() {
     let (sam, id) = named_app(tmp.path(), "Steps");
     let e = sam.resolve(&id).unwrap();
     let steps: Vec<_> =
-        sam_runner::repair::ladder(&e, &sam.config).into_iter().filter(|s| matches!(s.action, sam_core::FixAction::Set { .. })).take(2).collect();
+        sam_runner::repair::ladder(&e, &sam.config, &sam.paths).into_iter().filter(|s| matches!(s.action, sam_core::FixAction::Set { .. })).take(2).collect();
     assert_eq!(steps.len(), 2, "two setting steps to apply");
     let before = sam.resolve(&id).unwrap().profile.permissions;
     for s in &steps {
