@@ -3,6 +3,18 @@
 SAM - Sandboxed AppImage Manager exists to contain untrusted AppImages, so
 a way out of its sandbox is the most important kind of bug.
 
+## Checking a download
+
+SAM's releases are signed with SAM's release key, whose public part is
+[sam-release-key.asc](sam-release-key.asc) in this repository:
+
+- fingerprint `AFE9 40ED A5A0 C5C4 B94B  0A3F B176 4CFD 72A2 38E6`;
+- every release file has a `.asc` signature next to it:
+  `gpg --import sam-release-key.asc`, then
+  `gpg --verify SAM-X.Y.Z-x86_64.AppImage.asc SAM-X.Y.Z-x86_64.AppImage`;
+- the AppImages also carry the signature inside, and SAM updates itself only
+  to an AppImage signed with this key.
+
 ## Reporting a vulnerability
 
 **Please do not open a public issue.** Report it privately through GitHub:

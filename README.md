@@ -336,7 +336,8 @@ SAM doesn't ask for your trust. It shows its work:
   their sandbox, 2 fail for reasons inside the app, and one built for
   another processor is turned away at the door.
 - **Every release** is tested on five Linux distributions before it is
-  published, and signed with SAM's release key, the only key SAM accepts for
+  published, and signed with SAM's release key
+  ([sam-release-key.asc](sam-release-key.asc)), the only key SAM accepts for
   updates of itself.
 
 The next step is a pair of fresh eyes: an outside security review, planned
