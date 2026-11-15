@@ -7,7 +7,7 @@ gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi
 
 # Older accessibility stacks (Ubuntu 24.04) name some roles differently.
-ROLE_ALIASES = {"button": {"button", "push button"}, "switch": {"switch", "toggle button"}}
+ROLE_ALIASES = {"button": {"button", "push button"}, "switch": {"switch", "toggle button", "check box"}}
 def role_is(n, want):
     return n.get_role_name() in ROLE_ALIASES.get(want, {want})
 
