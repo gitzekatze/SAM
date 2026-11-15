@@ -38,6 +38,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The whole history: the summary compares with the commit before the push.
+          fetch-depth: 0
 
       # A stuck package mirror fails the step after 10 minutes instead of
       # holding the whole job for 45.
@@ -84,9 +87,18 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: Tests
-        # SAM_TEST_GPG: also sign and check a test AppImage with GnuPG.
-        run: SAM_TEST_GPG=1 PATH="$PWD/target/debug:$PATH" cargo test --workspace --locked --no-fail-fast
+      # The whole suite twice: a test whose result differs between the two
+      # runs is flaky (its answer depends on timing, not only on the code)
+      # and fails the job, like a test that fails.
+      # SAM_TEST_GPG: also sign and check a test AppImage with GnuPG.
+      - name: Tests (twice, to catch flaky ones)
+        run: SAM_TEST_GPG=1 PATH="$PWD/target/debug:$PATH" python3 scripts/flaky-check.py --runs 2
+
+      # On the run page: which of SAM's functions the change touches, and
+      # how their tests did (docs/functions.toml).
+      - name: Summary of the change
+        if: always()
+        run: python3 scripts/push-summary.py "${{ github.event.pull_request.base.sha || github.event.before }}" "${{ github.sha }}"
 
       - name: Desktop file and metainfo
         run: |

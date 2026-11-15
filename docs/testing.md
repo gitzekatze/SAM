@@ -1,7 +1,17 @@
 # Manual test checklist
 
 The complete list of automated tests, each with the promise it keeps, is the
-[test library](test-library.md). How each part of SAM does from version to
+[test library](test-library.md). Which of SAM's functions each test proves is
+the [function map](functions.md). How each part of SAM does from version to
+version (tests, line coverage, timings, dependencies) is in the
+[version reports](reports/), made with `make report`.
+
+**How CI judges the tests:** it runs the whole suite twice
+(`scripts/flaky-check.py`). A test whose result differs between the two runs
+is *flaky*: its answer depends on timing or on other tests, not only on the
+code, so it fails the job like a test that fails. After the tests, the run
+page shows which of SAM's functions the change touches and how their tests
+did (`scripts/push-summary.py`, from the function map).
 
 **Real AppImages beyond the first start:** `WORK=… tests/real-apps/run.sh
 APP…` also records, for every app, the D-Bus calls of the first start that
@@ -17,9 +27,6 @@ was registered, and which portals the app called.
 `python3 tests/real-apps/checks.py WORK [BASELINE]` prints one line per app,
 or with a baseline only what changed. The smoke subset (one app per family,
 16 apps) passed every check on 2026-11-15.
-
-version (tests, line coverage, timings, dependencies) is in the
-[version reports](reports/), made with `make report`.
 
 These checks need a real desktop session: real AppImages, PipeWire, a GPU, an
 unfiltered session bus, and packages that may not be installed. They
