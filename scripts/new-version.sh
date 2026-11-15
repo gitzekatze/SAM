@@ -5,7 +5,9 @@
 #   scripts/new-version.sh X.Y.Z --dry-run  only check that everything is ready
 #
 # 1. Checks: the version is new, the tree is clean, main matches GitHub, the
-#    last CI run on it passed, the release key is here, gh is signed in.
+#    last CI run on it passed, the release key is here, gh is signed in,
+#    and data made by the last released version still works
+#    (tests/upgrade/run.sh).
 # 2. Asks once for the release key's passphrase and keeps GnuPG from
 #    forgetting it while the release runs (GnuPG forgets after 10 minutes
 #    without use; a tiny signature every 5 minutes keeps it).
@@ -85,6 +87,18 @@ ci=$(gh run list --workflow ci.yml --branch main --commit "$(git rev-parse HEAD)
 [ "$ci" = success ] || die "the CI run for the current commit has not passed (status: ${ci:-none yet}); wait for it or fix it first"
 gpg --batch --list-secret-keys "$key" >/dev/null 2>&1 || die "the release key $key is not on this computer (see personal/release-key-guide.md, section 6)"
 awk '/^## Unreleased/{f=1; next} /^## /{f=0} f' CHANGELOG.md | grep -q '[^[:space:]]' || die "CHANGELOG.md has no notes under '## Unreleased'"
+# Data made by the last released version must still work.
+last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+if [ -n "$last" ]; then
+    step "Checking that data from SAM $last still works (a few minutes)"
+    cargo build -q --locked -p sam-jail-cli
+    mkdir -p "$root/target"
+    if ! sh tests/upgrade/run.sh "$last" "$root/target/upgrade-test" >"$root/target/upgrade-test.log" 2>&1; then
+        grep -E '^(FAIL|RESULT)' "$root/target/upgrade-test.log" || tail -n 20 "$root/target/upgrade-test.log"
+        die "data from SAM $last does not work with this version (target/upgrade-test.log); tell Claude"
+    fi
+    grep -c '^ok' "$root/target/upgrade-test.log" | sed 's/^/upgrade checks passed: /'
+fi
 echo "Version $old -> $new, release key $key: ready."
 if [ "$dry" = --dry-run ]; then
     echo "Dry run: nothing was changed."

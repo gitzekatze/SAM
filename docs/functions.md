@@ -668,6 +668,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 **Code:** [`sam-core/src/format.rs`](../crates/sam-core/src/format.rs), [`sam-core/src/config.rs`](../crates/sam-core/src/config.rs), [`sam-core/src/permissions.rs`](../crates/sam-core/src/permissions.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs)
 
+**Also tried by:** [`tests/upgrade/run.sh`](../tests/upgrade/run.sh)
+
 <a id="39"></a>
 ### 39. SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.
 

@@ -145,6 +145,9 @@ version.
 
 ### Tests and documentation
 
+- An upgrade test builds the last released SAM, creates apps, settings and a
+  preset with it, and checks that the new version keeps them and still
+  starts the apps; `scripts/new-version.sh` runs it before every release.
 - Updates are tested end to end against a local HTTPS server: finding the
   newer version, downloading only the changed parts, swapping the file while
   keeping the old one, refusing a damaged download, and refusing plain HTTP.

@@ -329,6 +329,7 @@ area = "I"
 promise = "SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM."
 code = ["sam-core/src/format.rs", "sam-core/src/config.rs", "sam-core/src/permissions.rs", "sam-storage/src/lib.rs"]
 tests = ["a_complete_configuration_file_loads_every_setting", "settings_change_by_key_and_old_theme_names_are_migrated", "files_from_a_newer_sam_are_never_overwritten", "access_from_bool_and_str", "old_profiles_with_removed_options_still_load", "permissions_saved_as_toml_load_back_unchanged", "old_extra_backend_args_still_load", "presets_in_the_older_flat_format_still_load", "old_formats_are_migrated_and_kept", "newer_formats_are_left_untouched", "damaged_files_are_moved_aside_and_reported", "mangled_files_never_crash"]
+checks = ["tests/upgrade/run.sh"]
 
 [[function]]
 id = 39

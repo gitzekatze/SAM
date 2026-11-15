@@ -20,12 +20,16 @@ the steps; the list says what it does and what stays a person's job.
 
 3. **Real apps:** the 120-AppImage test set runs without a new failure
    (`tests/real-apps/run.sh`, see [testing](testing.md)).
-4. **Translations are complete:** `python3 scripts/i18n.py check`.
-5. **The version report** for the finished state: `make report`. It also
+4. **Upgrades work:** `tests/upgrade/run.sh vLAST target/upgrade-test` builds
+   the last released version, creates apps, settings and a preset with it, and
+   checks that this version keeps them and still starts the apps.
+   `scripts/new-version.sh` runs it by itself.
+5. **Translations are complete:** `python3 scripts/i18n.py check`.
+6. **The version report** for the finished state: `make report`. It also
    updates the dashboard and the function map's results.
-6. **The changelog** has every user-visible change under *Unreleased*, in
+7. **The changelog** has every user-visible change under *Unreleased*, in
    whole sentences.
-7. **The release key** is on this computer. Its fingerprint,
+8. **The release key** is on this computer. Its fingerprint,
    `AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6`, is built into SAM
    (`RELEASE_KEYS` in `crates/sam-runner/src/release_key.rs`): SAM updates
    itself only to AppImages signed with it. The key expires on 2029-11-14;
