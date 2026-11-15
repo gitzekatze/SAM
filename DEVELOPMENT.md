@@ -5,7 +5,7 @@
 > the version reports changed over time, and the latest commits. For people
 > who use SAM, the front page is [README.md](README.md).
 >
-> Generated on 2026-11-15 at 11:01 by `scripts/dashboard.py`. It is
+> Generated on 2026-11-15 at 17:32 by `scripts/dashboard.py`. It is
 > regenerated with every version report (`make report`), so it shows the state
 > at the end of the last phase of work.
 
@@ -15,11 +15,11 @@
 
 | | |
 |---|---|
-| **Tests** | ✅ 222 pass, 0 fail in the latest version report |
+| **Tests** | ✅ 237 pass, 0 fail in the latest version report |
 | **Version** | 0.1.0 (the number changes only when a version is published) |
-| **Latest commit** | `badb1fb` Update the C4 overview: components, functions, texts and error codes |
-| **Commits so far** | 161 |
-| **Version reports** | 7; the newest is [0.1.0-badb1fb](docs/reports/0.1.0-badb1fb.md) |
+| **Latest commit** | `2ccd936` Function map: new tests are marked new, not failed |
+| **Commits so far** | 172 |
+| **Version reports** | 8; the newest is [0.1.0-2ccd936](docs/reports/0.1.0-2ccd936.md) |
 
 > **How to read the badge:** it shows the last CI run on GitHub (unit,
 > integration, sandbox and window tests on Ubuntu; sandbox tests on Fedora).
@@ -35,14 +35,14 @@
 
 | Part | What it does | Tests | Line coverage |
 |---|---|---|---|
-| **sam-core** | Permission model, risk, warnings, configuration and file formats | ✅ 29 passing | `█████████████████░░░` 86.5 % |
-| **sam-detect** | Recognizing AppImages and what they need (ELF, toolkits, signatures) | ✅ 19 passing | `███████████████░░░░░` 73.6 % |
-| **sam-intake** | Unpacking AppImages safely, metadata, menu entries | ✅ 25 passing | `█████████████████░░░` 83.4 % |
+| **sam-core** | Permission model, risk, warnings, configuration and file formats | ✅ 31 passing | `█████████████████░░░` 86.8 % |
+| **sam-detect** | Recognizing AppImages and what they need (ELF, toolkits, signatures) | ✅ 19 passing | `███████████████░░░░░` 73.5 % |
+| **sam-intake** | Unpacking AppImages safely, metadata, menu entries | ✅ 27 passing | `█████████████████░░░` 83.8 % |
 | **sam-profile** | Recommendations, the user's presets, change checks, permission tags | ✅ 13 passing | `█████████████████░░░` 86.9 % |
-| **sam-sandbox** | Building the Bubblewrap command from the permissions | ✅ 17 passing | `███████████████████░` 93.9 % |
-| **sam-runner** | Operations: add, launch, verify, repair, update, group changes; the sandbox at run time | ✅ 86 passing | `██████████████░░░░░░` 69.7 % |
+| **sam-sandbox** | Building the Bubblewrap command from the permissions | ✅ 22 passing | `███████████████████░` 94.4 % |
+| **sam-runner** | Operations: add, launch, verify, repair, update, group changes; the sandbox at run time | ✅ 90 passing | `██████████████░░░░░░` 70.1 % |
 | **sam-storage** | App records, presets and logs on disk | ✅ 8 passing | `███████████████████░` 92.7 % |
-| **sam-jail-cli** | The command line and its JSON interface | ✅ 15 passing | `███░░░░░░░░░░░░░░░░░` 15.6 % |
+| **sam-jail-cli** | The command line and its JSON interface | ✅ 17 passing | `███░░░░░░░░░░░░░░░░░` 15.6 % |
 | **sam-gtk** | The window (logic that runs without a display) | ✅ 10 passing | `█░░░░░░░░░░░░░░░░░░░` 3.0 % |
 
 ## Speed
@@ -56,14 +56,14 @@
 
 | Step | Fastest run | Since the previous report |
 |---|---|---|
-| Recognizing the AppImage format of a file (reading its headers). | 0.007 ms | ≈ +0 % |
-| Unpacking an AppImage with 2,000 files (16 MB) safely, without running it. | 47.797 ms | ≈ +3 % |
-| Analyzing the unpacked app: its programs, libraries and toolkit. | 5.701 ms | ≈ -5 % |
-| Recommending permissions from the app's metadata and analysis. | 0.002 ms | 🔺 +52 % |
-| Building the Bubblewrap command from a set of permissions. | 0.301 ms | ≈ +0 % |
-| Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save). | 211.117 ms | ≈ -3 % |
-| Starting an app in a real sandbox until it has exited (an app that exits at once). | 54.019 ms | ≈ -8 % |
-| Listing 120 sandboxed apps with their tags for the Permissions page. | 37.175 ms | 🔺 +31 % |
+| Recognizing the AppImage format of a file (reading its headers). | 0.007 ms | ≈ +1 % |
+| Unpacking an AppImage with 2,000 files (16 MB) safely, without running it. | 44.992 ms | ≈ -6 % |
+| Analyzing the unpacked app: its programs, libraries and toolkit. | 6.224 ms | ≈ +9 % |
+| Recommending permissions from the app's metadata and analysis. | 0.002 ms | ≈ +3 % |
+| Building the Bubblewrap command from a set of permissions. | 0.298 ms | ≈ -1 % |
+| Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save). | 234.633 ms | ≈ +11 % |
+| Starting an app in a real sandbox until it has exited (an app that exits at once). | 55.481 ms | ≈ +3 % |
+| Listing 120 sandboxed apps with their tags for the Permissions page. | 35.410 ms | ≈ -5 % |
 
 ## Tests
 
@@ -76,16 +76,16 @@
 
 | Part | Unit | Integration | Regression ⟲ | Total | |
 |---|---|---|---|---|---|
-| **sam-core** | 29 | 0 | 1 | 29 | `█████░░░░░░░░░░` |
+| **sam-core** | 31 | 0 | 1 | 31 | `█████░░░░░░░░░░` |
 | **sam-detect** | 18 | 1 | 0 | 19 | `███░░░░░░░░░░░░` |
-| **sam-intake** | 24 | 1 | 1 | 25 | `████░░░░░░░░░░░` |
+| **sam-intake** | 25 | 2 | 1 | 27 | `████░░░░░░░░░░░` |
 | **sam-profile** | 13 | 0 | 0 | 13 | `██░░░░░░░░░░░░░` |
-| **sam-sandbox** | 17 | 0 | 0 | 17 | `███░░░░░░░░░░░░` |
-| **sam-runner** | 48 | 38 | 2 | 86 | `███████████████` |
+| **sam-sandbox** | 22 | 0 | 0 | 22 | `████░░░░░░░░░░░` |
+| **sam-runner** | 52 | 38 | 2 | 90 | `███████████████` |
 | **sam-storage** | 8 | 0 | 1 | 8 | `█░░░░░░░░░░░░░░` |
-| **sam-jail-cli** | 0 | 15 | 1 | 15 | `███░░░░░░░░░░░░` |
+| **sam-jail-cli** | 0 | 17 | 1 | 17 | `███░░░░░░░░░░░░` |
 | **sam-gtk** | 10 | 0 | 1 | 10 | `██░░░░░░░░░░░░░` |
-| **all parts** | **167** | **55** | **7** | **222** | |
+| **all parts** | **179** | **58** | **7** | **237** | |
 
 ### Scripted checks of the window and of real AppImages
 
@@ -105,17 +105,19 @@
 > Click a part to unfold its tests. The promise is the first sentence of the test's
 > own comment; the name links to the code.
 
-<details><summary><b>sam-core</b> — Permission model, risk, warnings, configuration and file formats (29 tests)</summary>
+<details><summary><b>sam-core</b> — Permission model, risk, warnings, configuration and file formats (31 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
 | unit | A complete configuration file with every section loads without loss. | [`a_complete_configuration_file_loads_every_setting`](crates/sam-core/src/config.rs#L313) |
 | unit | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](crates/sam-core/src/config.rs#L347) |
-| unit | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_code_survives_added_context`](crates/sam-core/src/error.rs#L42) |
+| unit | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_code_survives_added_context`](crates/sam-core/src/error.rs#L49) |
 | unit | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](crates/sam-core/src/format.rs#L95) |
-| unit | Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](crates/sam-core/src/host.rs#L129) |
-| unit | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](crates/sam-core/src/host.rs#L456) |
-| unit | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](crates/sam-core/src/host.rs#L465) |
+| unit | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](crates/sam-core/src/host.rs#L150) |
+| unit | Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](crates/sam-core/src/host.rs#L164) |
+| unit | Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](crates/sam-core/src/host.rs#L186) |
+| unit | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](crates/sam-core/src/host.rs#L513) |
+| unit | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](crates/sam-core/src/host.rs#L522) |
 | unit | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | [`texts_without_a_translation_come_back_with_their_values`](crates/sam-core/src/i18n.rs#L117) |
 | unit | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](crates/sam-core/src/model.rs#L642) |
 | unit | An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](crates/sam-core/src/model.rs#L660) |
@@ -167,7 +169,7 @@
 
 </details>
 
-<details><summary><b>sam-intake</b> — Unpacking AppImages safely, metadata, menu entries (25 tests)</summary>
+<details><summary><b>sam-intake</b> — Unpacking AppImages safely, metadata, menu entries (27 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -175,8 +177,9 @@
 | unit | Program paths in menu entries are quoted so spaces and dollar signs cannot change the command. | [`menu_entry_paths_are_quoted_against_spaces_and_dollar_signs`](crates/sam-intake/src/desktop.rs#L264) |
 | unit | SAM's menu entry starts the app through sam-jail-run, never the AppImage directly. | [`sams_menu_entry_starts_the_app_only_through_sam`](crates/sam-intake/src/desktop.rs#L272) |
 | unit | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | [`launcher_mime_types_drop_hijack_targets`](crates/sam-intake/src/desktop.rs#L289) |
-| unit | Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | [`unpacking_refuses_to_start_without_enough_free_space`](crates/sam-intake/src/extract.rs#L569) |
-| unit | A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | [`a_full_disk_during_unpacking_is_recognized`](crates/sam-intake/src/extract.rs#L582) |
+| unit | Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | [`unpacking_refuses_to_start_without_enough_free_space`](crates/sam-intake/src/extract.rs#L563) |
+| unit | A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | [`a_full_disk_during_unpacking_is_recognized`](crates/sam-intake/src/extract.rs#L576) |
+| unit | Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | [`only_an_exceeded_limit_counts_as_one`](crates/sam-intake/src/extract.rs#L585) |
 | unit | A changed AppImage file is noticed by its fingerprint. | [`a_changed_appimage_file_is_noticed`](crates/sam-intake/src/fingerprint.rs#L94) |
 | unit | A readable name is taken from an AppImage's file name, without version and architecture. | [`a_readable_name_is_taken_from_the_file_name`](crates/sam-intake/src/id.rs#L64) |
 | unit | App IDs are stable and unique, also when two AppImages have the same name. | [`app_ids_stay_unique_when_names_collide`](crates/sam-intake/src/id.rs#L72) |
@@ -196,6 +199,7 @@
 | unit | A built AppImage is recognized and unpacked, with setuid bits removed. | [`a_built_appimage_is_detected_and_unpacked_safely`](crates/sam-intake/src/testkit.rs#L168) |
 | unit | Unpacking stops at the size limit and leaves no partial files behind. | [`size_limit_aborts_and_cleans_up`](crates/sam-intake/src/testkit.rs#L205) |
 | integration ⟲ | Regression: reading the name and icon of an AppImage whose SquashFS image makes the reader panic gives an error instead of crashing SAM. | [`a_damaged_squashfs_image_gives_an_error_instead_of_a_crash`](crates/sam-intake/tests/damaged.rs#L14) |
+| integration | The file-count and size limits let an app through that reaches them exactly and stop one entry or one byte more; a time limit of zero stops at once. | [`unpacking_stops_exactly_at_its_limits`](crates/sam-intake/tests/limits.rs#L42) |
 
 </details>
 
@@ -219,7 +223,7 @@
 
 </details>
 
-<details><summary><b>sam-sandbox</b> — Building the Bubblewrap command from the permissions (17 tests)</summary>
+<details><summary><b>sam-sandbox</b> — Building the Bubblewrap command from the permissions (22 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -240,10 +244,15 @@
 | unit | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](crates/sam-sandbox/src/lib.rs#L1612) |
 | unit | Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](crates/sam-sandbox/src/lib.rs#L1623) |
 | unit | A bundled library listed in advanced.system_libraries is replaced by the system's copy at its place in the app folder; names with folders or `..`, libraries the app does not bundle and libraries the system does not have are ignored. | [`system_copies_replace_only_bundled_libraries_by_plain_name`](crates/sam-sandbox/src/lib.rs#L1641) |
+| unit | The app's own folder stays read-only unless "writable app folder" is granted, even when SAM has an overlay for it prepared. | [`the_app_folder_stays_read_only_unless_writable_is_granted`](crates/sam-sandbox/src/lib.rs#L1679) |
+| unit | SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | [`sams_own_folders_stay_hidden_inside_a_granted_folder`](crates/sam-sandbox/src/lib.rs#L1695) |
+| unit | With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | [`credential_files_and_folders_in_the_home_are_masked`](crates/sam-sandbox/src/lib.rs#L1710) |
+| unit | Protected folders are created in the real home only before a start that can write the home, never otherwise. | [`home_protection_is_prepared_only_for_a_writable_home`](crates/sam-sandbox/src/lib.rs#L1731) |
+| unit | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | [`only_proper_variable_names_are_set`](crates/sam-sandbox/src/lib.rs#L1747) |
 
 </details>
 
-<details><summary><b>sam-runner</b> — Operations: add, launch, verify, repair, update, group changes; the sandbox at run time (86 tests)</summary>
+<details><summary><b>sam-runner</b> — Operations: add, launch, verify, repair, update, group changes; the sandbox at run time (90 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -274,27 +283,31 @@
 | unit | The progress bar follows the weights of the steps of creating a sandbox. | [`fractions_follow_the_step_weights`](crates/sam-runner/src/progress.rs#L131) |
 | unit | Unpacking progress counts the bytes written. | [`bytes_written_are_counted`](crates/sam-runner/src/progress.rs#L150) |
 | unit | Ordinary terminal output, colors and links pass through the relay unchanged. | [`ordinary_output_passes_unchanged`](crates/sam-runner/src/pty.rs#L622) |
-| unit | Escape codes that read or write the clipboard are removed from an app's terminal output. | [`clipboard_codes_are_removed`](crates/sam-runner/src/pty.rs#L632) |
-| unit | Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed. | [`title_reports_and_tmux_passthrough_are_removed`](crates/sam-runner/src/pty.rs#L651) |
-| unit | An escape code hidden inside a removed code cannot slip through. | [`an_escape_inside_a_removed_code_starts_a_new_sequence`](crates/sam-runner/src/pty.rs#L665) |
-| unit | Logs get plain text without escape codes. | [`plain_text_for_the_log`](crates/sam-runner/src/pty.rs#L674) |
-| unit | Apps started from a terminal get SAM's terminal relay; apps without a terminal get none. | [`terminal_apps_get_sams_terminal_relay`](crates/sam-runner/src/pty.rs#L680) |
-| unit | A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | [`typing_and_output_pass_and_leftover_replies_are_discarded`](crates/sam-runner/src/pty.rs#L691) |
-| unit | An app on SAM's terminal relay cannot type into the user's real terminal. | [`the_app_cannot_reach_the_outer_terminal`](crates/sam-runner/src/pty.rs#L750) |
-| unit | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | [`sam_updates_itself_only_with_its_release_key`](crates/sam-runner/src/release_key.rs#L67) |
-| unit | Without a built-in release key, SAM never updates itself, whatever the download looks like. | [`without_a_release_key_sam_never_updates_itself`](crates/sam-runner/src/release_key.rs#L82) |
+| unit | A doubled ESC in front of a clipboard code does not smuggle it past the filter: the terminal reads the second ESC as the start of the code, so the filter must too. | [`a_doubled_escape_does_not_smuggle_a_clipboard_code`](crates/sam-runner/src/pty.rs#L634) |
+| unit | Escape codes that read or write the clipboard are removed from an app's terminal output. | [`clipboard_codes_are_removed`](crates/sam-runner/src/pty.rs#L652) |
+| unit | Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed. | [`title_reports_and_tmux_passthrough_are_removed`](crates/sam-runner/src/pty.rs#L671) |
+| unit | An escape code hidden inside a removed code cannot slip through. | [`an_escape_inside_a_removed_code_starts_a_new_sequence`](crates/sam-runner/src/pty.rs#L685) |
+| unit | Logs get plain text without escape codes. | [`plain_text_for_the_log`](crates/sam-runner/src/pty.rs#L694) |
+| unit | Apps started from a terminal get SAM's terminal relay; apps without a terminal get none. | [`terminal_apps_get_sams_terminal_relay`](crates/sam-runner/src/pty.rs#L700) |
+| unit | A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | [`typing_and_output_pass_and_leftover_replies_are_discarded`](crates/sam-runner/src/pty.rs#L711) |
+| unit | An app on SAM's terminal relay cannot type into the user's real terminal. | [`the_app_cannot_reach_the_outer_terminal`](crates/sam-runner/src/pty.rs#L770) |
+| unit | Every built-in release key is a full fingerprint (40 hex characters), never a short key id that another key could share. | [`release_keys_are_full_fingerprints`](crates/sam-runner/src/release_key.rs#L62) |
+| unit | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | [`sam_updates_itself_only_with_its_release_key`](crates/sam-runner/src/release_key.rs#L80) |
+| unit | Without a built-in release key, SAM never updates itself, whatever the download looks like. | [`without_a_release_key_sam_never_updates_itself`](crates/sam-runner/src/release_key.rs#L95) |
 | unit | Compatibility mode lists only what it actually changes, in the words of the switches. | [`compatibility_mode_names_only_what_it_changes`](crates/sam-runner/src/repair.rs#L556) |
 | unit | A repair step says in a sentence what it turns on or off, with the switch's own explanation of what that allows. | [`a_repair_step_says_what_it_changes_and_costs`](crates/sam-runner/src/repair.rs#L567) |
 | unit | An app that fails to register its bus name gets a repair step that allows exactly that name. | [`own_name_requests_become_a_repair`](crates/sam-runner/src/repair.rs#L587) |
 | unit | Error messages in an app's output are mapped to the repair step that fixes them. | [`analyzer_maps_errors_to_fixes`](crates/sam-runner/src/repair.rs#L604) |
 | unit | The repair ladder leaves out steps already applied and steps that would change nothing. | [`ladder_skips_applied_and_noop_steps`](crates/sam-runner/src/repair.rs#L651) |
 | unit | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](crates/sam-runner/src/repair.rs#L671) |
-| unit | The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](crates/sam-runner/src/updates.rs#L363) |
-| unit | Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](crates/sam-runner/src/updates.rs#L373) |
-| unit | Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](crates/sam-runner/src/updates.rs#L384) |
-| unit | An update is rebuilt from the old version plus the changed blocks. | [`an_update_is_rebuilt_from_the_old_version_and_changed_blocks`](crates/sam-runner/src/zsync.rs#L311) |
-| unit | The rolling checksum of the update transfer matches a direct computation at every offset. | [`the_rolling_checksum_matches_a_direct_computation`](crates/sam-runner/src/zsync.rs#L347) |
-| unit | Compressed or incomplete zsync files are refused. | [`refuses_compressed_and_broken_files`](crates/sam-runner/src/zsync.rs#L361) |
+| unit | The checksum of a downloaded update is SHA-1 of the whole file, read in pieces; a file larger than one piece gives the same result. | [`the_download_checksum_is_sha1_of_the_whole_file`](crates/sam-runner/src/updates.rs#L364) |
+| unit | The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](crates/sam-runner/src/updates.rs#L376) |
+| unit | Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](crates/sam-runner/src/updates.rs#L386) |
+| unit | Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](crates/sam-runner/src/updates.rs#L397) |
+| unit | The block checksums are the ones zsync defines: MD4 of a block padded with zeros to the block size, and the weak sum cut to its last bytes. | [`block_checksums_match_the_zsync_definition`](crates/sam-runner/src/zsync.rs#L304) |
+| unit | An update is rebuilt from the old version plus the changed blocks. | [`an_update_is_rebuilt_from_the_old_version_and_changed_blocks`](crates/sam-runner/src/zsync.rs#L327) |
+| unit | The rolling checksum of the update transfer matches a direct computation at every offset. | [`the_rolling_checksum_matches_a_direct_computation`](crates/sam-runner/src/zsync.rs#L363) |
+| unit | Compressed or incomplete zsync files are refused. | [`refuses_compressed_and_broken_files`](crates/sam-runner/src/zsync.rs#L377) |
 | integration | H1: an app printing a fake Bubblewrap error is not a sandbox failure. | [`fake_bwrap_error_is_not_a_sandbox_failure`](crates/sam-runner/tests/adversarial.rs#L20) |
 | integration | H2/M4: suggestions derived from app output never grant escape-capable services or protected folders, and are always marked as app-derived. | [`app_output_cannot_buy_dangerous_grants`](crates/sam-runner/tests/adversarial.rs#L43) |
 | integration | H3: markup in an AppImage's name or comment is neutralized before it is stored or shown. | [`markup_in_metadata_is_neutralized`](crates/sam-runner/tests/adversarial.rs#L61) |
@@ -351,7 +364,7 @@
 
 </details>
 
-<details><summary><b>sam-jail-cli</b> — The command line and its JSON interface (15 tests)</summary>
+<details><summary><b>sam-jail-cli</b> — The command line and its JSON interface (17 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -360,16 +373,18 @@
 | integration | The parts that handle untrusted AppImage content or build the sandbox depend only on the parts below them, never on the operations layer, the command line or the window. | [`lower_parts_never_depend_on_higher_ones`](crates/sam-jail-cli/tests/architecture.rs#L66) |
 | integration | The sandbox command builder depends only on the permission model, so what it builds follows from the permissions alone. | [`the_sandbox_builder_depends_only_on_the_permission_model`](crates/sam-jail-cli/tests/architecture.rs#L79) |
 | integration | The component diagram in docs/architecture.md shows exactly the real dependencies between the parts: no arrow is missing and none is invented. | [`the_component_diagram_shows_the_real_dependencies`](crates/sam-jail-cli/tests/architecture.rs#L86) |
+| integration | Every box and arrow label in the documents' diagrams is quoted, so GitHub draws them: unquoted brackets or semicolons inside a label are a parse error there (the component diagram once failed that way). | [`diagram_labels_are_quoted_so_github_draws_them`](crates/sam-jail-cli/tests/architecture.rs#L128) |
 | integration | The JSON interface lists apps with their tags, changes a permission for several apps, and restores them with the returned "previous" object. | [`group_list_set_and_restore_round_trip`](crates/sam-jail-cli/tests/interface.rs#L59) |
 | integration | A group change with an invalid value, an unknown key or no app is refused, and no app changes. | [`group_set_refuses_bad_input_without_changing_anything`](crates/sam-jail-cli/tests/interface.rs#L87) |
 | integration | The command line lists only the user's own presets; the template is strict, and saved presets carry no built-in flag. | [`presets_are_the_users_own_only`](crates/sam-jail-cli/tests/interface.rs#L99) |
 | integration ⟲ | Regression (found by the fuzzer): one damaged AppImage in a searched folder made `sam-jail discover` crash, so the window's list stayed empty. | [`one_damaged_appimage_does_not_stop_the_list`](crates/sam-jail-cli/tests/interface.rs#L118) |
-| integration | The command line speaks german when asked. | [`the_command_line_speaks_german_when_asked`](crates/sam-jail-cli/tests/language.rs#L17) |
+| integration | The command line speaks german when asked. | [`the_command_line_speaks_german_when_asked`](crates/sam-jail-cli/tests/language.rs#L13) |
 | integration | Files from older SAM versions are migrated to the current format, and the originals are kept. | [`old_formats_are_migrated_and_kept`](crates/sam-jail-cli/tests/robustness.rs#L51) |
 | integration | Files from a newer SAM are never changed by an older one. | [`newer_formats_are_left_untouched`](crates/sam-jail-cli/tests/robustness.rs#L73) |
 | integration | Damaged files are moved aside and reported, and SAM carries on. | [`damaged_files_are_moved_aside_and_reported`](crates/sam-jail-cli/tests/robustness.rs#L98) |
 | integration | Mangled files never make SAM crash. | [`mangled_files_never_crash`](crates/sam-jail-cli/tests/robustness.rs#L128) |
 | integration | `sam-jail version` answers with the JSON interface version even when the configuration cannot be read. | [`version_reports_the_json_interface`](crates/sam-jail-cli/tests/robustness.rs#L157) |
+| integration | Signing a file that has no AppImage signature sections is refused with a clear message, before GnuPG is asked anything, and the file stays as it was. | [`signing_a_file_without_signature_sections_is_refused`](crates/sam-jail-cli/tests/robustness.rs#L172) |
 
 </details>
 
@@ -398,6 +413,7 @@
 
 | Report | Generated | Tests passing | Failing |
 |---|---|---|---|
+| [0.1.0-2ccd936](docs/reports/0.1.0-2ccd936.md) | 2026-11-15 17:32:32 | 237 | 0 |
 | [0.1.0-badb1fb](docs/reports/0.1.0-badb1fb.md) | 2026-11-15 11:01:46 | 222 | 0 |
 | [0.1.0-983638c](docs/reports/0.1.0-983638c.md) | 2026-11-15 07:20:42 | 218 | 0 |
 | [0.1.0-53d8e50](docs/reports/0.1.0-53d8e50.md) | 2026-11-15 05:34:52 | 212 | 0 |
@@ -413,6 +429,17 @@
 
 | Commit | Date | Change |
 |---|---|---|
+| [`2ccd936`](https://github.com/gitzekatze/SAM/commit/2ccd936) | 2026-11-15 | Function map: new tests are marked new, not failed |
+| [`be4bc78`](https://github.com/gitzekatze/SAM/commit/be4bc78) | 2026-11-15 | Quote the diagram labels so GitHub draws the C4 overview |
+| [`d8f66c8`](https://github.com/gitzekatze/SAM/commit/d8f66c8) | 2026-11-15 | new-version.sh shows a spinner while GitHub builds |
+| [`ebfd05c`](https://github.com/gitzekatze/SAM/commit/ebfd05c) | 2026-11-15 | One command for a new version: scripts/new-version.sh |
+| [`cbb9379`](https://github.com/gitzekatze/SAM/commit/cbb9379) | 2026-11-15 | Point to the renamed work folder next to the repository |
+| [`0ca3c1d`](https://github.com/gitzekatze/SAM/commit/0ca3c1d) | 2026-11-15 | SAM's release key: built in, and AppImages signed locally |
+| [`bbef198`](https://github.com/gitzekatze/SAM/commit/bbef198) | 2026-11-15 | Mutation testing before 0.2.0: close the gaps it found |
+| [`2af2990`](https://github.com/gitzekatze/SAM/commit/2af2990) | 2026-11-15 | Real-app runs remove their unpacked apps; mutants run all tests |
+| [`dc0635d`](https://github.com/gitzekatze/SAM/commit/dc0635d) | 2026-11-15 | Keep the unpack-limit code through I/O errors |
+| [`f05c15e`](https://github.com/gitzekatze/SAM/commit/f05c15e) | 2026-11-15 | The overlay check leaves no folder behind |
+| [`47a4a65`](https://github.com/gitzekatze/SAM/commit/47a4a65) | 2026-11-15 | Phase 8 version report, release checklist and build provenance |
 | [`badb1fb`](https://github.com/gitzekatze/SAM/commit/badb1fb) | 2026-11-15 | Update the C4 overview: components, functions, texts and error codes |
 | [`463410d`](https://github.com/gitzekatze/SAM/commit/463410d) | 2026-11-15 | Translate SAM into German, Spanish and French |
 | [`6d87de2`](https://github.com/gitzekatze/SAM/commit/6d87de2) | 2026-11-15 | Reword before translating: one word for each thing |
@@ -432,16 +459,5 @@
 | [`983638c`](https://github.com/gitzekatze/SAM/commit/983638c) | 2026-11-15 | Repair: use the system's copy of a bundled library that is too old |
 | [`dd5154e`](https://github.com/gitzekatze/SAM/commit/dd5154e) | 2026-11-15 | Release: test the finished AppImage on fresh systems; plain refusal on old ones |
 | [`b078bd6`](https://github.com/gitzekatze/SAM/commit/b078bd6) | 2026-11-15 | License notices for the libraries built into SAM |
-| [`ddc0628`](https://github.com/gitzekatze/SAM/commit/ddc0628) | 2026-11-15 | Intake: an AppImage for another processor gets no sandbox, with a clear reason |
-| [`8d16cd3`](https://github.com/gitzekatze/SAM/commit/8d16cd3) | 2026-11-15 | Self-update: SAM replaces itself only with an update signed by its release key |
-| [`802d8e1`](https://github.com/gitzekatze/SAM/commit/802d8e1) | 2026-11-15 | Version report at the end of Phase 6 |
-| [`53d8e50`](https://github.com/gitzekatze/SAM/commit/53d8e50) | 2026-11-15 | New app icon (sam-icon 1.0) |
-| [`7f41d40`](https://github.com/gitzekatze/SAM/commit/7f41d40) | 2026-11-15 | Repair: offer a writable app folder only where an overlay can work |
-| [`584e0bd`](https://github.com/gitzekatze/SAM/commit/584e0bd) | 2026-11-15 | Diagnose: fewer false findings, and files in /etc are no longer added by themselves |
-| [`fbe9729`](https://github.com/gitzekatze/SAM/commit/fbe9729) | 2026-11-15 | Sandbox: "localhost" resolves without the network on every distribution |
-| [`456de89`](https://github.com/gitzekatze/SAM/commit/456de89) | 2026-11-15 | Logs: a launch's own log is never pruned right after the launch |
-| [`11bdfba`](https://github.com/gitzekatze/SAM/commit/11bdfba) | 2026-11-15 | Writable app folder: test that an overlay really works, else start read-only |
-| [`efd5298`](https://github.com/gitzekatze/SAM/commit/efd5298) | 2026-11-15 | CI (Fedora): lift the user-namespace restriction on the runner, then run Fedora |
-| [`5430e1e`](https://github.com/gitzekatze/SAM/commit/5430e1e) | 2026-11-15 | Diagnose: no false findings for file changes, own folders or granted access |
 
 The full history is at [https://github.com/gitzekatze/SAM/commits/main](https://github.com/gitzekatze/SAM/commits/main).
