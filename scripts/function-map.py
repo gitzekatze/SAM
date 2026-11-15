@@ -95,6 +95,13 @@ def touched(m, files):
     return hit
 
 
+def parts(f):
+    """The components (crates) that carry a function, in C4 order."""
+    order = ["sam-gtk", "sam-jail-cli", "sam-runner", "sam-intake", "sam-detect", "sam-profile", "sam-sandbox", "sam-storage", "sam-core"]
+    found = {c.split("/")[0] for c in f.get("code", []) if c.split("/")[0] in order}
+    return [c for c in order if c in found]
+
+
 def render(m, tests):
     results, generated = latest_results()
     areas = {a["id"]: a["name"] for a in m["area"]}
@@ -117,8 +124,8 @@ def render(m, tests):
         f"**{len(funcs)} functions:** {len(proven)} proven by passing tests, {len(by_checks)} by scripted checks, {len(gaps)} with a gap, "
         f"{len(tests)} tests in all.",
         "",
-        "| | Function | Tests | Result |",
-        "|---|---|---|---|",
+        "| | Function | Components | Tests | Result |",
+        "|---|---|---|---|---|",
     ]
     for f in funcs:
         n = len(f.get("tests", []))
@@ -132,7 +139,19 @@ def render(m, tests):
             state = "✅"
         else:
             state = "❌ " + ", ".join(t for t in f["tests"] if results.get(t) != "ok")
-        L.append(f"| {f['id']} | [{f['promise']}](#{f['id']}) | {n} | {state} |")
+        L.append(f"| {f['id']} | [{f['promise']}](#{f['id']}) | {', '.join(parts(f))} | {n} | {state} |")
+    L.append("")
+    L += [
+        "## Components and their functions",
+        "",
+        "The components are those of the [architecture](architecture.md#level-3-components) (C4 level 3).",
+        "",
+        "| Component | Functions it carries |",
+        "|---|---|",
+    ]
+    for c in ["sam-gtk", "sam-jail-cli", "sam-runner", "sam-intake", "sam-detect", "sam-profile", "sam-sandbox", "sam-storage", "sam-core"]:
+        ids = [f"[{f['id']}](#{f['id']})" for f in funcs if c in parts(f)]
+        L.append(f"| {c} | {', '.join(ids) if ids else '–'} |")
     L.append("")
     current = None
     for f in funcs:

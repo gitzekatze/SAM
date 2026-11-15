@@ -5,7 +5,8 @@ levels: SAM in its surroundings (context), the programs and stores SAM
 consists of (containers), and the parts inside them (components). The code
 itself is the fourth level. The sections after the overview explain the
 interfaces in detail. Every part named here has its tests listed in
-[the test library](test-library.md).
+[the test library](test-library.md), and [SAM's functions](functions.md#components-and-their-functions)
+shows which functions each component carries.
 
 ## Level 1: Context
 
@@ -78,7 +79,7 @@ flowchart TB
     profile[sam-profile: recommendations, the user's presets, change checks, permission tags]
     sandbox[sam-sandbox: Bubblewrap command from the permissions]
     storage[sam-storage: app records, presets, logs]
-    core[sam-core: permission model, risk, warnings, configuration, file formats, host facts]
+    core[sam-core: permission model, risk, warnings, configuration, file formats, host facts, translations, error codes]
     gtk -->|JSON| clic
     gtk --> core
     clic --> runner
@@ -109,7 +110,7 @@ permission catalog); everything it does goes through `sam-jail --json`.
 
 | Component | Responsibility | Untrusted input it handles |
 |---|---|---|
-| sam-core | What a permission is, how risky it is, which warnings apply, the configuration and the versions of SAM's files | none (pure model) |
+| sam-core | What a permission is, how risky it is, which warnings apply, the configuration and the versions of SAM's files; translations (gettext) and error codes | none (pure model) |
 | sam-detect | Recognizes the AppImage format and what the program inside needs (libraries, toolkit, X11 or Wayland) | the AppImage file, ELF headers, start scripts |
 | sam-intake | Unpacks an AppImage without running it, with limits on size, file count and time; reads name, icon and desktop file; writes menu entries | the squashfs or DwarFS image, desktop files, icons |
 | sam-profile | Recommends permissions from what the app declares and contains; checks a change for what an app would lose; turns permissions into tags | metadata from the AppImage |
@@ -121,8 +122,18 @@ permission catalog); everything it does goes through `sam-jail --json`.
 
 The trust boundary runs at sam-detect and sam-intake: everything taken from
 an AppImage is treated as data, never as code or as trusted text (markup is
-neutralized before it is shown). The parsers there are the targets of the
-fuzzing planned for the security phase.
+neutralized before it is shown). The parsers there are fuzzed
+(`crates/sam-runner/tests/fuzz.rs`, see the [threat model](threat-model.md)).
+
+## Texts and languages
+
+Every text a person reads is translated where it is made, with
+`sam_core::i18n` (gettext, text domain `sam`); the window shows the
+messages of the command line as they come. Because the texts are
+translated, no code may decide anything by comparing a message: an error that
+code must recognize carries a code (`sam_core::error::CodedError`), which the
+JSON envelope passes on as `"code"`. Logs, codes and the JSON keys stay
+English. [Translating SAM](translating.md) has the details.
 
 ## GUI ↔ core
 
@@ -133,13 +144,15 @@ preset or config, the GUI sends it as JSON on stdin (`profile set`,
 
 ```json
 {"ok": true, "data": …}
-{"ok": false, "error": "human readable message"}
+{"ok": false, "error": "a message in the user's language", "code": "signing-key-changed"}
 ```
+
+`code` is present only for errors the window must recognize.
 
 Apps are launched detached with `sam-jail-run --app-id <id>`, the same command
 the desktop launchers use, so apps keep running when SAM closes. The GUI
-links no SAM crate except `sam-core` (for the dangerous D-Bus name list):
-the CLI is the API.
+links no SAM crate except `sam-core` (for the permission catalog and the
+translations): the CLI is the API.
 
 `sam-jail-gui --screenshot out.png [--size WxH] [--page …]` renders the
 window once it has loaded (with `GDK_BACKEND=broadway` it works without a
@@ -196,4 +209,7 @@ The complete list, with what each test proves, is the
 - `sam-jail dev make-fixture <path> [--name] [--categories] [--apprun file]`
   builds synthetic AppImages for manual testing.
 - `sam-jail-gui --screenshot out.png --page <page>` (with
-  `QT_QPA_PLATFORM=offscreen`) renders the GUI headlessly.
+  `GDK_BACKEND=broadway`) renders the window without a desktop.
+- `scripts/function-map.py` checks that every function has its tests and
+  writes [functions.md](functions.md); `scripts/i18n.py check` keeps the
+  three translations complete. [Testing](testing.md) explains the rest.

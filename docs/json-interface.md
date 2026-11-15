@@ -12,11 +12,21 @@ A command prints exactly one JSON object on the last line of stdout:
 
 ```json
 {"ok": true, "data": …}
-{"ok": false, "error": "human readable message"}
+{"ok": false, "error": "a message in the user's language"}
+{"ok": false, "error": "…", "code": "signing-key-changed"}
 ```
 
 The exit status is 0 for `ok: true` and 1 otherwise. Text on stderr is for
 people, not for parsing.
+
+`error` is translated into the user's language, so a program must never
+decide anything by its wording. Errors a program may need to recognize carry
+a `code`, which stays the same in every language:
+
+| Code | Meaning |
+|---|---|
+| `signing-key-changed` | `update`: the new file is signed with another key; run again with `--accept-key-change` only if you trust it |
+| `extraction-limit` | unpacking stopped at a size, file-count or time limit; the message says which one |
 
 Commands that take a whole object (a profile, a preset, the configuration)
 read it as JSON on stdin; the flag or subcommand is named in the table below.
@@ -130,7 +140,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `config show/get/set/put/path` | configuration; `put` reads it on stdin |
 | `permissions` | the catalogue: every key with title, explanation, risk |
 | `updates [APP] [--if-due]` | `{apps: [{id, update: {state, latest, download_page, detail, checked_at}}]}`; `state` is `available`, `current`, `failed` or `unsupported` |
-| `update APP [--undo] [--accept-key-change]` | app summary; an error starting with `signing key changed` means the new file is signed with another key |
+| `update APP [--undo] [--accept-key-change]` | app summary; the error code `signing-key-changed` means the new file is signed with another key |
 | `self-update [--check]` | `{state, latest, path, detail, page}`; `state` is `current`, `available` or `updated` (only from SAM's AppImage) |
 | `space [APP]` | `{apps: [{id, name, unpacked, home, overlay, logs, previous, total, can_free}], total}` (bytes) |
 | `free-space APP` | `{freed}` (bytes) |

@@ -11,48 +11,64 @@
 
 **40 functions:** 36 proven by passing tests, 1 by scripted checks, 0 with a gap, 222 tests in all.
 
-| | Function | Tests | Result |
-|---|---|---|---|
-| 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | 5 | ✅ |
-| 2 | [SAM recognizes every AppImage format (type 2, SquashFS, DwarFS) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | 7 | ✅ |
-| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | 11 | ✅ |
-| 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | 6 | ✅ |
-| 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | 6 | ✅ |
-| 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | 15 | ✅ |
-| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | 8 | ✅ |
-| 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | 18 | ✅ |
-| 9 | [Things an app printed can never grant it access on their own; SAM always asks.](#9) | 1 | ✅ |
-| 10 | [The app sees only a private home folder and the folders you grant.](#10) | 6 | ✅ |
-| 11 | [Keys, passwords and the files of your other apps stay hidden, even with full home access.](#11) | 3 | ✅ |
-| 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | 3 | ✅ |
-| 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | 12 | ✅ |
-| 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | 3 | ✅ |
-| 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | 4 | ✅ |
-| 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | 3 | ✅ |
-| 17 | [The app can't type into your terminal.](#17) | 10 | ✅ |
-| 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | 3 | ✅ |
-| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | 10 | ✅ |
-| 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | 2 | ✅ |
-| 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | 2 | ✅ |
-| 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | 2 | ✅ |
-| 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | 6 | ✅ |
-| 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | 7 | ✅ |
-| 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | 8 | ✅ |
-| 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | 2 | ✅ |
-| 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | 2 | ✅ |
-| 28 | [Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | 14 | ✅ |
-| 29 | [SAM notices AppImages that were moved or changed.](#29) | 2 | ✅ |
-| 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | 6 | ✅ |
-| 31 | [Disk space per app, and freeing space.](#31) | 1 | ✅ |
-| 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | 2 | ✅ |
-| 33 | [The doctor check finds problems with the system or an app.](#33) | 6 | ✅ |
-| 34 | [A bug report that never contains your name or home path.](#34) | 1 | ✅ |
-| 35 | [The overview of all apps, with clear status badges.](#35) | 5 | ❌ links_to_other_pages_open_on_github |
-| 36 | [The permissions page, for one app or several, with tags in the same colors everywhere.](#36) | 11 | ✅ |
-| 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core.](#37) | 2 | ❌ texts_without_a_translation_come_back_with_their_values, the_command_line_speaks_german_when_asked |
-| 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | 0 | scripted check |
-| 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | 12 | ✅ |
-| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | 7 | ❌ an_error_code_survives_added_context |
+| | Function | Components | Tests | Result |
+|---|---|---|---|---|
+| 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 5 | ✅ |
+| 2 | [SAM recognizes every AppImage format (type 2, SquashFS, DwarFS) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 7 | ✅ |
+| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 11 | ✅ |
+| 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 6 | ✅ |
+| 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 6 | ✅ |
+| 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 15 | ✅ |
+| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 8 | ✅ |
+| 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 18 | ✅ |
+| 9 | [Things an app printed can never grant it access on their own; SAM always asks.](#9) | sam-runner | 1 | ✅ |
+| 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox | 6 | ✅ |
+| 11 | [Keys, passwords and the files of your other apps stay hidden, even with full home access.](#11) | sam-sandbox, sam-core | 3 | ✅ |
+| 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | sam-runner, sam-sandbox | 3 | ✅ |
+| 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 12 | ✅ |
+| 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 3 | ✅ |
+| 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 4 | ✅ |
+| 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 3 | ✅ |
+| 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 10 | ✅ |
+| 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 3 | ✅ |
+| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 10 | ✅ |
+| 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 2 | ✅ |
+| 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner | 2 | ✅ |
+| 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 2 | ✅ |
+| 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 6 | ✅ |
+| 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | sam-runner, sam-sandbox | 7 | ✅ |
+| 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 8 | ✅ |
+| 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 2 | ✅ |
+| 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | sam-runner, sam-storage | 2 | ✅ |
+| 28 | [Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 14 | ✅ |
+| 29 | [SAM notices AppImages that were moved or changed.](#29) | sam-runner, sam-intake | 2 | ✅ |
+| 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 6 | ✅ |
+| 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 1 | ✅ |
+| 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | sam-runner, sam-intake | 2 | ✅ |
+| 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 6 | ✅ |
+| 34 | [A bug report that never contains your name or home path.](#34) | sam-runner | 1 | ✅ |
+| 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-storage, sam-core | 5 | ❌ links_to_other_pages_open_on_github |
+| 36 | [The permissions page, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 11 | ✅ |
+| 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core.](#37) | sam-gtk, sam-core | 2 | ❌ texts_without_a_translation_come_back_with_their_values, the_command_line_speaks_german_when_asked |
+| 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
+| 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 12 | ✅ |
+| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 7 | ❌ an_error_code_survives_added_context |
+
+## Components and their functions
+
+The components are those of the [architecture](architecture.md#level-3-components) (C4 level 3).
+
+| Component | Functions it carries |
+|---|---|
+| sam-gtk | [1](#1), [7](#7), [23](#23), [35](#35), [36](#36), [37](#37), [40](#40) |
+| sam-jail-cli | [39](#39) |
+| sam-runner | [1](#1), [2](#2), [3](#3), [8](#8), [9](#9), [12](#12), [13](#13), [14](#14), [16](#16), [17](#17), [18](#18), [19](#19), [20](#20), [21](#21), [22](#22), [23](#23), [24](#24), [25](#25), [26](#26), [27](#27), [28](#28), [29](#29), [30](#30), [31](#31), [32](#32), [33](#33), [34](#34) |
+| sam-intake | [1](#1), [2](#2), [3](#3), [4](#4), [5](#5), [19](#19), [29](#29), [32](#32) |
+| sam-detect | [2](#2), [5](#5), [6](#6), [28](#28) |
+| sam-profile | [6](#6), [8](#8), [36](#36) |
+| sam-sandbox | [10](#10), [11](#11), [12](#12), [13](#13), [14](#14), [15](#15), [16](#16), [17](#17), [18](#18), [24](#24) |
+| sam-storage | [8](#8), [22](#22), [27](#27), [30](#30), [35](#35), [38](#38) |
+| sam-core | [4](#4), [7](#7), [8](#8), [11](#11), [13](#13), [14](#14), [18](#18), [19](#19), [30](#30), [33](#33), [35](#35), [37](#37), [38](#38) |
 
 ## A. Bringing an AppImage in
 
