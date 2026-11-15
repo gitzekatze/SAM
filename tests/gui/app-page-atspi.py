@@ -7,6 +7,11 @@ import gi
 gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi
 
+# Older accessibility stacks (Ubuntu 24.04) name some roles differently.
+ROLE_ALIASES = {"button": {"button", "push button"}, "switch": {"switch", "toggle button"}}
+def role_is(n, want):
+    return n.get_role_name() in ROLE_ALIASES.get(want, {want})
+
 ok = True
 def check(name, cond, detail=""):
     global ok
@@ -29,7 +34,7 @@ def find(app, pred, role=None):
     for n in walk(app, []):
         try:
             nm = n.get_name() or ""
-            if pred(nm) and (role is None or n.get_role_name() == role):
+            if pred(nm) and (role is None or role_is(n, role)):
                 return n
         except Exception:
             pass

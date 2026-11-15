@@ -6,6 +6,11 @@ import gi
 gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi
 
+# Older accessibility stacks (Ubuntu 24.04) name some roles differently.
+ROLE_ALIASES = {"button": {"button", "push button"}, "switch": {"switch", "toggle button"}}
+def role_is(n, want):
+    return n.get_role_name() in ROLE_ALIASES.get(want, {want})
+
 CLI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../target/debug/sam-jail")
 ok = True
 def check(name, cond, detail=""):
@@ -49,7 +54,7 @@ def by_name(app, pred, role=None):
     for n in nodes(app):
         try:
             nm = n.get_name() or ""
-            if pred(nm) and (role is None or n.get_role_name() == role):
+            if pred(nm) and (role is None or role_is(n, role)):
                 return n
         except Exception:
             pass
@@ -87,7 +92,7 @@ check("group switches shown for three apps", head is not None)
 dd = by_name(app, lambda s: s.startswith("Documents for "), "combo box") or by_name(app, lambda s: s.startswith("Documents for "))
 check("drop-downs are named after permission and apps", dd is not None)
 # The big switch of the row whose apps have sound on.
-on = [n for n in nodes(app) if (n.get_name() or "").startswith("Sound for") and n.get_role_name() == "switch"
+on = [n for n in nodes(app) if (n.get_name() or "").startswith("Sound for") and role_is(n, "switch")
       and (n.get_name() in ("Sound for all selected apps",) or (n.get_name() or "").split()[-1] == "apps")
       and n.get_state_set().contains(Atspi.StateType.CHECKED)]
 check("big switch for the apps with sound on", bool(on), [n.get_name() for n in nodes(app) if (n.get_name() or "").startswith("Sound")])
