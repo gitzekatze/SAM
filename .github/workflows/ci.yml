@@ -148,7 +148,11 @@ jobs:
       # switches to "nobody" on purpose and cannot join the sandbox's
       # network. So the build and the tests run as a user.
       - name: Ordinary user
+        # The runner's kernel is Ubuntu's, which restricts user namespaces
+        # for ordinary users through AppArmor, also inside this container.
+        # Lifted on this throwaway machine only, as in the Ubuntu job.
         run: |
+          sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           useradd -m tester
           chown -R tester "$GITHUB_WORKSPACE"
 
