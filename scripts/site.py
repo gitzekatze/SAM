@@ -211,7 +211,7 @@ def home(f):
     columns = [
         ("box", "Reliable", "117 of 120 real AppImages, from Electron and Qt apps to games and Wine, start in their sandbox. The other three fail for reasons inside the app."),
         ("flow", "Simple", "Pick an AppImage, look over the access, press Create Sandbox. Settings for experts stay out of the way until you need them."),
-        ("shield", "Secure", "Each security promise names the test that proves it, and the threat model says just as clearly what SAM cannot stop."),
+        ("shield", "Secure", "A breakout test attacks every security promise from inside a real sandbox, and the threat model says just as clearly what SAM cannot stop."),
         ("lock", "Private", "No telemetry, no account, no network unless you ask. Bug reports remove your name, folders, addresses and secrets."),
         ("search", "Auditable", f"Open source under the GPL. {f['tests']} tests guard {f['functions']} functions, and the results are published on this site."),
     ]
@@ -268,7 +268,7 @@ def trust_index(f):
     page = "trust/index.html"
     items = [
         ("dashboard.html", "chart", "Dashboard", "What the tests prove, area by area, how they work, and their newest results."),
-        ("security.html", "shield", "Security", "What the sandbox shows and hides, layer by layer, each promise with its test."),
+        ("security.html", "shield", "Security", "What the sandbox shows and hides, layer by layer, and how it is built."),
         ("threat-model.html", "target", "Threat model", "Who SAM protects you from, and just as clearly, what it does not."),
         ("functions.html", "check", "Functions and their proof", f"All {f['functions']} functions SAM promises, each with the tests that prove it."),
         ("tests.html", "flask", "Test library", f"Every one of the {f['tests']} tests and the promise it keeps."),
@@ -280,7 +280,7 @@ def trust_index(f):
 <div class="grid" style="margin-top:1.5rem">{cards(items)}</div>
 <h2>How to check SAM yourself</h2>
 <ul>
-<li>Every security promise on the <a href="security.html">security page</a> names a test; the <a href="tests.html">test library</a> links each test to its code.</li>
+<li>The <a href="threat-model.html">threat model</a> lists each threat with what stops it and the test that proves it; every promise on the <a href="security.html">security page</a> is attacked by a breakout test from inside a real sandbox; the <a href="tests.html">test library</a> links each test to its code.</li>
 <li>The tests run on every change on GitHub, on Ubuntu and Fedora; the results are public in the repository's <a href="{REPO}/actions">Actions</a> tab.</li>
 <li>Releases are signed; <a href="{REPO}/blob/main/SECURITY.md#checking-a-download">SECURITY.md</a> shows how to check a download.</li>
 <li>Found a way out of the sandbox? Report it privately through <a href="{REPO}/security/advisories/new">GitHub's security tab</a>.</li>

@@ -57,7 +57,7 @@
   - *Sandboxed* (green) or *Not sandboxed*.
   - *Bubblewrap* (blue): the sandbox technology.
   - The test state: *Not tested yet*, *Tested* with the date, *Test out of date* (the settings, SAM or the computer changed since) or *Test failed*.
-  - Below them, the same permission tags as on the Permissions page.
+  - Below them, the same permission tags as in the Permission Manager.
   - Anything that needs attention, such as *Needs review* or *May not start*.
 - The round trash button, **Test** and **Launch** (or **Create Sandbox**) sit on the right of the header; the trash button stays away from Launch so it is not hit by mistake. In a narrow window, the buttons stack. Every button explains itself when you hover over it.
 - While the app runs, a bar at the top of its page says that changed settings apply the next time it starts, and **Restart** closes the app (it may save first) and starts it again with the new settings.
@@ -170,7 +170,7 @@ Does the sandbox really give the app exactly what its settings say, and does the
 - **Extra Protection Layers** (the syscall filters and Landlock) are a group of their own at the end of the settings. Turn one off only when an app's log shows it fails because of it.
 - **Logs** shows every log: starts, unpacking, detection and diagnostic runs.
 
-> **Tip:** start with the sandbox check. If every setting applies but the app still fails, the app needs a permission it does not have yet. *What went wrong last time* usually names it.
+> **Tip:** start with **Test**. If every setting applies but the app still fails, the app needs a permission it does not have yet. *What went wrong last time* usually names it.
 
 ---
 
@@ -194,7 +194,7 @@ Style (follow the system, light or dark), menu entries, repair options, warnings
 
 ## Diagnostics
 
-A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets), *Check all AppImages for changes*, *Remove unused extractions*, the disk space of sandboxed apps, data of removed sandboxes, and a redacted bug report.
+A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets), *Check all AppImages for changes*, *Remove unused unpacked copies*, the disk space of sandboxed apps, data of removed sandboxes, and a redacted bug report.
 
 **Updates:** under *Details*, **Check for Updates** asks the update source the AppImage names (GitHub or the app's own server) whether a newer version is published. If so, the page says which one and offers **Update Now**: SAM downloads it, checks it, puts it in place of the old file and unpacks it, keeping your settings. The old version is kept; **Go back to the previous version** under *Troubleshooting* restores it. (**Open Download Page** is there if you prefer to do it yourself.) *Preferences → Updates* can check every app once a day when SAM opens. When an update description is published (most do), only the changed parts are downloaded.
 
@@ -218,7 +218,7 @@ sam-jail remove app --keep-data             # remove, keep its data
 sam-jail stop app                           # close a running app
 ```
 
-Run `sam-jail --help` for every command. In the AppImage, the same commands are `SAM.AppImage cli …`, for example `./SAM-0.1.0-x86_64.AppImage cli doctor`.
+Run `sam-jail --help` for every command. In the AppImage, the same commands are `SAM.AppImage cli …`, for example `./SAM-0.2.0-x86_64.AppImage cli doctor`.
 
 ---
 
@@ -236,9 +236,7 @@ Keep in mind:
 
 ## Installing SAM
 
-- **Arch / CachyOS:** the packages `sam-jail` (window) and `sam-jail-cli` (command line).
-- **Fedora:** the RPM packages of the same names.
-- **Debian, Ubuntu and everything else:** the AppImage. It uses the GTK 4 and libadwaita installed on your system, and Bubblewrap must be installed too. If something is missing, it says which packages to install.
+SAM comes as an AppImage that runs on Ubuntu 24.04 and newer, Debian 13, Fedora 40 and newer, Arch Linux, CachyOS and openSUSE Tumbleweed. It uses the GTK 4 and libadwaita installed on your system, and Bubblewrap must be installed too; if something is missing, SAM says which packages to install. Packages for Arch (AUR) and Fedora (COPR) are planned. [Install SAM](install.md) has the steps.
 
 > **Moved the AppImage?** Menu entries SAM made point at the AppImage file. Open SAM once from its new place and it updates them.
 

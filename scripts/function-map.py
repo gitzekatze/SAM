@@ -16,6 +16,7 @@ scripted checks.
 import importlib.util
 import json
 import pathlib
+import re
 import sys
 import tomllib
 
@@ -198,6 +199,12 @@ def main():
         return
     tests = all_tests()
     found = problems(m, tests)
+    # The threat model names the test behind each protection; a renamed or
+    # removed test must not leave a protection without its proof.
+    threat = (ROOT / "docs" / "threat-model.md").read_text()
+    for name in sorted(set(re.findall(r"`([a-z][a-z0-9]*(?:_[a-z0-9]+){2,})`", threat))):
+        if name not in tests:
+            found.append(f"docs/threat-model.md names the test {name}, which does not exist")
     if found:
         print("The function map is out of date:\n  " + "\n  ".join(found))
         sys.exit(1)

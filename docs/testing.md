@@ -1,4 +1,22 @@
-# Manual test checklist
+# Testing SAM
+
+How SAM is tested: every kind of test, how to run it, when it runs, and the
+checks a person still does by hand.
+
+## The kinds of tests
+
+| Kind | What it does | Run it | When it runs |
+|---|---|---|---|
+| Logic tests | every rule with known inputs and the exact expected result | `make test` | every change on GitHub, twice |
+| Real sandbox tests | start real Bubblewrap sandboxes and check from inside what an app can see, reach and change (`matrix`, `sandbox`, `verify`) | `make test` | every change, on Ubuntu and Fedora |
+| Attack tests | breakout attempts, hostile AppImages and fuzzing (`breakout`, `evil`, `adversarial`, `fuzz`) | `make test` | every change, on Ubuntu and Fedora |
+| Update tests | real updates from a local HTTPS server (`update_server`) | `make test` | every change |
+| Window tests | open every page, and click through the window like a person (`tests/gui/`) | `tests/gui/smoke.sh OUTDIR`, `tests/gui/flow-atspi.sh OUTDIR` | every change |
+| Upgrade test | data from the previous version still works (`tests/upgrade/run.sh`) | `tests/upgrade/run.sh vX.Y.Z WORKDIR` | before every release |
+| Real AppImages | 120 real AppImages through SAM's whole flow (`tests/real-apps/`) | see below | before every release |
+| Mutation testing | deliberate mistakes in the code that the tests must notice | `make mutants-diff`; `cargo mutants` for whole parts | per change for security code; whole parts before every release |
+| Install tests | the finished AppImage on fresh distributions | `make test-shipped APPIMAGE=…` | every release build |
+| Manual checks | what needs a real desktop or a person (this page, below) | by hand | before a release |
 
 The complete list of automated tests, each with the promise it keeps, is the
 [test library](test-library.md). Which of SAM's functions each test proves is
@@ -42,6 +60,8 @@ export SAM_CONFIG_DIR=/tmp/sam-test/config \
 ```
 
 Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu.
+
+## Manual checks and details
 
 ## 0. Automated permission matrix
 
@@ -107,7 +127,7 @@ column (✓ works, ✗ fails, – does not apply) in this form:
 For each category (browser, media player, image editor, game, text editor,
 Electron app, Qt app, GTK app):
 
-- [ ] `sam-jail sandbox <file>` succeeds, and the category and recommendation make sense.
+- [ ] `sam-jail add <file>` succeeds, and the category and recommendation make sense.
 - [ ] `sam-jail run <id>` opens a window on Wayland.
 - [ ] Rendering is GPU-accelerated when GPU is on (e.g. `chrome://gpu`,
       `glxinfo` inside a terminal app).

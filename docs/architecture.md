@@ -179,7 +179,7 @@ proxy socket, the Landlock helper, the seccomp fd, the tracer and extra binds.
 ## Launch pipeline
 
 1. **Preflight:** the extraction exists; warn if the source is stale or missing.
-2. **Sandbox check:** `bwrap.rs` verifies Bubblewrap can run here (installed,
+2. **Bubblewrap check:** `bwrap.rs` verifies Bubblewrap can run here (installed,
    user namespaces allowed) or stops with a hint.
 3. **Runtime dir:** generated `passwd` and `group`, an `xdg-dbus-proxy` for a
    filtered bus, and the Landlock spec.

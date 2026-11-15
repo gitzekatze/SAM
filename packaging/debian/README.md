@@ -8,13 +8,13 @@ Ubuntu 24.04 or newer install these first:
 sudo apt install bubblewrap libarchive-tools libgtk-4-1 libadwaita-1-0 xdg-dbus-proxy passt
 ```
 
-`xdg-dbus-proxy` (filtered D-Bus) and `passt` (*Local network only*) are
+`xdg-dbus-proxy` (filtered D-Bus) and `passt` (*This computer only*) are
 optional but recommended; `strace` enables diagnostic runs.
 
-*Local network only* needs a `pasta` with `--splice-only` (newer passt
+*This computer only* needs a `pasta` with `--splice-only` (newer passt
 releases). Ubuntu 24.04's passt is too old: SAM then starts such apps with no
 network at all, never with internet access, and `SAM.AppImage cli doctor`
-says so. On newer releases, `doctor`'s "Local network only" line shows whether
+says so. On newer releases, `doctor`'s "This computer only" line shows whether
 the installed passt is new enough.
 
 ## Why there are no .deb packages yet

@@ -31,7 +31,7 @@ lists every promise SAM makes with the tests that prove it.
    `~/AppImages`, `~/.local/bin`, `~/bin`), in folders you add, and the ones
    existing menu entries start. Name and icon are read directly from the
    file. Nothing is unpacked or run.
-2. **Inspect.** When you click *Create sandbox*, SAM unpacks the AppImage
+2. **Inspect.** When you click *Create Sandbox*, SAM unpacks the AppImage
    **without running it** and examines its programs and libraries: toolkit,
    graphics, sound, network, Electron, 32-bit and more.
 3. **Recommend.** From the app's category (browser, media player, game, …)
@@ -41,9 +41,9 @@ lists every promise SAM makes with the tests that prove it.
    that always starts it through the sandbox. If another tool such as
    AppImageLauncher or Gear Lever already made a menu entry for it, SAM
    offers to hide that one.
-5. **Check.** A sandbox check starts the real sandbox with a test program
-   instead of the app and confirms from the inside that every setting
-   really applies.
+5. **Test.** The *Test* button starts the real sandbox with a probe program
+   instead of the app, confirms from the inside that every setting really
+   applies, and then starts the app for a few seconds to see that it runs.
 
 ---
 
@@ -61,8 +61,10 @@ lists every promise SAM makes with the tests that prove it.
 
 ### Permissions
 
-Every permission has a plain-language explanation and a risk level
-(*Low*, *Medium*, *High*, *Dangerous*). Risky choices show a warning.
+Every permission has a plain-language explanation and a risk level (*low*,
+*medium*, *high*, *dangerous*); tags show them in three colours: grey for
+harmless, amber for think twice, red for dangerous. Risky choices show a
+warning before they apply.
 
 - **Files:** private home, XDG folders (read-only or read/write), your own
   paths. Files you open with an app are granted one by one.
@@ -78,7 +80,7 @@ Every permission has a plain-language explanation and a risk level
 
 ### Making apps work
 
-- **First-run check:** after *Create sandbox*, SAM points out what often goes
+- **First-run check:** after *Create Sandbox*, SAM points out what often goes
   wrong, such as logins that need a browser or files that stay inside the
   sandbox.
 - **Log analysis:** common error messages turn into one-click fixes.
@@ -107,7 +109,7 @@ Every permission has a plain-language explanation and a risk level
 
 - **Two columns, like Flatseal.** On the left: the AppImage locations and
   every AppImage found, grouped into *Sandboxed* and *Not sandboxed*. On the
-  right: the selected app, its main button (*Launch* or *Create sandbox*) and
+  right: the selected app, its main button (*Launch* or *Create Sandbox*) and
   every setting.
 - **Nothing hidden.** There are no modes to switch. Settings that don't apply
   are greyed out, so you always see what is on and what is off. SAM asks only
@@ -148,13 +150,13 @@ Packagers find build and install options in [docs/packaging.md](docs/packaging.m
 ## Quick start
 
 **In the window:** pick an AppImage on the left, look through the recommended
-settings, click *Create sandbox*, then *Launch*.
+settings, click *Create Sandbox*, then *Launch*.
 
 **On the command line:**
 
 ```sh
 sam-jail discover                               # AppImages found, sandboxed or not
-sam-jail sandbox ~/Applications/Krita.AppImage  # create a sandbox
+sam-jail add ~/Applications/Krita.AppImage      # create a sandbox
 sam-jail info krita                             # permissions, warnings, dependencies
 sam-jail set krita network.mode none            # change one permission
 sam-jail group set network.mode none krita gimp # one change for several apps
@@ -226,8 +228,12 @@ AppImage.
 
 ## Documentation
 
+The [website](https://gitzekatze.github.io/SAM) presents these documents for
+reading; this table is the same set in the repository.
+
 | Document | For |
 |---|---|
+| [Install SAM](docs/install.md) | everyone: what your computer needs, installing, your first sandbox |
 | [User guide](docs/guide.md) | everyone: the window, every setting, troubleshooting |
 | [Security](docs/security.md) | what the sandbox protects against, and its limits |
 | [Permissions](docs/permissions.md) | permission keys, preset files, group changes |
@@ -238,6 +244,7 @@ AppImage.
 | [Threat model](docs/threat-model.md) | what SAM protects, against whom, how, and where that ends |
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |
+| [Maintainer handbook](docs/handbook/index.md) | whoever looks after SAM: GitHub, everyday work, tools, care |
 | [Releasing](docs/releasing.md) | the checklist for a new version |
 | [Translating](docs/translating.md) | adding a language |
 | [Changelog](CHANGELOG.md) | what changed in each version |
@@ -274,13 +281,15 @@ and the tests, and a change goes in only when every test passes.
 
 SAM doesn't ask for your trust. It shows its work:
 
-- **242 tests** guard **40 functions**, and
+- **More than 240 tests** guard **40 functions**, and
   [docs/functions.md](docs/functions.md) shows, after every change, which
   tests prove which function. A fixed bug gets a test that fails without
   the fix.
-- **Every security promise** in [docs/security.md](docs/security.md) names
-  the test that proves it, and the [threat model](docs/threat-model.md) is
-  just as clear about what SAM does *not* protect against.
+- **Every security promise** in [docs/security.md](docs/security.md) is
+  attacked by a breakout test from inside a real sandbox, and the
+  [threat model](docs/threat-model.md) lists each threat with what stops it,
+  the test that proves it, and just as clearly what SAM does *not* protect
+  against.
 - **Breakout tests** run inside a real sandbox on every push, on Ubuntu and
   on Fedora, and SAM's readers of untrusted files are fuzzed.
 - **Mutation testing** changed the security-critical code 2,821 times on
