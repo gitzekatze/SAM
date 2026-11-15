@@ -41,8 +41,9 @@ you, can change it directly. Every change goes like this:
 
 **Why:** every change is tested before it reaches `main`, and nobody can
 change SAM behind your back. The protection rules: a pull request is
-required, the main tests, the Fedora sandbox tests and the dependency check
-must pass, and nobody can rewrite or delete `main`.
+required, all five CI jobs must pass (the tests on Intel/AMD and on ARM
+processors, the Fedora sandbox tests, the window tests and the dependency
+check), and nobody can rewrite or delete `main`.
 
 ## CI: the tests GitHub runs for you
 
