@@ -306,10 +306,10 @@ checks = ["tests/gui/permissions-atspi.sh"]
 [[function]]
 id = 37
 area = "H"
-promise = "Everything works in English and German."
+promise = "SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core."
 code = ["sam-gtk/src/i18n.rs", "po/de.po"]
 tests = []
-gap = "No test checks the translations yet: CI only compiles them. Planned in Phase 8: every text in the window has a German translation, and no translation drops a placeholder."
+gap = "Not true yet: only 145 of about 700 texts can be translated (the window's labels), and only into German; SAM's core messages are English only. Planned before the beta, after the texts are reworded in Phase 8: all texts translatable, German, Spanish and French, and a test that keeps German complete."
 
 [[area]]
 id = "I"

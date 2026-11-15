@@ -49,7 +49,7 @@
 | 34 | [A bug report that never contains your name or home path.](#34) | 1 | ✅ |
 | 35 | [The overview of all apps, with clear status badges.](#35) | 4 | ✅ |
 | 36 | [The permissions page, for one app or several, with tags in the same colors everywhere.](#36) | 11 | ✅ |
-| 37 | [Everything works in English and German.](#37) | 0 | ⚠️ gap |
+| 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core.](#37) | 0 | ⚠️ gap |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | 12 | ✅ |
 | 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line, and the parts that handle untrusted content never depend on the higher ones.](#39) | 6 | ✅ |
 
@@ -588,9 +588,9 @@
 **Also tried by:** [`tests/gui/permissions-atspi.sh`](../tests/gui/permissions-atspi.sh)
 
 <a id="37"></a>
-### 37. Everything works in English and German.
+### 37. SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core.
 
-**Gap:** No test checks the translations yet: CI only compiles them. Planned in Phase 8: every text in the window has a German translation, and no translation drops a placeholder.
+**Gap:** Not true yet: only 145 of about 700 texts can be translated (the window's labels), and only into German; SAM's core messages are English only. Planned before the beta, after the texts are reworded in Phase 8: all texts translatable, German, Spanish and French, and a test that keeps German complete.
 
 **Code:** [`sam-gtk/src/i18n.rs`](../crates/sam-gtk/src/i18n.rs), [`po/de.po`](../po/de.po)
 
