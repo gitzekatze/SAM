@@ -1,0 +1,44 @@
+# SAM's website (GitHub Pages), built from the repository by scripts/site.py
+# on every change to main. Nothing on the site is edited by hand.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the site
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends python3-markdown
+          # The diagram library, served by the site itself (no outside requests for visitors).
+          mkdir -p target/site/assets
+          curl -fsSL -o target/site/assets/mermaid.min.js https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js
+          python3 scripts/site.py target/site
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: target/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

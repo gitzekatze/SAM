@@ -2,6 +2,8 @@
 
 **Run AppImages in a sandbox, and see every permission they have as a simple switch.**
 
+**Website:** [gitzekatze.github.io/SAM](https://gitzekatze.github.io/SAM): the guide, the evidence behind SAM's promises, and the maintainer handbook.
+
 SAM does for AppImages what Flatseal does for Flatpak apps: a clear list of
 apps, and for each one the access it has to your files, network, devices and
 desktop. Unlike Flatseal, SAM also builds the sandbox itself, using
