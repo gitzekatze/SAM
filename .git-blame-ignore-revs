@@ -1,4 +1,6 @@
 # Commits that only reformatted code; `git blame` skips them
 # (git config blame.ignoreRevsFile .git-blame-ignore-revs).
-# One code format with rustfmt.toml
-e98047e1a45a8e5d63b2a5d95943fd7fbbaa58e7
+# One code format: rustfmt.toml, whole tree formatted once
+d3b1de47cedc14b469b06e91128dbc7cd447daef
+# Format the code at Rust's usual 100 columns
+d6a8a039427bfecda3b8a0b3bcecb6db5f7e195c
