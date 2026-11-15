@@ -282,6 +282,7 @@ AppImage.
 | [Threat model](docs/threat-model.md) | what SAM protects, against whom, how, and where that ends |
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |
+| [Releasing](docs/releasing.md) | the checklist for a new version |
 | [Translating](docs/translating.md) | adding a language |
 | [Changelog](CHANGELOG.md) | what changed in each version |
 

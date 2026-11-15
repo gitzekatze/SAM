@@ -7,9 +7,9 @@
 > `scripts/function-map.py`; CI checks that every test belongs to a function
 > and every function has a test or a stated gap.
 >
-> Test results are from the newest version report (2026-11-15 07:20:42).
+> Test results are from the newest version report (2026-11-15 11:01:46).
 
-**40 functions:** 36 proven by passing tests, 1 by scripted checks, 0 with a gap, 222 tests in all.
+**40 functions:** 39 proven by passing tests, 1 by scripted checks, 0 with a gap, 222 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -47,12 +47,12 @@
 | 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | sam-runner, sam-intake | 2 | ✅ |
 | 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 6 | ✅ |
 | 34 | [A bug report that never contains your name or home path.](#34) | sam-runner | 1 | ✅ |
-| 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-storage, sam-core | 5 | ❌ links_to_other_pages_open_on_github |
+| 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-storage, sam-core | 5 | ✅ |
 | 36 | [The permissions page, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 11 | ✅ |
-| 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core.](#37) | sam-gtk, sam-core | 2 | ❌ texts_without_a_translation_come_back_with_their_values, the_command_line_speaks_german_when_asked |
+| 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core.](#37) | sam-gtk, sam-core | 2 | ✅ |
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 12 | ✅ |
-| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 7 | ❌ an_error_code_survives_added_context |
+| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 7 | ✅ |
 
 ## Components and their functions
 
@@ -578,7 +578,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L660) | An app with compatibility risk carries a warning badge until it has started successfully once. | ✅ |
 | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L608) | Apps are found by name or ID, and an ambiguous name is refused. | ✅ |
 | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L290) | The user guide keeps the text of a list item that has a nested list below it. | ✅ |
-| [`links_to_other_pages_open_on_github`](../crates/sam-gtk/src/guide.rs#L311) | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | – |
+| [`links_to_other_pages_open_on_github`](../crates/sam-gtk/src/guide.rs#L311) | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | ✅ |
 
 **Code:** [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs), [`sam-gtk/src/pages.rs`](../crates/sam-gtk/src/pages.rs), [`sam-core/src/model.rs`](../crates/sam-core/src/model.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs)
 
@@ -610,8 +610,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L117) | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | – |
-| [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L17) | The command line speaks german when asked. | – |
+| [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L117) | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | ✅ |
+| [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L17) | The command line speaks german when asked. | ✅ |
 
 **Code:** [`sam-core/src/i18n.rs`](../crates/sam-core/src/i18n.rs), [`sam-gtk/src/i18n.rs`](../crates/sam-gtk/src/i18n.rs), [`scripts/i18n.py`](../scripts/i18n.py), [`po/de.po`](../po/de.po), [`po/es.po`](../po/es.po), [`po/fr.po`](../po/fr.po)
 
@@ -659,7 +659,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_sandbox_builder_depends_only_on_the_permission_model`](../crates/sam-jail-cli/tests/architecture.rs#L79) | The sandbox command builder depends only on the permission model, so what it builds follows from the permissions alone. | ✅ |
 | [`the_component_diagram_shows_the_real_dependencies`](../crates/sam-jail-cli/tests/architecture.rs#L86) | The component diagram in docs/architecture.md shows exactly the real dependencies between the parts: no arrow is missing and none is invented. | ✅ |
 | [`version_reports_the_json_interface`](../crates/sam-jail-cli/tests/robustness.rs#L157) | `sam-jail version` answers with the JSON interface version even when the configuration cannot be read. | ✅ |
-| [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L42) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | – |
+| [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L42) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | ✅ |
 
 **Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md)
 
