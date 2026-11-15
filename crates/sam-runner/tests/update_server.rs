@@ -227,8 +227,14 @@ fn updates_download_only_changes_check_them_and_refuse_tampering() {
     appimage(&v3, &url, "3.0");
     publish(&server, &v3, "Tool-3.0-x86_64.AppImage");
     let mut damaged = fs::read(&v3).unwrap();
-    let n = damaged.len();
-    damaged[n - 100] ^= 0xff;
+    // Damage a byte where version 3 differs from version 2: SAM must
+    // download that part (an unchanged part is taken from the old file).
+    let v2_bytes = fs::read(&v2).unwrap();
+    let at = (0..damaged.len().min(v2_bytes.len()))
+        .rev()
+        .find(|&i| damaged[i] != v2_bytes[i])
+        .expect("versions 2 and 3 differ");
+    damaged[at] ^= 0xff;
     fs::write(server.root.join("Tool-3.0-x86_64.AppImage"), &damaged).unwrap();
     let before = fs::read(&e.source_path).unwrap();
     let err = sam.update(&id, false).unwrap_err();
