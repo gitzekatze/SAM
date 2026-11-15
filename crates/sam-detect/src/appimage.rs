@@ -186,6 +186,48 @@ pub fn elf_end_offset(head: &[u8]) -> Option<u64> {
     }
 }
 
+/// This computer's processor, in the names `elf_machine` uses.
+pub fn host_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86" => "i686",
+        "arm" => "armhf",
+        other => other,
+    }
+}
+
+/// Whether a program built for `app` runs on a `host` processor: the same
+/// one, or 32-bit x86 on 64-bit x86 (the kernel runs both).
+pub fn runs_on(app: &str, host: &str) -> bool {
+    app == host || (app == "i686" && host == "x86_64") || (app == "armhf" && host == "aarch64")
+}
+
+/// Why this AppImage cannot run on this computer, if its processor is a
+/// different one; None when it fits or the processor is unknown.
+pub fn wrong_processor(info: &AppImageInfo) -> Option<String> {
+    let app = info.arch.as_deref()?;
+    let host = host_arch();
+    if runs_on(app, host) {
+        return None;
+    }
+    let name = |a: &str| {
+        match a {
+            "x86_64" => "x86-64 (Intel and AMD)",
+            "i686" => "32-bit x86",
+            "aarch64" => "ARM (aarch64)",
+            "armhf" => "32-bit ARM",
+            "riscv64" => "RISC-V",
+            other => other,
+        }
+        .to_string()
+    };
+    let host_name = name(host);
+    let article = if host_name.starts_with("x86") || host_name.starts_with("ARM") { "an" } else { "a" };
+    Some(format!(
+        "it is built for {} processors, but this computer has {article} {host_name} processor, so it cannot run here. Download the {host} version of the app instead",
+        name(app)
+    ))
+}
+
 fn elf_machine(head: &[u8]) -> Option<&'static str> {
     Some(match u16_at(head, 18, le_or_be(head))? {
         0x3E => "x86_64",
@@ -304,5 +346,22 @@ mod tests {
         t.write_all(&[0u8; 128]).unwrap();
         let info = inspect(t.path()).unwrap();
         assert!(!info.is_elf && !info.is_appimage());
+    }
+}
+
+#[cfg(test)]
+mod processor_tests {
+    use super::*;
+
+    /// An AppImage runs on the same processor and 32-bit builds on their
+    /// 64-bit relatives; ARM builds never run on x86-64 or the other way.
+    #[test]
+    fn appimages_run_only_on_a_matching_processor() {
+        assert!(runs_on("x86_64", "x86_64"));
+        assert!(runs_on("i686", "x86_64"));
+        assert!(runs_on("armhf", "aarch64"));
+        assert!(!runs_on("aarch64", "x86_64"));
+        assert!(!runs_on("x86_64", "aarch64"));
+        assert!(!runs_on("riscv64", "x86_64"));
     }
 }

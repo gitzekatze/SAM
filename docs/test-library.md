@@ -46,14 +46,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-detect: Recognizing AppImages and what they need (ELF, toolkits, signatures)
 
-18 tests.
+19 tests.
 
 | Promise | Test |
 |---|---|
-| An ordinary program file is not taken for an AppImage. | [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L245) |
-| A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L253) |
-| An AppImage with a DwarFS image instead of squashfs is recognized. | [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L280) |
-| A file that is not an ELF program is not taken for an AppImage. | [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L301) |
+| An ordinary program file is not taken for an AppImage. | [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L287) |
+| A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L295) |
+| An AppImage with a DwarFS image instead of squashfs is recognized. | [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L322) |
+| A file that is not an ELF program is not taken for an AppImage. | [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L343) |
+| An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L358) |
 | Bundled libraries are sorted into system, graphics, display-controlled and dangerous classes. | [`bundled_libraries_are_sorted_by_what_they_reach`](../crates/sam-detect/src/classify.rs#L221) |
 | Programs that load graphics libraries only at run time are recognized as needing the GPU. | [`programs_that_load_graphics_at_run_time`](../crates/sam-detect/src/elf.rs#L919) |
 | A missing optional library is reported with the feature it provides, not as a broken app. | [`missing_optional_libraries_name_the_feature`](../crates/sam-detect/src/elf.rs#L936) |
@@ -146,7 +147,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-85 tests.
+86 tests.
 
 | Promise | Test |
 |---|---|
@@ -235,6 +236,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L67) |
 | Undoing an update puts the previous version back. | [`undo_puts_the_previous_version_back`](../crates/sam-runner/tests/update.rs#L14) |
 | The sandbox check passes when the settings apply, and catches a setting that does not apply. | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L19) |
+| An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L13) |
 
 ## sam-storage: App records, presets and logs on disk
 
@@ -299,4 +301,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 214 automated Rust tests plus 6 scripted checks.
+Total: 216 automated Rust tests plus 6 scripted checks.

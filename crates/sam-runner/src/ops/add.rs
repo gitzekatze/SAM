@@ -22,6 +22,9 @@ impl Sam {
         if !info.is_appimage() {
             bail!("{} is not an AppImage ({})", tildify(&source), info.notes.join("; "));
         }
+        if let Some(why) = sam_detect::appimage::wrong_processor(&info) {
+            bail!("{} cannot get a sandbox: {why}", tildify(&source));
+        }
         let fp = fingerprint::compute(&source)?;
 
         // Same content as a registered app whose file went missing: relocate.
