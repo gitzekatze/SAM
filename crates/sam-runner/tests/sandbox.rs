@@ -26,6 +26,8 @@ touch /opt/app/x 2>/dev/null && echo "APPDIR_WRITE=yes" || echo "APPDIR_WRITE=no
 touch /usr/x 2>/dev/null && echo "USR_WRITE=yes" || echo "USR_WRITE=no"
 echo "NET=$(tail -n +3 /proc/net/dev | cut -d: -f1 | tr -d ' ' | sort | tr '\n' ',')"
 echo "PASSWD=$(wc -l < /etc/passwd)"
+echo "HOSTS=$(cat /etc/hosts 2>/dev/null | tr '\n' ',')"
+getent hosts localhost >/dev/null 2>&1 && echo "LOCALHOST=resolves" || echo "LOCALHOST=fails"
 echo "PIDS=$(ls /proc | grep -c '^[0-9]')"
 echo "SUID=$(stat -c %a "$APPDIR/usr/bin/suid-tool")"
 [ -S /run/dbus/system_bus_socket ] && echo "SYSBUS=yes" || echo "SYSBUS=no"
@@ -108,6 +110,11 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     assert_eq!(r["USR_WRITE"], "no");
     assert_eq!(r["NET"], "lo,", "network none = loopback only");
     assert_eq!(r["PASSWD"], "2", "synthetic passwd");
+    // Without the network, /etc/hosts holds only the loopback names, so
+    // "localhost" resolves on every distribution and nothing else leaks
+    // (regression: Ubuntu resolves localhost only through /etc/hosts).
+    assert_eq!(r["HOSTS"], "127.0.0.1 localhost,::1 localhost ip6-localhost ip6-loopback,");
+    assert_eq!(r["LOCALHOST"], "resolves");
     assert!(r["PIDS"].parse::<u32>().unwrap() <= 8, "pid namespace: {}", r["PIDS"]);
     assert_eq!(r["SUID"], "755", "setuid stripped");
     assert_eq!(r["SYSBUS"], "no", "system D-Bus denied by default");

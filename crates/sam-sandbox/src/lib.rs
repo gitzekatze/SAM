@@ -553,7 +553,7 @@ impl Bubblewrap {
         s.sockets();
         s.environment();
         s.finish_command();
-        let generated_files = vec![ctx.runtime_dir.join("passwd"), ctx.runtime_dir.join("group")];
+        let generated_files = vec![ctx.runtime_dir.join("passwd"), ctx.runtime_dir.join("group"), ctx.runtime_dir.join("hosts")];
         Ok(SandboxCommand { program: bwrap.path.clone(), args: s.a.v, env: vec![], clear_env: false, keep_fds: s.keep_fds, notes: s.notes, generated_files })
     }
 }
@@ -706,6 +706,14 @@ impl Section<'_> {
         let group = ctx.runtime_dir.join("group");
         a.op2("--ro-bind-try", &passwd, "/etc/passwd");
         a.op2("--ro-bind-try", &group, "/etc/group");
+        // Without the network, the real /etc/hosts stays hidden, but
+        // "localhost" must still resolve: apps talk to their own helpers
+        // and, with "This computer only", to local servers by that name.
+        // Distributions without the myhostname module (Ubuntu, Debian)
+        // resolve it only through /etc/hosts.
+        if p.network.mode != NetworkMode::Full {
+            a.op2("--ro-bind-try", ctx.runtime_dir.join("hosts"), "/etc/hosts");
+        }
 
         // The app payload: read-only, or an overlay that keeps the app's own
         // changes in a separate per-app layer.
@@ -1206,6 +1214,9 @@ fn rewrite_xauthority(data: &[u8], from: &str, to: &str) -> Vec<u8> {
     out
 }
 
+/// The /etc/hosts of a sandbox without the network: only the loopback names.
+pub const LOCALHOST_ONLY_HOSTS: &str = "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n";
+
 pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
     fs::create_dir_all(&ctx.runtime_dir)?;
     let h = &ctx.host;
@@ -1223,6 +1234,7 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
         ),
     )?;
     fs::write(ctx.runtime_dir.join("group"), format!("{u}:x:{gid}:\nnobody:x:65534:\n", u = h.user, gid = h.gid))?;
+    fs::write(ctx.runtime_dir.join("hosts"), LOCALHOST_ONLY_HOSTS)?;
     let bin = ctx.runtime_dir.join("bin");
     fs::create_dir_all(&bin)?;
     {
