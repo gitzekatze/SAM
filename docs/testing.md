@@ -229,6 +229,17 @@ page's "⋮" button, because one of the labels under the app's name could take
 the focus (confirmed with a real keyboard; arrow keys still worked). Fixed:
 the walk now passes all 130 controls of an app page and wraps around.
 
+`tests/gui/a11y-atspi.sh OUTDIR` opens every page of the window in the
+invisible session and reads it through the accessibility interface: every
+visible, enabled control must have a name a screen reader can say and must
+take keyboard focus (itself, through an inner part, or through its row). On
+2026-11-15 all nine pages passed with 443 controls. It checks what screen
+readers are told, not how one sounds: the item below with Orca stays a
+manual check.
+
+- [ ] With the Orca screen reader on, every control on the overview, an app
+      page and the Permissions page is read with a name that says what it
+      does, and the risk explanations are read out.
 - [ ] On an app page, Tab from the AppImage list reaches *Check*, *Launch*
       and every setting, and Shift+Tab goes back.
 

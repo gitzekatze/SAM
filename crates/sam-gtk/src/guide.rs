@@ -22,6 +22,22 @@ pub fn page() -> adw::NavigationPage {
     adw::NavigationPage::builder().title(tr("User Guide")).child(&view).build()
 }
 
+/// Where a link in the guide leads. The guide is written as part of SAM's
+/// documentation, so links to other pages are relative (`security.md#…`);
+/// inside the window those lead nowhere, so they point to the page on
+/// GitHub instead. Web addresses stay as they are.
+fn link_target(dest: &str) -> String {
+    if dest.contains("://") || dest.starts_with("mailto:") {
+        return dest.to_string();
+    }
+    if let Some(anchor) = dest.strip_prefix('#') {
+        return format!("https://github.com/gitzekatze/SAM/blob/main/docs/guide.md#{anchor}");
+    }
+    let path = dest.trim_start_matches("./");
+    let path = if let Some(up) = path.strip_prefix("../") { up.to_string() } else { format!("docs/{path}") };
+    format!("https://github.com/gitzekatze/SAM/blob/main/{path}")
+}
+
 fn esc(s: &str) -> String {
     gtk::glib::markup_escape_text(s).to_string()
 }
@@ -200,7 +216,7 @@ fn render(md: &str, root: &gtk::Box) {
             Event::End(TagEnd::Emphasis) => inline.push_str("</i>"),
             Event::Start(Tag::Strikethrough) => inline.push_str("<s>"),
             Event::End(TagEnd::Strikethrough) => inline.push_str("</s>"),
-            Event::Start(Tag::Link { dest_url, .. }) => inline.push_str(&format!("<a href=\"{}\">", esc(&dest_url))),
+            Event::Start(Tag::Link { dest_url, .. }) => inline.push_str(&format!("<a href=\"{}\">", esc(&link_target(&dest_url)))),
             Event::End(TagEnd::Link) => inline.push_str("</a>"),
             Event::Code(c) => inline.push_str(&format!("<tt><span background=\"#80808033\"> {} </span></tt>", esc(&c))),
             Event::Text(t) => {
@@ -287,5 +303,17 @@ mod tests {
             }
         }
         assert_eq!(texts, ["Parent text", "child one", "child two", "last"]);
+    }
+
+    /// Links in the guide to other documentation pages open on GitHub, since
+    /// relative file names lead nowhere inside the window (regression: the
+    /// link to "Terminal programs" pointed to security.md and did nothing).
+    #[test]
+    fn links_to_other_pages_open_on_github() {
+        let base = "https://github.com/gitzekatze/SAM/blob/main/";
+        assert_eq!(super::link_target("security.md#terminal-programs"), format!("{base}docs/security.md#terminal-programs"));
+        assert_eq!(super::link_target("../README.md"), format!("{base}README.md"));
+        assert_eq!(super::link_target("#setup"), format!("{base}docs/guide.md#setup"));
+        assert_eq!(super::link_target("https://example.org/x"), "https://example.org/x");
     }
 }

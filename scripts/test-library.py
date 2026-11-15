@@ -35,6 +35,7 @@ GUI_CHECKS = [
     ("tests/gui/smoke.sh", "Every page of the window opens without GTK warnings, criticals or panics, in a wide and a narrow window."),
     ("tests/gui/permissions-atspi.sh", "Through the accessibility interface: the Permissions page selects apps, names its controls, warns before an app loses something it needs, applies a group change, and Undo restores every app; tag filters cycle."),
     ("tests/gui/app-page-atspi.sh", "Through the accessibility interface: the app page has one Test button with a visible test state, the trash button as high as Test and Launch, advice in one group, a visible \"Files This App Saved\" row, and a remove dialog whose three choices are not preselected and whose button cannot be pressed before a choice."),
+    ("tests/gui/a11y-atspi.sh", "Through the accessibility interface, on every page of the window: every visible, enabled control has a name a screen reader can say, and the keyboard reaches it."),
     ("tests/gui/taskbar-kwin.sh", "In a hidden KWin session, a sandboxed app's window is named after SAM's menu entry, so the taskbar shows the app's own icon and name."),
     ("crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000", "A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash."),
     ("tests/real-apps/run.sh", "Real AppImages from the test sets start in their sandbox; results are compared with the last baseline."),

@@ -292,7 +292,7 @@ id = 35
 area = "H"
 promise = "The overview of all apps, with clear status badges."
 code = ["sam-gtk/src/window.rs", "sam-gtk/src/pages.rs", "sam-core/src/model.rs", "sam-storage/src/lib.rs"]
-tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text"]
+tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text", "links_to_other_pages_open_on_github"]
 checks = ["tests/gui/session.sh"]
 
 [[function]]
@@ -310,6 +310,14 @@ promise = "SAM speaks English, German, Spanish and French: every text in the win
 code = ["sam-gtk/src/i18n.rs", "po/de.po"]
 tests = []
 gap = "Not true yet: only 145 of about 700 texts can be translated (the window's labels), and only into German; SAM's core messages are English only. Planned before the beta, after the texts are reworded in Phase 8: all texts translatable, German, Spanish and French, and a test that keeps German complete."
+
+[[function]]
+id = 40
+area = "H"
+promise = "The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus."
+code = ["sam-gtk/src/window.rs", "sam-gtk/src/app_page/mod.rs", "sam-gtk/src/all_perms.rs", "sam-gtk/src/guide.rs"]
+tests = []
+checks = ["tests/gui/a11y-atspi.sh"]
 
 [[area]]
 id = "I"

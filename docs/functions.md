@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 07:20:42).
 
-**39 functions:** 38 proven by passing tests, 1 with a gap, 218 tests in all.
+**40 functions:** 37 proven by passing tests, 1 by scripted checks, 1 with a gap, 219 tests in all.
 
 | | Function | Tests | Result |
 |---|---|---|---|
@@ -47,9 +47,10 @@
 | 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | 2 | ✅ |
 | 33 | [The doctor check finds problems with the system or an app.](#33) | 6 | ✅ |
 | 34 | [A bug report that never contains your name or home path.](#34) | 1 | ✅ |
-| 35 | [The overview of all apps, with clear status badges.](#35) | 4 | ✅ |
+| 35 | [The overview of all apps, with clear status badges.](#35) | 5 | ❌ links_to_other_pages_open_on_github |
 | 36 | [The permissions page, for one app or several, with tags in the same colors everywhere.](#36) | 11 | ✅ |
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core.](#37) | 0 | ⚠️ gap |
+| 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | 12 | ✅ |
 | 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line, and the parts that handle untrusted content never depend on the higher ones.](#39) | 6 | ✅ |
 
@@ -560,7 +561,8 @@
 | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L639) | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | ✅ |
 | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L657) | An app with compatibility risk carries a warning badge until it has started successfully once. | ✅ |
 | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L584) | Apps are found by name or ID, and an ambiguous name is refused. | ✅ |
-| [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L274) | The user guide keeps the text of a list item that has a nested list below it. | ✅ |
+| [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L290) | The user guide keeps the text of a list item that has a nested list below it. | ✅ |
+| [`links_to_other_pages_open_on_github`](../crates/sam-gtk/src/guide.rs#L311) | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | – |
 
 **Code:** [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs), [`sam-gtk/src/pages.rs`](../crates/sam-gtk/src/pages.rs), [`sam-core/src/model.rs`](../crates/sam-core/src/model.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs)
 
@@ -593,6 +595,13 @@
 **Gap:** Not true yet: only 145 of about 700 texts can be translated (the window's labels), and only into German; SAM's core messages are English only. Planned before the beta, after the texts are reworded in Phase 8: all texts translatable, German, Spanish and French, and a test that keeps German complete.
 
 **Code:** [`sam-gtk/src/i18n.rs`](../crates/sam-gtk/src/i18n.rs), [`po/de.po`](../po/de.po)
+
+<a id="40"></a>
+### 40. The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.
+
+**Code:** [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs), [`sam-gtk/src/app_page/mod.rs`](../crates/sam-gtk/src/app_page/mod.rs), [`sam-gtk/src/all_perms.rs`](../crates/sam-gtk/src/all_perms.rs), [`sam-gtk/src/guide.rs`](../crates/sam-gtk/src/guide.rs)
+
+**Also tried by:** [`tests/gui/a11y-atspi.sh`](../tests/gui/a11y-atspi.sh)
 
 ## I. Foundations
 

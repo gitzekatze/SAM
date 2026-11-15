@@ -64,8 +64,8 @@ def problems(m, tests):
         ids.add(fid)
         if f.get("area") not in areas:
             out.append(f"function {fid}: unknown area {f.get('area')!r}")
-        if not f.get("tests") and not f.get("gap"):
-            out.append(f"function {fid} has no test and no stated gap")
+        if not f.get("tests") and not f.get("checks") and not f.get("gap"):
+            out.append(f"function {fid} has no test, no scripted check and no stated gap")
         for t in f.get("tests", []):
             named.add(t)
             if t not in tests:
@@ -100,6 +100,7 @@ def render(m, tests):
     areas = {a["id"]: a["name"] for a in m["area"]}
     funcs = m["function"]
     proven = [f for f in funcs if f.get("tests") and all(results.get(t) == "ok" for t in f["tests"])] if results else []
+    by_checks = [f for f in funcs if not f.get("tests") and f.get("checks") and not f.get("gap")]
     gaps = [f for f in funcs if f.get("gap")]
     L = [
         "# SAM's functions and their proofs",
@@ -113,7 +114,7 @@ def render(m, tests):
         ">",
         f"> Test results are from the newest version report ({generated.replace('T', ' ') if generated else 'none yet'}).",
         "",
-        f"**{len(funcs)} functions:** {len(proven)} proven by passing tests, {len(gaps)} with a gap, "
+        f"**{len(funcs)} functions:** {len(proven)} proven by passing tests, {len(by_checks)} by scripted checks, {len(gaps)} with a gap, "
         f"{len(tests)} tests in all.",
         "",
         "| | Function | Tests | Result |",
@@ -123,6 +124,8 @@ def render(m, tests):
         n = len(f.get("tests", []))
         if f.get("gap"):
             state = "⚠️ gap"
+        elif not f.get("tests"):
+            state = "scripted check"
         elif not results:
             state = "not run yet"
         elif all(results.get(t) == "ok" for t in f["tests"]):
