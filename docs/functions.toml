@@ -1,0 +1,331 @@
+# SAM's functions, each with the code that carries it and the tests that
+# prove it. scripts/function-map.py checks this file (CI) and writes
+# docs/functions.md from it:
+#   - every function names at least one test, or says why it has none (gap);
+#   - every test in the code belongs to at least one function;
+#   - every named test, file and check exists.
+#
+# `promise` is written so that a test can check it; the website words it
+# for people. `code` names the parts (crates) and files that carry the
+# function; `checks` names scripted checks outside `cargo test` (window
+# tests, real-app runs). A test may prove several functions.
+
+[[area]]
+id = "A"
+name = "Bringing an AppImage in"
+
+[[function]]
+id = 1
+area = "A"
+promise = "SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything."
+code = ["sam-intake/src/peek.rs", "sam-intake/src/menu.rs", "sam-intake/src/id.rs", "sam-runner/src/ops/overview.rs", "sam-gtk/src/window.rs"]
+tests = ["peeks_name_and_icon_without_extracting", "the_appimage_behind_a_foreign_menu_entry_is_found", "app_ids_stay_unique_when_names_collide", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "the_folder_watcher_ignores_hidden_files_and_unfinished_downloads"]
+
+[[function]]
+id = 2
+area = "A"
+promise = "SAM recognizes every AppImage format (type 2, SquashFS, DwarFS) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message."
+code = ["sam-detect/src/appimage.rs", "sam-intake/src/extract.rs", "sam-runner/src/ops/add.rs"]
+tests = ["plain_elf_is_not_appimage", "a_type_2_appimage_is_recognized", "an_appimage_with_a_dwarfs_image_is_recognized", "a_file_that_is_no_program_is_not_an_appimage", "appimages_run_only_on_a_matching_processor", "appimages_with_every_compression_unpack", "an_appimage_for_another_processor_gets_no_sandbox"]
+checks = ["tests/real-apps/run.sh"]
+
+[[function]]
+id = 3
+area = "A"
+promise = "SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space."
+code = ["sam-intake/src/extract.rs", "sam-intake/src/normalize.rs", "sam-runner/src/progress.rs"]
+tests = ["unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_during_unpacking_is_recognized", "unpacking_stops_at_the_time_limit", "symlinks_pointing_outside_the_app_are_recognized", "paths_climbing_out_of_the_image_are_refused", "unpacking_removes_setuid_bits", "unpacking_stops_at_the_file_limit", "a_built_appimage_is_detected_and_unpacked_safely", "size_limit_aborts_and_cleans_up", "fractions_follow_the_step_weights", "bytes_written_are_counted"]
+
+[[function]]
+id = 4
+area = "A"
+promise = "SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them."
+code = ["sam-intake/src/metadata.rs", "sam-intake/src/peek.rs", "sam-intake/src/id.rs", "sam-core/src/util.rs"]
+tests = ["the_desktop_file_inside_an_appimage_is_read", "reads_metadata_and_icon", "a_readable_name_is_taken_from_the_file_name", "icon_paths_cannot_climb_out_of_the_app", "neutralizes_markup_and_controls", "markup_in_metadata_is_neutralized"]
+
+[[function]]
+id = 5
+area = "A"
+promise = "A damaged or hostile AppImage can't crash SAM or stop the list."
+code = ["sam-intake/src/peek.rs", "sam-intake/src/extract.rs", "sam-detect/src/elf.rs"]
+tests = ["a_damaged_squashfs_image_gives_an_error_instead_of_a_crash", "parsers_survive_garbage", "changed_appimages_never_crash_or_escape_the_unpacker", "changed_text_inputs_never_crash_the_parsers", "changed_programs_never_crash_the_analysis", "one_damaged_appimage_does_not_stop_the_list"]
+
+[[area]]
+id = "B"
+name = "Choosing the right permissions"
+
+[[function]]
+id = 6
+area = "B"
+promise = "SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible."
+code = ["sam-profile/src/lib.rs", "sam-detect/src/elf.rs", "sam-detect/src/classify.rs"]
+tests = ["terminal_programs_get_no_display", "the_app_category_is_recognized_from_its_desktop_categories", "recommendations_fit_the_category", "what_sam_finds_in_the_app_adjusts_the_recommendation", "bundled_libraries_are_sorted_by_what_they_reach", "programs_that_load_graphics_at_run_time", "missing_optional_libraries_name_the_feature", "programs_that_choose_the_qt_platform", "qt_wayland_plugin_needs_its_client_library", "start_scripts_that_force_x11", "the_program_behind_a_start_script_is_found", "an_appimage_asking_for_admin_rights_is_unsafe_to_sandbox", "electron_markers_and_bundled_symlinks", "origin_relative_needed_paths", "the_c_library_version_an_app_needs_is_read"]
+checks = ["tests/real-apps/run.sh"]
+
+[[function]]
+id = 7
+area = "B"
+promise = "SAM explains every permission in plain language and shows how risky it is."
+code = ["sam-core/src/permissions.rs", "sam-core/src/risk.rs", "sam-core/src/warnings.rs", "sam-gtk/src/all_perms.rs"]
+tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "network_and_x11_high", "each_dangerous_setting_produces_its_warning", "strict_has_no_danger", "x11_warning_can_be_disabled", "tags_and_the_risk_list_use_the_same_words", "folder_explanations_name_the_path"]
+
+[[function]]
+id = 8
+area = "B"
+promise = "You can change permissions per app, for several apps at once, or through your own presets."
+code = ["sam-core/src/permissions.rs", "sam-profile/src/lib.rs", "sam-runner/src/ops/profiles.rs", "sam-storage/src/lib.rs"]
+tests = ["set_and_get_keys", "change_check_flags_removals_and_additions", "folders_are_not_breakage_but_lost_local_network_and_bus_are", "lost_sound_is_named_sound", "preset_template_is_strict", "user_changes_survive_better_recommendation", "a_dry_run_changes_nothing_and_names_what_would_stop_working", "only_changed_apps_are_saved_and_one_undo_restores_all_of_them", "an_invalid_value_or_unknown_app_changes_no_app", "sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user", "saving_an_apps_settings_as_a_preset_keeps_them_exactly", "reset_to_recommendation_brings_back_the_recommended_settings", "preset_names_cannot_place_files_outside_the_presets_folder", "a_saved_preset_loads_back_unchanged", "group_list_set_and_restore_round_trip", "group_set_refuses_bad_input_without_changing_anything", "presets_are_the_users_own_only", "each_permission_adds_exactly_its_part_to_the_command"]
+checks = ["tests/gui/permissions-atspi.sh"]
+
+[[function]]
+id = 9
+area = "B"
+promise = "Things an app printed can never grant it access on their own; SAM always asks."
+code = ["sam-runner/src/repair.rs"]
+tests = ["app_output_cannot_buy_dangerous_grants"]
+
+[[area]]
+id = "C"
+name = "The sandbox"
+
+[[function]]
+id = 10
+area = "C"
+promise = "The app sees only a private home folder and the folders you grant."
+code = ["sam-sandbox/src/lib.rs"]
+tests = ["the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+
+[[function]]
+id = 11
+area = "C"
+promise = "Keys, passwords and the files of your other apps stay hidden, even with full home access."
+code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs"]
+tests = ["key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape"]
+
+[[function]]
+id = 12
+area = "C"
+promise = "Network: none, \"This computer only\" (selected ports), or full."
+code = ["sam-sandbox/src/lib.rs", "sam-runner/src/netns.rs"]
+tests = ["localhost_network_leaves_netns_to_pasta", "only_listed_host_ports", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+
+[[function]]
+id = 13
+area = "C"
+promise = "The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox."
+code = ["sam-runner/src/dbus_proxy.rs", "sam-sandbox/src/lib.rs", "sam-core/src/permissions.rs", "sam-runner/src/kernel.rs"]
+tests = ["own_names_that_are_refused", "blocked_names_win_over_wildcards", "only_real_socket_paths_are_taken_from_a_dbus_address", "own_names_from_the_id_and_the_window_class", "filtered_dbus_uses_proxy", "the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins", "without_nested_namespaces_user_namespaces_are_disabled", "extra_sockets_must_be_sockets", "tray_names_follow_watcher_permission", "the_syscall_filter_compiles_and_blocks_mount_and_io_uring", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape"]
+
+[[function]]
+id = 14
+area = "C"
+promise = "Display: Wayland with a security context; X11 only when allowed, with its cost explained."
+code = ["sam-sandbox/src/lib.rs", "sam-runner/src/wayland_ctx.rs", "sam-core/src/host.rs"]
+tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox_display_number", "the_x11_display_number_is_read_from_every_display_form"]
+
+[[function]]
+id = 15
+area = "C"
+promise = "Sound, GPU, camera and game controllers only when allowed."
+code = ["sam-sandbox/src/lib.rs"]
+tests = ["sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+
+[[function]]
+id = 16
+area = "C"
+promise = "The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries)."
+code = ["sam-sandbox/src/lib.rs", "sam-runner/src/kernel.rs"]
+tests = ["landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape"]
+
+[[function]]
+id = 17
+area = "C"
+promise = "The app can't type into your terminal."
+code = ["sam-runner/src/pty.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs"]
+tests = ["a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape"]
+
+[[function]]
+id = 18
+area = "C"
+promise = "Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation."
+code = ["sam-sandbox/src/lib.rs", "sam-runner/src/launch.rs", "sam-core/src/host.rs"]
+tests = ["writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work"]
+
+[[area]]
+id = "D"
+name = "Starting and running"
+
+[[function]]
+id = 19
+area = "D"
+promise = "Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox."
+code = ["sam-intake/src/desktop.rs", "sam-intake/src/menu.rs", "sam-runner/src/launch.rs", "sam-core/src/paths.rs"]
+tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry"]
+checks = ["tests/gui/taskbar-kwin.sh"]
+
+[[function]]
+id = 20
+area = "D"
+promise = "SAM checks from inside the sandbox that every setting applies (the sandbox check)."
+code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs"]
+tests = ["folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches"]
+checks = ["tests/real-apps/run.sh"]
+
+[[function]]
+id = 21
+area = "D"
+promise = "A second start, closing, and stopping work cleanly and leave nothing behind."
+code = ["sam-runner/src/launch.rs", "sam-runner/src/ops/mod.rs"]
+tests = ["stop_closes_running_apps", "removing_a_sandbox_while_its_app_runs_is_refused"]
+checks = ["tests/real-apps/run.sh"]
+
+[[function]]
+id = 22
+area = "D"
+promise = "Logs of every start are kept, with old ones removed automatically."
+code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs"]
+tests = ["the_newest_log_survives_pruning_within_one_second", "the_newest_log_is_found_even_within_one_second"]
+
+[[area]]
+id = "E"
+name = "Fixing apps that don't work"
+
+[[function]]
+id = 23
+area = "E"
+promise = "After a failed start, SAM says what went wrong and offers a fix with one click."
+code = ["sam-runner/src/repair.rs", "sam-runner/src/launch.rs", "sam-gtk/src/app_page/render.rs"]
+tests = ["a_start_without_bubblewrap_stops_before_anything_runs", "sandbox_setup_errors_are_told_apart_from_app_errors", "a_start_is_judged_by_whether_the_app_started", "own_name_requests_become_a_repair", "analyzer_maps_errors_to_fixes", "fake_bwrap_error_is_not_a_sandbox_failure"]
+checks = ["tests/gui/app-page-atspi.sh", "tests/real-apps/run.sh"]
+
+[[function]]
+id = 24
+area = "E"
+promise = "Repair steps go from mild to strong, and each one can be undone."
+code = ["sam-runner/src/repair.rs", "sam-sandbox/src/lib.rs"]
+tests = ["a_repair_step_says_what_it_changes_and_costs", "ladder_skips_applied_and_noop_steps", "a_writable_app_folder_is_offered_only_where_it_can_work", "undoing_repair_steps_restores_the_settings_from_before_the_first_step", "switching_off_one_repair_step_keeps_the_others", "only_plain_library_names_are_accepted", "system_copies_replace_only_bundled_libraries_by_plain_name"]
+
+[[function]]
+id = 25
+area = "E"
+promise = "The diagnose run finds missing files and suggests only what helps."
+code = ["sam-runner/src/diagnose.rs"]
+tests = ["failed_accesses_are_read_from_a_trace", "failed_accesses_map_to_the_permission_that_fixes_them", "a_failure_despite_the_permission_is_not_suggested_again", "the_apps_own_folders_in_its_private_home_are_not_reported", "failed_changes_to_a_file_are_not_missing_access", "write_checks_on_system_folders_are_not_missing_access", "files_in_etc_are_suggested_and_not_added_automatically", "the_apps_own_settings_folder_is_not_reported_as_sensitive"]
+
+[[function]]
+id = 26
+area = "E"
+promise = "Compatibility mode as a last resort, with its cost explained, and it can be undone."
+code = ["sam-runner/src/repair.rs", "sam-runner/src/ops/profiles.rs"]
+tests = ["compatibility_mode_names_only_what_it_changes", "turning_compatibility_mode_off_restores_exactly_the_settings_from_before"]
+
+[[area]]
+id = "F"
+name = "Keeping things safe over time"
+
+[[function]]
+id = 27
+area = "F"
+promise = "SAM notices app settings that something else changed and asks before starting the app."
+code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs"]
+tests = ["records_changed_outside_sam_are_recognized", "an_app_changed_outside_sam_starts_only_after_confirmation"]
+
+[[function]]
+id = 28
+area = "F"
+promise = "Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it."
+code = ["sam-runner/src/updates.rs", "sam-runner/src/zsync.rs", "sam-runner/src/release_key.rs", "sam-detect/src/update_info.rs", "sam-detect/src/signature.rs"]
+tests = ["both_forms_of_update_information_are_understood", "update_wildcards_match_only_the_right_build", "signed_appimage_is_checked", "key_changes_are_noticed", "sam_updates_itself_only_with_its_release_key", "without_a_release_key_sam_never_updates_itself", "the_zsync_header_is_read", "update_download_addresses_are_resolved_and_http_refused", "updates_are_downloaded_over_https_only", "an_update_is_rebuilt_from_the_old_version_and_changed_blocks", "the_rolling_checksum_matches_a_direct_computation", "refuses_compressed_and_broken_files", "undo_puts_the_previous_version_back", "undoing_an_update_never_moves_files_outside_sams_backup_folder"]
+
+[[function]]
+id = 29
+area = "F"
+promise = "SAM notices AppImages that were moved or changed."
+code = ["sam-intake/src/fingerprint.rs", "sam-runner/src/ops/maintain.rs"]
+tests = ["a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
+
+[[area]]
+id = "G"
+name = "Managing"
+
+[[function]]
+id = 30
+area = "G"
+promise = "Removing an app deletes only SAM's own folders, never your files."
+code = ["sam-runner/src/ops/maintain.rs", "sam-storage/src/lib.rs", "sam-core/src/util.rs"]
+tests = ["removing_a_sandbox_never_deletes_outside_sams_unpack_folder", "a_record_with_a_climbing_id_reaches_nothing", "records_with_unsafe_or_mismatched_ids_are_not_loaded", "removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it", "removing_a_sandbox_while_its_app_runs_is_refused", "names_become_safe_identifiers"]
+
+[[function]]
+id = 31
+area = "G"
+promise = "Disk space per app, and freeing space."
+code = ["sam-runner/src/ops/maintain.rs"]
+tests = ["freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it"]
+
+[[function]]
+id = 32
+area = "G"
+promise = "Uninstalling SAM removes everything it created and brings back menu entries it hid."
+code = ["sam-runner/src/ops/maintain.rs", "sam-intake/src/menu.rs"]
+tests = ["uninstall_removes_everything_and_restores_menus", "uninstall_refuses_folders_that_are_not_sams"]
+
+[[function]]
+id = 33
+area = "G"
+promise = "The doctor check finds problems with the system or an app."
+code = ["sam-runner/src/doctor.rs", "sam-runner/src/bwrap.rs", "sam-runner/src/dbus_check.rs", "sam-core/src/host.rs"]
+tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly"]
+
+[[function]]
+id = 34
+area = "G"
+promise = "A bug report that never contains your name or home path."
+code = ["sam-runner/src/doctor.rs"]
+tests = ["bug_reports_hide_the_user_name_and_home_path"]
+
+[[area]]
+id = "H"
+name = "The window"
+
+[[function]]
+id = 35
+area = "H"
+promise = "The overview of all apps, with clear status badges."
+code = ["sam-gtk/src/window.rs", "sam-gtk/src/pages.rs", "sam-core/src/model.rs", "sam-storage/src/lib.rs"]
+tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text"]
+checks = ["tests/gui/session.sh"]
+
+[[function]]
+id = 36
+area = "H"
+promise = "The permissions page, for one app or several, with tags in the same colors everywhere."
+code = ["sam-gtk/src/all_perms.rs", "sam-gtk/src/perms.rs", "sam-profile/src/tags.rs", "sam-gtk/src/main.rs"]
+tests = ["a_strict_window_app_has_no_tags", "tags_follow_the_family_order_and_mark_read_only", "dangerous_access_is_red_and_filtered_bus_has_no_tag", "tags_and_the_risk_list_use_the_same_words", "the_overview_lists_every_sandboxed_app_with_tags_and_states", "group_switches_offer_only_valid_values", "shift_click_selects_the_apps_between_two_clicks", "a_tag_filter_cycles_through_has_has_not_and_off", "the_list_shows_only_apps_that_pass_every_filter", "the_style_sheet_handler_is_connected_before_register", "every_color_in_use_has_a_style_rule"]
+checks = ["tests/gui/permissions-atspi.sh"]
+
+[[function]]
+id = 37
+area = "H"
+promise = "Everything works in English and German."
+code = ["sam-gtk/src/i18n.rs", "po/de.po"]
+tests = []
+gap = "No test checks the translations yet: CI only compiles them. Planned in Phase 8: every text in the window has a German translation, and no translation drops a placeholder."
+
+[[area]]
+id = "I"
+name = "Foundations"
+
+[[function]]
+id = 38
+area = "I"
+promise = "SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM."
+code = ["sam-core/src/format.rs", "sam-core/src/config.rs", "sam-core/src/permissions.rs", "sam-storage/src/lib.rs"]
+tests = ["a_complete_configuration_file_loads_every_setting", "settings_change_by_key_and_old_theme_names_are_migrated", "files_from_a_newer_sam_are_never_overwritten", "access_from_bool_and_str", "old_profiles_with_removed_options_still_load", "permissions_saved_as_toml_load_back_unchanged", "old_extra_backend_args_still_load", "presets_in_the_older_flat_format_still_load", "old_formats_are_migrated_and_kept", "newer_formats_are_left_untouched", "damaged_files_are_moved_aside_and_reported", "mangled_files_never_crash"]
+
+[[function]]
+id = 39
+area = "I"
+internal = true
+promise = "SAM's parts stay cleanly separated: the window reaches the core only through the command line, and the parts that handle untrusted content never depend on the higher ones."
+code = ["sam-jail-cli/tests/architecture.rs", "docs/architecture.md"]
+tests = ["the_permission_model_depends_on_no_other_part", "the_window_reaches_sam_only_through_the_command_line", "lower_parts_never_depend_on_higher_ones", "the_sandbox_builder_depends_only_on_the_permission_model", "the_component_diagram_shows_the_real_dependencies", "version_reports_the_json_interface"]

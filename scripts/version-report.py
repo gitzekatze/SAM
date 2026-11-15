@@ -250,6 +250,7 @@ def main():
     print(f"wrote {outdir / name}.md and .json", file=sys.stderr)
     # The development dashboard shows the latest report.
     if outdir == ROOT / "docs" / "reports":
+        sh(["python3", "-I", str(ROOT / "scripts" / "function-map.py")])
         sh(["python3", "-I", str(ROOT / "scripts" / "dashboard.py")])
     return 1 if any(t.get("result") == "FAILED" for t in tests) else 0
 

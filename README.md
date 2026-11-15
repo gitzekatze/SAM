@@ -271,6 +271,7 @@ AppImage.
 | [Packaging](docs/packaging.md) | building packages and the AppImage |
 | [JSON interface](docs/json-interface.md) | scripts: the `--json` output of every command |
 | [Development dashboard](DEVELOPMENT.md) | developers: the current state, every test, the version reports and the latest commits |
+| [Functions and their proofs](docs/functions.md) | everyone who wants to check a promise: every function of SAM with the tests that prove it |
 | [Threat model](docs/threat-model.md) | what SAM protects, against whom, how, and where that ends |
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |

@@ -53,8 +53,11 @@ test:
 	$(CARGO) test --workspace --locked
 
 # The catalog of all tests (docs/test-library.md).
+# The generated pages about the tests: the test library and the function
+# map (docs/functions.md). Run after adding, moving or renaming tests.
 test-library:
 	python3 scripts/test-library.py
+	python3 scripts/function-map.py
 
 # The version report (docs/reports/): tests, line coverage and timings per
 # part, the dependencies between the parts, and the differences to the
