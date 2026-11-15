@@ -110,8 +110,12 @@ impl Backend {
         if input.is_some() {
             flags |= gio::SubprocessFlags::STDIN_PIPE;
         }
-        let proc = gio::Subprocess::newv(&argv_ref, flags)
-            .map_err(|e| CliError::coded("cli-not-started", format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e)))?;
+        let proc = gio::Subprocess::newv(&argv_ref, flags).map_err(|e| {
+            CliError::coded(
+                "cli-not-started",
+                crate::i18n::trf("Could not start {program}: {error}. Is SAM installed correctly?", &[("program", &self.cli.display()), ("error", &e)]),
+            )
+        })?;
         if let (Some(text), Some(stdin)) = (input, proc.stdin_pipe()) {
             let _ = stdin.write_all_future(text.into_bytes(), glib::Priority::DEFAULT).await;
             let _ = stdin.close_future(glib::Priority::DEFAULT).await;
@@ -153,7 +157,7 @@ impl Backend {
             return r;
         }
         let err = errors.borrow().trim().to_string();
-        Err(CliError::from(if err.is_empty() { "No response from the sam-jail command line tool.".to_string() } else { err }))
+        Err(CliError::from(if err.is_empty() { crate::i18n::tr("No response from the sam-jail command line tool.") } else { err }))
     }
 
     async fn call_inner(&self, args: &[&str], input: Option<String>) -> Reply {
@@ -164,15 +168,19 @@ impl Backend {
         if input.is_some() {
             flags |= gio::SubprocessFlags::STDIN_PIPE;
         }
-        let proc = gio::Subprocess::newv(&argv_ref, flags)
-            .map_err(|e| CliError::coded("cli-not-started", format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e)))?;
+        let proc = gio::Subprocess::newv(&argv_ref, flags).map_err(|e| {
+            CliError::coded(
+                "cli-not-started",
+                crate::i18n::trf("Could not start {program}: {error}. Is SAM installed correctly?", &[("program", &self.cli.display()), ("error", &e)]),
+            )
+        })?;
         let (out, err) = proc.communicate_utf8_future(input).await.map_err(|e| format!("sam-jail failed: {e}"))?;
         let out = out.map(|s| s.to_string()).unwrap_or_default();
         if let Some(r) = envelope(&out) {
             return r;
         }
         let err = err.map(|s| s.trim().to_string()).unwrap_or_default();
-        Err(CliError::from(if err.is_empty() { "No response from the sam-jail command line tool.".to_string() } else { err }))
+        Err(CliError::from(if err.is_empty() { crate::i18n::tr("No response from the sam-jail command line tool.") } else { err }))
     }
 
     /// Starts an app in its sandbox. The app keeps running when SAM closes;

@@ -164,9 +164,9 @@ pub fn risk_items(risk: &Value) -> Vec<(String, String)> {
 pub fn risk_tooltip(risk: &Value) -> String {
     let items = risk_items(risk);
     if items.is_empty() {
-        return "Low risk: the app only gets harmless basics such as fonts, its own window and the folders you share read-only.".into();
+        return crate::i18n::tr("Low risk: the app only gets harmless basics such as fonts, its own window and the folders you share read-only.");
     }
-    let mut lines = vec!["The risk is set by the riskiest permission:".to_string()];
+    let mut lines = vec![crate::i18n::tr("The risk is set by the riskiest permission:")];
     for lvl in ["dangerous", "high", "medium"] {
         let names: Vec<&str> = items.iter().filter(|(_, l)| l == lvl).map(|(t, _)| t.as_str()).collect();
         if !names.is_empty() {

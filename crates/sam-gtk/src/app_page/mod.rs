@@ -299,7 +299,7 @@ impl AppPage {
         let log_drop = gtk::DropDown::from_strings(&["No logs yet"]);
         log_drop.set_valign(gtk::Align::Center);
         log_drop.set_widget_name("log-picker");
-        log_drop.set_tooltip_text(Some("Which log to show"));
+        log_drop.set_tooltip_text(Some(&crate::i18n::tr("Which log to show")));
         log_buttons.append(&log_drop);
         log_buttons.append(&refresh_log);
         log_buttons.append(&copy_log);
@@ -528,7 +528,7 @@ fn framed(v: &gtk::TextView, height: i32) -> gtk::Widget {
 }
 
 /// "May not start": what SAM's analysis found, in words, for the header label.
-fn compat_risk_label(entry: Option<&Value>) -> (&'static str, &'static str, String) {
+fn compat_risk_label(entry: Option<&Value>) -> (String, &'static str, String) {
     let det = entry.and_then(|e| e.get("detection")).cloned().unwrap_or_default();
     let likely_broken = util::str_of(&det, "compatibility") == "likely-broken";
     // The warnings that set the label (not notices about optional features).
@@ -540,12 +540,13 @@ fn compat_risk_label(entry: Option<&Value>) -> (&'static str, &'static str, Stri
         .filter(|w| util::str_of(w, "severity") != "info" && !util::str_of(w, "code").starts_with("feature-"))
         .map(|w| util::str_of(w, "message").to_string())
         .collect();
-    let mut tip = if found.is_empty() { "SAM's analysis found possible problems.".to_string() } else { found.join(" ") };
-    tip.push_str(" Just launch it: if it starts, this label goes away. If not, see Troubleshooting below.");
+    let mut tip = if found.is_empty() { crate::i18n::tr("SAM's analysis found possible problems.") } else { found.join(" ") };
+    tip.push(' ');
+    tip.push_str(&crate::i18n::tr("Just launch it: if it starts, this label goes away. If not, see Troubleshooting below."));
     if likely_broken {
-        ("Likely won't start", "bad", tip)
+        (crate::i18n::tr("Likely won't start"), "bad", tip)
     } else {
-        ("May not start", "warn", tip)
+        (crate::i18n::tr("May not start"), "warn", tip)
     }
 }
 

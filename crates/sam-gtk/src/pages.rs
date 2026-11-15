@@ -2,7 +2,7 @@
 //! SAM's own pages in the right column: preferences, the user's own
 //! presets (with the preset editor) and diagnostics.
 
-use crate::i18n::tr;
+use crate::i18n::{n_, tr};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -41,10 +41,12 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
         g.add(&row);
     };
     let choice = |g: &adw::PreferencesGroup, key: &'static str, title: &str, opts: &'static [(&'static str, &'static str)]| {
-        let labels: Vec<&str> = opts.iter().map(|o| o.1).collect();
+        // Titles and option names are marked with n_ and translated here.
+        let labels: Vec<String> = opts.iter().map(|o| tr(o.1)).collect();
+        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         let cur = util::str_of(&cfg, key);
         let row = adw::ComboRow::builder()
-            .title(esc(title))
+            .title(esc(&tr(title)))
             .model(&gtk::StringList::new(&labels))
             .selected(opts.iter().position(|o| o.0 == cur).unwrap_or(0) as u32)
             .build();
@@ -84,40 +86,42 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     };
 
     let g = adw::PreferencesGroup::builder().title(tr("Appearance")).build();
-    choice(&g, "general.theme", "Style", &[("system", "Follow system"), ("light", "Light"), ("dark", "Dark")]);
+    const THEMES: &[(&str, &str)] = &[("system", n_("Follow system")), ("light", n_("Light")), ("dark", n_("Dark"))];
+    choice(&g, "general.theme", n_("Style"), THEMES);
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Menu Entries")).build();
     switch(
         &g,
         "general.desktop_integration",
-        "Create menu entries",
-        "Sandboxed apps appear in your application menu and always start through SAM. AppImage locations are managed in the left column.",
+        &crate::i18n::tr("Create menu entries"),
+        &crate::i18n::tr("Sandboxed apps appear in your application menu and always start through SAM. AppImage locations are managed in the left column."),
     );
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Repair")).build();
-    choice(&g, "compatibility.behavior", "Compatibility mode", &[("ask", "Offer in repair options"), ("never", "Never offer")]);
+    const COMPAT: &[(&str, &str)] = &[("ask", n_("Offer in repair options")), ("never", n_("Never offer"))];
+    choice(&g, "compatibility.behavior", n_("Compatibility mode"), COMPAT);
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Warnings")).build();
     switch(&g, "security.warn_x11", "Warn about X11 access", "");
-    switch(&g, "security.warn_full_home", "Warn about full home access", "");
+    switch(&g, "security.warn_full_home", &crate::i18n::tr("Warn about full home access"), "");
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Kernel Security Features")).description(tr("Extra layers inside every sandbox.")).build();
-    switch(&g, "security.experimental_landlock", "Landlock write protection", "Kernel-enforced write restrictions inside the sandbox. Also blocks connections to abstract sockets outside the sandbox (such as XWayland's). Skipped on kernels without Landlock.");
-    switch(&g, "security.baseline_seccomp", "Baseline syscall filter", "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Individual apps can turn it off in their repair steps.");
+    switch(&g, "security.experimental_landlock", &crate::i18n::tr("Landlock write protection"), &crate::i18n::tr("Kernel-enforced write restrictions inside the sandbox. Also blocks connections to abstract sockets outside the sandbox (such as XWayland's). Skipped on kernels without Landlock."));
+    switch(&g, "security.baseline_seccomp", &crate::i18n::tr("Baseline syscall filter"), &crate::i18n::tr("Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Individual apps can turn it off in their repair steps."));
     switch(
         &g,
         "security.experimental_seccomp",
-        "Allow strict syscall filters (experimental)",
-        "Lets apps use the strict syscall filter from their Advanced settings. Can break apps.",
+        &crate::i18n::tr("Allow strict syscall filters (experimental)"),
+        &crate::i18n::tr("Lets apps use the strict syscall filter from their Advanced settings. Can break apps."),
     );
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Sandbox Check")).build();
-    switch(&g, "security.check_before_launch", "Check the sandbox before each start", "Confirms that every setting applies before an app starts. Runs only when its settings, SAM or this computer changed since the last passing check, and takes about a second. A failed check stops the start.");
+    switch(&g, "security.check_before_launch", &crate::i18n::tr("Check the sandbox before each start"), &crate::i18n::tr("Confirms that every setting applies before an app starts. Runs only when its settings, SAM or this computer changed since the last passing check, and takes about a second. A failed check stops the start."));
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder()
@@ -127,8 +131,8 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     switch(
         &g,
         "updates.check_on_start",
-        "Check for updates when SAM opens",
-        "At most once a day, for every sandboxed app. Otherwise only when you click Check on an app's page.",
+        &crate::i18n::tr("Check for updates when SAM opens"),
+        &crate::i18n::tr("At most once a day, for every sandboxed app. Otherwise only when you click Check on an app's page."),
     );
     pref.add(&g);
 
@@ -136,20 +140,20 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     switch(
         &g,
         "dependencies.static_analysis",
-        "Analyze AppImages when creating a sandbox",
-        "Inspects the bundled programs and libraries without running them.",
+        &crate::i18n::tr("Analyze AppImages when creating a sandbox"),
+        &crate::i18n::tr("Inspects the bundled programs and libraries without running them."),
     );
     switch(
         &g,
         "dependencies.dynamic_fallback",
-        "Allow diagnostic runs",
-        "Run an app once under strace to find missing resources (app → Troubleshooting → Diagnose missing resources).",
+        &crate::i18n::tr("Allow diagnostic runs"),
+        &crate::i18n::tr("Run an app once under strace to find missing resources (app → Troubleshooting → Diagnose missing resources)."),
     );
     switch(
         &g,
         "dependencies.automatic_low_risk_fixes",
-        "Apply low-risk fixes automatically",
-        "Read-only system data such as fonts or themes found during a diagnostic run is granted without asking.",
+        &crate::i18n::tr("Apply low-risk fixes automatically"),
+        &crate::i18n::tr("Read-only system data such as fonts or themes found during a diagnostic run is granted without asking."),
     );
     pref.add(&g);
 
@@ -210,21 +214,21 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     }
     reset.connect_clicked(move |_| set_loc(String::new()));
     g.add(&row);
-    switch(&g, "extraction.cleanup_stale", "Clean up stale extractions", "");
+    switch(&g, "extraction.cleanup_stale", &crate::i18n::tr("Clean up stale extractions"), "");
     switch(
         &g,
         "extraction.allow_fallback",
-        "Offer the AppImage's own extractor as fallback",
-        "Only used after asking you, and only inside a restricted sandbox.",
+        &crate::i18n::tr("Offer the AppImage's own extractor as fallback"),
+        &crate::i18n::tr("Only used after asking you, and only inside a restricted sandbox."),
     );
-    number(&g, "extraction.max_size_mb", "Maximum extracted size (MiB)", 64.0, 1048576.0, 256.0);
-    number(&g, "extraction.max_files", "Maximum number of files", 1000.0, 10000000.0, 10000.0);
-    number(&g, "extraction.max_seconds", "Maximum extraction time (s)", 10.0, 7200.0, 30.0);
+    number(&g, "extraction.max_size_mb", &crate::i18n::tr("Maximum extracted size (MiB)"), 64.0, 1048576.0, 256.0);
+    number(&g, "extraction.max_files", &crate::i18n::tr("Maximum number of files"), 1000.0, 10000000.0, 10000.0);
+    number(&g, "extraction.max_seconds", &crate::i18n::tr("Maximum extraction time (s)"), 10.0, 7200.0, 30.0);
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Diagnostics")).build();
     switch(&g, "diagnostics.verbose_logging", "Verbose logging", "");
-    number(&g, "diagnostics.keep_logs", "Launch logs to keep per app", 1.0, 500.0, 1.0);
+    number(&g, "diagnostics.keep_logs", &crate::i18n::tr("Launch logs to keep per app"), 1.0, 500.0, 1.0);
     pref.add(&g);
     page
 }
@@ -439,7 +443,14 @@ impl Presets {
         let name = self.name(i);
         let me = self.clone();
         glib::spawn_future_local(async move {
-            if window::confirm(&app.window, &format!("Delete “{name}”?"), "Apps that use this preset keep their current permissions.", "Delete", true).await
+            if window::confirm(
+                &app.window,
+                &format!("Delete “{name}”?"),
+                &crate::i18n::tr("Apps that use this preset keep their current permissions."),
+                "Delete",
+                true,
+            )
+            .await
             {
                 if let Err(e) = app.backend.call(&["preset", "delete", &name], None).await {
                     app.report_error(&e);
@@ -619,7 +630,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         maint.add(&row);
     };
     button(
-        "Check all AppImages for changes",
+        &crate::i18n::tr("Check all AppImages for changes"),
         "view-refresh-symbolic",
         Box::new(|app| {
             glib::spawn_future_local(async move {
@@ -630,14 +641,14 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                     app.toast(&if n > 0 {
                         crate::i18n::trn("{n} app changed or is missing.", "{n} apps changed or are missing.", n as u64, &[])
                     } else {
-                        "All AppImages are unchanged".into()
+                        crate::i18n::tr("All AppImages are unchanged")
                     });
                 }
             });
         }),
     );
     button(
-        "Remove unused extractions",
+        &crate::i18n::tr("Remove unused extractions"),
         "edit-clear-all-symbolic",
         Box::new(|app| {
             glib::spawn_future_local(async move {
@@ -667,7 +678,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                     })
                     .collect();
                 row.set_subtitle(&esc(&if apps.is_empty() {
-                    "No sandboxed apps.".to_string()
+                    crate::i18n::tr("No sandboxed apps.")
                 } else {
                     format!("{} for {} app(s). Largest: {}. Free space from an app's page → Details.", glib::format_size(total), apps.len(), top.join(", "))
                 }));
@@ -692,7 +703,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                         let n = r.get("apps").and_then(Value::as_array).map(Vec::len).unwrap_or(0);
                         let total = util::get(&r, "total").and_then(Value::as_u64).unwrap_or(0);
                         row.set_subtitle(&if n == 0 {
-                            "Nothing left behind.".to_string()
+                            crate::i18n::tr("Nothing left behind.")
                         } else {
                             format!(
                                 "Settings and files of {n} app(s) whose sandbox was removed: {}. A new sandbox for the same AppImage would use them again.",
@@ -716,7 +727,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
             if !window::confirm(
                 &app.window,
                 "Delete Data of Removed Sandboxes?",
-                "The settings, logins and saved files of apps whose sandbox was removed are deleted. This cannot be undone.",
+                &crate::i18n::tr("The settings, logins and saved files of apps whose sandbox was removed are deleted. This cannot be undone."),
                 "Delete",
                 true,
             )

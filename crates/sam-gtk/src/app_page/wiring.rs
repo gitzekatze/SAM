@@ -151,7 +151,7 @@ impl AppPage {
             let on = sw.is_active();
             me.simple(
                 vec!["desktop".into(), me.app_id.clone(), if on { "install".into() } else { "remove".into() }],
-                if on { "Menu entry added" } else { "Menu entry removed" },
+                &if on { crate::i18n::tr("Menu entry added") } else { crate::i18n::tr("Menu entry removed") },
             );
         });
         let w = Rc::downgrade(self);
@@ -164,7 +164,7 @@ impl AppPage {
             if me.sandboxed() {
                 me.simple_with(
                     vec!["menu".into(), if on { "hide".into() } else { "restore".into() }, me.app_id.clone()],
-                    if on { "Other menu entries hidden" } else { "Other menu entries restored" },
+                    &if on { crate::i18n::tr("Other menu entries hidden") } else { crate::i18n::tr("Other menu entries restored") },
                     true,
                 );
             } else {
@@ -199,7 +199,7 @@ impl AppPage {
         }
         self.check_button.set_sensitive(false);
         self.check_summary.set_title("Testing…");
-        self.check_summary.set_subtitle("Starting the sandbox with SAM's test program, then the app itself for a few seconds.");
+        self.check_summary.set_subtitle(&crate::i18n::tr("Starting the sandbox with SAM's test program, then the app itself for a few seconds."));
         let me = self.clone();
         glib::spawn_future_local(async move {
             let reply = if sandboxed {
@@ -225,9 +225,9 @@ impl AppPage {
                         None
                     };
                     app.toast(&match (failed, started) {
-                        (0, Some(true)) => "Test passed: every setting applies, and the app started".to_string(),
-                        (0, Some(false)) => "Every setting applies, but the app did not keep running; see Test below".to_string(),
-                        (0, None) => "Test passed: every setting applies".to_string(),
+                        (0, Some(true)) => crate::i18n::tr("Test passed: every setting applies, and the app started"),
+                        (0, Some(false)) => crate::i18n::tr("Every setting applies, but the app did not keep running; see Test below"),
+                        (0, None) => crate::i18n::tr("Test passed: every setting applies"),
                         (n, _) => crate::i18n::trn(
                             "Test: {n} setting does not apply; see Test below.",
                             "Test: {n} settings do not apply; see Test below.",
@@ -259,9 +259,9 @@ impl AppPage {
         }
         let sandboxed = self.entry().is_some();
         self.check_button.set_sensitive(sandboxed);
-        self.check_group.set_description(Some("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed. Use the Test button at the top; it also starts the app for a few seconds."));
+        self.check_group.set_description(Some(&crate::i18n::tr("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed. Use the Test button at the top; it also starts the app for a few seconds.")));
         if !sandboxed {
-            self.check_summary.set_title("Not tested yet");
+            self.check_summary.set_title(&crate::i18n::tr("Not tested yet"));
             self.check_summary.set_subtitle("");
             set_badge_visible(&self.check_badge, false);
             return;
@@ -270,11 +270,12 @@ impl AppPage {
         let current = self.info.borrow().as_ref().is_some_and(|i| util::bool_of(i, "check_current"));
         match &rec {
             None => {
-                self.check_summary.set_title("Not tested yet");
-                self.check_summary.set_subtitle("Test that the sandbox gives the app exactly what its settings say, and that the app starts.");
+                self.check_summary.set_title(&crate::i18n::tr("Not tested yet"));
+                self.check_summary
+                    .set_subtitle(&crate::i18n::tr("Test that the sandbox gives the app exactly what its settings say, and that the app starts."));
                 set_badge_visible(&self.check_badge, true);
-                util::set_badge(&self.check_badge, "Not tested yet", "neutral");
-                self.check_badge.set_tooltip_text(Some("Press Test to confirm that every setting applies and that the app starts"));
+                util::set_badge(&self.check_badge, &crate::i18n::tr("Not tested yet"), "neutral");
+                self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("Press Test to confirm that every setting applies and that the app starts")));
             }
             Some(r) => {
                 let passed = util::get(r, "passed").and_then(Value::as_u64).unwrap_or(0);
@@ -288,20 +289,21 @@ impl AppPage {
                         &[("when", &when)],
                     )));
                     set_badge_visible(&self.check_badge, true);
-                    util::set_badge(&self.check_badge, "Test out of date", "warn");
-                    self.check_badge.set_tooltip_text(Some("The settings, SAM or this computer changed since the last test; press Test again"));
+                    util::set_badge(&self.check_badge, &crate::i18n::tr("Test out of date"), "warn");
+                    self.check_badge
+                        .set_tooltip_text(Some(&crate::i18n::tr("The settings, SAM or this computer changed since the last test; press Test again")));
                 } else if failed.is_empty() {
                     self.check_summary.set_title(&format!("All {total} settings apply"));
                     self.check_summary.set_subtitle(&esc(&format!("Tested {when}.")));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, &format!("Tested {when}"), "good");
-                    self.check_badge.set_tooltip_text(Some("The test confirmed that every setting applies; see Test below"));
+                    self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("The test confirmed that every setting applies; see Test below")));
                 } else {
                     self.check_summary.set_title(&format!("{} of {total} checks failed", failed.len()));
                     self.check_summary.set_subtitle(&esc(&format!("Not applied: {}. Tested {when}.", failed.join(", "))));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, "Test failed", "bad");
-                    self.check_badge.set_tooltip_text(Some("The test found settings that do not apply; see Test below"));
+                    self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("The test found settings that do not apply; see Test below")));
                 }
             }
         }
@@ -309,7 +311,7 @@ impl AppPage {
         if let Some(r) = self.test_result.borrow().clone() {
             let ok = util::str_of(&r, "status") == "ok";
             let row = adw::ActionRow::builder()
-                .title(if ok { "The app started and kept running" } else { "The app did not keep running" })
+                .title(&if ok { crate::i18n::tr("The app started and kept running") } else { crate::i18n::tr("The app did not keep running") })
                 .subtitle(esc(util::str_of(&r, "detail")))
                 .build();
             let img = gtk::Image::from_icon_name(if ok { "object-select-symbolic" } else { "dialog-error-symbolic" });
@@ -328,18 +330,18 @@ impl AppPage {
     pub(super) fn render_check_preview(self: &Rc<Self>) {
         let pending = self.pending.borrow().clone();
         self.check_button.set_sensitive(pending.is_some());
-        self.check_group.set_description(Some("Starts the sandbox this AppImage would get with a test program and confirms from inside that every setting below really applies. The AppImage is not unpacked or run. Use the Test button at the top; it also starts the app for a few seconds."));
+        self.check_group.set_description(Some(&crate::i18n::tr("Starts the sandbox this AppImage would get with a test program and confirms from inside that every setting below really applies. The AppImage is not unpacked or run. Use the Test button at the top; it also starts the app for a few seconds.")));
         let report = self.check_report.borrow().clone();
         let current = report.is_some() && *self.check_settings.borrow() == pending;
         match report.as_ref() {
             None => {
-                self.check_summary.set_title("Not tested yet");
-                self.check_summary.set_subtitle("You can test the settings before you create the sandbox.");
+                self.check_summary.set_title(&crate::i18n::tr("Not tested yet"));
+                self.check_summary.set_subtitle(&crate::i18n::tr("You can test the settings before you create the sandbox."));
                 set_badge_visible(&self.check_badge, false);
             }
             Some(_) if !current => {
                 self.check_summary.set_title("Out of date");
-                self.check_summary.set_subtitle("The settings changed since the last check. Check again.");
+                self.check_summary.set_subtitle(&crate::i18n::tr("The settings changed since the last check. Check again."));
                 set_badge_visible(&self.check_badge, false);
             }
             Some(r) => {
@@ -349,16 +351,17 @@ impl AppPage {
                 let total = results.iter().filter(|x| matches!(util::get(x, "ok"), Some(Value::Bool(_)))).count();
                 if failed.is_empty() {
                     self.check_summary.set_title(&format!("All {total} checks passed"));
-                    self.check_summary.set_subtitle("Every setting below applies. Not stored: the sandbox does not exist yet.");
+                    self.check_summary.set_subtitle(&crate::i18n::tr("Every setting below applies. Not stored: the sandbox does not exist yet."));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, "Checked", "good");
-                    self.check_badge.set_tooltip_text(Some("The sandbox check confirmed that every setting applies; see Sandbox Check below"));
+                    self.check_badge
+                        .set_tooltip_text(Some(&crate::i18n::tr("The sandbox check confirmed that every setting applies; see Sandbox Check below")));
                 } else {
                     self.check_summary.set_title(&format!("{} of {total} checks failed", failed.len()));
                     self.check_summary.set_subtitle(&esc(&format!("Not applied: {}.", failed.join(", "))));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, "Check failed", "bad");
-                    self.check_badge.set_tooltip_text(Some("The sandbox check found settings that do not apply; see Sandbox Check below"));
+                    self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("The sandbox check found settings that do not apply; see Sandbox Check below")));
                 }
             }
         }
@@ -436,14 +439,18 @@ impl AppPage {
             if on && !window::confirm(
                 &app.window,
                 "Turn On Compatibility Mode?",
-                "The app gets broad access: the network, the whole session bus, all of /usr, X11, the GPU and sound. Use it when nothing else helps.\n\nYour current settings are remembered and come back when you turn it off.",
+                &crate::i18n::tr("The app gets broad access: the network, the whole session bus, all of /usr, X11, the GPU and sound. Use it when nothing else helps.\n\nYour current settings are remembered and come back when you turn it off."),
                 "Turn On",
                 true,
             ).await {
                 return;
             }
             match app.backend.call(&["compat", &me.app_id, if on { "on" } else { "off" }], None).await {
-                Ok(_) => app.toast(if on { "Compatibility mode on" } else { "Compatibility mode off: your previous settings are back" }),
+                Ok(_) => app.toast(&if on {
+                    crate::i18n::tr("Compatibility mode on")
+                } else {
+                    crate::i18n::tr("Compatibility mode off: your previous settings are back")
+                }),
                 Err(e) => app.report_error(&e),
             }
             me.reload();
@@ -480,7 +487,9 @@ impl AppPage {
                 && !window::confirm(
                     &app.window,
                     &format!("Replace “{name}”?"),
-                    "A preset with this name exists. Its settings are replaced by the ones shown here. Apps that used it keep their current settings.",
+                    &crate::i18n::tr(
+                        "A preset with this name exists. Its settings are replaced by the ones shown here. Apps that used it keep their current settings.",
+                    ),
                     "Replace",
                     true,
                 )
@@ -490,7 +499,7 @@ impl AppPage {
             }
             let preset = serde_json::json!({
                 "name": name,
-                "description": format!("Saved from {app_name}"),
+                "description": crate::i18n::trf("Saved from {app}", &[("app", &app_name)]),
                 "permissions": perms,
                 "risk": "low",
                 "created_at": 0,

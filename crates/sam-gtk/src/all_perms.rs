@@ -60,9 +60,9 @@ const ICONS_WIDTH: i32 = 56;
 const CONTROL_WIDTH: i32 = 148;
 
 const STATUS: &[(&str, &str, &str)] = &[
-    ("running", "Running", "Show only apps that are running now"),
-    ("needs_review", "Needs review", "Show only apps whose settings nobody has confirmed yet"),
-    ("may_not_start", "May not start", "Show only apps whose last start failed or whose AppImage is missing"),
+    ("running", crate::i18n::n_("Running"), crate::i18n::n_("Show only apps that are running now")),
+    ("needs_review", crate::i18n::n_("Needs review"), crate::i18n::n_("Show only apps whose settings nobody has confirmed yet")),
+    ("may_not_start", crate::i18n::n_("May not start"), crate::i18n::n_("Show only apps whose last start failed or whose AppImage is missing")),
 ];
 
 pub struct PermsPage {
@@ -560,7 +560,7 @@ impl PermsPage {
             let tag_text: Vec<&str> = list.iter().map(|t| util::str_of(t, "label")).collect();
             row.update_property(&[gtk::accessible::Property::Label(&format!(
                 "{name}: {}",
-                if tag_text.is_empty() { "no extra access".into() } else { tag_text.join(", ") }
+                if tag_text.is_empty() { crate::i18n::tr("no extra access") } else { tag_text.join(", ") }
             ))]);
             let w = Rc::downgrade(self);
             let cid = id.clone();
@@ -617,9 +617,9 @@ impl PermsPage {
         self.select_all.set_inconsistent(n_shown_sel > 0 && n_shown_sel < shown.len());
         let filtered = !(self.tag_filter.borrow().is_empty() && self.status_filter.borrow().is_empty() && self.search.borrow().is_empty());
         self.select_all.set_label(Some(&match (shown.len(), filtered) {
-            (1, _) => "Select this app".to_string(),
-            (n, false) => format!("Select all {n} apps"),
-            (n, true) => format!("Select all {n} apps shown"),
+            (1, _) => crate::i18n::tr("Select this app"),
+            (n, false) => crate::i18n::trn("Select the {n} app", "Select all {n} apps", n as u64, &[]),
+            (n, true) => crate::i18n::trn("Select the {n} app shown", "Select all {n} apps shown", n as u64, &[]),
         }));
         self.select_all.set_sensitive(!shown.is_empty());
         self.count.set_label(&match sel.len() {
@@ -758,7 +758,16 @@ impl PermsPage {
     fn value_row(self: &Rc<Self>, key: &'static str, ptitle: &str, tip: &str, opts: Opts, tok: &str, members: &[Value], total: usize) -> adw::ExpanderRow {
         let n = members.len();
         let vlabel = opt_label(opts, tok);
-        let subtitle = if n == total { format!("{vlabel} for all {n} selected apps") } else { format!("{vlabel} for {n} of the {total} selected apps") };
+        let subtitle = if n == total {
+            crate::i18n::trn("{value} for the {n} selected app", "{value} for all {n} selected apps", n as u64, &[("value", &vlabel)])
+        } else {
+            crate::i18n::trn(
+                "{value} for {done} of the {n} selected app",
+                "{value} for {done} of the {n} selected apps",
+                total as u64,
+                &[("value", &vlabel), ("done", &n)],
+            )
+        };
         // The title stays on one line (shortened with "…" when narrow); the
         // subtitle wraps.
         let row = adw::ExpanderRow::builder().title(esc(ptitle)).title_lines(1).subtitle(esc(&subtitle)).tooltip_text(tip).build();

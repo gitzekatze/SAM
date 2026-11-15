@@ -65,6 +65,12 @@ fn has_catalogs(dir: &Path) -> bool {
     std::fs::read_dir(dir).is_ok_and(|rd| rd.flatten().any(|l| l.path().join("LC_MESSAGES").join(format!("{DOMAIN}.mo")).is_file()))
 }
 
+/// Marks a text for translation where no translation can run, such as a
+/// constant table; it is translated with [`tr`] where it is shown.
+pub const fn n_(s: &'static str) -> &'static str {
+    s
+}
+
 /// The translation of `s`, or `s` itself.
 pub fn tr(s: &str) -> String {
     let (Ok(domain), Ok(id)) = (CString::new(DOMAIN), CString::new(s)) else { return s.to_string() };

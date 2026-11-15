@@ -590,7 +590,10 @@ impl App {
             b.append(&l);
             row.set_tooltip_text(Some(&util::plain(&util::tildify(&path))));
             let rm = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text(tr("Stop searching here")).valign(gtk::Align::Center).build();
-            rm.update_property(&[gtk::accessible::Property::Label(&format!("Stop searching {}", util::plain(&util::tildify(&path))))]);
+            rm.update_property(&[gtk::accessible::Property::Label(&crate::i18n::trf(
+                "Stop searching {folder}",
+                &[("folder", &util::plain(&util::tildify(&path)))],
+            ))]);
             rm.add_css_class("flat");
             rm.add_css_class("circular");
             let w = Rc::downgrade(self);
@@ -748,7 +751,7 @@ impl App {
         let filtered = !self.state.borrow().search.is_empty() || self.state.borrow().filter != "all";
         if filtered {
             sb.empty.set_title("No AppImages Match");
-            sb.empty.set_description(Some("Try another search or filter."));
+            sb.empty.set_description(Some(&crate::i18n::tr("Try another search or filter.")));
         } else {
             sb.empty.set_title("No AppImages Found");
             sb.empty.set_description(Some("Add a folder or a single AppImage file above, or drop an AppImage onto this window."));
@@ -926,7 +929,7 @@ impl App {
                     .application_name("SAM - Sandboxed AppImage Manager")
                     .application_icon("io.github.gitzekatze.SAM")
                     .version(env!("CARGO_PKG_VERSION"))
-                    .comments("Sandbox AppImages with Bubblewrap and manage their permissions, much like Flatseal does for Flatpak apps.")
+                    .comments(crate::i18n::tr("Sandbox AppImages with Bubblewrap and manage their permissions, much like Flatseal does for Flatpak apps."))
                     .website("https://github.com/gitzekatze/SAM")
                     .license_type(gtk::License::Gpl30)
                     .build();
@@ -1009,7 +1012,7 @@ impl App {
             if let Some(f) = new_files.first() {
                 me.open_file(f);
             } else if new_dirs.len() == 1 {
-                me.toast(&format!("Added the folder {}", util::plain(&util::tildify(&new_dirs[0]))));
+                me.toast(&crate::i18n::trf("Added the folder {folder}.", &[("folder", &util::plain(&util::tildify(&new_dirs[0])))]));
             }
         });
     }
@@ -1080,13 +1083,19 @@ impl App {
         let mut text = String::new();
         let removes = util::list_of(c, "removes_needed");
         if !removes.is_empty() {
-            text.push_str(&format!("This preset removes permissions the app likely needs: {}.\n\n", removes.join(", ")));
+            text.push_str(&format!(
+                "{}\n\n",
+                crate::i18n::trf("This preset removes permissions the app likely needs: {permissions}.", &[("permissions", &removes.join(", "))])
+            ));
         }
         let adds = util::list_of(c, "adds_dangerous");
         if !adds.is_empty() {
-            text.push_str(&format!("It adds high-risk permissions: {}.\n\n", adds.join(", ")));
+            text.push_str(&format!("{}\n\n", crate::i18n::trf("It adds high-risk permissions: {permissions}.", &[("permissions", &adds.join(", "))])));
         }
-        text.push_str(&format!("Risk changes from {} to {}.", util::str_of(c, "risk_before"), util::str_of(c, "risk_after")));
+        text.push_str(&crate::i18n::trf(
+            "The risk changes from {before} to {after}.",
+            &[("before", &util::str_of(c, "risk_before")), ("after", &util::str_of(c, "risk_after"))],
+        ));
         confirm(&self.window, &format!("Apply “{name}” Anyway?"), &text, "Apply", false).await
     }
 
@@ -1101,7 +1110,7 @@ impl App {
                 self.toast(&tr("Re-extracted"));
                 let pending = util::list_of(&r, "pending_changes");
                 if !pending.is_empty() {
-                    self.toast(&format!("The update likely needs: {}", pending.join(", ")));
+                    self.toast(&crate::i18n::trf("The update likely needs: {needs}", &[("needs", &pending.join(", "))]));
                 }
             }
             Err(e) => self.report_error(&e),
@@ -1177,7 +1186,7 @@ impl App {
                 self.report_error(e);
                 return;
             }
-            Err(_) => "an older version".to_string(),
+            Err(_) => crate::i18n::tr("an older version"),
         };
         let body = format!(
             "This window is SAM {} (interface {}), but the command line tool it uses, {}, is {found}.\n\nInstall matching versions of both, or point SAM_CLI at the right sam-jail. Until then, SAM may show wrong or missing information.",
@@ -1259,7 +1268,7 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
     let sub_text = if r.badge == "missing" {
         format!("File missing: {}", util::tildify(&r.path))
     } else if r.moved {
-        "Moved copy of a sandboxed app".to_string()
+        crate::i18n::tr("Moved copy of a sandboxed app")
     } else {
         // The file name; the full path is in the tooltip and on the right.
         r.path.rsplit('/').next().unwrap_or(&r.path).to_string()
@@ -1274,11 +1283,11 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
         let warn = gtk::Image::from_icon_name("dialog-warning-symbolic");
         warn.add_css_class("warning");
         warn.set_tooltip_text(Some(&if r.badge == "missing" {
-            "The AppImage file is missing".to_string()
+            crate::i18n::tr("The AppImage file is missing")
         } else if !r.problem.is_empty() {
-            format!("Didn't work last time: {}", util::plain(&r.problem))
+            crate::i18n::trf("Didn't work last time: {problem}", &[("problem", &util::plain(&r.problem))])
         } else {
-            "Has a menu entry that starts it without a sandbox".to_string()
+            crate::i18n::tr("Has a menu entry that starts it without a sandbox")
         }));
         b.append(&warn);
     }
@@ -1296,17 +1305,19 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
         (true, _) => ("Sandboxed", "good"),
     };
     let label = util::badge(text, tone);
-    label.set_tooltip_text(Some(match (r.sandboxed, r.badge.as_str()) {
-        (false, _) => "No sandbox yet",
-        (true, "changed-outside") => "Something other than SAM changed its settings; it does not start until you confirm them on its page",
-        (true, "needs-review") => "Look over its settings: SAM chose them automatically or the app asks for new access",
-        (true, "compatibility-mode") => "Compatibility mode is on: the app has broad access so that it works",
-        (true, "compatibility-risk") => "SAM's analysis found it may not start in its sandbox; this goes away after the first successful start",
-        (true, "unsafe") => "Its settings let it reach far outside its sandbox",
-        (true, "stale") => "The AppImage file changed since it was unpacked",
-        (true, "broken") => "The last start failed",
-        (true, "missing") => "The AppImage file is gone",
-        (true, _) => "Runs in its sandbox",
+    label.set_tooltip_text(Some(&match (r.sandboxed, r.badge.as_str()) {
+        (false, _) => crate::i18n::tr("No sandbox yet"),
+        (true, "changed-outside") => crate::i18n::tr("Something other than SAM changed its settings; it does not start until you confirm them on its page"),
+        (true, "needs-review") => crate::i18n::tr("Look over its settings: SAM chose them automatically or the app asks for new access"),
+        (true, "compatibility-mode") => crate::i18n::tr("Compatibility mode is on: the app has broad access so that it works"),
+        (true, "compatibility-risk") => {
+            crate::i18n::tr("SAM's analysis found it may not start in its sandbox; this goes away after the first successful start")
+        }
+        (true, "unsafe") => crate::i18n::tr("Its settings let it reach far outside its sandbox"),
+        (true, "stale") => crate::i18n::tr("The AppImage file changed since it was unpacked"),
+        (true, "broken") => crate::i18n::tr("The last start failed"),
+        (true, "missing") => crate::i18n::tr("The AppImage file is gone"),
+        (true, _) => crate::i18n::tr("Runs in its sandbox"),
     }));
     b.append(&label);
     row.set_child(Some(&b));

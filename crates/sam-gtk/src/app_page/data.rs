@@ -190,9 +190,9 @@ impl AppPage {
                         // SAM to unpack them itself: say so, it avoids the question.
                         let dwarfs = util::str_of(&r, "missing_tool") == "dwarfs";
                         let why = if dwarfs {
-                            format!("{} is packed in the newer DwarFS format. SAM can unpack it by itself once the dwarfs tools are installed (package \u{201c}dwarfs\u{201d}).", util::plain(&name))
+                            crate::i18n::trf("{app} is packed in the newer DwarFS format. SAM can unpack it by itself once the dwarfs tools are installed (package \u{201c}dwarfs\u{201d}).", &[("app", &util::plain(&name))])
                         } else {
-                            format!("SAM could not unpack {} by itself.", util::plain(&name))
+                            crate::i18n::trf("SAM could not unpack {app} by itself.", &[("app", &util::plain(&name))])
                         };
                         let body = crate::i18n::trf("{why}\n\nInstead, the AppImage can unpack itself. That runs code from the AppImage, inside a sandbox with no network and no access to your files. Only continue if you trust where this file came from.", &[("why", &why)]);
                         if window::confirm(&app.window, &tr("Let the AppImage Unpack Itself?"), &body, &tr("Unpack"), false).await {
@@ -200,7 +200,7 @@ impl AppPage {
                             app.open_app(&id);
                         }
                     } else {
-                        app.toast(&format!("Sandbox created for {}", util::plain(&name)));
+                        app.toast(&crate::i18n::trf("Sandbox created for {app}.", &[("app", &util::plain(&name))]));
                     }
                 }
                 Err(e) => app.report_error(&e),
@@ -220,35 +220,38 @@ impl AppPage {
             let body = if running {
                 crate::i18n::trf("{name} is running right now (maybe only in the system tray). It is closed first and gets the chance to save. Choose what to remove; the AppImage file itself is always kept.", &[("name", &name)])
             } else {
-                "Choose what to remove. The AppImage file itself is always kept, and any menu entry SAM hid is shown again when the sandbox goes.".to_string()
+                crate::i18n::tr(
+                    "Choose what to remove. The AppImage file itself is always kept, and any menu entry SAM hid is shown again when the sandbox goes.",
+                )
             };
-            let d = adw::AlertDialog::new(Some(&format!("Remove {name}?")), Some(&body));
+            let d = adw::AlertDialog::new(Some(&crate::i18n::trf("Remove {name}?", &[("name", &name)])), Some(&body));
+            // Each button text is a whole text: translations cannot be glued
+            // from pieces ("Close and" + the action).
             let choices = [
-                ("unpacked", "Only the unpacked copy", "Frees disk space. The sandbox and the app's settings stay; SAM unpacks the app again at its next start.", "Free Space"),
-                ("sandbox", "The sandbox, but keep the app's settings and files", "Removes the sandbox and SAM's menu entry. The app's private folder (logins, settings, saved files) stays, and a new sandbox for this AppImage picks it up again.", "Remove Sandbox"),
-                ("everything", "Everything", "Removes the sandbox and the app's private folder with its logins, settings and saved files.", "Delete Everything"),
+                ("unpacked", tr("Only the unpacked copy"), tr("Frees disk space. The sandbox and the app's settings stay; SAM unpacks the app again at its next start."), if running { tr("Close and Free Space") } else { tr("Free Space") }),
+                ("sandbox", tr("The sandbox, but keep the app's settings and files"), tr("Removes the sandbox and SAM's menu entry. The app's private folder (logins, settings, saved files) stays, and a new sandbox for this AppImage picks it up again."), if running { tr("Close and Remove the Sandbox") } else { tr("Remove Sandbox") }),
+                ("everything", tr("Everything"), tr("Removes the sandbox and the app's private folder with its logins, settings and saved files."), if running { tr("Close and Delete Everything") } else { tr("Delete Everything") }),
             ];
             let list = gtk::Box::new(gtk::Orientation::Vertical, 10);
             let mut first: Option<gtk::CheckButton> = None;
             let chosen = Rc::new(std::cell::RefCell::new(String::new()));
-            d.add_responses(&[("cancel", "Cancel"), ("ok", "Choose an option")]);
+            d.add_responses(&[("cancel", &tr("Cancel")), ("ok", &tr("Choose an option"))]);
             d.set_response_enabled("ok", false);
             for (key, title, detail, action) in choices {
                 let label = gtk::Label::builder()
-                    .label(format!("<b>{}</b>\n<small>{}</small>", esc(title), esc(detail)))
+                    .label(format!("<b>{}</b>\n<small>{}</small>", esc(&title), esc(&detail)))
                     .use_markup(true)
                     .wrap(true)
                     .xalign(0.0)
                     .build();
                 let b = gtk::CheckButton::builder().child(&label).name(format!("remove-{key}")).build();
-                b.update_property(&[gtk::accessible::Property::Label(title)]);
+                b.update_property(&[gtk::accessible::Property::Label(&title)]);
                 if let Some(f) = &first {
                     b.set_group(Some(f));
                 } else {
                     first = Some(b.clone());
                 }
                 let (d2, chosen) = (d.clone(), chosen.clone());
-                let action = if running { format!("Close and {action}") } else { action.to_string() };
                 b.connect_toggled(move |b| {
                     if b.is_active() {
                         *chosen.borrow_mut() = key.to_string();
@@ -295,7 +298,7 @@ impl AppPage {
                     app.toast(&if warnings.is_empty() {
                         crate::i18n::trf("Removed the sandbox for {name}.{kept}", &[("name", &name), ("kept", &kept)])
                     } else {
-                        format!("Removed the sandbox, but: {}", warnings.join("; "))
+                        crate::i18n::trf("The sandbox was removed, but: {problems}", &[("problems", &warnings.join("; "))])
                     });
                     let path = me.entry().map(|e| util::str_of(&e, "source_path").to_string()).unwrap_or_default();
                     app.refresh_apps().await;
@@ -323,19 +326,20 @@ impl AppPage {
     }
 
     /// Runs a command that changes the app, then reloads.
-    pub(super) fn simple(self: &Rc<Self>, args: Vec<String>, ok_text: &'static str) {
+    pub(super) fn simple(self: &Rc<Self>, args: Vec<String>, ok_text: &str) {
         self.simple_with(args, ok_text, false)
     }
 
     /// `full`: the change affects what is found on disk (menu entries),
     /// so every AppImage is looked at again.
-    pub(super) fn simple_with(self: &Rc<Self>, args: Vec<String>, ok_text: &'static str, full: bool) {
+    pub(super) fn simple_with(self: &Rc<Self>, args: Vec<String>, ok_text: &str, full: bool) {
         let Some(app) = self.app() else { return };
         let me = self.clone();
+        let ok_text = ok_text.to_string();
         glib::spawn_future_local(async move {
             let refs: Vec<&str> = args.iter().map(String::as_str).collect();
             match app.backend.call(&refs, None).await {
-                Ok(_) => app.toast(ok_text),
+                Ok(_) => app.toast(&ok_text),
                 Err(e) => app.report_error(&e),
             }
             me.reload();
@@ -392,8 +396,11 @@ impl AppPage {
         let me = self.clone();
         let button = button.clone();
         glib::spawn_future_local(async move {
-            let latest =
-                me.entry().map(|e| util::str_of(&e, "update.latest").to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| "the newest version".into());
+            let latest = me
+                .entry()
+                .map(|e| util::str_of(&e, "update.latest").to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| crate::i18n::tr("the newest version"));
             let body = format!(
                 "SAM downloads {} from the address the AppImage names, checks it against the published checksum, and puts it in place of the current file. The current version is kept, so you can go back. Settings and files stay.",
                 util::plain(&latest)

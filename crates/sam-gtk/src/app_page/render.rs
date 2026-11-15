@@ -116,27 +116,28 @@ impl AppPage {
         self.icon_slot.append(&window::app_icon(&icon, 64));
         if sandboxed {
             util::set_badge(&self.status_badge, "Sandboxed", "good");
-            self.status_badge.set_tooltip_text(Some("SAM runs this app in its sandbox, with exactly the access listed below"));
+            self.status_badge.set_tooltip_text(Some(&crate::i18n::tr("SAM runs this app in its sandbox, with exactly the access listed below")));
         } else {
             util::set_badge(&self.status_badge, "Not sandboxed", "neutral");
-            self.status_badge.set_tooltip_text(Some("No sandbox yet. Nothing has been unpacked or run; below are the settings SAM recommends"));
+            self.status_badge
+                .set_tooltip_text(Some(&crate::i18n::tr("No sandbox yet. Nothing has been unpacked or run; below are the settings SAM recommends")));
         }
         // Anything that needs attention, next to the status.
         let badge_state = summary.as_ref().map(|s| util::str_of(s, "badge").to_string()).unwrap_or_default();
         let state = match badge_state.as_str() {
-            "changed-outside" => Some(("Changed outside SAM", "bad", "Something other than SAM changed this app's settings; it does not start until you confirm them".to_string())),
-            "needs-review" => Some(("Needs review", "warn", "Look over the settings below; SAM chose them automatically or the app asks for new access".to_string())),
-            "compatibility-mode" => Some(("Compatibility mode", "warn", "Compatibility mode is on: so that the app works, it gets broad access (internet, the whole session bus, all of /usr, X11, GPU and sound). Turn it off under Launching → Compatibility mode once a narrower setting works; your previous settings come back".to_string())),
+            "changed-outside" => Some((crate::i18n::tr("Changed outside SAM"), "bad", crate::i18n::tr("Something other than SAM changed this app's settings; it does not start until you confirm them"))),
+            "needs-review" => Some((crate::i18n::tr("Needs review"), "warn", crate::i18n::tr("Look over the settings below; SAM chose them automatically or the app asks for new access"))),
+            "compatibility-mode" => Some((crate::i18n::tr("Compatibility mode"), "warn", crate::i18n::tr("Compatibility mode is on: so that the app works, it gets broad access (internet, the whole session bus, all of /usr, X11, GPU and sound). Turn it off under Launching → Compatibility mode once a narrower setting works; your previous settings come back"))),
             "compatibility-risk" => Some(compat_risk_label(entry.as_ref())),
-            "unsafe" => Some(("Unsafe", "danger", "These settings let the app reach far outside its sandbox".to_string())),
-            "stale" => Some(("AppImage changed", "warn", "The AppImage file changed since it was unpacked; SAM still runs the previous version until you update the sandbox".to_string())),
-            "broken" => Some(("Broken", "bad", "The last start failed; see Troubleshooting below".to_string())),
-            "missing" => Some(("File missing", "bad", "The AppImage file is gone; SAM can still run the unpacked copy".to_string())),
+            "unsafe" => Some((crate::i18n::tr("Unsafe"), "danger", crate::i18n::tr("These settings let the app reach far outside its sandbox"))),
+            "stale" => Some((crate::i18n::tr("AppImage changed"), "warn", crate::i18n::tr("The AppImage file changed since it was unpacked; SAM still runs the previous version until you update the sandbox"))),
+            "broken" => Some((crate::i18n::tr("Broken"), "bad", crate::i18n::tr("The last start failed; see Troubleshooting below"))),
+            "missing" => Some((crate::i18n::tr("File missing"), "bad", crate::i18n::tr("The AppImage file is gone; SAM can still run the unpacked copy"))),
             _ => None,
         };
         set_badge_visible(&self.state_badge, state.is_some());
         if let Some((t, tone, tip)) = state {
-            util::set_badge(&self.state_badge, t, tone);
+            util::set_badge(&self.state_badge, &t, tone);
             self.state_badge.set_tooltip_text(Some(&tip));
         }
         let selection = if sandboxed {
@@ -147,12 +148,12 @@ impl AppPage {
         let have_data = if sandboxed { info.is_some() } else { self.preview.borrow().is_some() };
         if have_data && selection.as_ref().is_none_or(Value::is_null) {
             util::set_badge(&self.sandbox_badge, "Sandbox unavailable", "bad");
-            self.sandbox_badge.set_tooltip_text(Some("Bubblewrap cannot run on this system; see Diagnostics"));
+            self.sandbox_badge.set_tooltip_text(Some(&crate::i18n::tr("Bubblewrap cannot run on this system; see Diagnostics")));
         } else {
             util::set_badge(&self.sandbox_badge, "Bubblewrap", "blue");
-            self.sandbox_badge.set_tooltip_text(Some(
+            self.sandbox_badge.set_tooltip_text(Some(&crate::i18n::tr(
                 "The sandbox technology: Bubblewrap gives the app its own view of the system with only the folders, devices and services allowed below",
-            ));
+            )));
         }
         if !sandboxed {
             self.set_tags(self.preview.borrow().as_ref());
@@ -163,11 +164,11 @@ impl AppPage {
         self.remove_button.set_visible(sandboxed);
         if sandboxed {
             self.main_button.set_child(Some(&button_content("media-playback-start-symbolic", "Launch")));
-            self.main_button.set_tooltip_text(Some("Start the app in its sandbox, with exactly the access listed below"));
+            self.main_button.set_tooltip_text(Some(&crate::i18n::tr("Start the app in its sandbox, with exactly the access listed below")));
             self.main_button.set_sensitive(summary.is_some() && badge != "missing");
         } else {
             self.main_button.set_child(Some(&button_content("security-high-symbolic", "Create Sandbox")));
-            self.main_button.set_tooltip_text(Some("Unpack the AppImage without running it and create its sandbox with the settings below"));
+            self.main_button.set_tooltip_text(Some(&crate::i18n::tr("Unpack the AppImage without running it and create its sandbox with the settings below")));
             self.main_button.set_sensitive(self.pending.borrow().is_some());
         }
 
@@ -237,9 +238,9 @@ impl AppPage {
             let badge = util::str_of(s, "badge");
             if ["stale", "broken", "missing"].contains(&badge) {
                 let text = match badge {
-                    "stale" => "The AppImage changed since it was extracted. Re-extract it to use the new version.".to_string(),
-                    "missing" => "The AppImage file is missing. Point SAM at its new location, or remove the sandbox.".to_string(),
-                    _ => util::plain(util::get(e, "last_error").and_then(Value::as_str).unwrap_or("This app cannot start.")),
+                    "stale" => crate::i18n::tr("The AppImage changed since it was extracted. Re-extract it to use the new version."),
+                    "missing" => crate::i18n::tr("The AppImage file is missing. Point SAM at its new location, or remove the sandbox."),
+                    _ => util::plain(util::get(e, "last_error").and_then(Value::as_str).unwrap_or(&crate::i18n::tr("This app cannot start."))),
                 };
                 let row = adw::ActionRow::builder().title(esc(&text)).build();
                 row.add_prefix(&status_icon(
@@ -274,7 +275,7 @@ impl AppPage {
                 let w = Rc::downgrade(self);
                 btn.connect_clicked(move |_| {
                     if let Some(me) = w.upgrade() {
-                        me.simple(vec!["review".into(), me.app_id.clone()], "Settings confirmed; the app starts again");
+                        me.simple(vec!["review".into(), me.app_id.clone()], &crate::i18n::tr("Settings confirmed; the app starts again"));
                     }
                 });
                 row.add_suffix(&btn);
@@ -292,7 +293,7 @@ impl AppPage {
                 let w = Rc::downgrade(self);
                 btn.connect_clicked(move |_| {
                     if let Some(me) = w.upgrade() {
-                        me.simple(vec!["review".into(), me.app_id.clone()], "Marked as reviewed");
+                        me.simple(vec!["review".into(), me.app_id.clone()], &crate::i18n::tr("Marked as reviewed"));
                     }
                 });
                 row.add_suffix(&btn);
@@ -300,7 +301,7 @@ impl AppPage {
             }
             if !pending.is_empty() {
                 let row = adw::ActionRow::builder()
-                    .title(esc(&format!("The updated AppImage likely needs: {}. Your settings were kept.", pending.join(", "))))
+                    .title(esc(&crate::i18n::trf("The updated AppImage likely needs: {needs}. Your settings were kept.", &[("needs", &pending.join(", "))])))
                     .build();
                 row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
                 let btn = gtk::Button::builder().label(tr("Got It")).valign(gtk::Align::Center).build();
@@ -378,10 +379,10 @@ impl AppPage {
     /// out before the sandbox exists).
     pub(super) fn render_launch_group(self: &Rc<Self>, entry: Option<&Value>, app: &Rc<App>) {
         let sandboxed = self.sandboxed() && entry.is_some();
-        self.launch_group.set_description(Some(if self.sandboxed() {
-            "How SAM starts this app."
+        self.launch_group.set_description(Some(&if self.sandboxed() {
+            crate::i18n::tr("How SAM starts this app.")
         } else {
-            "How SAM starts this app. Available once the sandbox exists."
+            crate::i18n::tr("How SAM starts this app. Available once the sandbox exists.")
         }));
         self.args_row.set_sensitive(sandboxed);
         while let Some(c) = self.args_chips.first_child() {
@@ -413,11 +414,14 @@ impl AppPage {
         // Name exactly the switches it turns on (or turned on).
         let changes = self.info.borrow().as_ref().map(|i| util::list_of(i, "compat_changes")).unwrap_or_default();
         let mut sub = match (on, changes.is_empty()) {
-            (_, true) => "Broad access for apps that work no other way. For these settings it changes nothing more.".to_string(),
-            (true, false) => format!("Turned on: {}. Each weakens the sandbox. Turning the mode off restores your previous settings.", changes.join(", ")),
-            (false, false) => format!(
-                "For apps that work no other way. Turns on: {}. Each weakens the sandbox. Turning it off again restores your settings.",
-                changes.join(", ")
+            (_, true) => crate::i18n::tr("Broad access for apps that work no other way. For these settings it changes nothing more."),
+            (true, false) => crate::i18n::trf(
+                "Turned on: {changes}. Each weakens the sandbox. Turning the mode off restores your previous settings.",
+                &[("changes", &changes.join(", "))],
+            ),
+            (false, false) => crate::i18n::trf(
+                "For apps that work no other way. Turns on: {changes}. Each weakens the sandbox. Turning it off again restores your settings.",
+                &[("changes", &changes.join(", "))],
             ),
         };
         if never && !on {
@@ -426,9 +430,9 @@ impl AppPage {
         self.compat_row.set_subtitle(&esc(&sub));
         let home = self.info.borrow().as_ref().map(|i| util::str_of(i, "private_home").to_string()).unwrap_or_default();
         self.files_row.set_visible(sandboxed);
-        self.files_row.set_subtitle(&esc(&format!(
-            "Settings and files the app saved outside the folders you granted stay in its private folder: {}",
-            util::tildify(&home)
+        self.files_row.set_subtitle(&esc(&crate::i18n::trf(
+            "Settings and files the app saved outside the folders you granted stay in its private folder: {folder}",
+            &[("folder", &util::tildify(&home))],
         )));
     }
 
@@ -441,8 +445,8 @@ impl AppPage {
             self.sam_menu_row.set_sensitive(entry.is_some());
             self.sam_menu_switch.set_active(desktop.is_some());
             self.sam_menu_row.set_subtitle(&esc(&match &desktop {
-                Some(d) => format!("Starts the app through SAM. {}", util::tildify(d)),
-                None => "No menu entry: start the app from SAM.".into(),
+                Some(d) => crate::i18n::trf("Starts the app through SAM: {entry}", &[("entry", &util::tildify(d))]),
+                None => crate::i18n::tr("No menu entry: start the app from SAM."),
             }));
             let st = self.menu_state.borrow().clone();
             let visible: Vec<Value> = st.as_ref().and_then(|s| s.get("visible")).and_then(Value::as_array).cloned().unwrap_or_default();
@@ -457,25 +461,25 @@ impl AppPage {
             self.dup_row.set_visible(!visible.is_empty());
             if !visible.is_empty() {
                 let files: Vec<String> = visible.iter().map(|v| util::tildify(util::str_of(v, "file"))).collect();
-                self.dup_row.set_subtitle(&esc(&format!(
-                    "Another menu entry starts it without any sandbox: {}. Hide it, so the app always starts in its sandbox; the switch under Menu Entries shows it again.",
-                    files.join(", ")
+                self.dup_row.set_subtitle(&esc(&crate::i18n::trf(
+                    "Another menu entry starts it without any sandbox: {entries}. Hide it, so the app always starts in its sandbox; the switch under Menu Entries shows it again.",
+                    &[("entries", &files.join(", "))]
                 )));
                 self.hints.set_visible(true);
             }
             self.hide_row.set_sensitive(!names.is_empty());
             self.hide_row.set_subtitle(&esc(&if names.is_empty() {
-                "No other menu entry starts this AppImage.".to_string()
+                crate::i18n::tr("No other menu entry starts this AppImage.")
             } else if !visible.is_empty() {
-                format!("These start the AppImage without a sandbox: {}", names.join(", "))
+                crate::i18n::trf("These start the AppImage without a sandbox: {entries}", &[("entries", &names.join(", "))])
             } else {
-                format!("Hidden by SAM, shown again when you turn this off or remove the sandbox: {}", names.join(", "))
+                crate::i18n::trf("Hidden by SAM, shown again when you turn this off or remove the sandbox: {entries}", &[("entries", &names.join(", "))])
             }));
         } else {
             self.dup_row.set_visible(false);
             self.sam_menu_row.set_sensitive(false);
             self.sam_menu_switch.set_active(false);
-            self.sam_menu_row.set_subtitle("Created together with the sandbox (see Preferences → Menu Entries).");
+            self.sam_menu_row.set_subtitle(&crate::i18n::tr("Created together with the sandbox (see Preferences → Menu Entries)."));
             let entries: Vec<String> = self
                 .found()
                 .and_then(|f| f.get("menu_entries").and_then(Value::as_array).cloned())
@@ -486,9 +490,12 @@ impl AppPage {
             self.hide_switch.set_active(self.hide_duplicates.get() && !entries.is_empty());
             self.hide_row.set_sensitive(!entries.is_empty());
             self.hide_row.set_subtitle(&esc(&if entries.is_empty() {
-                "No other menu entry starts this AppImage.".to_string()
+                crate::i18n::tr("No other menu entry starts this AppImage.")
             } else {
-                format!("These start the AppImage without a sandbox; SAM hides them when it creates the sandbox: {}", entries.join(", "))
+                crate::i18n::trf(
+                    "These start the AppImage without a sandbox; SAM hides them when it creates the sandbox: {entries}",
+                    &[("entries", &entries.join(", "))],
+                )
             }));
         }
         self.updating.set(false);
@@ -517,7 +524,7 @@ impl AppPage {
                 me.apply_suggestion(s.clone(), true, false);
             } else {
                 let id = util::str_of(&s, "id").to_string();
-                me.simple(vec!["repair".into(), me.app_id.clone(), "--undo-step".into(), id], "Repair step switched off");
+                me.simple(vec!["repair".into(), me.app_id.clone(), "--undo-step".into(), id], &crate::i18n::tr("Repair step switched off"));
             }
             glib::Propagation::Stop
         });
@@ -566,11 +573,11 @@ impl AppPage {
                     util::plain(util::str_of(l, "summary"))
                 );
                 if let Some(en) = l.get("enforcement").and_then(Value::as_str) {
-                    t.push_str(&format!("\nEnforced: {}", util::plain(en)));
+                    t.push_str(&format!("\n{}", crate::i18n::trf("Enforced: {what}", &[("what", &util::plain(en))])));
                 }
                 t
             }
-            None => "Not started yet".into(),
+            None => crate::i18n::tr("Not started yet"),
         };
         let row = adw::ActionRow::builder().title(tr("Last start")).subtitle(esc(&last_text)).build();
         row.add_prefix(&gtk::Image::from_icon_name("document-open-recent-symbolic"));
@@ -580,17 +587,17 @@ impl AppPage {
             self.button_row(
                 &g,
                 "edit-undo-symbolic",
-                "Go back to the previous version",
+                &crate::i18n::tr("Go back to the previous version"),
                 &crate::i18n::trf("Puts {prev} back in place of the updated AppImage. The updated file is kept, so you can switch again.", &[("prev", &prev)]),
-                |me| me.simple_with(vec!["update".into(), me.app_id.clone(), "--undo".into()], "Back to the previous version", true),
+                |me| me.simple_with(vec!["update".into(), me.app_id.clone(), "--undo".into()], &crate::i18n::tr("Back to the previous version"), true),
             );
         }
         // Check the setup (sam-jail doctor <app>), results right below.
         self.button_row(
             &g,
             "emblem-system-symbolic",
-            "Check the setup",
-            "Is the AppImage still there, unpacked and intact, is the menu entry valid, and how did the last start end.",
+            &crate::i18n::tr("Check the setup"),
+            &crate::i18n::tr("Is the AppImage still there, unpacked and intact, is the menu entry valid, and how did the last start end."),
             |me| me.run_setup_check(),
         );
         if let Some(r) = self.setup_report.borrow().as_ref() {
@@ -615,7 +622,7 @@ impl AppPage {
             self.button_row(
                 &g,
                 "edit-undo-symbolic",
-                "Switch off all repair steps",
+                &crate::i18n::tr("Switch off all repair steps"),
                 &crate::i18n::trf("Puts back the settings from before the first step. Applied: {applied}", &[("applied", &applied)]),
                 |me| me.simple(vec!["repair".into(), me.app_id.clone(), "--undo".into()], "Repairs undone"),
             );
@@ -624,30 +631,42 @@ impl AppPage {
             &g,
             "system-search-symbolic",
             "Re-run detection",
-            "Inspects the app again and updates SAM's recommendation. Your settings are kept; anything new is listed above.",
+            &crate::i18n::tr("Inspects the app again and updates SAM's recommendation. Your settings are kept; anything new is listed above."),
             |me| {
                 me.simple(vec!["redetect".into(), me.app_id.clone()], "Detection finished");
             },
         );
-        self.button_row(&g, "system-run-symbolic", "Diagnose missing resources", "Runs the app once under strace (if installed) and suggests fixes.", |me| {
-            if let Some(app) = me.app() {
-                app.toast(&tr("Starting a diagnostic run (closes after 30 s)…"));
-                me.simple(vec!["diagnose".into(), me.app_id.clone(), "--apply".into()], "Diagnostic run finished");
-            }
-        });
-        self.button_row(&g, "edit-copy-symbolic", "Copy bug report", "A redacted report (home path, user and host names removed).", |me| {
-            let Some(app) = me.app() else { return };
-            let id = me.app_id.clone();
-            glib::spawn_future_local(async move {
-                match app.backend.call(&["report", &id], None).await {
-                    Ok(r) => {
-                        app.window.clipboard().set_text(util::str_of(&r, "report"));
-                        app.toast(&tr("Bug report copied"));
-                    }
-                    Err(e) => app.report_error(&e),
+        self.button_row(
+            &g,
+            "system-run-symbolic",
+            &crate::i18n::tr("Diagnose missing resources"),
+            &crate::i18n::tr("Runs the app once under strace (if installed) and suggests fixes."),
+            |me| {
+                if let Some(app) = me.app() {
+                    app.toast(&tr("Starting a diagnostic run (closes after 30 s)…"));
+                    me.simple(vec!["diagnose".into(), me.app_id.clone(), "--apply".into()], &crate::i18n::tr("Diagnostic run finished"));
                 }
-            });
-        });
+            },
+        );
+        self.button_row(
+            &g,
+            "edit-copy-symbolic",
+            &crate::i18n::tr("Copy bug report"),
+            &crate::i18n::tr("A redacted report (home path, user and host names removed)."),
+            |me| {
+                let Some(app) = me.app() else { return };
+                let id = me.app_id.clone();
+                glib::spawn_future_local(async move {
+                    match app.backend.call(&["report", &id], None).await {
+                        Ok(r) => {
+                            app.window.clipboard().set_text(util::str_of(&r, "report"));
+                            app.toast(&tr("Bug report copied"));
+                        }
+                        Err(e) => app.report_error(&e),
+                    }
+                });
+            },
+        );
     }
 
     pub(super) fn run_setup_check(self: &Rc<Self>) {
@@ -662,7 +681,7 @@ impl AppPage {
                         .map(|c| c.iter().filter(|x| matches!(util::str_of(x, "status"), "warn" | "fail" | "error")).count())
                         .unwrap_or(0);
                     app.toast(&if bad == 0 {
-                        "Setup check: everything is in order".to_string()
+                        crate::i18n::tr("Setup check: everything is in order")
                     } else {
                         crate::i18n::trf("Setup check: {bad} thing(s) to look at", &[("bad", &bad)])
                     });
@@ -686,12 +705,17 @@ impl AppPage {
         let cat = util::str_of(e, "category");
         if !matches!(cat, "" | "utility" | "other" | "unknown") {
             let row = text_row("Recognized as", &util::category_label(cat));
-            row.set_tooltip_text(Some("SAM's recommendation starts from what apps of this kind usually need, then adjusts it to what it found in this app."));
+            row.set_tooltip_text(Some(&crate::i18n::tr(
+                "SAM's recommendation starts from what apps of this kind usually need, then adjusts it to what it found in this app.",
+            )));
             self.add_dynamic(&g, &row);
         }
         self.add_dynamic(&g, &text_row("AppImage type", util::str_of(e, "appimage_type")));
         let extraction = match e.get("extraction").filter(|x| !x.is_null()) {
-            Some(x) => format!("{} files via {}", util::get(x, "file_count").and_then(Value::as_u64).unwrap_or(0), util::str_of(x, "method")),
+            Some(x) => {
+                let count = util::get(x, "file_count").and_then(Value::as_u64).unwrap_or(0);
+                crate::i18n::trn("{n} file via {method}", "{n} files via {method}", count, &[("method", &util::str_of(x, "method"))])
+            }
             None => "Not extracted".into(),
         };
         self.add_dynamic(&g, &text_row("Extraction", &extraction));
@@ -707,7 +731,7 @@ impl AppPage {
         let update = adw::ActionRow::builder()
             .title(tr("Updates"))
             .subtitle(esc(&if checked == 0 {
-                "Not checked yet. Checking contacts the update source this AppImage names (GitHub or its own server).".to_string()
+                crate::i18n::tr("Not checked yet. Checking contacts the update source this AppImage names (GitHub or its own server).")
             } else {
                 format!(
                     "{} (checked {})",
@@ -728,7 +752,7 @@ impl AppPage {
         check.connect_clicked(move |b| {
             if let Some(me) = w.upgrade() {
                 b.set_sensitive(false);
-                me.simple(vec!["updates".into(), me.app_id.clone()], "Update check done");
+                me.simple(vec!["updates".into(), me.app_id.clone()], &crate::i18n::tr("Update check done"));
             }
         });
 
@@ -746,7 +770,7 @@ impl AppPage {
         let w = Rc::downgrade(self);
         free.connect_clicked(move |_| {
             if let Some(me) = w.upgrade() {
-                me.simple(vec!["free-space".into(), me.app_id.clone()], "Space freed; the next start unpacks the AppImage again");
+                me.simple(vec!["free-space".into(), me.app_id.clone()], &crate::i18n::tr("Space freed; the next start unpacks the AppImage again"));
             }
         });
         if let Some(app) = self.app() {

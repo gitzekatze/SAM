@@ -3,7 +3,7 @@
 //! SAM (`sam_core::i18n`), so texts from the window and from `sam-jail`
 //! come from one catalogue per language.
 
-pub use sam_core::i18n::{tr, trf, trn};
+pub use sam_core::i18n::{n_, tr, trf, trn};
 
 /// Sets up gettext for the user's locale. GTK sets the locale itself when
 /// it starts (`setlocale(LC_ALL, "")`); this only tells gettext where SAM's

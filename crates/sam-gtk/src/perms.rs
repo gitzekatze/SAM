@@ -57,12 +57,14 @@ enum Avail {
 #[derive(Clone)]
 struct Opt {
     value: Value,
-    text: &'static str,
-    description: &'static str,
+    /// In the user's language.
+    text: String,
+    description: String,
 }
 
-fn opt(value: Value, text: &'static str, description: &'static str) -> Opt {
-    Opt { value, text, description }
+/// An option of a drop-down, translated here.
+fn opt(value: Value, text: &str, description: &str) -> Opt {
+    Opt { value, text: crate::i18n::tr(text), description: crate::i18n::tr(description) }
 }
 
 enum Ctl {
@@ -169,7 +171,9 @@ impl Editor {
         if key == "environment.set" {
             return Info {
                 title: "Environment variables".into(),
-                description: "Variables set inside the sandbox, as NAME=value, e.g. QT_SCALE_FACTOR=1.5. They override variables passed through.".into(),
+                description: crate::i18n::tr(
+                    "Variables set inside the sandbox, as NAME=value, e.g. QT_SCALE_FACTOR=1.5. They override variables passed through.",
+                ),
                 risk: "medium".into(),
             };
         }
@@ -216,20 +220,19 @@ impl Editor {
 
     fn value_label(v: &Value) -> String {
         match v {
-            Value::Bool(true) => "on".into(),
-            Value::Bool(false) => "off".into(),
+            Value::Bool(true) => crate::i18n::tr("on"),
+            Value::Bool(false) => crate::i18n::tr("off"),
             Value::String(s) => match s.as_str() {
-                "none" => "none",
-                "ro" => "read-only",
-                "rw" => "read & write",
-                "full" => "full",
-                "localhost" => "this computer only",
-                "filtered" => "filtered",
-                "minimal" => "minimal",
-                o => o,
-            }
-            .into(),
-            Value::Null => "default".into(),
+                "none" => crate::i18n::tr("none"),
+                "ro" => crate::i18n::tr("read-only"),
+                "rw" => crate::i18n::tr("read & write"),
+                "full" => crate::i18n::tr("full"),
+                "localhost" => crate::i18n::tr("this computer only"),
+                "filtered" => crate::i18n::tr("filtered"),
+                "minimal" => crate::i18n::tr("minimal"),
+                o => o.to_string(),
+            },
+            Value::Null => crate::i18n::tr("default"),
             o => o.to_string(),
         }
     }
@@ -279,7 +282,7 @@ impl Editor {
     fn choice(self: &Rc<Self>, g: &adw::PreferencesGroup, key: &'static str, opts: Vec<Opt>, avail: Avail) {
         // A drop-down keeps its full width; the description wraps instead
         // (a combo row would shorten the selected value to "…").
-        let labels: Vec<&str> = opts.iter().map(|o| o.text).collect();
+        let labels: Vec<&str> = opts.iter().map(|o| o.text.as_str()).collect();
         let row = adw::ActionRow::builder().title(esc(&self.info(key).title)).build();
         let badge = util::badge("", "bad");
         badge.set_visible(false);
@@ -400,7 +403,7 @@ impl Editor {
         if key == "sockets.custom" {
             let p = sam_core::util::expand_home(item);
             if !p.is_absolute() {
-                self.notify("Give the full path of the socket, e.g. /run/user/1000/app.sock");
+                self.notify(&crate::i18n::tr("Give the full path of the socket, e.g. /run/user/1000/app.sock"));
                 return;
             }
             use std::os::unix::fs::FileTypeExt;
@@ -421,13 +424,13 @@ impl Editor {
     /// Adds NAME=value to a map setting; false (with a message) if invalid.
     fn add_pair(self: &Rc<Self>, key: &'static str, text: &str) -> bool {
         let Some((name, value)) = text.split_once('=') else {
-            self.notify("Write it as NAME=value");
+            self.notify(&crate::i18n::tr("Write it as NAME=value"));
             return false;
         };
         let name = name.trim();
         let valid = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
         if !valid {
-            self.notify("A variable name has only letters, digits and _, and does not start with a digit");
+            self.notify(&crate::i18n::tr("A variable name has only letters, digits and _, and does not start with a digit"));
             return false;
         }
         let mut m = self.value(key).as_object().cloned().unwrap_or_default();
@@ -468,7 +471,7 @@ impl Editor {
             ]
         };
 
-        let g = self.group("Network", "Internet and connections to services on this computer.");
+        let g = self.group("Network", &crate::i18n::tr("Internet and connections to services on this computer."));
         self.choice(
             &g,
             "network.mode",
@@ -477,21 +480,23 @@ impl Editor {
                 opt(
                     json!("localhost"),
                     "This computer only",
-                    "No internet. The app can reach the services on this computer you list below, and its own web page opens in your browser.",
+                    &crate::i18n::tr(
+                        "No internet. The app can reach the services on this computer you list below, and its own web page opens in your browser.",
+                    ),
                 ),
                 opt(json!("full"), "Full network", "The app uses your internet connection like any other program."),
             ],
             Always,
         );
-        self.list(&g, "network.host_ports", "Port on this computer, e.g. 11434 for Ollama", false, LocalNet);
-        self.list(&g, "network.app_ports", "Port of the app (empty = automatic)", false, LocalNet);
+        self.list(&g, "network.host_ports", &crate::i18n::tr("Port on this computer, e.g. 11434 for Ollama"), false, LocalNet);
+        self.list(&g, "network.app_ports", &crate::i18n::tr("Port of the app (empty = automatic)"), false, LocalNet);
 
-        let g = self.group("Display", "How the app shows its windows.");
+        let g = self.group("Display", &crate::i18n::tr("How the app shows its windows."));
         self.switch(&g, "display.wayland", Always);
         self.switch(&g, "display.x11", Always);
         self.switch(&g, "display.wayland_privileged", Always);
 
-        let g = self.group("Sound and devices", "Audio and hardware the app may use.");
+        let g = self.group(&crate::i18n::tr("Sound and devices"), &crate::i18n::tr("Audio and hardware the app may use."));
         self.switch(&g, "audio.enabled", Always);
         self.switch(&g, "devices.gpu", Always);
         self.switch(&g, "devices.webcam", Always);
@@ -502,7 +507,7 @@ impl Editor {
         self.switch(&g, "audio.pipewire", Always);
         self.switch(&g, "audio.alsa_raw", Always);
 
-        let g = self.group("Files", "Folders the app can see. Everything else in your home stays hidden.");
+        let g = self.group("Files", &crate::i18n::tr("Folders the app can see. Everything else in your home stays hidden."));
         for k in ["filesystem.documents", "filesystem.downloads", "filesystem.pictures", "filesystem.music", "filesystem.videos", "filesystem.desktop"] {
             self.choice(&g, k, access(), Always);
         }
@@ -531,14 +536,14 @@ impl Editor {
         self.switch(&g, "filesystem.gnupg", FullHome);
         self.switch(&g, "filesystem.hidden_files", FullHome);
 
-        let g = self.group("Desktop integration", "Desktop services the app may use. Needs the filtered session bus.");
+        let g = self.group(&crate::i18n::tr("Desktop integration"), &crate::i18n::tr("Desktop services the app may use. Needs the filtered session bus."));
         self.switch(&g, "integrations.file_manager", FilteredBus);
         self.switch(&g, "integrations.media_controls", FilteredBus);
         self.switch(&g, "integrations.screen_sharing", FilteredBus);
         self.switch(&g, "integrations.keyring", FilteredBus);
         self.switch(&g, "integrations.input_method", AnyBus);
 
-        let g = self.group("D-Bus", "How the app talks to other programs on your desktop.");
+        let g = self.group("D-Bus", &crate::i18n::tr("How the app talks to other programs on your desktop."));
         self.choice(
             &g,
             "dbus.session.mode",
@@ -562,14 +567,14 @@ impl Editor {
             Always,
         );
 
-        let g = self.group("Sockets and environment", "Other services and settings passed into the sandbox.");
+        let g = self.group(&crate::i18n::tr("Sockets and environment"), &crate::i18n::tr("Other services and settings passed into the sandbox."));
         self.switch(&g, "sockets.ssh_agent", Always);
         self.switch(&g, "sockets.cups", Always);
         self.list(&g, "sockets.custom", "Socket path, e.g. /run/user/1000/app.sock", false, Always);
         self.list(&g, "environment.passthrough", "Variable name, e.g. LANG", false, Always);
         self.list_or_map(&g, "environment.set", "NAME=value, e.g. QT_SCALE_FACTOR=1.5", false, true, Always);
 
-        let g = self.group("Advanced", "Change these only if an app does not work.");
+        let g = self.group("Advanced", &crate::i18n::tr("Change these only if an app does not work."));
         self.choice(
             &g,
             "advanced.host_runtime",
@@ -590,14 +595,14 @@ impl Editor {
         // sandbox for every permission at once.
         let g = self.group(
             "Extra Protection Layers",
-            "Protection on top of the sandbox: a filter that blocks dangerous system calls, and Landlock, which lets the kernel itself stop writes outside the granted folders. They cost nothing while an app works. Turn one off only when an app's log shows it fails because of it, and only for that app; SAM's repair steps say so when that is the case.",
+            &crate::i18n::tr("Protection on top of the sandbox: a filter that blocks dangerous system calls, and Landlock, which lets the kernel itself stop writes outside the granted folders. They cost nothing while an app works. Turn one off only when an app's log shows it fails because of it, and only for that app; SAM's repair steps say so when that is the case."),
         );
         self.switch(&g, "advanced.seccomp_baseline", Always);
         self.choice(
             &g,
             "advanced.landlock",
             vec![
-                opt(Value::Null, "Follow global setting", "Uses the setting in SAM's preferences."),
+                opt(Value::Null, &crate::i18n::tr("Follow global setting"), &crate::i18n::tr("Uses the setting in SAM's preferences.")),
                 opt(json!(true), "Enforce", "Kernel-enforced write restrictions for this app."),
                 opt(json!(false), "Off", "No Landlock restrictions for this app."),
             ],
@@ -625,7 +630,7 @@ impl Editor {
                     let v = self.value(key);
                     let idx = opts.iter().position(|o| o.value == v).unwrap_or(0);
                     drop.set_selected(idx as u32);
-                    let d = opts.get(idx).map(|o| o.description).filter(|d| !d.is_empty()).map(String::from).unwrap_or_else(|| self.info(key).description);
+                    let d = opts.get(idx).map(|o| o.description.clone()).filter(|d| !d.is_empty()).unwrap_or_else(|| self.info(key).description);
                     row.set_subtitle(&self.describe(key, &d));
                     set_usable(row.upcast_ref(), editable && self.available(*avail));
                     self.set_risk_badge(badge, key);
@@ -713,9 +718,9 @@ impl Editor {
         let items = util::risk_items(&risk);
         let top: Vec<&str> = items.iter().filter(|(_, l)| *l == level).map(|(t, _)| t.as_str()).collect();
         let why = match top.len() {
-            0 => "Only harmless basics: fonts, its own window and folders you share read-only.".to_string(),
-            1 => format!("Set by the riskiest permission: {}.", top[0]),
-            _ => format!("Set by the riskiest permissions: {}.", top.join(", ")),
+            0 => crate::i18n::tr("Only harmless basics: fonts, its own window and folders you share read-only."),
+            1 => crate::i18n::trf("Set by the riskiest permission: {permission}.", &[("permission", &top[0])]),
+            _ => crate::i18n::trf("Set by the riskiest permissions: {permissions}.", &[("permissions", &top.join(", "))]),
         };
         let watch = match serious {
             0 => "",
@@ -792,7 +797,7 @@ impl Editor {
             if !added.is_empty() {
                 ask = Some((
                     format!("Allow “{}”?", added.join(", ")),
-                    "This service can act outside the sandbox: start programs, run scripts in the desktop shell or change any setting. An app with access to it can escape the sandbox.".into(),
+                    crate::i18n::tr("This service can act outside the sandbox: start programs, run scripts in the desktop shell or change any setting. An app with access to it can escape the sandbox."),
                     "Allow Anyway",
                 ));
             }

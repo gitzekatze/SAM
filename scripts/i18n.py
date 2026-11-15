@@ -80,6 +80,8 @@ def skip_space(src, i):
 # that are common words only count in the file given.
 CALLS = {
     "tr": ([1], None),
+    "n_": ([1], None),
+    "opt": ([2, 3], "crates/sam-gtk/src/perms.rs"),
     "trf": ([1], None),
     "trn": ([1, "p2"], None),
     "perm!": ([3, 4], None),
