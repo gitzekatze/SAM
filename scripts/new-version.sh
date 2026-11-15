@@ -11,7 +11,8 @@
 #    without use; a tiny signature every 5 minutes keeps it).
 # 3. scripts/release.sh: version everywhere, all tests, signed tag.
 # 4. Pushes main and the tag; GitHub builds and tests the AppImages and
-#    makes a draft release (about 45 minutes); waits for it.
+#    makes a draft release (about 45 minutes); waits for it and shows a
+#    spinner with the minutes and the jobs done meanwhile.
 # 5. scripts/sign-release.sh: seals the draft's AppImages with the key.
 #
 # Then it prints the draft's address: publishing it is your click.
@@ -20,6 +21,43 @@ set -eu
 
 die() { echo; echo "new-version: $*" >&2; exit 1; }
 step() { echo; echo "== $*"; }
+
+# Waits for a GitHub Actions run and shows that it is still going: a
+# spinner with the minutes and the jobs done, updated in place (a line every
+# 5 minutes when the output is not a terminal). Fails if the run fails.
+wait_for_run() {
+    run=$1 what=$2
+    start=$(date +%s) i=0 info="starting"
+    while :; do
+        state=$(gh run view "$run" --json status,conclusion,jobs \
+            --jq '[.status, (if (.conclusion // "") == "" then "-" else .conclusion end), ([.jobs[]|select(.status=="completed")]|length), (.jobs|length)] | map(tostring) | join(" ")' 2>/dev/null || echo "unknown")
+        set -- $state
+        status=${1:-unknown} conclusion=${2:-} done_jobs=${3:-0} all_jobs=${4:-0}
+        if [ "$status" = completed ]; then
+            [ -t 1 ] && printf '\r\033[K'
+            mins=$(( ($(date +%s) - start) / 60 ))
+            if [ "$conclusion" = success ]; then
+                echo "✓ $what: finished after $mins min."
+                return 0
+            fi
+            echo "✗ $what: $conclusion after $mins min."
+            return 1
+        fi
+        [ "$all_jobs" -gt 0 ] && info="$done_jobs of $all_jobs jobs done" || info="starting"
+        # Show the spinner for 30 seconds, then ask GitHub again.
+        for _ in $(seq 30); do
+            mins=$(( ($(date +%s) - start) / 60 ))
+            if [ -t 1 ]; then
+                i=$(( (i + 1) % 10 ))
+                case $i in 0) f=⠋ ;; 1) f=⠙ ;; 2) f=⠹ ;; 3) f=⠸ ;; 4) f=⠼ ;; 5) f=⠴ ;; 6) f=⠦ ;; 7) f=⠧ ;; 8) f=⠇ ;; *) f=⠏ ;; esac
+                printf '\r\033[K%s %s: %s min, %s' "$f" "$what" "$mins" "$info"
+            elif [ $(( ($(date +%s) - start) % 300 )) -lt 1 ]; then
+                echo "  still running: $mins min, $info"
+            fi
+            sleep 1
+        done
+    done
+}
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
@@ -82,7 +120,7 @@ for _ in $(seq 60); do
     sleep 10
 done
 [ -n "$run" ] || die "GitHub did not start the release build for $tag; look at the Actions tab and tell Claude"
-gh run watch "$run" --exit-status --interval 60 >/dev/null || die "GitHub's release build failed: nothing was published. Tell Claude (run $run)"
+wait_for_run "$run" "GitHub is building and testing" || die "GitHub's release build failed: nothing was published. Tell Claude (run $run)"
 [ "$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)" = true ] || die "the build passed but no draft release $tag exists; tell Claude"
 
 step "Sealing the AppImages with the release key"
