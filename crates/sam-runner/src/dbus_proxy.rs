@@ -75,6 +75,7 @@ impl DbusProxy {
                 cmd.stdout(f).stderr(f2);
             }
         }
+        // SAFETY: the pre_exec closure runs between fork and exec and calls only prctl, which is async-signal-safe.
         unsafe {
             cmd.pre_exec(|| {
                 // Die together with sam-jail-run.

@@ -429,6 +429,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let spawned = cmd.spawn().with_context(|| format!("starting {}", prepared.command.program.display()));
     // Close our copies of the write ends so the readers see EOF.
     for fd in channels.close_after_spawn.iter().chain(prepared.context.seccomp_fd.as_ref()) {
+        // SAFETY: the descriptor belongs to this launch and is closed exactly once here.
         unsafe { libc::close(*fd) };
     }
     let mut child = spawned?;
@@ -774,9 +775,11 @@ fn save_launch(app: &mut AppEntry, rec: &LaunchRecord, paths: &Paths) -> Result<
 /// A pipe whose write end is inherited by child processes.
 fn status_pipe() -> Result<(i32, i32)> {
     let mut fds = [0i32; 2];
+    // SAFETY: `fds` is a valid array of two ints for pipe2 to fill.
     if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
         bail!("pipe: {}", std::io::Error::last_os_error());
     }
+    // SAFETY: fds[1] is the pipe end pipe2 just created; F_SETFD only changes its flags.
     unsafe { libc::fcntl(fds[1], libc::F_SETFD, 0) };
     Ok((fds[0], fds[1]))
 }
@@ -785,6 +788,7 @@ fn status_pipe() -> Result<(i32, i32)> {
 fn hold_lock(path: &Path) -> Result<fs::File> {
     use std::os::fd::AsRawFd;
     let f = fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
+    // SAFETY: `f` is an open file; flock only takes its descriptor.
     if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         bail!("locking {}: {}", path.display(), std::io::Error::last_os_error());
     }
@@ -795,6 +799,7 @@ fn hold_lock(path: &Path) -> Result<fs::File> {
 pub fn lock_held(path: &Path) -> bool {
     use std::os::fd::AsRawFd;
     let Ok(f) = fs::File::open(path) else { return false };
+    // SAFETY: `f` is an open file; flock only takes its descriptor.
     unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) != 0 }
 }
 
@@ -802,9 +807,11 @@ pub fn lock_held(path: &Path) -> bool {
 fn open_fifo_reader(path: &Path) -> Result<i32> {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(path.as_os_str().as_bytes())?;
+    // SAFETY: `c` is a NUL-terminated path.
     if unsafe { libc::mkfifo(c.as_ptr(), 0o600) } != 0 {
         bail!("mkfifo {}: {}", path.display(), std::io::Error::last_os_error());
     }
+    // SAFETY: `c` is a NUL-terminated path; the returned descriptor is checked and closed below.
     let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC) };
     if fd < 0 {
         bail!("open {}: {}", path.display(), std::io::Error::last_os_error());
@@ -822,6 +829,7 @@ fn read_fd_in_thread(fd: i32, done: Arc<std::sync::atomic::AtomicBool>) -> std::
         let mut buf = [0u8; 4096];
         loop {
             let mut pfd = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
+            // SAFETY: `pfd` is one valid pollfd.
             let n = unsafe { libc::poll(&mut pfd, 1, 200) };
             if n < 0 {
                 if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
@@ -835,6 +843,7 @@ fn read_fd_in_thread(fd: i32, done: Arc<std::sync::atomic::AtomicBool>) -> std::
                 }
                 continue;
             }
+            // SAFETY: `buf` is a valid, writable buffer of buf.len() bytes and `fd` is open.
             let r = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
             if r > 0 {
                 out.extend_from_slice(&buf[..r as usize]);
@@ -845,6 +854,7 @@ fn read_fd_in_thread(fd: i32, done: Arc<std::sync::atomic::AtomicBool>) -> std::
                 break;
             }
         }
+        // SAFETY: the FIFO descriptor opened above is closed exactly once here.
         unsafe { libc::close(fd) };
         String::from_utf8_lossy(&out).into_owned()
     })

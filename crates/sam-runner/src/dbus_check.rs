@@ -22,6 +22,7 @@ pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bo
     s.set_write_timeout(Some(timeout))?;
 
     // Authentication: EXTERNAL with our uid as hex digits.
+    // SAFETY: getuid has no preconditions and cannot fail.
     let uid = unsafe { libc::getuid() }.to_string();
     let hex: String = uid.bytes().map(|b| format!("{b:02x}")).collect();
     s.write_all(format!("\0AUTH EXTERNAL {hex}\r\n").as_bytes())?;

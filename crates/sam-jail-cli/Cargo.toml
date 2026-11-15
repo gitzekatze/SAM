@@ -32,3 +32,6 @@ clap_mangen = "0.3"
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[lints]
+workspace = true

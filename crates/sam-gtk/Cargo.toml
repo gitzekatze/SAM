@@ -17,3 +17,6 @@ serde_json.workspace = true
 pulldown-cmark = { version = "0.13", default-features = false }
 sam-core.workspace = true
 libc.workspace = true
+
+[lints]
+workspace = true

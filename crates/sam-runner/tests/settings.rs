@@ -86,6 +86,7 @@ fn removing_a_sandbox_while_its_app_runs_is_refused() {
     let launch = sam.paths.runtime_dir(&id).join(format!("launch-{}-1", std::process::id()));
     fs::create_dir_all(&launch).unwrap();
     let lock = fs::File::create(launch.join("running.lock")).unwrap();
+    // SAFETY: `lock` is an open file; flock only takes its descriptor.
     assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
     let err = sam.remove(&id, false).unwrap_err().to_string();
     assert!(err.contains("is running"), "{err}");

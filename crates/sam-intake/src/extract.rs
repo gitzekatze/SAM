@@ -98,7 +98,9 @@ impl std::error::Error for NeedsFallbackConsent {}
 pub fn free_bytes(dir: &Path) -> Option<u64> {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    // SAFETY: statvfs is a plain C struct; all zeros is a valid value.
     let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    // SAFETY: `c` is a NUL-terminated path and `st` a valid, writable statvfs.
     (unsafe { libc::statvfs(c.as_ptr(), &mut st) } == 0).then(|| st.f_bavail as u64 * st.f_frsize as u64)
 }
 

@@ -177,6 +177,7 @@ impl Sam {
         if runners.is_empty() {
             return Ok(0);
         }
+        // SAFETY: kill takes plain integers; a process that is already gone only makes it fail.
         let signal = |pid: u32, sig: i32| unsafe {
             libc::kill(pid as libc::pid_t, sig);
         };

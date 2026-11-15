@@ -187,6 +187,7 @@ fn parse_glibc_version(s: &str) -> Option<(u32, u32)> {
 pub fn host_glibc_version() -> Option<(u32, u32)> {
     #[cfg(target_env = "gnu")]
     {
+        // SAFETY: gnu_get_libc_version returns a pointer to a static, NUL-terminated string that lives as long as the program.
         let c = unsafe { std::ffi::CStr::from_ptr(libc::gnu_get_libc_version()) };
         let s = c.to_string_lossy();
         let mut it = s.split('.');

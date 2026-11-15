@@ -113,6 +113,7 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
     }
     if let Some(fd) = std::env::var("SAM_STATUS_FD").ok().and_then(|v| v.parse::<i32>().ok()) {
         let line = format!("{}\n", report.join("; "));
+        // SAFETY: `line` is a valid buffer of line.len() bytes; `fd` was handed to this process for this one report and is not used afterwards.
         unsafe {
             libc::write(fd, line.as_ptr().cast(), line.len());
             libc::close(fd);
@@ -298,6 +299,7 @@ pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
 fn apply_seccomp(spec: &SeccompSpec) -> Result<()> {
     let prog = seccomp_program(spec)?;
     // Required for unprivileged filters (bwrap sets it too).
+    // SAFETY: prctl(PR_SET_NO_NEW_PRIVS) takes plain integers and has no memory preconditions.
     if unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } != 0 {
         bail!("PR_SET_NO_NEW_PRIVS: {}", std::io::Error::last_os_error());
     }

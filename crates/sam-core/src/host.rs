@@ -188,7 +188,9 @@ impl HostInfo {
     }
 
     fn probe_inner(versions: bool) -> HostInfo {
+        // SAFETY: getuid has no preconditions and cannot fail.
         let uid = unsafe { libc::getuid() };
+        // SAFETY: getgid has no preconditions and cannot fail.
         let gid = unsafe { libc::getgid() };
         let home = home_dir();
         let user = std::env::var("USER")
@@ -438,6 +440,7 @@ pub fn landlock_abi() -> Option<u32> {
     {
         const SYS_LANDLOCK_CREATE_RULESET: libc::c_long = 444;
         const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
+        // SAFETY: asks the kernel for its Landlock version: a null attribute pointer with size 0 is what the version query expects.
         let r = unsafe { libc::syscall(SYS_LANDLOCK_CREATE_RULESET, std::ptr::null::<u8>(), 0usize, LANDLOCK_CREATE_RULESET_VERSION) };
         if r > 0 {
             return Some(r as u32);

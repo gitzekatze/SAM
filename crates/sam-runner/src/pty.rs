@@ -63,6 +63,7 @@ impl TerminalMode {
 
 /// Whether `fd` is a terminal.
 pub fn is_tty(fd: RawFd) -> bool {
+    // SAFETY: isatty takes a descriptor and has no other preconditions.
     unsafe { libc::isatty(fd) == 1 }
 }
 
@@ -90,9 +91,11 @@ impl Pty {
     /// With an outer terminal, its size and settings are copied.
     pub fn open(outer: Option<Outer>) -> Result<Pty> {
         let mut size = libc::winsize { ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0 };
+        // SAFETY: termios is a plain C struct; all zeros is a valid value.
         let mut settings: libc::termios = unsafe { std::mem::zeroed() };
         let mut have_settings = false;
         if let Some(o) = outer {
+            // SAFETY: `size` and `settings` are valid, writable structs; `o.input` is the outer terminal's open descriptor.
             unsafe {
                 libc::ioctl(o.input, libc::TIOCGWINSZ, &mut size);
                 have_settings = libc::tcgetattr(o.input, &mut settings) == 0;
@@ -100,6 +103,7 @@ impl Pty {
         }
         let (mut leader, mut follower) = (-1, -1);
         let tp = if have_settings { &settings as *const libc::termios } else { std::ptr::null() };
+        // SAFETY: `leader` and `follower` are valid ints to fill; `tp` is null or points to `settings`, and `size` is valid.
         if unsafe { libc::openpty(&mut leader, &mut follower, std::ptr::null_mut(), tp, &size) } != 0 {
             bail!("could not create a terminal for the app: {}", std::io::Error::last_os_error());
         }
@@ -108,6 +112,7 @@ impl Pty {
         // openpty does not set close-on-exec: neither end may leak into the
         // sandbox beyond the app's standard streams.
         for fd in [&leader, &follower] {
+            // SAFETY: `fd` is one of the two descriptors openpty just created; F_SETFD only changes its flags.
             unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) };
         }
         Ok(Pty { leader, follower, outer })
@@ -122,6 +127,7 @@ impl Pty {
     /// of a new session, so Ctrl+C, resizing and hang-up reach the app.
     /// Only async-signal-safe calls.
     pub fn become_controlling_terminal() -> std::io::Result<()> {
+        // SAFETY: runs between fork and exec (pre_exec) and calls only setsid and ioctl, which are async-signal-safe.
         unsafe {
             if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY, 0) < 0 {
                 return Err(std::io::Error::last_os_error());
@@ -198,6 +204,7 @@ extern "C" fn on_end(_: libc::c_int) {
 /// instead of dying first. A handler, not "ignore": handlers are reset when
 /// a program starts, so the app gets the hang-up as usual.
 pub fn end_with_the_terminal() {
+    // SAFETY: `sa` is a zeroed sigaction whose handler is a valid extern C function; sigaction only reads it.
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
         sa.sa_sigaction = on_end as *const () as usize;
@@ -218,11 +225,14 @@ struct RawMode(RawFd, libc::termios);
 
 impl RawMode {
     fn enter(fd: RawFd) -> Option<RawMode> {
+        // SAFETY: termios is a plain C struct; all zeros is a valid value.
         let mut saved: libc::termios = unsafe { std::mem::zeroed() };
+        // SAFETY: `saved` is a valid, writable termios and `fd` an open descriptor.
         if unsafe { libc::tcgetattr(fd, &mut saved) } != 0 {
             return None;
         }
         let mut raw = saved;
+        // SAFETY: `raw` is a valid termios copied from the terminal's own settings.
         unsafe {
             libc::cfmakeraw(&mut raw);
             libc::tcsetattr(fd, libc::TCSANOW, &raw);
@@ -233,17 +243,20 @@ impl RawMode {
 
 impl Drop for RawMode {
     fn drop(&mut self) {
+        // SAFETY: restores the settings saved when raw mode was entered, on the same descriptor.
         unsafe { libc::tcsetattr(self.0, libc::TCSANOW, &self.1) };
     }
 }
 
 fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<AtomicBool>) -> RelayEnd {
     let lfd = leader.as_raw_fd();
+    // SAFETY: `lfd` is the terminal leader this relay owns; F_GETFL/F_SETFL only change its flags.
     unsafe {
         let fl = libc::fcntl(lfd, libc::F_GETFL);
         libc::fcntl(lfd, libc::F_SETFL, fl | libc::O_NONBLOCK);
     }
     let raw = outer.and_then(|o| {
+        // SAFETY: `sa` is a zeroed sigaction whose handler is a valid extern C function; sigaction only reads it.
         unsafe {
             let mut sa: libc::sigaction = std::mem::zeroed();
             sa.sa_sigaction = on_winch as *const () as usize;
@@ -259,8 +272,11 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
     let mut hung_up = false;
     loop {
         if let Some(o) = outer.filter(|_| WINCH.swap(false, Ordering::SeqCst)) {
+            // SAFETY: winsize is a plain C struct; all zeros is a valid value.
             let mut size: libc::winsize = unsafe { std::mem::zeroed() };
+            // SAFETY: `size` is a valid, writable winsize and `o.input` the outer terminal's open descriptor.
             if unsafe { libc::ioctl(o.input, libc::TIOCGWINSZ, &mut size) } == 0 {
+                // SAFETY: `size` holds the size just read; `lfd` is the leader this relay owns.
                 unsafe { libc::ioctl(lfd, libc::TIOCSWINSZ, &size) };
             }
         }
@@ -269,6 +285,7 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
             libc::pollfd { fd: outer.filter(|_| to_app.len() < 64 * 1024).map_or(-1, |o| o.input), events: libc::POLLIN, revents: 0 },
         ];
         let finished = done.load(Ordering::SeqCst);
+        // SAFETY: `fds` is a valid array of two pollfds.
         let n = unsafe { libc::poll(fds.as_mut_ptr(), 2, if finished { 50 } else { 200 }) };
         if n < 0 {
             if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
@@ -285,6 +302,7 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
         }
         // The user's typing → the app.
         if let Some(o) = outer.filter(|_| fds[1].revents != 0) {
+            // SAFETY: `buf` is a valid, writable buffer of buf.len() bytes and `o.input` is open.
             let r = unsafe { libc::read(o.input, buf.as_mut_ptr().cast(), buf.len()) };
             if r > 0 {
                 to_app.extend_from_slice(&buf[..r as usize]);
@@ -295,6 +313,7 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
             }
         }
         if !to_app.is_empty() && fds[0].revents & libc::POLLOUT != 0 {
+            // SAFETY: `to_app` is a valid buffer of to_app.len() bytes and `lfd` is open.
             let w = unsafe { libc::write(lfd, to_app.as_ptr().cast(), to_app.len()) };
             if w > 0 {
                 to_app.drain(..w as usize);
@@ -302,6 +321,7 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
         }
         // The app's output → the user's terminal, filtered.
         if fds[0].revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0 {
+            // SAFETY: `buf` is a valid, writable buffer of buf.len() bytes and `lfd` is open.
             let r = unsafe { libc::read(lfd, buf.as_mut_ptr().cast(), buf.len()) };
             if r > 0 {
                 let chunk = &buf[..r as usize];
@@ -341,6 +361,7 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
         // before it ended would land in the shell: let them arrive, then
         // discard everything queued on the user's terminal.
         std::thread::sleep(std::time::Duration::from_millis(60));
+        // SAFETY: tcflush takes the outer terminal's open descriptor and a plain flag.
         unsafe { libc::tcflush(o.input, libc::TCIFLUSH) };
     }
     drop(leader);
@@ -349,6 +370,7 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
 
 fn write_all(fd: RawFd, mut data: &[u8]) -> std::io::Result<()> {
     while !data.is_empty() {
+        // SAFETY: `data` is a valid buffer of data.len() bytes and `fd` is open.
         let w = unsafe { libc::write(fd, data.as_ptr().cast(), data.len()) };
         if w < 0 {
             let e = std::io::Error::last_os_error();
@@ -669,7 +691,9 @@ mod tests {
     #[test]
     fn typing_and_output_pass_and_leftover_replies_are_discarded() {
         let (mut user, mut outer_fd) = (-1, -1);
+        // SAFETY: `user` and `outer_fd` are valid ints to fill; the optional arguments are null.
         assert_eq!(unsafe { libc::openpty(&mut user, &mut outer_fd, std::ptr::null_mut(), std::ptr::null(), std::ptr::null()) }, 0);
+        // SAFETY: openpty returned two new descriptors that nothing else owns.
         let (user, outer_fd) = unsafe { (OwnedFd::from_raw_fd(user), OwnedFd::from_raw_fd(outer_fd)) };
         let outer = Outer { input: outer_fd.as_raw_fd(), output: outer_fd.as_raw_fd() };
         let pty = Pty::open(Some(outer)).unwrap();
@@ -678,6 +702,7 @@ mod tests {
         // ends at once: the reply must not stay queued for the shell.
         cmd.args(["-c", r#"read line; printf 'got:%s\n' "$line"; printf '\033]2;evil\007\033[21t\033]52;c;?\007'"#]);
         cmd.stdin(pty.stdio().unwrap()).stdout(pty.stdio().unwrap()).stderr(pty.stdio().unwrap());
+        // SAFETY: become_controlling_terminal uses only async-signal-safe calls, as pre_exec requires.
         unsafe {
             use std::os::unix::process::CommandExt;
             cmd.pre_exec(Pty::become_controlling_terminal);
@@ -700,8 +725,10 @@ mod tests {
         // What reached the user's terminal.
         let mut shown = Vec::new();
         let mut buf = [0u8; 4096];
+        // SAFETY: `user` is an open descriptor; F_SETFL only changes its flags.
         unsafe { libc::fcntl(user.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) };
         loop {
+            // SAFETY: `buf` is a valid, writable buffer of buf.len() bytes and `user` is open.
             let r = unsafe { libc::read(user.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
             if r <= 0 {
                 break;
@@ -714,6 +741,7 @@ mod tests {
         assert!(blocked.contains("title reports") && blocked.contains("clipboard"));
         // Nothing is left for the shell to read.
         let mut queued: libc::c_int = 0;
+        // SAFETY: `queued` is a valid, writable int and `outer_fd` is open.
         unsafe { libc::ioctl(outer_fd.as_raw_fd(), libc::FIONREAD, &mut queued) };
         assert_eq!(queued, 0, "leftover terminal replies were discarded");
     }
@@ -728,6 +756,7 @@ mod tests {
         let mut cmd = std::process::Command::new("/bin/sh");
         cmd.args(["-c", r#"printf 'hello\033]52;c;eA==\007 world'; tty"#]);
         cmd.stdin(pty.stdio().unwrap()).stdout(pty.stdio().unwrap()).stderr(pty.stdio().unwrap());
+        // SAFETY: become_controlling_terminal uses only async-signal-safe calls, as pre_exec requires.
         unsafe {
             use std::os::unix::process::CommandExt;
             cmd.pre_exec(Pty::become_controlling_terminal);

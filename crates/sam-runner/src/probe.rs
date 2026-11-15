@@ -186,8 +186,10 @@ pub fn identity(p: &Path) -> Option<(u64, u64)> {
 fn can_create_in(dir: &Path) -> bool {
     use std::os::unix::ffi::OsStrExt;
     let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else { return false };
+    // SAFETY: `c` is a NUL-terminated path; the returned descriptor is checked and closed below.
     let fd = unsafe { libc::open(c.as_ptr(), libc::O_TMPFILE | libc::O_WRONLY | libc::O_CLOEXEC, 0o600) };
     if fd >= 0 {
+        // SAFETY: the descriptor opened above is closed exactly once here.
         unsafe { libc::close(fd) };
         return true;
     }
@@ -317,6 +319,7 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             (Some(n > 0 && n < 20), format!("sees {n} process(es)"))
         }
         ProbeTest::UserNamespaces { blocked } => {
+            // SAFETY: unshare takes a flag and changes only this probe process, which exits after the check.
             let r = unsafe { libc::unshare(libc::CLONE_NEWUSER) };
             let is_blocked = r != 0;
             (Some(is_blocked == *blocked), if is_blocked { "blocked".into() } else { "allowed".to_string() })
@@ -324,6 +327,7 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         ProbeTest::SyscallFilter { active } => {
             // keyctl(KEYCTL_GET_KEYRING_ID, KEY_SPEC_SESSION_KEYRING, 0):
             // the baseline filter answers EPERM.
+            // SAFETY: keyctl is called with plain integers only (the probe expects it to be refused).
             let r = unsafe { libc::syscall(libc::SYS_keyctl, 0, -3, 0) };
             let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             let filtered = r < 0 && e == libc::EPERM;
@@ -333,6 +337,7 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             // ioctl(0, TIOCSTI): the baseline filter answers EPERM before the
             // kernel looks at the descriptor.
             let c: u8 = 0;
+            // SAFETY: `c` is a valid byte for TIOCSTI to read (the probe expects the call to be refused).
             let r = unsafe { libc::ioctl(0, libc::TIOCSTI, &c) };
             let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             let blocked = r < 0 && e == libc::EPERM;
