@@ -80,8 +80,8 @@ found in 0.8 s cold and 30 ms warm; with 40 sandboxes `list`, `doctor` and
 `WORK=… tests/real-apps/run.sh App.AppImage …` runs the whole flow
 (recommendation, Create Sandbox, sandbox check, test start, hints, repair
 steps) on real AppImages in an invisible KWin session with a fake home;
-`python3 tests/real-apps/analyze.py "$WORK"` summarises it. Results of the
-first run: [real-apps-2026-11-10.md](real-apps-2026-11-10.md).
+`python3 tests/real-apps/analyze.py "$WORK"` summarises it. The
+[version reports](reports/) record the results of each full run.
 
 ## 0c. What an app does, checked by hand
 

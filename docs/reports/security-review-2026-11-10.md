@@ -1,6 +1,6 @@
 # Security review 2026-11-10
 
-Scope: every promise in [security.md](security.md) checked against a test
+Scope: every promise in [security.md](../security.md) checked against a test
 that proves it, a breakout test suite for the promises without one, and a
 code review of the security-critical parts: the Bubblewrap command, Landlock
 and seccomp (`sam-runner/src/kernel.rs`), the D-Bus proxy and portal filter,
@@ -22,9 +22,8 @@ AppImage data, the stop logic and the launchers.
   `userfaultfd` in user mode, `unshare(0)`, `TIOCSTI` on a non-tty), so
   `EPERM` proves the filter. x32 calls prove the filter covers them because
   seccomp answers before the kernel says `ENOSYS`.
-- **Real apps** after each change: 18 AppImages
-  ([real-apps-2026-11-10.md](real-apps-2026-11-10.md)), re-run with the
-  hardened defaults.
+- **Real apps** after each change: 18 AppImages, re-run with the hardened
+  defaults.
 
 ## Findings
 

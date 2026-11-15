@@ -5,7 +5,7 @@
 > the version reports changed over time, and the latest commits. For people
 > who use SAM, the front page is [README.md](README.md).
 >
-> Generated on 2026-11-15 at 17:32 by `scripts/dashboard.py`. It is
+> Generated on 2026-11-15 at 18:04 by `scripts/dashboard.py`. It is
 > regenerated with every version report (`make report`), so it shows the state
 > at the end of the last phase of work.
 
@@ -17,8 +17,8 @@
 |---|---|
 | **Tests** | ✅ 237 pass, 0 fail in the latest version report |
 | **Version** | 0.1.0 (the number changes only when a version is published) |
-| **Latest commit** | `2ccd936` Function map: new tests are marked new, not failed |
-| **Commits so far** | 172 |
+| **Latest commit** | `e5e2740` Informal address in every language: du, tú, tu |
+| **Commits so far** | 176 |
 | **Version reports** | 8; the newest is [0.1.0-2ccd936](docs/reports/0.1.0-2ccd936.md) |
 
 > **How to read the badge:** it shows the last CI run on GitHub (unit,
@@ -76,16 +76,16 @@
 
 | Part | Unit | Integration | Regression ⟲ | Total | |
 |---|---|---|---|---|---|
-| **sam-core** | 31 | 0 | 1 | 31 | `█████░░░░░░░░░░` |
+| **sam-core** | 33 | 0 | 1 | 33 | `██████░░░░░░░░░` |
 | **sam-detect** | 18 | 1 | 0 | 19 | `███░░░░░░░░░░░░` |
 | **sam-intake** | 25 | 2 | 1 | 27 | `████░░░░░░░░░░░` |
 | **sam-profile** | 13 | 0 | 0 | 13 | `██░░░░░░░░░░░░░` |
-| **sam-sandbox** | 22 | 0 | 0 | 22 | `████░░░░░░░░░░░` |
+| **sam-sandbox** | 23 | 0 | 0 | 23 | `████░░░░░░░░░░░` |
 | **sam-runner** | 52 | 38 | 2 | 90 | `███████████████` |
 | **sam-storage** | 8 | 0 | 1 | 8 | `█░░░░░░░░░░░░░░` |
 | **sam-jail-cli** | 0 | 17 | 1 | 17 | `███░░░░░░░░░░░░` |
-| **sam-gtk** | 10 | 0 | 1 | 10 | `██░░░░░░░░░░░░░` |
-| **all parts** | **179** | **58** | **7** | **237** | |
+| **sam-gtk** | 12 | 0 | 1 | 12 | `██░░░░░░░░░░░░░` |
+| **all parts** | **184** | **58** | **7** | **242** | |
 
 ### Scripted checks of the window and of real AppImages
 
@@ -105,12 +105,13 @@
 > Click a part to unfold its tests. The promise is the first sentence of the test's
 > own comment; the name links to the code.
 
-<details><summary><b>sam-core</b> — Permission model, risk, warnings, configuration and file formats (31 tests)</summary>
+<details><summary><b>sam-core</b> — Permission model, risk, warnings, configuration and file formats (33 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
-| unit | A complete configuration file with every section loads without loss. | [`a_complete_configuration_file_loads_every_setting`](crates/sam-core/src/config.rs#L313) |
-| unit | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](crates/sam-core/src/config.rs#L347) |
+| unit | A complete configuration file with every section loads without loss. | [`a_complete_configuration_file_loads_every_setting`](crates/sam-core/src/config.rs#L335) |
+| unit | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | [`the_language_is_the_system_or_one_sam_speaks`](crates/sam-core/src/config.rs#L371) |
+| unit | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](crates/sam-core/src/config.rs#L390) |
 | unit | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_code_survives_added_context`](crates/sam-core/src/error.rs#L49) |
 | unit | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](crates/sam-core/src/format.rs#L95) |
 | unit | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](crates/sam-core/src/host.rs#L150) |
@@ -118,7 +119,8 @@
 | unit | Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](crates/sam-core/src/host.rs#L186) |
 | unit | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](crates/sam-core/src/host.rs#L513) |
 | unit | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](crates/sam-core/src/host.rs#L522) |
-| unit | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | [`texts_without_a_translation_come_back_with_their_values`](crates/sam-core/src/i18n.rs#L117) |
+| unit | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | [`every_translated_language_can_be_chosen`](crates/sam-core/src/i18n.rs#L129) |
+| unit | Texts without a translation come back with their values. | [`texts_without_a_translation_come_back_with_their_values`](crates/sam-core/src/i18n.rs#L138) |
 | unit | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](crates/sam-core/src/model.rs#L642) |
 | unit | An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](crates/sam-core/src/model.rs#L660) |
 | unit ⟲ | Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](crates/sam-core/src/paths.rs#L117) |
@@ -223,32 +225,33 @@
 
 </details>
 
-<details><summary><b>sam-sandbox</b> — Building the Bubblewrap command from the permissions (22 tests)</summary>
+<details><summary><b>sam-sandbox</b> — Building the Bubblewrap command from the permissions (23 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
-| unit | Games built with SDL get a silent sound driver when sound is off, so they start instead of failing. | [`sdl_gets_its_silent_driver_without_sound_access`](crates/sam-sandbox/src/lib.rs#L1372) |
-| unit | Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | [`the_loaders_extra_library_folders_are_shown_read_only`](crates/sam-sandbox/src/lib.rs#L1381) |
-| unit | The app gets a new terminal session, unless it runs on SAM's terminal relay. | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](crates/sam-sandbox/src/lib.rs#L1389) |
-| unit | Files and folders named when starting an app are passed in, but never sensitive folders like autostart. | [`files_and_folders_named_on_the_command_line`](crates/sam-sandbox/src/lib.rs#L1398) |
-| unit | The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only. | [`the_strictest_profile_shares_nothing_and_keeps_the_app_read_only`](crates/sam-sandbox/src/lib.rs#L1455) |
-| unit | The X11 login cookie is rewritten for the display number inside the sandbox. | [`xauthority_gets_the_sandbox_display_number`](crates/sam-sandbox/src/lib.rs#L1476) |
-| unit | With a Wayland security context, the app sees only that socket, not the desktop's own. | [`wayland_security_context_socket_is_used`](crates/sam-sandbox/src/lib.rs#L1494) |
-| unit | Each granted permission adds exactly its part to the Bubblewrap command. | [`each_permission_adds_exactly_its_part_to_the_command`](crates/sam-sandbox/src/lib.rs#L1504) |
-| unit | The filtered desktop bus reaches the app only through SAM's proxy. | [`filtered_dbus_uses_proxy`](crates/sam-sandbox/src/lib.rs#L1529) |
-| unit | The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](crates/sam-sandbox/src/lib.rs#L1542) |
-| unit | With "this computer only", the network namespace is left to pasta. | [`localhost_network_leaves_netns_to_pasta`](crates/sam-sandbox/src/lib.rs#L1561) |
-| unit | A writable app folder uses an overlay; the unpacked app itself stays unchanged. | [`writable_appdir_uses_overlay`](crates/sam-sandbox/src/lib.rs#L1570) |
-| unit | Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | [`without_nested_namespaces_user_namespaces_are_disabled`](crates/sam-sandbox/src/lib.rs#L1583) |
-| unit | "Game controllers" exposes only joysticks, never keyboards or mice. | [`gamepads_only_exposes_joysticks`](crates/sam-sandbox/src/lib.rs#L1594) |
-| unit | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](crates/sam-sandbox/src/lib.rs#L1612) |
-| unit | Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](crates/sam-sandbox/src/lib.rs#L1623) |
-| unit | A bundled library listed in advanced.system_libraries is replaced by the system's copy at its place in the app folder; names with folders or `..`, libraries the app does not bundle and libraries the system does not have are ignored. | [`system_copies_replace_only_bundled_libraries_by_plain_name`](crates/sam-sandbox/src/lib.rs#L1641) |
-| unit | The app's own folder stays read-only unless "writable app folder" is granted, even when SAM has an overlay for it prepared. | [`the_app_folder_stays_read_only_unless_writable_is_granted`](crates/sam-sandbox/src/lib.rs#L1679) |
-| unit | SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | [`sams_own_folders_stay_hidden_inside_a_granted_folder`](crates/sam-sandbox/src/lib.rs#L1695) |
-| unit | With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | [`credential_files_and_folders_in_the_home_are_masked`](crates/sam-sandbox/src/lib.rs#L1710) |
-| unit | Protected folders are created in the real home only before a start that can write the home, never otherwise. | [`home_protection_is_prepared_only_for_a_writable_home`](crates/sam-sandbox/src/lib.rs#L1731) |
-| unit | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | [`only_proper_variable_names_are_set`](crates/sam-sandbox/src/lib.rs#L1747) |
+| unit | Games built with SDL get a silent sound driver when sound is off, so they start instead of failing. | [`sdl_gets_its_silent_driver_without_sound_access`](crates/sam-sandbox/src/lib.rs#L1384) |
+| unit | Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | [`the_loaders_extra_library_folders_are_shown_read_only`](crates/sam-sandbox/src/lib.rs#L1393) |
+| unit | The app gets a new terminal session, unless it runs on SAM's terminal relay. | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](crates/sam-sandbox/src/lib.rs#L1401) |
+| unit | Files and folders named when starting an app are passed in, but never sensitive folders like autostart. | [`files_and_folders_named_on_the_command_line`](crates/sam-sandbox/src/lib.rs#L1410) |
+| unit | The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only. | [`the_strictest_profile_shares_nothing_and_keeps_the_app_read_only`](crates/sam-sandbox/src/lib.rs#L1467) |
+| unit | The X11 login cookie is rewritten for the display number inside the sandbox. | [`xauthority_gets_the_sandbox_display_number`](crates/sam-sandbox/src/lib.rs#L1488) |
+| unit | With a Wayland security context, the app sees only that socket, not the desktop's own. | [`wayland_security_context_socket_is_used`](crates/sam-sandbox/src/lib.rs#L1506) |
+| unit | Each granted permission adds exactly its part to the Bubblewrap command. | [`each_permission_adds_exactly_its_part_to_the_command`](crates/sam-sandbox/src/lib.rs#L1516) |
+| unit | The filtered desktop bus reaches the app only through SAM's proxy. | [`filtered_dbus_uses_proxy`](crates/sam-sandbox/src/lib.rs#L1541) |
+| unit | The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](crates/sam-sandbox/src/lib.rs#L1554) |
+| unit | With "this computer only", the network namespace is left to pasta. | [`localhost_network_leaves_netns_to_pasta`](crates/sam-sandbox/src/lib.rs#L1573) |
+| unit | A writable app folder uses an overlay; the unpacked app itself stays unchanged. | [`writable_appdir_uses_overlay`](crates/sam-sandbox/src/lib.rs#L1582) |
+| unit | Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | [`without_nested_namespaces_user_namespaces_are_disabled`](crates/sam-sandbox/src/lib.rs#L1595) |
+| unit | "Game controllers" exposes only joysticks, never keyboards or mice. | [`gamepads_only_exposes_joysticks`](crates/sam-sandbox/src/lib.rs#L1606) |
+| unit | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](crates/sam-sandbox/src/lib.rs#L1624) |
+| unit | Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](crates/sam-sandbox/src/lib.rs#L1635) |
+| unit | A bundled library listed in advanced.system_libraries is replaced by the system's copy at its place in the app folder; names with folders or `..`, libraries the app does not bundle and libraries the system does not have are ignored. | [`system_copies_replace_only_bundled_libraries_by_plain_name`](crates/sam-sandbox/src/lib.rs#L1653) |
+| unit | An app started from SAM's window keeps the system's language, even when the window itself shows another one. | [`apps_keep_the_system_language_whatever_sams_window_shows`](crates/sam-sandbox/src/lib.rs#L1683) |
+| unit | The app's own folder stays read-only unless "writable app folder" is granted, even when SAM has an overlay for it prepared. | [`the_app_folder_stays_read_only_unless_writable_is_granted`](crates/sam-sandbox/src/lib.rs#L1709) |
+| unit | SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | [`sams_own_folders_stay_hidden_inside_a_granted_folder`](crates/sam-sandbox/src/lib.rs#L1725) |
+| unit | With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | [`credential_files_and_folders_in_the_home_are_masked`](crates/sam-sandbox/src/lib.rs#L1740) |
+| unit | Protected folders are created in the real home only before a start that can write the home, never otherwise. | [`home_protection_is_prepared_only_for_a_writable_home`](crates/sam-sandbox/src/lib.rs#L1761) |
+| unit | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | [`only_proper_variable_names_are_set`](crates/sam-sandbox/src/lib.rs#L1777) |
 
 </details>
 
@@ -388,7 +391,7 @@
 
 </details>
 
-<details><summary><b>sam-gtk</b> — The window (logic that runs without a display) (10 tests)</summary>
+<details><summary><b>sam-gtk</b> — The window (logic that runs without a display) (12 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -399,9 +402,11 @@
 | unit | Personal folders explain where they are; other permissions keep their description unchanged. | [`folder_explanations_name_the_path`](crates/sam-gtk/src/all_perms.rs#L1032) |
 | unit | The user guide keeps the text of a list item that has a nested list below it. | [`nested_items_keep_their_text`](crates/sam-gtk/src/guide.rs#L290) |
 | unit | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | [`links_to_other_pages_open_on_github`](crates/sam-gtk/src/guide.rs#L311) |
-| unit ⟲ | Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | [`the_style_sheet_handler_is_connected_before_register`](crates/sam-gtk/src/main.rs#L428) |
-| unit | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](crates/sam-gtk/src/main.rs#L439) |
-| unit | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](crates/sam-gtk/src/window.rs#L1373) |
+| unit | Choosing a language sets it for the window and remembers the system's; going back to the system restores exactly what it had, also after several restarts. | [`the_chosen_language_and_the_systems_are_kept_apart`](crates/sam-gtk/src/i18n.rs#L79) |
+| unit | A new icon is noticed by the desktop's icon caches: the folders from the icon up to the theme are marked as changed, also when an earlier version had replaced the icon in place; once they are newer than the icon, nothing is touched again (regression: the taskbar kept SAM's old icon). | [`a_new_icon_marks_its_folders_as_changed`](crates/sam-gtk/src/main.rs#L459) |
+| unit ⟲ | Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | [`the_style_sheet_handler_is_connected_before_register`](crates/sam-gtk/src/main.rs#L500) |
+| unit | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](crates/sam-gtk/src/main.rs#L511) |
+| unit | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](crates/sam-gtk/src/window.rs#L1405) |
 
 </details>
 
@@ -429,6 +434,10 @@
 
 | Commit | Date | Change |
 |---|---|---|
+| [`e5e2740`](https://github.com/gitzekatze/SAM/commit/e5e2740) | 2026-11-15 | Informal address in every language: du, tú, tu |
+| [`2601b8b`](https://github.com/gitzekatze/SAM/commit/2601b8b) | 2026-11-15 | A new SAM icon reaches the taskbar |
+| [`c1d3298`](https://github.com/gitzekatze/SAM/commit/c1d3298) | 2026-11-15 | Language menu, and "Permission Manager" |
+| [`50c12dc`](https://github.com/gitzekatze/SAM/commit/50c12dc) | 2026-11-15 | Version report after mutation testing and the release key |
 | [`2ccd936`](https://github.com/gitzekatze/SAM/commit/2ccd936) | 2026-11-15 | Function map: new tests are marked new, not failed |
 | [`be4bc78`](https://github.com/gitzekatze/SAM/commit/be4bc78) | 2026-11-15 | Quote the diagram labels so GitHub draws the C4 overview |
 | [`d8f66c8`](https://github.com/gitzekatze/SAM/commit/d8f66c8) | 2026-11-15 | new-version.sh shows a spinner while GitHub builds |
@@ -455,9 +464,5 @@
 | [`de950b3`](https://github.com/gitzekatze/SAM/commit/de950b3) | 2026-11-15 | CI: run the tests twice to catch flaky ones; summarize what a change touches |
 | [`e9b2d37`](https://github.com/gitzekatze/SAM/commit/e9b2d37) | 2026-11-15 | Function map: state the translation goal and the honest gap |
 | [`2d9479f`](https://github.com/gitzekatze/SAM/commit/2d9479f) | 2026-11-15 | Function map: every function of SAM with the tests that prove it |
-| [`4eccd36`](https://github.com/gitzekatze/SAM/commit/4eccd36) | 2026-11-15 | Version report at the end of Phase 7 |
-| [`983638c`](https://github.com/gitzekatze/SAM/commit/983638c) | 2026-11-15 | Repair: use the system's copy of a bundled library that is too old |
-| [`dd5154e`](https://github.com/gitzekatze/SAM/commit/dd5154e) | 2026-11-15 | Release: test the finished AppImage on fresh systems; plain refusal on old ones |
-| [`b078bd6`](https://github.com/gitzekatze/SAM/commit/b078bd6) | 2026-11-15 | License notices for the libraries built into SAM |
 
 The full history is at [https://github.com/gitzekatze/SAM/commits/main](https://github.com/gitzekatze/SAM/commits/main).

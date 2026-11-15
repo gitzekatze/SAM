@@ -228,7 +228,7 @@ version.
 - `cargo deny` checks advisories, licences and sources in CI; Dependabot
   proposes updates; `scripts/release.sh` signs releases by default.
 - New breakout test suite; security review report
-  (`docs/security-review-2026-11-10.md`).
+  (`docs/reports/security-review-2026-11-10.md`).
 
 ### Added
 

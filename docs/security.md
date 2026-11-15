@@ -406,7 +406,7 @@ was easily misread.
 
 ## Reviews and tests
 
-- [Security review 2026-11-10](security-review-2026-11-10.md): every promise
+- [Security review 2026-11-10](reports/security-review-2026-11-10.md): every promise
   on this page checked by a breakout test, with the fixes it led to.
 - The breakout tests run in CI on every push
   (`crates/sam-runner/tests/breakout.rs`).
