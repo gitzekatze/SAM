@@ -598,9 +598,9 @@ mod tests {
         )
         .unwrap();
         let sam = Sam::with_paths(paths).unwrap();
-        let err = diagnose(&sam, &mut AppEntry::default(), 1, false)
-            .err()
-            .expect("refused");
+        let Err(err) = diagnose(&sam, &mut AppEntry::default(), 1, false) else {
+            panic!("a diagnostic run was not refused");
+        };
         assert!(err.to_string().contains("switched off"), "{err}");
     }
 
