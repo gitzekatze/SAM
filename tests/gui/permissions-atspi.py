@@ -7,7 +7,7 @@ gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi
 
 # Older accessibility stacks (Ubuntu 24.04) name some roles differently.
-ROLE_ALIASES = {"button": {"button", "push button"}, "switch": {"switch", "toggle button"}}
+ROLE_ALIASES = {"button": {"button", "push button"}, "switch": {"switch", "toggle button", "check box"}}
 def role_is(n, want):
     return n.get_role_name() in ROLE_ALIASES.get(want, {want})
 
@@ -91,12 +91,13 @@ check("group switches shown for three apps", head is not None)
 # A mini control per app with its accessible name.
 dd = by_name(app, lambda s: s.startswith("Documents for "), "combo box") or by_name(app, lambda s: s.startswith("Documents for "))
 check("drop-downs are named after permission and apps", dd is not None)
-# The big switch of the row whose apps have sound on.
-on = [n for n in nodes(app) if (n.get_name() or "").startswith("Sound for") and role_is(n, "switch")
-      and (n.get_name() in ("Sound for all selected apps",) or (n.get_name() or "").split()[-1] == "apps")
-      and (n.get_state_set().contains(Atspi.StateType.CHECKED) or n.get_state_set().contains(Atspi.StateType.PRESSED))]
-check("big switch for the apps with sound on", bool(on), [n.get_name() for n in nodes(app) if (n.get_name() or "").startswith("Sound")])
+# The big switch of the row whose apps have sound on, found by its name:
+# SAM's records say how many apps have sound (GTK versions report the
+# switch's on state differently).
 had_sound = sorted(k for k in ["Browser", "Player", "Editor"] if before[k]["permissions"]["audio"]["enabled"])
+wanted = {"Sound for all selected apps", f"Sound for {len(had_sound)} apps"}
+on = [n for n in nodes(app) if (n.get_name() or "") in wanted and role_is(n, "switch")]
+check("big switch for the apps with sound on", bool(on), [(n.get_name(), n.get_role_name()) for n in nodes(app) if (n.get_name() or "").startswith("Sound for")])
 if on:
     press(on[0])
     dlg = wait(lambda: by_name(app, lambda s: s == "Change All Apps" or s == "Change Anyway", "button"))

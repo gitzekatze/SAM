@@ -43,6 +43,9 @@ version.
 
 ### Reliability beyond the first start
 
+- An app that connected to the filtered session bus right after the start
+  could be refused: SAM waited for the proxy's socket file, which appears a
+  moment before the proxy listens. SAM now waits until a connection works.
 - "Allow diagnostic runs" in Preferences now works: when it is off, SAM runs
   no app under strace. Two switches that did nothing ("Remove unpacked
   copies of apps that are gone", "Verbose logging") are gone.

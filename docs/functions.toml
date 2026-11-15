@@ -114,7 +114,7 @@ id = 13
 area = "C"
 promise = "The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox."
 code = ["sam-runner/src/dbus_proxy.rs", "sam-sandbox/src/lib.rs", "sam-core/src/permissions.rs", "sam-runner/src/kernel.rs"]
-tests = ["own_names_that_are_refused", "blocked_names_win_over_wildcards", "only_real_socket_paths_are_taken_from_a_dbus_address", "own_names_from_the_id_and_the_window_class", "filtered_dbus_uses_proxy", "the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins", "without_nested_namespaces_user_namespaces_are_disabled", "extra_sockets_must_be_sockets", "tray_names_follow_watcher_permission", "the_syscall_filter_compiles_and_blocks_mount_and_io_uring", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape"]
+tests = ["own_names_that_are_refused", "blocked_names_win_over_wildcards", "only_real_socket_paths_are_taken_from_a_dbus_address", "own_names_from_the_id_and_the_window_class", "filtered_dbus_uses_proxy", "the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins", "without_nested_namespaces_user_namespaces_are_disabled", "extra_sockets_must_be_sockets", "tray_names_follow_watcher_permission", "the_syscall_filter_compiles_and_blocks_mount_and_io_uring", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "a_socket_counts_as_ready_only_when_it_accepts"]
 
 [[function]]
 id = 14

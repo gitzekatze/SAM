@@ -117,7 +117,10 @@ impl DbusProxy {
             .spawn()
             .context(sam_core::i18n::tr("starting xdg-dbus-proxy"))?;
         let deadline = Instant::now() + Duration::from_secs(3);
-        while !socket.exists() {
+        // The socket file appears before the proxy listens on it; an app
+        // that connected in between was refused (seen in CI). Wait until a
+        // connection really succeeds.
+        while !accepting(&socket) {
             if let Some(st) = child.try_wait()? {
                 bail!(
                     "{}",
@@ -166,5 +169,32 @@ mod tests {
         assert!(names.contains(&"org.freedesktop.StatusNotifierItem-2-1".to_string()));
         p.allow.retain(|n| n != "org.kde.StatusNotifierWatcher");
         assert!(p.tray_own_names().is_empty());
+    }
+}
+
+/// Whether something listens on the Unix socket at `path` (an existing
+/// file alone is not enough).
+fn accepting(path: &std::path::Path) -> bool {
+    std::os::unix::net::UnixStream::connect(path).is_ok()
+}
+
+#[cfg(test)]
+mod accepting_tests {
+    /// The proxy counts as ready only when its socket accepts connections,
+    /// not when the file merely exists (regression: the sandbox check
+    /// sometimes found the session bus refused right after the start).
+    #[test]
+    fn a_socket_counts_as_ready_only_when_it_accepts() {
+        let t = tempfile::tempdir().unwrap();
+        let path = t.path().join("bus");
+        assert!(!super::accepting(&path), "nothing there yet");
+        std::fs::write(&path, b"").unwrap();
+        assert!(
+            !super::accepting(&path),
+            "a file that exists is not a listening socket"
+        );
+        std::fs::remove_file(&path).unwrap();
+        let _listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        assert!(super::accepting(&path));
     }
 }
