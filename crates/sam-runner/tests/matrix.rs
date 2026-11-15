@@ -141,7 +141,13 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         if std::env::var_os("SAM_MATRIX_DEBUG").is_some() {
             eprintln!("=== {name}\n{}", fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap());
         }
-        let r = parse(rec.log_file.as_ref().unwrap());
+        let log = rec.log_file.clone().unwrap_or_else(|| panic!("[{name}] the launch kept no log: {}", rec.summary));
+        if !log.exists() {
+            let dir =
+                log.parent().map(|d| fs::read_dir(d).map(|r| r.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect::<Vec<_>>().join(", ")));
+            panic!("[{name}] the log {} is missing ({}); the folder holds: {dir:?}", log.display(), rec.summary);
+        }
+        let r = parse(&log);
         *last.borrow_mut() = Some(rec.clone());
         assert_eq!(r.get("END").map(String::as_str), Some("1"), "[{name}] probe did not finish: {r:?}");
         r

@@ -405,13 +405,29 @@ impl Logs {
         let dir = self.paths.app_logs_dir(id);
         fs::create_dir_all(&dir)?;
         let ts = chrono_stamp();
-        let mut p = dir.join(format!("{}-{ts}.log", kind.prefix()));
-        let mut n = 1;
-        while p.exists() {
-            p = dir.join(format!("{}-{ts}-{n}.log", kind.prefix()));
-            n += 1;
-        }
-        Ok(p)
+        // Logs from the same second get a number above every existing one.
+        // Reusing a free lower name (after older logs of that second were
+        // pruned) would make the new log the oldest, and the next pruning
+        // would delete it.
+        let prefix = format!("{}-{ts}", kind.prefix());
+        let highest = fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let rest = name.strip_prefix(&prefix)?.strip_suffix(".log")?.to_string();
+                if rest.is_empty() {
+                    Some(0)
+                } else {
+                    rest.strip_prefix('-')?.parse::<u32>().ok()
+                }
+            })
+            .max();
+        Ok(match highest {
+            None => dir.join(format!("{prefix}.log")),
+            Some(n) => dir.join(format!("{prefix}-{}.log", n + 1)),
+        })
     }
 
     pub fn list(&self, id: &str, kind: Option<LogKind>) -> Result<Vec<LogFile>> {
@@ -474,6 +490,21 @@ fn log_stamp(path: &Path) -> (String, String, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// With more launches in one second than logs are kept, the newest log
+    /// survives the pruning after its launch (regression: on a fast machine
+    /// a pruned name was reused, sorted as the oldest and deleted at once).
+    #[test]
+    fn the_newest_log_survives_pruning_within_one_second() {
+        let tmp = tempfile::tempdir().unwrap();
+        let logs = Logs::new(&Paths::rooted(tmp.path()));
+        for round in 0..12 {
+            let p = logs.new_log_path("app", LogKind::Launch).unwrap();
+            fs::write(&p, format!("round {round}")).unwrap();
+            logs.prune("app", LogKind::Launch, 3).unwrap();
+            assert!(p.exists(), "round {round}: the log just written was pruned ({})", p.display());
+        }
+    }
 
     /// A record SAM saved loads as unchanged; a record changed afterwards
     /// by something else is recognized as changed outside SAM; a record
