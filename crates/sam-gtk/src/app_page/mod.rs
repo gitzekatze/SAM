@@ -160,7 +160,7 @@ impl AppPage {
         // (the breakpoint below).
         let top_buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::End).build();
         let check_button = gtk::Button::builder()
-            .child(&button_content("security-high-symbolic", "Test"))
+            .child(&button_content("security-high-symbolic", &crate::i18n::tr("Test")))
             .tooltip_text(tr("Test the sandbox: confirm from inside that every setting applies, then start the app for a few seconds to see that it runs"))
             .name("check-button")
             .build();
@@ -232,7 +232,7 @@ impl AppPage {
         // Launching: how SAM starts this app.
         let launch_group = adw::PreferencesGroup::builder().title(tr("Launching")).description(tr("How SAM starts this app.")).build();
         let (args_row, args_chips, args_entry, args_add) = chip_editor(
-            "Launch arguments",
+            &crate::i18n::tr("Launch arguments"),
             "Passed to the app every time it starts, e.g. --no-sandbox for Electron apps that cannot start their own sandbox.",
             "Argument, e.g. --disable-gpu",
         );

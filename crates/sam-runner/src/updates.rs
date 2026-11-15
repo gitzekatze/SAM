@@ -28,7 +28,7 @@ pub fn check(appimage: &Path) -> UpdateStatus {
     let Some(source) = update_info::read(appimage) else {
         return UpdateStatus {
             state: UpdateState::Unsupported,
-            detail: "This AppImage does not say where updates are published.".into(),
+            detail: sam_core::i18n::tr("This AppImage does not say where updates are published."),
             checked_at: now,
             ..Default::default()
         };
@@ -38,7 +38,12 @@ pub fn check(appimage: &Path) -> UpdateStatus {
             s.checked_at = now;
             s
         }
-        Err(e) => UpdateStatus { state: UpdateState::Failed, detail: format!("The update check failed: {e:#}"), checked_at: now, ..Default::default() },
+        Err(e) => UpdateStatus {
+            state: UpdateState::Failed,
+            detail: sam_core::i18n::trf("The update check failed: {error}", &[("error", &format!("{e:#}"))]),
+            checked_at: now,
+            ..Default::default()
+        },
     }
 }
 
@@ -121,17 +126,17 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
 
 fn check_source(appimage: &Path, source: &UpdateSource) -> Result<UpdateStatus> {
     Ok(match newest_from(appimage, source)? {
-        None => UpdateStatus { state: UpdateState::Current, detail: "This is the newest published version.".into(), ..Default::default() },
+        None => UpdateStatus { state: UpdateState::Current, detail: sam_core::i18n::tr("This is the newest published version."), ..Default::default() },
         Some(p) => {
             let name = match (&p.filename, &p.release) {
-                (Some(f), Some(r)) => format!("{f} (release {r})"),
+                (Some(f), Some(r)) => sam_core::i18n::trf("{file} (release {release})", &[("file", f), ("release", r)]),
                 (Some(f), None) => f.clone(),
-                (None, Some(r)) => format!("release {r}"),
-                (None, None) => "a newer version".into(),
+                (None, Some(r)) => sam_core::i18n::trf("release {release}", &[("release", r)]),
+                (None, None) => sam_core::i18n::tr("a newer version"),
             };
             UpdateStatus {
                 state: UpdateState::Available,
-                detail: format!("{} is published.", sam_core::util::display_safe(&name, 160)),
+                detail: sam_core::i18n::trf("{version} is published.", &[("version", &sam_core::util::display_safe(&name, 160))]),
                 latest: p.filename.or(p.release),
                 download_page: p.page,
                 checked_at: 0,
@@ -149,7 +154,7 @@ fn resolve(zsync_url: &str, file: &str) -> Result<String> {
         bail!("{}", sam_core::i18n::tr("the update file is not offered over HTTPS"));
     }
     if file.is_empty() || file.contains("..") || file.starts_with('/') {
-        bail!("the update description names an unusable file ({})", sam_core::util::display_safe(file, 80));
+        bail!("{}", sam_core::i18n::trf("the update description names an unusable file ({file})", &[("file", &sam_core::util::display_safe(file, 80))]));
     }
     let base = zsync_url.rsplit_once('/').map(|(b, _)| b).context(sam_core::i18n::tr("bad update address"))?;
     Ok(format!("{base}/{file}"))
@@ -219,7 +224,7 @@ fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>> {
         .stdin(Stdio::null())
         .output()?;
     if !out.status.success() {
-        bail!("range request failed: {}", String::from_utf8_lossy(&out.stderr).trim());
+        bail!("{}", sam_core::i18n::trf("downloading the changed parts failed: {reason}", &[("reason", &String::from_utf8_lossy(&out.stderr).trim())]));
     }
     Ok(out.stdout)
 }
@@ -261,11 +266,11 @@ fn curl_error(stderr: &str) -> String {
     let e = stderr.trim();
     let status = e.rsplit("error: ").next().and_then(|n| n.trim().parse::<u16>().ok());
     match status {
-        Some(404) => "the update source has nothing published at that address (yet)".into(),
-        Some(403) | Some(429) => "the update source refused the request for now (rate limit); try again later".into(),
+        Some(404) => sam_core::i18n::tr("the update source has nothing published at that address (yet)"),
+        Some(403) | Some(429) => sam_core::i18n::tr("the update source refused the request for now (rate limit); try again later"),
         Some(s) if s >= 500 => sam_core::i18n::trf("the update source has a problem (HTTP {status}); try again later", &[("status", &s)]),
         _ if e.contains("Could not resolve host") || e.contains("Failed to connect") => {
-            "no connection to the update source; check the internet connection".into()
+            sam_core::i18n::tr("no connection to the update source; check the internet connection")
         }
         _ => sam_core::util::display_safe(e.trim_start_matches("curl: "), 200),
     }
@@ -319,7 +324,7 @@ fn sha1_of(path: &Path) -> Result<String> {
 /// `MAX_ANSWER`). With a limit, only that range is asked for.
 fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
-        bail!("the update address is not HTTPS ({})", sam_core::util::display_safe(url, 120));
+        bail!("{}", sam_core::i18n::trf("the update address is not HTTPS ({address})", &[("address", &sam_core::util::display_safe(url, 120))]));
     }
     let curl = sam_core::util::which("curl")
         .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;

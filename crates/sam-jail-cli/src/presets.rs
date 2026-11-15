@@ -9,7 +9,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             let all = sam_profile::all_presets(&app.paths)?;
             out.emit(&all, || {
                 if all.is_empty() {
-                    println!("You have no presets yet. Save an app's settings with `sam-jail preset save APP NAME`.");
+                    println!("{}", sam_core::i18n::tr("You have no presets yet. Save an app's settings with `sam-jail preset save APP NAME`."));
                 }
                 for p in &all {
                     println!("{:<26} {:<10} {}", p.name, risk_str(p.risk), p.description);
@@ -123,7 +123,7 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
                 } else {
                     println!("Changed {key} to {value} for {n} app(s)");
                     if r.apps.iter().any(|a| a.changed && a.running) {
-                        println!("Running apps use the new settings the next time they start.");
+                        println!("{}", sam_core::i18n::tr("Running apps use the new settings the next time they start."));
                     }
                 }
             });
@@ -132,7 +132,9 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
             let previous =
                 serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr("expected the \"previous\" object of `group set` as JSON on stdin"))?;
             let n = app.group_restore(previous)?;
-            out.emit(&json!({"restored": n}), || println!("Restored the settings of {n} app(s)"));
+            out.emit(&json!({"restored": n}), || {
+                println!("{}", sam_core::i18n::trn("Restored the settings of {n} app.", "Restored the settings of {n} apps.", n as u64, &[]))
+            });
         }
     }
     Ok(())

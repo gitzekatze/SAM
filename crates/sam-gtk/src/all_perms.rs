@@ -29,17 +29,18 @@ use crate::window::{self, App};
 /// The values of a permission that can be changed for a group, with the
 /// words of its switch. A permission with on/off values is drawn as a switch.
 type Opts = &'static [(&'static str, &'static str)];
-const SWITCH: Opts = &[("false", "Off"), ("true", "On")];
-const NETWORK: Opts = &[("none", "No network"), ("localhost", "This computer only"), ("full", "Full network")];
-const FOLDER: Opts = &[("none", "No access"), ("ro", "Read-only"), ("rw", "Read & write")];
-const BUS: Opts = &[("none", "No access"), ("filtered", "Filtered"), ("full", "Full access")];
+const SWITCH: Opts = &[("false", crate::i18n::n_("Off")), ("true", crate::i18n::n_("On"))];
+const NETWORK: Opts =
+    &[("none", crate::i18n::n_("No network")), ("localhost", crate::i18n::n_("This computer only")), ("full", crate::i18n::n_("Full network"))];
+const FOLDER: Opts = &[("none", crate::i18n::n_("No access")), ("ro", crate::i18n::n_("Read-only")), ("rw", crate::i18n::n_("Read & write"))];
+const BUS: Opts = &[("none", crate::i18n::n_("No access")), ("filtered", crate::i18n::n_("Filtered")), ("full", crate::i18n::n_("Full access"))];
 
 /// The permissions that make sense for several apps at once. Technical
 /// ones (GPU, nested sandbox, syscall filter, all of /usr) stay per app.
 const GROUPS: &[(&str, &[(&str, Opts)])] = &[
-    ("Network", &[("network.mode", NETWORK)]),
+    (crate::i18n::n_("Network"), &[("network.mode", NETWORK)]),
     (
-        "Personal Folders",
+        crate::i18n::n_("Personal Folders"),
         &[
             ("filesystem.documents", FOLDER),
             ("filesystem.downloads", FOLDER),
@@ -49,8 +50,8 @@ const GROUPS: &[(&str, &[(&str, Opts)])] = &[
             ("filesystem.desktop", FOLDER),
         ],
     ),
-    ("Sound and Devices", &[("audio.enabled", SWITCH), ("devices.webcam", SWITCH), ("devices.gamepads", SWITCH)]),
-    ("Desktop", &[("display.x11", SWITCH), ("dbus.session.mode", BUS)]),
+    (crate::i18n::n_("Sound and Devices"), &[("audio.enabled", SWITCH), ("devices.webcam", SWITCH), ("devices.gamepads", SWITCH)]),
+    (crate::i18n::n_("Desktop"), &[("display.x11", SWITCH), ("dbus.session.mode", BUS)]),
 ];
 
 /// Every group row has three sections of fixed size: the text (the rest of
@@ -111,7 +112,7 @@ fn value_token(v: &Value) -> String {
 }
 
 fn opt_label(opts: Opts, token: &str) -> String {
-    opts.iter().find(|o| o.0 == token).map(|o| o.1.to_string()).unwrap_or_else(|| token.to_string())
+    opts.iter().find(|o| o.0 == token).map(|o| tr(o.1)).unwrap_or_else(|| token.to_string())
 }
 
 /// A permission tag: the words of the switch, colored by risk, outlined
@@ -639,7 +640,7 @@ impl PermsPage {
         match running.len() {
             0 => self.banner.set_revealed(false),
             1 => {
-                self.banner.set_title(&esc(&format!("{} is running. It uses changed settings the next time it starts.", running[0])));
+                self.banner.set_title(&esc(&crate::i18n::trf("{app} is running. It uses changed settings the next time it starts.", &[("app", &running[0])])));
                 self.banner.set_revealed(true);
             }
             n => {
@@ -838,7 +839,8 @@ impl PermsPage {
             });
             sw.upcast()
         } else {
-            let labels: Vec<&str> = opts.iter().map(|o| o.1).collect();
+            let labels: Vec<String> = opts.iter().map(|o| tr(o.1)).collect();
+            let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
             let dd = gtk::DropDown::from_strings(&labels);
             dd.set_valign(gtk::Align::Center);
             dd.set_hexpand(true);
@@ -887,10 +889,9 @@ impl PermsPage {
                 let lines: Vec<String> = at_risk
                     .iter()
                     .map(|a| {
-                        format!(
-                            "{} may stop working: it likely needs {}.",
-                            util::plain(util::str_of(a, "name")),
-                            util::list_of(a, "check.removes_needed").join(", ")
+                        crate::i18n::trf(
+                            "{app} may stop working: it likely needs {needs}.",
+                            &[("app", &util::plain(util::str_of(a, "name"))), ("needs", &util::list_of(a, "check.removes_needed").join(", "))],
                         )
                     })
                     .collect();

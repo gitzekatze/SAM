@@ -516,9 +516,9 @@ impl Sam {
                 if !accept_key_change {
                     return Err(sam_core::error::CodedError::new(
                         "signing-key-changed",
-                        format!(
-                            "The signing key changed: the installed version was {before}, the new file is {}. The download was deleted; update again and accept the change only if you trust it.",
-                            sig_words(&new_sig)
+                        sam_core::i18n::trf(
+                            "The signing key changed: the installed version was {before}, the new file is {now}. The download was deleted; update again and accept the change only if you trust it.",
+                            &[("before", &before), ("now", &sig_words(&new_sig))],
                         ),
                     )
                     .into());

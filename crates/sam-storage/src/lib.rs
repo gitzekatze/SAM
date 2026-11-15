@@ -23,8 +23,17 @@ fn migrate_app(v: serde_json::Value, _from: u32) -> serde_json::Value {
 /// A record that cannot be read: moved aside, reported once.
 fn damaged_record(p: &Path, err: &anyhow::Error) {
     match sam_core::format::quarantine(p) {
-        Some(to) => eprintln!("sam-jail: app record {} could not be read ({err:#}); moved it to {}", p.display(), to.display()),
-        None => eprintln!("sam-jail: app record {} could not be read: {err:#}", p.display()),
+        Some(to) => eprintln!(
+            "sam-jail: {}",
+            sam_core::i18n::trf(
+                "the app record {file} could not be read ({error}); it was moved to {moved}",
+                &[("file", &p.display()), ("error", &format!("{err:#}")), ("moved", &to.display())]
+            )
+        ),
+        None => eprintln!(
+            "sam-jail: {}",
+            sam_core::i18n::trf("the app record {file} could not be read: {error}", &[("file", &p.display()), ("error", &format!("{err:#}"))])
+        ),
     }
 }
 
@@ -72,7 +81,13 @@ impl Registry {
         // elsewhere ("../../.ssh"), so only safe ids that match the file
         // name are loaded.
         if !valid_id(&e.id) || p.file_stem().and_then(|s| s.to_str()) != Some(e.id.as_str()) {
-            bail!("{}: the app id {:?} is not a safe name or does not match the file name; the record is ignored", p.display(), e.id);
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "{file}: the app id {id} is not a safe name or does not match the file name; the record is ignored",
+                    &[("file", &p.display()), ("id", &format!("{:?}", e.id))]
+                )
+            );
         }
         sam_core::format::backup_before_migration(p, found);
         // Changed by something other than SAM? Only records that carry a
@@ -132,7 +147,7 @@ impl Registry {
 
     pub fn save(&self, entry: &mut AppEntry) -> Result<()> {
         if !valid_id(&entry.id) {
-            bail!("invalid app id '{}'", entry.id);
+            bail!("{}", sam_core::i18n::trf("invalid app id '{id}'", &[("id", &entry.id)]));
         }
         entry.updated_at = now();
         entry.format = sam_core::format::CURRENT;
@@ -232,8 +247,17 @@ impl PresetStore {
                 // Not readable as a preset: moved aside, so it is reported
                 // once (sam-jail doctor lists it) instead of on every start.
                 Err(err) if err.chain().any(|c| c.downcast_ref::<toml::de::Error>().is_some()) => match sam_core::format::quarantine(&p) {
-                    Some(to) => eprintln!("sam-jail: preset {} could not be read ({err:#}); moved it to {}", p.display(), to.display()),
-                    None => eprintln!("sam-jail: skipping invalid preset {}: {err:#}", p.display()),
+                    Some(to) => eprintln!(
+                        "sam-jail: {}",
+                        sam_core::i18n::trf(
+                            "the preset {file} could not be read ({error}); it was moved to {moved}",
+                            &[("file", &p.display()), ("error", &format!("{err:#}")), ("moved", &to.display())]
+                        )
+                    ),
+                    None => eprintln!(
+                        "sam-jail: {}",
+                        sam_core::i18n::trf("skipping the damaged preset {file}: {error}", &[("file", &p.display()), ("error", &format!("{err:#}"))])
+                    ),
                 },
                 Err(err) => eprintln!("sam-jail: skipping preset {}: {err:#}", p.display()),
             }
@@ -306,7 +330,7 @@ pub fn read_preset_file(path: &Path) -> Result<Preset> {
 pub fn parse_preset_toml(s: &str) -> Result<Preset> {
     let file: PresetFile = toml::from_str(s)?;
     if file.preset.format > sam_core::format::CURRENT {
-        bail!("this preset was made by a newer SAM (format {}); update SAM to use it", file.preset.format);
+        bail!("{}", sam_core::i18n::trf("this preset was made by a newer SAM (format {format}); update SAM to use it", &[("format", &file.preset.format)]));
     }
     let permissions = permissions_from_toml(file.permissions)?;
     Ok(Preset {

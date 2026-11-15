@@ -361,7 +361,13 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
         .lines()
         .find_map(|l| l.strip_prefix(probe::REPORT_MARKER))
         .with_context(|| sam_core::i18n::trf("the sandbox did not start: {reason}", &[("reason", &stderr.lines().take(3).collect::<Vec<_>>().join(" "))]))?;
-    let report: ProbeReport = serde_json::from_str(json).context(sam_core::i18n::tr("reading the check report"))?;
+    let mut report: ProbeReport = serde_json::from_str(json).context(sam_core::i18n::tr("reading the check report"))?;
+    // The probe inside the sandbox reports fixed English phrases (marked
+    // with n_ there); they are translated here, outside, where SAM's
+    // language files are.
+    for r in &mut report.results {
+        r.observed = sam_core::i18n::tr(&r.observed);
+    }
     let record = CheckRecord {
         at: sam_core::util::now(),
         key: check_key(app, cfg, host),

@@ -6,24 +6,30 @@ impl Sam {
     // ------------------------------------------------------------------ add
 
     pub fn add(&self, path: &Path, opts: &AddOptions) -> Result<AddOutcome> {
-        let source = fs::canonicalize(path).with_context(|| format!("{} does not exist", path.display()))?;
+        let source = fs::canonicalize(path).with_context(|| sam_core::i18n::trf("{file} does not exist", &[("file", &path.display())]))?;
         if !source.is_file() {
-            bail!("{} is not a file", source.display());
+            bail!("{}", sam_core::i18n::trf("{file} is not a file", &[("file", &source.display())]));
         }
         let pr = &opts.progress;
         let file_size = fs::metadata(&source).map(|m| m.len()).unwrap_or(0);
-        pr.step(ADD_STEPS, 0, 0.0, format!("{} AppImage: format, checksum and signature", progress::size(file_size)));
+        pr.step(ADD_STEPS, 0, 0.0, sam_core::i18n::trf("{size} AppImage: format, checksum and signature", &[("size", &progress::size(file_size))]));
         let reg = self.registry();
         let all = reg.list()?;
         if let Some(existing) = all.iter().find(|a| a.source_path == source) {
-            bail!("{} is already registered as '{}' ({})", tildify(&source), existing.display_name(), existing.id);
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "{file} is already registered as '{app}' ({id})",
+                    &[("file", &tildify(&source)), ("app", &existing.display_name()), ("id", &existing.id)]
+                )
+            );
         }
         let info = inspect(&source)?;
         if !info.is_appimage() {
-            bail!("{} is not an AppImage ({})", tildify(&source), info.notes.join("; "));
+            bail!("{}", sam_core::i18n::trf("{file} is not an AppImage ({why})", &[("file", &tildify(&source)), ("why", &info.notes.join("; "))]));
         }
         if let Some(why) = sam_detect::appimage::wrong_processor(&info) {
-            bail!("{} cannot get a sandbox: {why}", tildify(&source));
+            bail!("{}", sam_core::i18n::trf("{file} cannot get a sandbox: {why}", &[("file", &tildify(&source)), ("why", &why)]));
         }
         let fp = fingerprint::compute(&source)?;
 
@@ -161,7 +167,12 @@ impl Sam {
             warnings.push(Warning::warn(
                 "suspicious-payload",
                 "Unusual files in the AppImage",
-                format!("{} item(s) were sanitized during extraction: {}", suspicious.len(), suspicious.iter().take(5).cloned().collect::<Vec<_>>().join("; ")),
+                sam_core::i18n::trn(
+                    "{n} item was made safe while unpacking: {items}",
+                    "{n} items were made safe while unpacking: {items}",
+                    suspicious.len() as u64,
+                    &[("items", &suspicious.iter().take(5).cloned().collect::<Vec<_>>().join("; "))],
+                ),
             ));
         }
         if out.method.contains("appimage-extract") {
@@ -231,7 +242,7 @@ impl Sam {
                 exec_hint: (!entry.metadata.exec.is_empty()).then(|| entry.metadata.exec.clone()),
                 ..Default::default()
             };
-            pr.step(ADD_STEPS, 3, 0.0, "Looking for the app's programs and libraries");
+            pr.step(ADD_STEPS, 3, 0.0, sam_core::i18n::tr("Looking for the app's programs and libraries"));
             let report = |n: usize, total: usize| {
                 pr.step(
                     ADD_STEPS,
@@ -243,7 +254,7 @@ impl Sam {
             match analyze_appdir_with(&x.appdir, &opts, &report) {
                 Ok(r) => Some(r),
                 Err(e) => {
-                    entry.last_error = Some(format!("dependency detection failed: {e:#}"));
+                    entry.last_error = Some(sam_core::i18n::trf("dependency detection failed: {error}", &[("error", &format!("{e:#}"))]));
                     None
                 }
             }

@@ -179,14 +179,14 @@ fn rewrite(text: &str, extra: &[String]) -> (String, Option<String>) {
 pub fn hide(entry: &Path, user_dir: &Path, app_id: &str) -> Result<HiddenEntry> {
     let text = fs::read_to_string(entry).with_context(|| format!("reading {}", entry.display()))?;
     if !text.contains(GROUP) {
-        bail!("{} is not a desktop entry", entry.display());
+        bail!("{}", sam_core::i18n::trf("{file} is not a menu entry", &[("file", &entry.display())]));
     }
     let extra = vec!["NoDisplay=true".to_string(), format!("{MARKER}={app_id}")];
     let (new_text, previous) = rewrite(&text, &extra);
     let in_user_dir = entry.parent().is_some_and(|d| same_dir(d, user_dir));
     let modified = if in_user_dir { entry.to_path_buf() } else { user_dir.join(entry.file_name().context(sam_core::i18n::tr("entry without file name"))?) };
     if !in_user_dir && modified.exists() {
-        bail!("{} already exists; not overwriting it", modified.display());
+        bail!("{}", sam_core::i18n::trf("{file} already exists; it was not overwritten", &[("file", &modified.display())]));
     }
     fs::create_dir_all(user_dir)?;
     atomic_write(&modified, new_text.as_bytes())?;

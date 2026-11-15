@@ -49,7 +49,7 @@ impl Sam {
                 "The source AppImage no longer exists. You can still run the extracted copy, relocate it, or remove the app.",
             )),
             AppState::Broken => {
-                w.push(Warning::danger("broken", "Not runnable", e.last_error.clone().unwrap_or_else(|| "Extraction or launch failed.".into())))
+                w.push(Warning::danger("broken", "Not runnable", e.last_error.clone().unwrap_or_else(|| sam_core::i18n::tr("Unpacking or starting failed."))))
             }
             _ => {}
         }
@@ -57,7 +57,10 @@ impl Sam {
             w.push(Warning::warn(
                 "new-permissions",
                 "Update needs new permissions",
-                format!("The updated AppImage likely needs: {}. Your customized profile was kept; review and grant if needed.", e.pending_changes.join(", ")),
+                sam_core::i18n::trf(
+                    "The updated AppImage likely needs: {needs}. Your own settings were kept; review them and grant access if needed.",
+                    &[("needs", &e.pending_changes.join(", "))],
+                ),
             ));
         }
         if e.profile.compatibility_mode {
@@ -67,7 +70,7 @@ impl Sam {
             w.push(Warning::danger(
                 "signing-key-changed",
                 "Signed differently than before",
-                format!("The previous version was {before}. The current file is {}. An update from the same developer normally keeps its key: make sure the file comes from where you expect.", e.signature.as_ref().map(sig_words).unwrap_or_else(|| "not checked".into())),
+                sam_core::i18n::trf("The previous version was {before}. The current file is {now}. An update from the same developer normally keeps its key: make sure the file comes from where you expect.", &[("before", &before), ("now", &e.signature.as_ref().map(sig_words).unwrap_or_else(|| sam_core::i18n::tr("not checked")))]),
             ));
         }
         if e.signature.as_ref().is_some_and(|s| s.state == sam_core::model::SignatureState::Invalid) {
@@ -190,7 +193,7 @@ impl Sam {
     /// from its metadata only (nothing is unpacked or run). `perms` evaluates
     /// the user's adjusted settings instead.
     pub fn preview(&self, path: &Path, perms: Option<PermissionSet>) -> Result<serde_json::Value> {
-        let path = fs::canonicalize(path).with_context(|| format!("{} does not exist", path.display()))?;
+        let path = fs::canonicalize(path).with_context(|| sam_core::i18n::trf("{file} does not exist", &[("file", &path.display())]))?;
         let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
         let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let rec = sam_profile::recommend(&md, &file_name, None);
@@ -223,7 +226,10 @@ impl Sam {
         for f in self.menu_duplicates(entry) {
             match menu::hide(&f.file, &self.paths.applications_dir, &entry.id) {
                 Ok(h) => entry.hidden_entries.push(h),
-                Err(e) => eprintln!("sam-jail: could not hide menu entry {}: {e:#}", f.file.display()),
+                Err(e) => eprintln!(
+                    "sam-jail: {}",
+                    sam_core::i18n::trf("could not hide the menu entry {file}: {error}", &[("file", &f.file.display()), ("error", &format!("{e:#}"))])
+                ),
             }
         }
     }

@@ -440,7 +440,7 @@ impl AppPage {
                 &app.window,
                 "Turn On Compatibility Mode?",
                 &crate::i18n::tr("The app gets broad access: the network, the whole session bus, all of /usr, X11, the GPU and sound. Use it when nothing else helps.\n\nYour current settings are remembered and come back when you turn it off."),
-                "Turn On",
+                &crate::i18n::tr("Turn On"),
                 true,
             ).await {
                 return;
@@ -490,7 +490,7 @@ impl AppPage {
                     &crate::i18n::tr(
                         "A preset with this name exists. Its settings are replaced by the ones shown here. Apps that used it keep their current settings.",
                     ),
-                    "Replace",
+                    &crate::i18n::tr("Replace"),
                     true,
                 )
                 .await

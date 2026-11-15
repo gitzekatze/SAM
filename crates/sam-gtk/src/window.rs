@@ -445,8 +445,8 @@ impl App {
         let toggles = gtk::Box::builder().margin_top(8).build();
         toggles.add_css_class("linked");
         let mut first: Option<gtk::ToggleButton> = None;
-        for (name, label) in [("all", "All"), ("sandboxed", "Sandboxed"), ("unsandboxed", "Unsandboxed")] {
-            let b = gtk::ToggleButton::builder().label(label).active(name == "all").hexpand(true).build();
+        for (name, label) in [("all", crate::i18n::n_("All")), ("sandboxed", crate::i18n::n_("Sandboxed")), ("unsandboxed", crate::i18n::n_("Unsandboxed"))] {
+            let b = gtk::ToggleButton::builder().label(tr(label)).active(name == "all").hexpand(true).build();
             if let Some(f) = &first {
                 b.set_group(Some(f));
             } else {
@@ -974,7 +974,7 @@ impl App {
         }
         match refused.len() {
             0 => {}
-            1 => self.toast(&format!("{} is not an AppImage.", util::plain(&refused[0]))),
+            1 => self.toast(&crate::i18n::trf("{file} is not an AppImage.", &[("file", &util::plain(&refused[0]))])),
             n => self.toast(&crate::i18n::trn(
                 "{n} item is not an AppImage and was not added.",
                 "{n} items are not AppImages and were not added.",
@@ -1143,10 +1143,7 @@ impl App {
                 me.toast(&tr("SAM is up to date"));
                 return;
             }
-            let body = format!(
-                "{} SAM downloads it (only the changed parts when possible), checks it and puts it next to the current file. The current version is kept until the next update.",
-                util::plain(util::str_of(&check, "detail"))
-            );
+            let body = format!("{} {}", util::plain(util::str_of(&check, "detail")), crate::i18n::tr("SAM downloads it (only the changed parts when possible), checks it and puts it next to the current file. The current version is kept until the next update."));
             if !confirm(&me.window, &tr("Update SAM?"), &body, &tr("Update"), false).await {
                 return;
             }
@@ -1188,13 +1185,8 @@ impl App {
             }
             Err(_) => crate::i18n::tr("an older version"),
         };
-        let body = format!(
-            "This window is SAM {} (interface {}), but the command line tool it uses, {}, is {found}.\n\nInstall matching versions of both, or point SAM_CLI at the right sam-jail. Until then, SAM may show wrong or missing information.",
-            env!("CARGO_PKG_VERSION"),
-            sam_core::JSON_INTERFACE,
-            self.backend.cli.display()
-        );
-        let d = adw::AlertDialog::new(Some("SAM's Parts Do Not Match"), Some(&body));
+        let body = crate::i18n::trf("This window is SAM {version} (interface {interface}), but the command line tool it uses, {program}, is {found}.\n\nInstall matching versions of both, or point SAM_CLI at the right sam-jail. Until then, SAM may show wrong or missing information.", &[("version", &env!("CARGO_PKG_VERSION")), ("interface", &sam_core::JSON_INTERFACE), ("program", &self.backend.cli.display()), ("found", &found)]);
+        let d = adw::AlertDialog::new(Some(&crate::i18n::tr("SAM's Parts Do Not Match")), Some(&body));
         d.add_response("ok", "OK");
         d.present(Some(&self.window));
     }

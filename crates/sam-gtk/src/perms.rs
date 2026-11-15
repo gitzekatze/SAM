@@ -170,7 +170,7 @@ impl Editor {
     fn info(&self, key: &str) -> Info {
         if key == "environment.set" {
             return Info {
-                title: "Environment variables".into(),
+                title: crate::i18n::tr("Environment variables"),
                 description: crate::i18n::tr(
                     "Variables set inside the sandbox, as NAME=value, e.g. QT_SCALE_FACTOR=1.5. They override variables passed through.",
                 ),
@@ -409,7 +409,7 @@ impl Editor {
             use std::os::unix::fs::FileTypeExt;
             if let Ok(md) = std::fs::metadata(&p) {
                 if !md.file_type().is_socket() {
-                    self.notify(&format!("{} is not a socket. Use the Files settings to share folders or files.", item));
+                    self.notify(&crate::i18n::trf("{path} is not a socket. Use the Files settings to share folders or files.", &[("path", &item)]));
                     return;
                 }
             }
@@ -732,10 +732,11 @@ impl Editor {
         if !items.is_empty() {
             let exp = adw::ExpanderRow::builder()
                 .title(tr("What raises the risk"))
-                .subtitle(format!(
-                    "{} permission{} beyond the basics. The level is set by the riskiest one, not by how many there are.",
-                    items.len(),
-                    if items.len() == 1 { "" } else { "s" }
+                .subtitle(crate::i18n::trn(
+                    "{n} permission beyond the basics. The level is set by the riskiest one, not by how many there are.",
+                    "{n} permissions beyond the basics. The level is set by the riskiest one, not by how many there are.",
+                    items.len() as u64,
+                    &[],
                 ))
                 .build();
             for (title, lvl) in &items {
@@ -782,7 +783,7 @@ impl Editor {
     /// pending change leaves the controls showing the saved value.
     fn request(self: &Rc<Self>, key: &'static str, v: Value) {
         let Some(mut p) = self.perms.borrow().clone() else { return };
-        let mut ask: Option<(String, String, &'static str)> = None;
+        let mut ask: Option<(String, String, String)> = None;
         if key == "dbus.session.allow" {
             let before: Vec<String> = util::list_of(&p, key);
             let added: Vec<String> = v
@@ -798,7 +799,7 @@ impl Editor {
                 ask = Some((
                     format!("Allow “{}”?", added.join(", ")),
                     crate::i18n::tr("This service can act outside the sandbox: start programs, run scripts in the desktop shell or change any setting. An app with access to it can escape the sandbox."),
-                    "Allow Anyway",
+                    crate::i18n::tr("Allow Anyway"),
                 ));
             }
         }
@@ -813,8 +814,12 @@ impl Editor {
             if !why.is_empty() {
                 ask = Some((
                     format!("Allow “{}”?", added.join(", ")),
-                    format!("{}.\n\nAn app with this can act outside the sandbox. Only allow it for apps you trust completely.", why.join(". ")),
-                    "Allow Anyway",
+                    format!(
+                        "{}.\n\n{}",
+                        why.join(". "),
+                        crate::i18n::tr("An app with this can act outside the sandbox. Only allow it for apps you trust completely.")
+                    ),
+                    crate::i18n::tr("Allow Anyway"),
                 ));
             }
         }
@@ -822,8 +827,8 @@ impl Editor {
         if ask.is_none() && self.is_enabling(key, &v) && (info.risk == "dangerous" || key == "dbus.session.mode" || key == "integrations.keyring") {
             ask = Some((
                 format!("Grant “{}”?", info.title),
-                format!("{}\n\nThis is a high-risk permission. Only grant it to apps you trust.", info.description),
-                "Grant",
+                format!("{}\n\n{}", info.description, crate::i18n::tr("This is a high-risk permission. Only grant it to apps you trust.")),
+                crate::i18n::tr("Grant"),
             ));
         }
         util::set(&mut p, key, v);
@@ -833,7 +838,7 @@ impl Editor {
             Some((heading, body, accept)) => {
                 me.refresh();
                 glib::spawn_future_local(async move {
-                    if crate::window::confirm(&me.window, &heading, &body, accept, true).await {
+                    if crate::window::confirm(&me.window, &heading, &body, &accept, true).await {
                         me.emit(p);
                     }
                 });

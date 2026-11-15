@@ -32,11 +32,11 @@ pub type Steps = &'static [(&'static str, f64)];
 
 /// Creating a sandbox.
 pub const ADD_STEPS: Steps = &[
-    ("Checking the file", 0.04),
-    ("Unpacking", 0.56),
-    ("Reading its name and icon", 0.02),
-    ("Checking what the app needs", 0.35),
-    ("Creating the menu entry", 0.03),
+    (sam_core::i18n::n_("Checking the file"), 0.04),
+    (sam_core::i18n::n_("Unpacking"), 0.56),
+    (sam_core::i18n::n_("Reading its name and icon"), 0.02),
+    (sam_core::i18n::n_("Checking what the app needs"), 0.35),
+    (sam_core::i18n::n_("Creating the menu entry"), 0.03),
 ];
 
 /// Receives progress; does nothing when nobody listens (the default).
@@ -64,7 +64,7 @@ impl ProgressSink {
         let before: f64 = steps[..index].iter().map(|(_, w)| w).sum();
         let total: f64 = steps.iter().map(|(_, w)| w).sum();
         let fraction = ((before + steps[index].1 * within.clamp(0.0, 1.0)) / total).clamp(0.0, 1.0);
-        f(&Progress { step: index + 1, steps: steps.len(), title: steps[index].0.into(), detail: detail.into(), fraction });
+        f(&Progress { step: index + 1, steps: steps.len(), title: sam_core::i18n::tr(steps[index].0), detail: detail.into(), fraction });
     }
 }
 

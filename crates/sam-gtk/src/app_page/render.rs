@@ -163,11 +163,11 @@ impl AppPage {
         let badge = summary.as_ref().map(|s| util::str_of(s, "badge").to_string()).unwrap_or_default();
         self.remove_button.set_visible(sandboxed);
         if sandboxed {
-            self.main_button.set_child(Some(&button_content("media-playback-start-symbolic", "Launch")));
+            self.main_button.set_child(Some(&button_content("media-playback-start-symbolic", &crate::i18n::tr("Launch"))));
             self.main_button.set_tooltip_text(Some(&crate::i18n::tr("Start the app in its sandbox, with exactly the access listed below")));
             self.main_button.set_sensitive(summary.is_some() && badge != "missing");
         } else {
-            self.main_button.set_child(Some(&button_content("security-high-symbolic", "Create Sandbox")));
+            self.main_button.set_child(Some(&button_content("security-high-symbolic", &crate::i18n::tr("Create Sandbox"))));
             self.main_button.set_tooltip_text(Some(&crate::i18n::tr("Unpack the AppImage without running it and create its sandbox with the settings below")));
             self.main_button.set_sensitive(self.pending.borrow().is_some());
         }
@@ -716,12 +716,12 @@ impl AppPage {
                 let count = util::get(x, "file_count").and_then(Value::as_u64).unwrap_or(0);
                 crate::i18n::trn("{n} file via {method}", "{n} files via {method}", count, &[("method", &util::str_of(x, "method"))])
             }
-            None => "Not extracted".into(),
+            None => crate::i18n::tr("Not unpacked"),
         };
         self.add_dynamic(&g, &text_row("Extraction", &extraction));
 
         let signature = match util::str_of(e, "signature.state") {
-            "" => "Not checked".to_string(),
+            "" => crate::i18n::tr("Not checked"),
             _ => util::str_of(e, "signature.detail").to_string(),
         };
         self.add_dynamic(&g, &text_row("Signature", &signature));
@@ -800,7 +800,7 @@ impl AppPage {
             let d = gtk::FileDialog::builder().title(tr("Locate the AppImage")).build();
             if let Ok(f) = d.open_future(Some(&app.window)).await {
                 if let Some(p) = f.path() {
-                    me.simple(vec!["relocate".into(), me.app_id.clone(), p.to_string_lossy().into_owned()], "Location updated");
+                    me.simple(vec!["relocate".into(), me.app_id.clone(), p.to_string_lossy().into_owned()], &crate::i18n::tr("Location updated"));
                 }
             }
         });

@@ -146,7 +146,7 @@ pub(crate) fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel
         if fs.home {
             format!("FULL HOME ({})", fs.home_access.as_str())
         } else if dirs.is_empty() {
-            "private home only".into()
+            sam_core::i18n::tr("private home only")
         } else {
             dirs.join(", ")
         }
@@ -173,7 +173,7 @@ pub(crate) fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel
         print_detection(d);
     }
     if !e.recommendation_notes.is_empty() {
-        println!("\n{}", paint("Why this profile", "1"));
+        println!("\n{}", paint(&sam_core::i18n::tr("Why this profile"), "1"));
         for n in &e.recommendation_notes {
             println!("  - {n}");
         }

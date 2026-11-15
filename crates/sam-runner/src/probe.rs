@@ -217,11 +217,11 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             let readable = real && std::fs::read_dir(path).is_ok();
             let writable = real && can_create_in(path);
             let seen = match (real, readable, writable) {
-                (false, _, _) if here.is_some() => "only an empty private folder",
-                (false, _, _) => "not visible",
-                (true, _, true) => "can read and write",
-                (true, true, false) => "can read, cannot write",
-                (true, false, false) => "visible, cannot read",
+                (false, _, _) if here.is_some() => sam_core::i18n::n_("only an empty private folder"),
+                (false, _, _) => sam_core::i18n::n_("not visible"),
+                (true, _, true) => sam_core::i18n::n_("can read and write"),
+                (true, true, false) => sam_core::i18n::n_("can read, cannot write"),
+                (true, false, false) => sam_core::i18n::n_("visible, cannot read"),
             };
             let ok = match expect {
                 Access::Hidden => !real,
@@ -259,7 +259,7 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         ProbeTest::Wayland { expect } => {
             let sock = std::env::var("WAYLAND_DISPLAY").ok().and_then(|d| std::env::var("XDG_RUNTIME_DIR").ok().map(|r| Path::new(&r).join(d)));
             let there = sock.is_some_and(|s| s.exists());
-            (Some(there == *expect), if there { "connected".into() } else { "no Wayland socket".to_string() })
+            (Some(there == *expect), if there { sam_core::i18n::n_("connected").into() } else { sam_core::i18n::n_("no Wayland socket").to_string() })
         }
         ProbeTest::X11 { expect } => {
             let there = std::env::var("DISPLAY").is_ok() && std::fs::read_dir("/tmp/.X11-unix").is_ok_and(|mut d| d.next().is_some());
@@ -268,17 +268,24 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         ProbeTest::Audio { expect } => {
             let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
             let there = Path::new(&rt).join("pulse/native").exists();
-            (Some(there == *expect), if there { "sound socket present".into() } else { "no sound socket".to_string() })
+            (Some(there == *expect), if there { sam_core::i18n::n_("sound socket present").into() } else { sam_core::i18n::n_("no sound socket").to_string() })
         }
         ProbeTest::PipeWire { expect } => {
             let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
             let there = Path::new(&rt).join("pipewire-0").exists();
-            (Some(there == *expect), if there { "PipeWire socket present".into() } else { "no PipeWire socket".to_string() })
+            (
+                Some(there == *expect),
+                if there { sam_core::i18n::n_("PipeWire socket present").into() } else { sam_core::i18n::n_("no PipeWire socket").to_string() },
+            )
         }
         ProbeTest::NoNetwork | ProbeTest::Network => {
             let ifaces = interfaces();
             let route = has_default_route();
-            let seen = format!("interfaces: {}; {}", ifaces.join(", "), if route { "default route" } else { "no default route" });
+            let seen = format!(
+                "interfaces: {}; {}",
+                ifaces.join(", "),
+                if route { sam_core::i18n::n_("default route") } else { sam_core::i18n::n_("no default route") }
+            );
             let ok = match t {
                 ProbeTest::NoNetwork => !route && ifaces.iter().all(|i| i == "lo"),
                 _ => route,
@@ -288,17 +295,17 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         ProbeTest::LocalPort { port, expect } => {
             let addr = std::net::SocketAddr::from(([127, 0, 0, 1], *port));
             let open = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(1)).is_ok();
-            (Some(open == *expect), if open { "reachable".into() } else { "not reachable".to_string() })
+            (Some(open == *expect), if open { sam_core::i18n::n_("reachable").into() } else { sam_core::i18n::n_("not reachable").to_string() })
         }
         ProbeTest::SessionBus { expect } => {
             let addr = std::env::var("DBUS_SESSION_BUS_ADDRESS").ok();
             let works = addr.as_deref().is_some_and(|a| crate::dbus_check::name_reachable(a, "org.freedesktop.DBus", Duration::from_secs(2)).is_ok());
-            (Some(works == *expect), if works { "connected".into() } else { "no session bus".to_string() })
+            (Some(works == *expect), if works { sam_core::i18n::n_("connected").into() } else { sam_core::i18n::n_("no session bus").to_string() })
         }
         ProbeTest::BusName { name, expect } => {
             let Ok(addr) = std::env::var("DBUS_SESSION_BUS_ADDRESS") else { return skip("no session bus") };
             match crate::dbus_check::name_reachable(&addr, name, Duration::from_secs(2)) {
-                Ok(r) => (Some(r == *expect), if r { "reachable".into() } else { "hidden".to_string() }),
+                Ok(r) => (Some(r == *expect), if r { sam_core::i18n::n_("reachable").into() } else { sam_core::i18n::n_("hidden").to_string() }),
                 Err(e) => skip(sam_core::i18n::trf("could not ask the bus: {error}", &[("error", &e)])),
             }
         }
@@ -322,7 +329,7 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             // SAFETY: unshare takes a flag and changes only this probe process, which exits after the check.
             let r = unsafe { libc::unshare(libc::CLONE_NEWUSER) };
             let is_blocked = r != 0;
-            (Some(is_blocked == *blocked), if is_blocked { "blocked".into() } else { "allowed".to_string() })
+            (Some(is_blocked == *blocked), if is_blocked { sam_core::i18n::n_("blocked").into() } else { sam_core::i18n::n_("allowed").to_string() })
         }
         ProbeTest::SyscallFilter { active } => {
             // keyctl(KEYCTL_GET_KEYRING_ID, KEY_SPEC_SESSION_KEYRING, 0):
@@ -331,7 +338,7 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             let r = unsafe { libc::syscall(libc::SYS_keyctl, 0, -3, 0) };
             let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             let filtered = r < 0 && e == libc::EPERM;
-            (Some(filtered == *active), if filtered { "active".into() } else { "not active".to_string() })
+            (Some(filtered == *active), if filtered { sam_core::i18n::n_("active").into() } else { sam_core::i18n::n_("not active").to_string() })
         }
         ProbeTest::NoTerminalInjection { active } => {
             // ioctl(0, TIOCSTI): the baseline filter answers EPERM before the
@@ -341,11 +348,11 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             let r = unsafe { libc::ioctl(0, libc::TIOCSTI, &c) };
             let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             let blocked = r < 0 && e == libc::EPERM;
-            (Some(blocked == *active), if blocked { "blocked".into() } else { "not blocked by the filter".to_string() })
+            (Some(blocked == *active), if blocked { sam_core::i18n::n_("blocked").into() } else { sam_core::i18n::n_("not blocked by the filter").to_string() })
         }
         ProbeTest::Landlock { expect } => {
             let on = enforcement.contains("landlock: fully enforced") || enforcement.contains("landlock: partially enforced");
-            (Some(on == *expect), if on { "active".into() } else { "not active".to_string() })
+            (Some(on == *expect), if on { sam_core::i18n::n_("active").into() } else { sam_core::i18n::n_("not active").to_string() })
         }
     }
 }

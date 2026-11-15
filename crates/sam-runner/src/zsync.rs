@@ -271,7 +271,7 @@ pub fn assemble(
     for &(s, e) in ranges {
         let data = fetch(s, e)?;
         if data.len() as u64 != e - s {
-            bail!("the server sent {} bytes instead of {}", data.len(), e - s);
+            bail!("{}", sam_core::i18n::trf("the server sent {got} bytes instead of {expected}", &[("got", &data.len()), ("expected", &(e - s))]));
         }
         f.seek(SeekFrom::Start(s))?;
         f.write_all(&data)?;

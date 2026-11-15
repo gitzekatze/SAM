@@ -81,9 +81,9 @@ impl Sam {
     /// and a throwaway private home; the AppImage is neither unpacked nor
     /// run, and nothing is stored.
     pub fn verify_preview(&self, path: &Path, perms: Option<PermissionSet>) -> Result<crate::verify::Outcome> {
-        let path = fs::canonicalize(path).with_context(|| format!("{} does not exist", path.display()))?;
+        let path = fs::canonicalize(path).with_context(|| sam_core::i18n::trf("{file} does not exist", &[("file", &path.display())]))?;
         if !path.is_file() {
-            bail!("{} is not a file", path.display());
+            bail!("{}", sam_core::i18n::trf("{file} is not a file", &[("file", &path.display())]));
         }
         let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
         let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -241,7 +241,7 @@ impl Sam {
     /// Restore the profile from before the first repair step.
     pub fn undo_repairs(&self, query: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
-        let Some(backup) = e.repair_backup.take() else { bail!("no repairs to undo for {}", e.display_name()) };
+        let Some(backup) = e.repair_backup.take() else { bail!("{}", sam_core::i18n::trf("no repair steps to undo for {app}", &[("app", &e.display_name())])) };
         e.profile = backup;
         e.repairs_applied.clear();
         e.applied_repairs.clear();

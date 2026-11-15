@@ -819,7 +819,11 @@ impl Section<'_> {
         // Files and folders named on the command line, one by one.
         for (path, rw) in opened_paths(ctx) {
             a.op2(if rw { "--bind-try" } else { "--ro-bind-try" }, &path, &path);
-            notes.push(format!("granted access to the opened {} {}", if path.is_dir() { "folder" } else { "file" }, path.display()));
+            notes.push(if path.is_dir() {
+                sam_core::i18n::trf("granted access to the opened folder {path}", &[("path", &path.display())])
+            } else {
+                sam_core::i18n::trf("granted access to the opened file {path}", &[("path", &path.display())])
+            });
         }
         for (host_p, sb, rw) in &ctx.extra_binds {
             a.op2(if *rw { "--bind" } else { "--ro-bind" }, host_p, sb);
@@ -1042,7 +1046,7 @@ impl Section<'_> {
             if is_socket(&sp) {
                 a.op2("--bind-try", &sp, &sp);
             } else {
-                notes.push(format!("{} is not a socket; not passed into the sandbox", sp.display()));
+                notes.push(sam_core::i18n::trf("{path} is not a socket; it is not passed into the sandbox", &[("path", &sp.display())]));
             }
         }
 

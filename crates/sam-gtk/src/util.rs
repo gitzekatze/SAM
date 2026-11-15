@@ -92,33 +92,31 @@ pub fn list_of(v: &Value, key: &str) -> Vec<String> {
 /// four levels of the risk model map onto them the same way as the
 /// permission tags do (sam-profile::tags::TagLevel).
 pub fn risk_label(level: &str) -> String {
-    match level {
-        "low" | "medium" => "Harmless",
-        "high" => "Think twice",
-        "dangerous" => "Dangerous",
+    tr(match level {
+        "low" | "medium" => crate::i18n::n_("Harmless"),
+        "high" => crate::i18n::n_("Think twice"),
+        "dangerous" => crate::i18n::n_("Dangerous"),
         _ => "",
-    }
-    .to_string()
+    })
 }
 
 pub fn category_label(c: &str) -> String {
-    match c {
-        "browser" => "Browser",
-        "media-player" => "Media player",
-        "image-editor" => "Image editor",
-        "video-editor" => "Video editor",
-        "audio-editor" => "Audio editor",
-        "game" => "Game",
-        "text-editor" => "Text editor",
-        "office" => "Office",
-        "terminal" => "Terminal",
-        "development" => "Development",
-        "communication" => "Communication",
-        "utility" => "Utility",
-        "" => "Unknown",
+    tr(match c {
+        "browser" => crate::i18n::n_("Browser"),
+        "media-player" => crate::i18n::n_("Media player"),
+        "image-editor" => crate::i18n::n_("Image editor"),
+        "video-editor" => crate::i18n::n_("Video editor"),
+        "audio-editor" => crate::i18n::n_("Audio editor"),
+        "game" => crate::i18n::n_("Game"),
+        "text-editor" => crate::i18n::n_("Text editor"),
+        "office" => crate::i18n::n_("Office"),
+        "terminal" => crate::i18n::n_("Terminal"),
+        "development" => crate::i18n::n_("Development"),
+        "communication" => crate::i18n::n_("Communication"),
+        "utility" => crate::i18n::n_("Utility"),
+        "" => crate::i18n::n_("Unknown"),
         other => other,
-    }
-    .to_string()
+    })
 }
 
 /// Local date and time of a Unix timestamp.

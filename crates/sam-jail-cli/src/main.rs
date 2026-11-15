@@ -641,7 +641,7 @@ fn real_main(cli: Cli) -> Result<()> {
             out.emit(&AppSummary::from_entry(&e), || {
                 println!("Compatibility mode {} for {}", if on { "enabled" } else { "disabled" }, e.display_name());
                 if on {
-                    println!("{}", paint(sam_profile::COMPAT_WARNING, "33"));
+                    println!("{}", paint(&tr(sam_profile::COMPAT_WARNING), "33"));
                 }
             });
         }

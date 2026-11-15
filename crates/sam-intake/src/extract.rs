@@ -117,10 +117,11 @@ pub fn check_space(root: &Path, source_size: u64, limits: &Limits, free: Option<
     let needed = space_needed(source_size, limits);
     match free {
         Some(free) if free < needed => bail!(
-            "There is not enough free space to unpack this AppImage: it needs about {}, but the folder {} has only {} free. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location.",
-            sam_core::util::human_size(needed),
-            root.display(),
-            sam_core::util::human_size(free)
+            "{}",
+            sam_core::i18n::trf(
+                "There is not enough free space to unpack this AppImage: it needs about {needed}, but the folder {folder} has only {free} free. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location.",
+                &[("needed", &sam_core::util::human_size(needed)), ("folder", &root.display()), ("free", &sam_core::util::human_size(free))],
+            )
         ),
         _ => Ok(()),
     }
@@ -129,7 +130,11 @@ pub fn check_space(root: &Path, source_size: u64, limits: &Limits, free: Option<
 /// A limit error with why the limit exists and how to raise it.
 fn explain_limit(e: anyhow::Error) -> anyhow::Error {
     anyhow!(
-        "SAM stopped unpacking this AppImage: {e:#}. The limits protect your computer from AppImages built to fill the disk or keep SAM busy. If you trust this AppImage, raise the limit, for example with `sam-jail config set extraction.max_files 400000` (also extraction.max_size_mb and extraction.max_seconds), then create the sandbox again."
+        "{}",
+        sam_core::i18n::trf(
+            "SAM stopped unpacking this AppImage: {reason}. The limits protect your computer from AppImages built to fill the disk or keep SAM busy. If you trust this AppImage, raise the limit, for example with `sam-jail config set extraction.max_files 400000` (also extraction.max_size_mb and extraction.max_seconds), then create the sandbox again.",
+            &[("reason", &format!("{e:#}"))],
+        )
     )
 }
 
@@ -252,7 +257,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                 attempts.push(sam_core::i18n::tr("bsdtar (libarchive) is not installed"));
             }
         }
-        AppImageType::Unknown => bail!("{} is not a recognized AppImage", req.source.display()),
+        AppImageType::Unknown => bail!("{}", sam_core::i18n::trf("{file} is not a recognized AppImage", &[("file", &req.source.display())])),
     }
 
     match &req.isolation {
@@ -281,8 +286,11 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                 if is_disk_full(&e) {
                     let _ = fs::remove_dir_all(&staging);
                     bail!(
-                        "The disk became full while unpacking this AppImage into {}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location.",
-                        req.root.display()
+                        "{}",
+                        sam_core::i18n::trf(
+                            "The disk became full while unpacking this AppImage into {folder}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location.",
+                            &[("folder", &req.root.display())],
+                        )
                     );
                 }
                 attempts.push(format!("{name}: {e:#}"));
@@ -304,7 +312,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             Err(e) => {
                 let _ = fs::remove_dir_all(&staging);
                 attempts.push(format!("appimage-extract: {e:#}"));
-                bail!("all extraction methods failed:\n  {}", attempts.join("\n  "));
+                bail!("{}", sam_core::i18n::trf("all ways of unpacking failed:\n  {attempts}", &[("attempts", &attempts.join("\n  "))]));
             }
         }
     }
@@ -339,8 +347,20 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     Ok(ExtractOutcome { appdir, method: method_used.unwrap_or_default(), report, attempts })
 }
 
+/// An error for an exceeded unpacking limit. It carries a code, so it is
+/// recognized whatever language its message is in.
+pub(crate) fn limit_error(message: String) -> anyhow::Error {
+    sam_core::error::CodedError::new("extraction-limit", message).into()
+}
+
 fn is_limit_error(e: &anyhow::Error) -> bool {
-    e.to_string().contains("extraction limit exceeded")
+    sam_core::error::code_of(e) == Some("extraction-limit")
+        || e.chain().any(|c| {
+            c.downcast_ref::<io::Error>()
+                .and_then(|io| io.get_ref())
+                .and_then(|inner| inner.downcast_ref::<sam_core::error::CodedError>())
+                .is_some_and(|c| c.code == "extraction-limit")
+        })
 }
 
 /// Make sure every existing ancestor of `rel` inside `root` is a real
@@ -350,9 +370,9 @@ fn safe_mkdirs(root: &Path, rel: &Path) -> Result<PathBuf> {
     for c in rel.components() {
         cur.push(c);
         match fs::symlink_metadata(&cur) {
-            Ok(m) if m.file_type().is_symlink() => bail!("path traversal via symlink at {}", cur.display()),
+            Ok(m) if m.file_type().is_symlink() => bail!("{}", sam_core::i18n::trf("a link at {path} points outside the app", &[("path", &cur.display())])),
             Ok(m) if m.is_dir() => {}
-            Ok(_) => bail!("{} is not a directory", cur.display()),
+            Ok(_) => bail!("{}", sam_core::i18n::trf("{path} is not a folder", &[("path", &cur.display())])),
             Err(_) => fs::create_dir(&cur)?,
         }
     }
@@ -369,7 +389,10 @@ impl<R: Read> Read for LimitedReader<'_, R> {
         let n = self.inner.read(buf)?;
         *self.total += n as u64;
         if *self.total > self.max {
-            return Err(io::Error::other("extraction limit exceeded: payload too large"));
+            return Err(io::Error::other(sam_core::error::CodedError::new(
+                "extraction-limit",
+                sam_core::i18n::tr("extraction limit exceeded: payload too large"),
+            )));
         }
         Ok(n)
     }
@@ -386,10 +409,10 @@ fn builtin_squashfs(src: &Path, offset: u64, dst: &Path, limits: &Limits, starte
     for node in sqfs.files() {
         count += 1;
         if count > limits.max_files {
-            bail!("extraction limit exceeded: more than {} files", limits.max_files);
+            return Err(limit_error(sam_core::i18n::trf("extraction limit exceeded: more than {count} files", &[("count", &limits.max_files)])));
         }
         if started.elapsed() > Duration::from_secs(limits.max_seconds) {
-            bail!("extraction limit exceeded: took longer than {} seconds", limits.max_seconds);
+            return Err(limit_error(sam_core::i18n::trf("extraction limit exceeded: took longer than {seconds} seconds", &[("seconds", &limits.max_seconds)])));
         }
         let Some(rel) = sanitize_archive_path(&node.fullpath) else {
             if node.fullpath.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
@@ -436,7 +459,7 @@ fn wait_with_timeout(mut child: std::process::Child, limits: &Limits, started: I
         if started.elapsed() > Duration::from_secs(limits.max_seconds) {
             let _ = child.kill();
             let _ = child.wait();
-            bail!("extraction limit exceeded: took longer than {} seconds", limits.max_seconds);
+            return Err(limit_error(sam_core::i18n::trf("extraction limit exceeded: took longer than {seconds} seconds", &[("seconds", &limits.max_seconds)])));
         }
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -525,7 +548,7 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
         let _ = fs::remove_dir_all(&work);
         bail!("{}", sam_core::i18n::tr("--appimage-extract produced no squashfs-root"));
     };
-    fs::rename(&out, staging).with_context(|| format!("moving the unpacked app to {}", staging.display()))?;
+    fs::rename(&out, staging).with_context(|| sam_core::i18n::trf("moving the unpacked app to {folder}", &[("folder", &staging.display())]))?;
     let _ = fs::remove_dir_all(&work);
     Ok(())
 }

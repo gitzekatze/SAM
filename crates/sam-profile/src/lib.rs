@@ -420,8 +420,10 @@ pub fn compatibility_profile(base: &PermissionSet) -> PermissionSet {
     p
 }
 
-pub const COMPAT_WARNING: &str =
-    "This AppImage may require broader host access to function correctly. SAM can grant additional permissions, but this reduces isolation.";
+/// Translated where it is shown (`tr`).
+pub const COMPAT_WARNING: &str = sam_core::i18n::n_(
+    "This AppImage may require broader host access to function correctly. SAM can grant additional permissions, but this reduces isolation.",
+);
 
 /// The user's own presets. SAM ships none: the recommendation already
 /// fits each app, and a ready-made category set would only replace it with

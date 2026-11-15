@@ -31,14 +31,22 @@ pub fn check(sig: &SignatureInfo, keys: &[&str]) -> Result<()> {
             if keys.iter().any(|k| k.eq_ignore_ascii_case(&fp)) {
                 Ok(())
             } else {
-                bail!("the update is signed, but not with SAM's release key ({}); it was not installed", if fp.is_empty() { "unknown key" } else { &fp })
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "the update is signed, but not with SAM's release key ({key}); it was not installed",
+                        &[("key", &if fp.is_empty() { sam_core::i18n::tr("unknown key") } else { fp.clone() })]
+                    )
+                )
             }
         }
         SignatureState::Unsigned => bail!("{}", sam_core::i18n::tr("the update is not signed, so its origin cannot be checked; it was not installed")),
         SignatureState::Invalid => {
             bail!("{}", sam_core::i18n::tr("the update's signature does not match the file, so it was changed after signing; it was not installed"))
         }
-        SignatureState::Unchecked => bail!("the update's signature could not be checked ({}); it was not installed", sig.detail),
+        SignatureState::Unchecked => {
+            bail!("{}", sam_core::i18n::trf("the update's signature could not be checked ({reason}); it was not installed", &[("reason", &sig.detail)]))
+        }
     }
 }
 

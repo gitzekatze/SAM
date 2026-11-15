@@ -26,13 +26,15 @@ fn notify_with_fix(title: &str, body: &str, app_id: &str) {
         return notify(title, body);
     };
     let clean = |s: &str| sam_core::util::display_safe(s, 400).replace('&', "&amp;");
-    let script = r#"a=$("$1" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning --action=open="Show the fix" "$2" "$3") && [ "$a" = open ] && exec "$4" --page app-repair --app "$5""#;
+    let script = r#"a=$("$1" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning --action=open="$6" "$2" "$3") && [ "$a" = open ] && exec "$4" --page app-repair --app "$5""#;
     let spawned = Command::new("/bin/sh")
         .args(["-c", script, "sh"])
         .arg(n)
         .args([clean(title), clean(body)])
         .arg(gui)
         .arg(app_id)
+        // The button's label, as an argument too (never part of the script).
+        .arg(clean(&sam_core::i18n::tr("Show the fix")))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -83,7 +85,10 @@ fn main() {
         Ok(code) => std::process::exit(code),
         Err(e) => {
             eprintln!("sam-jail-run: {e:#}");
-            notify("SAM could not start the app", &format!("{e:#}\nOpen SAM to repair it."));
+            notify(
+                &sam_core::i18n::tr("SAM could not start the app"),
+                &sam_core::i18n::trf("{error}\nOpen SAM to repair it.", &[("error", &format!("{e:#}"))]),
+            );
             std::process::exit(1);
         }
     }
@@ -116,8 +121,11 @@ fn launch(args: Vec<String>) -> Result<i32> {
             if !out.record.failed.is_empty() {
                 let list = out.record.failed.join(", ");
                 notify(
-                    &format!("{} was not started", entry.display_name()),
-                    &format!("The sandbox check found settings that do not apply: {list}.\nOpen SAM → {} → Sandbox Check.", entry.display_name()),
+                    &sam_core::i18n::trf("{app} was not started", &[("app", &entry.display_name())]),
+                    &sam_core::i18n::trf(
+                        "The sandbox check found settings that do not apply: {list}.\nOpen SAM → {app} → Sandbox Check.",
+                        &[("list", &list), ("app", &entry.display_name())],
+                    ),
                 );
                 bail!("{}", sam_core::i18n::trf("sandbox check failed: {list}", &[("list", &list)]));
             }
@@ -129,28 +137,32 @@ fn launch(args: Vec<String>) -> Result<i32> {
     // failure would flash by unread.
     if entry.metadata.terminal && rec.exit_code != Some(0) && sam_runner::pty::is_tty(0) {
         if rec.success {
-            eprintln!("\n{} ended: {}", entry.display_name(), rec.summary);
+            eprintln!("\n{}", sam_core::i18n::trf("{app} ended: {summary}", &[("app", &entry.display_name()), ("summary", &rec.summary)]));
         } else {
-            eprintln!("\n{} did not run: {}", entry.display_name(), rec.summary);
+            eprintln!("\n{}", sam_core::i18n::trf("{app} did not run: {summary}", &[("app", &entry.display_name()), ("summary", &rec.summary)]));
             if let Some(f) = rec.findings.first() {
-                eprintln!("SAM found a likely fix: {}. Open SAM to apply it.", f.title);
+                eprintln!("{}", sam_core::i18n::trf("SAM found a likely fix: {fix}. Open SAM to apply it.", &[("fix", &f.title)]));
             }
         }
-        eprint!("Press Enter to close this window.");
+        eprint!("{}", sam_core::i18n::tr("Press Enter to close this window."));
         let _ = std::io::stdin().read_line(&mut String::new());
     }
     if rec.sandbox_failure {
-        notify_with_fix(&format!("{} failed to start", entry.display_name()), &rec.summary, &entry.id);
+        notify_with_fix(&sam_core::i18n::trf("{app} failed to start", &[("app", &entry.display_name())]), &rec.summary, &entry.id);
         bail!("{}", rec.summary);
     }
     // A crash within the first seconds usually means the sandbox is missing
     // something: say what the output suggests.
     if !rec.success && rec.finished_at - rec.started_at <= 10 {
         let hint = match rec.findings.first() {
-            Some(f) => format!("SAM found a likely fix: {}.", f.title),
-            None => "SAM's repair steps may help.".into(),
+            Some(f) => sam_core::i18n::trf("SAM found a likely fix: {fix}.", &[("fix", &f.title)]),
+            None => sam_core::i18n::tr("SAM's repair steps may help."),
         };
-        notify_with_fix(&format!("{} stopped right after starting", entry.display_name()), &format!("{} {hint}", rec.summary), &entry.id);
+        notify_with_fix(
+            &sam_core::i18n::trf("{app} stopped right after starting", &[("app", &entry.display_name())]),
+            &format!("{} {hint}", rec.summary),
+            &entry.id,
+        );
     }
     Ok(rec.exit_code.unwrap_or(if rec.success { 0 } else { 1 }))
 }

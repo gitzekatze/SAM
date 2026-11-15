@@ -294,7 +294,7 @@ pub struct Uninstall {
 fn safe_to_delete(d: &Path) -> Result<()> {
     let home = sam_core::util::home_dir();
     if d.components().count() < 3 || home.starts_with(d) {
-        bail!("refusing to delete {}: not a folder of SAM's own", d.display());
+        bail!("{}", sam_core::i18n::trf("refusing to delete {folder}: it is not one of SAM's own folders", &[("folder", &d.display())]));
     }
     Ok(())
 }

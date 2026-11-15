@@ -45,11 +45,13 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
                 Ok(()) => c.push(check("bwrap-run", "Sandbox test", CheckStatus::Ok, "a test sandbox started successfully")),
                 Err(e) => c.push(
                     check("bwrap-run", "Sandbox test", CheckStatus::Fail, format!("bubblewrap failed: {e}"))
-                        .hint("Check that user namespaces are enabled, or that AppArmor allows bwrap."),
+                        .hint(sam_core::i18n::tr("Check that user namespaces are enabled, or that AppArmor allows bwrap.")),
                 ),
             }
         }
-        None => c.push(check("bwrap", "Bubblewrap", CheckStatus::Fail, "Bubblewrap is not installed.").hint("Install it: sudo pacman -S bubblewrap")),
+        None => c.push(
+            check("bwrap", "Bubblewrap", CheckStatus::Fail, "Bubblewrap is not installed.").hint(sam_core::i18n::tr("Install it: sudo pacman -S bubblewrap")),
+        ),
     }
     c.push(if host.userns.usable() {
         check(
@@ -86,9 +88,8 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
 
     c.push(match &host.tools.xdg_dbus_proxy {
         Some(_) => check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Ok, "installed: filtered session D-Bus available"),
-        None => {
-            check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Warn, "not installed: filtered D-Bus falls back to no D-Bus").hint("Install xdg-dbus-proxy.")
-        }
+        None => check("dbus-proxy", "xdg-dbus-proxy", CheckStatus::Warn, "not installed: filtered D-Bus falls back to no D-Bus")
+            .hint(sam_core::i18n::tr("Install xdg-dbus-proxy.")),
     });
 
     let mut extract_tools = vec!["built-in SquashFS reader (gzip, xz, zstd)".to_string()];
@@ -167,7 +168,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
             "overlay",
             "Writable app folder",
             CheckStatus::Info,
-            format!("{} is on a filesystem that cannot hold an overlay; app folders stay read-only", tildify(&overlays)),
+            sam_core::i18n::trf("{folder} is on a filesystem that cannot hold an overlay; app folders stay read-only", &[("folder", &tildify(&overlays))]),
         )
     } else {
         check("overlay", "Writable app folder", CheckStatus::Info, "needs Bubblewrap 0.10 or newer; app folders stay read-only")
@@ -205,9 +206,9 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
             "damaged",
             "Damaged files",
             CheckStatus::Warn,
-            format!(
-                "SAM could not read these and moved them aside (nothing was deleted); restore one by fixing it and removing the .damaged-… ending, or delete it: {}",
-                damaged.iter().map(|d| tildify(d)).collect::<Vec<_>>().join(", ")
+            sam_core::i18n::trf(
+                "SAM could not read these and moved them aside (nothing was deleted); restore one by fixing it and removing the .damaged-… ending, or delete it: {files}",
+                &[("files", &damaged.iter().map(|d| tildify(d)).collect::<Vec<_>>().join(", "))],
             ),
         )
     });
@@ -219,16 +220,23 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
     c.push(if e.source_path.exists() {
         check("source", "Source AppImage", CheckStatus::Ok, tildify(&e.source_path))
     } else {
-        check("source", "Source AppImage", CheckStatus::Warn, format!("The selected AppImage no longer exists ({})", tildify(&e.source_path)))
+        check(
+            "source",
+            "Source AppImage",
+            CheckStatus::Warn,
+            sam_core::i18n::trf("The selected AppImage no longer exists ({file}).", &[("file", &tildify(&e.source_path))]),
+        )
     });
     match &e.extraction {
         Some(x) if x.appdir.join(&x.entry).exists() => {
             c.push(check("extraction", "AppImage extraction", CheckStatus::Ok, format!("success via {} ({} files)", x.method, x.file_count)))
         }
-        Some(_) => c.push(check("extraction", "AppImage extraction", CheckStatus::Fail, "extracted payload is missing").hint("Re-extract the AppImage.")),
+        Some(_) => c.push(
+            check("extraction", "AppImage extraction", CheckStatus::Fail, "extracted payload is missing").hint(sam_core::i18n::tr("Re-extract the AppImage.")),
+        ),
         None => c.push(
             check("extraction", "AppImage extraction", CheckStatus::Fail, e.last_error.clone().unwrap_or_else(|| "not extracted".into()))
-                .hint("Re-extract the AppImage (optionally allowing the fallback extractor)."),
+                .hint(sam_core::i18n::tr("Re-extract the AppImage (optionally allowing the fallback extractor).")),
         ),
     }
     if let Some(d) = &e.detection {
@@ -242,7 +250,10 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
             "detect",
             "Dependency detection",
             st,
-            format!("{host_res} controlled host resources required; toolkit {}; {} libraries expected from the host", d.requirements.toolkit, d.missing.len()),
+            sam_core::i18n::trf(
+                "{resources} controlled host resources required; toolkit {toolkit}; {libraries} libraries expected from the host",
+                &[("resources", &host_res), ("toolkit", &d.requirements.toolkit), ("libraries", &d.missing.len())],
+            ),
         ));
     }
     match crate::bwrap::check(host) {
@@ -255,7 +266,8 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
             c.push(if problems.is_empty() {
                 check("launcher", "Desktop entry", CheckStatus::Ok, tildify(p))
             } else {
-                check("launcher", "Desktop entry", CheckStatus::Warn, problems.join("; ")).hint("Reinstall the launcher (sam-jail desktop <app> install).")
+                check("launcher", "Desktop entry", CheckStatus::Warn, problems.join("; "))
+                    .hint(sam_core::i18n::tr("Reinstall the launcher (sam-jail desktop <app> install)."))
             });
         }
         None => c.push(check("launcher", "Desktop entry", CheckStatus::Info, "no launcher installed")),

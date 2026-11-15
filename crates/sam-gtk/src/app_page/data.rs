@@ -76,10 +76,10 @@ impl AppPage {
             .iter()
             .map(|f| {
                 let kind = match util::str_of(f, "kind") {
-                    "launch" => "Start",
-                    "extract" => "Unpacking",
-                    "detect" => "Detection",
-                    "diagnose" => "Diagnostic run",
+                    "launch" => crate::i18n::n_("Start"),
+                    "extract" => crate::i18n::n_("Unpacking"),
+                    "detect" => crate::i18n::n_("Detection"),
+                    "diagnose" => crate::i18n::n_("Diagnostic run"),
                     other => other,
                 };
                 format!("{kind} · {}", util::format_time(util::get(f, "modified").and_then(Value::as_i64).unwrap_or(0)))
@@ -369,7 +369,7 @@ impl AppPage {
                 None
             };
             if let Some(body) = ask {
-                if !window::confirm(&app.window, &format!("Apply “{title}”?"), &body, "Apply", false).await {
+                if !window::confirm(&app.window, &crate::i18n::trf("Apply “{step}”?", &[("step", &title)]), &body, &crate::i18n::tr("Apply"), false).await {
                     return;
                 }
             }
@@ -401,10 +401,7 @@ impl AppPage {
                 .map(|e| util::str_of(&e, "update.latest").to_string())
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| crate::i18n::tr("the newest version"));
-            let body = format!(
-                "SAM downloads {} from the address the AppImage names, checks it against the published checksum, and puts it in place of the current file. The current version is kept, so you can go back. Settings and files stay.",
-                util::plain(&latest)
-            );
+            let body = crate::i18n::trf("SAM downloads {version} from the address the AppImage names, checks it against the published checksum, and puts it in place of the current file. The current version is kept, so you can go back. Settings and files stay.", &[("version", &util::plain(&latest))]);
             if !window::confirm(&app.window, &tr("Update Now?"), &body, &tr("Update"), false).await {
                 return;
             }

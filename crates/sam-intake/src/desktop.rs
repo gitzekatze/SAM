@@ -189,7 +189,7 @@ pub fn find_duplicates(paths: &Paths, id: &str) -> Vec<PathBuf> {
 pub fn validate_launcher(path: &Path, id: &str) -> Vec<String> {
     let mut problems = Vec::new();
     let Ok(text) = fs::read_to_string(path) else {
-        return vec!["launcher file is missing".into()];
+        return vec![sam_core::i18n::tr("the menu entry file is missing")];
     };
     let m = crate::metadata::parse_desktop(&text);
     match m.get("Exec") {

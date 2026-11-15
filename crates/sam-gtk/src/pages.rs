@@ -165,8 +165,9 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let row = adw::ActionRow::builder()
         .title(tr("Location"))
         .subtitle(esc(&format!(
-            "{}\nNew sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.",
-            loc_text(&loc)
+            "{}\n{}",
+            loc_text(&loc),
+            crate::i18n::tr("New sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.")
         )))
         .build();
     let choose = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text(tr("Choose a folder")).valign(gtk::Align::Center).build();
@@ -189,8 +190,11 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
                 app.set_config("extraction.location", &value).await;
                 let now = util::str_of(&app.state.borrow().config, "extraction.location").to_string();
                 row.set_subtitle(&esc(&format!(
-                    "{}\nNew sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.",
-                    loc_text(&now)
+                    "{}\n{}",
+                    loc_text(&now),
+                    crate::i18n::tr(
+                        "New sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to."
+                    )
                 )));
                 reset.set_sensitive(!now.trim().is_empty());
             });
@@ -227,7 +231,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Diagnostics")).build();
-    switch(&g, "diagnostics.verbose_logging", "Verbose logging", "");
+    switch(&g, "diagnostics.verbose_logging", &crate::i18n::tr("Verbose logging"), "");
     number(&g, "diagnostics.keep_logs", &crate::i18n::tr("Launch logs to keep per app"), 1.0, 500.0, 1.0);
     pref.add(&g);
     page
@@ -447,7 +451,7 @@ impl Presets {
                 &app.window,
                 &format!("Delete “{name}”?"),
                 &crate::i18n::tr("Apps that use this preset keep their current permissions."),
-                "Delete",
+                &crate::i18n::tr("Delete"),
                 true,
             )
             .await
@@ -485,7 +489,7 @@ impl PresetEditor {
         let save = gtk::Button::builder().label(tr("Save")).build();
         save.add_css_class("suggested-action");
         header.pack_end(&save);
-        let g = adw::PreferencesGroup::builder().title(if is_new { "New Preset" } else { "Preset" }).build();
+        let g = adw::PreferencesGroup::builder().title(if is_new { crate::i18n::tr("New Preset") } else { crate::i18n::tr("Preset") }).build();
         let name = adw::EntryRow::builder().title(tr("Name")).text(util::str_of(&preset, "name")).sensitive(is_new).build();
         let desc = adw::EntryRow::builder().title(tr("Description")).text(util::str_of(&preset, "description")).build();
         let notes = adw::EntryRow::builder().title(tr("Compatibility notes")).text(util::str_of(&preset, "compatibility_notes")).build();
@@ -494,7 +498,7 @@ impl PresetEditor {
         g.add(&notes);
         pref.add(&g);
         editor.add_to(&pref);
-        let title = if is_new { "New Preset".to_string() } else { util::str_of(&preset, "name").to_string() };
+        let title = if is_new { crate::i18n::tr("New Preset") } else { util::str_of(&preset, "name").to_string() };
         let page = page_with(&title, &pref, &header);
         let me = Rc::new(PresetEditor { page, preset: RefCell::new(preset), editor });
         me.refresh(app);
@@ -680,7 +684,12 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                 row.set_subtitle(&esc(&if apps.is_empty() {
                     crate::i18n::tr("No sandboxed apps.")
                 } else {
-                    format!("{} for {} app(s). Largest: {}. Free space from an app's page → Details.", glib::format_size(total), apps.len(), top.join(", "))
+                    crate::i18n::trn(
+                        "{size} for {n} app. Largest: {largest}. Free space from an app's page → Details.",
+                        "{size} for {n} apps. Largest: {largest}. Free space from an app's page → Details.",
+                        apps.len() as u64,
+                        &[("size", &glib::format_size(total)), ("largest", &top.join(", "))],
+                    )
                 }));
             }
         });
@@ -705,9 +714,11 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                         row.set_subtitle(&if n == 0 {
                             crate::i18n::tr("Nothing left behind.")
                         } else {
-                            format!(
-                                "Settings and files of {n} app(s) whose sandbox was removed: {}. A new sandbox for the same AppImage would use them again.",
-                                glib::format_size(total)
+                            crate::i18n::trn(
+                                "Settings and files of {n} app whose sandbox was removed: {size}. A new sandbox for the same AppImage would use them again.",
+                                "Settings and files of {n} apps whose sandbox was removed: {size}. A new sandbox for the same AppImage would use them again.",
+                                n as u64,
+                                &[("size", &glib::format_size(total))],
                             )
                         });
                         btn.set_sensitive(n > 0);
@@ -728,7 +739,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                 &app.window,
                 "Delete Data of Removed Sandboxes?",
                 &crate::i18n::tr("The settings, logins and saved files of apps whose sandbox was removed are deleted. This cannot be undone."),
-                "Delete",
+                &crate::i18n::tr("Delete"),
                 true,
             )
             .await

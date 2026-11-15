@@ -11,7 +11,7 @@ use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
@@ -67,10 +67,16 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
 
         r.file_count += 1;
         if r.file_count > limits.max_files {
-            bail!("extraction limit exceeded: more than {} files", limits.max_files);
+            return Err(crate::extract::limit_error(sam_core::i18n::trf(
+                "extraction limit exceeded: more than {count} files",
+                &[("count", &limits.max_files)],
+            )));
         }
         if started.elapsed().as_secs() > limits.max_seconds {
-            bail!("extraction limit exceeded: took longer than {} seconds", limits.max_seconds);
+            return Err(crate::extract::limit_error(sam_core::i18n::trf(
+                "extraction limit exceeded: took longer than {seconds} seconds",
+                &[("seconds", &limits.max_seconds)],
+            )));
         }
 
         let display = rel_path.display().to_string();
@@ -97,7 +103,10 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
             }
             r.total_size += meta.len();
             if r.total_size > limits.max_bytes {
-                bail!("extraction limit exceeded: more than {} extracted", sam_core::util::human_size(limits.max_bytes));
+                return Err(crate::extract::limit_error(sam_core::i18n::trf(
+                    "extraction limit exceeded: more than {size} unpacked",
+                    &[("size", &sam_core::util::human_size(limits.max_bytes))],
+                )));
             }
             let lname = name.to_string_lossy().to_lowercase();
             if lname.ends_with(".ko") || lname.ends_with(".ko.xz") || lname.ends_with(".ko.zst") {

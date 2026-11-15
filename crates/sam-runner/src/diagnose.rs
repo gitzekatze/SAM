@@ -132,39 +132,39 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
     };
     let run = format!("/run/user/{}", host.uid);
     if path.starts_with("/dev/dri") || path.starts_with("/dev/nvidia") {
-        return Some(mk(RiskLevel::Medium, "The app tried to use the GPU. Enable GPU acceleration.".into(), Some(("devices.gpu", "true".into()))));
+        return Some(mk(RiskLevel::Medium, sam_core::i18n::tr("The app tried to use the GPU. Enable GPU acceleration."), Some(("devices.gpu", "true".into()))));
     }
     if path.starts_with("/dev/snd") {
         return Some(mk(
             RiskLevel::High,
-            "The app tried to open sound devices directly. Enable audio (or raw ALSA).".into(),
+            sam_core::i18n::tr("The app tried to open sound devices directly. Enable audio (or raw ALSA)."),
             Some(("audio.enabled", "true".into())),
         ));
     }
     if path.starts_with("/dev/video") {
-        return Some(mk(RiskLevel::High, "The app tried to open a camera.".into(), Some(("devices.webcam", "true".into()))));
+        return Some(mk(RiskLevel::High, sam_core::i18n::tr("The app tried to open a camera."), Some(("devices.webcam", "true".into()))));
     }
     if path.starts_with("/dev/input") {
         return Some(mk(
             RiskLevel::Medium,
-            "The app looked for input devices, probably game controllers. Allow game controllers.".into(),
+            sam_core::i18n::tr("The app looked for input devices, probably game controllers. Allow game controllers."),
             Some(("devices.gamepads", "true".into())),
         ));
     }
     if path.starts_with("/tmp/.X11-unix") {
-        return Some(mk(RiskLevel::High, "The app tried to connect to X11. Enable X11 / XWayland.".into(), Some(("display.x11", "true".into()))));
+        return Some(mk(RiskLevel::High, sam_core::i18n::tr("The app tried to connect to X11. Enable X11 / XWayland."), Some(("display.x11", "true".into()))));
     }
     if path.starts_with(&format!("{run}/wayland")) {
-        return Some(mk(RiskLevel::Low, "The app tried to connect to Wayland.".into(), Some(("display.wayland", "true".into()))));
+        return Some(mk(RiskLevel::Low, sam_core::i18n::tr("The app tried to connect to Wayland."), Some(("display.wayland", "true".into()))));
     }
     if path.starts_with(&format!("{run}/pulse")) || path.starts_with(&format!("{run}/pipewire")) {
-        return Some(mk(RiskLevel::Medium, "The app tried to use the sound server.".into(), Some(("audio.enabled", "true".into()))));
+        return Some(mk(RiskLevel::Medium, sam_core::i18n::tr("The app tried to use the sound server."), Some(("audio.enabled", "true".into()))));
     }
     if path == format!("{run}/bus") {
-        return Some(mk(RiskLevel::High, "The app tried to use the session D-Bus.".into(), Some(("dbus.session.mode", "filtered".into()))));
+        return Some(mk(RiskLevel::High, sam_core::i18n::tr("The app tried to use the session D-Bus."), Some(("dbus.session.mode", "filtered".into()))));
     }
     if path.starts_with("/run/dbus/system_bus_socket") {
-        return Some(mk(RiskLevel::Dangerous, "The app tried to use the system D-Bus (left denied).".into(), None));
+        return Some(mk(RiskLevel::Dangerous, sam_core::i18n::tr("The app tried to use the system D-Bus (left denied)."), None));
     }
     // Only report filesystem paths that actually exist on the host;
     // missing-everywhere paths are normal library probing.
@@ -197,7 +197,7 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         let dir = if dir.as_os_str().len() > top.as_os_str().len() { top } else { dir };
         return Some(mk(
             RiskLevel::Low,
-            format!("Read-only system data {} is needed.", dir.display()),
+            sam_core::i18n::trf("Read-only system data {folder} is needed.", &[("folder", &dir.display())]),
             Some(("filesystem.custom_read", dir.display().to_string())),
         ));
     }
@@ -210,14 +210,18 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
             return None;
         }
         if is_sensitive_path(path) {
-            return Some(mk(RiskLevel::Dangerous, format!("The app tried to access {} (sensitive; left denied).", tildify(p)), None));
+            return Some(mk(
+                RiskLevel::Dangerous,
+                sam_core::i18n::trf("The app tried to access {path} (sensitive; left denied).", &[("path", &tildify(p))]),
+                None,
+            ));
         }
         // Suggest the closest top-level folder in home.
         let first: PathBuf = host.home.join(rel.components().next().map(|c| c.as_os_str()).unwrap_or_default());
         let key = if err == "EROFS" { "filesystem.custom_write" } else { "filesystem.custom_read" };
         return Some(mk(
             RiskLevel::High,
-            format!("The app tried to access {}. Grant the folder if this is expected.", tildify(p)),
+            sam_core::i18n::trf("The app tried to access {path}. Grant the folder if this is expected.", &[("path", &tildify(p))]),
             Some((key, tildify(&first))),
         ));
     }
@@ -311,10 +315,9 @@ pub fn mark_already_granted(findings: &mut [Finding], perms: &PermissionSet) {
         };
         if has {
             f.already_granted = true;
-            f.suggestion = format!(
-                "{path} could not be opened ({err}), although the app already has this access. The cause is elsewhere; the trace line shows the call.",
-                path = f.path,
-                err = f.error
+            f.suggestion = sam_core::i18n::trf(
+                "{path} could not be opened ({error}), although the app already has this access. The cause is elsewhere; the trace line shows the call.",
+                &[("path", &f.path), ("error", &f.error)],
             );
         }
     }

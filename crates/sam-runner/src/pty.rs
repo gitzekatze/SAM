@@ -105,7 +105,7 @@ impl Pty {
         let tp = if have_settings { &settings as *const libc::termios } else { std::ptr::null() };
         // SAFETY: `leader` and `follower` are valid ints to fill; `tp` is null or points to `settings`, and `size` is valid.
         if unsafe { libc::openpty(&mut leader, &mut follower, std::ptr::null_mut(), tp, &size) } != 0 {
-            bail!("could not create a terminal for the app: {}", std::io::Error::last_os_error());
+            bail!("{}", sam_core::i18n::trf("could not create a terminal for the app: {error}", &[("error", &std::io::Error::last_os_error())]));
         }
         // SAFETY: openpty returned two new descriptors that nothing else owns.
         let (leader, follower) = unsafe { (OwnedFd::from_raw_fd(leader), OwnedFd::from_raw_fd(follower)) };
