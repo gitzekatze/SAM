@@ -12,7 +12,13 @@
 # OUTDIR, unless REAL_XDG=1 keeps the user's own settings.
 set -eu
 out=$(mkdir -p "${1:?usage: session.sh OUTDIR CMD…}" && cd "$1" && pwd); shift
-export XDG_RUNTIME_DIR="/run/user/$(id -u)/samtest-gui-$$"
+# Its own runtime folder, never the real one; below /run/user when that
+# exists (short socket paths), else in OUTDIR (CI runners may have none).
+if [ -d "/run/user/$(id -u)" ] && [ -w "/run/user/$(id -u)" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)/samtest-gui-$$"
+else
+    export XDG_RUNTIME_DIR="$out/run-$$"
+fi
 mkdir -p "$XDG_RUNTIME_DIR" "$out/empty-services" "$out/tmp" && chmod 700 "$XDG_RUNTIME_DIR"
 cat > "$out/session.conf" <<C
 <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
@@ -38,6 +44,14 @@ if [ -z "${REAL_XDG:-}" ]; then
     export XDG_CONFIG_HOME="$out/xdg-config"
 fi
 export TMPDIR="$out/tmp"
+# The accessibility services, wherever the distribution puts them.
+atspi() {
+    for d in /usr/lib /usr/libexec /usr/lib/at-spi2-core; do
+        [ -x "$d/$1" ] && { echo "$d/$1"; return; }
+    done
+    echo "/usr/lib/$1"
+}
+export ATSPI_LAUNCHER=$(atspi at-spi-bus-launcher) ATSPI_REGISTRY=$(atspi at-spi2-registryd)
 rc=0; "$@" || rc=$?
 kill "$disp" "$buspid" 2>/dev/null || true
 rm -rf "$XDG_RUNTIME_DIR"

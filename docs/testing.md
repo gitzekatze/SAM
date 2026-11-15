@@ -229,6 +229,19 @@ page's "⋮" button, because one of the labels under the app's name could take
 the focus (confirmed with a real keyboard; arrow keys still worked). Fixed:
 the walk now passes all 130 controls of an app page and wraps around.
 
+`tests/gui/flow-atspi.sh OUTDIR` clicks through SAM's main flow like a
+person: an AppImage without a sandbox → Create Sandbox → its page → Launch,
+and checks in SAM's records that the app started; then it starts the window
+with the language set to German and to the system's, and reads the labels.
+GTK 4 check boxes and radio buttons offer the accessibility interface no
+action, so ticking a choice (the language, the remove dialog) is checked by
+hand:
+
+- [ ] Main menu → Language → Deutsch → *Restart Now*: the window comes back
+      in German; *Follow the system* brings back the system's language.
+
+CI runs all click-through tests on every push (job *window-flows*).
+
 `tests/gui/a11y-atspi.sh OUTDIR` opens every page of the window in the
 invisible session and reads it through the accessibility interface: every
 visible, enabled control must have a name a screen reader can say and must

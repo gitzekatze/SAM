@@ -378,7 +378,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 **Code:** [`sam-intake/src/desktop.rs`](../crates/sam-intake/src/desktop.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-core/src/paths.rs`](../crates/sam-core/src/paths.rs)
 
-**Also tried by:** [`tests/gui/taskbar-kwin.sh`](../tests/gui/taskbar-kwin.sh)
+**Also tried by:** [`tests/gui/flow-atspi.sh`](../tests/gui/flow-atspi.sh), [`tests/gui/taskbar-kwin.sh`](../tests/gui/taskbar-kwin.sh)
 
 <a id="20"></a>
 ### 20. SAM checks from inside the sandbox that every setting applies (the sandbox check).
@@ -637,7 +637,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 **Code:** [`sam-core/src/i18n.rs`](../crates/sam-core/src/i18n.rs), [`sam-gtk/src/i18n.rs`](../crates/sam-gtk/src/i18n.rs), [`scripts/i18n.py`](../scripts/i18n.py), [`po/de.po`](../po/de.po), [`po/es.po`](../po/es.po), [`po/fr.po`](../po/fr.po)
 
-**Also tried by:** [`scripts/i18n.py`](../scripts/i18n.py)
+**Also tried by:** [`tests/gui/flow-atspi.sh`](../tests/gui/flow-atspi.sh), [`scripts/i18n.py`](../scripts/i18n.py)
 
 <a id="40"></a>
 ### 40. The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.

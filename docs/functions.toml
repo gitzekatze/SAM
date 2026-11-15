@@ -161,7 +161,7 @@ area = "D"
 promise = "Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox."
 code = ["sam-intake/src/desktop.rs", "sam-intake/src/menu.rs", "sam-runner/src/launch.rs", "sam-core/src/paths.rs"]
 tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry"]
-checks = ["tests/gui/taskbar-kwin.sh"]
+checks = ["tests/gui/flow-atspi.sh", "tests/gui/taskbar-kwin.sh"]
 
 [[function]]
 id = 20
@@ -309,7 +309,7 @@ area = "H"
 promise = "SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's."
 code = ["sam-core/src/i18n.rs", "sam-gtk/src/i18n.rs", "scripts/i18n.py", "po/de.po", "po/es.po", "po/fr.po"]
 tests = ["texts_without_a_translation_come_back_with_their_values", "the_command_line_speaks_german_when_asked", "every_translated_language_can_be_chosen", "the_language_is_the_system_or_one_sam_speaks", "the_chosen_language_and_the_systems_are_kept_apart", "apps_keep_the_system_language_whatever_sams_window_shows"]
-checks = ["scripts/i18n.py"]
+checks = ["tests/gui/flow-atspi.sh", "scripts/i18n.py"]
 
 [[function]]
 id = 40

@@ -26,7 +26,7 @@ else
 CARGO ?= cargo
 endif
 
-.PHONY: all cli gui test test-library report dashboard licenses test-shipped install install-cli install-gui clean dist appimage man pot mo
+.PHONY: all cli gui test mutants-diff test-library report dashboard licenses test-shipped install install-cli install-gui clean dist appimage man pot mo
 
 # Languages with a translation (po/LINGUAS).
 LINGUAS := $(shell cat po/LINGUAS 2>/dev/null)
@@ -50,6 +50,13 @@ pot:
 
 test:
 	$(CARGO) test --workspace --locked
+
+# Mutation testing of only the code changed since main (or BASE=…): every
+# deliberate change no test notices is a missing test.
+BASE ?= origin/main
+mutants-diff:
+	git diff $(BASE) -- 'crates/*.rs' 'crates/**/*.rs' > target/mutants.diff
+	cargo mutants --in-diff target/mutants.diff --test-workspace=true -j 4 --timeout 120 -o target/mutants-diff
 
 # The catalog of all tests (docs/test-library.md).
 # The generated pages about the tests: the test library and the function

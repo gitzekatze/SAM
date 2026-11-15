@@ -53,10 +53,20 @@ stop the desktop portals that Flatpak apps rely on.
   give it a doc comment whose first sentence states that promise. Prefer
   regression tests that guard a real promise over tests that only raise
   line coverage.
-- Logic that runs without a display gets unit or integration tests; the
-  window is checked by `tests/gui/smoke.sh`, `tests/gui/permissions-atspi.sh`
-  and `tests/gui/a11y-atspi.sh` (every control has a name for screen readers
-  and takes keyboard focus).
+- Logic that runs without a display gets unit or integration tests. The
+  window is checked in CI by `tests/gui/smoke.sh` (every page opens cleanly)
+  and by the click-through tests `tests/gui/*-atspi.sh`: the main flow and
+  the language, the app page, the Permission Manager, and names and keyboard
+  focus for every control.
+- **Test first where it pays:** for a bug, for a security boundary or limit,
+  and for a new function, write the failing test before the code (a new
+  function goes into `docs/functions.toml` first, with its promise and
+  `gap = "…"` until its test exists). Layout and wording are checked by
+  screenshots and the click-through tests instead.
+- **Check that your tests would catch a mistake:** `make mutants-diff`
+  changes only the code you touched, on purpose, and reports every change
+  no test noticed. It takes minutes; run it before you push a change to
+  security-relevant code.
 - Every test belongs to one of SAM's functions: add its name under the
   function it proves in `docs/functions.toml`. A test may prove several
   functions; a new function needs a test, a scripted check, or a stated gap.

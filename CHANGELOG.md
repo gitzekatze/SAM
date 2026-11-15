@@ -145,6 +145,11 @@ version.
 
 ### Tests and documentation
 
+- The window is clicked through on every push: a new test follows the main
+  flow (Create Sandbox, Launch) and the window in German and English, and
+  the app page, Permission Manager and accessibility tests now run in CI too.
+- `make mutants-diff` checks that the tests of a change would catch a
+  mistake in it, and CONTRIBUTING describes when to write the test first.
 - An upgrade test builds the last released SAM, creates apps, settings and a
   preset with it, and checks that the new version keeps them and still
   starts the apps; `scripts/new-version.sh` runs it before every release.

@@ -24,9 +24,9 @@ for spec in "Browser:Network;WebBrowser;" "Player:AudioVideo;Audio;Player;" "Edi
     "$bin/sam-jail" add "$out/data-set/apps-folder/$n-1.0-x86_64.AppImage" --no-launcher --accept >/dev/null
 done
 ids=$("$bin/sam-jail" --json group list | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d=d.get("data",d); print(",".join(a["id"] for a in d if a["name"]!="Tool"))')
-/usr/lib/at-spi-bus-launcher --launch-immediately >/dev/null 2>&1 & launcher=$!
+"${ATSPI_LAUNCHER:-/usr/lib/at-spi-bus-launcher}" --launch-immediately >/dev/null 2>&1 & launcher=$!
 sleep 1
-/usr/lib/at-spi2-registryd >/dev/null 2>&1 & registry=$!
+"${ATSPI_REGISTRY:-/usr/lib/at-spi2-registryd}" >/dev/null 2>&1 & registry=$!
 "$bin/sam-jail-gui" --screenshot "$out/permissions.png" --size 1180x800 --delay 25000 --page permissions --app "$ids" > "$out/gui.log" 2>&1 & gui=$!
 rc=0; python3 -I "$here/tests/gui/permissions-atspi.py" || rc=$?
 wait $gui || true

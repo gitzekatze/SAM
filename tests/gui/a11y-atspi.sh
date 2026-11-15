@@ -27,9 +27,9 @@ done
 "$bin/sam-jail" dev make-fixture --name Waiting "$out/data-set/apps-folder/Waiting-1.0-x86_64.AppImage" >/dev/null
 first=$("$bin/sam-jail" --json list | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d=d.get("data",d); print(d[0]["id"])')
 
-/usr/lib/at-spi-bus-launcher --launch-immediately >/dev/null 2>&1 & launcher=$!
+"${ATSPI_LAUNCHER:-/usr/lib/at-spi-bus-launcher}" --launch-immediately >/dev/null 2>&1 & launcher=$!
 sleep 1
-/usr/lib/at-spi2-registryd >/dev/null 2>&1 & registry=$!
+"${ATSPI_REGISTRY:-/usr/lib/at-spi2-registryd}" >/dev/null 2>&1 & registry=$!
 
 rc=0
 for page in overview app app-repair file permissions presets preferences diagnostics guide; do
