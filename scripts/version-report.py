@@ -7,7 +7,7 @@ on; compared with the previous report.
 
 Writes docs/reports/<version>-<commit>.json and .md (or into --out) and
 prints the differences to the previous report in that folder. Build output
-and coverage data go to ../.work (next to the repository) or $SAM_WORK.
+and coverage data go to ../claude (next to the repository) or $SAM_WORK.
 
 Line coverage is a gap finder, not a score: a part whose coverage drops, or
 code no test runs, is a place to look for a missing regression test.
@@ -22,7 +22,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-WORK = pathlib.Path(os.environ.get("SAM_WORK", ROOT.parent / ".work")) / "version-report"
+WORK = pathlib.Path(os.environ.get("SAM_WORK", ROOT.parent / "claude")) / "version-report"
 PARTS = ["sam-core", "sam-detect", "sam-intake", "sam-profile", "sam-sandbox", "sam-runner", "sam-storage", "sam-jail-cli", "sam-gtk"]
 SLOWER = 1.25  # a step counts as slower when it takes 25 % longer ...
 MIN_MS = 2.0  # ... and at least this much longer in absolute terms

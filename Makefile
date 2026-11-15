@@ -9,7 +9,7 @@
 #   make pot             collect translatable strings into po/sam.pot
 #   make mo              compile the translations (po/*.po) into target/locale
 #
-# Uses the project-local Rust toolchain in ../.toolchain when present.
+# Uses the project-local Rust toolchain in ../claude/toolchain when present.
 
 PREFIX  ?= /usr
 DESTDIR ?=
@@ -17,7 +17,7 @@ BINDIR   = $(DESTDIR)$(PREFIX)/bin
 DATADIR  = $(DESTDIR)$(PREFIX)/share
 
 # (shell test instead of $(wildcard): the path may contain spaces)
-TOOLCHAIN := $(shell cd ../.toolchain 2>/dev/null && pwd)
+TOOLCHAIN := $(shell cd ../claude/toolchain 2>/dev/null && pwd)
 ifeq ($(shell test -x "$(TOOLCHAIN)/cargo/bin/cargo" && echo yes),yes)
 export RUSTUP_HOME := $(TOOLCHAIN)/rustup
 export CARGO_HOME  := $(TOOLCHAIN)/cargo
