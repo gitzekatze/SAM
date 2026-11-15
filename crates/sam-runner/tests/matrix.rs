@@ -341,8 +341,11 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     let mut p = base();
     p.advanced.writable_appdir = true;
     let r = launch("writable-appdir", p);
-    // Bubblewrap before 0.10 (Ubuntu 24.04) has no overlays: read-only then.
-    assert_eq!(r["APPDIR_WRITE"], if sam_core::host::bwrap_supports_overlay() { "yes" } else { "no" });
+    // Without overlays (Bubblewrap before 0.10, as on Ubuntu 24.04, or a
+    // filesystem that cannot hold one, as in a container) the app folder
+    // stays read-only, and the app still starts.
+    let overlays_work = sam_core::host::overlay_works_in(&paths.data_dir.join("overlays"));
+    assert_eq!(r["APPDIR_WRITE"], if overlays_work { "yes" } else { "no" });
     let extracted = app.resolve(&id).unwrap().extraction.unwrap().appdir;
     assert!(!Path::new(&extracted).join("portable.ini").exists(), "extracted copy unchanged");
 
@@ -396,8 +399,8 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     });
     assert!(app.running(&id).is_empty());
     let overlay = paths.data_dir.join("overlays").join(&id);
-    // The layer exists only where Bubblewrap supports overlays (0.10+).
-    assert_eq!(overlay.exists(), sam_core::host::bwrap_supports_overlay(), "writable app folder layer");
+    // The layer exists only where overlays work.
+    assert_eq!(overlay.exists(), overlays_work, "writable app folder layer");
     app.remove(&id, false).unwrap();
     assert!(!overlay.exists(), "remove deletes the writable app folder layer");
     assert!(!paths.runtime_dir(&id).exists(), "no runtime folder left behind");

@@ -74,6 +74,49 @@ pub fn bwrap_supports_overlay() -> bool {
     })
 }
 
+/// Whether an overlay with its changes kept in `dir` really works: the
+/// Bubblewrap version is not enough, because some filesystems cannot hold
+/// an overlay's changes (NFS, eCryptfs, some FUSE filesystems, another
+/// overlay such as a container's). Tried once per folder with a real
+/// overlay in a throwaway sandbox; `dir` is created if needed.
+pub fn overlay_works_in(dir: &std::path::Path) -> bool {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static CHECKED: Mutex<Option<HashMap<std::path::PathBuf, bool>>> = Mutex::new(None);
+    if !bwrap_supports_overlay() {
+        return false;
+    }
+    let mut cache = CHECKED.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(&known) = cache.get_or_insert_with(HashMap::new).get(dir) {
+        return known;
+    }
+    let works = try_overlay_in(dir);
+    cache.get_or_insert_with(HashMap::new).insert(dir.to_path_buf(), works);
+    works
+}
+
+fn try_overlay_in(dir: &std::path::Path) -> bool {
+    let Some(bwrap) = crate::util::which("bwrap") else { return false };
+    let probe = dir.join(format!(".overlay-check-{}", std::process::id()));
+    let made = std::fs::create_dir_all(dir).is_ok() && ["lower", "upper", "work"].iter().all(|d| std::fs::create_dir_all(probe.join(d)).is_ok());
+    let works = made
+        && std::process::Command::new(bwrap)
+            .args(["--unshare-user", "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--overlay-src"])
+            .arg(probe.join("lower"))
+            .arg("--overlay")
+            .arg(probe.join("upper"))
+            .arg(probe.join("work"))
+            .args(["/tmp/o", "true"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+    // The work folder may hold a folder owned by the overlay that only
+    // root could remove; what can be removed is.
+    let _ = std::fs::remove_dir_all(&probe);
+    works
+}
+
 /// "bubblewrap 0.13.1" -> true for (0, 10).
 fn version_at_least(text: &str, want: (u32, u32)) -> bool {
     let v = text.split_whitespace().find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit())).unwrap_or("");

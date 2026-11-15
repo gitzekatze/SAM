@@ -158,5 +158,5 @@ jobs:
             chown -R tester /src
             su tester -c "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all true"
             su tester -c "cd /src && cargo build --locked -p sam-jail-cli"
-            su tester -c "cd /src && PATH=/src/target/debug:\$PATH cargo test --locked -p sam-runner --test breakout --test evil --test matrix --test sandbox --test fuzz"
+            su tester -c "cd /src && PATH=/src/target/debug:\$PATH cargo test --locked -p sam-runner --test breakout --test evil --test matrix --test sandbox --test overlay_fallback --test fuzz"
           '

@@ -222,6 +222,15 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             "Writable app folder unavailable",
             "The writable app folder needs Bubblewrap 0.10 or newer; the installed one is older, so the app folder stays read-only. Update Bubblewrap to use this setting.",
         ));
+    } else if perms.advanced.writable_appdir && !sam_core::host::overlay_works_in(&paths.data_dir.join("overlays")) {
+        warnings.push(Warning::warn(
+            "writable-appdir-unavailable",
+            "Writable app folder unavailable",
+            format!(
+                "The writable app folder keeps the app's changes in {}, but that folder is on a filesystem that cannot hold them (for example a network drive, an encrypted folder or a container's filesystem). The app starts with a read-only app folder instead. Moving SAM's data folder to a local disk makes this setting work.",
+                sam_core::util::tildify(&paths.data_dir.join("overlays"))
+            ),
+        ));
     } else if perms.advanced.writable_appdir {
         let base = paths.data_dir.join("overlays").join(&app.id);
         fs::create_dir_all(base.join("upper"))?;
