@@ -306,6 +306,36 @@ Also: `data/` (menu entry, AppStream metainfo, icon, man pages),
 
 ---
 
+## How SAM is made
+
+SAM is a one-person project. Most of its code and documentation was written
+with [Claude](https://www.anthropic.com/claude), Anthropic's AI model, as a
+coding assistant; the commits it helped with say so ("Co-Authored-By"). The
+maintainer decides what SAM does and how far each permission may go, sets
+the priorities and tries SAM on a real desktop; Claude writes most of the
+code and the tests, and every change has to pass them before it goes in.
+
+Because the code came about quickly and with AI help, SAM does not ask to be
+trusted on its word. Every promise it makes is meant to be checked:
+
+- each security promise in [docs/security.md](docs/security.md) names the
+  test that proves it, and the [threat model](docs/threat-model.md) says
+  what SAM does *not* protect against;
+- each function SAM offers is mapped to its tests in
+  [docs/functions.md](docs/functions.md), generated on every change;
+- breakout tests run in a real sandbox in CI on Ubuntu and Fedora, untrusted
+  input is fuzzed, and before each version mutation testing checks that the
+  tests notice deliberate mistakes ([latest report](docs/reports/mutants-2026-11-15.md));
+- the AppImage is tested on five distributions before each release, and
+  releases are signed.
+
+An outside security review is planned before the first public beta. Until
+then, treat SAM as what it is: young, carefully tested software that has not
+yet been reviewed by anyone but its makers. If you find a way out of the
+sandbox, please report it privately ([SECURITY.md](SECURITY.md)).
+
+---
+
 ## License
 
 GPL-3.0-or-later. SAM's programs contain libraries by other people under their
