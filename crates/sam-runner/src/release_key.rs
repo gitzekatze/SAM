@@ -30,7 +30,11 @@ pub fn check(sig: &SignatureInfo, keys: &[&str]) -> Result<()> {
     }
     match sig.state {
         SignatureState::Valid => {
-            let fp = sig.fingerprint.as_deref().unwrap_or("").to_ascii_uppercase();
+            let fp = sig
+                .fingerprint
+                .as_deref()
+                .unwrap_or("")
+                .to_ascii_uppercase();
             if keys.iter().any(|k| k.eq_ignore_ascii_case(&fp)) {
                 Ok(())
             } else {
@@ -43,12 +47,23 @@ pub fn check(sig: &SignatureInfo, keys: &[&str]) -> Result<()> {
                 )
             }
         }
-        SignatureState::Unsigned => bail!("{}", sam_core::i18n::tr("the update is not signed, so its origin cannot be checked; it was not installed")),
+        SignatureState::Unsigned => bail!(
+            "{}",
+            sam_core::i18n::tr(
+                "the update is not signed, so its origin cannot be checked; it was not installed"
+            )
+        ),
         SignatureState::Invalid => {
             bail!("{}", sam_core::i18n::tr("the update's signature does not match the file, so it was changed after signing; it was not installed"))
         }
         SignatureState::Unchecked => {
-            bail!("{}", sam_core::i18n::trf("the update's signature could not be checked ({reason}); it was not installed", &[("reason", &sig.detail)]))
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the update's signature could not be checked ({reason}); it was not installed",
+                    &[("reason", &sig.detail)]
+                )
+            )
         }
     }
 }
@@ -63,14 +78,23 @@ mod tests {
     fn release_keys_are_full_fingerprints() {
         assert!(!RELEASE_KEYS.is_empty(), "SAM has a release key");
         for k in RELEASE_KEYS {
-            assert!(k.len() == 40 && k.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_lowercase()), "{k}");
+            assert!(
+                k.len() == 40
+                    && k.chars()
+                        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_lowercase()),
+                "{k}"
+            );
         }
     }
 
     const OURS: &str = "0123456789ABCDEF0123456789ABCDEF01234567";
 
     fn sig(state: SignatureState, fp: Option<&str>) -> SignatureInfo {
-        SignatureInfo { state, fingerprint: fp.map(str::to_string), detail: "gpgv missing".into() }
+        SignatureInfo {
+            state,
+            fingerprint: fp.map(str::to_string),
+            detail: "gpgv missing".into(),
+        }
     }
 
     /// SAM accepts an update of itself only with a valid signature from one
@@ -80,21 +104,44 @@ mod tests {
     #[test]
     fn sam_updates_itself_only_with_its_release_key() {
         assert!(check(&sig(SignatureState::Valid, Some(OURS)), &[OURS]).is_ok());
-        assert!(check(&sig(SignatureState::Valid, Some(&OURS.to_lowercase())), &[OURS]).is_ok(), "case does not matter");
+        assert!(
+            check(
+                &sig(SignatureState::Valid, Some(&OURS.to_lowercase())),
+                &[OURS]
+            )
+            .is_ok(),
+            "case does not matter"
+        );
         let other = "FEDCBA9876543210FEDCBA9876543210FEDCBA98";
-        let e = check(&sig(SignatureState::Valid, Some(other)), &[OURS]).unwrap_err().to_string();
+        let e = check(&sig(SignatureState::Valid, Some(other)), &[OURS])
+            .unwrap_err()
+            .to_string();
         assert!(e.contains("not with SAM's release key"), "{e}");
-        assert!(check(&sig(SignatureState::Valid, None), &[OURS]).is_err(), "a valid signature without a readable key");
-        assert!(check(&sig(SignatureState::Unsigned, None), &[OURS]).unwrap_err().to_string().contains("not signed"));
-        assert!(check(&sig(SignatureState::Invalid, Some(OURS)), &[OURS]).unwrap_err().to_string().contains("changed after signing"));
-        assert!(check(&sig(SignatureState::Unchecked, Some(OURS)), &[OURS]).unwrap_err().to_string().contains("gpgv missing"));
+        assert!(
+            check(&sig(SignatureState::Valid, None), &[OURS]).is_err(),
+            "a valid signature without a readable key"
+        );
+        assert!(check(&sig(SignatureState::Unsigned, None), &[OURS])
+            .unwrap_err()
+            .to_string()
+            .contains("not signed"));
+        assert!(check(&sig(SignatureState::Invalid, Some(OURS)), &[OURS])
+            .unwrap_err()
+            .to_string()
+            .contains("changed after signing"));
+        assert!(check(&sig(SignatureState::Unchecked, Some(OURS)), &[OURS])
+            .unwrap_err()
+            .to_string()
+            .contains("gpgv missing"));
     }
 
     /// Without a built-in release key, SAM never updates itself, whatever
     /// the download looks like.
     #[test]
     fn without_a_release_key_sam_never_updates_itself() {
-        let e = check(&sig(SignatureState::Valid, Some(OURS)), &[]).unwrap_err().to_string();
+        let e = check(&sig(SignatureState::Valid, Some(OURS)), &[])
+            .unwrap_err()
+            .to_string();
         assert!(e.contains("without a release key"), "{e}");
     }
 }

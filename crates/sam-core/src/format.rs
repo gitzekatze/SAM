@@ -19,7 +19,10 @@ pub const CURRENT: u32 = 1;
 
 /// The `format` of a file read as a JSON or TOML value (0 when missing).
 pub fn of_json(v: &serde_json::Value) -> u32 {
-    v.get("format").and_then(serde_json::Value::as_u64).map(|n| n.min(u32::MAX as u64) as u32).unwrap_or(0)
+    v.get("format")
+        .and_then(serde_json::Value::as_u64)
+        .map(|n| n.min(u32::MAX as u64) as u32)
+        .unwrap_or(0)
 }
 
 /// Error for a file written by a newer SAM.
@@ -43,7 +46,11 @@ impl std::error::Error for NewerFormat {}
 /// Refuses files from a newer SAM.
 pub fn check_not_newer(path: &Path, found: u32) -> anyhow::Result<()> {
     if found > CURRENT {
-        return Err(NewerFormat { path: path.to_path_buf(), found }.into());
+        return Err(NewerFormat {
+            path: path.to_path_buf(),
+            found,
+        }
+        .into());
     }
     Ok(())
 }

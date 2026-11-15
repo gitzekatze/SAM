@@ -12,7 +12,10 @@ pub fn home() -> String {
 /// `~/…` form of a path, for display and for stored locations.
 pub fn tildify(path: &str) -> String {
     let h = home();
-    if !h.is_empty() && path.starts_with(&h) && (path.len() == h.len() || path[h.len()..].starts_with('/')) {
+    if !h.is_empty()
+        && path.starts_with(&h)
+        && (path.len() == h.len() || path[h.len()..].starts_with('/'))
+    {
         format!("~{}", &path[h.len()..])
     } else {
         path.to_string()
@@ -34,7 +37,9 @@ pub fn folder_path(key: &str) -> Option<String> {
         "filesystem.desktop" => (D::Desktop, "Desktop"),
         _ => return None,
     };
-    let path = gtk::glib::user_special_dir(dir).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| format!("{}/{fallback}", home()));
+    let path = gtk::glib::user_special_dir(dir)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| format!("{}/{fallback}", home()));
     Some(tildify(&path))
 }
 
@@ -42,13 +47,20 @@ pub fn folder_path(key: &str) -> Option<String> {
 /// description, with the folder's path for personal folders.
 pub fn explain(key: &str, description: &str) -> String {
     match folder_path(key) {
-        Some(p) => crate::i18n::trf("{description} Folder: {folder}", &[("description", &description), ("folder", &p)]),
+        Some(p) => crate::i18n::trf(
+            "{description} Folder: {folder}",
+            &[("description", &description), ("folder", &p)],
+        ),
         None => description.to_string(),
     }
 }
 
 pub fn plain(s: &str) -> String {
-    let mut out: String = s.chars().filter(|c| !c.is_control() || *c == '\n').take(400).collect();
+    let mut out: String = s
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n')
+        .take(400)
+        .collect();
     if s.chars().count() > 400 {
         out.push('…');
     }
@@ -85,7 +97,14 @@ pub fn bool_of(v: &Value, key: &str) -> bool {
 }
 
 pub fn list_of(v: &Value, key: &str) -> Vec<String> {
-    get(v, key).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
+    get(v, key)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// SAM shows risk in three levels everywhere (tags, badges, lists): the
@@ -121,7 +140,10 @@ pub fn category_label(c: &str) -> String {
 
 /// Local date and time of a Unix timestamp.
 pub fn format_time(secs: i64) -> String {
-    gtk::glib::DateTime::from_unix_local(secs).and_then(|d| d.format("%x %H:%M")).map(|s| s.to_string()).unwrap_or_default()
+    gtk::glib::DateTime::from_unix_local(secs)
+        .and_then(|d| d.format("%x %H:%M"))
+        .map(|s| s.to_string())
+        .unwrap_or_default()
 }
 
 /// A tinted status label ("Sandboxed", "High risk").
@@ -152,7 +174,12 @@ pub fn risk_items(risk: &Value) -> Vec<(String, String)> {
         .into_iter()
         .flatten()
         .filter(|i| !str_of(i, "key").starts_with("baseline.") && str_of(i, "level") != "low")
-        .map(|i| (str_of(i, "title").to_string(), str_of(i, "level").to_string()))
+        .map(|i| {
+            (
+                str_of(i, "title").to_string(),
+                str_of(i, "level").to_string(),
+            )
+        })
         .collect();
     items.sort_by_key(|(_, l)| std::cmp::Reverse(risk_rank(l)));
     items
@@ -164,9 +191,15 @@ pub fn risk_tooltip(risk: &Value) -> String {
     if items.is_empty() {
         return crate::i18n::tr("Low risk: the app only gets harmless basics such as fonts, its own window and the folders you share read-only.");
     }
-    let mut lines = vec![crate::i18n::tr("The risk is set by the riskiest permission:")];
+    let mut lines = vec![crate::i18n::tr(
+        "The risk is set by the riskiest permission:",
+    )];
     for lvl in ["dangerous", "high", "medium"] {
-        let names: Vec<&str> = items.iter().filter(|(_, l)| l == lvl).map(|(t, _)| t.as_str()).collect();
+        let names: Vec<&str> = items
+            .iter()
+            .filter(|(_, l)| l == lvl)
+            .map(|(t, _)| t.as_str())
+            .collect();
         if !names.is_empty() {
             lines.push(format!("{}: {}", risk_label(lvl), names.join(", ")));
         }
@@ -203,10 +236,21 @@ pub fn chip(text: &str, folder: bool, on_remove: impl Fn() + 'static) -> gtk::Wi
     if folder {
         b.append(&gtk::Image::from_icon_name("folder-symbolic"));
     }
-    let l = gtk::Label::builder().label(plain(text)).ellipsize(gtk::pango::EllipsizeMode::Middle).max_width_chars(40).build();
+    let l = gtk::Label::builder()
+        .label(plain(text))
+        .ellipsize(gtk::pango::EllipsizeMode::Middle)
+        .max_width_chars(40)
+        .build();
     b.append(&l);
-    let x = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text(tr("Remove")).valign(gtk::Align::Center).build();
-    x.update_property(&[gtk::accessible::Property::Label(&crate::i18n::trf("Remove {item}", &[("item", &plain(text))]))]);
+    let x = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text(tr("Remove"))
+        .valign(gtk::Align::Center)
+        .build();
+    x.update_property(&[gtk::accessible::Property::Label(&crate::i18n::trf(
+        "Remove {item}",
+        &[("item", &plain(text))],
+    ))]);
     x.add_css_class("flat");
     x.add_css_class("circular");
     x.connect_clicked(move |_| on_remove());
@@ -278,13 +322,22 @@ pub mod natural_height {
             fn request_mode(&self) -> gtk::SizeRequestMode {
                 gtk::SizeRequestMode::HeightForWidth
             }
-            fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
-                let Some(c) = self.obj().first_child() else { return (0, 0, -1, -1) };
+            fn measure(
+                &self,
+                orientation: gtk::Orientation,
+                for_size: i32,
+            ) -> (i32, i32, i32, i32) {
+                let Some(c) = self.obj().first_child() else {
+                    return (0, 0, -1, -1);
+                };
                 let (min, nat, _, _) = c.measure(orientation, for_size);
                 if orientation == gtk::Orientation::Vertical {
                     // AdwBreakpointBin reports a constant size, so GTK measures
                     // it without the width; ask its content at the real width.
-                    let inner = c.first_child().map(|i| i.measure(orientation, for_size).1).unwrap_or(nat);
+                    let inner = c
+                        .first_child()
+                        .map(|i| i.measure(orientation, for_size).1)
+                        .unwrap_or(nat);
                     let h = min.max(nat).max(inner);
                     (h, h, -1, -1)
                 } else {
@@ -299,7 +352,9 @@ pub mod natural_height {
             // Keyboard focus goes on to the content (a plain widget would
             // keep Tab from ever reaching the buttons inside).
             fn focus(&self, direction: gtk::DirectionType) -> bool {
-                self.obj().first_child().is_some_and(|c| c.child_focus(direction))
+                self.obj()
+                    .first_child()
+                    .is_some_and(|c| c.child_focus(direction))
             }
             fn grab_focus(&self) -> bool {
                 self.obj().first_child().is_some_and(|c| c.grab_focus())
@@ -396,12 +451,25 @@ pub mod wrap {
                 gtk::SizeRequestMode::HeightForWidth
             }
 
-            fn measure(&self, widget: &gtk::Widget, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
+            fn measure(
+                &self,
+                widget: &gtk::Widget,
+                orientation: gtk::Orientation,
+                for_size: i32,
+            ) -> (i32, i32, i32, i32) {
                 if orientation == gtk::Orientation::Horizontal {
                     let kids = Self::children(widget);
-                    let min = kids.iter().map(|c| c.measure(gtk::Orientation::Horizontal, -1).0).max().unwrap_or(0);
+                    let min = kids
+                        .iter()
+                        .map(|c| c.measure(gtk::Orientation::Horizontal, -1).0)
+                        .max()
+                        .unwrap_or(0);
                     let gaps = self.hspace.get() * (kids.len() as i32 - 1).max(0);
-                    let nat: i32 = kids.iter().map(|c| c.measure(gtk::Orientation::Horizontal, -1).1).sum::<i32>() + gaps;
+                    let nat: i32 = kids
+                        .iter()
+                        .map(|c| c.measure(gtk::Orientation::Horizontal, -1).1)
+                        .sum::<i32>()
+                        + gaps;
                     (min, nat.max(min), -1, -1)
                 } else {
                     let width = if for_size < 0 { i32::MAX / 2 } else { for_size };

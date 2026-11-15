@@ -52,7 +52,10 @@ impl<'de> Deserialize<'de> for Access {
                 "none" | "false" | "no" | "off" | "" => Ok(Access::None),
                 "ro" | "read" | "read-only" | "readonly" => Ok(Access::Ro),
                 "rw" | "true" | "yes" | "on" | "read-write" | "readwrite" => Ok(Access::Rw),
-                other => Err(serde::de::Error::custom(crate::i18n::trf("invalid access level '{other}' (expected none, ro or rw)", &[("other", &other)]))),
+                other => Err(serde::de::Error::custom(crate::i18n::trf(
+                    "invalid access level '{other}' (expected none, ro or rw)",
+                    &[("other", &other)],
+                ))),
             },
         }
     }
@@ -107,7 +110,14 @@ impl Default for FilesystemPerms {
 }
 
 /// The XDG user directories that have their own toggle.
-pub const XDG_DIR_KEYS: [&str; 6] = ["documents", "downloads", "music", "pictures", "videos", "desktop"];
+pub const XDG_DIR_KEYS: [&str; 6] = [
+    "documents",
+    "downloads",
+    "music",
+    "pictures",
+    "videos",
+    "desktop",
+];
 
 impl FilesystemPerms {
     pub fn xdg_access(&self, key: &str) -> Access {
@@ -163,14 +173,24 @@ pub struct NetworkPerms {
 impl NetworkPerms {
     /// Valid ports from `host_ports` (DNS, port 53, is never forwarded).
     pub fn valid_app_ports(&self) -> Vec<u16> {
-        let mut v: Vec<u16> = self.app_ports.iter().filter_map(|p| p.trim().parse().ok()).filter(|p| *p != 0).collect();
+        let mut v: Vec<u16> = self
+            .app_ports
+            .iter()
+            .filter_map(|p| p.trim().parse().ok())
+            .filter(|p| *p != 0)
+            .collect();
         v.sort();
         v.dedup();
         v
     }
 
     pub fn valid_host_ports(&self) -> Vec<u16> {
-        let mut v: Vec<u16> = self.host_ports.iter().filter_map(|p| p.trim().parse().ok()).filter(|p| *p != 0 && *p != 53).collect();
+        let mut v: Vec<u16> = self
+            .host_ports
+            .iter()
+            .filter_map(|p| p.trim().parse().ok())
+            .filter(|p| *p != 0 && *p != 53)
+            .collect();
         v.sort();
         v.dedup();
         v
@@ -261,20 +281,59 @@ pub const PORTAL_NAME: &str = "org.freedesktop.portal.Desktop";
 /// run scripts in the desktop shell, change any setting, bypass the portal
 /// filter), with the reason. Exact names and prefixes ending in `.`.
 const DANGEROUS_BUS_NAMES: &[(&str, &str)] = &[
-    ("org.freedesktop.systemd1", crate::i18n::n_("can start any program outside the sandbox")),
-    ("org.freedesktop.Flatpak", crate::i18n::n_("can start programs outside the sandbox")),
-    ("org.freedesktop.portal.Flatpak", crate::i18n::n_("can start new sandboxes and programs")),
-    ("org.freedesktop.impl.portal.", crate::i18n::n_("bypasses the portal and its prompts")),
-    ("org.kde.KWin", crate::i18n::n_("can run scripts in the window manager")),
-    ("org.kde.plasmashell", crate::i18n::n_("can run scripts in the desktop shell")),
-    ("org.kde.klauncher", crate::i18n::n_("can start programs outside the sandbox")),
-    ("org.kde.kded", crate::i18n::n_("controls desktop background services")),
+    (
+        "org.freedesktop.systemd1",
+        crate::i18n::n_("can start any program outside the sandbox"),
+    ),
+    (
+        "org.freedesktop.Flatpak",
+        crate::i18n::n_("can start programs outside the sandbox"),
+    ),
+    (
+        "org.freedesktop.portal.Flatpak",
+        crate::i18n::n_("can start new sandboxes and programs"),
+    ),
+    (
+        "org.freedesktop.impl.portal.",
+        crate::i18n::n_("bypasses the portal and its prompts"),
+    ),
+    (
+        "org.kde.KWin",
+        crate::i18n::n_("can run scripts in the window manager"),
+    ),
+    (
+        "org.kde.plasmashell",
+        crate::i18n::n_("can run scripts in the desktop shell"),
+    ),
+    (
+        "org.kde.klauncher",
+        crate::i18n::n_("can start programs outside the sandbox"),
+    ),
+    (
+        "org.kde.kded",
+        crate::i18n::n_("controls desktop background services"),
+    ),
     ("org.kde.krunner", crate::i18n::n_("can run commands")),
-    ("org.kde.ksmserver", crate::i18n::n_("controls the session (log out, restore programs)")),
-    ("org.kde.kglobalaccel", crate::i18n::n_("can register global shortcuts and observe key presses")),
-    ("org.gnome.Shell", crate::i18n::n_("can run scripts in the desktop shell")),
-    ("org.gnome.SessionManager", crate::i18n::n_("controls the session")),
-    ("ca.desrt.dconf", crate::i18n::n_("can change any desktop setting, including autostart")),
+    (
+        "org.kde.ksmserver",
+        crate::i18n::n_("controls the session (log out, restore programs)"),
+    ),
+    (
+        "org.kde.kglobalaccel",
+        crate::i18n::n_("can register global shortcuts and observe key presses"),
+    ),
+    (
+        "org.gnome.Shell",
+        crate::i18n::n_("can run scripts in the desktop shell"),
+    ),
+    (
+        "org.gnome.SessionManager",
+        crate::i18n::n_("controls the session"),
+    ),
+    (
+        "ca.desrt.dconf",
+        crate::i18n::n_("can change any desktop setting, including autostart"),
+    ),
 ];
 
 /// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
@@ -285,15 +344,32 @@ const DANGEROUS_BUS_NAMES: &[(&str, &str)] = &[
 pub fn dangerous_socket(path: &str) -> Option<String> {
     let p = path.trim();
     let bad: &[(&str, &str)] = &[
-        ("docker.sock", crate::i18n::n_("controls Docker, which equals full control of the computer")),
-        ("podman.sock", crate::i18n::n_("controls Podman containers on this computer")),
-        ("containerd.sock", crate::i18n::n_("controls containers on this computer")),
-        ("/run/dbus/system_bus_socket", crate::i18n::n_("is the system bus, unfiltered")),
+        (
+            "docker.sock",
+            crate::i18n::n_("controls Docker, which equals full control of the computer"),
+        ),
+        (
+            "podman.sock",
+            crate::i18n::n_("controls Podman containers on this computer"),
+        ),
+        (
+            "containerd.sock",
+            crate::i18n::n_("controls containers on this computer"),
+        ),
+        (
+            "/run/dbus/system_bus_socket",
+            crate::i18n::n_("is the system bus, unfiltered"),
+        ),
         ("systemd/private", crate::i18n::n_("controls systemd")),
-        ("/bus", crate::i18n::n_("is a D-Bus socket, which bypasses SAM's D-Bus filter")),
+        (
+            "/bus",
+            crate::i18n::n_("is a D-Bus socket, which bypasses SAM's D-Bus filter"),
+        ),
         ("libvirt", crate::i18n::n_("controls virtual machines")),
     ];
-    bad.iter().find(|(needle, _)| p.contains(needle)).map(|(_, why)| format!("{p} {}", crate::i18n::tr(why)))
+    bad.iter()
+        .find(|(needle, _)| p.contains(needle))
+        .map(|(_, why)| format!("{p} {}", crate::i18n::tr(why)))
 }
 
 /// True when a bus-name pattern (`org.kde.*`, `org.kde*`, exact) covers `name`.
@@ -310,7 +386,11 @@ pub fn bus_pattern_matches(pattern: &str, name: &str) -> bool {
 /// Wildcard allow entries that cover a name in `deny`: they cannot be
 /// enforced together, so the wildcard is not used.
 pub fn blocked_wildcards(b: &DbusBusPerms) -> Vec<String> {
-    b.allow.iter().filter(|a| a.ends_with('*') && b.deny.iter().any(|d| bus_pattern_matches(a, d))).cloned().collect()
+    b.allow
+        .iter()
+        .filter(|a| a.ends_with('*') && b.deny.iter().any(|d| bus_pattern_matches(a, d)))
+        .cloned()
+        .collect()
 }
 
 /// Why an app may not own `name` on the session bus, if it may not:
@@ -318,10 +398,23 @@ pub fn blocked_wildcards(b: &DbusBusPerms) -> Vec<String> {
 /// dangerous, or one a service on this computer starts on demand
 /// (`activatable`, see `host::activatable_bus_names`). Checked at every
 /// start, also for names the user added.
-pub fn refuse_own_name(name: &str, activatable: &std::collections::BTreeSet<String>) -> Option<String> {
-    const PROTOCOL: [&str; 6] = ["org.freedesktop.", "org.gtk.", "org.mpris.", "ca.desrt.", "org.a11y.", "io.github.gitzekatze.SAM"];
+pub fn refuse_own_name(
+    name: &str,
+    activatable: &std::collections::BTreeSet<String>,
+) -> Option<String> {
+    const PROTOCOL: [&str; 6] = [
+        "org.freedesktop.",
+        "org.gtk.",
+        "org.mpris.",
+        "ca.desrt.",
+        "org.a11y.",
+        "io.github.gitzekatze.SAM",
+    ];
     if PROTOCOL.iter().any(|p| name.starts_with(p)) {
-        return Some(crate::i18n::trf("{name} belongs to the desktop's own protocols", &[("name", &name)]));
+        return Some(crate::i18n::trf(
+            "{name} belongs to the desktop's own protocols",
+            &[("name", &name)],
+        ));
     }
     if let Some(why) = dangerous_bus_name(name) {
         return Some(why);
@@ -333,8 +426,15 @@ pub fn refuse_own_name(name: &str, activatable: &std::collections::BTreeSet<Stri
 
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
     let name = name.trim();
-    if name == "*" || name == "org.*" || name == "org.freedesktop.*" || name.starts_with("org.freedesktop.portal.*") {
-        return Some(crate::i18n::trf("{name} covers services that can act outside the sandbox", &[("name", &name)]));
+    if name == "*"
+        || name == "org.*"
+        || name == "org.freedesktop.*"
+        || name.starts_with("org.freedesktop.portal.*")
+    {
+        return Some(crate::i18n::trf(
+            "{name} covers services that can act outside the sandbox",
+            &[("name", &name)],
+        ));
     }
     let wildcard = name.strip_suffix(".*").or_else(|| name.strip_suffix('*'));
     for (d, why) in DANGEROUS_BUS_NAMES {
@@ -344,7 +444,10 @@ pub fn dangerous_bus_name(name: &str) -> Option<String> {
                 if d.ends_with('.') {
                     name.starts_with(d)
                 } else {
-                    name == *d || name.starts_with(&format!("{d}.")) || name.starts_with(&format!("{d}5")) || name.starts_with(&format!("{d}6"))
+                    name == *d
+                        || name.starts_with(&format!("{d}."))
+                        || name.starts_with(&format!("{d}5"))
+                        || name.starts_with(&format!("{d}6"))
                 }
             }
         };
@@ -414,11 +517,18 @@ impl DbusBusPerms {
     /// runs in its own PID namespace, so its PID is small (2 when AppRun execs
     /// the binary). Empty unless the tray watcher is allowed.
     pub fn tray_own_names(&self) -> Vec<String> {
-        if !self.allow.iter().any(|n| n == "org.kde.StatusNotifierWatcher") {
+        if !self
+            .allow
+            .iter()
+            .any(|n| n == "org.kde.StatusNotifierWatcher")
+        {
             return vec![];
         }
         let mut names = Vec::new();
-        for prefix in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
+        for prefix in [
+            "org.kde.StatusNotifierItem",
+            "org.freedesktop.StatusNotifierItem",
+        ] {
             for pid in 2..=12 {
                 for n in 1..=2 {
                     names.push(format!("{prefix}-{pid}-{n}"));
@@ -447,7 +557,14 @@ pub fn default_session_allow() -> Vec<String> {
 impl Default for DbusPerms {
     fn default() -> Self {
         DbusPerms {
-            session: DbusBusPerms { mode: DbusMode::Filtered, allow: default_session_allow(), deny: vec![], own: vec![], calls: vec![], broadcasts: vec![] },
+            session: DbusBusPerms {
+                mode: DbusMode::Filtered,
+                allow: default_session_allow(),
+                deny: vec![],
+                own: vec![],
+                calls: vec![],
+                broadcasts: vec![],
+            },
             system: DbusSystemPerms::default(),
         }
     }
@@ -519,13 +636,22 @@ pub struct AdvancedPerms {
 /// `libfoo.so.1.2`), which is all `advanced.system_libraries` accepts: no
 /// folders, no `..`, so the list cannot bind arbitrary files.
 pub fn is_library_name(name: &str) -> bool {
-    let Some(rest) = name.strip_prefix("lib") else { return false };
-    let Some(pos) = rest.find(".so") else { return false };
+    let Some(rest) = name.strip_prefix("lib") else {
+        return false;
+    };
+    let Some(pos) = rest.find(".so") else {
+        return false;
+    };
     let (stem, tail) = rest.split_at(pos);
     !stem.is_empty()
         && name.len() <= 100
-        && stem.chars().all(|c| c.is_ascii_alphanumeric() || "_+-".contains(c))
-        && tail[3..].split('.').skip(1).all(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+        && stem
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_+-".contains(c))
+        && tail[3..]
+            .split('.')
+            .skip(1)
+            .all(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
         && (tail.len() == 3 || tail[3..].starts_with('.'))
 }
 
@@ -552,7 +678,13 @@ impl Default for IntegrationPerms {
     fn default() -> Self {
         // Input methods are on by default, like Flatpak: their portal
         // frontends only accept typed text from the app.
-        IntegrationPerms { keyring: false, media_controls: false, file_manager: false, screen_sharing: false, input_method: true }
+        IntegrationPerms {
+            keyring: false,
+            media_controls: false,
+            file_manager: false,
+            screen_sharing: false,
+            input_method: true,
+        }
     }
 }
 
@@ -561,10 +693,17 @@ impl IntegrationPerms {
     pub fn bus_names(&self) -> (Vec<&'static str>, Vec<&'static str>) {
         let (mut talk, mut own) = (Vec::new(), Vec::new());
         if self.keyring {
-            talk.extend(["org.freedesktop.secrets", "org.kde.kwalletd6", "org.kde.kwalletd5"]);
+            talk.extend([
+                "org.freedesktop.secrets",
+                "org.kde.kwalletd6",
+                "org.kde.kwalletd5",
+            ]);
         }
         if self.media_controls {
-            talk.extend(["org.freedesktop.ScreenSaver", "org.freedesktop.PowerManagement"]);
+            talk.extend([
+                "org.freedesktop.ScreenSaver",
+                "org.freedesktop.PowerManagement",
+            ]);
             own.push("org.mpris.MediaPlayer2.*");
         }
         if self.file_manager {
@@ -574,7 +713,10 @@ impl IntegrationPerms {
             // The sandbox frontends of Fcitx5 and IBus, the names Flatpak
             // apps use. Not `org.fcitx.Fcitx5`: its controller interface
             // can change Fcitx's configuration.
-            talk.extend(["org.freedesktop.portal.Fcitx", "org.freedesktop.portal.IBus"]);
+            talk.extend([
+                "org.freedesktop.portal.Fcitx",
+                "org.freedesktop.portal.IBus",
+            ]);
         }
         (talk, own)
     }
@@ -643,17 +785,30 @@ impl PermissionSet {
             b.allow.remove(i);
             let obj = "/org/freedesktop/portal/desktop";
             for iface in portal_interfaces(self) {
-                b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.portal.{iface}.*@{obj}"));
+                b.calls.push(format!(
+                    "{PORTAL_NAME}=org.freedesktop.portal.{iface}.*@{obj}"
+                ));
             }
-            b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.portal.Request.*@{obj}/request/*"));
+            b.calls.push(format!(
+                "{PORTAL_NAME}=org.freedesktop.portal.Request.*@{obj}/request/*"
+            ));
             if self.integrations.screen_sharing {
-                b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.portal.Session.*@{obj}/session/*"));
+                b.calls.push(format!(
+                    "{PORTAL_NAME}=org.freedesktop.portal.Session.*@{obj}/session/*"
+                ));
             }
             // Version checks and introspection (read-only).
-            b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.DBus.Properties.Get@{obj}"));
-            b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.DBus.Properties.GetAll@{obj}"));
-            b.calls.push(format!("{PORTAL_NAME}=org.freedesktop.DBus.Introspectable.*@{obj}"));
-            b.broadcasts.push(format!("{PORTAL_NAME}=@/org/freedesktop/portal/*"));
+            b.calls.push(format!(
+                "{PORTAL_NAME}=org.freedesktop.DBus.Properties.Get@{obj}"
+            ));
+            b.calls.push(format!(
+                "{PORTAL_NAME}=org.freedesktop.DBus.Properties.GetAll@{obj}"
+            ));
+            b.calls.push(format!(
+                "{PORTAL_NAME}=org.freedesktop.DBus.Introspectable.*@{obj}"
+            ));
+            b.broadcasts
+                .push(format!("{PORTAL_NAME}=@/org/freedesktop/portal/*"));
         }
         b
     }
@@ -663,7 +818,12 @@ impl PermissionSet {
         let v = serde_json::to_value(self)?;
         let mut cur = &v;
         for part in key.split('.') {
-            cur = cur.get(part).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])))?;
+            cur = cur.get(part).ok_or_else(|| {
+                anyhow!(
+                    "{}",
+                    crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
+                )
+            })?;
         }
         Ok(cur.clone())
     }
@@ -676,16 +836,34 @@ impl PermissionSet {
         let (last, parents) = parts.split_last().context(crate::i18n::tr("empty key"))?;
         let mut cur = &mut v;
         for part in parents {
-            cur = cur.get_mut(*part).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])))?;
+            cur = cur.get_mut(*part).ok_or_else(|| {
+                anyhow!(
+                    "{}",
+                    crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
+                )
+            })?;
         }
-        let obj = cur.as_object_mut().ok_or_else(|| anyhow!("{}", crate::i18n::trf("'{key}' is not a settable key", &[("key", &key)])))?;
+        let obj = cur.as_object_mut().ok_or_else(|| {
+            anyhow!(
+                "{}",
+                crate::i18n::trf("'{key}' is not a settable key", &[("key", &key)])
+            )
+        })?;
         let existing = obj.get(*last);
         if existing.is_none() && !(*last == "landlock" && parents == ["advanced"]) {
-            bail!("{}", crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)]));
+            bail!(
+                "{}",
+                crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
+            );
         }
         let new_val = parse_value(raw, existing);
         obj.insert((*last).to_string(), new_val);
-        *self = serde_json::from_value(v).with_context(|| crate::i18n::trf("invalid value for '{key}': {raw}", &[("key", &key), ("raw", &raw)]))?;
+        *self = serde_json::from_value(v).with_context(|| {
+            crate::i18n::trf(
+                "invalid value for '{key}': {raw}",
+                &[("key", &key), ("raw", &raw)],
+            )
+        })?;
         Ok(())
     }
 }
@@ -695,7 +873,12 @@ fn parse_value(raw: &str, existing: Option<&serde_json::Value>) -> serde_json::V
     // Comma separated input into an array field, for CLI convenience.
     if let Some(Value::Array(_)) = existing {
         if !raw.trim_start().starts_with('[') {
-            let items: Vec<Value> = raw.split(',').map(str::trim).filter(|s| !s.is_empty()).map(|s| Value::String(s.to_string())).collect();
+            let items: Vec<Value> = raw
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| Value::String(s.to_string()))
+                .collect();
             return Value::Array(items);
         }
     }
@@ -859,10 +1042,13 @@ mod tests {
     /// An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed.
     #[test]
     fn own_names_that_are_refused() {
-        let activatable: std::collections::BTreeSet<String> = ["org.kde.kwalletd6".to_string()].into();
+        let activatable: std::collections::BTreeSet<String> =
+            ["org.kde.kwalletd6".to_string()].into();
         assert!(refuse_own_name("org.kde.kdenlive", &activatable).is_none());
         assert!(refuse_own_name("app.hiddify.com", &activatable).is_none());
-        assert!(refuse_own_name("org.kde.kwalletd6", &activatable).unwrap().contains("starts on demand"));
+        assert!(refuse_own_name("org.kde.kwalletd6", &activatable)
+            .unwrap()
+            .contains("starts on demand"));
         assert!(refuse_own_name("org.freedesktop.Notifications", &activatable).is_some());
         assert!(refuse_own_name("org.kde.KWin", &activatable).is_some());
         assert!(refuse_own_name("org.gnome.Shell", &activatable).is_some());
@@ -907,9 +1093,15 @@ mod tests {
         p.dbus.session.allow = vec!["org.kde.*".into(), "org.example.App".into()];
         p.dbus.session.deny = vec!["org.kde.KWin".into()];
         let b = p.effective_session_bus();
-        assert!(!b.allow.iter().any(|a| a == "org.kde.*"), "wildcard dropped");
+        assert!(
+            !b.allow.iter().any(|a| a == "org.kde.*"),
+            "wildcard dropped"
+        );
         assert!(b.allow.iter().any(|a| a == "org.example.App"));
-        assert!(bus_pattern_matches("org.kde.*", "org.kde.KWin") && !bus_pattern_matches("org.kde.*", "org.kdex"));
+        assert!(
+            bus_pattern_matches("org.kde.*", "org.kde.KWin")
+                && !bus_pattern_matches("org.kde.*", "org.kdex")
+        );
     }
 
     /// Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning.
@@ -922,7 +1114,8 @@ mod tests {
         let p: PermissionSet = serde_json::from_str(old).unwrap();
         assert_eq!(p.network.mode, NetworkMode::None);
         assert_eq!(p.dbus.system.mode, DbusMode::None);
-        let full: PermissionSet = serde_json::from_str(r#"{"dbus": {"system": {"mode": "full"}}}"#).unwrap();
+        let full: PermissionSet =
+            serde_json::from_str(r#"{"dbus": {"system": {"mode": "full"}}}"#).unwrap();
         assert_eq!(full.dbus.system.mode, DbusMode::Full);
     }
 
@@ -942,7 +1135,8 @@ mod rename_tests {
     /// Raw sandbox arguments saved under their old name still load.
     #[test]
     fn old_extra_backend_args_still_load() {
-        let a: super::AdvancedPerms = serde_json::from_str(r#"{"extra_backend_args": ["--setenv", "A", "1"]}"#).unwrap();
+        let a: super::AdvancedPerms =
+            serde_json::from_str(r#"{"extra_backend_args": ["--setenv", "A", "1"]}"#).unwrap();
         assert_eq!(a.extra_bwrap_args, vec!["--setenv", "A", "1"]);
     }
 
@@ -950,10 +1144,26 @@ mod rename_tests {
     /// libraries: no folders, no `..`, nothing that is not a library.
     #[test]
     fn only_plain_library_names_are_accepted() {
-        for ok in ["libsystemd.so.0", "libstdc++.so.6", "libfoo.so", "libgtk-4.so.1.1600.1", "libz_x.so.1"] {
+        for ok in [
+            "libsystemd.so.0",
+            "libstdc++.so.6",
+            "libfoo.so",
+            "libgtk-4.so.1.1600.1",
+            "libz_x.so.1",
+        ] {
             assert!(super::is_library_name(ok), "{ok}");
         }
-        for bad in ["../libc.so.6", "/usr/lib/libc.so.6", "libc.so.6/..", "libc", "foo.so.1", "lib.so.1", "libc.so.x", "libc.so.6.", "libc.sox"] {
+        for bad in [
+            "../libc.so.6",
+            "/usr/lib/libc.so.6",
+            "libc.so.6/..",
+            "libc",
+            "foo.so.1",
+            "lib.so.1",
+            "libc.so.x",
+            "libc.so.6.",
+            "libc.sox",
+        ] {
             assert!(!super::is_library_name(bad), "{bad}");
         }
     }

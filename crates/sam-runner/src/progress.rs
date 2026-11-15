@@ -48,7 +48,11 @@ pub type Listener = dyn Fn(&Progress) + Send + Sync;
 
 impl fmt::Debug for ProgressSink {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(if self.0.is_some() { "ProgressSink(listening)" } else { "ProgressSink(none)" })
+        f.write_str(if self.0.is_some() {
+            "ProgressSink(listening)"
+        } else {
+            "ProgressSink(none)"
+        })
     }
 }
 
@@ -64,14 +68,24 @@ impl ProgressSink {
         let before: f64 = steps[..index].iter().map(|(_, w)| w).sum();
         let total: f64 = steps.iter().map(|(_, w)| w).sum();
         let fraction = ((before + steps[index].1 * within.clamp(0.0, 1.0)) / total).clamp(0.0, 1.0);
-        f(&Progress { step: index + 1, steps: steps.len(), title: sam_core::i18n::tr(steps[index].0), detail: detail.into(), fraction });
+        f(&Progress {
+            step: index + 1,
+            steps: steps.len(),
+            title: sam_core::i18n::tr(steps[index].0),
+            detail: detail.into(),
+            fraction,
+        });
     }
 }
 
 /// Runs `work` while a thread reports every 0.7 s how many bytes the files
 /// below `dir` hold (for unpacking, which happens in a separate, sandboxed
 /// process).
-pub fn watch_bytes<T>(dir: &Path, on_bytes: impl Fn(u64) + Send + 'static, work: impl FnOnce() -> T) -> T {
+pub fn watch_bytes<T>(
+    dir: &Path,
+    on_bytes: impl Fn(u64) + Send + 'static,
+    work: impl FnOnce() -> T,
+) -> T {
     let stop = Arc::new(AtomicBool::new(false));
     let s = stop.clone();
     let dir = dir.to_path_buf();
@@ -98,7 +112,9 @@ fn bytes_below(dir: &Path) -> u64 {
     let mut total = 0;
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in rd.flatten() {
             match e.file_type() {
                 Ok(t) if t.is_dir() => stack.push(e.path()),
@@ -140,9 +156,15 @@ mod tests {
         let seen = seen.lock().unwrap();
         assert_eq!(seen[0].fraction, 0.0);
         assert!((seen[1].fraction - (0.04 + 0.28)).abs() < 1e-9);
-        assert_eq!((seen[1].step, seen[1].steps, seen[1].title.as_str()), (2, 5, "Unpacking"));
+        assert_eq!(
+            (seen[1].step, seen[1].steps, seen[1].title.as_str()),
+            (2, 5, "Unpacking")
+        );
         assert!((seen[2].fraction - 1.0).abs() < 1e-9);
-        assert!((seen[3].fraction - 1.0).abs() < 1e-9, "out-of-range input is clamped");
+        assert!(
+            (seen[3].fraction - 1.0).abs() < 1e-9,
+            "out-of-range input is clamped"
+        );
         ProgressSink::default().step(ADD_STEPS, 1, 0.5, "nobody listens");
     }
 

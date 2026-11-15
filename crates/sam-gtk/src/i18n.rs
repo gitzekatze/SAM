@@ -22,7 +22,11 @@ pub static RESTART: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBoo
 /// Call it first in `main`, before any thread exists.
 pub fn apply_language_setting() {
     let chosen = configured_language().unwrap_or_default();
-    let (language, system) = language_env(&chosen, std::env::var("LANGUAGE").ok(), std::env::var(sam_core::i18n::SYSTEM_LANGUAGE_VAR).ok());
+    let (language, system) = language_env(
+        &chosen,
+        std::env::var("LANGUAGE").ok(),
+        std::env::var(sam_core::i18n::SYSTEM_LANGUAGE_VAR).ok(),
+    );
     // No other thread exists yet, so changing the environment is safe.
     match language {
         Some(v) => std::env::set_var("LANGUAGE", v),
@@ -49,7 +53,11 @@ fn configured_language() -> Option<String> {
 /// What `LANGUAGE` and the saved system value become, for the chosen
 /// language ("" = the system's), the current `LANGUAGE` and the value saved
 /// by an earlier start of the window. Returns (LANGUAGE, saved system value).
-pub(crate) fn language_env(chosen: &str, current: Option<String>, saved_system: Option<String>) -> (Option<String>, Option<String>) {
+pub(crate) fn language_env(
+    chosen: &str,
+    current: Option<String>,
+    saved_system: Option<String>,
+) -> (Option<String>, Option<String>) {
     // The system's own value: saved by an earlier start, or the current one.
     let system = saved_system.unwrap_or_else(|| current.unwrap_or_default());
     if chosen.is_empty() {
@@ -62,7 +70,10 @@ pub(crate) fn language_env(chosen: &str, current: Option<String>, saved_system: 
 /// The name of the language the window shows now, in that language, or
 /// None when it follows the system.
 pub fn chosen_language_name(code: &str) -> Option<&'static str> {
-    sam_core::i18n::LANGUAGES.iter().find(|(c, _)| *c == code).map(|(_, n)| *n)
+    sam_core::i18n::LANGUAGES
+        .iter()
+        .find(|(c, _)| *c == code)
+        .map(|(_, n)| *n)
 }
 
 #[cfg(test)]

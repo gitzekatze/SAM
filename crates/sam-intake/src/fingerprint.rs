@@ -12,12 +12,22 @@ use sha2::{Digest, Sha256};
 
 pub fn quick(path: &Path) -> Result<Fingerprint> {
     let m = fs::metadata(path).with_context(|| format!("reading {}", path.display()))?;
-    Ok(Fingerprint { size: m.len(), mtime: m.mtime(), inode: m.ino(), device: m.dev(), sha256: String::new() })
+    Ok(Fingerprint {
+        size: m.len(),
+        mtime: m.mtime(),
+        inode: m.ino(),
+        device: m.dev(),
+        sha256: String::new(),
+    })
 }
 
 /// Short stable hex id for file names (first 16 hex digits of SHA-256).
 pub fn short_hash(data: &[u8]) -> String {
-    Sha256::digest(data).iter().take(8).map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(data)
+        .iter()
+        .take(8)
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 pub fn sha256_file(path: &Path) -> Result<String> {
@@ -73,7 +83,10 @@ pub fn check(path: &Path, known: &Fingerprint, deep: bool) -> Result<SourceStatu
     if reasons.is_empty() && !deep {
         return Ok(SourceStatus::Unchanged);
     }
-    let full = Fingerprint { sha256: sha256_file(path)?, ..q };
+    let full = Fingerprint {
+        sha256: sha256_file(path)?,
+        ..q
+    };
     if full.sha256 == known.sha256 {
         if reasons.is_empty() {
             Ok(SourceStatus::Unchanged)
@@ -100,7 +113,10 @@ mod tests {
         assert_eq!(check(&p, &fp, false).unwrap(), SourceStatus::Unchanged);
         assert_eq!(check(&p, &fp, true).unwrap(), SourceStatus::Unchanged);
         fs::write(&p, b"two!").unwrap();
-        assert!(matches!(check(&p, &fp, false).unwrap(), SourceStatus::Changed { .. }));
+        assert!(matches!(
+            check(&p, &fp, false).unwrap(),
+            SourceStatus::Changed { .. }
+        ));
         fs::remove_file(&p).unwrap();
         assert_eq!(check(&p, &fp, false).unwrap(), SourceStatus::Missing);
     }

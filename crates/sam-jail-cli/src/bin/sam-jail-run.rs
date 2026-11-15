@@ -46,10 +46,16 @@ fn notify_with_fix(title: &str, body: &str, app_id: &str) {
 
 /// SAM's window: SAM's own AppImage, next to this program, or on $PATH.
 fn sam_gui() -> Option<PathBuf> {
-    if let Some(a) = std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()) {
+    if let Some(a) = std::env::var_os("APPIMAGE")
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+    {
         return Some(a);
     }
-    let here = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("sam-jail-gui"))).filter(|p| p.is_file());
+    let here = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join("sam-jail-gui")))
+        .filter(|p| p.is_file());
     here.or_else(|| which("sam-jail-gui"))
 }
 
@@ -62,7 +68,14 @@ fn notify(title: &str, body: &str) {
         // App names and messages are untrusted; notification bodies render
         // markup, so neutralize it.
         let clean = |s: &str| sam_core::util::display_safe(s, 400).replace('&', "&amp;");
-        let _ = Command::new(n).args(["--app-name=SAM - Sandboxed AppImage Manager", "--icon=dialog-warning", &clean(title), &clean(body)]).status();
+        let _ = Command::new(n)
+            .args([
+                "--app-name=SAM - Sandboxed AppImage Manager",
+                "--icon=dialog-warning",
+                &clean(title),
+                &clean(body),
+            ])
+            .status();
     }
 }
 
@@ -87,7 +100,10 @@ fn main() {
             eprintln!("sam-jail-run: {e:#}");
             notify(
                 &sam_core::i18n::tr("SAM could not start the app"),
-                &sam_core::i18n::trf("{error}\nOpen SAM to repair it.", &[("error", &format!("{e:#}"))]),
+                &sam_core::i18n::trf(
+                    "{error}\nOpen SAM to repair it.",
+                    &[("error", &format!("{e:#}"))],
+                ),
             );
             std::process::exit(1);
         }
@@ -96,7 +112,10 @@ fn main() {
 
 fn launch(args: Vec<String>) -> Result<i32> {
     let (id, rest) = match args.first().map(String::as_str) {
-        Some("--app-id") => (args.get(1).cloned().unwrap_or_else(|| usage()), args[2.min(args.len())..].to_vec()),
+        Some("--app-id") => (
+            args.get(1).cloned().unwrap_or_else(|| usage()),
+            args[2.min(args.len())..].to_vec(),
+        ),
         Some("-h") | Some("--help") | None => usage(),
         Some(_) => (args[0].clone(), args[1..].to_vec()),
     };
@@ -106,18 +125,27 @@ fn launch(args: Vec<String>) -> Result<i32> {
         _ => rest,
     };
     let app = Sam::open()?;
-    let mut entry =
-        app.registry().get(&id)?.or_else(|| app.resolve(&id).ok()).with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))?;
+    let mut entry = app
+        .registry()
+        .get(&id)?
+        .or_else(|| app.resolve(&id).ok())
+        .with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))?;
     // After "Free space": unpack again first (the file is unchanged).
-    app.ensure_unpacked(&mut entry).context(sam_core::i18n::tr("unpacking the AppImage again"))?;
+    app.ensure_unpacked(&mut entry)
+        .context(sam_core::i18n::tr("unpacking the AppImage again"))?;
     let host = sam_core::HostInfo::probe();
     if app.config.security.check_before_launch {
         // Only when the settings, SAM or this computer changed since the
         // last passing check; a failed check stops the start.
         let key = sam_runner::verify::check_key(&entry, &app.config, &host);
-        let fresh = entry.last_check.as_ref().is_some_and(|c| c.key == key && c.failed.is_empty());
+        let fresh = entry
+            .last_check
+            .as_ref()
+            .is_some_and(|c| c.key == key && c.failed.is_empty());
         if !fresh {
-            let out = app.verify(&entry.id).context(sam_core::i18n::tr("checking the sandbox before starting"))?;
+            let out = app
+                .verify(&entry.id)
+                .context(sam_core::i18n::tr("checking the sandbox before starting"))?;
             if !out.record.failed.is_empty() {
                 let list = out.record.failed.join(", ");
                 notify(
@@ -127,28 +155,65 @@ fn launch(args: Vec<String>) -> Result<i32> {
                         &[("list", &list), ("app", &entry.display_name())],
                     ),
                 );
-                bail!("{}", sam_core::i18n::trf("sandbox check failed: {list}", &[("list", &list)]));
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf("sandbox check failed: {list}", &[("list", &list)])
+                );
             }
             entry.last_check = Some(out.record);
         }
     }
-    let rec = run(&mut entry, &LaunchOptions { args: rest, ..Default::default() }, &app.config, &app.paths, &host)?;
+    let rec = run(
+        &mut entry,
+        &LaunchOptions {
+            args: rest,
+            ..Default::default()
+        },
+        &app.config,
+        &app.paths,
+        &host,
+    )?;
     // A terminal program from the menu: its window closes with it, so a
     // failure would flash by unread.
     if entry.metadata.terminal && rec.exit_code != Some(0) && sam_runner::pty::is_tty(0) {
         if rec.success {
-            eprintln!("\n{}", sam_core::i18n::trf("{app} ended: {summary}", &[("app", &entry.display_name()), ("summary", &rec.summary)]));
+            eprintln!(
+                "\n{}",
+                sam_core::i18n::trf(
+                    "{app} ended: {summary}",
+                    &[("app", &entry.display_name()), ("summary", &rec.summary)]
+                )
+            );
         } else {
-            eprintln!("\n{}", sam_core::i18n::trf("{app} did not run: {summary}", &[("app", &entry.display_name()), ("summary", &rec.summary)]));
+            eprintln!(
+                "\n{}",
+                sam_core::i18n::trf(
+                    "{app} did not run: {summary}",
+                    &[("app", &entry.display_name()), ("summary", &rec.summary)]
+                )
+            );
             if let Some(f) = rec.findings.first() {
-                eprintln!("{}", sam_core::i18n::trf("SAM found a likely fix: {fix}. Open SAM to apply it.", &[("fix", &f.title)]));
+                eprintln!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "SAM found a likely fix: {fix}. Open SAM to apply it.",
+                        &[("fix", &f.title)]
+                    )
+                );
             }
         }
-        eprint!("{}", sam_core::i18n::tr("Press Enter to close this window."));
+        eprint!(
+            "{}",
+            sam_core::i18n::tr("Press Enter to close this window.")
+        );
         let _ = std::io::stdin().read_line(&mut String::new());
     }
     if rec.sandbox_failure {
-        notify_with_fix(&sam_core::i18n::trf("{app} failed to start", &[("app", &entry.display_name())]), &rec.summary, &entry.id);
+        notify_with_fix(
+            &sam_core::i18n::trf("{app} failed to start", &[("app", &entry.display_name())]),
+            &rec.summary,
+            &entry.id,
+        );
         bail!("{}", rec.summary);
     }
     // A crash within the first seconds usually means the sandbox is missing
@@ -159,7 +224,10 @@ fn launch(args: Vec<String>) -> Result<i32> {
             None => sam_core::i18n::tr("SAM's repair steps may help."),
         };
         notify_with_fix(
-            &sam_core::i18n::trf("{app} stopped right after starting", &[("app", &entry.display_name())]),
+            &sam_core::i18n::trf(
+                "{app} stopped right after starting",
+                &[("app", &entry.display_name())],
+            ),
             &format!("{} {hint}", rec.summary),
             &entry.id,
         );

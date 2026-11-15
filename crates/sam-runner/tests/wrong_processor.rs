@@ -24,10 +24,30 @@ fn an_appimage_for_another_processor_gets_no_sandbox() {
     data[18] = 0xB7;
     data[19] = 0x00;
     fs::write(&img, &data).unwrap();
-    assert_eq!(sam_detect::inspect(&img).unwrap().arch.as_deref(), Some("aarch64"));
+    assert_eq!(
+        sam_detect::inspect(&img).unwrap().arch.as_deref(),
+        Some("aarch64")
+    );
 
     let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
-    let e = sam.add(&img, &AddOptions { launcher: Some(false), ..Default::default() }).unwrap_err().to_string();
-    assert!(e.contains("built for ARM (aarch64) processors") && e.contains("processor is x86-64") && e.contains("Download the x86_64 version"), "{e}");
-    assert!(sam.registry().list().unwrap().is_empty(), "nothing is stored");
+    let e = sam
+        .add(
+            &img,
+            &AddOptions {
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("built for ARM (aarch64) processors")
+            && e.contains("processor is x86-64")
+            && e.contains("Download the x86_64 version"),
+        "{e}"
+    );
+    assert!(
+        sam.registry().list().unwrap().is_empty(),
+        "nothing is stored"
+    );
 }

@@ -516,7 +516,9 @@ impl AppEntry {
             return Badge::CompatibilityMode;
         }
         // A warning from the analysis, until the app has shown it starts.
-        if matches!(&self.detection, Some(d) if d.compatibility != Compatibility::Good) && !self.started_fine() {
+        if matches!(&self.detection, Some(d) if d.compatibility != Compatibility::Good)
+            && !self.started_fine()
+        {
             return Badge::CompatibilityRisk;
         }
         Badge::Ready
@@ -525,7 +527,9 @@ impl AppEntry {
     /// The last start got the app running: it exited normally, was closed by
     /// SAM, or ran for more than ten seconds.
     pub fn started_fine(&self) -> bool {
-        self.last_launch.as_ref().is_some_and(|l| !l.sandbox_failure && (l.success || l.finished_at - l.started_at > 10))
+        self.last_launch
+            .as_ref()
+            .is_some_and(|l| !l.sandbox_failure && (l.success || l.finished_at - l.started_at > 10))
     }
 
     pub fn display_name(&self) -> &str {
@@ -579,7 +583,13 @@ pub struct DiagnosticCheck {
 
 impl DiagnosticCheck {
     pub fn new(id: &str, label: &str, status: CheckStatus, detail: impl Into<String>) -> Self {
-        DiagnosticCheck { id: id.into(), label: label.into(), status, detail: detail.into(), hint: None }
+        DiagnosticCheck {
+            id: id.into(),
+            label: label.into(),
+            status,
+            detail: detail.into(),
+            hint: None,
+        }
     }
     pub fn hint(mut self, h: impl Into<String>) -> Self {
         self.hint = Some(h.into());
@@ -628,7 +638,12 @@ impl AppSummary {
                 .last_launch
                 .as_ref()
                 .filter(|l| !l.success && !matches!(l.signal, Some(9) | Some(15)))
-                .map(|l| l.findings.first().map(|f| f.title.clone()).unwrap_or_else(|| l.summary.clone())),
+                .map(|l| {
+                    l.findings
+                        .first()
+                        .map(|f| f.title.clone())
+                        .unwrap_or_else(|| l.summary.clone())
+                }),
             terminal: e.metadata.terminal,
         }
     }
@@ -642,7 +657,10 @@ mod tests {
     #[test]
     fn profile_change_clears_broken_launch() {
         let mut a = AppEntry {
-            last_launch: Some(LaunchRecord { sandbox_failure: true, ..Default::default() }),
+            last_launch: Some(LaunchRecord {
+                sandbox_failure: true,
+                ..Default::default()
+            }),
             last_error: Some("backend not available".into()),
             ..Default::default()
         };
@@ -659,12 +677,37 @@ mod badge_tests {
     /// An app with compatibility risk carries a warning badge until it has started successfully once.
     #[test]
     fn apps_with_compatibility_risk_are_marked_until_they_start() {
-        let mut e = AppEntry { extraction: Some(ExtractionInfo::default()), reviewed: true, ..Default::default() };
-        e.detection = Some(DependencyReport { compatibility: Compatibility::Risk, ..Default::default() });
-        assert_eq!(e.badge(), Badge::CompatibilityRisk, "warning until it has started");
-        e.last_launch = Some(LaunchRecord { started_at: 0, finished_at: 3, success: false, ..Default::default() });
-        assert_eq!(e.badge(), Badge::CompatibilityRisk, "a crash right away keeps it");
-        e.last_launch = Some(LaunchRecord { started_at: 0, finished_at: 60, success: false, ..Default::default() });
+        let mut e = AppEntry {
+            extraction: Some(ExtractionInfo::default()),
+            reviewed: true,
+            ..Default::default()
+        };
+        e.detection = Some(DependencyReport {
+            compatibility: Compatibility::Risk,
+            ..Default::default()
+        });
+        assert_eq!(
+            e.badge(),
+            Badge::CompatibilityRisk,
+            "warning until it has started"
+        );
+        e.last_launch = Some(LaunchRecord {
+            started_at: 0,
+            finished_at: 3,
+            success: false,
+            ..Default::default()
+        });
+        assert_eq!(
+            e.badge(),
+            Badge::CompatibilityRisk,
+            "a crash right away keeps it"
+        );
+        e.last_launch = Some(LaunchRecord {
+            started_at: 0,
+            finished_at: 60,
+            success: false,
+            ..Default::default()
+        });
         assert_eq!(e.badge(), Badge::Ready, "ran for a minute: it starts");
         e.profile.compatibility_mode = true;
         assert_eq!(e.badge(), Badge::CompatibilityMode);

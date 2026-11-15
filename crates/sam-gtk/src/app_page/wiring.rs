@@ -73,7 +73,10 @@ impl AppPage {
             "reset",
             Box::new(|me| {
                 if me.sandboxed() {
-                    me.simple(vec!["profile".into(), "reset".into(), me.app_id.clone()], &crate::i18n::tr("Settings reset"));
+                    me.simple(
+                        vec!["profile".into(), "reset".into(), me.app_id.clone()],
+                        &crate::i18n::tr("Settings reset"),
+                    );
                 } else {
                     me.reload();
                 }
@@ -150,8 +153,20 @@ impl AppPage {
             }
             let on = sw.is_active();
             me.simple(
-                vec!["desktop".into(), me.app_id.clone(), if on { "install".into() } else { "remove".into() }],
-                &if on { crate::i18n::tr("Menu entry added") } else { crate::i18n::tr("Menu entry removed") },
+                vec![
+                    "desktop".into(),
+                    me.app_id.clone(),
+                    if on {
+                        "install".into()
+                    } else {
+                        "remove".into()
+                    },
+                ],
+                &if on {
+                    crate::i18n::tr("Menu entry added")
+                } else {
+                    crate::i18n::tr("Menu entry removed")
+                },
             );
         });
         let w = Rc::downgrade(self);
@@ -163,8 +178,16 @@ impl AppPage {
             let on = sw.is_active();
             if me.sandboxed() {
                 me.simple_with(
-                    vec!["menu".into(), if on { "hide".into() } else { "restore".into() }, me.app_id.clone()],
-                    &if on { crate::i18n::tr("Other menu entries hidden") } else { crate::i18n::tr("Other menu entries restored") },
+                    vec![
+                        "menu".into(),
+                        if on { "hide".into() } else { "restore".into() },
+                        me.app_id.clone(),
+                    ],
+                    &if on {
+                        crate::i18n::tr("Other menu entries hidden")
+                    } else {
+                        crate::i18n::tr("Other menu entries restored")
+                    },
                     true,
                 );
             } else {
@@ -181,7 +204,11 @@ impl AppPage {
             if me.updating.get() {
                 return;
             }
-            let file = me.log_files.borrow().get(d.selected() as usize).map(|f| util::str_of(f, "path").to_string());
+            let file = me
+                .log_files
+                .borrow()
+                .get(d.selected() as usize)
+                .map(|f| util::str_of(f, "path").to_string());
             if let Some(f) = file {
                 glib::spawn_future_local(async move { me.show_log_file(&f).await });
             }
@@ -193,32 +220,55 @@ impl AppPage {
     pub(super) fn run_check(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
         let sandboxed = self.sandboxed();
-        let settings = if sandboxed { None } else { self.pending.borrow().clone() };
+        let settings = if sandboxed {
+            None
+        } else {
+            self.pending.borrow().clone()
+        };
         if !sandboxed && settings.is_none() {
             return;
         }
         self.check_button.set_sensitive(false);
         self.check_summary.set_title(&crate::i18n::tr("Testing…"));
-        self.check_summary.set_subtitle(&crate::i18n::tr("Starting the sandbox with SAM's test program, then the app itself for a few seconds."));
+        self.check_summary.set_subtitle(&crate::i18n::tr(
+            "Starting the sandbox with SAM's test program, then the app itself for a few seconds.",
+        ));
         let me = self.clone();
         glib::spawn_future_local(async move {
             let reply = if sandboxed {
                 app.backend.call(&["verify", &me.app_id], None).await
             } else {
                 let input = settings.as_ref().map(|v| v.to_string());
-                app.backend.call(&["verify", &me.path, "--permissions-stdin"], input).await
+                app.backend
+                    .call(&["verify", &me.path, "--permissions-stdin"], input)
+                    .await
             };
             match reply {
                 Ok(r) => {
-                    let failed = r.get("record").and_then(|x| x.get("failed")).and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+                    let failed = r
+                        .get("record")
+                        .and_then(|x| x.get("failed"))
+                        .and_then(Value::as_array)
+                        .map(Vec::len)
+                        .unwrap_or(0);
                     *me.check_report.borrow_mut() = r.get("report").cloned();
                     *me.check_settings.borrow_mut() = settings;
                     // Then a short real start of the app (only with a sandbox).
                     let started = if sandboxed {
                         let secs = TEST_SECONDS.to_string();
-                        let res = app.backend.call(&["selftest", &me.app_id, "--seconds", &secs], None).await.ok();
-                        let first = res.and_then(|r| r.get("results").and_then(Value::as_array).and_then(|a| a.first().cloned()));
-                        let ok = first.as_ref().is_some_and(|f| util::str_of(f, "status") == "ok");
+                        let res = app
+                            .backend
+                            .call(&["selftest", &me.app_id, "--seconds", &secs], None)
+                            .await
+                            .ok();
+                        let first = res.and_then(|r| {
+                            r.get("results")
+                                .and_then(Value::as_array)
+                                .and_then(|a| a.first().cloned())
+                        });
+                        let ok = first
+                            .as_ref()
+                            .is_some_and(|f| util::str_of(f, "status") == "ok");
                         *me.test_result.borrow_mut() = first;
                         Some(ok)
                     } else {
@@ -261,43 +311,78 @@ impl AppPage {
         self.check_button.set_sensitive(sandboxed);
         self.check_group.set_description(Some(&crate::i18n::tr("Starts this app's sandbox with a test program instead of the app and confirms from inside that every setting really applies. Nothing is changed. Use the Test button at the top; it also starts the app for a few seconds.")));
         if !sandboxed {
-            self.check_summary.set_title(&crate::i18n::tr("Not tested yet"));
+            self.check_summary
+                .set_title(&crate::i18n::tr("Not tested yet"));
             self.check_summary.set_subtitle("");
             set_badge_visible(&self.check_badge, false);
             return;
         }
-        let rec = self.entry().and_then(|e| e.get("last_check").cloned()).filter(|v| !v.is_null());
-        let current = self.info.borrow().as_ref().is_some_and(|i| util::bool_of(i, "check_current"));
+        let rec = self
+            .entry()
+            .and_then(|e| e.get("last_check").cloned())
+            .filter(|v| !v.is_null());
+        let current = self
+            .info
+            .borrow()
+            .as_ref()
+            .is_some_and(|i| util::bool_of(i, "check_current"));
         match &rec {
             None => {
-                self.check_summary.set_title(&crate::i18n::tr("Not tested yet"));
+                self.check_summary
+                    .set_title(&crate::i18n::tr("Not tested yet"));
                 self.check_summary
                     .set_subtitle(&crate::i18n::tr("Test that the sandbox gives the app exactly what its settings say, and that the app starts."));
                 set_badge_visible(&self.check_badge, true);
-                util::set_badge(&self.check_badge, &crate::i18n::tr("Not tested yet"), "neutral");
-                self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("Press Test to confirm that every setting applies and that the app starts")));
+                util::set_badge(
+                    &self.check_badge,
+                    &crate::i18n::tr("Not tested yet"),
+                    "neutral",
+                );
+                self.check_badge.set_tooltip_text(Some(&crate::i18n::tr(
+                    "Press Test to confirm that every setting applies and that the app starts",
+                )));
             }
             Some(r) => {
                 let passed = util::get(r, "passed").and_then(Value::as_u64).unwrap_or(0);
                 let failed = util::list_of(r, "failed");
-                let when = util::format_time(util::get(r, "at").and_then(Value::as_i64).unwrap_or(0));
+                let when =
+                    util::format_time(util::get(r, "at").and_then(Value::as_i64).unwrap_or(0));
                 let total = passed as usize + failed.len();
                 if !current {
-                    self.check_summary.set_title(&crate::i18n::tr("Out of date"));
+                    self.check_summary
+                        .set_title(&crate::i18n::tr("Out of date"));
                     self.check_summary.set_subtitle(&esc(&crate::i18n::trf(
                         "The settings, SAM or this computer changed since the last test ({when}). Test again.",
                         &[("when", &when)],
                     )));
                     set_badge_visible(&self.check_badge, true);
-                    util::set_badge(&self.check_badge, &crate::i18n::tr("Test out of date"), "warn");
+                    util::set_badge(
+                        &self.check_badge,
+                        &crate::i18n::tr("Test out of date"),
+                        "warn",
+                    );
                     self.check_badge
                         .set_tooltip_text(Some(&crate::i18n::tr("The settings, SAM or this computer changed since the last test; press Test again")));
                 } else if failed.is_empty() {
-                    self.check_summary.set_title(&crate::i18n::trn("The setting applies", "All {n} settings apply", total as u64, &[]));
-                    self.check_summary.set_subtitle(&esc(&crate::i18n::trf("Tested {when}.", &[("when", &when)])));
+                    self.check_summary.set_title(&crate::i18n::trn(
+                        "The setting applies",
+                        "All {n} settings apply",
+                        total as u64,
+                        &[],
+                    ));
+                    self.check_summary.set_subtitle(&esc(&crate::i18n::trf(
+                        "Tested {when}.",
+                        &[("when", &when)],
+                    )));
                     set_badge_visible(&self.check_badge, true);
-                    util::set_badge(&self.check_badge, &crate::i18n::trf("Tested {when}", &[("when", &when)]), "good");
-                    self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("The test confirmed that every setting applies; see Test below")));
+                    util::set_badge(
+                        &self.check_badge,
+                        &crate::i18n::trf("Tested {when}", &[("when", &when)]),
+                        "good",
+                    );
+                    self.check_badge.set_tooltip_text(Some(&crate::i18n::tr(
+                        "The test confirmed that every setting applies; see Test below",
+                    )));
                 } else {
                     self.check_summary.set_title(&crate::i18n::trn(
                         "{failed} of {n} check failed",
@@ -305,11 +390,15 @@ impl AppPage {
                         total as u64,
                         &[("failed", &failed.len())],
                     ));
-                    self.check_summary
-                        .set_subtitle(&esc(&crate::i18n::trf("Not applied: {settings}. Tested {when}.", &[("settings", &failed.join(", ")), ("when", &when)])));
+                    self.check_summary.set_subtitle(&esc(&crate::i18n::trf(
+                        "Not applied: {settings}. Tested {when}.",
+                        &[("settings", &failed.join(", ")), ("when", &when)],
+                    )));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, &crate::i18n::tr("Test failed"), "bad");
-                    self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("The test found settings that do not apply; see Test below")));
+                    self.check_badge.set_tooltip_text(Some(&crate::i18n::tr(
+                        "The test found settings that do not apply; see Test below",
+                    )));
                 }
             }
         }
@@ -317,17 +406,27 @@ impl AppPage {
         if let Some(r) = self.test_result.borrow().clone() {
             let ok = util::str_of(&r, "status") == "ok";
             let row = adw::ActionRow::builder()
-                .title(&if ok { crate::i18n::tr("The app started and kept running") } else { crate::i18n::tr("The app did not keep running") })
+                .title(&if ok {
+                    crate::i18n::tr("The app started and kept running")
+                } else {
+                    crate::i18n::tr("The app did not keep running")
+                })
                 .subtitle(esc(util::str_of(&r, "detail")))
                 .build();
-            let img = gtk::Image::from_icon_name(if ok { "object-select-symbolic" } else { "dialog-error-symbolic" });
+            let img = gtk::Image::from_icon_name(if ok {
+                "object-select-symbolic"
+            } else {
+                "dialog-error-symbolic"
+            });
             img.add_css_class(if ok { "success" } else { "error" });
             row.add_prefix(&img);
             self.check_group.add(&row);
             self.check_rows.borrow_mut().push(row.upcast());
         }
         // Results of the settings check run in this session.
-        let Some(report) = self.check_report.borrow().clone() else { return };
+        let Some(report) = self.check_report.borrow().clone() else {
+            return;
+        };
         self.render_check_results(&report);
     }
 
@@ -341,23 +440,46 @@ impl AppPage {
         let current = report.is_some() && *self.check_settings.borrow() == pending;
         match report.as_ref() {
             None => {
-                self.check_summary.set_title(&crate::i18n::tr("Not tested yet"));
-                self.check_summary.set_subtitle(&crate::i18n::tr("You can test the settings before you create the sandbox."));
+                self.check_summary
+                    .set_title(&crate::i18n::tr("Not tested yet"));
+                self.check_summary.set_subtitle(&crate::i18n::tr(
+                    "You can test the settings before you create the sandbox.",
+                ));
                 set_badge_visible(&self.check_badge, false);
             }
             Some(_) if !current => {
-                self.check_summary.set_title(&crate::i18n::tr("Out of date"));
-                self.check_summary.set_subtitle(&crate::i18n::tr("The settings changed since the last check. Check again."));
+                self.check_summary
+                    .set_title(&crate::i18n::tr("Out of date"));
+                self.check_summary.set_subtitle(&crate::i18n::tr(
+                    "The settings changed since the last check. Check again.",
+                ));
                 set_badge_visible(&self.check_badge, false);
             }
             Some(r) => {
-                let results: Vec<Value> = r.get("results").and_then(Value::as_array).cloned().unwrap_or_default();
-                let failed: Vec<String> =
-                    results.iter().filter(|x| util::get(x, "ok") == Some(&Value::Bool(false))).map(|x| util::str_of(x, "title").to_string()).collect();
-                let total = results.iter().filter(|x| matches!(util::get(x, "ok"), Some(Value::Bool(_)))).count();
+                let results: Vec<Value> = r
+                    .get("results")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                let failed: Vec<String> = results
+                    .iter()
+                    .filter(|x| util::get(x, "ok") == Some(&Value::Bool(false)))
+                    .map(|x| util::str_of(x, "title").to_string())
+                    .collect();
+                let total = results
+                    .iter()
+                    .filter(|x| matches!(util::get(x, "ok"), Some(Value::Bool(_))))
+                    .count();
                 if failed.is_empty() {
-                    self.check_summary.set_title(&crate::i18n::trn("The check passed", "All {n} checks passed", total as u64, &[]));
-                    self.check_summary.set_subtitle(&crate::i18n::tr("Every setting below applies. Not stored: the sandbox does not exist yet."));
+                    self.check_summary.set_title(&crate::i18n::trn(
+                        "The check passed",
+                        "All {n} checks passed",
+                        total as u64,
+                        &[],
+                    ));
+                    self.check_summary.set_subtitle(&crate::i18n::tr(
+                        "Every setting below applies. Not stored: the sandbox does not exist yet.",
+                    ));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, &crate::i18n::tr("Checked"), "good");
                     self.check_badge
@@ -369,7 +491,10 @@ impl AppPage {
                         total as u64,
                         &[("failed", &failed.len())],
                     ));
-                    self.check_summary.set_subtitle(&esc(&crate::i18n::trf("Not applied: {settings}.", &[("settings", &failed.join(", "))])));
+                    self.check_summary.set_subtitle(&esc(&crate::i18n::trf(
+                        "Not applied: {settings}.",
+                        &[("settings", &failed.join(", "))],
+                    )));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, &crate::i18n::tr("Check failed"), "bad");
                     self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("The sandbox check found settings that do not apply; see Sandbox Check below")));
@@ -383,10 +508,18 @@ impl AppPage {
 
     /// Failed and not-applicable checks as rows, confirmed ones folded away.
     pub(super) fn render_check_results(self: &Rc<Self>, report: &Value) {
-        let results: Vec<Value> = report.get("results").and_then(Value::as_array).cloned().unwrap_or_default();
+        let results: Vec<Value> = report
+            .get("results")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
         let row_for = |r: &Value, icon: &str, class: &str| {
             let row = adw::ActionRow::builder()
-                .title(esc(&format!("{} · {}", util::str_of(r, "group"), util::str_of(r, "title"))))
+                .title(esc(&format!(
+                    "{} · {}",
+                    util::str_of(r, "group"),
+                    util::str_of(r, "title")
+                )))
                 .subtitle(esc(util::str_of(r, "observed")))
                 .build();
             let img = gtk::Image::from_icon_name(icon);
@@ -394,17 +527,26 @@ impl AppPage {
             row.add_prefix(&img);
             row
         };
-        for r in results.iter().filter(|r| util::get(r, "ok") == Some(&Value::Bool(false))) {
+        for r in results
+            .iter()
+            .filter(|r| util::get(r, "ok") == Some(&Value::Bool(false)))
+        {
             let row = row_for(r, "dialog-error-symbolic", "error");
             self.check_group.add(&row);
             self.check_rows.borrow_mut().push(row.upcast());
         }
-        for r in results.iter().filter(|r| util::get(r, "ok").is_none_or(Value::is_null)) {
+        for r in results
+            .iter()
+            .filter(|r| util::get(r, "ok").is_none_or(Value::is_null))
+        {
             let row = row_for(r, "dialog-information-symbolic", "dim-label");
             self.check_group.add(&row);
             self.check_rows.borrow_mut().push(row.upcast());
         }
-        let passed: Vec<&Value> = results.iter().filter(|r| util::get(r, "ok") == Some(&Value::Bool(true))).collect();
+        let passed: Vec<&Value> = results
+            .iter()
+            .filter(|r| util::get(r, "ok") == Some(&Value::Bool(true)))
+            .collect();
         if !passed.is_empty() {
             let exp = adw::ExpanderRow::builder()
                 .title(format!("{} confirmed settings", passed.len()))
@@ -417,7 +559,11 @@ impl AppPage {
             });
             for r in passed {
                 let row = adw::ActionRow::builder()
-                    .title(esc(&format!("{} · {}", util::str_of(r, "group"), util::str_of(r, "title"))))
+                    .title(esc(&format!(
+                        "{} · {}",
+                        util::str_of(r, "group"),
+                        util::str_of(r, "title")
+                    )))
                     .subtitle(esc(util::str_of(r, "observed")))
                     .build();
                 exp.add_row(&row);
@@ -428,14 +574,23 @@ impl AppPage {
     }
 
     pub(super) fn args(&self) -> Vec<String> {
-        self.entry().map(|e| util::list_of(&e, "profile.args")).unwrap_or_default()
+        self.entry()
+            .map(|e| util::list_of(&e, "profile.args"))
+            .unwrap_or_default()
     }
 
     pub(super) fn save_args(self: &Rc<Self>, args: Vec<String>) {
         let Some(app) = self.app() else { return };
         let me = self.clone();
         glib::spawn_future_local(async move {
-            match app.backend.call(&["args", &me.app_id, "--stdin"], Some(serde_json::to_string(&args).unwrap())).await {
+            match app
+                .backend
+                .call(
+                    &["args", &me.app_id, "--stdin"],
+                    Some(serde_json::to_string(&args).unwrap()),
+                )
+                .await
+            {
                 Ok(_) => app.toast(&tr("Launch arguments saved")),
                 Err(e) => app.report_error(&e),
             }
@@ -456,7 +611,11 @@ impl AppPage {
             ).await {
                 return;
             }
-            match app.backend.call(&["compat", &me.app_id, if on { "on" } else { "off" }], None).await {
+            match app
+                .backend
+                .call(&["compat", &me.app_id, if on { "on" } else { "off" }], None)
+                .await
+            {
                 Ok(_) => app.toast(&if on {
                     crate::i18n::tr("Compatibility mode on")
                 } else {
@@ -490,7 +649,11 @@ impl AppPage {
             return;
         }
         let Some(perms) = self.perms() else { return };
-        let exists = self.presets.borrow().iter().any(|p| util::str_of(p, "name").eq_ignore_ascii_case(&name));
+        let exists = self
+            .presets
+            .borrow()
+            .iter()
+            .any(|p| util::str_of(p, "name").eq_ignore_ascii_case(&name));
         let me = self.clone();
         let app_name = util::plain(&self.name());
         glib::spawn_future_local(async move {
@@ -517,7 +680,11 @@ impl AppPage {
                 "modified_at": 0,
                 "compatibility_notes": "",
             });
-            match app.backend.call(&["preset", "put"], Some(preset.to_string())).await {
+            match app
+                .backend
+                .call(&["preset", "put"], Some(preset.to_string()))
+                .await
+            {
                 Ok(_) => {
                     app.toast(&crate::i18n::trf("Saved preset “{name}”. Apply it to other apps from the main menu → My Presets.", &[("name", &name)]));
                     me.save_preset_row.set_text("");

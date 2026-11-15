@@ -21,7 +21,12 @@ fn bwrap_works() -> bool {
 }
 
 fn parse(log: &Path) -> HashMap<String, String> {
-    fs::read_to_string(log).unwrap().lines().filter_map(|l| l.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    fs::read_to_string(log)
+        .unwrap()
+        .lines()
+        .filter_map(|l| l.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
 }
 
 /// When the folder for the writable app folder's changes cannot hold an
@@ -47,7 +52,17 @@ fn an_app_starts_read_only_when_its_writable_app_folder_cannot_work() {
     build(&img, &spec).unwrap();
     let paths = Paths::rooted(&root.join("sam"));
     let app = Sam::with_paths(paths.clone()).unwrap();
-    let id = app.add(&img, &AddOptions { launcher: Some(false), ..Default::default() }).unwrap().entry.id;
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
     // A file where the overlay folder belongs: no overlay can work there.
     fs::create_dir_all(&paths.data_dir).unwrap();
     fs::write(paths.data_dir.join("overlays"), "not a folder").unwrap();
@@ -55,10 +70,21 @@ fn an_app_starts_read_only_when_its_writable_app_folder_cannot_work() {
     let mut p = PermissionSet::strict_gui();
     p.advanced.writable_appdir = true;
     let mut e = app.set_permissions(&id, p).unwrap();
-    let opts = LaunchOptions { quiet: true, owd: Some(home.clone()), ..Default::default() };
+    let opts = LaunchOptions {
+        quiet: true,
+        owd: Some(home.clone()),
+        ..Default::default()
+    };
     let rec = run(&mut e, &opts, &app.config, &app.paths, &HostInfo::probe()).unwrap();
     assert!(rec.success, "the app starts: {}", rec.summary);
     let log = fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap();
-    assert_eq!(parse(rec.log_file.as_ref().unwrap())["APPDIR_WRITE"], "no", "the app folder is read-only");
-    assert!(log.contains("# warning [writable-appdir-unavailable]"), "the warning says why:\n{log}");
+    assert_eq!(
+        parse(rec.log_file.as_ref().unwrap())["APPDIR_WRITE"],
+        "no",
+        "the app folder is read-only"
+    );
+    assert!(
+        log.contains("# warning [writable-appdir-unavailable]"),
+        "the warning says why:\n{log}"
+    );
 }

@@ -12,7 +12,9 @@ use sam_runner::ops::{AddOptions, Sam};
 
 fn usable() -> bool {
     let host = sam_core::HostInfo::probe();
-    host.tools.bwrap.is_some() && sam_runner::doctor::bwrap_functional(&host).is_ok() && sam_runner::find_helper().is_some()
+    host.tools.bwrap.is_some()
+        && sam_runner::doctor::bwrap_functional(&host).is_ok()
+        && sam_runner::find_helper().is_some()
 }
 
 /// The sandbox check passes when the settings apply, and catches a setting that does not apply.
@@ -36,16 +38,44 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
     spec.categories = "Utility;".into();
     build(&img, &spec).unwrap();
     let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
-    let id = app.add(&img, &AddOptions { launcher: Some(false), ..Default::default() }).unwrap().entry.id;
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
 
     // 1. A correct sandbox: nothing fails.
-    app.set_permissions(&id, PermissionSet::strict_gui()).unwrap();
+    app.set_permissions(&id, PermissionSet::strict_gui())
+        .unwrap();
     let out = app.verify(&id).unwrap();
-    let failed: Vec<_> = out.report.failed().iter().map(|r| format!("{}: {}", r.title, r.observed)).collect();
+    let failed: Vec<_> = out
+        .report
+        .failed()
+        .iter()
+        .map(|r| format!("{}: {}", r.title, r.observed))
+        .collect();
     assert!(failed.is_empty(), "unexpected failures: {failed:?}");
-    assert!(out.report.results.iter().any(|r| r.title == "Documents" && r.ok == Some(true)));
-    assert!(out.report.results.iter().any(|r| r.title.contains("home folder") && r.ok == Some(true)));
-    assert_eq!(app.resolve(&id).unwrap().last_check.unwrap().failed.len(), 0, "result stored with the app");
+    assert!(out
+        .report
+        .results
+        .iter()
+        .any(|r| r.title == "Documents" && r.ok == Some(true)));
+    assert!(out
+        .report
+        .results
+        .iter()
+        .any(|r| r.title.contains("home folder") && r.ok == Some(true)));
+    assert_eq!(
+        app.resolve(&id).unwrap().last_check.unwrap().failed.len(),
+        0,
+        "result stored with the app"
+    );
 
     // 2. Documents is "No access", but a raw Bubblewrap argument mounts it
     //    anyway: the check must notice.
@@ -54,8 +84,16 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
     p.advanced.extra_bwrap_args = vec!["--ro-bind".into(), docs.clone(), docs];
     app.set_permissions(&id, p).unwrap();
     let out = app.verify(&id).unwrap();
-    let failed: Vec<String> = out.report.failed().iter().map(|r| r.title.clone()).collect();
-    assert!(failed.iter().any(|t| t == "Documents"), "the leaked folder is reported: {failed:?}");
+    let failed: Vec<String> = out
+        .report
+        .failed()
+        .iter()
+        .map(|r| r.title.clone())
+        .collect();
+    assert!(
+        failed.iter().any(|t| t == "Documents"),
+        "the leaked folder is reported: {failed:?}"
+    );
     assert_eq!(app.resolve(&id).unwrap().last_check.unwrap().failed, failed);
 
     // 2b. This computer only (pasta): the app runs as the user, not root,
@@ -65,7 +103,12 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
         p.network.mode = NetworkMode::Localhost;
         app.set_permissions(&id, p).unwrap();
         let out = app.verify(&id).unwrap();
-        let failed: Vec<_> = out.report.failed().iter().map(|r| format!("{}: {}", r.title, r.observed)).collect();
+        let failed: Vec<_> = out
+            .report
+            .failed()
+            .iter()
+            .map(|r| format!("{}: {}", r.title, r.observed))
+            .collect();
         assert!(failed.is_empty(), "this computer only: {failed:?}");
     }
 
@@ -75,7 +118,12 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
     p.advanced.seccomp_baseline = false;
     app.set_permissions(&id, p).unwrap();
     let out = app.verify(&id).unwrap();
-    let filter = out.report.results.iter().find(|r| r.title == "Syscall filter").unwrap();
+    let filter = out
+        .report
+        .results
+        .iter()
+        .find(|r| r.title == "Syscall filter")
+        .unwrap();
     assert_eq!(filter.ok, Some(true), "{}", filter.observed);
     assert_eq!(filter.observed, "not active");
 }

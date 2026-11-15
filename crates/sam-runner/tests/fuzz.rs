@@ -81,7 +81,10 @@ fn mutate(rng: &mut Rng, data: &[u8], from: usize) -> Vec<u8> {
 }
 
 fn iterations() -> usize {
-    std::env::var("SAM_FUZZ_ITERS").ok().and_then(|v| v.parse().ok()).unwrap_or(150)
+    std::env::var("SAM_FUZZ_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(150)
 }
 
 /// Runs `f` and saves `input` when it panics; returns whether it panicked.
@@ -92,7 +95,10 @@ fn guarded(what: &str, round: usize, input: &[u8], f: impl FnOnce()) -> Option<S
         let _ = fs::create_dir_all(&dir);
         let file = dir.join(format!("{what}-{round}.bin"));
         let _ = fs::write(&file, input);
-        return Some(format!("{what} round {round} panicked; input saved to {}", file.display()));
+        return Some(format!(
+            "{what} round {round} panicked; input saved to {}",
+            file.display()
+        ));
     }
     None
 }
@@ -121,11 +127,19 @@ fn changed_appimages_never_crash_or_escape_the_unpacker() {
     let tmp = tempfile::tempdir().unwrap();
     let seed_img = tmp.path().join("Seed.AppImage");
     let mut spec = FixtureSpec::hello("Seed");
-    spec.files.push(FixtureFile { path: "usr/share/seed/data.txt".into(), data: b"hello world ".repeat(200), mode: 0o644 });
-    spec.symlinks.push(("usr/share/seed/link".into(), "data.txt".into()));
+    spec.files.push(FixtureFile {
+        path: "usr/share/seed/data.txt".into(),
+        data: b"hello world ".repeat(200),
+        mode: 0o644,
+    });
+    spec.symlinks
+        .push(("usr/share/seed/link".into(), "data.txt".into()));
     build(&seed_img, &spec).unwrap();
     let seed = fs::read(&seed_img).unwrap();
-    let elf_end = sam_detect::inspect(&seed_img).unwrap().payload_offset.expect("payload offset") as usize;
+    let elf_end = sam_detect::inspect(&seed_img)
+        .unwrap()
+        .payload_offset
+        .expect("payload offset") as usize;
     let work = tmp.path().join("work");
     let mut rng = Rng(0x5A11_F022_0000_0001);
     let mut problems = Vec::new();
@@ -143,8 +157,19 @@ fn changed_appimages_never_crash_or_escape_the_unpacker() {
         if let Some(p) = guarded("appimage", round, &data, || {
             let _ = sam_intake::peek::peek(&img);
             if let Ok(info) = sam_detect::inspect(&img) {
-                let limits = Limits { max_files: 2000, max_bytes: 64 * 1024 * 1024, max_seconds: 20 };
-                let req = ExtractRequest { source: &img, info: &info, root: &root, limits, allow_fallback: false, isolation: None };
+                let limits = Limits {
+                    max_files: 2000,
+                    max_bytes: 64 * 1024 * 1024,
+                    max_seconds: 20,
+                };
+                let req = ExtractRequest {
+                    source: &img,
+                    info: &info,
+                    root: &root,
+                    limits,
+                    allow_fallback: false,
+                    isolation: None,
+                };
                 unpacked.set(unpacked.get() + 1);
                 let _ = extract(&req, &mut Vec::new());
             }
@@ -152,17 +177,28 @@ fn changed_appimages_never_crash_or_escape_the_unpacker() {
             problems.push(p);
         }
         if started.elapsed() > Duration::from_secs(25) {
-            problems.push(format!("appimage round {round} took {:?}", started.elapsed()));
+            problems.push(format!(
+                "appimage round {round} took {:?}",
+                started.elapsed()
+            ));
         }
         // Nothing written next to the unpack folder except the input.
         for f in all_files(&work) {
             if f != img && !f.starts_with(&root) {
-                problems.push(format!("appimage round {round} wrote {} outside the unpack folder", f.display()));
+                problems.push(format!(
+                    "appimage round {round} wrote {} outside the unpack folder",
+                    f.display()
+                ));
             }
         }
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
-    assert!(unpacked.get() * 2 > iterations(), "only {} of {} changed images reached the unpacker", unpacked.get(), iterations());
+    assert!(
+        unpacked.get() * 2 > iterations(),
+        "only {} of {} changed images reached the unpacker",
+        unpacked.get(),
+        iterations()
+    );
 }
 
 /// Changed desktop files, zsync files and update information are parsed or
@@ -171,7 +207,10 @@ fn changed_appimages_never_crash_or_escape_the_unpacker() {
 fn changed_text_inputs_never_crash_the_parsers() {
     let desktop = b"[Desktop Entry]\nType=Application\nName=Krita\nName[de]=Krita DE\nComment=Painting\nIcon=krita\nExec=krita %F\nCategories=Graphics;2DGraphics;\nMimeType=image/png;\nStartupWMClass=krita\nX-AppImage-Version=5.2\n[Desktop Action new]\nName=New\nExec=krita --new\n".to_vec();
     let zsync = b"zsync: 0.6.2\nFilename: App-2.0-x86_64.AppImage\nMTime: Tue, 10 Nov 2026 10:00:00 +0000\nBlocksize: 2048\nLength: 4096\nHash-Lengths: 2,2,5\nURL: App-2.0-x86_64.AppImage\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n\n\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11".to_vec();
-    let updates = [b"zsync|https://example.org/App.AppImage.zsync".to_vec(), b"gh-releases-zsync|owner|repo|latest|App-*x86_64.AppImage.zsync".to_vec()];
+    let updates = [
+        b"zsync|https://example.org/App.AppImage.zsync".to_vec(),
+        b"gh-releases-zsync|owner|repo|latest|App-*x86_64.AppImage.zsync".to_vec(),
+    ];
     let mut rng = Rng(0x5A11_F022_0000_0002);
     let mut problems = Vec::new();
     for round in 0..iterations() * 4 {
@@ -201,7 +240,11 @@ fn changed_programs_never_crash_the_analysis() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("AppDir");
     fs::create_dir_all(dir.join("usr/bin")).unwrap();
-    fs::write(dir.join("AppRun"), "#!/bin/sh\nexec \"$APPDIR/usr/bin/app\" \"$@\"\n").unwrap();
+    fs::write(
+        dir.join("AppRun"),
+        "#!/bin/sh\nexec \"$APPDIR/usr/bin/app\" \"$@\"\n",
+    )
+    .unwrap();
     let mut rng = Rng(0x5A11_F022_0000_0003);
     let mut problems = Vec::new();
     for round in 0..iterations() {

@@ -58,18 +58,35 @@ pub fn exec_quote(arg: &str) -> String {
 /// A category or file type ("Graphics", "image/png"): letters, digits and
 /// "-_.+/" only.
 fn list_item_ok(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.+/".contains(c))
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.+/".contains(c))
 }
 
 fn value(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "")
+    s.replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "")
 }
 
 pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
-    let name = if entry.metadata.name.is_empty() { entry.display_name().to_string() } else { entry.metadata.name.clone() };
-    let icon = entry.metadata.icon_path.as_ref().filter(|p| p.exists()).map(|p| p.display().to_string()).unwrap_or_else(|| "application-x-executable".into());
-    let comment =
-        if entry.metadata.comment.is_empty() { format!("{name} (sandboxed by SAM)") } else { format!("{} (sandboxed by SAM)", entry.metadata.comment) };
+    let name = if entry.metadata.name.is_empty() {
+        entry.display_name().to_string()
+    } else {
+        entry.metadata.name.clone()
+    };
+    let icon = entry
+        .metadata
+        .icon_path
+        .as_ref()
+        .filter(|p| p.exists())
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "application-x-executable".into());
+    let comment = if entry.metadata.comment.is_empty() {
+        format!("{name} (sandboxed by SAM)")
+    } else {
+        format!("{} (sandboxed by SAM)", entry.metadata.comment)
+    };
     let mut s = String::from("[Desktop Entry]\nType=Application\n");
     s += &format!("Name={}\n", value(&name));
     s += &format!("Comment={}\n", value(&comment));
@@ -78,16 +95,34 @@ pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
     // List values keep only the characters categories and file types use:
     // a line break or "=" from a changed record could otherwise add a line
     // (a second Exec=) to SAM's own menu entry.
-    let categories: Vec<&String> = entry.metadata.categories.iter().filter(|c| list_item_ok(c)).collect();
+    let categories: Vec<&String> = entry
+        .metadata
+        .categories
+        .iter()
+        .filter(|c| list_item_ok(c))
+        .collect();
     if !categories.is_empty() {
-        s += &format!("Categories={};\n", categories.iter().map(|c| c.as_str()).collect::<Vec<_>>().join(";"));
+        s += &format!(
+            "Categories={};\n",
+            categories
+                .iter()
+                .map(|c| c.as_str())
+                .collect::<Vec<_>>()
+                .join(";")
+        );
     }
-    let mimes: Vec<String> = launcher_mime_types(&entry.metadata.mime_types).into_iter().filter(|m| list_item_ok(m)).collect();
+    let mimes: Vec<String> = launcher_mime_types(&entry.metadata.mime_types)
+        .into_iter()
+        .filter(|m| list_item_ok(m))
+        .collect();
     if !mimes.is_empty() {
         s += &format!("MimeType={};\n", mimes.join(";"));
     }
     if !entry.metadata.startup_wm_class.is_empty() {
-        s += &format!("StartupWMClass={}\n", value(&entry.metadata.startup_wm_class));
+        s += &format!(
+            "StartupWMClass={}\n",
+            value(&entry.metadata.startup_wm_class)
+        );
     }
     s += &format!("Terminal={}\n", entry.metadata.terminal);
     s += &format!("X-SAM-AppId={}\n", entry.id);
@@ -117,7 +152,11 @@ pub fn launcher_mime_types(declared: &[String]) -> Vec<String> {
     ];
     declared
         .iter()
-        .filter(|t| !BLOCKED_PREFIX.iter().any(|p| t.starts_with(p)) && !BLOCKED.contains(&t.as_str()) && !t.contains('*'))
+        .filter(|t| {
+            !BLOCKED_PREFIX.iter().any(|p| t.starts_with(p))
+                && !BLOCKED.contains(&t.as_str())
+                && !t.contains('*')
+        })
         .take(64)
         .cloned()
         .collect()
@@ -128,7 +167,12 @@ pub fn install_launcher(paths: &Paths, entry: &AppEntry) -> Result<PathBuf> {
     let contents = launcher_contents(entry, &runner_command());
     let path = paths.launcher_file(&entry.id);
     atomic_write(&path, contents.as_bytes())?;
-    atomic_write(&paths.desktop_dir().join(format!("sam-{}.desktop", entry.id)), contents.as_bytes())?;
+    atomic_write(
+        &paths
+            .desktop_dir()
+            .join(format!("sam-{}.desktop", entry.id)),
+        contents.as_bytes(),
+    )?;
     // Remove duplicates that point at the same app id under other names.
     for dup in find_duplicates(paths, &entry.id) {
         if dup != path {
@@ -141,7 +185,10 @@ pub fn install_launcher(paths: &Paths, entry: &AppEntry) -> Result<PathBuf> {
 
 pub fn remove_launcher(paths: &Paths, id: &str) -> Result<bool> {
     let mut removed = false;
-    for p in [paths.launcher_file(id), paths.desktop_dir().join(format!("sam-{id}.desktop"))] {
+    for p in [
+        paths.launcher_file(id),
+        paths.desktop_dir().join(format!("sam-{id}.desktop")),
+    ] {
         if fs::remove_file(&p).is_ok() {
             removed = true;
         }
@@ -160,7 +207,9 @@ pub fn refresh_launchers(paths: &Paths, entries: &[AppEntry]) -> usize {
     let mut changed = 0;
     for e in entries {
         let path = paths.launcher_file(&e.id);
-        let Ok(old) = fs::read_to_string(&path) else { continue };
+        let Ok(old) = fs::read_to_string(&path) else {
+            continue;
+        };
         let new = launcher_contents(e, &runner);
         if old != new && install_launcher(paths, e).is_ok() {
             changed += 1;
@@ -176,7 +225,10 @@ pub fn find_duplicates(paths: &Paths, id: &str) -> Vec<PathBuf> {
     if let Ok(rd) = fs::read_dir(&paths.applications_dir) {
         for e in rd.flatten() {
             let p = e.path();
-            let is_sam = p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("sam-") && n.ends_with(".desktop"));
+            let is_sam = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("sam-") && n.ends_with(".desktop"));
             if is_sam && fs::read_to_string(&p).is_ok_and(|s| s.contains(&needle)) {
                 out.push(p);
             }
@@ -193,8 +245,13 @@ pub fn validate_launcher(path: &Path, id: &str) -> Vec<String> {
     };
     let m = crate::metadata::parse_desktop(&text);
     match m.get("Exec") {
-        Some(exec) if (exec.contains("sam-jail-run") || exec.starts_with(&exec_quote(&runner_command()))) && exec.contains(&format!("--app-id {id}")) => {}
-        Some(_) => problems.push(sam_core::i18n::tr("the menu entry does not start the app through sam-jail-run")),
+        Some(exec)
+            if (exec.contains("sam-jail-run")
+                || exec.starts_with(&exec_quote(&runner_command())))
+                && exec.contains(&format!("--app-id {id}")) => {}
+        Some(_) => problems.push(sam_core::i18n::tr(
+            "the menu entry does not start the app through sam-jail-run",
+        )),
         None => problems.push(sam_core::i18n::tr("the menu entry has no Exec line")),
     }
     if let Some(icon) = m.get("Icon") {
@@ -204,7 +261,10 @@ pub fn validate_launcher(path: &Path, id: &str) -> Vec<String> {
     }
     let runner = runner_command();
     if runner.starts_with('/') && !Path::new(&runner).exists() {
-        problems.push(sam_core::i18n::trf("runner {runner} does not exist", &[("runner", &runner)]));
+        problems.push(sam_core::i18n::trf(
+            "runner {runner} does not exist",
+            &[("runner", &runner)],
+        ));
     }
     problems
 }
@@ -215,7 +275,10 @@ pub fn sam_launchers(dir: &Path) -> Vec<PathBuf> {
     if let Ok(rd) = fs::read_dir(dir) {
         for e in rd.flatten() {
             let p = e.path();
-            let named = p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("sam-") && n.ends_with(".desktop"));
+            let named = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("sam-") && n.ends_with(".desktop"));
             if named && fs::read_to_string(&p).is_ok_and(|s| s.contains("X-SAM-AppId=")) {
                 out.push(p);
             }
@@ -245,7 +308,10 @@ mod tests {
     /// record changed outside SAM.
     #[test]
     fn app_metadata_cannot_add_lines_to_sams_menu_entry() {
-        let mut e = AppEntry { id: "appimage-x-1".into(), ..Default::default() };
+        let mut e = AppEntry {
+            id: "appimage-x-1".into(),
+            ..Default::default()
+        };
         let evil = "x\nExec=/tmp/evil\r\nTerminal=true";
         e.metadata.name = evil.into();
         e.metadata.comment = evil.into();
@@ -254,17 +320,34 @@ mod tests {
         e.metadata.mime_types = vec!["image/png".into(), format!("image/x{evil}")];
         let text = launcher_contents(&e, "sam-jail-run");
         let exec: Vec<&str> = text.lines().filter(|l| l.starts_with("Exec=")).collect();
-        assert_eq!(exec, vec!["Exec=sam-jail-run --app-id appimage-x-1 %F"], "{text}");
-        assert_eq!(text.lines().filter(|l| l.starts_with("Terminal=")).count(), 1, "{text}");
-        assert!(text.contains("Categories=Graphics;\n"), "only clean categories stay: {text}");
-        assert!(text.contains("MimeType=image/png;\n"), "only clean file types stay: {text}");
+        assert_eq!(
+            exec,
+            vec!["Exec=sam-jail-run --app-id appimage-x-1 %F"],
+            "{text}"
+        );
+        assert_eq!(
+            text.lines().filter(|l| l.starts_with("Terminal=")).count(),
+            1,
+            "{text}"
+        );
+        assert!(
+            text.contains("Categories=Graphics;\n"),
+            "only clean categories stay: {text}"
+        );
+        assert!(
+            text.contains("MimeType=image/png;\n"),
+            "only clean file types stay: {text}"
+        );
     }
 
     /// Program paths in menu entries are quoted so spaces and dollar signs cannot change the command.
     #[test]
     fn menu_entry_paths_are_quoted_against_spaces_and_dollar_signs() {
         assert_eq!(exec_quote("sam-jail-run"), "sam-jail-run");
-        assert_eq!(exec_quote("/opt/My Apps/sam-jail-run"), "\"/opt/My Apps/sam-jail-run\"");
+        assert_eq!(
+            exec_quote("/opt/My Apps/sam-jail-run"),
+            "\"/opt/My Apps/sam-jail-run\""
+        );
         assert_eq!(exec_quote("a$b"), "\"a\\\\$b\"");
     }
 
@@ -273,14 +356,20 @@ mod tests {
     fn sams_menu_entry_starts_the_app_only_through_sam() {
         let tmp = tempfile::tempdir().unwrap();
         let paths = Paths::rooted(tmp.path());
-        let mut e = AppEntry { id: "appimage-hello-1234".into(), name: "Hello".into(), ..Default::default() };
+        let mut e = AppEntry {
+            id: "appimage-hello-1234".into(),
+            name: "Hello".into(),
+            ..Default::default()
+        };
         e.metadata.name = "Hello".into();
         e.metadata.categories = vec!["Utility".into()];
         let p = install_launcher(&paths, &e).unwrap();
         let text = fs::read_to_string(&p).unwrap();
         assert!(text.contains("--app-id appimage-hello-1234 %F"), "{text}");
         assert!(text.contains("Categories=Utility;"));
-        assert!(validate_launcher(&p, &e.id).iter().all(|p| p.contains("runner")));
+        assert!(validate_launcher(&p, &e.id)
+            .iter()
+            .all(|p| p.contains("runner")));
         assert!(remove_launcher(&paths, &e.id).unwrap());
         assert!(!p.exists());
     }
@@ -288,10 +377,20 @@ mod tests {
     /// SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them.
     #[test]
     fn launcher_mime_types_drop_hijack_targets() {
-        let d: Vec<String> = ["x-scheme-handler/https", "inode/directory", "text/html", "application/pdf", "image/png", "application/x-desktop"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert_eq!(launcher_mime_types(&d), vec!["application/pdf", "image/png"]);
+        let d: Vec<String> = [
+            "x-scheme-handler/https",
+            "inode/directory",
+            "text/html",
+            "application/pdf",
+            "image/png",
+            "application/x-desktop",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(
+            launcher_mime_types(&d),
+            vec!["application/pdf", "image/png"]
+        );
     }
 }

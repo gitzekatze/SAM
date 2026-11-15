@@ -95,9 +95,15 @@ impl App {
             .width_request(360)
             .height_request(400)
             .build();
-        let split = adw::NavigationSplitView::builder().min_sidebar_width(300.0).max_sidebar_width(460.0).sidebar_width_fraction(0.38).build();
+        let split = adw::NavigationSplitView::builder()
+            .min_sidebar_width(300.0)
+            .max_sidebar_width(460.0)
+            .sidebar_width_fraction(0.38)
+            .build();
         let toasts = adw::ToastOverlay::new();
-        let top = gtk::Stack::builder().transition_type(gtk::StackTransitionType::SlideLeftRight).build();
+        let top = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::SlideLeftRight)
+            .build();
         top.add_named(&split, Some("main"));
         toasts.set_child(Some(&top));
         window.set_content(Some(&toasts));
@@ -108,7 +114,10 @@ impl App {
         window.add_breakpoint(bp);
 
         // gtk::Spinner rather than adw::Spinner: works with libadwaita 1.5.
-        let spinner = gtk::Spinner::builder().spinning(true).visible(false).build();
+        let spinner = gtk::Spinner::builder()
+            .spinning(true)
+            .visible(false)
+            .build();
         let sp = spinner.clone();
         let backend = Backend::new(move |busy| sp.set_visible(busy));
         let me = Rc::new(App {
@@ -118,7 +127,10 @@ impl App {
             split,
             top,
             permissions: RefCell::new(None),
-            state: RefCell::new(State { filter: "all".into(), ..Default::default() }),
+            state: RefCell::new(State {
+                filter: "all".into(),
+                ..Default::default()
+            }),
             sidebar: OnceCell::new(),
             current: RefCell::new(None),
             spinner,
@@ -136,7 +148,8 @@ impl App {
 
     pub fn toast(&self, text: &str) {
         if !text.is_empty() {
-            self.toasts.add_toast(adw::Toast::builder().title(esc(text)).timeout(4).build());
+            self.toasts
+                .add_toast(adw::Toast::builder().title(esc(text)).timeout(4).build());
         }
     }
 
@@ -144,7 +157,9 @@ impl App {
     /// the window again in that language. Apps keep running.
     pub fn offer_restart(&self) {
         let t = adw::Toast::builder()
-            .title(esc(&tr("The new language is used after SAM restarts. Your apps keep running.")))
+            .title(esc(&tr(
+                "The new language is used after SAM restarts. Your apps keep running.",
+            )))
             .button_label(tr("Restart Now"))
             .timeout(0)
             .build();
@@ -178,14 +193,30 @@ impl App {
         // ordinary location, once.
         if let Ok(v) = &cfg {
             if util::bool_of(v, "general.scan_downloads") {
-                if let Some(d) = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads") {
+                if let Some(d) =
+                    sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads")
+                {
                     let mut dirs = util::list_of(v, "general.scan_directories");
                     if !dirs.iter().any(|p| sam_core::util::expand_home(p) == *d) {
                         dirs.push(util::tildify(&d.to_string_lossy()));
                     }
-                    let _ = self.backend.call(&["config", "set", "general.scan_directories", &serde_json::to_string(&dirs).unwrap()], None).await;
+                    let _ = self
+                        .backend
+                        .call(
+                            &[
+                                "config",
+                                "set",
+                                "general.scan_directories",
+                                &serde_json::to_string(&dirs).unwrap(),
+                            ],
+                            None,
+                        )
+                        .await;
                 }
-                let _ = self.backend.call(&["config", "set", "general.scan_downloads", "false"], None).await;
+                let _ = self
+                    .backend
+                    .call(&["config", "set", "general.scan_downloads", "false"], None)
+                    .await;
                 cfg = self.backend.call(&["config", "show"], None).await;
             }
         }
@@ -200,7 +231,11 @@ impl App {
     }
 
     pub async fn set_config(self: &Rc<Self>, key: &str, value: &str) {
-        if let Err(e) = self.backend.call(&["config", "set", key, value], None).await {
+        if let Err(e) = self
+            .backend
+            .call(&["config", "set", key, value], None)
+            .await
+        {
             self.report_error(&e);
         }
         self.load_config().await;
@@ -212,7 +247,11 @@ impl App {
             Err(e) => self.report_error(&e),
         }
         if let Ok(d) = self.backend.call(&["discover"], None).await {
-            self.state.borrow_mut().discovered = d.get("apps").and_then(Value::as_array).cloned().unwrap_or_default();
+            self.state.borrow_mut().discovered = d
+                .get("apps")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
         }
         self.state.borrow_mut().loaded = true;
         self.rebuild_list();
@@ -224,19 +263,29 @@ impl App {
     /// not tell a new user where theirs went.
     async fn count_downloads(self: &Rc<Self>) {
         let Some(sb) = self.sidebar.get() else { return };
-        let dir = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads").cloned();
+        let dir = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir())
+            .get("downloads")
+            .cloned();
         // Downloads is an ordinary location; the hint shows only while it
         // is not one.
-        let searched = dir
-            .as_ref()
-            .is_some_and(|d| util::list_of(&self.state.borrow().config, "general.scan_directories").iter().any(|p| sam_core::util::expand_home(p) == *d));
+        let searched = dir.as_ref().is_some_and(|d| {
+            util::list_of(&self.state.borrow().config, "general.scan_directories")
+                .iter()
+                .any(|p| sam_core::util::expand_home(p) == *d)
+        });
         let count = match (searched, dir) {
             (false, Some(d)) if d.is_dir() => self
                 .backend
                 .call(&["scan", &d.to_string_lossy()], None)
                 .await
                 .ok()
-                .and_then(|v| v.get("found").and_then(Value::as_array).map(|a| a.iter().filter(|x| x.get("registered").is_none_or(Value::is_null)).count()))
+                .and_then(|v| {
+                    v.get("found").and_then(Value::as_array).map(|a| {
+                        a.iter()
+                            .filter(|x| x.get("registered").is_none_or(Value::is_null))
+                            .count()
+                    })
+                })
                 .unwrap_or(0),
             _ => 0,
         };
@@ -274,17 +323,39 @@ impl App {
         let mut seen = std::collections::HashSet::new();
         for d in &st.discovered {
             let sid = util::str_of(d, "sandboxed");
-            let a = if sid.is_empty() { None } else { st.apps.iter().find(|x| util::str_of(x, "id") == sid) };
+            let a = if sid.is_empty() {
+                None
+            } else {
+                st.apps.iter().find(|x| util::str_of(x, "id") == sid)
+            };
             let r = Row {
-                key: a.map(|a| util::str_of(a, "id").to_string()).unwrap_or_else(|| util::str_of(d, "path").to_string()),
-                id: a.map(|a| util::str_of(a, "id").to_string()).unwrap_or_default(),
+                key: a
+                    .map(|a| util::str_of(a, "id").to_string())
+                    .unwrap_or_else(|| util::str_of(d, "path").to_string()),
+                id: a
+                    .map(|a| util::str_of(a, "id").to_string())
+                    .unwrap_or_default(),
                 path: util::str_of(d, "path").to_string(),
-                name: a.map(|a| util::str_of(a, "name")).unwrap_or(util::str_of(d, "name")).to_string(),
-                icon: a.map(|a| util::str_of(a, "icon_path")).filter(|s| !s.is_empty()).unwrap_or(util::str_of(d, "icon")).to_string(),
+                name: a
+                    .map(|a| util::str_of(a, "name"))
+                    .unwrap_or(util::str_of(d, "name"))
+                    .to_string(),
+                icon: a
+                    .map(|a| util::str_of(a, "icon_path"))
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(util::str_of(d, "icon"))
+                    .to_string(),
                 sandboxed: a.is_some(),
-                badge: a.map(|a| util::str_of(a, "badge").to_string()).unwrap_or_default(),
-                problem: a.map(|a| util::str_of(a, "last_problem").to_string()).unwrap_or_default(),
-                unsandboxed_entry: d.get("menu_entries").and_then(Value::as_array).is_some_and(|m| !m.is_empty()),
+                badge: a
+                    .map(|a| util::str_of(a, "badge").to_string())
+                    .unwrap_or_default(),
+                problem: a
+                    .map(|a| util::str_of(a, "last_problem").to_string())
+                    .unwrap_or_default(),
+                unsandboxed_entry: d
+                    .get("menu_entries")
+                    .and_then(Value::as_array)
+                    .is_some_and(|m| !m.is_empty()),
                 moved: d.get("moved_from").is_some_and(|m| !m.is_null()),
             };
             if a.is_some() {
@@ -312,14 +383,20 @@ impl App {
         let q = st.search.to_lowercase();
         let filter = st.filter.clone();
         out.retain(|r| {
-            (q.is_empty() || r.name.to_lowercase().contains(&q) || r.path.to_lowercase().contains(&q))
+            (q.is_empty()
+                || r.name.to_lowercase().contains(&q)
+                || r.path.to_lowercase().contains(&q))
                 && match filter.as_str() {
                     "sandboxed" => r.sandboxed,
                     "unsandboxed" => !r.sandboxed,
                     _ => true,
                 }
         });
-        out.sort_by(|a, b| b.sandboxed.cmp(&a.sandboxed).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+        out.sort_by(|a, b| {
+            b.sandboxed
+                .cmp(&a.sandboxed)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
         out
     }
 
@@ -328,7 +405,10 @@ impl App {
     fn build_sidebar(self: &Rc<Self>) {
         let view = adw::ToolbarView::new();
         let header = adw::HeaderBar::new();
-        header.set_title_widget(Some(&adw::WindowTitle::new("SAM", &tr("Sandboxed AppImage Manager"))));
+        header.set_title_widget(Some(&adw::WindowTitle::new(
+            "SAM",
+            &tr("Sandboxed AppImage Manager"),
+        )));
         let menu = gio::Menu::new();
         let sect = gio::Menu::new();
         sect.append(Some(&tr("My Presets")), Some("win.show-presets"));
@@ -341,7 +421,13 @@ impl App {
             .and_then(|c| crate::i18n::chosen_language_name(&c))
             .map(str::to_string)
             .unwrap_or_else(|| tr("System"));
-        sect.append(Some(&crate::i18n::trf("Language: {language}", &[("language", &shown)])), Some("win.show-language"));
+        sect.append(
+            Some(&crate::i18n::trf(
+                "Language: {language}",
+                &[("language", &shown)],
+            )),
+            Some("win.show-language"),
+        );
         menu.append_section(None, &sect);
         let about = gio::Menu::new();
         // SAM updates itself only as an AppImage; packages update through
@@ -351,7 +437,12 @@ impl App {
         }
         about.append(Some(&tr("About SAM")), Some("win.about"));
         menu.append_section(None, &about);
-        let menu_btn = gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).tooltip_text(tr("Main menu")).primary(true).build();
+        let menu_btn = gtk::MenuButton::builder()
+            .icon_name("open-menu-symbolic")
+            .menu_model(&menu)
+            .tooltip_text(tr("Main menu"))
+            .primary(true)
+            .build();
         // Logo and menu button have the same size, so the title block sits
         // exactly in the middle between them; the logo is as tall as the
         // two lines of the title.
@@ -359,13 +450,28 @@ impl App {
         header.pack_end(&menu_btn);
         // SAM's logo opens the start page. It replaces the window icon of the
         // desktop's button layout (`icon:…`), which cannot be clicked.
-        let layout = gtk::Settings::default().and_then(|st| st.gtk_decoration_layout()).map(|l| l.to_string()).unwrap_or_else(|| ":close".into());
-        let stripped =
-            layout.split(':').map(|side| side.split(',').filter(|b| !b.is_empty() && *b != "icon").collect::<Vec<_>>().join(",")).collect::<Vec<_>>().join(":");
+        let layout = gtk::Settings::default()
+            .and_then(|st| st.gtk_decoration_layout())
+            .map(|l| l.to_string())
+            .unwrap_or_else(|| ":close".into());
+        let stripped = layout
+            .split(':')
+            .map(|side| {
+                side.split(',')
+                    .filter(|b| !b.is_empty() && *b != "icon")
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .collect::<Vec<_>>()
+            .join(":");
         header.set_decoration_layout(Some(&stripped));
         let logo = gtk::Image::from_icon_name("io.github.gitzekatze.SAM");
         logo.set_pixel_size(34);
-        let home = gtk::Button::builder().child(&logo).tooltip_text(tr("Start page")).name("home-button").build();
+        let home = gtk::Button::builder()
+            .child(&logo)
+            .tooltip_text(tr("Start page"))
+            .name("home-button")
+            .build();
         home.add_css_class("flat");
         home.add_css_class("sam-header-square");
         let w = Rc::downgrade(self);
@@ -398,23 +504,44 @@ impl App {
         loc_box.add_css_class("sam-locations");
         let loc_head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heads.add_widget(&loc_head);
-        let loc_title = gtk::Label::builder().label(tr("AppImage locations")).xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
+        let loc_title = gtk::Label::builder()
+            .label(tr("AppImage locations"))
+            .xalign(0.0)
+            .hexpand(true)
+            .valign(gtk::Align::Center)
+            .build();
         loc_title.add_css_class("heading");
         loc_head.append(&loc_title);
-        let add_folder = gtk::Button::builder().icon_name("folder-new-symbolic").tooltip_text(tr("Search a folder for AppImages")).build();
+        let add_folder = gtk::Button::builder()
+            .icon_name("folder-new-symbolic")
+            .tooltip_text(tr("Search a folder for AppImages"))
+            .build();
         add_folder.add_css_class("flat");
-        let add_file = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text(tr("Add a single AppImage file")).build();
+        let add_file = gtk::Button::builder()
+            .icon_name("list-add-symbolic")
+            .tooltip_text(tr("Add a single AppImage file"))
+            .build();
         add_file.add_css_class("flat");
         loc_head.append(&add_folder);
         loc_head.append(&add_file);
         loc_box.append(&loc_head);
-        let locations = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
+        let locations = gtk::ListBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .build();
         locations.add_css_class("boxed-list");
         locations.add_css_class("sam-location-list");
         locations.set_margin_top(HEAD_GAP);
         loc_box.append(&locations);
-        let dl_row = gtk::Box::builder().spacing(8).margin_top(8).visible(false).build();
-        let dl_label = gtk::Label::builder().xalign(0.0).hexpand(true).wrap(true).build();
+        let dl_row = gtk::Box::builder()
+            .spacing(8)
+            .margin_top(8)
+            .visible(false)
+            .build();
+        let dl_label = gtk::Label::builder()
+            .xalign(0.0)
+            .hexpand(true)
+            .wrap(true)
+            .build();
         dl_label.add_css_class("caption");
         let dl_add = gtk::Button::builder()
             .label(tr("Add Downloads"))
@@ -440,7 +567,12 @@ impl App {
             .build();
         let found_head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heads.add_widget(&found_head);
-        let found_title = gtk::Label::builder().label(tr("AppImages found")).xalign(0.0).hexpand(true).valign(gtk::Align::Center).build();
+        let found_title = gtk::Label::builder()
+            .label(tr("AppImages found"))
+            .xalign(0.0)
+            .hexpand(true)
+            .valign(gtk::Align::Center)
+            .build();
         found_title.add_css_class("heading");
         found_head.append(&found_title);
         // The locations are watched, so this is a manual fallback; it sits
@@ -458,7 +590,9 @@ impl App {
         filter_box.append(&found_head);
         let all_perms = gtk::Button::builder()
             .label(tr("Permission Manager"))
-            .tooltip_text(tr("See what every sandboxed app may access, and change several apps at once"))
+            .tooltip_text(tr(
+                "See what every sandboxed app may access, and change several apps at once",
+            ))
             .action_name("win.show-permissions")
             .margin_top(HEAD_GAP)
             .name("all-permissions")
@@ -470,8 +604,16 @@ impl App {
         let toggles = gtk::Box::builder().margin_top(8).build();
         toggles.add_css_class("linked");
         let mut first: Option<gtk::ToggleButton> = None;
-        for (name, label) in [("all", crate::i18n::n_("All")), ("sandboxed", crate::i18n::n_("Sandboxed")), ("unsandboxed", crate::i18n::n_("Unsandboxed"))] {
-            let b = gtk::ToggleButton::builder().label(tr(label)).active(name == "all").hexpand(true).build();
+        for (name, label) in [
+            ("all", crate::i18n::n_("All")),
+            ("sandboxed", crate::i18n::n_("Sandboxed")),
+            ("unsandboxed", crate::i18n::n_("Unsandboxed")),
+        ] {
+            let b = gtk::ToggleButton::builder()
+                .label(tr(label))
+                .active(name == "all")
+                .hexpand(true)
+                .build();
             if let Some(f) = &first {
                 b.set_group(Some(f));
             } else {
@@ -490,13 +632,19 @@ impl App {
             toggles.append(&b);
         }
         filter_box.append(&toggles);
-        let search = gtk::SearchEntry::builder().placeholder_text(tr("Search AppImages")).margin_top(8).build();
+        let search = gtk::SearchEntry::builder()
+            .placeholder_text(tr("Search AppImages"))
+            .margin_top(8)
+            .build();
         search.update_property(&[gtk::accessible::Property::Label(&tr("Search AppImages"))]);
         filter_box.append(&search);
         column.append(&filter_box);
 
         // The app list.
-        let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Single).name("app-list").build();
+        let list = gtk::ListBox::builder()
+            .selection_mode(gtk::SelectionMode::Single)
+            .name("app-list")
+            .build();
         list.add_css_class("navigation-sidebar");
         let empty = adw::StatusPage::builder()
             .icon_name("system-search-symbolic")
@@ -504,14 +652,24 @@ impl App {
             .description(tr("Add a folder or a single AppImage file above, or drop an AppImage onto this window."))
             .build();
         empty.add_css_class("compact");
-        let stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).vexpand(true).build();
+        let stack = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .vexpand(true)
+            .build();
         stack.add_named(&list, Some("list"));
         stack.add_named(&empty, Some("empty"));
         column.append(&stack);
-        let scroll = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).child(&column).build();
+        let scroll = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vexpand(true)
+            .child(&column)
+            .build();
         view.set_content(Some(&scroll));
 
-        let page = adw::NavigationPage::builder().title(tr("SAM")).child(&view).build();
+        let page = adw::NavigationPage::builder()
+            .title(tr("SAM"))
+            .child(&view)
+            .build();
         util::name_icon_buttons(&page);
         self.split.set_sidebar(Some(&page));
 
@@ -531,7 +689,9 @@ impl App {
         let w = Rc::downgrade(self);
         dl_add.connect_clicked(move |_| {
             let Some(me) = w.upgrade() else { return };
-            if let Some(d) = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads") {
+            if let Some(d) =
+                sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads")
+            {
                 let cfg = me.state.borrow().config.clone();
                 let mut dirs = util::list_of(&cfg, "general.scan_directories");
                 dirs.push(util::tildify(&d.to_string_lossy()));
@@ -547,7 +707,9 @@ impl App {
         });
         let w = Rc::downgrade(self);
         list.connect_row_selected(move |_, row| {
-            let (Some(me), Some(row)) = (w.upgrade(), row) else { return };
+            let (Some(me), Some(row)) = (w.upgrade(), row) else {
+                return;
+            };
             let sb = me.sidebar.get().unwrap();
             if sb.selecting.get() {
                 return;
@@ -567,10 +729,16 @@ impl App {
             }
             let rows = sb.rows.borrow();
             let cur = rows.get(row.index() as usize).map(|r| r.sandboxed);
-            let prev = before.and_then(|b| rows.get(b.index() as usize)).map(|r| r.sandboxed);
+            let prev = before
+                .and_then(|b| rows.get(b.index() as usize))
+                .map(|r| r.sandboxed);
             if cur.is_some() && cur != prev {
                 let l = gtk::Label::builder()
-                    .label(crate::i18n::tr(if cur == Some(true) { crate::i18n::n_("Sandboxed") } else { crate::i18n::n_("Not sandboxed") }))
+                    .label(crate::i18n::tr(if cur == Some(true) {
+                        crate::i18n::n_("Sandboxed")
+                    } else {
+                        crate::i18n::n_("Not sandboxed")
+                    }))
                     .xalign(0.0)
                     .margin_start(12)
                     .margin_top(if prev.is_some() { 14 } else { 4 })
@@ -603,18 +771,43 @@ impl App {
             sb.locations.remove(&c);
         }
         let cfg = self.state.borrow().config.clone();
-        let mut locs: Vec<(String, bool)> = util::list_of(&cfg, "general.scan_directories").into_iter().map(|p| (p, false)).collect();
-        locs.extend(util::list_of(&cfg, "general.scan_files").into_iter().map(|p| (p, true)));
+        let mut locs: Vec<(String, bool)> = util::list_of(&cfg, "general.scan_directories")
+            .into_iter()
+            .map(|p| (p, false))
+            .collect();
+        locs.extend(
+            util::list_of(&cfg, "general.scan_files")
+                .into_iter()
+                .map(|p| (p, true)),
+        );
         for (path, file) in locs {
             let row = gtk::ListBoxRow::builder().activatable(false).build();
-            let b = gtk::Box::builder().spacing(8).margin_start(10).margin_end(4).margin_top(3).margin_bottom(3).build();
-            b.append(&gtk::Image::from_icon_name(if file { "application-vnd.appimage" } else { "folder-symbolic" }));
-            let l =
-                gtk::Label::builder().label(util::plain(&util::tildify(&path))).xalign(0.0).hexpand(true).ellipsize(gtk::pango::EllipsizeMode::Middle).build();
+            let b = gtk::Box::builder()
+                .spacing(8)
+                .margin_start(10)
+                .margin_end(4)
+                .margin_top(3)
+                .margin_bottom(3)
+                .build();
+            b.append(&gtk::Image::from_icon_name(if file {
+                "application-vnd.appimage"
+            } else {
+                "folder-symbolic"
+            }));
+            let l = gtk::Label::builder()
+                .label(util::plain(&util::tildify(&path)))
+                .xalign(0.0)
+                .hexpand(true)
+                .ellipsize(gtk::pango::EllipsizeMode::Middle)
+                .build();
             l.add_css_class("caption");
             b.append(&l);
             row.set_tooltip_text(Some(&util::plain(&util::tildify(&path))));
-            let rm = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text(tr("Stop searching here")).valign(gtk::Align::Center).build();
+            let rm = gtk::Button::builder()
+                .icon_name("window-close-symbolic")
+                .tooltip_text(tr("Stop searching here"))
+                .valign(gtk::Align::Center)
+                .build();
             rm.update_property(&[gtk::accessible::Property::Label(&crate::i18n::trf(
                 "Stop searching {folder}",
                 &[("folder", &util::plain(&util::tildify(&path)))],
@@ -633,7 +826,11 @@ impl App {
         }
         if sb.locations.first_child().is_none() {
             let row = gtk::ListBoxRow::builder().activatable(false).build();
-            let l = gtk::Label::builder().label(tr("No locations yet: add a folder or a file.")).margin_top(8).margin_bottom(8).build();
+            let l = gtk::Label::builder()
+                .label(tr("No locations yet: add a folder or a file."))
+                .margin_top(8)
+                .margin_bottom(8)
+                .build();
             l.add_css_class("dim-label");
             l.add_css_class("caption");
             row.set_child(Some(&l));
@@ -646,10 +843,19 @@ impl App {
     /// that may concern an AppImage refreshes the list a moment later, so a
     /// finished download or a deleted file shows up without *Refresh*.
     fn watch_locations(self: &Rc<Self>, cfg: &Value) {
-        let mut paths: Vec<std::path::PathBuf> = util::list_of(cfg, "general.scan_directories").iter().map(|p| sam_core::util::expand_home(p)).collect();
-        paths.extend(util::list_of(cfg, "general.scan_files").iter().map(|p| sam_core::util::expand_home(p)));
+        let mut paths: Vec<std::path::PathBuf> = util::list_of(cfg, "general.scan_directories")
+            .iter()
+            .map(|p| sam_core::util::expand_home(p))
+            .collect();
+        paths.extend(
+            util::list_of(cfg, "general.scan_files")
+                .iter()
+                .map(|p| sam_core::util::expand_home(p)),
+        );
         if util::bool_of(cfg, "general.scan_downloads") {
-            if let Some(d) = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads") {
+            if let Some(d) =
+                sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads")
+            {
                 paths.push(d.clone());
             }
         }
@@ -665,10 +871,21 @@ impl App {
             let w = Rc::downgrade(self);
             m.connect_changed(move |_, f, other, ev| {
                 use gio::FileMonitorEvent as E;
-                if !matches!(ev, E::Created | E::Deleted | E::MovedIn | E::MovedOut | E::Renamed | E::ChangesDoneHint) {
+                if !matches!(
+                    ev,
+                    E::Created
+                        | E::Deleted
+                        | E::MovedIn
+                        | E::MovedOut
+                        | E::Renamed
+                        | E::ChangesDoneHint
+                ) {
                     return;
                 }
-                let relevant = |f: &gio::File| f.basename().is_some_and(|n| watched_name(&n.to_string_lossy()));
+                let relevant = |f: &gio::File| {
+                    f.basename()
+                        .is_some_and(|n| watched_name(&n.to_string_lossy()))
+                };
                 if !relevant(f) && !other.is_some_and(relevant) {
                     return;
                 }
@@ -698,8 +915,16 @@ impl App {
     fn set_locations(self: &Rc<Self>, dirs: Vec<String>, files: Vec<String>) {
         let me = self.clone();
         glib::spawn_future_local(async move {
-            me.set_config("general.scan_directories", &serde_json::to_string(&dirs).unwrap()).await;
-            me.set_config("general.scan_files", &serde_json::to_string(&files).unwrap()).await;
+            me.set_config(
+                "general.scan_directories",
+                &serde_json::to_string(&dirs).unwrap(),
+            )
+            .await;
+            me.set_config(
+                "general.scan_files",
+                &serde_json::to_string(&files).unwrap(),
+            )
+            .await;
             me.refresh_apps().await;
         });
     }
@@ -721,7 +946,10 @@ impl App {
         glib::spawn_future_local(async move {
             let home = gio::File::for_path(util::home());
             let picked = if folder {
-                let d = gtk::FileDialog::builder().title(tr("Search a folder for AppImages")).initial_folder(&home).build();
+                let d = gtk::FileDialog::builder()
+                    .title(tr("Search a folder for AppImages"))
+                    .initial_folder(&home)
+                    .build();
                 d.select_folder_future(Some(&me.window)).await.ok()
             } else {
                 let filter = gtk::FileFilter::new();
@@ -730,10 +958,16 @@ impl App {
                 filter.add_pattern("*.appimage");
                 let filters = gio::ListStore::new::<gtk::FileFilter>();
                 filters.append(&filter);
-                let d = gtk::FileDialog::builder().title(tr("Add an AppImage")).initial_folder(&home).filters(&filters).build();
+                let d = gtk::FileDialog::builder()
+                    .title(tr("Add an AppImage"))
+                    .initial_folder(&home)
+                    .filters(&filters)
+                    .build();
                 d.open_future(Some(&me.window)).await.ok()
             };
-            let Some(p) = picked.and_then(|f| f.path()) else { return };
+            let Some(p) = picked.and_then(|f| f.path()) else {
+                return;
+            };
             let p = util::tildify(&p.to_string_lossy());
             let cfg = me.state.borrow().config.clone();
             let mut dirs = util::list_of(&cfg, "general.scan_directories");
@@ -772,11 +1006,14 @@ impl App {
         *sb.rows.borrow_mut() = rows;
         let loaded = self.state.borrow().loaded;
         let any = !sb.rows.borrow().is_empty();
-        sb.stack.set_visible_child_name(if any || !loaded { "list" } else { "empty" });
-        let filtered = !self.state.borrow().search.is_empty() || self.state.borrow().filter != "all";
+        sb.stack
+            .set_visible_child_name(if any || !loaded { "list" } else { "empty" });
+        let filtered =
+            !self.state.borrow().search.is_empty() || self.state.borrow().filter != "all";
         if filtered {
             sb.empty.set_title(&crate::i18n::tr("No AppImages Match"));
-            sb.empty.set_description(Some(&crate::i18n::tr("Try another search or filter.")));
+            sb.empty
+                .set_description(Some(&crate::i18n::tr("Try another search or filter.")));
         } else {
             sb.empty.set_title(&crate::i18n::tr("No AppImages Found"));
             sb.empty.set_description(Some(&crate::i18n::tr("Add a folder or a single AppImage file above, or drop an AppImage onto this window.")));
@@ -798,7 +1035,11 @@ impl App {
     fn sync_selection(self: &Rc<Self>) {
         let Some(sb) = self.sidebar.get() else { return };
         let selected = self.state.borrow().selected.clone();
-        let idx = sb.rows.borrow().iter().position(|r| !selected.is_empty() && (r.key == selected || r.path == selected));
+        let idx = sb
+            .rows
+            .borrow()
+            .iter()
+            .position(|r| !selected.is_empty() && (r.key == selected || r.path == selected));
         sb.selecting.set(true);
         match idx.and_then(|i| sb.list.row_at_index(i as i32)) {
             Some(r) => {
@@ -829,7 +1070,10 @@ impl App {
         let view = adw::ToolbarView::new();
         view.add_top_bar(&adw::HeaderBar::builder().show_title(false).build());
         view.set_content(Some(&status));
-        let page = adw::NavigationPage::builder().title(tr("Welcome")).child(&view).build();
+        let page = adw::NavigationPage::builder()
+            .title(tr("Welcome"))
+            .child(&view)
+            .build();
         self.split.set_content(Some(&page));
         *self.current.borrow_mut() = None;
     }
@@ -852,16 +1096,41 @@ impl App {
     }
 
     pub fn open_app(self: &Rc<Self>, id: &str) {
-        let path =
-            self.state.borrow().apps.iter().find(|a| util::str_of(a, "id") == id).map(|a| util::str_of(a, "source_path").to_string()).unwrap_or_default();
-        self.select_row(&Row { key: id.into(), id: id.into(), path, sandboxed: true, ..Default::default() });
+        let path = self
+            .state
+            .borrow()
+            .apps
+            .iter()
+            .find(|a| util::str_of(a, "id") == id)
+            .map(|a| util::str_of(a, "source_path").to_string())
+            .unwrap_or_default();
+        self.select_row(&Row {
+            key: id.into(),
+            id: id.into(),
+            path,
+            sandboxed: true,
+            ..Default::default()
+        });
     }
 
     pub fn open_file(self: &Rc<Self>, path: &str) {
-        let d = self.state.borrow().discovered.iter().find(|d| util::str_of(d, "path") == path).cloned();
-        match d.map(|d| util::str_of(&d, "sandboxed").to_string()).filter(|s| !s.is_empty()) {
+        let d = self
+            .state
+            .borrow()
+            .discovered
+            .iter()
+            .find(|d| util::str_of(d, "path") == path)
+            .cloned();
+        match d
+            .map(|d| util::str_of(&d, "sandboxed").to_string())
+            .filter(|s| !s.is_empty())
+        {
             Some(id) => self.open_app(&id),
-            None => self.select_row(&Row { key: path.into(), path: path.into(), ..Default::default() }),
+            None => self.select_row(&Row {
+                key: path.into(),
+                path: path.into(),
+                ..Default::default()
+            }),
         }
     }
 
@@ -921,13 +1190,24 @@ impl App {
         glib::spawn_future_local(async move { me.refresh_registered().await });
         // The app page shown may have changed settings.
         let sel = self.state.borrow().selected.clone();
-        if !sel.is_empty() && self.state.borrow().apps.iter().any(|a| util::str_of(a, "id") == sel) {
+        if !sel.is_empty()
+            && self
+                .state
+                .borrow()
+                .apps
+                .iter()
+                .any(|a| util::str_of(a, "id") == sel)
+        {
             self.open_app(&sel);
         }
     }
 
     /// Shows a page that is not tied to an app (preset editor).
-    pub fn show_page(self: &Rc<Self>, page: &adw::NavigationPage, keep: Option<Rc<dyn std::any::Any>>) {
+    pub fn show_page(
+        self: &Rc<Self>,
+        page: &adw::NavigationPage,
+        keep: Option<Rc<dyn std::any::Any>>,
+    ) {
         self.show(page, keep);
     }
 
@@ -947,8 +1227,14 @@ impl App {
         add("show-guide", Box::new(|me| me.show_section("guide")));
         add("show-presets", Box::new(|me| me.show_section("presets")));
         add("show-permissions", Box::new(|me| me.show_permissions()));
-        add("show-diagnostics", Box::new(|me| me.show_section("diagnostics")));
-        add("show-preferences", Box::new(|me| me.show_section("preferences")));
+        add(
+            "show-diagnostics",
+            Box::new(|me| me.show_section("diagnostics")),
+        );
+        add(
+            "show-preferences",
+            Box::new(|me| me.show_section("preferences")),
+        );
         add("show-language", Box::new(|me| me.show_section("language")));
         add("refresh", Box::new(|me| me.refresh_apps_later()));
         add("self-update", Box::new(|me| me.self_update()));
@@ -976,8 +1262,15 @@ impl App {
         let target = gtk::DropTarget::new(gdk::FileList::static_type(), gdk::DragAction::COPY);
         let w = Rc::downgrade(self);
         target.connect_drop(move |_, value, _, _| {
-            let (Some(me), Ok(list)) = (w.upgrade(), value.get::<gdk::FileList>()) else { return false };
-            let paths: Vec<String> = list.files().iter().filter_map(|f| f.path()).map(|p| p.to_string_lossy().into_owned()).collect();
+            let (Some(me), Ok(list)) = (w.upgrade(), value.get::<gdk::FileList>()) else {
+                return false;
+            };
+            let paths: Vec<String> = list
+                .files()
+                .iter()
+                .filter_map(|f| f.path())
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
             me.add_files(paths);
             true
         });
@@ -999,12 +1292,19 @@ impl App {
             } else if is_appimage(path) {
                 new_files.push(p);
             } else {
-                refused.push(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(p.clone()));
+                refused.push(
+                    path.file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or(p.clone()),
+                );
             }
         }
         match refused.len() {
             0 => {}
-            1 => self.toast(&crate::i18n::trf("{file} is not an AppImage.", &[("file", &util::plain(&refused[0]))])),
+            1 => self.toast(&crate::i18n::trf(
+                "{file} is not an AppImage.",
+                &[("file", &util::plain(&refused[0]))],
+            )),
             n => self.toast(&crate::i18n::trn(
                 "{n} item is not an AppImage and was not added.",
                 "{n} items are not AppImages and were not added.",
@@ -1033,24 +1333,44 @@ impl App {
                 }
             }
             if !new_dirs.is_empty() {
-                me.set_config("general.scan_directories", &serde_json::to_string(&dirs).unwrap()).await;
+                me.set_config(
+                    "general.scan_directories",
+                    &serde_json::to_string(&dirs).unwrap(),
+                )
+                .await;
             }
             if !new_files.is_empty() {
-                me.set_config("general.scan_files", &serde_json::to_string(&files).unwrap()).await;
+                me.set_config(
+                    "general.scan_files",
+                    &serde_json::to_string(&files).unwrap(),
+                )
+                .await;
             }
             me.refresh_apps().await;
             if let Some(f) = new_files.first() {
                 me.open_file(f);
             } else if new_dirs.len() == 1 {
-                me.toast(&crate::i18n::trf("Added the folder {folder}.", &[("folder", &util::plain(&util::tildify(&new_dirs[0])))]));
+                me.toast(&crate::i18n::trf(
+                    "Added the folder {folder}.",
+                    &[("folder", &util::plain(&util::tildify(&new_dirs[0])))],
+                ));
             }
         });
     }
 
     pub fn launch(self: &Rc<Self>, id: &str) {
-        let summary = self.state.borrow().apps.iter().find(|a| util::str_of(a, "id") == id).cloned();
+        let summary = self
+            .state
+            .borrow()
+            .apps
+            .iter()
+            .find(|a| util::str_of(a, "id") == id)
+            .cloned();
         if let Some(s) = summary.filter(|s| util::bool_of(s, "terminal")) {
-            match self.backend.launch_in_terminal(id, util::str_of(&s, "name")) {
+            match self
+                .backend
+                .launch_in_terminal(id, util::str_of(&s, "name"))
+            {
                 Ok(()) => self.toast(&tr("Starting in a terminal…")),
                 Err(e) => self.report_error(&e),
             }
@@ -1064,7 +1384,10 @@ impl App {
             glib::spawn_future_local(async move { m2.refresh_registered().await });
             if code != 0 {
                 let t = adw::Toast::builder()
-                    .title(crate::i18n::trf("The app stopped with an error (code {code}).", &[("code", &code)]))
+                    .title(crate::i18n::trf(
+                        "The app stopped with an error (code {code}).",
+                        &[("code", &code)],
+                    ))
                     .button_label(crate::i18n::tr("Fix It"))
                     .timeout(8)
                     .build();
@@ -1084,7 +1407,11 @@ impl App {
 
     /// Applies a preset, with SAM's compatibility check.
     pub async fn apply_preset(self: &Rc<Self>, name: &str, app_id: &str) -> bool {
-        let r = match self.backend.call(&["preset", "apply", name, app_id], None).await {
+        let r = match self
+            .backend
+            .call(&["preset", "apply", name, app_id], None)
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 self.report_error(&e);
@@ -1100,7 +1427,11 @@ impl App {
         if !self.confirm_preset(name, &c).await {
             return false;
         }
-        match self.backend.call(&["preset", "apply", name, app_id, "--yes"], None).await {
+        match self
+            .backend
+            .call(&["preset", "apply", name, app_id, "--yes"], None)
+            .await
+        {
             Ok(_) => self.toast(&crate::i18n::trf("Applied “{name}”", &[("name", &name)])),
             Err(e) => self.report_error(&e),
         }
@@ -1115,18 +1446,37 @@ impl App {
         if !removes.is_empty() {
             text.push_str(&format!(
                 "{}\n\n",
-                crate::i18n::trf("This preset removes permissions the app likely needs: {permissions}.", &[("permissions", &removes.join(", "))])
+                crate::i18n::trf(
+                    "This preset removes permissions the app likely needs: {permissions}.",
+                    &[("permissions", &removes.join(", "))]
+                )
             ));
         }
         let adds = util::list_of(c, "adds_dangerous");
         if !adds.is_empty() {
-            text.push_str(&format!("{}\n\n", crate::i18n::trf("It adds high-risk permissions: {permissions}.", &[("permissions", &adds.join(", "))])));
+            text.push_str(&format!(
+                "{}\n\n",
+                crate::i18n::trf(
+                    "It adds high-risk permissions: {permissions}.",
+                    &[("permissions", &adds.join(", "))]
+                )
+            ));
         }
         text.push_str(&crate::i18n::trf(
             "The risk changes from {before} to {after}.",
-            &[("before", &util::str_of(c, "risk_before")), ("after", &util::str_of(c, "risk_after"))],
+            &[
+                ("before", &util::str_of(c, "risk_before")),
+                ("after", &util::str_of(c, "risk_after")),
+            ],
         ));
-        confirm(&self.window, &crate::i18n::trf("Apply “{name}” Anyway?", &[("name", &name)]), &text, &crate::i18n::tr("Apply"), false).await
+        confirm(
+            &self.window,
+            &crate::i18n::trf("Apply “{name}” Anyway?", &[("name", &name)]),
+            &text,
+            &crate::i18n::tr("Apply"),
+            false,
+        )
+        .await
     }
 
     /// Re-extracts an app (after the AppImage changed).
@@ -1140,7 +1490,10 @@ impl App {
                 self.toast(&tr("Unpacked again"));
                 let pending = util::list_of(&r, "pending_changes");
                 if !pending.is_empty() {
-                    self.toast(&crate::i18n::trf("The update likely needs: {needs}", &[("needs", &pending.join(", "))]));
+                    self.toast(&crate::i18n::trf(
+                        "The update likely needs: {needs}",
+                        &[("needs", &pending.join(", "))],
+                    ));
                 }
             }
             Err(e) => self.report_error(&e),
@@ -1162,8 +1515,21 @@ impl App {
             if util::str_of(&check, "state") == "manual" {
                 let page = util::str_of(&check, "page").to_string();
                 let body = util::plain(util::str_of(&check, "detail"));
-                if !page.is_empty() && confirm(&me.window, &tr("New Version of SAM"), &body, &tr("Open Release Page"), false).await {
-                    gtk::UriLauncher::new(&page).launch(Some(&me.window), gio::Cancellable::NONE, |_| {});
+                if !page.is_empty()
+                    && confirm(
+                        &me.window,
+                        &tr("New Version of SAM"),
+                        &body,
+                        &tr("Open Release Page"),
+                        false,
+                    )
+                    .await
+                {
+                    gtk::UriLauncher::new(&page).launch(
+                        Some(&me.window),
+                        gio::Cancellable::NONE,
+                        |_| {},
+                    );
                 } else if page.is_empty() {
                     me.toast(&body);
                 }
@@ -1183,7 +1549,15 @@ impl App {
                 Err(e) => return me.report_error(&e),
             };
             let new_path = util::str_of(&done, "path").to_string();
-            if confirm(&me.window, &tr("SAM Was Updated"), util::str_of(&done, "detail"), &tr("Restart SAM"), false).await {
+            if confirm(
+                &me.window,
+                &tr("SAM Was Updated"),
+                util::str_of(&done, "detail"),
+                &tr("Restart SAM"),
+                false,
+            )
+            .await
+            {
                 // SAM allows one window: the new one starts a moment after
                 // this one has quit, or it would hand over to it and exit.
                 let argv = [
@@ -1207,8 +1581,17 @@ impl App {
     async fn check_cli_version(self: &Rc<Self>) {
         let reply = self.backend.call(&["version"], None).await;
         let found = match &reply {
-            Ok(v) if v.get("interface").and_then(Value::as_u64) == Some(sam_core::JSON_INTERFACE as u64) => return,
-            Ok(v) => format!("version {} (interface {})", util::str_of(v, "version"), v.get("interface").and_then(Value::as_u64).unwrap_or(0)),
+            Ok(v)
+                if v.get("interface").and_then(Value::as_u64)
+                    == Some(sam_core::JSON_INTERFACE as u64) =>
+            {
+                return
+            }
+            Ok(v) => format!(
+                "version {} (interface {})",
+                util::str_of(v, "version"),
+                v.get("interface").and_then(Value::as_u64).unwrap_or(0)
+            ),
             Err(e) if e.is("cli-not-started") => {
                 self.report_error(e);
                 return;
@@ -1216,7 +1599,10 @@ impl App {
             Err(_) => crate::i18n::tr("an older version"),
         };
         let body = crate::i18n::trf("This window is SAM {version} (interface {interface}), but the command line tool it uses, {program}, is {found}.\n\nInstall matching versions of both, or point SAM_CLI at the right sam-jail. Until then, SAM may show wrong or missing information.", &[("version", &env!("CARGO_PKG_VERSION")), ("interface", &sam_core::JSON_INTERFACE), ("program", &self.backend.cli.display()), ("found", &found)]);
-        let d = adw::AlertDialog::new(Some(&crate::i18n::tr("SAM's Parts Do Not Match")), Some(&body));
+        let d = adw::AlertDialog::new(
+            Some(&crate::i18n::tr("SAM's Parts Do Not Match")),
+            Some(&body),
+        );
         d.add_response("ok", "OK");
         d.present(Some(&self.window));
     }
@@ -1238,10 +1624,19 @@ impl App {
                         let n = v
                             .get("apps")
                             .and_then(Value::as_array)
-                            .map(|a| a.iter().filter(|x| util::str_of(x, "update.state") == "available").count())
+                            .map(|a| {
+                                a.iter()
+                                    .filter(|x| util::str_of(x, "update.state") == "available")
+                                    .count()
+                            })
                             .unwrap_or(0);
                         if n > 0 {
-                            me.toast(&crate::i18n::trn("An update is available for {n} app.", "Updates are available for {n} apps.", n as u64, &[]));
+                            me.toast(&crate::i18n::trn(
+                                "An update is available for {n} app.",
+                                "Updates are available for {n} apps.",
+                                n as u64,
+                                &[],
+                            ));
                             me.refresh_registered().await;
                         }
                     }
@@ -1249,8 +1644,12 @@ impl App {
             }
             let st = me.state.borrow();
             let first_app = st.apps.first().map(|a| util::str_of(a, "id").to_string());
-            let first_file =
-                st.discovered.iter().find(|d| util::str_of(d, "sandboxed").is_empty()).or(st.discovered.first()).map(|d| util::str_of(d, "path").to_string());
+            let first_file = st
+                .discovered
+                .iter()
+                .find(|d| util::str_of(d, "sandboxed").is_empty())
+                .or(st.discovered.first())
+                .map(|d| util::str_of(d, "path").to_string());
             drop(st);
             match s.page.as_str() {
                 "app" | "app-repair" if !s.app.is_empty() => me.open_app(&s.app),
@@ -1268,12 +1667,21 @@ impl App {
                     me.show_permissions();
                     // `--app a,b` selects those apps on the page.
                     if let Some(p) = me.permissions.borrow().as_ref() {
-                        p.preselect(s.app.split(',').filter(|i| !i.is_empty()).map(String::from).collect());
+                        p.preselect(
+                            s.app
+                                .split(',')
+                                .filter(|i| !i.is_empty())
+                                .map(String::from)
+                                .collect(),
+                        );
                     }
                 }
-                "presets" | "preferences" | "settings" | "diagnostics" | "guide" | "language" => {
-                    me.show_section(if s.page == "settings" { "preferences" } else { &s.page })
-                }
+                "presets" | "preferences" | "settings" | "diagnostics" | "guide" | "language" => me
+                    .show_section(if s.page == "settings" {
+                        "preferences"
+                    } else {
+                        &s.page
+                    }),
                 _ => {}
             }
             me.add_files(s.files);
@@ -1284,10 +1692,26 @@ impl App {
 /// One row of the app list: icon, name, dim path, status badge.
 fn app_row(r: &Row) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
-    let b = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(12).margin_top(6).margin_bottom(6).margin_start(4).margin_end(4).build();
+    let b = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(12)
+        .margin_top(6)
+        .margin_bottom(6)
+        .margin_start(4)
+        .margin_end(4)
+        .build();
     b.append(&app_icon(&r.icon, 36));
-    let v = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(2).hexpand(true).valign(gtk::Align::Center).build();
-    let name = gtk::Label::builder().label(util::plain(&r.name)).xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build();
+    let v = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(2)
+        .hexpand(true)
+        .valign(gtk::Align::Center)
+        .build();
+    let name = gtk::Label::builder()
+        .label(util::plain(&r.name))
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .build();
     name.add_css_class("heading");
     let sub_text = if r.badge == "missing" {
         crate::i18n::trf("File missing: {path}", &[("path", &util::tildify(&r.path))])
@@ -1297,7 +1721,11 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
         // The file name; the full path is in the tooltip and on the right.
         r.path.rsplit('/').next().unwrap_or(&r.path).to_string()
     };
-    let sub = gtk::Label::builder().label(util::plain(&sub_text)).xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::Middle).build();
+    let sub = gtk::Label::builder()
+        .label(util::plain(&sub_text))
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::Middle)
+        .build();
     sub.add_css_class("caption");
     sub.add_css_class("dim-label");
     v.append(&name);
@@ -1309,7 +1737,10 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
         warn.set_tooltip_text(Some(&if r.badge == "missing" {
             crate::i18n::tr("The AppImage file is missing")
         } else if !r.problem.is_empty() {
-            crate::i18n::trf("Didn't work last time: {problem}", &[("problem", &util::plain(&r.problem))])
+            crate::i18n::trf(
+                "Didn't work last time: {problem}",
+                &[("problem", &util::plain(&r.problem))],
+            )
         } else {
             crate::i18n::tr("Has a menu entry that starts it without a sandbox")
         }));
@@ -1354,7 +1785,9 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
 pub fn is_appimage(p: &std::path::Path) -> bool {
     use std::io::Read;
     let mut head = [0u8; 11];
-    std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut head)).is_ok()
+    std::fs::File::open(p)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok()
         && head[..4] == *b"\x7fELF"
         && head[8..10] == *b"AI"
         && (head[10] == 1 || head[10] == 2)
@@ -1382,10 +1815,26 @@ pub fn apply_theme(theme: &str) {
 }
 
 /// Asks a yes/no question; true when the user accepted.
-pub async fn confirm(win: &adw::ApplicationWindow, heading: &str, body: &str, accept: &str, destructive: bool) -> bool {
+pub async fn confirm(
+    win: &adw::ApplicationWindow,
+    heading: &str,
+    body: &str,
+    accept: &str,
+    destructive: bool,
+) -> bool {
     let d = adw::AlertDialog::new(Some(heading), Some(body));
-    d.add_responses(&[("cancel", crate::i18n::tr("Cancel").as_str()), ("ok", accept)]);
-    d.set_response_appearance("ok", if destructive { adw::ResponseAppearance::Destructive } else { adw::ResponseAppearance::Suggested });
+    d.add_responses(&[
+        ("cancel", crate::i18n::tr("Cancel").as_str()),
+        ("ok", accept),
+    ]);
+    d.set_response_appearance(
+        "ok",
+        if destructive {
+            adw::ResponseAppearance::Destructive
+        } else {
+            adw::ResponseAppearance::Suggested
+        },
+    );
     d.set_default_response(Some("cancel"));
     d.set_close_response("cancel");
     d.choose_future(Some(win)).await == "ok"
@@ -1396,7 +1845,10 @@ pub async fn confirm(win: &adw::ApplicationWindow, heading: &str, body: &str, ac
 /// count too, since SAM recognises them by content.
 fn watched_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    !name.starts_with('.') && ![".part", ".crdownload", ".download", ".tmp", ".partial"].iter().any(|e| lower.ends_with(e))
+    !name.starts_with('.')
+        && ![".part", ".crdownload", ".download", ".tmp", ".partial"]
+            .iter()
+            .any(|e| lower.ends_with(e))
 }
 
 #[cfg(test)]

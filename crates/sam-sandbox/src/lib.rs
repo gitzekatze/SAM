@@ -50,7 +50,10 @@ done
 exec "$@"
 "#,
     ),
-    ("flatpak-spawn", "#!/bin/sh\necho \"flatpak-spawn: not available in SAM's sandbox\" >&2\nexit 1\n"),
+    (
+        "flatpak-spawn",
+        "#!/bin/sh\necho \"flatpak-spawn: not available in SAM's sandbox\" >&2\nexit 1\n",
+    ),
 ];
 
 const SHARE_BASE: &[&str] = &[
@@ -131,7 +134,14 @@ const ETC_BASE: &[&str] = &[
     // Debian/Ubuntu: /usr/bin/java etc. are symlinks into /etc/alternatives.
     "alternatives",
 ];
-const ETC_NETWORK: &[&str] = &["resolv.conf", "hosts", "gai.conf", "services", "protocols", "host.conf"];
+const ETC_NETWORK: &[&str] = &[
+    "resolv.conf",
+    "hosts",
+    "gai.conf",
+    "services",
+    "protocols",
+    "host.conf",
+];
 const ETC_GPU: &[&str] = &["vulkan", "OpenCL", "nvidia"];
 const ETC_AUDIO: &[&str] = &["alsa", "asound.conf", "pulse", "pipewire"];
 
@@ -198,9 +208,17 @@ const PROTECTED_RO: &[&str] = &[
 /// they are missing, so they can be mounted read-only: an app could create
 /// them otherwise. Only where an empty one behaves like a missing one
 /// (not `.bash_profile`, which hides `.profile`, `.xinitrc` or `.vimrc`).
-const PROTECTED_CREATE_DIRS: &[&str] =
-    &[".local/share/applications", ".config/autostart", ".config/systemd", ".config/environment.d", ".local/bin", ".local/share/dbus-1", ".local/share/kwin"];
-const PROTECTED_CREATE_FILES: &[&str] = &[".bashrc", ".profile", ".gitconfig", ".config/mimeapps.list"];
+const PROTECTED_CREATE_DIRS: &[&str] = &[
+    ".local/share/applications",
+    ".config/autostart",
+    ".config/systemd",
+    ".config/environment.d",
+    ".local/bin",
+    ".local/share/dbus-1",
+    ".local/share/kwin",
+];
+const PROTECTED_CREATE_FILES: &[&str] =
+    &[".bashrc", ".profile", ".gitconfig", ".config/mimeapps.list"];
 
 /// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
 /// home before a start that can write the home (full home read/write, or a
@@ -208,7 +226,10 @@ const PROTECTED_CREATE_FILES: &[&str] = &[".bashrc", ".profile", ".gitconfig", "
 pub fn prepare_home_protection(p: &PermissionSet, home: &Path) {
     let fs = &p.filesystem;
     let full_rw = fs.home && fs.home_access == Access::Rw;
-    let grant_rw = fs.custom_write.iter().any(|c| home.starts_with(expand_home(c)));
+    let grant_rw = fs
+        .custom_write
+        .iter()
+        .any(|c| home.starts_with(expand_home(c)));
     if !(full_rw || grant_rw) {
         return;
     }
@@ -224,7 +245,10 @@ pub fn prepare_home_protection(p: &PermissionSet, home: &Path) {
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            let _ = fs::OpenOptions::new().write(true).create_new(true).open(&path);
+            let _ = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path);
         }
     }
 }
@@ -329,7 +353,11 @@ impl Args {
         self.op2("--ro-bind-try", p, p);
     }
     fn setenv(&mut self, k: &str, v: impl AsRef<str>) {
-        self.v.extend(["--setenv".to_string(), k.to_string(), v.as_ref().to_string()]);
+        self.v.extend([
+            "--setenv".to_string(),
+            k.to_string(),
+            v.as_ref().to_string(),
+        ]);
     }
 }
 
@@ -339,7 +367,9 @@ impl Args {
 /// the target, xkbcommon finds no keymaps and GTK/Electron abort.
 fn ro_follow(a: &mut Args, path: &Path) {
     a.ro(path);
-    let Ok(md) = fs::symlink_metadata(path) else { return };
+    let Ok(md) = fs::symlink_metadata(path) else {
+        return;
+    };
     let mut targets = Vec::new();
     if md.file_type().is_symlink() {
         targets.extend(fs::canonicalize(path).ok());
@@ -359,8 +389,15 @@ fn ro_follow(a: &mut Args, path: &Path) {
     for t in targets {
         // /usr/lib and /usr/bin are bound already; skip anything else outside
         // the shared-data and configuration trees.
-        let interesting = (t.starts_with("/usr/share") || t.starts_with("/etc") || t.starts_with("/run")) && t.exists();
-        if interesting && !a.v.windows(2).any(|w| w[0] == "--ro-bind-try" && Path::new(&w[1]) == t) {
+        let interesting =
+            (t.starts_with("/usr/share") || t.starts_with("/etc") || t.starts_with("/run"))
+                && t.exists();
+        if interesting
+            && !a
+                .v
+                .windows(2)
+                .any(|w| w[0] == "--ro-bind-try" && Path::new(&w[1]) == t)
+        {
             a.ro(&t);
         }
     }
@@ -402,8 +439,17 @@ if command -v busctl >/dev/null 2>&1 && busctl --user call org.freedesktop.porta
 echo "sam: could not open $target: the desktop portal is not reachable (session D-Bus off?)" >&2
 exit 3
 "#;
-pub const OPEN_SHIM_NAMES: &[&str] =
-    &["xdg-open", "xdg-email", "kde-open", "kde-open5", "kde-open6", "gnome-open", "sensible-browser", "x-www-browser", "www-browser"];
+pub const OPEN_SHIM_NAMES: &[&str] = &[
+    "xdg-open",
+    "xdg-email",
+    "kde-open",
+    "kde-open5",
+    "kde-open6",
+    "gnome-open",
+    "sensible-browser",
+    "x-www-browser",
+    "www-browser",
+];
 
 /// Replicate a top-level path from the host: symlink stays a symlink,
 /// a real directory is bound read-only.
@@ -475,21 +521,37 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, writable: bool) 
 pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
     let rw = ctx.permissions.filesystem.opened_files == Access::Rw;
     let home = &ctx.host.home;
-    let on_drive = |p: &Path| ["/media", "/mnt", "/run/media"].iter().any(|d| p.starts_with(d));
+    let on_drive = |p: &Path| {
+        ["/media", "/mnt", "/run/media"]
+            .iter()
+            .any(|d| p.starts_with(d))
+    };
     let mut out: Vec<(PathBuf, bool)> = Vec::new();
     for arg in &ctx.args {
         if arg.is_empty() || arg.starts_with('-') {
             continue;
         }
         let given = Path::new(arg);
-        let joined = if given.is_absolute() { given.to_path_buf() } else { ctx.owd.join(given) };
-        let Ok(real) = fs::canonicalize(&joined) else { continue };
-        let Ok(meta) = fs::metadata(&real) else { continue };
-        let sensitive = |p: &Path| sam_core::risk::is_sensitive_path(&p.to_string_lossy()) && !on_drive(p);
+        let joined = if given.is_absolute() {
+            given.to_path_buf()
+        } else {
+            ctx.owd.join(given)
+        };
+        let Ok(real) = fs::canonicalize(&joined) else {
+            continue;
+        };
+        let Ok(meta) = fs::metadata(&real) else {
+            continue;
+        };
+        let sensitive =
+            |p: &Path| sam_core::risk::is_sensitive_path(&p.to_string_lossy()) && !on_drive(p);
         if sensitive(&joined) || sensitive(&real) || visible_in_sandbox(&real, ctx) {
             continue;
         }
-        let protected = PROTECTED_RO.iter().map(|p| home.join(p)).any(|p| real.starts_with(&p) || (meta.is_dir() && p.starts_with(&real)));
+        let protected = PROTECTED_RO
+            .iter()
+            .map(|p| home.join(p))
+            .any(|p| real.starts_with(&p) || (meta.is_dir() && p.starts_with(&real)));
         if protected {
             continue;
         }
@@ -522,7 +584,10 @@ fn visible_in_sandbox(p: &Path, ctx: &LaunchContext) -> bool {
             }
         }
     }
-    fs.custom_read.iter().chain(fs.custom_write.iter()).any(|c| p.starts_with(expand_home(c)))
+    fs.custom_read
+        .iter()
+        .chain(fs.custom_write.iter())
+        .any(|c| p.starts_with(expand_home(c)))
 }
 
 impl Bubblewrap {
@@ -532,13 +597,17 @@ impl Bubblewrap {
         let mut notes = vec![];
         let installed = tool.is_some();
         if !installed {
-            notes.push(sam_core::i18n::tr("Bubblewrap is not installed. Install the 'bubblewrap' package."));
+            notes.push(sam_core::i18n::tr(
+                "Bubblewrap is not installed. Install the 'bubblewrap' package.",
+            ));
         }
         if !host.userns.usable() {
             notes.push(host.userns.explain());
         }
         if host.tools.xdg_dbus_proxy.is_none() {
-            notes.push(sam_core::i18n::tr("xdg-dbus-proxy not found: filtered session D-Bus will be disabled"));
+            notes.push(sam_core::i18n::tr(
+                "xdg-dbus-proxy not found: filtered session D-Bus will be disabled",
+            ));
         }
         BubblewrapStatus {
             installed,
@@ -551,9 +620,19 @@ impl Bubblewrap {
 
     /// The bwrap command line for this launch.
     pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
-        let bwrap = ctx.host.tools.bwrap.as_ref().context(sam_core::i18n::tr("bubblewrap (bwrap) is not installed"))?;
+        let bwrap = ctx
+            .host
+            .tools
+            .bwrap
+            .as_ref()
+            .context(sam_core::i18n::tr("bubblewrap (bwrap) is not installed"))?;
         // Each step adds its part of the Bubblewrap command, in this order.
-        let mut s = Section { ctx, a: Args { v: Vec::new() }, notes: Vec::new(), keep_fds: Vec::new() };
+        let mut s = Section {
+            ctx,
+            a: Args { v: Vec::new() },
+            notes: Vec::new(),
+            keep_fds: Vec::new(),
+        };
         s.namespaces();
         s.system();
         s.identity_app_sys();
@@ -565,8 +644,20 @@ impl Bubblewrap {
         s.sockets();
         s.environment();
         s.finish_command();
-        let generated_files = vec![ctx.runtime_dir.join("passwd"), ctx.runtime_dir.join("group"), ctx.runtime_dir.join("hosts")];
-        Ok(SandboxCommand { program: bwrap.path.clone(), args: s.a.v, env: vec![], clear_env: false, keep_fds: s.keep_fds, notes: s.notes, generated_files })
+        let generated_files = vec![
+            ctx.runtime_dir.join("passwd"),
+            ctx.runtime_dir.join("group"),
+            ctx.runtime_dir.join("hosts"),
+        ];
+        Ok(SandboxCommand {
+            program: bwrap.path.clone(),
+            args: s.a.v,
+            env: vec![],
+            clear_env: false,
+            keep_fds: s.keep_fds,
+            notes: s.notes,
+            generated_files,
+        })
     }
 }
 
@@ -590,7 +681,10 @@ impl Section<'_> {
         if !ctx.own_terminal {
             a.push("--new-session");
         }
-        a.push("--unshare-user").push("--unshare-pid").push("--unshare-uts").push("--unshare-cgroup-try");
+        a.push("--unshare-user")
+            .push("--unshare-pid")
+            .push("--unshare-uts")
+            .push("--unshare-cgroup-try");
         // X11 apps share the IPC namespace (as with Flatpak's --share=ipc):
         // X11's shared-memory extension (MIT-SHM) needs the X server to see
         // the app's SysV shared memory, or GTK and Electron apps die with
@@ -601,7 +695,10 @@ impl Section<'_> {
         // The user's own ids, also when bwrap runs inside pasta's namespace
         // (This computer only), where it would otherwise map to root: apps
         // then refuse to run (Electron) and the D-Bus proxy rejects them.
-        a.push("--uid").push(ctx.host.uid.to_string()).push("--gid").push(ctx.host.gid.to_string());
+        a.push("--uid")
+            .push(ctx.host.uid.to_string())
+            .push("--gid")
+            .push(ctx.host.gid.to_string());
         match p.network.mode {
             NetworkMode::Full => {}
             NetworkMode::None => {
@@ -633,7 +730,10 @@ impl Section<'_> {
         a.push("--tmpfs").push("/tmp");
         a.push("--tmpfs").push("/var/tmp");
         a.push("--dir").push("/run");
-        a.push("--perms").push("0700").push("--tmpfs").push(run.clone());
+        a.push("--perms")
+            .push("0700")
+            .push("--tmpfs")
+            .push(run.clone());
 
         match p.advanced.host_runtime {
             HostRuntime::Full => a.op2("--ro-bind", "/usr", "/usr"),
@@ -751,7 +851,12 @@ impl Section<'_> {
 
         // /sys: CPU topology always; device trees when GPU/USB/input/webcam is granted.
         a.ro("/sys/devices/system/cpu");
-        if p.devices.gpu || p.devices.usb || p.devices.input || p.devices.gamepads || p.devices.webcam {
+        if p.devices.gpu
+            || p.devices.usb
+            || p.devices.input
+            || p.devices.gamepads
+            || p.devices.webcam
+        {
             for s in ["/sys/dev", "/sys/devices", "/sys/bus", "/sys/class"] {
                 a.ro(s);
             }
@@ -778,7 +883,11 @@ impl Section<'_> {
         // Home.
         let fsp = &p.filesystem;
         if fsp.home {
-            let op = if fsp.home_access == Access::Rw { "--bind" } else { "--ro-bind" };
+            let op = if fsp.home_access == Access::Rw {
+                "--bind"
+            } else {
+                "--ro-bind"
+            };
             a.op2(op, &home, &home);
             guard_home(a, &home, fsp, fsp.home_access == Access::Rw);
         } else {
@@ -795,10 +904,17 @@ impl Section<'_> {
                 }
                 match h.xdg_dir(key) {
                     Some(dir) if dir.exists() => {
-                        let op = if acc == Access::Rw { "--bind-try" } else { "--ro-bind-try" };
+                        let op = if acc == Access::Rw {
+                            "--bind-try"
+                        } else {
+                            "--ro-bind-try"
+                        };
                         a.op2(op, dir, dir);
                     }
-                    _ => notes.push(sam_core::i18n::trf("{key} folder does not exist on the host; not bound", &[("key", &key)])),
+                    _ => notes.push(sam_core::i18n::trf(
+                        "{key} folder does not exist on the host; not bound",
+                        &[("key", &key)],
+                    )),
                 }
             }
         }
@@ -830,11 +946,21 @@ impl Section<'_> {
         }
         // Files and folders named on the command line, one by one.
         for (path, rw) in opened_paths(ctx) {
-            a.op2(if rw { "--bind-try" } else { "--ro-bind-try" }, &path, &path);
+            a.op2(
+                if rw { "--bind-try" } else { "--ro-bind-try" },
+                &path,
+                &path,
+            );
             notes.push(if path.is_dir() {
-                sam_core::i18n::trf("granted access to the opened folder {path}", &[("path", &path.display())])
+                sam_core::i18n::trf(
+                    "granted access to the opened folder {path}",
+                    &[("path", &path.display())],
+                )
             } else {
-                sam_core::i18n::trf("granted access to the opened file {path}", &[("path", &path.display())])
+                sam_core::i18n::trf(
+                    "granted access to the opened file {path}",
+                    &[("path", &path.display())],
+                )
             });
         }
         for (host_p, sb, rw) in &ctx.extra_binds {
@@ -884,7 +1010,10 @@ impl Section<'_> {
             }
         }
         a.setenv("XDG_SESSION_TYPE", session_type);
-        let (qt, gdk, sdl) = match (p.display.wayland && h.sockets.wayland.is_some(), p.display.x11 && h.sockets.x11.is_some()) {
+        let (qt, gdk, sdl) = match (
+            p.display.wayland && h.sockets.wayland.is_some(),
+            p.display.x11 && h.sockets.x11.is_some(),
+        ) {
             // Both: Qt chooses (Qt 6 takes Wayland in a Wayland session,
             // Qt 5 X11). The list form "wayland;xcb" stops Qt before 5.12.
             (true, true) => ("", "wayland,x11", "wayland,x11"),
@@ -922,7 +1051,9 @@ impl Section<'_> {
             } else if h.sockets.pipewire.is_some() {
                 notes.push(sam_core::i18n::tr("PipeWire runs without its PulseAudio service (pipewire-pulse), so the app has no sound. Install or start pipewire-pulse, or allow direct PipeWire access."));
             } else {
-                notes.push(sam_core::i18n::tr("No sound server found. Audio may not work."));
+                notes.push(sam_core::i18n::tr(
+                    "No sound server found. Audio may not work.",
+                ));
             }
         }
         if p.audio.pipewire {
@@ -946,15 +1077,23 @@ impl Section<'_> {
         if p.devices.gpu {
             a.op2("--dev-bind-try", "/dev/dri", "/dev/dri");
             for d in &h.gpu_devices {
-                if d.file_name().is_some_and(|n| n.to_string_lossy().starts_with("nvidia")) {
+                if d.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("nvidia"))
+                {
                     a.op2("--dev-bind-try", d, d);
                 }
             }
         }
         if p.devices.webcam {
             if let Ok(rd) = fs::read_dir("/dev") {
-                let mut cams: Vec<PathBuf> =
-                    rd.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("video"))).collect();
+                let mut cams: Vec<PathBuf> = rd
+                    .flatten()
+                    .map(|e| e.path())
+                    .filter(|p| {
+                        p.file_name()
+                            .is_some_and(|n| n.to_string_lossy().starts_with("video"))
+                    })
+                    .collect();
                 cams.sort();
                 for c in cams {
                     a.op2("--dev-bind-try", &c, &c);
@@ -977,7 +1116,9 @@ impl Section<'_> {
             a.op2("--dev-bind-try", "/dev/bus/usb", "/dev/bus/usb");
         }
         if p.devices.bluetooth && p.dbus.system.mode == DbusMode::None {
-            notes.push(sam_core::i18n::tr("Bluetooth needs the system D-Bus; not granted"));
+            notes.push(sam_core::i18n::tr(
+                "Bluetooth needs the system D-Bus; not granted",
+            ));
         }
         // Private shared memory: the host's /dev/shm would be a side channel
         // to other programs' segments.
@@ -988,7 +1129,9 @@ impl Section<'_> {
         if p.integrations.input_method {
             a.setenv("IBUS_USE_PORTAL", "1");
             if p.dbus.session.mode == DbusMode::None {
-                notes.push(sam_core::i18n::tr("Input method needs the session D-Bus; not granted"));
+                notes.push(sam_core::i18n::tr(
+                    "Input method needs the session D-Bus; not granted",
+                ));
             }
         }
     }
@@ -1058,7 +1201,10 @@ impl Section<'_> {
             if is_socket(&sp) {
                 a.op2("--bind-try", &sp, &sp);
             } else {
-                notes.push(sam_core::i18n::trf("{path} is not a socket; it is not passed into the sandbox", &[("path", &sp.display())]));
+                notes.push(sam_core::i18n::trf(
+                    "{path} is not a socket; it is not passed into the sandbox",
+                    &[("path", &sp.display())],
+                ));
             }
         }
 
@@ -1102,7 +1248,11 @@ impl Section<'_> {
             a.setenv("SDL_AUDIODRIVER", "dummy");
             a.setenv("SDL_AUDIO_DRIVER", "dummy");
         }
-        for k in ENV_FORWARD.iter().map(|s| s.to_string()).chain(p.environment.passthrough.iter().cloned()) {
+        for k in ENV_FORWARD
+            .iter()
+            .map(|s| s.to_string())
+            .chain(p.environment.passthrough.iter().cloned())
+        {
             if let Some(v) = forwarded_value(&k, |n| std::env::var(n).ok()) {
                 a.setenv(&k, v);
             }
@@ -1112,7 +1262,11 @@ impl Section<'_> {
         }
         for (k, v) in &p.environment.set {
             // Only proper variable names; values may be anything but NUL.
-            let valid = k.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            let valid = k
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
             if valid && !v.contains('\0') {
                 a.setenv(k, v);
             }
@@ -1131,8 +1285,14 @@ impl Section<'_> {
         // The folder it was started in, if the app sees it: granted, or
         // holding a file named on the command line (`hx notes.txt`), so that
         // relative names find the file.
-        let in_owd = opened_paths(ctx).iter().any(|(p, _)| p.starts_with(&ctx.owd) || ctx.owd.starts_with(p));
-        let chdir = if visible_in_sandbox(&ctx.owd, ctx) || in_owd { ctx.owd.clone() } else { home.clone() };
+        let in_owd = opened_paths(ctx)
+            .iter()
+            .any(|(p, _)| p.starts_with(&ctx.owd) || ctx.owd.starts_with(p));
+        let chdir = if visible_in_sandbox(&ctx.owd, ctx) || in_owd {
+            ctx.owd.clone()
+        } else {
+            home.clone()
+        };
         a.push("--chdir").push(chdir.to_string_lossy());
 
         // Seccomp.
@@ -1146,7 +1306,12 @@ impl Section<'_> {
         if let Some(helper) = &ctx.helper {
             a.op2("--ro-bind", &helper.binary, "/run/sam/sam-jail-run");
             a.op2("--ro-bind", &helper.spec, "/run/sam/sandbox.json");
-            cmd.extend(["/run/sam/sam-jail-run".into(), "--sandbox-exec".into(), "/run/sam/sandbox.json".into(), "--".into()]);
+            cmd.extend([
+                "/run/sam/sam-jail-run".into(),
+                "--sandbox-exec".into(),
+                "/run/sam/sandbox.json".into(),
+                "--".into(),
+            ]);
         }
         if let Some(tracer) = &ctx.tracer {
             cmd.extend(tracer.iter().cloned());
@@ -1165,11 +1330,25 @@ impl Section<'_> {
 }
 
 /// Folders where AppImages bundle libraries, relative to the app folder.
-const BUNDLED_LIB_DIRS: &[&str] =
-    &["usr/lib", "lib", "usr/lib64", "lib64", "usr/lib/x86_64-linux-gnu", "lib/x86_64-linux-gnu", "usr/lib/aarch64-linux-gnu", "lib/aarch64-linux-gnu"];
+const BUNDLED_LIB_DIRS: &[&str] = &[
+    "usr/lib",
+    "lib",
+    "usr/lib64",
+    "lib64",
+    "usr/lib/x86_64-linux-gnu",
+    "lib/x86_64-linux-gnu",
+    "usr/lib/aarch64-linux-gnu",
+    "lib/aarch64-linux-gnu",
+];
 /// Where the system keeps its libraries.
-const SYSTEM_LIB_DIRS: &[&str] =
-    &["/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/lib/x86_64-linux-gnu", "/lib/aarch64-linux-gnu"];
+const SYSTEM_LIB_DIRS: &[&str] = &[
+    "/usr/lib",
+    "/usr/lib64",
+    "/usr/lib/x86_64-linux-gnu",
+    "/usr/lib/aarch64-linux-gnu",
+    "/lib/x86_64-linux-gnu",
+    "/lib/aarch64-linux-gnu",
+];
 
 /// `(system copy, place inside the sandbox)` for every bundled library in
 /// `advanced.system_libraries`. Only plain library names count, the
@@ -1211,7 +1390,11 @@ pub fn system_library_binds(ctx: &LaunchContext) -> Vec<(PathBuf, PathBuf)> {
 pub const SANDBOX_X11_DISPLAY: u32 = 99;
 
 fn sandbox_x11_display(s: &sam_core::host::Sockets) -> u32 {
-    let host = s.x11_display.as_deref().and_then(sam_core::host::x11_display_number).and_then(|n| n.parse::<u32>().ok());
+    let host = s
+        .x11_display
+        .as_deref()
+        .and_then(sam_core::host::x11_display_number)
+        .and_then(|n| n.parse::<u32>().ok());
     if host == Some(SANDBOX_X11_DISPLAY) {
         SANDBOX_X11_DISPLAY + 1
     } else {
@@ -1224,9 +1407,15 @@ fn sandbox_x11_display(s: &sam_core::host::Sockets) -> u32 {
 /// displays are left out.
 fn write_xauthority(ctx: &LaunchContext) -> Result<()> {
     let s = &ctx.host.sockets;
-    let (Some(src), Some(display)) = (&s.xauthority, &s.x11_display) else { return Ok(()) };
-    let Some(host_num) = sam_core::host::x11_display_number(display) else { return Ok(()) };
-    let Ok(data) = fs::read(src) else { return Ok(()) };
+    let (Some(src), Some(display)) = (&s.xauthority, &s.x11_display) else {
+        return Ok(());
+    };
+    let Some(host_num) = sam_core::host::x11_display_number(display) else {
+        return Ok(());
+    };
+    let Ok(data) = fs::read(src) else {
+        return Ok(());
+    };
     let out = rewrite_xauthority(&data, &host_num, &sandbox_x11_display(s).to_string());
     let dest = ctx.runtime_dir.join("Xauthority");
     fs::write(&dest, out)?;
@@ -1252,15 +1441,24 @@ fn rewrite_xauthority(data: &[u8], from: &str, to: &str) -> Vec<u8> {
     while pos + 2 <= data.len() {
         let family = [data[pos], data[pos + 1]];
         pos += 2;
-        let (Some(addr), Some(num), Some(name), Some(cookie)) = (field(data, &mut pos), field(data, &mut pos), field(data, &mut pos), field(data, &mut pos))
-        else {
+        let (Some(addr), Some(num), Some(name), Some(cookie)) = (
+            field(data, &mut pos),
+            field(data, &mut pos),
+            field(data, &mut pos),
+            field(data, &mut pos),
+        ) else {
             break;
         };
         if num != from.as_bytes() && !num.is_empty() {
             continue;
         }
         out.extend_from_slice(&family);
-        for f in [addr.as_slice(), to.as_bytes(), name.as_slice(), cookie.as_slice()] {
+        for f in [
+            addr.as_slice(),
+            to.as_bytes(),
+            name.as_slice(),
+            cookie.as_slice(),
+        ] {
             out.extend_from_slice(&(f.len() as u16).to_be_bytes());
             out.extend_from_slice(f);
         }
@@ -1269,7 +1467,8 @@ fn rewrite_xauthority(data: &[u8], from: &str, to: &str) -> Vec<u8> {
 }
 
 /// The /etc/hosts of a sandbox without the network: only the loopback names.
-pub const LOCALHOST_ONLY_HOSTS: &str = "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n";
+pub const LOCALHOST_ONLY_HOSTS: &str =
+    "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n";
 
 pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
     fs::create_dir_all(&ctx.runtime_dir)?;
@@ -1287,7 +1486,10 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
             home = h.home.display()
         ),
     )?;
-    fs::write(ctx.runtime_dir.join("group"), format!("{u}:x:{gid}:\nnobody:x:65534:\n", u = h.user, gid = h.gid))?;
+    fs::write(
+        ctx.runtime_dir.join("group"),
+        format!("{u}:x:{gid}:\nnobody:x:65534:\n", u = h.user, gid = h.gid),
+    )?;
     fs::write(ctx.runtime_dir.join("hosts"), LOCALHOST_ONLY_HOSTS)?;
     let bin = ctx.runtime_dir.join("bin");
     fs::create_dir_all(&bin)?;
@@ -1322,7 +1524,12 @@ pub fn is_socket(p: &Path) -> bool {
 /// `nvidia_drm`, `nvidia_modeset`, `nvidia_uvm`).
 fn gpu_module_dirs(sys_module: &Path) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = fs::read_dir(sys_module)
-        .map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("nvidia")).map(|e| e.path()).collect())
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with("nvidia"))
+                .map(|e| e.path())
+                .collect()
+        })
         .unwrap_or_default();
     out.sort();
     out
@@ -1334,11 +1541,15 @@ fn gpu_module_dirs(sys_module: &Path) -> Vec<PathBuf> {
 pub fn gamepad_nodes(dev_input: &Path, udev_data: &Path) -> Vec<PathBuf> {
     use std::os::unix::fs::{FileTypeExt, MetadataExt};
     let mut out = Vec::new();
-    let Ok(rd) = fs::read_dir(dev_input) else { return out };
+    let Ok(rd) = fs::read_dir(dev_input) else {
+        return out;
+    };
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
         let path = e.path();
-        let Ok(md) = fs::metadata(&path) else { continue };
+        let Ok(md) = fs::metadata(&path) else {
+            continue;
+        };
         if !md.file_type().is_char_device() {
             continue;
         }
@@ -1347,7 +1558,9 @@ pub fn gamepad_nodes(dev_input: &Path, udev_data: &Path) -> Vec<PathBuf> {
         } else if name.starts_with("event") {
             let rdev = md.rdev();
             let (major, minor) = (libc_major(rdev), libc_minor(rdev));
-            fs::read_to_string(udev_data.join(format!("c{major}:{minor}"))).map(|t| t.lines().any(|l| l.trim() == "E:ID_INPUT_JOYSTICK=1")).unwrap_or(false)
+            fs::read_to_string(udev_data.join(format!("c{major}:{minor}")))
+                .map(|t| t.lines().any(|l| l.trim() == "E:ID_INPUT_JOYSTICK=1"))
+                .unwrap_or(false)
         } else {
             false
         };
@@ -1377,14 +1590,18 @@ mod tests {
     }
 
     fn has_seq(v: &[String], seq: &[&str]) -> bool {
-        v.windows(seq.len()).any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
+        v.windows(seq.len())
+            .any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
     }
 
     /// Games built with SDL get a silent sound driver when sound is off, so they start instead of failing.
     #[test]
     fn sdl_gets_its_silent_driver_without_sound_access() {
         let mut ctx = sample_context();
-        assert!(has_seq(&args_of(&ctx), &["--setenv", "SDL_AUDIODRIVER", "dummy"]));
+        assert!(has_seq(
+            &args_of(&ctx),
+            &["--setenv", "SDL_AUDIODRIVER", "dummy"]
+        ));
         ctx.permissions.audio.enabled = true;
         assert!(!args_of(&ctx).iter().any(|x| x == "SDL_AUDIODRIVER"));
     }
@@ -1394,7 +1611,10 @@ mod tests {
     fn the_loaders_extra_library_folders_are_shown_read_only() {
         let mut ctx = sample_context();
         ctx.host.extra_lib_dirs = vec!["/opt/cuda/lib64".into()];
-        assert!(has_seq(&args_of(&ctx), &["--ro-bind-try", "/opt/cuda/lib64", "/opt/cuda/lib64"]));
+        assert!(has_seq(
+            &args_of(&ctx),
+            &["--ro-bind-try", "/opt/cuda/lib64", "/opt/cuda/lib64"]
+        ));
     }
 
     /// The app gets a new terminal session, unless it runs on SAM's terminal relay.
@@ -1425,13 +1645,26 @@ mod tests {
         ctx.owd = proj.clone();
         let granted = |args: &[&str], ctx: &mut LaunchContext| {
             ctx.args = args.iter().map(|a| a.to_string()).collect();
-            opened_paths(ctx).into_iter().map(|(p, _)| p).collect::<Vec<_>>()
+            opened_paths(ctx)
+                .into_iter()
+                .map(|(p, _)| p)
+                .collect::<Vec<_>>()
         };
         // Relative to the start folder, and absolute; a folder covers its files.
-        assert_eq!(granted(&["notes.txt"], &mut ctx), vec![proj.join("notes.txt")]);
+        assert_eq!(
+            granted(&["notes.txt"], &mut ctx),
+            vec![proj.join("notes.txt")]
+        );
         assert_eq!(granted(&["."], &mut ctx), vec![proj.clone()]);
-        assert_eq!(granted(&["notes.txt", ".", "src"], &mut ctx), vec![proj.clone()]);
-        assert_eq!(granted(&[outside.join("file.txt").to_str().unwrap()], &mut ctx), vec![outside.join("file.txt")], "a file anywhere");
+        assert_eq!(
+            granted(&["notes.txt", ".", "src"], &mut ctx),
+            vec![proj.clone()]
+        );
+        assert_eq!(
+            granted(&[outside.join("file.txt").to_str().unwrap()], &mut ctx),
+            vec![outside.join("file.txt")],
+            "a file anywhere"
+        );
         // Never: options, missing files, the home folder or above, the
         // root, start files of the shell and the session, sensitive system
         // paths, folders outside the home folder and mounted drives.
@@ -1460,7 +1693,10 @@ mod tests {
         assert!(has_seq(&a, &["--ro-bind-try", &f, &f]));
         assert!(has_seq(&a, &["--chdir", proj.to_str().unwrap()]));
         ctx.args.clear();
-        assert!(has_seq(&args_of(&ctx), &["--chdir", home.to_str().unwrap()]), "nothing named: the private home");
+        assert!(
+            has_seq(&args_of(&ctx), &["--chdir", home.to_str().unwrap()]),
+            "nothing named: the private home"
+        );
     }
 
     /// The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only.
@@ -1471,13 +1707,42 @@ mod tests {
         assert!(a.contains(&"--unshare-net".to_string()));
         assert!(a.contains(&"--clearenv".to_string()));
         assert!(has_seq(&a, &["--cap-drop", "ALL"]));
-        assert!(has_seq(&a, &["--ro-bind", "/data/extracted/appimage-hello-1234/AppDir", "/opt/app"]));
-        assert!(has_seq(&a, &["--bind", "/data/homes/appimage-hello-1234", "/home/tester"]), "private home");
+        assert!(has_seq(
+            &a,
+            &[
+                "--ro-bind",
+                "/data/extracted/appimage-hello-1234/AppDir",
+                "/opt/app"
+            ]
+        ));
+        assert!(
+            has_seq(
+                &a,
+                &["--bind", "/data/homes/appimage-hello-1234", "/home/tester"]
+            ),
+            "private home"
+        );
         assert!(!a.iter().any(|x| x == "/dev/dri"), "no GPU by default");
-        assert!(!a.iter().any(|x| x.ends_with("/pipewire-0")), "no audio by default");
-        assert!(!a.iter().any(|x| x.starts_with("/tmp/.X11-unix")), "no X11 by default");
-        assert!(a.iter().any(|x| x == "--unshare-ipc"), "own IPC namespace without X11");
-        assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/wayland-0", "/run/user/1000/wayland-0"]));
+        assert!(
+            !a.iter().any(|x| x.ends_with("/pipewire-0")),
+            "no audio by default"
+        );
+        assert!(
+            !a.iter().any(|x| x.starts_with("/tmp/.X11-unix")),
+            "no X11 by default"
+        );
+        assert!(
+            a.iter().any(|x| x == "--unshare-ipc"),
+            "own IPC namespace without X11"
+        );
+        assert!(has_seq(
+            &a,
+            &[
+                "--ro-bind",
+                "/run/user/1000/wayland-0",
+                "/run/user/1000/wayland-0"
+            ]
+        ));
         assert!(!a.iter().any(|x| x == "/home/tester/Documents"));
         assert!(has_seq(&a, &["--setenv", "APPDIR", "/opt/app"]));
         assert_eq!(a.last().unwrap(), "/opt/app/AppRun");
@@ -1489,7 +1754,12 @@ mod tests {
     fn xauthority_gets_the_sandbox_display_number() {
         fn rec(num: &str, cookie: &[u8]) -> Vec<u8> {
             let mut v = vec![0x01, 0x00]; // FamilyLocal
-            for f in [b"host".as_slice(), num.as_bytes(), b"MIT-MAGIC-COOKIE-1".as_slice(), cookie] {
+            for f in [
+                b"host".as_slice(),
+                num.as_bytes(),
+                b"MIT-MAGIC-COOKIE-1".as_slice(),
+                cookie,
+            ] {
                 v.extend_from_slice(&(f.len() as u16).to_be_bytes());
                 v.extend_from_slice(f);
             }
@@ -1498,8 +1768,15 @@ mod tests {
         let mut file = rec("0", b"secret-for-0");
         file.extend(rec("1", b"secret-for-1"));
         let out = rewrite_xauthority(&file, "0", "99");
-        assert_eq!(out, rec("99", b"secret-for-0"), "only display 0's cookie, renumbered");
-        assert!(rewrite_xauthority(&[1, 2, 3], "0", "99").is_empty(), "garbage is dropped");
+        assert_eq!(
+            out,
+            rec("99", b"secret-for-0"),
+            "only display 0's cookie, renumbered"
+        );
+        assert!(
+            rewrite_xauthority(&[1, 2, 3], "0", "99").is_empty(),
+            "garbage is dropped"
+        );
     }
 
     /// With a Wayland security context, the app sees only that socket, not the desktop's own.
@@ -1508,8 +1785,25 @@ mod tests {
         let mut ctx = sample_context();
         ctx.wayland_socket = Some("/run/user/1000/sam/x/launch-1/wayland-0".into());
         let a = args_of(&ctx);
-        assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/sam/x/launch-1/wayland-0", "/run/user/1000/wayland-0"]));
-        assert!(!has_seq(&a, &["--ro-bind", "/run/user/1000/wayland-0", "/run/user/1000/wayland-0"]), "not the compositor's own socket");
+        assert!(has_seq(
+            &a,
+            &[
+                "--ro-bind",
+                "/run/user/1000/sam/x/launch-1/wayland-0",
+                "/run/user/1000/wayland-0"
+            ]
+        ));
+        assert!(
+            !has_seq(
+                &a,
+                &[
+                    "--ro-bind",
+                    "/run/user/1000/wayland-0",
+                    "/run/user/1000/wayland-0"
+                ]
+            ),
+            "not the compositor's own socket"
+        );
     }
 
     /// Each granted permission adds exactly its part to the Bubblewrap command.
@@ -1526,13 +1820,38 @@ mod tests {
         let a = args_of(&ctx);
         assert!(!a.contains(&"--unshare-net".to_string()));
         assert!(has_seq(&a, &["--dev-bind-try", "/dev/dri", "/dev/dri"]));
-        assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/pulse/native", "/run/user/1000/pulse/native"]));
-        assert!(!a.iter().any(|x| x.ends_with("/pipewire-0")), "sound never brings the raw PipeWire socket");
-        assert!(has_seq(&a, &["--ro-bind", "/tmp/.X11-unix/X0", "/tmp/.X11-unix/X99"]), "the host display under the sandbox's own number");
-        assert!(!a.iter().any(|x| x == "--unshare-ipc"), "X11 apps share IPC for MIT-SHM");
+        assert!(has_seq(
+            &a,
+            &[
+                "--ro-bind",
+                "/run/user/1000/pulse/native",
+                "/run/user/1000/pulse/native"
+            ]
+        ));
+        assert!(
+            !a.iter().any(|x| x.ends_with("/pipewire-0")),
+            "sound never brings the raw PipeWire socket"
+        );
+        assert!(
+            has_seq(
+                &a,
+                &["--ro-bind", "/tmp/.X11-unix/X0", "/tmp/.X11-unix/X99"]
+            ),
+            "the host display under the sandbox's own number"
+        );
+        assert!(
+            !a.iter().any(|x| x == "--unshare-ipc"),
+            "X11 apps share IPC for MIT-SHM"
+        );
         assert!(has_seq(&a, &["--setenv", "DISPLAY", ":99"]));
-        assert!(!a.iter().any(|x| x == "QT_QPA_PLATFORM"), "with both displays Qt chooses itself");
-        assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/bus", "/run/user/1000/bus"]));
+        assert!(
+            !a.iter().any(|x| x == "QT_QPA_PLATFORM"),
+            "with both displays Qt chooses itself"
+        );
+        assert!(has_seq(
+            &a,
+            &["--ro-bind", "/run/user/1000/bus", "/run/user/1000/bus"]
+        ));
         // Documents is never mounted read/write when granted read-only.
         assert!(!has_seq(&a, &["--bind-try", "/home/tester/Documents"]));
     }
@@ -1543,11 +1862,21 @@ mod tests {
         let mut ctx = sample_context();
         ctx.dbus_proxy_socket = Some("/run/user/1000/sam/x/bus".into());
         let a = args_of(&ctx);
-        assert!(has_seq(&a, &["--ro-bind", "/run/user/1000/sam/x/bus", "/run/user/1000/bus"]));
+        assert!(has_seq(
+            &a,
+            &[
+                "--ro-bind",
+                "/run/user/1000/sam/x/bus",
+                "/run/user/1000/bus"
+            ]
+        ));
         ctx.dbus_proxy_socket = None;
         let cmd = Bubblewrap.build(&ctx).unwrap();
         assert!(cmd.notes.iter().any(|n| n.contains("no proxy")));
-        assert!(!has_seq(&cmd.args, &["--setenv", "DBUS_SESSION_BUS_ADDRESS"]));
+        assert!(!has_seq(
+            &cmd.args,
+            &["--setenv", "DBUS_SESSION_BUS_ADDRESS"]
+        ));
     }
 
     /// The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins.
@@ -1555,15 +1884,41 @@ mod tests {
     fn the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins() {
         let ctx = sample_context();
         let a = Bubblewrap.build(&ctx).unwrap().args;
-        assert!(has_seq(&a, &["--uid", &ctx.host.uid.to_string(), "--gid", &ctx.host.gid.to_string()]));
+        assert!(has_seq(
+            &a,
+            &[
+                "--uid",
+                &ctx.host.uid.to_string(),
+                "--gid",
+                &ctx.host.gid.to_string()
+            ]
+        ));
         if fs::symlink_metadata("/usr/bin/systemd-run").is_ok_and(|m| m.file_type().is_file()) {
-            let shim = ctx.runtime_dir.join("tools/systemd-run").display().to_string();
+            let shim = ctx
+                .runtime_dir
+                .join("tools/systemd-run")
+                .display()
+                .to_string();
             assert!(has_seq(&a, &["--ro-bind", &shim, "/usr/bin/systemd-run"]));
         }
         // The stand-in runs the command, skipping systemd-run's options.
-        let (_, script) = TOOL_SHIMS.iter().find(|(n, _)| *n == "systemd-run").unwrap();
+        let (_, script) = TOOL_SHIMS
+            .iter()
+            .find(|(n, _)| *n == "systemd-run")
+            .unwrap();
         let out = std::process::Command::new("sh")
-            .args(["-c", script, "systemd-run", "--user", "--scope", "--slice=app.slice", "--unit", "x.scope", "echo", "ran"])
+            .args([
+                "-c",
+                script,
+                "systemd-run",
+                "--user",
+                "--scope",
+                "--slice=app.slice",
+                "--unit",
+                "x.scope",
+                "echo",
+                "ran",
+            ])
             .output()
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ran");
@@ -1575,7 +1930,11 @@ mod tests {
         let mut ctx = sample_context();
         // Localhost: the launcher wraps bwrap in pasta, which owns the netns.
         ctx.permissions.network.mode = NetworkMode::Localhost;
-        assert!(!Bubblewrap.build(&ctx).unwrap().args.contains(&"--unshare-net".to_string()));
+        assert!(!Bubblewrap
+            .build(&ctx)
+            .unwrap()
+            .args
+            .contains(&"--unshare-net".to_string()));
     }
 
     /// A writable app folder uses an overlay; the unpacked app itself stays unchanged.
@@ -1587,7 +1946,14 @@ mod tests {
         let a = Bubblewrap.build(&ctx).unwrap().args;
         assert!(has_seq(
             &a,
-            &["--overlay-src", "/data/extracted/appimage-hello-1234/AppDir", "--overlay", "/data/overlays/x/upper", "/data/overlays/x/work", "/opt/app"]
+            &[
+                "--overlay-src",
+                "/data/extracted/appimage-hello-1234/AppDir",
+                "--overlay",
+                "/data/overlays/x/upper",
+                "/data/overlays/x/work",
+                "/opt/app"
+            ]
         ));
     }
 
@@ -1596,10 +1962,23 @@ mod tests {
     fn without_nested_namespaces_user_namespaces_are_disabled() {
         let mut ctx = sample_context();
         ctx.permissions.advanced.allow_userns = false;
-        ctx.helper = Some(sam_core::sandbox::SandboxHelper { binary: "/usr/bin/sam-jail-run".into(), spec: "/tmp/spec.json".into() });
+        ctx.helper = Some(sam_core::sandbox::SandboxHelper {
+            binary: "/usr/bin/sam-jail-run".into(),
+            spec: "/tmp/spec.json".into(),
+        });
         let a = args_of(&ctx);
         assert!(a.contains(&"--disable-userns".to_string()));
-        assert!(has_seq(&a, &["--", "/run/sam/sam-jail-run", "--sandbox-exec", "/run/sam/sandbox.json", "--", "/opt/app/AppRun"]));
+        assert!(has_seq(
+            &a,
+            &[
+                "--",
+                "/run/sam/sam-jail-run",
+                "--sandbox-exec",
+                "/run/sam/sandbox.json",
+                "--",
+                "/opt/app/AppRun"
+            ]
+        ));
     }
 
     /// "Game controllers" exposes only joysticks, never keyboards or mice.
@@ -1627,7 +2006,10 @@ mod tests {
         for m in ["nvidia", "nvidia_drm", "snd_hda_intel", "i915"] {
             fs::create_dir(t.path().join(m)).unwrap();
         }
-        assert_eq!(gpu_module_dirs(t.path()), vec![t.path().join("nvidia"), t.path().join("nvidia_drm")]);
+        assert_eq!(
+            gpu_module_dirs(t.path()),
+            vec![t.path().join("nvidia"), t.path().join("nvidia_drm")]
+        );
         assert!(gpu_module_dirs(&t.path().join("missing")).is_empty());
     }
 
@@ -1640,10 +2022,19 @@ mod tests {
         assert!(is_socket(&sock));
         assert!(!is_socket(t.path()), "a folder is not a socket");
         let mut ctx = sample_context();
-        ctx.permissions.sockets.custom = vec![sock.display().to_string(), t.path().display().to_string()];
+        ctx.permissions.sockets.custom =
+            vec![sock.display().to_string(), t.path().display().to_string()];
         let cmd = Bubblewrap.build(&ctx).unwrap();
-        assert!(cmd.args.windows(2).any(|w| w[0] == "--bind-try" && w[1] == sock.display().to_string()));
-        assert!(!cmd.args.iter().any(|a| a == &t.path().display().to_string()), "folder not bound");
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w[0] == "--bind-try" && w[1] == sock.display().to_string()));
+        assert!(
+            !cmd.args
+                .iter()
+                .any(|a| a == &t.path().display().to_string()),
+            "folder not bound"
+        );
     }
 
     /// A bundled library listed in advanced.system_libraries is replaced by
@@ -1657,13 +2048,22 @@ mod tests {
         ctx.appdir = tmp.path().to_path_buf();
         fs::create_dir_all(tmp.path().join("usr/lib")).unwrap();
         // A library every Linux system has, bundled by the "app".
-        let libc = ["/usr/lib/libc.so.6", "/usr/lib64/libc.so.6", "/usr/lib/x86_64-linux-gnu/libc.so.6", "/lib/x86_64-linux-gnu/libc.so.6"]
-            .into_iter()
-            .find(|p| Path::new(p).exists());
+        let libc = [
+            "/usr/lib/libc.so.6",
+            "/usr/lib64/libc.so.6",
+            "/usr/lib/x86_64-linux-gnu/libc.so.6",
+            "/lib/x86_64-linux-gnu/libc.so.6",
+        ]
+        .into_iter()
+        .find(|p| Path::new(p).exists());
         let Some(_) = libc else { return };
         fs::write(tmp.path().join("usr/lib/libc.so.6"), "old").unwrap();
-        ctx.permissions.advanced.system_libraries =
-            vec!["libc.so.6".into(), "../../etc/shadow".into(), "libnotbundled.so.1".into(), "libz.so.1/../../x".into()];
+        ctx.permissions.advanced.system_libraries = vec![
+            "libc.so.6".into(),
+            "../../etc/shadow".into(),
+            "libnotbundled.so.1".into(),
+            "libz.so.1/../../x".into(),
+        ];
         let binds = system_library_binds(&ctx);
         assert_eq!(binds.len(), 1, "{binds:?}");
         assert_eq!(binds[0].1, ctx.sandbox_appdir.join("usr/lib/libc.so.6"));
@@ -1682,16 +2082,35 @@ mod guard_tests {
     /// when the window itself shows another one.
     #[test]
     fn apps_keep_the_system_language_whatever_sams_window_shows() {
-        let env = |pairs: &'static [(&'static str, &'static str)]| move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string());
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |k: &str| {
+                pairs
+                    .iter()
+                    .find(|(n, _)| *n == k)
+                    .map(|(_, v)| v.to_string())
+            }
+        };
         let sys = sam_core::i18n::SYSTEM_LANGUAGE_VAR;
         // No language of its own: forwarded as it is.
-        assert_eq!(forwarded_value("LANGUAGE", env(&[("LANGUAGE", "fr")])).as_deref(), Some("fr"));
+        assert_eq!(
+            forwarded_value("LANGUAGE", env(&[("LANGUAGE", "fr")])).as_deref(),
+            Some("fr")
+        );
         // The window shows German; the system had French.
         let both: &'static [(&str, &str)] = &[("LANGUAGE", "de"), ("SAM_SYSTEM_LANGUAGE", "fr")];
         assert_eq!(sys, "SAM_SYSTEM_LANGUAGE");
-        assert_eq!(forwarded_value("LANGUAGE", env(both)).as_deref(), Some("fr"));
+        assert_eq!(
+            forwarded_value("LANGUAGE", env(both)).as_deref(),
+            Some("fr")
+        );
         // The window shows German; the system had no LANGUAGE at all.
-        assert_eq!(forwarded_value("LANGUAGE", env(&[("LANGUAGE", "de"), ("SAM_SYSTEM_LANGUAGE", "")])), None);
+        assert_eq!(
+            forwarded_value(
+                "LANGUAGE",
+                env(&[("LANGUAGE", "de"), ("SAM_SYSTEM_LANGUAGE", "")])
+            ),
+            None
+        );
         // Other variables are untouched.
         assert_eq!(forwarded_value("LANG", env(both)), None);
     }
@@ -1701,7 +2120,8 @@ mod guard_tests {
     }
 
     fn has_seq(v: &[String], seq: &[&str]) -> bool {
-        v.windows(seq.len()).any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
+        v.windows(seq.len())
+            .any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
     }
 
     /// The app's own folder stays read-only unless "writable app folder" is
@@ -1714,10 +2134,15 @@ mod guard_tests {
         let inside = ctx.sandbox_appdir.to_string_lossy().into_owned();
         let a = args_of(&ctx);
         assert!(has_seq(&a, &["--ro-bind", &appdir, &inside]), "{a:?}");
-        assert!(!a.iter().any(|x| x == "--overlay"), "no writable layer without the grant");
+        assert!(
+            !a.iter().any(|x| x == "--overlay"),
+            "no writable layer without the grant"
+        );
         ctx.permissions.advanced.writable_appdir = true;
         let a = args_of(&ctx);
-        assert!(a.iter().any(|x| x == "--overlay") && !has_seq(&a, &["--ro-bind", &appdir, &inside]));
+        assert!(
+            a.iter().any(|x| x == "--overlay") && !has_seq(&a, &["--ro-bind", &appdir, &inside])
+        );
     }
 
     /// SAM's own folders stay hidden when a granted folder contains them,
@@ -1730,9 +2155,15 @@ mod guard_tests {
         let mut ctx = sample_context();
         ctx.sam_dirs = vec![sam.clone()];
         let sam_s = sam.to_string_lossy().into_owned();
-        assert!(!has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]), "not hidden when nothing shows it");
+        assert!(
+            !has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]),
+            "not hidden when nothing shows it"
+        );
         ctx.permissions.filesystem.custom_read = vec![t.path().to_string_lossy().into_owned()];
-        assert!(has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]), "hidden inside the granted folder");
+        assert!(
+            has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]),
+            "hidden inside the granted folder"
+        );
     }
 
     /// With the whole home granted, credential files are replaced by an
@@ -1750,10 +2181,16 @@ mod guard_tests {
         ctx.permissions.filesystem.home_access = Access::Rw;
         let a = args_of(&ctx);
         let p = |n: &str| home.join(n).to_string_lossy().into_owned();
-        assert!(has_seq(&a, &["--ro-bind", "/dev/null", &p(".netrc")]), "{a:?}");
+        assert!(
+            has_seq(&a, &["--ro-bind", "/dev/null", &p(".netrc")]),
+            "{a:?}"
+        );
         assert!(has_seq(&a, &["--tmpfs", &p(".aws")]));
         assert!(has_seq(&a, &["--tmpfs", &p(".ssh")]));
-        assert!(!has_seq(&a, &["--tmpfs", &p(".netrc")]), "a file is not covered by a folder");
+        assert!(
+            !has_seq(&a, &["--tmpfs", &p(".netrc")]),
+            "a file is not covered by a folder"
+        );
     }
 
     /// Protected folders are created in the real home only before a start
@@ -1766,7 +2203,10 @@ mod guard_tests {
         p.filesystem.home = true;
         p.filesystem.home_access = Access::Ro;
         prepare_home_protection(&p, home);
-        assert!(!home.join(".config/autostart").exists(), "a read-only home is left alone");
+        assert!(
+            !home.join(".config/autostart").exists(),
+            "a read-only home is left alone"
+        );
         p.filesystem.home_access = Access::Rw;
         prepare_home_protection(&p, home);
         assert!(home.join(".config/autostart").is_dir() && home.join(".bashrc").is_file());
@@ -1777,7 +2217,13 @@ mod guard_tests {
     #[test]
     fn only_proper_variable_names_are_set() {
         let mut ctx = sample_context();
-        for (k, v) in [("_OK", "1"), ("Z9", "2"), ("9BAD", "3"), ("A-B", "4"), ("NUL", "a\0b")] {
+        for (k, v) in [
+            ("_OK", "1"),
+            ("Z9", "2"),
+            ("9BAD", "3"),
+            ("A-B", "4"),
+            ("NUL", "a\0b"),
+        ] {
             ctx.permissions.environment.set.insert(k.into(), v.into());
         }
         let a = args_of(&ctx);

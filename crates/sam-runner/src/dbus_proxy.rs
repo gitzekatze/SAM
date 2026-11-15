@@ -18,17 +18,31 @@ pub struct DbusProxy {
 }
 
 impl DbusProxy {
-    pub fn start(host: &HostInfo, perms: &DbusBusPerms, runtime_dir: &Path, app_id: &str) -> Result<DbusProxy> {
+    pub fn start(
+        host: &HostInfo,
+        perms: &DbusBusPerms,
+        runtime_dir: &Path,
+        app_id: &str,
+    ) -> Result<DbusProxy> {
         let tool = host.tools.xdg_dbus_proxy.as_ref().context(sam_core::i18n::tr("xdg-dbus-proxy is not installed, so SAM cannot give the app filtered access to desktop services (file dialogs, notifications, the tray). Install the package xdg-dbus-proxy, or turn the app's session bus to No access."))?;
         let address = host
             .sockets
             .dbus_session_address
             .clone()
-            .or_else(|| host.sockets.dbus_session.as_ref().map(|p| format!("unix:path={}", p.display())))
+            .or_else(|| {
+                host.sockets
+                    .dbus_session
+                    .as_ref()
+                    .map(|p| format!("unix:path={}", p.display()))
+            })
             .context(sam_core::i18n::tr("no session bus address"))?;
         let socket = runtime_dir.join("bus");
         let _ = std::fs::remove_file(&socket);
-        let mut args = vec![address, socket.to_string_lossy().into_owned(), "--filter".into()];
+        let mut args = vec![
+            address,
+            socket.to_string_lossy().into_owned(),
+            "--filter".into(),
+        ];
         for name in &perms.allow {
             if perms.deny.iter().any(|d| d == name) {
                 continue;
@@ -39,8 +53,12 @@ impl DbusProxy {
         let mut refused = Vec::new();
         for name in &perms.own {
             // The tray's item names are SAM's own choice, never refused.
-            let tray = name.starts_with("org.kde.StatusNotifierItem-") || name.starts_with("org.freedesktop.StatusNotifierItem-");
-            if let Some(why) = (!tray).then(|| sam_core::permissions::refuse_own_name(name, &activatable)).flatten() {
+            let tray = name.starts_with("org.kde.StatusNotifierItem-")
+                || name.starts_with("org.freedesktop.StatusNotifierItem-");
+            if let Some(why) = (!tray)
+                .then(|| sam_core::permissions::refuse_own_name(name, &activatable))
+                .flatten()
+            {
                 refused.push((name.clone(), why));
                 continue;
             }
@@ -59,17 +77,29 @@ impl DbusProxy {
             args.push(format!("--broadcast={rule}"));
         }
         // Let the app own names under its own id.
-        args.push(format!("--own=io.github.gitzekatze.SAM.{}.*", app_id.replace('-', "_")));
+        args.push(format!(
+            "--own=io.github.gitzekatze.SAM.{}.*",
+            app_id.replace('-', "_")
+        ));
         // Diagnostics: with SAM_DBUS_LOG set to a file, the proxy logs every
         // call it passes, filters or answers itself (for finding calls an
         // app waits on, such as a blocked service it expects to exist).
-        let log = std::env::var_os("SAM_DBUS_LOG").and_then(|p| std::fs::OpenOptions::new().create(true).append(true).open(p).ok());
+        let log = std::env::var_os("SAM_DBUS_LOG").and_then(|p| {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(p)
+                .ok()
+        });
         if log.is_some() {
             args.push("--log".into());
         }
         let (program, argv) = (tool.path.clone(), args.clone());
         let mut cmd = Command::new(&program);
-        cmd.args(&argv).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        cmd.args(&argv)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
         if let Some(f) = log {
             if let Ok(f2) = f.try_clone() {
                 cmd.stdout(f).stderr(f2);
@@ -83,19 +113,35 @@ impl DbusProxy {
                 Ok(())
             });
         }
-        let mut child = cmd.spawn().context(sam_core::i18n::tr("starting xdg-dbus-proxy"))?;
+        let mut child = cmd
+            .spawn()
+            .context(sam_core::i18n::tr("starting xdg-dbus-proxy"))?;
         let deadline = Instant::now() + Duration::from_secs(3);
         while !socket.exists() {
             if let Some(st) = child.try_wait()? {
-                bail!("{}", sam_core::i18n::trf("xdg-dbus-proxy exited early ({status})", &[("status", &st)]));
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "xdg-dbus-proxy exited early ({status})",
+                        &[("status", &st)]
+                    )
+                );
             }
             if Instant::now() > deadline {
                 let _ = child.kill();
-                bail!("{}", sam_core::i18n::tr("xdg-dbus-proxy did not create its socket in time"));
+                bail!(
+                    "{}",
+                    sam_core::i18n::tr("xdg-dbus-proxy did not create its socket in time")
+                );
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        Ok(DbusProxy { child, socket, args, refused })
+        Ok(DbusProxy {
+            child,
+            socket,
+            args,
+            refused,
+        })
     }
 }
 

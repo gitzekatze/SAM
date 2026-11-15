@@ -29,12 +29,41 @@ fn fake_bwrap_error_is_not_a_sandbox_failure() {
     spec.apprun = "#!/bin/sh\necho \"bwrap: Can't mount proc on /newroot/proc: Operation not permitted\" >&2\nexit 1\n".into();
     build(&img, &spec).unwrap();
     let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
-    let mut e = sam.add(&img, &AddOptions { launcher: Some(false), accept: true, ..Default::default() }).unwrap().entry;
-    let rec = run(&mut e, &LaunchOptions { quiet: true, ..Default::default() }, &sam.config, &sam.paths, &HostInfo::probe()).unwrap();
-    assert!(!rec.setup_failed, "the sandbox was built; the error text came from the app");
+    let mut e = sam
+        .add(
+            &img,
+            &AddOptions {
+                launcher: Some(false),
+                accept: true,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry;
+    let rec = run(
+        &mut e,
+        &LaunchOptions {
+            quiet: true,
+            ..Default::default()
+        },
+        &sam.config,
+        &sam.paths,
+        &HostInfo::probe(),
+    )
+    .unwrap();
+    assert!(
+        !rec.setup_failed,
+        "the sandbox was built; the error text came from the app"
+    );
     assert!(!rec.sandbox_failure, "{}", rec.summary);
     if sam_runner::find_helper().is_some() {
-        assert!(rec.enforcement.as_deref().is_some_and(|s| s.contains("seccomp")), "helper reported what it enforced: {:?}", rec.enforcement);
+        assert!(
+            rec.enforcement
+                .as_deref()
+                .is_some_and(|s| s.contains("seccomp")),
+            "helper reported what it enforced: {:?}",
+            rec.enforcement
+        );
     }
 }
 
@@ -52,7 +81,10 @@ fn app_output_cannot_buy_dangerous_grants() {
     assert!(!found.is_empty());
     for s in &found {
         assert!(s.from_app_output);
-        assert!(matches!(s.action, sam_core::FixAction::None), "refused, not offered: {s:?}");
+        assert!(
+            matches!(s.action, sam_core::FixAction::None),
+            "refused, not offered: {s:?}"
+        );
     }
 }
 
@@ -62,17 +94,32 @@ fn app_output_cannot_buy_dangerous_grants() {
 fn markup_in_metadata_is_neutralized() {
     let tmp = tempfile::tempdir().unwrap();
     let img = tmp.path().join("Evil.AppImage");
-    build(&img, &FixtureSpec::hello("<b>Safe</b><img src=\"http://example.invalid/t.png\">")).unwrap();
+    build(
+        &img,
+        &FixtureSpec::hello("<b>Safe</b><img src=\"http://example.invalid/t.png\">"),
+    )
+    .unwrap();
     let p = sam_intake::peek::peek(&img).unwrap();
-    assert!(!p.metadata.name.contains('<') && !p.metadata.name.contains('>'), "{}", p.metadata.name);
+    assert!(
+        !p.metadata.name.contains('<') && !p.metadata.name.contains('>'),
+        "{}",
+        p.metadata.name
+    );
     assert!(!p.metadata.comment.contains('<'));
 }
 
 /// M1: a launcher never registers URL schemes, directories or executables.
 #[test]
 fn launcher_drops_hijack_mime_types() {
-    let mut e = sam_core::AppEntry { id: "appimage-x-1".into(), ..Default::default() };
-    e.metadata.mime_types = vec!["x-scheme-handler/https".into(), "inode/directory".into(), "image/png".into()];
+    let mut e = sam_core::AppEntry {
+        id: "appimage-x-1".into(),
+        ..Default::default()
+    };
+    e.metadata.mime_types = vec![
+        "x-scheme-handler/https".into(),
+        "inode/directory".into(),
+        "image/png".into(),
+    ];
     let text = sam_intake::desktop::launcher_contents(&e, "sam-jail-run");
     assert!(text.contains("MimeType=image/png;"), "{text}");
     assert!(!text.contains("x-scheme-handler") && !text.contains("inode/"));

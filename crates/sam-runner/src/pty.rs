@@ -84,13 +84,21 @@ pub struct Outer {
 }
 
 impl Outer {
-    pub const STDIO: Outer = Outer { input: 0, output: 1 };
+    pub const STDIO: Outer = Outer {
+        input: 0,
+        output: 1,
+    };
 }
 
 impl Pty {
     /// With an outer terminal, its size and settings are copied.
     pub fn open(outer: Option<Outer>) -> Result<Pty> {
-        let mut size = libc::winsize { ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0 };
+        let mut size = libc::winsize {
+            ws_row: 24,
+            ws_col: 80,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
         // SAFETY: termios is a plain C struct; all zeros is a valid value.
         let mut settings: libc::termios = unsafe { std::mem::zeroed() };
         let mut have_settings = false;
@@ -102,20 +110,37 @@ impl Pty {
             }
         }
         let (mut leader, mut follower) = (-1, -1);
-        let tp = if have_settings { &settings as *const libc::termios } else { std::ptr::null() };
+        let tp = if have_settings {
+            &settings as *const libc::termios
+        } else {
+            std::ptr::null()
+        };
         // SAFETY: `leader` and `follower` are valid ints to fill; `tp` is null or points to `settings`, and `size` is valid.
-        if unsafe { libc::openpty(&mut leader, &mut follower, std::ptr::null_mut(), tp, &size) } != 0 {
-            bail!("{}", sam_core::i18n::trf("could not create a terminal for the app: {error}", &[("error", &std::io::Error::last_os_error())]));
+        if unsafe { libc::openpty(&mut leader, &mut follower, std::ptr::null_mut(), tp, &size) }
+            != 0
+        {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "could not create a terminal for the app: {error}",
+                    &[("error", &std::io::Error::last_os_error())]
+                )
+            );
         }
         // SAFETY: openpty returned two new descriptors that nothing else owns.
-        let (leader, follower) = unsafe { (OwnedFd::from_raw_fd(leader), OwnedFd::from_raw_fd(follower)) };
+        let (leader, follower) =
+            unsafe { (OwnedFd::from_raw_fd(leader), OwnedFd::from_raw_fd(follower)) };
         // openpty does not set close-on-exec: neither end may leak into the
         // sandbox beyond the app's standard streams.
         for fd in [&leader, &follower] {
             // SAFETY: `fd` is one of the two descriptors openpty just created; F_SETFD only changes its flags.
             unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) };
         }
-        Ok(Pty { leader, follower, outer })
+        Ok(Pty {
+            leader,
+            follower,
+            outer,
+        })
     }
 
     /// One of the app's standard streams.
@@ -140,11 +165,18 @@ impl Pty {
     /// (and SAM's `Command`, which holds copies of the follower, dropped).
     pub fn start(self, out: OutputSink) -> Relay {
         let done = Arc::new(AtomicBool::new(false));
-        let Pty { leader, follower, outer } = self;
+        let Pty {
+            leader,
+            follower,
+            outer,
+        } = self;
         drop(follower);
         let d = done.clone();
         let thread = std::thread::spawn(move || relay(leader, outer, out, d));
-        Relay { done, thread: Some(thread) }
+        Relay {
+            done,
+            thread: Some(thread),
+        }
     }
 }
 
@@ -179,7 +211,10 @@ impl Relay {
     /// settings back.
     pub fn finish(mut self) -> RelayEnd {
         self.done.store(true, Ordering::SeqCst);
-        self.thread.take().and_then(|t| t.join().ok()).unwrap_or_default()
+        self.thread
+            .take()
+            .and_then(|t| t.join().ok())
+            .unwrap_or_default()
     }
 }
 
@@ -248,7 +283,12 @@ impl Drop for RawMode {
     }
 }
 
-fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<AtomicBool>) -> RelayEnd {
+fn relay(
+    leader: OwnedFd,
+    outer: Option<Outer>,
+    out: OutputSink,
+    done: Arc<AtomicBool>,
+) -> RelayEnd {
     let lfd = leader.as_raw_fd();
     // SAFETY: `lfd` is the terminal leader this relay owns; F_GETFL/F_SETFL only change its flags.
     unsafe {
@@ -281,8 +321,18 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
             }
         }
         let mut fds = [
-            libc::pollfd { fd: lfd, events: libc::POLLIN | if to_app.is_empty() { 0 } else { libc::POLLOUT }, revents: 0 },
-            libc::pollfd { fd: outer.filter(|_| to_app.len() < 64 * 1024).map_or(-1, |o| o.input), events: libc::POLLIN, revents: 0 },
+            libc::pollfd {
+                fd: lfd,
+                events: libc::POLLIN | if to_app.is_empty() { 0 } else { libc::POLLOUT },
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: outer
+                    .filter(|_| to_app.len() < 64 * 1024)
+                    .map_or(-1, |o| o.input),
+                events: libc::POLLIN,
+                revents: 0,
+            },
         ];
         let finished = done.load(Ordering::SeqCst);
         // SAFETY: `fds` is a valid array of two pollfds.
@@ -306,7 +356,9 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
             let r = unsafe { libc::read(o.input, buf.as_mut_ptr().cast(), buf.len()) };
             if r > 0 {
                 to_app.extend_from_slice(&buf[..r as usize]);
-            } else if r == 0 || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+            } else if r == 0
+                || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted
+            {
                 // The user's terminal is gone: hang up the app's.
                 hung_up = true;
                 break;
@@ -348,7 +400,9 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
                 break;
             } else {
                 let e = std::io::Error::last_os_error();
-                if e.kind() != std::io::ErrorKind::WouldBlock && e.kind() != std::io::ErrorKind::Interrupted {
+                if e.kind() != std::io::ErrorKind::WouldBlock
+                    && e.kind() != std::io::ErrorKind::Interrupted
+                {
                     // EIO: every copy of the app's side is closed.
                     break;
                 }
@@ -365,7 +419,10 @@ fn relay(leader: OwnedFd, outer: Option<Outer>, out: OutputSink, done: Arc<Atomi
         unsafe { libc::tcflush(o.input, libc::TCIFLUSH) };
     }
     drop(leader);
-    RelayEnd { blocked: filter.blocked, hung_up }
+    RelayEnd {
+        blocked: filter.blocked,
+        hung_up,
+    }
 }
 
 fn write_all(fd: RawFd, mut data: &[u8]) -> std::io::Result<()> {
@@ -401,7 +458,10 @@ pub fn plain_text(data: &[u8]) -> String {
                     }
                 }
                 Some(b']') | Some(b'P') | Some(b'_') | Some(b'^') => {
-                    while i < data.len() && data[i] != 0x07 && !(data[i] == 0x1b && data.get(i + 1) == Some(&b'\\')) {
+                    while i < data.len()
+                        && data[i] != 0x07
+                        && !(data[i] == 0x1b && data.get(i + 1) == Some(&b'\\'))
+                    {
                         i += 1;
                     }
                     if data.get(i) == Some(&0x1b) {
@@ -537,22 +597,36 @@ impl OutputFilter {
                     self.seq.push(b);
                     return;
                 }
-                let num = std::str::from_utf8(&self.seq[2..]).ok().and_then(|s| s.parse::<u32>().ok());
+                let num = std::str::from_utf8(&self.seq[2..])
+                    .ok()
+                    .and_then(|s| s.parse::<u32>().ok());
                 match num.and_then(blocked_osc) {
                     Some(what) => {
                         self.blocked.insert(what);
-                        self.st = St::Osc { pass: false, esc: false };
+                        self.st = St::Osc {
+                            pass: false,
+                            esc: false,
+                        };
                     }
                     None => {
                         out.extend_from_slice(&self.seq);
-                        self.st = St::Osc { pass: true, esc: false };
+                        self.st = St::Osc {
+                            pass: true,
+                            esc: false,
+                        };
                     }
                 }
                 self.byte(b, out);
             }
             St::Osc { pass, esc } | St::Dcs { pass, esc } => {
                 let osc = matches!(self.st, St::Osc { .. });
-                let back = |esc| if osc { St::Osc { pass, esc } } else { St::Dcs { pass, esc } };
+                let back = |esc| {
+                    if osc {
+                        St::Osc { pass, esc }
+                    } else {
+                        St::Dcs { pass, esc }
+                    }
+                };
                 if esc {
                     if b == b'\\' {
                         if pass {
@@ -593,11 +667,17 @@ impl OutputFilter {
                     if self.seq.len() - 2 == TMUX.len() {
                         // tmux passes this on to the terminal outside tmux.
                         self.blocked.insert("tmux passthrough");
-                        self.st = St::Dcs { pass: false, esc: false };
+                        self.st = St::Dcs {
+                            pass: false,
+                            esc: false,
+                        };
                     }
                 } else {
                     out.extend_from_slice(&self.seq);
-                    self.st = St::Dcs { pass: true, esc: false };
+                    self.st = St::Dcs {
+                        pass: true,
+                        esc: false,
+                    };
                     self.byte(b, out);
                 }
             }
@@ -634,7 +714,11 @@ mod tests {
     #[test]
     fn a_doubled_escape_does_not_smuggle_a_clipboard_code() {
         let (out, f) = run(&[b"a\x1b\x1b]52;c;aGVsbG8=\x07b"]);
-        assert!(!out.windows(3).any(|w| w == b"]52"), "the clipboard code was removed: {:?}", String::from_utf8_lossy(&out));
+        assert!(
+            !out.windows(3).any(|w| w == b"]52"),
+            "the clipboard code was removed: {:?}",
+            String::from_utf8_lossy(&out)
+        );
         assert!(f.blocked.contains("clipboard"));
         // A CSI sequence cancelled by CAN or SUB ends there; what follows is
         // filtered again.
@@ -643,7 +727,11 @@ mod tests {
             s.push(cancel);
             s.extend_from_slice(b"\x1b]52;c;aGk=\x07z");
             let (out, f) = run(&[&s]);
-            assert!(out.ends_with(b"z") && !out.windows(3).any(|w| w == b"]52"), "{:?}", String::from_utf8_lossy(&out));
+            assert!(
+                out.ends_with(b"z") && !out.windows(3).any(|w| w == b"]52"),
+                "{:?}",
+                String::from_utf8_lossy(&out)
+            );
             assert!(f.blocked.contains("clipboard"));
         }
     }
@@ -671,7 +759,10 @@ mod tests {
     #[test]
     fn title_reports_and_tmux_passthrough_are_removed() {
         let (out, f) = run(&[b"\x1b]2;rm -rf ~\x07\x1b[21t\x1b[20tok\x1b[8;24;80t"]);
-        assert_eq!(out, b"\x1b]2;rm -rf ~\x07ok\x1b[8;24;80t", "the title may be set, not reported; other window ops pass");
+        assert_eq!(
+            out, b"\x1b]2;rm -rf ~\x07ok\x1b[8;24;80t",
+            "the title may be set, not reported; other window ops pass"
+        );
         assert!(f.blocked.contains("title reports"));
         let (out, f) = run(&[b"a\x1bPtmux;\x1b\x1b]52;c;eA==\x07\x1b\\b"]);
         assert_eq!(out, b"ab");
@@ -693,16 +784,30 @@ mod tests {
     /// Logs get plain text without escape codes.
     #[test]
     fn plain_text_for_the_log() {
-        assert_eq!(plain_text(b"\x1b[1mbold\x1b[0m\r\n\x1b]0;t\x07x\ty\x1b(B"), "bold\nx\ty");
+        assert_eq!(
+            plain_text(b"\x1b[1mbold\x1b[0m\r\n\x1b]0;t\x07x\ty\x1b(B"),
+            "bold\nx\ty"
+        );
     }
 
     /// Apps started from a terminal get SAM's terminal relay; apps without a terminal get none.
     #[test]
     fn terminal_apps_get_sams_terminal_relay() {
         assert_eq!(TerminalMode::choose(true, true, true), TerminalMode::Relay);
-        assert_eq!(TerminalMode::choose(false, true, true), TerminalMode::Relay, "GUI apps started from a terminal too");
-        assert_eq!(TerminalMode::choose(true, false, true), TerminalMode::Headless);
-        assert_eq!(TerminalMode::choose(true, true, false), TerminalMode::Headless, "a test start does not take over the user's terminal");
+        assert_eq!(
+            TerminalMode::choose(false, true, true),
+            TerminalMode::Relay,
+            "GUI apps started from a terminal too"
+        );
+        assert_eq!(
+            TerminalMode::choose(true, false, true),
+            TerminalMode::Headless
+        );
+        assert_eq!(
+            TerminalMode::choose(true, true, false),
+            TerminalMode::Headless,
+            "a test start does not take over the user's terminal"
+        );
         assert_eq!(TerminalMode::choose(false, false, true), TerminalMode::None);
     }
 
@@ -712,16 +817,31 @@ mod tests {
     fn typing_and_output_pass_and_leftover_replies_are_discarded() {
         let (mut user, mut outer_fd) = (-1, -1);
         // SAFETY: `user` and `outer_fd` are valid ints to fill; the optional arguments are null.
-        assert_eq!(unsafe { libc::openpty(&mut user, &mut outer_fd, std::ptr::null_mut(), std::ptr::null(), std::ptr::null()) }, 0);
+        let opened = unsafe {
+            libc::openpty(
+                &mut user,
+                &mut outer_fd,
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        assert_eq!(opened, 0);
         // SAFETY: openpty returned two new descriptors that nothing else owns.
-        let (user, outer_fd) = unsafe { (OwnedFd::from_raw_fd(user), OwnedFd::from_raw_fd(outer_fd)) };
-        let outer = Outer { input: outer_fd.as_raw_fd(), output: outer_fd.as_raw_fd() };
+        let (user, outer_fd) =
+            unsafe { (OwnedFd::from_raw_fd(user), OwnedFd::from_raw_fd(outer_fd)) };
+        let outer = Outer {
+            input: outer_fd.as_raw_fd(),
+            output: outer_fd.as_raw_fd(),
+        };
         let pty = Pty::open(Some(outer)).unwrap();
         let mut cmd = std::process::Command::new("/bin/sh");
         // Reads one line, prints it back, asks for the window title and
         // ends at once: the reply must not stay queued for the shell.
         cmd.args(["-c", r#"read line; printf 'got:%s\n' "$line"; printf '\033]2;evil\007\033[21t\033]52;c;?\007'"#]);
-        cmd.stdin(pty.stdio().unwrap()).stdout(pty.stdio().unwrap()).stderr(pty.stdio().unwrap());
+        cmd.stdin(pty.stdio().unwrap())
+            .stdout(pty.stdio().unwrap())
+            .stderr(pty.stdio().unwrap());
         // SAFETY: become_controlling_terminal uses only async-signal-safe calls, as pre_exec requires.
         unsafe {
             use std::os::unix::process::CommandExt;
@@ -732,7 +852,12 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let head = Arc::new(Mutex::new(String::new()));
         let log = Arc::new(Mutex::new(fs::File::create(d.path().join("log")).unwrap()));
-        let relay = pty.start(OutputSink { head, head_limit: 4096, log, log_limit: 4096 });
+        let relay = pty.start(OutputSink {
+            head,
+            head_limit: 4096,
+            log,
+            log_limit: 4096,
+        });
         // The user types a line (raw mode: Enter is a carriage return).
         std::thread::sleep(std::time::Duration::from_millis(200));
         write_all(user.as_raw_fd(), b"hello\r").unwrap();
@@ -757,7 +882,10 @@ mod tests {
         }
         let shown = String::from_utf8_lossy(&shown);
         assert!(shown.contains("got:hello"), "{shown:?}");
-        assert!(shown.contains("\x1b]2;evil\x07") && !shown.contains("[21t") && !shown.contains("]52"), "{shown:?}");
+        assert!(
+            shown.contains("\x1b]2;evil\x07") && !shown.contains("[21t") && !shown.contains("]52"),
+            "{shown:?}"
+        );
         assert!(blocked.contains("title reports") && blocked.contains("clipboard"));
         // Nothing is left for the shell to read.
         let mut queued: libc::c_int = 0;
@@ -775,7 +903,9 @@ mod tests {
         let pty = Pty::open(None).unwrap();
         let mut cmd = std::process::Command::new("/bin/sh");
         cmd.args(["-c", r#"printf 'hello\033]52;c;eA==\007 world'; tty"#]);
-        cmd.stdin(pty.stdio().unwrap()).stdout(pty.stdio().unwrap()).stderr(pty.stdio().unwrap());
+        cmd.stdin(pty.stdio().unwrap())
+            .stdout(pty.stdio().unwrap())
+            .stderr(pty.stdio().unwrap());
         // SAFETY: become_controlling_terminal uses only async-signal-safe calls, as pre_exec requires.
         unsafe {
             use std::os::unix::process::CommandExt;
@@ -786,12 +916,20 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let head = Arc::new(Mutex::new(String::new()));
         let log = Arc::new(Mutex::new(fs::File::create(d.path().join("log")).unwrap()));
-        let relay = pty.start(OutputSink { head: head.clone(), head_limit: 4096, log, log_limit: 4096 });
+        let relay = pty.start(OutputSink {
+            head: head.clone(),
+            head_limit: 4096,
+            log,
+            log_limit: 4096,
+        });
         assert!(child.wait().unwrap().success());
         let blocked = relay.finish().blocked;
         let text = head.lock().unwrap().clone();
         assert!(text.starts_with("hello world"), "{text:?}");
-        assert!(text.contains("/dev/pts/"), "the app's terminal is a pseudo-terminal: {text:?}");
+        assert!(
+            text.contains("/dev/pts/"),
+            "the app's terminal is a pseudo-terminal: {text:?}"
+        );
         assert!(blocked.contains("clipboard"));
     }
 }

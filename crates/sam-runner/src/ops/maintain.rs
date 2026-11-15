@@ -21,7 +21,13 @@ impl Sam {
         }
         let info = inspect(&entry.source_path)?;
         if !info.is_appimage() {
-            bail!("{}", sam_core::i18n::trf("{file} is no longer a valid AppImage", &[("file", &tildify(&entry.source_path))]));
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "{file} is no longer a valid AppImage",
+                    &[("file", &tildify(&entry.source_path))]
+                )
+            );
         }
         let fp = fingerprint::compute(&entry.source_path)?;
         let root = self.extracted_root().join(&entry.id);
@@ -39,7 +45,8 @@ impl Sam {
                 entry.appimage_type = info.kind;
                 if entry.source.sha256 != fp.sha256 {
                     let new_sig = sam_detect::signature::check(&entry.source_path);
-                    entry.signing_key_changed = signing_key_change(entry.signature.as_ref(), &new_sig);
+                    entry.signing_key_changed =
+                        signing_key_change(entry.signature.as_ref(), &new_sig);
                     entry.signature = Some(new_sig);
                 }
                 entry.source = fp.clone();
@@ -47,7 +54,10 @@ impl Sam {
                 entry.extraction = Some(self.extraction_info(&root, &appdir, &out, &info, &fp));
                 let icon_name = entry.metadata.icon_name.clone();
                 let new_md = metadata::read_metadata(&appdir).unwrap_or_default();
-                entry.metadata = AppImageMetadata { icon_path: None, ..new_md };
+                entry.metadata = AppImageMetadata {
+                    icon_path: None,
+                    ..new_md
+                };
                 if entry.metadata.icon_name.is_empty() {
                     entry.metadata.icon_name = icon_name;
                 }
@@ -86,10 +96,16 @@ impl Sam {
         };
         let mut out = Vec::new();
         for mut a in apps {
-            let known = a.extraction.as_ref().map(|x| x.source.clone()).unwrap_or_else(|| a.source.clone());
+            let known = a
+                .extraction
+                .as_ref()
+                .map(|x| x.source.clone())
+                .unwrap_or_else(|| a.source.clone());
             let (status, reasons) = match fingerprint::check(&a.source_path, &known, deep)? {
                 SourceStatus::Unchanged => {
-                    if matches!(a.state, AppState::Missing | AppState::Stale) && a.extraction.is_some() {
+                    if matches!(a.state, AppState::Missing | AppState::Stale)
+                        && a.extraction.is_some()
+                    {
                         a.state = AppState::Ready;
                     }
                     ("unchanged", vec![])
@@ -102,7 +118,12 @@ impl Sam {
                     if a.state == AppState::Missing {
                         a.state = AppState::Ready;
                     }
-                    ("touched", vec![sam_core::i18n::tr("the file's details changed, its content is the same")])
+                    (
+                        "touched",
+                        vec![sam_core::i18n::tr(
+                            "the file's details changed, its content is the same",
+                        )],
+                    )
                 }
                 SourceStatus::Changed { new, reasons } => {
                     a.source = new;
@@ -112,11 +133,19 @@ impl Sam {
                 }
                 SourceStatus::Missing => {
                     a.state = AppState::Missing;
-                    ("missing", vec![format!("{} not found", tildify(&a.source_path))])
+                    (
+                        "missing",
+                        vec![format!("{} not found", tildify(&a.source_path))],
+                    )
                 }
             };
             reg.save(&mut a)?;
-            out.push(RefreshItem { id: a.id.clone(), name: a.display_name().into(), status: status.into(), reasons });
+            out.push(RefreshItem {
+                id: a.id.clone(),
+                name: a.display_name().into(),
+                status: status.into(),
+                reasons,
+            });
         }
         Ok(out)
     }
@@ -125,10 +154,17 @@ impl Sam {
         let mut entry = self.resolve(query)?;
         let p = fs::canonicalize(new_path)?;
         let fp = fingerprint::compute(&p)?;
-        let same = entry.extraction.as_ref().is_some_and(|x| x.source.sha256 == fp.sha256);
+        let same = entry
+            .extraction
+            .as_ref()
+            .is_some_and(|x| x.source.sha256 == fp.sha256);
         entry.source_path = p;
         entry.source = fp;
-        entry.state = if same { AppState::Ready } else { AppState::Stale };
+        entry.state = if same {
+            AppState::Ready
+        } else {
+            AppState::Stale
+        };
         if same {
             if let Some(x) = entry.extraction.as_mut() {
                 x.source = entry.source.clone();
@@ -145,10 +181,18 @@ impl Sam {
     /// folders left by a killed runner are removed here.
     pub fn running(&self, id: &str) -> Vec<u32> {
         let mut pids = Vec::new();
-        let Ok(rd) = fs::read_dir(self.paths.runtime_dir(id)) else { return pids };
+        let Ok(rd) = fs::read_dir(self.paths.runtime_dir(id)) else {
+            return pids;
+        };
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            let Some(pid) = name.strip_prefix("launch-").and_then(|r| r.split('-').next()).and_then(|p| p.parse::<u32>().ok()) else { continue };
+            let Some(pid) = name
+                .strip_prefix("launch-")
+                .and_then(|r| r.split('-').next())
+                .and_then(|p| p.parse::<u32>().ok())
+            else {
+                continue;
+            };
             let lock = e.path().join("running.lock");
             if crate::launch::lock_held(&lock) {
                 pids.push(pid);
@@ -172,7 +216,11 @@ impl Sam {
         let mut runners = Vec::new();
         for p in self.running(&entry.id) {
             for e in fs::read_dir(&base).into_iter().flatten().flatten() {
-                if e.file_name().to_string_lossy().starts_with(&format!("launch-{p}-")) && holds_open(p, &e.path().join("running.lock")) {
+                if e.file_name()
+                    .to_string_lossy()
+                    .starts_with(&format!("launch-{p}-"))
+                    && holds_open(p, &e.path().join("running.lock"))
+                {
                     // So the launch is recorded as closed, not as a failed start.
                     let _ = fs::write(e.path().join(crate::launch::STOP_MARKER), b"");
                     runners.push(p);
@@ -216,7 +264,16 @@ impl Sam {
                     signal(r, libc::SIGKILL);
                 }
                 if !wait(3) {
-                    bail!("{}", sam_core::i18n::trf("{app} could not be closed", &[("app", &sam_core::util::display_safe(&entry.metadata.name, 80))]));
+                    bail!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "{app} could not be closed",
+                            &[(
+                                "app",
+                                &sam_core::util::display_safe(&entry.metadata.name, 80)
+                            )]
+                        )
+                    );
                 }
             }
         }
@@ -245,7 +302,10 @@ impl Sam {
             if let Err(e) = menu::restore(h, &entry.id) {
                 problems.push(sam_core::i18n::trf(
                     "could not restore the menu entry {entry}: {error}",
-                    &[("entry", &h.original.display()), ("error", &format!("{e:#}"))],
+                    &[
+                        ("entry", &h.original.display()),
+                        ("error", &format!("{e:#}")),
+                    ],
                 ));
             }
         }
@@ -253,14 +313,21 @@ impl Sam {
             // Only inside SAM's own unpack folder, after resolving "..":
             // a record changed outside SAM must not make SAM delete
             // anything else (Path::starts_with does not resolve "..").
-            if let (Ok(root), Ok(base)) = (fs::canonicalize(&x.root), fs::canonicalize(self.extracted_root())) {
+            if let (Ok(root), Ok(base)) = (
+                fs::canonicalize(&x.root),
+                fs::canonicalize(self.extracted_root()),
+            ) {
                 if root.starts_with(&base) && root != base {
                     fs::remove_dir_all(&root)?;
                 }
             }
         }
         for ext in ["png", "svg", "xpm"] {
-            let _ = fs::remove_file(self.paths.icons_dir().join(format!("sam-{}.{ext}", entry.id)));
+            let _ = fs::remove_file(
+                self.paths
+                    .icons_dir()
+                    .join(format!("sam-{}.{ext}", entry.id)),
+            );
         }
         let _ = fs::remove_dir_all(self.paths.runtime_dir(&entry.id));
         if !keep_data {
@@ -302,11 +369,15 @@ impl Sam {
         }
         // SAM's menu entries left without a record, and SAM's own entry.
         let mut files = desktop::sam_launchers(&self.paths.applications_dir);
-        let own = self.paths.applications_dir.join("io.github.gitzekatze.SAM.desktop");
+        let own = self
+            .paths
+            .applications_dir
+            .join("io.github.gitzekatze.SAM.desktop");
         if fs::read_to_string(&own).is_ok_and(|t| t.contains("X-SAM-Self=true")) {
             files.push(own);
             if let Some(data_home) = self.paths.applications_dir.parent() {
-                let icon = data_home.join("icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg");
+                let icon =
+                    data_home.join("icons/hicolor/scalable/apps/io.github.gitzekatze.SAM.svg");
                 if icon.exists() {
                     files.push(icon);
                 }
@@ -315,7 +386,11 @@ impl Sam {
         let runtime = self.paths.runtime_dir("x").parent().map(Path::to_path_buf);
         let mut dirs: Vec<PathBuf> = runtime.into_iter().filter(|d| d.exists()).collect();
         if !keep_data {
-            for d in [self.paths.config_dir.clone(), self.paths.data_dir.clone(), self.extracted_root()] {
+            for d in [
+                self.paths.config_dir.clone(),
+                self.paths.data_dir.clone(),
+                self.extracted_root(),
+            ] {
                 if d.exists() && !dirs.iter().any(|o| d.starts_with(o)) {
                     safe_to_delete(&d)?;
                     dirs.push(d);
@@ -386,11 +461,16 @@ impl Sam {
     /// *Free space*, or deleted by hand) and the file is unchanged. A
     /// changed file is left to `reextract`, which reviews new permissions.
     pub fn ensure_unpacked(&self, entry: &mut AppEntry) -> Result<bool> {
-        let Some(x) = &entry.extraction else { return Ok(false) };
+        let Some(x) = &entry.extraction else {
+            return Ok(false);
+        };
         if x.appdir.join(&x.entry).exists() || !entry.source_path.exists() {
             return Ok(false);
         }
-        if !matches!(fingerprint::check(&entry.source_path, &x.source, false), Ok(SourceStatus::Unchanged)) {
+        if !matches!(
+            fingerprint::check(&entry.source_path, &x.source, false),
+            Ok(SourceStatus::Unchanged)
+        ) {
             return Ok(false);
         }
         *entry = self.reextract(&entry.id, false)?;
@@ -398,16 +478,27 @@ impl Sam {
     }
 
     pub fn leftover_data(&self) -> Result<Vec<LeftoverData>> {
-        let ids: std::collections::HashSet<String> = self.registry().list()?.into_iter().map(|a| a.id).collect();
+        let ids: std::collections::HashSet<String> =
+            self.registry().list()?.into_iter().map(|a| a.id).collect();
         let mut by_id: std::collections::BTreeMap<String, LeftoverData> = Default::default();
-        for root in [self.paths.homes_dir(), self.paths.data_dir.join("overlays"), self.paths.logs_dir()] {
-            let Ok(rd) = fs::read_dir(&root) else { continue };
+        for root in [
+            self.paths.homes_dir(),
+            self.paths.data_dir.join("overlays"),
+            self.paths.logs_dir(),
+        ] {
+            let Ok(rd) = fs::read_dir(&root) else {
+                continue;
+            };
             for e in rd.flatten() {
                 let id = e.file_name().to_string_lossy().into_owned();
                 if ids.contains(&id) || !e.path().is_dir() {
                     continue;
                 }
-                let d = by_id.entry(id.clone()).or_insert_with(|| LeftoverData { id, paths: vec![], size: 0 });
+                let d = by_id.entry(id.clone()).or_insert_with(|| LeftoverData {
+                    id,
+                    paths: vec![],
+                    size: 0,
+                });
                 d.size += tree_size(&e.path());
                 d.paths.push(e.path());
             }
@@ -446,7 +537,11 @@ impl Sam {
     /// Checks whether newer versions are published, for one app or all,
     /// and stores the result with each app. With `if_due`, only when
     /// `updates.check_on_start` is on, and only apps not checked for a day.
-    pub fn check_updates(&self, query: Option<&str>, if_due: bool) -> Result<Vec<(String, UpdateStatus)>> {
+    pub fn check_updates(
+        &self,
+        query: Option<&str>,
+        if_due: bool,
+    ) -> Result<Vec<(String, UpdateStatus)>> {
         if if_due && !self.config.updates.check_on_start {
             return Ok(vec![]);
         }
@@ -457,7 +552,11 @@ impl Sam {
         let reg = self.registry();
         let mut out = Vec::new();
         for mut e in entries {
-            if if_due && e.update.as_ref().is_some_and(|u| now() - u.checked_at < 24 * 3600) {
+            if if_due
+                && e.update
+                    .as_ref()
+                    .is_some_and(|u| now() - u.checked_at < 24 * 3600)
+            {
                 continue;
             }
             if !e.source_path.exists() {
@@ -485,16 +584,34 @@ impl Sam {
         self.ensure_not_running(&entry, "update it")?;
         let old = entry.source_path.clone();
         if !old.exists() {
-            bail!("{}", sam_core::i18n::trf("the AppImage {file} is missing; relocate it first", &[("file", &tildify(&old))]));
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the AppImage {file} is missing; relocate it first",
+                    &[("file", &tildify(&old))]
+                )
+            );
         }
         let Some(p) = crate::updates::newest(&old)? else {
             bail!(
                 "{}",
-                sam_core::i18n::trf("{app} is already the newest published version", &[("app", &sam_core::util::display_safe(entry.display_name(), 80))])
+                sam_core::i18n::trf(
+                    "{app} is already the newest published version",
+                    &[(
+                        "app",
+                        &sam_core::util::display_safe(entry.display_name(), 80)
+                    )]
+                )
             );
         };
-        let dir = old.parent().context(sam_core::i18n::tr("no folder"))?.to_path_buf();
-        let old_name = old.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let dir = old
+            .parent()
+            .context(sam_core::i18n::tr("no folder"))?
+            .to_path_buf();
+        let old_name = old
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         // The new file keeps its published name, if that is a plain name and
         // does not clash with another file.
         let name = p
@@ -509,7 +626,10 @@ impl Sam {
         // From here on, any error removes the download again.
         let placed = (|| -> Result<PathBuf> {
             if !inspect(&tmp)?.is_appimage() {
-                bail!("{}", sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted"));
+                bail!(
+                    "{}",
+                    sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted")
+                );
             }
             let new_sig = sam_detect::signature::check(&tmp);
             if let Some(before) = signing_key_change(entry.signature.as_ref(), &new_sig) {
@@ -526,7 +646,10 @@ impl Sam {
             }
             {
                 use std::os::unix::fs::PermissionsExt;
-                let mode = fs::metadata(&old).map(|m| m.permissions().mode()).unwrap_or(0o755) | 0o500;
+                let mode = fs::metadata(&old)
+                    .map(|m| m.permissions().mode())
+                    .unwrap_or(0o755)
+                    | 0o500;
                 fs::set_permissions(&tmp, fs::Permissions::from_mode(mode & 0o777))?;
             }
             // Keep the old version, then put the new one in place.
@@ -539,7 +662,8 @@ impl Sam {
             move_file(&old, &backup)?;
             if let Err(e) = fs::rename(&tmp, &target) {
                 let _ = move_file(&backup, &old);
-                return Err(anyhow::Error::new(e).context(sam_core::i18n::tr("putting the new version in place")));
+                return Err(anyhow::Error::new(e)
+                    .context(sam_core::i18n::tr("putting the new version in place")));
             }
             Ok(backup)
         })();
@@ -552,7 +676,11 @@ impl Sam {
         };
         self.relocate(&entry.id, &target)?;
         let mut e = self.reextract(&entry.id, false)?;
-        e.update_backup = Some(UpdateBackup { file: backup, original_path: old, replaced_at: now() });
+        e.update_backup = Some(UpdateBackup {
+            file: backup,
+            original_path: old,
+            replaced_at: now(),
+        });
         e.update = Some(UpdateStatus {
             state: sam_core::model::UpdateState::Current,
             latest: p.filename.or(p.release),
@@ -578,31 +706,52 @@ impl Sam {
     pub fn undo_update(&self, query: &str) -> Result<AppEntry> {
         let entry = self.resolve(query)?;
         self.ensure_not_running(&entry, "go back")?;
-        let b = entry.update_backup.clone().context(sam_core::i18n::tr("there is no earlier version to go back to"))?;
+        let b = entry.update_backup.clone().context(sam_core::i18n::tr(
+            "there is no earlier version to go back to",
+        ))?;
         if !b.file.exists() {
-            bail!("{}", sam_core::i18n::trf("the earlier version is no longer there ({file})", &[("file", &tildify(&b.file))]));
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the earlier version is no longer there ({file})",
+                    &[("file", &tildify(&b.file))]
+                )
+            );
         }
         // SAM keeps earlier versions only in its own backup folder; a record
         // changed outside SAM must not make it move any other file.
         let backups = fs::canonicalize(self.paths.data_dir.join("update-backups")).ok();
-        if !backups.is_some_and(|dir| fs::canonicalize(&b.file).is_ok_and(|f| f.starts_with(&dir))) {
+        if !backups.is_some_and(|dir| fs::canonicalize(&b.file).is_ok_and(|f| f.starts_with(&dir)))
+        {
             bail!(
                 "{}",
                 sam_core::i18n::trf("the earlier version is not in SAM's backup folder ({file}); SAM does not move it", &[("file", &tildify(&b.file))])
             );
         }
         if b.original_path.exists() && b.original_path != entry.source_path {
-            bail!("{}", sam_core::i18n::trf("{file} exists again; move it away first", &[("file", &tildify(&b.original_path))]));
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "{file} exists again; move it away first",
+                    &[("file", &tildify(&b.original_path))]
+                )
+            );
         }
         let current = entry.source_path.clone();
-        let keep = b.file.with_file_name(current.file_name().context(sam_core::i18n::tr("no name"))?);
+        let keep = b
+            .file
+            .with_file_name(current.file_name().context(sam_core::i18n::tr("no name"))?);
         if current.exists() {
             move_file(&current, &keep)?;
         }
         move_file(&b.file, &b.original_path)?;
         self.relocate(&entry.id, &b.original_path)?;
         let mut e = self.reextract(&entry.id, false)?;
-        e.update_backup = Some(UpdateBackup { file: keep, original_path: current, replaced_at: now() });
+        e.update_backup = Some(UpdateBackup {
+            file: keep,
+            original_path: current,
+            replaced_at: now(),
+        });
         e.update = None;
         self.registry().save(&mut e)?;
         Ok(e)
@@ -618,9 +767,19 @@ impl Sam {
     }
 
     /// `self_update` with the release keys given (for tests).
-    pub fn self_update_with_keys(&self, appimage: &Path, check_only: bool, keys: &[&str]) -> Result<SelfUpdate> {
+    pub fn self_update_with_keys(
+        &self,
+        appimage: &Path,
+        check_only: bool,
+        keys: &[&str],
+    ) -> Result<SelfUpdate> {
         if !appimage.is_absolute() || !appimage.is_file() {
-            bail!("{}", sam_core::i18n::tr("SAM is not running from an AppImage; update it with your package manager"));
+            bail!(
+                "{}",
+                sam_core::i18n::tr(
+                    "SAM is not running from an AppImage; update it with your package manager"
+                )
+            );
         }
         let Some(p) = crate::updates::newest(appimage)? else {
             return Ok(SelfUpdate {
@@ -637,7 +796,9 @@ impl Sam {
         // from: it says so and points to the release page instead of
         // downloading anything (see release_key).
         if keys.is_empty() {
-            let name = latest.clone().unwrap_or_else(|| sam_core::i18n::tr("A newer version"));
+            let name = latest
+                .clone()
+                .unwrap_or_else(|| sam_core::i18n::tr("A newer version"));
             return Ok(SelfUpdate {
                 state: "manual".into(),
                 detail: sam_core::i18n::trf(
@@ -650,17 +811,25 @@ impl Sam {
             });
         }
         if check_only {
-            let name = latest.clone().unwrap_or_else(|| sam_core::i18n::tr("A newer version"));
+            let name = latest
+                .clone()
+                .unwrap_or_else(|| sam_core::i18n::tr("A newer version"));
             return Ok(SelfUpdate {
                 state: "available".into(),
-                detail: sam_core::i18n::trf("{version} is published.", &[("version", &sam_core::util::display_safe(&name, 120))]),
+                detail: sam_core::i18n::trf(
+                    "{version} is published.",
+                    &[("version", &sam_core::util::display_safe(&name, 120))],
+                ),
                 latest,
                 path: appimage.to_path_buf(),
                 page,
             });
         }
         let dir = appimage.parent().context(sam_core::i18n::tr("no folder"))?;
-        let old_name = appimage.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let old_name = appimage
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let name = p
             .filename
             .clone()
@@ -672,7 +841,10 @@ impl Sam {
         let fetched = crate::updates::download_update(&p, appimage, &tmp)?;
         let placed = (|| -> Result<()> {
             if !inspect(&tmp)?.is_appimage() {
-                bail!("{}", sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted"));
+                bail!(
+                    "{}",
+                    sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted")
+                );
             }
             // Only SAM's makers may replace SAM (see release_key).
             crate::release_key::check(&sam_detect::signature::check(&tmp), keys)?;
@@ -688,7 +860,8 @@ impl Sam {
             move_file(appimage, &backup_dir.join(&old_name))?;
             if let Err(e) = fs::rename(&tmp, &target) {
                 let _ = move_file(&backup_dir.join(&old_name), appimage);
-                return Err(anyhow::Error::new(e).context(sam_core::i18n::tr("putting the new version in place")));
+                return Err(anyhow::Error::new(e)
+                    .context(sam_core::i18n::tr("putting the new version in place")));
             }
             Ok(())
         })();
@@ -699,15 +872,23 @@ impl Sam {
         let how = match fetched {
             crate::updates::Fetched::Delta { bytes, total } => sam_core::i18n::trf(
                 "only the changed parts were downloaded ({part} of {whole} MB)",
-                &[("part", &format!("{:.1}", bytes as f64 / 1e6)), ("whole", &format!("{:.1}", total as f64 / 1e6))],
+                &[
+                    ("part", &format!("{:.1}", bytes as f64 / 1e6)),
+                    ("whole", &format!("{:.1}", total as f64 / 1e6)),
+                ],
             ),
-            crate::updates::Fetched::Full { total } => format!("{:.1} MB downloaded", total as f64 / 1e6),
+            crate::updates::Fetched::Full { total } => {
+                format!("{:.1} MB downloaded", total as f64 / 1e6)
+            }
         };
         Ok(SelfUpdate {
             state: "updated".into(),
             latest,
             path: target,
-            detail: sam_core::i18n::trf("SAM was updated; {how}. Restart SAM to use the new version.", &[("how", &how)]),
+            detail: sam_core::i18n::trf(
+                "SAM was updated; {how}. Restart SAM to use the new version.",
+                &[("how", &how)],
+            ),
             page,
         })
     }
@@ -718,7 +899,8 @@ fn move_file(from: &Path, to: &Path) -> Result<()> {
     if fs::rename(from, to).is_ok() {
         return Ok(());
     }
-    fs::copy(from, to).with_context(|| format!("copying {} to {}", from.display(), to.display()))?;
+    fs::copy(from, to)
+        .with_context(|| format!("copying {} to {}", from.display(), to.display()))?;
     fs::remove_file(from).with_context(|| format!("removing {}", from.display()))?;
     Ok(())
 }

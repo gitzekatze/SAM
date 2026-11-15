@@ -195,7 +195,11 @@ impl Sam {
 
     fn limits(&self) -> Limits {
         let e = &self.config.extraction;
-        Limits { max_files: e.max_files, max_bytes: e.max_size_mb.saturating_mul(1024 * 1024), max_seconds: e.max_seconds }
+        Limits {
+            max_files: e.max_files,
+            max_bytes: e.max_size_mb.saturating_mul(1024 * 1024),
+            max_seconds: e.max_seconds,
+        }
     }
 
     pub fn extracted_root(&self) -> PathBuf {
@@ -210,26 +214,55 @@ impl Sam {
 /// Browsers and chat apps need the network; games do when they link networking libraries.
 pub fn app_needs_network(a: &AppEntry) -> bool {
     let by_category = sam_profile::Category::parse(&a.category).is_some_and(|c| c.needs_network());
-    let game_online = a.category == "game" && a.detection.as_ref().is_some_and(|d| d.requirements.network);
-    let file_name = a.source_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let game_online =
+        a.category == "game" && a.detection.as_ref().is_some_and(|d| d.requirements.network);
+    let file_name = a
+        .source_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     by_category || game_online || sam_profile::needs_network_by_purpose(&a.metadata, &file_name)
 }
 
 /// Permissions the new recommendation wants that the user's profile lacks.
-pub fn new_requirements(old_rec: &PermissionSet, new_rec: &PermissionSet, cur: &PermissionSet) -> Vec<String> {
+pub fn new_requirements(
+    old_rec: &PermissionSet,
+    new_rec: &PermissionSet,
+    cur: &PermissionSet,
+) -> Vec<String> {
     let mut v = Vec::new();
     let mut chk = |newly: bool, have: bool, what: &str| {
         if newly && !have {
             v.push(what.to_string());
         }
     };
-    chk(new_rec.devices.gpu && !old_rec.devices.gpu, cur.devices.gpu, "GPU");
-    chk(new_rec.audio.enabled && !old_rec.audio.enabled, cur.audio.enabled, "audio");
-    chk(new_rec.network.mode == NetworkMode::Full && old_rec.network.mode != NetworkMode::Full, cur.network.mode == NetworkMode::Full, "network");
-    chk(new_rec.display.x11 && !old_rec.display.x11, cur.display.x11, "X11");
+    chk(
+        new_rec.devices.gpu && !old_rec.devices.gpu,
+        cur.devices.gpu,
+        "GPU",
+    );
+    chk(
+        new_rec.audio.enabled && !old_rec.audio.enabled,
+        cur.audio.enabled,
+        "audio",
+    );
+    chk(
+        new_rec.network.mode == NetworkMode::Full && old_rec.network.mode != NetworkMode::Full,
+        cur.network.mode == NetworkMode::Full,
+        "network",
+    );
+    chk(
+        new_rec.display.x11 && !old_rec.display.x11,
+        cur.display.x11,
+        "X11",
+    );
     for key in XDG_DIR_KEYS {
         let n = new_rec.filesystem.xdg_access(key);
-        chk(n > old_rec.filesystem.xdg_access(key), cur.filesystem.xdg_access(key) >= n, &format!("{key} folder"));
+        chk(
+            n > old_rec.filesystem.xdg_access(key),
+            cur.filesystem.xdg_access(key) >= n,
+            &format!("{key} folder"),
+        );
     }
     v
 }
@@ -272,9 +305,13 @@ pub struct LeftoverData {
 
 /// Size of a folder tree in bytes (symlinks are not followed).
 fn tree_size(p: &Path) -> u64 {
-    let Ok(md) = fs::symlink_metadata(p) else { return 0 };
+    let Ok(md) = fs::symlink_metadata(p) else {
+        return 0;
+    };
     if md.is_dir() {
-        fs::read_dir(p).map(|rd| rd.flatten().map(|e| tree_size(&e.path())).sum()).unwrap_or(0)
+        fs::read_dir(p)
+            .map(|rd| rd.flatten().map(|e| tree_size(&e.path())).sum())
+            .unwrap_or(0)
     } else {
         md.len()
     }
@@ -294,15 +331,27 @@ pub struct Uninstall {
 fn safe_to_delete(d: &Path) -> Result<()> {
     let home = sam_core::util::home_dir();
     if d.components().count() < 3 || home.starts_with(d) {
-        bail!("{}", sam_core::i18n::trf("refusing to delete {folder}: it is not one of SAM's own folders", &[("folder", &d.display())]));
+        bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "refusing to delete {folder}: it is not one of SAM's own folders",
+                &[("folder", &d.display())]
+            )
+        );
     }
     Ok(())
 }
 
 /// The process has this file open.
 fn holds_open(pid: u32, file: &Path) -> bool {
-    let Ok(want) = fs::canonicalize(file) else { return false };
-    fs::read_dir(format!("/proc/{pid}/fd")).into_iter().flatten().flatten().any(|fd| fs::read_link(fd.path()).is_ok_and(|t| t == want))
+    let Ok(want) = fs::canonicalize(file) else {
+        return false;
+    };
+    fs::read_dir(format!("/proc/{pid}/fd"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|fd| fs::read_link(fd.path()).is_ok_and(|t| t == want))
 }
 
 /// All processes below `root`, children before grandchildren.
@@ -310,11 +359,21 @@ fn descendants(root: u32) -> Vec<u32> {
     let mut parent_of = Vec::new();
     if let Ok(rd) = fs::read_dir("/proc") {
         for e in rd.flatten() {
-            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
-            let Ok(stat) = fs::read_to_string(e.path().join("stat")) else { continue };
+            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+                continue;
+            };
+            let Ok(stat) = fs::read_to_string(e.path().join("stat")) else {
+                continue;
+            };
             // "pid (comm) state ppid ...": comm may contain spaces or ')'.
-            let Some(rest) = stat.rfind(')').map(|i| &stat[i + 1..]) else { continue };
-            if let Some(ppid) = rest.split_whitespace().nth(1).and_then(|p| p.parse::<u32>().ok()) {
+            let Some(rest) = stat.rfind(')').map(|i| &stat[i + 1..]) else {
+                continue;
+            };
+            if let Some(ppid) = rest
+                .split_whitespace()
+                .nth(1)
+                .and_then(|p| p.parse::<u32>().ok())
+            {
                 parent_of.push((pid, ppid));
             }
         }
@@ -337,7 +396,9 @@ fn descendants(root: u32) -> Vec<u32> {
 pub fn remove_tree(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     fn unlock(p: &Path) {
-        let Ok(md) = fs::symlink_metadata(p) else { return };
+        let Ok(md) = fs::symlink_metadata(p) else {
+            return;
+        };
         if md.is_dir() {
             let _ = fs::set_permissions(p, fs::Permissions::from_mode(0o700));
             if let Ok(rd) = fs::read_dir(p) {
@@ -357,8 +418,16 @@ pub fn remove_tree(path: &Path) -> Result<()> {
 /// Three-way merge of permission sets: every setting the user changed from
 /// `base` (what they were shown) is kept; every other setting comes from
 /// `newer` (a recommendation that knows more).
-pub fn merge_adjustments(base: &PermissionSet, user: &PermissionSet, newer: &PermissionSet) -> PermissionSet {
-    fn merge(b: &serde_json::Value, u: &serde_json::Value, n: &serde_json::Value) -> serde_json::Value {
+pub fn merge_adjustments(
+    base: &PermissionSet,
+    user: &PermissionSet,
+    newer: &PermissionSet,
+) -> PermissionSet {
+    fn merge(
+        b: &serde_json::Value,
+        u: &serde_json::Value,
+        n: &serde_json::Value,
+    ) -> serde_json::Value {
         use serde_json::Value;
         match (b, u, n) {
             (Value::Object(bo), Value::Object(uo), Value::Object(no)) => {
@@ -376,9 +445,15 @@ pub fn merge_adjustments(base: &PermissionSet, user: &PermissionSet, newer: &Per
             _ => u.clone(),
         }
     }
-    let (b, u, n) = (serde_json::to_value(base), serde_json::to_value(user), serde_json::to_value(newer));
+    let (b, u, n) = (
+        serde_json::to_value(base),
+        serde_json::to_value(user),
+        serde_json::to_value(newer),
+    );
     match (b, u, n) {
-        (Ok(b), Ok(u), Ok(n)) => serde_json::from_value(merge(&b, &u, &n)).unwrap_or_else(|_| user.clone()),
+        (Ok(b), Ok(u), Ok(n)) => {
+            serde_json::from_value(merge(&b, &u, &n)).unwrap_or_else(|_| user.clone())
+        }
         _ => user.clone(),
     }
 }
@@ -407,7 +482,11 @@ mod tests {
 /// Short description of a signature for messages.
 pub(crate) fn sig_words(s: &sam_core::model::SignatureInfo) -> String {
     use sam_core::model::SignatureState as S;
-    let key = s.fingerprint.as_deref().map(|f| format!(" (key {})", &f[f.len().saturating_sub(16)..])).unwrap_or_default();
+    let key = s
+        .fingerprint
+        .as_deref()
+        .map(|f| format!(" (key {})", &f[f.len().saturating_sub(16)..]))
+        .unwrap_or_default();
     match s.state {
         S::Unsigned => "not signed".into(),
         S::Valid => format!("signed{key}"),
@@ -419,10 +498,16 @@ pub(crate) fn sig_words(s: &sam_core::model::SignatureInfo) -> String {
 /// What the earlier signature was, when the new file is signed with another
 /// key or no longer signed. An unsigned app that stays unsigned, or a first
 /// signature, is no change worth a warning.
-pub(crate) fn signing_key_change(old: Option<&sam_core::model::SignatureInfo>, new: &sam_core::model::SignatureInfo) -> Option<String> {
+pub(crate) fn signing_key_change(
+    old: Option<&sam_core::model::SignatureInfo>,
+    new: &sam_core::model::SignatureInfo,
+) -> Option<String> {
     use sam_core::model::SignatureState as S;
     let old = old?;
-    let old_fp = old.fingerprint.as_deref().filter(|_| old.state == S::Valid)?;
+    let old_fp = old
+        .fingerprint
+        .as_deref()
+        .filter(|_| old.state == S::Valid)?;
     match (new.state, new.fingerprint.as_deref()) {
         (S::Valid, Some(fp)) if fp == old_fp => None,
         (S::Unchecked, _) => None,
@@ -436,17 +521,35 @@ mod signature_tests {
     use sam_core::model::{SignatureInfo, SignatureState as S};
 
     fn sig(state: S, fp: Option<&str>) -> SignatureInfo {
-        SignatureInfo { state, fingerprint: fp.map(str::to_string), detail: String::new() }
+        SignatureInfo {
+            state,
+            fingerprint: fp.map(str::to_string),
+            detail: String::new(),
+        }
     }
 
     /// An update signed with another key, or not signed at all, is noticed.
     #[test]
     fn key_changes_are_noticed() {
         let a = sig(S::Valid, Some("AAAA"));
-        assert_eq!(signing_key_change(Some(&a), &sig(S::Valid, Some("AAAA"))), None, "same key");
-        assert!(signing_key_change(Some(&a), &sig(S::Valid, Some("BBBB"))).is_some(), "other key");
-        assert!(signing_key_change(Some(&a), &sig(S::Unsigned, None)).is_some(), "no longer signed");
-        assert_eq!(signing_key_change(Some(&sig(S::Unsigned, None)), &sig(S::Valid, Some("AAAA"))), None, "first signature");
+        assert_eq!(
+            signing_key_change(Some(&a), &sig(S::Valid, Some("AAAA"))),
+            None,
+            "same key"
+        );
+        assert!(
+            signing_key_change(Some(&a), &sig(S::Valid, Some("BBBB"))).is_some(),
+            "other key"
+        );
+        assert!(
+            signing_key_change(Some(&a), &sig(S::Unsigned, None)).is_some(),
+            "no longer signed"
+        );
+        assert_eq!(
+            signing_key_change(Some(&sig(S::Unsigned, None)), &sig(S::Valid, Some("AAAA"))),
+            None,
+            "first signature"
+        );
         assert_eq!(signing_key_change(None, &sig(S::Unsigned, None)), None);
     }
 }

@@ -35,7 +35,10 @@ pub struct ForeignEntry {
 /// Where menu entries live, user level first.
 pub fn entry_dirs(user_dir: &Path) -> Vec<PathBuf> {
     let mut dirs = vec![user_dir.to_path_buf()];
-    let data_dirs = std::env::var("XDG_DATA_DIRS").ok().filter(|v| !v.is_empty()).unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+    let data_dirs = std::env::var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
     for d in data_dirs.split(':').filter(|d| !d.is_empty()) {
         dirs.push(Path::new(d).join("applications"));
     }
@@ -50,24 +53,49 @@ pub fn foreign_entries(user_dir: &Path) -> Vec<ForeignEntry> {
     let mut seen_names = std::collections::HashSet::new();
     for dir in entry_dirs(user_dir) {
         let Ok(rd) = fs::read_dir(&dir) else { continue };
-        let mut files: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "desktop")).collect();
+        let mut files: Vec<PathBuf> = rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "desktop"))
+            .collect();
         files.sort();
         for file in files {
-            let name = file.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+            let name = file
+                .file_name()
+                .map(|n| n.to_os_string())
+                .unwrap_or_default();
             if !seen_names.insert(name) {
                 continue; // shadowed by a user-level file
             }
-            let Ok(text) = fs::read_to_string(&file) else { continue };
+            let Ok(text) = fs::read_to_string(&file) else {
+                continue;
+            };
             let keys = group_keys(&text);
-            let get = |k: &str| keys.iter().find(|(key, _)| key == k).map(|(_, v)| v.as_str());
+            let get = |k: &str| {
+                keys.iter()
+                    .find(|(key, _)| key == k)
+                    .map(|(_, v)| v.as_str())
+            };
             if get("X-SAM-Managed").is_some() {
                 continue;
             }
-            let Some(appimage) = get("TryExec").and_then(appimage_in).or_else(|| get("Exec").and_then(appimage_in)) else { continue };
+            let Some(appimage) = get("TryExec")
+                .and_then(appimage_in)
+                .or_else(|| get("Exec").and_then(appimage_in))
+            else {
+                continue;
+            };
             let hidden_by = get(MARKER).map(str::to_string);
             let hidden_elsewhere = hidden_by.is_none()
-                && (get("NoDisplay").is_some_and(|v| v.eq_ignore_ascii_case("true")) || get("Hidden").is_some_and(|v| v.eq_ignore_ascii_case("true")));
-            out.push(ForeignEntry { file, appimage, name: get("Name").unwrap_or_default().to_string(), hidden_by, hidden_elsewhere });
+                && (get("NoDisplay").is_some_and(|v| v.eq_ignore_ascii_case("true"))
+                    || get("Hidden").is_some_and(|v| v.eq_ignore_ascii_case("true")));
+            out.push(ForeignEntry {
+                file,
+                appimage,
+                name: get("Name").unwrap_or_default().to_string(),
+                hidden_by,
+                hidden_elsewhere,
+            });
         }
     }
     out
@@ -83,7 +111,8 @@ fn appimage_in(cmd: &str) -> Option<PathBuf> {
         if !p.is_absolute() {
             return None; // a command on $PATH, not an AppImage file
         }
-        let is_appimage = tok.to_lowercase().ends_with(".appimage") || sam_detect::appimage::looks_like_appimage(&p);
+        let is_appimage = tok.to_lowercase().ends_with(".appimage")
+            || sam_detect::appimage::looks_like_appimage(&p);
         return is_appimage.then(|| fs::canonicalize(&p).unwrap_or(p));
     }
     None
@@ -179,32 +208,63 @@ fn rewrite(text: &str, extra: &[String]) -> (String, Option<String>) {
 pub fn hide(entry: &Path, user_dir: &Path, app_id: &str) -> Result<HiddenEntry> {
     let text = fs::read_to_string(entry).with_context(|| format!("reading {}", entry.display()))?;
     if !text.contains(GROUP) {
-        bail!("{}", sam_core::i18n::trf("{file} is not a menu entry", &[("file", &entry.display())]));
+        bail!(
+            "{}",
+            sam_core::i18n::trf("{file} is not a menu entry", &[("file", &entry.display())])
+        );
     }
     let extra = vec!["NoDisplay=true".to_string(), format!("{MARKER}={app_id}")];
     let (new_text, previous) = rewrite(&text, &extra);
     let in_user_dir = entry.parent().is_some_and(|d| same_dir(d, user_dir));
-    let modified = if in_user_dir { entry.to_path_buf() } else { user_dir.join(entry.file_name().context(sam_core::i18n::tr("entry without file name"))?) };
+    let modified = if in_user_dir {
+        entry.to_path_buf()
+    } else {
+        user_dir.join(
+            entry
+                .file_name()
+                .context(sam_core::i18n::tr("entry without file name"))?,
+        )
+    };
     if !in_user_dir && modified.exists() {
-        bail!("{}", sam_core::i18n::trf("{file} already exists; it was not overwritten", &[("file", &modified.display())]));
+        bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "{file} already exists; it was not overwritten",
+                &[("file", &modified.display())]
+            )
+        );
     }
     fs::create_dir_all(user_dir)?;
     atomic_write(&modified, new_text.as_bytes())?;
     refresh_desktop_database(user_dir);
-    Ok(HiddenEntry { original: entry.to_path_buf(), modified, created_override: !in_user_dir, previous_nodisplay: if in_user_dir { previous } else { None } })
+    Ok(HiddenEntry {
+        original: entry.to_path_buf(),
+        modified,
+        created_override: !in_user_dir,
+        previous_nodisplay: if in_user_dir { previous } else { None },
+    })
 }
 
 /// Undo [`hide`]. Leaves files alone that no longer carry SAM's marker for
 /// this app (the user or another tool changed them since).
 pub fn restore(h: &HiddenEntry, app_id: &str) -> Result<()> {
-    let Ok(text) = fs::read_to_string(&h.modified) else { return Ok(()) };
-    if !group_keys(&text).iter().any(|(k, v)| k == MARKER && v == app_id) {
+    let Ok(text) = fs::read_to_string(&h.modified) else {
+        return Ok(());
+    };
+    if !group_keys(&text)
+        .iter()
+        .any(|(k, v)| k == MARKER && v == app_id)
+    {
         return Ok(());
     }
     if h.created_override {
         fs::remove_file(&h.modified)?;
     } else {
-        let extra: Vec<String> = h.previous_nodisplay.iter().map(|v| format!("NoDisplay={v}")).collect();
+        let extra: Vec<String> = h
+            .previous_nodisplay
+            .iter()
+            .map(|v| format!("NoDisplay={v}"))
+            .collect();
         atomic_write(&h.modified, rewrite(&text, &extra).0.as_bytes())?;
     }
     if let Some(dir) = h.modified.parent() {
@@ -214,7 +274,11 @@ pub fn restore(h: &HiddenEntry, app_id: &str) -> Result<()> {
 }
 
 fn same_dir(a: &Path, b: &Path) -> bool {
-    fs::canonicalize(a).ok().zip(fs::canonicalize(b).ok()).is_some_and(|(a, b)| a == b) || a == b
+    fs::canonicalize(a)
+        .ok()
+        .zip(fs::canonicalize(b).ok())
+        .is_some_and(|(a, b)| a == b)
+        || a == b
 }
 
 #[cfg(test)]
@@ -230,9 +294,15 @@ mod tests {
     /// The AppImage a foreign menu entry starts is found in its Exec line, also behind env and with quotes.
     #[test]
     fn the_appimage_behind_a_foreign_menu_entry_is_found() {
-        assert_eq!(split_exec(r#""/a b/X.AppImage" --flag %U"#), vec!["/a b/X.AppImage", "--flag", "%U"]);
+        assert_eq!(
+            split_exec(r#""/a b/X.AppImage" --flag %U"#),
+            vec!["/a b/X.AppImage", "--flag", "%U"]
+        );
         assert_eq!(appimage_in("firefox %u"), None);
-        assert_eq!(appimage_in("env FOO=1 /nope/X.AppImage %U"), Some(PathBuf::from("/nope/X.AppImage")));
+        assert_eq!(
+            appimage_in("env FOO=1 /nope/X.AppImage %U"),
+            Some(PathBuf::from("/nope/X.AppImage"))
+        );
     }
 
     /// An unsandboxed menu entry in the user's folder is hidden on request and restored exactly as it was.
@@ -255,12 +325,28 @@ mod tests {
         assert!(!h.created_override);
         let hidden = fs::read_to_string(&entry).unwrap();
         assert!(hidden.contains("NoDisplay=true\nX-SAM-HiddenBy=appimage-tool-1"));
-        assert!(hidden.contains("[Desktop Action New]\nName=New\nNoDisplay=x"), "other groups untouched");
-        assert_eq!(foreign_entries(&apps).iter().find(|f| f.file == entry).unwrap().hidden_by.as_deref(), Some("appimage-tool-1"));
+        assert!(
+            hidden.contains("[Desktop Action New]\nName=New\nNoDisplay=x"),
+            "other groups untouched"
+        );
+        assert_eq!(
+            foreign_entries(&apps)
+                .iter()
+                .find(|f| f.file == entry)
+                .unwrap()
+                .hidden_by
+                .as_deref(),
+            Some("appimage-tool-1")
+        );
 
         restore(&h, "appimage-tool-1").unwrap();
         let back = fs::read_to_string(&entry).unwrap();
-        assert!(back.contains("NoDisplay=false") && !back.contains("NoDisplay=true") && !back.contains(MARKER), "{back}");
+        assert!(
+            back.contains("NoDisplay=false")
+                && !back.contains("NoDisplay=true")
+                && !back.contains(MARKER),
+            "{back}"
+        );
     }
 
     /// An unsandboxed menu entry in a system folder is hidden through an entry in the user's folder, without touching the system file.
@@ -271,10 +357,18 @@ mod tests {
         fs::create_dir_all(&sys).unwrap();
         let img = fake_appimage(d.path());
         let entry = sys.join("tool.desktop");
-        fs::write(&entry, format!("[Desktop Entry]\nName=Tool\nExec={}\n", img.display())).unwrap();
+        fs::write(
+            &entry,
+            format!("[Desktop Entry]\nName=Tool\nExec={}\n", img.display()),
+        )
+        .unwrap();
         let h = hide(&entry, &user, "appimage-tool-1").unwrap();
         assert!(h.created_override && h.modified == user.join("tool.desktop"));
-        assert_eq!(fs::read_to_string(&entry).unwrap(), format!("[Desktop Entry]\nName=Tool\nExec={}\n", img.display()), "system file untouched");
+        assert_eq!(
+            fs::read_to_string(&entry).unwrap(),
+            format!("[Desktop Entry]\nName=Tool\nExec={}\n", img.display()),
+            "system file untouched"
+        );
         restore(&h, "appimage-tool-1").unwrap();
         assert!(!h.modified.exists());
     }

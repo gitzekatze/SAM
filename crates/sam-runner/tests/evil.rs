@@ -26,7 +26,8 @@ use sam_runner::launch::{run, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
 
 fn have(tool: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(tool).is_file()))
+    std::env::var_os("PATH")
+        .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(tool).is_file()))
 }
 
 fn usable() -> bool {
@@ -80,7 +81,12 @@ fn start_bus(dir: &Path) -> Bus {
         ),
     )
     .unwrap();
-    let daemon = Command::new("dbus-daemon").arg(format!("--config-file={}", conf.display())).arg("--nofork").stdout(Stdio::null()).spawn().unwrap();
+    let daemon = Command::new("dbus-daemon")
+        .arg(format!("--config-file={}", conf.display()))
+        .arg("--nofork")
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
     for _ in 0..50 {
         if socket.exists() {
             break;
@@ -94,14 +100,27 @@ fn start_bus(dir: &Path) -> Bus {
     let mut owner = Command::new("python3")
         .arg(&script)
         .arg(&address)
-        .args(["org.freedesktop.Notifications", "org.freedesktop.systemd1", "org.freedesktop.portal.Flatpak", "org.freedesktop.secrets", "org.kde.klauncher5"])
+        .args([
+            "org.freedesktop.Notifications",
+            "org.freedesktop.systemd1",
+            "org.freedesktop.portal.Flatpak",
+            "org.freedesktop.secrets",
+            "org.kde.klauncher5",
+        ])
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
     let mut line = String::new();
-    BufReader::new(owner.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    BufReader::new(owner.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
     assert_eq!(line.trim(), "READY", "the stand-in services did not start");
-    Bus { address, socket, daemon, owner }
+    Bus {
+        address,
+        socket,
+        daemon,
+        owner,
+    }
 }
 
 /// One hostile app: its start script, and extra files or links in its image.
@@ -113,7 +132,12 @@ struct Evil {
 }
 
 fn evil(name: &'static str, script: impl Into<String>) -> Evil {
-    Evil { name, script: script.into(), files: Vec::new(), links: Vec::new() }
+    Evil {
+        name,
+        script: script.into(),
+        files: Vec::new(),
+        links: Vec::new(),
+    }
 }
 
 /// Every hostile AppImage, added and started like any other, fails to get
@@ -188,11 +212,19 @@ fn every_hostile_appimage_fails_to_escape() {
         ),
         evil("InputDevices", "ls /dev/input/event* >/dev/null 2>&1 && echo RESULT=escaped || echo RESULT=blocked"),
     ];
-    let mut link = evil("SymlinkToKey", "cat \"$APPDIR/usr/share/key\" 2>/dev/null && echo RESULT=escaped || echo RESULT=blocked");
-    link.links.push(("usr/share/key".into(), format!("{h}/.ssh/id_ed25519")));
+    let mut link = evil(
+        "SymlinkToKey",
+        "cat \"$APPDIR/usr/share/key\" 2>/dev/null && echo RESULT=escaped || echo RESULT=blocked",
+    );
+    link.links
+        .push(("usr/share/key".into(), format!("{h}/.ssh/id_ed25519")));
     apps.push(link);
     let mut suid = evil("SetuidInImage", "case $(stat -c %a \"$APPDIR/usr/bin/helper\") in 4*|2*) echo RESULT=escaped;; *) echo RESULT=blocked;; esac");
-    suid.files.push(FixtureFile { path: "usr/bin/helper".into(), data: b"#!/bin/sh\n".to_vec(), mode: 0o4755 });
+    suid.files.push(FixtureFile {
+        path: "usr/bin/helper".into(),
+        data: b"#!/bin/sh\n".to_vec(),
+        mode: 0o4755,
+    });
     apps.push(suid);
 
     let mut host = HostInfo::probe();
@@ -208,21 +240,56 @@ fn every_hostile_appimage_fails_to_escape() {
         spec.symlinks.extend(app.links);
         build(&img, &spec).unwrap();
         // The normal path: added like any AppImage, SAM's recommendation.
-        let id = sam.add(&img, &AddOptions { launcher: Some(false), accept: true, ..Default::default() }).unwrap().entry.id;
+        let id = sam
+            .add(
+                &img,
+                &AddOptions {
+                    launcher: Some(false),
+                    accept: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .entry
+            .id;
         let mut e = sam.resolve(&id).unwrap();
         let started = std::time::Instant::now();
-        let rec = run(&mut e, &LaunchOptions { quiet: true, timeout_secs: Some(30), ..Default::default() }, &sam.config, &sam.paths, &host).unwrap();
+        let rec = run(
+            &mut e,
+            &LaunchOptions {
+                quiet: true,
+                timeout_secs: Some(30),
+                ..Default::default()
+            },
+            &sam.config,
+            &sam.paths,
+            &host,
+        )
+        .unwrap();
         let took = started.elapsed().as_secs_f64();
         let log = fs::read_to_string(rec.log_file.unwrap()).unwrap();
-        let r = log.lines().filter_map(|l| l.strip_prefix("RESULT=")).next_back().unwrap_or("no result").to_string();
+        let r = log
+            .lines()
+            .filter_map(|l| l.strip_prefix("RESULT="))
+            .next_back()
+            .unwrap_or("no result")
+            .to_string();
         eprintln!("evil: {:<18} {:>4.1} s  {r}", app.name, took);
         results.insert(app.name, r);
     }
     drop(bus);
 
-    assert_eq!(results["Control"], "reached", "the allowed service must be reachable, or the D-Bus results mean nothing");
-    let mut escaped: Vec<String> =
-        results.iter().filter(|(n, r)| **n != "Control" && (r.starts_with("escaped") || r.as_str() == "no result")).map(|(n, r)| format!("{n}: {r}")).collect();
+    assert_eq!(
+        results["Control"], "reached",
+        "the allowed service must be reachable, or the D-Bus results mean nothing"
+    );
+    let mut escaped: Vec<String> = results
+        .iter()
+        .filter(|(n, r)| {
+            **n != "Control" && (r.starts_with("escaped") || r.as_str() == "no result")
+        })
+        .map(|(n, r)| format!("{n}: {r}"))
+        .collect();
     // Writes: judged on the host.
     if home.join(".config/autostart/evil.desktop").exists() {
         escaped.push("WriteAutostart: the autostart entry exists".into());
@@ -246,5 +313,9 @@ fn every_hostile_appimage_fails_to_escape() {
     if unpacked_suid {
         escaped.push("SetuidInImage: the unpacked helper kept its setuid bit".into());
     }
-    assert!(escaped.is_empty(), "hostile AppImages escaped:\n{}\nall results: {results:#?}", escaped.join("\n"));
+    assert!(
+        escaped.is_empty(),
+        "hostile AppImages escaped:\n{}\nall results: {results:#?}",
+        escaped.join("\n")
+    );
 }

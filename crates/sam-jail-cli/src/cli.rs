@@ -3,7 +3,11 @@
 use super::*;
 
 #[derive(Parser)]
-#[command(name = "sam-jail", version, about = "SAM - Sandboxed AppImage Manager: Flatseal-style permission manager and sandbox launcher for AppImages")]
+#[command(
+    name = "sam-jail",
+    version,
+    about = "SAM - Sandboxed AppImage Manager: Flatseal-style permission manager and sandbox launcher for AppImages"
+)]
 pub(crate) struct Cli {
     /// Print machine-readable JSON.
     #[arg(long, global = true)]
@@ -225,7 +229,11 @@ pub(crate) enum Cmd {
         cmd: PresetCmd,
     },
     /// Set one permission, e.g. `sam-jail set krita network.mode none`.
-    Set { app: String, key: String, value: String },
+    Set {
+        app: String,
+        key: String,
+        value: String,
+    },
     /// Read permissions (all, or one key).
     Get { app: String, key: Option<String> },
     /// Read or replace the full profile (JSON on stdin for `set`).

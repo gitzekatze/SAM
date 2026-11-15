@@ -29,11 +29,25 @@ use crate::window::{self, App};
 /// The values of a permission that can be changed for a group, with the
 /// words of its switch. A permission with on/off values is drawn as a switch.
 type Opts = &'static [(&'static str, &'static str)];
-const SWITCH: Opts = &[("false", crate::i18n::n_("Off")), ("true", crate::i18n::n_("On"))];
-const NETWORK: Opts =
-    &[("none", crate::i18n::n_("No network")), ("localhost", crate::i18n::n_("This computer only")), ("full", crate::i18n::n_("Full network"))];
-const FOLDER: Opts = &[("none", crate::i18n::n_("No access")), ("ro", crate::i18n::n_("Read-only")), ("rw", crate::i18n::n_("Read & write"))];
-const BUS: Opts = &[("none", crate::i18n::n_("No access")), ("filtered", crate::i18n::n_("Filtered")), ("full", crate::i18n::n_("Full access"))];
+const SWITCH: Opts = &[
+    ("false", crate::i18n::n_("Off")),
+    ("true", crate::i18n::n_("On")),
+];
+const NETWORK: Opts = &[
+    ("none", crate::i18n::n_("No network")),
+    ("localhost", crate::i18n::n_("This computer only")),
+    ("full", crate::i18n::n_("Full network")),
+];
+const FOLDER: Opts = &[
+    ("none", crate::i18n::n_("No access")),
+    ("ro", crate::i18n::n_("Read-only")),
+    ("rw", crate::i18n::n_("Read & write")),
+];
+const BUS: Opts = &[
+    ("none", crate::i18n::n_("No access")),
+    ("filtered", crate::i18n::n_("Filtered")),
+    ("full", crate::i18n::n_("Full access")),
+];
 
 /// The permissions that make sense for several apps at once. Technical
 /// ones (GPU, nested sandbox, syscall filter, all of /usr) stay per app.
@@ -50,8 +64,18 @@ const GROUPS: &[(&str, &[(&str, Opts)])] = &[
             ("filesystem.desktop", FOLDER),
         ],
     ),
-    (crate::i18n::n_("Sound and Devices"), &[("audio.enabled", SWITCH), ("devices.webcam", SWITCH), ("devices.gamepads", SWITCH)]),
-    (crate::i18n::n_("Desktop"), &[("display.x11", SWITCH), ("dbus.session.mode", BUS)]),
+    (
+        crate::i18n::n_("Sound and Devices"),
+        &[
+            ("audio.enabled", SWITCH),
+            ("devices.webcam", SWITCH),
+            ("devices.gamepads", SWITCH),
+        ],
+    ),
+    (
+        crate::i18n::n_("Desktop"),
+        &[("display.x11", SWITCH), ("dbus.session.mode", BUS)],
+    ),
 ];
 
 /// Every group row has three sections of fixed size: the text (the rest of
@@ -61,9 +85,21 @@ const ICONS_WIDTH: i32 = 56;
 const CONTROL_WIDTH: i32 = 148;
 
 const STATUS: &[(&str, &str, &str)] = &[
-    ("running", crate::i18n::n_("Running"), crate::i18n::n_("Show only apps that are running now")),
-    ("needs_review", crate::i18n::n_("Needs review"), crate::i18n::n_("Show only apps whose settings nobody has confirmed yet")),
-    ("may_not_start", crate::i18n::n_("May not start"), crate::i18n::n_("Show only apps whose last start failed or whose AppImage is missing")),
+    (
+        "running",
+        crate::i18n::n_("Running"),
+        crate::i18n::n_("Show only apps that are running now"),
+    ),
+    (
+        "needs_review",
+        crate::i18n::n_("Needs review"),
+        crate::i18n::n_("Show only apps whose settings nobody has confirmed yet"),
+    ),
+    (
+        "may_not_start",
+        crate::i18n::n_("May not start"),
+        crate::i18n::n_("Show only apps whose last start failed or whose AppImage is missing"),
+    ),
 ];
 
 pub struct PermsPage {
@@ -112,7 +148,10 @@ fn value_token(v: &Value) -> String {
 }
 
 fn opt_label(opts: Opts, token: &str) -> String {
-    opts.iter().find(|o| o.0 == token).map(|o| tr(o.1)).unwrap_or_else(|| token.to_string())
+    opts.iter()
+        .find(|o| o.0 == token)
+        .map(|o| tr(o.1))
+        .unwrap_or_else(|| token.to_string())
 }
 
 /// A permission tag: the words of the switch, colored by risk, outlined
@@ -135,8 +174,12 @@ pub fn tag_label(t: &Value) -> gtk::Label {
 /// both included, in the order the list shows them. Without an anchor in
 /// the list, only `id`.
 fn shift_range(shown: &[String], anchor: Option<&str>, id: &str) -> Vec<String> {
-    let Some(to) = shown.iter().position(|s| s == id) else { return Vec::new() };
-    let from = anchor.and_then(|a| shown.iter().position(|s| s == a)).unwrap_or(to);
+    let Some(to) = shown.iter().position(|s| s == id) else {
+        return Vec::new();
+    };
+    let from = anchor
+        .and_then(|a| shown.iter().position(|s| s == a))
+        .unwrap_or(to);
     shown[from.min(to)..=from.max(to)].to_vec()
 }
 
@@ -153,54 +196,93 @@ fn next_filter_state(current: Option<bool>) -> Option<bool> {
 /// Whether an app is shown: its name contains the search text, it has every
 /// state filter that is on (running, needs review, may not start), and for
 /// each tag filter it has (true) or lacks (false) that permission.
-fn passes_filters(app: &Value, search: &str, states: &BTreeSet<&str>, tags: &BTreeMap<String, bool>) -> bool {
+fn passes_filters(
+    app: &Value,
+    search: &str,
+    states: &BTreeSet<&str>,
+    tags: &BTreeMap<String, bool>,
+) -> bool {
     if !search.is_empty() && !util::str_of(app, "name").to_lowercase().contains(search) {
         return false;
     }
     if states.iter().any(|s| !util::bool_of(app, s)) {
         return false;
     }
-    let have = app.get("tags").and_then(Value::as_array).cloned().unwrap_or_default();
-    tags.iter().all(|(k, want)| have.iter().any(|t| util::str_of(t, "key") == k) == *want)
+    let have = app
+        .get("tags")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    tags.iter()
+        .all(|(k, want)| have.iter().any(|t| util::str_of(t, "key") == k) == *want)
 }
 
 impl PermsPage {
     pub fn new(app: &Rc<App>) -> Rc<PermsPage> {
         let root = adw::ToolbarView::new();
         let header = adw::HeaderBar::new();
-        let back = gtk::Button::builder().icon_name("go-previous-symbolic").tooltip_text(tr("Back to the AppImages")).build();
+        let back = gtk::Button::builder()
+            .icon_name("go-previous-symbolic")
+            .tooltip_text(tr("Back to the AppImages"))
+            .build();
         header.pack_start(&back);
         header.set_title_widget(Some(&adw::WindowTitle::new(
             &tr("Permission Manager"),
             &tr("What your sandboxed apps may access. Select several to change them together."),
         )));
-        let show_side = gtk::ToggleButton::builder().icon_name("sidebar-show-right-symbolic").tooltip_text(tr("Show the switches")).visible(false).build();
+        let show_side = gtk::ToggleButton::builder()
+            .icon_name("sidebar-show-right-symbolic")
+            .tooltip_text(tr("Show the switches"))
+            .visible(false)
+            .build();
         header.pack_end(&show_side);
         root.add_top_bar(&header);
         let banner = adw::Banner::new("");
         root.add_top_bar(&banner);
 
         // Left: filters, select all, the list.
-        let left = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(8).margin_start(12).margin_end(12).margin_top(6).build();
-        let search = gtk::SearchEntry::builder().placeholder_text(tr("Search apps")).hexpand(true).build();
+        let left = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(8)
+            .margin_start(12)
+            .margin_end(12)
+            .margin_top(6)
+            .build();
+        let search = gtk::SearchEntry::builder()
+            .placeholder_text(tr("Search apps"))
+            .hexpand(true)
+            .build();
         search.update_property(&[gtk::accessible::Property::Label(&tr("Search apps"))]);
         left.append(&search);
         // Wraps in narrow windows.
-        let status_box = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).column_spacing(4).row_spacing(4).max_children_per_line(3).build();
+        let status_box = gtk::FlowBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .column_spacing(4)
+            .row_spacing(4)
+            .max_children_per_line(3)
+            .build();
         status_box.update_property(&[gtk::accessible::Property::Label(&tr("Filter by state"))]);
         left.append(&status_box);
         let filter_bar = util::wrap_box(6, 6);
-        filter_bar.update_property(&[gtk::accessible::Property::Label(&tr("Filter by permission"))]);
+        filter_bar.update_property(&[gtk::accessible::Property::Label(&tr(
+            "Filter by permission",
+        ))]);
         left.append(&filter_bar);
         let sel_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let select_all = gtk::CheckButton::builder().label(tr("Select all")).hexpand(true).build();
+        let select_all = gtk::CheckButton::builder()
+            .label(tr("Select all"))
+            .hexpand(true)
+            .build();
         let count = gtk::Label::new(None);
         count.add_css_class("dim-label");
         count.add_css_class("caption");
         sel_row.append(&select_all);
         sel_row.append(&count);
         left.append(&sel_row);
-        let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).name("permissions-list").build();
+        let list = gtk::ListBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .name("permissions-list")
+            .build();
         list.add_css_class("boxed-list");
         list.set_margin_bottom(12);
         let empty = adw::StatusPage::builder()
@@ -212,17 +294,29 @@ impl PermsPage {
         let none = adw::StatusPage::builder()
             .icon_name("io.github.gitzekatze.SAM")
             .title(tr("No Sandboxed Apps Yet"))
-            .description(tr("Create a sandbox for an AppImage first. Its permissions then appear here."))
+            .description(tr(
+                "Create a sandbox for an AppImage first. Its permissions then appear here.",
+            ))
             .build();
-        let list_stack = gtk::Stack::builder().valign(gtk::Align::Start).vhomogeneous(false).build();
+        let list_stack = gtk::Stack::builder()
+            .valign(gtk::Align::Start)
+            .vhomogeneous(false)
+            .build();
         list_stack.add_named(&list, Some("list"));
         list_stack.add_named(&empty, Some("empty"));
         list_stack.add_named(&none, Some("none"));
         left.append(&list_stack);
-        let left_scroll = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).hexpand(true).child(&left).build();
+        let left_scroll = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vexpand(true)
+            .hexpand(true)
+            .child(&left)
+            .build();
 
         // Right: the switches.
-        let side = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).build();
+        let side = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .build();
         let intro = adw::StatusPage::builder()
             .icon_name("io.github.gitzekatze.SAM")
             .title(tr("Permission Manager"))
@@ -237,7 +331,10 @@ impl PermsPage {
         let single_page = adw::PreferencesPage::new();
         let single_group = adw::PreferencesGroup::new();
         let single_title = adw::ActionRow::new();
-        let open_btn = gtk::Button::builder().label(tr("Open App Page")).valign(gtk::Align::Center).build();
+        let open_btn = gtk::Button::builder()
+            .label(tr("Open App Page"))
+            .valign(gtk::Align::Center)
+            .build();
         single_title.add_suffix(&open_btn);
         single_group.add(&single_title);
         single_page.add(&single_group);
@@ -254,12 +351,20 @@ impl PermsPage {
             .content(&left_scroll)
             .sidebar(&side)
             .build();
-        let bin = adw::BreakpointBin::builder().width_request(360).height_request(300).child(&split).build();
+        let bin = adw::BreakpointBin::builder()
+            .width_request(360)
+            .height_request(300)
+            .child(&split)
+            .build();
         let bp = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 720px").unwrap());
         bp.add_setter(&split, "collapsed", Some(&true.to_value()));
         bp.add_setter(&show_side, "visible", Some(&true.to_value()));
         bin.add_breakpoint(bp);
-        split.bind_property("show-sidebar", &show_side, "active").bidirectional().sync_create().build();
+        split
+            .bind_property("show-sidebar", &show_side, "active")
+            .bidirectional()
+            .sync_create()
+            .build();
         root.set_content(Some(&bin));
 
         let me = Rc::new(PermsPage {
@@ -294,7 +399,10 @@ impl PermsPage {
 
         // Status filters.
         for &(id, label, tip) in STATUS {
-            let b = gtk::ToggleButton::builder().label(tr(label)).tooltip_text(tr(tip)).build();
+            let b = gtk::ToggleButton::builder()
+                .label(tr(label))
+                .tooltip_text(tr(tip))
+                .build();
             b.add_css_class("sam-status-filter");
             let w = Rc::downgrade(&me);
             b.connect_toggled(move |b| {
@@ -354,7 +462,9 @@ impl PermsPage {
         let w = Rc::downgrade(&me);
         me.list.connect_row_activated(move |_, row| {
             let Some(me) = w.upgrade() else { return };
-            let Some(id) = me.shown.borrow().get(row.index() as usize).cloned() else { return };
+            let Some(id) = me.shown.borrow().get(row.index() as usize).cloned() else {
+                return;
+            };
             let m = me.modifiers.replace(gdk::ModifierType::empty());
             if m.contains(gdk::ModifierType::SHIFT_MASK) {
                 me.select_range(&id, true);
@@ -370,7 +480,9 @@ impl PermsPage {
         let w = Rc::downgrade(&me);
         open_btn.connect_clicked(move |_| {
             let Some(me) = w.upgrade() else { return };
-            let (Some(app), id) = (me.app.upgrade(), me.editor_app.borrow().clone()) else { return };
+            let (Some(app), id) = (me.app.upgrade(), me.editor_app.borrow().clone()) else {
+                return;
+            };
             app.close_permissions();
             app.open_app(&id);
         });
@@ -403,7 +515,10 @@ impl PermsPage {
             match app.backend.call(&["group", "list"], None).await {
                 Ok(v) => {
                     let apps = v.as_array().cloned().unwrap_or_default();
-                    let ids: BTreeSet<String> = apps.iter().map(|a| util::str_of(a, "id").to_string()).collect();
+                    let ids: BTreeSet<String> = apps
+                        .iter()
+                        .map(|a| util::str_of(a, "id").to_string())
+                        .collect();
                     me.selected.borrow_mut().retain(|id| ids.contains(id));
                     *me.apps.borrow_mut() = apps;
                     me.render_filter_bar();
@@ -415,11 +530,17 @@ impl PermsPage {
     }
 
     fn find(&self, id: &str) -> Option<Value> {
-        self.apps.borrow().iter().find(|a| util::str_of(a, "id") == id).cloned()
+        self.apps
+            .borrow()
+            .iter()
+            .find(|a| util::str_of(a, "id") == id)
+            .cloned()
     }
 
     fn name_of(&self, id: &str) -> String {
-        self.find(id).map(|a| util::plain(util::str_of(&a, "name"))).unwrap_or_else(|| id.to_string())
+        self.find(id)
+            .map(|a| util::plain(util::str_of(&a, "name")))
+            .unwrap_or_else(|| id.to_string())
     }
 
     // ------------------------------------------------------------ filters
@@ -431,7 +552,12 @@ impl PermsPage {
         // Every tag any app has, in family order, then in switch order.
         let mut tags: BTreeMap<(u8, u64), Value> = BTreeMap::new();
         for a in self.apps.borrow().iter() {
-            for t in a.get("tags").and_then(Value::as_array).into_iter().flatten() {
+            for t in a
+                .get("tags")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
                 let fam = match util::str_of(t, "family") {
                     "network" => 0,
                     "files" => 1,
@@ -442,7 +568,10 @@ impl PermsPage {
                 tags.entry((fam, order)).or_insert_with(|| t.clone());
             }
         }
-        let keys: BTreeSet<String> = tags.values().map(|t| util::str_of(t, "key").to_string()).collect();
+        let keys: BTreeSet<String> = tags
+            .values()
+            .map(|t| util::str_of(t, "key").to_string())
+            .collect();
         self.tag_filter.borrow_mut().retain(|k, _| keys.contains(k));
         for t in tags.values() {
             let key = util::str_of(t, "key").to_string();
@@ -480,7 +609,13 @@ impl PermsPage {
             b.remove_css_class(c);
         }
         let (markup, tip) = match state {
-            None => (esc(label), crate::i18n::trf("Filter: click to show only the apps that have the permission “{label}”.", &[("label", &label)])),
+            None => (
+                esc(label),
+                crate::i18n::trf(
+                    "Filter: click to show only the apps that have the permission “{label}”.",
+                    &[("label", &label)],
+                ),
+            ),
             Some(true) => {
                 b.add_css_class("sam-filter-has");
                 (
@@ -508,7 +643,12 @@ impl PermsPage {
     }
 
     fn matches(&self, a: &Value) -> bool {
-        passes_filters(a, &self.search.borrow(), &self.status_filter.borrow(), &self.tag_filter.borrow())
+        passes_filters(
+            a,
+            &self.search.borrow(),
+            &self.status_filter.borrow(),
+            &self.tag_filter.borrow(),
+        )
     }
 
     // ------------------------------------------------------------ list
@@ -516,36 +656,73 @@ impl PermsPage {
     fn render_list(self: &Rc<Self>) {
         self.list.remove_all();
         self.checks.borrow_mut().clear();
-        let apps: Vec<Value> = self.apps.borrow().iter().filter(|a| self.matches(a)).cloned().collect();
-        *self.shown.borrow_mut() = apps.iter().map(|a| util::str_of(a, "id").to_string()).collect();
-        self.list_stack.set_visible_child_name(if self.apps.borrow().is_empty() {
-            "none"
-        } else if apps.is_empty() {
-            "empty"
-        } else {
-            "list"
-        });
+        let apps: Vec<Value> = self
+            .apps
+            .borrow()
+            .iter()
+            .filter(|a| self.matches(a))
+            .cloned()
+            .collect();
+        *self.shown.borrow_mut() = apps
+            .iter()
+            .map(|a| util::str_of(a, "id").to_string())
+            .collect();
+        self.list_stack
+            .set_visible_child_name(if self.apps.borrow().is_empty() {
+                "none"
+            } else if apps.is_empty() {
+                "empty"
+            } else {
+                "list"
+            });
         for a in &apps {
             let id = util::str_of(a, "id").to_string();
             let name = util::plain(util::str_of(a, "name"));
             let row = gtk::ListBoxRow::builder().activatable(true).build();
-            let b = gtk::Box::builder().spacing(10).margin_start(8).margin_end(10).margin_top(6).margin_bottom(6).build();
-            let check = gtk::CheckButton::builder().valign(gtk::Align::Center).build();
-            check.update_property(&[gtk::accessible::Property::Label(&crate::i18n::trf("Select {name}", &[("name", &name)]))]);
+            let b = gtk::Box::builder()
+                .spacing(10)
+                .margin_start(8)
+                .margin_end(10)
+                .margin_top(6)
+                .margin_bottom(6)
+                .build();
+            let check = gtk::CheckButton::builder()
+                .valign(gtk::Align::Center)
+                .build();
+            check.update_property(&[gtk::accessible::Property::Label(&crate::i18n::trf(
+                "Select {name}",
+                &[("name", &name)],
+            ))]);
             b.append(&check);
             b.append(&window::app_icon(util::str_of(a, "icon_path"), 32));
-            let text = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).hexpand(true).valign(gtk::Align::Center).build();
-            let title = gtk::Label::builder().label(&name).xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build();
+            let text = gtk::Box::builder()
+                .orientation(gtk::Orientation::Vertical)
+                .spacing(4)
+                .hexpand(true)
+                .valign(gtk::Align::Center)
+                .build();
+            let title = gtk::Label::builder()
+                .label(&name)
+                .xalign(0.0)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build();
             title.add_css_class("heading");
             text.append(&title);
             let tags = util::wrap_box(6, 6);
             tags.set_can_target(false);
-            let list = a.get("tags").and_then(Value::as_array).cloned().unwrap_or_default();
+            let list = a
+                .get("tags")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
             for t in &list {
                 tags.append(&tag_label(t));
             }
             if list.is_empty() {
-                let l = gtk::Label::builder().label(tr("Only a window, nothing else")).xalign(0.0).build();
+                let l = gtk::Label::builder()
+                    .label(tr("Only a window, nothing else"))
+                    .xalign(0.0)
+                    .build();
                 l.add_css_class("dim-label");
                 l.add_css_class("caption");
                 tags.append(&l);
@@ -554,14 +731,21 @@ impl PermsPage {
             b.append(&text);
             for &(key, label, _) in STATUS {
                 if util::bool_of(a, key) {
-                    b.append(&util::badge(&tr(label), if key == "running" { "accent" } else { "warn" }));
+                    b.append(&util::badge(
+                        &tr(label),
+                        if key == "running" { "accent" } else { "warn" },
+                    ));
                 }
             }
             row.set_child(Some(&b));
             let tag_text: Vec<&str> = list.iter().map(|t| util::str_of(t, "label")).collect();
             row.update_property(&[gtk::accessible::Property::Label(&format!(
                 "{name}: {}",
-                if tag_text.is_empty() { crate::i18n::tr("no extra access") } else { tag_text.join(", ") }
+                if tag_text.is_empty() {
+                    crate::i18n::tr("no extra access")
+                } else {
+                    tag_text.join(", ")
+                }
             ))]);
             let w = Rc::downgrade(self);
             let cid = id.clone();
@@ -614,14 +798,26 @@ impl PermsPage {
             c.set_active(sel.contains(id));
         }
         let n_shown_sel = shown.iter().filter(|id| sel.contains(*id)).count();
-        self.select_all.set_active(n_shown_sel > 0 && n_shown_sel == shown.len());
-        self.select_all.set_inconsistent(n_shown_sel > 0 && n_shown_sel < shown.len());
-        let filtered = !(self.tag_filter.borrow().is_empty() && self.status_filter.borrow().is_empty() && self.search.borrow().is_empty());
-        self.select_all.set_label(Some(&match (shown.len(), filtered) {
-            (1, _) => crate::i18n::tr("Select this app"),
-            (n, false) => crate::i18n::trn("Select the {n} app", "Select all {n} apps", n as u64, &[]),
-            (n, true) => crate::i18n::trn("Select the {n} app shown", "Select all {n} apps shown", n as u64, &[]),
-        }));
+        self.select_all
+            .set_active(n_shown_sel > 0 && n_shown_sel == shown.len());
+        self.select_all
+            .set_inconsistent(n_shown_sel > 0 && n_shown_sel < shown.len());
+        let filtered = !(self.tag_filter.borrow().is_empty()
+            && self.status_filter.borrow().is_empty()
+            && self.search.borrow().is_empty());
+        self.select_all
+            .set_label(Some(&match (shown.len(), filtered) {
+                (1, _) => crate::i18n::tr("Select this app"),
+                (n, false) => {
+                    crate::i18n::trn("Select the {n} app", "Select all {n} apps", n as u64, &[])
+                }
+                (n, true) => crate::i18n::trn(
+                    "Select the {n} app shown",
+                    "Select all {n} apps shown",
+                    n as u64,
+                    &[],
+                ),
+            }));
         self.select_all.set_sensitive(!shown.is_empty());
         self.count.set_label(&match sel.len() {
             0 => String::new(),
@@ -636,11 +832,18 @@ impl PermsPage {
 
     fn render_side(self: &Rc<Self>) {
         let sel: Vec<String> = self.selected.borrow().iter().cloned().collect();
-        let running: Vec<String> = sel.iter().filter(|id| self.find(id).is_some_and(|a| util::bool_of(&a, "running"))).map(|id| self.name_of(id)).collect();
+        let running: Vec<String> = sel
+            .iter()
+            .filter(|id| self.find(id).is_some_and(|a| util::bool_of(&a, "running")))
+            .map(|id| self.name_of(id))
+            .collect();
         match running.len() {
             0 => self.banner.set_revealed(false),
             1 => {
-                self.banner.set_title(&esc(&crate::i18n::trf("{app} is running. It uses changed settings the next time it starts.", &[("app", &running[0])])));
+                self.banner.set_title(&esc(&crate::i18n::trf(
+                    "{app} is running. It uses changed settings the next time it starts.",
+                    &[("app", &running[0])],
+                )));
                 self.banner.set_revealed(true);
             }
             n => {
@@ -667,7 +870,8 @@ impl PermsPage {
         self.side.set_visible_child_name("one");
         let Some(a) = self.find(id) else { return };
         self.single_title.set_title(&esc(util::str_of(&a, "name")));
-        self.single_title.set_subtitle(&tr("The same settings as on the app's own page."));
+        self.single_title
+            .set_subtitle(&tr("The same settings as on the app's own page."));
         if let Some(old) = self.single_icon.borrow_mut().take() {
             self.single_title.remove(&old);
         }
@@ -687,9 +891,17 @@ impl PermsPage {
                     return;
                 }
                 let perms = util::get(&i, "entry.profile.permissions").cloned();
-                me.editor.set_data(perms.clone(), util::get(&i, "entry.recommended").cloned(), None);
+                me.editor.set_data(
+                    perms.clone(),
+                    util::get(&i, "entry.recommended").cloned(),
+                    None,
+                );
                 if let Some(p) = perms {
-                    if let Ok(ev) = app.backend.call(&["evaluate", &id], Some(p.to_string())).await {
+                    if let Ok(ev) = app
+                        .backend
+                        .call(&["evaluate", &id], Some(p.to_string()))
+                        .await
+                    {
                         me.editor.set_evaluation(Some(ev));
                     }
                 }
@@ -703,10 +915,18 @@ impl PermsPage {
         let id = self.editor_app.borrow().clone();
         let me = self.clone();
         glib::spawn_future_local(async move {
-            if let Err(e) = app.backend.call(&["profile", "set", &id], Some(p.to_string())).await {
+            if let Err(e) = app
+                .backend
+                .call(&["profile", "set", &id], Some(p.to_string()))
+                .await
+            {
                 app.report_error(&e);
             }
-            if let Ok(ev) = app.backend.call(&["evaluate", &id], Some(p.to_string())).await {
+            if let Ok(ev) = app
+                .backend
+                .call(&["evaluate", &id], Some(p.to_string()))
+                .await
+            {
                 me.editor.set_evaluation(Some(ev));
             }
             me.reload();
@@ -721,7 +941,10 @@ impl PermsPage {
         }
         let apps: Vec<Value> = sel.iter().filter_map(|id| self.find(id)).collect();
         let total = apps.len();
-        let catalog = self.app().map(|a| a.state.borrow().catalog.clone()).unwrap_or_default();
+        let catalog = self
+            .app()
+            .map(|a| a.state.borrow().catalog.clone())
+            .unwrap_or_default();
         let head = adw::PreferencesGroup::builder()
             .title(crate::i18n::trn("{n} App Selected", "{n} Apps Selected", total as u64, &[]))
             .description(tr(
@@ -733,12 +956,27 @@ impl PermsPage {
         for (title, perms) in GROUPS {
             let g = adw::PreferencesGroup::builder().title(tr(title)).build();
             for &(key, opts) in perms.iter() {
-                let ptitle = catalog.get(key).map(|i| i.title.clone()).unwrap_or_else(|| key.to_string());
-                let tip = format!("{ptitle}: {}", util::explain(key, &catalog.get(key).map(|i| i.description.clone()).unwrap_or_default()));
+                let ptitle = catalog
+                    .get(key)
+                    .map(|i| i.title.clone())
+                    .unwrap_or_else(|| key.to_string());
+                let tip = format!(
+                    "{ptitle}: {}",
+                    util::explain(
+                        key,
+                        &catalog
+                            .get(key)
+                            .map(|i| i.description.clone())
+                            .unwrap_or_default()
+                    )
+                );
                 // Value → apps with it, in the order of the values.
-                let mut by_value: Vec<(String, Vec<Value>)> = opts.iter().map(|o| (o.0.to_string(), Vec::new())).collect();
+                let mut by_value: Vec<(String, Vec<Value>)> =
+                    opts.iter().map(|o| (o.0.to_string(), Vec::new())).collect();
                 for a in &apps {
-                    let tok = util::get(a, &format!("permissions.{key}")).map(value_token).unwrap_or_default();
+                    let tok = util::get(a, &format!("permissions.{key}"))
+                        .map(value_token)
+                        .unwrap_or_default();
                     match by_value.iter_mut().find(|(v, _)| *v == tok) {
                         Some((_, list)) => list.push(a.clone()),
                         None => by_value.push((tok, vec![a.clone()])),
@@ -756,11 +994,25 @@ impl PermsPage {
     /// One row of a permission for the apps that have value `tok`: a big
     /// control for all of them and, when unfolded, a small one per app.
     #[allow(clippy::too_many_arguments)]
-    fn value_row(self: &Rc<Self>, key: &'static str, ptitle: &str, tip: &str, opts: Opts, tok: &str, members: &[Value], total: usize) -> adw::ExpanderRow {
+    fn value_row(
+        self: &Rc<Self>,
+        key: &'static str,
+        ptitle: &str,
+        tip: &str,
+        opts: Opts,
+        tok: &str,
+        members: &[Value],
+        total: usize,
+    ) -> adw::ExpanderRow {
         let n = members.len();
         let vlabel = opt_label(opts, tok);
         let subtitle = if n == total {
-            crate::i18n::trn("{value} for the {n} selected app", "{value} for all {n} selected apps", n as u64, &[("value", &vlabel)])
+            crate::i18n::trn(
+                "{value} for the {n} selected app",
+                "{value} for all {n} selected apps",
+                n as u64,
+                &[("value", &vlabel)],
+            )
         } else {
             crate::i18n::trn(
                 "{value} for {done} of the {n} selected app",
@@ -771,10 +1023,22 @@ impl PermsPage {
         };
         // The title stays on one line (shortened with "…" when narrow); the
         // subtitle wraps.
-        let row = adw::ExpanderRow::builder().title(esc(ptitle)).title_lines(1).subtitle(esc(&subtitle)).tooltip_text(tip).build();
+        let row = adw::ExpanderRow::builder()
+            .title(esc(ptitle))
+            .title_lines(1)
+            .subtitle(esc(&subtitle))
+            .tooltip_text(tip)
+            .build();
         // The icon section has a fixed width; the icons sit in its middle.
-        let icon_section = gtk::Box::builder().width_request(ICONS_WIDTH).valign(gtk::Align::Center).build();
-        let icons = gtk::Box::builder().spacing(2).halign(gtk::Align::Center).hexpand(true).build();
+        let icon_section = gtk::Box::builder()
+            .width_request(ICONS_WIDTH)
+            .valign(gtk::Align::Center)
+            .build();
+        let icons = gtk::Box::builder()
+            .spacing(2)
+            .halign(gtk::Align::Center)
+            .hexpand(true)
+            .build();
         icon_section.append(&icons);
         for a in members.iter().take(3) {
             icons.append(&window::app_icon(util::str_of(a, "icon_path"), 16));
@@ -785,9 +1049,14 @@ impl PermsPage {
             more.add_css_class("dim-label");
             icons.append(&more);
         }
-        let ids: Vec<String> = members.iter().map(|a| util::str_of(a, "id").to_string()).collect();
+        let ids: Vec<String> = members
+            .iter()
+            .map(|a| util::str_of(a, "id").to_string())
+            .collect();
         let what = match n {
-            _ if n == total => crate::i18n::trf("{ptitle} for all selected apps", &[("ptitle", &ptitle)]),
+            _ if n == total => {
+                crate::i18n::trf("{ptitle} for all selected apps", &[("ptitle", &ptitle)])
+            }
             1 => format!("{ptitle} for 1 app"),
             _ => format!("{ptitle} for {n} apps"),
         };
@@ -799,7 +1068,13 @@ impl PermsPage {
             let name = util::plain(util::str_of(a, "name"));
             let r = adw::ActionRow::builder().title(esc(&name)).build();
             r.add_prefix(&window::app_icon(util::str_of(a, "icon_path"), 16));
-            r.add_suffix(&self.control(key, opts, tok, vec![util::str_of(a, "id").to_string()], &format!("{ptitle} for {name}")));
+            r.add_suffix(&self.control(
+                key,
+                opts,
+                tok,
+                vec![util::str_of(a, "id").to_string()],
+                &format!("{ptitle} for {name}"),
+            ));
             row.add_row(&r);
         }
         let fold_key = format!("{key}={tok}");
@@ -819,17 +1094,39 @@ impl PermsPage {
 
     /// A switch (on/off) or a drop-down (several values) set to `tok`;
     /// changing it changes `ids`.
-    fn control(self: &Rc<Self>, key: &'static str, opts: Opts, tok: &str, ids: Vec<String>, accessible: &str) -> gtk::Widget {
+    fn control(
+        self: &Rc<Self>,
+        key: &'static str,
+        opts: Opts,
+        tok: &str,
+        ids: Vec<String>,
+        accessible: &str,
+    ) -> gtk::Widget {
         // The control section: the same width for every control on the page.
-        let section = gtk::Box::builder().width_request(CONTROL_WIDTH).valign(gtk::Align::Center).build();
+        let section = gtk::Box::builder()
+            .width_request(CONTROL_WIDTH)
+            .valign(gtk::Align::Center)
+            .build();
         section.append(&self.control_widget(key, opts, tok, ids, accessible));
         section.upcast()
     }
 
-    fn control_widget(self: &Rc<Self>, key: &'static str, opts: Opts, tok: &str, ids: Vec<String>, accessible: &str) -> gtk::Widget {
+    fn control_widget(
+        self: &Rc<Self>,
+        key: &'static str,
+        opts: Opts,
+        tok: &str,
+        ids: Vec<String>,
+        accessible: &str,
+    ) -> gtk::Widget {
         let w = Rc::downgrade(self);
         if opts == SWITCH {
-            let sw = gtk::Switch::builder().active(tok == "true").valign(gtk::Align::Center).halign(gtk::Align::Center).hexpand(true).build();
+            let sw = gtk::Switch::builder()
+                .active(tok == "true")
+                .valign(gtk::Align::Center)
+                .halign(gtk::Align::Center)
+                .hexpand(true)
+                .build();
             sw.update_property(&[gtk::accessible::Property::Label(accessible)]);
             sw.connect_state_set(move |_, on| {
                 if let Some(me) = w.upgrade() {
@@ -882,8 +1179,18 @@ impl PermsPage {
                     return;
                 }
             };
-            let entries = check.get("apps").and_then(Value::as_array).cloned().unwrap_or_default();
-            let at_risk: Vec<&Value> = entries.iter().filter(|a| util::bool_of(a, "changed") && !util::list_of(a, "check.removes_needed").is_empty()).collect();
+            let entries = check
+                .get("apps")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let at_risk: Vec<&Value> = entries
+                .iter()
+                .filter(|a| {
+                    util::bool_of(a, "changed")
+                        && !util::list_of(a, "check.removes_needed").is_empty()
+                })
+                .collect();
             let mut chosen = ids.clone();
             if !at_risk.is_empty() {
                 let lines: Vec<String> = at_risk
@@ -891,24 +1198,45 @@ impl PermsPage {
                     .map(|a| {
                         crate::i18n::trf(
                             "{app} may stop working: it likely needs {needs}.",
-                            &[("app", &util::plain(util::str_of(a, "name"))), ("needs", &util::list_of(a, "check.removes_needed").join(", "))],
+                            &[
+                                ("app", &util::plain(util::str_of(a, "name"))),
+                                (
+                                    "needs",
+                                    &util::list_of(a, "check.removes_needed").join(", "),
+                                ),
+                            ],
                         )
                     })
                     .collect();
-                let others = entries.iter().filter(|a| util::bool_of(a, "changed")).count() - at_risk.len();
-                let d = adw::AlertDialog::new(Some(&tr("Some Apps May Stop Working")), Some(&lines.join("\n")));
+                let others = entries
+                    .iter()
+                    .filter(|a| util::bool_of(a, "changed"))
+                    .count()
+                    - at_risk.len();
+                let d = adw::AlertDialog::new(
+                    Some(&tr("Some Apps May Stop Working")),
+                    Some(&lines.join("\n")),
+                );
                 d.add_response("cancel", &tr("Cancel"));
                 if others > 0 {
                     d.add_response("skip", &tr("Skip These Apps"));
                 }
-                d.add_response("all", &if at_risk.len() == 1 && others == 0 { tr("Change Anyway") } else { tr("Change All Apps") });
+                d.add_response(
+                    "all",
+                    &if at_risk.len() == 1 && others == 0 {
+                        tr("Change Anyway")
+                    } else {
+                        tr("Change All Apps")
+                    },
+                );
                 d.set_response_appearance("all", adw::ResponseAppearance::Destructive);
                 d.set_default_response(Some("cancel"));
                 d.set_close_response("cancel");
                 match d.choose_future(Some(&app.window)).await.as_str() {
                     "all" => {}
                     "skip" => {
-                        let skip: BTreeSet<&str> = at_risk.iter().map(|a| util::str_of(a, "id")).collect();
+                        let skip: BTreeSet<&str> =
+                            at_risk.iter().map(|a| util::str_of(a, "id")).collect();
                         chosen.retain(|id| !skip.contains(id.as_str()));
                     }
                     _ => {
@@ -924,9 +1252,19 @@ impl PermsPage {
                     let previous = r.get("previous").cloned().unwrap_or_default();
                     let n = previous.as_object().map(|o| o.len()).unwrap_or(0);
                     if n > 0 {
-                        let title = app.state.borrow().catalog.get(key).map(|i| i.title.clone()).unwrap_or_else(|| key.to_string());
+                        let title = app
+                            .state
+                            .borrow()
+                            .catalog
+                            .get(key)
+                            .map(|i| i.title.clone())
+                            .unwrap_or_else(|| key.to_string());
                         let text = if n == 1 {
-                            format!("{title}: {} for {}", opt_label(opts, tok), me.name_of(previous.as_object().unwrap().keys().next().unwrap()))
+                            format!(
+                                "{title}: {} for {}",
+                                opt_label(opts, tok),
+                                me.name_of(previous.as_object().unwrap().keys().next().unwrap())
+                            )
                         } else {
                             format!("{title}: {} for {n} apps", opt_label(opts, tok))
                         };
@@ -941,13 +1279,23 @@ impl PermsPage {
 
     fn toast_undo(self: &Rc<Self>, text: &str, previous: Value) {
         let Some(app) = self.app() else { return };
-        let t = adw::Toast::builder().title(esc(text)).button_label(tr("Undo")).timeout(10).build();
+        let t = adw::Toast::builder()
+            .title(esc(text))
+            .button_label(tr("Undo"))
+            .timeout(10)
+            .build();
         let w = Rc::downgrade(self);
         t.connect_button_clicked(move |_| {
-            let (Some(me), Some(app)) = (w.upgrade(), w.upgrade().and_then(|m| m.app())) else { return };
+            let (Some(me), Some(app)) = (w.upgrade(), w.upgrade().and_then(|m| m.app())) else {
+                return;
+            };
             let previous = previous.clone();
             glib::spawn_future_local(async move {
-                match app.backend.call(&["group", "restore"], Some(previous.to_string())).await {
+                match app
+                    .backend
+                    .call(&["group", "restore"], Some(previous.to_string()))
+                    .await
+                {
                     Ok(_) => app.toast(&tr("Change undone")),
                     Err(e) => app.report_error(&e),
                 }
@@ -967,14 +1315,22 @@ mod tests {
     /// a permission appears once.
     #[test]
     fn group_switches_offer_only_valid_values() {
-        let catalog: Vec<&str> = sam_core::permissions::permission_catalog().iter().map(|i| i.key).collect();
+        let catalog: Vec<&str> = sam_core::permissions::permission_catalog()
+            .iter()
+            .map(|i| i.key)
+            .collect();
         for (_, perms) in GROUPS {
             for (key, opts) in perms.iter() {
                 assert!(catalog.contains(key), "{key} is not a known permission");
                 for (tok, _) in opts.iter() {
                     let mut p = sam_core::permissions::PermissionSet::default();
-                    p.set_key(key, tok).unwrap_or_else(|e| panic!("{key}={tok}: {e}"));
-                    assert_eq!(value_token(&p.get_key(key).unwrap()), *tok, "{key} keeps {tok}");
+                    p.set_key(key, tok)
+                        .unwrap_or_else(|e| panic!("{key}={tok}: {e}"));
+                    assert_eq!(
+                        value_token(&p.get_key(key).unwrap()),
+                        *tok,
+                        "{key} keeps {tok}"
+                    );
                 }
                 let mut toks: Vec<&str> = opts.iter().map(|o| o.0).collect();
                 toks.dedup();
@@ -996,7 +1352,10 @@ mod tests {
         assert_eq!(shift_range(&shown, Some("b"), "d"), ids(&["b", "c", "d"]));
         assert_eq!(shift_range(&shown, Some("d"), "b"), ids(&["b", "c", "d"]));
         assert_eq!(shift_range(&shown, None, "c"), ids(&["c"]));
-        assert_eq!(shift_range(&shown, Some("hidden-by-filter"), "c"), ids(&["c"]));
+        assert_eq!(
+            shift_range(&shown, Some("hidden-by-filter"), "c"),
+            ids(&["c"])
+        );
         assert!(shift_range(&shown, Some("a"), "not-shown").is_empty());
     }
 
@@ -1016,22 +1375,56 @@ mod tests {
         let app = serde_json::json!({"name": "Krita", "running": true, "needs_review": false,
             "tags": [{"key": "filesystem.pictures"}, {"key": "devices.gpu"}]});
         let none = BTreeSet::new();
-        let tags = |v: &[(&str, bool)]| v.iter().map(|(k, w)| (k.to_string(), *w)).collect::<BTreeMap<_, _>>();
+        let tags = |v: &[(&str, bool)]| {
+            v.iter()
+                .map(|(k, w)| (k.to_string(), *w))
+                .collect::<BTreeMap<_, _>>()
+        };
         assert!(passes_filters(&app, "", &none, &tags(&[])));
-        assert!(passes_filters(&app, "kri", &none, &tags(&[])), "search ignores case");
+        assert!(
+            passes_filters(&app, "kri", &none, &tags(&[])),
+            "search ignores case"
+        );
         assert!(!passes_filters(&app, "gimp", &none, &tags(&[])));
-        assert!(passes_filters(&app, "", &BTreeSet::from(["running"]), &tags(&[])));
-        assert!(!passes_filters(&app, "", &BTreeSet::from(["running", "needs_review"]), &tags(&[])), "all states must hold");
-        assert!(passes_filters(&app, "", &none, &tags(&[("filesystem.pictures", true), ("network.mode", false)])));
-        assert!(!passes_filters(&app, "", &none, &tags(&[("devices.gpu", false)])), "has-not filter hides apps with it");
-        assert!(!passes_filters(&app, "", &none, &tags(&[("network.mode", true)])), "has filter hides apps without it");
+        assert!(passes_filters(
+            &app,
+            "",
+            &BTreeSet::from(["running"]),
+            &tags(&[])
+        ));
+        assert!(
+            !passes_filters(
+                &app,
+                "",
+                &BTreeSet::from(["running", "needs_review"]),
+                &tags(&[])
+            ),
+            "all states must hold"
+        );
+        assert!(passes_filters(
+            &app,
+            "",
+            &none,
+            &tags(&[("filesystem.pictures", true), ("network.mode", false)])
+        ));
+        assert!(
+            !passes_filters(&app, "", &none, &tags(&[("devices.gpu", false)])),
+            "has-not filter hides apps with it"
+        );
+        assert!(
+            !passes_filters(&app, "", &none, &tags(&[("network.mode", true)])),
+            "has filter hides apps without it"
+        );
     }
 
     /// Personal folders explain where they are; other permissions keep
     /// their description unchanged.
     #[test]
     fn folder_explanations_name_the_path() {
-        let e = util::explain("filesystem.documents", "Lets the app open and save files in your Documents folder.");
+        let e = util::explain(
+            "filesystem.documents",
+            "Lets the app open and save files in your Documents folder.",
+        );
         assert!(e.contains("Folder: ~/") || e.contains("Folder: /"), "{e}");
         assert_eq!(util::explain("audio.enabled", "Play sound."), "Play sound.");
     }

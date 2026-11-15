@@ -64,11 +64,21 @@ pub struct Tag {
 
 /// Keys that never get a tag: every window app has them, or they only
 /// refine another permission.
-const NO_TAG: &[&str] =
-    &["display.wayland", "filesystem.opened_files", "integrations.input_method", "filesystem.home_access", "network.host_ports", "network.app_ports"];
+const NO_TAG: &[&str] = &[
+    "display.wayland",
+    "filesystem.opened_files",
+    "integrations.input_method",
+    "filesystem.home_access",
+    "network.host_ports",
+    "network.app_ports",
+];
 
 /// Keys that only matter together with full home access.
-const WITH_HOME: &[&str] = &["filesystem.ssh", "filesystem.gnupg", "filesystem.hidden_files"];
+const WITH_HOME: &[&str] = &[
+    "filesystem.ssh",
+    "filesystem.gnupg",
+    "filesystem.hidden_files",
+];
 
 fn family(category: &str, key: &str) -> Option<Family> {
     Some(match category {
@@ -86,7 +96,9 @@ fn family(category: &str, key: &str) -> Option<Family> {
 pub fn permission_tags(p: &PermissionSet) -> Vec<Tag> {
     let mut out = Vec::new();
     for (order, info) in permission_catalog().into_iter().enumerate() {
-        let Some(family) = family(info.category, info.key) else { continue };
+        let Some(family) = family(info.category, info.key) else {
+            continue;
+        };
         if NO_TAG.contains(&info.key) || (info.advanced && info.risk < RiskLevel::High) {
             continue;
         }
@@ -96,14 +108,22 @@ pub fn permission_tags(p: &PermissionSet) -> Vec<Tag> {
         let Ok(v) = p.get_key(info.key) else { continue };
         let title = info.title.as_str();
         let (granted, read_only, label) = match (info.key, &v) {
-            ("dbus.session.mode", Value::String(m)) => (m == "full", false, tr("Session bus: full access")),
-            ("dbus.system.mode", Value::String(m)) => (m == "full", false, tr("System bus: full access")),
+            ("dbus.session.mode", Value::String(m)) => {
+                (m == "full", false, tr("Session bus: full access"))
+            }
+            ("dbus.system.mode", Value::String(m)) => {
+                (m == "full", false, tr("System bus: full access"))
+            }
             ("network.mode", Value::String(m)) => match m.as_str() {
                 "full" => (true, false, tr("Full network")),
                 "localhost" => (true, true, tr("This computer only")),
                 _ => (false, false, String::new()),
             },
-            ("filesystem.home", Value::Bool(on)) => (*on, p.filesystem.home_access == sam_core::permissions::Access::Ro, title.to_string()),
+            ("filesystem.home", Value::Bool(on)) => (
+                *on,
+                p.filesystem.home_access == sam_core::permissions::Access::Ro,
+                title.to_string(),
+            ),
             ("filesystem.custom_read", Value::Array(a)) => (!a.is_empty(), true, title.to_string()),
             (_, Value::Bool(on)) => (*on, false, title.to_string()),
             (_, Value::Array(a)) => (!a.is_empty(), false, title.to_string()),
@@ -115,7 +135,15 @@ pub fn permission_tags(p: &PermissionSet) -> Vec<Tag> {
             _ => (false, false, title.to_string()),
         };
         if granted {
-            out.push(Tag { key: info.key.to_string(), label, family, level: info.risk.into(), read_only, description: info.description.clone(), order });
+            out.push(Tag {
+                key: info.key.to_string(),
+                label,
+                family,
+                level: info.risk.into(),
+                read_only,
+                description: info.description.clone(),
+                order,
+            });
         }
     }
     out.sort_by_key(|t| t.family);
@@ -134,7 +162,11 @@ mod tests {
     /// An app with SAM's strictest window profile shows no tags, because it has nothing beyond the basics.
     #[test]
     fn a_strict_window_app_has_no_tags() {
-        assert!(labels(&PermissionSet::strict_gui()).is_empty(), "{:?}", labels(&PermissionSet::strict_gui()));
+        assert!(
+            labels(&PermissionSet::strict_gui()).is_empty(),
+            "{:?}",
+            labels(&PermissionSet::strict_gui())
+        );
     }
 
     /// Tags appear in the family order Network, Files, Devices, Desktop, and read-only access is marked.
@@ -152,12 +184,25 @@ mod tests {
         sorted.sort();
         assert_eq!(fams, sorted);
         assert_eq!(tags[0].label, "Full network");
-        let docs = tags.iter().find(|t| t.key == "filesystem.documents").unwrap();
+        let docs = tags
+            .iter()
+            .find(|t| t.key == "filesystem.documents")
+            .unwrap();
         assert!(docs.read_only);
         assert_eq!(docs.label, "Documents");
-        assert!(!tags.iter().find(|t| t.key == "filesystem.pictures").unwrap().read_only);
-        assert!(tags.iter().any(|t| t.label == "Sound" && t.family == Family::Devices));
-        assert!(tags.iter().any(|t| t.key == "display.x11" && t.family == Family::Desktop));
+        assert!(
+            !tags
+                .iter()
+                .find(|t| t.key == "filesystem.pictures")
+                .unwrap()
+                .read_only
+        );
+        assert!(tags
+            .iter()
+            .any(|t| t.label == "Sound" && t.family == Family::Devices));
+        assert!(tags
+            .iter()
+            .any(|t| t.key == "display.x11" && t.family == Family::Desktop));
     }
 
     /// Dangerous access gets red tags, and the filtered desktop bus, which every app has, gets none.
@@ -179,7 +224,14 @@ mod tests {
     fn everything() -> PermissionSet {
         let mut p = PermissionSet::strict_gui();
         p.network.mode = NetworkMode::Full;
-        for k in ["documents", "downloads", "pictures", "music", "videos", "desktop"] {
+        for k in [
+            "documents",
+            "downloads",
+            "pictures",
+            "music",
+            "videos",
+            "desktop",
+        ] {
             p.set_key(&format!("filesystem.{k}"), "rw").unwrap();
         }
         p.filesystem.home = true;
@@ -217,7 +269,10 @@ mod tests {
                 // The same words, optionally followed by the access in
                 // brackets ("Documents (read & write)").
                 if item.title != t.label && !item.title.starts_with(&format!("{} (", t.label)) {
-                    differ.push(format!("{}: risk list {:?}, tag {:?}", t.key, item.title, t.label));
+                    differ.push(format!(
+                        "{}: risk list {:?}, tag {:?}",
+                        t.key, item.title, t.label
+                    ));
                 }
             }
         }

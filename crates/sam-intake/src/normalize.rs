@@ -22,7 +22,11 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Limits { max_files: 200_000, max_bytes: 8 * 1024 * 1024 * 1024, max_seconds: 600 }
+        Limits {
+            max_files: 200_000,
+            max_bytes: 8 * 1024 * 1024 * 1024,
+            max_seconds: 600,
+        }
     }
 }
 
@@ -40,9 +44,22 @@ pub struct NormalizeReport {
 impl NormalizeReport {
     pub fn all_suspicious(&self) -> Vec<String> {
         let mut v = Vec::new();
-        v.extend(self.setid_removed.iter().map(|p| sam_core::i18n::trf("setuid/setgid bit removed: {path}", &[("path", &p)])));
-        v.extend(self.removed_symlinks.iter().map(|p| sam_core::i18n::trf("link pointing outside the app removed: {path}", &[("path", &p)])));
-        v.extend(self.removed_special.iter().map(|p| sam_core::i18n::trf("special file removed: {path}", &[("path", &p)])));
+        v.extend(
+            self.setid_removed
+                .iter()
+                .map(|p| sam_core::i18n::trf("setuid/setgid bit removed: {path}", &[("path", &p)])),
+        );
+        v.extend(self.removed_symlinks.iter().map(|p| {
+            sam_core::i18n::trf(
+                "link pointing outside the app removed: {path}",
+                &[("path", &p)],
+            )
+        }));
+        v.extend(
+            self.removed_special
+                .iter()
+                .map(|p| sam_core::i18n::trf("special file removed: {path}", &[("path", &p)])),
+        );
         v.extend(self.suspicious.iter().cloned());
         v
     }
@@ -50,24 +67,35 @@ impl NormalizeReport {
 
 pub fn normalize(root: &Path, limits: &Limits, started: Instant) -> Result<NormalizeReport> {
     let mut r = NormalizeReport::default();
-    fs::set_permissions(root, fs::Permissions::from_mode(0o755)).with_context(|| format!("permissions of {}", root.display()))?;
+    fs::set_permissions(root, fs::Permissions::from_mode(0o755))
+        .with_context(|| format!("permissions of {}", root.display()))?;
     walk(root, Path::new(""), limits, started, &mut r)?;
     Ok(r)
 }
 
-fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut NormalizeReport) -> Result<()> {
+fn walk(
+    root: &Path,
+    rel: &Path,
+    limits: &Limits,
+    started: Instant,
+    r: &mut NormalizeReport,
+) -> Result<()> {
     let dir = root.join(rel);
     for entry in fs::read_dir(&dir).with_context(|| format!("reading {}", dir.display()))? {
         let entry = entry?;
         let name = entry.file_name();
         let rel_path = rel.join(&name);
         let path = entry.path();
-        let meta = fs::symlink_metadata(&path).with_context(|| format!("inspecting {}", path.display()))?;
+        let meta = fs::symlink_metadata(&path)
+            .with_context(|| format!("inspecting {}", path.display()))?;
         let ft = meta.file_type();
 
         r.file_count += 1;
         if r.file_count > limits.max_files {
-            return Err(crate::extract::limit_error(sam_core::i18n::trf("unpacking limit exceeded: more than {count} files", &[("count", &limits.max_files)])));
+            return Err(crate::extract::limit_error(sam_core::i18n::trf(
+                "unpacking limit exceeded: more than {count} files",
+                &[("count", &limits.max_files)],
+            )));
         }
         if started.elapsed().as_secs() > limits.max_seconds {
             return Err(crate::extract::limit_error(sam_core::i18n::trf(
@@ -84,10 +112,12 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
                 r.absolute_symlinks += 1;
             } else if escapes(rel, &target) {
                 fs::remove_file(&path)?;
-                r.removed_symlinks.push(format!("{display} -> {}", target.display()));
+                r.removed_symlinks
+                    .push(format!("{display} -> {}", target.display()));
             }
         } else if ft.is_dir() {
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).with_context(|| format!("permissions of {}", path.display()))?;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+                .with_context(|| format!("permissions of {}", path.display()))?;
             walk(root, &rel_path, limits, started, r)?;
         } else if ft.is_file() {
             let mode = meta.permissions().mode();
@@ -96,7 +126,8 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
             }
             let new_mode = if mode & 0o111 != 0 { 0o755 } else { 0o644 };
             if mode & 0o7777 != new_mode {
-                fs::set_permissions(&path, fs::Permissions::from_mode(new_mode)).with_context(|| format!("permissions of {}", path.display()))?;
+                fs::set_permissions(&path, fs::Permissions::from_mode(new_mode))
+                    .with_context(|| format!("permissions of {}", path.display()))?;
             }
             r.total_size += meta.len();
             if r.total_size > limits.max_bytes {
@@ -131,7 +162,10 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
 /// Does a relative symlink located in directory `link_dir` (relative to the
 /// AppDir root) point outside the root?
 pub fn escapes(link_dir: &Path, target: &Path) -> bool {
-    let mut depth: i64 = link_dir.components().filter(|c| matches!(c, Component::Normal(_))).count() as i64;
+    let mut depth: i64 = link_dir
+        .components()
+        .filter(|c| matches!(c, Component::Normal(_)))
+        .count() as i64;
     for c in target.components() {
         match c {
             Component::ParentDir => {
@@ -182,7 +216,10 @@ mod tests {
     fn unpacking_stops_at_the_time_limit() {
         let d = tempfile::tempdir().unwrap();
         fs::write(d.path().join("f"), b"").unwrap();
-        let lim = Limits { max_seconds: 0, ..Default::default() };
+        let lim = Limits {
+            max_seconds: 0,
+            ..Default::default()
+        };
         let started = Instant::now() - std::time::Duration::from_secs(2);
         let err = normalize(d.path(), &lim, started).unwrap_err().to_string();
         assert!(err.contains("took longer than 0 seconds"), "{err}");
@@ -193,7 +230,10 @@ mod tests {
     fn symlinks_pointing_outside_the_app_are_recognized() {
         assert!(!escapes(Path::new("usr/lib"), Path::new("libfoo.so.1")));
         assert!(!escapes(Path::new("usr/lib"), Path::new("../../AppRun")));
-        assert!(escapes(Path::new("usr/lib"), Path::new("../../../etc/passwd")));
+        assert!(escapes(
+            Path::new("usr/lib"),
+            Path::new("../../../etc/passwd")
+        ));
         assert!(escapes(Path::new(""), Path::new("../x")));
         assert!(!escapes(Path::new("a"), Path::new("./b/../c")));
     }
@@ -201,7 +241,10 @@ mod tests {
     /// Paths from the AppImage image are made relative, and paths that climb out with .. are refused.
     #[test]
     fn paths_climbing_out_of_the_image_are_refused() {
-        assert_eq!(sanitize_archive_path(Path::new("/usr/bin/x")), Some(PathBuf::from("usr/bin/x")));
+        assert_eq!(
+            sanitize_archive_path(Path::new("/usr/bin/x")),
+            Some(PathBuf::from("usr/bin/x"))
+        );
         assert_eq!(sanitize_archive_path(Path::new("/")), None);
         assert_eq!(sanitize_archive_path(Path::new("a/../../b")), None);
     }
@@ -220,15 +263,42 @@ mod tests {
         symlink("../../AppRun", root.join("usr/lib/ok")).unwrap();
         symlink("/usr/share/icons/x.png", root.join(".DirIcon")).unwrap();
         // Special files: a FIFO and a socket (device nodes need root).
-        assert!(std::process::Command::new("mkfifo").arg(root.join("usr/lib/pipe")).status().unwrap().success());
+        assert!(std::process::Command::new("mkfifo")
+            .arg(root.join("usr/lib/pipe"))
+            .status()
+            .unwrap()
+            .success());
         let _sock = std::os::unix::net::UnixListener::bind(root.join("usr/lib/sock")).unwrap();
         let r = normalize(root, &Limits::default(), Instant::now()).unwrap();
-        assert!(fs::symlink_metadata(root.join("usr/lib/pipe")).is_err(), "FIFO removed");
-        assert!(fs::symlink_metadata(root.join("usr/lib/sock")).is_err(), "socket removed");
-        assert_eq!(fs::metadata(root.join("AppRun")).unwrap().permissions().mode() & 0o7777, 0o755);
-        assert_eq!(fs::metadata(root.join("data.txt")).unwrap().permissions().mode() & 0o7777, 0o644);
+        assert!(
+            fs::symlink_metadata(root.join("usr/lib/pipe")).is_err(),
+            "FIFO removed"
+        );
+        assert!(
+            fs::symlink_metadata(root.join("usr/lib/sock")).is_err(),
+            "socket removed"
+        );
+        assert_eq!(
+            fs::metadata(root.join("AppRun"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o7777,
+            0o755
+        );
+        assert_eq!(
+            fs::metadata(root.join("data.txt"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o7777,
+            0o644
+        );
         assert_eq!(r.setid_removed, vec!["AppRun"]);
-        assert!(!root.join("usr/lib/evil").exists() && fs::symlink_metadata(root.join("usr/lib/evil")).is_err());
+        assert!(
+            !root.join("usr/lib/evil").exists()
+                && fs::symlink_metadata(root.join("usr/lib/evil")).is_err()
+        );
         assert!(fs::symlink_metadata(root.join("usr/lib/ok")).is_ok());
         assert_eq!(r.absolute_symlinks, 1);
         // Host-side reads refuse the absolute link.
@@ -243,7 +313,10 @@ mod tests {
         for i in 0..5 {
             fs::write(d.path().join(format!("f{i}")), b"").unwrap();
         }
-        let lim = Limits { max_files: 3, ..Default::default() };
+        let lim = Limits {
+            max_files: 3,
+            ..Default::default()
+        };
         assert!(normalize(d.path(), &lim, Instant::now()).is_err());
     }
 }

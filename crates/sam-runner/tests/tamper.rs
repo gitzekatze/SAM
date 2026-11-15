@@ -12,7 +12,18 @@ fn one_app(root: &std::path::Path) -> (Sam, String) {
     let img = root.join("Tool.AppImage");
     build(&img, &FixtureSpec::hello("Tool")).unwrap();
     let sam = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
-    let id = sam.add(&img, &AddOptions { accept: true, launcher: Some(false), ..Default::default() }).unwrap().entry.id;
+    let id = sam
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
     (sam, id)
 }
 
@@ -28,13 +39,25 @@ fn removing_a_sandbox_never_deletes_outside_sams_unpack_folder() {
     fs::write(victim.join("precious.txt"), "keep me").unwrap();
     // Point the record's unpack folder at the victim through "..".
     let file = sam.paths.app_file(&id);
-    let mut rec: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    let mut rec: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
     let base = sam.paths.default_extracted_dir();
     rec["extraction"]["root"] = serde_json::json!(base.join("../../../victim"));
     fs::write(&file, rec.to_string()).unwrap();
-    assert!(sam.resolve(&id).unwrap().extraction.unwrap().root.starts_with(&base), "the trap: it looks inside");
+    assert!(
+        sam.resolve(&id)
+            .unwrap()
+            .extraction
+            .unwrap()
+            .root
+            .starts_with(&base),
+        "the trap: it looks inside"
+    );
     sam.remove(&id, false).unwrap();
-    assert!(victim.join("precious.txt").exists(), "a folder outside SAM was deleted");
+    assert!(
+        victim.join("precious.txt").exists(),
+        "a folder outside SAM was deleted"
+    );
 }
 
 /// A record whose id climbs out of SAM's folders cannot be loaded, so no
@@ -44,12 +67,16 @@ fn a_record_with_a_climbing_id_reaches_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let (sam, id) = one_app(tmp.path());
     let file = sam.paths.app_file(&id);
-    let mut rec: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    let mut rec: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
     rec["id"] = serde_json::json!("../../victim");
     fs::write(&file, rec.to_string()).unwrap();
     let victim = sam.paths.app_home("../../victim");
     fs::create_dir_all(&victim).unwrap();
-    assert!(sam.registry().list().unwrap().is_empty(), "the changed record is ignored");
+    assert!(
+        sam.registry().list().unwrap().is_empty(),
+        "the changed record is ignored"
+    );
     assert!(sam.remove("../../victim", false).is_err());
     assert!(victim.exists());
 }
@@ -65,7 +92,8 @@ fn undoing_an_update_never_moves_files_outside_sams_backup_folder() {
     let victim = tmp.path().join("id_rsa");
     fs::write(&victim, "secret").unwrap();
     let file = sam.paths.app_file(&id);
-    let mut rec: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    let mut rec: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
     rec["update_backup"] = serde_json::json!({"file": victim, "original_path": tmp.path().join("stolen"), "replaced_at": 0});
     fs::write(&file, rec.to_string()).unwrap();
     assert!(sam.undo_update(&id).is_err());
@@ -80,13 +108,30 @@ fn an_app_changed_outside_sam_starts_only_after_confirmation() {
     let tmp = tempfile::tempdir().unwrap();
     let (sam, id) = one_app(tmp.path());
     sam.set_permission(&id, "devices.gpu", "true").unwrap();
-    assert!(sam_runner::launch::preflight(&sam.resolve(&id).unwrap()).0.is_empty(), "SAM's own change is fine");
+    assert!(
+        sam_runner::launch::preflight(&sam.resolve(&id).unwrap())
+            .0
+            .is_empty(),
+        "SAM's own change is fine"
+    );
     let file = sam.paths.app_file(&id);
-    let mut rec: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    let mut rec: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
     rec["profile"]["permissions"]["filesystem"]["home"] = true.into();
     fs::write(&file, rec.to_string()).unwrap();
     let errors = sam_runner::launch::preflight(&sam.resolve(&id).unwrap()).0;
-    assert!(errors.iter().any(|e| e.contains("changed outside SAM") && e.contains(&format!("sam-jail review {id}"))), "{errors:?}");
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("changed outside SAM")
+                && e.contains(&format!("sam-jail review {id}"))),
+        "{errors:?}"
+    );
     sam.mark_reviewed(&id).unwrap();
-    assert!(sam_runner::launch::preflight(&sam.resolve(&id).unwrap()).0.is_empty(), "after confirming, it starts again");
+    assert!(
+        sam_runner::launch::preflight(&sam.resolve(&id).unwrap())
+            .0
+            .is_empty(),
+        "after confirming, it starts again"
+    );
 }

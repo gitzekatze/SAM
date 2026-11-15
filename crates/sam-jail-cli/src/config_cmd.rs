@@ -6,7 +6,9 @@ pub(crate) fn config_cmd(app: &Sam, out: &Out, cmd: ConfigCmd) -> Result<()> {
     match cmd {
         ConfigCmd::Show => {
             let c = &app.config;
-            out.emit(c, || print!("{}", toml::to_string_pretty(c).unwrap_or_default()));
+            out.emit(c, || {
+                print!("{}", toml::to_string_pretty(c).unwrap_or_default())
+            });
         }
         ConfigCmd::Get { key } => {
             let v = app.config.get_key(&key)?;
@@ -20,10 +22,14 @@ pub(crate) fn config_cmd(app: &Sam, out: &Out, cmd: ConfigCmd) -> Result<()> {
             out.emit(&json!({"key": key, "value": v}), || println!("{key} = {v}"));
         }
         ConfigCmd::Put => {
-            let c: Config = serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr("expected the configuration as JSON on stdin"))?;
+            let c: Config = serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr(
+                "expected the configuration as JSON on stdin",
+            ))?;
             c.validate()?;
             c.save(&app.paths)?;
-            out.emit(&c, || println!("{}", sam_core::i18n::tr("Configuration saved")));
+            out.emit(&c, || {
+                println!("{}", sam_core::i18n::tr("Configuration saved"))
+            });
         }
         ConfigCmd::Path => {
             let v: Value = json!({

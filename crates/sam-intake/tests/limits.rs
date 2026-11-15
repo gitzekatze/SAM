@@ -33,7 +33,9 @@ fn unpack(img: &Path, offset: u64, out: &Path, limits: Limits) -> anyhow::Result
 }
 
 fn is_limit(r: &anyhow::Result<()>) -> bool {
-    r.as_ref().err().is_some_and(|e| sam_core::error::code_of(e) == Some("extraction-limit"))
+    r.as_ref()
+        .err()
+        .is_some_and(|e| sam_core::error::code_of(e) == Some("extraction-limit"))
 }
 
 /// The file-count and size limits let an app through that reaches them
@@ -45,12 +47,23 @@ fn unpacking_stops_exactly_at_its_limits() {
     let img = tmp.path().join("Big.AppImage");
     let mut spec = FixtureSpec::hello("Big");
     for i in 0..20 {
-        spec.files.push(FixtureFile { path: format!("usr/share/big/part-{i}.bin"), data: vec![i as u8; 40_000 + i], mode: 0o644 });
+        spec.files.push(FixtureFile {
+            path: format!("usr/share/big/part-{i}.bin"),
+            data: vec![i as u8; 40_000 + i],
+            mode: 0o644,
+        });
     }
     build(&img, &spec).unwrap();
-    let offset = sam_detect::inspect(&img).unwrap().payload_offset.expect("payload offset");
+    let offset = sam_detect::inspect(&img)
+        .unwrap()
+        .payload_offset
+        .expect("payload offset");
     let out = tmp.path().join("out");
-    let roomy = Limits { max_files: 100_000, max_bytes: 1 << 40, max_seconds: 600 };
+    let roomy = Limits {
+        max_files: 100_000,
+        max_bytes: 1 << 40,
+        max_seconds: 600,
+    };
     unpack(&img, offset, &out, roomy).unwrap();
     let (entries, bytes) = measure(&out);
     // The reader also counts the image's root folder.
@@ -59,17 +72,79 @@ fn unpacking_stops_exactly_at_its_limits() {
     // Modes come through: a data file stays non-executable, the entry point
     // stays executable.
     use std::os::unix::fs::PermissionsExt;
-    assert_eq!(fs::metadata(out.join("usr/share/big/part-0.bin")).unwrap().permissions().mode() & 0o777, 0o644);
-    assert_eq!(fs::metadata(out.join("AppRun")).unwrap().permissions().mode() & 0o111, 0o111);
+    assert_eq!(
+        fs::metadata(out.join("usr/share/big/part-0.bin"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o644
+    );
+    assert_eq!(
+        fs::metadata(out.join("AppRun"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o111,
+        0o111
+    );
 
-    assert!(unpack(&img, offset, &out, Limits { max_files: files, ..roomy }).is_ok(), "exactly {files} entries are allowed");
-    let r = unpack(&img, offset, &out, Limits { max_files: files - 1, ..roomy });
+    assert!(
+        unpack(
+            &img,
+            offset,
+            &out,
+            Limits {
+                max_files: files,
+                ..roomy
+            }
+        )
+        .is_ok(),
+        "exactly {files} entries are allowed"
+    );
+    let r = unpack(
+        &img,
+        offset,
+        &out,
+        Limits {
+            max_files: files - 1,
+            ..roomy
+        },
+    );
     assert!(is_limit(&r), "one entry over the limit is refused: {r:?}");
 
-    assert!(unpack(&img, offset, &out, Limits { max_bytes: bytes, ..roomy }).is_ok(), "exactly {bytes} bytes are allowed");
-    let r = unpack(&img, offset, &out, Limits { max_bytes: bytes - 1, ..roomy });
+    assert!(
+        unpack(
+            &img,
+            offset,
+            &out,
+            Limits {
+                max_bytes: bytes,
+                ..roomy
+            }
+        )
+        .is_ok(),
+        "exactly {bytes} bytes are allowed"
+    );
+    let r = unpack(
+        &img,
+        offset,
+        &out,
+        Limits {
+            max_bytes: bytes - 1,
+            ..roomy
+        },
+    );
     assert!(is_limit(&r), "one byte over the limit is refused: {r:?}");
 
-    let r = unpack(&img, offset, &out, Limits { max_seconds: 0, ..roomy });
+    let r = unpack(
+        &img,
+        offset,
+        &out,
+        Limits {
+            max_seconds: 0,
+            ..roomy
+        },
+    );
     assert!(is_limit(&r), "a time limit of zero stops at once: {r:?}");
 }

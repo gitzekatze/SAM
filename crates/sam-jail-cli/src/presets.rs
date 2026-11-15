@@ -17,7 +17,8 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             });
         }
         PresetCmd::Show { name } => {
-            let p = sam_profile::find_preset(&app.paths, &name)?.with_context(|| format!("unknown preset '{name}'"))?;
+            let p = sam_profile::find_preset(&app.paths, &name)?
+                .with_context(|| format!("unknown preset '{name}'"))?;
             out.emit(&p, || print!("{}", preset_to_toml(&p).unwrap_or_default()));
         }
         PresetCmd::Apply { name, app: q, yes } => {
@@ -25,21 +26,34 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             out.emit(&r, || {
                 let c = &r.check;
                 for s in &c.removes_needed {
-                    println!("  {} removes {s}, which the app likely needs", paint("warning:", "33"));
+                    println!(
+                        "  {} removes {s}, which the app likely needs",
+                        paint("warning:", "33")
+                    );
                 }
                 for s in &c.adds_dangerous {
-                    println!("  {} adds high-risk permission: {s}", paint("warning:", "31"));
+                    println!(
+                        "  {} adds high-risk permission: {s}",
+                        paint("warning:", "31")
+                    );
                 }
                 if r.applied {
                     println!(
                         "{}",
                         sam_core::i18n::trf(
                             "Applied “{preset}” (risk {before} → {after})",
-                            &[("preset", &r.preset), ("before", &c.risk_before), ("after", &c.risk_after)]
+                            &[
+                                ("preset", &r.preset),
+                                ("before", &c.risk_before),
+                                ("after", &c.risk_after)
+                            ]
                         )
                     );
                 } else {
-                    println!("{}", sam_core::i18n::tr("Not applied. Run again with --yes to confirm."));
+                    println!(
+                        "{}",
+                        sam_core::i18n::tr("Not applied. Run again with --yes to confirm.")
+                    );
                 }
             });
         }
@@ -47,34 +61,75 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             let p = sam_profile::preset_template();
             out.emit(&p, || print!("{}", preset_to_toml(&p).unwrap_or_default()));
         }
-        PresetCmd::Save { app: q, name, description } => {
+        PresetCmd::Save {
+            app: q,
+            name,
+            description,
+        } => {
             let p = app.save_preset_from_app(&q, &name, &description)?;
-            out.emit(&p, || println!("{}", sam_core::i18n::trf("Saved the preset “{name}” ({risk})", &[("name", &p.name), ("risk", &p.risk)])));
+            out.emit(&p, || {
+                println!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "Saved the preset “{name}” ({risk})",
+                        &[("name", &p.name), ("risk", &p.risk)]
+                    )
+                )
+            });
         }
         PresetCmd::Delete { name } => {
             let ok = store.delete(&name)?;
             if !ok {
-                bail!("{}", sam_core::i18n::trf("no user preset named '{name}'", &[("name", &name)]));
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf("no user preset named '{name}'", &[("name", &name)])
+                );
             }
-            out.emit(&json!({"deleted": name}), || println!("{}", sam_core::i18n::trf("Deleted the preset “{name}”", &[("name", &name)])));
+            out.emit(&json!({"deleted": name}), || {
+                println!(
+                    "{}",
+                    sam_core::i18n::trf("Deleted the preset “{name}”", &[("name", &name)])
+                )
+            });
         }
         PresetCmd::Duplicate { name, new_name } => {
-            let mut p = sam_profile::find_preset(&app.paths, &name)?.with_context(|| format!("unknown preset '{name}'"))?;
+            let mut p = sam_profile::find_preset(&app.paths, &name)?
+                .with_context(|| format!("unknown preset '{name}'"))?;
             if sam_profile::find_preset(&app.paths, &new_name)?.is_some() {
-                bail!("{}", sam_core::i18n::trf("a preset named '{new_name}' already exists", &[("new_name", &new_name)]));
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "a preset named '{new_name}' already exists",
+                        &[("new_name", &new_name)]
+                    )
+                );
             }
             p.name = new_name;
             p.created_at = 0;
             store.save(&mut p)?;
-            out.emit(&p, || println!("{}", sam_core::i18n::trf("Created the preset “{name}”", &[("name", &p.name)])));
+            out.emit(&p, || {
+                println!(
+                    "{}",
+                    sam_core::i18n::trf("Created the preset “{name}”", &[("name", &p.name)])
+                )
+            });
         }
         PresetCmd::Import { file } => {
             let mut p = read_preset_file(&file)?;
             let path = store.save(&mut p)?;
-            out.emit(&p, || println!("{}", sam_core::i18n::trf("Imported “{name}” → {path}", &[("name", &p.name), ("path", &tildify(&path))])));
+            out.emit(&p, || {
+                println!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "Imported “{name}” → {path}",
+                        &[("name", &p.name), ("path", &tildify(&path))]
+                    )
+                )
+            });
         }
         PresetCmd::Export { name, file } => {
-            let p = sam_profile::find_preset(&app.paths, &name)?.with_context(|| format!("unknown preset '{name}'"))?;
+            let p = sam_profile::find_preset(&app.paths, &name)?
+                .with_context(|| format!("unknown preset '{name}'"))?;
             let text = preset_to_toml(&p)?;
             match &file {
                 Some(f) => std::fs::write(f, &text)?,
@@ -83,7 +138,13 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             }
             out.emit(&json!({"toml": text, "file": file}), || {
                 if let Some(f) = &file {
-                    println!("{}", sam_core::i18n::trf("Exported “{name}” → {path}", &[("name", &p.name), ("path", &f.display())]));
+                    println!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "Exported “{name}” → {path}",
+                            &[("name", &p.name), ("path", &f.display())]
+                        )
+                    );
                 }
             });
         }
@@ -91,13 +152,20 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             let input = read_stdin()?;
             let mut p: Preset = match serde_json::from_str::<Preset>(&input) {
                 Ok(p) => p,
-                Err(_) => parse_preset_toml(&input).context(sam_core::i18n::tr("expected a preset as JSON or TOML on stdin"))?,
+                Err(_) => parse_preset_toml(&input).context(sam_core::i18n::tr(
+                    "expected a preset as JSON or TOML on stdin",
+                ))?,
             };
             if let Some(existing) = store.get(&p.name)? {
                 p.created_at = existing.created_at;
             }
             store.save(&mut p)?;
-            out.emit(&p, || println!("{}", sam_core::i18n::trf("Saved the preset “{name}”", &[("name", &p.name)])));
+            out.emit(&p, || {
+                println!(
+                    "{}",
+                    sam_core::i18n::trf("Saved the preset “{name}”", &[("name", &p.name)])
+                )
+            });
         }
     }
     Ok(())
@@ -111,16 +179,33 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
             out.emit(&apps, || {
                 for a in &apps {
                     let tags: Vec<&str> = a.tags.iter().map(|t| t.label.as_str()).collect();
-                    println!("{:<28} {}", truncate(&a.summary.name, 28), if tags.is_empty() { "-".to_string() } else { tags.join(", ") });
+                    println!(
+                        "{:<28} {}",
+                        truncate(&a.summary.name, 28),
+                        if tags.is_empty() {
+                            "-".to_string()
+                        } else {
+                            tags.join(", ")
+                        }
+                    );
                 }
             });
         }
-        GroupCmd::Set { key, value, apps, dry_run } => {
+        GroupCmd::Set {
+            key,
+            value,
+            apps,
+            dry_run,
+        } => {
             let r = app.group_change(&key, &value, &apps, dry_run)?;
             out.emit(&r, || {
                 for a in &r.apps {
                     for s in &a.check.removes_needed {
-                        println!("  {} {} loses {s}, which it likely needs", paint("warning:", "33"), a.name);
+                        println!(
+                            "  {} {} loses {s}, which it likely needs",
+                            paint("warning:", "33"),
+                            a.name
+                        );
                     }
                 }
                 let n = r.apps.iter().filter(|a| a.changed).count();
@@ -145,17 +230,31 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
                         )
                     );
                     if r.apps.iter().any(|a| a.changed && a.running) {
-                        println!("{}", sam_core::i18n::tr("Running apps use the new settings the next time they start."));
+                        println!(
+                            "{}",
+                            sam_core::i18n::tr(
+                                "Running apps use the new settings the next time they start."
+                            )
+                        );
                     }
                 }
             });
         }
         GroupCmd::Restore => {
-            let previous =
-                serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr("expected the \"previous\" object of `group set` as JSON on stdin"))?;
+            let previous = serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr(
+                "expected the \"previous\" object of `group set` as JSON on stdin",
+            ))?;
             let n = app.group_restore(previous)?;
             out.emit(&json!({"restored": n}), || {
-                println!("{}", sam_core::i18n::trn("Restored the settings of {n} app.", "Restored the settings of {n} apps.", n as u64, &[]))
+                println!(
+                    "{}",
+                    sam_core::i18n::trn(
+                        "Restored the settings of {n} app.",
+                        "Restored the settings of {n} apps.",
+                        n as u64,
+                        &[]
+                    )
+                )
             });
         }
     }

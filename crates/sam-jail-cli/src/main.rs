@@ -14,7 +14,9 @@ use sam_core::util::{format_ts, human_size, tildify};
 use sam_core::*;
 use sam_runner::launch::{prepare, run, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
-use sam_storage::{parse_preset_toml, preset_to_toml, read_preset_file, LogKind, Logs, PresetStore};
+use sam_storage::{
+    parse_preset_toml, preset_to_toml, read_preset_file, LogKind, Logs, PresetStore,
+};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -37,7 +39,10 @@ fn progress_lines() -> sam_runner::progress::ProgressSink {
     let last = std::sync::Mutex::new((0usize, std::time::Instant::now()));
     sam_runner::progress::ProgressSink::new(move |p| {
         let Ok(mut l) = last.lock() else { return };
-        if l.0 == p.step && l.1.elapsed() < std::time::Duration::from_millis(100) && p.fraction < 1.0 {
+        if l.0 == p.step
+            && l.1.elapsed() < std::time::Duration::from_millis(100)
+            && p.fraction < 1.0
+        {
             return;
         }
         *l = (p.step, std::time::Instant::now());
@@ -60,7 +65,10 @@ fn main() {
         if json_mode {
             // A code lets callers react without reading the (translated) message.
             match sam_core::error::code_of(&e) {
-                Some(code) => println!("{}", json!({"ok": false, "error": format!("{e:#}"), "code": code})),
+                Some(code) => println!(
+                    "{}",
+                    json!({"ok": false, "error": format!("{e:#}"), "code": code})
+                ),
                 None => println!("{}", json!({"ok": false, "error": format!("{e:#}")})),
             }
         } else {
@@ -75,7 +83,9 @@ fn real_main(cli: Cli) -> Result<()> {
     // Before opening SAM's data, so it answers even when that fails.
     if let Cmd::Version = cli.cmd {
         let (version, interface) = (env!("CARGO_PKG_VERSION"), sam_core::JSON_INTERFACE);
-        out.emit(&json!({"version": version, "interface": interface}), || println!("sam-jail {version} (JSON interface {interface})"));
+        out.emit(&json!({"version": version, "interface": interface}), || {
+            println!("sam-jail {version} (JSON interface {interface})")
+        });
         return Ok(());
     }
     let app = Sam::open()?;
@@ -86,19 +96,30 @@ fn real_main(cli: Cli) -> Result<()> {
             if add {
                 for it in items.iter().filter(|i| i.registered.is_none()) {
                     match app.add(&it.path, &AddOptions::default()) {
-                        Ok(o) => added.push(json!({"path": it.path, "id": o.entry.id, "relocated": o.relocated})),
+                        Ok(o) => added.push(
+                            json!({"path": it.path, "id": o.entry.id, "relocated": o.relocated}),
+                        ),
                         Err(e) => added.push(json!({"path": it.path, "error": format!("{e:#}")})),
                     }
                 }
             }
             out.emit(&json!({"found": items, "added": added}), || {
                 if items.is_empty() {
-                    println!("{}", trf("No AppImages found in: {folders}", &[("folders", &app.config.general.scan_directories.join(", "))]));
+                    println!(
+                        "{}",
+                        trf(
+                            "No AppImages found in: {folders}",
+                            &[("folders", &app.config.general.scan_directories.join(", "))]
+                        )
+                    );
                 }
                 for it in &items {
                     let st = match (&it.registered, &it.moved_from) {
                         (Some(id), _) => format!("registered as {id}"),
-                        (None, Some(id)) => paint(&sam_core::i18n::trf("moved copy of {id}", &[("id", &id)]), "33"),
+                        (None, Some(id)) => paint(
+                            &sam_core::i18n::trf("moved copy of {id}", &[("id", &id)]),
+                            "33",
+                        ),
                         _ => paint("new", "36"),
                     };
                     println!("{}  {}  ({})", tildify(&it.path), st, human_size(it.size));
@@ -119,17 +140,33 @@ fn real_main(cli: Cli) -> Result<()> {
                         "{}",
                         trf(
                             "No AppImages found in: {folders}",
-                            &[("folders", &app.default_scan_dirs().iter().map(|d| tildify(d)).collect::<Vec<_>>().join(", "))]
+                            &[(
+                                "folders",
+                                &app.default_scan_dirs()
+                                    .iter()
+                                    .map(|d| tildify(d))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            )]
                         )
                     );
                 }
                 for d in &found {
                     let st = match (&d.sandboxed, &d.moved_from) {
                         (Some(id), _) => paint(&format!("sandboxed ({id})"), "32"),
-                        (None, Some(id)) => paint(&sam_core::i18n::trf("moved copy of {id}", &[("id", &id)]), "33"),
+                        (None, Some(id)) => paint(
+                            &sam_core::i18n::trf("moved copy of {id}", &[("id", &id)]),
+                            "33",
+                        ),
                         _ => paint("not sandboxed", "36"),
                     };
-                    println!("{:<28} {:<14} {}  {}", d.name, d.category_label, st, tildify(&d.path));
+                    println!(
+                        "{:<28} {:<14} {}  {}",
+                        d.name,
+                        d.category_label,
+                        st,
+                        tildify(&d.path)
+                    );
                     for m in &d.menu_entries {
                         println!("    unsandboxed menu entry: {}", tildify(&m.file));
                     }
@@ -151,14 +188,30 @@ fn real_main(cli: Cli) -> Result<()> {
             let hints = sam_runner::repair::first_run_hints(&e);
             out.emit(&json!({"hints": hints}), || {
                 if hints.is_empty() {
-                    println!("{}", trf("Nothing to check for {app}.", &[("app", &e.display_name())]));
+                    println!(
+                        "{}",
+                        trf("Nothing to check for {app}.", &[("app", &e.display_name())])
+                    );
                 }
                 for h in &hints {
-                    println!("{}  {}\n    {}\n    fix: sam-jail hints {} --apply {}", paint(&h.id, "1"), h.title, h.explanation, e.id, h.id);
+                    println!(
+                        "{}  {}\n    {}\n    fix: sam-jail hints {} --apply {}",
+                        paint(&h.id, "1"),
+                        h.title,
+                        h.explanation,
+                        e.id,
+                        h.id
+                    );
                 }
             });
         }
-        Cmd::Repair { app: query, apply, next, undo, undo_step } => {
+        Cmd::Repair {
+            app: query,
+            apply,
+            next,
+            undo,
+            undo_step,
+        } => {
             let e = app.resolve(&query)?;
             let applied = if undo {
                 app.undo_repairs(&query)?;
@@ -166,10 +219,20 @@ fn real_main(cli: Cli) -> Result<()> {
             } else if let Some(id) = undo_step {
                 app.undo_repair_step(&query, &id)?;
                 Some(format!("undo {id}"))
-            } else if let Some(id) =
-                apply.or_else(|| next.then(|| sam_runner::repair::ladder(&e, &app.config, &app.paths).first().map(|s| s.id.clone())).flatten())
-            {
-                let sug = app.find_suggestion(&e, &id).with_context(|| trf("no repair step '{id}' for {app}", &[("id", &id), ("app", &e.display_name())]))?;
+            } else if let Some(id) = apply.or_else(|| {
+                next.then(|| {
+                    sam_runner::repair::ladder(&e, &app.config, &app.paths)
+                        .first()
+                        .map(|s| s.id.clone())
+                })
+                .flatten()
+            }) {
+                let sug = app.find_suggestion(&e, &id).with_context(|| {
+                    trf(
+                        "no repair step '{id}' for {app}",
+                        &[("id", &id), ("app", &e.display_name())],
+                    )
+                })?;
                 app.apply_suggestion(&query, &sug, true)?;
                 Some(sug.title)
             } else {
@@ -177,7 +240,11 @@ fn real_main(cli: Cli) -> Result<()> {
             };
             let e = app.resolve(&query)?;
             let steps = sam_runner::repair::ladder(&e, &app.config, &app.paths);
-            let findings = e.last_launch.as_ref().map(|l| l.findings.clone()).unwrap_or_default();
+            let findings = e
+                .last_launch
+                .as_ref()
+                .map(|l| l.findings.clone())
+                .unwrap_or_default();
             out.emit(
                 &json!({"applied": applied, "findings": findings, "steps": steps, "applied_steps": e.repairs_applied, "can_undo": e.repair_backup.is_some()}),
                 || {
@@ -200,31 +267,54 @@ fn real_main(cli: Cli) -> Result<()> {
             );
         }
         Cmd::Selftest { apps, seconds } => {
-            let list: Vec<AppEntry> = if apps.is_empty() { app.registry().list()? } else { apps.iter().map(|q| app.resolve(q)).collect::<Result<_>>()? };
+            let list: Vec<AppEntry> = if apps.is_empty() {
+                app.registry().list()?
+            } else {
+                apps.iter().map(|q| app.resolve(q)).collect::<Result<_>>()?
+            };
             let mut results = Vec::new();
             for mut e in list {
                 if !out.json {
-                    eprintln!("{}", sam_core::i18n::trf("Testing {name} for {seconds} s…", &[("name", &e.display_name()), ("seconds", &seconds)]));
+                    eprintln!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "Testing {name} for {seconds} s…",
+                            &[("name", &e.display_name()), ("seconds", &seconds)]
+                        )
+                    );
                 }
-                let opts = LaunchOptions { timeout_secs: Some(seconds), quiet: true, ..Default::default() };
-                let (status, detail, findings) = match run(&mut e, &opts, &app.config, &app.paths, &app.host()) {
-                    Ok(rec) => {
-                        let ran = rec.finished_at - rec.started_at;
-                        if rec.sandbox_failure {
-                            ("fail", rec.summary.clone(), rec.findings.clone())
-                        } else if rec.success || (rec.signal == Some(9) && ran + 1 >= seconds as i64) {
-                            let detail = match (rec.signal, e.metadata.terminal) {
-                                (Some(_), _) => sam_core::i18n::trf("kept running for {seconds}s", &[("seconds", &seconds)]),
-                                (None, true) => trf("ran in its sandbox and ended by itself ({summary})", &[("summary", &rec.summary)]),
-                                (None, false) => rec.summary.clone(),
-                            };
-                            ("ok", detail, vec![])
-                        } else {
-                            ("fail", rec.summary.clone(), rec.findings.clone())
-                        }
-                    }
-                    Err(err) => ("fail", format!("{err:#}"), vec![]),
+                let opts = LaunchOptions {
+                    timeout_secs: Some(seconds),
+                    quiet: true,
+                    ..Default::default()
                 };
+                let (status, detail, findings) =
+                    match run(&mut e, &opts, &app.config, &app.paths, &app.host()) {
+                        Ok(rec) => {
+                            let ran = rec.finished_at - rec.started_at;
+                            if rec.sandbox_failure {
+                                ("fail", rec.summary.clone(), rec.findings.clone())
+                            } else if rec.success
+                                || (rec.signal == Some(9) && ran + 1 >= seconds as i64)
+                            {
+                                let detail = match (rec.signal, e.metadata.terminal) {
+                                    (Some(_), _) => sam_core::i18n::trf(
+                                        "kept running for {seconds}s",
+                                        &[("seconds", &seconds)],
+                                    ),
+                                    (None, true) => trf(
+                                        "ran in its sandbox and ended by itself ({summary})",
+                                        &[("summary", &rec.summary)],
+                                    ),
+                                    (None, false) => rec.summary.clone(),
+                                };
+                                ("ok", detail, vec![])
+                            } else {
+                                ("fail", rec.summary.clone(), rec.findings.clone())
+                            }
+                        }
+                        Err(err) => ("fail", format!("{err:#}"), vec![]),
+                    };
                 results.push(json!({"id": e.id, "name": e.display_name(), "status": status, "detail": detail, "findings": findings}));
             }
             out.emit(&json!({"results": results}), || {
@@ -232,7 +322,11 @@ fn real_main(cli: Cli) -> Result<()> {
                     let ok = r["status"] == "ok";
                     println!(
                         "{} {:<28} {}",
-                        if ok { paint("✓", "32") } else { paint("✗", "31") },
+                        if ok {
+                            paint("✓", "32")
+                        } else {
+                            paint("✗", "31")
+                        },
                         r["name"].as_str().unwrap_or_default(),
                         r["detail"].as_str().unwrap_or_default()
                     );
@@ -248,29 +342,72 @@ fn real_main(cli: Cli) -> Result<()> {
                 MenuAction::Hide => app.hide_duplicates(&query)?,
                 MenuAction::Restore => app.restore_menu_entries(&query)?,
             };
-            let dups: Vec<_> = app.menu_duplicates(&e).into_iter().map(|f| json!({"file": f.file, "name": f.name})).collect();
-            out.emit(&json!({"visible": dups, "hidden": e.hidden_entries}), || {
-                for d in &dups {
-                    println!("visible  {}", d["file"].as_str().unwrap_or_default());
-                }
-                for h in &e.hidden_entries {
-                    println!("hidden   {}", tildify(&h.original));
-                }
-                if dups.is_empty() && e.hidden_entries.is_empty() {
-                    println!("{}", trf("No other menu entries start {app}.", &[("app", &e.display_name())]));
-                }
+            let dups: Vec<_> = app
+                .menu_duplicates(&e)
+                .into_iter()
+                .map(|f| json!({"file": f.file, "name": f.name}))
+                .collect();
+            out.emit(
+                &json!({"visible": dups, "hidden": e.hidden_entries}),
+                || {
+                    for d in &dups {
+                        println!("visible  {}", d["file"].as_str().unwrap_or_default());
+                    }
+                    for h in &e.hidden_entries {
+                        println!("hidden   {}", tildify(&h.original));
+                    }
+                    if dups.is_empty() && e.hidden_entries.is_empty() {
+                        println!(
+                            "{}",
+                            trf(
+                                "No other menu entries start {app}.",
+                                &[("app", &e.display_name())]
+                            )
+                        );
+                    }
+                },
+            );
+        }
+        Cmd::Preview {
+            path,
+            permissions_stdin,
+        } => {
+            let perms: Option<PermissionSet> = if permissions_stdin {
+                Some(
+                    serde_json::from_str(&read_stdin()?)
+                        .context(tr("expected a PermissionSet as JSON on stdin"))?,
+                )
+            } else {
+                None
+            };
+            let v = app.preview(&path, perms)?;
+            out.emit(&v, || {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default())
             });
         }
-        Cmd::Preview { path, permissions_stdin } => {
-            let perms: Option<PermissionSet> =
-                if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context(tr("expected a PermissionSet as JSON on stdin"))?) } else { None };
-            let v = app.preview(&path, perms)?;
-            out.emit(&v, || println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()));
-        }
-        Cmd::Add { path, allow_fallback, no_launcher, preset, accept, hide_duplicates, permissions_stdin, progress } => {
-            let permissions: Option<PermissionSet> =
-                if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context(tr("expected a PermissionSet as JSON on stdin"))?) } else { None };
-            let progress = if progress { progress_lines() } else { Default::default() };
+        Cmd::Add {
+            path,
+            allow_fallback,
+            no_launcher,
+            preset,
+            accept,
+            hide_duplicates,
+            permissions_stdin,
+            progress,
+        } => {
+            let permissions: Option<PermissionSet> = if permissions_stdin {
+                Some(
+                    serde_json::from_str(&read_stdin()?)
+                        .context(tr("expected a PermissionSet as JSON on stdin"))?,
+                )
+            } else {
+                None
+            };
+            let progress = if progress {
+                progress_lines()
+            } else {
+                Default::default()
+            };
             let o = app.add(
                 &path,
                 &AddOptions {
@@ -309,14 +446,34 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::List { search, badge, risk, category, sort } => {
-            let mut apps: Vec<AppSummary> = app.registry().list()?.iter().map(AppSummary::from_entry).collect();
+        Cmd::List {
+            search,
+            badge,
+            risk,
+            category,
+            sort,
+        } => {
+            let mut apps: Vec<AppSummary> = app
+                .registry()
+                .list()?
+                .iter()
+                .map(AppSummary::from_entry)
+                .collect();
             if let Some(s) = search {
                 let s = s.to_lowercase();
-                apps.retain(|a| a.name.to_lowercase().contains(&s) || a.id.contains(&s) || a.comment.to_lowercase().contains(&s));
+                apps.retain(|a| {
+                    a.name.to_lowercase().contains(&s)
+                        || a.id.contains(&s)
+                        || a.comment.to_lowercase().contains(&s)
+                });
             }
             if let Some(b) = badge {
-                apps.retain(|a| serde_json::to_value(a.badge).ok().and_then(|v| v.as_str().map(|s| s == b)).unwrap_or(false));
+                apps.retain(|a| {
+                    serde_json::to_value(a.badge)
+                        .ok()
+                        .and_then(|v| v.as_str().map(|s| s == b))
+                        .unwrap_or(false)
+                });
             }
             if let Some(r) = risk {
                 apps.retain(|a| a.risk.level.label().eq_ignore_ascii_case(&r));
@@ -364,7 +521,10 @@ fn real_main(cli: Cli) -> Result<()> {
             // what compatibility mode turns on (or turned on).
             let p = &e.profile.permissions;
             let mut effects = serde_json::Map::new();
-            for s in steps.iter().chain(e.applied_repairs.iter().filter_map(|r| r.step.as_ref())) {
+            for s in steps
+                .iter()
+                .chain(e.applied_repairs.iter().filter_map(|r| r.step.as_ref()))
+            {
                 effects.insert(s.id.clone(), json!(sam_runner::repair::effect(s, p)));
             }
             let compat_changes = match (&e.profile.compatibility_mode, &e.profile.before_compat) {
@@ -377,16 +537,32 @@ fn real_main(cli: Cli) -> Result<()> {
                 || print_info(&e, &summary, &warnings, selection.as_ref()),
             );
         }
-        Cmd::Remove { app: q, keep_data, stop } => {
+        Cmd::Remove {
+            app: q,
+            keep_data,
+            stop,
+        } => {
             if stop {
                 app.stop(&q)?;
             }
             let (e, problems) = app.remove(&q, keep_data)?;
             out.emit(&json!({"removed": e.id, "warnings": problems}), || {
                 if keep_data {
-                    println!("{}", sam_core::i18n::trf("Removed {name} ({id}); its private data was kept", &[("name", &e.display_name()), ("id", &e.id)]));
+                    println!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "Removed {name} ({id}); its private data was kept",
+                            &[("name", &e.display_name()), ("id", &e.id)]
+                        )
+                    );
                 } else {
-                    println!("{}", sam_core::i18n::trf("Removed {name} ({id})", &[("name", &e.display_name()), ("id", &e.id)]));
+                    println!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "Removed {name} ({id})",
+                            &[("name", &e.display_name()), ("id", &e.id)]
+                        )
+                    );
                 };
                 for p in &problems {
                     eprintln!("{} {p}", paint("warning:", "33"));
@@ -396,7 +572,10 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Version => {} // answered above
         Cmd::Updates { app: q, if_due } => {
             let results = app.check_updates(q.as_deref(), if_due)?;
-            let list: Vec<_> = results.iter().map(|(id, s)| json!({"id": id, "update": s})).collect();
+            let list: Vec<_> = results
+                .iter()
+                .map(|(id, s)| json!({"id": id, "update": s}))
+                .collect();
             out.emit(&json!({"apps": list}), || {
                 if results.is_empty() && if_due {
                     println!("{}", tr("Nothing is due: updates.check_on_start is off, or every app was checked today."));
@@ -415,21 +594,44 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Update { app: q, undo, accept_key_change } => {
-            let e = if undo { app.undo_update(&q)? } else { app.update(&q, accept_key_change)? };
+        Cmd::Update {
+            app: q,
+            undo,
+            accept_key_change,
+        } => {
+            let e = if undo {
+                app.undo_update(&q)?
+            } else {
+                app.update(&q, accept_key_change)?
+            };
             out.emit(&AppSummary::from_entry(&e), || {
                 if undo {
-                    println!("{}", trf("{app} is back to {file}.", &[("app", &e.display_name()), ("file", &tildify(&e.source_path))]));
+                    println!(
+                        "{}",
+                        trf(
+                            "{app} is back to {file}.",
+                            &[
+                                ("app", &e.display_name()),
+                                ("file", &tildify(&e.source_path))
+                            ]
+                        )
+                    );
                 } else {
                     println!("{} updated: {}", e.display_name(), tildify(&e.source_path));
                     if let Some(b) = &e.update_backup {
-                        println!("  previous version kept: {} (sam-jail update {} --undo)", tildify(&b.file), e.id);
+                        println!(
+                            "  previous version kept: {} (sam-jail update {} --undo)",
+                            tildify(&b.file),
+                            e.id
+                        );
                     }
                 }
             });
         }
         Cmd::SelfUpdate { check } => {
-            let appimage = std::env::var_os("APPIMAGE").map(std::path::PathBuf::from).unwrap_or_default();
+            let appimage = std::env::var_os("APPIMAGE")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_default();
             let r = app.self_update(&appimage, check)?;
             out.emit(&r, || {
                 println!("{}", r.detail);
@@ -464,12 +666,26 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::FreeSpace { app: q } => {
             let freed = app.free_space(&q)?;
             out.emit(&json!({"freed": freed}), || {
-                println!("{}", trf("Freed {size}; the next start unpacks the AppImage again.", &[("size", &format!("{:.1} MB", freed as f64 / 1e6))]))
+                println!(
+                    "{}",
+                    trf(
+                        "Freed {size}; the next start unpacks the AppImage again.",
+                        &[("size", &format!("{:.1} MB", freed as f64 / 1e6))]
+                    )
+                )
             });
         }
         Cmd::Man { dir } => {
             write_man_pages(&dir)?;
-            out.emit(&json!({"dir": dir}), || println!("{}", trf("Man pages written to {folder}.", &[("folder", &dir.display())])));
+            out.emit(&json!({"dir": dir}), || {
+                println!(
+                    "{}",
+                    trf(
+                        "Man pages written to {folder}.",
+                        &[("folder", &dir.display())]
+                    )
+                )
+            });
         }
         Cmd::Uninstall { keep_data, yes } => {
             let u = app.uninstall(keep_data, !yes)?;
@@ -506,19 +722,45 @@ fn real_main(cli: Cli) -> Result<()> {
                 if n == 0 {
                     println!("{}", sam_core::i18n::tr("Not running"));
                 } else {
-                    println!("{}", sam_core::i18n::trn("Closed {n} running launch", "Closed {n} running launches", n as u64, &[]));
+                    println!(
+                        "{}",
+                        sam_core::i18n::trn(
+                            "Closed {n} running launch",
+                            "Closed {n} running launches",
+                            n as u64,
+                            &[]
+                        )
+                    );
                 }
             });
         }
         Cmd::Run { app: q, args } => {
             let mut e = app.resolve(&q)?;
             app.ensure_unpacked(&mut e)?;
-            let rec = run(&mut e, &LaunchOptions { args, ..Default::default() }, &app.config, &app.paths, &app.host())?;
+            let rec = run(
+                &mut e,
+                &LaunchOptions {
+                    args,
+                    ..Default::default()
+                },
+                &app.config,
+                &app.paths,
+                &app.host(),
+            )?;
             out.emit(&rec, || {
                 if rec.sandbox_failure {
                     eprintln!("{} {}", paint("sam-jail:", "1;31"), rec.summary);
-                    eprintln!("  log: {}", rec.log_file.as_ref().map(|p| tildify(p)).unwrap_or_default());
-                    eprintln!("  try: sam-jail doctor {} / sam-jail diagnose {} / sam-jail compat {} on", e.id, e.id, e.id);
+                    eprintln!(
+                        "  log: {}",
+                        rec.log_file
+                            .as_ref()
+                            .map(|p| tildify(p))
+                            .unwrap_or_default()
+                    );
+                    eprintln!(
+                        "  try: sam-jail doctor {} / sam-jail diagnose {} / sam-jail compat {} on",
+                        e.id, e.id, e.id
+                    );
                 }
             });
             // The app's own exit code (a terminal program's error code counts
@@ -529,13 +771,25 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         Cmd::Command { app: q, args } => {
             let e = app.resolve(&q)?;
-            let p = prepare(&e, &LaunchOptions { args, ..Default::default() }, &app.config, &app.paths, &app.host())?;
+            let p = prepare(
+                &e,
+                &LaunchOptions {
+                    args,
+                    ..Default::default()
+                },
+                &app.config,
+                &app.paths,
+                &app.host(),
+            )?;
             let pv = p.preview();
             out.emit(&pv, || {
                 println!("# sandbox: {} ({})", pv.backend, pv.reason);
                 println!("# landlock: {}  seccomp: {}", pv.landlock, pv.seccomp);
                 if let Some(d) = &pv.dbus_proxy {
-                    println!("# dbus proxy: xdg-dbus-proxy {}", sam_core::util::shell_join(d));
+                    println!(
+                        "# dbus proxy: xdg-dbus-proxy {}",
+                        sam_core::util::shell_join(d)
+                    );
                 }
                 for n in &pv.notes {
                     println!("# note: {n}");
@@ -564,32 +818,62 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Logs { app: q, kind, list, file, tail } => {
+        Cmd::Logs {
+            app: q,
+            kind,
+            list,
+            file,
+            tail,
+        } => {
             let e = app.resolve(&q)?;
-            let kind = kind.as_deref().map(|k| LogKind::parse(k).with_context(|| trf("unknown log kind '{kind}'", &[("kind", &k)]))).transpose()?;
+            let kind = kind
+                .as_deref()
+                .map(|k| {
+                    LogKind::parse(k)
+                        .with_context(|| trf("unknown log kind '{kind}'", &[("kind", &k)]))
+                })
+                .transpose()?;
             let logs = Logs::new(&app.paths);
             if list {
                 let files = logs.list(&e.id, kind)?;
                 out.emit(&files, || {
                     for f in &files {
-                        println!("{}  {:<8}  {:>9}  {}", format_ts(f.modified), f.kind.prefix(), human_size(f.size), tildify(&f.path));
+                        println!(
+                            "{}  {:<8}  {:>9}  {}",
+                            format_ts(f.modified),
+                            f.kind.prefix(),
+                            human_size(f.size),
+                            tildify(&f.path)
+                        );
                     }
                 });
             } else if let Some(f) = file {
                 // Only files of this app's own log list.
-                let known = logs.list(&e.id, None)?.into_iter().find(|l| l.path == f).context(tr("not a log file of this app"))?;
+                let known = logs
+                    .list(&e.id, None)?
+                    .into_iter()
+                    .find(|l| l.path == f)
+                    .context(tr("not a log file of this app"))?;
                 let text = sam_runner::launch::tail(&known.path, tail);
-                out.emit(&json!({"file": known.path, "kind": known.kind, "text": text}), || {
-                    println!("==> {} <==", tildify(&known.path));
-                    println!("{text}");
-                });
+                out.emit(
+                    &json!({"file": known.path, "kind": known.kind, "text": text}),
+                    || {
+                        println!("==> {} <==", tildify(&known.path));
+                        println!("{text}");
+                    },
+                );
             } else {
-                let latest = logs.latest(&e.id, kind)?.context(tr("no logs yet for this app"))?;
+                let latest = logs
+                    .latest(&e.id, kind)?
+                    .context(tr("no logs yet for this app"))?;
                 let text = sam_runner::launch::tail(&latest.path, tail);
-                out.emit(&json!({"file": latest.path, "kind": latest.kind, "text": text}), || {
-                    println!("==> {} <==", tildify(&latest.path));
-                    println!("{text}");
-                });
+                out.emit(
+                    &json!({"file": latest.path, "kind": latest.kind, "text": text}),
+                    || {
+                        println!("==> {} <==", tildify(&latest.path));
+                        println!("{text}");
+                    },
+                );
             }
         }
         Cmd::Preset { cmd } => preset_cmd(&app, &out, cmd)?,
@@ -598,10 +882,20 @@ fn real_main(cli: Cli) -> Result<()> {
             let e = app.set_permission(&q, &key, &value)?;
             let v = e.profile.permissions.get_key(&key)?;
             let eval = app.evaluate(&e.profile.permissions, Some(&e), &app.host());
-            out.emit(&json!({"key": key, "value": v, "risk": eval.risk, "warnings": eval.warnings}), || {
-                println!("{key} = {v}   (risk now {})", risk_line(&eval.risk));
-                print_warnings(&eval.warnings.iter().filter(|w| w.key.as_deref() == Some(&key)).cloned().collect::<Vec<_>>());
-            });
+            out.emit(
+                &json!({"key": key, "value": v, "risk": eval.risk, "warnings": eval.warnings}),
+                || {
+                    println!("{key} = {v}   (risk now {})", risk_line(&eval.risk));
+                    print_warnings(
+                        &eval
+                            .warnings
+                            .iter()
+                            .filter(|w| w.key.as_deref() == Some(&key))
+                            .cloned()
+                            .collect::<Vec<_>>(),
+                    );
+                },
+            );
         }
         Cmd::Get { app: q, key } => {
             let e = app.resolve(&q)?;
@@ -611,26 +905,52 @@ fn real_main(cli: Cli) -> Result<()> {
             };
             out.emit(&v, || match &key {
                 Some(_) => println!("{v}"),
-                None => print!("{}", toml::to_string_pretty(&e.profile.permissions).unwrap_or_default()),
+                None => print!(
+                    "{}",
+                    toml::to_string_pretty(&e.profile.permissions).unwrap_or_default()
+                ),
             });
         }
         Cmd::Profile { cmd } => match cmd {
             ProfileCmd::Get { app: q } => {
                 let e = app.resolve(&q)?;
-                out.emit(&e.profile, || println!("{}", serde_json::to_string_pretty(&e.profile).unwrap_or_default()));
+                out.emit(&e.profile, || {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&e.profile).unwrap_or_default()
+                    )
+                });
             }
             ProfileCmd::Set { app: q } => {
-                let perms: PermissionSet = serde_json::from_str(&read_stdin()?).context(tr("expected a PermissionSet as JSON on stdin"))?;
+                let perms: PermissionSet = serde_json::from_str(&read_stdin()?)
+                    .context(tr("expected a PermissionSet as JSON on stdin"))?;
                 let e = app.set_permissions(&q, perms)?;
-                out.emit(&AppSummary::from_entry(&e), || println!("{}", trf("Updated permissions for {app}.", &[("app", &e.display_name())])));
+                out.emit(&AppSummary::from_entry(&e), || {
+                    println!(
+                        "{}",
+                        trf(
+                            "Updated permissions for {app}.",
+                            &[("app", &e.display_name())]
+                        )
+                    )
+                });
             }
             ProfileCmd::Reset { app: q } => {
                 let e = app.reset_profile(&q)?;
-                out.emit(&AppSummary::from_entry(&e), || println!("{}", trf("{app} is back to the recommended settings.", &[("app", &e.display_name())])));
+                out.emit(&AppSummary::from_entry(&e), || {
+                    println!(
+                        "{}",
+                        trf(
+                            "{app} is back to the recommended settings.",
+                            &[("app", &e.display_name())]
+                        )
+                    )
+                });
             }
         },
         Cmd::Evaluate { app: q } => {
-            let perms: PermissionSet = serde_json::from_str(&read_stdin()?).context(tr("expected a PermissionSet as JSON on stdin"))?;
+            let perms: PermissionSet = serde_json::from_str(&read_stdin()?)
+                .context(tr("expected a PermissionSet as JSON on stdin"))?;
             let e = q.map(|q| app.resolve(&q)).transpose()?;
             let host = app.host();
             let ev = app.evaluate(&perms, e.as_ref(), &host);
@@ -644,18 +964,39 @@ fn real_main(cli: Cli) -> Result<()> {
             let e = app.set_compat(&q, on)?;
             out.emit(&AppSummary::from_entry(&e), || {
                 if on {
-                    println!("{}", sam_core::i18n::trf("Compatibility mode turned on for {name}", &[("name", &e.display_name())]));
+                    println!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "Compatibility mode turned on for {name}",
+                            &[("name", &e.display_name())]
+                        )
+                    );
                 } else {
-                    println!("{}", sam_core::i18n::trf("Compatibility mode turned off for {name}", &[("name", &e.display_name())]));
+                    println!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "Compatibility mode turned off for {name}",
+                            &[("name", &e.display_name())]
+                        )
+                    );
                 };
                 if on {
                     println!("{}", paint(&tr(sam_profile::COMPAT_WARNING), "33"));
                 }
             });
         }
-        Cmd::Verify { app: q, permissions_stdin } => {
-            let perms: Option<PermissionSet> =
-                if permissions_stdin { Some(serde_json::from_str(&read_stdin()?).context(tr("expected a PermissionSet as JSON on stdin"))?) } else { None };
+        Cmd::Verify {
+            app: q,
+            permissions_stdin,
+        } => {
+            let perms: Option<PermissionSet> = if permissions_stdin {
+                Some(
+                    serde_json::from_str(&read_stdin()?)
+                        .context(tr("expected a PermissionSet as JSON on stdin"))?,
+                )
+            } else {
+                None
+            };
             let out_v = match app.resolve(&q) {
                 Ok(_) if perms.is_some() => bail!("{q} already has a sandbox; --permissions-stdin is only for AppImages without one"),
                 Ok(_) => app.verify(&q)?,
@@ -680,19 +1021,31 @@ fn real_main(cli: Cli) -> Result<()> {
                     };
                     println!("  {mark} {:<46} {}", res.title, res.observed);
                 }
-                println!("\n{} passed, {} failed, {} not applicable", out_v.record.passed, out_v.record.failed.len(), out_v.record.skipped);
+                println!(
+                    "\n{} passed, {} failed, {} not applicable",
+                    out_v.record.passed,
+                    out_v.record.failed.len(),
+                    out_v.record.skipped
+                );
             });
         }
         Cmd::Args { app: q, stdin } => {
             let e = if stdin {
-                let list: Vec<String> = serde_json::from_str(&read_stdin()?).context(tr("expected a JSON list of strings on stdin"))?;
+                let list: Vec<String> = serde_json::from_str(&read_stdin()?)
+                    .context(tr("expected a JSON list of strings on stdin"))?;
                 app.set_args(&q, list)?
             } else {
                 app.resolve(&q)?
             };
             out.emit(&e.profile.args, || {
                 if e.profile.args.is_empty() {
-                    println!("{}", trf("No extra arguments for {app}.", &[("app", &e.display_name())]));
+                    println!(
+                        "{}",
+                        trf(
+                            "No extra arguments for {app}.",
+                            &[("app", &e.display_name())]
+                        )
+                    );
                 } else {
                     println!("{}", e.profile.args.join(" "));
                 }
@@ -701,10 +1054,19 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Review { app: q } => {
             let e = app.mark_reviewed(&q)?;
             out.emit(&AppSummary::from_entry(&e), || {
-                println!("{}", trf("{app} marked as reviewed [{state}]", &[("app", &e.display_name()), ("state", &badge_str(e.badge()))]))
+                println!(
+                    "{}",
+                    trf(
+                        "{app} marked as reviewed [{state}]",
+                        &[("app", &e.display_name()), ("state", &badge_str(e.badge()))]
+                    )
+                )
             });
         }
-        Cmd::Reextract { app: q, allow_fallback } => {
+        Cmd::Reextract {
+            app: q,
+            allow_fallback,
+        } => {
             let e = app.reextract(&q, allow_fallback)?;
             out.emit(&json!({"app": AppSummary::from_entry(&e), "pending_changes": e.pending_changes}), || {
                 println!("Re-extracted {} [{}]", e.display_name(), badge_str(e.badge()));
@@ -718,12 +1080,21 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         Cmd::Redetect { app: q } => {
             let e = app.redetect(&q)?;
-            out.emit(&json!({"app": AppSummary::from_entry(&e), "detection": e.detection}), || {
-                println!("{}", trf("Dependency detection finished for {app}.", &[("app", &e.display_name())]));
-                if let Some(d) = &e.detection {
-                    print_detection(d);
-                }
-            });
+            out.emit(
+                &json!({"app": AppSummary::from_entry(&e), "detection": e.detection}),
+                || {
+                    println!(
+                        "{}",
+                        trf(
+                            "Dependency detection finished for {app}.",
+                            &[("app", &e.display_name())]
+                        )
+                    );
+                    if let Some(d) = &e.detection {
+                        print_detection(d);
+                    }
+                },
+            );
         }
         Cmd::Refresh { app: q, deep } => {
             let items = app.refresh(q.as_deref(), deep)?;
@@ -746,19 +1117,27 @@ fn real_main(cli: Cli) -> Result<()> {
                     "{}",
                     trf(
                         "{app} now points to {file} [{state}]",
-                        &[("app", &e.display_name()), ("file", &tildify(&e.source_path)), ("state", &badge_str(e.badge()))]
+                        &[
+                            ("app", &e.display_name()),
+                            ("file", &tildify(&e.source_path)),
+                            ("state", &badge_str(e.badge()))
+                        ]
                     )
                 )
             });
         }
         Cmd::Desktop { app: q, action } if q == "all" && action == "refresh" => {
             let n = sam_intake::desktop::refresh_launchers(&app.paths, &app.registry().list()?);
-            out.emit(&json!({"refreshed": n}), || println!("{n} launcher(s) updated"));
+            out.emit(&json!({"refreshed": n}), || {
+                println!("{n} launcher(s) updated")
+            });
         }
         Cmd::Desktop { app: q, action } => {
             let mut e = app.resolve(&q)?;
             match action.as_str() {
-                "install" => e.desktop_entry = Some(sam_intake::desktop::install_launcher(&app.paths, &e)?),
+                "install" => {
+                    e.desktop_entry = Some(sam_intake::desktop::install_launcher(&app.paths, &e)?)
+                }
                 "remove" | "uninstall" => {
                     sam_intake::desktop::remove_launcher(&app.paths, &e.id)?;
                     e.desktop_entry = None;
@@ -766,12 +1145,21 @@ fn real_main(cli: Cli) -> Result<()> {
                 other => bail!("unknown action '{other}' (install, remove)"),
             }
             app.registry().save(&mut e)?;
-            out.emit(&json!({"desktop_entry": e.desktop_entry}), || match &e.desktop_entry {
-                Some(p) => println!("{}", sam_core::i18n::trf("Launcher installed: {path}", &[("path", &tildify(p))])),
-                None => println!("{}", sam_core::i18n::tr("Launcher removed")),
+            out.emit(&json!({"desktop_entry": e.desktop_entry}), || {
+                match &e.desktop_entry {
+                    Some(p) => println!(
+                        "{}",
+                        sam_core::i18n::trf("Launcher installed: {path}", &[("path", &tildify(p))])
+                    ),
+                    None => println!("{}", sam_core::i18n::tr("Launcher removed")),
+                }
             });
         }
-        Cmd::Diagnose { app: q, timeout, apply } => {
+        Cmd::Diagnose {
+            app: q,
+            timeout,
+            apply,
+        } => {
             let mut e = app.resolve(&q)?;
             if !out.json {
                 eprintln!(
@@ -784,19 +1172,37 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             let r = sam_runner::diagnose::diagnose(&app, &mut e, timeout, apply)?;
             out.emit(&r, || {
-                println!("{}", sam_core::i18n::trf("Diagnostic run: {summary}", &[("summary", &r.launch_summary)]));
+                println!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "Diagnostic run: {summary}",
+                        &[("summary", &r.launch_summary)]
+                    )
+                );
                 if r.findings.is_empty() {
                     println!("{}", tr("No missing resources were detected."));
                 }
                 for f in &r.findings {
-                    let fix = f.fix.as_ref().map(|(k, v)| format!("  fix: sam-jail set {} {k} {v}", e.id)).unwrap_or_default();
-                    let fix = if f.already_granted { String::new() } else { fix };
+                    let fix = f
+                        .fix
+                        .as_ref()
+                        .map(|(k, v)| format!("  fix: sam-jail set {} {k} {v}", e.id))
+                        .unwrap_or_default();
+                    let fix = if f.already_granted {
+                        String::new()
+                    } else {
+                        fix
+                    };
                     println!(
                         "  [{}] {} ({}){}{}",
                         risk_str(f.risk),
                         f.suggestion,
                         f.error,
-                        if f.applied { paint("  applied", "32") } else { String::new() },
+                        if f.applied {
+                            paint("  applied", "32")
+                        } else {
+                            String::new()
+                        },
                         if f.applied { String::new() } else { fix }
                     );
                     if f.already_granted {
@@ -804,7 +1210,10 @@ fn real_main(cli: Cli) -> Result<()> {
                     }
                 }
                 if let Some(t) = &r.trace_file {
-                    println!("{}", trf("The full trace is in {file}.", &[("file", &tildify(t))]));
+                    println!(
+                        "{}",
+                        trf("The full trace is in {file}.", &[("file", &tildify(t))])
+                    );
                 }
                 if r.applied > 0 {
                     println!("{} low-risk fix(es) applied automatically.", r.applied);
@@ -834,30 +1243,50 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         Cmd::Cleanup { data, list } => {
             if data {
-                let items = if list { app.leftover_data()? } else { app.remove_leftover_data()? };
+                let items = if list {
+                    app.leftover_data()?
+                } else {
+                    app.remove_leftover_data()?
+                };
                 let total: u64 = items.iter().map(|d| d.size).sum();
-                out.emit(&json!({"apps": items, "total": total, "removed": !list}), || {
-                    for d in &items {
-                        println!("{:<40} {:>10}", d.id, human_size(d.size));
-                    }
-                    println!(
-                        "{}",
-                        if list {
-                            trn("Left behind by {n} app: {size}", "Left behind by {n} apps: {size}", items.len() as u64, &[("size", &human_size(total))])
-                        } else {
-                            trn(
-                                "Removed the data of {n} app: {size}",
-                                "Removed the data of {n} apps: {size}",
-                                items.len() as u64,
-                                &[("size", &human_size(total))],
-                            )
+                out.emit(
+                    &json!({"apps": items, "total": total, "removed": !list}),
+                    || {
+                        for d in &items {
+                            println!("{:<40} {:>10}", d.id, human_size(d.size));
                         }
-                    );
-                });
+                        println!(
+                            "{}",
+                            if list {
+                                trn(
+                                    "Left behind by {n} app: {size}",
+                                    "Left behind by {n} apps: {size}",
+                                    items.len() as u64,
+                                    &[("size", &human_size(total))],
+                                )
+                            } else {
+                                trn(
+                                    "Removed the data of {n} app: {size}",
+                                    "Removed the data of {n} apps: {size}",
+                                    items.len() as u64,
+                                    &[("size", &human_size(total))],
+                                )
+                            }
+                        );
+                    },
+                );
             } else {
                 let removed = if list { vec![] } else { app.cleanup()? };
                 out.emit(&removed, || {
-                    println!("{}", sam_core::i18n::trn("Removed {n} unused unpacked copy", "Removed {n} unused unpacked copies", removed.len() as u64, &[]));
+                    println!(
+                        "{}",
+                        sam_core::i18n::trn(
+                            "Removed {n} unused unpacked copy",
+                            "Removed {n} unused unpacked copies",
+                            removed.len() as u64,
+                            &[]
+                        )
+                    );
                 });
             }
         }
@@ -869,58 +1298,143 @@ fn real_main(cli: Cli) -> Result<()> {
                 let _ = std::fs::remove_file(&marker);
             }
             let done = marker.exists();
-            out.emit(&json!({"done": done}), || println!("onboarding {}", if done { "completed" } else { "pending" }));
+            out.emit(&json!({"done": done}), || {
+                println!("onboarding {}", if done { "completed" } else { "pending" })
+            });
         }
-        Cmd::Dev { cmd: DevCmd::ExtractSquashfs { source, offset, dest, max_files, max_bytes, max_seconds } } => {
-            let limits = sam_intake::normalize::Limits { max_files, max_bytes, max_seconds };
+        Cmd::Dev {
+            cmd:
+                DevCmd::ExtractSquashfs {
+                    source,
+                    offset,
+                    dest,
+                    max_files,
+                    max_bytes,
+                    max_seconds,
+                },
+        } => {
+            let limits = sam_intake::normalize::Limits {
+                max_files,
+                max_bytes,
+                max_seconds,
+            };
             sam_intake::extract::builtin_squashfs_entry(&source, offset, &dest, &limits)?;
         }
-        Cmd::Dev { cmd: DevCmd::Bench { apps } } => {
+        Cmd::Dev {
+            cmd: DevCmd::Bench { apps },
+        } => {
             let r = bench::bench(apps)?;
             out.emit(&r, || {
                 for m in &r {
-                    let ms = serde_json::to_value(m).ok().and_then(|v| v["best_ms"].as_f64());
+                    let ms = serde_json::to_value(m)
+                        .ok()
+                        .and_then(|v| v["best_ms"].as_f64());
                     let v = serde_json::to_value(m).unwrap_or_default();
                     match ms {
-                        Some(ms) => println!("{:<16} {:>10.3} ms  {}", v["key"].as_str().unwrap_or(""), ms, v["what"].as_str().unwrap_or("")),
-                        None => println!("{:<16} {:>13}  {}", v["key"].as_str().unwrap_or(""), "not here", v["what"].as_str().unwrap_or("")),
+                        Some(ms) => println!(
+                            "{:<16} {:>10.3} ms  {}",
+                            v["key"].as_str().unwrap_or(""),
+                            ms,
+                            v["what"].as_str().unwrap_or("")
+                        ),
+                        None => println!(
+                            "{:<16} {:>13}  {}",
+                            v["key"].as_str().unwrap_or(""),
+                            "not here",
+                            v["what"].as_str().unwrap_or("")
+                        ),
                     }
                 }
             });
         }
-        Cmd::Dev { cmd: DevCmd::SetUpdateInfo { runtime, info } } => {
+        Cmd::Dev {
+            cmd: DevCmd::SetUpdateInfo { runtime, info },
+        } => {
             sam_detect::update_info::write(&runtime, &info)?;
             out.emit(&json!({"runtime": runtime, "info": info}), || {
-                println!("{}", trf("Update information written to {file}.", &[("file", &runtime.display())]))
+                println!(
+                    "{}",
+                    trf(
+                        "Update information written to {file}.",
+                        &[("file", &runtime.display())]
+                    )
+                )
             });
         }
-        Cmd::Dev { cmd: DevCmd::MakeZsync { file, url, out: dest } } => {
-            let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).context(sam_core::i18n::tr("no file name"))?;
-            let mtime = chrono::DateTime::<chrono::Utc>::from(std::fs::metadata(&file)?.modified()?).format("%a, %d %b %Y %H:%M:%S +0000").to_string();
-            let data = sam_runner::zsync::make(&file, &name, url.as_deref().unwrap_or(&name), &mtime)?;
+        Cmd::Dev {
+            cmd:
+                DevCmd::MakeZsync {
+                    file,
+                    url,
+                    out: dest,
+                },
+        } => {
+            let name = file
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .context(sam_core::i18n::tr("no file name"))?;
+            let mtime =
+                chrono::DateTime::<chrono::Utc>::from(std::fs::metadata(&file)?.modified()?)
+                    .format("%a, %d %b %Y %H:%M:%S +0000")
+                    .to_string();
+            let data =
+                sam_runner::zsync::make(&file, &name, url.as_deref().unwrap_or(&name), &mtime)?;
             let dest = dest.unwrap_or_else(|| file.with_file_name(format!("{name}.zsync")));
             std::fs::write(&dest, data)?;
-            out.emit(&json!({"zsync": dest}), || println!("{}", sam_core::i18n::trf("Wrote {path}", &[("path", &dest.display())])));
+            out.emit(&json!({"zsync": dest}), || {
+                println!(
+                    "{}",
+                    sam_core::i18n::trf("Wrote {path}", &[("path", &dest.display())])
+                )
+            });
         }
-        Cmd::Dev { cmd: DevCmd::SignAppimage { file, key } } => {
+        Cmd::Dev {
+            cmd: DevCmd::SignAppimage { file, key },
+        } => {
             sam_detect::signature::sign_embedded(&file, None, &key)?;
             let sig = sam_detect::signature::check(&file);
             let fp = sig.fingerprint.clone().unwrap_or_default();
-            if sig.state != sam_core::model::SignatureState::Valid || !fp.eq_ignore_ascii_case(&key) {
-                bail!("{}", sam_core::i18n::trf("the signature in {file} does not check out: {detail}", &[("file", &file.display()), ("detail", &sig.detail)]));
+            if sig.state != sam_core::model::SignatureState::Valid || !fp.eq_ignore_ascii_case(&key)
+            {
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "the signature in {file} does not check out: {detail}",
+                        &[("file", &file.display()), ("detail", &sig.detail)]
+                    )
+                );
             }
             out.emit(&json!({"path": file, "fingerprint": fp}), || {
-                println!("{}", sam_core::i18n::trf("Signed {path} with {key}", &[("path", &file.display()), ("key", &fp)]))
+                println!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "Signed {path} with {key}",
+                        &[("path", &file.display()), ("key", &fp)]
+                    )
+                )
             });
         }
-        Cmd::Dev { cmd: DevCmd::MakeFixture { path, name, categories, apprun } } => {
+        Cmd::Dev {
+            cmd:
+                DevCmd::MakeFixture {
+                    path,
+                    name,
+                    categories,
+                    apprun,
+                },
+        } => {
             let mut spec = sam_intake::testkit::FixtureSpec::hello(&name);
             spec.categories = categories;
             if let Some(a) = apprun {
                 spec.apprun = std::fs::read_to_string(a)?;
             }
             sam_intake::testkit::build(&path, &spec)?;
-            out.emit(&json!({"path": path}), || println!("{}", sam_core::i18n::trf("Wrote {path}", &[("path", &path.display())])));
+            out.emit(&json!({"path": path}), || {
+                println!(
+                    "{}",
+                    sam_core::i18n::trf("Wrote {path}", &[("path", &path.display())])
+                )
+            });
         }
     }
     Ok(())

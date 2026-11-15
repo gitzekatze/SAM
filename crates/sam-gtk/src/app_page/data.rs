@@ -45,7 +45,11 @@ impl AppPage {
 
     pub(super) async fn evaluate(self: &Rc<Self>, p: Value) {
         let Some(app) = self.app() else { return };
-        if let Ok(ev) = app.backend.call(&["evaluate", &self.app_id], Some(p.to_string())).await {
+        if let Ok(ev) = app
+            .backend
+            .call(&["evaluate", &self.app_id], Some(p.to_string()))
+            .await
+        {
             self.editor.set_evaluation(Some(ev.clone()));
             self.set_tags(Some(&ev));
         }
@@ -61,7 +65,11 @@ impl AppPage {
                 Err(e) => e.message,
             },
         );
-        *self.menu_state.borrow_mut() = app.backend.call(&["menu", "list", &self.app_id], None).await.ok();
+        *self.menu_state.borrow_mut() = app
+            .backend
+            .call(&["menu", "list", &self.app_id], None)
+            .await
+            .ok();
         self.render_menu_group();
         self.load_log_list().await;
     }
@@ -69,9 +77,20 @@ impl AppPage {
     /// Fills the log picker (newest first) and shows the newest start log.
     pub(super) async fn load_log_list(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
-        let mut files: Vec<Value> =
-            app.backend.call(&["logs", &self.app_id, "--list"], None).await.ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
-        files.sort_by_key(|f| std::cmp::Reverse(util::get(f, "modified").and_then(Value::as_i64).unwrap_or(0)));
+        let mut files: Vec<Value> = app
+            .backend
+            .call(&["logs", &self.app_id, "--list"], None)
+            .await
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default();
+        files.sort_by_key(|f| {
+            std::cmp::Reverse(
+                util::get(f, "modified")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0),
+            )
+        });
         let labels: Vec<String> = files
             .iter()
             .map(|f| {
@@ -82,13 +101,27 @@ impl AppPage {
                     "diagnose" => crate::i18n::n_("Diagnostic run"),
                     other => other,
                 };
-                format!("{kind} · {}", util::format_time(util::get(f, "modified").and_then(Value::as_i64).unwrap_or(0)))
+                format!(
+                    "{kind} · {}",
+                    util::format_time(
+                        util::get(f, "modified")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0)
+                    )
+                )
             })
             .collect();
-        let pick = files.iter().position(|f| util::str_of(f, "kind") == "launch").unwrap_or(0);
+        let pick = files
+            .iter()
+            .position(|f| util::str_of(f, "kind") == "launch")
+            .unwrap_or(0);
         self.updating.set(true);
         if labels.is_empty() {
-            self.log_drop.set_model(Some(&gtk::StringList::new(&[crate::i18n::tr("No logs yet").as_str()])));
+            self.log_drop
+                .set_model(Some(&gtk::StringList::new(&[crate::i18n::tr(
+                    "No logs yet",
+                )
+                .as_str()])));
             self.log_drop.set_sensitive(false);
         } else {
             let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
@@ -107,11 +140,21 @@ impl AppPage {
 
     pub(super) async fn show_log_file(self: &Rc<Self>, file: &str) {
         let Some(app) = self.app() else { return };
-        let text = match app.backend.call(&["logs", &self.app_id, "--file", file, "--tail", "400"], None).await {
+        let text = match app
+            .backend
+            .call(
+                &["logs", &self.app_id, "--file", file, "--tail", "400"],
+                None,
+            )
+            .await
+        {
             Ok(l) => util::str_of(&l, "text").to_string(),
             Err(e) => e.message,
         };
-        set_mono_text(&self.log_view, if text.is_empty() { "(empty)" } else { &text });
+        set_mono_text(
+            &self.log_view,
+            if text.is_empty() { "(empty)" } else { &text },
+        );
     }
 
     /// Saves (or previews) changed settings. Changes are sent one after
@@ -135,12 +178,23 @@ impl AppPage {
                 let next = me.queued.borrow_mut().take();
                 let Some(p) = next else { break };
                 if me.sandboxed() {
-                    if let Err(e) = app.backend.call(&["profile", "set", &me.app_id], Some(p.to_string())).await {
+                    if let Err(e) = app
+                        .backend
+                        .call(&["profile", "set", &me.app_id], Some(p.to_string()))
+                        .await
+                    {
                         app.report_error(&e);
                     }
                     saved = true;
                 } else {
-                    match app.backend.call(&["preview", &me.path, "--permissions-stdin"], Some(p.to_string())).await {
+                    match app
+                        .backend
+                        .call(
+                            &["preview", &me.path, "--permissions-stdin"],
+                            Some(p.to_string()),
+                        )
+                        .await
+                    {
                         Ok(pv) => {
                             if me.queued.borrow().is_none() {
                                 *me.preview.borrow_mut() = Some(pv);
@@ -161,9 +215,25 @@ impl AppPage {
 
     pub(super) fn create_sandbox(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
-        let Some(perms) = self.pending.borrow().clone() else { return };
-        let mut args: Vec<String> = vec!["add".into(), self.path.clone(), "--accept".into(), "--permissions-stdin".into()];
-        if self.hide_duplicates.get() && self.found().and_then(|f| f.get("menu_entries").and_then(Value::as_array).map(|m| !m.is_empty())).unwrap_or(false) {
+        let Some(perms) = self.pending.borrow().clone() else {
+            return;
+        };
+        let mut args: Vec<String> = vec![
+            "add".into(),
+            self.path.clone(),
+            "--accept".into(),
+            "--permissions-stdin".into(),
+        ];
+        if self.hide_duplicates.get()
+            && self
+                .found()
+                .and_then(|f| {
+                    f.get("menu_entries")
+                        .and_then(Value::as_array)
+                        .map(|m| !m.is_empty())
+                })
+                .unwrap_or(false)
+        {
             args.push("--hide-duplicates".into());
         }
         args.push("--progress".into());
@@ -176,7 +246,12 @@ impl AppPage {
         glib::spawn_future_local(async move {
             let refs: Vec<&str> = args.iter().map(String::as_str).collect();
             let shown = me.clone();
-            let r = app.backend.call_with_progress(&refs, Some(perms.to_string()), move |p| shown.progress.update(p)).await;
+            let r = app
+                .backend
+                .call_with_progress(&refs, Some(perms.to_string()), move |p| {
+                    shown.progress.update(p)
+                })
+                .await;
             me.progress.finish();
             me.content.set_sensitive(true);
             me.main_button.set_sensitive(true);
@@ -192,15 +267,29 @@ impl AppPage {
                         let why = if dwarfs {
                             crate::i18n::trf("{app} is packed in the newer DwarFS format. SAM can unpack it by itself once the dwarfs tools are installed (package \u{201c}dwarfs\u{201d}).", &[("app", &util::plain(&name))])
                         } else {
-                            crate::i18n::trf("SAM could not unpack {app} by itself.", &[("app", &util::plain(&name))])
+                            crate::i18n::trf(
+                                "SAM could not unpack {app} by itself.",
+                                &[("app", &util::plain(&name))],
+                            )
                         };
                         let body = crate::i18n::trf("{why}\n\nInstead, the AppImage can unpack itself. That runs code from the AppImage, inside a sandbox with no network and no access to your files. Only continue if you trust where this file came from.", &[("why", &why)]);
-                        if window::confirm(&app.window, &tr("Let the AppImage Unpack Itself?"), &body, &tr("Unpack"), false).await {
+                        if window::confirm(
+                            &app.window,
+                            &tr("Let the AppImage Unpack Itself?"),
+                            &body,
+                            &tr("Unpack"),
+                            false,
+                        )
+                        .await
+                        {
                             app.reextract(&id, true).await;
                             app.open_app(&id);
                         }
                     } else {
-                        app.toast(&crate::i18n::trf("Sandbox created for {app}.", &[("app", &util::plain(&name))]));
+                        app.toast(&crate::i18n::trf(
+                            "Sandbox created for {app}.",
+                            &[("app", &util::plain(&name))],
+                        ));
                     }
                 }
                 Err(e) => app.report_error(&e),
@@ -214,7 +303,14 @@ impl AppPage {
         let name = util::plain(&self.name());
         glib::spawn_future_local(async move {
             // Asked fresh: the app may have been started or closed meanwhile.
-            let running = app.backend.call(&["info", &me.app_id], None).await.ok().and_then(|i| i.get("running").and_then(Value::as_u64)).unwrap_or(0) > 0;
+            let running = app
+                .backend
+                .call(&["info", &me.app_id], None)
+                .await
+                .ok()
+                .and_then(|i| i.get("running").and_then(Value::as_u64))
+                .unwrap_or(0)
+                > 0;
             // Three clearly named choices; nothing is preselected, and the
             // button names the chosen action.
             let body = if running {
@@ -224,7 +320,10 @@ impl AppPage {
                     "Choose what to remove. The AppImage file itself is always kept, and any menu entry SAM hid is shown again when the sandbox goes.",
                 )
             };
-            let d = adw::AlertDialog::new(Some(&crate::i18n::trf("Remove {name}?", &[("name", &name)])), Some(&body));
+            let d = adw::AlertDialog::new(
+                Some(&crate::i18n::trf("Remove {name}?", &[("name", &name)])),
+                Some(&body),
+            );
             // Each button text is a whole text: translations cannot be glued
             // from pieces ("Close and" + the action).
             let choices = [
@@ -239,12 +338,19 @@ impl AppPage {
             d.set_response_enabled("ok", false);
             for (key, title, detail, action) in choices {
                 let label = gtk::Label::builder()
-                    .label(format!("<b>{}</b>\n<small>{}</small>", esc(&title), esc(&detail)))
+                    .label(format!(
+                        "<b>{}</b>\n<small>{}</small>",
+                        esc(&title),
+                        esc(&detail)
+                    ))
                     .use_markup(true)
                     .wrap(true)
                     .xalign(0.0)
                     .build();
-                let b = gtk::CheckButton::builder().child(&label).name(format!("remove-{key}")).build();
+                let b = gtk::CheckButton::builder()
+                    .child(&label)
+                    .name(format!("remove-{key}"))
+                    .build();
                 b.update_property(&[gtk::accessible::Property::Label(&title)]);
                 if let Some(f) = &first {
                     b.set_group(Some(f));
@@ -294,13 +400,26 @@ impl AppPage {
             match app.backend.call(&args, None).await {
                 Ok(r) => {
                     let warnings = util::list_of(&r, "warnings");
-                    let kept = if keep_data { " Its settings and files were kept." } else { "" };
-                    app.toast(&if warnings.is_empty() {
-                        crate::i18n::trf("Removed the sandbox for {name}.{kept}", &[("name", &name), ("kept", &kept)])
+                    let kept = if keep_data {
+                        " Its settings and files were kept."
                     } else {
-                        crate::i18n::trf("The sandbox was removed, but: {problems}", &[("problems", &warnings.join("; "))])
+                        ""
+                    };
+                    app.toast(&if warnings.is_empty() {
+                        crate::i18n::trf(
+                            "Removed the sandbox for {name}.{kept}",
+                            &[("name", &name), ("kept", &kept)],
+                        )
+                    } else {
+                        crate::i18n::trf(
+                            "The sandbox was removed, but: {problems}",
+                            &[("problems", &warnings.join("; "))],
+                        )
                     });
-                    let path = me.entry().map(|e| util::str_of(&e, "source_path").to_string()).unwrap_or_default();
+                    let path = me
+                        .entry()
+                        .map(|e| util::str_of(&e, "source_path").to_string())
+                        .unwrap_or_default();
                     app.refresh_apps().await;
                     if path.is_empty() {
                         app.show_welcome()
@@ -314,7 +433,12 @@ impl AppPage {
     }
 
     pub(super) fn open_private_folder(&self) {
-        let p = self.info.borrow().as_ref().map(|i| util::str_of(i, "private_home").to_string()).unwrap_or_default();
+        let p = self
+            .info
+            .borrow()
+            .as_ref()
+            .map(|i| util::str_of(i, "private_home").to_string())
+            .unwrap_or_default();
         if !p.is_empty() {
             let _ = std::fs::create_dir_all(&p);
             let launcher = gtk::FileLauncher::new(Some(&gio::File::for_path(&p)));
@@ -363,18 +487,33 @@ impl AppPage {
                     "This suggestion is based on messages the app printed itself. A malicious app can print messages to get more access.\n\n{explanation}",
                     &[("explanation", &explanation)],
                 ))
-            } else if risk == "high" || risk == "dangerous" || util::str_of(&sug, "action.kind") == "compat" {
+            } else if risk == "high"
+                || risk == "dangerous"
+                || util::str_of(&sug, "action.kind") == "compat"
+            {
                 Some(explanation.clone())
             } else {
                 None
             };
             if let Some(body) = ask {
-                if !window::confirm(&app.window, &crate::i18n::trf("Apply “{step}”?", &[("step", &title)]), &body, &crate::i18n::tr("Apply"), false).await {
+                if !window::confirm(
+                    &app.window,
+                    &crate::i18n::trf("Apply “{step}”?", &[("step", &title)]),
+                    &body,
+                    &crate::i18n::tr("Apply"),
+                    false,
+                )
+                .await
+                {
                     return;
                 }
             }
             let id = util::str_of(&sug, "id").to_string();
-            let args = if as_repair { vec!["repair", &me.app_id, "--apply", &id] } else { vec!["hints", &me.app_id, "--apply", &id] };
+            let args = if as_repair {
+                vec!["repair", &me.app_id, "--apply", &id]
+            } else {
+                vec!["hints", &me.app_id, "--apply", &id]
+            };
             match app.backend.call(&args, None).await {
                 Ok(_) => {
                     app.toast(&crate::i18n::trf("Applied: {step}", &[("step", &title)]));
@@ -402,19 +541,33 @@ impl AppPage {
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| crate::i18n::tr("the newest version"));
             let body = crate::i18n::trf("SAM downloads {version} from the address the AppImage names, checks it against the published checksum, and puts it in place of the current file. The current version is kept, so you can go back. Settings and files stay.", &[("version", &util::plain(&latest))]);
-            if !window::confirm(&app.window, &tr("Update Now?"), &body, &tr("Update"), false).await {
+            if !window::confirm(&app.window, &tr("Update Now?"), &body, &tr("Update"), false).await
+            {
                 return;
             }
             button.set_sensitive(false);
             app.toast(&tr("Downloading the update…"));
             let mut args = vec!["update".to_string(), me.app_id.clone()];
-            let mut result = app.backend.call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None).await;
+            let mut result = app
+                .backend
+                .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
+                .await;
             if let Err(e) = &result {
                 if e.is("signing-key-changed") {
-                    let ok = window::confirm(&app.window, &tr("Signed With Another Key"), e, &tr("Update Anyway"), true).await;
+                    let ok = window::confirm(
+                        &app.window,
+                        &tr("Signed With Another Key"),
+                        e,
+                        &tr("Update Anyway"),
+                        true,
+                    )
+                    .await;
                     if ok {
                         args.push("--accept-key-change".into());
-                        result = app.backend.call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None).await;
+                        result = app
+                            .backend
+                            .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
+                            .await;
                     } else {
                         result = Ok(Value::Null);
                     }

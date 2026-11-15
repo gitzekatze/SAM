@@ -27,10 +27,23 @@ pub fn status(host: &HostInfo) -> BubblewrapStatus {
 pub fn check(host: &HostInfo) -> Result<SandboxInfo> {
     let s = status(host);
     if s.usable {
-        return Ok(SandboxInfo { kind: "bubblewrap", reason: s.version.unwrap_or_else(|| "Bubblewrap".into()) });
+        return Ok(SandboxInfo {
+            kind: "bubblewrap",
+            reason: s.version.unwrap_or_else(|| "Bubblewrap".into()),
+        });
     }
-    let hint = if !host.userns.usable() { host.userns.explain() } else { "Bubblewrap is not installed. Install the 'bubblewrap' package.".into() };
-    bail!("{}", sam_core::i18n::trf("the sandbox cannot be created here. {hint}", &[("hint", &hint)]))
+    let hint = if !host.userns.usable() {
+        host.userns.explain()
+    } else {
+        "Bubblewrap is not installed. Install the 'bubblewrap' package.".into()
+    };
+    bail!(
+        "{}",
+        sam_core::i18n::trf(
+            "the sandbox cannot be created here. {hint}",
+            &[("hint", &hint)]
+        )
+    )
 }
 
 #[cfg(test)]
@@ -61,7 +74,10 @@ mod tests {
         host.userns.max_user_namespaces = None;
         host.userns.unprivileged_clone = Some(false);
         let msg = check(&host).unwrap_err().to_string();
-        assert!(msg.contains("sysctl kernel.unprivileged_userns_clone=1"), "the message says how to enable them: {msg}");
+        assert!(
+            msg.contains("sysctl kernel.unprivileged_userns_clone=1"),
+            "the message says how to enable them: {msg}"
+        );
     }
 
     /// A setuid Bubblewrap works without unprivileged user namespaces, so

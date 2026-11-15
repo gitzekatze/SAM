@@ -17,7 +17,17 @@ fn freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it() {
     build(&img, &FixtureSpec::hello("Roomy")).unwrap();
     let paths = Paths::rooted(&root.join("sam"));
     let sam = Sam::with_paths(paths).unwrap();
-    let id = sam.add(&img, &AddOptions { launcher: Some(false), ..Default::default() }).unwrap().entry.id;
+    let id = sam
+        .add(
+            &img,
+            &AddOptions {
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
     sam.set_permission(&id, "network.mode", "full").unwrap();
 
     let e = sam.resolve(&id).unwrap();
@@ -33,8 +43,15 @@ fn freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it() {
     assert!(sam.ensure_unpacked(&mut e).unwrap(), "unpacked again");
     let x = e.extraction.clone().unwrap();
     assert!(x.appdir.join(&x.entry).exists());
-    assert_eq!(e.profile.permissions.network.mode.as_str(), "full", "settings kept");
-    assert!(!sam.ensure_unpacked(&mut e).unwrap(), "nothing to do when present");
+    assert_eq!(
+        e.profile.permissions.network.mode.as_str(),
+        "full",
+        "settings kept"
+    );
+    assert!(
+        !sam.ensure_unpacked(&mut e).unwrap(),
+        "nothing to do when present"
+    );
 
     // A missing AppImage: the unpacked copy is the only one and stays.
     fs::rename(&img, root.join("moved.AppImage")).unwrap();

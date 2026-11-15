@@ -144,7 +144,10 @@ impl ProbeReport {
         self.results.iter().filter(|r| r.ok == Some(true)).count()
     }
     pub fn failed(&self) -> Vec<&ProbeResult> {
-        self.results.iter().filter(|r| r.ok == Some(false)).collect()
+        self.results
+            .iter()
+            .filter(|r| r.ok == Some(false))
+            .collect()
     }
 }
 
@@ -160,10 +163,19 @@ pub fn run(plan: &ProbePlan, enforcement: &str) -> ProbeReport {
         .into_iter()
         .map(|c| {
             let (ok, observed) = check(&c.test, enforcement);
-            ProbeResult { id: c.id.clone(), group: c.group.clone(), title: c.title.clone(), ok, observed }
+            ProbeResult {
+                id: c.id.clone(),
+                group: c.group.clone(),
+                title: c.title.clone(),
+                ok,
+                observed,
+            }
         })
         .collect();
-    ProbeReport { results, enforcement: enforcement.to_string() }
+    ProbeReport {
+        results,
+        enforcement: enforcement.to_string(),
+    }
 }
 
 fn pass(s: impl Into<String>) -> (Option<bool>, String) {
@@ -185,9 +197,17 @@ pub fn identity(p: &Path) -> Option<(u64, u64)> {
 /// disappears when closed, so nothing ever shows up in the folder.
 fn can_create_in(dir: &Path) -> bool {
     use std::os::unix::ffi::OsStrExt;
-    let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else { return false };
+    let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else {
+        return false;
+    };
     // SAFETY: `c` is a NUL-terminated path; the returned descriptor is checked and closed below.
-    let fd = unsafe { libc::open(c.as_ptr(), libc::O_TMPFILE | libc::O_WRONLY | libc::O_CLOEXEC, 0o600) };
+    let fd = unsafe {
+        libc::open(
+            c.as_ptr(),
+            libc::O_TMPFILE | libc::O_WRONLY | libc::O_CLOEXEC,
+            0o600,
+        )
+    };
     if fd >= 0 {
         // SAFETY: the descriptor opened above is closed exactly once here.
         unsafe { libc::close(fd) };
@@ -197,7 +217,12 @@ fn can_create_in(dir: &Path) -> bool {
     if e == libc::EOPNOTSUPP || e == libc::EISDIR {
         // File systems without O_TMPFILE: a hidden file, removed at once.
         let probe = dir.join(format!(".sam-check-{}", std::process::id()));
-        if std::fs::OpenOptions::new().write(true).create_new(true).open(&probe).is_ok() {
+        if std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe)
+            .is_ok()
+        {
             let _ = std::fs::remove_file(&probe);
             return true;
         }
@@ -207,7 +232,11 @@ fn can_create_in(dir: &Path) -> bool {
 
 fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
     match t {
-        ProbeTest::Folder { path, host_id, expect } => {
+        ProbeTest::Folder {
+            path,
+            host_id,
+            expect,
+        } => {
             let here = identity(path);
             let real = match (here, host_id) {
                 (Some(a), Some(b)) => a == *b,
@@ -217,7 +246,9 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             let readable = real && std::fs::read_dir(path).is_ok();
             let writable = real && can_create_in(path);
             let seen = match (real, readable, writable) {
-                (false, _, _) if here.is_some() => sam_core::i18n::n_("only an empty private folder"),
+                (false, _, _) if here.is_some() => {
+                    sam_core::i18n::n_("only an empty private folder")
+                }
                 (false, _, _) => sam_core::i18n::n_("not visible"),
                 (true, _, true) => sam_core::i18n::n_("can read and write"),
                 (true, true, false) => sam_core::i18n::n_("can read, cannot write"),
@@ -257,25 +288,55 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             }
         }
         ProbeTest::Wayland { expect } => {
-            let sock = std::env::var("WAYLAND_DISPLAY").ok().and_then(|d| std::env::var("XDG_RUNTIME_DIR").ok().map(|r| Path::new(&r).join(d)));
+            let sock = std::env::var("WAYLAND_DISPLAY").ok().and_then(|d| {
+                std::env::var("XDG_RUNTIME_DIR")
+                    .ok()
+                    .map(|r| Path::new(&r).join(d))
+            });
             let there = sock.is_some_and(|s| s.exists());
-            (Some(there == *expect), if there { sam_core::i18n::n_("connected").into() } else { sam_core::i18n::n_("no Wayland socket").to_string() })
+            (
+                Some(there == *expect),
+                if there {
+                    sam_core::i18n::n_("connected").into()
+                } else {
+                    sam_core::i18n::n_("no Wayland socket").to_string()
+                },
+            )
         }
         ProbeTest::X11 { expect } => {
-            let there = std::env::var("DISPLAY").is_ok() && std::fs::read_dir("/tmp/.X11-unix").is_ok_and(|mut d| d.next().is_some());
-            (Some(there == *expect), if there { "X11 socket present".into() } else { "no X11 socket".to_string() })
+            let there = std::env::var("DISPLAY").is_ok()
+                && std::fs::read_dir("/tmp/.X11-unix").is_ok_and(|mut d| d.next().is_some());
+            (
+                Some(there == *expect),
+                if there {
+                    "X11 socket present".into()
+                } else {
+                    "no X11 socket".to_string()
+                },
+            )
         }
         ProbeTest::Audio { expect } => {
             let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
             let there = Path::new(&rt).join("pulse/native").exists();
-            (Some(there == *expect), if there { sam_core::i18n::n_("sound socket present").into() } else { sam_core::i18n::n_("no sound socket").to_string() })
+            (
+                Some(there == *expect),
+                if there {
+                    sam_core::i18n::n_("sound socket present").into()
+                } else {
+                    sam_core::i18n::n_("no sound socket").to_string()
+                },
+            )
         }
         ProbeTest::PipeWire { expect } => {
             let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
             let there = Path::new(&rt).join("pipewire-0").exists();
             (
                 Some(there == *expect),
-                if there { sam_core::i18n::n_("PipeWire socket present").into() } else { sam_core::i18n::n_("no PipeWire socket").to_string() },
+                if there {
+                    sam_core::i18n::n_("PipeWire socket present").into()
+                } else {
+                    sam_core::i18n::n_("no PipeWire socket").to_string()
+                },
             )
         }
         ProbeTest::NoNetwork | ProbeTest::Network => {
@@ -284,7 +345,11 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             let seen = format!(
                 "interfaces: {}; {}",
                 ifaces.join(", "),
-                if route { sam_core::i18n::n_("default route") } else { sam_core::i18n::n_("no default route") }
+                if route {
+                    sam_core::i18n::n_("default route")
+                } else {
+                    sam_core::i18n::n_("no default route")
+                }
             );
             let ok = match t {
                 ProbeTest::NoNetwork => !route && ifaces.iter().all(|i| i == "lo"),
@@ -295,18 +360,47 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         ProbeTest::LocalPort { port, expect } => {
             let addr = std::net::SocketAddr::from(([127, 0, 0, 1], *port));
             let open = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(1)).is_ok();
-            (Some(open == *expect), if open { sam_core::i18n::n_("reachable").into() } else { sam_core::i18n::n_("not reachable").to_string() })
+            (
+                Some(open == *expect),
+                if open {
+                    sam_core::i18n::n_("reachable").into()
+                } else {
+                    sam_core::i18n::n_("not reachable").to_string()
+                },
+            )
         }
         ProbeTest::SessionBus { expect } => {
             let addr = std::env::var("DBUS_SESSION_BUS_ADDRESS").ok();
-            let works = addr.as_deref().is_some_and(|a| crate::dbus_check::name_reachable(a, "org.freedesktop.DBus", Duration::from_secs(2)).is_ok());
-            (Some(works == *expect), if works { sam_core::i18n::n_("connected").into() } else { sam_core::i18n::n_("no session bus").to_string() })
+            let works = addr.as_deref().is_some_and(|a| {
+                crate::dbus_check::name_reachable(a, "org.freedesktop.DBus", Duration::from_secs(2))
+                    .is_ok()
+            });
+            (
+                Some(works == *expect),
+                if works {
+                    sam_core::i18n::n_("connected").into()
+                } else {
+                    sam_core::i18n::n_("no session bus").to_string()
+                },
+            )
         }
         ProbeTest::BusName { name, expect } => {
-            let Ok(addr) = std::env::var("DBUS_SESSION_BUS_ADDRESS") else { return skip("no session bus") };
+            let Ok(addr) = std::env::var("DBUS_SESSION_BUS_ADDRESS") else {
+                return skip("no session bus");
+            };
             match crate::dbus_check::name_reachable(&addr, name, Duration::from_secs(2)) {
-                Ok(r) => (Some(r == *expect), if r { sam_core::i18n::n_("reachable").into() } else { sam_core::i18n::n_("hidden").to_string() }),
-                Err(e) => skip(sam_core::i18n::trf("could not ask the bus: {error}", &[("error", &e)])),
+                Ok(r) => (
+                    Some(r == *expect),
+                    if r {
+                        sam_core::i18n::n_("reachable").into()
+                    } else {
+                        sam_core::i18n::n_("hidden").to_string()
+                    },
+                ),
+                Err(e) => skip(sam_core::i18n::trf(
+                    "could not ask the bus: {error}",
+                    &[("error", &e)],
+                )),
             }
         }
         ProbeTest::NoNewPrivileges => match status_field("NoNewPrivs") {
@@ -321,7 +415,16 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         },
         ProbeTest::OwnProcesses => {
             let n = std::fs::read_dir("/proc")
-                .map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().chars().all(|c| c.is_ascii_digit())).count())
+                .map(|d| {
+                    d.flatten()
+                        .filter(|e| {
+                            e.file_name()
+                                .to_string_lossy()
+                                .chars()
+                                .all(|c| c.is_ascii_digit())
+                        })
+                        .count()
+                })
                 .unwrap_or(0);
             (Some(n > 0 && n < 20), format!("sees {n} process(es)"))
         }
@@ -329,7 +432,14 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             // SAFETY: unshare takes a flag and changes only this probe process, which exits after the check.
             let r = unsafe { libc::unshare(libc::CLONE_NEWUSER) };
             let is_blocked = r != 0;
-            (Some(is_blocked == *blocked), if is_blocked { sam_core::i18n::n_("blocked").into() } else { sam_core::i18n::n_("allowed").to_string() })
+            (
+                Some(is_blocked == *blocked),
+                if is_blocked {
+                    sam_core::i18n::n_("blocked").into()
+                } else {
+                    sam_core::i18n::n_("allowed").to_string()
+                },
+            )
         }
         ProbeTest::SyscallFilter { active } => {
             // keyctl(KEYCTL_GET_KEYRING_ID, KEY_SPEC_SESSION_KEYRING, 0):
@@ -338,7 +448,14 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             let r = unsafe { libc::syscall(libc::SYS_keyctl, 0, -3, 0) };
             let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             let filtered = r < 0 && e == libc::EPERM;
-            (Some(filtered == *active), if filtered { sam_core::i18n::n_("active").into() } else { sam_core::i18n::n_("not active").to_string() })
+            (
+                Some(filtered == *active),
+                if filtered {
+                    sam_core::i18n::n_("active").into()
+                } else {
+                    sam_core::i18n::n_("not active").to_string()
+                },
+            )
         }
         ProbeTest::NoTerminalInjection { active } => {
             // ioctl(0, TIOCSTI): the baseline filter answers EPERM before the
@@ -348,41 +465,85 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             let r = unsafe { libc::ioctl(0, libc::TIOCSTI, &c) };
             let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             let blocked = r < 0 && e == libc::EPERM;
-            (Some(blocked == *active), if blocked { sam_core::i18n::n_("blocked").into() } else { sam_core::i18n::n_("not blocked by the filter").to_string() })
+            (
+                Some(blocked == *active),
+                if blocked {
+                    sam_core::i18n::n_("blocked").into()
+                } else {
+                    sam_core::i18n::n_("not blocked by the filter").to_string()
+                },
+            )
         }
         ProbeTest::Landlock { expect } => {
-            let on = enforcement.contains("landlock: fully enforced") || enforcement.contains("landlock: partially enforced");
-            (Some(on == *expect), if on { sam_core::i18n::n_("active").into() } else { sam_core::i18n::n_("not active").to_string() })
+            let on = enforcement.contains("landlock: fully enforced")
+                || enforcement.contains("landlock: partially enforced");
+            (
+                Some(on == *expect),
+                if on {
+                    sam_core::i18n::n_("active").into()
+                } else {
+                    sam_core::i18n::n_("not active").to_string()
+                },
+            )
         }
     }
 }
 
 fn interfaces() -> Vec<String> {
-    std::fs::read_to_string("/proc/net/dev").unwrap_or_default().lines().skip(2).filter_map(|l| l.split(':').next().map(|s| s.trim().to_string())).collect()
+    std::fs::read_to_string("/proc/net/dev")
+        .unwrap_or_default()
+        .lines()
+        .skip(2)
+        .filter_map(|l| l.split(':').next().map(|s| s.trim().to_string()))
+        .collect()
 }
 
 /// A default route in /proc/net/route (IPv4) or /proc/net/ipv6_route.
 pub fn has_default_route() -> bool {
-    let v4 = std::fs::read_to_string("/proc/net/route").unwrap_or_default().lines().skip(1).any(|l| l.split_whitespace().nth(1) == Some("00000000"));
-    let v6 = std::fs::read_to_string("/proc/net/ipv6_route").unwrap_or_default().lines().any(|l| {
-        let f: Vec<&str> = l.split_whitespace().collect();
-        f.len() > 9 && f[0] == "00000000000000000000000000000000" && f[1] == "00" && f[9] != "lo"
-    });
+    let v4 = std::fs::read_to_string("/proc/net/route")
+        .unwrap_or_default()
+        .lines()
+        .skip(1)
+        .any(|l| l.split_whitespace().nth(1) == Some("00000000"));
+    let v6 = std::fs::read_to_string("/proc/net/ipv6_route")
+        .unwrap_or_default()
+        .lines()
+        .any(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            f.len() > 9
+                && f[0] == "00000000000000000000000000000000"
+                && f[1] == "00"
+                && f[9] != "lo"
+        });
     v4 || v6
 }
 
 fn status_field(name: &str) -> Option<String> {
-    std::fs::read_to_string("/proc/self/status").ok()?.lines().find_map(|l| l.strip_prefix(&format!("{name}:")).map(|v| v.trim().to_string()))
+    std::fs::read_to_string("/proc/self/status")
+        .ok()?
+        .lines()
+        .find_map(|l| {
+            l.strip_prefix(&format!("{name}:"))
+                .map(|v| v.trim().to_string())
+        })
 }
 
 /// TCP ports something listens on, on the host (/proc/net/tcp{,6}).
 pub fn listening_ports() -> Vec<u16> {
     let mut out = Vec::new();
     for f in ["/proc/net/tcp", "/proc/net/tcp6"] {
-        for l in std::fs::read_to_string(f).unwrap_or_default().lines().skip(1) {
+        for l in std::fs::read_to_string(f)
+            .unwrap_or_default()
+            .lines()
+            .skip(1)
+        {
             let cols: Vec<&str> = l.split_whitespace().collect();
             if cols.len() > 3 && cols[3] == "0A" {
-                if let Some(port) = cols[1].rsplit(':').next().and_then(|p| u16::from_str_radix(p, 16).ok()) {
+                if let Some(port) = cols[1]
+                    .rsplit(':')
+                    .next()
+                    .and_then(|p| u16::from_str_radix(p, 16).ok())
+                {
                     out.push(port);
                 }
             }
@@ -402,11 +563,29 @@ mod tests {
     fn folder_check_tells_real_from_private() {
         let t = tempfile::tempdir().unwrap();
         let id = identity(t.path());
-        let rw = check(&ProbeTest::Folder { path: t.path().into(), host_id: id, expect: Access::ReadWrite }, "");
+        let rw = check(
+            &ProbeTest::Folder {
+                path: t.path().into(),
+                host_id: id,
+                expect: Access::ReadWrite,
+            },
+            "",
+        );
         assert_eq!(rw.0, Some(true), "{}", rw.1);
         // Same name, different folder: counts as hidden.
-        let other = check(&ProbeTest::Folder { path: t.path().into(), host_id: Some((0, 1)), expect: Access::Hidden }, "");
+        let other = check(
+            &ProbeTest::Folder {
+                path: t.path().into(),
+                host_id: Some((0, 1)),
+                expect: Access::Hidden,
+            },
+            "",
+        );
         assert_eq!(other.0, Some(true), "{}", other.1);
-        assert_eq!(std::fs::read_dir(t.path()).unwrap().count(), 0, "write test leaves nothing behind");
+        assert_eq!(
+            std::fs::read_dir(t.path()).unwrap().count(),
+            0,
+            "write test leaves nothing behind"
+        );
     }
 }

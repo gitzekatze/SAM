@@ -64,13 +64,23 @@ fn parse(log: &Path) -> HashMap<String, String> {
         .unwrap()
         .lines()
         .filter_map(|l| l.split_once('='))
-        .filter(|(k, _)| !k.is_empty() && k.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'))
+        .filter(|(k, _)| {
+            !k.is_empty()
+                && k.chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        })
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect()
 }
 
 fn count_host(prefix: &str) -> usize {
-    fs::read_dir("/dev/input").map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with(prefix)).count()).unwrap_or(0)
+    fs::read_dir("/dev/input")
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with(prefix))
+                .count()
+        })
+        .unwrap_or(0)
 }
 
 fn runtime_has(name: &str) -> bool {
@@ -110,7 +120,17 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
 
     let paths = Paths::rooted(&root.join("sam"));
     let app = Sam::with_paths(paths.clone()).unwrap();
-    let id = app.add(&img, &AddOptions { launcher: Some(false), ..Default::default() }).unwrap().entry.id;
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
     let host = HostInfo::probe();
 
     let base = || {
@@ -125,31 +145,69 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     let last = std::cell::RefCell::new(None::<sam_core::LaunchRecord>);
     let launch = |name: &str, perms: PermissionSet| {
         let mut e = app.set_permissions(&id, perms).unwrap();
-        let opts = LaunchOptions { quiet: true, owd: Some(home.clone()), ..Default::default() };
+        let opts = LaunchOptions {
+            quiet: true,
+            owd: Some(home.clone()),
+            ..Default::default()
+        };
         let rec = run(&mut e, &opts, &app.config, &app.paths, &host).unwrap();
         if !rec.success {
             // The log is gone after the test (and on CI out of reach): show
             // what matters from it right here.
-            let log = rec.log_file.as_ref().and_then(|f| fs::read_to_string(f).ok()).unwrap_or_default();
+            let log = rec
+                .log_file
+                .as_ref()
+                .and_then(|f| fs::read_to_string(f).ok())
+                .unwrap_or_default();
             let important: Vec<&str> = log
                 .lines()
-                .filter(|l| l.starts_with("[err]") || l.starts_with("# note") || l.starts_with("# warning") || l.contains("bwrap:") || l.contains("pasta"))
+                .filter(|l| {
+                    l.starts_with("[err]")
+                        || l.starts_with("# note")
+                        || l.starts_with("# warning")
+                        || l.contains("bwrap:")
+                        || l.contains("pasta")
+                })
                 .take(40)
                 .collect();
-            panic!("[{name}] launch failed: {}\n{}", rec.summary, important.join("\n"));
+            panic!(
+                "[{name}] launch failed: {}\n{}",
+                rec.summary,
+                important.join("\n")
+            );
         }
         if std::env::var_os("SAM_MATRIX_DEBUG").is_some() {
-            eprintln!("=== {name}\n{}", fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap());
+            eprintln!(
+                "=== {name}\n{}",
+                fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap()
+            );
         }
-        let log = rec.log_file.clone().unwrap_or_else(|| panic!("[{name}] the launch kept no log: {}", rec.summary));
+        let log = rec
+            .log_file
+            .clone()
+            .unwrap_or_else(|| panic!("[{name}] the launch kept no log: {}", rec.summary));
         if !log.exists() {
-            let dir =
-                log.parent().map(|d| fs::read_dir(d).map(|r| r.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect::<Vec<_>>().join(", ")));
-            panic!("[{name}] the log {} is missing ({}); the folder holds: {dir:?}", log.display(), rec.summary);
+            let dir = log.parent().map(|d| {
+                fs::read_dir(d).map(|r| {
+                    r.flatten()
+                        .map(|e| e.file_name().to_string_lossy().into_owned())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+            });
+            panic!(
+                "[{name}] the log {} is missing ({}); the folder holds: {dir:?}",
+                log.display(),
+                rec.summary
+            );
         }
         let r = parse(&log);
         *last.borrow_mut() = Some(rec.clone());
-        assert_eq!(r.get("END").map(String::as_str), Some("1"), "[{name}] probe did not finish: {r:?}");
+        assert_eq!(
+            r.get("END").map(String::as_str),
+            Some("1"),
+            "[{name}] probe did not finish: {r:?}"
+        );
         r
     };
 
@@ -191,7 +249,10 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         assert_eq!(r["SYSFS"], "yes", "GPU drivers need /sys");
     }
     if Path::new("/sys/module/nvidia/version").exists() {
-        assert_eq!(r["NVMOD"], "yes", "NVIDIA's driver needs /sys/module/nvidia");
+        assert_eq!(
+            r["NVMOD"], "yes",
+            "NVIDIA's driver needs /sys/module/nvidia"
+        );
     }
 
     let mut p = base();
@@ -202,7 +263,10 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     assert_eq!(r["UINPUT"], "no");
     let host_events = count_host("event");
     let got: usize = r["EVENTS"].parse().unwrap();
-    assert!(host_events == 0 || got < host_events, "keyboards and mice stay hidden ({got} of {host_events})");
+    assert!(
+        host_events == 0 || got < host_events,
+        "keyboards and mice stay hidden ({got} of {host_events})"
+    );
 
     let mut p = base();
     p.devices.input = true;
@@ -212,12 +276,22 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     let mut p = base();
     p.devices.usb = true;
     let r = launch("usb", p);
-    assert_eq!(r["USB"], if Path::new("/dev/bus/usb").exists() { "yes" } else { "no" });
+    assert_eq!(
+        r["USB"],
+        if Path::new("/dev/bus/usb").exists() {
+            "yes"
+        } else {
+            "no"
+        }
+    );
 
     let mut p = base();
     p.devices.webcam = true;
     let r = launch("webcam", p);
-    let cams = fs::read_dir("/dev").unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("video"));
+    let cams = fs::read_dir("/dev")
+        .unwrap()
+        .flatten()
+        .any(|e| e.file_name().to_string_lossy().starts_with("video"));
     assert_eq!(r["VIDEO"], if cams { "yes" } else { "no" });
 
     let mut p = base();
@@ -226,18 +300,35 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     if runtime_has("pulse/native") {
         assert_eq!(r["AUDIO"], "yes");
     }
-    assert_eq!(r["PIPEWIRE"], "no", "sound never brings the raw PipeWire socket (cameras, screen streams)");
+    assert_eq!(
+        r["PIPEWIRE"], "no",
+        "sound never brings the raw PipeWire socket (cameras, screen streams)"
+    );
     assert_eq!(r["ALSA"], "no", "audio does not expose raw ALSA");
 
     let mut p = base();
     p.audio.pipewire = true;
     let r = launch("pipewire", p);
-    assert_eq!(r["PIPEWIRE"], if runtime_has("pipewire-0") { "yes" } else { "no" });
+    assert_eq!(
+        r["PIPEWIRE"],
+        if runtime_has("pipewire-0") {
+            "yes"
+        } else {
+            "no"
+        }
+    );
 
     let mut p = base();
     p.audio.alsa_raw = true;
     let r = launch("alsa", p);
-    assert_eq!(r["ALSA"], if Path::new("/dev/snd").exists() { "yes" } else { "no" });
+    assert_eq!(
+        r["ALSA"],
+        if Path::new("/dev/snd").exists() {
+            "yes"
+        } else {
+            "no"
+        }
+    );
 
     // Display.
     let mut p = base();
@@ -254,7 +345,9 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     let mut p = base();
     p.display.x11 = true;
     let r = launch("x11", p);
-    if fs::read_dir("/tmp/.X11-unix").is_ok_and(|mut d| d.next().is_some()) && host.sockets.x11_display.is_some() {
+    if fs::read_dir("/tmp/.X11-unix").is_ok_and(|mut d| d.next().is_some())
+        && host.sockets.x11_display.is_some()
+    {
         assert_eq!(r["X11"], "yes");
     }
 
@@ -279,7 +372,10 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         assert!(!rec.setup_failed, "bwrap status reached SAM through pasta");
         if sam_runner::find_helper().is_some() {
             let e = rec.enforcement.unwrap_or_default();
-            assert!(e.contains("landlock"), "helper status reached SAM through pasta: {e:?}");
+            assert!(
+                e.contains("landlock"),
+                "helper status reached SAM through pasta: {e:?}"
+            );
         }
     }
 
@@ -294,12 +390,22 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         p.integrations.input_method = true;
         let r = launch("dbus-filtered", p);
         assert_eq!(r["SESSBUS"], "yes");
-        assert_eq!(r["IBUS_USE_PORTAL"], "1", "input method uses the IBus portal");
+        assert_eq!(
+            r["IBUS_USE_PORTAL"], "1",
+            "input method uses the IBus portal"
+        );
     }
     let mut p = base();
     p.dbus.system.mode = DbusMode::Full;
     let r = launch("system-bus", p);
-    assert_eq!(r["SYSBUS"], if Path::new("/run/dbus/system_bus_socket").exists() { "yes" } else { "no" });
+    assert_eq!(
+        r["SYSBUS"],
+        if Path::new("/run/dbus/system_bus_socket").exists() {
+            "yes"
+        } else {
+            "no"
+        }
+    );
 
     // Sockets and environment.
     let mut p = base();
@@ -311,7 +417,14 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     let mut p = base();
     p.sockets.cups = true;
     let r = launch("cups", p);
-    assert_eq!(r["CUPS"], if Path::new("/run/cups/cups.sock").exists() { "yes" } else { "no" });
+    assert_eq!(
+        r["CUPS"],
+        if Path::new("/run/cups/cups.sock").exists() {
+            "yes"
+        } else {
+            "no"
+        }
+    );
     let mut p = base();
     p.environment.passthrough.push("SAM_MATRIX_VAR".into());
     let r = launch("env", p);
@@ -326,22 +439,39 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     let mut p = base();
     p.filesystem.custom_read.push(extra.display().to_string());
     let r = launch("custom-read", p);
-    assert_eq!((r["EXTRA_READ"].as_str(), r["EXTRA_WRITE"].as_str()), ("yes", "no"));
+    assert_eq!(
+        (r["EXTRA_READ"].as_str(), r["EXTRA_WRITE"].as_str()),
+        ("yes", "no")
+    );
     let mut p = base();
     p.filesystem.custom_write.push(extra.display().to_string());
     let r = launch("custom-write", p);
-    assert_eq!((r["EXTRA_READ"].as_str(), r["EXTRA_WRITE"].as_str()), ("yes", "yes"));
+    assert_eq!(
+        (r["EXTRA_READ"].as_str(), r["EXTRA_WRITE"].as_str()),
+        ("yes", "yes")
+    );
 
     let mut p = base();
     p.filesystem.home = true;
     let r = launch("full-home", p.clone());
     assert_eq!(r["DOCS"], "yes");
-    assert_eq!((r["SSHKEY"].as_str(), r["GNUPG"].as_str()), ("no", "no"), "keys masked");
+    assert_eq!(
+        (r["SSHKEY"].as_str(), r["GNUPG"].as_str()),
+        ("no", "no"),
+        "keys masked"
+    );
     p.filesystem.ssh = true;
     p.filesystem.gnupg = true;
     p.filesystem.hidden_files = true;
     let r = launch("full-home-keys", p);
-    assert_eq!((r["SSHKEY"].as_str(), r["GNUPG"].as_str(), r["HIDDEN"].as_str()), ("yes", "yes", "yes"));
+    assert_eq!(
+        (
+            r["SSHKEY"].as_str(),
+            r["GNUPG"].as_str(),
+            r["HIDDEN"].as_str()
+        ),
+        ("yes", "yes", "yes")
+    );
 
     // Advanced.
     let mut p = base();
@@ -353,7 +483,10 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     let overlays_work = sam_core::host::overlay_works_in(&paths.data_dir.join("overlays"));
     assert_eq!(r["APPDIR_WRITE"], if overlays_work { "yes" } else { "no" });
     let extracted = app.resolve(&id).unwrap().extraction.unwrap().appdir;
-    assert!(!Path::new(&extracted).join("portable.ini").exists(), "extracted copy unchanged");
+    assert!(
+        !Path::new(&extracted).join("portable.ini").exists(),
+        "extracted copy unchanged"
+    );
 
     let mut p = base();
     p.advanced.persistent_home = false;
@@ -390,17 +523,29 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     std::thread::scope(|sc| {
         let h = sc.spawn(|| {
             let mut e = e;
-            let opts = LaunchOptions { quiet: true, args: vec!["sleep".into()], owd: Some(home.clone()), ..Default::default() };
+            let opts = LaunchOptions {
+                quiet: true,
+                args: vec!["sleep".into()],
+                owd: Some(home.clone()),
+                ..Default::default()
+            };
             run(&mut e, &opts, &app.config, &app.paths, &host).unwrap()
         });
         let t0 = std::time::Instant::now();
         while app.running(&id).is_empty() && t0.elapsed().as_secs() < 5 {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        assert!(!app.running(&id).is_empty(), "the launch is seen as running");
+        assert!(
+            !app.running(&id).is_empty(),
+            "the launch is seen as running"
+        );
         let err = app.remove(&id, false).unwrap_err().to_string();
         assert!(err.contains("is running"), "{err}");
-        assert!(app.reextract(&id, false).unwrap_err().to_string().contains("is running"));
+        assert!(app
+            .reextract(&id, false)
+            .unwrap_err()
+            .to_string()
+            .contains("is running"));
         assert!(h.join().unwrap().success);
     });
     assert!(app.running(&id).is_empty());
@@ -408,8 +553,14 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     // The layer exists only where overlays work.
     assert_eq!(overlay.exists(), overlays_work, "writable app folder layer");
     app.remove(&id, false).unwrap();
-    assert!(!overlay.exists(), "remove deletes the writable app folder layer");
-    assert!(!paths.runtime_dir(&id).exists(), "no runtime folder left behind");
+    assert!(
+        !overlay.exists(),
+        "remove deletes the writable app folder layer"
+    );
+    assert!(
+        !paths.runtime_dir(&id).exists(),
+        "no runtime folder left behind"
+    );
 }
 
 use sam_core::Paths;
@@ -419,6 +570,7 @@ trait PastaProbe {
 }
 impl PastaProbe for HostInfo {
     fn tools_extra_pasta(&self) -> bool {
-        std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("pasta").is_file()))
+        std::env::var_os("PATH")
+            .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("pasta").is_file()))
     }
 }

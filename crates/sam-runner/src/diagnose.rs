@@ -47,8 +47,16 @@ pub struct DiagnoseResult {
     pub launch_summary: String,
 }
 
-const ETC_SENSITIVE: &[&str] =
-    &["/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/etc/ssh", "/etc/NetworkManager", "/etc/polkit-1", "/etc/pam.d", "/etc/security"];
+const ETC_SENSITIVE: &[&str] = &[
+    "/etc/shadow",
+    "/etc/gshadow",
+    "/etc/sudoers",
+    "/etc/ssh",
+    "/etc/NetworkManager",
+    "/etc/polkit-1",
+    "/etc/pam.d",
+    "/etc/security",
+];
 
 /// System calls that change a file rather than read or reach it.
 const CHANGE_CALLS: &[&str] = &[
@@ -88,32 +96,55 @@ const CHANGE_CALLS: &[&str] = &[
 pub fn parse_trace(text: &str) -> BTreeMap<String, (String, String)> {
     let mut out = BTreeMap::new();
     for line in text.lines() {
-        let Some(eq) = line.rfind(" = -1 ") else { continue };
-        let err = line[eq + 6..].split_whitespace().next().unwrap_or("").to_string();
-        if !matches!(err.as_str(), "ENOENT" | "EACCES" | "EPERM" | "EROFS" | "ECONNREFUSED") {
+        let Some(eq) = line.rfind(" = -1 ") else {
+            continue;
+        };
+        let err = line[eq + 6..]
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_string();
+        if !matches!(
+            err.as_str(),
+            "ENOENT" | "EACCES" | "EPERM" | "EROFS" | "ECONNREFUSED"
+        ) {
             continue;
         }
         // Failed attempts to change a file (its mode, owner, name) are not
         // missing access: they fail for any ordinary user, sandbox or not.
         // NVIDIA's driver, for one, tries to chmod its device nodes.
-        let call = line.split_whitespace().nth(1).and_then(|c| c.split('(').next()).unwrap_or("");
+        let call = line
+            .split_whitespace()
+            .nth(1)
+            .and_then(|c| c.split('(').next())
+            .unwrap_or("");
         if CHANGE_CALLS.contains(&call) {
             continue;
         }
         let Some(q1) = line.find('"') else { continue };
         // Asking to write under /usr or /etc (access with W_OK, or an open
         // for writing) fails for every ordinary user; apps often just check.
-        let writes = line.contains("W_OK") || line.contains("O_WRONLY") || line.contains("O_RDWR") || line.contains("O_CREAT");
+        let writes = line.contains("W_OK")
+            || line.contains("O_WRONLY")
+            || line.contains("O_RDWR")
+            || line.contains("O_CREAT");
         let system = line[q1 + 1..].starts_with("/usr/") || line[q1 + 1..].starts_with("/etc/");
         if writes && system {
             continue;
         }
-        let Some(q2) = line[q1 + 1..].find('"') else { continue };
+        let Some(q2) = line[q1 + 1..].find('"') else {
+            continue;
+        };
         let path = &line[q1 + 1..q1 + 1 + q2];
-        if !path.starts_with('/') || path.starts_with("/proc/") || path.starts_with("/opt/app") || path.starts_with("/run/sam") {
+        if !path.starts_with('/')
+            || path.starts_with("/proc/")
+            || path.starts_with("/opt/app")
+            || path.starts_with("/run/sam")
+        {
             continue;
         }
-        out.entry(path.to_string()).or_insert((err, line.trim().to_string()));
+        out.entry(path.to_string())
+            .or_insert((err, line.trim().to_string()));
     }
     out
 }
@@ -132,17 +163,27 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
     };
     let run = format!("/run/user/{}", host.uid);
     if path.starts_with("/dev/dri") || path.starts_with("/dev/nvidia") {
-        return Some(mk(RiskLevel::Medium, sam_core::i18n::tr("The app tried to use the GPU. Enable GPU acceleration."), Some(("devices.gpu", "true".into()))));
+        return Some(mk(
+            RiskLevel::Medium,
+            sam_core::i18n::tr("The app tried to use the GPU. Enable GPU acceleration."),
+            Some(("devices.gpu", "true".into())),
+        ));
     }
     if path.starts_with("/dev/snd") {
         return Some(mk(
             RiskLevel::High,
-            sam_core::i18n::tr("The app tried to open sound devices directly. Enable audio (or raw ALSA)."),
+            sam_core::i18n::tr(
+                "The app tried to open sound devices directly. Enable audio (or raw ALSA).",
+            ),
             Some(("audio.enabled", "true".into())),
         ));
     }
     if path.starts_with("/dev/video") {
-        return Some(mk(RiskLevel::High, sam_core::i18n::tr("The app tried to open a camera."), Some(("devices.webcam", "true".into()))));
+        return Some(mk(
+            RiskLevel::High,
+            sam_core::i18n::tr("The app tried to open a camera."),
+            Some(("devices.webcam", "true".into())),
+        ));
     }
     if path.starts_with("/dev/input") {
         return Some(mk(
@@ -152,26 +193,47 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         ));
     }
     if path.starts_with("/tmp/.X11-unix") {
-        return Some(mk(RiskLevel::High, sam_core::i18n::tr("The app tried to connect to X11. Enable X11 / XWayland."), Some(("display.x11", "true".into()))));
+        return Some(mk(
+            RiskLevel::High,
+            sam_core::i18n::tr("The app tried to connect to X11. Enable X11 / XWayland."),
+            Some(("display.x11", "true".into())),
+        ));
     }
     if path.starts_with(&format!("{run}/wayland")) {
-        return Some(mk(RiskLevel::Low, sam_core::i18n::tr("The app tried to connect to Wayland."), Some(("display.wayland", "true".into()))));
+        return Some(mk(
+            RiskLevel::Low,
+            sam_core::i18n::tr("The app tried to connect to Wayland."),
+            Some(("display.wayland", "true".into())),
+        ));
     }
     if path.starts_with(&format!("{run}/pulse")) || path.starts_with(&format!("{run}/pipewire")) {
-        return Some(mk(RiskLevel::Medium, sam_core::i18n::tr("The app tried to use the sound server."), Some(("audio.enabled", "true".into()))));
+        return Some(mk(
+            RiskLevel::Medium,
+            sam_core::i18n::tr("The app tried to use the sound server."),
+            Some(("audio.enabled", "true".into())),
+        ));
     }
     if path == format!("{run}/bus") {
-        return Some(mk(RiskLevel::High, sam_core::i18n::tr("The app tried to use the session D-Bus."), Some(("dbus.session.mode", "filtered".into()))));
+        return Some(mk(
+            RiskLevel::High,
+            sam_core::i18n::tr("The app tried to use the session D-Bus."),
+            Some(("dbus.session.mode", "filtered".into())),
+        ));
     }
     if path.starts_with("/run/dbus/system_bus_socket") {
-        return Some(mk(RiskLevel::Dangerous, sam_core::i18n::tr("The app tried to use the system D-Bus (left denied)."), None));
+        return Some(mk(
+            RiskLevel::Dangerous,
+            sam_core::i18n::tr("The app tried to use the system D-Bus (left denied)."),
+            None,
+        ));
     }
     // Only report filesystem paths that actually exist on the host;
     // missing-everywhere paths are normal library probing.
     if !p.exists() {
         return None;
     }
-    if path.starts_with("/usr/share/") || path.starts_with("/usr/lib/") || path.starts_with("/etc/") {
+    if path.starts_with("/usr/share/") || path.starts_with("/usr/lib/") || path.starts_with("/etc/")
+    {
         if ETC_SENSITIVE.iter().any(|s| path.starts_with(s)) {
             return Some(mk(
                 RiskLevel::Dangerous,
@@ -193,11 +255,22 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
             ));
         }
         let top: PathBuf = p.components().take(4).collect();
-        let dir = if p.is_dir() { p.to_path_buf() } else { top.clone() };
-        let dir = if dir.as_os_str().len() > top.as_os_str().len() { top } else { dir };
+        let dir = if p.is_dir() {
+            p.to_path_buf()
+        } else {
+            top.clone()
+        };
+        let dir = if dir.as_os_str().len() > top.as_os_str().len() {
+            top
+        } else {
+            dir
+        };
         return Some(mk(
             RiskLevel::Low,
-            sam_core::i18n::trf("Read-only system data {folder} is needed.", &[("folder", &dir.display())]),
+            sam_core::i18n::trf(
+                "Read-only system data {folder} is needed.",
+                &[("folder", &dir.display())],
+            ),
             Some(("filesystem.custom_read", dir.display().to_string())),
         ));
     }
@@ -206,34 +279,64 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         // where they do not exist yet on the first start; the app creates
         // them itself. Granting the real folder would only share yours.
         let own = [".cache", ".config", ".local"];
-        if err == "ENOENT" && rel.components().next().is_some_and(|c| own.iter().any(|o| c.as_os_str() == *o)) {
+        if err == "ENOENT"
+            && rel
+                .components()
+                .next()
+                .is_some_and(|c| own.iter().any(|o| c.as_os_str() == *o))
+        {
             return None;
         }
         if is_sensitive_path(path) {
             return Some(mk(
                 RiskLevel::Dangerous,
-                sam_core::i18n::trf("The app tried to access {path} (sensitive; left denied).", &[("path", &tildify(p))]),
+                sam_core::i18n::trf(
+                    "The app tried to access {path} (sensitive; left denied).",
+                    &[("path", &tildify(p))],
+                ),
                 None,
             ));
         }
         // Suggest the closest top-level folder in home.
-        let first: PathBuf = host.home.join(rel.components().next().map(|c| c.as_os_str()).unwrap_or_default());
-        let key = if err == "EROFS" { "filesystem.custom_write" } else { "filesystem.custom_read" };
+        let first: PathBuf = host.home.join(
+            rel.components()
+                .next()
+                .map(|c| c.as_os_str())
+                .unwrap_or_default(),
+        );
+        let key = if err == "EROFS" {
+            "filesystem.custom_write"
+        } else {
+            "filesystem.custom_read"
+        };
         return Some(mk(
             RiskLevel::High,
-            sam_core::i18n::trf("The app tried to access {path}. Grant the folder if this is expected.", &[("path", &tildify(p))]),
+            sam_core::i18n::trf(
+                "The app tried to access {path}. Grant the folder if this is expected.",
+                &[("path", &tildify(p))],
+            ),
             Some((key, tildify(&first))),
         ));
     }
     None
 }
 
-pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: bool) -> Result<DiagnoseResult> {
+pub fn diagnose(
+    sam: &Sam,
+    entry: &mut AppEntry,
+    timeout: u64,
+    apply_low_risk: bool,
+) -> Result<DiagnoseResult> {
     let host = HostInfo::probe();
     let strace = host.tools.strace.clone();
-    let Some(strace) = strace else { bail!("{}", sam_core::i18n::tr("strace is not installed; install it to use dynamic diagnosis (sudo pacman -S strace)")) };
+    let Some(strace) = strace else {
+        bail!("{}", sam_core::i18n::tr("strace is not installed; install it to use dynamic diagnosis (sudo pacman -S strace)"))
+    };
     if entry.profile.permissions.filesystem.home {
-        bail!("{}", sam_core::i18n::tr("diagnostic runs are refused while full home access is granted"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr("diagnostic runs are refused while full home access is granted")
+        );
     }
     let diag_dir = sam.paths.runtime_dir(&entry.id).join("diag");
     let _ = fs::remove_dir_all(&diag_dir);
@@ -255,8 +358,15 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
     };
     let rec = run(entry, &opts, &sam.config, &sam.paths, &host)?;
     let trace = fs::read_to_string(diag_dir.join("trace.log")).unwrap_or_default();
-    let mut findings: Vec<Finding> =
-        parse_trace(&trace).into_iter().filter_map(|(p, (e, line))| classify(&p, &e, &host).map(|f| Finding { trace_line: line, ..f })).collect();
+    let mut findings: Vec<Finding> = parse_trace(&trace)
+        .into_iter()
+        .filter_map(|(p, (e, line))| {
+            classify(&p, &e, &host).map(|f| Finding {
+                trace_line: line,
+                ..f
+            })
+        })
+        .collect();
     findings.dedup_by(|a, b| a.fix == b.fix && a.fix.is_some());
     if entry.profile.permissions.network.mode != sam_core::permissions::NetworkMode::Full {
         findings.retain(|f| !is_network_file(&f.path));
@@ -265,12 +375,18 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
     // The whole trace stays in the app's log folder, so a finding can be
     // checked against what really happened.
     let logs = sam.paths.app_logs_dir(&entry.id);
-    let trace_file = fs::create_dir_all(&logs).and_then(|_| fs::write(logs.join("diagnose-trace.log"), &trace)).ok().map(|_| logs.join("diagnose-trace.log"));
+    let trace_file = fs::create_dir_all(&logs)
+        .and_then(|_| fs::write(logs.join("diagnose-trace.log"), &trace))
+        .ok()
+        .map(|_| logs.join("diagnose-trace.log"));
 
     let mut applied = 0;
     if apply_low_risk && sam.config.dependencies.automatic_low_risk_fixes {
         let mut perms: PermissionSet = entry.profile.permissions.clone();
-        for f in findings.iter_mut().filter(|f| f.risk == RiskLevel::Low && !f.already_granted) {
+        for f in findings
+            .iter_mut()
+            .filter(|f| f.risk == RiskLevel::Low && !f.already_granted)
+        {
             if let Some((k, v)) = &f.fix {
                 let ok = if k == "filesystem.custom_read" {
                     if !perms.filesystem.custom_read.contains(v) {
@@ -291,13 +407,28 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
         }
     }
     let _ = fs::remove_dir_all(&diag_dir);
-    Ok(DiagnoseResult { findings, applied, log_file: rec.log_file, trace_file, launch_summary: rec.summary })
+    Ok(DiagnoseResult {
+        findings,
+        applied,
+        log_file: rec.log_file,
+        trace_file,
+        launch_summary: rec.summary,
+    })
 }
 
 /// The network's configuration files, which the sandbox hides on purpose
 /// when the app has no full network access.
 pub fn is_network_file(path: &str) -> bool {
-    ["/etc/resolv.conf", "/etc/hosts", "/etc/host.conf", "/etc/gai.conf", "/etc/services", "/etc/protocols", "/etc/nsswitch.conf"].contains(&path)
+    [
+        "/etc/resolv.conf",
+        "/etc/hosts",
+        "/etc/host.conf",
+        "/etc/gai.conf",
+        "/etc/services",
+        "/etc/protocols",
+        "/etc/nsswitch.conf",
+    ]
+    .contains(&path)
 }
 
 /// Marks findings whose fix the app already has: the access failed for
@@ -306,11 +437,16 @@ pub fn mark_already_granted(findings: &mut [Finding], perms: &PermissionSet) {
     for f in findings.iter_mut() {
         let Some((k, v)) = &f.fix else { continue };
         let has = match k.as_str() {
-            "filesystem.custom_read" => perms.filesystem.custom_read.contains(v) || perms.filesystem.custom_write.contains(v),
+            "filesystem.custom_read" => {
+                perms.filesystem.custom_read.contains(v)
+                    || perms.filesystem.custom_write.contains(v)
+            }
             "filesystem.custom_write" => perms.filesystem.custom_write.contains(v),
             _ => perms.get_key(k).ok().is_some_and(|cur| match cur {
                 serde_json::Value::String(s) => s == *v,
-                other => serde_json::from_str::<serde_json::Value>(v).is_ok_and(|want| want == other),
+                other => {
+                    serde_json::from_str::<serde_json::Value>(v).is_ok_and(|want| want == other)
+                }
             }),
         };
         if has {
@@ -337,7 +473,12 @@ mod tests {
 12 openat(AT_FDCWD, "/etc/hosts", O_RDONLY) = 3
 "#;
         let m = parse_trace(t);
-        assert!(m["/usr/share/X11/xkb/rules/evdev"].1.starts_with("12 openat(AT_FDCWD, \"/usr/share/X11/xkb/rules/evdev\""), "the raw line is kept");
+        assert!(
+            m["/usr/share/X11/xkb/rules/evdev"]
+                .1
+                .starts_with("12 openat(AT_FDCWD, \"/usr/share/X11/xkb/rules/evdev\""),
+            "the raw line is kept"
+        );
         assert!(m.contains_key("/tmp/.X11-unix/X0"));
         assert!(!m.contains_key("/opt/app/usr/lib/libfoo.so"));
         assert!(!m.contains_key("/etc/hosts"));
@@ -369,7 +510,11 @@ mod tests {
         let mut f = vec![classify("/dev/nvidia-modeset", "EACCES", &host).unwrap()];
         mark_already_granted(&mut f, &perms);
         assert!(f[0].already_granted);
-        assert!(f[0].suggestion.contains("already has this access"), "{}", f[0].suggestion);
+        assert!(
+            f[0].suggestion.contains("already has this access"),
+            "{}",
+            f[0].suggestion
+        );
         perms.devices.gpu = false;
         let mut f = vec![classify("/dev/nvidia-modeset", "EACCES", &host).unwrap()];
         mark_already_granted(&mut f, &perms);
@@ -414,7 +559,10 @@ mod tests {
         let m = parse_trace(t);
         assert!(!m.contains_key("/usr/lib/lv2/x.lv2/."));
         assert!(!m.contains_key("/etc/foo.conf"));
-        assert!(m.contains_key("/usr/share/icons/x/index.theme"), "a failed read still counts");
+        assert!(
+            m.contains_key("/usr/share/icons/x/index.theme"),
+            "a failed read still counts"
+        );
     }
 
     /// A file in /etc is suggested, never added by itself, because it
@@ -442,7 +590,10 @@ mod tests {
         fs::create_dir_all(tmp.path().join(".config/kwinrc")).unwrap();
         for p in [".config", ".config/kwinrc", ".local"] {
             fs::create_dir_all(tmp.path().join(p)).unwrap();
-            assert!(classify(tmp.path().join(p).to_str().unwrap(), "ENOENT", &host).is_none(), "{p}");
+            assert!(
+                classify(tmp.path().join(p).to_str().unwrap(), "ENOENT", &host).is_none(),
+                "{p}"
+            );
         }
     }
 }

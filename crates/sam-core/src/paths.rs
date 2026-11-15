@@ -24,17 +24,37 @@ pub struct Paths {
 impl Paths {
     pub fn from_env() -> Self {
         let home = home_dir();
-        let xdg_config = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
-        let xdg_data = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join(".local/share"));
-        let config_dir = std::env::var_os("SAM_CONFIG_DIR").map(PathBuf::from).unwrap_or_else(|| xdg_config.join("sam"));
-        let data_dir = std::env::var_os("SAM_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| xdg_data.join("sam"));
-        let applications_dir = std::env::var_os("SAM_APPLICATIONS_DIR").map(PathBuf::from).unwrap_or_else(|| xdg_data.join("applications"));
-        Paths { config_dir, data_dir, applications_dir }
+        let xdg_config = std::env::var_os("XDG_CONFIG_HOME")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".config"));
+        let xdg_data = std::env::var_os("XDG_DATA_HOME")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".local/share"));
+        let config_dir = std::env::var_os("SAM_CONFIG_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| xdg_config.join("sam"));
+        let data_dir = std::env::var_os("SAM_DATA_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| xdg_data.join("sam"));
+        let applications_dir = std::env::var_os("SAM_APPLICATIONS_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| xdg_data.join("applications"));
+        Paths {
+            config_dir,
+            data_dir,
+            applications_dir,
+        }
     }
 
     /// Root all paths under one directory (tests).
     pub fn rooted(root: &Path) -> Self {
-        Paths { config_dir: root.join("config"), data_dir: root.join("data"), applications_dir: root.join("applications") }
+        Paths {
+            config_dir: root.join("config"),
+            data_dir: root.join("data"),
+            applications_dir: root.join("applications"),
+        }
     }
 
     pub fn config_file(&self) -> PathBuf {
@@ -91,7 +111,8 @@ impl Paths {
         format!("sam-{id}")
     }
     pub fn launcher_file(&self, id: &str) -> PathBuf {
-        self.applications_dir.join(format!("{}.desktop", Self::launcher_id(id)))
+        self.applications_dir
+            .join(format!("{}.desktop", Self::launcher_id(id)))
     }
     pub fn onboarding_marker(&self) -> PathBuf {
         self.config_dir.join(".onboarding-done")
@@ -118,6 +139,9 @@ mod tests {
     fn the_window_id_matches_the_name_of_sams_menu_entry() {
         let p = Paths::rooted(Path::new("/x"));
         let file = p.launcher_file("appimage-krita-9f3c");
-        assert_eq!(file.file_stem().unwrap(), Paths::launcher_id("appimage-krita-9f3c").as_str());
+        assert_eq!(
+            file.file_stem().unwrap(),
+            Paths::launcher_id("appimage-krita-9f3c").as_str()
+        );
     }
 }

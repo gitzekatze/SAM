@@ -27,19 +27,28 @@ fn damaged_record(p: &Path, err: &anyhow::Error) {
             "sam-jail: {}",
             sam_core::i18n::trf(
                 "the app record {file} could not be read ({error}); it was moved to {moved}",
-                &[("file", &p.display()), ("error", &format!("{err:#}")), ("moved", &to.display())]
+                &[
+                    ("file", &p.display()),
+                    ("error", &format!("{err:#}")),
+                    ("moved", &to.display())
+                ]
             )
         ),
         None => eprintln!(
             "sam-jail: {}",
-            sam_core::i18n::trf("the app record {file} could not be read: {error}", &[("file", &p.display()), ("error", &format!("{err:#}"))])
+            sam_core::i18n::trf(
+                "the app record {file} could not be read: {error}",
+                &[("file", &p.display()), ("error", &format!("{err:#}"))]
+            )
         ),
     }
 }
 
 impl Registry {
     pub fn new(paths: &Paths) -> Self {
-        Registry { paths: paths.clone() }
+        Registry {
+            paths: paths.clone(),
+        }
     }
 
     pub fn list(&self) -> Result<Vec<AppEntry>> {
@@ -58,7 +67,9 @@ impl Registry {
             match self.load_file(&p) {
                 Ok(a) => out.push(a),
                 // From a newer SAM: left alone, just not shown.
-                Err(err) if err.downcast_ref::<serde_json::Error>().is_some() => damaged_record(&p, &err),
+                Err(err) if err.downcast_ref::<serde_json::Error>().is_some() => {
+                    damaged_record(&p, &err)
+                }
                 // From a newer SAM, or not readable right now: left alone.
                 Err(err) => eprintln!("sam-jail: {err:#}"),
             }
@@ -130,24 +141,41 @@ impl Registry {
         let all = self.list()?;
         let q = query.to_lowercase();
         let qslug = slugify(query);
-        let tiers: [&dyn Fn(&AppEntry) -> bool; 4] =
-            [&|a| a.name.to_lowercase() == q, &|a| a.id.starts_with(&q), &|a| !qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")), &|a| {
-                a.name.to_lowercase().contains(&q)
-            }];
+        let tiers: [&dyn Fn(&AppEntry) -> bool; 4] = [
+            &|a| a.name.to_lowercase() == q,
+            &|a| a.id.starts_with(&q),
+            &|a| !qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")),
+            &|a| a.name.to_lowercase().contains(&q),
+        ];
         for tier in tiers {
             let m: Vec<&AppEntry> = all.iter().filter(|a| tier(a)).collect();
             match m.len() {
                 0 => continue,
                 1 => return Ok(m[0].clone()),
-                _ => bail!("'{query}' is ambiguous: {}", m.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join(", ")),
+                _ => bail!(
+                    "'{query}' is ambiguous: {}",
+                    m.iter()
+                        .map(|a| a.id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
             }
         }
-        bail!("{}", sam_core::i18n::trf("no registered app matches '{query}' (see `sam-jail list`)", &[("query", &query)]))
+        bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "no registered app matches '{query}' (see `sam-jail list`)",
+                &[("query", &query)]
+            )
+        )
     }
 
     pub fn save(&self, entry: &mut AppEntry) -> Result<()> {
         if !valid_id(&entry.id) {
-            bail!("{}", sam_core::i18n::trf("invalid app id '{id}'", &[("id", &entry.id)]));
+            bail!(
+                "{}",
+                sam_core::i18n::trf("invalid app id '{id}'", &[("id", &entry.id)])
+            );
         }
         entry.updated_at = now();
         entry.format = sam_core::format::CURRENT;
@@ -188,7 +216,12 @@ pub fn integrity_of(e: &AppEntry) -> Result<String> {
 
 /// App ids are used as file names; keep them to a safe alphabet.
 pub fn valid_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 128 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') && !id.starts_with('-')
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && !id.starts_with('-')
 }
 
 /// On-disk preset format: `[preset]` metadata plus `[permissions]`.
@@ -223,7 +256,9 @@ pub struct PresetStore {
 
 impl PresetStore {
     pub fn new(paths: &Paths) -> Self {
-        PresetStore { dir: paths.presets_dir() }
+        PresetStore {
+            dir: paths.presets_dir(),
+        }
     }
 
     pub fn file_for(&self, name: &str) -> PathBuf {
@@ -267,7 +302,9 @@ impl PresetStore {
     }
 
     pub fn get(&self, name: &str) -> Result<Option<Preset>> {
-        Ok(self.list()?.into_iter().find(|p| p.name.eq_ignore_ascii_case(name) || preset_slug(&p.name) == preset_slug(name)))
+        Ok(self.list()?.into_iter().find(|p| {
+            p.name.eq_ignore_ascii_case(name) || preset_slug(&p.name) == preset_slug(name)
+        }))
     }
 
     pub fn save(&self, preset: &mut Preset) -> Result<PathBuf> {
@@ -330,7 +367,13 @@ pub fn read_preset_file(path: &Path) -> Result<Preset> {
 pub fn parse_preset_toml(s: &str) -> Result<Preset> {
     let file: PresetFile = toml::from_str(s)?;
     if file.preset.format > sam_core::format::CURRENT {
-        bail!("{}", sam_core::i18n::trf("this preset was made by a newer SAM (format {format}); update SAM to use it", &[("format", &file.preset.format)]));
+        bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "this preset was made by a newer SAM (format {format}); update SAM to use it",
+                &[("format", &file.preset.format)]
+            )
+        );
     }
     let permissions = permissions_from_toml(file.permissions)?;
     Ok(Preset {
@@ -362,15 +405,20 @@ fn permissions_from_toml(v: toml::Value) -> Result<PermissionSet> {
         };
         let key = match k.as_str() {
             "network" => "network.mode".to_string(),
-            "home" | "documents" | "downloads" | "music" | "pictures" | "videos" | "desktop" | "ssh" | "gnupg" | "hidden_files" | "custom_read"
-            | "custom_write" => format!("filesystem.{k}"),
+            "home" | "documents" | "downloads" | "music" | "pictures" | "videos" | "desktop"
+            | "ssh" | "gnupg" | "hidden_files" | "custom_read" | "custom_write" => {
+                format!("filesystem.{k}")
+            }
             "audio" => "audio.enabled".into(),
             "alsa" | "alsa_raw" => "audio.alsa_raw".into(),
             "gpu" | "webcam" | "input" | "usb" | "bluetooth" => format!("devices.{k}"),
             "x11" | "wayland" => format!("display.{k}"),
             "dbus_session" => "dbus.session.mode".into(),
             "dbus_system" => "dbus.system.mode".into(),
-            other => bail!("{}", sam_core::i18n::trf("unknown flat preset key '{other}'", &[("other", &other)])),
+            other => bail!(
+                "{}",
+                sam_core::i18n::trf("unknown flat preset key '{other}'", &[("other", &other)])
+            ),
         };
         p.set_key(&key, &raw)?;
     }
@@ -421,7 +469,9 @@ pub struct LogFile {
 
 impl Logs {
     pub fn new(paths: &Paths) -> Self {
-        Logs { paths: paths.clone() }
+        Logs {
+            paths: paths.clone(),
+        }
     }
 
     /// A new timestamped log path for this app.
@@ -440,7 +490,10 @@ impl Logs {
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().to_string_lossy().into_owned();
-                let rest = name.strip_prefix(&prefix)?.strip_suffix(".log")?.to_string();
+                let rest = name
+                    .strip_prefix(&prefix)?
+                    .strip_suffix(".log")?
+                    .to_string();
                 if rest.is_empty() {
                     Some(0)
                 } else {
@@ -457,21 +510,39 @@ impl Logs {
     pub fn list(&self, id: &str, kind: Option<LogKind>) -> Result<Vec<LogFile>> {
         let dir = self.paths.app_logs_dir(id);
         let mut out = Vec::new();
-        let Ok(rd) = fs::read_dir(&dir) else { return Ok(out) };
+        let Ok(rd) = fs::read_dir(&dir) else {
+            return Ok(out);
+        };
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            let Some(k) = name.split('-').next().and_then(LogKind::parse) else { continue };
+            let Some(k) = name.split('-').next().and_then(LogKind::parse) else {
+                continue;
+            };
             if kind.is_some_and(|want| want != k) {
                 continue;
             }
             let meta = e.metadata()?;
-            let modified = meta.modified().ok().and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
-            out.push(LogFile { path: e.path(), kind: k, modified, size: meta.len() });
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            out.push(LogFile {
+                path: e.path(),
+                kind: k,
+                modified,
+                size: meta.len(),
+            });
         }
         // Newest first. Logs from the same second are `<kind>-<date>-<time>.log`,
         // then `...-1.log`, `...-2.log`: order by that sequence number, not by
         // name (where `.log` would sort after `-1.log`).
-        out.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| log_stamp(&b.path).cmp(&log_stamp(&a.path))));
+        out.sort_by(|a, b| {
+            b.modified
+                .cmp(&a.modified)
+                .then_with(|| log_stamp(&b.path).cmp(&log_stamp(&a.path)))
+        });
         Ok(out)
     }
 
@@ -498,12 +569,17 @@ impl Logs {
 
 fn chrono_stamp() -> String {
     // YYYYmmdd-HHMMSS derived from the formatted local timestamp.
-    sam_core::util::format_ts(now()).replace(['-', ':'], "").replace(' ', "-")
+    sam_core::util::format_ts(now())
+        .replace(['-', ':'], "")
+        .replace(' ', "-")
 }
 
 /// `(date, time, sequence)` from a log file name like `launch-20261107-013613-1.log`.
 fn log_stamp(path: &Path) -> (String, String, u32) {
-    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let mut parts = stem.split('-').skip(1);
     let date = parts.next().unwrap_or_default().to_string();
     let time = parts.next().unwrap_or_default().to_string();
@@ -526,7 +602,11 @@ mod tests {
             let p = logs.new_log_path("app", LogKind::Launch).unwrap();
             fs::write(&p, format!("round {round}")).unwrap();
             logs.prune("app", LogKind::Launch, 3).unwrap();
-            assert!(p.exists(), "round {round}: the log just written was pruned ({})", p.display());
+            assert!(
+                p.exists(),
+                "round {round}: the log just written was pruned ({})",
+                p.display()
+            );
         }
     }
 
@@ -539,21 +619,35 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let paths = Paths::rooted(tmp.path());
         let reg = Registry::new(&paths);
-        let mut e = AppEntry { id: "appimage-x-1".into(), name: "X".into(), ..Default::default() };
+        let mut e = AppEntry {
+            id: "appimage-x-1".into(),
+            name: "X".into(),
+            ..Default::default()
+        };
         reg.save(&mut e).unwrap();
         assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside);
         let file = paths.app_file("appimage-x-1");
-        let mut v: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        let mut v: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
         v["profile"]["permissions"]["network"]["mode"] = "full".into();
         fs::write(&file, v.to_string()).unwrap();
         let mut changed = reg.get("appimage-x-1").unwrap().unwrap();
-        assert!(changed.changed_outside, "a change made outside SAM is noticed");
+        assert!(
+            changed.changed_outside,
+            "a change made outside SAM is noticed"
+        );
         assert_eq!(changed.badge(), sam_core::Badge::ChangedOutside);
         reg.save(&mut changed).unwrap();
-        assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside, "saving through SAM confirms it");
+        assert!(
+            !reg.get("appimage-x-1").unwrap().unwrap().changed_outside,
+            "saving through SAM confirms it"
+        );
         v.as_object_mut().unwrap().remove("integrity");
         fs::write(&file, v.to_string()).unwrap();
-        assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside, "records from before the check still work");
+        assert!(
+            !reg.get("appimage-x-1").unwrap().unwrap().changed_outside,
+            "records from before the check still work"
+        );
     }
 
     /// A preset is always stored inside the presets folder, whatever its name:
@@ -565,11 +659,22 @@ mod tests {
         let paths = Paths::rooted(tmp.path());
         let store = PresetStore::new(&paths);
         for name in ["../../evil", "/etc/evil", "..", "a/../../b"] {
-            let mut p = Preset { name: name.into(), ..Default::default() };
+            let mut p = Preset {
+                name: name.into(),
+                ..Default::default()
+            };
             let file = store.save(&mut p).unwrap();
-            assert_eq!(file.parent(), Some(paths.presets_dir().as_path()), "{name} → {}", file.display());
+            assert_eq!(
+                file.parent(),
+                Some(paths.presets_dir().as_path()),
+                "{name} → {}",
+                file.display()
+            );
         }
-        assert!(!tmp.path().join("evil.toml").exists() && !tmp.path().parent().unwrap().join("evil.toml").exists());
+        assert!(
+            !tmp.path().join("evil.toml").exists()
+                && !tmp.path().parent().unwrap().join("evil.toml").exists()
+        );
     }
 
     /// Regression (found in the test audit): a record changed outside SAM
@@ -582,10 +687,27 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let paths = Paths::rooted(tmp.path());
         fs::create_dir_all(paths.apps_dir()).unwrap();
-        fs::write(paths.apps_dir().join("evil.json"), r#"{"id": "../../.ssh", "name": "Evil"}"#).unwrap();
-        fs::write(paths.apps_dir().join("other.json"), r#"{"id": "appimage-real-1", "name": "Other"}"#).unwrap();
-        fs::write(paths.apps_dir().join("appimage-ok-1.json"), r#"{"id": "appimage-ok-1", "name": "Ok"}"#).unwrap();
-        let ids: Vec<String> = Registry::new(&paths).list().unwrap().into_iter().map(|e| e.id).collect();
+        fs::write(
+            paths.apps_dir().join("evil.json"),
+            r#"{"id": "../../.ssh", "name": "Evil"}"#,
+        )
+        .unwrap();
+        fs::write(
+            paths.apps_dir().join("other.json"),
+            r#"{"id": "appimage-real-1", "name": "Other"}"#,
+        )
+        .unwrap();
+        fs::write(
+            paths.apps_dir().join("appimage-ok-1.json"),
+            r#"{"id": "appimage-ok-1", "name": "Ok"}"#,
+        )
+        .unwrap();
+        let ids: Vec<String> = Registry::new(&paths)
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
         assert_eq!(ids, vec!["appimage-ok-1"]);
     }
 
@@ -600,8 +722,16 @@ mod tests {
         fs::write(&second, "second").unwrap();
         // Same mtime second for both files, so the sequence number decides.
         let mtime = fs::metadata(&first).unwrap().modified().unwrap();
-        fs::File::options().write(true).open(&second).unwrap().set_modified(mtime).unwrap();
-        assert_eq!(logs.latest("appimage-x-1", None).unwrap().unwrap().path, second);
+        fs::File::options()
+            .write(true)
+            .open(&second)
+            .unwrap()
+            .set_modified(mtime)
+            .unwrap();
+        assert_eq!(
+            logs.latest("appimage-x-1", None).unwrap().unwrap().path,
+            second
+        );
     }
 
     /// Apps are found by name or ID, and an ambiguous name is refused.
@@ -610,9 +740,17 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let paths = Paths::rooted(tmp.path());
         let reg = Registry::new(&paths);
-        let mut a = AppEntry { id: "appimage-krita-9f3c".into(), name: "Krita".into(), ..Default::default() };
+        let mut a = AppEntry {
+            id: "appimage-krita-9f3c".into(),
+            name: "Krita".into(),
+            ..Default::default()
+        };
         reg.save(&mut a).unwrap();
-        let mut b = AppEntry { id: "appimage-kate-1234".into(), name: "Kate".into(), ..Default::default() };
+        let mut b = AppEntry {
+            id: "appimage-kate-1234".into(),
+            name: "Kate".into(),
+            ..Default::default()
+        };
         reg.save(&mut b).unwrap();
         assert_eq!(reg.list().unwrap().len(), 2);
         assert_eq!(reg.resolve("krita").unwrap().id, a.id);
@@ -648,7 +786,9 @@ dbus_system = "none"
         assert_eq!(p.name, "My Browser");
         assert_eq!(p.permissions.network.mode, sam_core::NetworkMode::Full);
         assert_eq!(p.permissions.filesystem.downloads, sam_core::Access::Rw);
-        assert!(p.permissions.devices.gpu && p.permissions.audio.enabled && p.permissions.display.x11);
+        assert!(
+            p.permissions.devices.gpu && p.permissions.audio.enabled && p.permissions.display.x11
+        );
     }
 
     /// A saved preset loads back unchanged, found by its name in any letter case.
@@ -656,7 +796,11 @@ dbus_system = "none"
     fn a_saved_preset_loads_back_unchanged() {
         let tmp = tempfile::tempdir().unwrap();
         let store = PresetStore::new(&Paths::rooted(tmp.path()));
-        let mut p = Preset { name: "My Preset".into(), permissions: PermissionSet::strict_gui(), ..Default::default() };
+        let mut p = Preset {
+            name: "My Preset".into(),
+            permissions: PermissionSet::strict_gui(),
+            ..Default::default()
+        };
         store.save(&mut p).unwrap();
         let got = store.get("my preset").unwrap().unwrap();
         assert_eq!(got.permissions, p.permissions);

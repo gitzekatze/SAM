@@ -6,12 +6,23 @@ use super::*;
 impl Sam {
     // ----------------------------------------------------------- queries
 
-    pub fn evaluate(&self, perms: &PermissionSet, app: Option<&AppEntry>, host: &HostInfo) -> Evaluation {
+    pub fn evaluate(
+        &self,
+        perms: &PermissionSet,
+        app: Option<&AppEntry>,
+        host: &HostInfo,
+    ) -> Evaluation {
         self.evaluate_as(perms, app, app.is_some_and(|a| a.metadata.terminal), host)
     }
 
     /// `terminal_program`: for an AppImage without a sandbox, from its metadata.
-    fn evaluate_as(&self, perms: &PermissionSet, app: Option<&AppEntry>, terminal_program: bool, host: &HostInfo) -> Evaluation {
+    fn evaluate_as(
+        &self,
+        perms: &PermissionSet,
+        app: Option<&AppEntry>,
+        terminal_program: bool,
+        host: &HostInfo,
+    ) -> Evaluation {
         let ctx = WarningContext {
             app_needs_network: app.map(app_needs_network),
             host: Some(host),
@@ -19,12 +30,18 @@ impl Sam {
             warn_full_home: self.config.security.warn_full_home,
             terminal_program,
         };
-        Evaluation { risk: assess(perms), tags: sam_profile::tags::permission_tags(perms), warnings: evaluate(perms, &ctx) }
+        Evaluation {
+            risk: assess(perms),
+            tags: sam_profile::tags::permission_tags(perms),
+            warnings: evaluate(perms, &ctx),
+        }
     }
 
     /// All warnings relevant to an app: permissions, extraction, detection, state.
     pub fn app_warnings(&self, e: &AppEntry, host: &HostInfo) -> Vec<Warning> {
-        let mut w = self.evaluate(&e.profile.permissions, Some(e), host).warnings;
+        let mut w = self
+            .evaluate(&e.profile.permissions, Some(e), host)
+            .warnings;
         if let Some(x) = &e.extraction {
             w.extend(x.warnings.iter().cloned());
         }
@@ -36,7 +53,12 @@ impl Sam {
                     IsolationVerdict::LikelyBroken => Severity::Warning,
                     IsolationVerdict::WeaklyIsolated => Severity::Info,
                 };
-                w.push(Warning::new("isolation-verdict", sev, "Isolation assessment", v.message()));
+                w.push(Warning::new(
+                    "isolation-verdict",
+                    sev,
+                    "Isolation assessment",
+                    v.message(),
+                ));
             }
         }
         match e.state {
@@ -64,7 +86,11 @@ impl Sam {
             ));
         }
         if e.profile.compatibility_mode {
-            w.push(Warning::warn("compat-mode", "Compatibility mode", sam_profile::COMPAT_WARNING));
+            w.push(Warning::warn(
+                "compat-mode",
+                "Compatibility mode",
+                sam_profile::COMPAT_WARNING,
+            ));
         }
         if let Some(before) = &e.signing_key_changed {
             w.push(Warning::danger(
@@ -73,8 +99,18 @@ impl Sam {
                 sam_core::i18n::trf("The previous version was {before}. The current file is {now}. An update from the same developer normally keeps its key: make sure the file comes from where you expect.", &[("before", &before), ("now", &e.signature.as_ref().map(sig_words).unwrap_or_else(|| sam_core::i18n::tr("not checked")))]),
             ));
         }
-        if e.signature.as_ref().is_some_and(|s| s.state == sam_core::model::SignatureState::Invalid) {
-            w.push(Warning::danger("signature-invalid", "Signature does not match", e.signature.as_ref().map(|s| s.detail.clone()).unwrap_or_default()));
+        if e.signature
+            .as_ref()
+            .is_some_and(|s| s.state == sam_core::model::SignatureState::Invalid)
+        {
+            w.push(Warning::danger(
+                "signature-invalid",
+                "Signature does not match",
+                e.signature
+                    .as_ref()
+                    .map(|s| s.detail.clone())
+                    .unwrap_or_default(),
+            ));
         }
         w
     }
@@ -86,7 +122,10 @@ impl Sam {
         let is_cli = exe.file_name().is_some_and(|n| n == "sam-jail");
         let host = self.host();
         let bwrap = host.tools.bwrap.as_ref()?;
-        (is_cli && host.userns.usable()).then(|| sam_intake::extract::Isolation { bwrap: bwrap.path.clone(), self_exe: exe })
+        (is_cli && host.userns.usable()).then(|| sam_intake::extract::Isolation {
+            bwrap: bwrap.path.clone(),
+            self_exe: exe,
+        })
     }
 
     // ---------------------------------------------------------- overview
@@ -94,7 +133,9 @@ impl Sam {
     /// Folders the overview searches: configured ones, plus Downloads when
     /// `general.scan_downloads` is on.
     pub fn default_scan_dirs(&self) -> Vec<PathBuf> {
-        let downloads = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir()).get("downloads").cloned();
+        let downloads = sam_core::host::xdg_user_dirs(&sam_core::util::home_dir())
+            .get("downloads")
+            .cloned();
         self.config.scan_dirs(downloads.as_deref())
     }
 
@@ -105,14 +146,18 @@ impl Sam {
         let foreign = menu::foreign_entries(&self.paths.applications_dir);
         let apps = self.registry().list()?;
         // (path, found via menu entry, added by hand)
-        let mut paths: Vec<(PathBuf, bool, bool)> = scanned.iter().map(|s| (s.path.clone(), false, false)).collect();
+        let mut paths: Vec<(PathBuf, bool, bool)> = scanned
+            .iter()
+            .map(|s| (s.path.clone(), false, false))
+            .collect();
         let add = |p: PathBuf, menu: bool, manual: bool, paths: &mut Vec<(PathBuf, bool, bool)>| {
             if p.is_file() && !paths.iter().any(|(q, _, _)| q == &p) {
                 paths.push((p, menu, manual));
             }
         };
         for f in &self.config.general.scan_files {
-            let p = fs::canonicalize(sam_core::util::expand_home(f)).unwrap_or_else(|_| sam_core::util::expand_home(f));
+            let p = fs::canonicalize(sam_core::util::expand_home(f))
+                .unwrap_or_else(|_| sam_core::util::expand_home(f));
             if looks_like_appimage(&p) {
                 add(p, false, true, &mut paths);
             }
@@ -130,24 +175,43 @@ impl Sam {
             let meta = fs::metadata(&path).ok();
             let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
             let p = self.cached_preview(&path, meta.as_ref(), &previews_dir);
-            let md = AppImageMetadata { name: p.name.clone(), comment: p.comment.clone(), categories: p.categories.clone(), ..Default::default() };
-            let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let md = AppImageMetadata {
+                name: p.name.clone(),
+                comment: p.comment.clone(),
+                categories: p.categories.clone(),
+                ..Default::default()
+            };
+            let file_name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             let category = sam_profile::infer_category(&md, &file_name, None);
             let scan = scanned.iter().find(|s| s.path == path);
             let menu_entries = foreign
                 .iter()
                 .filter(|f| f.appimage == path && f.hidden_by.is_none() && !f.hidden_elsewhere)
-                .map(|f| MenuEntryInfo { file: f.file.clone(), name: f.name.clone(), system: !f.file.starts_with(&self.paths.applications_dir) })
+                .map(|f| MenuEntryInfo {
+                    file: f.file.clone(),
+                    name: f.name.clone(),
+                    system: !f.file.starts_with(&self.paths.applications_dir),
+                })
                 .collect();
             out.push(DiscoveredApp {
-                name: if p.name.is_empty() { id::slug_from_filename(&path) } else { p.name },
+                name: if p.name.is_empty() {
+                    id::slug_from_filename(&path)
+                } else {
+                    p.name
+                },
                 comment: p.comment,
                 version: p.version,
                 categories: p.categories,
                 category: category.as_str().to_string(),
                 category_label: category.label().to_string(),
                 icon: p.icon,
-                sandboxed: apps.iter().find(|a| a.source_path == path).map(|a| a.id.clone()),
+                sandboxed: apps
+                    .iter()
+                    .find(|a| a.source_path == path)
+                    .map(|a| a.id.clone()),
                 moved_from: scan.and_then(|s| s.moved_from.clone()),
                 menu_entries,
                 from_menu,
@@ -160,17 +224,36 @@ impl Sam {
         Ok(out)
     }
 
-    pub(super) fn cached_preview(&self, path: &Path, meta: Option<&fs::Metadata>, dir: &Path) -> Preview {
-        let mtime = meta.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
-        let key = format!("{}|{}|{mtime}", path.display(), meta.map(|m| m.len()).unwrap_or(0));
+    pub(super) fn cached_preview(
+        &self,
+        path: &Path,
+        meta: Option<&fs::Metadata>,
+        dir: &Path,
+    ) -> Preview {
+        let mtime = meta
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let key = format!(
+            "{}|{}|{mtime}",
+            path.display(),
+            meta.map(|m| m.len()).unwrap_or(0)
+        );
         let stem = fingerprint::short_hash(path.to_string_lossy().as_bytes());
         let cache = dir.join(format!("{stem}.json"));
-        if let Some(p) = fs::read(&cache).ok().and_then(|b| serde_json::from_slice::<Preview>(&b).ok()) {
+        if let Some(p) = fs::read(&cache)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Preview>(&b).ok())
+        {
             if p.key == key {
                 return p;
             }
         }
-        let mut p = Preview { key, ..Default::default() };
+        let mut p = Preview {
+            key,
+            ..Default::default()
+        };
         if let Ok(pk) = peek::peek(path) {
             p.name = pk.metadata.name;
             p.comment = pk.metadata.comment;
@@ -178,13 +261,16 @@ impl Sam {
             p.categories = pk.metadata.categories;
             if let Some((data, fmt)) = pk.icon {
                 let icon = dir.join(format!("{stem}.{}", fmt.ext()));
-                if fs::create_dir_all(dir).is_ok() && sam_core::util::atomic_write(&icon, &data).is_ok() {
+                if fs::create_dir_all(dir).is_ok()
+                    && sam_core::util::atomic_write(&icon, &data).is_ok()
+                {
                     p.icon = Some(icon);
                 }
             }
         }
         if fs::create_dir_all(dir).is_ok() {
-            let _ = sam_core::util::atomic_write(&cache, &serde_json::to_vec(&p).unwrap_or_default());
+            let _ =
+                sam_core::util::atomic_write(&cache, &serde_json::to_vec(&p).unwrap_or_default());
         }
         p
     }
@@ -193,9 +279,14 @@ impl Sam {
     /// from its metadata only (nothing is unpacked or run). `perms` evaluates
     /// the user's adjusted settings instead.
     pub fn preview(&self, path: &Path, perms: Option<PermissionSet>) -> Result<serde_json::Value> {
-        let path = fs::canonicalize(path).with_context(|| sam_core::i18n::trf("{file} does not exist", &[("file", &path.display())]))?;
+        let path = fs::canonicalize(path).with_context(|| {
+            sam_core::i18n::trf("{file} does not exist", &[("file", &path.display())])
+        })?;
         let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
-        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let rec = sam_profile::recommend(&md, &file_name, None);
         let permissions = perms.unwrap_or_else(|| rec.permissions.clone());
         let host = self.host();
@@ -218,7 +309,9 @@ impl Sam {
     pub fn menu_duplicates(&self, entry: &AppEntry) -> Vec<menu::ForeignEntry> {
         menu::foreign_entries(&self.paths.applications_dir)
             .into_iter()
-            .filter(|f| f.appimage == entry.source_path && f.hidden_by.is_none() && !f.hidden_elsewhere)
+            .filter(|f| {
+                f.appimage == entry.source_path && f.hidden_by.is_none() && !f.hidden_elsewhere
+            })
             .collect()
     }
 
@@ -228,7 +321,10 @@ impl Sam {
                 Ok(h) => entry.hidden_entries.push(h),
                 Err(e) => eprintln!(
                     "sam-jail: {}",
-                    sam_core::i18n::trf("could not hide the menu entry {file}: {error}", &[("file", &f.file.display()), ("error", &format!("{e:#}"))])
+                    sam_core::i18n::trf(
+                        "could not hide the menu entry {file}: {error}",
+                        &[("file", &f.file.display()), ("error", &format!("{e:#}"))]
+                    )
                 ),
             }
         }
@@ -279,17 +375,31 @@ impl Sam {
         for p in found {
             let canon = fs::canonicalize(&p).unwrap_or(p.clone());
             let size = fs::metadata(&canon).map(|m| m.len()).unwrap_or(0);
-            let registered = apps.iter().find(|a| a.source_path == canon).map(|a| a.id.clone());
+            let registered = apps
+                .iter()
+                .find(|a| a.source_path == canon)
+                .map(|a| a.id.clone());
             let mut moved_from = None;
             if registered.is_none() {
-                let cands: Vec<&AppEntry> = apps.iter().filter(|a| !a.source_path.exists() && a.source.size == size).collect();
+                let cands: Vec<&AppEntry> = apps
+                    .iter()
+                    .filter(|a| !a.source_path.exists() && a.source.size == size)
+                    .collect();
                 if !cands.is_empty() {
                     if let Ok(sha) = fingerprint::sha256_file(&canon) {
-                        moved_from = cands.iter().find(|a| a.source.sha256 == sha).map(|a| a.id.clone());
+                        moved_from = cands
+                            .iter()
+                            .find(|a| a.source.sha256 == sha)
+                            .map(|a| a.id.clone());
                     }
                 }
             }
-            out.push(ScanItem { path: canon, registered, moved_from, size });
+            out.push(ScanItem {
+                path: canon,
+                registered,
+                moved_from,
+                size,
+            });
         }
         Ok(out)
     }

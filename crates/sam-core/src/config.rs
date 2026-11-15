@@ -70,7 +70,12 @@ impl Default for General {
     fn default() -> Self {
         General {
             theme: "system".into(),
-            scan_directories: vec!["~/Applications".into(), "~/AppImages".into(), "~/.local/bin".into(), "~/bin".into()],
+            scan_directories: vec![
+                "~/Applications".into(),
+                "~/AppImages".into(),
+                "~/.local/bin".into(),
+                "~/bin".into(),
+            ],
             scan_downloads: false,
             scan_files: vec![],
             desktop_integration: true,
@@ -117,7 +122,11 @@ pub struct Dependencies {
 
 impl Default for Dependencies {
     fn default() -> Self {
-        Dependencies { static_analysis: true, dynamic_fallback: true, automatic_low_risk_fixes: true }
+        Dependencies {
+            static_analysis: true,
+            dynamic_fallback: true,
+            automatic_low_risk_fixes: true,
+        }
     }
 }
 
@@ -137,7 +146,14 @@ pub struct Extraction {
 
 impl Default for Extraction {
     fn default() -> Self {
-        Extraction { location: String::new(), cleanup_stale: true, max_files: 200_000, max_size_mb: 8192, max_seconds: 600, allow_fallback: true }
+        Extraction {
+            location: String::new(),
+            cleanup_stale: true,
+            max_files: 200_000,
+            max_size_mb: 8192,
+            max_seconds: 600,
+            allow_fallback: true,
+        }
     }
 }
 
@@ -151,7 +167,10 @@ pub struct Diagnostics {
 
 impl Default for Diagnostics {
     fn default() -> Self {
-        Diagnostics { verbose_logging: false, keep_logs: 20 }
+        Diagnostics {
+            verbose_logging: false,
+            keep_logs: 20,
+        }
     }
 }
 
@@ -196,7 +215,9 @@ impl Config {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Config::default()),
             Err(e) => return Err(e).with_context(|| format!("reading {}", file.display())),
         };
-        let parsed = toml::from_str::<toml::Value>(&s).ok().and_then(|v| serde_json::to_value(v).ok());
+        let parsed = toml::from_str::<toml::Value>(&s)
+            .ok()
+            .and_then(|v| serde_json::to_value(v).ok());
         let Some(v) = parsed else {
             return Ok(Self::damaged(&file));
         };
@@ -208,14 +229,26 @@ impl Config {
         };
         // A single invalid value is reset, not the whole file.
         if let Err(e) = c.validate() {
-            eprintln!("sam-jail: {}", crate::i18n::trf("{file}: {error}; that setting was reset", &[("file", &file.display()), ("error", &format!("{e:#}"))]));
+            eprintln!(
+                "sam-jail: {}",
+                crate::i18n::trf(
+                    "{file}: {error}; that setting was reset",
+                    &[("file", &file.display()), ("error", &format!("{e:#}"))]
+                )
+            );
             if !THEMES.contains(&c.general.theme.as_str()) {
                 c.general.theme = "system".into();
             }
             if !language_known(&c.general.language) {
                 c.general.language.clear();
             }
-            if (Config { extraction: c.extraction.clone(), ..Config::default() }).validate().is_err() {
+            if (Config {
+                extraction: c.extraction.clone(),
+                ..Config::default()
+            })
+            .validate()
+            .is_err()
+            {
                 c.extraction.location.clear();
             }
             if c.validate().is_err() {
@@ -263,7 +296,13 @@ impl Config {
         if !THEMES.contains(&self.general.theme.as_str()) {
             bail!(
                 "{}",
-                crate::i18n::trf("unknown theme '{theme}'; choose one of: {choices}", &[("theme", &self.general.theme), ("choices", &THEMES.join(", "))])
+                crate::i18n::trf(
+                    "unknown theme '{theme}'; choose one of: {choices}",
+                    &[
+                        ("theme", &self.general.theme),
+                        ("choices", &THEMES.join(", "))
+                    ]
+                )
             );
         }
         // Extraction folder: empty (default) or an absolute folder below /.
@@ -271,7 +310,10 @@ impl Config {
         if !loc.is_empty() {
             let p = expand_home(loc);
             let home = expand_home("~");
-            if !p.is_absolute() || p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            if !p.is_absolute()
+                || p.components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
                 bail!("{}", crate::i18n::tr("extraction.location must be an absolute path (or start with ~/), without '..'"));
             }
             if p == std::path::Path::new("/") || p == home {
@@ -284,9 +326,18 @@ impl Config {
     /// Folders to search. `downloads` is the user's XDG download folder,
     /// added only when `general.scan_downloads` is on.
     pub fn scan_dirs(&self, downloads: Option<&std::path::Path>) -> Vec<PathBuf> {
-        let mut dirs: Vec<PathBuf> = self.general.scan_directories.iter().map(|d| expand_home(d)).collect();
+        let mut dirs: Vec<PathBuf> = self
+            .general
+            .scan_directories
+            .iter()
+            .map(|d| expand_home(d))
+            .collect();
         if self.general.scan_downloads {
-            dirs.push(downloads.map(PathBuf::from).unwrap_or_else(|| expand_home("~/Downloads")));
+            dirs.push(
+                downloads
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| expand_home("~/Downloads")),
+            );
         }
         dirs.dedup();
         dirs
@@ -296,7 +347,12 @@ impl Config {
         let v = serde_json::to_value(self)?;
         let mut cur = &v;
         for part in key.split('.') {
-            cur = cur.get(part).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])))?;
+            cur = cur.get(part).ok_or_else(|| {
+                anyhow!(
+                    "{}",
+                    crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])
+                )
+            })?;
         }
         Ok(cur.clone())
     }
@@ -308,19 +364,43 @@ impl Config {
         let (last, parents) = parts.split_last().context(crate::i18n::tr("empty key"))?;
         let mut cur = &mut v;
         for p in parents {
-            cur = cur.get_mut(*p).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])))?;
+            cur = cur.get_mut(*p).ok_or_else(|| {
+                anyhow!(
+                    "{}",
+                    crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])
+                )
+            })?;
         }
-        let obj = cur.as_object_mut().ok_or_else(|| anyhow!("{}", crate::i18n::trf("'{key}' is not settable", &[("key", &key)])))?;
-        let existing = obj.get(*last).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])))?;
+        let obj = cur.as_object_mut().ok_or_else(|| {
+            anyhow!(
+                "{}",
+                crate::i18n::trf("'{key}' is not settable", &[("key", &key)])
+            )
+        })?;
+        let existing = obj.get(*last).ok_or_else(|| {
+            anyhow!(
+                "{}",
+                crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])
+            )
+        })?;
         let new_val = match existing {
-            Value::Array(_) if !raw.trim_start().starts_with('[') => {
-                Value::Array(raw.split(',').map(str::trim).filter(|s| !s.is_empty()).map(|s| Value::String(s.into())).collect())
-            }
+            Value::Array(_) if !raw.trim_start().starts_with('[') => Value::Array(
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| Value::String(s.into()))
+                    .collect(),
+            ),
             Value::String(_) => Value::String(raw.to_string()),
             _ => serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.into())),
         };
         obj.insert((*last).to_string(), new_val);
-        let cfg: Config = serde_json::from_value(v).with_context(|| crate::i18n::trf("invalid value for '{key}': {raw}", &[("key", &key), ("raw", &raw)]))?;
+        let cfg: Config = serde_json::from_value(v).with_context(|| {
+            crate::i18n::trf(
+                "invalid value for '{key}': {raw}",
+                &[("key", &key), ("raw", &raw)],
+            )
+        })?;
         cfg.validate()?;
         *self = cfg;
         Ok(())
@@ -358,8 +438,13 @@ location = "~/.local/share/sam/extracted"
 cleanup_stale = true
 "#;
         let c: Config = toml::from_str(s).unwrap();
-        assert_eq!(c.general.scan_directories, vec!["~/Applications", "~/.local/bin"]);
-        assert!(c.security.warn_x11 && c.security.warn_full_home && c.security.experimental_landlock);
+        assert_eq!(
+            c.general.scan_directories,
+            vec!["~/Applications", "~/.local/bin"]
+        );
+        assert!(
+            c.security.warn_x11 && c.security.warn_full_home && c.security.experimental_landlock
+        );
         assert!(c.dependencies.dynamic_fallback);
         assert_eq!(c.extraction.location, "~/.local/share/sam/extracted");
         c.validate().unwrap();
@@ -380,9 +465,16 @@ cleanup_stale = true
         let t = tempfile::tempdir().unwrap();
         let paths = crate::paths::Paths::rooted(t.path());
         std::fs::create_dir_all(paths.config_file().parent().unwrap()).unwrap();
-        std::fs::write(paths.config_file(), "format = 1\n[general]\nlanguage = \"klingon\"\ntheme = \"dark\"\n").unwrap();
+        std::fs::write(
+            paths.config_file(),
+            "format = 1\n[general]\nlanguage = \"klingon\"\ntheme = \"dark\"\n",
+        )
+        .unwrap();
         let loaded = Config::load(&paths).unwrap();
-        assert_eq!(loaded.general.language, "", "an unknown language in the file is reset");
+        assert_eq!(
+            loaded.general.language, "",
+            "an unknown language in the file is reset"
+        );
         assert_eq!(loaded.general.theme, "dark", "the other settings stay");
     }
 
@@ -396,9 +488,17 @@ cleanup_stale = true
         assert_eq!(migrate_theme("breeze-high-contrast"), "system");
         c.set_key("general.scan_directories", "~/A, ~/B").unwrap();
         assert_eq!(c.general.scan_directories, vec!["~/A", "~/B"]);
-        assert!(!Config::default().scan_dirs(None).iter().any(|d| d.ends_with("Downloads")), "Downloads is opt-in");
+        assert!(
+            !Config::default()
+                .scan_dirs(None)
+                .iter()
+                .any(|d| d.ends_with("Downloads")),
+            "Downloads is opt-in"
+        );
         c.set_key("general.scan_downloads", "true").unwrap();
-        assert!(c.scan_dirs(Some(std::path::Path::new("/x/Downloads"))).contains(&PathBuf::from("/x/Downloads")));
+        assert!(c
+            .scan_dirs(Some(std::path::Path::new("/x/Downloads")))
+            .contains(&PathBuf::from("/x/Downloads")));
         assert!(c.set_key("general.theme", "pink").is_err());
         assert!(c.set_key("nope.key", "1").is_err());
     }

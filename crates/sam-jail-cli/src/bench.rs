@@ -48,19 +48,36 @@ pub(crate) fn bench(apps: usize) -> Result<Vec<Measure>> {
 
 fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
     let mut out = Vec::new();
-    let mut m = |key, what, runs, t: Option<(f64, f64)>| out.push(Measure { key, what, median_ms: t.map(|t| t.0), best_ms: t.map(|t| t.1), runs });
+    let mut m = |key, what, runs, t: Option<(f64, f64)>| {
+        out.push(Measure {
+            key,
+            what,
+            median_ms: t.map(|t| t.0),
+            best_ms: t.map(|t| t.1),
+            runs,
+        })
+    };
 
     // A realistic AppImage: 2,000 files of 8 KB and a real program to analyze.
     let img = dir.join("Bench-1.0-x86_64.AppImage");
     let mut spec = FixtureSpec::hello("Bench");
     spec.host_binary = Some("/bin/sh".into());
     for i in 0..2000 {
-        spec.files.push(FixtureFile { path: format!("usr/share/bench/{}/f{i}.dat", i % 40), data: vec![(i % 251) as u8; 8192], mode: 0o644 });
+        spec.files.push(FixtureFile {
+            path: format!("usr/share/bench/{}/f{i}.dat", i % 40),
+            data: vec![(i % 251) as u8; 8192],
+            mode: 0o644,
+        });
     }
     build(&img, &spec)?;
 
     let info = sam_detect::inspect(&img)?;
-    m("detect", "Recognizing the AppImage format of a file (reading its headers).", 9, Some(time(9, || sam_detect::inspect(&img).map(|_| ()))?));
+    m(
+        "detect",
+        "Recognizing the AppImage format of a file (reading its headers).",
+        9,
+        Some(time(9, || sam_detect::inspect(&img).map(|_| ()))?),
+    );
 
     let mut n = 0;
     let unpack = time(7, || {
@@ -77,7 +94,12 @@ fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
         sam_intake::extract::extract(&req, &mut Vec::new())?;
         Ok(())
     })?;
-    m("unpack", "Unpacking an AppImage with 2,000 files (16 MB) safely, without running it.", 7, Some(unpack));
+    m(
+        "unpack",
+        "Unpacking an AppImage with 2,000 files (16 MB) safely, without running it.",
+        7,
+        Some(unpack),
+    );
 
     let appdir = dir.join("unpack-1/AppDir");
     let opts = sam_detect::AnalyzeOptions::default();
@@ -85,11 +107,17 @@ fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
         "analyze",
         "Analyzing the unpacked app: its programs, libraries and toolkit.",
         5,
-        Some(time(5, || sam_detect::analyze_appdir(&appdir, &opts).map(|_| ()))?),
+        Some(time(5, || {
+            sam_detect::analyze_appdir(&appdir, &opts).map(|_| ())
+        })?),
     );
 
     let report = sam_detect::analyze_appdir(&appdir, &opts)?;
-    let md = sam_core::AppImageMetadata { name: "Bench".into(), categories: vec!["Graphics".into()], ..Default::default() };
+    let md = sam_core::AppImageMetadata {
+        name: "Bench".into(),
+        categories: vec!["Graphics".into()],
+        ..Default::default()
+    };
     m(
         "recommend",
         "Recommending permissions from the app's metadata and analysis.",
@@ -105,7 +133,9 @@ fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
         "sandbox-command",
         "Building the Bubblewrap command from a set of permissions.",
         50,
-        Some(time(50, || sam_runner::bwrap::build_command(&ctx).map(|_| ()))?),
+        Some(time(50, || {
+            sam_runner::bwrap::build_command(&ctx).map(|_| ())
+        })?),
     );
 
     // Creating a sandbox end to end, each time in a fresh SAM folder.
@@ -113,35 +143,90 @@ fn run(dir: &Path, apps: usize) -> Result<Vec<Measure>> {
     let add = time(9, || {
         k += 1;
         let sam = Sam::with_paths(Paths::rooted(&dir.join(format!("sam-{k}"))))?;
-        sam.add(&img, &sam_runner::ops::AddOptions { accept: true, launcher: Some(false), ..Default::default() })?;
+        sam.add(
+            &img,
+            &sam_runner::ops::AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )?;
         Ok(())
     })?;
-    m("add", "Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save).", 9, Some(add));
+    m(
+        "add",
+        "Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save).",
+        9,
+        Some(add),
+    );
 
     // A real start: an app that exits at once, inside a real sandbox.
     let sam = Sam::with_paths(Paths::rooted(&dir.join("sam-start")))?;
     let quick = dir.join("Quick.AppImage");
-    build(&quick, &FixtureSpec { apprun: "#!/bin/sh\nexit 0\n".into(), ..FixtureSpec::hello("Quick") })?;
-    let id = sam.add(&quick, &sam_runner::ops::AddOptions { accept: true, launcher: Some(false), ..Default::default() })?.entry.id;
+    build(
+        &quick,
+        &FixtureSpec {
+            apprun: "#!/bin/sh\nexit 0\n".into(),
+            ..FixtureSpec::hello("Quick")
+        },
+    )?;
+    let id = sam
+        .add(
+            &quick,
+            &sam_runner::ops::AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )?
+        .entry
+        .id;
     let host = sam.host();
     let start = if sam_runner::bwrap::check(&host).is_ok() {
         Some(time(5, || {
             let mut e = sam.resolve(&id)?;
-            sam_runner::launch::run(&mut e, &sam_runner::launch::LaunchOptions::default(), &sam.config, &sam.paths, &host).map(|_| ())
+            sam_runner::launch::run(
+                &mut e,
+                &sam_runner::launch::LaunchOptions::default(),
+                &sam.config,
+                &sam.paths,
+                &host,
+            )
+            .map(|_| ())
         })?)
     } else {
         None
     };
-    m("start", "Starting an app in a real sandbox until it has exited (an app that exits at once).", 5, start);
+    m(
+        "start",
+        "Starting an app in a real sandbox until it has exited (an app that exits at once).",
+        5,
+        start,
+    );
 
     // The Permissions page's data with many apps.
     let many = Sam::with_paths(Paths::rooted(&dir.join("sam-many")))?;
     for i in 0..apps {
         let p = dir.join(format!("App{i}.AppImage"));
         build(&p, &FixtureSpec::hello(&format!("App{i}")))?;
-        many.add(&p, &sam_runner::ops::AddOptions { accept: true, launcher: Some(false), ..Default::default() })?;
+        many.add(
+            &p,
+            &sam_runner::ops::AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )?;
     }
-    let what: &'static str = Box::leak(format!("Listing {apps} sandboxed apps with their tags for the Permissions page.").into_boxed_str());
-    m("overview", what, 15, Some(time(15, || many.permission_overview().map(|_| ()))?));
+    let what: &'static str = Box::leak(
+        format!("Listing {apps} sandboxed apps with their tags for the Permissions page.")
+            .into_boxed_str(),
+    );
+    m(
+        "overview",
+        what,
+        15,
+        Some(time(15, || many.permission_overview().map(|_| ()))?),
+    );
     Ok(out)
 }

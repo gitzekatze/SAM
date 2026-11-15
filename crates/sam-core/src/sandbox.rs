@@ -90,7 +90,10 @@ impl LaunchContext {
     }
     /// app_env with the `@APPDIR@` placeholder substituted.
     pub fn resolved_app_env(&self, appdir: &str) -> Vec<(String, String)> {
-        self.app_env.iter().map(|(k, v)| (k.clone(), v.replace("@APPDIR@", appdir))).collect()
+        self.app_env
+            .iter()
+            .map(|(k, v)| (k.clone(), v.replace("@APPDIR@", appdir)))
+            .collect()
     }
 }
 
@@ -124,9 +127,14 @@ pub fn sample_context() -> LaunchContext {
     use crate::host::{Sockets, Tool, Tools};
     use std::collections::BTreeMap;
     let mut xdg = BTreeMap::new();
-    for (k, v) in
-        [("documents", "Documents"), ("downloads", "Downloads"), ("music", "Music"), ("pictures", "Pictures"), ("videos", "Videos"), ("desktop", "Desktop")]
-    {
+    for (k, v) in [
+        ("documents", "Documents"),
+        ("downloads", "Downloads"),
+        ("music", "Music"),
+        ("pictures", "Pictures"),
+        ("videos", "Videos"),
+        ("desktop", "Desktop"),
+    ] {
         xdg.insert(k.to_string(), PathBuf::from(format!("/home/tester/{v}")));
     }
     let host = HostInfo {
@@ -153,8 +161,14 @@ pub fn sample_context() -> LaunchContext {
             cups: None,
         },
         tools: Tools {
-            bwrap: Some(Tool { path: "/usr/bin/bwrap".into(), version: Some("bubblewrap 0.11.0".into()) }),
-            xdg_dbus_proxy: Some(Tool { path: "/usr/bin/xdg-dbus-proxy".into(), version: None }),
+            bwrap: Some(Tool {
+                path: "/usr/bin/bwrap".into(),
+                version: Some("bubblewrap 0.11.0".into()),
+            }),
+            xdg_dbus_proxy: Some(Tool {
+                path: "/usr/bin/xdg-dbus-proxy".into(),
+                version: None,
+            }),
             ..Default::default()
         },
         gpu_devices: vec!["/dev/dri/card0".into(), "/dev/dri/renderD128".into()],

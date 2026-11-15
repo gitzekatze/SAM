@@ -31,7 +31,13 @@ impl Warning {
     /// looked up here; a message built from parts comes translated already
     /// (`trf`), and looking it up again leaves it as it is.
     pub fn new(code: &str, severity: Severity, title: &str, message: impl Into<String>) -> Self {
-        Warning { code: code.into(), severity, title: crate::i18n::tr(title), message: crate::i18n::tr(&message.into()), key: None }
+        Warning {
+            code: code.into(),
+            severity,
+            title: crate::i18n::tr(title),
+            message: crate::i18n::tr(&message.into()),
+            key: None,
+        }
     }
     pub fn with_key(mut self, key: &str) -> Self {
         self.key = Some(key.into());
@@ -62,7 +68,11 @@ pub struct WarningContext<'a> {
 
 impl WarningContext<'_> {
     pub fn all_enabled() -> Self {
-        WarningContext { warn_x11: true, warn_full_home: true, ..Default::default() }
+        WarningContext {
+            warn_x11: true,
+            warn_full_home: true,
+            ..Default::default()
+        }
     }
 }
 
@@ -100,9 +110,17 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
         );
     }
     if ctx.terminal_program {
-        w.push(Warning::warn("terminal-program", "Terminal program", TERMINAL_PROGRAM));
+        w.push(Warning::warn(
+            "terminal-program",
+            "Terminal program",
+            TERMINAL_PROGRAM,
+        ));
     } else if !p.display.x11 && !p.display.wayland {
-        w.push(Warning::info("no-display", "No display access", "The app cannot open windows. This is only correct for command-line tools."));
+        w.push(Warning::info(
+            "no-display",
+            "No display access",
+            "The app cannot open windows. This is only correct for command-line tools.",
+        ));
     }
     if p.filesystem.home && ctx.warn_full_home {
         w.push(
@@ -114,10 +132,19 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             .with_key("filesystem.home"),
         );
         if p.filesystem.ssh || p.filesystem.gnupg || p.filesystem.hidden_files {
-            w.push(Warning::danger("secrets-exposed", "Private keys exposed", "SSH keys, GnuPG keys or other credential stores are visible to the app."));
+            w.push(Warning::danger(
+                "secrets-exposed",
+                "Private keys exposed",
+                "SSH keys, GnuPG keys or other credential stores are visible to the app.",
+            ));
         }
     }
-    for path in p.filesystem.custom_write.iter().chain(p.filesystem.custom_read.iter()) {
+    for path in p
+        .filesystem
+        .custom_write
+        .iter()
+        .chain(p.filesystem.custom_read.iter())
+    {
         if is_sensitive_path(path) {
             w.push(
                 Warning::danger(
@@ -211,7 +238,11 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
         );
     }
     if !p.advanced.extra_bwrap_args.is_empty() {
-        w.push(Warning::warn("raw-backend-args", "Raw backend arguments", "Custom backend arguments are passed through unchecked and may weaken the sandbox."));
+        w.push(Warning::warn(
+            "raw-backend-args",
+            "Raw backend arguments",
+            "Custom backend arguments are passed through unchecked and may weaken the sandbox.",
+        ));
     }
     if p.advanced.seccomp_strict {
         w.push(Warning::info(
@@ -223,7 +254,11 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
 
     if let Some(host) = ctx.host {
         if !host.userns.usable() {
-            w.push(Warning::danger("userns-unavailable", "User namespaces unavailable", host.userns.explain()));
+            w.push(Warning::danger(
+                "userns-unavailable",
+                "User namespaces unavailable",
+                host.userns.explain(),
+            ));
         }
         if p.display.wayland && host.sockets.wayland.is_none() && !p.display.x11 {
             w.push(Warning::warn(
@@ -233,7 +268,11 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             ));
         }
         if p.display.x11 && host.sockets.x11.is_none() && host.sockets.wayland.is_none() {
-            w.push(Warning::warn("x11-missing", "X11 display not available", "No X11 display was found ($DISPLAY is unset or its socket is missing)."));
+            w.push(Warning::warn(
+                "x11-missing",
+                "X11 display not available",
+                "No X11 display was found ($DISPLAY is unset or its socket is missing).",
+            ));
         }
         if p.audio.enabled && host.sockets.pulse.is_none() {
             w.push(Warning::warn(
@@ -272,7 +311,12 @@ mod tests {
         ctx.app_needs_network = Some(false);
         let w = evaluate(&p, &ctx);
         let c = codes(&w);
-        for code in ["x11-enabled", "full-home", "network-unneeded", "system-dbus"] {
+        for code in [
+            "x11-enabled",
+            "full-home",
+            "network-unneeded",
+            "system-dbus",
+        ] {
             assert!(c.contains(&code), "missing {code} in {c:?}");
         }
     }

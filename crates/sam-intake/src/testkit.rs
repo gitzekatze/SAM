@@ -14,9 +14,11 @@ use backhand::{FilesystemCompressor, FilesystemWriter, NodeHeader};
 
 /// A valid 1x1 PNG.
 pub const TINY_PNG: &[u8] = &[
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06,
-    0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D,
-    0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+    0x42, 0x60, 0x82,
 ];
 
 pub fn sample_svg(color: &str, letter: char) -> String {
@@ -74,9 +76,12 @@ pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
     let elf_src = ["/usr/bin/true", "/bin/true", "/usr/bin/env"]
         .iter()
         .find(|p| Path::new(p).exists())
-        .context(sam_core::i18n::tr("no host ELF available for the runtime stub"))?;
+        .context(sam_core::i18n::tr(
+            "no host ELF available for the runtime stub",
+        ))?;
     let elf = std::fs::read(elf_src)?;
-    let end = sam_detect::appimage::elf_end_offset(&elf).context(sam_core::i18n::tr("cannot parse host ELF"))? as usize;
+    let end = sam_detect::appimage::elf_end_offset(&elf)
+        .context(sam_core::i18n::tr("cannot parse host ELF"))? as usize;
     let mut out = elf[..end.min(elf.len())].to_vec();
     out.resize(end, 0);
     out[8] = b'A';
@@ -86,14 +91,28 @@ pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
     // Payload.
     let mut w = FilesystemWriter::default();
     // lz4 needs its options block (version 1 is the only one).
-    let options = (spec.compressor == Compressor::Lz4).then_some(CompressionOptions::Lz4(Lz4 { version: 1, flags: 0 }));
-    w.set_compressor(FilesystemCompressor::new(spec.compressor, options).map_err(|e| anyhow!("{e}"))?);
+    let options = (spec.compressor == Compressor::Lz4).then_some(CompressionOptions::Lz4(Lz4 {
+        version: 1,
+        flags: 0,
+    }));
+    w.set_compressor(
+        FilesystemCompressor::new(spec.compressor, options).map_err(|e| anyhow!("{e}"))?,
+    );
     let desktop = format!(
         "[Desktop Entry]\nType=Application\nName={}\nComment={}\nExec={} %F\nIcon={}\nCategories={}\nTerminal=false\n",
         spec.name, spec.comment, spec.icon, spec.icon, spec.categories
     );
-    let svg = sample_svg("#1d99f3", spec.name.chars().next().unwrap_or('A').to_ascii_uppercase());
-    let mut dirs = vec!["usr".to_string(), "usr/bin".into(), "usr/lib".into(), "usr/share".into(), "usr/share/applications".into()];
+    let svg = sample_svg(
+        "#1d99f3",
+        spec.name.chars().next().unwrap_or('A').to_ascii_uppercase(),
+    );
+    let mut dirs = vec![
+        "usr".to_string(),
+        "usr/bin".into(),
+        "usr/lib".into(),
+        "usr/share".into(),
+        "usr/share/applications".into(),
+    ];
     for f in &spec.files {
         let mut p = Path::new(&f.path).parent();
         while let Some(d) = p {
@@ -106,27 +125,52 @@ pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
     dirs.sort();
     dirs.dedup();
     for d in &dirs {
-        w.push_dir(format!("/{d}"), hdr(0o755)).map_err(|e| anyhow!("dir {d}: {e}"))?;
+        w.push_dir(format!("/{d}"), hdr(0o755))
+            .map_err(|e| anyhow!("dir {d}: {e}"))?;
     }
     let mut files: Vec<FixtureFile> = vec![
-        FixtureFile { path: "AppRun".into(), data: spec.apprun.clone().into_bytes(), mode: 0o755 },
-        FixtureFile { path: format!("{}.desktop", spec.icon), data: desktop.clone().into_bytes(), mode: 0o644 },
-        FixtureFile { path: format!("usr/share/applications/{}.desktop", spec.icon), data: desktop.into_bytes(), mode: 0o644 },
-        FixtureFile { path: format!("{}.svg", spec.icon), data: svg.into_bytes(), mode: 0o644 },
+        FixtureFile {
+            path: "AppRun".into(),
+            data: spec.apprun.clone().into_bytes(),
+            mode: 0o755,
+        },
+        FixtureFile {
+            path: format!("{}.desktop", spec.icon),
+            data: desktop.clone().into_bytes(),
+            mode: 0o644,
+        },
+        FixtureFile {
+            path: format!("usr/share/applications/{}.desktop", spec.icon),
+            data: desktop.into_bytes(),
+            mode: 0o644,
+        },
+        FixtureFile {
+            path: format!("{}.svg", spec.icon),
+            data: svg.into_bytes(),
+            mode: 0o644,
+        },
     ];
     if let Some(bin) = &spec.host_binary {
-        files.push(FixtureFile { path: format!("usr/bin/{}", spec.icon), data: std::fs::read(bin)?, mode: 0o755 });
+        files.push(FixtureFile {
+            path: format!("usr/bin/{}", spec.icon),
+            data: std::fs::read(bin)?,
+            mode: 0o755,
+        });
     }
     files.extend(spec.files.iter().cloned());
     for f in files {
-        w.push_file(Cursor::new(f.data), format!("/{}", f.path), hdr(f.mode)).map_err(|e| anyhow!("file {}: {e}", f.path))?;
+        w.push_file(Cursor::new(f.data), format!("/{}", f.path), hdr(f.mode))
+            .map_err(|e| anyhow!("file {}: {e}", f.path))?;
     }
-    w.push_symlink(format!("{}.svg", spec.icon), "/.DirIcon", hdr(0o777)).map_err(|e| anyhow!("{e}"))?;
+    w.push_symlink(format!("{}.svg", spec.icon), "/.DirIcon", hdr(0o777))
+        .map_err(|e| anyhow!("{e}"))?;
     for (path, target) in &spec.symlinks {
-        w.push_symlink(target.clone(), format!("/{path}"), hdr(0o777)).map_err(|e| anyhow!("{e}"))?;
+        w.push_symlink(target.clone(), format!("/{path}"), hdr(0o777))
+            .map_err(|e| anyhow!("{e}"))?;
     }
     let mut sq = Cursor::new(Vec::new());
-    w.write(&mut sq).map_err(|e| anyhow!("writing squashfs: {e}"))?;
+    w.write(&mut sq)
+        .map_err(|e| anyhow!("writing squashfs: {e}"))?;
     out.extend_from_slice(sq.get_ref());
 
     std::fs::write(dest, &out)?;
@@ -148,7 +192,12 @@ mod tests {
     /// cannot include; such rare images go to the host's unsquashfs.)
     #[test]
     fn appimages_with_every_compression_unpack() {
-        for (c, name) in [(Compressor::Gzip, "gzip"), (Compressor::Xz, "xz"), (Compressor::Lz4, "lz4"), (Compressor::Zstd, "zstd")] {
+        for (c, name) in [
+            (Compressor::Gzip, "gzip"),
+            (Compressor::Xz, "xz"),
+            (Compressor::Lz4, "lz4"),
+            (Compressor::Zstd, "zstd"),
+        ] {
             let d = tempfile::tempdir().unwrap();
             let img = d.path().join("Hello-1.0-x86_64.AppImage");
             let mut spec = FixtureSpec::hello("Hello");
@@ -157,7 +206,14 @@ mod tests {
             let info = sam_detect::inspect(&img).unwrap();
             assert_eq!(info.compression.as_deref(), Some(name));
             let root = d.path().join("x");
-            let req = ExtractRequest { source: &img, info: &info, root: &root, limits: Limits::default(), allow_fallback: false, isolation: None };
+            let req = ExtractRequest {
+                source: &img,
+                info: &info,
+                root: &root,
+                limits: Limits::default(),
+                allow_fallback: false,
+                isolation: None,
+            };
             let out = extract(&req, &mut Vec::new()).unwrap_or_else(|e| panic!("{name}: {e:#}"));
             assert_eq!(out.method, "builtin-squashfs", "{name}");
             assert!(out.appdir.join("usr/bin/hello").is_file(), "{name}");
@@ -170,8 +226,13 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let img = d.path().join("Hello-1.0-x86_64.AppImage");
         let mut spec = FixtureSpec::hello("Hello");
-        spec.files.push(FixtureFile { path: "usr/bin/suid-helper".into(), data: b"#!/bin/sh\n".to_vec(), mode: 0o4755 });
-        spec.symlinks.push(("usr/lib/escape".into(), "../../../../../etc/passwd".into()));
+        spec.files.push(FixtureFile {
+            path: "usr/bin/suid-helper".into(),
+            data: b"#!/bin/sh\n".to_vec(),
+            mode: 0o4755,
+        });
+        spec.symlinks
+            .push(("usr/lib/escape".into(), "../../../../../etc/passwd".into()));
         build(&img, &spec).unwrap();
 
         let info = sam_detect::inspect(&img).unwrap();
@@ -180,17 +241,34 @@ mod tests {
         assert_eq!(info.compression.as_deref(), Some("zstd"));
 
         let root = d.path().join("extracted/hello");
-        let req = ExtractRequest { source: &img, info: &info, root: &root, limits: Limits::default(), allow_fallback: false, isolation: None };
+        let req = ExtractRequest {
+            source: &img,
+            info: &info,
+            root: &root,
+            limits: Limits::default(),
+            allow_fallback: false,
+            isolation: None,
+        };
         let mut log = Vec::new();
         let out = extract(&req, &mut log).unwrap();
         assert_eq!(out.method, "builtin-squashfs");
         assert!(out.appdir.join("AppRun").is_file());
         assert!(out.appdir.join("usr/bin/hello").is_file());
         use std::os::unix::fs::PermissionsExt;
-        let m = std::fs::metadata(out.appdir.join("usr/bin/suid-helper")).unwrap().permissions().mode();
+        let m = std::fs::metadata(out.appdir.join("usr/bin/suid-helper"))
+            .unwrap()
+            .permissions()
+            .mode();
         assert_eq!(m & 0o7777, 0o755, "setuid stripped");
-        assert!(std::fs::symlink_metadata(out.appdir.join("usr/lib/escape")).is_err(), "escaping link removed");
-        assert_eq!(out.report.setid_removed.len(), 0, "builtin extractor never writes setid bits");
+        assert!(
+            std::fs::symlink_metadata(out.appdir.join("usr/lib/escape")).is_err(),
+            "escaping link removed"
+        );
+        assert_eq!(
+            out.report.setid_removed.len(),
+            0,
+            "builtin extractor never writes setid bits"
+        );
         let md = crate::metadata::read_metadata(&out.appdir).unwrap();
         assert_eq!(md.name, "Hello");
         assert!(crate::metadata::find_icon(&out.appdir, &md.icon_name).is_some());
@@ -207,17 +285,37 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let img = d.path().join("big.AppImage");
         let mut spec = FixtureSpec::hello("Big");
-        spec.files.push(FixtureFile { path: "blob".into(), data: vec![7u8; 256 * 1024], mode: 0o644 });
+        spec.files.push(FixtureFile {
+            path: "blob".into(),
+            data: vec![7u8; 256 * 1024],
+            mode: 0o644,
+        });
         build(&img, &spec).unwrap();
         let info = sam_detect::inspect(&img).unwrap();
         let root = d.path().join("x");
-        let limits = Limits { max_bytes: 64 * 1024, ..Default::default() };
-        let req = ExtractRequest { source: &img, info: &info, root: &root, limits, allow_fallback: false, isolation: None };
+        let limits = Limits {
+            max_bytes: 64 * 1024,
+            ..Default::default()
+        };
+        let req = ExtractRequest {
+            source: &img,
+            info: &info,
+            root: &root,
+            limits,
+            allow_fallback: false,
+            isolation: None,
+        };
         let err = extract(&req, &mut Vec::new()).unwrap_err();
         assert!(format!("{err:#}").contains("limit"), "{err:#}");
         // The message says why the limit exists and how to raise it.
-        assert!(format!("{err:#}").contains("sam-jail config set extraction."), "{err:#}");
+        assert!(
+            format!("{err:#}").contains("sam-jail config set extraction."),
+            "{err:#}"
+        );
         assert!(!root.join("AppDir").exists());
-        assert!(std::fs::read_dir(&root).unwrap().next().is_none(), "staging removed");
+        assert!(
+            std::fs::read_dir(&root).unwrap().next().is_none(),
+            "staging removed"
+        );
     }
 }

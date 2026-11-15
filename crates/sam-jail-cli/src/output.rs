@@ -94,24 +94,43 @@ pub(crate) fn pretty_command(argv: &[String]) -> String {
             break;
         }
         let n = match a.as_str() {
-            "--bind" | "--bind-try" | "--ro-bind" | "--ro-bind-try" | "--dev-bind" | "--dev-bind-try" | "--symlink" | "--setenv" => 2,
-            "--proc" | "--dev" | "--tmpfs" | "--dir" | "--perms" | "--hostname" | "--chdir" | "--cap-drop" | "--seccomp" => 1,
+            "--bind" | "--bind-try" | "--ro-bind" | "--ro-bind-try" | "--dev-bind"
+            | "--dev-bind-try" | "--symlink" | "--setenv" => 2,
+            "--proc" | "--dev" | "--tmpfs" | "--dir" | "--perms" | "--hostname" | "--chdir"
+            | "--cap-drop" | "--seccomp" => 1,
             _ => 0,
         };
         out += " \\\n  ";
-        out += &argv[i..(i + 1 + n).min(argv.len())].iter().map(q).collect::<Vec<_>>().join(" ");
+        out += &argv[i..(i + 1 + n).min(argv.len())]
+            .iter()
+            .map(q)
+            .collect::<Vec<_>>()
+            .join(" ");
         i += 1 + n;
     }
     out
 }
 
-pub(crate) fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel: Option<&sam_runner::bwrap::SandboxInfo>) {
+pub(crate) fn print_info(
+    e: &AppEntry,
+    s: &AppSummary,
+    warnings: &[Warning],
+    sel: Option<&sam_runner::bwrap::SandboxInfo>,
+) {
     println!("{}  [{}]", paint(e.display_name(), "1"), badge_str(s.badge));
     if !e.metadata.comment.is_empty() {
         println!("  {}", e.metadata.comment);
     }
     println!("  id:          {}", e.id);
-    println!("  source:      {}{}", tildify(&e.source_path), if e.source_path.exists() { "" } else { "  (missing)" });
+    println!(
+        "  source:      {}{}",
+        tildify(&e.source_path),
+        if e.source_path.exists() {
+            ""
+        } else {
+            "  (missing)"
+        }
+    );
     println!("  sha256:      {}", e.source.sha256);
     println!("  type:        {}", e.appimage_type.label());
     if let Some(sig) = &e.signature {
@@ -128,17 +147,39 @@ pub(crate) fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel
         println!("  preset:      {p}");
     }
     if let Some(x) = &e.extraction {
-        println!("  extraction:  {} files, {} via {} ({})", x.file_count, human_size(x.total_size), x.method, x.compression);
+        println!(
+            "  extraction:  {} files, {} via {} ({})",
+            x.file_count,
+            human_size(x.total_size),
+            x.method,
+            x.compression
+        );
     } else {
         println!("  extraction:  {}", paint("not extracted", "31"));
     }
-    println!("  launcher:    {}", e.desktop_entry.as_ref().map(|p| tildify(p)).unwrap_or_else(|| "none".into()));
-    println!("  last run:    {}", e.last_launch.as_ref().map(|l| format!("{} — {}", format_ts(l.started_at), l.summary)).unwrap_or_else(|| "never".into()));
+    println!(
+        "  launcher:    {}",
+        e.desktop_entry
+            .as_ref()
+            .map(|p| tildify(p))
+            .unwrap_or_else(|| "none".into())
+    );
+    println!(
+        "  last run:    {}",
+        e.last_launch
+            .as_ref()
+            .map(|l| format!("{} — {}", format_ts(l.started_at), l.summary))
+            .unwrap_or_else(|| "never".into())
+    );
 
     let p = &e.profile.permissions;
     println!("\n{}", paint("Permissions", "1"));
     let fs = &p.filesystem;
-    let mut dirs: Vec<String> = XDG_DIR_KEYS.iter().filter(|k| fs.xdg_access(k).is_granted()).map(|k| format!("{k} ({})", fs.xdg_access(k).as_str())).collect();
+    let mut dirs: Vec<String> = XDG_DIR_KEYS
+        .iter()
+        .filter(|k| fs.xdg_access(k).is_granted())
+        .map(|k| format!("{k} ({})", fs.xdg_access(k).as_str()))
+        .collect();
     dirs.extend(fs.custom_read.iter().map(|c| format!("{c} (ro)")));
     dirs.extend(fs.custom_write.iter().map(|c| format!("{c} (rw)")));
     println!(
@@ -152,11 +193,18 @@ pub(crate) fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel
         }
     );
     println!("  network:     {}", p.network.mode.as_str());
-    println!("  display:     wayland={} x11={}", p.display.wayland, p.display.x11);
+    println!(
+        "  display:     wayland={} x11={}",
+        p.display.wayland, p.display.x11
+    );
     println!(
         "  audio:       {}{}{}",
         p.audio.enabled,
-        if p.audio.pipewire { " + direct PipeWire" } else { "" },
+        if p.audio.pipewire {
+            " + direct PipeWire"
+        } else {
+            ""
+        },
         if p.audio.alsa_raw { " + raw ALSA" } else { "" }
     );
     println!(
@@ -167,7 +215,11 @@ pub(crate) fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel
         "  desktop:     input_method={} keyring={} media_controls={} screen_sharing={} file_manager={}",
         p.integrations.input_method, p.integrations.keyring, p.integrations.media_controls, p.integrations.screen_sharing, p.integrations.file_manager
     );
-    println!("  d-bus:       session={} system={}", p.dbus.session.mode.as_str(), p.dbus.system.mode.as_str());
+    println!(
+        "  d-bus:       session={} system={}",
+        p.dbus.session.mode.as_str(),
+        p.dbus.system.mode.as_str()
+    );
     if let Some(d) = &e.detection {
         println!("\n{}", paint("Dependencies", "1"));
         print_detection(d);
@@ -185,14 +237,37 @@ pub(crate) fn print_info(e: &AppEntry, s: &AppSummary, warnings: &[Warning], sel
 }
 
 pub(crate) fn print_detection(d: &DependencyReport) {
-    println!("  toolkit: {}   arch: {}   ELF files: {}   bundled libs: {}", d.requirements.toolkit, d.arch, d.elf_count, d.bundled_libraries);
-    println!("  compatibility: {:?}{}", d.compatibility, d.verdict.map(|v| format!("   ({})", v.message())).unwrap_or_default());
-    let host_libs: Vec<&str> = d.missing.iter().filter(|m| m.class == ResourceClass::System).map(|m| m.name.as_str()).collect();
+    println!(
+        "  toolkit: {}   arch: {}   ELF files: {}   bundled libs: {}",
+        d.requirements.toolkit, d.arch, d.elf_count, d.bundled_libraries
+    );
+    println!(
+        "  compatibility: {:?}{}",
+        d.compatibility,
+        d.verdict
+            .map(|v| format!("   ({})", v.message()))
+            .unwrap_or_default()
+    );
+    let host_libs: Vec<&str> = d
+        .missing
+        .iter()
+        .filter(|m| m.class == ResourceClass::System)
+        .map(|m| m.name.as_str())
+        .collect();
     if !host_libs.is_empty() {
         println!("  host system libraries: {}", host_libs.join(", "));
     }
-    for m in d.missing.iter().filter(|m| m.class != ResourceClass::System) {
-        println!("  host library {} [{:?}]{}", m.name, m.class, if m.host_available { "" } else { "  NOT FOUND" });
+    for m in d
+        .missing
+        .iter()
+        .filter(|m| m.class != ResourceClass::System)
+    {
+        println!(
+            "  host library {} [{:?}]{}",
+            m.name,
+            m.class,
+            if m.host_available { "" } else { "  NOT FOUND" }
+        );
     }
     for r in d.resources.iter().filter(|r| !r.auto) {
         println!("  needs {} ({})", r.resource, r.reason);

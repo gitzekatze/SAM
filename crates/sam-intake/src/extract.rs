@@ -49,18 +49,47 @@ pub struct Isolation {
 /// example in `~/.local/bin`) is added read-only so it exists inside.
 fn isolated(iso: &Isolation, source: &Path, writable: &Path, tool: &Path) -> Command {
     let mut c = Command::new(&iso.bwrap);
-    c.args(["--die-with-parent", "--new-session", "--unshare-all", "--cap-drop", "ALL", "--clearenv", "--tmpfs", "/", "--ro-bind", "/usr", "/usr"]);
+    c.args([
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-all",
+        "--cap-drop",
+        "ALL",
+        "--clearenv",
+        "--tmpfs",
+        "/",
+        "--ro-bind",
+        "/usr",
+        "/usr",
+    ]);
     for d in ["/lib", "/lib64", "/bin", "/sbin"] {
         c.args(["--ro-bind-try", d, d]);
     }
-    c.args(["--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]);
+    c.args([
+        "--ro-bind-try",
+        "/etc/ld.so.cache",
+        "/etc/ld.so.cache",
+        "--dev",
+        "/dev",
+        "--proc",
+        "/proc",
+        "--tmpfs",
+        "/tmp",
+    ]);
     c.arg("--ro-bind").arg(source).arg(source);
     c.arg("--bind").arg(writable).arg(writable);
     c.arg("--ro-bind").arg(&iso.self_exe).arg(&iso.self_exe);
     if !tool.starts_with("/usr") && tool != iso.self_exe {
         c.arg("--ro-bind").arg(tool).arg(tool);
     }
-    c.args(["--setenv", "PATH", "/usr/bin:/bin", "--remount-ro", "/", "--"]);
+    c.args([
+        "--setenv",
+        "PATH",
+        "/usr/bin:/bin",
+        "--remount-ro",
+        "/",
+        "--",
+    ]);
     c
 }
 
@@ -101,19 +130,28 @@ pub fn free_bytes(dir: &Path) -> Option<u64> {
     // SAFETY: statvfs is a plain C struct; all zeros is a valid value.
     let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
     // SAFETY: `c` is a NUL-terminated path and `st` a valid, writable statvfs.
-    (unsafe { libc::statvfs(c.as_ptr(), &mut st) } == 0).then(|| st.f_bavail as u64 * st.f_frsize as u64)
+    (unsafe { libc::statvfs(c.as_ptr(), &mut st) } == 0)
+        .then(|| st.f_bavail as u64 * st.f_frsize as u64)
 }
 
 /// About how much space unpacking an AppImage of `source_size` bytes takes:
 /// SquashFS and DwarFS images usually unpack to two or three times their
 /// size; never more than the unpack limit allows.
 pub fn space_needed(source_size: u64, limits: &Limits) -> u64 {
-    source_size.saturating_mul(3).saturating_add(64 * 1024 * 1024).min(limits.max_bytes.saturating_add(64 * 1024 * 1024))
+    source_size
+        .saturating_mul(3)
+        .saturating_add(64 * 1024 * 1024)
+        .min(limits.max_bytes.saturating_add(64 * 1024 * 1024))
 }
 
 /// Refuses to start unpacking when the folder clearly has too little room,
 /// with what to do about it, instead of failing halfway with a full disk.
-pub fn check_space(root: &Path, source_size: u64, limits: &Limits, free: Option<u64>) -> Result<()> {
+pub fn check_space(
+    root: &Path,
+    source_size: u64,
+    limits: &Limits,
+    free: Option<u64>,
+) -> Result<()> {
     let needed = space_needed(source_size, limits);
     match free {
         Some(free) if free < needed => bail!(
@@ -141,7 +179,9 @@ fn explain_limit(e: anyhow::Error) -> anyhow::Error {
 /// Whether an unpacking error came from a full disk.
 fn is_disk_full(e: &anyhow::Error) -> bool {
     e.chain().any(|c| {
-        c.downcast_ref::<std::io::Error>().is_some_and(|io| io.raw_os_error() == Some(libc::ENOSPC)) || c.to_string().contains("No space left on device")
+        c.downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.raw_os_error() == Some(libc::ENOSPC))
+            || c.to_string().contains("No space left on device")
     })
 }
 
@@ -156,13 +196,18 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     let started = Instant::now();
     let mut attempts = Vec::new();
 
-    type Method<'m> = (&'static str, Box<dyn Fn(&Path, &mut dyn Write) -> Result<()> + 'm>);
+    type Method<'m> = (
+        &'static str,
+        Box<dyn Fn(&Path, &mut dyn Write) -> Result<()> + 'm>,
+    );
     let mut methods: Vec<Method> = Vec::new();
     match req.info.kind {
         AppImageType::Type2 if req.info.payload == sam_detect::appimage::PayloadFormat::Dwarfs => {
             // DwarFS (uruntime): unpacked by the dwarfs tools, inside the
             // same minimal sandbox as the other extractors.
-            let off = req.info.payload_offset.context(sam_core::i18n::tr("the app image inside the AppImage was not found"))?;
+            let off = req.info.payload_offset.context(sam_core::i18n::tr(
+                "the app image inside the AppImage was not found",
+            ))?;
             if let Some(d) = which("dwarfsextract") {
                 methods.push((
                     "dwarfsextract",
@@ -176,7 +221,17 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                             }
                             None => Command::new(&d),
                         };
-                        run_tool(c.arg("-i").arg(req.source).arg("-O").arg(off.to_string()).arg("-o").arg(dst), &req.limits, started, log)
+                        run_tool(
+                            c.arg("-i")
+                                .arg(req.source)
+                                .arg("-O")
+                                .arg(off.to_string())
+                                .arg("-o")
+                                .arg(dst),
+                            &req.limits,
+                            started,
+                            log,
+                        )
                     }),
                 ));
             } else {
@@ -185,29 +240,46 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             }
         }
         AppImageType::Type2 => {
-            let off = req.info.payload_offset.context(sam_core::i18n::tr("the app image inside the AppImage was not found"))?;
+            let off = req.info.payload_offset.context(sam_core::i18n::tr(
+                "the app image inside the AppImage was not found",
+            ))?;
             methods.push((
                 "builtin-squashfs",
-                Box::new(move |dst: &Path, log: &mut dyn Write| match &req.isolation {
-                    Some(iso) => {
-                        let mut c = isolated(iso, req.source, req.root, &iso.self_exe);
-                        c.arg(&iso.self_exe).args(["dev", "extract-squashfs"]).arg(req.source).arg(off.to_string()).arg(dst);
-                        c.args([
-                            "--max-files",
-                            &req.limits.max_files.to_string(),
-                            "--max-bytes",
-                            &req.limits.max_bytes.to_string(),
-                            "--max-seconds",
-                            &req.limits.max_seconds.to_string(),
-                        ]);
-                        run_tool(&mut c, &req.limits, started, log)
-                    }
-                    // In SAM's own process (no sandbox for the reader): a
-                    // panic of the SquashFS reader on a damaged image becomes
-                    // an error, like in the sandboxed reader process.
-                    None => std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| builtin_squashfs(req.source, off, dst, &req.limits, started, log)))
-                        .unwrap_or_else(|_| Err(anyhow!("{}", sam_core::i18n::tr("the AppImage's SquashFS image is damaged (the reader stopped)")))),
-                }),
+                Box::new(
+                    move |dst: &Path, log: &mut dyn Write| match &req.isolation {
+                        Some(iso) => {
+                            let mut c = isolated(iso, req.source, req.root, &iso.self_exe);
+                            c.arg(&iso.self_exe)
+                                .args(["dev", "extract-squashfs"])
+                                .arg(req.source)
+                                .arg(off.to_string())
+                                .arg(dst);
+                            c.args([
+                                "--max-files",
+                                &req.limits.max_files.to_string(),
+                                "--max-bytes",
+                                &req.limits.max_bytes.to_string(),
+                                "--max-seconds",
+                                &req.limits.max_seconds.to_string(),
+                            ]);
+                            run_tool(&mut c, &req.limits, started, log)
+                        }
+                        // In SAM's own process (no sandbox for the reader): a
+                        // panic of the SquashFS reader on a damaged image becomes
+                        // an error, like in the sandboxed reader process.
+                        None => std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            builtin_squashfs(req.source, off, dst, &req.limits, started, log)
+                        }))
+                        .unwrap_or_else(|_| {
+                            Err(anyhow!(
+                                "{}",
+                                sam_core::i18n::tr(
+                                    "the AppImage's SquashFS image is damaged (the reader stopped)"
+                                )
+                            ))
+                        }),
+                    },
+                ),
             ));
             if let Some(u) = which("unsquashfs") {
                 methods.push((
@@ -222,7 +294,12 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                             None => Command::new(&u),
                         };
                         run_tool(
-                            c.arg("-o").arg(off.to_string()).arg("-d").arg(dst).args(["-f", "-no-xattrs", "-no-progress", "-quiet"]).arg(req.source),
+                            c.arg("-o")
+                                .arg(off.to_string())
+                                .arg("-d")
+                                .arg(dst)
+                                .args(["-f", "-no-xattrs", "-no-progress", "-quiet"])
+                                .arg(req.source),
                             &req.limits,
                             started,
                             log,
@@ -246,7 +323,11 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                             None => Command::new(&b),
                         };
                         run_tool(
-                            c.arg("-xf").arg(req.source).arg("-C").arg(dst).args(["--no-same-owner", "--no-xattrs", "--no-acls"]),
+                            c.arg("-xf").arg(req.source).arg("-C").arg(dst).args([
+                                "--no-same-owner",
+                                "--no-xattrs",
+                                "--no-acls",
+                            ]),
                             &req.limits,
                             started,
                             log,
@@ -257,12 +338,25 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                 attempts.push(sam_core::i18n::tr("bsdtar (libarchive) is not installed"));
             }
         }
-        AppImageType::Unknown => bail!("{}", sam_core::i18n::trf("{file} is not a recognized AppImage", &[("file", &req.source.display())])),
+        AppImageType::Unknown => bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "{file} is not a recognized AppImage",
+                &[("file", &req.source.display())]
+            )
+        ),
     }
 
     match &req.isolation {
-        Some(iso) => writeln!(log, "[extract] isolated: extractors run inside {} (no network, read-only source)", iso.bwrap.display())?,
-        None => writeln!(log, "[extract] not isolated: extracting in-process (Bubblewrap unavailable)")?,
+        Some(iso) => writeln!(
+            log,
+            "[extract] isolated: extractors run inside {} (no network, read-only source)",
+            iso.bwrap.display()
+        )?,
+        None => writeln!(
+            log,
+            "[extract] not isolated: extracting in-process (Bubblewrap unavailable)"
+        )?,
     }
     let mut method_used = None;
     for (name, f) in &methods {
@@ -303,7 +397,10 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             let _ = fs::remove_dir_all(&staging);
             return Err(anyhow!(NeedsFallbackConsent { attempts }));
         }
-        writeln!(log, "[extract] trying sandboxed --appimage-extract (user consented)")?;
+        writeln!(
+            log,
+            "[extract] trying sandboxed --appimage-extract (user consented)"
+        )?;
         if staging.exists() {
             fs::remove_dir_all(&staging)?;
         }
@@ -312,7 +409,13 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             Err(e) => {
                 let _ = fs::remove_dir_all(&staging);
                 attempts.push(format!("appimage-extract: {e:#}"));
-                bail!("{}", sam_core::i18n::trf("all ways of unpacking failed:\n  {attempts}", &[("attempts", &attempts.join("\n  "))]));
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "all ways of unpacking failed:\n  {attempts}",
+                        &[("attempts", &attempts.join("\n  "))]
+                    )
+                );
             }
         }
     }
@@ -321,7 +424,11 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         Ok(r) => r,
         Err(e) => {
             let _ = fs::remove_dir_all(&staging);
-            return Err(if is_limit_error(&e) { explain_limit(e) } else { e });
+            return Err(if is_limit_error(&e) {
+                explain_limit(e)
+            } else {
+                e
+            });
         }
     };
     writeln!(
@@ -344,7 +451,12 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     if old.exists() {
         let _ = fs::remove_dir_all(&old);
     }
-    Ok(ExtractOutcome { appdir, method: method_used.unwrap_or_default(), report, attempts })
+    Ok(ExtractOutcome {
+        appdir,
+        method: method_used.unwrap_or_default(),
+        report,
+        attempts,
+    })
 }
 
 /// An error for an exceeded unpacking limit. It carries a code, so it is
@@ -364,9 +476,18 @@ fn safe_mkdirs(root: &Path, rel: &Path) -> Result<PathBuf> {
     for c in rel.components() {
         cur.push(c);
         match fs::symlink_metadata(&cur) {
-            Ok(m) if m.file_type().is_symlink() => bail!("{}", sam_core::i18n::trf("a link at {path} points outside the app", &[("path", &cur.display())])),
+            Ok(m) if m.file_type().is_symlink() => bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "a link at {path} points outside the app",
+                    &[("path", &cur.display())]
+                )
+            ),
             Ok(m) if m.is_dir() => {}
-            Ok(_) => bail!("{}", sam_core::i18n::trf("{path} is not a folder", &[("path", &cur.display())])),
+            Ok(_) => bail!(
+                "{}",
+                sam_core::i18n::trf("{path} is not a folder", &[("path", &cur.display())])
+            ),
             Err(_) => fs::create_dir(&cur)?,
         }
     }
@@ -392,10 +513,18 @@ impl<R: Read> Read for LimitedReader<'_, R> {
     }
 }
 
-fn builtin_squashfs(src: &Path, offset: u64, dst: &Path, limits: &Limits, started: Instant, log: &mut dyn Write) -> Result<()> {
+fn builtin_squashfs(
+    src: &Path,
+    offset: u64,
+    dst: &Path,
+    limits: &Limits,
+    started: Instant,
+    log: &mut dyn Write,
+) -> Result<()> {
     use backhand::{FilesystemReader, InnerNode};
     let reader = BufReader::new(File::open(src)?);
-    let sqfs = FilesystemReader::from_reader_with_offset(reader, offset).map_err(|e| anyhow!("{e}"))?;
+    let sqfs =
+        FilesystemReader::from_reader_with_offset(reader, offset).map_err(|e| anyhow!("{e}"))?;
     fs::create_dir_all(dst)?;
     let mut count = 0u64;
     let mut total = 0u64;
@@ -403,7 +532,10 @@ fn builtin_squashfs(src: &Path, offset: u64, dst: &Path, limits: &Limits, starte
     for node in sqfs.files() {
         count += 1;
         if count > limits.max_files {
-            return Err(limit_error(sam_core::i18n::trf("unpacking limit exceeded: more than {count} files", &[("count", &limits.max_files)])));
+            return Err(limit_error(sam_core::i18n::trf(
+                "unpacking limit exceeded: more than {count} files",
+                &[("count", &limits.max_files)],
+            )));
         }
         if started.elapsed() > Duration::from_secs(limits.max_seconds) {
             return Err(limit_error(sam_core::i18n::trf(
@@ -412,15 +544,26 @@ fn builtin_squashfs(src: &Path, offset: u64, dst: &Path, limits: &Limits, starte
             )));
         }
         let Some(rel) = sanitize_archive_path(&node.fullpath) else {
-            if node.fullpath.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-                writeln!(log, "[extract] refusing path traversal entry {}", node.fullpath.display())?;
+            if node
+                .fullpath
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                writeln!(
+                    log,
+                    "[extract] refusing path traversal entry {}",
+                    node.fullpath.display()
+                )?;
                 skipped += 1;
             }
             continue;
         };
         let parent_rel = rel.parent().unwrap_or(Path::new(""));
         let parent = safe_mkdirs(dst, parent_rel)?;
-        let target = parent.join(rel.file_name().context(sam_core::i18n::tr("entry without name"))?);
+        let target = parent.join(
+            rel.file_name()
+                .context(sam_core::i18n::tr("entry without name"))?,
+        );
         match &node.inner {
             InnerNode::Dir(_) => {
                 safe_mkdirs(dst, &rel)?;
@@ -430,25 +573,44 @@ fn builtin_squashfs(src: &Path, offset: u64, dst: &Path, limits: &Limits, starte
                     bail!("duplicate entry {}", rel.display());
                 }
                 let mut out = File::create(&target)?;
-                let mut r = LimitedReader { inner: sqfs.file(f).reader(), total: &mut total, max: limits.max_bytes };
-                io::copy(&mut r, &mut out).map_err(|e| anyhow::Error::new(e).context(rel.display().to_string()))?;
-                let mode = if node.header.permissions & 0o111 != 0 { 0o755 } else { 0o644 };
+                let mut r = LimitedReader {
+                    inner: sqfs.file(f).reader(),
+                    total: &mut total,
+                    max: limits.max_bytes,
+                };
+                io::copy(&mut r, &mut out)
+                    .map_err(|e| anyhow::Error::new(e).context(rel.display().to_string()))?;
+                let mode = if node.header.permissions & 0o111 != 0 {
+                    0o755
+                } else {
+                    0o644
+                };
                 fs::set_permissions(&target, fs::Permissions::from_mode(mode))?;
             }
             InnerNode::Symlink(s) => {
                 symlink(&s.link, &target)?;
             }
-            InnerNode::CharacterDevice(_) | InnerNode::BlockDevice(_) | InnerNode::NamedPipe | InnerNode::Socket => {
+            InnerNode::CharacterDevice(_)
+            | InnerNode::BlockDevice(_)
+            | InnerNode::NamedPipe
+            | InnerNode::Socket => {
                 writeln!(log, "[extract] skipping special file {}", rel.display())?;
                 skipped += 1;
             }
         }
     }
-    writeln!(log, "[extract] builtin reader: {count} entries, {total} bytes, {skipped} skipped")?;
+    writeln!(
+        log,
+        "[extract] builtin reader: {count} entries, {total} bytes, {skipped} skipped"
+    )?;
     Ok(())
 }
 
-fn wait_with_timeout(mut child: std::process::Child, limits: &Limits, started: Instant) -> Result<std::process::ExitStatus> {
+fn wait_with_timeout(
+    mut child: std::process::Child,
+    limits: &Limits,
+    started: Instant,
+) -> Result<std::process::ExitStatus> {
     loop {
         if let Some(st) = child.try_wait()? {
             return Ok(st);
@@ -465,7 +627,12 @@ fn wait_with_timeout(mut child: std::process::Child, limits: &Limits, started: I
     }
 }
 
-fn run_tool(cmd: &mut Command, limits: &Limits, started: Instant, log: &mut dyn Write) -> Result<()> {
+fn run_tool(
+    cmd: &mut Command,
+    limits: &Limits,
+    started: Instant,
+    log: &mut dyn Write,
+) -> Result<()> {
     let errf = tempfile_in_tmp()?;
     let child = cmd
         .stdin(Stdio::null())
@@ -489,16 +656,32 @@ fn run_tool(cmd: &mut Command, limits: &Limits, started: Instant, log: &mut dyn 
 }
 
 fn tempfile_in_tmp() -> Result<File> {
-    let p = std::env::temp_dir().join(format!("sam-extract-{}-{}", std::process::id(), sam_core::util::now()));
-    let f = fs::OpenOptions::new().read(true).write(true).create_new(true).open(&p)?;
+    let p = std::env::temp_dir().join(format!(
+        "sam-extract-{}-{}",
+        std::process::id(),
+        sam_core::util::now()
+    ));
+    let f = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(&p)?;
     fs::remove_file(&p).ok();
     Ok(f)
 }
 
 /// Run `<appimage> --appimage-extract` inside a minimal bubblewrap sandbox:
 /// no network, no home, read-only system, only the staging dir writable.
-fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: Instant, log: &mut dyn Write) -> Result<()> {
-    let bwrap = which("bwrap").context(sam_core::i18n::tr("Bubblewrap is needed to let the AppImage unpack itself in a sandbox"))?;
+fn self_extract_sandboxed(
+    src: &Path,
+    staging: &Path,
+    limits: &Limits,
+    started: Instant,
+    log: &mut dyn Write,
+) -> Result<()> {
+    let bwrap = which("bwrap").context(sam_core::i18n::tr(
+        "Bubblewrap is needed to let the AppImage unpack itself in a sandbox",
+    ))?;
     let work = staging.with_extension("work");
     if work.exists() {
         fs::remove_dir_all(&work)?;
@@ -510,30 +693,64 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
     let exe_copy = work.with_extension("appimage");
     let src = {
         use std::os::unix::fs::PermissionsExt;
-        let executable = fs::metadata(src).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false);
+        let executable = fs::metadata(src)
+            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false);
         if executable {
             src.to_path_buf()
         } else {
-            fs::copy(src, &exe_copy).context(sam_core::i18n::tr("copying the AppImage so it can unpack itself"))?;
-            fs::set_permissions(&exe_copy, fs::Permissions::from_mode(0o755)).context(sam_core::i18n::tr("making the copy executable"))?;
+            fs::copy(src, &exe_copy).context(sam_core::i18n::tr(
+                "copying the AppImage so it can unpack itself",
+            ))?;
+            fs::set_permissions(&exe_copy, fs::Permissions::from_mode(0o755))
+                .context(sam_core::i18n::tr("making the copy executable"))?;
             exe_copy.clone()
         }
     };
     let src = src.as_path();
     let mut cmd = Command::new(bwrap);
-    cmd.args(["--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL"])
-        .args(["--ro-bind", "/usr", "/usr"])
-        .args(["--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64", "--symlink", "usr/bin", "/bin", "--symlink", "usr/sbin", "/sbin"])
-        .args(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
-        .args(["--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache"])
-        .arg("--ro-bind")
-        .arg(src)
-        .arg("/in/app.AppImage")
-        .arg("--bind")
-        .arg(&work)
-        .arg("/out")
-        .args(["--chdir", "/out", "--clearenv", "--setenv", "PATH", "/usr/bin", "--setenv", "HOME", "/out"])
-        .args(["--", "/in/app.AppImage", "--appimage-extract"]);
+    cmd.args([
+        "--unshare-all",
+        "--die-with-parent",
+        "--new-session",
+        "--cap-drop",
+        "ALL",
+    ])
+    .args(["--ro-bind", "/usr", "/usr"])
+    .args([
+        "--symlink",
+        "usr/lib",
+        "/lib",
+        "--symlink",
+        "usr/lib64",
+        "/lib64",
+        "--symlink",
+        "usr/bin",
+        "/bin",
+        "--symlink",
+        "usr/sbin",
+        "/sbin",
+    ])
+    .args(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
+    .args(["--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache"])
+    .arg("--ro-bind")
+    .arg(src)
+    .arg("/in/app.AppImage")
+    .arg("--bind")
+    .arg(&work)
+    .arg("/out")
+    .args([
+        "--chdir",
+        "/out",
+        "--clearenv",
+        "--setenv",
+        "PATH",
+        "/usr/bin",
+        "--setenv",
+        "HOME",
+        "/out",
+    ])
+    .args(["--", "/in/app.AppImage", "--appimage-extract"]);
     let ran = run_tool(&mut cmd, limits, started, log);
     let _ = fs::remove_file(&exe_copy);
     ran?;
@@ -543,12 +760,22 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
     let out = ["squashfs-root", "AppDir"]
         .iter()
         .filter_map(|n| fs::canonicalize(work.join(n)).ok())
-        .find(|p| p.starts_with(fs::canonicalize(&work).unwrap_or_else(|_| work.clone())) && p.is_dir());
+        .find(|p| {
+            p.starts_with(fs::canonicalize(&work).unwrap_or_else(|_| work.clone())) && p.is_dir()
+        });
     let Some(out) = out else {
         let _ = fs::remove_dir_all(&work);
-        bail!("{}", sam_core::i18n::tr("--appimage-extract produced no squashfs-root"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr("--appimage-extract produced no squashfs-root")
+        );
     };
-    fs::rename(&out, staging).with_context(|| sam_core::i18n::trf("moving the unpacked app to {folder}", &[("folder", &staging.display())]))?;
+    fs::rename(&out, staging).with_context(|| {
+        sam_core::i18n::trf(
+            "moving the unpacked app to {folder}",
+            &[("folder", &staging.display())],
+        )
+    })?;
     let _ = fs::remove_dir_all(&work);
     Ok(())
 }
@@ -564,18 +791,37 @@ mod space_tests {
     fn unpacking_refuses_to_start_without_enough_free_space() {
         let lim = Limits::default();
         let size = 500 * 1024 * 1024;
-        let err = check_space(Path::new("/data/unpacked"), size, &lim, Some(100 * 1024 * 1024)).unwrap_err().to_string();
-        assert!(err.contains("/data/unpacked") && err.contains("100.0 MiB") && err.contains("Preferences → Unpacking → Location"), "{err}");
+        let err = check_space(
+            Path::new("/data/unpacked"),
+            size,
+            &lim,
+            Some(100 * 1024 * 1024),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("/data/unpacked")
+                && err.contains("100.0 MiB")
+                && err.contains("Preferences → Unpacking → Location"),
+            "{err}"
+        );
         assert!(check_space(Path::new("/x"), size, &lim, Some(10 * 1024 * 1024 * 1024)).is_ok());
-        assert!(check_space(Path::new("/x"), size, &lim, None).is_ok(), "unknown free space does not block");
-        assert!(space_needed(u64::MAX / 2, &lim) <= lim.max_bytes + 64 * 1024 * 1024, "never more than the unpack limit");
+        assert!(
+            check_space(Path::new("/x"), size, &lim, None).is_ok(),
+            "unknown free space does not block"
+        );
+        assert!(
+            space_needed(u64::MAX / 2, &lim) <= lim.max_bytes + 64 * 1024 * 1024,
+            "never more than the unpack limit"
+        );
     }
 
     /// A full disk during unpacking is recognized, also inside an error
     /// chain, so SAM can clean up and say what happened.
     #[test]
     fn a_full_disk_during_unpacking_is_recognized() {
-        let e = anyhow::Error::from(std::io::Error::from_raw_os_error(libc::ENOSPC)).context("writing usr/lib/libbig.so");
+        let e = anyhow::Error::from(std::io::Error::from_raw_os_error(libc::ENOSPC))
+            .context("writing usr/lib/libbig.so");
         assert!(is_disk_full(&e));
         assert!(!is_disk_full(&anyhow!("some other problem")));
     }
@@ -584,7 +830,9 @@ mod space_tests {
     /// as a limit the user could raise.
     #[test]
     fn only_an_exceeded_limit_counts_as_one() {
-        assert!(is_limit_error(&limit_error("more than 10 files".into()).context("unpacking")));
+        assert!(is_limit_error(
+            &limit_error("more than 10 files".into()).context("unpacking")
+        ));
         assert!(!is_limit_error(&anyhow!("the image is damaged")));
     }
 }

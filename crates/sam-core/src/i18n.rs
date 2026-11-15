@@ -19,15 +19,28 @@ pub const DOMAIN: &str = "sam";
 
 unsafe extern "C" {
     fn dgettext(domain: *const libc::c_char, msgid: *const libc::c_char) -> *mut libc::c_char;
-    fn dngettext(domain: *const libc::c_char, msgid: *const libc::c_char, plural: *const libc::c_char, n: libc::c_ulong) -> *mut libc::c_char;
+    fn dngettext(
+        domain: *const libc::c_char,
+        msgid: *const libc::c_char,
+        plural: *const libc::c_char,
+        n: libc::c_ulong,
+    ) -> *mut libc::c_char;
     fn bindtextdomain(domain: *const libc::c_char, dir: *const libc::c_char) -> *mut libc::c_char;
-    fn bind_textdomain_codeset(domain: *const libc::c_char, codeset: *const libc::c_char) -> *mut libc::c_char;
+    fn bind_textdomain_codeset(
+        domain: *const libc::c_char,
+        codeset: *const libc::c_char,
+    ) -> *mut libc::c_char;
 }
 
 /// The languages SAM speaks, each with its name in its own language. The
 /// setting `general.language` is one of the codes, or empty to follow the
 /// system.
-pub const LANGUAGES: &[(&str, &str)] = &[("en", "English"), ("de", "Deutsch"), ("es", "Español"), ("fr", "Français")];
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("en", "English"),
+    ("de", "Deutsch"),
+    ("es", "Español"),
+    ("fr", "Français"),
+];
 
 /// Set by SAM's window when it shows a language of its own: the system's
 /// `LANGUAGE` from before (empty when it had none). Apps get that one, so
@@ -38,7 +51,12 @@ pub const SYSTEM_LANGUAGE_VAR: &str = "SAM_SYSTEM_LANGUAGE";
 /// command line); GTK sets the locale itself when it starts. Call once at
 /// the start, before other threads exist.
 pub fn init(set_locale: bool) {
-    let (Ok(domain), Ok(dir)) = (CString::new(DOMAIN), CString::new(locale_dir().as_os_str().as_encoded_bytes())) else { return };
+    let (Ok(domain), Ok(dir)) = (
+        CString::new(DOMAIN),
+        CString::new(locale_dir().as_os_str().as_encoded_bytes()),
+    ) else {
+        return;
+    };
     // SAFETY: valid NUL-terminated strings; called once at start, before any
     // other thread exists; glibc copies both values.
     unsafe {
@@ -60,8 +78,15 @@ pub fn locale_dir() -> PathBuf {
     if let Some(d) = std::env::var_os("SAM_LOCALE_DIR").filter(|v| !v.is_empty()) {
         return d.into();
     }
-    if let Some(d) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
-        for c in [d.join("../share/locale"), d.join("../locale"), d.join("../../target/locale")] {
+    if let Some(d) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+    {
+        for c in [
+            d.join("../share/locale"),
+            d.join("../locale"),
+            d.join("../../target/locale"),
+        ] {
             if has_catalogs(&c) {
                 return c;
             }
@@ -72,7 +97,14 @@ pub fn locale_dir() -> PathBuf {
 
 /// Whether `dir` holds at least one compiled SAM translation.
 fn has_catalogs(dir: &Path) -> bool {
-    std::fs::read_dir(dir).is_ok_and(|rd| rd.flatten().any(|l| l.path().join("LC_MESSAGES").join(format!("{DOMAIN}.mo")).is_file()))
+    std::fs::read_dir(dir).is_ok_and(|rd| {
+        rd.flatten().any(|l| {
+            l.path()
+                .join("LC_MESSAGES")
+                .join(format!("{DOMAIN}.mo"))
+                .is_file()
+        })
+    })
 }
 
 /// Marks a text for translation where no translation can run, such as a
@@ -83,7 +115,9 @@ pub const fn n_(s: &'static str) -> &'static str {
 
 /// The translation of `s`, or `s` itself.
 pub fn tr(s: &str) -> String {
-    let (Ok(domain), Ok(id)) = (CString::new(DOMAIN), CString::new(s)) else { return s.to_string() };
+    let (Ok(domain), Ok(id)) = (CString::new(DOMAIN), CString::new(s)) else {
+        return s.to_string();
+    };
     // SAFETY: both strings are NUL-terminated and live until the result is
     // copied; dgettext returns either `id` or a string from the loaded
     // catalogue, both valid NUL-terminated strings.
@@ -99,12 +133,28 @@ pub fn trf(s: &str, args: &[(&str, &dyn Display)]) -> String {
 /// The singular or plural translation for `n`, with `{n}` and the other
 /// placeholders filled in.
 pub fn trn(singular: &str, plural: &str, n: u64, args: &[(&str, &dyn Display)]) -> String {
-    let (Ok(d), Ok(s1), Ok(p1)) = (CString::new(DOMAIN), CString::new(singular), CString::new(plural)) else {
-        return fill(&fill(if n == 1 { singular } else { plural }, &[("n", &n)]), args);
+    let (Ok(d), Ok(s1), Ok(p1)) = (
+        CString::new(DOMAIN),
+        CString::new(singular),
+        CString::new(plural),
+    ) else {
+        return fill(
+            &fill(if n == 1 { singular } else { plural }, &[("n", &n)]),
+            args,
+        );
     };
     // SAFETY: all strings are NUL-terminated and live until the result is
     // copied; dngettext returns one of them or a catalogue string.
-    let text = unsafe { CStr::from_ptr(dngettext(d.as_ptr(), s1.as_ptr(), p1.as_ptr(), n as libc::c_ulong)) }.to_string_lossy().into_owned();
+    let text = unsafe {
+        CStr::from_ptr(dngettext(
+            d.as_ptr(),
+            s1.as_ptr(),
+            p1.as_ptr(),
+            n as libc::c_ulong,
+        ))
+    }
+    .to_string_lossy()
+    .into_owned();
     fill(&fill(&text, &[("n", &n)]), args)
 }
 
@@ -128,9 +178,14 @@ mod tests {
     /// English, which needs none.
     #[test]
     fn every_translated_language_can_be_chosen() {
-        let linguas = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../po/LINGUAS")).unwrap();
+        let linguas =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../po/LINGUAS"))
+                .unwrap();
         for l in linguas.split_whitespace() {
-            assert!(LANGUAGES.iter().any(|(c, _)| *c == l), "{l} is translated but cannot be chosen");
+            assert!(
+                LANGUAGES.iter().any(|(c, _)| *c == l),
+                "{l} is translated but cannot be chosen"
+            );
         }
         assert!(LANGUAGES.iter().any(|(c, _)| *c == "en"));
     }
@@ -138,8 +193,22 @@ mod tests {
     #[test]
     fn texts_without_a_translation_come_back_with_their_values() {
         assert_eq!(tr("Create Sandbox"), "Create Sandbox");
-        assert_eq!(trf("{app} needs {what}.", &[("what", &"the network"), ("app", &"Krita")]), "Krita needs the network.");
+        assert_eq!(
+            trf(
+                "{app} needs {what}.",
+                &[("what", &"the network"), ("app", &"Krita")]
+            ),
+            "Krita needs the network."
+        );
         assert_eq!(trn("{n} app", "{n} apps", 1, &[]), "1 app");
-        assert_eq!(trn("{n} app in {folder}", "{n} apps in {folder}", 3, &[("folder", &"Downloads")]), "3 apps in Downloads");
+        assert_eq!(
+            trn(
+                "{n} app in {folder}",
+                "{n} apps in {folder}",
+                3,
+                &[("folder", &"Downloads")]
+            ),
+            "3 apps in Downloads"
+        );
     }
 }

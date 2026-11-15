@@ -55,8 +55,16 @@ pub struct LandlockSpec {
 /// Writable locations implied by a permission set (sandbox paths).
 /// `extra_write`: paths mounted writable for this launch only, e.g. files
 /// passed with "Open with" (else the app could open but not save them).
-pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox: &str, extra_write: &[PathBuf]) -> LandlockSpec {
-    let mut write: Vec<PathBuf> = ["/tmp", "/var/tmp", "/dev", "/proc", runtime_dir_in_sandbox].iter().map(PathBuf::from).collect();
+pub fn landlock_spec(
+    p: &PermissionSet,
+    host: &HostInfo,
+    runtime_dir_in_sandbox: &str,
+    extra_write: &[PathBuf],
+) -> LandlockSpec {
+    let mut write: Vec<PathBuf> = ["/tmp", "/var/tmp", "/dev", "/proc", runtime_dir_in_sandbox]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
     let fs = &p.filesystem;
     if !fs.home || fs.home_access == Access::Rw {
         // Private home (or full home read/write).
@@ -79,14 +87,21 @@ pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox:
         }
     }
     write.extend(extra_write.iter().cloned());
-    LandlockSpec { read: vec![PathBuf::from("/")], write }
+    LandlockSpec {
+        read: vec![PathBuf::from("/")],
+        write,
+    }
 }
 
 /// Entry point for `sam-jail-run --sandbox-exec <spec> -- <cmd...>`:
 /// apply restrictions and exec. Never returns on success.
 pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
-    let spec: SandboxSpec = serde_json::from_slice(&std::fs::read(spec_path).context(sam_core::i18n::tr("reading sandbox spec"))?)?;
-    let (prog, rest) = argv.split_first().context(sam_core::i18n::tr("no command given"))?;
+    let spec: SandboxSpec = serde_json::from_slice(
+        &std::fs::read(spec_path).context(sam_core::i18n::tr("reading sandbox spec"))?,
+    )?;
+    let (prog, rest) = argv
+        .split_first()
+        .context(sam_core::i18n::tr("no command given"))?;
     let mut report: Vec<String> = Vec::new();
     if let Some(ll) = &spec.landlock {
         match apply_landlock(ll) {
@@ -101,17 +116,27 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
         // A filter that fails to load must stop the launch: running without
         // it while the UI says it is on would be false confidence.
         apply_seccomp(sc).context(sam_core::i18n::tr("loading the seccomp filter"))?;
-        report.push(format!("seccomp: {} loaded", if sc.strict { "strict" } else { "baseline" }));
+        report.push(format!(
+            "seccomp: {} loaded",
+            if sc.strict { "strict" } else { "baseline" }
+        ));
     }
     // Report to SAM on a private fd, then close it before the app runs, so
     // the app cannot forge or read the report.
     if let Some(plan) = &spec.probe {
         // Every layer is in place: check what the app would get, report, stop.
         let r = crate::probe::run(plan, &report.join("; "));
-        println!("{}{}", crate::probe::REPORT_MARKER, serde_json::to_string(&r)?);
+        println!(
+            "{}{}",
+            crate::probe::REPORT_MARKER,
+            serde_json::to_string(&r)?
+        );
         std::process::exit(0);
     }
-    if let Some(fd) = std::env::var("SAM_STATUS_FD").ok().and_then(|v| v.parse::<i32>().ok()) {
+    if let Some(fd) = std::env::var("SAM_STATUS_FD")
+        .ok()
+        .and_then(|v| v.parse::<i32>().ok())
+    {
         let line = format!("{}\n", report.join("; "));
         // SAFETY: `line` is a valid buffer of line.len() bytes; `fd` was handed to this process for this one report and is not used afterwards.
         unsafe {
@@ -133,7 +158,11 @@ fn run_and_reap(prog: &str, args: &[String]) -> Result<()> {
     unsafe {
         libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
     }
-    let child = Command::new(prog).args(args).env_remove("SAM_STATUS_FD").spawn().with_context(|| format!("starting {prog}"))?;
+    let child = Command::new(prog)
+        .args(args)
+        .env_remove("SAM_STATUS_FD")
+        .spawn()
+        .with_context(|| format!("starting {prog}"))?;
     let main = child.id() as libc::pid_t;
     // Closing the app (sam-jail stop) signals every process in the sandbox;
     // the helper outlives them so they can quit cleanly. Set only here, in
@@ -156,14 +185,21 @@ fn run_and_reap(prog: &str, args: &[String]) -> Result<()> {
             break; // ECHILD: nothing of the app is left
         }
         if pid == main {
-            code = if libc::WIFEXITED(status) { libc::WEXITSTATUS(status) } else { 128 + libc::WTERMSIG(status) };
+            code = if libc::WIFEXITED(status) {
+                libc::WEXITSTATUS(status)
+            } else {
+                128 + libc::WTERMSIG(status)
+            };
         }
     }
     std::process::exit(code)
 }
 
 fn apply_landlock(spec: &LandlockSpec) -> Result<String> {
-    use landlock::{path_beneath_rules, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, Scope, ABI};
+    use landlock::{
+        path_beneath_rules, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr,
+        RulesetStatus, Scope, ABI,
+    };
     let abi = ABI::V3;
     let read = AccessFs::from_read(abi);
     let all = AccessFs::from_all(abi);
@@ -225,7 +261,12 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
         libc::SYS_io_uring_register,
     ];
     #[cfg(target_arch = "x86_64")]
-    v.extend([libc::SYS_kexec_file_load, libc::SYS_iopl, libc::SYS_ioperm, libc::SYS_uselib]);
+    v.extend([
+        libc::SYS_kexec_file_load,
+        libc::SYS_iopl,
+        libc::SYS_ioperm,
+        libc::SYS_uselib,
+    ]);
     if !allow_userns {
         // Without nested sandboxes nothing inside needs namespaces or mounts.
         v.extend([
@@ -259,13 +300,19 @@ fn strict_extra_syscalls() -> Vec<i64> {
 
 /// The compiled BPF program for a filter spec.
 pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
-    use seccompiler::{SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter, SeccompRule, TargetArch};
+    use seccompiler::{
+        SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
+        SeccompRule, TargetArch,
+    };
     let arch = if cfg!(target_arch = "x86_64") {
         TargetArch::x86_64
     } else if cfg!(target_arch = "aarch64") {
         TargetArch::aarch64
     } else {
-        bail!("{}", sam_core::i18n::tr("seccomp filters are not supported on this architecture"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr("seccomp filters are not supported on this architecture")
+        );
     };
     let mut list = baseline_syscalls(spec.allow_userns);
     if spec.strict {
@@ -281,19 +328,35 @@ pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
         let x32: Vec<i64> = list.iter().map(|n| n | X32).collect();
         list.extend(x32);
     }
-    let mut rules: BTreeMap<i64, Vec<SeccompRule>> = list.into_iter().map(|s| (s, vec![])).collect();
+    let mut rules: BTreeMap<i64, Vec<SeccompRule>> =
+        list.into_iter().map(|s| (s, vec![])).collect();
     // Terminal input injection into the parent's tty (TIOCSTI, TIOCLINUX).
     let ioctl_rule = |req: u64| -> Result<SeccompRule> {
-        let c = SeccompCondition::new(1, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, req).map_err(|e| anyhow!("{e}"))?;
+        let c = SeccompCondition::new(1, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, req)
+            .map_err(|e| anyhow!("{e}"))?;
         SeccompRule::new(vec![c]).map_err(|e| anyhow!("{e}"))
     };
-    rules.insert(libc::SYS_ioctl, vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?]);
+    rules.insert(
+        libc::SYS_ioctl,
+        vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?],
+    );
     if x86 {
         // x32's ioctl is the compat entry 514.
-        rules.insert(514 | X32, vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?]);
+        rules.insert(
+            514 | X32,
+            vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?],
+        );
     }
-    let filter = SeccompFilter::new(rules, SeccompAction::Allow, SeccompAction::Errno(libc::EPERM as u32), arch).map_err(|e| anyhow!("{e}"))?;
-    filter.try_into().map_err(|e: seccompiler::BackendError| anyhow!("{e}"))
+    let filter = SeccompFilter::new(
+        rules,
+        SeccompAction::Allow,
+        SeccompAction::Errno(libc::EPERM as u32),
+        arch,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    filter
+        .try_into()
+        .map_err(|e: seccompiler::BackendError| anyhow!("{e}"))
 }
 
 fn apply_seccomp(spec: &SeccompSpec) -> Result<()> {
@@ -321,21 +384,38 @@ mod tests {
         let s = landlock_spec(&p, &ctx.host, "/run/user/1000", &[]);
         assert!(s.write.contains(&PathBuf::from("/home/tester/Documents")));
         assert!(!s.write.contains(&PathBuf::from("/home/tester/Music")));
-        assert!(s.write.contains(&PathBuf::from("/home/tester")), "private home is writable");
+        assert!(
+            s.write.contains(&PathBuf::from("/home/tester")),
+            "private home is writable"
+        );
         p.filesystem.home = true;
         p.filesystem.home_access = Access::Ro;
         let s = landlock_spec(&p, &ctx.host, "/run/user/1000", &[]);
-        assert!(!s.write.contains(&PathBuf::from("/home/tester")), "read-only full home");
+        assert!(
+            !s.write.contains(&PathBuf::from("/home/tester")),
+            "read-only full home"
+        );
     }
 
     /// The syscall filter compiles in every variant and always blocks mount and io_uring.
     #[test]
     fn the_syscall_filter_compiles_and_blocks_mount_and_io_uring() {
         for (strict, allow_userns) in [(false, true), (false, false), (true, true)] {
-            assert!(!seccomp_program(&SeccompSpec { strict, allow_userns }).unwrap().is_empty());
+            assert!(!seccomp_program(&SeccompSpec {
+                strict,
+                allow_userns
+            })
+            .unwrap()
+            .is_empty());
         }
         assert!(baseline_syscalls(false).contains(&libc::SYS_mount));
-        assert!(baseline_syscalls(true).contains(&libc::SYS_io_uring_setup), "io_uring is blocked even with nested sandboxes");
-        assert!(!baseline_syscalls(true).contains(&libc::SYS_mount), "nested sandboxes need mount");
+        assert!(
+            baseline_syscalls(true).contains(&libc::SYS_io_uring_setup),
+            "io_uring is blocked even with nested sandboxes"
+        );
+        assert!(
+            !baseline_syscalls(true).contains(&libc::SYS_mount),
+            "nested sandboxes need mount"
+        );
     }
 }

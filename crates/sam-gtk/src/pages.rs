@@ -14,11 +14,18 @@ use crate::perms::Editor;
 use crate::util::{self, esc};
 use crate::window::{self, App};
 
-fn page_with(title: &str, content: &impl IsA<gtk::Widget>, header: &adw::HeaderBar) -> adw::NavigationPage {
+fn page_with(
+    title: &str,
+    content: &impl IsA<gtk::Widget>,
+    header: &adw::HeaderBar,
+) -> adw::NavigationPage {
     let view = adw::ToolbarView::new();
     view.add_top_bar(header);
     view.set_content(Some(content));
-    adw::NavigationPage::builder().title(title).child(&view).build()
+    adw::NavigationPage::builder()
+        .title(title)
+        .child(&view)
+        .build()
 }
 
 // ---------------------------------------------------------------- language
@@ -33,19 +40,32 @@ pub fn language(app: &Rc<App>) -> adw::NavigationPage {
     let current = util::str_of(&app.state.borrow().config, "general.language").to_string();
     let g = adw::PreferencesGroup::builder()
         .title(tr("Language of SAM"))
-        .description(tr("The language of SAM's window and messages. Apps keep the language of your system."))
+        .description(tr(
+            "The language of SAM's window and messages. Apps keep the language of your system.",
+        ))
         .build();
-    let mut options: Vec<(String, String, String)> = vec![(String::new(), tr("Follow the system"), String::new())];
-    options.extend(sam_core::i18n::LANGUAGES.iter().map(|(code, name)| (code.to_string(), name.to_string(), code.to_uppercase())));
+    let mut options: Vec<(String, String, String)> =
+        vec![(String::new(), tr("Follow the system"), String::new())];
+    options.extend(
+        sam_core::i18n::LANGUAGES
+            .iter()
+            .map(|(code, name)| (code.to_string(), name.to_string(), code.to_uppercase())),
+    );
     let mut first: Option<gtk::CheckButton> = None;
     for (code, name, tag) in options {
-        let check = gtk::CheckButton::builder().valign(gtk::Align::Center).active(code == current).build();
+        let check = gtk::CheckButton::builder()
+            .valign(gtk::Align::Center)
+            .active(code == current)
+            .build();
         if let Some(f) = &first {
             check.set_group(Some(f));
         } else {
             first = Some(check.clone());
         }
-        let row = adw::ActionRow::builder().title(esc(&name)).activatable_widget(&check).build();
+        let row = adw::ActionRow::builder()
+            .title(esc(&name))
+            .activatable_widget(&check)
+            .build();
         row.add_prefix(&check);
         if !tag.is_empty() {
             let l = gtk::Label::new(Some(&tag));
@@ -82,7 +102,11 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let cfg = app.state.borrow().config.clone();
 
     let switch = |g: &adw::PreferencesGroup, key: &'static str, title: &str, subtitle: &str| {
-        let row = adw::SwitchRow::builder().title(esc(title)).subtitle(esc(subtitle)).active(util::bool_of(&cfg, key)).build();
+        let row = adw::SwitchRow::builder()
+            .title(esc(title))
+            .subtitle(esc(subtitle))
+            .active(util::bool_of(&cfg, key))
+            .build();
         let w = Rc::downgrade(app);
         row.connect_active_notify(move |r| {
             if let Some(app) = w.upgrade() {
@@ -92,7 +116,10 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
         });
         g.add(&row);
     };
-    let choice = |g: &adw::PreferencesGroup, key: &'static str, title: &str, opts: &'static [(&'static str, &'static str)]| {
+    let choice = |g: &adw::PreferencesGroup,
+                  key: &'static str,
+                  title: &str,
+                  opts: &'static [(&'static str, &'static str)]| {
         // Titles and option names are marked with n_ and translated here.
         let labels: Vec<String> = opts.iter().map(|o| tr(o.1)).collect();
         let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
@@ -111,7 +138,12 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
         });
         g.add(&row);
     };
-    let number = |g: &adw::PreferencesGroup, key: &'static str, title: &str, min: f64, max: f64, step: f64| {
+    let number = |g: &adw::PreferencesGroup,
+                  key: &'static str,
+                  title: &str,
+                  min: f64,
+                  max: f64,
+                  step: f64| {
         let cur = util::get(&cfg, key).and_then(Value::as_f64).unwrap_or(min);
         let row = adw::SpinRow::with_range(min, max, step);
         row.set_title(&esc(title));
@@ -125,24 +157,33 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             }
             let (w, p2) = (w.clone(), pending.clone());
             // Save once the value stops changing.
-            let id = glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
-                p2.borrow_mut().take();
-                if let Some(app) = w.upgrade() {
-                    let s = format!("{}", v as i64);
-                    glib::spawn_future_local(async move { app.set_config(key, &s).await });
-                }
-            });
+            let id =
+                glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                    p2.borrow_mut().take();
+                    if let Some(app) = w.upgrade() {
+                        let s = format!("{}", v as i64);
+                        glib::spawn_future_local(async move { app.set_config(key, &s).await });
+                    }
+                });
             *pending.borrow_mut() = Some(id);
         });
         g.add(&row);
     };
 
-    let g = adw::PreferencesGroup::builder().title(tr("Appearance")).build();
-    const THEMES: &[(&str, &str)] = &[("system", n_("Follow system")), ("light", n_("Light")), ("dark", n_("Dark"))];
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Appearance"))
+        .build();
+    const THEMES: &[(&str, &str)] = &[
+        ("system", n_("Follow system")),
+        ("light", n_("Light")),
+        ("dark", n_("Dark")),
+    ];
     choice(&g, "general.theme", n_("Style"), THEMES);
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title(tr("Menu Entries")).build();
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Menu Entries"))
+        .build();
     switch(
         &g,
         "general.desktop_integration",
@@ -152,27 +193,54 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Repair")).build();
-    const COMPAT: &[(&str, &str)] = &[("ask", n_("Offer in repair options")), ("never", n_("Never offer"))];
-    choice(&g, "compatibility.behavior", n_("Compatibility mode"), COMPAT);
+    const COMPAT: &[(&str, &str)] = &[
+        ("ask", n_("Offer in repair options")),
+        ("never", n_("Never offer")),
+    ];
+    choice(
+        &g,
+        "compatibility.behavior",
+        n_("Compatibility mode"),
+        COMPAT,
+    );
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title(tr("Warnings")).build();
-    switch(&g, "security.warn_x11", &crate::i18n::tr("Warn about X11 access"), "");
-    switch(&g, "security.warn_full_home", &crate::i18n::tr("Warn about full home access"), "");
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Warnings"))
+        .build();
+    switch(
+        &g,
+        "security.warn_x11",
+        &crate::i18n::tr("Warn about X11 access"),
+        "",
+    );
+    switch(
+        &g,
+        "security.warn_full_home",
+        &crate::i18n::tr("Warn about full home access"),
+        "",
+    );
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title(tr("Kernel Security Features")).description(tr("Extra layers inside every sandbox.")).build();
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Kernel Security Features"))
+        .description(tr("Extra layers inside every sandbox."))
+        .build();
     switch(&g, "security.experimental_landlock", &crate::i18n::tr("Landlock write protection"), &crate::i18n::tr("Kernel-enforced write restrictions inside the sandbox. Also blocks connections to abstract sockets outside the sandbox (such as XWayland's). Skipped on kernels without Landlock."));
     switch(&g, "security.baseline_seccomp", &crate::i18n::tr("Baseline syscall filter"), &crate::i18n::tr("Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Individual apps can turn it off in their repair steps."));
     switch(
         &g,
         "security.experimental_seccomp",
         &crate::i18n::tr("Allow strict syscall filters (experimental)"),
-        &crate::i18n::tr("Lets apps use the strict syscall filter from their Advanced settings. Can break apps."),
+        &crate::i18n::tr(
+            "Lets apps use the strict syscall filter from their Advanced settings. Can break apps.",
+        ),
     );
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title(tr("Sandbox Check")).build();
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Sandbox Check"))
+        .build();
     switch(&g, "security.check_before_launch", &crate::i18n::tr("Check the sandbox before each start"), &crate::i18n::tr("Confirms that every setting applies before an app starts. Runs only when its settings, SAM or this computer changed since the last passing check, and takes about a second. A failed check stops the start."));
     pref.add(&g);
 
@@ -188,7 +256,9 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     );
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title(tr("Dependency Detection")).build();
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Dependency Detection"))
+        .build();
     switch(
         &g,
         "dependencies.static_analysis",
@@ -209,11 +279,19 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     );
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title(tr("Unpacking")).build();
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Unpacking"))
+        .build();
     // Where new sandboxes are unpacked. Existing ones stay where they are
     // until they are unpacked again (Re-extract).
     let loc = util::str_of(&cfg, "extraction.location").to_string();
-    let loc_text = |l: &str| if l.trim().is_empty() { "Default: ~/.local/share/sam/extracted".to_string() } else { l.to_string() };
+    let loc_text = |l: &str| {
+        if l.trim().is_empty() {
+            "Default: ~/.local/share/sam/extracted".to_string()
+        } else {
+            l.to_string()
+        }
+    };
     let row = adw::ActionRow::builder()
         .title(tr("Location"))
         .subtitle(esc(&format!(
@@ -222,7 +300,11 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             crate::i18n::tr("New sandboxes are unpacked here; existing ones move when you unpack them again. Pick a folder no sandboxed app may write to.")
         )))
         .build();
-    let choose = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text(tr("Choose a folder")).valign(gtk::Align::Center).build();
+    let choose = gtk::Button::builder()
+        .icon_name("folder-open-symbolic")
+        .tooltip_text(tr("Choose a folder"))
+        .valign(gtk::Align::Center)
+        .build();
     choose.add_css_class("flat");
     let reset = gtk::Button::builder()
         .icon_name("edit-undo-symbolic")
@@ -240,7 +322,8 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             let (row, reset) = (row.clone(), reset.clone());
             glib::spawn_future_local(async move {
                 app.set_config("extraction.location", &value).await;
-                let now = util::str_of(&app.state.borrow().config, "extraction.location").to_string();
+                let now =
+                    util::str_of(&app.state.borrow().config, "extraction.location").to_string();
                 row.set_subtitle(&esc(&format!(
                     "{}\n{}",
                     loc_text(&now),
@@ -259,7 +342,10 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             let Some(app) = w.upgrade() else { return };
             let set_loc = set_loc.clone();
             glib::spawn_future_local(async move {
-                let d = gtk::FileDialog::builder().title(tr("Folder for unpacked AppImages")).modal(true).build();
+                let d = gtk::FileDialog::builder()
+                    .title(tr("Folder for unpacked AppImages"))
+                    .modal(true)
+                    .build();
                 if let Ok(f) = d.select_folder_future(Some(&app.window)).await {
                     if let Some(p) = f.path() {
                         set_loc(p.to_string_lossy().into_owned());
@@ -270,21 +356,61 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     }
     reset.connect_clicked(move |_| set_loc(String::new()));
     g.add(&row);
-    switch(&g, "extraction.cleanup_stale", &crate::i18n::tr("Remove unpacked copies of apps that are gone"), "");
+    switch(
+        &g,
+        "extraction.cleanup_stale",
+        &crate::i18n::tr("Remove unpacked copies of apps that are gone"),
+        "",
+    );
     switch(
         &g,
         "extraction.allow_fallback",
         &crate::i18n::tr("Offer to let the AppImage unpack itself when SAM cannot"),
         &crate::i18n::tr("Only used after asking you, and only inside a restricted sandbox."),
     );
-    number(&g, "extraction.max_size_mb", &crate::i18n::tr("Maximum unpacked size (MiB)"), 64.0, 1048576.0, 256.0);
-    number(&g, "extraction.max_files", &crate::i18n::tr("Maximum number of files"), 1000.0, 10000000.0, 10000.0);
-    number(&g, "extraction.max_seconds", &crate::i18n::tr("Maximum unpacking time (s)"), 10.0, 7200.0, 30.0);
+    number(
+        &g,
+        "extraction.max_size_mb",
+        &crate::i18n::tr("Maximum unpacked size (MiB)"),
+        64.0,
+        1048576.0,
+        256.0,
+    );
+    number(
+        &g,
+        "extraction.max_files",
+        &crate::i18n::tr("Maximum number of files"),
+        1000.0,
+        10000000.0,
+        10000.0,
+    );
+    number(
+        &g,
+        "extraction.max_seconds",
+        &crate::i18n::tr("Maximum unpacking time (s)"),
+        10.0,
+        7200.0,
+        30.0,
+    );
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title(tr("Diagnostics")).build();
-    switch(&g, "diagnostics.verbose_logging", &crate::i18n::tr("Verbose logging"), "");
-    number(&g, "diagnostics.keep_logs", &crate::i18n::tr("Launch logs to keep per app"), 1.0, 500.0, 1.0);
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Diagnostics"))
+        .build();
+    switch(
+        &g,
+        "diagnostics.verbose_logging",
+        &crate::i18n::tr("Verbose logging"),
+        "",
+    );
+    number(
+        &g,
+        "diagnostics.keep_logs",
+        &crate::i18n::tr("Launch logs to keep per app"),
+        1.0,
+        500.0,
+        1.0,
+    );
     pref.add(&g);
     page
 }
@@ -301,8 +427,14 @@ pub struct Presets {
 pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
     let pref = adw::PreferencesPage::new();
     let header = adw::HeaderBar::new();
-    let new_btn = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text(tr("New preset")).build();
-    let import_btn = gtk::Button::builder().icon_name("document-open-symbolic").tooltip_text(tr("Import a preset")).build();
+    let new_btn = gtk::Button::builder()
+        .icon_name("list-add-symbolic")
+        .tooltip_text(tr("New preset"))
+        .build();
+    let import_btn = gtk::Button::builder()
+        .icon_name("document-open-symbolic")
+        .tooltip_text(tr("Import a preset"))
+        .build();
     header.pack_start(&new_btn);
     header.pack_end(&import_btn);
     let list = adw::PreferencesGroup::builder()
@@ -311,7 +443,12 @@ pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
         .build();
     pref.add(&list);
     let page = page_with(&crate::i18n::tr("My Presets"), &pref, &header);
-    let me = Rc::new(Presets { app: Rc::downgrade(app), list, rows: RefCell::default(), presets: RefCell::default() });
+    let me = Rc::new(Presets {
+        app: Rc::downgrade(app),
+        list,
+        rows: RefCell::default(),
+        presets: RefCell::default(),
+    });
 
     let w = Rc::downgrade(&me);
     new_btn.connect_clicked(move |_| {
@@ -331,11 +468,20 @@ pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
         let Some(me) = w.upgrade() else { return };
         let Some(app) = me.app.upgrade() else { return };
         glib::spawn_future_local(async move {
-            let d = gtk::FileDialog::builder().title(tr("Import a preset")).build();
+            let d = gtk::FileDialog::builder()
+                .title(tr("Import a preset"))
+                .build();
             if let Ok(f) = d.open_future(Some(&app.window)).await {
                 if let Some(p) = f.path() {
-                    match app.backend.call(&["preset", "import", &p.to_string_lossy()], None).await {
-                        Ok(r) => app.toast(&crate::i18n::trf("Imported “{name}”", &[("name", &util::str_of(&r, "name"))])),
+                    match app
+                        .backend
+                        .call(&["preset", "import", &p.to_string_lossy()], None)
+                        .await
+                    {
+                        Ok(r) => app.toast(&crate::i18n::trf(
+                            "Imported “{name}”",
+                            &[("name", &util::str_of(&r, "name"))],
+                        )),
                         Err(e) => app.report_error(&e),
                     }
                     me.reload();
@@ -349,7 +495,9 @@ pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
 
 impl Presets {
     fn reload(self: &Rc<Self>) {
-        let Some(app) = self.app.upgrade() else { return };
+        let Some(app) = self.app.upgrade() else {
+            return;
+        };
         let me = self.clone();
         glib::spawn_future_local(async move {
             match app.backend.call(&["preset", "list"], None).await {
@@ -366,7 +514,9 @@ impl Presets {
         for r in self.rows.borrow_mut().drain(..) {
             self.list.remove(&r);
         }
-        let Some(app) = self.app.upgrade() else { return };
+        let Some(app) = self.app.upgrade() else {
+            return;
+        };
         let apps = app.state.borrow().apps.clone();
         if self.presets.borrow().is_empty() {
             let row = adw::ActionRow::builder()
@@ -377,7 +527,11 @@ impl Presets {
             self.rows.borrow_mut().push(row);
         }
         for (i, p) in self.presets.borrow().iter().enumerate() {
-            let row = adw::ActionRow::builder().title(esc(util::str_of(p, "name"))).subtitle(esc(util::str_of(p, "description"))).activatable(true).build();
+            let row = adw::ActionRow::builder()
+                .title(esc(util::str_of(p, "name")))
+                .subtitle(esc(util::str_of(p, "description")))
+                .activatable(true)
+                .build();
             row.add_prefix(&gtk::Image::from_icon_name("document-edit-symbolic"));
             let risk = util::str_of(p, "risk");
             row.add_suffix(&util::badge(&util::risk_label(risk), util::risk_tone(risk)));
@@ -388,7 +542,10 @@ impl Presets {
             let apply_menu = gio::Menu::new();
             for a in &apps {
                 let item = gio::MenuItem::new(Some(&util::plain(util::str_of(a, "name"))), None);
-                item.set_action_and_target_value(Some("row.apply"), Some(&util::str_of(a, "id").to_variant()));
+                item.set_action_and_target_value(
+                    Some("row.apply"),
+                    Some(&util::str_of(a, "id").to_variant()),
+                );
                 apply_menu.append_item(&item);
             }
             if !apps.is_empty() {
@@ -403,7 +560,9 @@ impl Presets {
             del.append(Some(&tr("Delete")), Some("row.delete"));
             menu.append_section(None, &del);
             let w = Rc::downgrade(self);
-            let act = |name: &str, ty: Option<&glib::VariantTy>, f: Box<dyn Fn(&Rc<Presets>, Option<String>)>| {
+            let act = |name: &str,
+                       ty: Option<&glib::VariantTy>,
+                       f: Box<dyn Fn(&Rc<Presets>, Option<String>)>| {
                 let a = gio::SimpleAction::new(name, ty);
                 let w = w.clone();
                 a.connect_activate(move |_, param| {
@@ -413,7 +572,11 @@ impl Presets {
                 });
                 group.add_action(&a);
             };
-            act("apply", Some(glib::VariantTy::STRING), Box::new(move |me, id| me.apply(i, id.unwrap_or_default())));
+            act(
+                "apply",
+                Some(glib::VariantTy::STRING),
+                Box::new(move |me, id| me.apply(i, id.unwrap_or_default())),
+            );
             act(
                 "edit",
                 None,
@@ -447,11 +610,17 @@ impl Presets {
     }
 
     fn name(&self, i: usize) -> String {
-        self.presets.borrow().get(i).map(|p| util::str_of(p, "name").to_string()).unwrap_or_default()
+        self.presets
+            .borrow()
+            .get(i)
+            .map(|p| util::str_of(p, "name").to_string())
+            .unwrap_or_default()
     }
 
     fn apply(self: &Rc<Self>, i: usize, app_id: String) {
-        let Some(app) = self.app.upgrade() else { return };
+        let Some(app) = self.app.upgrade() else {
+            return;
+        };
         let name = self.name(i);
         glib::spawn_future_local(async move {
             app.apply_preset(&name, &app_id).await;
@@ -459,9 +628,16 @@ impl Presets {
     }
 
     fn duplicate(self: &Rc<Self>, i: usize) {
-        let Some(app) = self.app.upgrade() else { return };
+        let Some(app) = self.app.upgrade() else {
+            return;
+        };
         let base = self.name(i);
-        let names: Vec<String> = self.presets.borrow().iter().map(|p| util::str_of(p, "name").to_string()).collect();
+        let names: Vec<String> = self
+            .presets
+            .borrow()
+            .iter()
+            .map(|p| util::str_of(p, "name").to_string())
+            .collect();
         let mut name = format!("{base} (copy)");
         let mut n = 2;
         while names.contains(&name) {
@@ -470,7 +646,11 @@ impl Presets {
         }
         let me = self.clone();
         glib::spawn_future_local(async move {
-            match app.backend.call(&["preset", "duplicate", &base, &name], None).await {
+            match app
+                .backend
+                .call(&["preset", "duplicate", &base, &name], None)
+                .await
+            {
                 Ok(_) => app.toast(&crate::i18n::trf("Created “{name}”", &[("name", &name)])),
                 Err(e) => app.report_error(&e),
             }
@@ -479,13 +659,22 @@ impl Presets {
     }
 
     fn export(self: &Rc<Self>, i: usize) {
-        let Some(app) = self.app.upgrade() else { return };
+        let Some(app) = self.app.upgrade() else {
+            return;
+        };
         let name = self.name(i);
         glib::spawn_future_local(async move {
-            let d = gtk::FileDialog::builder().title(tr("Export preset")).initial_name(format!("{name}.toml")).build();
+            let d = gtk::FileDialog::builder()
+                .title(tr("Export preset"))
+                .initial_name(format!("{name}.toml"))
+                .build();
             if let Ok(f) = d.save_future(Some(&app.window)).await {
                 if let Some(p) = f.path() {
-                    match app.backend.call(&["preset", "export", &name, &p.to_string_lossy()], None).await {
+                    match app
+                        .backend
+                        .call(&["preset", "export", &name, &p.to_string_lossy()], None)
+                        .await
+                    {
                         Ok(_) => app.toast(&tr("Exported")),
                         Err(e) => app.report_error(&e),
                     }
@@ -495,7 +684,9 @@ impl Presets {
     }
 
     fn delete(self: &Rc<Self>, i: usize) {
-        let Some(app) = self.app.upgrade() else { return };
+        let Some(app) = self.app.upgrade() else {
+            return;
+        };
         let name = self.name(i);
         let me = self.clone();
         glib::spawn_future_local(async move {
@@ -517,7 +708,9 @@ impl Presets {
     }
 
     fn edit(self: &Rc<Self>, preset: Value, is_new: bool) {
-        let Some(app) = self.app.upgrade() else { return };
+        let Some(app) = self.app.upgrade() else {
+            return;
+        };
         let ed = PresetEditor::new(&app, self, preset, is_new);
         let page = ed.page.clone();
         app.show_page(&page, Some(ed));
@@ -536,23 +729,50 @@ impl PresetEditor {
         let editor = Editor::new(catalog, &app.window);
         let pref = adw::PreferencesPage::new();
         let header = adw::HeaderBar::new();
-        let back = gtk::Button::builder().icon_name("go-previous-symbolic").tooltip_text(tr("Back to presets")).build();
+        let back = gtk::Button::builder()
+            .icon_name("go-previous-symbolic")
+            .tooltip_text(tr("Back to presets"))
+            .build();
         header.pack_start(&back);
         let save = gtk::Button::builder().label(tr("Save")).build();
         save.add_css_class("suggested-action");
         header.pack_end(&save);
-        let g = adw::PreferencesGroup::builder().title(if is_new { crate::i18n::tr("New Preset") } else { crate::i18n::tr("Preset") }).build();
-        let name = adw::EntryRow::builder().title(tr("Name")).text(util::str_of(&preset, "name")).sensitive(is_new).build();
-        let desc = adw::EntryRow::builder().title(tr("Description")).text(util::str_of(&preset, "description")).build();
-        let notes = adw::EntryRow::builder().title(tr("Compatibility notes")).text(util::str_of(&preset, "compatibility_notes")).build();
+        let g = adw::PreferencesGroup::builder()
+            .title(if is_new {
+                crate::i18n::tr("New Preset")
+            } else {
+                crate::i18n::tr("Preset")
+            })
+            .build();
+        let name = adw::EntryRow::builder()
+            .title(tr("Name"))
+            .text(util::str_of(&preset, "name"))
+            .sensitive(is_new)
+            .build();
+        let desc = adw::EntryRow::builder()
+            .title(tr("Description"))
+            .text(util::str_of(&preset, "description"))
+            .build();
+        let notes = adw::EntryRow::builder()
+            .title(tr("Compatibility notes"))
+            .text(util::str_of(&preset, "compatibility_notes"))
+            .build();
         g.add(&name);
         g.add(&desc);
         g.add(&notes);
         pref.add(&g);
         editor.add_to(&pref);
-        let title = if is_new { crate::i18n::tr("New Preset") } else { util::str_of(&preset, "name").to_string() };
+        let title = if is_new {
+            crate::i18n::tr("New Preset")
+        } else {
+            util::str_of(&preset, "name").to_string()
+        };
         let page = page_with(&title, &pref, &header);
-        let me = Rc::new(PresetEditor { page, preset: RefCell::new(preset), editor });
+        let me = Rc::new(PresetEditor {
+            page,
+            preset: RefCell::new(preset),
+            editor,
+        });
         me.refresh(app);
 
         let (w, wa) = (Rc::downgrade(&me), Rc::downgrade(app));
@@ -570,7 +790,9 @@ impl PresetEditor {
         });
         let (w, wa) = (Rc::downgrade(&me), Rc::downgrade(app));
         save.connect_clicked(move |_| {
-            let (Some(me), Some(app)) = (w.upgrade(), wa.upgrade()) else { return };
+            let (Some(me), Some(app)) = (w.upgrade(), wa.upgrade()) else {
+                return;
+            };
             let mut p = me.preset.borrow().clone();
             p["name"] = name.text().trim().into();
             p["description"] = desc.text().trim().into();
@@ -580,9 +802,16 @@ impl PresetEditor {
                 return;
             }
             glib::spawn_future_local(async move {
-                match app.backend.call(&["preset", "put"], Some(p.to_string())).await {
+                match app
+                    .backend
+                    .call(&["preset", "put"], Some(p.to_string()))
+                    .await
+                {
                     Ok(_) => {
-                        app.toast(&crate::i18n::trf("Preset “{name}” saved", &[("name", &util::str_of(&p, "name"))]));
+                        app.toast(&crate::i18n::trf(
+                            "Preset “{name}” saved",
+                            &[("name", &util::str_of(&p, "name"))],
+                        ));
                         app.show_section("presets");
                     }
                     Err(e) => app.report_error(&e),
@@ -611,13 +840,24 @@ impl PresetEditor {
 pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
     let pref = adw::PreferencesPage::new();
     let header = adw::HeaderBar::new();
-    let refresh = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text(tr("Check again")).build();
-    let report = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text(tr("Copy a redacted bug report")).build();
+    let refresh = gtk::Button::builder()
+        .icon_name("view-refresh-symbolic")
+        .tooltip_text(tr("Check again"))
+        .build();
+    let report = gtk::Button::builder()
+        .icon_name("edit-copy-symbolic")
+        .tooltip_text(tr("Copy a redacted bug report"))
+        .build();
     header.pack_end(&refresh);
     header.pack_end(&report);
-    let system = adw::PreferencesGroup::builder().title(tr("System")).description(tr("What SAM needs from this computer.")).build();
+    let system = adw::PreferencesGroup::builder()
+        .title(tr("System"))
+        .description(tr("What SAM needs from this computer."))
+        .build();
     pref.add(&system);
-    let maint = adw::PreferencesGroup::builder().title(tr("Maintenance")).build();
+    let maint = adw::PreferencesGroup::builder()
+        .title(tr("Maintenance"))
+        .build();
     pref.add(&maint);
     let page = page_with(&crate::i18n::tr("Diagnostics"), &pref, &header);
 
@@ -625,20 +865,30 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
     let load = {
         let (w, system, rows) = (Rc::downgrade(app), system.clone(), rows.clone());
         move || {
-            let (Some(app), system, rows) = (w.upgrade(), system.clone(), rows.clone()) else { return };
+            let (Some(app), system, rows) = (w.upgrade(), system.clone(), rows.clone()) else {
+                return;
+            };
             glib::spawn_future_local(async move {
                 match app.backend.call(&["doctor"], None).await {
                     Ok(r) => {
                         for row in rows.borrow_mut().drain(..) {
                             system.remove(&row);
                         }
-                        for c in r.get("checks").and_then(Value::as_array).cloned().unwrap_or_default() {
+                        for c in r
+                            .get("checks")
+                            .and_then(Value::as_array)
+                            .cloned()
+                            .unwrap_or_default()
+                        {
                             let status = util::str_of(&c, "status");
                             let mut sub = esc(util::str_of(&c, "detail"));
                             if let Some(h) = c.get("hint").and_then(Value::as_str) {
                                 sub.push_str(&format!("\n<i>→ {}</i>", esc(h)));
                             }
-                            let row = adw::ActionRow::builder().title(esc(util::str_of(&c, "label"))).subtitle(sub).build();
+                            let row = adw::ActionRow::builder()
+                                .title(esc(util::str_of(&c, "label")))
+                                .subtitle(sub)
+                                .build();
                             let (icon, class) = match status {
                                 "ok" => ("object-select-symbolic", "success"),
                                 "info" => ("dialog-information-symbolic", "dim-label"),
@@ -674,7 +924,10 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
     });
 
     let button = |title: &str, icon: &str, f: Box<dyn Fn(Rc<App>)>| {
-        let row = adw::ActionRow::builder().title(title).activatable(true).build();
+        let row = adw::ActionRow::builder()
+            .title(title)
+            .activatable(true)
+            .build();
         row.add_prefix(&gtk::Image::from_icon_name(icon));
         row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
         let w = Rc::downgrade(app);
@@ -693,9 +946,23 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                 let r = app.backend.call(&["refresh", "--deep"], None).await;
                 app.refresh_apps().await;
                 if let Ok(r) = r {
-                    let n = r.as_array().map(|a| a.iter().filter(|i| ["stale", "missing"].contains(&util::str_of(i, "status"))).count()).unwrap_or(0);
+                    let n = r
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter(|i| {
+                                    ["stale", "missing"].contains(&util::str_of(i, "status"))
+                                })
+                                .count()
+                        })
+                        .unwrap_or(0);
                     app.toast(&if n > 0 {
-                        crate::i18n::trn("{n} app changed or is missing.", "{n} apps changed or are missing.", n as u64, &[])
+                        crate::i18n::trn(
+                            "{n} app changed or is missing.",
+                            "{n} apps changed or are missing.",
+                            n as u64,
+                            &[],
+                        )
                     } else {
                         crate::i18n::tr("All AppImages are unchanged")
                     });
@@ -710,13 +977,21 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
             glib::spawn_future_local(async move {
                 if let Ok(r) = app.backend.call(&["cleanup"], None).await {
                     let n = r.as_array().map(Vec::len).unwrap_or(0);
-                    app.toast(&crate::i18n::trn("Removed {n} unused unpacked copy", "Removed {n} unused unpacked copies", n as u64, &[]));
+                    app.toast(&crate::i18n::trn(
+                        "Removed {n} unused unpacked copy",
+                        "Removed {n} unused unpacked copies",
+                        n as u64,
+                        &[],
+                    ));
                 }
             });
         }),
     );
     // Space used by the sandboxed apps, biggest first.
-    let space = adw::ActionRow::builder().title(tr("Disk space of sandboxed apps")).subtitle(tr("Checking…")).build();
+    let space = adw::ActionRow::builder()
+        .title(tr("Disk space of sandboxed apps"))
+        .subtitle(tr("Checking…"))
+        .build();
     space.add_prefix(&gtk::Image::from_icon_name("drive-harddisk-symbolic"));
     maint.add(&space);
     {
@@ -724,14 +999,26 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         glib::spawn_future_local(async move {
             let Some(app) = w.upgrade() else { return };
             if let Ok(v) = app.backend.call(&["space"], None).await {
-                let mut apps = v.get("apps").and_then(Value::as_array).cloned().unwrap_or_default();
-                apps.sort_by_key(|a| std::cmp::Reverse(util::get(a, "total").and_then(Value::as_u64).unwrap_or(0)));
+                let mut apps = v
+                    .get("apps")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                apps.sort_by_key(|a| {
+                    std::cmp::Reverse(util::get(a, "total").and_then(Value::as_u64).unwrap_or(0))
+                });
                 let total = util::get(&v, "total").and_then(Value::as_u64).unwrap_or(0);
                 let top: Vec<String> = apps
                     .iter()
                     .take(3)
                     .map(|a| {
-                        format!("{} {}", util::plain(util::str_of(a, "name")), glib::format_size(util::get(a, "total").and_then(Value::as_u64).unwrap_or(0)))
+                        format!(
+                            "{} {}",
+                            util::plain(util::str_of(a, "name")),
+                            glib::format_size(
+                                util::get(a, "total").and_then(Value::as_u64).unwrap_or(0)
+                            )
+                        )
                     })
                     .collect();
                 row.set_subtitle(&esc(&if apps.is_empty() {
@@ -748,9 +1035,18 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         });
     }
     // Data kept when sandboxes were removed with "Keep the app's settings and files".
-    let leftover = adw::ActionRow::builder().title(tr("Data of removed sandboxes")).subtitle(tr("Checking…")).activatable(true).name("leftover-data").build();
+    let leftover = adw::ActionRow::builder()
+        .title(tr("Data of removed sandboxes"))
+        .subtitle(tr("Checking…"))
+        .activatable(true)
+        .name("leftover-data")
+        .build();
     leftover.add_prefix(&gtk::Image::from_icon_name("user-trash-symbolic"));
-    let leftover_btn = gtk::Button::builder().label(tr("Delete")).valign(gtk::Align::Center).sensitive(false).build();
+    let leftover_btn = gtk::Button::builder()
+        .label(tr("Delete"))
+        .valign(gtk::Align::Center)
+        .sensitive(false)
+        .build();
     leftover_btn.add_css_class("destructive-action");
     leftover.add_suffix(&leftover_btn);
     leftover.set_activatable_widget(Some(&leftover_btn));
@@ -758,11 +1054,21 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
     let load_leftover = {
         let (w, row, btn) = (Rc::downgrade(app), leftover.clone(), leftover_btn.clone());
         move || {
-            let (Some(app), row, btn) = (w.upgrade(), row.clone(), btn.clone()) else { return };
+            let (Some(app), row, btn) = (w.upgrade(), row.clone(), btn.clone()) else {
+                return;
+            };
             glib::spawn_future_local(async move {
-                match app.backend.call(&["cleanup", "--data", "--list"], None).await {
+                match app
+                    .backend
+                    .call(&["cleanup", "--data", "--list"], None)
+                    .await
+                {
                     Ok(r) => {
-                        let n = r.get("apps").and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+                        let n = r
+                            .get("apps")
+                            .and_then(Value::as_array)
+                            .map(Vec::len)
+                            .unwrap_or(0);
                         let total = util::get(&r, "total").and_then(Value::as_u64).unwrap_or(0);
                         row.set_subtitle(&if n == 0 {
                             crate::i18n::tr("Nothing left behind.")
@@ -809,7 +1115,11 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         });
     });
 
-    let cli = adw::ActionRow::builder().title(tr("Command line")).subtitle(esc(&app.backend.cli.to_string_lossy())).subtitle_selectable(true).build();
+    let cli = adw::ActionRow::builder()
+        .title(tr("Command line"))
+        .subtitle(esc(&app.backend.cli.to_string_lossy()))
+        .subtitle_selectable(true)
+        .build();
     cli.add_css_class("property");
     maint.add(&cli);
     page

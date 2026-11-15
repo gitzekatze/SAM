@@ -104,10 +104,23 @@ const DISPLAY_X11: &[&str] = &[
     "libXft.so",
 ];
 
-const DISPLAY_WAYLAND: &[&str] = &["libwayland-client.so", "libwayland-cursor.so", "libwayland-egl.so", "libdecor"];
+const DISPLAY_WAYLAND: &[&str] = &[
+    "libwayland-client.so",
+    "libwayland-cursor.so",
+    "libwayland-egl.so",
+    "libdecor",
+];
 
-const AUDIO: &[&str] =
-    &["libasound.so", "libpulse.so", "libpulse-simple.so", "libpulse-mainloop", "libpipewire", "libjack.so", "libportaudio.so", "libopenal.so"];
+const AUDIO: &[&str] = &[
+    "libasound.so",
+    "libpulse.so",
+    "libpulse-simple.so",
+    "libpulse-mainloop",
+    "libpipewire",
+    "libjack.so",
+    "libportaudio.so",
+    "libopenal.so",
+];
 
 const NETWORK: &[&str] = &[
     "libcurl",
@@ -123,9 +136,19 @@ const NETWORK: &[&str] = &[
     "libQt6WebEngine",
 ];
 
-const FONTS: &[&str] = &["libfontconfig.so", "libfreetype.so", "libharfbuzz.so", "libpango"];
+const FONTS: &[&str] = &[
+    "libfontconfig.so",
+    "libfreetype.so",
+    "libharfbuzz.so",
+    "libpango",
+];
 
-const DBUS: &[&str] = &["libdbus-1.so", "libQt5DBus.so", "libQt6DBus.so", "libgio-2.0.so"];
+const DBUS: &[&str] = &[
+    "libdbus-1.so",
+    "libQt5DBus.so",
+    "libQt6DBus.so",
+    "libgio-2.0.so",
+];
 
 const TOOLKITS: &[(&str, &str)] = &[
     ("libQt5Core.so", "Qt5"),
@@ -145,7 +168,10 @@ fn starts(name: &str, list: &[&str]) -> bool {
 }
 
 pub fn toolkit_of(name: &str) -> Option<&'static str> {
-    TOOLKITS.iter().find(|(p, _)| name.starts_with(p)).map(|(_, t)| *t)
+    TOOLKITS
+        .iter()
+        .find(|(p, _)| name.starts_with(p))
+        .map(|(_, t)| *t)
 }
 
 /// Classify a shared library by its file/soname.
@@ -172,7 +198,11 @@ pub fn classify_library(name: &str) -> LibInfo {
     if starts(name, DBUS) {
         signals.push(Signal::Dbus);
     }
-    if name.starts_with("libssl") || name.starts_with("libnss3") || name.starts_with("libgnutls") || name.starts_with("libcurl") {
+    if name.starts_with("libssl")
+        || name.starts_with("libnss3")
+        || name.starts_with("libgnutls")
+        || name.starts_with("libcurl")
+    {
         signals.push(Signal::Certificates);
     }
     let class = if starts(name, SYSTEM) {
@@ -181,14 +211,22 @@ pub fn classify_library(name: &str) -> LibInfo {
         ResourceClass::Dangerous
     } else if starts(name, GRAPHICS) {
         ResourceClass::Graphics
-    } else if starts(name, DISPLAY_X11) || starts(name, DISPLAY_WAYLAND) || starts(name, AUDIO) || starts(name, DBUS) {
+    } else if starts(name, DISPLAY_X11)
+        || starts(name, DISPLAY_WAYLAND)
+        || starts(name, AUDIO)
+        || starts(name, DBUS)
+    {
         ResourceClass::Controlled
     } else if starts(name, FONTS) {
         ResourceClass::Safe
     } else {
         ResourceClass::Unknown
     };
-    LibInfo { class, signals, toolkit: toolkit_of(name) }
+    LibInfo {
+        class,
+        signals,
+        toolkit: toolkit_of(name),
+    }
 }
 
 /// Read-only host resources that are always safe to expose.
@@ -210,7 +248,10 @@ pub const GRAPHICS_HOST_RESOURCES: &[(&str, &str)] = &[
     ("/usr/lib/dri", "Mesa DRI drivers"),
     ("/usr/share/vulkan", "Vulkan ICD metadata"),
     ("/etc/vulkan", "Vulkan configuration"),
-    ("/usr/share/glvnd", sam_core::i18n::n_("GL vendor dispatch metadata")),
+    (
+        "/usr/share/glvnd",
+        sam_core::i18n::n_("GL vendor dispatch metadata"),
+    ),
 ];
 
 #[cfg(test)]
@@ -221,13 +262,32 @@ mod tests {
     #[test]
     fn bundled_libraries_are_sorted_by_what_they_reach() {
         assert_eq!(classify_library("libc.so.6").class, ResourceClass::System);
-        assert_eq!(classify_library("libQt5Core.so.5").class, ResourceClass::Dangerous);
-        assert_eq!(classify_library("libGL.so.1").class, ResourceClass::Graphics);
-        assert_eq!(classify_library("libX11.so.6").class, ResourceClass::Controlled);
-        assert_eq!(classify_library("libfontconfig.so.1").class, ResourceClass::Safe);
-        assert_eq!(classify_library("libfoo.so.1").class, ResourceClass::Unknown);
-        assert!(classify_library("libpulse.so.0").signals.contains(&Signal::Audio));
-        assert!(classify_library("libssl.so.3").signals.contains(&Signal::Network));
+        assert_eq!(
+            classify_library("libQt5Core.so.5").class,
+            ResourceClass::Dangerous
+        );
+        assert_eq!(
+            classify_library("libGL.so.1").class,
+            ResourceClass::Graphics
+        );
+        assert_eq!(
+            classify_library("libX11.so.6").class,
+            ResourceClass::Controlled
+        );
+        assert_eq!(
+            classify_library("libfontconfig.so.1").class,
+            ResourceClass::Safe
+        );
+        assert_eq!(
+            classify_library("libfoo.so.1").class,
+            ResourceClass::Unknown
+        );
+        assert!(classify_library("libpulse.so.0")
+            .signals
+            .contains(&Signal::Audio));
+        assert!(classify_library("libssl.so.3")
+            .signals
+            .contains(&Signal::Network));
         assert_eq!(classify_library("libQt6Core.so.6").toolkit, Some("Qt6"));
     }
 }

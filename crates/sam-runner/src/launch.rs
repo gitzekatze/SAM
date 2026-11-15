@@ -12,7 +12,10 @@ use anyhow::{bail, Context, Result};
 use sam_core::permissions::DbusMode;
 use sam_core::util::{format_ts, now, shell_join};
 use sam_core::warnings::{evaluate, WarningContext};
-use sam_core::{AppEntry, AppState, Config, HostInfo, LaunchContext, LaunchRecord, Paths, SandboxCommand, Warning};
+use sam_core::{
+    AppEntry, AppState, Config, HostInfo, LaunchContext, LaunchRecord, Paths, SandboxCommand,
+    Warning,
+};
 use sam_intake::fingerprint::{self, SourceStatus};
 use sam_storage::{LogKind, Logs, Registry};
 use serde::Serialize;
@@ -116,7 +119,9 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
         ));
     }
     match &app.extraction {
-        None => errors.push(sam_core::i18n::tr("The AppImage has not been unpacked. Use Unpack Again (sam-jail reextract).")),
+        None => errors.push(sam_core::i18n::tr(
+            "The AppImage has not been unpacked. Use Unpack Again (sam-jail reextract).",
+        )),
         Some(x) => {
             if !x.appdir.join(&x.entry).exists() {
                 errors.push(sam_core::i18n::trf(
@@ -133,7 +138,9 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
             "The selected AppImage no longer exists. SAM runs the last unpacked copy; APPIMAGE is not set.",
         ));
     } else if let Some(x) = &app.extraction {
-        if let Ok(SourceStatus::Changed { .. }) = fingerprint::check(&app.source_path, &x.source, false) {
+        if let Ok(SourceStatus::Changed { .. }) =
+            fingerprint::check(&app.source_path, &x.source, false)
+        {
             warns.push(Warning::warn(
                 "source-stale",
                 "AppImage changed",
@@ -144,12 +151,21 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
     (errors, warns)
 }
 
-pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths, host: &HostInfo) -> Result<Prepared> {
+pub fn prepare(
+    app: &AppEntry,
+    opts: &LaunchOptions,
+    cfg: &Config,
+    paths: &Paths,
+    host: &HostInfo,
+) -> Result<Prepared> {
     let (errors, mut warnings) = preflight(app);
     if let Some(e) = errors.first() {
         bail!("{e}");
     }
-    let x = app.extraction.as_ref().context(sam_core::i18n::tr("the AppImage has not been unpacked"))?;
+    let x = app
+        .extraction
+        .as_ref()
+        .context(sam_core::i18n::tr("the AppImage has not been unpacked"))?;
     let sandbox = crate::bwrap::check(host)?;
     let perms = &app.profile.permissions;
 
@@ -168,21 +184,43 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
 
     // One runtime directory per launch (two instances of an app never share
     // proxy sockets or spec files); removed when `Prepared` is dropped.
-    let runtime_dir = paths.runtime_dir(&app.id).join(format!("launch-{}-{}", std::process::id(), now()));
+    let runtime_dir =
+        paths
+            .runtime_dir(&app.id)
+            .join(format!("launch-{}-{}", std::process::id(), now()));
     fs::create_dir_all(&runtime_dir)?;
     let runtime_guard = RuntimeDir(runtime_dir.clone());
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(&runtime_dir, fs::Permissions::from_mode(0o700));
     }
-    let owd = opts.owd.clone().or_else(|| std::env::current_dir().ok()).unwrap_or_else(|| host.home.clone());
+    let owd = opts
+        .owd
+        .clone()
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| host.home.clone());
     let source_exists = app.source_path.exists();
-    let appimage_env = if source_exists { app.source_path.file_name().map(|n| format!("/run/sam/{}", n.to_string_lossy())) } else { None };
+    let appimage_env = if source_exists {
+        app.source_path
+            .file_name()
+            .map(|n| format!("/run/sam/{}", n.to_string_lossy()))
+    } else {
+        None
+    };
     let mut app_env: Vec<(String, String)> = vec![
         ("APPDIR".into(), "@APPDIR@".into()),
         ("OWD".into(), owd.display().to_string()),
-        ("ARGV0".into(), app.source_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
-        ("XDG_DATA_DIRS".into(), "@APPDIR@/usr/share:/usr/local/share:/usr/share".into()),
+        (
+            "ARGV0".into(),
+            app.source_path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        ),
+        (
+            "XDG_DATA_DIRS".into(),
+            "@APPDIR@/usr/share:/usr/local/share:/usr/share".into(),
+        ),
         ("XDG_CONFIG_DIRS".into(), "@APPDIR@/etc/xdg:/etc/xdg".into()),
         ("SAM_APP_ID".into(), app.id.clone()),
         // AppImages started from inside the sandbox (launchers, self-restarts)
@@ -201,7 +239,13 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         entry: x.entry.clone(),
         appimage_path: source_exists.then(|| app.source_path.clone()),
         owd,
-        args: app.profile.args.iter().cloned().chain(opts.args.iter().cloned()).collect(),
+        args: app
+            .profile
+            .args
+            .iter()
+            .cloned()
+            .chain(opts.args.iter().cloned())
+            .collect(),
         permissions: perms.clone(),
         host: host.clone(),
         private_home: paths.app_home(&app.id),
@@ -216,7 +260,11 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
         appdir_overlay: None,
-        sam_dirs: vec![paths.config_dir.clone(), paths.data_dir.clone(), paths.extracted_root(&cfg.extraction.location)],
+        sam_dirs: vec![
+            paths.config_dir.clone(),
+            paths.data_dir.clone(),
+            paths.extracted_root(&cfg.extraction.location),
+        ],
     };
     if perms.advanced.writable_appdir && !sam_core::host::bwrap_supports_overlay() {
         warnings.push(Warning::warn(
@@ -224,7 +272,9 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             "Writable app folder unavailable",
             "The writable app folder needs Bubblewrap 0.10 or newer; the installed one is older, so the app folder stays read-only. Update Bubblewrap to use this setting.",
         ));
-    } else if perms.advanced.writable_appdir && !sam_core::host::overlay_works_in(&paths.overlays_dir()) {
+    } else if perms.advanced.writable_appdir
+        && !sam_core::host::overlay_works_in(&paths.overlays_dir())
+    {
         warnings.push(Warning::warn(
             "writable-appdir-unavailable",
             "Writable app folder unavailable",
@@ -241,8 +291,12 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     }
 
     if perms.advanced.persistent_home {
-        fs::create_dir_all(&ctx.private_home)
-            .with_context(|| sam_core::i18n::trf("creating the private home {folder}", &[("folder", &ctx.private_home.display())]))?;
+        fs::create_dir_all(&ctx.private_home).with_context(|| {
+            sam_core::i18n::trf(
+                "creating the private home {folder}",
+                &[("folder", &ctx.private_home.display())],
+            )
+        })?;
     }
 
     let mut proxy = None;
@@ -252,7 +306,10 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     {
         sam_sandbox::write_identity_files(&ctx)?;
         sam_sandbox::prepare_home_protection(perms, &host.home);
-        if perms.dbus.session.mode == DbusMode::Filtered && host.tools.xdg_dbus_proxy.is_some() && host.sockets.dbus_session.is_some() {
+        if perms.dbus.session.mode == DbusMode::Filtered
+            && host.tools.xdg_dbus_proxy.is_some()
+            && host.sockets.dbus_session.is_some()
+        {
             let bus = perms.effective_session_bus();
             match DbusProxy::start(host, &bus, &runtime_dir, &app.id) {
                 Ok(p) => {
@@ -261,7 +318,10 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                         warnings.push(Warning::warn(
                             "dbus-own-refused",
                             "D-Bus name not allowed",
-                            sam_core::i18n::trf("The app may not own {name}: {why}.", &[("name", &name), ("why", &why)]),
+                            sam_core::i18n::trf(
+                                "The app may not own {name}: {why}.",
+                                &[("name", &name), ("why", &why)],
+                            ),
                         ));
                     }
                     proxy = Some(p);
@@ -269,13 +329,19 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                 Err(e) => warnings.push(Warning::warn(
                     "dbus-proxy-failed",
                     "D-Bus proxy failed",
-                    sam_core::i18n::trf("{error}; the session bus is off for this start", &[("error", &format!("{e:#}"))]),
+                    sam_core::i18n::trf(
+                        "{error}; the session bus is off for this start",
+                        &[("error", &format!("{e:#}"))],
+                    ),
                 )),
             }
         }
         if perms.display.wayland && !perms.display.wayland_privileged {
             if let Some(display) = &host.sockets.wayland {
-                let instance = runtime_dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let instance = runtime_dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 // The compositor names the app's windows after this ID (KWin
                 // uses it instead of the app's own); it must be the name of
                 // SAM's menu entry, or the taskbar shows a generic icon.
@@ -294,7 +360,11 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             }
         }
         // Landlock and seccomp are applied by SAM's helper inside the sandbox.
-        let want_landlock = perms.advanced.landlock.unwrap_or(cfg.security.experimental_landlock) && host.landlock_abi.is_some();
+        let want_landlock = perms
+            .advanced
+            .landlock
+            .unwrap_or(cfg.security.experimental_landlock)
+            && host.landlock_abi.is_some();
         let strict = perms.advanced.seccomp_strict && cfg.security.experimental_seccomp;
         if perms.advanced.seccomp_strict && !cfg.security.experimental_seccomp {
             warnings.push(Warning::info(
@@ -303,7 +373,8 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                 "Enable experimental seccomp in Settings -> Security to use the strict filter.",
             ));
         }
-        let want_seccomp = (cfg.security.baseline_seccomp && perms.advanced.seccomp_baseline) || strict;
+        let want_seccomp =
+            (cfg.security.baseline_seccomp && perms.advanced.seccomp_baseline) || strict;
         if want_landlock || want_seccomp || opts.probe.is_some() {
             match crate::find_helper() {
                 Some(helper) => {
@@ -329,7 +400,11 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
 
     let mut command = sam_sandbox::Bubblewrap.build(&ctx)?;
     if perms.network.mode == sam_core::permissions::NetworkMode::Localhost {
-        if let Err(e) = crate::netns::wrap_localhost(&mut command, &perms.network.valid_host_ports(), &perms.network.valid_app_ports()) {
+        if let Err(e) = crate::netns::wrap_localhost(
+            &mut command,
+            &perms.network.valid_host_ports(),
+            &perms.network.valid_app_ports(),
+        ) {
             // Without pasta, fall back to no network at all.
             command.args.insert(0, "--unshare-net".into());
             warnings.push(Warning::warn(
@@ -340,14 +415,35 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         }
     }
     let wayland_context = wayland.is_some();
-    Ok(Prepared { sandbox, command, context: ctx, warnings, landlock, seccomp, terminal, proxy, wayland_context, wayland, _runtime: runtime_guard })
+    Ok(Prepared {
+        sandbox,
+        command,
+        context: ctx,
+        warnings,
+        landlock,
+        seccomp,
+        terminal,
+        proxy,
+        wayland_context,
+        wayland,
+        _runtime: runtime_guard,
+    })
 }
 
 /// Paths mounted writable only for this launch: files and folders named on
 /// the command line and writable extra binds.
 fn launch_writable_paths(ctx: &LaunchContext) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = sam_sandbox::opened_paths(ctx).into_iter().filter(|(_, rw)| *rw).map(|(p, _)| p).collect();
-    out.extend(ctx.extra_binds.iter().filter(|(_, _, rw)| *rw).map(|(_, dest, _)| dest.clone()));
+    let mut out: Vec<PathBuf> = sam_sandbox::opened_paths(ctx)
+        .into_iter()
+        .filter(|(_, rw)| *rw)
+        .map(|(p, _)| p)
+        .collect();
+    out.extend(
+        ctx.extra_binds
+            .iter()
+            .filter(|(_, _, rw)| *rw)
+            .map(|(_, dest, _)| dest.clone()),
+    );
     if ctx.permissions.advanced.writable_appdir {
         out.push(ctx.sandbox_appdir.clone());
     }
@@ -358,13 +454,33 @@ fn launch_writable_paths(ctx: &LaunchContext) -> Vec<PathBuf> {
 /// whether Bubblewrap itself reported it (decisions go by that, never by
 /// the summary, which is translated).
 fn classify_failure(code: Option<i32>, stderr_head: &str) -> (bool, String, bool) {
-    let first_bwrap = stderr_head.lines().find(|l| l.starts_with("bwrap:")).map(str::to_string);
+    let first_bwrap = stderr_head
+        .lines()
+        .find(|l| l.starts_with("bwrap:"))
+        .map(str::to_string);
     match code {
-        Some(_) if first_bwrap.is_some() => {
-            (true, sam_core::i18n::trf("sandbox setup failed: {reason}", &[("reason", &first_bwrap.unwrap_or_default())]), true)
-        }
-        Some(126) => (true, sam_core::i18n::tr("the entry point could not be executed (permission denied or wrong format)"), false),
-        Some(127) => (true, sam_core::i18n::tr("the entry point or one of its interpreters was not found inside the sandbox"), false),
+        Some(_) if first_bwrap.is_some() => (
+            true,
+            sam_core::i18n::trf(
+                "sandbox setup failed: {reason}",
+                &[("reason", &first_bwrap.unwrap_or_default())],
+            ),
+            true,
+        ),
+        Some(126) => (
+            true,
+            sam_core::i18n::tr(
+                "the entry point could not be executed (permission denied or wrong format)",
+            ),
+            false,
+        ),
+        Some(127) => (
+            true,
+            sam_core::i18n::tr(
+                "the entry point or one of its interpreters was not found inside the sandbox",
+            ),
+            false,
+        ),
         _ => (false, String::new(), false),
     }
 }
@@ -374,12 +490,32 @@ const STDERR_HEAD_LIMIT: usize = 16 * 1024;
 /// Starts the app in its sandbox and waits until it ends (or until
 /// `opts.timeout_secs`). Writes the launch log and saves the outcome in the
 /// app's entry.
-pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths, host: &HostInfo) -> Result<LaunchRecord> {
+pub fn run(
+    app: &mut AppEntry,
+    opts: &LaunchOptions,
+    cfg: &Config,
+    paths: &Paths,
+    host: &HostInfo,
+) -> Result<LaunchRecord> {
     let logs = Logs::new(paths);
-    let log_path = logs.new_log_path(&app.id, if opts.tracer.is_some() { LogKind::Diagnose } else { LogKind::Launch })?;
+    let log_path = logs.new_log_path(
+        &app.id,
+        if opts.tracer.is_some() {
+            LogKind::Diagnose
+        } else {
+            LogKind::Launch
+        },
+    )?;
     let started_at = now();
-    let mut log = fs::File::create(&log_path).with_context(|| format!("creating {}", log_path.display()))?;
-    writeln!(log, "# SAM launch log\n# app: {} ({})\n# started: {}", app.display_name(), app.id, format_ts(started_at))?;
+    let mut log =
+        fs::File::create(&log_path).with_context(|| format!("creating {}", log_path.display()))?;
+    writeln!(
+        log,
+        "# SAM launch log\n# app: {} ({})\n# started: {}",
+        app.display_name(),
+        app.id,
+        format_ts(started_at)
+    )?;
 
     let prepared = match prepare(app, opts, cfg, paths, host) {
         Ok(p) => p,
@@ -430,7 +566,13 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             eprintln!("{}", terminal_banner(app, &prepared));
         }
     } else {
-        cmd.stdin(if pty::is_tty(0) { Stdio::null() } else { Stdio::inherit() }).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.stdin(if pty::is_tty(0) {
+            Stdio::null()
+        } else {
+            Stdio::inherit()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     }
     if prepared.command.clear_env {
         cmd.env_clear();
@@ -441,9 +583,15 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     cmd.current_dir(&host.home);
     // Held until this launch is over: `Sam::running` sees the app as running.
     let _running = hold_lock(&prepared.context.runtime_dir.join("running.lock"))?;
-    let spawned = cmd.spawn().with_context(|| format!("starting {}", prepared.command.program.display()));
+    let spawned = cmd
+        .spawn()
+        .with_context(|| format!("starting {}", prepared.command.program.display()));
     // Close our copies of the write ends so the readers see EOF.
-    for fd in channels.close_after_spawn.iter().chain(prepared.context.seccomp_fd.as_ref()) {
+    for fd in channels
+        .close_after_spawn
+        .iter()
+        .chain(prepared.context.seccomp_fd.as_ref())
+    {
         // SAFETY: the descriptor belongs to this launch and is closed exactly once here.
         unsafe { libc::close(*fd) };
     }
@@ -452,8 +600,12 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     // sees when the app's side is closed.
     drop(cmd);
     let child_done = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let bwrap_status_reader = channels.bwrap_status.map(|r| read_fd_in_thread(r, child_done.clone()));
-    let helper_status_reader = channels.helper_status.map(|r| read_fd_in_thread(r, child_done.clone()));
+    let bwrap_status_reader = channels
+        .bwrap_status
+        .map(|r| read_fd_in_thread(r, child_done.clone()));
+    let helper_status_reader = channels
+        .helper_status
+        .map(|r| read_fd_in_thread(r, child_done.clone()));
 
     // Collect its output while it runs. The first part of each stream:
     // stderr decides whether the sandbox failed; both are searched for known
@@ -464,17 +616,32 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let mut pumps = Vec::new();
     let relay = match pty {
         // On a terminal both streams are one.
-        Some(p) => Some(p.start(pty::OutputSink { head: err_head.clone(), head_limit: STDERR_HEAD_LIMIT, log: log.clone(), log_limit: 256 * 1024 })),
+        Some(p) => Some(p.start(pty::OutputSink {
+            head: err_head.clone(),
+            head_limit: STDERR_HEAD_LIMIT,
+            log: log.clone(),
+            log_limit: 256 * 1024,
+        })),
         None => {
             pumps.push(pump_output(
-                Box::new(child.stdout.take().context(sam_core::i18n::tr("no stdout pipe"))?),
+                Box::new(
+                    child
+                        .stdout
+                        .take()
+                        .context(sam_core::i18n::tr("no stdout pipe"))?,
+                ),
                 false,
                 log.clone(),
                 out_head.clone(),
                 opts.quiet,
             ));
             pumps.push(pump_output(
-                Box::new(child.stderr.take().context(sam_core::i18n::tr("no stderr pipe"))?),
+                Box::new(
+                    child
+                        .stderr
+                        .take()
+                        .context(sam_core::i18n::tr("no stderr pipe"))?,
+                ),
                 true,
                 log.clone(),
                 err_head.clone(),
@@ -496,10 +663,22 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     let err_head = err_head.lock().map(|h| h.clone()).unwrap_or_default();
     let out_head = out_head.lock().map(|h| h.clone()).unwrap_or_default();
     let bwrap_json = bwrap_status_reader.and_then(|t| t.join().ok());
-    let enforcement = helper_status_reader.and_then(|t| t.join().ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let enforcement = helper_status_reader
+        .and_then(|t| t.join().ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let closed_by_sam = prepared.context.runtime_dir.join(STOP_MARKER).exists();
-    let mut outcome = judge_outcome(status, &err_head, bwrap_json.as_deref(), closed_by_sam, timed_out.then_some(opts.timeout_secs.unwrap_or(0)));
-    if relay_end.as_ref().is_some_and(|r| r.hung_up) && !outcome.sandbox_failure && !outcome.setup_failed {
+    let mut outcome = judge_outcome(
+        status,
+        &err_head,
+        bwrap_json.as_deref(),
+        closed_by_sam,
+        timed_out.then_some(opts.timeout_secs.unwrap_or(0)),
+    );
+    if relay_end.as_ref().is_some_and(|r| r.hung_up)
+        && !outcome.sandbox_failure
+        && !outcome.setup_failed
+    {
         // The user closed the terminal window: not a failed start.
         outcome.success = true;
         outcome.summary = sam_core::i18n::tr("ended when its terminal was closed");
@@ -511,18 +690,35 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     }
     if let Ok(mut l) = log.lock() {
         if mode != TerminalMode::None {
-            let what = if mode == TerminalMode::Relay { "connected to the user's terminal" } else { "80x24, no input (test start)" };
+            let what = if mode == TerminalMode::Relay {
+                "connected to the user's terminal"
+            } else {
+                "80x24, no input (test start)"
+            };
             writeln!(l, "\n# terminal: a terminal of its own, {what}")?;
         }
-        if let Some(b) = relay_end.as_ref().map(|r| &r.blocked).filter(|b| !b.is_empty()) {
-            writeln!(l, "# terminal: blocked escape codes for {}", b.iter().copied().collect::<Vec<_>>().join(", "))?;
+        if let Some(b) = relay_end
+            .as_ref()
+            .map(|r| &r.blocked)
+            .filter(|b| !b.is_empty())
+        {
+            writeln!(
+                l,
+                "# terminal: blocked escape codes for {}",
+                b.iter().copied().collect::<Vec<_>>().join(", ")
+            )?;
         }
         if let Some(e) = &enforcement {
             writeln!(l, "# enforced: {e}")?;
         } else if prepared.landlock || prepared.seccomp {
             writeln!(l, "# enforced: unknown (no status from SAM's helper)")?;
         }
-        writeln!(l, "# ---- end ----\n# finished: {}\n# result: {}", format_ts(now()), outcome.summary)?;
+        writeln!(
+            l,
+            "# ---- end ----\n# finished: {}\n# result: {}",
+            format_ts(now()),
+            outcome.summary
+        )?;
     }
 
     let rec = LaunchRecord {
@@ -538,9 +734,15 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         findings: if outcome.success {
             vec![]
         } else {
-            let mut f = crate::repair::analyze(&format!("{err_head}\n{out_head}"), &app.profile.permissions, status.signal());
+            let mut f = crate::repair::analyze(
+                &format!("{err_head}\n{out_head}"),
+                &app.profile.permissions,
+                status.signal(),
+            );
             // Suggested only where it can work (see overlay_works_in).
-            f.retain(|s| s.id != "writable-appdir" || sam_core::host::overlay_works_in(&paths.overlays_dir()));
+            f.retain(|s| {
+                s.id != "writable-appdir" || sam_core::host::overlay_works_in(&paths.overlays_dir())
+            });
             f
         },
         summary: outcome.summary,
@@ -566,11 +768,18 @@ fn terminal_banner(app: &AppEntry, prepared: &Prepared) -> String {
         }
     }
     sees.extend(fs.custom_read.iter().chain(&fs.custom_write).cloned());
-    sees.extend(sam_sandbox::opened_paths(ctx).iter().map(|(p, _)| sam_core::util::tildify(p)));
+    sees.extend(
+        sam_sandbox::opened_paths(ctx)
+            .iter()
+            .map(|(p, _)| sam_core::util::tildify(p)),
+    );
     let sees = if sees.is_empty() {
         sam_core::i18n::tr("only its private home")
     } else {
-        sam_core::i18n::trf("{folders} and its private home", &[("folders", &sees.join(", "))])
+        sam_core::i18n::trf(
+            "{folders} and its private home",
+            &[("folders", &sees.join(", "))],
+        )
     };
     format!(
         "\x1b[2msam-jail: {}\x1b[0m",
@@ -585,7 +794,11 @@ fn terminal_banner(app: &AppEntry, prepared: &Prepared) -> String {
 /// built and the full command.
 fn write_log_header(log: &mut fs::File, prepared: &Prepared) -> Result<()> {
     writeln!(log, "# sandbox: {}", prepared.sandbox.reason)?;
-    writeln!(log, "# landlock: {}  seccomp: {}  wayland security context: {}", prepared.landlock, prepared.seccomp, prepared.wayland_context)?;
+    writeln!(
+        log,
+        "# landlock: {}  seccomp: {}  wayland security context: {}",
+        prepared.landlock, prepared.seccomp, prepared.wayland_context
+    )?;
     if let Some(p) = &prepared.proxy {
         writeln!(log, "# dbus proxy: xdg-dbus-proxy {}", shell_join(&p.args))?;
     }
@@ -625,9 +838,16 @@ impl StatusChannels {
         let direct_bwrap = bwrap_path.as_ref() == Some(&command.program);
         let pasta_bwrap = !direct_bwrap
             && command.program.file_name().is_some_and(|n| n == "pasta")
-            && bwrap_path.as_ref().is_some_and(|b| command.args.iter().any(|a| Path::new(a) == b));
+            && bwrap_path
+                .as_ref()
+                .is_some_and(|b| command.args.iter().any(|a| Path::new(a) == b));
         let with_helper = prepared.context.helper.is_some();
-        let mut ch = StatusChannels { args: None, close_after_spawn: Vec::new(), bwrap_status: None, helper_status: None };
+        let mut ch = StatusChannels {
+            args: None,
+            close_after_spawn: Vec::new(),
+            bwrap_status: None,
+            helper_status: None,
+        };
         if direct_bwrap {
             let (r, w) = status_pipe()?;
             ch.bwrap_status = Some(r);
@@ -649,7 +869,10 @@ impl StatusChannels {
                 ch.helper_status = Some(open_fifo_reader(&helper_fifo)?);
             }
             let args = &command.args;
-            let sep = args.iter().position(|a| a == "--").context(sam_core::i18n::tr("pasta command without '--'"))?;
+            let sep = args
+                .iter()
+                .position(|a| a == "--")
+                .context(sam_core::i18n::tr("pasta command without '--'"))?;
             let mut out: Vec<String> = args[..=sep].to_vec();
             out.extend([
                 "/bin/sh".into(),
@@ -657,10 +880,18 @@ impl StatusChannels {
                 r#"exec 3>"$1"; if [ -n "$2" ]; then exec 4>"$2"; fi; shift 2; exec "$@""#.into(),
                 "sh".into(),
                 status_fifo.display().to_string(),
-                if with_helper { helper_fifo.display().to_string() } else { String::new() },
+                if with_helper {
+                    helper_fifo.display().to_string()
+                } else {
+                    String::new()
+                },
                 args[sep + 1].clone(),
             ]);
-            out.extend(with_status_options(&args[sep + 2..], 3, with_helper.then_some(4)));
+            out.extend(with_status_options(
+                &args[sep + 2..],
+                3,
+                with_helper.then_some(4),
+            ));
             ch.args = Some(out);
         }
         Ok(ch)
@@ -668,20 +899,37 @@ impl StatusChannels {
 }
 
 /// bwrap's own arguments with the status options inserted.
-fn with_status_options(bwrap_args: &[String], status_fd: i32, helper_fd: Option<i32>) -> Vec<String> {
+fn with_status_options(
+    bwrap_args: &[String],
+    status_fd: i32,
+    helper_fd: Option<i32>,
+) -> Vec<String> {
     let mut args = vec!["--json-status-fd".to_string(), status_fd.to_string()];
     args.extend(bwrap_args.iter().cloned());
     if let Some(hw) = helper_fd {
         // After --clearenv: right before bwrap's "--" separator.
         let sep = args.iter().position(|a| a == "--").unwrap_or(args.len());
-        args.splice(sep..sep, ["--setenv".to_string(), "SAM_STATUS_FD".into(), hw.to_string()]);
+        args.splice(
+            sep..sep,
+            [
+                "--setenv".to_string(),
+                "SAM_STATUS_FD".into(),
+                hw.to_string(),
+            ],
+        );
     }
     args
 }
 
 /// Copies one output stream of the app into the launch log (and, unless
 /// quiet, to SAM's own output), keeping its first part in `head`.
-fn pump_output(src: Box<dyn Read + Send>, is_err: bool, log: Arc<Mutex<fs::File>>, head: Arc<Mutex<String>>, quiet: bool) -> std::thread::JoinHandle<()> {
+fn pump_output(
+    src: Box<dyn Read + Send>,
+    is_err: bool,
+    log: Arc<Mutex<fs::File>>,
+    head: Arc<Mutex<String>>,
+    quiet: bool,
+) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let reader = BufReader::new(src);
         for line in reader.split(b'\n') {
@@ -709,8 +957,13 @@ fn pump_output(src: Box<dyn Read + Send>, is_err: bool, log: Arc<Mutex<fs::File>
 
 /// Waits for the child; with a time limit, ends it when the time is up
 /// (a test start or diagnostic run). Returns whether SAM ended it.
-fn wait_until(child: &mut std::process::Child, timeout_secs: Option<u64>) -> Result<(std::process::ExitStatus, bool)> {
-    let Some(secs) = timeout_secs else { return Ok((child.wait()?, false)) };
+fn wait_until(
+    child: &mut std::process::Child,
+    timeout_secs: Option<u64>,
+) -> Result<(std::process::ExitStatus, bool)> {
+    let Some(secs) = timeout_secs else {
+        return Ok((child.wait()?, false));
+    };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
     loop {
         if let Some(st) = child.try_wait()? {
@@ -734,7 +987,13 @@ struct Outcome {
 /// Whether a finished launch worked, failed in the app, or failed to build
 /// the sandbox. `bwrap_json` is bwrap's status channel (None when there was
 /// none), `kept_running_for` the time limit when SAM ended the app.
-fn judge_outcome(status: std::process::ExitStatus, err_head: &str, bwrap_json: Option<&str>, stop_marker: bool, kept_running_for: Option<u64>) -> Outcome {
+fn judge_outcome(
+    status: std::process::ExitStatus,
+    err_head: &str,
+    bwrap_json: Option<&str>,
+    stop_marker: bool,
+    kept_running_for: Option<u64>,
+) -> Outcome {
     let code = status.code();
     let signal = status.signal();
     let (mut sandbox_failure, mut summary, bwrap_said) = classify_failure(code, err_head);
@@ -748,7 +1007,8 @@ fn judge_outcome(status: std::process::ExitStatus, err_head: &str, bwrap_json: O
     if setup_failed {
         sandbox_failure = true;
         if !bwrap_said {
-            summary = sam_core::i18n::tr("sandbox setup failed (Bubblewrap could not build the sandbox)");
+            summary =
+                sam_core::i18n::tr("sandbox setup failed (Bubblewrap could not build the sandbox)");
         }
     }
     // `Sam::stop` (Close and Remove, `sam-jail stop`) asked the app to quit:
@@ -761,7 +1021,10 @@ fn judge_outcome(status: std::process::ExitStatus, err_head: &str, bwrap_json: O
     // Still running when the time was up: it started fine.
     let kept_running = kept_running_for.is_some() && !setup_failed && !sandbox_failure;
     if kept_running {
-        summary = sam_core::i18n::trf("kept running for {seconds} s (test start, ended by SAM)", &[("seconds", &kept_running_for.unwrap_or(0))]);
+        summary = sam_core::i18n::trf(
+            "kept running for {seconds} s (test start, ended by SAM)",
+            &[("seconds", &kept_running_for.unwrap_or(0))],
+        );
     }
     let success = status.success() || closed_by_sam || kept_running;
     if summary.is_empty() {
@@ -774,7 +1037,12 @@ fn judge_outcome(status: std::process::ExitStatus, err_head: &str, bwrap_json: O
             _ => sam_core::i18n::tr("finished"),
         };
     }
-    Outcome { success, sandbox_failure, setup_failed, summary }
+    Outcome {
+        success,
+        sandbox_failure,
+        setup_failed,
+        summary,
+    }
 }
 
 /// For a terminal program: it started in the sandbox and ended by itself
@@ -823,7 +1091,11 @@ fn hold_lock(path: &Path) -> Result<fs::File> {
     let f = fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
     // SAFETY: `f` is an open file; flock only takes its descriptor.
     if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        bail!("locking {}: {}", path.display(), std::io::Error::last_os_error());
+        bail!(
+            "locking {}: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
     }
     Ok(f)
 }
@@ -831,7 +1103,9 @@ fn hold_lock(path: &Path) -> Result<fs::File> {
 /// True if another process holds the lock on `path`.
 pub fn lock_held(path: &Path) -> bool {
     use std::os::fd::AsRawFd;
-    let Ok(f) = fs::File::open(path) else { return false };
+    let Ok(f) = fs::File::open(path) else {
+        return false;
+    };
     // SAFETY: `f` is an open file; flock only takes its descriptor.
     unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) != 0 }
 }
@@ -842,12 +1116,25 @@ fn open_fifo_reader(path: &Path) -> Result<i32> {
     let c = std::ffi::CString::new(path.as_os_str().as_bytes())?;
     // SAFETY: `c` is a NUL-terminated path.
     if unsafe { libc::mkfifo(c.as_ptr(), 0o600) } != 0 {
-        bail!("mkfifo {}: {}", path.display(), std::io::Error::last_os_error());
+        bail!(
+            "mkfifo {}: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
     }
     // SAFETY: `c` is a NUL-terminated path; the returned descriptor is checked and closed below.
-    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC) };
+    let fd = unsafe {
+        libc::open(
+            c.as_ptr(),
+            libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    };
     if fd < 0 {
-        bail!("open {}: {}", path.display(), std::io::Error::last_os_error());
+        bail!(
+            "open {}: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
     }
     Ok(fd)
 }
@@ -856,12 +1143,19 @@ fn open_fifo_reader(path: &Path) -> Result<i32> {
 /// for FIFOs a writer may never open: on Linux, poll() reports a hangup on a
 /// FIFO only after a writer was connected, and `done` ends the wait once the
 /// sandbox process has exited.
-fn read_fd_in_thread(fd: i32, done: Arc<std::sync::atomic::AtomicBool>) -> std::thread::JoinHandle<String> {
+fn read_fd_in_thread(
+    fd: i32,
+    done: Arc<std::sync::atomic::AtomicBool>,
+) -> std::thread::JoinHandle<String> {
     std::thread::spawn(move || {
         let mut out = Vec::new();
         let mut buf = [0u8; 4096];
         loop {
-            let mut pfd = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
+            let mut pfd = libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
             // SAFETY: `pfd` is one valid pollfd.
             let n = unsafe { libc::poll(&mut pfd, 1, 200) };
             if n < 0 {
@@ -883,7 +1177,9 @@ fn read_fd_in_thread(fd: i32, done: Arc<std::sync::atomic::AtomicBool>) -> std::
                 if out.len() > 64 * 1024 {
                     break;
                 }
-            } else if r == 0 || std::io::Error::last_os_error().kind() != std::io::ErrorKind::WouldBlock {
+            } else if r == 0
+                || std::io::Error::last_os_error().kind() != std::io::ErrorKind::WouldBlock
+            {
                 break;
             }
         }
@@ -895,7 +1191,9 @@ fn read_fd_in_thread(fd: i32, done: Arc<std::sync::atomic::AtomicBool>) -> std::
 
 /// Last lines of a log file (for reports and the GUI).
 pub fn tail(path: &Path, max_lines: usize) -> String {
-    let Ok(text) = fs::read_to_string(path) else { return String::new() };
+    let Ok(text) = fs::read_to_string(path) else {
+        return String::new();
+    };
     let lines: Vec<&str> = text.lines().collect();
     lines[lines.len().saturating_sub(max_lines)..].join("\n")
 }
@@ -914,15 +1212,32 @@ mod tests {
         std::fs::write(appdir.join("AppRun"), "#!/bin/sh\n").unwrap();
         let app = AppEntry {
             id: "appimage-x-1".into(),
-            extraction: Some(sam_core::model::ExtractionInfo { root: tmp.path().into(), appdir, entry: "AppRun".into(), ..Default::default() }),
+            extraction: Some(sam_core::model::ExtractionInfo {
+                root: tmp.path().into(),
+                appdir,
+                entry: "AppRun".into(),
+                ..Default::default()
+            }),
             ..Default::default()
         };
         let mut host = sam_core::sandbox::sample_context().host;
         host.tools.bwrap = None;
         let paths = Paths::rooted(tmp.path());
-        let err = prepare(&app, &LaunchOptions::default(), &Config::default(), &paths, &host).err().expect("refused").to_string();
+        let err = prepare(
+            &app,
+            &LaunchOptions::default(),
+            &Config::default(),
+            &paths,
+            &host,
+        )
+        .err()
+        .expect("refused")
+        .to_string();
         assert!(err.contains("bubblewrap"), "{err}");
-        assert!(!paths.runtime_dir(&app.id).exists(), "nothing was set up for a start");
+        assert!(
+            !paths.runtime_dir(&app.id).exists(),
+            "nothing was set up for a start"
+        );
     }
 
     /// Bubblewrap setup errors are told apart from errors of the app itself.
@@ -954,26 +1269,61 @@ mod tests {
         assert!(judge_outcome(exited(1), "", never_started, true, None).setup_failed);
 
         // "bwrap:" lines from inside a sandbox that was built (nested bwrap).
-        let o = judge_outcome(exited(1), "bwrap: Creating new namespace failed", started, false, None);
+        let o = judge_outcome(
+            exited(1),
+            "bwrap: Creating new namespace failed",
+            started,
+            false,
+            None,
+        );
         assert!(!o.sandbox_failure && o.summary == "exited with code 1");
         // Without the status channel, such lines count as a setup failure.
-        assert!(judge_outcome(exited(1), "bwrap: Can't mount proc", None, false, None).sandbox_failure);
+        assert!(
+            judge_outcome(exited(1), "bwrap: Can't mount proc", None, false, None).sandbox_failure
+        );
 
-        let o = judge_outcome(std::process::ExitStatus::from_raw(15), "", started, true, None);
+        let o = judge_outcome(
+            std::process::ExitStatus::from_raw(15),
+            "",
+            started,
+            true,
+            None,
+        );
         assert!(o.success && o.summary == "closed by SAM");
 
-        let o = judge_outcome(std::process::ExitStatus::from_raw(9), "", started, false, Some(20));
+        let o = judge_outcome(
+            std::process::ExitStatus::from_raw(9),
+            "",
+            started,
+            false,
+            Some(20),
+        );
         assert!(o.success && o.summary.starts_with("kept running for 20 s"));
         // A time limit does not hide an entry point that could not run.
         assert!(!judge_outcome(exited(127), "", started, false, Some(20)).success);
 
-        assert_eq!(judge_outcome(std::process::ExitStatus::from_raw(11), "", started, false, None).summary, "ended by signal 11 (segmentation fault)");
+        assert_eq!(
+            judge_outcome(
+                std::process::ExitStatus::from_raw(11),
+                "",
+                started,
+                false,
+                None
+            )
+            .summary,
+            "ended by signal 11 (segmentation fault)"
+        );
 
         // Terminal programs: an exit code of their own is no failed start;
         // a crash, a missing entry point or a sandbox failure is.
-        let ran = |st: std::process::ExitStatus| ran_to_its_end(&judge_outcome(st, "", started, false, None), st);
+        let ran = |st: std::process::ExitStatus| {
+            ran_to_its_end(&judge_outcome(st, "", started, false, None), st)
+        };
         assert!(ran(exited(1)) && ran(exited(2)));
         assert!(!ran(exited(127)) && !ran(std::process::ExitStatus::from_raw(11)));
-        assert!(!ran_to_its_end(&judge_outcome(exited(1), "", never_started, false, None), exited(1)));
+        assert!(!ran_to_its_end(
+            &judge_outcome(exited(1), "", never_started, false, None),
+            exited(1)
+        ));
     }
 }

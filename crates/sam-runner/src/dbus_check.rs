@@ -15,8 +15,13 @@ use anyhow::{bail, Context, Result};
 pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bool> {
     let path = address
         .split(';')
-        .find_map(|a| a.strip_prefix("unix:").and_then(|rest| rest.split(',').find_map(|kv| kv.strip_prefix("path="))))
-        .context(sam_core::i18n::tr("only unix:path= bus addresses are supported"))?;
+        .find_map(|a| {
+            a.strip_prefix("unix:")
+                .and_then(|rest| rest.split(',').find_map(|kv| kv.strip_prefix("path=")))
+        })
+        .context(sam_core::i18n::tr(
+            "only unix:path= bus addresses are supported",
+        ))?;
     let mut s = UnixStream::connect(path).with_context(|| format!("connecting to {path}"))?;
     s.set_read_timeout(Some(timeout))?;
     s.set_write_timeout(Some(timeout))?;
@@ -35,8 +40,22 @@ pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bo
     s.write_all(b"BEGIN\r\n")?;
 
     // Hello (required first), then GetNameOwner; read until its reply.
-    s.write_all(&method_call(1, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "Hello", None))?;
-    s.write_all(&method_call(2, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", Some(name)))?;
+    s.write_all(&method_call(
+        1,
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "Hello",
+        None,
+    ))?;
+    s.write_all(&method_call(
+        2,
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "GetNameOwner",
+        Some(name),
+    ))?;
     for _ in 0..64 {
         let (kind, reply_serial) = read_message(&mut reader)?;
         if reply_serial == Some(2) {
@@ -75,7 +94,14 @@ fn field(buf: &mut Vec<u8>, code: u8, sig: &str, value: &str) {
 }
 
 /// A little-endian METHOD_CALL with an optional single string argument.
-fn method_call(serial: u32, dest: &str, path: &str, iface: &str, member: &str, arg: Option<&str>) -> Vec<u8> {
+fn method_call(
+    serial: u32,
+    dest: &str,
+    path: &str,
+    iface: &str,
+    member: &str,
+    arg: Option<&str>,
+) -> Vec<u8> {
     let mut body = Vec::new();
     if let Some(a) = arg {
         put_str(&mut body, a);
@@ -173,20 +199,35 @@ mod tests {
     #[test]
     fn reaches_the_session_bus() {
         // Only where a session bus exists (desktop sessions, not CI).
-        let Ok(addr) = std::env::var("DBUS_SESSION_BUS_ADDRESS") else { return };
+        let Ok(addr) = std::env::var("DBUS_SESSION_BUS_ADDRESS") else {
+            return;
+        };
         if !addr.contains("unix:path=") {
             return;
         }
         assert!(name_reachable(&addr, "org.freedesktop.DBus", Duration::from_secs(2)).unwrap());
-        assert!(!name_reachable(&addr, "org.example.SamNoSuchName", Duration::from_secs(2)).unwrap());
+        assert!(
+            !name_reachable(&addr, "org.example.SamNoSuchName", Duration::from_secs(2)).unwrap()
+        );
     }
 
     /// SAM's own D-Bus message for the bus check has the correct wire format.
     #[test]
     fn the_bus_check_message_has_the_correct_wire_format() {
-        let m = method_call(7, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", Some("x.y"));
+        let m = method_call(
+            7,
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetNameOwner",
+            Some("x.y"),
+        );
         assert_eq!(&m[..4], &[b'l', 1, 0, 1]);
         assert_eq!(u32::from_le_bytes([m[8], m[9], m[10], m[11]]), 7);
-        assert_eq!(m.len() % 8, (4 + 3 + 1) % 8, "body is one string: len(4) + 'x.y' + nul");
+        assert_eq!(
+            m.len() % 8,
+            (4 + 3 + 1) % 8,
+            "body is one string: len(4) + 'x.y' + nul"
+        );
     }
 }

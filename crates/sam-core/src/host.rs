@@ -66,9 +66,13 @@ impl UsernsStatus {
 pub fn bwrap_supports_overlay() -> bool {
     static CHECKED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *CHECKED.get_or_init(|| {
-        let Some(path) = crate::util::which("bwrap") else { return false };
+        let Some(path) = crate::util::which("bwrap") else {
+            return false;
+        };
         let out = std::process::Command::new(path).arg("--version").output();
-        let text = out.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+        let text = out
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default();
         version_at_least(&text, (0, 10))
     })
 }
@@ -90,18 +94,33 @@ pub fn overlay_works_in(dir: &std::path::Path) -> bool {
         return known;
     }
     let works = try_overlay_in(dir);
-    cache.get_or_insert_with(HashMap::new).insert(dir.to_path_buf(), works);
+    cache
+        .get_or_insert_with(HashMap::new)
+        .insert(dir.to_path_buf(), works);
     works
 }
 
 fn try_overlay_in(dir: &std::path::Path) -> bool {
-    let Some(bwrap) = crate::util::which("bwrap") else { return false };
+    let Some(bwrap) = crate::util::which("bwrap") else {
+        return false;
+    };
     let probe = dir.join(format!(".overlay-check-{}", std::process::id()));
     remove_stale_probes(dir);
-    let made = std::fs::create_dir_all(dir).is_ok() && ["lower", "upper", "work"].iter().all(|d| std::fs::create_dir_all(probe.join(d)).is_ok());
+    let made = std::fs::create_dir_all(dir).is_ok()
+        && ["lower", "upper", "work"]
+            .iter()
+            .all(|d| std::fs::create_dir_all(probe.join(d)).is_ok());
     let works = made
         && std::process::Command::new(bwrap)
-            .args(["--unshare-user", "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--overlay-src"])
+            .args([
+                "--unshare-user",
+                "--ro-bind",
+                "/",
+                "/",
+                "--tmpfs",
+                "/tmp",
+                "--overlay-src",
+            ])
             .arg(probe.join("lower"))
             .arg("--overlay")
             .arg(probe.join("upper"))
@@ -118,10 +137,17 @@ fn try_overlay_in(dir: &std::path::Path) -> bool {
 /// Removes what checks of SAM's that no longer run left behind (older
 /// versions could not remove the overlay's locked work folder).
 fn remove_stale_probes(dir: &std::path::Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let name = e.file_name();
-        let Some(pid) = name.to_str().and_then(|n| n.strip_prefix(".overlay-check-")) else { continue };
+        let Some(pid) = name
+            .to_str()
+            .and_then(|n| n.strip_prefix(".overlay-check-"))
+        else {
+            continue;
+        };
         if pid.parse::<u32>().is_ok() && !std::path::Path::new("/proc").join(pid).exists() {
             remove_probe(&e.path());
         }
@@ -132,13 +158,19 @@ fn remove_stale_probes(dir: &std::path::Path) {
 /// without any permissions; it belongs to the user, so it is opened first.
 fn remove_probe(probe: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(probe.join("work/work"), std::fs::Permissions::from_mode(0o700));
+    let _ = std::fs::set_permissions(
+        probe.join("work/work"),
+        std::fs::Permissions::from_mode(0o700),
+    );
     let _ = std::fs::remove_dir_all(probe);
 }
 
 /// "bubblewrap 0.13.1" -> true for (0, 10).
 fn version_at_least(text: &str, want: (u32, u32)) -> bool {
-    let v = text.split_whitespace().find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit())).unwrap_or("");
+    let v = text
+        .split_whitespace()
+        .find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit()))
+        .unwrap_or("");
     let mut it = v.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
     (it.next().unwrap_or(0), it.next().unwrap_or(0)) >= want
 }
@@ -154,7 +186,11 @@ mod probe_tests {
         let probe = tmp.path().join(".overlay-check-1");
         std::fs::create_dir_all(probe.join("work/work")).unwrap();
         std::fs::create_dir_all(probe.join("upper")).unwrap();
-        std::fs::set_permissions(probe.join("work/work"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        std::fs::set_permissions(
+            probe.join("work/work"),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
         super::remove_probe(&probe);
         assert!(!probe.exists());
     }
@@ -168,8 +204,14 @@ mod probe_tests {
         // Process ids above the kernel's limit (4194304) never exist.
         let old = tmp.path().join(".overlay-check-4194399");
         std::fs::create_dir_all(old.join("work/work")).unwrap();
-        std::fs::set_permissions(old.join("work/work"), std::fs::Permissions::from_mode(0o000)).unwrap();
-        let running = tmp.path().join(format!(".overlay-check-{}", std::process::id()));
+        std::fs::set_permissions(
+            old.join("work/work"),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
+        let running = tmp
+            .path()
+            .join(format!(".overlay-check-{}", std::process::id()));
         std::fs::create_dir_all(&running).unwrap();
         let other = tmp.path().join("appimage-krita-1234");
         std::fs::create_dir_all(&other).unwrap();
@@ -254,10 +296,20 @@ impl HostInfo {
             .filter(|u| !u.is_empty())
             .or_else(|| home.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| "user".into());
-        let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).filter(|p| p.is_dir());
+        let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir());
 
         let tool = |name: &str, args: &[&str]| -> Option<Tool> {
-            which(name).map(|path| Tool { version: if versions { tool_version(&path, args) } else { None }, path })
+            which(name).map(|path| Tool {
+                version: if versions {
+                    tool_version(&path, args)
+                } else {
+                    None
+                },
+                path,
+            })
         };
         let tools = Tools {
             bwrap: tool("bwrap", &["--version"]),
@@ -289,13 +341,20 @@ impl HostInfo {
             kernel: read_trim("/proc/sys/kernel/osrelease").unwrap_or_default(),
             distro: os_release_name(),
             userns: UsernsStatus {
-                max_user_namespaces: read_trim("/proc/sys/user/max_user_namespaces").and_then(|s| s.parse().ok()),
-                unprivileged_clone: read_trim("/proc/sys/kernel/unprivileged_userns_clone").map(|s| s == "1"),
-                apparmor_restricted: read_trim("/proc/sys/kernel/apparmor_restrict_unprivileged_userns").map(|s| s == "1"),
+                max_user_namespaces: read_trim("/proc/sys/user/max_user_namespaces")
+                    .and_then(|s| s.parse().ok()),
+                unprivileged_clone: read_trim("/proc/sys/kernel/unprivileged_userns_clone")
+                    .map(|s| s == "1"),
+                apparmor_restricted: read_trim(
+                    "/proc/sys/kernel/apparmor_restrict_unprivileged_userns",
+                )
+                .map(|s| s == "1"),
                 bwrap_setuid,
             },
             landlock_abi: landlock_abi(),
-            seccomp: read_trim("/proc/self/status").map(|s| s.lines().any(|l| l.starts_with("Seccomp:"))).unwrap_or(false),
+            seccomp: read_trim("/proc/self/status")
+                .map(|s| s.lines().any(|l| l.starts_with("Seccomp:")))
+                .unwrap_or(false),
             tools,
             gpu_devices: gpu_devices(),
             extra_lib_dirs: extra_lib_dirs(&home),
@@ -315,13 +374,23 @@ fn read_trim(p: &str) -> Option<String> {
 
 fn tool_version(path: &Path, args: &[&str]) -> Option<String> {
     let out = Command::new(path).args(args).output().ok()?;
-    let text = if out.stdout.is_empty() { out.stderr } else { out.stdout };
-    String::from_utf8_lossy(&text).lines().next().map(|l| l.trim().to_string())
+    let text = if out.stdout.is_empty() {
+        out.stderr
+    } else {
+        out.stdout
+    };
+    String::from_utf8_lossy(&text)
+        .lines()
+        .next()
+        .map(|l| l.trim().to_string())
 }
 
 fn os_release_name() -> String {
     let s = fs::read_to_string("/etc/os-release").unwrap_or_default();
-    s.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")).map(|v| v.trim_matches('"').to_string()).unwrap_or_default()
+    s.lines()
+        .find_map(|l| l.strip_prefix("PRETTY_NAME="))
+        .map(|v| v.trim_matches('"').to_string())
+        .unwrap_or_default()
 }
 
 fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
@@ -331,7 +400,11 @@ fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
     // Wayland
     let wd = env("WAYLAND_DISPLAY").unwrap_or_else(|| "wayland-0".into());
     s.wayland_display = wd.clone();
-    let wpath = if wd.starts_with('/') { Some(PathBuf::from(&wd)) } else { runtime.map(|r| r.join(&wd)) };
+    let wpath = if wd.starts_with('/') {
+        Some(PathBuf::from(&wd))
+    } else {
+        runtime.map(|r| r.join(&wd))
+    };
     s.wayland = wpath.filter(|p| p.exists());
 
     // X11
@@ -343,7 +416,10 @@ fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
                 s.x11 = Some(sock);
             }
         }
-        s.xauthority = env("XAUTHORITY").map(PathBuf::from).or_else(|| Some(home.join(".Xauthority"))).filter(|p| p.is_file());
+        s.xauthority = env("XAUTHORITY")
+            .map(PathBuf::from)
+            .or_else(|| Some(home.join(".Xauthority")))
+            .filter(|p| p.is_file());
     }
 
     if let Some(r) = runtime {
@@ -357,9 +433,16 @@ fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
     }
 
     s.dbus_session_address = env("DBUS_SESSION_BUS_ADDRESS");
-    s.dbus_session = s.dbus_session_address.as_deref().and_then(dbus_unix_path).or_else(|| runtime.map(|r| r.join("bus"))).filter(|p| p.exists());
+    s.dbus_session = s
+        .dbus_session_address
+        .as_deref()
+        .and_then(dbus_unix_path)
+        .or_else(|| runtime.map(|r| r.join("bus")))
+        .filter(|p| p.exists());
     s.dbus_system = Some(PathBuf::from("/run/dbus/system_bus_socket")).filter(|p| p.exists());
-    s.ssh_agent = env("SSH_AUTH_SOCK").map(PathBuf::from).filter(|p| p.exists());
+    s.ssh_agent = env("SSH_AUTH_SOCK")
+        .map(PathBuf::from)
+        .filter(|p| p.exists());
     s.cups = Some(PathBuf::from("/run/cups/cups.sock")).filter(|p| p.exists());
     s
 }
@@ -378,7 +461,8 @@ pub fn x11_display_number(display: &str) -> Option<String> {
 pub fn dbus_unix_path(addr: &str) -> Option<PathBuf> {
     addr.split(';').find_map(|a| {
         let a = a.strip_prefix("unix:")?;
-        a.split(',').find_map(|kv| kv.strip_prefix("path=").map(PathBuf::from))
+        a.split(',')
+            .find_map(|kv| kv.strip_prefix("path=").map(PathBuf::from))
     })
 }
 
@@ -387,16 +471,29 @@ pub fn dbus_unix_path(addr: &str) -> Option<PathBuf> {
 /// something asks for the service, so an app must never take one: it would
 /// receive what is meant for the service (a password manager's requests).
 pub fn activatable_bus_names(home: &Path) -> std::collections::BTreeSet<String> {
-    let mut dirs: Vec<PathBuf> =
-        vec![home.join(".local/share/dbus-1/services"), PathBuf::from("/usr/local/share/dbus-1/services"), PathBuf::from("/usr/share/dbus-1/services")];
+    let mut dirs: Vec<PathBuf> = vec![
+        home.join(".local/share/dbus-1/services"),
+        PathBuf::from("/usr/local/share/dbus-1/services"),
+        PathBuf::from("/usr/share/dbus-1/services"),
+    ];
     if let Ok(x) = std::env::var("XDG_DATA_DIRS") {
-        dirs.extend(x.split(':').filter(|d| d.starts_with('/')).map(|d| Path::new(d).join("dbus-1/services")));
+        dirs.extend(
+            x.split(':')
+                .filter(|d| d.starts_with('/'))
+                .map(|d| Path::new(d).join("dbus-1/services")),
+        );
     }
     let mut names = std::collections::BTreeSet::new();
     for d in dirs {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
-            let Ok(text) = fs::read_to_string(e.path()) else { continue };
-            names.extend(text.lines().filter_map(|l| l.trim().strip_prefix("Name=")).map(|n| n.trim().to_string()));
+            let Ok(text) = fs::read_to_string(e.path()) else {
+                continue;
+            };
+            names.extend(
+                text.lines()
+                    .filter_map(|l| l.trim().strip_prefix("Name="))
+                    .map(|n| n.trim().to_string()),
+            );
         }
     }
     names
@@ -411,7 +508,12 @@ pub fn loader_lib_dirs() -> Vec<PathBuf> {
         files.sort();
         for f in files {
             if let Ok(s) = fs::read_to_string(&f) {
-                dirs.extend(s.lines().map(str::trim).filter(|l| l.starts_with('/')).map(PathBuf::from));
+                dirs.extend(
+                    s.lines()
+                        .map(str::trim)
+                        .filter(|l| l.starts_with('/'))
+                        .map(PathBuf::from),
+                );
             }
         }
     }
@@ -427,7 +529,16 @@ pub fn extra_lib_dirs(home: &Path) -> Vec<PathBuf> {
     loader_lib_dirs()
         .into_iter()
         .filter(|d| {
-            let shown = ["/usr/lib", "/usr/lib32", "/usr/lib64", "/lib", "/lib32", "/lib64"].iter().any(|s| d.starts_with(s));
+            let shown = [
+                "/usr/lib",
+                "/usr/lib32",
+                "/usr/lib64",
+                "/lib",
+                "/lib32",
+                "/lib64",
+            ]
+            .iter()
+            .any(|s| d.starts_with(s));
             let allowed = ["/opt", "/usr/local"].iter().any(|r| d.starts_with(r));
             !shown && allowed && !d.starts_with(home)
         })
@@ -465,7 +576,10 @@ pub fn xdg_user_dirs(home: &Path) -> BTreeMap<String, PathBuf> {
         ("pictures", "PICTURES", "Pictures"),
         ("videos", "VIDEOS", "Videos"),
     ];
-    let cfg_home = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+    let cfg_home = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
     let text = fs::read_to_string(cfg_home.join("user-dirs.dirs")).unwrap_or_default();
     for (key, var, fallback) in defaults {
         let from_file = text.lines().find_map(|l| {
@@ -492,12 +606,23 @@ pub fn xdg_user_dirs(home: &Path) -> BTreeMap<String, PathBuf> {
 
 /// Query the Landlock ABI version via `landlock_create_ruleset(NULL, 0, VERSION)`.
 pub fn landlock_abi() -> Option<u32> {
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64"))]
+    #[cfg(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    ))]
     {
         const SYS_LANDLOCK_CREATE_RULESET: libc::c_long = 444;
         const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
         // SAFETY: asks the kernel for its Landlock version: a null attribute pointer with size 0 is what the version query expects.
-        let r = unsafe { libc::syscall(SYS_LANDLOCK_CREATE_RULESET, std::ptr::null::<u8>(), 0usize, LANDLOCK_CREATE_RULESET_VERSION) };
+        let r = unsafe {
+            libc::syscall(
+                SYS_LANDLOCK_CREATE_RULESET,
+                std::ptr::null::<u8>(),
+                0usize,
+                LANDLOCK_CREATE_RULESET_VERSION,
+            )
+        };
         if r > 0 {
             return Some(r as u32);
         }
@@ -521,7 +646,10 @@ mod tests {
     /// Only real socket paths are taken from a D-Bus address; abstract sockets are not.
     #[test]
     fn only_real_socket_paths_are_taken_from_a_dbus_address() {
-        assert_eq!(dbus_unix_path("unix:path=/run/user/1000/bus,guid=abc"), Some(PathBuf::from("/run/user/1000/bus")));
+        assert_eq!(
+            dbus_unix_path("unix:path=/run/user/1000/bus,guid=abc"),
+            Some(PathBuf::from("/run/user/1000/bus"))
+        );
         assert_eq!(dbus_unix_path("unix:abstract=/tmp/dbus-x"), None);
     }
 }

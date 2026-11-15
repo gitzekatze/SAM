@@ -16,7 +16,12 @@ struct Env {
 fn env() -> Env {
     let tmp = tempfile::tempdir().unwrap();
     let r = tmp.path().to_path_buf();
-    let e = Env { config: r.join("config"), data: r.join("data"), apps: r.join("applications"), _tmp: tmp };
+    let e = Env {
+        config: r.join("config"),
+        data: r.join("data"),
+        apps: r.join("applications"),
+        _tmp: tmp,
+    };
     fs::create_dir_all(e.data.join("apps")).unwrap();
     fs::create_dir_all(e.config.join("presets")).unwrap();
     fs::create_dir_all(&e.data).unwrap();
@@ -38,35 +43,61 @@ fn sam(e: &Env, args: &[&str]) -> Output {
 
 fn no_panic(o: &Output, what: &str) {
     let err = String::from_utf8_lossy(&o.stderr);
-    assert!(o.status.code() != Some(101) && !err.contains("panicked"), "{what}: panic\n{err}");
+    assert!(
+        o.status.code() != Some(101) && !err.contains("panicked"),
+        "{what}: panic\n{err}"
+    );
 }
 
 fn damaged_in(dir: &Path) -> usize {
-    fs::read_dir(dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().contains(".damaged-")).count()
+    fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().contains(".damaged-"))
+        .count()
 }
 
-const RECORD: &str = r#"{"id": "appimage-demo-1234", "name": "Demo", "source_path": "/nonexistent/Demo.AppImage"}"#;
+const RECORD: &str =
+    r#"{"id": "appimage-demo-1234", "name": "Demo", "source_path": "/nonexistent/Demo.AppImage"}"#;
 
 /// Files from older SAM versions are migrated to the current format, and the originals are kept.
 #[test]
 fn old_formats_are_migrated_and_kept() {
     let e = env();
     // Format 0: no `format`, an older theme name.
-    fs::write(e.config.join("config.toml"), "[general]\ntheme = \"breeze-dark\"\n").unwrap();
+    fs::write(
+        e.config.join("config.toml"),
+        "[general]\ntheme = \"breeze-dark\"\n",
+    )
+    .unwrap();
     fs::write(e.data.join("apps/appimage-demo-1234.json"), RECORD).unwrap();
     let o = sam(&e, &["--json", "list"]);
     no_panic(&o, "list");
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert!(String::from_utf8_lossy(&o.stdout).contains("appimage-demo-1234"));
     // A change saves both in the current format; the originals stay.
-    assert!(sam(&e, &["config", "set", "general.scan_downloads", "true"]).status.success());
-    assert!(sam(&e, &["set", "appimage-demo-1234", "network.mode", "full"]).status.success());
+    assert!(
+        sam(&e, &["config", "set", "general.scan_downloads", "true"])
+            .status
+            .success()
+    );
+    assert!(
+        sam(&e, &["set", "appimage-demo-1234", "network.mode", "full"])
+            .status
+            .success()
+    );
     let cfg = fs::read_to_string(e.config.join("config.toml")).unwrap();
-    assert!(cfg.contains("format = 1") && cfg.contains("theme = \"dark\""), "{cfg}");
+    assert!(
+        cfg.contains("format = 1") && cfg.contains("theme = \"dark\""),
+        "{cfg}"
+    );
     assert!(e.config.join("config.toml.format0.bak").exists());
     let rec = fs::read_to_string(e.data.join("apps/appimage-demo-1234.json")).unwrap();
     assert!(rec.contains("\"format\": 1"), "{rec}");
-    assert_eq!(fs::read_to_string(e.data.join("apps/appimage-demo-1234.json.format0.bak")).unwrap(), RECORD);
+    assert_eq!(
+        fs::read_to_string(e.data.join("apps/appimage-demo-1234.json.format0.bak")).unwrap(),
+        RECORD
+    );
 }
 
 /// Files from a newer SAM are never changed by an older one.
@@ -78,20 +109,40 @@ fn newer_formats_are_left_untouched() {
     let o = sam(&e, &["config", "set", "general.scan_downloads", "true"]);
     no_panic(&o, "config set");
     assert!(!o.status.success());
-    assert!(String::from_utf8_lossy(&o.stderr).contains("newer SAM"), "{}", String::from_utf8_lossy(&o.stderr));
-    assert_eq!(fs::read_to_string(e.config.join("config.toml")).unwrap(), newer_cfg, "not overwritten");
+    assert!(
+        String::from_utf8_lossy(&o.stderr).contains("newer SAM"),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(e.config.join("config.toml")).unwrap(),
+        newer_cfg,
+        "not overwritten"
+    );
 
     let e = env();
-    let newer_rec = r#"{"format": 99, "id": "appimage-new-1234", "name": "New", "future_field": [1, 2]}"#;
+    let newer_rec =
+        r#"{"format": 99, "id": "appimage-new-1234", "name": "New", "future_field": [1, 2]}"#;
     fs::write(e.data.join("apps/appimage-new-1234.json"), newer_rec).unwrap();
     let o = sam(&e, &["--json", "list"]);
     no_panic(&o, "list");
     assert!(o.status.success());
-    assert!(!String::from_utf8_lossy(&o.stdout).contains("appimage-new-1234"), "not shown");
+    assert!(
+        !String::from_utf8_lossy(&o.stdout).contains("appimage-new-1234"),
+        "not shown"
+    );
     let o = sam(&e, &["set", "appimage-new-1234", "network.mode", "full"]);
     assert!(!o.status.success());
-    assert_eq!(fs::read_to_string(e.data.join("apps/appimage-new-1234.json")).unwrap(), newer_rec, "not overwritten");
-    assert_eq!(damaged_in(&e.data.join("apps")), 0, "a newer record is not damaged");
+    assert_eq!(
+        fs::read_to_string(e.data.join("apps/appimage-new-1234.json")).unwrap(),
+        newer_rec,
+        "not overwritten"
+    );
+    assert_eq!(
+        damaged_in(&e.data.join("apps")),
+        0,
+        "a newer record is not damaged"
+    );
 }
 
 /// Damaged files are moved aside and reported, and SAM carries on.
@@ -103,24 +154,45 @@ fn damaged_files_are_moved_aside_and_reported() {
     fs::write(e.config.join("presets/broken.toml"), "[preset\nname=").unwrap();
     let o = sam(&e, &["--json", "list"]);
     no_panic(&o, "list");
-    assert!(o.status.success(), "SAM carries on: {}", String::from_utf8_lossy(&o.stderr));
+    assert!(
+        o.status.success(),
+        "SAM carries on: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
     let o = sam(&e, &["--json", "preset", "list"]);
     no_panic(&o, "preset list");
     assert_eq!(damaged_in(&e.config), 1, "config moved aside");
     assert_eq!(damaged_in(&e.data.join("apps")), 1, "record moved aside");
-    assert_eq!(damaged_in(&e.config.join("presets")), 1, "preset moved aside");
+    assert_eq!(
+        damaged_in(&e.config.join("presets")),
+        1,
+        "preset moved aside"
+    );
     let o = sam(&e, &["doctor"]);
     no_panic(&o, "doctor");
     let out = String::from_utf8_lossy(&o.stdout);
-    assert!(out.contains("Damaged files") && out.contains(".damaged-"), "{out}");
+    assert!(
+        out.contains("Damaged files") && out.contains(".damaged-"),
+        "{out}"
+    );
     // A single invalid value is reset, not the whole file.
     let e = env();
-    fs::write(e.config.join("config.toml"), "[general]\nscan_downloads = true\n[extraction]\nlocation = \"relative/dir\"\n").unwrap();
+    fs::write(
+        e.config.join("config.toml"),
+        "[general]\nscan_downloads = true\n[extraction]\nlocation = \"relative/dir\"\n",
+    )
+    .unwrap();
     let o = sam(&e, &["--json", "config", "show"]);
     assert!(o.status.success());
     let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
-    assert_eq!(v["data"]["general"]["scan_downloads"], true, "other settings kept");
-    assert_eq!(v["data"]["extraction"]["location"], "", "invalid value reset");
+    assert_eq!(
+        v["data"]["general"]["scan_downloads"], true,
+        "other settings kept"
+    );
+    assert_eq!(
+        v["data"]["extraction"]["location"], "",
+        "invalid value reset"
+    );
     assert_eq!(damaged_in(&e.config), 0);
 }
 
@@ -137,7 +209,10 @@ fn mangled_files_never_crash() {
     for n in (0..cfg.len()).step_by(13) {
         cases.push((cfg[..n].to_string(), rec.to_string()));
     }
-    for (i, b) in [b'{', b'"', b'1', b']', b'\0', b'\n', 0xff].iter().enumerate() {
+    for (i, b) in [b'{', b'"', b'1', b']', b'\0', b'\n', 0xff]
+        .iter()
+        .enumerate()
+    {
         let mut r = rec.as_bytes().to_vec();
         let at = (i * 37 + 11) % r.len();
         r[at] = *b;
@@ -147,8 +222,15 @@ fn mangled_files_never_crash() {
         let e = env();
         fs::write(e.config.join("config.toml"), &c).unwrap();
         fs::write(e.data.join("apps/appimage-demo-1234.json"), &r).unwrap();
-        for args in [&["--json", "list"][..], &["doctor"][..], &["--json", "info", "appimage-demo-1234"][..]] {
-            no_panic(&sam(&e, args), &format!("{args:?} with config {c:?} and record {r:?}"));
+        for args in [
+            &["--json", "list"][..],
+            &["doctor"][..],
+            &["--json", "info", "appimage-demo-1234"][..],
+        ] {
+            no_panic(
+                &sam(&e, args),
+                &format!("{args:?} with config {c:?} and record {r:?}"),
+            );
         }
     }
 }
@@ -162,7 +244,10 @@ fn version_reports_the_json_interface() {
     let o = sam(&e, &["--json", "version"]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let out = String::from_utf8_lossy(&o.stdout);
-    assert!(out.contains(&format!("\"interface\":{}", sam_core::JSON_INTERFACE)), "{out}");
+    assert!(
+        out.contains(&format!("\"interface\":{}", sam_core::JSON_INTERFACE)),
+        "{out}"
+    );
     assert!(out.contains(env!("CARGO_PKG_VERSION")), "{out}");
 }
 
@@ -175,7 +260,17 @@ fn signing_a_file_without_signature_sections_is_refused() {
     let f = e.config.join("NotSignable.AppImage");
     fs::write(&f, b"\x7fELF not really a runtime").unwrap();
     let before = fs::read(&f).unwrap();
-    let o = sam(&e, &["--json", "dev", "sign-appimage", f.to_str().unwrap(), "--key", "AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6"]);
+    let o = sam(
+        &e,
+        &[
+            "--json",
+            "dev",
+            "sign-appimage",
+            f.to_str().unwrap(),
+            "--key",
+            "AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6",
+        ],
+    );
     assert!(!o.status.success());
     let out = String::from_utf8_lossy(&o.stdout);
     assert!(out.contains("no signature sections"), "{out}");

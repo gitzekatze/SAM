@@ -10,16 +10,32 @@ const GUIDE: &str = include_str!("../../../docs/guide.md");
 
 /// The guide page for the right column.
 pub fn page() -> adw::NavigationPage {
-    let content =
-        gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(12).margin_top(24).margin_bottom(48).margin_start(24).margin_end(24).build();
+    let content = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(12)
+        .margin_top(24)
+        .margin_bottom(48)
+        .margin_start(24)
+        .margin_end(24)
+        .build();
     content.add_css_class("sam-guide");
     render(GUIDE, &content);
-    let clamp = adw::Clamp::builder().maximum_size(760).tightening_threshold(600).child(&content).build();
-    let scroll = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).child(&clamp).build();
+    let clamp = adw::Clamp::builder()
+        .maximum_size(760)
+        .tightening_threshold(600)
+        .child(&content)
+        .build();
+    let scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .child(&clamp)
+        .build();
     let view = adw::ToolbarView::new();
     view.add_top_bar(&adw::HeaderBar::new());
     view.set_content(Some(&scroll));
-    adw::NavigationPage::builder().title(tr("User Guide")).child(&view).build()
+    adw::NavigationPage::builder()
+        .title(tr("User Guide"))
+        .child(&view)
+        .build()
 }
 
 /// Where a link in the guide leads. The guide is written as part of SAM's
@@ -34,7 +50,11 @@ fn link_target(dest: &str) -> String {
         return format!("https://github.com/gitzekatze/SAM/blob/main/docs/guide.md#{anchor}");
     }
     let path = dest.trim_start_matches("./");
-    let path = if let Some(up) = path.strip_prefix("../") { up.to_string() } else { format!("docs/{path}") };
+    let path = if let Some(up) = path.strip_prefix("../") {
+        up.to_string()
+    } else {
+        format!("docs/{path}")
+    };
     format!("https://github.com/gitzekatze/SAM/blob/main/{path}")
 }
 
@@ -43,7 +63,14 @@ fn esc(s: &str) -> String {
 }
 
 fn text_label(markup: &str) -> gtk::Label {
-    gtk::Label::builder().label(markup).use_markup(true).wrap(true).wrap_mode(gtk::pango::WrapMode::WordChar).xalign(0.0).selectable(false).build()
+    gtk::Label::builder()
+        .label(markup)
+        .use_markup(true)
+        .wrap(true)
+        .wrap_mode(gtk::pango::WrapMode::WordChar)
+        .xalign(0.0)
+        .selectable(false)
+        .build()
 }
 
 /// Where finished blocks go: the page, a tip box, or a list item.
@@ -64,7 +91,9 @@ struct Table {
 
 fn render(md: &str, root: &gtk::Box) {
     let parser = Parser::new_ext(md, Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH);
-    let mut frames = vec![Frame { container: root.clone() }];
+    let mut frames = vec![Frame {
+        container: root.clone(),
+    }];
     let mut lists: Vec<List> = Vec::new();
     let mut inline = String::new();
     let mut heading: Option<HeadingLevel> = None;
@@ -120,7 +149,10 @@ fn render(md: &str, root: &gtk::Box) {
                 inline.clear();
             }
             Event::Start(Tag::BlockQuote(_)) => {
-                let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
+                let b = gtk::Box::builder()
+                    .orientation(gtk::Orientation::Vertical)
+                    .spacing(6)
+                    .build();
                 b.add_css_class("sam-callout");
                 push(&frames, b.upcast_ref());
                 frames.push(Frame { container: b });
@@ -172,7 +204,13 @@ fn render(md: &str, root: &gtk::Box) {
             Event::Start(Tag::CodeBlock(_)) => code = Some(String::new()),
             Event::End(TagEnd::CodeBlock) => {
                 let text = code.take().unwrap_or_default();
-                let l = gtk::Label::builder().label(text.trim_end()).xalign(0.0).selectable(true).wrap(true).wrap_mode(gtk::pango::WrapMode::Char).build();
+                let l = gtk::Label::builder()
+                    .label(text.trim_end())
+                    .xalign(0.0)
+                    .selectable(true)
+                    .wrap(true)
+                    .wrap_mode(gtk::pango::WrapMode::Char)
+                    .build();
                 l.add_css_class("monospace");
                 let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
                 card.add_css_class("card");
@@ -216,9 +254,14 @@ fn render(md: &str, root: &gtk::Box) {
             Event::End(TagEnd::Emphasis) => inline.push_str("</i>"),
             Event::Start(Tag::Strikethrough) => inline.push_str("<s>"),
             Event::End(TagEnd::Strikethrough) => inline.push_str("</s>"),
-            Event::Start(Tag::Link { dest_url, .. }) => inline.push_str(&format!("<a href=\"{}\">", esc(&link_target(&dest_url)))),
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                inline.push_str(&format!("<a href=\"{}\">", esc(&link_target(&dest_url))))
+            }
             Event::End(TagEnd::Link) => inline.push_str("</a>"),
-            Event::Code(c) => inline.push_str(&format!("<tt><span background=\"#80808033\"> {} </span></tt>", esc(&c))),
+            Event::Code(c) => inline.push_str(&format!(
+                "<tt><span background=\"#80808033\"> {} </span></tt>",
+                esc(&c)
+            )),
             Event::Text(t) => {
                 if let Some(c) = code.as_mut() {
                     c.push_str(&t);
@@ -250,8 +293,16 @@ fn item_row(lists: &mut [List], text: &str) -> gtk::Box {
         }
         None => if depth > 0 { "◦" } else { "•" }.to_string(),
     };
-    let row = gtk::Box::builder().spacing(10).margin_start(4 + depth * 22).build();
-    let bullet = gtk::Label::builder().label(&marker).valign(gtk::Align::Start).width_chars(2).xalign(1.0).build();
+    let row = gtk::Box::builder()
+        .spacing(10)
+        .margin_start(4 + depth * 22)
+        .build();
+    let bullet = gtk::Label::builder()
+        .label(&marker)
+        .valign(gtk::Align::Start)
+        .width_chars(2)
+        .xalign(1.0)
+        .build();
     bullet.add_css_class("sam-bullet");
     let body = text_label(text);
     body.set_hexpand(true);
@@ -261,7 +312,11 @@ fn item_row(lists: &mut [List], text: &str) -> gtk::Box {
 }
 
 fn table_widget(t: &Table) -> gtk::Widget {
-    let grid = gtk::Grid::builder().column_spacing(0).row_spacing(0).hexpand(true).build();
+    let grid = gtk::Grid::builder()
+        .column_spacing(0)
+        .row_spacing(0)
+        .hexpand(true)
+        .build();
     for (r, row) in t.rows.iter().enumerate() {
         for (c, cell) in row.iter().enumerate() {
             let l = text_label(cell);
@@ -296,7 +351,10 @@ mod tests {
         for ev in pulldown_cmark::Parser::new(md) {
             match ev {
                 pulldown_cmark::Event::Text(t) => cur.push_str(&t),
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::List(_)) | pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Item) if !cur.is_empty() => {
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::List(_))
+                | pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Item)
+                    if !cur.is_empty() =>
+                {
                     texts.push(std::mem::take(&mut cur))
                 }
                 _ => {}
@@ -311,9 +369,21 @@ mod tests {
     #[test]
     fn links_to_other_pages_open_on_github() {
         let base = "https://github.com/gitzekatze/SAM/blob/main/";
-        assert_eq!(super::link_target("security.md#terminal-programs"), format!("{base}docs/security.md#terminal-programs"));
-        assert_eq!(super::link_target("../README.md"), format!("{base}README.md"));
-        assert_eq!(super::link_target("#setup"), format!("{base}docs/guide.md#setup"));
-        assert_eq!(super::link_target("https://example.org/x"), "https://example.org/x");
+        assert_eq!(
+            super::link_target("security.md#terminal-programs"),
+            format!("{base}docs/security.md#terminal-programs")
+        );
+        assert_eq!(
+            super::link_target("../README.md"),
+            format!("{base}README.md")
+        );
+        assert_eq!(
+            super::link_target("#setup"),
+            format!("{base}docs/guide.md#setup")
+        );
+        assert_eq!(
+            super::link_target("https://example.org/x"),
+            "https://example.org/x"
+        );
     }
 }

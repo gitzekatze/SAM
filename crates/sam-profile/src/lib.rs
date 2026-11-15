@@ -86,7 +86,11 @@ pub const ALL_CATEGORIES: [Category; 12] = [
 ];
 
 /// Infer a category from desktop categories, name and binary.
-pub fn infer_category(md: &AppImageMetadata, file_name: &str, report: Option<&DependencyReport>) -> Category {
+pub fn infer_category(
+    md: &AppImageMetadata,
+    file_name: &str,
+    report: Option<&DependencyReport>,
+) -> Category {
     let cats: Vec<String> = md.categories.iter().map(|c| c.to_lowercase()).collect();
     let has = |c: &str| cats.iter().any(|x| x == c);
     let text = format!("{} {} {} {}", md.name, md.exec, file_name, md.comment).to_lowercase();
@@ -102,19 +106,36 @@ pub fn infer_category(md: &AppImageMetadata, file_name: &str, report: Option<&De
     if has("game") {
         return Category::Game;
     }
-    if has("instantmessaging") || has("chat") || has("email") || has("videoconference") || has("telephony") {
+    if has("instantmessaging")
+        || has("chat")
+        || has("email")
+        || has("videoconference")
+        || has("telephony")
+    {
         return Category::Communication;
     }
     if has("audiovideoediting") && (has("video") || word("video")) {
         return Category::VideoEditor;
     }
-    if has("audiovideoediting") || (has("audio") && (has("recorder") || has("sequencer") || has("midi"))) {
+    if has("audiovideoediting")
+        || (has("audio") && (has("recorder") || has("sequencer") || has("midi")))
+    {
         return Category::AudioEditor;
     }
-    let graphics = ["graphics", "rastergraphics", "vectorgraphics", "2dgraphics", "3dgraphics", "photography"];
+    let graphics = [
+        "graphics",
+        "rastergraphics",
+        "vectorgraphics",
+        "2dgraphics",
+        "3dgraphics",
+        "photography",
+    ];
     let has_graphics = graphics.iter().any(|c| has(c));
     // A bare `AudioVideo` next to graphics categories is a creative tool, not a player.
-    if has("player") || has("tv") || (has("audiovideo") && !has("audiovideoediting") && !has_graphics) {
+    if has("player")
+        || has("tv")
+        || (has("audiovideo") && !has("audiovideoediting") && !has_graphics)
+    {
         return Category::MediaPlayer;
     }
     if has_graphics {
@@ -135,7 +156,19 @@ pub fn infer_category(md: &AppImageMetadata, file_name: &str, report: Option<&De
 
     // Name heuristics.
     for (words, cat) in [
-        (&["browser", "firefox", "chromium", "librewolf", "brave", "vivaldi", "waterfox", "floorp"][..], Category::Browser),
+        (
+            &[
+                "browser",
+                "firefox",
+                "chromium",
+                "librewolf",
+                "brave",
+                "vivaldi",
+                "waterfox",
+                "floorp",
+            ][..],
+            Category::Browser,
+        ),
         (
             &[
                 "discord",
@@ -155,15 +188,102 @@ pub fn infer_category(md: &AppImageMetadata, file_name: &str, report: Option<&De
             ][..],
             Category::Communication,
         ),
-        (&["vlc", "mpv", "player", "jellyfin", "spotify", "strawberry", "audacious", "celluloid"][..], Category::MediaPlayer),
-        (&["kdenlive", "shotcut", "olive", "openshot", "davinci", "flowblade"][..], Category::VideoEditor),
-        (&["audacity", "ardour", "lmms", "tenacity", "reaper", "bitwig"][..], Category::AudioEditor),
-        (&["krita", "gimp", "inkscape", "darktable", "rawtherapee", "pinta", "blender", "photo"][..], Category::ImageEditor),
-        (&["game", "minecraft", "steam", "heroic", "lutris", "emulator", "retroarch", "dolphin-emu", "pcsx", "rpcs3", "yuzu", "ryujinx"][..], Category::Game),
-        (&["libreoffice", "onlyoffice", "office", "writer", "calc", "obsidian", "logseq", "zotero", "joplin", "notes"][..], Category::Office),
-        (&["code", "vscodium", "editor", "notepad", "kate", "sublime", "zed", "neovim", "lapce"][..], Category::TextEditor),
-        (&["terminal", "kitty", "alacritty", "wezterm", "konsole"][..], Category::Terminal),
-        (&["studio", "ide", "idea", "pycharm", "godot", "arduino", "qtcreator"][..], Category::Development),
+        (
+            &[
+                "vlc",
+                "mpv",
+                "player",
+                "jellyfin",
+                "spotify",
+                "strawberry",
+                "audacious",
+                "celluloid",
+            ][..],
+            Category::MediaPlayer,
+        ),
+        (
+            &[
+                "kdenlive",
+                "shotcut",
+                "olive",
+                "openshot",
+                "davinci",
+                "flowblade",
+            ][..],
+            Category::VideoEditor,
+        ),
+        (
+            &["audacity", "ardour", "lmms", "tenacity", "reaper", "bitwig"][..],
+            Category::AudioEditor,
+        ),
+        (
+            &[
+                "krita",
+                "gimp",
+                "inkscape",
+                "darktable",
+                "rawtherapee",
+                "pinta",
+                "blender",
+                "photo",
+            ][..],
+            Category::ImageEditor,
+        ),
+        (
+            &[
+                "game",
+                "minecraft",
+                "steam",
+                "heroic",
+                "lutris",
+                "emulator",
+                "retroarch",
+                "dolphin-emu",
+                "pcsx",
+                "rpcs3",
+                "yuzu",
+                "ryujinx",
+            ][..],
+            Category::Game,
+        ),
+        (
+            &[
+                "libreoffice",
+                "onlyoffice",
+                "office",
+                "writer",
+                "calc",
+                "obsidian",
+                "logseq",
+                "zotero",
+                "joplin",
+                "notes",
+            ][..],
+            Category::Office,
+        ),
+        (
+            &[
+                "code", "vscodium", "editor", "notepad", "kate", "sublime", "zed", "neovim",
+                "lapce",
+            ][..],
+            Category::TextEditor,
+        ),
+        (
+            &["terminal", "kitty", "alacritty", "wezterm", "konsole"][..],
+            Category::Terminal,
+        ),
+        (
+            &[
+                "studio",
+                "ide",
+                "idea",
+                "pycharm",
+                "godot",
+                "arduino",
+                "qtcreator",
+            ][..],
+            Category::Development,
+        ),
     ] {
         if words.iter().any(|w| word(w)) {
             return cat;
@@ -257,47 +377,81 @@ fn base_for(cat: Category) -> PermissionSet {
 /// services this computer starts on demand are refused at every start
 /// (`refuse_own_name`).
 pub fn own_bus_names(md: &AppImageMetadata) -> Vec<String> {
-    let id = md.desktop_file.as_deref().and_then(|f| std::path::Path::new(f).file_name()?.to_str()?.strip_suffix(".desktop").map(str::to_string));
+    let id = md.desktop_file.as_deref().and_then(|f| {
+        std::path::Path::new(f)
+            .file_name()?
+            .to_str()?
+            .strip_suffix(".desktop")
+            .map(str::to_string)
+    });
     let mut names = Vec::new();
     for cand in id.into_iter().chain(Some(md.startup_wm_class.clone())) {
         let parts: Vec<&str> = cand.split('.').collect();
         let valid = parts.len() >= 3
             && cand.len() <= 200
-            && parts
-                .iter()
-                .all(|p| !p.is_empty() && !p.starts_with(|c: char| c.is_ascii_digit()) && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
-        if valid && sam_core::permissions::refuse_own_name(&cand, &Default::default()).is_none() && !names.contains(&cand) {
+            && parts.iter().all(|p| {
+                !p.is_empty()
+                    && !p.starts_with(|c: char| c.is_ascii_digit())
+                    && p.chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            });
+        if valid
+            && sam_core::permissions::refuse_own_name(&cand, &Default::default()).is_none()
+            && !names.contains(&cand)
+        {
             names.push(cand);
         }
     }
     names
 }
 
-pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&DependencyReport>) -> Recommendation {
+pub fn recommend(
+    md: &AppImageMetadata,
+    file_name: &str,
+    report: Option<&DependencyReport>,
+) -> Recommendation {
     let category = infer_category(md, file_name, report);
     let mut p = base_for(category);
-    let mut notes = vec![sam_core::i18n::trf("Category: {category} (from desktop metadata and name)", &[("category", &category.label())])];
+    let mut notes = vec![sam_core::i18n::trf(
+        "Category: {category} (from desktop metadata and name)",
+        &[("category", &category.label())],
+    )];
 
     if let Some(r) = report {
         let req = &r.requirements;
         if req.gpu && !p.devices.gpu {
             p.devices.gpu = true;
-            notes.push(sam_core::i18n::tr("GPU enabled: the app links OpenGL/Vulkan libraries"));
+            notes.push(sam_core::i18n::tr(
+                "GPU enabled: the app links OpenGL/Vulkan libraries",
+            ));
         }
         if req.audio && !p.audio.enabled {
             p.audio.enabled = true;
-            notes.push(sam_core::i18n::tr("Audio enabled: the app links audio libraries"));
+            notes.push(sam_core::i18n::tr(
+                "Audio enabled: the app links audio libraries",
+            ));
         }
         if req.x11 && !req.wayland {
             p.display.x11 = true;
-            notes.push(sam_core::i18n::tr("X11 enabled: no Wayland support detected (uses XWayland)"));
-        } else if req.x11 && (req.java || matches!(req.toolkit.as_str(), "Electron" | "Java" | "Unknown")) {
+            notes.push(sam_core::i18n::tr(
+                "X11 enabled: no Wayland support detected (uses XWayland)",
+            ));
+        } else if req.x11
+            && (req.java || matches!(req.toolkit.as_str(), "Electron" | "Java" | "Unknown"))
+        {
             // Java's AWT and JavaFX draw through X11 only, whatever toolkit
             // they load (JavaFX uses GTK on X11).
             p.display.x11 = true;
             notes.push(sam_core::i18n::trf(
                 "X11 enabled: {toolkit} apps usually need XWayland",
-                &[("toolkit", &if req.java { "Java" } else { req.toolkit.as_str() })],
+                &[(
+                    "toolkit",
+                    &if req.java {
+                        "Java"
+                    } else {
+                        req.toolkit.as_str()
+                    },
+                )],
             ));
         }
         if !req.x11 && !req.wayland && r.elf_count > 0 && req.toolkit == "Unknown" {
@@ -307,19 +461,25 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
                 p.devices.gpu = true;
                 notes.push(sam_core::i18n::tr("GPU enabled: the app loads its graphics libraries at start (common for Rust apps and game engines)"));
             }
-            notes.push(sam_core::i18n::tr("No display libraries detected; if the window does not appear, enable X11"));
+            notes.push(sam_core::i18n::tr(
+                "No display libraries detected; if the window does not appear, enable X11",
+            ));
         }
         if req.network && p.network.mode == NetworkMode::None {
             if category == Category::Game {
                 p.network.mode = NetworkMode::Full;
-                notes.push(sam_core::i18n::tr("Network enabled: game links networking libraries (multiplayer is likely)"));
+                notes.push(sam_core::i18n::tr(
+                    "Network enabled: game links networking libraries (multiplayer is likely)",
+                ));
             } else if !needs_network_by_purpose(md, file_name) {
                 notes.push(sam_core::i18n::tr("The app links networking libraries but its category does not need the network; network stays off"));
             }
         }
         if req.electron {
             p.advanced.allow_userns = true;
-            notes.push(sam_core::i18n::tr("Electron app: nested namespaces allowed so Chromium's own sandbox can start"));
+            notes.push(sam_core::i18n::tr(
+                "Electron app: nested namespaces allowed so Chromium's own sandbox can start",
+            ));
         } else if req.nested_sandbox {
             p.advanced.allow_userns = true;
             notes.push(sam_core::i18n::tr("Nested namespaces allowed: the app's web engine (Chromium or WebKit) starts its own sandbox"));
@@ -331,7 +491,9 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
             notes.push(sam_core::i18n::tr("32-bit app: the baseline syscall filter is off, because it only supports 64-bit programs and would stop the app"));
         }
         if r.compatibility != sam_core::Compatibility::Good {
-            notes.push(sam_core::i18n::tr("Compatibility issues were detected; see the dependency report"));
+            notes.push(sam_core::i18n::tr(
+                "Compatibility issues were detected; see the dependency report",
+            ));
         }
     }
     // Terminal programs run in the terminal that starts them: no window,
@@ -341,7 +503,9 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
         p.display.x11 = false;
         p.devices.gpu = false;
         p.dbus.session.mode = sam_core::permissions::DbusMode::None;
-        notes.push(sam_core::i18n::tr("Terminal program: no display, GPU or desktop services; it runs in a terminal window"));
+        notes.push(sam_core::i18n::tr(
+            "Terminal program: no display, GPU or desktop services; it runs in a terminal window",
+        ));
     }
     if p.network.mode == NetworkMode::None && needs_network_by_purpose(md, file_name) {
         p.network.mode = NetworkMode::Full;
@@ -352,20 +516,32 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
         // Players only need to read the files they are given.
         p.filesystem.opened_files = Access::Ro;
         p.integrations.media_controls = true;
-        notes.push(sam_core::i18n::tr("Media controls enabled: media keys, 'now playing' and keeping the screen awake"));
+        notes.push(sam_core::i18n::tr(
+            "Media controls enabled: media keys, 'now playing' and keeping the screen awake",
+        ));
     }
-    if XDG_DIR_KEYS.iter().any(|k| p.filesystem.xdg_access(k).is_granted()) {
+    if XDG_DIR_KEYS
+        .iter()
+        .any(|k| p.filesystem.xdg_access(k).is_granted())
+    {
         p.integrations.file_manager = true;
     }
     // The app may own the D-Bus name of its own ID (as Flatpak allows): many
     // apps register it to hand a second start over to the first one.
     for name in own_bus_names(md) {
         if !p.dbus.session.own.contains(&name) {
-            notes.push(sam_core::i18n::trf("D-Bus: may own its own name {name}", &[("name", &name)]));
+            notes.push(sam_core::i18n::trf(
+                "D-Bus: may own its own name {name}",
+                &[("name", &name)],
+            ));
             p.dbus.session.own.push(name);
         }
     }
-    Recommendation { category, permissions: p, notes }
+    Recommendation {
+        category,
+        permissions: p,
+        notes,
+    }
 }
 
 /// Apps whose purpose is talking to models, servers or services: local AI
@@ -373,7 +549,10 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
 /// "Utility", so without this they would start offline and seem broken.
 pub fn needs_network_by_purpose(md: &AppImageMetadata, file_name: &str) -> bool {
     let text = format!(" {} {} {} {} ", md.name, md.comment, md.exec, file_name).to_lowercase();
-    let text: String = text.chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+    let text: String = text
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect();
     let words = [
         " llm",
         " llms ",
@@ -403,7 +582,12 @@ pub fn needs_network_by_purpose(md: &AppImageMetadata, file_name: &str) -> bool 
         return true;
     }
     // Compound names: "FreeLLMAPI", "OpenWebUI", "LocalGPT".
-    text.split_whitespace().any(|t| (t.contains("llm") && !t.contains("ullm")) || t.ends_with("api") || t.ends_with("gpt") || t.ends_with("webui"))
+    text.split_whitespace().any(|t| {
+        (t.contains("llm") && !t.contains("ullm"))
+            || t.ends_with("api")
+            || t.ends_with("gpt")
+            || t.ends_with("webui")
+    })
 }
 
 /// Compatibility mode: broader access for apps that otherwise break.
@@ -433,13 +617,19 @@ pub fn all_presets(paths: &Paths) -> Result<Vec<Preset>> {
 }
 
 pub fn find_preset(paths: &Paths, name: &str) -> Result<Option<Preset>> {
-    Ok(all_presets(paths)?.into_iter().find(|p| p.name.eq_ignore_ascii_case(name)))
+    Ok(all_presets(paths)?
+        .into_iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name)))
 }
 
 /// A new preset starts from SAM's strictest settings for a window app.
 pub fn preset_template() -> Preset {
     let permissions = PermissionSet::strict_gui();
-    Preset { risk: assess(&permissions).level, permissions, ..Default::default() }
+    Preset {
+        risk: assess(&permissions).level,
+        permissions,
+        ..Default::default()
+    }
 }
 
 /// What SAM's analysis says about new settings for an app: what the app
@@ -461,7 +651,9 @@ pub struct ChangeCheck {
 
 impl ChangeCheck {
     pub fn needs_confirmation(&self) -> bool {
-        !self.removes_needed.is_empty() || !self.removes_folders.is_empty() || !self.adds_dangerous.is_empty()
+        !self.removes_needed.is_empty()
+            || !self.removes_folders.is_empty()
+            || !self.adds_dangerous.is_empty()
     }
 }
 
@@ -470,7 +662,11 @@ impl ChangeCheck {
 pub fn check_change(app: &AppEntry, new: &PermissionSet) -> ChangeCheck {
     let need = &app.recommended;
     let cur = &app.profile.permissions;
-    let mut c = ChangeCheck { risk_before: assess(cur).level, risk_after: assess(new).level, ..Default::default() };
+    let mut c = ChangeCheck {
+        risk_before: assess(cur).level,
+        risk_after: assess(new).level,
+        ..Default::default()
+    };
     let mut removed = |cond: bool, what: &str| {
         if cond {
             c.removes_needed.push(what.to_string());
@@ -478,20 +674,44 @@ pub fn check_change(app: &AppEntry, new: &PermissionSet) -> ChangeCheck {
     };
     removed(need.devices.gpu && !new.devices.gpu, "GPU acceleration");
     removed(need.audio.enabled && !new.audio.enabled, "sound");
-    removed(need.network.mode == NetworkMode::Full && new.network.mode != NetworkMode::Full, "network access");
-    removed(need.network.mode == NetworkMode::Localhost && new.network.mode == NetworkMode::None, &sam_core::i18n::tr("connections to this computer"));
-    removed(need.display.x11 && !new.display.x11 && !(need.display.wayland && new.display.wayland && !needs_x11_only(app)), "X11 display");
-    removed(!new.display.x11 && !new.display.wayland && (need.display.x11 || need.display.wayland), &sam_core::i18n::tr("any display access"));
-    removed(need.dbus.session.mode != DbusMode::None && new.dbus.session.mode == DbusMode::None, "desktop services (D-Bus)");
+    removed(
+        need.network.mode == NetworkMode::Full && new.network.mode != NetworkMode::Full,
+        "network access",
+    );
+    removed(
+        need.network.mode == NetworkMode::Localhost && new.network.mode == NetworkMode::None,
+        &sam_core::i18n::tr("connections to this computer"),
+    );
+    removed(
+        need.display.x11
+            && !new.display.x11
+            && !(need.display.wayland && new.display.wayland && !needs_x11_only(app)),
+        "X11 display",
+    );
+    removed(
+        !new.display.x11 && !new.display.wayland && (need.display.x11 || need.display.wayland),
+        &sam_core::i18n::tr("any display access"),
+    );
+    removed(
+        need.dbus.session.mode != DbusMode::None && new.dbus.session.mode == DbusMode::None,
+        "desktop services (D-Bus)",
+    );
     for key in XDG_DIR_KEYS {
-        if need.filesystem.xdg_access(key).is_granted() && !new.filesystem.xdg_access(key).is_granted() {
+        if need.filesystem.xdg_access(key).is_granted()
+            && !new.filesystem.xdg_access(key).is_granted()
+        {
             c.removes_folders.push(format!("{key} folder"));
         }
     }
 
     let before = assess(cur);
     for item in assess(new).items {
-        if item.level >= RiskLevel::High && !before.items.iter().any(|b| b.key == item.key && b.level >= item.level) {
+        if item.level >= RiskLevel::High
+            && !before
+                .items
+                .iter()
+                .any(|b| b.key == item.key && b.level >= item.level)
+        {
             c.adds_dangerous.push(item.title);
         }
     }
@@ -499,7 +719,9 @@ pub fn check_change(app: &AppEntry, new: &PermissionSet) -> ChangeCheck {
 }
 
 fn needs_x11_only(app: &AppEntry) -> bool {
-    app.detection.as_ref().is_some_and(|d| d.requirements.x11 && !d.requirements.wayland)
+    app.detection
+        .as_ref()
+        .is_some_and(|d| d.requirements.x11 && !d.requirements.wayland)
 }
 
 #[cfg(test)]
@@ -508,35 +730,98 @@ mod tests {
     /// Terminal programs get no display, GPU or desktop bus access.
     #[test]
     fn terminal_programs_get_no_display() {
-        let md = AppImageMetadata { name: "Neovim".into(), categories: vec!["Utility".into(), "TextEditor".into()], terminal: true, ..Default::default() };
+        let md = AppImageMetadata {
+            name: "Neovim".into(),
+            categories: vec!["Utility".into(), "TextEditor".into()],
+            terminal: true,
+            ..Default::default()
+        };
         let r = recommend(&md, "nvim.appimage", None);
-        assert!(!r.permissions.display.wayland && !r.permissions.display.x11 && !r.permissions.devices.gpu);
-        assert_eq!(r.permissions.dbus.session.mode, sam_core::permissions::DbusMode::None);
+        assert!(
+            !r.permissions.display.wayland
+                && !r.permissions.display.x11
+                && !r.permissions.devices.gpu
+        );
+        assert_eq!(
+            r.permissions.dbus.session.mode,
+            sam_core::permissions::DbusMode::None
+        );
     }
 
     use super::*;
     use sam_core::Requirements;
 
     fn md(name: &str, cats: &[&str]) -> AppImageMetadata {
-        AppImageMetadata { name: name.into(), categories: cats.iter().map(|s| s.to_string()).collect(), ..Default::default() }
+        AppImageMetadata {
+            name: name.into(),
+            categories: cats.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        }
     }
 
     /// The category of an app is recognized from its desktop categories.
     #[test]
     fn the_app_category_is_recognized_from_its_desktop_categories() {
-        assert_eq!(infer_category(&md("Firefox", &["Network", "WebBrowser"]), "", None), Category::Browser);
-        assert_eq!(infer_category(&md("Krita", &["Graphics", "2DGraphics"]), "", None), Category::ImageEditor);
-        assert_eq!(infer_category(&md("VLC", &["AudioVideo", "Player"]), "", None), Category::MediaPlayer);
-        assert_eq!(infer_category(&md("Kdenlive", &["AudioVideo", "AudioVideoEditing", "Video"]), "", None), Category::VideoEditor);
-        assert_eq!(infer_category(&md("Thing", &[]), "SuperTux-0.6.AppImage", None), Category::Utility);
-        assert_eq!(infer_category(&md("SuperTux", &["Game"]), "", None), Category::Game);
-        assert_eq!(infer_category(&md("Tuta", &["Network"]), "", None), Category::Communication);
-        assert!(needs_network_by_purpose(&md("Open WebUI", &[]), "open-webui_x86_64.AppImage"));
-        assert!(needs_network_by_purpose(&md("FreeLLMAPI", &[]), ""), "LLM in name");
-        assert!(!needs_network_by_purpose(&md("ZFontManager", &[]), "ZFontManager_0.9.0_amd64.AppImage"));
-        assert!(!needs_network_by_purpose(&md("Krita", &["Graphics"]), "krita-5.2.AppImage"));
-        assert_eq!(infer_category(&md("Comfy Desktop", &["AudioVideo", "Graphics", "3DGraphics"]), "", None), Category::ImageEditor);
-        assert_eq!(infer_category(&md("Obsidian", &[]), "", None), Category::Office);
+        assert_eq!(
+            infer_category(&md("Firefox", &["Network", "WebBrowser"]), "", None),
+            Category::Browser
+        );
+        assert_eq!(
+            infer_category(&md("Krita", &["Graphics", "2DGraphics"]), "", None),
+            Category::ImageEditor
+        );
+        assert_eq!(
+            infer_category(&md("VLC", &["AudioVideo", "Player"]), "", None),
+            Category::MediaPlayer
+        );
+        assert_eq!(
+            infer_category(
+                &md("Kdenlive", &["AudioVideo", "AudioVideoEditing", "Video"]),
+                "",
+                None
+            ),
+            Category::VideoEditor
+        );
+        assert_eq!(
+            infer_category(&md("Thing", &[]), "SuperTux-0.6.AppImage", None),
+            Category::Utility
+        );
+        assert_eq!(
+            infer_category(&md("SuperTux", &["Game"]), "", None),
+            Category::Game
+        );
+        assert_eq!(
+            infer_category(&md("Tuta", &["Network"]), "", None),
+            Category::Communication
+        );
+        assert!(needs_network_by_purpose(
+            &md("Open WebUI", &[]),
+            "open-webui_x86_64.AppImage"
+        ));
+        assert!(
+            needs_network_by_purpose(&md("FreeLLMAPI", &[]), ""),
+            "LLM in name"
+        );
+        assert!(!needs_network_by_purpose(
+            &md("ZFontManager", &[]),
+            "ZFontManager_0.9.0_amd64.AppImage"
+        ));
+        assert!(!needs_network_by_purpose(
+            &md("Krita", &["Graphics"]),
+            "krita-5.2.AppImage"
+        ));
+        assert_eq!(
+            infer_category(
+                &md("Comfy Desktop", &["AudioVideo", "Graphics", "3DGraphics"]),
+                "",
+                None
+            ),
+            Category::ImageEditor
+        );
+        assert_eq!(
+            infer_category(&md("Obsidian", &[]), "", None),
+            Category::Office
+        );
     }
 
     /// Recommended permissions fit the category: a browser gets the network and Downloads, an editor no network.
@@ -557,7 +842,15 @@ mod tests {
     /// What SAM finds in the app (GPU, X11-only toolkit) adjusts the recommendation.
     #[test]
     fn what_sam_finds_in_the_app_adjusts_the_recommendation() {
-        let rep = DependencyReport { requirements: Requirements { gpu: true, x11: true, toolkit: "Qt5".into(), ..Default::default() }, ..Default::default() };
+        let rep = DependencyReport {
+            requirements: Requirements {
+                gpu: true,
+                x11: true,
+                toolkit: "Qt5".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let r = recommend(&md("Tool", &["Utility"]), "", Some(&rep));
         assert!(r.permissions.devices.gpu);
         assert!(r.permissions.display.x11, "X11-only app gets XWayland");
@@ -568,17 +861,30 @@ mod tests {
     #[test]
     fn change_check_flags_removals_and_additions() {
         let recommended = recommend(&md("Firefox", &["WebBrowser"]), "", None).permissions;
-        let app = AppEntry { profile: sam_core::SandboxProfile { permissions: recommended.clone(), ..Default::default() }, recommended, ..Default::default() };
+        let app = AppEntry {
+            profile: sam_core::SandboxProfile {
+                permissions: recommended.clone(),
+                ..Default::default()
+            },
+            recommended,
+            ..Default::default()
+        };
         let mut offline = app.profile.permissions.clone();
         offline.network.mode = NetworkMode::None;
         let c = check_change(&app, &offline);
         assert!(c.removes_needed.iter().any(|s| s == "network access"));
         assert!(c.needs_confirmation());
-        assert!(!check_change(&app, &app.profile.permissions).needs_confirmation(), "no change, nothing to report");
+        assert!(
+            !check_change(&app, &app.profile.permissions).needs_confirmation(),
+            "no change, nothing to report"
+        );
 
         let app2 = AppEntry {
             recommended: PermissionSet::strict_gui(),
-            profile: sam_core::SandboxProfile { permissions: PermissionSet::strict_gui(), ..Default::default() },
+            profile: sam_core::SandboxProfile {
+                permissions: PermissionSet::strict_gui(),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let mut x11 = PermissionSet::strict_gui();
@@ -596,8 +902,14 @@ mod tests {
         need.filesystem.documents = Access::Rw;
         need.network.mode = NetworkMode::Localhost;
         need.dbus.session.mode = DbusMode::Filtered;
-        let app =
-            AppEntry { recommended: need.clone(), profile: sam_core::SandboxProfile { permissions: need.clone(), ..Default::default() }, ..Default::default() };
+        let app = AppEntry {
+            recommended: need.clone(),
+            profile: sam_core::SandboxProfile {
+                permissions: need.clone(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let mut new = need.clone();
         new.filesystem.documents = Access::None;
         let c = check_change(&app, &new);
@@ -606,7 +918,10 @@ mod tests {
         new.network.mode = NetworkMode::None;
         new.dbus.session.mode = DbusMode::None;
         let c = check_change(&app, &new);
-        assert!(c.removes_needed.iter().any(|s| s == &sam_core::i18n::tr("connections to this computer")));
+        assert!(c
+            .removes_needed
+            .iter()
+            .any(|s| s == &sam_core::i18n::tr("connections to this computer")));
         assert!(c.removes_needed.iter().any(|s| s.contains("D-Bus")));
     }
 
@@ -615,8 +930,14 @@ mod tests {
     fn lost_sound_is_named_sound() {
         let mut need = PermissionSet::strict_gui();
         need.audio.enabled = true;
-        let app =
-            AppEntry { recommended: need.clone(), profile: sam_core::SandboxProfile { permissions: need.clone(), ..Default::default() }, ..Default::default() };
+        let app = AppEntry {
+            recommended: need.clone(),
+            profile: sam_core::SandboxProfile {
+                permissions: need.clone(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let mut new = need;
         new.audio.enabled = false;
         assert_eq!(check_change(&app, &new).removes_needed, vec!["sound"]);
@@ -638,24 +959,46 @@ mod own_name_tests {
     use sam_core::model::AppImageMetadata;
 
     fn md(file: &str, wm_class: &str) -> AppImageMetadata {
-        AppImageMetadata { desktop_file: Some(file.into()), startup_wm_class: wm_class.into(), ..Default::default() }
+        AppImageMetadata {
+            desktop_file: Some(file.into()),
+            startup_wm_class: wm_class.into(),
+            ..Default::default()
+        }
     }
 
     /// The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names.
     #[test]
     fn own_names_from_the_id_and_the_window_class() {
         assert_eq!(
-            own_bus_names(&md("usr/share/applications/com.nextcloud.desktopclient.nextcloud.desktop", "")),
+            own_bus_names(&md(
+                "usr/share/applications/com.nextcloud.desktopclient.nextcloud.desktop",
+                ""
+            )),
             vec!["com.nextcloud.desktopclient.nextcloud"]
         );
         // GTK and Flutter apps register their application ID, the window class.
-        assert_eq!(own_bus_names(&md("hiddify.desktop", "app.hiddify.com")), vec!["app.hiddify.com"]);
+        assert_eq!(
+            own_bus_names(&md("hiddify.desktop", "app.hiddify.com")),
+            vec!["app.hiddify.com"]
+        );
         // KDE apps own org.kde.<app> (services that start on demand are
         // refused at launch, against this computer's service files).
-        assert_eq!(own_bus_names(&md("org.kde.kdenlive.desktop", "kdenlive")), vec!["org.kde.kdenlive"]);
-        assert!(own_bus_names(&md("nheko.desktop", "nheko")).is_empty(), "not reverse DNS");
-        assert!(own_bus_names(&md("org.freedesktop.Notifications.desktop", "")).is_empty(), "D-Bus protocol names");
-        assert!(own_bus_names(&md("org.kde.KWin.desktop", "")).is_empty(), "dangerous desktop services");
+        assert_eq!(
+            own_bus_names(&md("org.kde.kdenlive.desktop", "kdenlive")),
+            vec!["org.kde.kdenlive"]
+        );
+        assert!(
+            own_bus_names(&md("nheko.desktop", "nheko")).is_empty(),
+            "not reverse DNS"
+        );
+        assert!(
+            own_bus_names(&md("org.freedesktop.Notifications.desktop", "")).is_empty(),
+            "D-Bus protocol names"
+        );
+        assert!(
+            own_bus_names(&md("org.kde.KWin.desktop", "")).is_empty(),
+            "dangerous desktop services"
+        );
         assert!(own_bus_names(&AppImageMetadata::default()).is_empty());
     }
 }

@@ -31,20 +31,34 @@ pub fn peek(path: &Path) -> Result<Peek> {
     // returning an error (found by tests/fuzz.rs). SAM reads names and icons
     // in its own process for every AppImage in the searched folders, so one
     // such file must not take down the whole list: treat it as unreadable.
-    std::panic::catch_unwind(|| peek_unguarded(path))
-        .unwrap_or_else(|_| Err(anyhow!("{}", sam_core::i18n::tr("the AppImage's SquashFS image is damaged, so SAM cannot read its name and icon"))))
+    std::panic::catch_unwind(|| peek_unguarded(path)).unwrap_or_else(|_| {
+        Err(anyhow!(
+            "{}",
+            sam_core::i18n::tr(
+                "the AppImage's SquashFS image is damaged, so SAM cannot read its name and icon"
+            )
+        ))
+    })
 }
 
 fn peek_unguarded(path: &Path) -> Result<Peek> {
     let info = inspect(path)?;
     // Names and icons are read from SquashFS only; DwarFS images show their
     // file name until they are unpacked.
-    if info.kind != AppImageType::Type2 || info.payload != sam_detect::appimage::PayloadFormat::Squashfs {
-        return Ok(Peek { metadata: AppImageMetadata::default(), icon: None });
+    if info.kind != AppImageType::Type2
+        || info.payload != sam_detect::appimage::PayloadFormat::Squashfs
+    {
+        return Ok(Peek {
+            metadata: AppImageMetadata::default(),
+            icon: None,
+        });
     }
-    let offset = info.payload_offset.context(sam_core::i18n::tr("the app image inside the AppImage was not found"))?;
+    let offset = info.payload_offset.context(sam_core::i18n::tr(
+        "the app image inside the AppImage was not found",
+    ))?;
     let reader = BufReader::new(std::fs::File::open(path)?);
-    let sqfs = FilesystemReader::from_reader_with_offset(reader, offset).map_err(|e| anyhow!("{e}"))?;
+    let sqfs =
+        FilesystemReader::from_reader_with_offset(reader, offset).map_err(|e| anyhow!("{e}"))?;
 
     // Index the directory table: image path (relative, no leading `/`) -> node.
     let mut index = HashMap::new();
@@ -62,7 +76,11 @@ fn peek_unguarded(path: &Path) -> Result<Peek> {
             let i = *index.get(&cur)?;
             match &nodes[i].inner {
                 InnerNode::Symlink(s) => {
-                    let base = if s.link.is_absolute() { PathBuf::new() } else { cur.parent().unwrap_or(Path::new("")).to_path_buf() };
+                    let base = if s.link.is_absolute() {
+                        PathBuf::new()
+                    } else {
+                        cur.parent().unwrap_or(Path::new("")).to_path_buf()
+                    };
                     cur = normalize(&base.join(&s.link))?;
                 }
                 InnerNode::File(_) => return Some(i),
@@ -72,18 +90,32 @@ fn peek_unguarded(path: &Path) -> Result<Peek> {
         None
     };
     let read = |i: usize, max: u64| -> Option<Vec<u8>> {
-        let InnerNode::File(f) = &nodes[i].inner else { return None };
+        let InnerNode::File(f) = &nodes[i].inner else {
+            return None;
+        };
         let mut buf = Vec::new();
-        sqfs.file(f).reader().take(max + 1).read_to_end(&mut buf).ok()?;
+        sqfs.file(f)
+            .reader()
+            .take(max + 1)
+            .read_to_end(&mut buf)
+            .ok()?;
         (buf.len() as u64 <= max).then_some(buf)
     };
 
-    let mut desktops: Vec<&PathBuf> = index.keys().filter(|p| p.components().count() == 1 && p.extension().is_some_and(|e| e == "desktop")).collect();
+    let mut desktops: Vec<&PathBuf> = index
+        .keys()
+        .filter(|p| p.components().count() == 1 && p.extension().is_some_and(|e| e == "desktop"))
+        .collect();
     desktops.sort();
     let metadata = desktops
         .first()
         .and_then(|rel| Some((rel, resolve(rel)?)))
-        .and_then(|(rel, i)| Some(metadata_from_desktop(&String::from_utf8_lossy(&read(i, MAX_DESKTOP)?), &rel.display().to_string())))
+        .and_then(|(rel, i)| {
+            Some(metadata_from_desktop(
+                &String::from_utf8_lossy(&read(i, MAX_DESKTOP)?),
+                &rel.display().to_string(),
+            ))
+        })
         .unwrap_or_default();
 
     let icon = icon_candidates(&metadata.icon_name)
@@ -138,7 +170,10 @@ mod tests {
     /// Icon paths from the AppImage cannot climb out of the unpacked app.
     #[test]
     fn icon_paths_cannot_climb_out_of_the_app() {
-        assert_eq!(normalize(Path::new("usr/../a.png")), Some(PathBuf::from("a.png")));
+        assert_eq!(
+            normalize(Path::new("usr/../a.png")),
+            Some(PathBuf::from("a.png"))
+        );
         assert_eq!(normalize(Path::new("../etc/passwd")), None);
     }
 }

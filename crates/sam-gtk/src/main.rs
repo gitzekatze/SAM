@@ -116,7 +116,13 @@ struct Options {
 }
 
 fn parse_args() -> Options {
-    let mut o = Options { startup: window::Startup::default(), screenshot: None, focus_walk: false, size: (1180, 800), delay: 3000 };
+    let mut o = Options {
+        startup: window::Startup::default(),
+        screenshot: None,
+        focus_walk: false,
+        size: (1180, 800),
+        delay: 3000,
+    };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -124,7 +130,10 @@ fn parse_args() -> Options {
             "--app" => o.startup.app = args.next().unwrap_or_default(),
             "--screenshot" => o.screenshot = args.next(),
             "--size" => {
-                if let Some((w, h)) = args.next().and_then(|s| s.split_once('x').map(|(w, h)| (w.parse().unwrap_or(1180), h.parse().unwrap_or(800)))) {
+                if let Some((w, h)) = args.next().and_then(|s| {
+                    s.split_once('x')
+                        .map(|(w, h)| (w.parse().unwrap_or(1180), h.parse().unwrap_or(800)))
+                }) {
                     o.size = (w, h);
                 }
             }
@@ -138,7 +147,11 @@ fn parse_args() -> Options {
                 println!("sam-jail-gui {}", env!("CARGO_PKG_VERSION"));
                 std::process::exit(0);
             }
-            f => o.startup.files.push(std::fs::canonicalize(f).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| f.to_string())),
+            f => o.startup.files.push(
+                std::fs::canonicalize(f)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|_| f.to_string()),
+            ),
         }
     }
     o
@@ -153,9 +166,18 @@ fn main() -> glib::ExitCode {
     // window forward (and hands over AppImages given on the command line),
     // so two windows never write the same configuration. Screenshot runs and
     // runs with their own data folders (tests) stay separate.
-    let separate = opts.screenshot.is_some() || std::env::var_os("SAM_CONFIG_DIR").is_some() || std::env::var_os("SAM_DATA_DIR").is_some();
-    let flags = if separate { gio::ApplicationFlags::NON_UNIQUE } else { gio::ApplicationFlags::HANDLES_OPEN };
-    let app = adw::Application::builder().application_id(APP_ID).flags(flags).build();
+    let separate = opts.screenshot.is_some()
+        || std::env::var_os("SAM_CONFIG_DIR").is_some()
+        || std::env::var_os("SAM_DATA_DIR").is_some();
+    let flags = if separate {
+        gio::ApplicationFlags::NON_UNIQUE
+    } else {
+        gio::ApplicationFlags::HANDLES_OPEN
+    };
+    let app = adw::Application::builder()
+        .application_id(APP_ID)
+        .flags(flags)
+        .build();
     // Connected before `register`: registering the first instance emits
     // "startup" at once, and a handler connected later never runs (SAM's
     // style sheet and icon folder were then missing on every normal start).
@@ -170,7 +192,11 @@ fn main() -> glib::ExitCode {
         all.push_str(CSS);
         css.load_from_string(&all);
         if let Some(display) = gdk::Display::default() {
-            gtk::style_context_add_provider_for_display(&display, &css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &css,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
             // SAM's own icon, from a folder only SAM writes. The user's icon
             // folder may hold an outdated icon-theme.cache, and GTK ignores
             // every icon that cache does not list.
@@ -186,24 +212,31 @@ fn main() -> glib::ExitCode {
             // sources, so a changed icon shows without reinstalling. Release
             // builds never contain the build folder's path.
             #[cfg(debug_assertions)]
-            gtk::IconTheme::for_display(&display).add_search_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data"));
+            gtk::IconTheme::for_display(&display)
+                .add_search_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data"));
         }
     });
     if !separate && app.register(gio::Cancellable::NONE).is_ok() && app.is_remote() {
         if opts.startup.files.is_empty() {
             app.activate();
         } else {
-            let files: Vec<gio::File> = opts.startup.files.iter().map(gio::File::for_path).collect();
+            let files: Vec<gio::File> =
+                opts.startup.files.iter().map(gio::File::for_path).collect();
             app.open(&files, "");
         }
         return glib::ExitCode::SUCCESS;
     }
     let opts = std::rc::Rc::new(std::cell::RefCell::new(Some(opts)));
     // The window, once open: a second start brings it forward.
-    let current: std::rc::Rc<std::cell::RefCell<Option<std::rc::Rc<window::App>>>> = Default::default();
+    let current: std::rc::Rc<std::cell::RefCell<Option<std::rc::Rc<window::App>>>> =
+        Default::default();
     let cur = current.clone();
     app.connect_open(move |app, files, _| {
-        let paths: Vec<String> = files.iter().filter_map(|f| f.path()).map(|p| p.to_string_lossy().into_owned()).collect();
+        let paths: Vec<String> = files
+            .iter()
+            .filter_map(|f| f.path())
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
         match cur.borrow().as_ref() {
             Some(win) => {
                 win.window.present();
@@ -255,7 +288,9 @@ fn main() -> glib::ExitCode {
     if i18n::RESTART.load(std::sync::atomic::Ordering::SeqCst) {
         use std::os::unix::process::CommandExt;
         if let Ok(exe) = std::env::current_exe() {
-            let err = std::process::Command::new(exe).args(std::env::args_os().skip(1)).exec();
+            let err = std::process::Command::new(exe)
+                .args(std::env::args_os().skip(1))
+                .exec();
             eprintln!("sam-jail-gui: {err}");
         }
     }
@@ -276,7 +311,9 @@ const ICON_SVG: &[u8] = include_bytes!("../../../data/io.github.gitzekatze.SAM.s
 /// when missing or outdated). No icon-theme.cache, so GTK always scans it.
 fn own_icon_dir() -> Option<std::path::PathBuf> {
     let root = sam_core::Paths::from_env().data_dir.join("theme");
-    let file = root.join("hicolor/scalable/apps").join(format!("{APP_ID}.svg"));
+    let file = root
+        .join("hicolor/scalable/apps")
+        .join(format!("{APP_ID}.svg"));
     install_icon(&file, &root.join("hicolor"), ICON_SVG)?;
     Some(root)
 }
@@ -300,8 +337,12 @@ fn install_icon(file: &std::path::Path, theme_root: &std::path::Path, svg: &[u8]
         if !dir.starts_with(theme_root) {
             break;
         }
-        if std::fs::metadata(dir).and_then(|m| m.modified()).is_ok_and(|t| t < icon_time) {
-            let _ = std::fs::File::open(dir).and_then(|d| d.set_modified(std::time::SystemTime::now()));
+        if std::fs::metadata(dir)
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t < icon_time)
+        {
+            let _ =
+                std::fs::File::open(dir).and_then(|d| d.set_modified(std::time::SystemTime::now()));
         }
     }
     Some(())
@@ -311,17 +352,29 @@ fn desktop_identity() {
     if std::env::var_os("SAM_CONFIG_DIR").is_some() || std::env::var_os("SAM_DATA_DIR").is_some() {
         return;
     }
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
-    let data_home = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".local/share"));
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    let data_home = std::env::var_os("XDG_DATA_HOME")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| home.join(".local/share"));
     let name = format!("{APP_ID}.desktop");
     let ours = data_home.join("applications").join(&name);
-    let icon = data_home.join("icons/hicolor/scalable/apps").join(format!("{APP_ID}.svg"));
+    let icon = data_home
+        .join("icons/hicolor/scalable/apps")
+        .join(format!("{APP_ID}.svg"));
     let system = std::env::var("XDG_DATA_DIRS")
         .ok()
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| "/usr/local/share:/usr/share".into())
         .split(':')
-        .any(|d| std::path::Path::new(d).join("applications").join(&name).is_file());
+        .any(|d| {
+            std::path::Path::new(d)
+                .join("applications")
+                .join(&name)
+                .is_file()
+        });
     let is_ours = std::fs::read_to_string(&ours).is_ok_and(|t| t.contains("X-SAM-Self=true"));
     if system {
         if is_ours {
@@ -334,7 +387,9 @@ fn desktop_identity() {
         return; // A desktop file the user made: leave it alone.
     }
     // From SAM's AppImage: the AppImage file (its mount folder changes).
-    let Some(exe) = sam_core::util::own_appimage().or_else(|| std::env::current_exe().ok()) else { return };
+    let Some(exe) = sam_core::util::own_appimage().or_else(|| std::env::current_exe().ok()) else {
+        return;
+    };
     let entry = format!(
         "[Desktop Entry]\nType=Application\nName=SAM\nComment=Sandbox AppImages and manage their permissions\nExec=\"{}\" %F\nIcon={APP_ID}\nTerminal=false\nNoDisplay=true\nStartupWMClass={APP_ID}\nX-SAM-Self=true\n",
         exe.display()
@@ -349,7 +404,11 @@ fn desktop_identity() {
 fn save_screenshot(window: &adw::ApplicationWindow, file: &str) {
     render_widget(window.upcast_ref(), window.upcast_ref(), file);
     if let Some(content) = window.content().and_then(|c| last_viewport_child(&c)) {
-        render_widget(window.upcast_ref(), &content, &file.replace(".png", "-content.png"));
+        render_widget(
+            window.upcast_ref(),
+            &content,
+            &file.replace(".png", "-content.png"),
+        );
     }
 }
 
@@ -378,9 +437,16 @@ fn render_widget(window: &gtk::Widget, widget: &gtk::Widget, file: &str) {
     }
     let snapshot = gtk::Snapshot::new();
     paintable.snapshot(&snapshot, w, h);
-    let Some(node) = snapshot.to_node() else { return };
-    let Some(renderer) = window.native().and_then(|n| n.renderer()) else { return };
-    let texture = renderer.render_texture(&node, Some(&gtk::graphene::Rect::new(0.0, 0.0, w as f32, h as f32)));
+    let Some(node) = snapshot.to_node() else {
+        return;
+    };
+    let Some(renderer) = window.native().and_then(|n| n.renderer()) else {
+        return;
+    };
+    let texture = renderer.render_texture(
+        &node,
+        Some(&gtk::graphene::Rect::new(0.0, 0.0, w as f32, h as f32)),
+    );
     if let Err(e) = texture.save_to_png(file) {
         eprintln!("screenshot: {e}");
     }
@@ -396,8 +462,14 @@ fn walk_focus(window: &adw::ApplicationWindow, app: adw::Application) {
             .downcast_ref::<gtk::Button>()
             .and_then(|b| b.label())
             .map(|l| l.to_string())
-            .or_else(|| w.downcast_ref::<adw::PreferencesRow>().map(|r| r.title().to_string()))
-            .or_else(|| w.downcast_ref::<gtk::ListBoxRow>().map(|_| "list row".to_string()))
+            .or_else(|| {
+                w.downcast_ref::<adw::PreferencesRow>()
+                    .map(|r| r.title().to_string())
+            })
+            .or_else(|| {
+                w.downcast_ref::<gtk::ListBoxRow>()
+                    .map(|_| "list row".to_string())
+            })
             .or_else(|| w.tooltip_text().map(|t| t.to_string()))
             .unwrap_or_default();
         let mut page = String::new();
@@ -409,7 +481,11 @@ fn walk_focus(window: &adw::ApplicationWindow, app: adw::Application) {
             }
             a = p.parent();
         }
-        format!("{} \"{}\" [page {page}]", w.type_().name(), label.replace('\n', " "))
+        format!(
+            "{} \"{}\" [page {page}]",
+            w.type_().name(),
+            label.replace('\n', " ")
+        )
     }
     let window = window.clone();
     let seen: std::rc::Rc<std::cell::RefCell<Vec<String>>> = Default::default();
@@ -423,9 +499,15 @@ fn walk_focus(window: &adw::ApplicationWindow, app: adw::Application) {
             window.child_focus(gtk::DirectionType::TabForward)
         };
         let focus = gtk::prelude::GtkWindowExt::focus(&window);
-        let id = focus.as_ref().map(|f| format!("{:p}", f.as_ptr())).unwrap_or_default();
+        let id = focus
+            .as_ref()
+            .map(|f| format!("{:p}", f.as_ptr()))
+            .unwrap_or_default();
         if !moved || focus.is_none() || n >= 300 || seen.borrow().contains(&id) {
-            println!("FOCUS stopped after {n} steps (moved={moved}, now at {})", focus.as_ref().map(name).unwrap_or_default());
+            println!(
+                "FOCUS stopped after {n} steps (moved={moved}, now at {})",
+                focus.as_ref().map(name).unwrap_or_default()
+            );
             if let Some(f) = &focus {
                 let mut chain = Vec::new();
                 let mut w = Some(f.clone());
@@ -464,20 +546,31 @@ mod tests {
         std::fs::create_dir_all(&apps).unwrap();
         let file = apps.join("app.svg");
         std::fs::write(&file, b"<svg>old</svg>").unwrap();
-        let long_ago = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        let long_ago =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
         let age = |p: &std::path::Path| std::fs::metadata(p).unwrap().modified().unwrap();
         let set_old = || {
             for d in [&root, &root.join("scalable"), &apps] {
-                std::fs::File::open(d).unwrap().set_modified(long_ago).unwrap();
+                std::fs::File::open(d)
+                    .unwrap()
+                    .set_modified(long_ago)
+                    .unwrap();
             }
         };
         set_old();
         super::install_icon(&file, &root, b"<svg>new</svg>").unwrap();
         assert_eq!(std::fs::read(&file).unwrap(), b"<svg>new</svg>");
         for d in [&root, &root.join("scalable"), &apps] {
-            assert!(age(d) > long_ago, "{} was not marked as changed", d.display());
+            assert!(
+                age(d) > long_ago,
+                "{} was not marked as changed",
+                d.display()
+            );
         }
-        assert!(age(t.path()) <= age(&root), "folders above the theme are not touched");
+        assert!(
+            age(t.path()) <= age(&root),
+            "folders above the theme are not touched"
+        );
         // The icon was already replaced in place earlier: the folders are
         // still marked, because they are older than the icon.
         set_old();
@@ -503,19 +596,30 @@ mod tests {
         let main = &src[src.find("fn main()").expect("main")..];
         let startup = main.find("app.connect_startup(").expect("startup handler");
         let register = main.find("app.register(").expect("register");
-        assert!(startup < register, "connect_startup must come before register");
+        assert!(
+            startup < register,
+            "connect_startup must come before register"
+        );
     }
 
     /// Every color SAM's window uses has a style rule: the badge tones in
     /// the code, the three risk levels of tags and badges, and the outline.
     #[test]
     fn every_color_in_use_has_a_style_rule() {
-        let tones = ["bad", "blue", "good", "neutral", "warn", "harmless", "caution", "danger", "accent"];
+        let tones = [
+            "bad", "blue", "good", "neutral", "warn", "harmless", "caution", "danger", "accent",
+        ];
         for t in tones {
-            assert!(CSS.contains(&format!(".sam-badge-{t}")), "no rule for badge tone {t}");
+            assert!(
+                CSS.contains(&format!(".sam-badge-{t}")),
+                "no rule for badge tone {t}"
+            );
         }
         for level in ["harmless", "caution", "danger"] {
-            assert!(CSS.contains(&format!(".sam-tag-{level}")), "no rule for tag level {level}");
+            assert!(
+                CSS.contains(&format!(".sam-tag-{level}")),
+                "no rule for tag level {level}"
+            );
             assert_eq!(
                 crate::util::risk_tone(match level {
                     "harmless" => "medium",
@@ -528,7 +632,13 @@ mod tests {
         }
         assert!(CSS.contains(".sam-tag-outline"));
         // Fixed colors: a theme without a named color must not drop a rule.
-        let tag_rules: String = CSS.lines().filter(|l| l.contains(".sam-tag-") || l.contains(".sam-badge-")).collect();
-        assert!(!tag_rules.contains('@'), "tag and badge colors must not depend on theme colors");
+        let tag_rules: String = CSS
+            .lines()
+            .filter(|l| l.contains(".sam-tag-") || l.contains(".sam-badge-"))
+            .collect();
+        assert!(
+            !tag_rules.contains('@'),
+            "tag and badge colors must not depend on theme colors"
+        );
     }
 }

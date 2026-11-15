@@ -75,13 +75,29 @@ fn md4_of(block: &[u8], blocksize: usize) -> [u8; 16] {
 
 /// Parses a whole control file.
 pub fn parse(data: &[u8]) -> Result<Control> {
-    let split = data.windows(2).position(|w| w == b"\n\n").context(sam_core::i18n::tr("the update description (.zsync) has no end of header"))?;
+    let split = data
+        .windows(2)
+        .position(|w| w == b"\n\n")
+        .context(sam_core::i18n::tr(
+            "the update description (.zsync) has no end of header",
+        ))?;
     let header = String::from_utf8_lossy(&data[..split]);
     let body = &data[split + 2..];
-    let mut c =
-        Control { filename: None, url: None, sha1: String::new(), length: 0, blocksize: 0, seq_matches: 1, rsum_bytes: 4, checksum_bytes: 16, blocks: vec![] };
+    let mut c = Control {
+        filename: None,
+        url: None,
+        sha1: String::new(),
+        length: 0,
+        blocksize: 0,
+        seq_matches: 1,
+        rsum_bytes: 4,
+        checksum_bytes: 16,
+        blocks: vec![],
+    };
     for line in header.lines() {
-        let Some((k, v)) = line.split_once(": ") else { continue };
+        let Some((k, v)) = line.split_once(": ") else {
+            continue;
+        };
         let v = v.trim();
         match k {
             "Filename" => c.filename = Some(v.to_string()),
@@ -96,7 +112,10 @@ pub fn parse(data: &[u8]) -> Result<Control> {
                 }
                 (c.seq_matches, c.rsum_bytes, c.checksum_bytes) = (n[0], n[1], n[2]);
             }
-            "Z-URL" | "Z-Filename" => bail!("{}", sam_core::i18n::tr("compressed zsync downloads are not supported")),
+            "Z-URL" | "Z-Filename" => bail!(
+                "{}",
+                sam_core::i18n::tr("compressed zsync downloads are not supported")
+            ),
             _ => {}
         }
     }
@@ -107,17 +126,25 @@ pub fn parse(data: &[u8]) -> Result<Control> {
         || !(1..=4).contains(&c.rsum_bytes)
         || !(3..=16).contains(&c.checksum_bytes)
     {
-        bail!("{}", sam_core::i18n::tr("the update description (.zsync) is incomplete"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the update description (.zsync) is incomplete")
+        );
     }
     let per = c.rsum_bytes + c.checksum_bytes;
     let n = c.block_count();
     if body.len() < n * per {
-        bail!("{}", sam_core::i18n::tr("the update description (.zsync) is cut short"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the update description (.zsync) is cut short")
+        );
     }
     c.blocks = (0..n)
         .map(|i| {
             let e = &body[i * per..(i + 1) * per];
-            let r = e[..c.rsum_bytes].iter().fold(0u32, |acc, &b| (acc << 8) | b as u32);
+            let r = e[..c.rsum_bytes]
+                .iter()
+                .fold(0u32, |acc, &b| (acc << 8) | b as u32);
             (r, e[c.rsum_bytes..].to_vec())
         })
         .collect();
@@ -174,7 +201,9 @@ pub fn plan(c: &Control, old: &[u8]) -> Vec<Option<u64>> {
         }
         md4_of(&old[off..off + bs], bs)[..c.checksum_bytes] == c.blocks[i].1[..]
     };
-    let weak = |i: usize, off: usize| -> bool { off + bs <= old.len() && rsum_key(rsum(&old[off..off + bs]), c.rsum_bytes) == c.blocks[i].0 };
+    let weak = |i: usize, off: usize| -> bool {
+        off + bs <= old.len() && rsum_key(rsum(&old[off..off + bs]), c.rsum_bytes) == c.blocks[i].0
+    };
     let mut off = 0usize;
     let mut r = rsum(&old[..bs]);
     loop {
@@ -208,7 +237,9 @@ pub fn plan(c: &Control, old: &[u8]) -> Vec<Option<u64>> {
             let out = old[off] as u16;
             let inn = old[off + bs] as u16;
             r.a = r.a.wrapping_sub(out).wrapping_add(inn);
-            r.b = r.b.wrapping_sub((bs as u16).wrapping_mul(out)).wrapping_add(r.a);
+            r.b =
+                r.b.wrapping_sub((bs as u16).wrapping_mul(out))
+                    .wrapping_add(r.a);
         } else {
             r = rsum(&old[off + bs..off + 2 * bs]);
         }
@@ -221,7 +252,9 @@ pub fn plan(c: &Control, old: &[u8]) -> Vec<Option<u64>> {
         if tail < bs && old.len() >= tail {
             let start = old.len() - tail;
             let blk = &old[start..];
-            if md4_of(blk, bs)[..c.checksum_bytes] == c.blocks[n - 1].1[..] && rsum_key(rsum(&pad(blk, bs)), c.rsum_bytes) == c.blocks[n - 1].0 {
+            if md4_of(blk, bs)[..c.checksum_bytes] == c.blocks[n - 1].1[..]
+                && rsum_key(rsum(&pad(blk, bs)), c.rsum_bytes) == c.blocks[n - 1].0
+            {
                 found[n - 1] = Some(start as u64);
             }
         }
@@ -257,7 +290,12 @@ pub fn assemble(
     dest: &Path,
     mut fetch: impl FnMut(u64, u64) -> Result<Vec<u8>>,
 ) -> Result<()> {
-    let mut f = std::fs::OpenOptions::new().create(true).truncate(true).write(true).read(true).open(dest)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .read(true)
+        .open(dest)?;
     f.set_len(c.length)?;
     let bs = c.blocksize as u64;
     for (i, p) in plan.iter().enumerate() {
@@ -271,7 +309,13 @@ pub fn assemble(
     for &(s, e) in ranges {
         let data = fetch(s, e)?;
         if data.len() as u64 != e - s {
-            bail!("{}", sam_core::i18n::trf("the server sent {got} bytes instead of {expected}", &[("got", &data.len()), ("expected", &(e - s))]));
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the server sent {got} bytes instead of {expected}",
+                    &[("got", &data.len()), ("expected", &(e - s))]
+                )
+            );
         }
         f.seek(SeekFrom::Start(s))?;
         f.write_all(&data)?;
@@ -288,7 +332,10 @@ pub fn assemble(
         h.update(&buf[..n]);
     }
     if sam_core::util::hex(&h.finalize()) != c.sha1 {
-        bail!("{}", sam_core::i18n::tr("the assembled file does not match the published checksum"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the assembled file does not match the published checksum")
+        );
     }
     Ok(())
 }
@@ -304,13 +351,42 @@ mod tests {
     #[test]
     fn block_checksums_match_the_zsync_definition() {
         let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
-        assert_eq!(hex(&md4_of(b"abc", 3)), "a448017aaf21d8525fc10ae87aa6729d", "MD4 test vector");
-        assert_eq!(md4_of(b"abc", 8), md4_of(b"abc\0\0\0\0\0", 8), "short blocks are padded with zeros");
+        assert_eq!(
+            hex(&md4_of(b"abc", 3)),
+            "a448017aaf21d8525fc10ae87aa6729d",
+            "MD4 test vector"
+        );
+        assert_eq!(
+            md4_of(b"abc", 8),
+            md4_of(b"abc\0\0\0\0\0", 8),
+            "short blocks are padded with zeros"
+        );
         assert_ne!(md4_of(b"abc", 8), md4_of(b"abc", 3));
-        let r = Rsum { a: 0x1234, b: 0x5678 };
+        let r = Rsum {
+            a: 0x1234,
+            b: 0x5678,
+        };
         assert_eq!(rsum_key(r, 4), 0x1234_5678);
-        assert_eq!(rsum_key(Rsum { a: 0x1234, b: 0x5678 }, 2), 0x5678);
-        assert_eq!(rsum_key(Rsum { a: 0x1234, b: 0x5678 }, 3), 0x34_5678);
+        assert_eq!(
+            rsum_key(
+                Rsum {
+                    a: 0x1234,
+                    b: 0x5678
+                },
+                2
+            ),
+            0x5678
+        );
+        assert_eq!(
+            rsum_key(
+                Rsum {
+                    a: 0x1234,
+                    b: 0x5678
+                },
+                3
+            ),
+            0x34_5678
+        );
     }
 
     fn sample(n: usize, seed: u32) -> Vec<u8> {
@@ -339,23 +415,41 @@ mod tests {
         new.extend(sample(1234, 11));
         let newp = d.path().join("new.AppImage");
         std::fs::write(&newp, &new).unwrap();
-        let ctl = make(&newp, "new.AppImage", "new.AppImage", "Wed, 11 Nov 2026 12:00:00 +0000").unwrap();
+        let ctl = make(
+            &newp,
+            "new.AppImage",
+            "new.AppImage",
+            "Wed, 11 Nov 2026 12:00:00 +0000",
+        )
+        .unwrap();
         let c = parse(&ctl).unwrap();
         assert_eq!(c.length, new.len() as u64);
         assert_eq!(c.block_count(), c.blocks.len());
 
         let p = plan(&c, &old);
         let reused = p.iter().filter(|x| x.is_some()).count();
-        assert!(reused * 10 > p.len() * 9, "most blocks come from the old file: {reused}/{}", p.len());
+        assert!(
+            reused * 10 > p.len() * 9,
+            "most blocks come from the old file: {reused}/{}",
+            p.len()
+        );
         let ranges = missing_ranges(&c, &p, 0);
         let fetched: u64 = ranges.iter().map(|(s, e)| e - s).sum();
-        assert!(fetched < 20_000, "only the changed parts are fetched: {fetched} bytes");
+        assert!(
+            fetched < 20_000,
+            "only the changed parts are fetched: {fetched} bytes"
+        );
         let out = d.path().join("out");
-        assemble(&c, &old, &p, &ranges, &out, |s, e| Ok(new[s as usize..e as usize].to_vec())).unwrap();
+        assemble(&c, &old, &p, &ranges, &out, |s, e| {
+            Ok(new[s as usize..e as usize].to_vec())
+        })
+        .unwrap();
         assert_eq!(std::fs::read(&out).unwrap(), new);
 
         // A wrong download is caught by the SHA-1.
-        let bad = assemble(&c, &old, &p, &ranges, &out, |s, e| Ok(vec![0u8; (e - s) as usize]));
+        let bad = assemble(&c, &old, &p, &ranges, &out, |s, e| {
+            Ok(vec![0u8; (e - s) as usize])
+        });
         assert!(bad.is_err());
     }
 
@@ -369,14 +463,19 @@ mod tests {
             assert_eq!(r, rsum(&data[off..off + bs]), "offset {off}");
             let (out, inn) = (data[off] as u16, data[off + bs] as u16);
             r.a = r.a.wrapping_sub(out).wrapping_add(inn);
-            r.b = r.b.wrapping_sub((bs as u16).wrapping_mul(out)).wrapping_add(r.a);
+            r.b =
+                r.b.wrapping_sub((bs as u16).wrapping_mul(out))
+                    .wrapping_add(r.a);
         }
     }
 
     /// Compressed or incomplete zsync files are refused.
     #[test]
     fn refuses_compressed_and_broken_files() {
-        assert!(parse(b"zsync: 0.6.2\nZ-URL: x.gz\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n\n").is_err());
+        assert!(parse(
+            b"zsync: 0.6.2\nZ-URL: x.gz\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n\n"
+        )
+        .is_err());
         assert!(parse(b"zsync: 0.6.2\nBlocksize: 2048\n\n").is_err());
     }
 }

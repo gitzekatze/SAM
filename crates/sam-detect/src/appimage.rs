@@ -49,13 +49,18 @@ const DWARFS_MAGIC: &[u8; 6] = b"DWARFS";
 
 /// Cheap check used by directory scans: extension or magic.
 pub fn looks_like_appimage(path: &Path) -> bool {
-    let ext_match = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
+    let ext_match = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
     if ext_match {
         return true;
     }
     let mut buf = [0u8; 11];
     match File::open(path).and_then(|mut f| f.read_exact(&mut buf)) {
-        Ok(()) => &buf[0..4] == b"\x7fELF" && &buf[8..10] == b"AI" && (buf[10] == 1 || buf[10] == 2),
+        Ok(()) => {
+            &buf[0..4] == b"\x7fELF" && &buf[8..10] == b"AI" && (buf[10] == 1 || buf[10] == 2)
+        }
         Err(_) => false,
     }
 }
@@ -94,7 +99,9 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
             info.payload_offset = Some(0);
             return Ok(info);
         }
-        info.notes.push(sam_core::i18n::tr("type 1 magic present but no ISO 9660 signature found"));
+        info.notes.push(sam_core::i18n::tr(
+            "type 1 magic present but no ISO 9660 signature found",
+        ));
     }
 
     // Type 2: SquashFS appended after the ELF.
@@ -118,7 +125,10 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
     if info.payload_offset.is_none() {
         // Fall back to scanning the first 16 MiB for a plausible superblock.
         if let Some(off) = scan_for_squashfs(&mut f, size)? {
-            info.notes.push(sam_core::i18n::trf("SquashFS found by scanning at offset {off}", &[("off", &off)]));
+            info.notes.push(sam_core::i18n::trf(
+                "SquashFS found by scanning at offset {off}",
+                &[("off", &off)],
+            ));
             info.payload_offset = Some(off);
         }
     }
@@ -130,7 +140,9 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
             info.notes.push(sam_core::i18n::tr("The AppImage marker is missing; it is treated as Type 2 because it contains a SquashFS image"));
         }
     } else if info.magic {
-        info.notes.push(sam_core::i18n::tr("The AppImage marker is present, but the file contains no app image"));
+        info.notes.push(sam_core::i18n::tr(
+            "The AppImage marker is present, but the file contains no app image",
+        ));
     }
     Ok(info)
 }
@@ -155,15 +167,27 @@ fn le_or_be(head: &[u8]) -> bool {
 
 fn u16_at(head: &[u8], off: usize, le: bool) -> Option<u64> {
     let b: [u8; 2] = head.get(off..off + 2)?.try_into().ok()?;
-    Some(if le { u16::from_le_bytes(b) } else { u16::from_be_bytes(b) } as u64)
+    Some(if le {
+        u16::from_le_bytes(b)
+    } else {
+        u16::from_be_bytes(b)
+    } as u64)
 }
 fn u32_at(head: &[u8], off: usize, le: bool) -> Option<u64> {
     let b: [u8; 4] = head.get(off..off + 4)?.try_into().ok()?;
-    Some(if le { u32::from_le_bytes(b) } else { u32::from_be_bytes(b) } as u64)
+    Some(if le {
+        u32::from_le_bytes(b)
+    } else {
+        u32::from_be_bytes(b)
+    } as u64)
 }
 fn u64_at(head: &[u8], off: usize, le: bool) -> Option<u64> {
     let b: [u8; 8] = head.get(off..off + 8)?.try_into().ok()?;
-    Some(if le { u64::from_le_bytes(b) } else { u64::from_be_bytes(b) })
+    Some(if le {
+        u64::from_le_bytes(b)
+    } else {
+        u64::from_be_bytes(b)
+    })
 }
 
 /// End of the ELF image = end of the section header table.

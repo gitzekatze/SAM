@@ -16,7 +16,9 @@ fn root() -> PathBuf {
 fn dependencies() -> BTreeMap<String, BTreeSet<String>> {
     let mut out = BTreeMap::new();
     for e in fs::read_dir(root().join("crates")).unwrap().flatten() {
-        let Ok(text) = fs::read_to_string(e.path().join("Cargo.toml")) else { continue };
+        let Ok(text) = fs::read_to_string(e.path().join("Cargo.toml")) else {
+            continue;
+        };
         let name = e.file_name().to_string_lossy().into_owned();
         let mut deps = BTreeSet::new();
         let mut in_deps = false;
@@ -27,7 +29,11 @@ fn dependencies() -> BTreeMap<String, BTreeSet<String>> {
                 continue;
             }
             if in_deps {
-                if let Some(dep) = l.split(['.', ' ', '=']).next().filter(|d| d.starts_with("sam-")) {
+                if let Some(dep) = l
+                    .split(['.', ' ', '='])
+                    .next()
+                    .filter(|d| d.starts_with("sam-"))
+                {
                     deps.insert(dep.to_string());
                 }
             }
@@ -38,7 +44,9 @@ fn dependencies() -> BTreeMap<String, BTreeSet<String>> {
 }
 
 fn deps_of(name: &str) -> BTreeSet<String> {
-    dependencies().remove(name).unwrap_or_else(|| panic!("no part {name}"))
+    dependencies()
+        .remove(name)
+        .unwrap_or_else(|| panic!("no part {name}"))
 }
 
 fn set(v: &[&str]) -> BTreeSet<String> {
@@ -66,11 +74,21 @@ fn the_window_reaches_sam_only_through_the_command_line() {
 #[test]
 fn lower_parts_never_depend_on_higher_ones() {
     let higher = set(&["sam-runner", "sam-jail-cli", "sam-gtk"]);
-    for part in ["sam-core", "sam-detect", "sam-intake", "sam-profile", "sam-sandbox", "sam-storage"] {
+    for part in [
+        "sam-core",
+        "sam-detect",
+        "sam-intake",
+        "sam-profile",
+        "sam-sandbox",
+        "sam-storage",
+    ] {
         let bad: Vec<_> = deps_of(part).intersection(&higher).cloned().collect();
         assert!(bad.is_empty(), "{part} depends on {bad:?}");
     }
-    assert!(!deps_of("sam-runner").contains("sam-jail-cli") && !deps_of("sam-runner").contains("sam-gtk"));
+    assert!(
+        !deps_of("sam-runner").contains("sam-jail-cli")
+            && !deps_of("sam-runner").contains("sam-gtk")
+    );
     assert!(!deps_of("sam-jail-cli").contains("sam-gtk"));
 }
 
@@ -86,7 +104,9 @@ fn the_sandbox_builder_depends_only_on_the_permission_model() {
 #[test]
 fn the_component_diagram_shows_the_real_dependencies() {
     let doc = fs::read_to_string(root().join("docs/architecture.md")).unwrap();
-    let start = doc.find("## Level 3: Components").expect("component section");
+    let start = doc
+        .find("## Level 3: Components")
+        .expect("component section");
     let block = &doc[start..];
     let block = &block[block.find("```mermaid").unwrap()..];
     let block = &block[..block[3..].find("```").unwrap() + 3];
@@ -116,10 +136,16 @@ fn the_component_diagram_shows_the_real_dependencies() {
             }
         }
     }
-    let real: BTreeSet<(String, String)> = dependencies().into_iter().flat_map(|(p, ds)| ds.into_iter().map(move |d| (p.clone(), d))).collect();
+    let real: BTreeSet<(String, String)> = dependencies()
+        .into_iter()
+        .flat_map(|(p, ds)| ds.into_iter().map(move |d| (p.clone(), d)))
+        .collect();
     let missing: Vec<_> = real.difference(&drawn).collect();
     let invented: Vec<_> = drawn.difference(&real).collect();
-    assert!(missing.is_empty() && invented.is_empty(), "diagram lacks {missing:?}, diagram invents {invented:?}");
+    assert!(
+        missing.is_empty() && invented.is_empty(),
+        "diagram lacks {missing:?}, diagram invents {invented:?}"
+    );
 }
 
 /// Every box and arrow label in the documents' diagrams is quoted, so
@@ -146,7 +172,9 @@ fn diagram_labels_are_quoted_so_github_draws_them() {
             }
             // A node: id[...], id(...), id{...}, optionally after "subgraph".
             let node = l.strip_prefix("subgraph ").unwrap_or(l);
-            let opens = node.find(['[', '(', '{']).filter(|&i| i > 0 && node[..i].chars().all(|c| c.is_alphanumeric() || c == '_'));
+            let opens = node
+                .find(['[', '(', '{'])
+                .filter(|&i| i > 0 && node[..i].chars().all(|c| c.is_alphanumeric() || c == '_'));
             if let Some(i) = opens {
                 let label = node[i..].trim_start_matches(['[', '(', '{']);
                 if !label.starts_with('"') {
@@ -162,5 +190,9 @@ fn diagram_labels_are_quoted_so_github_draws_them() {
             }
         }
     }
-    assert!(bad.is_empty(), "quote these diagram labels:\n{}", bad.join("\n"));
+    assert!(
+        bad.is_empty(),
+        "quote these diagram labels:\n{}",
+        bad.join("\n")
+    );
 }

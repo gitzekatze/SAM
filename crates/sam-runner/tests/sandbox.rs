@@ -49,7 +49,11 @@ fn parse(log: &Path) -> HashMap<String, String> {
         .unwrap()
         .lines()
         .filter_map(|l| l.split_once('='))
-        .filter(|(k, _)| !k.is_empty() && k.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'))
+        .filter(|(k, _)| {
+            !k.is_empty()
+                && k.chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        })
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect()
 }
@@ -77,26 +81,57 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     let mut spec = FixtureSpec::hello("Probe");
     spec.apprun = PROBE.into();
     spec.categories = "Utility;".into();
-    spec.files.push(FixtureFile { path: "usr/bin/suid-tool".into(), data: b"#!/bin/sh\n".to_vec(), mode: 0o4755 });
-    spec.symlinks.push(("usr/lib/escape".into(), "../../../../../../etc/shadow".into()));
+    spec.files.push(FixtureFile {
+        path: "usr/bin/suid-tool".into(),
+        data: b"#!/bin/sh\n".to_vec(),
+        mode: 0o4755,
+    });
+    spec.symlinks.push((
+        "usr/lib/escape".into(),
+        "../../../../../../etc/shadow".into(),
+    ));
     build(&img, &spec).unwrap();
 
     let paths = Paths::rooted(&root.join("sam"));
     let app = Sam::with_paths(paths.clone()).unwrap();
-    let added = app.add(&img, &AddOptions { launcher: Some(true), ..Default::default() }).unwrap();
+    let added = app
+        .add(
+            &img,
+            &AddOptions {
+                launcher: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
     let id = added.entry.id.clone();
     assert!(id.starts_with("appimage-probe-"), "{id}");
     assert_eq!(added.entry.badge(), Badge::NeedsReview);
-    let launcher = added.entry.desktop_entry.clone().expect("launcher installed");
+    let launcher = added
+        .entry
+        .desktop_entry
+        .clone()
+        .expect("launcher installed");
     let launcher_text = fs::read_to_string(&launcher).unwrap();
-    assert!(launcher_text.contains(&format!("--app-id {id} %F")), "desktop launcher uses the runner");
+    assert!(
+        launcher_text.contains(&format!("--app-id {id} %F")),
+        "desktop launcher uses the runner"
+    );
 
     let host = HostInfo::probe();
     let launch = |perms: PermissionSet, args: Vec<String>| {
         let mut e = app.set_permissions(&id, perms).unwrap();
-        let opts = LaunchOptions { args, quiet: true, owd: Some(home.clone()), ..Default::default() };
+        let opts = LaunchOptions {
+            args,
+            quiet: true,
+            owd: Some(home.clone()),
+            ..Default::default()
+        };
         let rec = run(&mut e, &opts, &app.config, &app.paths, &host).unwrap();
-        assert!(rec.success, "launch failed: {} (log {:?})", rec.summary, rec.log_file);
+        assert!(
+            rec.success,
+            "launch failed: {} (log {:?})",
+            rec.summary, rec.log_file
+        );
         parse(rec.log_file.as_ref().unwrap())
     };
 
@@ -113,17 +148,30 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     // Without the network, /etc/hosts holds only the loopback names, so
     // "localhost" resolves on every distribution and nothing else leaks
     // (regression: Ubuntu resolves localhost only through /etc/hosts).
-    assert_eq!(r["HOSTS"], "127.0.0.1 localhost,::1 localhost ip6-localhost ip6-loopback,");
+    assert_eq!(
+        r["HOSTS"],
+        "127.0.0.1 localhost,::1 localhost ip6-localhost ip6-loopback,"
+    );
     assert_eq!(r["LOCALHOST"], "resolves");
-    assert!(r["PIDS"].parse::<u32>().unwrap() <= 8, "pid namespace: {}", r["PIDS"]);
+    assert!(
+        r["PIDS"].parse::<u32>().unwrap() <= 8,
+        "pid namespace: {}",
+        r["PIDS"]
+    );
     assert_eq!(r["SUID"], "755", "setuid stripped");
     assert_eq!(r["SYSBUS"], "no", "system D-Bus denied by default");
     assert_eq!(r["SHADOW"], "no");
     assert_eq!(r["HOME_WRITE"], "yes", "private home is writable");
     assert_eq!(r["GPU"], "no");
     assert_eq!(r["X11"], "no");
-    assert_eq!(r["ESCAPE"], "removed", "escaping symlink removed at extraction");
-    assert!(paths.app_home(&id).join("persist").exists(), "private home persisted on the host");
+    assert_eq!(
+        r["ESCAPE"], "removed",
+        "escaping symlink removed at extraction"
+    );
+    assert!(
+        paths.app_home(&id).join("persist").exists(),
+        "private home persisted on the host"
+    );
     assert!(!home.join("persist").exists(), "real home untouched");
 
     // 2. Documents read-only: visible but not writable.
@@ -152,12 +200,22 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
 
     // 5. A file opened via the launcher is granted individually.
     let opened = home.join("Documents/report.txt");
-    let r = launch(PermissionSet::strict_gui(), vec![opened.display().to_string()]);
+    let r = launch(
+        PermissionSet::strict_gui(),
+        vec![opened.display().to_string()],
+    );
     assert_eq!(r["ARGS"], opened.display().to_string());
 
     // Preview shows the generated command.
     let e = app.resolve(&id).unwrap();
-    let prep = sam_runner::launch::prepare(&e, &LaunchOptions::default(), &app.config, &app.paths, &host).unwrap();
+    let prep = sam_runner::launch::prepare(
+        &e,
+        &LaunchOptions::default(),
+        &app.config,
+        &app.paths,
+        &host,
+    )
+    .unwrap();
     assert!(prep.preview().command.contains("--unshare-net"));
 
     // Staleness: customize the profile, then modify the source.

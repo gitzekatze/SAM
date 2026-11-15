@@ -20,16 +20,28 @@ pub enum UpdateSource {
     /// A `.zsync` file at a fixed address.
     Zsync { url: String },
     /// A `.zsync` file among the assets of a GitHub release.
-    GithubRelease { owner: String, repo: String, tag: String, pattern: String },
+    GithubRelease {
+        owner: String,
+        repo: String,
+        tag: String,
+        pattern: String,
+    },
 }
 
 /// Reads and parses `.upd_info`. `None` when the AppImage has none, or
 /// uses a form SAM does not know.
 pub fn read(path: &Path) -> Option<UpdateSource> {
     let mut head = Vec::new();
-    File::open(path).ok()?.take(8 * 1024 * 1024).read_to_end(&mut head).ok()?;
+    File::open(path)
+        .ok()?
+        .take(8 * 1024 * 1024)
+        .read_to_end(&mut head)
+        .ok()?;
     let elf = goblin::elf::Elf::parse(&head).ok()?;
-    let sh = elf.section_headers.iter().find(|sh| elf.shdr_strtab.get_at(sh.sh_name) == Some(".upd_info"))?;
+    let sh = elf
+        .section_headers
+        .iter()
+        .find(|sh| elf.shdr_strtab.get_at(sh.sh_name) == Some(".upd_info"))?;
     let (off, size) = (sh.sh_offset as usize, sh.sh_size as usize);
     let raw = head.get(off..off.checked_add(size)?)?;
     let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
@@ -42,7 +54,14 @@ pub fn read(path: &Path) -> Option<UpdateSource> {
 pub fn write(path: &Path, info: &str) -> anyhow::Result<()> {
     use anyhow::Context;
     use std::io::{Seek, SeekFrom, Write};
-    anyhow::ensure!(parse(info).is_some(), "{}", sam_core::i18n::trf("not an update information string SAM understands: {info}", &[("info", &info)]));
+    anyhow::ensure!(
+        parse(info).is_some(),
+        "{}",
+        sam_core::i18n::trf(
+            "not an update information string SAM understands: {info}",
+            &[("info", &info)]
+        )
+    );
     let data = std::fs::read(path)?;
     let elf = goblin::elf::Elf::parse(&data).context(sam_core::i18n::tr("not an ELF file"))?;
     let sh = elf
@@ -50,7 +69,11 @@ pub fn write(path: &Path, info: &str) -> anyhow::Result<()> {
         .iter()
         .find(|sh| elf.shdr_strtab.get_at(sh.sh_name) == Some(".upd_info"))
         .context(sam_core::i18n::tr("the runtime has no .upd_info section"))?;
-    anyhow::ensure!(info.len() < sh.sh_size as usize, ".upd_info holds only {} bytes", sh.sh_size);
+    anyhow::ensure!(
+        info.len() < sh.sh_size as usize,
+        ".upd_info holds only {} bytes",
+        sh.sh_size
+    );
     let mut buf = vec![0u8; sh.sh_size as usize];
     buf[..info.len()].copy_from_slice(info.as_bytes());
     let mut f = std::fs::OpenOptions::new().write(true).open(path)?;
@@ -64,16 +87,24 @@ pub fn parse(s: &str) -> Option<UpdateSource> {
     let s = s.trim();
     let parts: Vec<&str> = s.split('|').collect();
     match parts.as_slice() {
-        ["zsync", url] if !url.is_empty() => Some(UpdateSource::Zsync { url: url.to_string() }),
+        ["zsync", url] if !url.is_empty() => Some(UpdateSource::Zsync {
+            url: url.to_string(),
+        }),
         ["gh-releases-zsync", owner, repo, tag, pattern] => {
             // Names only: they become parts of a GitHub API address.
-            let safe = |p: &str| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+            let safe = |p: &str| {
+                !p.is_empty()
+                    && p.chars()
+                        .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+            };
             let pattern_ok = !pattern.is_empty() && !pattern.contains('/');
-            (safe(owner) && safe(repo) && safe(tag) && pattern_ok).then(|| UpdateSource::GithubRelease {
-                owner: owner.to_string(),
-                repo: repo.to_string(),
-                tag: tag.to_string(),
-                pattern: pattern.to_string(),
+            (safe(owner) && safe(repo) && safe(tag) && pattern_ok).then(|| {
+                UpdateSource::GithubRelease {
+                    owner: owner.to_string(),
+                    repo: repo.to_string(),
+                    tag: tag.to_string(),
+                    pattern: pattern.to_string(),
+                }
             })
         }
         _ => None,
@@ -107,7 +138,12 @@ mod tests {
     /// Both forms of update information (a direct zsync address and GitHub releases) are understood.
     #[test]
     fn both_forms_of_update_information_are_understood() {
-        assert_eq!(parse("zsync|https://example.org/App.AppImage.zsync"), Some(UpdateSource::Zsync { url: "https://example.org/App.AppImage.zsync".into() }));
+        assert_eq!(
+            parse("zsync|https://example.org/App.AppImage.zsync"),
+            Some(UpdateSource::Zsync {
+                url: "https://example.org/App.AppImage.zsync".into()
+            })
+        );
         assert_eq!(
             parse("gh-releases-zsync|neovim|neovim|latest|nvim-linux-x86_64.appimage.zsync"),
             Some(UpdateSource::GithubRelease {
@@ -118,16 +154,29 @@ mod tests {
             })
         );
         assert_eq!(parse("pling-v1-zsync|1234|App.zsync"), None);
-        assert_eq!(parse("gh-releases-zsync|a/../b|repo|latest|x.zsync"), None, "no paths in owner");
+        assert_eq!(
+            parse("gh-releases-zsync|a/../b|repo|latest|x.zsync"),
+            None,
+            "no paths in owner"
+        );
         assert_eq!(parse(""), None);
     }
 
     /// Wildcards in update information match the right file name and not the build for another processor.
     #[test]
     fn update_wildcards_match_only_the_right_build() {
-        assert!(matches("KeePassXC-*-x86_64.AppImage.zsync", "KeePassXC-2.8.1-x86_64.AppImage.zsync"));
-        assert!(matches("App-*x86_64.AppImage.zsync", "App-1.2-x86_64.AppImage.zsync"));
-        assert!(!matches("App-*x86_64.AppImage.zsync", "App-1.2-aarch64.AppImage.zsync"));
+        assert!(matches(
+            "KeePassXC-*-x86_64.AppImage.zsync",
+            "KeePassXC-2.8.1-x86_64.AppImage.zsync"
+        ));
+        assert!(matches(
+            "App-*x86_64.AppImage.zsync",
+            "App-1.2-x86_64.AppImage.zsync"
+        ));
+        assert!(!matches(
+            "App-*x86_64.AppImage.zsync",
+            "App-1.2-aarch64.AppImage.zsync"
+        ));
         assert!(matches("exact.zsync", "exact.zsync"));
         assert!(!matches("a*b*c", "ab"));
     }

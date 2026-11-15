@@ -40,7 +40,10 @@ pub fn check(appimage: &Path) -> UpdateStatus {
         }
         Err(e) => UpdateStatus {
             state: UpdateState::Failed,
-            detail: sam_core::i18n::trf("The update check failed: {error}", &[("error", &format!("{e:#}"))]),
+            detail: sam_core::i18n::trf(
+                "The update check failed: {error}",
+                &[("error", &format!("{e:#}"))],
+            ),
             checked_at: now,
             ..Default::default()
         },
@@ -67,7 +70,9 @@ pub struct Published {
 /// What the source publishes: `Ok(None)` when one of the published files
 /// is exactly `appimage` (it is current).
 pub fn newest(appimage: &Path) -> Result<Option<Published>> {
-    let source = update_info::read(appimage).context(sam_core::i18n::tr("this AppImage does not say where updates are published"))?;
+    let source = update_info::read(appimage).context(sam_core::i18n::tr(
+        "this AppImage does not say where updates are published",
+    ))?;
     newest_from(appimage, &source)
 }
 
@@ -75,27 +80,58 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
     // Candidate .zsync files: one fixed address, or every matching file of
     // a GitHub release (releases often hold rebuilds or variants side by side).
     let (zsyncs, release, page) = match source {
-        UpdateSource::Zsync { url } => (vec![url.clone()], None, url.strip_suffix(".zsync").map(str::to_string)),
-        UpdateSource::GithubRelease { owner, repo, tag, pattern } => {
+        UpdateSource::Zsync { url } => (
+            vec![url.clone()],
+            None,
+            url.strip_suffix(".zsync").map(str::to_string),
+        ),
+        UpdateSource::GithubRelease {
+            owner,
+            repo,
+            tag,
+            pattern,
+        } => {
             let api = if tag == "latest" {
                 format!("https://api.github.com/repos/{owner}/{repo}/releases/latest")
             } else {
                 format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}")
             };
-            let json: serde_json::Value = serde_json::from_slice(&fetch(&api, None)?).context(sam_core::i18n::tr("GitHub's answer"))?;
-            let tag_name = json.get("tag_name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-            let page = json.get("html_url").and_then(|v| v.as_str()).map(str::to_string);
+            let json: serde_json::Value = serde_json::from_slice(&fetch(&api, None)?)
+                .context(sam_core::i18n::tr("GitHub's answer"))?;
+            let tag_name = json
+                .get("tag_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let page = json
+                .get("html_url")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
             let urls: Vec<String> = json
                 .get("assets")
                 .and_then(|a| a.as_array())
                 .into_iter()
                 .flatten()
-                .filter(|x| x.get("name").and_then(|n| n.as_str()).is_some_and(|n| update_info::matches(pattern, n)))
-                .filter_map(|x| x.get("browser_download_url").and_then(|v| v.as_str()).map(str::to_string))
+                .filter(|x| {
+                    x.get("name")
+                        .and_then(|n| n.as_str())
+                        .is_some_and(|n| update_info::matches(pattern, n))
+                })
+                .filter_map(|x| {
+                    x.get("browser_download_url")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                })
                 .take(4)
                 .collect();
             if urls.is_empty() {
-                bail!("{}", sam_core::i18n::trf("release {tag_name} has no file matching {pattern}", &[("tag_name", &tag_name), ("pattern", &pattern)]));
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "release {tag_name} has no file matching {pattern}",
+                        &[("tag_name", &tag_name), ("pattern", &pattern)]
+                    )
+                );
             }
             (urls, Some(tag_name), page)
         }
@@ -112,7 +148,13 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
         }
     }
     let (zsync_url, h) = first.context(sam_core::i18n::tr("no update description"))?;
-    let file_url = resolve(&zsync_url, h.url.as_deref().or(h.filename.as_deref()).context(sam_core::i18n::tr("the update description names no file"))?)?;
+    let file_url = resolve(
+        &zsync_url,
+        h.url
+            .as_deref()
+            .or(h.filename.as_deref())
+            .context(sam_core::i18n::tr("the update description names no file"))?,
+    )?;
     Ok(Some(Published {
         file_url,
         sha1: h.sha1.to_ascii_lowercase(),
@@ -126,17 +168,27 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
 
 fn check_source(appimage: &Path, source: &UpdateSource) -> Result<UpdateStatus> {
     Ok(match newest_from(appimage, source)? {
-        None => UpdateStatus { state: UpdateState::Current, detail: sam_core::i18n::tr("This is the newest published version."), ..Default::default() },
+        None => UpdateStatus {
+            state: UpdateState::Current,
+            detail: sam_core::i18n::tr("This is the newest published version."),
+            ..Default::default()
+        },
         Some(p) => {
             let name = match (&p.filename, &p.release) {
-                (Some(f), Some(r)) => sam_core::i18n::trf("{file} (release {release})", &[("file", f), ("release", r)]),
+                (Some(f), Some(r)) => sam_core::i18n::trf(
+                    "{file} (release {release})",
+                    &[("file", f), ("release", r)],
+                ),
                 (Some(f), None) => f.clone(),
                 (None, Some(r)) => sam_core::i18n::trf("release {release}", &[("release", r)]),
                 (None, None) => sam_core::i18n::tr("a newer version"),
             };
             UpdateStatus {
                 state: UpdateState::Available,
-                detail: sam_core::i18n::trf("{version} is published.", &[("version", &sam_core::util::display_safe(&name, 160))]),
+                detail: sam_core::i18n::trf(
+                    "{version} is published.",
+                    &[("version", &sam_core::util::display_safe(&name, 160))],
+                ),
                 latest: p.filename.or(p.release),
                 download_page: p.page,
                 checked_at: 0,
@@ -151,12 +203,24 @@ fn resolve(zsync_url: &str, file: &str) -> Result<String> {
         if file.starts_with("https://") {
             return Ok(file.to_string());
         }
-        bail!("{}", sam_core::i18n::tr("the update file is not offered over HTTPS"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the update file is not offered over HTTPS")
+        );
     }
     if file.is_empty() || file.contains("..") || file.starts_with('/') {
-        bail!("{}", sam_core::i18n::trf("the update description names an unusable file ({file})", &[("file", &sam_core::util::display_safe(file, 80))]));
+        bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "the update description names an unusable file ({file})",
+                &[("file", &sam_core::util::display_safe(file, 80))]
+            )
+        );
     }
-    let base = zsync_url.rsplit_once('/').map(|(b, _)| b).context(sam_core::i18n::tr("bad update address"))?;
+    let base = zsync_url
+        .rsplit_once('/')
+        .map(|(b, _)| b)
+        .context(sam_core::i18n::tr("bad update address"))?;
     Ok(format!("{base}/{file}"))
 }
 
@@ -188,7 +252,9 @@ pub fn download_update(p: &Published, old: &Path, dest: &Path) -> Result<Fetched
         }
     }
     download(p, dest)?;
-    Ok(Fetched::Full { total: std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0) })
+    Ok(Fetched::Full {
+        total: std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0),
+    })
 }
 
 /// `Ok(None)` when a delta would not save enough (most of the file changed,
@@ -196,7 +262,10 @@ pub fn download_update(p: &Published, old: &Path, dest: &Path) -> Result<Fetched
 fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetched>> {
     let ctl = crate::zsync::parse(&fetch(&p.zsync_url, Some(64 << 20))?)?;
     if ctl.sha1 != p.sha1 {
-        bail!("{}", sam_core::i18n::tr("the update description changed while reading it"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the update description changed while reading it")
+        );
     }
     let old_data = std::fs::read(old)?;
     let plan = crate::zsync::plan(&ctl, &old_data);
@@ -205,8 +274,13 @@ fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetch
     if ranges.len() > 300 || bytes * 10 > ctl.length * 7 {
         return Ok(None);
     }
-    crate::zsync::assemble(&ctl, &old_data, &plan, &ranges, dest, |s, e| fetch_range(&p.file_url, s, e))?;
-    Ok(Some(Fetched::Delta { bytes, total: ctl.length }))
+    crate::zsync::assemble(&ctl, &old_data, &plan, &ranges, dest, |s, e| {
+        fetch_range(&p.file_url, s, e)
+    })?;
+    Ok(Some(Fetched::Delta {
+        bytes,
+        total: ctl.length,
+    }))
 }
 
 /// Bytes `start..end` of `url` (an HTTP range request).
@@ -217,14 +291,44 @@ fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>> {
     let curl = sam_core::util::which("curl")
         .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     let out = Command::new(curl)
-        .args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
-        .args(["--max-redirs", "5", "--connect-timeout", "15", "--speed-limit", "1024", "--speed-time", "60"])
-        .args(["--user-agent", "SAM-AppImage-update-check", "--range", &format!("{}-{}", start, end - 1), "--"])
+        .args([
+            "--silent",
+            "--show-error",
+            "--fail",
+            "--location",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+        ])
+        .args([
+            "--max-redirs",
+            "5",
+            "--connect-timeout",
+            "15",
+            "--speed-limit",
+            "1024",
+            "--speed-time",
+            "60",
+        ])
+        .args([
+            "--user-agent",
+            "SAM-AppImage-update-check",
+            "--range",
+            &format!("{}-{}", start, end - 1),
+            "--",
+        ])
         .arg(url)
         .stdin(Stdio::null())
         .output()?;
     if !out.status.success() {
-        bail!("{}", sam_core::i18n::trf("downloading the changed parts failed: {reason}", &[("reason", &String::from_utf8_lossy(&out.stderr).trim())]));
+        bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "downloading the changed parts failed: {reason}",
+                &[("reason", &String::from_utf8_lossy(&out.stderr).trim())]
+            )
+        );
     }
     Ok(out.stdout)
 }
@@ -239,24 +343,60 @@ pub fn download(p: &Published, dest: &Path) -> Result<()> {
 
 fn download_inner(p: &Published, dest: &Path) -> Result<()> {
     if !p.file_url.starts_with("https://") {
-        bail!("{}", sam_core::i18n::tr("the update file is not offered over HTTPS"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the update file is not offered over HTTPS")
+        );
     }
     let curl = sam_core::util::which("curl")
         .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     let mut cmd = Command::new(curl);
-    cmd.args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
-        .args(["--max-redirs", "5", "--connect-timeout", "15", "--speed-limit", "1024", "--speed-time", "60"])
-        .args(["--user-agent", "SAM-AppImage-update-check"]);
+    cmd.args([
+        "--silent",
+        "--show-error",
+        "--fail",
+        "--location",
+        "--proto",
+        "=https",
+        "--proto-redir",
+        "=https",
+    ])
+    .args([
+        "--max-redirs",
+        "5",
+        "--connect-timeout",
+        "15",
+        "--speed-limit",
+        "1024",
+        "--speed-time",
+        "60",
+    ])
+    .args(["--user-agent", "SAM-AppImage-update-check"]);
     if let Some(len) = p.length {
         cmd.args(["--max-filesize", &(len + 1).to_string()]);
     }
-    let out = cmd.arg("--output").arg(dest).arg("--").arg(&p.file_url).stdin(Stdio::null()).output().context(sam_core::i18n::tr("starting curl"))?;
+    let out = cmd
+        .arg("--output")
+        .arg(dest)
+        .arg("--")
+        .arg(&p.file_url)
+        .stdin(Stdio::null())
+        .output()
+        .context(sam_core::i18n::tr("starting curl"))?;
     if !out.status.success() {
-        bail!("download failed: {}", curl_error(&String::from_utf8_lossy(&out.stderr)));
+        bail!(
+            "download failed: {}",
+            curl_error(&String::from_utf8_lossy(&out.stderr))
+        );
     }
     let got = sha1_of(dest)?;
     if got != p.sha1 {
-        bail!("{}", sam_core::i18n::tr("the downloaded file does not match the published checksum; it was deleted"));
+        bail!(
+            "{}",
+            sam_core::i18n::tr(
+                "the downloaded file does not match the published checksum; it was deleted"
+            )
+        );
     }
     Ok(())
 }
@@ -264,11 +404,21 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
 /// curl's error, in words: HTTP status codes become sentences.
 fn curl_error(stderr: &str) -> String {
     let e = stderr.trim();
-    let status = e.rsplit("error: ").next().and_then(|n| n.trim().parse::<u16>().ok());
+    let status = e
+        .rsplit("error: ")
+        .next()
+        .and_then(|n| n.trim().parse::<u16>().ok());
     match status {
-        Some(404) => sam_core::i18n::tr("the update source has nothing published at that address (yet)"),
-        Some(403) | Some(429) => sam_core::i18n::tr("the update source refused the request for now (rate limit); try again later"),
-        Some(s) if s >= 500 => sam_core::i18n::trf("the update source has a problem (HTTP {status}); try again later", &[("status", &s)]),
+        Some(404) => {
+            sam_core::i18n::tr("the update source has nothing published at that address (yet)")
+        }
+        Some(403) | Some(429) => sam_core::i18n::tr(
+            "the update source refused the request for now (rate limit); try again later",
+        ),
+        Some(s) if s >= 500 => sam_core::i18n::trf(
+            "the update source has a problem (HTTP {status}); try again later",
+            &[("status", &s)],
+        ),
         _ if e.contains("Could not resolve host") || e.contains("Failed to connect") => {
             sam_core::i18n::tr("no connection to the update source; check the internet connection")
         }
@@ -295,15 +445,27 @@ fn zsync_header(data: &[u8]) -> Result<ZsyncHeader> {
             break; // end of the header; block checksums follow
         }
         match line.split_once(": ") {
-            Some(("SHA-1", v)) if v.len() == 40 && v.chars().all(|c| c.is_ascii_hexdigit()) => sha1 = Some(v.to_string()),
+            Some(("SHA-1", v)) if v.len() == 40 && v.chars().all(|c| c.is_ascii_hexdigit()) => {
+                sha1 = Some(v.to_string())
+            }
             Some(("Filename", v)) => filename = Some(sam_core::util::display_safe(v, 200)),
             Some(("URL", v)) if url.is_none() => url = Some(v.trim().to_string()),
             Some(("Length", v)) => length = v.trim().parse().ok(),
             _ => {}
         }
     }
-    let Some(sha1) = sha1 else { bail!("{}", sam_core::i18n::tr("the update description (.zsync) has no SHA-1")) };
-    Ok(ZsyncHeader { sha1, filename, url, length })
+    let Some(sha1) = sha1 else {
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the update description (.zsync) has no SHA-1")
+        )
+    };
+    Ok(ZsyncHeader {
+        sha1,
+        filename,
+        url,
+        length,
+    })
 }
 
 fn sha1_of(path: &Path) -> Result<String> {
@@ -324,22 +486,58 @@ fn sha1_of(path: &Path) -> Result<String> {
 /// `MAX_ANSWER`). With a limit, only that range is asked for.
 fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
-        bail!("{}", sam_core::i18n::trf("the update address is not HTTPS ({address})", &[("address", &sam_core::util::display_safe(url, 120))]));
+        bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "the update address is not HTTPS ({address})",
+                &[("address", &sam_core::util::display_safe(url, 120))]
+            )
+        );
     }
     let curl = sam_core::util::which("curl")
         .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     let mut cmd = Command::new(curl);
-    cmd.args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
-        .args(["--max-redirs", "5", "--connect-timeout", "10", "--max-time", "30"])
-        .args(["--user-agent", "SAM-AppImage-update-check", "--header", "Accept: application/json, */*"]);
+    cmd.args([
+        "--silent",
+        "--show-error",
+        "--fail",
+        "--location",
+        "--proto",
+        "=https",
+        "--proto-redir",
+        "=https",
+    ])
+    .args([
+        "--max-redirs",
+        "5",
+        "--connect-timeout",
+        "10",
+        "--max-time",
+        "30",
+    ])
+    .args([
+        "--user-agent",
+        "SAM-AppImage-update-check",
+        "--header",
+        "Accept: application/json, */*",
+    ]);
     if let Some(n) = limit {
         cmd.args(["--range", &format!("0-{}", n - 1)]);
     }
-    cmd.arg("--").arg(url).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.arg("--")
+        .arg(url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = cmd.spawn().context(sam_core::i18n::tr("starting curl"))?;
     let max = limit.unwrap_or(MAX_ANSWER);
     let mut out = Vec::new();
-    child.stdout.take().context(sam_core::i18n::tr("curl output"))?.take(max as u64).read_to_end(&mut out)?;
+    child
+        .stdout
+        .take()
+        .context(sam_core::i18n::tr("curl output"))?
+        .take(max as u64)
+        .read_to_end(&mut out)?;
     // Servers that ignore the range send everything: enough was read.
     if out.len() >= max {
         let _ = child.kill();
@@ -366,10 +564,18 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let f = t.path().join("abc");
         std::fs::write(&f, b"abc").unwrap();
-        assert_eq!(sha1_of(&f).unwrap(), "a9993e364706816aba3e25717850c26c9cd0d89d", "SHA-1 test vector");
+        assert_eq!(
+            sha1_of(&f).unwrap(),
+            "a9993e364706816aba3e25717850c26c9cd0d89d",
+            "SHA-1 test vector"
+        );
         let big = t.path().join("big");
         std::fs::write(&big, vec![b'a'; 1_000_000]).unwrap();
-        assert_eq!(sha1_of(&big).unwrap(), "34aa973cd4c4daa4f61eeb2bdbad27316534016f", "SHA-1 of a million a");
+        assert_eq!(
+            sha1_of(&big).unwrap(),
+            "34aa973cd4c4daa4f61eeb2bdbad27316534016f",
+            "SHA-1 of a million a"
+        );
     }
 
     /// The header of a zsync file is read (file name, size, checksum).
@@ -379,15 +585,25 @@ mod tests {
         let h = zsync_header(z).unwrap();
         assert_eq!(h.sha1, "0123456789abcdef0123456789abcdef01234567");
         assert_eq!(h.filename.as_deref(), Some("App-2.0-x86_64.AppImage"));
-        assert!(zsync_header(b"zsync: 0.6.2\n\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n").is_err(), "only the header counts");
+        assert!(
+            zsync_header(b"zsync: 0.6.2\n\nSHA-1: 0123456789abcdef0123456789abcdef01234567\n")
+                .is_err(),
+            "only the header counts"
+        );
     }
 
     /// Download addresses in zsync files are resolved, and plain-HTTP addresses are refused.
     #[test]
     fn update_download_addresses_are_resolved_and_http_refused() {
         let z = "https://github.com/o/r/releases/download/v1/App.AppImage.zsync";
-        assert_eq!(resolve(z, "App.AppImage").unwrap(), "https://github.com/o/r/releases/download/v1/App.AppImage");
-        assert_eq!(resolve(z, "https://cdn.example.org/App.AppImage").unwrap(), "https://cdn.example.org/App.AppImage");
+        assert_eq!(
+            resolve(z, "App.AppImage").unwrap(),
+            "https://github.com/o/r/releases/download/v1/App.AppImage"
+        );
+        assert_eq!(
+            resolve(z, "https://cdn.example.org/App.AppImage").unwrap(),
+            "https://cdn.example.org/App.AppImage"
+        );
         assert!(resolve(z, "http://cdn.example.org/App.AppImage").is_err());
         assert!(resolve(z, "../../evil").is_err());
         assert!(resolve(z, "").is_err());
