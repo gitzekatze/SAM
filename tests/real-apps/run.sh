@@ -10,7 +10,9 @@
 #
 # Needs kwin_wayland, dbus-run-session and a built SAM (target/debug).
 # Set SESSION_SCRIPT to run your own script in the session instead, and
-# SESSION_TIMEOUT (seconds, default 3600) for long queues.
+# SESSION_TIMEOUT (seconds, default 3600) for long queues. The unpacked
+# apps are removed when the run ends (they take gigabytes per app); the
+# results and the launch logs stay. KEEP_DATA=1 keeps them.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 : "${WORK:?set WORK to a scratch folder}"
@@ -46,3 +48,8 @@ dbus-run-session --config-file="$R/session.conf" -- \
   timeout "${SESSION_TIMEOUT:-3600}" kwin_wayland --virtual --xwayland --socket sam-test --width 1280 --height 800 \
   --exit-with-session "$run/start" > "$R/kwin.log" 2>&1 || true
 rm -rf "$run"
+if [ "${KEEP_DATA:-}" != 1 ]; then
+  # The overlay leaves folders without permissions; open them first.
+  chmod -R u+rwX "$R/sam/data" "$R/tmp" 2>/dev/null || true
+  rm -rf "$R/sam/data" "$R/tmp"
+fi
