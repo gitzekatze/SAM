@@ -255,7 +255,11 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                 Ok(p) => {
                     ctx.dbus_proxy_socket = Some(p.socket.clone());
                     for (name, why) in &p.refused {
-                        warnings.push(Warning::warn("dbus-own-refused", "D-Bus name not allowed", format!("The app may not own {name}: {why}.")));
+                        warnings.push(Warning::warn(
+                            "dbus-own-refused",
+                            "D-Bus name not allowed",
+                            sam_core::i18n::trf("The app may not own {name}: {why}.", &[("name", &name), ("why", &why)]),
+                        ));
                     }
                     proxy = Some(p);
                 }
@@ -734,10 +738,10 @@ fn judge_outcome(status: std::process::ExitStatus, err_head: &str, bwrap_json: O
     if summary.is_empty() {
         summary = match (code, signal) {
             (Some(0), _) => "exited normally".into(),
-            (Some(c), _) => format!("exited with code {c}"),
+            (Some(c), _) => sam_core::i18n::trf("exited with code {code}", &[("code", &c)]),
             (None, Some(11)) => "terminated by signal 11 (segmentation fault)".into(),
             (None, Some(6)) => "terminated by signal 6 (abort)".into(),
-            (None, Some(s)) => format!("terminated by signal {s}"),
+            (None, Some(s)) => sam_core::i18n::trf("ended by signal {signal}", &[("signal", &s)]),
             _ => "finished".into(),
         };
     }

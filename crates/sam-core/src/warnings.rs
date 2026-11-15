@@ -27,8 +27,11 @@ pub struct Warning {
 }
 
 impl Warning {
+    /// Title and message are shown in the user's language: a literal is
+    /// looked up here; a message built from parts comes translated already
+    /// (`trf`), and looking it up again leaves it as it is.
     pub fn new(code: &str, severity: Severity, title: &str, message: impl Into<String>) -> Self {
-        Warning { code: code.into(), severity, title: title.into(), message: message.into(), key: None }
+        Warning { code: code.into(), severity, title: crate::i18n::tr(title), message: crate::i18n::tr(&message.into()), key: None }
     }
     pub fn with_key(mut self, key: &str) -> Self {
         self.key = Some(key.into());
@@ -120,7 +123,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
                 Warning::danger(
                     "sensitive-path",
                     "Sensitive path exposed",
-                    format!("'{path}' contains system or credential data. Exposing it weakens the sandbox significantly."),
+                    crate::i18n::trf("'{path}' contains system or credential data. Exposing it weakens the sandbox significantly.", &[("path", &path)]),
                 )
                 .with_key("filesystem.custom_write"),
             );
@@ -174,7 +177,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
                     Warning::danger(
                         "dbus-dangerous-name",
                         "Dangerous D-Bus access",
-                        format!("Allowed session service: {why}. This can let the app escape the sandbox."),
+                        crate::i18n::trf("Allowed session service: {why}. This can let the app escape the sandbox.", &[("why", &why)]),
                     )
                     .with_key("dbus.session.allow"),
                 );

@@ -194,9 +194,7 @@ impl AppPage {
                         } else {
                             format!("SAM could not unpack {} by itself.", util::plain(&name))
                         };
-                        let body = format!(
-                            "{why}\n\nInstead, the AppImage can unpack itself. That runs code from the AppImage, inside a sandbox with no network and no access to your files. Only continue if you trust where this file came from."
-                        );
+                        let body = crate::i18n::trf("{why}\n\nInstead, the AppImage can unpack itself. That runs code from the AppImage, inside a sandbox with no network and no access to your files. Only continue if you trust where this file came from.", &[("why", &why)]);
                         if window::confirm(&app.window, &tr("Let the AppImage Unpack Itself?"), &body, &tr("Unpack"), false).await {
                             app.reextract(&id, true).await;
                             app.open_app(&id);
@@ -220,7 +218,7 @@ impl AppPage {
             // Three clearly named choices; nothing is preselected, and the
             // button names the chosen action.
             let body = if running {
-                format!("{name} is running right now (maybe only in the system tray). It is closed first and gets the chance to save. Choose what to remove; the AppImage file itself is always kept.")
+                crate::i18n::trf("{name} is running right now (maybe only in the system tray). It is closed first and gets the chance to save. Choose what to remove; the AppImage file itself is always kept.", &[("name", &name)])
             } else {
                 "Choose what to remove. The AppImage file itself is always kept, and any menu entry SAM hid is shown again when the sandbox goes.".to_string()
             };
@@ -273,7 +271,10 @@ impl AppPage {
                     let _ = app.backend.call(&["stop", &me.app_id], None).await;
                 }
                 match app.backend.call(&["free-space", &me.app_id], None).await {
-                    Ok(_) => app.toast(&format!("Freed the space of the unpacked copy of {name}. SAM unpacks it again at the next start.")),
+                    Ok(_) => app.toast(&crate::i18n::trf(
+                        "Freed the space of the unpacked copy of {name}. SAM unpacks it again at the next start.",
+                        &[("name", &name)],
+                    )),
                     Err(e) => app.report_error(&e),
                 }
                 me.reload();
@@ -292,7 +293,7 @@ impl AppPage {
                     let warnings = util::list_of(&r, "warnings");
                     let kept = if keep_data { " Its settings and files were kept." } else { "" };
                     app.toast(&if warnings.is_empty() {
-                        format!("Removed the sandbox for {name}.{kept}")
+                        crate::i18n::trf("Removed the sandbox for {name}.{kept}", &[("name", &name), ("kept", &kept)])
                     } else {
                         format!("Removed the sandbox, but: {}", warnings.join("; "))
                     });
@@ -354,8 +355,9 @@ impl AppPage {
             let explanation = util::str_of(&sug, "explanation").to_string();
             let risk = util::str_of(&sug, "risk");
             let ask = if util::bool_of(&sug, "from_app_output") {
-                Some(format!(
-                    "This suggestion is based on messages the app printed itself. A malicious app can print messages to get more access.\n\n{explanation}"
+                Some(crate::i18n::trf(
+                    "This suggestion is based on messages the app printed itself. A malicious app can print messages to get more access.\n\n{explanation}",
+                    &[("explanation", &explanation)],
                 ))
             } else if risk == "high" || risk == "dangerous" || util::str_of(&sug, "action.kind") == "compat" {
                 Some(explanation.clone())

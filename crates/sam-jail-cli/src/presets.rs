@@ -48,14 +48,14 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
         PresetCmd::Delete { name } => {
             let ok = store.delete(&name)?;
             if !ok {
-                bail!("no user preset named '{name}'");
+                bail!("{}", sam_core::i18n::trf("no user preset named '{name}'", &[("name", &name)]));
             }
             out.emit(&json!({"deleted": name}), || println!("Deleted preset '{name}'"));
         }
         PresetCmd::Duplicate { name, new_name } => {
             let mut p = sam_profile::find_preset(&app.paths, &name)?.with_context(|| format!("unknown preset '{name}'"))?;
             if sam_profile::find_preset(&app.paths, &new_name)?.is_some() {
-                bail!("a preset named '{new_name}' already exists");
+                bail!("{}", sam_core::i18n::trf("a preset named '{new_name}' already exists", &[("new_name", &new_name)]));
             }
             p.name = new_name;
             p.created_at = 0;

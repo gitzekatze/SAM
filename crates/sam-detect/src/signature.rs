@@ -107,13 +107,13 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
         SignatureInfo {
             state: SignatureState::Valid,
             fingerprint,
-            detail: format!("signed{who}; the key comes with the file, so this shows it is unchanged, not who made it"),
+            detail: sam_core::i18n::trf("signed{who}; the key comes with the file, so this shows it is unchanged, not who made it", &[("who", &who)]),
         }
     } else {
         SignatureInfo {
             state: SignatureState::Invalid,
             fingerprint,
-            detail: format!("the signature{who} does not match the file: it was changed after signing"),
+            detail: sam_core::i18n::trf("the signature{who} does not match the file: it was changed after signing", &[("who", &who)]),
         }
     })
 }

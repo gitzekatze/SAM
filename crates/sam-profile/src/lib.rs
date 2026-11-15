@@ -357,7 +357,7 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
     // apps register it to hand a second start over to the first one.
     for name in own_bus_names(md) {
         if !p.dbus.session.own.contains(&name) {
-            notes.push(format!("D-Bus: may own its own name {name}"));
+            notes.push(sam_core::i18n::trf("D-Bus: may own its own name {name}", &[("name", &name)]));
             p.dbus.session.own.push(name);
         }
     }

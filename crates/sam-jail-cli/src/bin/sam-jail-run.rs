@@ -65,6 +65,7 @@ fn notify(title: &str, body: &str) {
 }
 
 fn main() {
+    sam_core::i18n::init(true);
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--sandbox-exec") {
         let spec = args.get(1).map(PathBuf::from).unwrap_or_else(|| usage());
@@ -100,7 +101,8 @@ fn launch(args: Vec<String>) -> Result<i32> {
         _ => rest,
     };
     let app = Sam::open()?;
-    let mut entry = app.registry().get(&id)?.or_else(|| app.resolve(&id).ok()).with_context(|| format!("no registered app '{id}'"))?;
+    let mut entry =
+        app.registry().get(&id)?.or_else(|| app.resolve(&id).ok()).with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))?;
     // After "Free space": unpack again first (the file is unchanged).
     app.ensure_unpacked(&mut entry).context("unpacking the AppImage again")?;
     let host = sam_core::HostInfo::probe();
@@ -117,7 +119,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
                     &format!("{} was not started", entry.display_name()),
                     &format!("The sandbox check found settings that do not apply: {list}.\nOpen SAM → {} → Sandbox Check.", entry.display_name()),
                 );
-                bail!("sandbox check failed: {list}");
+                bail!("{}", sam_core::i18n::trf("sandbox check failed: {list}", &[("list", &list)]));
             }
             entry.last_check = Some(out.record);
         }

@@ -200,7 +200,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                     // panic of the SquashFS reader on a damaged image becomes
                     // an error, like in the sandboxed reader process.
                     None => std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| builtin_squashfs(req.source, off, dst, &req.limits, started, log)))
-                        .unwrap_or_else(|_| Err(anyhow!("the AppImage's SquashFS image is damaged (the reader stopped)"))),
+                        .unwrap_or_else(|_| Err(anyhow!("{}", sam_core::i18n::tr("the AppImage's SquashFS image is damaged (the reader stopped)")))),
                 }),
             ));
             if let Some(u) = which("unsquashfs") {

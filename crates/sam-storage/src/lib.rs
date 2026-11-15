@@ -127,7 +127,7 @@ impl Registry {
                 _ => bail!("'{query}' is ambiguous: {}", m.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join(", ")),
             }
         }
-        bail!("no registered app matches '{query}' (see `sam-jail list`)")
+        bail!("{}", sam_core::i18n::trf("no registered app matches '{query}' (see `sam-jail list`)", &[("query", &query)]))
     }
 
     pub fn save(&self, entry: &mut AppEntry) -> Result<()> {
@@ -248,7 +248,7 @@ impl PresetStore {
 
     pub fn save(&self, preset: &mut Preset) -> Result<PathBuf> {
         if preset.name.trim().is_empty() {
-            bail!("preset name must not be empty");
+            bail!("{}", sam_core::i18n::tr("preset name must not be empty"));
         }
         let t = now();
         if preset.created_at == 0 {
@@ -346,7 +346,7 @@ fn permissions_from_toml(v: toml::Value) -> Result<PermissionSet> {
             "x11" | "wayland" => format!("display.{k}"),
             "dbus_session" => "dbus.session.mode".into(),
             "dbus_system" => "dbus.system.mode".into(),
-            other => bail!("unknown flat preset key '{other}'"),
+            other => bail!("{}", sam_core::i18n::trf("unknown flat preset key '{other}'", &[("other", &other)])),
         };
         p.set_key(&key, &raw)?;
     }

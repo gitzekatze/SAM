@@ -225,7 +225,12 @@ impl App {
         sb.downloads.set_visible(count > 0);
         sb.downloads_label.set_text(&match count {
             1 => tr("Your Downloads folder has 1 AppImage that SAM does not list yet."),
-            n => format!("Your Downloads folder has {n} AppImages that SAM does not list yet."),
+            n => crate::i18n::trn(
+                "Your Downloads folder has {n} AppImage that SAM does not list yet.",
+                "Your Downloads folder has {n} AppImages that SAM does not list yet.",
+                n as u64,
+                &[],
+            ),
         });
     }
 
@@ -967,7 +972,12 @@ impl App {
         match refused.len() {
             0 => {}
             1 => self.toast(&format!("{} is not an AppImage.", util::plain(&refused[0]))),
-            n => self.toast(&format!("{n} items are not AppImages and were not added.")),
+            n => self.toast(&crate::i18n::trn(
+                "{n} item is not an AppImage and was not added.",
+                "{n} items are not AppImages and were not added.",
+                n as u64,
+                &[],
+            )),
         }
         if new_dirs.is_empty() && new_files.is_empty() {
             return;
@@ -1020,7 +1030,11 @@ impl App {
             let m2 = me.clone();
             glib::spawn_future_local(async move { m2.refresh_registered().await });
             if code != 0 {
-                let t = adw::Toast::builder().title(format!("The app stopped with an error (code {code}).")).button_label("Fix It").timeout(8).build();
+                let t = adw::Toast::builder()
+                    .title(crate::i18n::trf("The app stopped with an error (code {code}).", &[("code", &code)]))
+                    .button_label("Fix It")
+                    .timeout(8)
+                    .build();
                 let w2 = Rc::downgrade(&me);
                 t.connect_button_clicked(move |_| {
                     if let Some(me) = w2.upgrade() {
@@ -1196,7 +1210,7 @@ impl App {
                             .map(|a| a.iter().filter(|x| util::str_of(x, "update.state") == "available").count())
                             .unwrap_or(0);
                         if n > 0 {
-                            me.toast(&format!("Updates are available for {n} app(s)"));
+                            me.toast(&crate::i18n::trn("An update is available for {n} app.", "Updates are available for {n} apps.", n as u64, &[]));
                             me.refresh_registered().await;
                         }
                     }

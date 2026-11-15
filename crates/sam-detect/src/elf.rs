@@ -522,7 +522,7 @@ fn requirements(appdir: &Path, w: &Walk, needed: &BTreeMap<String, Vec<String>>,
         // So does the program itself (MuseScore and Audacity 4).
         req.x11 = true;
         req.wayland = false;
-        notes.push(format!("The app sets Qt to X11 itself (unless {var} says otherwise)"));
+        notes.push(sam_core::i18n::trf("The app sets Qt to X11 itself (unless {var} says otherwise)", &[("var", &var)]));
     } else if qt_x11_only {
         req.x11 = true;
         req.wayland = false;
@@ -797,23 +797,23 @@ fn optional_features(missing: &[(String, bool, Vec<String>)], host_dirs: &[PathB
                 let cuda = if wanted.is_empty() { "CUDA".to_string() } else { format!("CUDA {}", join(&wanted)) };
                 let who = engines("cuda");
                 let msg = if !dev.join("nvidiactl").exists() {
-                    format!("{who}, bundled in this app, can use NVIDIA graphics cards ({cuda}). This computer has none, so it runs without one: if you use this part to run local AI models, they run on the processor, which is much slower.")
+                    sam_core::i18n::trf("{who}, bundled in this app, can use NVIDIA graphics cards ({cuda}). This computer has none, so it runs without one: if you use this part to run local AI models, they run on the processor, which is much slower.", &[("who", &who), ("cuda", &cuda)])
                 } else if !have.is_empty() {
                     format!(
                         "{who}, bundled in this app, is built for {cuda}. This computer has CUDA {}, which it cannot load, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.",
                         join(&have)
                     )
                 } else {
-                    format!("{who}, bundled in this app, is built for {cuda}, which is not installed, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.")
+                    sam_core::i18n::trf("{who}, bundled in this app, is built for {cuda}, which is not installed, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.", &[("who", &who), ("cuda", &cuda)])
                 };
-                Warning::info("feature-cuda", &format!("A bundled part needs {cuda}"), msg)
+                Warning::info("feature-cuda", &sam_core::i18n::trf("A bundled part needs {cuda}", &[("cuda", &cuda)]), msg)
             }
             "rocm" => {
                 let who = engines("rocm");
                 let msg = if !dev.join("kfd").exists() {
-                    format!("{who}, bundled in this app, can use AMD graphics cards (ROCm). This computer offers no AMD compute device, so it runs without one: if you use this part to run local AI models, they run on the processor, which is much slower.")
+                    sam_core::i18n::trf("{who}, bundled in this app, can use AMD graphics cards (ROCm). This computer offers no AMD compute device, so it runs without one: if you use this part to run local AI models, they run on the processor, which is much slower.", &[("who", &who)])
                 } else {
-                    format!("{who}, bundled in this app, needs ROCm, which is not installed, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.")
+                    sam_core::i18n::trf("{who}, bundled in this app, needs ROCm, which is not installed, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.", &[("who", &who)])
                 };
                 Warning::info("feature-rocm", "A bundled part needs ROCm", msg)
             }
@@ -853,7 +853,7 @@ fn isolation_verdict(
         report.warnings.push(Warning::danger(
             "privileged",
             "Requires privileged access",
-            format!("The AppImage's launcher calls '{tool}'. It appears to require root access, which cannot be sandboxed."),
+            sam_core::i18n::trf("The AppImage's launcher calls '{tool}'. It appears to require root access, which cannot be sandboxed.", &[("tool", &tool)]),
         ));
         Some(IsolationVerdict::UnsafeToSandbox)
     } else if !w.kernel_modules.is_empty() {

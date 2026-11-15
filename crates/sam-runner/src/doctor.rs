@@ -1,6 +1,7 @@
 //! Environment checks, diagnostics screen data and redacted bug
 //! reports.
 
+use sam_core::i18n::tr;
 use std::process::{Command, Stdio};
 
 use sam_core::util::{format_ts, now, tildify};
@@ -11,7 +12,7 @@ use sam_storage::{LogKind, Logs};
 use crate::ops::Sam;
 
 fn check(id: &str, label: &str, status: CheckStatus, detail: impl Into<String>) -> DiagnosticCheck {
-    DiagnosticCheck::new(id, label, status, detail)
+    DiagnosticCheck::new(id, &tr(label), status, tr(&detail.into()))
 }
 
 /// Quick functional test: can bwrap actually create a sandbox here?
@@ -128,7 +129,12 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
     }
     c.push(match (&s.x11, &s.x11_display) {
         (Some(p), _) => check("x11", "X11 display", CheckStatus::Ok, format!("{} ({})", s.x11_display.clone().unwrap_or_default(), p.display())),
-        (None, Some(d)) => check("x11", "X11 display", CheckStatus::Warn, format!("DISPLAY={d} but no socket in /tmp/.X11-unix")),
+        (None, Some(d)) => check(
+            "x11",
+            "X11 display",
+            CheckStatus::Warn,
+            sam_core::i18n::trf("DISPLAY is {display}, but there is no socket for it in /tmp/.X11-unix", &[("display", &d)]),
+        ),
         (None, None) => check("x11", "X11 display", CheckStatus::Info, "no X11 display"),
     });
     c.push(match (&s.pipewire, &s.pulse) {

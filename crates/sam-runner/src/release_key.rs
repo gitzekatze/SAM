@@ -23,7 +23,7 @@ pub const RELEASE_KEYS: &[&str] = &[];
 /// of `keys`. The error says why not, in a sentence for people.
 pub fn check(sig: &SignatureInfo, keys: &[&str]) -> Result<()> {
     if keys.is_empty() {
-        bail!("this SAM was built without a release key, so it cannot check where an update comes from and does not update itself; download new versions from the release page or use your package manager");
+        bail!("{}", sam_core::i18n::tr("this SAM was built without a release key, so it cannot check where an update comes from and does not update itself; download new versions from the release page or use your package manager"));
     }
     match sig.state {
         SignatureState::Valid => {
@@ -34,8 +34,10 @@ pub fn check(sig: &SignatureInfo, keys: &[&str]) -> Result<()> {
                 bail!("the update is signed, but not with SAM's release key ({}); it was not installed", if fp.is_empty() { "unknown key" } else { &fp })
             }
         }
-        SignatureState::Unsigned => bail!("the update is not signed, so its origin cannot be checked; it was not installed"),
-        SignatureState::Invalid => bail!("the update's signature does not match the file, so it was changed after signing; it was not installed"),
+        SignatureState::Unsigned => bail!("{}", sam_core::i18n::tr("the update is not signed, so its origin cannot be checked; it was not installed")),
+        SignatureState::Invalid => {
+            bail!("{}", sam_core::i18n::tr("the update's signature does not match the file, so it was changed after signing; it was not installed"))
+        }
         SignatureState::Unchecked => bail!("the update's signature could not be checked ({}); it was not installed", sig.detail),
     }
 }

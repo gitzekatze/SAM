@@ -44,7 +44,7 @@ impl Sam {
 
     pub fn set_compat(&self, query: &str, on: bool) -> Result<AppEntry> {
         if on && self.config.compatibility.behavior == sam_core::config::CompatBehavior::Never {
-            bail!("compatibility mode is disabled in settings (compatibility.behavior = never)");
+            bail!("{}", sam_core::i18n::tr("compatibility mode is disabled in settings (compatibility.behavior = never)"));
         }
         let mut e = self.resolve(query)?;
         if on == e.profile.compatibility_mode {
@@ -154,7 +154,8 @@ impl Sam {
                 e.profile.permissions.set_key(key, value)?
             }
             FixAction::Add { key, value } => {
-                let mut list: Vec<String> = serde_json::from_value(e.profile.permissions.get_key(key)?).with_context(|| format!("{key} is not a list"))?;
+                let mut list: Vec<String> = serde_json::from_value(e.profile.permissions.get_key(key)?)
+                    .with_context(|| sam_core::i18n::trf("{key} is not a list", &[("key", &key)]))?;
                 if !list.contains(value) {
                     list.push(value.clone());
                     undo.added = Some(value.clone());
@@ -202,7 +203,7 @@ impl Sam {
             .applied_repairs
             .iter()
             .position(|r| r.step.as_ref().is_some_and(|s| s.id == step_id))
-            .with_context(|| format!("the repair step '{step_id}' is not applied"))?;
+            .with_context(|| sam_core::i18n::trf("the repair step '{step_id}' is not applied", &[("step_id", &step_id)]))?;
         let r = e.applied_repairs.remove(i);
         let step = r.step.clone().context("damaged repair record")?;
         match &step.action {

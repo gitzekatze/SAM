@@ -228,7 +228,12 @@ impl AppPage {
                         (0, Some(true)) => "Test passed: every setting applies, and the app started".to_string(),
                         (0, Some(false)) => "Every setting applies, but the app did not keep running; see Test below".to_string(),
                         (0, None) => "Test passed: every setting applies".to_string(),
-                        (n, _) => format!("Test: {n} setting(s) do not apply; see Test below"),
+                        (n, _) => crate::i18n::trn(
+                            "Test: {n} setting does not apply; see Test below.",
+                            "Test: {n} settings do not apply; see Test below.",
+                            n as u64,
+                            &[],
+                        ),
                     });
                 }
                 Err(e) => app.report_error(&e),
@@ -278,7 +283,10 @@ impl AppPage {
                 let total = passed as usize + failed.len();
                 if !current {
                     self.check_summary.set_title("Out of date");
-                    self.check_summary.set_subtitle(&esc(&format!("The settings, SAM or this computer changed since the last test ({when}). Test again.")));
+                    self.check_summary.set_subtitle(&esc(&crate::i18n::trf(
+                        "The settings, SAM or this computer changed since the last test ({when}). Test again.",
+                        &[("when", &when)],
+                    )));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, "Test out of date", "warn");
                     self.check_badge.set_tooltip_text(Some("The settings, SAM or this computer changed since the last test; press Test again"));
@@ -491,7 +499,7 @@ impl AppPage {
             });
             match app.backend.call(&["preset", "put"], Some(preset.to_string())).await {
                 Ok(_) => {
-                    app.toast(&format!("Saved preset “{name}”. Apply it to other apps from the main menu → My Presets."));
+                    app.toast(&crate::i18n::trf("Saved preset “{name}”. Apply it to other apps from the main menu → My Presets.", &[("name", &name)]));
                     me.save_preset_row.set_text("");
                     me.load_presets();
                 }

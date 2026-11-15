@@ -90,7 +90,7 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
                 .take(4)
                 .collect();
             if urls.is_empty() {
-                bail!("release {tag_name} has no file matching {pattern}");
+                bail!("{}", sam_core::i18n::trf("release {tag_name} has no file matching {pattern}", &[("tag_name", &tag_name), ("pattern", &pattern)]));
             }
             (urls, Some(tag_name), page)
         }
@@ -146,7 +146,7 @@ fn resolve(zsync_url: &str, file: &str) -> Result<String> {
         if file.starts_with("https://") {
             return Ok(file.to_string());
         }
-        bail!("the update file is not offered over HTTPS");
+        bail!("{}", sam_core::i18n::tr("the update file is not offered over HTTPS"));
     }
     if file.is_empty() || file.contains("..") || file.starts_with('/') {
         bail!("the update description names an unusable file ({})", sam_core::util::display_safe(file, 80));
@@ -191,7 +191,7 @@ pub fn download_update(p: &Published, old: &Path, dest: &Path) -> Result<Fetched
 fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetched>> {
     let ctl = crate::zsync::parse(&fetch(&p.zsync_url, Some(64 << 20))?)?;
     if ctl.sha1 != p.sha1 {
-        bail!("the update description changed while reading it");
+        bail!("{}", sam_core::i18n::tr("the update description changed while reading it"));
     }
     let old_data = std::fs::read(old)?;
     let plan = crate::zsync::plan(&ctl, &old_data);
@@ -233,7 +233,7 @@ pub fn download(p: &Published, dest: &Path) -> Result<()> {
 
 fn download_inner(p: &Published, dest: &Path) -> Result<()> {
     if !p.file_url.starts_with("https://") {
-        bail!("the update file is not offered over HTTPS");
+        bail!("{}", sam_core::i18n::tr("the update file is not offered over HTTPS"));
     }
     let curl = sam_core::util::which("curl").context("curl is not installed, so SAM cannot check for or download updates. Install the package curl.")?;
     let mut cmd = Command::new(curl);
@@ -249,7 +249,7 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
     }
     let got = sha1_of(dest)?;
     if got != p.sha1 {
-        bail!("the downloaded file does not match the published checksum; it was deleted");
+        bail!("{}", sam_core::i18n::tr("the downloaded file does not match the published checksum; it was deleted"));
     }
     Ok(())
 }
@@ -261,7 +261,7 @@ fn curl_error(stderr: &str) -> String {
     match status {
         Some(404) => "the update source has nothing published at that address (yet)".into(),
         Some(403) | Some(429) => "the update source refused the request for now (rate limit); try again later".into(),
-        Some(s) if s >= 500 => format!("the update source has a problem (HTTP {s}); try again later"),
+        Some(s) if s >= 500 => sam_core::i18n::trf("the update source has a problem (HTTP {status}); try again later", &[("status", &s)]),
         _ if e.contains("Could not resolve host") || e.contains("Failed to connect") => {
             "no connection to the update source; check the internet connection".into()
         }
@@ -295,7 +295,7 @@ fn zsync_header(data: &[u8]) -> Result<ZsyncHeader> {
             _ => {}
         }
     }
-    let Some(sha1) = sha1 else { bail!("the update description (.zsync) has no SHA-1") };
+    let Some(sha1) = sha1 else { bail!("{}", sam_core::i18n::tr("the update description (.zsync) has no SHA-1")) };
     Ok(ZsyncHeader { sha1, filename, url, length })
 }
 

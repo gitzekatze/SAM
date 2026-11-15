@@ -299,7 +299,7 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             let Ok(addr) = std::env::var("DBUS_SESSION_BUS_ADDRESS") else { return skip("no session bus") };
             match crate::dbus_check::name_reachable(&addr, name, Duration::from_secs(2)) {
                 Ok(r) => (Some(r == *expect), if r { "reachable".into() } else { "hidden".to_string() }),
-                Err(e) => skip(format!("could not ask the bus: {e}")),
+                Err(e) => skip(sam_core::i18n::trf("could not ask the bus: {error}", &[("error", &e)])),
             }
         }
         ProbeTest::NoNewPrivileges => match status_field("NoNewPrivs") {

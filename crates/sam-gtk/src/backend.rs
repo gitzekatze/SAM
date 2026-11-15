@@ -182,15 +182,16 @@ impl Backend {
     pub fn launch_in_terminal(&self, app_id: &str, name: &str) -> Result<(), String> {
         let cmd = format!("{} --app-id {}", glib::shell_quote(&self.runner).to_string_lossy(), glib::shell_quote(app_id).to_string_lossy());
         let info = gio::AppInfo::create_from_commandline(&cmd, Some(name), gio::AppInfoCreateFlags::NEEDS_TERMINAL)
-            .map_err(|e| format!("Could not start a terminal: {e}"))?;
-        info.launch(&[], gio::AppLaunchContext::NONE).map_err(|e| format!("Could not start a terminal: {e}"))
+            .map_err(|e| crate::i18n::trf("Could not start a terminal: {error}", &[("error", &e)]))?;
+        info.launch(&[], gio::AppLaunchContext::NONE).map_err(|e| crate::i18n::trf("Could not start a terminal: {error}", &[("error", &e)]))
     }
 
     pub fn launch(&self, app_id: &str, files: &[String], on_exit: impl FnOnce(i32) + 'static) -> Result<(), String> {
         let mut argv: Vec<OsString> = vec![self.runner.clone().into(), "--app-id".into(), app_id.into()];
         argv.extend(files.iter().map(OsString::from));
         let argv_ref: Vec<&std::ffi::OsStr> = argv.iter().map(|a| a.as_os_str()).collect();
-        let proc = gio::Subprocess::newv(&argv_ref, gio::SubprocessFlags::NONE).map_err(|e| format!("Could not start sam-jail-run: {e}"))?;
+        let proc = gio::Subprocess::newv(&argv_ref, gio::SubprocessFlags::NONE)
+            .map_err(|e| crate::i18n::trf("Could not start sam-jail-run: {error}", &[("error", &e)]))?;
         glib::spawn_future_local(async move {
             let _ = proc.wait_future().await;
             let code = if proc.has_exited() { proc.exit_status() } else { -1 };

@@ -96,7 +96,7 @@ pub fn parse(data: &[u8]) -> Result<Control> {
                 }
                 (c.seq_matches, c.rsum_bytes, c.checksum_bytes) = (n[0], n[1], n[2]);
             }
-            "Z-URL" | "Z-Filename" => bail!("compressed zsync downloads are not supported"),
+            "Z-URL" | "Z-Filename" => bail!("{}", sam_core::i18n::tr("compressed zsync downloads are not supported")),
             _ => {}
         }
     }
@@ -107,12 +107,12 @@ pub fn parse(data: &[u8]) -> Result<Control> {
         || !(1..=4).contains(&c.rsum_bytes)
         || !(3..=16).contains(&c.checksum_bytes)
     {
-        bail!("the update description (.zsync) is incomplete");
+        bail!("{}", sam_core::i18n::tr("the update description (.zsync) is incomplete"));
     }
     let per = c.rsum_bytes + c.checksum_bytes;
     let n = c.block_count();
     if body.len() < n * per {
-        bail!("the update description (.zsync) is cut short");
+        bail!("{}", sam_core::i18n::tr("the update description (.zsync) is cut short"));
     }
     c.blocks = (0..n)
         .map(|i| {
@@ -288,7 +288,7 @@ pub fn assemble(
         h.update(&buf[..n]);
     }
     if sam_core::util::hex(&h.finalize()) != c.sha1 {
-        bail!("the assembled file does not match the published checksum");
+        bail!("{}", sam_core::i18n::tr("the assembled file does not match the published checksum"));
     }
     Ok(())
 }

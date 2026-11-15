@@ -265,7 +265,7 @@ pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
     } else if cfg!(target_arch = "aarch64") {
         TargetArch::aarch64
     } else {
-        bail!("seccomp filters are not supported on this architecture");
+        bail!("{}", sam_core::i18n::tr("seccomp filters are not supported on this architecture"));
     };
     let mut list = baseline_syscalls(spec.allow_userns);
     if spec.strict {

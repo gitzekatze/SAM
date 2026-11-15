@@ -485,7 +485,7 @@ impl Sam {
         // From here on, any error removes the download again.
         let placed = (|| -> Result<PathBuf> {
             if !inspect(&tmp)?.is_appimage() {
-                bail!("the downloaded file is not an AppImage; it was deleted");
+                bail!("{}", sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted"));
             }
             let new_sig = sam_detect::signature::check(&tmp);
             if let Some(before) = signing_key_change(entry.signature.as_ref(), &new_sig) {
@@ -591,7 +591,7 @@ impl Sam {
     /// `self_update` with the release keys given (for tests).
     pub fn self_update_with_keys(&self, appimage: &Path, check_only: bool, keys: &[&str]) -> Result<SelfUpdate> {
         if !appimage.is_absolute() || !appimage.is_file() {
-            bail!("SAM is not running from an AppImage; update it with your package manager");
+            bail!("{}", sam_core::i18n::tr("SAM is not running from an AppImage; update it with your package manager"));
         }
         let Some(p) = crate::updates::newest(appimage)? else {
             return Ok(SelfUpdate { state: "current".into(), latest: None, path: appimage.to_path_buf(), detail: "SAM is up to date.".into(), page: None });
@@ -637,7 +637,7 @@ impl Sam {
         let fetched = crate::updates::download_update(&p, appimage, &tmp)?;
         let placed = (|| -> Result<()> {
             if !inspect(&tmp)?.is_appimage() {
-                bail!("the downloaded file is not an AppImage; it was deleted");
+                bail!("{}", sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted"));
             }
             // Only SAM's makers may replace SAM (see release_key).
             crate::release_key::check(&sam_detect::signature::check(&tmp), keys)?;
@@ -667,7 +667,13 @@ impl Sam {
             }
             crate::updates::Fetched::Full { total } => format!("{:.1} MB downloaded", total as f64 / 1e6),
         };
-        Ok(SelfUpdate { state: "updated".into(), latest, path: target, detail: format!("SAM was updated; {how}. Restart SAM to use the new version."), page })
+        Ok(SelfUpdate {
+            state: "updated".into(),
+            latest,
+            path: target,
+            detail: sam_core::i18n::trf("SAM was updated; {how}. Restart SAM to use the new version.", &[("how", &how)]),
+            page,
+        })
     }
 }
 

@@ -40,9 +40,9 @@ pub struct NormalizeReport {
 impl NormalizeReport {
     pub fn all_suspicious(&self) -> Vec<String> {
         let mut v = Vec::new();
-        v.extend(self.setid_removed.iter().map(|p| format!("setuid/setgid bit removed: {p}")));
-        v.extend(self.removed_symlinks.iter().map(|p| format!("symlink escaping the AppDir removed: {p}")));
-        v.extend(self.removed_special.iter().map(|p| format!("special file removed: {p}")));
+        v.extend(self.setid_removed.iter().map(|p| sam_core::i18n::trf("setuid/setgid bit removed: {path}", &[("path", &p)])));
+        v.extend(self.removed_symlinks.iter().map(|p| sam_core::i18n::trf("link pointing outside the app removed: {path}", &[("path", &p)])));
+        v.extend(self.removed_special.iter().map(|p| sam_core::i18n::trf("special file removed: {path}", &[("path", &p)])));
         v.extend(self.suspicious.iter().cloned());
         v
     }

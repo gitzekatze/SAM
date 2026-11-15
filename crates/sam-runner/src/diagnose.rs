@@ -173,7 +173,11 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
     }
     if path.starts_with("/usr/share/") || path.starts_with("/usr/lib/") || path.starts_with("/etc/") {
         if ETC_SENSITIVE.iter().any(|s| path.starts_with(s)) {
-            return Some(mk(RiskLevel::Dangerous, format!("The app tried to read {path}, which holds sensitive system data (left denied)."), None));
+            return Some(mk(
+                RiskLevel::Dangerous,
+                sam_core::i18n::trf("The app tried to read {path}, which holds sensitive system data (left denied).", &[("path", &path)]),
+                None,
+            ));
         }
         // Files in /etc describe this computer (its disks, its system, its
         // package sources). Apps ran without them, so they are suggested
@@ -181,7 +185,10 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         if path.starts_with("/etc/") {
             return Some(mk(
                 RiskLevel::Medium,
-                format!("The app looked for {path}, which the sandbox hides because it describes this computer. Allow it only if the app misses something."),
+                sam_core::i18n::trf(
+                    "The app looked for {path}, which the sandbox hides because it describes this computer. Allow it only if the app misses something.",
+                    &[("path", &path)],
+                ),
                 Some(("filesystem.custom_read", path.to_string())),
             ));
         }
@@ -220,9 +227,9 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
 pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: bool) -> Result<DiagnoseResult> {
     let host = HostInfo::probe();
     let strace = host.tools.strace.clone();
-    let Some(strace) = strace else { bail!("strace is not installed; install it to use dynamic diagnosis (sudo pacman -S strace)") };
+    let Some(strace) = strace else { bail!("{}", sam_core::i18n::tr("strace is not installed; install it to use dynamic diagnosis (sudo pacman -S strace)")) };
     if entry.profile.permissions.filesystem.home {
-        bail!("diagnostic runs are refused while full home access is granted");
+        bail!("{}", sam_core::i18n::tr("diagnostic runs are refused while full home access is granted"));
     }
     let diag_dir = sam.paths.runtime_dir(&entry.id).join("diag");
     let _ = fs::remove_dir_all(&diag_dir);

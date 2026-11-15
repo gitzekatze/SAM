@@ -43,7 +43,7 @@ pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bo
             return Ok(kind == 2); // 2 = method return, 3 = error
         }
     }
-    bail!("no reply from the bus")
+    bail!("{}", sam_core::i18n::tr("no reply from the bus"))
 }
 
 fn pad(buf: &mut Vec<u8>, align: usize) {
@@ -117,7 +117,7 @@ fn read_message(r: &mut impl Read) -> Result<(u8, Option<u32>)> {
     let body_len = u32_at(&head, 4) as usize;
     let fields_len = u32_at(&head, 12) as usize;
     if body_len > 1 << 24 || fields_len > 1 << 20 {
-        bail!("message too large");
+        bail!("{}", sam_core::i18n::tr("message too large"));
     }
     let padded = (16 + fields_len).div_ceil(8) * 8 - 16;
     let mut rest = vec![0u8; padded + body_len];

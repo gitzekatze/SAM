@@ -241,10 +241,10 @@ impl Config {
             let p = expand_home(loc);
             let home = expand_home("~");
             if !p.is_absolute() || p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-                bail!("extraction.location must be an absolute path (or start with ~/), without '..'");
+                bail!("{}", crate::i18n::tr("extraction.location must be an absolute path (or start with ~/), without '..'"));
             }
             if p == std::path::Path::new("/") || p == home {
-                bail!("extraction.location cannot be / or the home folder itself; choose a folder of its own");
+                bail!("{}", crate::i18n::tr("extraction.location cannot be / or the home folder itself; choose a folder of its own"));
             }
         }
         Ok(())
@@ -265,7 +265,7 @@ impl Config {
         let v = serde_json::to_value(self)?;
         let mut cur = &v;
         for part in key.split('.') {
-            cur = cur.get(part).ok_or_else(|| anyhow!("unknown config key '{key}'"))?;
+            cur = cur.get(part).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])))?;
         }
         Ok(cur.clone())
     }
@@ -277,10 +277,10 @@ impl Config {
         let (last, parents) = parts.split_last().context("empty key")?;
         let mut cur = &mut v;
         for p in parents {
-            cur = cur.get_mut(*p).ok_or_else(|| anyhow!("unknown config key '{key}'"))?;
+            cur = cur.get_mut(*p).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])))?;
         }
-        let obj = cur.as_object_mut().ok_or_else(|| anyhow!("'{key}' is not settable"))?;
-        let existing = obj.get(*last).ok_or_else(|| anyhow!("unknown config key '{key}'"))?;
+        let obj = cur.as_object_mut().ok_or_else(|| anyhow!("{}", crate::i18n::trf("'{key}' is not settable", &[("key", &key)])))?;
+        let existing = obj.get(*last).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])))?;
         let new_val = match existing {
             Value::Array(_) if !raw.trim_start().starts_with('[') => {
                 Value::Array(raw.split(',').map(str::trim).filter(|s| !s.is_empty()).map(|s| Value::String(s.into())).collect())
@@ -289,7 +289,7 @@ impl Config {
             _ => serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.into())),
         };
         obj.insert((*last).to_string(), new_val);
-        let cfg: Config = serde_json::from_value(v).with_context(|| format!("invalid value for '{key}': {raw}"))?;
+        let cfg: Config = serde_json::from_value(v).with_context(|| crate::i18n::trf("invalid value for '{key}': {raw}", &[("key", &key), ("raw", &raw)]))?;
         cfg.validate()?;
         *self = cfg;
         Ok(())

@@ -118,7 +118,7 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
     if info.payload_offset.is_none() {
         // Fall back to scanning the first 16 MiB for a plausible superblock.
         if let Some(off) = scan_for_squashfs(&mut f, size)? {
-            info.notes.push(format!("SquashFS found by scanning at offset {off}"));
+            info.notes.push(sam_core::i18n::trf("SquashFS found by scanning at offset {off}", &[("off", &off)]));
             info.payload_offset = Some(off);
         }
     }

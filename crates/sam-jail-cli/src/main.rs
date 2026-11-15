@@ -51,6 +51,8 @@ fn main() {
     // from std::process::Command either way.
     // SAFETY: called first in main, before any other thread exists.
     unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+    // Messages in the user's language (before any other thread starts).
+    sam_core::i18n::init(true);
     let cli = Cli::parse();
     let json_mode = cli.json;
     if let Err(e) = real_main(cli) {
@@ -95,7 +97,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 for it in &items {
                     let st = match (&it.registered, &it.moved_from) {
                         (Some(id), _) => format!("registered as {id}"),
-                        (None, Some(id)) => paint(&format!("moved copy of {id}"), "33"),
+                        (None, Some(id)) => paint(&sam_core::i18n::trf("moved copy of {id}", &[("id", &id)]), "33"),
                         _ => paint("new", "36"),
                     };
                     println!("{}  {}  ({})", tildify(&it.path), st, human_size(it.size));
@@ -117,7 +119,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 for d in &found {
                     let st = match (&d.sandboxed, &d.moved_from) {
                         (Some(id), _) => paint(&format!("sandboxed ({id})"), "32"),
-                        (None, Some(id)) => paint(&format!("moved copy of {id}"), "33"),
+                        (None, Some(id)) => paint(&sam_core::i18n::trf("moved copy of {id}", &[("id", &id)]), "33"),
                         _ => paint("not sandboxed", "36"),
                     };
                     println!("{:<28} {:<14} {}  {}", d.name, d.category_label, st, tildify(&d.path));
@@ -205,7 +207,7 @@ fn real_main(cli: Cli) -> Result<()> {
                             ("fail", rec.summary.clone(), rec.findings.clone())
                         } else if rec.success || (rec.signal == Some(9) && ran + 1 >= seconds as i64) {
                             let detail = match (rec.signal, e.metadata.terminal) {
-                                (Some(_), _) => format!("kept running for {seconds}s"),
+                                (Some(_), _) => sam_core::i18n::trf("kept running for {seconds}s", &[("seconds", &seconds)]),
                                 (None, true) => format!("ran in its sandbox and ended by itself ({})", rec.summary),
                                 (None, false) => rec.summary.clone(),
                             };

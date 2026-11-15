@@ -204,7 +204,7 @@ pub fn validate_launcher(path: &Path, id: &str) -> Vec<String> {
     }
     let runner = runner_command();
     if runner.starts_with('/') && !Path::new(&runner).exists() {
-        problems.push(format!("runner {runner} does not exist"));
+        problems.push(sam_core::i18n::trf("runner {runner} does not exist", &[("runner", &runner)]));
     }
     problems
 }

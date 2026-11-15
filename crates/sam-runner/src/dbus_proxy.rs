@@ -87,11 +87,11 @@ impl DbusProxy {
         let deadline = Instant::now() + Duration::from_secs(3);
         while !socket.exists() {
             if let Some(st) = child.try_wait()? {
-                bail!("xdg-dbus-proxy exited early ({st})");
+                bail!("{}", sam_core::i18n::trf("xdg-dbus-proxy exited early ({status})", &[("status", &st)]));
             }
             if Instant::now() > deadline {
                 let _ = child.kill();
-                bail!("xdg-dbus-proxy did not create its socket in time");
+                bail!("{}", sam_core::i18n::tr("xdg-dbus-proxy did not create its socket in time"));
             }
             std::thread::sleep(Duration::from_millis(20));
         }

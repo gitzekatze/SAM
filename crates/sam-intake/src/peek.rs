@@ -32,7 +32,7 @@ pub fn peek(path: &Path) -> Result<Peek> {
     // in its own process for every AppImage in the searched folders, so one
     // such file must not take down the whole list: treat it as unreadable.
     std::panic::catch_unwind(|| peek_unguarded(path))
-        .unwrap_or_else(|_| Err(anyhow!("the AppImage's SquashFS image is damaged, so SAM cannot read its name and icon")))
+        .unwrap_or_else(|_| Err(anyhow!("{}", sam_core::i18n::tr("the AppImage's SquashFS image is damaged, so SAM cannot read its name and icon"))))
 }
 
 fn peek_unguarded(path: &Path) -> Result<Peek> {

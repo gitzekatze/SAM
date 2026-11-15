@@ -8,6 +8,7 @@
 //! it) get none, and neither do the low-risk expert settings: a tag that
 //! every app carries would tell the reader nothing.
 
+use sam_core::i18n::tr;
 use sam_core::permissions::{permission_catalog, PermissionSet};
 use sam_core::risk::RiskLevel;
 use serde::Serialize;
@@ -93,35 +94,28 @@ pub fn permission_tags(p: &PermissionSet) -> Vec<Tag> {
             continue;
         }
         let Ok(v) = p.get_key(info.key) else { continue };
+        let title = info.title.as_str();
         let (granted, read_only, label) = match (info.key, &v) {
-            ("dbus.session.mode", Value::String(m)) => (m == "full", false, "Session bus: full access"),
-            ("dbus.system.mode", Value::String(m)) => (m == "full", false, "System bus: full access"),
+            ("dbus.session.mode", Value::String(m)) => (m == "full", false, tr("Session bus: full access")),
+            ("dbus.system.mode", Value::String(m)) => (m == "full", false, tr("System bus: full access")),
             ("network.mode", Value::String(m)) => match m.as_str() {
-                "full" => (true, false, "Full network"),
-                "localhost" => (true, true, "This computer only"),
-                _ => (false, false, ""),
+                "full" => (true, false, tr("Full network")),
+                "localhost" => (true, true, tr("This computer only")),
+                _ => (false, false, String::new()),
             },
-            ("filesystem.home", Value::Bool(on)) => (*on, p.filesystem.home_access == sam_core::permissions::Access::Ro, info.title),
-            ("filesystem.custom_read", Value::Array(a)) => (!a.is_empty(), true, info.title),
-            (_, Value::Bool(on)) => (*on, false, info.title),
-            (_, Value::Array(a)) => (!a.is_empty(), false, info.title),
+            ("filesystem.home", Value::Bool(on)) => (*on, p.filesystem.home_access == sam_core::permissions::Access::Ro, title.to_string()),
+            ("filesystem.custom_read", Value::Array(a)) => (!a.is_empty(), true, title.to_string()),
+            (_, Value::Bool(on)) => (*on, false, title.to_string()),
+            (_, Value::Array(a)) => (!a.is_empty(), false, title.to_string()),
             (_, Value::String(s)) => match s.as_str() {
-                "rw" | "full" => (true, false, info.title),
-                "ro" => (true, true, info.title),
-                _ => (false, false, info.title),
+                "rw" | "full" => (true, false, title.to_string()),
+                "ro" => (true, true, title.to_string()),
+                _ => (false, false, title.to_string()),
             },
-            _ => (false, false, info.title),
+            _ => (false, false, title.to_string()),
         };
         if granted {
-            out.push(Tag {
-                key: info.key.to_string(),
-                label: label.to_string(),
-                family,
-                level: info.risk.into(),
-                read_only,
-                description: info.description.to_string(),
-                order,
-            });
+            out.push(Tag { key: info.key.to_string(), label, family, level: info.risk.into(), read_only, description: info.description.clone(), order });
         }
     }
     out.sort_by_key(|t| t.family);

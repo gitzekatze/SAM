@@ -2,6 +2,7 @@
 //! messages into fixes (no strace needed), and the repair ladder that tries
 //! one fix at a time.
 
+use sam_core::i18n::tr;
 use sam_core::permissions::dangerous_bus_name;
 use sam_core::permissions::*;
 use sam_core::risk::RiskLevel;
@@ -9,7 +10,9 @@ use sam_core::util::display_safe;
 use sam_core::{AppEntry, Config, FixAction, Suggestion};
 
 fn s(id: &str, title: &str, explanation: impl Into<String>, action: FixAction, risk: RiskLevel) -> Suggestion {
-    Suggestion { id: id.into(), title: title.into(), explanation: explanation.into(), action, risk, from_app_output: false }
+    // In the user's language; an explanation built from parts comes
+    // translated already (`trf`).
+    Suggestion { id: id.into(), title: tr(title), explanation: tr(&explanation.into()), action, risk, from_app_output: false }
 }
 fn set(key: &str, value: &str) -> FixAction {
     FixAction::Set { key: key.into(), value: value.into() }
@@ -95,7 +98,7 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             push(s(
                 "libs-missing",
                 "A library is not visible",
-                format!("The app needs {lib}, which SAM's minimal system view may hide. Show all of /usr."),
+                sam_core::i18n::trf("The app needs {lib}, which SAM's minimal system view may hide. Show all of /usr.", &[("lib", &lib)]),
                 set("advanced.host_runtime", "full"),
                 RiskLevel::Medium,
             ));
@@ -103,7 +106,7 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             push(s(
                 "libs-missing",
                 "A library is missing on this system",
-                format!("The app needs {lib}, which is not installed. Install the package that provides it."),
+                sam_core::i18n::trf("The app needs {lib}, which is not installed. Install the package that provides it.", &[("lib", &lib)]),
                 FixAction::None,
                 RiskLevel::Low,
             ));
@@ -207,12 +210,15 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             let home = sam_core::util::home_dir();
             let too_broad = std::path::Path::new(&dir) == home || !std::path::Path::new(&dir).starts_with(&home);
             if sam_core::risk::is_sensitive_path(&dir) || sam_core::risk::is_sensitive_path(&path) || too_broad {
-                push(s("grant-folder-refused", "The app asked for a protected location", format!("The app reported that it could not open {shown_path}. SAM does not offer access to {shown_dir}: it holds keys, passwords or your whole home."), FixAction::None, RiskLevel::Dangerous));
+                push(s("grant-folder-refused", "The app asked for a protected location", sam_core::i18n::trf("The app reported that it could not open {shown_path}. SAM does not offer access to {shown_dir}: it holds keys, passwords or your whole home.", &[("shown_path", &shown_path), ("shown_dir", &shown_dir)]), FixAction::None, RiskLevel::Dangerous));
             } else {
                 push(s(
                     "grant-folder",
                     "Access to a folder was denied",
-                    format!("The app reported that it could not open {shown_path}. Grant read/write access to {shown_dir}."),
+                    sam_core::i18n::trf(
+                        "The app reported that it could not open {shown_path}. Grant read/write access to {shown_dir}.",
+                        &[("shown_path", &shown_path), ("shown_dir", &shown_dir)],
+                    ),
                     FixAction::Add { key: "filesystem.custom_write".into(), value: dir },
                     RiskLevel::High,
                 ));
@@ -227,7 +233,10 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
         push(s(
             "system-library",
             "A bundled library is too old for this system",
-            format!("The app brings its own {lib}, which is older than your system's {needed_by} needs. Use your system's copy of {lib} instead (read-only)."),
+            sam_core::i18n::trf(
+                "The app brings its own {lib}, which is older than your system's {needed_by} needs. Use your system's copy of {lib} instead (read-only).",
+                &[("lib", &lib), ("needed_by", &needed_by)],
+            ),
             FixAction::Add { key: "advanced.system_libraries".into(), value: lib },
             RiskLevel::Low,
         ));
@@ -236,7 +245,10 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
         push(s(
             "glibc",
             "The app needs a newer system",
-            format!("The app needs glibc {v}, newer than this system's. Update the system or use an older version of the app."),
+            sam_core::i18n::trf(
+                "The app needs glibc {version}, newer than this system's. Update the system or use an older version of the app.",
+                &[("version", &v)],
+            ),
             FixAction::None,
             RiskLevel::Low,
         ));
@@ -300,7 +312,7 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             push(s(
                 "dbus-name-refused",
                 "The app asked for a dangerous service",
-                format!("The app tried to use {why}. SAM does not offer this: it would let the app escape the sandbox."),
+                sam_core::i18n::trf("The app tried to use {why}. SAM does not offer this: it would let the app escape the sandbox.", &[("why", &why)]),
                 FixAction::None,
                 RiskLevel::Dangerous,
             ));
@@ -308,7 +320,7 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             push(s(
                 "dbus-name",
                 "A desktop service is blocked",
-                format!("The app tried to use {name}, which the D-Bus filter blocks. Allow just this service."),
+                sam_core::i18n::trf("The app tried to use {name}, which the D-Bus filter blocks. Allow just this service.", &[("name", &name)]),
                 FixAction::Add { key: "dbus.session.allow".into(), value: name },
                 RiskLevel::Medium,
             ));
@@ -331,7 +343,10 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             push(s(
                 "dbus-own",
                 "The app wants its own D-Bus name",
-                format!("The app tried to register {name} (usually so that a second start hands over to the first). Allow it to own just this name."),
+                sam_core::i18n::trf(
+                    "The app tried to register {name} (usually so that a second start hands over to the first). Allow it to own just this name.",
+                    &[("name", &name)],
+                ),
                 FixAction::Add { key: "dbus.session.own".into(), value: name },
                 RiskLevel::Low,
             ));
@@ -454,7 +469,7 @@ pub fn effect(s: &Suggestion, p: &PermissionSet) -> String {
         FixAction::AddArg { value } if value == "--no-sandbox" => {
             "Starts the app with --no-sandbox, which turns off the app's own internal sandbox; SAM's sandbox stays.".into()
         }
-        FixAction::AddArg { value } => format!("Starts the app with {value} every time."),
+        FixAction::AddArg { value } => sam_core::i18n::trf("Starts the app with {value} every time.", &[("value", &value)]),
         FixAction::None => String::new(),
     }
 }

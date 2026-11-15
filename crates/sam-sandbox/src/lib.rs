@@ -786,7 +786,7 @@ impl Section<'_> {
                         let op = if acc == Access::Rw { "--bind-try" } else { "--ro-bind-try" };
                         a.op2(op, dir, dir);
                     }
-                    _ => notes.push(format!("{key} folder does not exist on the host; not bound")),
+                    _ => notes.push(sam_core::i18n::trf("{key} folder does not exist on the host; not bound", &[("key", &key)])),
                 }
             }
         }

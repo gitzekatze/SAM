@@ -130,10 +130,20 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
             let listening = probe::listening_ports();
             let granted = p.network.valid_host_ports();
             for port in granted.iter().filter(|p| listening.contains(p)) {
-                v.push(c("port", "Network", format!("Local service on port {port} reachable"), ProbeTest::LocalPort { port: *port, expect: true }));
+                v.push(c(
+                    "port",
+                    "Network",
+                    sam_core::i18n::trf("Local service on port {port} reachable", &[("port", &port)]),
+                    ProbeTest::LocalPort { port: *port, expect: true },
+                ));
             }
             if let Some(other) = listening.iter().find(|p| !granted.contains(p)) {
-                v.push(c("port", "Network", format!("Other local services hidden (port {other})"), ProbeTest::LocalPort { port: *other, expect: false }));
+                v.push(c(
+                    "port",
+                    "Network",
+                    sam_core::i18n::trf("Other local services hidden (port {other})", &[("other", &other)]),
+                    ProbeTest::LocalPort { port: *other, expect: false },
+                ));
             }
         }
         _ => v.push(c("net", "Network", "No network", ProbeTest::NoNetwork)),
@@ -300,7 +310,7 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
     let plan = plan(&app.profile.permissions, cfg, host);
     let prepared = prepare(app, &LaunchOptions { probe: Some(plan), quiet: true, ..Default::default() }, cfg, paths, host)?;
     if prepared.context.helper.is_none() {
-        bail!("SAM's sandbox helper (sam-jail-run) was not found, so the sandbox cannot be checked");
+        bail!("{}", sam_core::i18n::tr("SAM's sandbox helper (sam-jail-run) was not found, so the sandbox cannot be checked"));
     }
     let cmd = &prepared.command;
     let mut command = Command::new(&cmd.program);
@@ -331,7 +341,7 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
         if Instant::now() > deadline {
             let _ = child.kill();
             let _ = child.wait();
-            bail!("the sandbox check did not finish within 30 seconds");
+            bail!("{}", sam_core::i18n::tr("the sandbox check did not finish within 30 seconds"));
         }
         std::thread::sleep(Duration::from_millis(50));
     }

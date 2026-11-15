@@ -51,7 +51,7 @@ impl AppPage {
     /// start.
     pub(super) fn show_running(self: &Rc<Self>, running: bool) {
         let name = util::plain(&self.name());
-        self.running_banner.set_title(&esc(&format!("{name} is running. Changed settings apply the next time it starts.")));
+        self.running_banner.set_title(&esc(&crate::i18n::trf("{name} is running. Changed settings apply the next time it starts.", &[("name", &name)])));
         self.running_banner.set_button_label(Some(&format!("Restart {name}")));
         self.running_banner.set_revealed(running && self.sandboxed());
         if running {
@@ -581,7 +581,7 @@ impl AppPage {
                 &g,
                 "edit-undo-symbolic",
                 "Go back to the previous version",
-                &format!("Puts {prev} back in place of the updated AppImage. The updated file is kept, so you can switch again."),
+                &crate::i18n::trf("Puts {prev} back in place of the updated AppImage. The updated file is kept, so you can switch again.", &[("prev", &prev)]),
                 |me| me.simple_with(vec!["update".into(), me.app_id.clone(), "--undo".into()], "Back to the previous version", true),
             );
         }
@@ -616,7 +616,7 @@ impl AppPage {
                 &g,
                 "edit-undo-symbolic",
                 "Switch off all repair steps",
-                &format!("Puts back the settings from before the first step. Applied: {applied}"),
+                &crate::i18n::trf("Puts back the settings from before the first step. Applied: {applied}", &[("applied", &applied)]),
                 |me| me.simple(vec!["repair".into(), me.app_id.clone(), "--undo".into()], "Repairs undone"),
             );
         }
@@ -661,7 +661,11 @@ impl AppPage {
                         .and_then(Value::as_array)
                         .map(|c| c.iter().filter(|x| matches!(util::str_of(x, "status"), "warn" | "fail" | "error")).count())
                         .unwrap_or(0);
-                    app.toast(&if bad == 0 { "Setup check: everything is in order".to_string() } else { format!("Setup check: {bad} thing(s) to look at") });
+                    app.toast(&if bad == 0 {
+                        "Setup check: everything is in order".to_string()
+                    } else {
+                        crate::i18n::trf("Setup check: {bad} thing(s) to look at", &[("bad", &bad)])
+                    });
                     *me.setup_report.borrow_mut() = Some(r);
                     me.reload();
                 }

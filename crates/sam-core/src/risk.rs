@@ -78,7 +78,7 @@ impl RiskAssessment {
 }
 
 fn item(items: &mut Vec<RiskItem>, key: &str, title: &str, level: RiskLevel) {
-    items.push(RiskItem { key: key.into(), title: title.into(), level });
+    items.push(RiskItem { key: key.into(), title: crate::i18n::tr(title), level });
 }
 
 /// Score a permission set.

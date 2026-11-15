@@ -52,7 +52,7 @@ impl<'de> Deserialize<'de> for Access {
                 "none" | "false" | "no" | "off" | "" => Ok(Access::None),
                 "ro" | "read" | "read-only" | "readonly" => Ok(Access::Ro),
                 "rw" | "true" | "yes" | "on" | "read-write" | "readwrite" => Ok(Access::Rw),
-                other => Err(serde::de::Error::custom(format!("invalid access level '{other}' (expected none, ro or rw)"))),
+                other => Err(serde::de::Error::custom(crate::i18n::trf("invalid access level '{other}' (expected none, ro or rw)", &[("other", &other)]))),
             },
         }
     }
@@ -321,18 +321,20 @@ pub fn blocked_wildcards(b: &DbusBusPerms) -> Vec<String> {
 pub fn refuse_own_name(name: &str, activatable: &std::collections::BTreeSet<String>) -> Option<String> {
     const PROTOCOL: [&str; 6] = ["org.freedesktop.", "org.gtk.", "org.mpris.", "ca.desrt.", "org.a11y.", "io.github.gitzekatze.SAM"];
     if PROTOCOL.iter().any(|p| name.starts_with(p)) {
-        return Some(format!("{name} belongs to the desktop's own protocols"));
+        return Some(crate::i18n::trf("{name} belongs to the desktop's own protocols", &[("name", &name)]));
     }
     if let Some(why) = dangerous_bus_name(name) {
         return Some(why);
     }
-    activatable.contains(name).then(|| format!("{name} is a service on this computer that starts on demand; owning it would intercept its requests"))
+    activatable
+        .contains(name)
+        .then(|| crate::i18n::trf("{name} is a service on this computer that starts on demand; owning it would intercept its requests", &[("name", &name)]))
 }
 
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
     let name = name.trim();
     if name == "*" || name == "org.*" || name == "org.freedesktop.*" || name.starts_with("org.freedesktop.portal.*") {
-        return Some(format!("{name} covers services that can act outside the sandbox"));
+        return Some(crate::i18n::trf("{name} covers services that can act outside the sandbox", &[("name", &name)]));
     }
     let wildcard = name.strip_suffix(".*").or_else(|| name.strip_suffix('*'));
     for (d, why) in DANGEROUS_BUS_NAMES {
@@ -661,7 +663,7 @@ impl PermissionSet {
         let v = serde_json::to_value(self)?;
         let mut cur = &v;
         for part in key.split('.') {
-            cur = cur.get(part).ok_or_else(|| anyhow!("unknown permission key '{key}'"))?;
+            cur = cur.get(part).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])))?;
         }
         Ok(cur.clone())
     }
@@ -674,16 +676,16 @@ impl PermissionSet {
         let (last, parents) = parts.split_last().context("empty key")?;
         let mut cur = &mut v;
         for part in parents {
-            cur = cur.get_mut(*part).ok_or_else(|| anyhow!("unknown permission key '{key}'"))?;
+            cur = cur.get_mut(*part).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])))?;
         }
-        let obj = cur.as_object_mut().ok_or_else(|| anyhow!("'{key}' is not a settable key"))?;
+        let obj = cur.as_object_mut().ok_or_else(|| anyhow!("{}", crate::i18n::trf("'{key}' is not a settable key", &[("key", &key)])))?;
         let existing = obj.get(*last);
         if existing.is_none() && !(*last == "landlock" && parents == ["advanced"]) {
-            bail!("unknown permission key '{key}'");
+            bail!("{}", crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)]));
         }
         let new_val = parse_value(raw, existing);
         obj.insert((*last).to_string(), new_val);
-        *self = serde_json::from_value(v).with_context(|| format!("invalid value for '{key}': {raw}"))?;
+        *self = serde_json::from_value(v).with_context(|| crate::i18n::trf("invalid value for '{key}': {raw}", &[("key", &key), ("raw", &raw)]))?;
         Ok(())
     }
 }
@@ -708,8 +710,9 @@ fn parse_value(raw: &str, existing: Option<&serde_json::Value>) -> serde_json::V
 pub struct PermissionInfo {
     pub key: &'static str,
     pub category: &'static str,
-    pub title: &'static str,
-    pub description: &'static str,
+    /// Title and explanation, in the user's language.
+    pub title: String,
+    pub description: String,
     pub risk: RiskLevel,
     /// Only shown in advanced mode.
     pub advanced: bool,
@@ -717,10 +720,24 @@ pub struct PermissionInfo {
 
 macro_rules! perm {
     ($key:expr, $cat:expr, $title:expr, $desc:expr, $risk:ident) => {
-        PermissionInfo { key: $key, category: $cat, title: $title, description: $desc, risk: RiskLevel::$risk, advanced: false }
+        PermissionInfo {
+            key: $key,
+            category: $cat,
+            title: crate::i18n::tr($title),
+            description: crate::i18n::tr($desc),
+            risk: RiskLevel::$risk,
+            advanced: false,
+        }
     };
     ($key:expr, $cat:expr, $title:expr, $desc:expr, $risk:ident, advanced) => {
-        PermissionInfo { key: $key, category: $cat, title: $title, description: $desc, risk: RiskLevel::$risk, advanced: true }
+        PermissionInfo {
+            key: $key,
+            category: $cat,
+            title: crate::i18n::tr($title),
+            description: crate::i18n::tr($desc),
+            risk: RiskLevel::$risk,
+            advanced: true,
+        }
     };
 }
 

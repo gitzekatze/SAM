@@ -226,7 +226,14 @@ impl Sam {
                 ..Default::default()
             };
             pr.step(ADD_STEPS, 3, 0.0, "Looking for the app's programs and libraries");
-            let report = |n: usize, total: usize| pr.step(ADD_STEPS, 3, n as f64 / total.max(1) as f64, format!("{n} of {total} program files read"));
+            let report = |n: usize, total: usize| {
+                pr.step(
+                    ADD_STEPS,
+                    3,
+                    n as f64 / total.max(1) as f64,
+                    sam_core::i18n::trn("{done} of {n} program file read", "{done} of {n} program files read", total as u64, &[("done", &n)]),
+                )
+            };
             match analyze_appdir_with(&x.appdir, &opts, &report) {
                 Ok(r) => Some(r),
                 Err(e) => {

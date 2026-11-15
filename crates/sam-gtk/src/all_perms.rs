@@ -479,19 +479,25 @@ impl PermsPage {
             b.remove_css_class(c);
         }
         let (markup, tip) = match state {
-            None => (esc(label), format!("Filter: click to show only the apps that have the permission “{label}”.")),
+            None => (esc(label), crate::i18n::trf("Filter: click to show only the apps that have the permission “{label}”.", &[("label", &label)])),
             Some(true) => {
                 b.add_css_class("sam-filter-has");
                 (
                     format!("✓ {}", esc(label)),
-                    format!("Filter on: the list shows only the apps that have the permission “{label}”. Click to show only the apps that do not have it."),
+                    crate::i18n::trf(
+                        "Filter on: the list shows only the apps that have the permission “{label}”. Click to show only the apps that do not have it.",
+                        &[("label", &label)],
+                    ),
                 )
             }
             Some(false) => {
                 b.add_css_class("sam-filter-not");
                 (
                     format!("✗ <s>{}</s>", esc(label)),
-                    format!("Filter on: the list shows only the apps that do not have the permission “{label}”. Click to turn this filter off."),
+                    crate::i18n::trf(
+                        "Filter on: the list shows only the apps that do not have the permission “{label}”. Click to turn this filter off.",
+                        &[("label", &label)],
+                    ),
                 )
             }
         };
@@ -637,7 +643,12 @@ impl PermsPage {
                 self.banner.set_revealed(true);
             }
             n => {
-                self.banner.set_title(&format!("{n} of the selected apps are running. They use changed settings the next time they start."));
+                self.banner.set_title(&crate::i18n::trn(
+                    "{n} of the selected apps is running. It uses changed settings the next time it starts.",
+                    "{n} of the selected apps are running. They use changed settings the next time they start.",
+                    n as u64,
+                    &[],
+                ));
                 self.banner.set_revealed(true);
             }
         }
@@ -766,7 +777,7 @@ impl PermsPage {
         }
         let ids: Vec<String> = members.iter().map(|a| util::str_of(a, "id").to_string()).collect();
         let what = match n {
-            _ if n == total => format!("{ptitle} for all selected apps"),
+            _ if n == total => crate::i18n::trf("{ptitle} for all selected apps", &[("ptitle", &ptitle)]),
             1 => format!("{ptitle} for 1 app"),
             _ => format!("{ptitle} for {n} apps"),
         };

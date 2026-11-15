@@ -627,7 +627,11 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                 app.refresh_apps().await;
                 if let Ok(r) = r {
                     let n = r.as_array().map(|a| a.iter().filter(|i| ["stale", "missing"].contains(&util::str_of(i, "status"))).count()).unwrap_or(0);
-                    app.toast(&if n > 0 { format!("{n} app(s) changed or are missing") } else { "All AppImages are unchanged".into() });
+                    app.toast(&if n > 0 {
+                        crate::i18n::trn("{n} app changed or is missing.", "{n} apps changed or are missing.", n as u64, &[])
+                    } else {
+                        "All AppImages are unchanged".into()
+                    });
                 }
             });
         }),
