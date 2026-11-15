@@ -121,3 +121,46 @@ fn the_component_diagram_shows_the_real_dependencies() {
     let invented: Vec<_> = drawn.difference(&real).collect();
     assert!(missing.is_empty() && invented.is_empty(), "diagram lacks {missing:?}, diagram invents {invented:?}");
 }
+
+/// Every box and arrow label in the documents' diagrams is quoted, so
+/// GitHub draws them: unquoted brackets or semicolons inside a label are a
+/// parse error there (the component diagram once failed that way).
+#[test]
+fn diagram_labels_are_quoted_so_github_draws_them() {
+    let mut bad = Vec::new();
+    for entry in fs::read_dir(root().join("docs")).unwrap().flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let doc = fs::read_to_string(&path).unwrap();
+        let mut in_diagram = false;
+        for line in doc.lines() {
+            let l = line.trim();
+            if l.starts_with("```") {
+                in_diagram = l == "```mermaid";
+                continue;
+            }
+            if !in_diagram || l.is_empty() || l == "end" || l.starts_with("flowchart") {
+                continue;
+            }
+            // A node: id[...], id(...), id{...}, optionally after "subgraph".
+            let node = l.strip_prefix("subgraph ").unwrap_or(l);
+            let opens = node.find(['[', '(', '{']).filter(|&i| i > 0 && node[..i].chars().all(|c| c.is_alphanumeric() || c == '_'));
+            if let Some(i) = opens {
+                let label = node[i..].trim_start_matches(['[', '(', '{']);
+                if !label.starts_with('"') {
+                    bad.push(format!("{}: {l}", path.display()));
+                }
+            }
+            // An arrow label: -->|...|, except the plain word JSON.
+            if let Some(i) = l.find("|") {
+                let rest = &l[i + 1..];
+                if !rest.starts_with('"') && !rest.starts_with("JSON|") {
+                    bad.push(format!("{}: {l}", path.display()));
+                }
+            }
+        }
+    }
+    assert!(bad.is_empty(), "quote these diagram labels:\n{}", bad.join("\n"));
+}

@@ -12,19 +12,19 @@ shows which functions each component carries.
 
 ```mermaid
 flowchart LR
-    user([Person using the desktop])
-    sam[SAM: creates sandboxes for AppImages and starts apps in them]
-    appimage[(AppImage files: untrusted programs from the internet)]
-    desktop[Desktop session: Wayland compositor, session D-Bus with portals, PipeWire]
-    kernel[Linux kernel: namespaces, seccomp, Landlock]
-    tools[System tools: Bubblewrap, xdg-dbus-proxy, pasta]
-    updates[Update servers named by the AppImage, only when the user checks]
-    user -->|chooses permissions, starts apps| sam
-    sam -->|reads, unpacks, never runs outside a sandbox| appimage
-    sam -->|starts the app inside| tools
-    tools -->|builds the sandbox with| kernel
-    sam -->|passes only the allowed parts of| desktop
-    sam -.->|optional update check over HTTPS| updates
+    user(["Person using the desktop"])
+    sam["SAM: creates sandboxes for AppImages and starts apps in them"]
+    appimage[("AppImage files: untrusted programs from the internet")]
+    desktop["Desktop session: Wayland compositor, session D-Bus with portals, PipeWire"]
+    kernel["Linux kernel: namespaces, seccomp, Landlock"]
+    tools["System tools: Bubblewrap, xdg-dbus-proxy, pasta"]
+    updates["Update servers named by the AppImage, only when the user checks"]
+    user -->|"chooses permissions, starts apps"| sam
+    sam -->|"reads, unpacks, never runs outside a sandbox"| appimage
+    sam -->|"starts the app inside"| tools
+    tools -->|"builds the sandbox with"| kernel
+    sam -->|"passes only the allowed parts of"| desktop
+    sam -.->|"optional update check over HTTPS"| updates
 ```
 
 A person uses SAM to turn an AppImage into an app that runs in a sandbox
@@ -41,20 +41,20 @@ the AppImage names.
 
 ```mermaid
 flowchart TB
-    gui[sam-jail-gui: the window, GTK 4 and libadwaita]
-    cli[sam-jail: the command line; every operation, JSON interface]
-    run[sam-jail-run: starts an app from its menu entry; applies Landlock inside the sandbox]
-    cfg[(~/.config/sam: settings, the user's presets, logs)]
-    data[(~/.local/share/sam: app records, unpacked apps, private homes, icons)]
-    menu[(~/.local/share/applications: SAM's menu entries)]
-    box[The sandbox at run time: Bubblewrap with the app, plus xdg-dbus-proxy, pasta and a terminal relay]
-    gui -->|sam-jail --json …, one call per action| cli
+    gui["sam-jail-gui: the window, GTK 4 and libadwaita"]
+    cli["sam-jail: the command line; every operation, JSON interface"]
+    run["sam-jail-run: starts an app from its menu entry; applies Landlock inside the sandbox"]
+    cfg[("~/.config/sam: settings, the user's presets, logs")]
+    data[("~/.local/share/sam: app records, unpacked apps, private homes, icons")]
+    menu[("~/.local/share/applications: SAM's menu entries")]
+    box["The sandbox at run time: Bubblewrap with the app, plus xdg-dbus-proxy, pasta and a terminal relay"]
+    gui -->|"sam-jail --json …, one call per action"| cli
     cli --> cfg
     cli --> data
     cli --> menu
-    menu -->|Exec=sam-jail-run --app-id …| run
+    menu -->|"Exec=sam-jail-run --app-id …"| run
     run --> box
-    cli -->|Launch button| box
+    cli -->|"Launch button"| box
 ```
 
 The window never changes SAM's files itself: every action is one call of
@@ -69,17 +69,17 @@ records, unpacked apps and the apps' private home folders live in
 
 ```mermaid
 flowchart TB
-    subgraph clients[Programs]
-        gtk[sam-gtk: window pages, permission editor, Permissions page]
-        clic[sam-jail-cli: commands, JSON output, sam-jail-run]
+    subgraph clients["Programs"]
+        gtk["sam-gtk: window pages, permission editor, Permissions page"]
+        clic["sam-jail-cli: commands, JSON output, sam-jail-run"]
     end
-    runner[sam-runner: operations facade (add, launch, verify, repair, update, group changes), D-Bus proxy, network namespace, terminal relay, Wayland context, diagnostics]
-    intake[sam-intake: safe unpacking, metadata, icons, menu entries, IDs]
-    detect[sam-detect: AppImage format, ELF analysis, toolkits, signatures, update info]
-    profile[sam-profile: recommendations, the user's presets, change checks, permission tags]
-    sandbox[sam-sandbox: Bubblewrap command from the permissions]
-    storage[sam-storage: app records, presets, logs]
-    core[sam-core: permission model, risk, warnings, configuration, file formats, host facts, translations, error codes]
+    runner["sam-runner: operations facade (add, launch, verify, repair, update, group changes), D-Bus proxy, network namespace, terminal relay, Wayland context, diagnostics"]
+    intake["sam-intake: safe unpacking, metadata, icons, menu entries, IDs"]
+    detect["sam-detect: AppImage format, ELF analysis, toolkits, signatures, update info"]
+    profile["sam-profile: recommendations, the user's presets, change checks, permission tags"]
+    sandbox["sam-sandbox: Bubblewrap command from the permissions"]
+    storage["sam-storage: app records, presets, logs"]
+    core["sam-core: permission model, risk, warnings, configuration, file formats, host facts, translations, error codes"]
     gtk -->|JSON| clic
     gtk --> core
     clic --> runner

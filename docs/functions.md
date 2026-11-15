@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 11:01:46).
 
-**40 functions:** 32 proven by passing tests, 1 by scripted checks, 0 with a gap, 236 tests in all.
+**40 functions:** 31 proven by passing tests, 1 by scripted checks, 0 with a gap, 237 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -52,7 +52,7 @@
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core.](#37) | sam-gtk, sam-core | 2 | ✅ |
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 12 | ✅ |
-| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 7 | ✅ |
+| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 8 | ❌ diagram_labels_are_quoted_so_github_draws_them |
 
 ## Components and their functions
 
@@ -672,6 +672,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`lower_parts_never_depend_on_higher_ones`](../crates/sam-jail-cli/tests/architecture.rs#L66) | The parts that handle untrusted AppImage content or build the sandbox depend only on the parts below them, never on the operations layer, the command line or the window. | ✅ |
 | [`the_sandbox_builder_depends_only_on_the_permission_model`](../crates/sam-jail-cli/tests/architecture.rs#L79) | The sandbox command builder depends only on the permission model, so what it builds follows from the permissions alone. | ✅ |
 | [`the_component_diagram_shows_the_real_dependencies`](../crates/sam-jail-cli/tests/architecture.rs#L86) | The component diagram in docs/architecture.md shows exactly the real dependencies between the parts: no arrow is missing and none is invented. | ✅ |
+| [`diagram_labels_are_quoted_so_github_draws_them`](../crates/sam-jail-cli/tests/architecture.rs#L128) | Every box and arrow label in the documents' diagrams is quoted, so GitHub draws them: unquoted brackets or semicolons inside a label are a parse error there (the component diagram once failed that way). | – |
 | [`version_reports_the_json_interface`](../crates/sam-jail-cli/tests/robustness.rs#L157) | `sam-jail version` answers with the JSON interface version even when the configuration cannot be read. | ✅ |
 | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L49) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | ✅ |
 
