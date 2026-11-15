@@ -1,7 +1,7 @@
 //! Going back after an update: the replaced version (kept in SAM's data
 //! folder) returns to its old place, the newer file is kept for switching
-//! again, settings stay. The download itself needs the network and is
-//! checked by hand (docs/testing.md).
+//! again, settings stay. The download itself is tested against a local
+//! HTTPS server in update_server.rs.
 
 use std::fs;
 

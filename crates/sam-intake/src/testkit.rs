@@ -46,6 +46,9 @@ pub struct FixtureSpec {
     /// Copy this host ELF into `usr/bin/<icon>` so dependency analysis has work to do.
     pub host_binary: Option<String>,
     pub compressor: Compressor,
+    /// Update information written into the runtime's `.upd_info` section,
+    /// for example `zsync|https://…/App.AppImage.zsync` (needs objcopy).
+    pub update_info: Option<String>,
 }
 
 impl FixtureSpec {
@@ -63,6 +66,7 @@ impl FixtureSpec {
             symlinks: vec![],
             host_binary: Some("/usr/bin/true".into()),
             compressor: Compressor::Zstd,
+            update_info: None,
         }
     }
 }
@@ -79,7 +83,11 @@ pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
         .context(sam_core::i18n::tr(
             "no host ELF available for the runtime stub",
         ))?;
-    let elf = std::fs::read(elf_src)?;
+    let elf = match &spec.update_info {
+        None => std::fs::read(elf_src)?,
+        // A runtime with an (empty) .upd_info section, as real ones have.
+        Some(_) => with_update_section(Path::new(elf_src))?,
+    };
     let end = sam_detect::appimage::elf_end_offset(&elf)
         .context(sam_core::i18n::tr("cannot parse host ELF"))? as usize;
     let mut out = elf[..end.min(elf.len())].to_vec();
@@ -176,7 +184,39 @@ pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
     std::fs::write(dest, &out)?;
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))?;
+    if let Some(info) = &spec.update_info {
+        sam_detect::update_info::write(dest, info)?;
+    }
     Ok(())
+}
+
+/// A copy of `elf` with an empty 1 KiB `.upd_info` section, made by objcopy.
+fn with_update_section(elf: &Path) -> Result<Vec<u8>> {
+    let dir = std::env::temp_dir().join(format!(
+        "sam-testkit-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir)?;
+    let zeros = dir.join("upd_info");
+    std::fs::write(&zeros, vec![0u8; 1024])?;
+    let out = dir.join("runtime");
+    let st = std::process::Command::new("objcopy")
+        .arg(format!("--add-section=.upd_info={}", zeros.display()))
+        .arg("--set-section-flags=.upd_info=noload,readonly")
+        .arg(elf)
+        .arg(&out)
+        .status()
+        .context("objcopy is needed for update information in test AppImages");
+    let result = st.and_then(|st| {
+        anyhow::ensure!(st.success(), "objcopy failed");
+        Ok(std::fs::read(&out)?)
+    });
+    let _ = std::fs::remove_dir_all(&dir);
+    result
 }
 
 #[cfg(test)]

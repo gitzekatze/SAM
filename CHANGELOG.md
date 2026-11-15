@@ -145,6 +145,9 @@ version.
 
 ### Tests and documentation
 
+- Updates are tested end to end against a local HTTPS server: finding the
+  newer version, downloading only the changed parts, swapping the file while
+  keeping the old one, refusing a damaged download, and refusing plain HTTP.
 - Mutation testing before the release ([report](docs/reports/mutants-2026-11-15.md)):
   88.5 % of 2,609 deliberate code changes were caught; the gaps it showed in
   the unpacking limits, the sandbox command, the terminal filter and the
