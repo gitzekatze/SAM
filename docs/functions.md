@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 11:01:46).
 
-**40 functions:** 39 proven by passing tests, 1 by scripted checks, 0 with a gap, 222 tests in all.
+**40 functions:** 38 proven by passing tests, 1 by scripted checks, 0 with a gap, 224 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -33,7 +33,7 @@
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 3 | ✅ |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 10 | ✅ |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 2 | ✅ |
-| 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner | 2 | ✅ |
+| 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 4 | ❌ the_overlay_check_leaves_no_folder_behind, leftovers_of_earlier_overlay_checks_are_removed |
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 2 | ✅ |
 | 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 6 | ✅ |
 | 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | sam-runner, sam-sandbox | 7 | ✅ |
@@ -68,7 +68,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | sam-profile | [6](#6), [8](#8), [36](#36) |
 | sam-sandbox | [10](#10), [11](#11), [12](#12), [13](#13), [14](#14), [15](#15), [16](#16), [17](#17), [18](#18), [24](#24) |
 | sam-storage | [8](#8), [22](#22), [27](#27), [30](#30), [35](#35), [38](#38) |
-| sam-core | [4](#4), [7](#7), [8](#8), [11](#11), [13](#13), [14](#14), [18](#18), [19](#19), [30](#30), [33](#33), [35](#35), [37](#37), [38](#38) |
+| sam-core | [4](#4), [7](#7), [8](#8), [11](#11), [13](#13), [14](#14), [18](#18), [19](#19), [21](#21), [30](#30), [33](#33), [35](#35), [37](#37), [38](#38) |
 
 ## A. Bringing an AppImage in
 
@@ -274,7 +274,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L860) | An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | ✅ |
 | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L904) | A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | ✅ |
-| [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L465) | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | ✅ |
+| [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L522) | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | ✅ |
 | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L645) | The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | ✅ |
 | [`filtered_dbus_uses_proxy`](../crates/sam-sandbox/src/lib.rs#L1529) | The filtered desktop bus reaches the app only through SAM's proxy. | ✅ |
 | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](../crates/sam-sandbox/src/lib.rs#L1542) | The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | ✅ |
@@ -294,7 +294,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`wayland_security_context_socket_is_used`](../crates/sam-sandbox/src/lib.rs#L1494) | With a Wayland security context, the app sees only that socket, not the desktop's own. | ✅ |
 | [`xauthority_gets_the_sandbox_display_number`](../crates/sam-sandbox/src/lib.rs#L1476) | The X11 login cookie is rewritten for the display number inside the sandbox. | ✅ |
-| [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L456) | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | ✅ |
+| [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L513) | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/wayland_ctx.rs`](../crates/sam-runner/src/wayland_ctx.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
@@ -391,8 +391,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`stop_closes_running_apps`](../crates/sam-runner/tests/stop.rs#L49) | Closing an app ends all of its running starts. | ✅ |
 | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L81) | A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | ✅ |
+| [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L150) | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | – |
+| [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L164) | Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | – |
 
-**Code:** [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-runner/src/ops/mod.rs`](../crates/sam-runner/src/ops/mod.rs)
+**Code:** [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-runner/src/ops/mod.rs`](../crates/sam-runner/src/ops/mod.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
 **Also tried by:** [`tests/real-apps/run.sh`](../tests/real-apps/run.sh)
 
@@ -554,7 +556,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L69) | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | ✅ |
 | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L173) | SAM's own bus check reaches the session bus on a desktop. | ✅ |
 | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L185) | SAM's own D-Bus message for the bus check has the correct wire format. | ✅ |
-| [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L129) | Bubblewrap versions are compared correctly, including missing or malformed version text. | ✅ |
+| [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L186) | Bubblewrap versions are compared correctly, including missing or malformed version text. | ✅ |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs), [`sam-runner/src/bwrap.rs`](../crates/sam-runner/src/bwrap.rs), [`sam-runner/src/dbus_check.rs`](../crates/sam-runner/src/dbus_check.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
@@ -611,7 +613,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Test | Promise | Result |
 |---|---|---|
 | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L117) | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | ✅ |
-| [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L17) | The command line speaks german when asked. | ✅ |
+| [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L13) | The command line speaks german when asked. | ✅ |
 
 **Code:** [`sam-core/src/i18n.rs`](../crates/sam-core/src/i18n.rs), [`sam-gtk/src/i18n.rs`](../crates/sam-gtk/src/i18n.rs), [`scripts/i18n.py`](../scripts/i18n.py), [`po/de.po`](../po/de.po), [`po/es.po`](../po/es.po), [`po/fr.po`](../po/fr.po)
 

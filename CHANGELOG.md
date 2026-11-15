@@ -24,6 +24,9 @@ version.
 
 ### Reliability beyond the first start
 
+- The check whether the unpacking folder supports overlays no longer
+  leaves a locked `.overlay-check-…` folder behind in SAM's data each time
+  it runs, and removes the ones earlier versions left.
 - Unpacking checks the free space first and refuses with what to do
   instead of filling the disk; if the disk still fills up, SAM removes
   what was unpacked and says so.

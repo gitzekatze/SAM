@@ -7,11 +7,7 @@ use std::process::Command;
 /// A locale other than C, which gettext needs before it honours LANGUAGE.
 fn real_locale() -> Option<String> {
     let out = Command::new("locale").arg("-a").output().ok()?;
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty() && !l.starts_with("C") && *l != "POSIX")
-        .map(str::to_string)
+    String::from_utf8_lossy(&out.stdout).lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with("C") && *l != "POSIX").map(str::to_string)
 }
 
 #[test]

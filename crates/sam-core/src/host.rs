@@ -97,6 +97,7 @@ pub fn overlay_works_in(dir: &std::path::Path) -> bool {
 fn try_overlay_in(dir: &std::path::Path) -> bool {
     let Some(bwrap) = crate::util::which("bwrap") else { return false };
     let probe = dir.join(format!(".overlay-check-{}", std::process::id()));
+    remove_stale_probes(dir);
     let made = std::fs::create_dir_all(dir).is_ok() && ["lower", "upper", "work"].iter().all(|d| std::fs::create_dir_all(probe.join(d)).is_ok());
     let works = made
         && std::process::Command::new(bwrap)
@@ -110,10 +111,29 @@ fn try_overlay_in(dir: &std::path::Path) -> bool {
             .stderr(std::process::Stdio::null())
             .status()
             .is_ok_and(|s| s.success());
-    // The work folder may hold a folder owned by the overlay that only
-    // root could remove; what can be removed is.
-    let _ = std::fs::remove_dir_all(&probe);
+    remove_probe(&probe);
     works
+}
+
+/// Removes what checks of SAM's that no longer run left behind (older
+/// versions could not remove the overlay's locked work folder).
+fn remove_stale_probes(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let name = e.file_name();
+        let Some(pid) = name.to_str().and_then(|n| n.strip_prefix(".overlay-check-")) else { continue };
+        if pid.parse::<u32>().is_ok() && !std::path::Path::new("/proc").join(pid).exists() {
+            remove_probe(&e.path());
+        }
+    }
+}
+
+/// Removes the overlay check's folder. The overlay leaves `work/work`
+/// without any permissions; it belongs to the user, so it is opened first.
+fn remove_probe(probe: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(probe.join("work/work"), std::fs::Permissions::from_mode(0o700));
+    let _ = std::fs::remove_dir_all(probe);
 }
 
 /// "bubblewrap 0.13.1" -> true for (0, 10).
@@ -121,6 +141,43 @@ fn version_at_least(text: &str, want: (u32, u32)) -> bool {
     let v = text.split_whitespace().find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit())).unwrap_or("");
     let mut it = v.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
     (it.next().unwrap_or(0), it.next().unwrap_or(0)) >= want
+}
+
+#[cfg(test)]
+mod probe_tests {
+    /// The overlay check leaves nothing behind, even the work folder the
+    /// overlay locks (a leftover folder per check piled up in SAM's data).
+    #[test]
+    fn the_overlay_check_leaves_no_folder_behind() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let probe = tmp.path().join(".overlay-check-1");
+        std::fs::create_dir_all(probe.join("work/work")).unwrap();
+        std::fs::create_dir_all(probe.join("upper")).unwrap();
+        std::fs::set_permissions(probe.join("work/work"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        super::remove_probe(&probe);
+        assert!(!probe.exists());
+    }
+
+    /// Folders left by earlier checks whose process is gone are removed;
+    /// one of a check still running stays.
+    #[test]
+    fn leftovers_of_earlier_overlay_checks_are_removed() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        // Process ids above the kernel's limit (4194304) never exist.
+        let old = tmp.path().join(".overlay-check-4194399");
+        std::fs::create_dir_all(old.join("work/work")).unwrap();
+        std::fs::set_permissions(old.join("work/work"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        let running = tmp.path().join(format!(".overlay-check-{}", std::process::id()));
+        std::fs::create_dir_all(&running).unwrap();
+        let other = tmp.path().join("appimage-krita-1234");
+        std::fs::create_dir_all(&other).unwrap();
+        super::remove_stale_probes(tmp.path());
+        assert!(!old.exists());
+        assert!(running.exists());
+        assert!(other.exists(), "only the checks' own folders are touched");
+    }
 }
 
 #[cfg(test)]

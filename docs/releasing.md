@@ -14,7 +14,7 @@ the steps; the list says what it does and what stays a person's job.
 
    ```sh
    cargo install --locked cargo-mutants
-   cargo mutants -p sam-sandbox -p sam-runner -p sam-intake -p sam-detect --in-place=false -o ../.work/mutants
+   cargo mutants -p sam-sandbox -p sam-runner -p sam-intake -p sam-detect -j 8 -o ../.work/mutants
    ```
 
 3. **Real apps:** the 120-AppImage test set runs without a new failure

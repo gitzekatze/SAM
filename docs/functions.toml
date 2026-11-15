@@ -175,8 +175,8 @@ checks = ["tests/real-apps/run.sh"]
 id = 21
 area = "D"
 promise = "A second start, closing, and stopping work cleanly and leave nothing behind."
-code = ["sam-runner/src/launch.rs", "sam-runner/src/ops/mod.rs"]
-tests = ["stop_closes_running_apps", "removing_a_sandbox_while_its_app_runs_is_refused"]
+code = ["sam-runner/src/launch.rs", "sam-runner/src/ops/mod.rs", "sam-core/src/host.rs"]
+tests = ["stop_closes_running_apps", "removing_a_sandbox_while_its_app_runs_is_refused", "the_overlay_check_leaves_no_folder_behind", "leftovers_of_earlier_overlay_checks_are_removed"]
 checks = ["tests/real-apps/run.sh"]
 
 [[function]]
