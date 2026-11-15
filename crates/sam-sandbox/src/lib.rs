@@ -727,6 +727,10 @@ impl Section<'_> {
             }
             _ => a.op2("--ro-bind", &ctx.appdir, &ctx.sandbox_appdir),
         }
+        // Bundled libraries replaced by the system's copy, read-only.
+        for (host, inside) in system_library_binds(ctx) {
+            a.op2("--ro-bind", host, inside);
+        }
         if let Some(img) = &ctx.appimage_path {
             if let Some(name) = img.file_name() {
                 a.op2("--ro-bind-try", img, Path::new("/run/sam").join(name));
@@ -1142,6 +1146,40 @@ impl Section<'_> {
         cmd.extend(ctx.args.iter().cloned());
         a.v.extend(cmd);
     }
+}
+
+/// Folders where AppImages bundle libraries, relative to the app folder.
+const BUNDLED_LIB_DIRS: &[&str] =
+    &["usr/lib", "lib", "usr/lib64", "lib64", "usr/lib/x86_64-linux-gnu", "lib/x86_64-linux-gnu", "usr/lib/aarch64-linux-gnu", "lib/aarch64-linux-gnu"];
+/// Where the system keeps its libraries.
+const SYSTEM_LIB_DIRS: &[&str] =
+    &["/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/lib/x86_64-linux-gnu", "/lib/aarch64-linux-gnu"];
+
+/// `(system copy, place inside the sandbox)` for every bundled library in
+/// `advanced.system_libraries`. Only plain library names count, the
+/// system copy must exist and resolve to a file under /usr or /lib, and
+/// only libraries the app really bundles are replaced.
+pub fn system_library_binds(ctx: &LaunchContext) -> Vec<(PathBuf, PathBuf)> {
+    let mut out = Vec::new();
+    for name in &ctx.permissions.advanced.system_libraries {
+        if !is_library_name(name) {
+            continue;
+        }
+        let Some(host) = SYSTEM_LIB_DIRS
+            .iter()
+            .filter_map(|d| fs::canonicalize(Path::new(d).join(name)).ok())
+            .find(|p| p.is_file() && (p.starts_with("/usr") || p.starts_with("/lib")))
+        else {
+            continue;
+        };
+        for d in BUNDLED_LIB_DIRS {
+            let rel = Path::new(d).join(name);
+            if fs::symlink_metadata(ctx.appdir.join(&rel)).is_ok() {
+                out.push((host.clone(), ctx.sandbox_appdir.join(&rel)));
+            }
+        }
+    }
+    out
 }
 
 /// Write the synthetic passwd/group files referenced by the command.
@@ -1590,5 +1628,29 @@ mod tests {
         let cmd = Bubblewrap.build(&ctx).unwrap();
         assert!(cmd.args.windows(2).any(|w| w[0] == "--bind-try" && w[1] == sock.display().to_string()));
         assert!(!cmd.args.iter().any(|a| a == &t.path().display().to_string()), "folder not bound");
+    }
+
+    /// A bundled library listed in advanced.system_libraries is replaced by
+    /// the system's copy at its place in the app folder; names with folders
+    /// or `..`, libraries the app does not bundle and libraries the system
+    /// does not have are ignored.
+    #[test]
+    fn system_copies_replace_only_bundled_libraries_by_plain_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ctx = sample_context();
+        ctx.appdir = tmp.path().to_path_buf();
+        fs::create_dir_all(tmp.path().join("usr/lib")).unwrap();
+        // A library every Linux system has, bundled by the "app".
+        let libc = ["/usr/lib/libc.so.6", "/usr/lib64/libc.so.6", "/usr/lib/x86_64-linux-gnu/libc.so.6", "/lib/x86_64-linux-gnu/libc.so.6"]
+            .into_iter()
+            .find(|p| Path::new(p).exists());
+        let Some(_) = libc else { return };
+        fs::write(tmp.path().join("usr/lib/libc.so.6"), "old").unwrap();
+        ctx.permissions.advanced.system_libraries =
+            vec!["libc.so.6".into(), "../../etc/shadow".into(), "libnotbundled.so.1".into(), "libz.so.1/../../x".into()];
+        let binds = system_library_binds(&ctx);
+        assert_eq!(binds.len(), 1, "{binds:?}");
+        assert_eq!(binds[0].1, ctx.sandbox_appdir.join("usr/lib/libc.so.6"));
+        assert!(binds[0].0.starts_with("/usr") || binds[0].0.starts_with("/lib"));
     }
 }

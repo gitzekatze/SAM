@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-26 tests.
+27 tests.
 
 | Promise | Test |
 |---|---|
@@ -26,13 +26,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L639) |
 | An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L657) |
 | ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L117) |
-| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L822) |
-| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L834) |
-| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L847) |
-| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L866) |
-| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L878) |
-| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L892) |
-| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L905) |
+| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L843) |
+| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L855) |
+| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L868) |
+| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L887) |
+| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L899) |
+| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L913) |
+| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L926) |
+| Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L934) |
 | SAM's strictest window profile counts as low risk. | [`the_strictest_window_profile_is_low_risk`](../crates/sam-core/src/risk.rs#L308) |
 | Full home access counts as dangerous, and as think twice when it is read-only. | [`full_home_is_dangerous`](../crates/sam-core/src/risk.rs#L315) |
 | Full network together with X11 makes the settings think twice (high risk). | [`network_and_x11_high`](../crates/sam-core/src/risk.rs#L325) |
@@ -124,26 +125,27 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-sandbox: Building the Bubblewrap command from the permissions
 
-16 tests.
+17 tests.
 
 | Promise | Test |
 |---|---|
-| Games built with SDL get a silent sound driver when sound is off, so they start instead of failing. | [`sdl_gets_its_silent_driver_without_sound_access`](../crates/sam-sandbox/src/lib.rs#L1330) |
-| Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | [`the_loaders_extra_library_folders_are_shown_read_only`](../crates/sam-sandbox/src/lib.rs#L1339) |
-| The app gets a new terminal session, unless it runs on SAM's terminal relay. | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](../crates/sam-sandbox/src/lib.rs#L1347) |
-| Files and folders named when starting an app are passed in, but never sensitive folders like autostart. | [`files_and_folders_named_on_the_command_line`](../crates/sam-sandbox/src/lib.rs#L1356) |
-| The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only. | [`the_strictest_profile_shares_nothing_and_keeps_the_app_read_only`](../crates/sam-sandbox/src/lib.rs#L1413) |
-| The X11 login cookie is rewritten for the display number inside the sandbox. | [`xauthority_gets_the_sandbox_display_number`](../crates/sam-sandbox/src/lib.rs#L1434) |
-| With a Wayland security context, the app sees only that socket, not the desktop's own. | [`wayland_security_context_socket_is_used`](../crates/sam-sandbox/src/lib.rs#L1452) |
-| Each granted permission adds exactly its part to the Bubblewrap command. | [`each_permission_adds_exactly_its_part_to_the_command`](../crates/sam-sandbox/src/lib.rs#L1462) |
-| The filtered desktop bus reaches the app only through SAM's proxy. | [`filtered_dbus_uses_proxy`](../crates/sam-sandbox/src/lib.rs#L1487) |
-| The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](../crates/sam-sandbox/src/lib.rs#L1500) |
-| With "this computer only", the network namespace is left to pasta. | [`localhost_network_leaves_netns_to_pasta`](../crates/sam-sandbox/src/lib.rs#L1519) |
-| A writable app folder uses an overlay; the unpacked app itself stays unchanged. | [`writable_appdir_uses_overlay`](../crates/sam-sandbox/src/lib.rs#L1528) |
-| Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | [`without_nested_namespaces_user_namespaces_are_disabled`](../crates/sam-sandbox/src/lib.rs#L1541) |
-| "Game controllers" exposes only joysticks, never keyboards or mice. | [`gamepads_only_exposes_joysticks`](../crates/sam-sandbox/src/lib.rs#L1552) |
-| With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](../crates/sam-sandbox/src/lib.rs#L1570) |
-| Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](../crates/sam-sandbox/src/lib.rs#L1581) |
+| Games built with SDL get a silent sound driver when sound is off, so they start instead of failing. | [`sdl_gets_its_silent_driver_without_sound_access`](../crates/sam-sandbox/src/lib.rs#L1368) |
+| Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | [`the_loaders_extra_library_folders_are_shown_read_only`](../crates/sam-sandbox/src/lib.rs#L1377) |
+| The app gets a new terminal session, unless it runs on SAM's terminal relay. | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](../crates/sam-sandbox/src/lib.rs#L1385) |
+| Files and folders named when starting an app are passed in, but never sensitive folders like autostart. | [`files_and_folders_named_on_the_command_line`](../crates/sam-sandbox/src/lib.rs#L1394) |
+| The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only. | [`the_strictest_profile_shares_nothing_and_keeps_the_app_read_only`](../crates/sam-sandbox/src/lib.rs#L1451) |
+| The X11 login cookie is rewritten for the display number inside the sandbox. | [`xauthority_gets_the_sandbox_display_number`](../crates/sam-sandbox/src/lib.rs#L1472) |
+| With a Wayland security context, the app sees only that socket, not the desktop's own. | [`wayland_security_context_socket_is_used`](../crates/sam-sandbox/src/lib.rs#L1490) |
+| Each granted permission adds exactly its part to the Bubblewrap command. | [`each_permission_adds_exactly_its_part_to_the_command`](../crates/sam-sandbox/src/lib.rs#L1500) |
+| The filtered desktop bus reaches the app only through SAM's proxy. | [`filtered_dbus_uses_proxy`](../crates/sam-sandbox/src/lib.rs#L1525) |
+| The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](../crates/sam-sandbox/src/lib.rs#L1538) |
+| With "this computer only", the network namespace is left to pasta. | [`localhost_network_leaves_netns_to_pasta`](../crates/sam-sandbox/src/lib.rs#L1557) |
+| A writable app folder uses an overlay; the unpacked app itself stays unchanged. | [`writable_appdir_uses_overlay`](../crates/sam-sandbox/src/lib.rs#L1566) |
+| Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | [`without_nested_namespaces_user_namespaces_are_disabled`](../crates/sam-sandbox/src/lib.rs#L1579) |
+| "Game controllers" exposes only joysticks, never keyboards or mice. | [`gamepads_only_exposes_joysticks`](../crates/sam-sandbox/src/lib.rs#L1590) |
+| With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](../crates/sam-sandbox/src/lib.rs#L1608) |
+| Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](../crates/sam-sandbox/src/lib.rs#L1619) |
+| A bundled library listed in advanced.system_libraries is replaced by the system's copy at its place in the app folder; names with folders or `..`, libraries the app does not bundle and libraries the system does not have are ignored. | [`system_copies_replace_only_bundled_libraries_by_plain_name`](../crates/sam-sandbox/src/lib.rs#L1637) |
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
@@ -187,12 +189,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | An app on SAM's terminal relay cannot type into the user's real terminal. | [`the_app_cannot_reach_the_outer_terminal`](../crates/sam-runner/src/pty.rs#L722) |
 | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L57) |
 | Without a built-in release key, SAM never updates itself, whatever the download looks like. | [`without_a_release_key_sam_never_updates_itself`](../crates/sam-runner/src/release_key.rs#L72) |
-| Compatibility mode lists only what it actually changes, in the words of the switches. | [`compatibility_mode_names_only_what_it_changes`](../crates/sam-runner/src/repair.rs#L496) |
-| A repair step says in a sentence what it turns on or off, with the switch's own explanation of what that allows. | [`a_repair_step_says_what_it_changes_and_costs`](../crates/sam-runner/src/repair.rs#L507) |
-| An app that fails to register its bus name gets a repair step that allows exactly that name. | [`own_name_requests_become_a_repair`](../crates/sam-runner/src/repair.rs#L527) |
-| Error messages in an app's output are mapped to the repair step that fixes them. | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L544) |
-| The repair ladder leaves out steps already applied and steps that would change nothing. | [`ladder_skips_applied_and_noop_steps`](../crates/sam-runner/src/repair.rs#L583) |
-| The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L603) |
+| Compatibility mode lists only what it actually changes, in the words of the switches. | [`compatibility_mode_names_only_what_it_changes`](../crates/sam-runner/src/repair.rs#L533) |
+| A repair step says in a sentence what it turns on or off, with the switch's own explanation of what that allows. | [`a_repair_step_says_what_it_changes_and_costs`](../crates/sam-runner/src/repair.rs#L544) |
+| An app that fails to register its bus name gets a repair step that allows exactly that name. | [`own_name_requests_become_a_repair`](../crates/sam-runner/src/repair.rs#L564) |
+| Error messages in an app's output are mapped to the repair step that fixes them. | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L581) |
+| The repair ladder leaves out steps already applied and steps that would change nothing. | [`ladder_skips_applied_and_noop_steps`](../crates/sam-runner/src/repair.rs#L628) |
+| The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L648) |
 | The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L355) |
 | Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L365) |
 | Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L376) |
@@ -301,4 +303,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 216 automated Rust tests plus 6 scripted checks.
+Total: 218 automated Rust tests plus 6 scripted checks.

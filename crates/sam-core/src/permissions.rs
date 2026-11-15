@@ -507,6 +507,24 @@ pub struct AdvancedPerms {
     /// before 0.2 call it `extra_backend_args`.
     #[serde(alias = "extra_backend_args")]
     pub extra_bwrap_args: Vec<String>,
+    /// Bundled libraries replaced by the system's copy (file names such as
+    /// `libsystemd.so.0`), read-only. For AppImages that bundle a library
+    /// older than a system library that needs it.
+    pub system_libraries: Vec<String>,
+}
+
+/// Whether `name` is a plain shared-library file name (`libfoo.so`,
+/// `libfoo.so.1.2`), which is all `advanced.system_libraries` accepts: no
+/// folders, no `..`, so the list cannot bind arbitrary files.
+pub fn is_library_name(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix("lib") else { return false };
+    let Some(pos) = rest.find(".so") else { return false };
+    let (stem, tail) = rest.split_at(pos);
+    !stem.is_empty()
+        && name.len() <= 100
+        && stem.chars().all(|c| c.is_ascii_alphanumeric() || "_+-".contains(c))
+        && tail[3..].split('.').skip(1).all(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+        && (tail.len() == 3 || tail[3..].starts_with('.'))
 }
 
 /// Desktop services an app may use through the filtered session bus.
@@ -574,6 +592,7 @@ impl Default for AdvancedPerms {
             host_themes: true,
             writable_appdir: false,
             extra_bwrap_args: vec![],
+            system_libraries: vec![],
         }
     }
 }
@@ -809,6 +828,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Read-only access to GTK/Qt/KDE theme configuration so apps match your desktop.", Low, advanced),
         perm!("advanced.writable_appdir", "Advanced", "Writable app folder",
             "For portable apps that save settings next to themselves. Changes go to a separate layer; the extracted app stays untouched.", Low, advanced),
+        perm!("advanced.system_libraries", "Advanced", "System copies of libraries",
+            "Replaces these bundled libraries with your system's copies, read-only. For apps that bundle a library too old for your system.", Low, advanced),
         perm!("advanced.extra_bwrap_args", "Advanced", "Raw Bubblewrap arguments",
             "Arguments passed verbatim to Bubblewrap. Can weaken the sandbox.", High, advanced),
     ]
@@ -906,5 +927,17 @@ mod rename_tests {
     fn old_extra_backend_args_still_load() {
         let a: super::AdvancedPerms = serde_json::from_str(r#"{"extra_backend_args": ["--setenv", "A", "1"]}"#).unwrap();
         assert_eq!(a.extra_bwrap_args, vec!["--setenv", "A", "1"]);
+    }
+
+    /// Only plain shared-library file names are accepted as system
+    /// libraries: no folders, no `..`, nothing that is not a library.
+    #[test]
+    fn only_plain_library_names_are_accepted() {
+        for ok in ["libsystemd.so.0", "libstdc++.so.6", "libfoo.so", "libgtk-4.so.1.1600.1", "libz_x.so.1"] {
+            assert!(super::is_library_name(ok), "{ok}");
+        }
+        for bad in ["../libc.so.6", "/usr/lib/libc.so.6", "libc.so.6/..", "libc", "foo.so.1", "lib.so.1", "libc.so.x", "libc.so.6.", "libc.sox"] {
+            assert!(!super::is_library_name(bad), "{bad}");
+        }
     }
 }

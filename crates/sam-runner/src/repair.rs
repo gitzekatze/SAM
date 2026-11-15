@@ -220,6 +220,18 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             break;
         }
     }
+    // "/opt/app/usr/lib/libsystemd.so.0: version `LIBSYSTEMD_251' not found
+    // (required by /usr/lib/libmount.so.1)": a bundled library is older than
+    // a system library that needs it. The system's copy fits.
+    if let Some((lib, needed_by)) = bundled_library_too_old(output) {
+        push(s(
+            "system-library",
+            "A bundled library is too old for this system",
+            format!("The app brings its own {lib}, which is older than your system's {needed_by} needs. Use your system's copy of {lib} instead (read-only)."),
+            FixAction::Add { key: "advanced.system_libraries".into(), value: lib },
+            RiskLevel::Low,
+        ));
+    }
     if let Some(v) = after(output, "version `GLIBC_").map(|r| display_safe(r.split('\'').next().unwrap_or(""), 16)) {
         push(s(
             "glibc",
@@ -348,6 +360,31 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
         ));
     }
     out
+}
+
+/// `(bundled library, system library that needs a newer one)` from a
+/// loader error like "/opt/app/usr/lib/libX.so.0: version `V' not found
+/// (required by /usr/lib/libY.so.1)".
+fn bundled_library_too_old(output: &str) -> Option<(String, String)> {
+    for line in output.lines() {
+        let Some((head, tail)) = line.split_once(": version `") else { continue };
+        let Some(by) = tail.split("(required by ").nth(1).and_then(|r| r.split(')').next()) else { continue };
+        if !(by.starts_with("/usr/") || by.starts_with("/lib")) {
+            continue;
+        }
+        // The library that is too old: the last path on the line before the
+        // version, inside the app folder.
+        let path = head.rsplit(": ").next().unwrap_or(head).trim();
+        if !path.starts_with("/opt/app/") {
+            continue;
+        }
+        let lib = path.rsplit('/').next().unwrap_or("");
+        if sam_core::permissions::is_library_name(lib) {
+            let by_name = by.rsplit('/').next().unwrap_or(by);
+            return Some((lib.to_string(), display_safe(by_name, 60)));
+        }
+    }
+    None
 }
 
 fn after<'a>(text: &'a str, marker: &str) -> Option<&'a str> {
@@ -567,6 +604,14 @@ mod tests {
         let expected: Vec<&str> = if sam_core::host::bwrap_supports_overlay() { vec!["writable-appdir"] } else { vec![] };
         assert_eq!(ids("touch: cannot touch '/opt/app/settings.ini': Read-only file system"), expected);
         assert_eq!(ids("/lib/libc.so.6: version `GLIBC_2.99' not found"), vec!["glibc"]);
+        // A bundled library too old for a system library that needs it
+        // (regression: ImHex bundles libsystemd 249, the system's libmount
+        // needs 251, and SAM had no step for it).
+        let imhex = "/opt/app/usr/bin/imhex: /opt/app/usr/bin/../lib/libsystemd.so.0: version `LIBSYSTEMD_251' not found (required by /usr/lib/libmount.so.1)";
+        let found = analyze(imhex, &p, None);
+        assert_eq!(found.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), vec!["system-library"]);
+        assert!(matches!(&found[0].action, FixAction::Add { key, value } if key == "advanced.system_libraries" && value == "libsystemd.so.0"));
+        assert!(found[0].explanation.contains("libmount.so.1"));
         assert_eq!(ids("ERROR eframe::native::run] Exiting because of error: WGPU error: Failed to create surface for any enabled backend"), vec!["gpu"]);
         assert!(ids("all good").is_empty());
         assert_eq!(analyze("", &p, Some(11))[0].id, "crash");
