@@ -5,7 +5,7 @@
 > the version reports changed over time, and the latest commits. For people
 > who use SAM, the front page is [README.md](README.md).
 >
-> Generated on 2026-11-15 at 05:34 by `scripts/dashboard.py`. It is
+> Generated on 2026-11-15 at 07:20 by `scripts/dashboard.py`. It is
 > regenerated with every version report (`make report`), so it shows the state
 > at the end of the last phase of work.
 
@@ -15,11 +15,11 @@
 
 | | |
 |---|---|
-| **Tests** | ✅ 212 pass, 0 fail in the latest version report |
+| **Tests** | ✅ 218 pass, 0 fail in the latest version report |
 | **Version** | 0.1.0 (the number changes only when a version is published) |
-| **Latest commit** | `53d8e50` New app icon (sam-icon 1.0) |
-| **Commits so far** | 139 |
-| **Version reports** | 5; the newest is [0.1.0-53d8e50](docs/reports/0.1.0-53d8e50.md) |
+| **Latest commit** | `983638c` Repair: use the system's copy of a bundled library that is too old |
+| **Commits so far** | 145 |
+| **Version reports** | 6; the newest is [0.1.0-983638c](docs/reports/0.1.0-983638c.md) |
 
 > **How to read the badge:** it shows the last CI run on GitHub (unit,
 > integration, sandbox and window tests on Ubuntu; sandbox tests on Fedora).
@@ -35,15 +35,15 @@
 
 | Part | What it does | Tests | Line coverage |
 |---|---|---|---|
-| **sam-core** | Permission model, risk, warnings, configuration and file formats | ✅ 26 passing | `█████████████████░░░` 86.4 % |
-| **sam-detect** | Recognizing AppImages and what they need (ELF, toolkits, signatures) | ✅ 18 passing | `███████████████░░░░░` 74.2 % |
+| **sam-core** | Permission model, risk, warnings, configuration and file formats | ✅ 27 passing | `█████████████████░░░` 86.6 % |
+| **sam-detect** | Recognizing AppImages and what they need (ELF, toolkits, signatures) | ✅ 19 passing | `███████████████░░░░░` 74.6 % |
 | **sam-intake** | Unpacking AppImages safely, metadata, menu entries | ✅ 25 passing | `█████████████████░░░` 83.8 % |
 | **sam-profile** | Recommendations, the user's presets, change checks, permission tags | ✅ 13 passing | `█████████████████░░░` 87.3 % |
-| **sam-sandbox** | Building the Bubblewrap command from the permissions | ✅ 16 passing | `███████████████████░` 95.0 % |
-| **sam-runner** | Operations: add, launch, verify, repair, update, group changes; the sandbox at run time | ✅ 83 passing | `██████████████░░░░░░` 71.1 % |
+| **sam-sandbox** | Building the Bubblewrap command from the permissions | ✅ 17 passing | `███████████████████░` 95.1 % |
+| **sam-runner** | Operations: add, launch, verify, repair, update, group changes; the sandbox at run time | ✅ 86 passing | `██████████████░░░░░░` 71.2 % |
 | **sam-storage** | App records, presets and logs on disk | ✅ 8 passing | `███████████████████░` 92.9 % |
 | **sam-jail-cli** | The command line and its JSON interface | ✅ 14 passing | `███░░░░░░░░░░░░░░░░░` 15.8 % |
-| **sam-gtk** | The window (logic that runs without a display) | ✅ 9 passing | `█░░░░░░░░░░░░░░░░░░░` 2.8 % |
+| **sam-gtk** | The window (logic that runs without a display) | ✅ 9 passing | `█░░░░░░░░░░░░░░░░░░░` 2.7 % |
 
 ## Speed
 
@@ -56,14 +56,14 @@
 
 | Step | Fastest run | Since the previous report |
 |---|---|---|
-| Recognizing the AppImage format of a file (reading its headers). | 0.007 ms | ≈ +20 % |
-| Unpacking an AppImage with 2,000 files (16 MB) safely, without running it. | 46.513 ms | 🔻 -67 % |
-| Analyzing the unpacked app: its programs, libraries and toolkit. | 5.599 ms | 🔻 -33 % |
-| Recommending permissions from the app's metadata and analysis. | 0.001 ms | ≈ -7 % |
-| Building the Bubblewrap command from a set of permissions. | 0.295 ms | ≈ -0 % |
-| Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save). | 223.257 ms | ≈ +2 % |
-| Starting an app in a real sandbox until it has exited (an app that exits at once). | 55.899 ms | ≈ +3 % |
-| Listing 120 sandboxed apps with their tags for the Permissions page. | 28.105 ms | ≈ -4 % |
+| Recognizing the AppImage format of a file (reading its headers). | 0.007 ms | ≈ -1 % |
+| Unpacking an AppImage with 2,000 files (16 MB) safely, without running it. | 46.185 ms | ≈ -1 % |
+| Analyzing the unpacked app: its programs, libraries and toolkit. | 5.993 ms | ≈ +7 % |
+| Recommending permissions from the app's metadata and analysis. | 0.001 ms | 🔺 +33 % |
+| Building the Bubblewrap command from a set of permissions. | 0.299 ms | ≈ +1 % |
+| Creating a sandbox for that AppImage end to end (unpack, analyze, recommend, save). | 218.510 ms | ≈ -2 % |
+| Starting an app in a real sandbox until it has exited (an app that exits at once). | 59.021 ms | ≈ +6 % |
+| Listing 120 sandboxed apps with their tags for the Permissions page. | 28.369 ms | ≈ +1 % |
 
 ## Tests
 
@@ -76,16 +76,16 @@
 
 | Part | Unit | Integration | Regression ⟲ | Total | |
 |---|---|---|---|---|---|
-| **sam-core** | 26 | 0 | 1 | 26 | `█████░░░░░░░░░░` |
-| **sam-detect** | 17 | 1 | 0 | 18 | `███░░░░░░░░░░░░` |
-| **sam-intake** | 24 | 1 | 1 | 25 | `█████░░░░░░░░░░` |
+| **sam-core** | 27 | 0 | 1 | 27 | `█████░░░░░░░░░░` |
+| **sam-detect** | 18 | 1 | 0 | 19 | `███░░░░░░░░░░░░` |
+| **sam-intake** | 24 | 1 | 1 | 25 | `████░░░░░░░░░░░` |
 | **sam-profile** | 13 | 0 | 0 | 13 | `██░░░░░░░░░░░░░` |
-| **sam-sandbox** | 16 | 0 | 0 | 16 | `███░░░░░░░░░░░░` |
-| **sam-runner** | 46 | 37 | 2 | 83 | `███████████████` |
+| **sam-sandbox** | 17 | 0 | 0 | 17 | `███░░░░░░░░░░░░` |
+| **sam-runner** | 48 | 38 | 2 | 86 | `███████████████` |
 | **sam-storage** | 8 | 0 | 1 | 8 | `█░░░░░░░░░░░░░░` |
-| **sam-jail-cli** | 0 | 14 | 1 | 14 | `███░░░░░░░░░░░░` |
+| **sam-jail-cli** | 0 | 14 | 1 | 14 | `██░░░░░░░░░░░░░` |
 | **sam-gtk** | 9 | 0 | 1 | 9 | `██░░░░░░░░░░░░░` |
-| **all parts** | **159** | **53** | **7** | **212** | |
+| **all parts** | **164** | **54** | **7** | **218** | |
 
 ### Scripted checks of the window and of real AppImages
 
@@ -104,7 +104,7 @@
 > Click a part to unfold its tests. The promise is the first sentence of the test's
 > own comment; the name links to the code.
 
-<details><summary><b>sam-core</b> — Permission model, risk, warnings, configuration and file formats (26 tests)</summary>
+<details><summary><b>sam-core</b> — Permission model, risk, warnings, configuration and file formats (27 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -117,13 +117,14 @@
 | unit | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](crates/sam-core/src/model.rs#L639) |
 | unit | An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](crates/sam-core/src/model.rs#L657) |
 | unit ⟲ | Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](crates/sam-core/src/paths.rs#L117) |
-| unit | An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`own_names_that_are_refused`](crates/sam-core/src/permissions.rs#L822) |
-| unit | Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](crates/sam-core/src/permissions.rs#L834) |
-| unit | Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](crates/sam-core/src/permissions.rs#L847) |
-| unit | A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](crates/sam-core/src/permissions.rs#L866) |
-| unit | Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](crates/sam-core/src/permissions.rs#L878) |
-| unit | Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](crates/sam-core/src/permissions.rs#L892) |
-| unit | Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](crates/sam-core/src/permissions.rs#L905) |
+| unit | An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`own_names_that_are_refused`](crates/sam-core/src/permissions.rs#L843) |
+| unit | Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](crates/sam-core/src/permissions.rs#L855) |
+| unit | Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](crates/sam-core/src/permissions.rs#L868) |
+| unit | A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](crates/sam-core/src/permissions.rs#L887) |
+| unit | Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](crates/sam-core/src/permissions.rs#L899) |
+| unit | Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](crates/sam-core/src/permissions.rs#L913) |
+| unit | Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](crates/sam-core/src/permissions.rs#L926) |
+| unit | Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](crates/sam-core/src/permissions.rs#L934) |
 | unit | SAM's strictest window profile counts as low risk. | [`the_strictest_window_profile_is_low_risk`](crates/sam-core/src/risk.rs#L308) |
 | unit | Full home access counts as dangerous, and as think twice when it is read-only. | [`full_home_is_dangerous`](crates/sam-core/src/risk.rs#L315) |
 | unit | Full network together with X11 makes the settings think twice (high risk). | [`network_and_x11_high`](crates/sam-core/src/risk.rs#L325) |
@@ -137,14 +138,15 @@
 
 </details>
 
-<details><summary><b>sam-detect</b> — Recognizing AppImages and what they need (ELF, toolkits, signatures) (18 tests)</summary>
+<details><summary><b>sam-detect</b> — Recognizing AppImages and what they need (ELF, toolkits, signatures) (19 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
-| unit | An ordinary program file is not taken for an AppImage. | [`plain_elf_is_not_appimage`](crates/sam-detect/src/appimage.rs#L245) |
-| unit | A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | [`a_type_2_appimage_is_recognized`](crates/sam-detect/src/appimage.rs#L253) |
-| unit | An AppImage with a DwarFS image instead of squashfs is recognized. | [`an_appimage_with_a_dwarfs_image_is_recognized`](crates/sam-detect/src/appimage.rs#L280) |
-| unit | A file that is not an ELF program is not taken for an AppImage. | [`a_file_that_is_no_program_is_not_an_appimage`](crates/sam-detect/src/appimage.rs#L301) |
+| unit | An ordinary program file is not taken for an AppImage. | [`plain_elf_is_not_appimage`](crates/sam-detect/src/appimage.rs#L287) |
+| unit | A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | [`a_type_2_appimage_is_recognized`](crates/sam-detect/src/appimage.rs#L295) |
+| unit | An AppImage with a DwarFS image instead of squashfs is recognized. | [`an_appimage_with_a_dwarfs_image_is_recognized`](crates/sam-detect/src/appimage.rs#L322) |
+| unit | A file that is not an ELF program is not taken for an AppImage. | [`a_file_that_is_no_program_is_not_an_appimage`](crates/sam-detect/src/appimage.rs#L343) |
+| unit | An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | [`appimages_run_only_on_a_matching_processor`](crates/sam-detect/src/appimage.rs#L358) |
 | unit | Bundled libraries are sorted into system, graphics, display-controlled and dangerous classes. | [`bundled_libraries_are_sorted_by_what_they_reach`](crates/sam-detect/src/classify.rs#L221) |
 | unit | Programs that load graphics libraries only at run time are recognized as needing the GPU. | [`programs_that_load_graphics_at_run_time`](crates/sam-detect/src/elf.rs#L919) |
 | unit | A missing optional library is reported with the feature it provides, not as a broken app. | [`missing_optional_libraries_name_the_feature`](crates/sam-detect/src/elf.rs#L936) |
@@ -214,30 +216,31 @@
 
 </details>
 
-<details><summary><b>sam-sandbox</b> — Building the Bubblewrap command from the permissions (16 tests)</summary>
+<details><summary><b>sam-sandbox</b> — Building the Bubblewrap command from the permissions (17 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
-| unit | Games built with SDL get a silent sound driver when sound is off, so they start instead of failing. | [`sdl_gets_its_silent_driver_without_sound_access`](crates/sam-sandbox/src/lib.rs#L1330) |
-| unit | Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | [`the_loaders_extra_library_folders_are_shown_read_only`](crates/sam-sandbox/src/lib.rs#L1339) |
-| unit | The app gets a new terminal session, unless it runs on SAM's terminal relay. | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](crates/sam-sandbox/src/lib.rs#L1347) |
-| unit | Files and folders named when starting an app are passed in, but never sensitive folders like autostart. | [`files_and_folders_named_on_the_command_line`](crates/sam-sandbox/src/lib.rs#L1356) |
-| unit | The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only. | [`the_strictest_profile_shares_nothing_and_keeps_the_app_read_only`](crates/sam-sandbox/src/lib.rs#L1413) |
-| unit | The X11 login cookie is rewritten for the display number inside the sandbox. | [`xauthority_gets_the_sandbox_display_number`](crates/sam-sandbox/src/lib.rs#L1434) |
-| unit | With a Wayland security context, the app sees only that socket, not the desktop's own. | [`wayland_security_context_socket_is_used`](crates/sam-sandbox/src/lib.rs#L1452) |
-| unit | Each granted permission adds exactly its part to the Bubblewrap command. | [`each_permission_adds_exactly_its_part_to_the_command`](crates/sam-sandbox/src/lib.rs#L1462) |
-| unit | The filtered desktop bus reaches the app only through SAM's proxy. | [`filtered_dbus_uses_proxy`](crates/sam-sandbox/src/lib.rs#L1487) |
-| unit | The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](crates/sam-sandbox/src/lib.rs#L1500) |
-| unit | With "this computer only", the network namespace is left to pasta. | [`localhost_network_leaves_netns_to_pasta`](crates/sam-sandbox/src/lib.rs#L1519) |
-| unit | A writable app folder uses an overlay; the unpacked app itself stays unchanged. | [`writable_appdir_uses_overlay`](crates/sam-sandbox/src/lib.rs#L1528) |
-| unit | Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | [`without_nested_namespaces_user_namespaces_are_disabled`](crates/sam-sandbox/src/lib.rs#L1541) |
-| unit | "Game controllers" exposes only joysticks, never keyboards or mice. | [`gamepads_only_exposes_joysticks`](crates/sam-sandbox/src/lib.rs#L1552) |
-| unit | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](crates/sam-sandbox/src/lib.rs#L1570) |
-| unit | Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](crates/sam-sandbox/src/lib.rs#L1581) |
+| unit | Games built with SDL get a silent sound driver when sound is off, so they start instead of failing. | [`sdl_gets_its_silent_driver_without_sound_access`](crates/sam-sandbox/src/lib.rs#L1368) |
+| unit | Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | [`the_loaders_extra_library_folders_are_shown_read_only`](crates/sam-sandbox/src/lib.rs#L1377) |
+| unit | The app gets a new terminal session, unless it runs on SAM's terminal relay. | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](crates/sam-sandbox/src/lib.rs#L1385) |
+| unit | Files and folders named when starting an app are passed in, but never sensitive folders like autostart. | [`files_and_folders_named_on_the_command_line`](crates/sam-sandbox/src/lib.rs#L1394) |
+| unit | The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only. | [`the_strictest_profile_shares_nothing_and_keeps_the_app_read_only`](crates/sam-sandbox/src/lib.rs#L1451) |
+| unit | The X11 login cookie is rewritten for the display number inside the sandbox. | [`xauthority_gets_the_sandbox_display_number`](crates/sam-sandbox/src/lib.rs#L1472) |
+| unit | With a Wayland security context, the app sees only that socket, not the desktop's own. | [`wayland_security_context_socket_is_used`](crates/sam-sandbox/src/lib.rs#L1490) |
+| unit | Each granted permission adds exactly its part to the Bubblewrap command. | [`each_permission_adds_exactly_its_part_to_the_command`](crates/sam-sandbox/src/lib.rs#L1500) |
+| unit | The filtered desktop bus reaches the app only through SAM's proxy. | [`filtered_dbus_uses_proxy`](crates/sam-sandbox/src/lib.rs#L1525) |
+| unit | The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](crates/sam-sandbox/src/lib.rs#L1538) |
+| unit | With "this computer only", the network namespace is left to pasta. | [`localhost_network_leaves_netns_to_pasta`](crates/sam-sandbox/src/lib.rs#L1557) |
+| unit | A writable app folder uses an overlay; the unpacked app itself stays unchanged. | [`writable_appdir_uses_overlay`](crates/sam-sandbox/src/lib.rs#L1566) |
+| unit | Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | [`without_nested_namespaces_user_namespaces_are_disabled`](crates/sam-sandbox/src/lib.rs#L1579) |
+| unit | "Game controllers" exposes only joysticks, never keyboards or mice. | [`gamepads_only_exposes_joysticks`](crates/sam-sandbox/src/lib.rs#L1590) |
+| unit | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](crates/sam-sandbox/src/lib.rs#L1608) |
+| unit | Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](crates/sam-sandbox/src/lib.rs#L1619) |
+| unit | A bundled library listed in advanced.system_libraries is replaced by the system's copy at its place in the app folder; names with folders or `..`, libraries the app does not bundle and libraries the system does not have are ignored. | [`system_copies_replace_only_bundled_libraries_by_plain_name`](crates/sam-sandbox/src/lib.rs#L1637) |
 
 </details>
 
-<details><summary><b>sam-runner</b> — Operations: add, launch, verify, repair, update, group changes; the sandbox at run time (83 tests)</summary>
+<details><summary><b>sam-runner</b> — Operations: add, launch, verify, repair, update, group changes; the sandbox at run time (86 tests)</summary>
 
 | Kind | Promise | Test |
 |---|---|---|
@@ -275,12 +278,14 @@
 | unit | Apps started from a terminal get SAM's terminal relay; apps without a terminal get none. | [`terminal_apps_get_sams_terminal_relay`](crates/sam-runner/src/pty.rs#L658) |
 | unit | A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | [`typing_and_output_pass_and_leftover_replies_are_discarded`](crates/sam-runner/src/pty.rs#L669) |
 | unit | An app on SAM's terminal relay cannot type into the user's real terminal. | [`the_app_cannot_reach_the_outer_terminal`](crates/sam-runner/src/pty.rs#L722) |
-| unit | Compatibility mode lists only what it actually changes, in the words of the switches. | [`compatibility_mode_names_only_what_it_changes`](crates/sam-runner/src/repair.rs#L496) |
-| unit | A repair step says in a sentence what it turns on or off, with the switch's own explanation of what that allows. | [`a_repair_step_says_what_it_changes_and_costs`](crates/sam-runner/src/repair.rs#L507) |
-| unit | An app that fails to register its bus name gets a repair step that allows exactly that name. | [`own_name_requests_become_a_repair`](crates/sam-runner/src/repair.rs#L527) |
-| unit | Error messages in an app's output are mapped to the repair step that fixes them. | [`analyzer_maps_errors_to_fixes`](crates/sam-runner/src/repair.rs#L544) |
-| unit | The repair ladder leaves out steps already applied and steps that would change nothing. | [`ladder_skips_applied_and_noop_steps`](crates/sam-runner/src/repair.rs#L583) |
-| unit | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](crates/sam-runner/src/repair.rs#L603) |
+| unit | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | [`sam_updates_itself_only_with_its_release_key`](crates/sam-runner/src/release_key.rs#L57) |
+| unit | Without a built-in release key, SAM never updates itself, whatever the download looks like. | [`without_a_release_key_sam_never_updates_itself`](crates/sam-runner/src/release_key.rs#L72) |
+| unit | Compatibility mode lists only what it actually changes, in the words of the switches. | [`compatibility_mode_names_only_what_it_changes`](crates/sam-runner/src/repair.rs#L533) |
+| unit | A repair step says in a sentence what it turns on or off, with the switch's own explanation of what that allows. | [`a_repair_step_says_what_it_changes_and_costs`](crates/sam-runner/src/repair.rs#L544) |
+| unit | An app that fails to register its bus name gets a repair step that allows exactly that name. | [`own_name_requests_become_a_repair`](crates/sam-runner/src/repair.rs#L564) |
+| unit | Error messages in an app's output are mapped to the repair step that fixes them. | [`analyzer_maps_errors_to_fixes`](crates/sam-runner/src/repair.rs#L581) |
+| unit | The repair ladder leaves out steps already applied and steps that would change nothing. | [`ladder_skips_applied_and_noop_steps`](crates/sam-runner/src/repair.rs#L628) |
+| unit | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](crates/sam-runner/src/repair.rs#L648) |
 | unit | The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](crates/sam-runner/src/updates.rs#L355) |
 | unit | Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](crates/sam-runner/src/updates.rs#L365) |
 | unit | Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](crates/sam-runner/src/updates.rs#L376) |
@@ -324,6 +329,7 @@
 | integration | Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | [`uninstall_refuses_folders_that_are_not_sams`](crates/sam-runner/tests/uninstall.rs#L67) |
 | integration | Undoing an update puts the previous version back. | [`undo_puts_the_previous_version_back`](crates/sam-runner/tests/update.rs#L14) |
 | integration | The sandbox check passes when the settings apply, and catches a setting that does not apply. | [`the_sandbox_check_passes_and_catches_mismatches`](crates/sam-runner/tests/verify.rs#L19) |
+| integration | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | [`an_appimage_for_another_processor_gets_no_sandbox`](crates/sam-runner/tests/wrong_processor.rs#L13) |
 
 </details>
 
@@ -375,7 +381,7 @@
 | unit | The user guide keeps the text of a list item that has a nested list below it. | [`nested_items_keep_their_text`](crates/sam-gtk/src/guide.rs#L274) |
 | unit ⟲ | Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | [`the_style_sheet_handler_is_connected_before_register`](crates/sam-gtk/src/main.rs#L428) |
 | unit | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](crates/sam-gtk/src/main.rs#L439) |
-| unit | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](crates/sam-gtk/src/window.rs#L1346) |
+| unit | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](crates/sam-gtk/src/window.rs#L1356) |
 
 </details>
 
@@ -387,6 +393,7 @@
 
 | Report | Generated | Tests passing | Failing |
 |---|---|---|---|
+| [0.1.0-983638c](docs/reports/0.1.0-983638c.md) | 2026-11-15 07:20:42 | 218 | 0 |
 | [0.1.0-53d8e50](docs/reports/0.1.0-53d8e50.md) | 2026-11-15 05:34:52 | 212 | 0 |
 | [0.1.0-c20b843](docs/reports/0.1.0-c20b843.md) | 2026-11-15 00:08:58 | 201 | 0 |
 | [0.1.0-26c4617](docs/reports/0.1.0-26c4617.md) | 2026-11-14 21:22:22 | 193 | 0 |
@@ -400,6 +407,12 @@
 
 | Commit | Date | Change |
 |---|---|---|
+| [`983638c`](https://github.com/gitzekatze/SAM/commit/983638c) | 2026-11-15 | Repair: use the system's copy of a bundled library that is too old |
+| [`dd5154e`](https://github.com/gitzekatze/SAM/commit/dd5154e) | 2026-11-15 | Release: test the finished AppImage on fresh systems; plain refusal on old ones |
+| [`b078bd6`](https://github.com/gitzekatze/SAM/commit/b078bd6) | 2026-11-15 | License notices for the libraries built into SAM |
+| [`ddc0628`](https://github.com/gitzekatze/SAM/commit/ddc0628) | 2026-11-15 | Intake: an AppImage for another processor gets no sandbox, with a clear reason |
+| [`8d16cd3`](https://github.com/gitzekatze/SAM/commit/8d16cd3) | 2026-11-15 | Self-update: SAM replaces itself only with an update signed by its release key |
+| [`802d8e1`](https://github.com/gitzekatze/SAM/commit/802d8e1) | 2026-11-15 | Version report at the end of Phase 6 |
 | [`53d8e50`](https://github.com/gitzekatze/SAM/commit/53d8e50) | 2026-11-15 | New app icon (sam-icon 1.0) |
 | [`7f41d40`](https://github.com/gitzekatze/SAM/commit/7f41d40) | 2026-11-15 | Repair: offer a writable app folder only where an overlay can work |
 | [`584e0bd`](https://github.com/gitzekatze/SAM/commit/584e0bd) | 2026-11-15 | Diagnose: fewer false findings, and files in /etc are no longer added by themselves |
@@ -424,11 +437,5 @@
 | [`2c249c1`](https://github.com/gitzekatze/SAM/commit/2c249c1) | 2026-11-14 | Version report at the end of Phase 3 (0.1.0, 984380d) |
 | [`984380d`](https://github.com/gitzekatze/SAM/commit/984380d) | 2026-11-14 | Benchmarks: warm-up run, more runs, compare the fastest run |
 | [`97bb2cf`](https://github.com/gitzekatze/SAM/commit/97bb2cf) | 2026-11-14 | Phase 3: a calmer main window |
-| [`bc97b16`](https://github.com/gitzekatze/SAM/commit/bc97b16) | 2026-11-14 | First version report (0.1.0, 36e9b42) |
-| [`36e9b42`](https://github.com/gitzekatze/SAM/commit/36e9b42) | 2026-11-14 | Phase 2b: version report, benchmarks, relations test |
-| [`c7634b5`](https://github.com/gitzekatze/SAM/commit/c7634b5) | 2026-11-14 | Remaining tests, two more fixes, every test named after its promise |
-| [`b75989e`](https://github.com/gitzekatze/SAM/commit/b75989e) | 2026-11-14 | Test audit: real promises only; fix deletion outside SAM's folders |
-| [`d2301c4`](https://github.com/gitzekatze/SAM/commit/d2301c4) | 2026-11-14 | Remove five meaningless tests |
-| [`18c682b`](https://github.com/gitzekatze/SAM/commit/18c682b) | 2026-11-14 | Phase 2: test library, regression suites, C4 overview |
 
 The full history is at [https://github.com/gitzekatze/SAM/commits/main](https://github.com/gitzekatze/SAM/commits/main).
