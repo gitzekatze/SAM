@@ -41,7 +41,7 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
     // The sections live in the runtime (the ELF in front of the payload),
     // which is well under this size.
     let mut head = Vec::new();
-    File::open(path).with_context(|| format!("reading {}", path.display()))?.take(HEAD).read_to_end(&mut head)?;
+    File::open(path).with_context(|| sam_core::i18n::trf("reading {file}", &[("file", &path.display())]))?.take(HEAD).read_to_end(&mut head)?;
     let Some((sig_range, key_range)) = sections(&head) else {
         return Ok(unsigned("the runtime has no signature sections"));
     };
@@ -52,10 +52,14 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
         return Ok(unsigned("not signed"));
     }
     if key.is_empty() {
-        return Ok(SignatureInfo { state: SignatureState::Invalid, fingerprint: None, detail: "signed, but the signer's key is missing".into() });
+        return Ok(SignatureInfo { state: SignatureState::Invalid, fingerprint: None, detail: sam_core::i18n::tr("signed, but the signer's key is missing") });
     }
     let Some(gpgv) = sam_core::util::which("gpgv") else {
-        return Ok(SignatureInfo { state: SignatureState::Unchecked, fingerprint: None, detail: "signed; install GnuPG (gpgv) to check the signature".into() });
+        return Ok(SignatureInfo {
+            state: SignatureState::Unchecked,
+            fingerprint: None,
+            detail: sam_core::i18n::tr("signed; install GnuPG (gpgv) to check the signature"),
+        });
     };
     let digest = digest_without(path, &[sig_range, key_range])?;
 
@@ -78,7 +82,11 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
         .stderr(Stdio::null())
         .status()?;
     if !st.success() {
-        return Ok(SignatureInfo { state: SignatureState::Invalid, fingerprint: None, detail: "signed, but the signer's key cannot be read".into() });
+        return Ok(SignatureInfo {
+            state: SignatureState::Invalid,
+            fingerprint: None,
+            detail: sam_core::i18n::tr("signed, but the signer's key cannot be read"),
+        });
     }
     let out = Command::new(&gpg)
         .args(["--batch", "--no-options", "--with-colons", "--homedir"])
@@ -143,8 +151,9 @@ fn digest_without(path: &Path, zero: &[std::ops::Range<usize>]) -> Result<String
     Ok(sam_core::util::hex(&h.finalize()))
 }
 
+/// An unsigned result; `detail` is translated here.
 fn unsigned(detail: &str) -> SignatureInfo {
-    SignatureInfo { state: SignatureState::Unsigned, fingerprint: None, detail: detail.into() }
+    SignatureInfo { state: SignatureState::Unsigned, fingerprint: None, detail: sam_core::i18n::tr(detail) }
 }
 
 /// File ranges of `.sha256_sig` and `.sig_key`.
@@ -196,7 +205,7 @@ pub fn sign_for_test(path: &Path, gpg_home: &Path, key_id: &str) -> Result<()> {
         .spawn()?;
     child.stdin.take().context("stdin")?.write_all(digest.as_bytes())?;
     let sig = child.wait_with_output()?.stdout;
-    anyhow::ensure!(!sig.is_empty() && sig.len() <= sig_range.len(), "signature missing or too large");
+    anyhow::ensure!(!sig.is_empty() && sig.len() <= sig_range.len(), "{}", sam_core::i18n::tr("signature missing or too large"));
     data[key_range.start..key_range.start + key.len()].copy_from_slice(&key);
     data[sig_range.start..sig_range.start + sig.len()].copy_from_slice(&sig);
     std::fs::write(path, data)?;

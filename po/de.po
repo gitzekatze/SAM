@@ -14,35 +14,100 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/config.rs:202
+msgid "{file}: {error}; that setting was reset"
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/config.rs:222
+msgid ""
+"{file} could not be read; it was moved to {moved} and the default settings "
+"are used"
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/config.rs:227
+msgid "{file} could not be read; the default settings are used"
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
 #: crates/sam-core/src/config.rs:244
+msgid "unknown theme '{theme}'; choose one of: {choices}"
+msgstr ""
+
+#: crates/sam-core/src/config.rs:253
 msgid ""
 "extraction.location must be an absolute path (or start with ~/), without '..'"
 msgstr ""
 
-#: crates/sam-core/src/config.rs:247
+#: crates/sam-core/src/config.rs:256
 msgid ""
 "extraction.location cannot be / or the home folder itself; choose a folder "
 "of its own"
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:268 crates/sam-core/src/config.rs:280
-#: crates/sam-core/src/config.rs:283
+#: crates/sam-core/src/config.rs:277 crates/sam-core/src/config.rs:289
+#: crates/sam-core/src/config.rs:292
 msgid "unknown config key '{key}'"
 msgstr ""
 
-#: crates/sam-core/src/config.rs:277 crates/sam-core/src/permissions.rs:676
+#: crates/sam-core/src/config.rs:286 crates/sam-core/src/permissions.rs:676
 msgid "empty key"
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:282
+#: crates/sam-core/src/config.rs:291
 msgid "'{key}' is not settable"
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:292 crates/sam-core/src/permissions.rs:688
+#: crates/sam-core/src/config.rs:301 crates/sam-core/src/permissions.rs:688
 msgid "invalid value for '{key}': {raw}"
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/format.rs:34
+msgid ""
+"{file} was written by a newer SAM (format {found}, this SAM knows up to "
+"{known}); update SAM. The file was left unchanged."
+msgstr ""
+
+#: crates/sam-core/src/host.rs:52
+msgid ""
+"User namespaces are disabled on this system (user.max_user_namespaces = 0). "
+"Bubblewrap cannot create a sandbox."
+msgstr ""
+
+#: crates/sam-core/src/host.rs:54
+msgid ""
+"Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone "
+"= 0). Enable them with: sudo sysctl kernel.unprivileged_userns_clone=1"
+msgstr ""
+
+#: crates/sam-core/src/host.rs:56
+msgid ""
+"AppArmor restricts unprivileged user namespaces. Bubblewrap may need an "
+"AppArmor profile (Ubuntu 24.04+)."
+msgstr ""
+
+#: crates/sam-core/src/host.rs:58
+msgid "User namespaces are available."
+msgstr ""
+
+#: crates/sam-core/src/model.rs:213
+msgid "This app can run, but meaningful isolation is limited."
+msgstr ""
+
+#: crates/sam-core/src/model.rs:214
+msgid "This app probably cannot run correctly inside a sandbox."
+msgstr ""
+
+#: crates/sam-core/src/model.rs:216
+msgid ""
+"This app requires access that cannot be safely sandboxed (it asks for "
+"administrator rights)."
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
@@ -157,7 +222,8 @@ msgstr ""
 msgid "'{key}' is not a settable key"
 msgstr ""
 
-#: crates/sam-core/src/permissions.rs:746 crates/sam-core/src/warnings.rs:109
+#: crates/sam-core/src/permissions.rs:746 crates/sam-core/src/risk.rs:96
+#: crates/sam-core/src/warnings.rs:109
 msgid "Full home access"
 msgstr ""
 
@@ -685,6 +751,10 @@ msgstr ""
 msgid "Icons and themes (read-only)"
 msgstr ""
 
+#: crates/sam-core/src/risk.rs:96
+msgid "Full home access (read-only)"
+msgstr ""
+
 #: crates/sam-core/src/risk.rs:124 crates/sam-gtk/src/perms.rs:487
 #: crates/sam-profile/src/tags.rs:102 crates/sam-runner/src/repair.rs:433
 msgid "Full network"
@@ -720,6 +790,14 @@ msgstr ""
 
 #: crates/sam-core/src/warnings.rs:80
 msgid "D-Bus wildcard not used"
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/warnings.rs:83
+msgid ""
+"{names} would also reach a name you blocked, and the D-Bus filter cannot "
+"make exceptions, so SAM does not allow it. List the services you need one by "
+"one."
 msgstr ""
 
 #: crates/sam-core/src/warnings.rs:94
@@ -886,6 +964,16 @@ msgstr ""
 msgid "Sound server not found"
 msgstr ""
 
+#: crates/sam-core/src/warnings.rs:243
+msgid ""
+"PipeWire runs without its PulseAudio service (pipewire-pulse), which "
+"sandboxed apps use for sound. Install or start pipewire-pulse."
+msgstr ""
+
+#: crates/sam-core/src/warnings.rs:247
+msgid "No PulseAudio or PipeWire sound server was found. Audio may not work."
+msgstr ""
+
 #: crates/sam-detect/src/appimage.rs:97
 msgid "type 1 magic present but no ISO 9660 signature found"
 msgstr ""
@@ -905,57 +993,127 @@ msgstr ""
 msgid "AppImage magic present but no payload found"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:379
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/appimage.rs:224
+msgid ""
+"it is built for {app} processors, but this computer's processor is {host}, "
+"so it cannot run here. Download the {version} version of the app instead"
+msgstr ""
+
+#: crates/sam-detect/src/classify.rs:209
+msgid "GPU device nodes"
+msgstr ""
+
+#: crates/sam-detect/src/classify.rs:213
+msgid "GL vendor dispatch metadata"
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:365
+msgid ""
+"{n} bundled program built for musl (Alpine) skipped: an alternative that "
+"only runs on musl systems"
+msgid_plural ""
+"{n} bundled programs built for musl (Alpine) skipped: alternatives that only "
+"run on musl systems"
+msgstr[0] ""
+msgstr[1] ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:373
+msgid ""
+"{n} bundled file built for another processor skipped: it is never loaded here"
+msgid_plural ""
+"{n} bundled files built for another processor skipped: they are never loaded "
+"here"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/sam-detect/src/elf.rs:389
 msgid "Electron app: Chromium's internal sandbox needs nested user namespaces"
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/elf.rs:525
+#: crates/sam-detect/src/elf.rs:535
 msgid "The app sets Qt to X11 itself (unless {var} says otherwise)"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:542
+#: crates/sam-detect/src/elf.rs:552
 msgid "A program of the app loads OpenGL or Vulkan at run time"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:609
+#: crates/sam-detect/src/elf.rs:619
 msgid "Libraries not found"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:623
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:622
+msgid ""
+"The app's main program needs libraries, directly or through the libraries it "
+"brings, that are neither bundled nor installed on this computer: "
+"{libraries}. It will probably not start."
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:633
 msgid "Libraries not found for a program inside the app"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:635
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:636
+msgid ""
+"{programs} inside the app needs libraries that are neither bundled nor "
+"installed: {libraries}. If the app uses that program, that part fails; often "
+"it is a helper tool the app does not need to start."
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:644
 msgid "Uses this computer's system libraries"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:649
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:647
+msgid ""
+"Like most AppImages, it uses this computer's copy of {libraries} instead of "
+"bringing its own. If it ever crashes right at the start after a system "
+"update, this is a likely cause."
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:658
 msgid "System C library too old"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:659
-msgid "Wrong CPU architecture"
-msgstr ""
-
-#: crates/sam-detect/src/elf.rs:668
-msgid "No executables found"
-msgstr ""
-
-#: crates/sam-detect/src/elf.rs:668
-msgid "No ELF executables were found in the AppImage payload."
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:661
+msgid "The app needs glibc {needed}, but this system has {installed}."
 msgstr ""
 
 #: crates/sam-detect/src/elf.rs:671
+msgid "Wrong CPU architecture"
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:674
+msgid "This AppImage is built for {app}, but this system is {host}."
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:680
+msgid "No executables found"
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:680
+msgid "No ELF executables were found in the AppImage payload."
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:683
 msgid "AppRun is a script; the main binary could not be determined"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:674
+#: crates/sam-detect/src/elf.rs:686
 msgid "analysis was truncated because the payload is very large"
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/elf.rs:800
+#: crates/sam-detect/src/elf.rs:812
 msgid ""
 "{who}, bundled in this app, can use NVIDIA graphics cards ({cuda}). This "
 "computer has none, so it runs without one: if you use this part to run local "
@@ -963,7 +1121,17 @@ msgid ""
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/elf.rs:807
+#: crates/sam-detect/src/elf.rs:814
+msgid ""
+"{who}, bundled in this app, is built for {cuda}. This computer has CUDA "
+"{installed}, which it cannot load, so this part cannot use the graphics "
+"card. If you use this part to run local AI models, they run on the processor "
+"instead, which is much slower. Other ways the app uses the graphics card are "
+"not affected."
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:819
 msgid ""
 "{who}, bundled in this app, is built for {cuda}, which is not installed, so "
 "this part cannot use the graphics card. If you use this part to run local AI "
@@ -972,12 +1140,12 @@ msgid ""
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/elf.rs:809
+#: crates/sam-detect/src/elf.rs:821
 msgid "A bundled part needs {cuda}"
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/elf.rs:814
+#: crates/sam-detect/src/elf.rs:826
 msgid ""
 "{who}, bundled in this app, can use AMD graphics cards (ROCm). This computer "
 "offers no AMD compute device, so it runs without one: if you use this part "
@@ -985,7 +1153,7 @@ msgid ""
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/elf.rs:816
+#: crates/sam-detect/src/elf.rs:828
 msgid ""
 "{who}, bundled in this app, needs ROCm, which is not installed, so this part "
 "cannot use the graphics card. If you use this part to run local AI models, "
@@ -993,74 +1161,146 @@ msgid ""
 "uses the graphics card are not affected."
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:818
+#: crates/sam-detect/src/elf.rs:830
 msgid "A bundled part needs ROCm"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:820
+#: crates/sam-detect/src/elf.rs:832
 msgid "No OpenCL acceleration"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:820
+#: crates/sam-detect/src/elf.rs:832
 msgid ""
 "This app can speed up some work with OpenCL, which is not installed. Install "
 "the OpenCL loader (ocl-icd) and your graphics card's OpenCL driver to use it."
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:825
+#: crates/sam-detect/src/elf.rs:837
 msgid "The tray icon may have no menu"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:830
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:840
+msgid ""
+"The libraries for menus on tray icons are not installed ({libraries}). The "
+"app works; its tray icon may show without a menu."
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:842
 msgid "Libraries for optional parts not found"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:853
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:845
+msgid ""
+"Only libraries bundled in the app need these, and they are often loaded only "
+"for one feature: {libraries}. The app starts; the part that uses them may "
+"not work."
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:865
 msgid "Requires privileged access"
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/elf.rs:856
+#: crates/sam-detect/src/elf.rs:868
 msgid ""
 "The AppImage's launcher calls '{tool}'. It appears to require root access, "
 "which cannot be sandboxed."
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:860
+#: crates/sam-detect/src/elf.rs:872
 msgid "Contains kernel modules"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:871
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/elf.rs:875
+msgid ""
+"The AppImage contains kernel modules ({modules}). Software that runs in the "
+"kernel cannot be sandboxed."
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:886
 msgid "X11-only application: isolation between windows is limited"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:62
-msgid "temporary folder"
+#: crates/sam-detect/src/elf.rs:911
+msgid "Wayland client libraries / toolkit support"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:67
-msgid "GnuPG (gpg) is needed to read the signer's key"
+#: crates/sam-detect/src/elf.rs:912
+msgid "links X11 libraries"
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:913
+msgid "links audio libraries"
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:914
+msgid "links D-Bus libraries"
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/signature.rs:110
+#: crates/sam-detect/src/signature.rs:44
+msgid "reading {file}"
+msgstr ""
+
+#: crates/sam-detect/src/signature.rs:46
+msgid "the runtime has no signature sections"
+msgstr ""
+
+#: crates/sam-detect/src/signature.rs:52
+msgid "not signed"
+msgstr ""
+
+#: crates/sam-detect/src/signature.rs:55
+msgid "signed, but the signer's key is missing"
+msgstr ""
+
+#: crates/sam-detect/src/signature.rs:61
+msgid "signed; install GnuPG (gpgv) to check the signature"
+msgstr ""
+
+#: crates/sam-detect/src/signature.rs:66
+msgid "temporary folder"
+msgstr ""
+
+#: crates/sam-detect/src/signature.rs:71
+msgid "GnuPG (gpg) is needed to read the signer's key"
+msgstr ""
+
+#: crates/sam-detect/src/signature.rs:88
+msgid "signed, but the signer's key cannot be read"
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/signature.rs:118
 msgid ""
 "signed{who}; the key comes with the file, so this shows it is unchanged, not "
 "who made it"
 msgstr ""
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/signature.rs:116
+#: crates/sam-detect/src/signature.rs:124
 msgid ""
 "the signature{who} does not match the file: it was changed after signing"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:182
+#: crates/sam-detect/src/signature.rs:191
 msgid "no signature sections"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:183
+#: crates/sam-detect/src/signature.rs:192
 msgid "gpg missing"
+msgstr ""
+
+#: crates/sam-detect/src/signature.rs:208
+msgid "signature missing or too large"
+msgstr ""
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/update_info.rs:45
+msgid "not an update information string SAM understands: {info}"
 msgstr ""
 
 #: crates/sam-detect/src/update_info.rs:47

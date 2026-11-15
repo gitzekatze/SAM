@@ -31,12 +31,10 @@ pub struct NewerFormat {
 
 impl std::fmt::Display for NewerFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} was written by a newer SAM (format {}, this SAM knows up to {CURRENT}); update SAM. The file was left unchanged.",
-            self.path.display(),
-            self.found
-        )
+        f.write_str(&crate::i18n::trf(
+            "{file} was written by a newer SAM (format {found}, this SAM knows up to {known}); update SAM. The file was left unchanged.",
+            &[("file", &self.path.display()), ("found", &self.found), ("known", &CURRENT)],
+        ))
     }
 }
 

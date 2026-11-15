@@ -28,6 +28,6 @@ fn an_appimage_for_another_processor_gets_no_sandbox() {
 
     let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
     let e = sam.add(&img, &AddOptions { launcher: Some(false), ..Default::default() }).unwrap_err().to_string();
-    assert!(e.contains("built for ARM (aarch64) processors") && e.contains("has an x86-64") && e.contains("Download the x86_64 version"), "{e}");
+    assert!(e.contains("built for ARM (aarch64) processors") && e.contains("processor is x86-64") && e.contains("Download the x86_64 version"), "{e}");
     assert!(sam.registry().list().unwrap().is_empty(), "nothing is stored");
 }

@@ -94,6 +94,7 @@ CALLS = {
     "check": ([2, 4], "crates/sam-runner/src/doctor.rs"),
     "item": ([3], "crates/sam-core/src/risk.rs"),
     "c": ([2, 3], "crates/sam-runner/src/verify.rs"),
+    "unsigned": ([1], "crates/sam-detect/src/signature.rs"),
 }
 # A name counts on its own or after a path ("sam_core::i18n::trf"), but not
 # as the end of a longer name ("detr(") or a method (".tr(").

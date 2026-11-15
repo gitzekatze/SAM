@@ -80,9 +80,9 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             Warning::warn(
                 "dbus-wildcard-ignored",
                 "D-Bus wildcard not used",
-                format!(
-                    "{} would also reach a name you blocked, and the D-Bus filter cannot make exceptions, so SAM does not allow it. List the services you need one by one.",
-                    ignored.join(", ")
+                crate::i18n::trf(
+                    "{names} would also reach a name you blocked, and the D-Bus filter cannot make exceptions, so SAM does not allow it. List the services you need one by one.",
+                    &[("names", &ignored.join(", "))],
                 ),
             )
             .with_key("dbus.session.allow"),
@@ -240,9 +240,11 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
                 "audio-missing",
                 "Sound server not found",
                 if host.sockets.pipewire.is_some() {
-                    "PipeWire runs without its PulseAudio service (pipewire-pulse), which sandboxed apps use for sound. Install or start pipewire-pulse."
+                    crate::i18n::n_(
+                        "PipeWire runs without its PulseAudio service (pipewire-pulse), which sandboxed apps use for sound. Install or start pipewire-pulse.",
+                    )
                 } else {
-                    "No PulseAudio or PipeWire sound server was found. Audio may not work."
+                    crate::i18n::n_("No PulseAudio or PipeWire sound server was found. Audio may not work.")
                 },
             ));
         }

@@ -199,7 +199,7 @@ impl Config {
         };
         // A single invalid value is reset, not the whole file.
         if let Err(e) = c.validate() {
-            eprintln!("sam-jail: {}: {e:#}; that setting was reset", file.display());
+            eprintln!("sam-jail: {}", crate::i18n::trf("{file}: {error}; that setting was reset", &[("file", &file.display()), ("error", &format!("{e:#}"))]));
             if !THEMES.contains(&c.general.theme.as_str()) {
                 c.general.theme = "system".into();
             }
@@ -217,8 +217,14 @@ impl Config {
 
     fn damaged(file: &std::path::Path) -> Config {
         match crate::format::quarantine(file) {
-            Some(to) => eprintln!("sam-jail: {} could not be read; moved it to {} and using the default settings", file.display(), to.display()),
-            None => eprintln!("sam-jail: {} could not be read; using the default settings", file.display()),
+            Some(to) => eprintln!(
+                "sam-jail: {}",
+                crate::i18n::trf(
+                    "{file} could not be read; it was moved to {moved} and the default settings are used",
+                    &[("file", &file.display()), ("moved", &to.display())]
+                )
+            ),
+            None => eprintln!("sam-jail: {}", crate::i18n::trf("{file} could not be read; the default settings are used", &[("file", &file.display())])),
         }
         Config::default()
     }
@@ -233,7 +239,10 @@ impl Config {
 
     pub fn validate(&self) -> Result<()> {
         if !THEMES.contains(&self.general.theme.as_str()) {
-            bail!("unknown theme '{}'; choose one of: {}", self.general.theme, THEMES.join(", "));
+            bail!(
+                "{}",
+                crate::i18n::trf("unknown theme '{theme}'; choose one of: {choices}", &[("theme", &self.general.theme), ("choices", &THEMES.join(", "))])
+            );
         }
         // Extraction folder: empty (default) or an absolute folder below /.
         let loc = self.extraction.location.trim();

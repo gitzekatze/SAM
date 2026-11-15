@@ -42,7 +42,7 @@ pub fn read(path: &Path) -> Option<UpdateSource> {
 pub fn write(path: &Path, info: &str) -> anyhow::Result<()> {
     use anyhow::Context;
     use std::io::{Seek, SeekFrom, Write};
-    anyhow::ensure!(parse(info).is_some(), "not an update information string SAM understands: {info}");
+    anyhow::ensure!(parse(info).is_some(), "{}", sam_core::i18n::trf("not an update information string SAM understands: {info}", &[("info", &info)]));
     let data = std::fs::read(path)?;
     let elf = goblin::elf::Elf::parse(&data).context(sam_core::i18n::tr("not an ELF file"))?;
     let sh = elf

@@ -49,14 +49,13 @@ impl UsernsStatus {
 
     pub fn explain(&self) -> String {
         if self.max_user_namespaces == Some(0) {
-            "User namespaces are disabled on this system (user.max_user_namespaces = 0). Bubblewrap cannot create a sandbox.".into()
+            crate::i18n::tr("User namespaces are disabled on this system (user.max_user_namespaces = 0). Bubblewrap cannot create a sandbox.")
         } else if self.unprivileged_clone == Some(false) {
-            "Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone = 0). Enable them with: sudo sysctl kernel.unprivileged_userns_clone=1"
-                .into()
+            crate::i18n::tr("Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone = 0). Enable them with: sudo sysctl kernel.unprivileged_userns_clone=1")
         } else if self.apparmor_restricted == Some(true) {
-            "AppArmor restricts unprivileged user namespaces. Bubblewrap may need an AppArmor profile (Ubuntu 24.04+).".into()
+            crate::i18n::tr("AppArmor restricts unprivileged user namespaces. Bubblewrap may need an AppArmor profile (Ubuntu 24.04+).")
         } else {
-            "User namespaces are available.".into()
+            crate::i18n::tr("User namespaces are available.")
         }
     }
 }

@@ -207,12 +207,15 @@ pub enum IsolationVerdict {
 }
 
 impl IsolationVerdict {
-    pub fn message(self) -> &'static str {
-        match self {
-            IsolationVerdict::WeaklyIsolated => "This app can run, but meaningful isolation is limited.",
-            IsolationVerdict::LikelyBroken => "This app probably cannot run correctly inside a sandbox.",
-            IsolationVerdict::UnsafeToSandbox => "This app requires access that cannot be safely sandboxed (it asks for administrator rights).",
-        }
+    /// In the user's language.
+    pub fn message(self) -> String {
+        crate::i18n::tr(match self {
+            IsolationVerdict::WeaklyIsolated => crate::i18n::n_("This app can run, but meaningful isolation is limited."),
+            IsolationVerdict::LikelyBroken => crate::i18n::n_("This app probably cannot run correctly inside a sandbox."),
+            IsolationVerdict::UnsafeToSandbox => {
+                crate::i18n::n_("This app requires access that cannot be safely sandboxed (it asks for administrator rights).")
+            }
+        })
     }
 }
 

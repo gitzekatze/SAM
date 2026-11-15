@@ -362,10 +362,20 @@ pub fn analyze_appdir_with(appdir: &Path, opts: &AnalyzeOptions, progress: &dyn 
     let strings = scan_programs(&programs, &|n| progress(w.elfs.len() + n, total));
     report.elf_count = links.parsed;
     if links.musl_variants > 0 {
-        report.notes.push(format!("{} bundled program(s) built for musl (Alpine) skipped: alternatives that only run on musl systems", links.musl_variants));
+        report.notes.push(sam_core::i18n::trn(
+            "{n} bundled program built for musl (Alpine) skipped: an alternative that only runs on musl systems",
+            "{n} bundled programs built for musl (Alpine) skipped: alternatives that only run on musl systems",
+            links.musl_variants as u64,
+            &[],
+        ));
     }
     if links.foreign_variants > 0 {
-        report.notes.push(format!("{} bundled file(s) built for another CPU skipped: they are never loaded here", links.foreign_variants));
+        report.notes.push(sam_core::i18n::trn(
+            "{n} bundled file built for another processor skipped: it is never loaded here",
+            "{n} bundled files built for another processor skipped: they are never loaded here",
+            links.foreign_variants as u64,
+            &[],
+        ));
     }
     report.bundled_libraries = w.bundled.len() as u64;
     report.arch = links.arch.unwrap_or("unknown").to_string();
@@ -609,9 +619,9 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
         report.warnings.push(Warning::danger(
             "libs-not-found",
             "Libraries not found",
-            format!(
-                "The app's main program needs libraries, directly or through the libraries it brings, that are neither bundled nor installed on this computer: {}. It will probably not start.",
-                list(&for_entry)
+            sam_core::i18n::trf(
+                "The app's main program needs libraries, directly or through the libraries it brings, that are neither bundled nor installed on this computer: {libraries}. It will probably not start.",
+                &[("libraries", &list(&for_entry))],
             ),
         ));
     }
@@ -623,10 +633,9 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
         report.warnings.push(Warning::warn(
             "libs-not-found-program",
             "Libraries not found for a program inside the app",
-            format!(
-                "{} inside the app needs libraries that are neither bundled nor installed: {}. If the app uses that program, that part fails; often it is a helper tool the app does not need to start.",
-                list(&programs),
-                list(&names)
+            sam_core::i18n::trf(
+                "{programs} inside the app needs libraries that are neither bundled nor installed: {libraries}. If the app uses that program, that part fails; often it is a helper tool the app does not need to start.",
+                &[("programs", &list(&programs)), ("libraries", &list(&names))],
             ),
         ));
     }
@@ -635,9 +644,9 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
         report.warnings.push(Warning::info(
             "host-abi-libs",
             "Uses this computer's system libraries",
-            format!(
-                "Like most AppImages, it uses this computer's copy of {} instead of bringing its own. If it ever crashes right at the start after a system update, this is a likely cause.",
-                list(&abi_sensitive)
+            sam_core::i18n::trf(
+                "Like most AppImages, it uses this computer's copy of {libraries} instead of bringing its own. If it ever crashes right at the start after a system update, this is a likely cause.",
+                &[("libraries", &list(&abi_sensitive))],
             ),
         ));
     }
@@ -649,7 +658,10 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
             report.warnings.push(Warning::danger(
                 "glibc-too-old",
                 "System C library too old",
-                format!("The app needs glibc {}.{} but this system has {}.{}.", need.0, need.1, have.0, have.1),
+                sam_core::i18n::trf(
+                    "The app needs glibc {needed}, but this system has {installed}.",
+                    &[("needed", &format!("{}.{}", need.0, need.1)), ("installed", &format!("{}.{}", have.0, have.1))],
+                ),
             ));
         }
     }
@@ -659,7 +671,7 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
             report.warnings.push(Warning::danger(
                 "arch-mismatch",
                 "Wrong CPU architecture",
-                format!("This AppImage is built for {a}, but this system is {}.", opts.host_arch),
+                sam_core::i18n::trf("This AppImage is built for {app}, but this system is {host}.", &[("app", &a), ("host", &opts.host_arch)]),
             ));
         }
     }
@@ -799,9 +811,9 @@ fn optional_features(missing: &[(String, bool, Vec<String>)], host_dirs: &[PathB
                 let msg = if !dev.join("nvidiactl").exists() {
                     sam_core::i18n::trf("{who}, bundled in this app, can use NVIDIA graphics cards ({cuda}). This computer has none, so it runs without one: if you use this part to run local AI models, they run on the processor, which is much slower.", &[("who", &who), ("cuda", &cuda)])
                 } else if !have.is_empty() {
-                    format!(
-                        "{who}, bundled in this app, is built for {cuda}. This computer has CUDA {}, which it cannot load, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.",
-                        join(&have)
+                    sam_core::i18n::trf(
+                        "{who}, bundled in this app, is built for {cuda}. This computer has CUDA {installed}, which it cannot load, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.",
+                        &[("who", &who), ("cuda", &cuda), ("installed", &join(&have))],
                     )
                 } else {
                     sam_core::i18n::trf("{who}, bundled in this app, is built for {cuda}, which is not installed, so this part cannot use the graphics card. If you use this part to run local AI models, they run on the processor instead, which is much slower. Other ways the app uses the graphics card are not affected.", &[("who", &who), ("cuda", &cuda)])
@@ -825,14 +837,14 @@ fn optional_features(missing: &[(String, bool, Vec<String>)], host_dirs: &[PathB
             "tray" => Warning::info(
                 "feature-tray-menu",
                 "The tray icon may have no menu",
-                format!("The libraries for menus on tray icons are not installed ({}). The app works; its tray icon may show without a menu.", list(&libs)),
+                sam_core::i18n::trf("The libraries for menus on tray icons are not installed ({libraries}). The app works; its tray icon may show without a menu.", &[("libraries", &list(&libs))]),
             ),
             _ => Warning::info(
                 "libs-not-found-optional",
                 "Libraries for optional parts not found",
-                format!(
-                    "Only libraries bundled in the app need these, and they are often loaded only for one feature: {}. The app starts; the part that uses them may not work.",
-                    list(&libs)
+                sam_core::i18n::trf(
+                    "Only libraries bundled in the app need these, and they are often loaded only for one feature: {libraries}. The app starts; the part that uses them may not work.",
+                    &[("libraries", &list(&libs))],
                 ),
             ),
         };
@@ -860,7 +872,10 @@ fn isolation_verdict(
         report.warnings.push(Warning::danger(
             "kernel-modules",
             "Contains kernel modules",
-            format!("The payload contains kernel modules ({}). Kernel-level software cannot be sandboxed.", list(&w.kernel_modules)),
+            sam_core::i18n::trf(
+                "The AppImage contains kernel modules ({modules}). Software that runs in the kernel cannot be sandboxed.",
+                &[("modules", &list(&w.kernel_modules))],
+            ),
         ));
         Some(IsolationVerdict::UnsafeToSandbox)
     } else if compat == Compatibility::LikelyBroken {
@@ -889,18 +904,18 @@ fn host_resources(req: &Requirements) -> Vec<HostResource> {
     }
     if req.gpu {
         for (res, why) in GRAPHICS_HOST_RESOURCES {
-            resources.push(HostResource { resource: res.to_string(), class: ResourceClass::Graphics, reason: why.to_string(), auto: false });
+            resources.push(HostResource { resource: res.to_string(), class: ResourceClass::Graphics, reason: sam_core::i18n::tr(why), auto: false });
         }
     }
     let controlled = [
-        (req.wayland, "Wayland socket", "Wayland client libraries / toolkit support"),
-        (req.x11, "X11 socket", "links X11 libraries"),
-        (req.audio, "PipeWire / PulseAudio socket", "links audio libraries"),
-        (req.dbus, "D-Bus session socket", "links D-Bus libraries"),
+        (req.wayland, "Wayland socket", sam_core::i18n::n_("Wayland client libraries / toolkit support")),
+        (req.x11, "X11 socket", sam_core::i18n::n_("links X11 libraries")),
+        (req.audio, "PipeWire / PulseAudio socket", sam_core::i18n::n_("links audio libraries")),
+        (req.dbus, "D-Bus session socket", sam_core::i18n::n_("links D-Bus libraries")),
     ];
     for (needed, res, why) in controlled {
         if needed {
-            resources.push(HostResource { resource: res.into(), class: ResourceClass::Controlled, reason: why.into(), auto: false });
+            resources.push(HostResource { resource: res.into(), class: ResourceClass::Controlled, reason: sam_core::i18n::tr(why), auto: false });
         }
     }
     resources

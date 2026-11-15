@@ -206,11 +206,11 @@ pub const SAFE_HOST_RESOURCES: &[(&str, &str)] = &[
 
 /// GPU driver resources: medium risk, often required.
 pub const GRAPHICS_HOST_RESOURCES: &[(&str, &str)] = &[
-    ("/dev/dri", "GPU device nodes"),
+    ("/dev/dri", sam_core::i18n::n_("GPU device nodes")),
     ("/usr/lib/dri", "Mesa DRI drivers"),
     ("/usr/share/vulkan", "Vulkan ICD metadata"),
     ("/etc/vulkan", "Vulkan configuration"),
-    ("/usr/share/glvnd", "GL vendor dispatch metadata"),
+    ("/usr/share/glvnd", sam_core::i18n::n_("GL vendor dispatch metadata")),
 ];
 
 #[cfg(test)]

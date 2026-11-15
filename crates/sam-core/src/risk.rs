@@ -93,7 +93,7 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     let fs = &p.filesystem;
     if fs.home {
         let lvl = if fs.home_access == Access::Rw { RiskLevel::Dangerous } else { RiskLevel::High };
-        let t = if fs.home_access == Access::Rw { "Full home access" } else { "Full home access (read-only)" };
+        let t = if fs.home_access == Access::Rw { crate::i18n::n_("Full home access") } else { crate::i18n::n_("Full home access (read-only)") };
         item(&mut items, "filesystem.home", t, lvl);
         if fs.ssh {
             item(&mut items, "filesystem.ssh", "SSH keys", RiskLevel::Dangerous);

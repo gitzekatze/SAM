@@ -220,11 +220,10 @@ pub fn wrong_processor(info: &AppImageInfo) -> Option<String> {
         }
         .to_string()
     };
-    let host_name = name(host);
-    let article = if host_name.starts_with("x86") || host_name.starts_with("ARM") { "an" } else { "a" };
-    Some(format!(
-        "it is built for {} processors, but this computer has {article} {host_name} processor, so it cannot run here. Download the {host} version of the app instead",
-        name(app)
+    // No article ("a"/"an"): the sentence must work in every language.
+    Some(sam_core::i18n::trf(
+        "it is built for {app} processors, but this computer's processor is {host}, so it cannot run here. Download the {version} version of the app instead",
+        &[("app", &name(app)), ("host", &name(host)), ("version", &host)],
     ))
 }
 
