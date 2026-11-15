@@ -128,66 +128,20 @@ Every permission has a plain-language explanation and a risk level
 
 ## Installation
 
-### Arch Linux and CachyOS
+> **Status:** the first release, 0.2.0 (a beta), is being prepared. Until it
+> is out there is no ready-made download; testers can build SAM from the
+> source code.
 
-```sh
-cd packaging/arch
-makepkg -si
-```
+From the first release on, SAM comes as one **AppImage** that runs on Ubuntu
+24.04 and newer, Debian 13, Fedora 40 and newer, Arch Linux, CachyOS and
+openSUSE Tumbleweed: download it from the
+[releases page](https://github.com/gitzekatze/SAM/releases), allow it to run,
+and open it. Packages in the AUR (Arch, CachyOS) and a COPR repository
+(Fedora) are planned with the first release.
 
-This installs two packages:
-
-| Package | Contains |
-|---|---|
-| `sam-jail-cli` | `sam-jail` (command line) and `sam-jail-run` (sandbox runner) |
-| `sam-jail` | `sam-jail-gui` (the window) |
-
-Recommended extras:
-
-| Package | Needed for |
-|---|---|
-| `xdg-dbus-proxy` | filtered D-Bus and the portal filter |
-| `passt` (provides `pasta`) | *This computer only* |
-| `strace` | diagnostic runs |
-
-### Fedora
-
-Build the RPMs from `packaging/fedora/sam-jail.spec`
-([packaging/fedora/README.md](packaging/fedora/README.md)). A COPR
-repository is planned.
-
-### AppImage (any distribution)
-
-`SAM-X.Y.Z-x86_64.AppImage` (or `-aarch64` for 64-bit ARM) from the GitHub
-release runs on any recent distribution that has Bubblewrap, GTK 4 and libadwaita 1.5 or newer.
-Before every release, the finished AppImage is tested on fresh installations of
-Ubuntu 24.04, Debian 13, Fedora, Arch Linux and openSUSE Tumbleweed. Older
-systems such as Debian 12 and Ubuntu 22.04 have a C library (glibc) that is too
-old; there the AppImage says so and does not start.
-
-```sh
-chmod +x SAM-*-x86_64.AppImage
-./SAM-*-x86_64.AppImage              # the window
-./SAM-*-x86_64.AppImage cli doctor   # the command line (sam-jail)
-```
-
-Menu entries made by SAM point to the AppImage file. If you move it, open SAM
-once so it can update them.
-
-### From source
-
-You need Rust 1.92 or newer, GTK 4.12+, libadwaita 1.5+ and Bubblewrap.
-
-```sh
-make                              # release build of the command line and the window
-make test                         # test suite, including real sandbox tests
-cargo fmt --all                   # the code format (rustfmt.toml); CI checks it
-sudo make install PREFIX=/usr
-```
-
-During development, `cargo build` and then `target/debug/sam-jail-gui`. The
-window uses the `sam-jail` built next to it; `SAM_CLI` and `SAM_RUN` point it
-at other binaries. More in [docs/packaging.md](docs/packaging.md).
+**[Install SAM](docs/install.md)** has the details: what your computer needs,
+the AppImage step by step, your first sandbox, and building SAM yourself.
+Packagers find build and install options in [docs/packaging.md](docs/packaging.md).
 
 ---
 

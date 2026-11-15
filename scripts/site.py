@@ -28,7 +28,7 @@ REPO = "https://github.com/gitzekatze/SAM"
 
 # Section, page path on the site, source document, title in navigation.
 PAGES = [
-    ("use", "use/install.html", "README.md#installation", "Install"),
+    ("use", "use/install.html", "docs/install.md", "Install SAM"),
     ("use", "use/guide.html", "docs/guide.md", "User guide"),
     ("use", "use/permissions.html", "docs/permissions.md", "Permissions reference"),
     ("trust", "trust/security.html", "docs/security.md", "Security"),
@@ -51,7 +51,7 @@ PAGES = [
     ("maintain", "maintain/contributing.html", "CONTRIBUTING.md", "Contributing"),
     ("maintain", "maintain/changelog.html", "CHANGELOG.md", "Changelog"),
 ]
-SOURCE_TO_PAGE = {src.split("#")[0]: page for _, page, src, _ in PAGES}
+SOURCE_TO_PAGE = {src: page for _, page, src, _ in PAGES}
 SOURCE_TO_PAGE["README.md"] = "index.html"
 SOURCE_TO_PAGE["DEVELOPMENT.md"] = "trust/dashboard.html"
 SOURCE_TO_PAGE["SECURITY.md"] = "trust/security.html"
@@ -87,20 +87,13 @@ def rewrite_links(body, source, page):
 
 
 def render(text):
-    md = markdown.Markdown(extensions=["tables", "fenced_code", "toc", "sane_lists"],
+    md = markdown.Markdown(extensions=["tables", "fenced_code", "toc", "sane_lists", "md_in_html"],
                            extension_configs={"toc": {"toc_depth": "2-3"}})
     body = md.convert(text)
     # Diagrams: drawn in the browser by the site's own copy of Mermaid.
     body = re.sub(r'<pre><code class="language-mermaid">(.*?)</code></pre>',
                   lambda m: f'<pre class="mermaid">{m.group(1)}</pre>', body, flags=re.S)
     return body, md.toc
-
-
-def section_of_readme(name):
-    """One `## name` section of the README, with its subsections."""
-    text = (ROOT / "README.md").read_text()
-    m = re.search(rf"^## {re.escape(name)}\n(.*?)(?=^## |\Z)", text, re.S | re.M)
-    return m.group(1) if m else ""
 
 
 def shell(page, title, body, section=None, toc=None, source=None):
@@ -163,54 +156,109 @@ def facts():
     return {"functions": len(funcs), "tests": len(tests), "reports": reports, "languages": langs}
 
 
+# Line icons (24 × 24, stroked), drawn inline so the site loads nothing else.
+ICONS = {
+    "box": "M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8",
+    "flow": "M4 12h13M13 6l6 6-6 6",
+    "shield": "M12 3l8 3v6c0 5-3.5 8.5-8 9.5C7.5 20.5 4 17 4 12V6l8-3zM9 12l2 2 4-4",
+    "lock": "M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 017 0V11",
+    "search": "M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM20 20l-4.8-4.8",
+    "compass": "M12 3a9 9 0 100 18 9 9 0 000-18zM15.5 8.5l-2 5-5 2 2-5z",
+    "wrench": "M14.5 6.5a4 4 0 00-5.2 5.2L4 17l3 3 5.3-5.3a4 4 0 005.2-5.2l-2.3 2.3-2.5-.5-.5-2.5z",
+    "chart": "M4 20V11M10 20V5M16 20v-6M2.5 20h19",
+    "doc": "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
+    "target": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM12 11.5v1",
+    "flask": "M9 3h6M10 3v6l-5 9a2 2 0 001.8 3h10.4a2 2 0 001.8-3l-5-9V3M7.5 15h9",
+    "shuffle": "M16 4h4v4M4 20L20 4M20 16v4h-4M14.5 14.5L20 20M4 4l5 5",
+    "check": "M9 4h6v3H9zM15 5.5h3V21H6V5.5h3M9 14l2 2 4-4",
+    "eye": "M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12zM12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z",
+    "undo": "M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3",
+    "menu": "M4 6h16M4 12h16M4 18h10",
+}
+
+
+def icon(name):
+    return (f'<span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            f'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{ICONS[name]}"/></svg></span>')
+
+
+def cards(items, links=True):
+    out = []
+    for item in items:
+        href, ic, title, text = item if links else (None, *item)
+        inner = f"{icon(ic)}<h3>{title}</h3><p>{text}</p>"
+        out.append(f'<a class="card" href="{href}">{inner}<span class="more">Open →</span></a>' if links
+                   else f'<div class="card">{inner}</div>')
+    return "".join(out)
+
+
 def home(f):
     page = "index.html"
-    doors = [
-        ("use/install.html", "🧭", "Use SAM", "Install SAM, sandbox your first AppImage in three clicks, and find every setting explained in plain language."),
-        ("trust/index.html", "🛡️", "Trust SAM", "Every promise with the test that proves it: security, threat model, live test results, mutation testing."),
-        ("maintain/index.html", "🛠️", "Maintain SAM", "The handbook: how SAM is built, tested and released, and how GitHub works, written for beginners."),
+    why = [
+        ("eye", "Nothing runs before you decide",
+         "SAM reads an AppImage's name, icon and needs without running it, and unpacks it without running it. The app starts only when you press Launch."),
+        ("lock", "Least access, chosen for each app",
+         "Every app starts with a private home folder and its own window, nothing more. SAM adds only what this app shows it needs: sound for a player, the network for a browser."),
+        ("doc", "Every switch says what it costs",
+         "Each permission is explained in a sentence and marked harmless, think twice or dangerous. No jargon, no hidden defaults."),
+        ("undo", "When an app struggles, SAM finds out why",
+         "After a failed start SAM reads what went wrong and offers the one change that helps, from mild to strong, each one reversible."),
+        ("menu", "Fits into your desktop",
+         "Sandboxed apps appear in your application menu and always start through SAM. Menu entries that would start an app without its sandbox are hidden."),
+        ("shield", "Built on proven parts",
+         "Bubblewrap, the sandbox Flatpak uses, plus Landlock, a system-call filter and filtered desktop services. SAM adds no new privileged code."),
     ]
     columns = [
-        ("📦", "Opens nearly anything", "Electron, Qt, GTK, games, Wine, Flutter: 117 of 120 real AppImages start in their sandbox, and the rest fail for reasons inside the app."),
-        ("✨", "Simple on the surface", "Pick an AppImage, look over the access SAM recommends, press Create Sandbox. Every switch says what it costs."),
-        ("🛡️", "Security you can check", "Bubblewrap, Landlock, a system-call filter, filtered desktop services. Each promise names the test that proves it."),
-        ("🔒", "Private by design", "No telemetry, no accounts, network only when you ask. Bug reports hide your name, paths, addresses and secrets."),
-        ("🔍", "Open and tested", f"{f['tests']} tests guard {f['functions']} functions; breakout attempts, fuzzing and mutation testing run against the code itself."),
+        ("box", "Reliable", "117 of 120 real AppImages, from Electron and Qt apps to games and Wine, start in their sandbox. The other three fail for reasons inside the app."),
+        ("flow", "Simple", "Pick an AppImage, look over the access, press Create Sandbox. Settings for experts stay out of the way until you need them."),
+        ("shield", "Secure", "Each security promise names the test that proves it, and the threat model says just as clearly what SAM cannot stop."),
+        ("lock", "Private", "No telemetry, no account, no network unless you ask. Bug reports remove your name, folders, addresses and secrets."),
+        ("search", "Auditable", f"Open source under the GPL. {f['tests']} tests guard {f['functions']} functions, and the results are published on this site."),
     ]
-    cards = lambda items: "".join(
-        f'<a class="card" href="{href}"><div class="icon">{icon}</div><h3>{t}</h3><p>{d}</p><span class="more">Open →</span></a>'
-        for href, icon, t, d in items)
-    plain = lambda items: "".join(f'<div class="card"><div class="icon">{i}</div><h3>{t}</h3><p>{d}</p></div>' for i, t, d in items)
+    doors = [
+        ("use/install.html", "compass", "Use SAM", "How to install SAM, your first sandbox, and every setting explained."),
+        ("trust/index.html", "shield", "Trust SAM", "The evidence: how the sandbox works, what it cannot do, and test results you can check."),
+        ("maintain/index.html", "wrench", "Maintain SAM", "The handbook: how SAM is built, tested and released, written for beginners."),
+    ]
     body = f"""
 <section class="hero"><div class="wrap">
 <img class="logo" src="assets/logo.svg" alt="SAM's logo: a seal on a shield">
 <h1>Every AppImage, in a <span>sandbox you control</span></h1>
-<p class="lead">AppImages are handy: download, double-click, done. They also run with all your rights. SAM gives each one a sandbox with exactly the access you choose, explained in plain words, without the command line.</p>
+<p class="lead">AppImages are the easiest way to get software on Linux: download one file, run it. That file then runs with all your rights, and can read your documents, keys and browser profiles. SAM gives each AppImage its own sandbox, with exactly the access you allow, in a window anyone can use.</p>
 <div class="buttons"><a class="btn primary" href="use/install.html">Get SAM</a><a class="btn ghost" href="trust/index.html">See the evidence</a></div>
+<p class="note">Free and open source · Linux · English, Deutsch, Español, Français</p>
 </div></section>
+
 <section class="band soft"><div class="wrap">
-<h2>How it works</h2><p class="sub">Three steps from a downloaded file to an app that runs safely.</p>
+<h2>The gap SAM closes</h2>
+<p class="sub">Flatpak apps come with a sandbox and tools like Flatseal to adjust it. AppImages have neither: whatever you download runs unprotected. Wrapping them by hand needs command-line tools and knowing which access each app needs. SAM does that work for you, and shows its reasoning.</p>
 <div class="grid steps">
-<div class="card"><h3>Pick an AppImage</h3><p>SAM lists the AppImages in your folders and reads their name and icon without running anything.</p></div>
-<div class="card"><h3>Look over the access</h3><p>SAM recommends the least access the app needs: its own window, maybe sound or the network. Change anything with a switch.</p></div>
-<div class="card"><h3>Run it sandboxed</h3><p>The app starts in its sandbox, from SAM or your app menu. If it struggles, SAM says why and offers a fix you can undo.</p></div>
+<div class="card"><h3>Pick an AppImage</h3><p>SAM lists the AppImages in your folders, sandboxed or not, and reads them without running them.</p></div>
+<div class="card"><h3>Look over the access</h3><p>SAM recommends the least access this app needs, and explains every switch in plain words.</p></div>
+<div class="card"><h3>Run it in its sandbox</h3><p>Launch it from SAM or your application menu. SAM can check from inside the sandbox that every setting holds.</p></div>
 </div></div></section>
+
 <section class="band"><div class="wrap">
-<h2>What SAM stands for</h2><p class="sub">Five promises guide every change.</p>
-<div class="grid">{plain(columns)}</div></div></section>
+<h2>Why SAM</h2><p class="sub">What it does differently.</p>
+<div class="grid">{cards(why, links=False)}</div></div></section>
+
 <section class="band soft"><div class="wrap">
-<div class="stats">
-<div class="stat"><b>{f['tests']}</b><span>tests</span></div>
-<div class="stat"><b>{f['functions']}</b><span>functions, each proven</span></div>
+<h2>What SAM stands for</h2><p class="sub">Five promises every change is checked against.</p>
+<div class="grid">{cards(columns, links=False)}</div>
+<div class="stats" style="margin-top:2.5rem">
+<div class="stat"><b>{f['tests']}</b><span>automated tests</span></div>
+<div class="stat"><b>{f['functions']}</b><span>functions, each with proof</span></div>
 <div class="stat"><b>120</b><span>real AppImages tried</span></div>
 <div class="stat"><b>{f['languages']}</b><span>languages</span></div>
 </div></div></section>
+
 <section class="band"><div class="wrap">
-<h2>Find your way</h2><p class="sub">Whether you want to use SAM, check it, or look after it.</p>
+<h2>Find your way</h2><p class="sub">Use SAM, check it, or look after it.</p>
 <div class="grid">{cards(doors)}</div></div></section>
+
 <section class="band soft"><div class="wrap honest">
 <h2>How SAM is made</h2>
-<p>One person, one AI assistant, and a lot of proof. SAM is built with Claude as a coding assistant, and it shows its evidence instead of asking for trust. An outside security review is the next step before the first public beta.</p>
+<p>SAM is a one-person project built with Claude, Anthropic's AI model, as a coding assistant. That is why it asks to be checked rather than trusted: every promise is tied to a test, the tests run on every change, and the results are on this site. An outside security review is the next step before the first public beta.</p>
 <p><a href="trust/index.html">See the evidence →</a></p>
 </div></section>"""
     write(page, shell(page, "Sandboxed AppImage Manager", body))
@@ -219,69 +267,104 @@ def home(f):
 def trust_index(f):
     page = "trust/index.html"
     items = [
-        ("dashboard.html", "📊", "Dashboard", "Test results, coverage and speed from the newest version report."),
-        ("security.html", "🛡️", "Security", "What the sandbox shows and hides, layer by layer, each promise with its test."),
-        ("threat-model.html", "🎯", "Threat model", "Who SAM protects against, and just as clearly, what it does not."),
-        ("functions.html", "🧩", "Functions and their tests", f"All {f['functions']} functions SAM promises, with the tests that prove each one."),
-        ("tests.html", "🧪", "Test library", f"Every one of the {f['tests']} tests and the promise it keeps."),
-        ("mutation-testing.html", "🧬", "Mutation testing", "2,821 deliberate mistakes in the security code, and how many the tests caught."),
-        ("security-review.html", "📝", "Security review", "The review that checked every promise against a test."),
+        ("dashboard.html", "chart", "Dashboard", "What the tests prove, area by area, how they work, and their newest results."),
+        ("security.html", "shield", "Security", "What the sandbox shows and hides, layer by layer, each promise with its test."),
+        ("threat-model.html", "target", "Threat model", "Who SAM protects you from, and just as clearly, what it does not."),
+        ("functions.html", "check", "Functions and their proof", f"All {f['functions']} functions SAM promises, each with the tests that prove it."),
+        ("tests.html", "flask", "Test library", f"Every one of the {f['tests']} tests and the promise it keeps."),
+        ("mutation-testing.html", "shuffle", "Mutation testing", "2,821 deliberate mistakes put into the security code, to see whether the tests notice."),
+        ("security-review.html", "doc", "Security review", "The review that checked every security promise against a test."),
     ]
-    cards = "".join(f'<a class="card" href="{h}"><div class="icon">{i}</div><h3>{t}</h3><p>{d}</p><span class="more">Open →</span></a>' for h, i, t, d in items)
     body = f"""<h1>Trust SAM</h1>
-<p>SAM keeps people safe from programs they download, so it has to earn trust. Instead of asking for it, SAM shows its work: every promise, the test behind it, and the results.</p>
-<div class="grid" style="margin-top:1.5rem">{cards}</div>
+<p>SAM protects you from programs you download, so it should not ask for blind trust. This section publishes what anyone needs to judge it: how the sandbox works, what it cannot do, and the tests that check every promise, with their results.</p>
+<div class="grid" style="margin-top:1.5rem">{cards(items)}</div>
+<h2>How to check SAM yourself</h2>
+<ul>
+<li>Every security promise on the <a href="security.html">security page</a> names a test; the <a href="tests.html">test library</a> links each test to its code.</li>
+<li>The tests run on every change on GitHub, on Ubuntu and Fedora; the results are public in the repository's <a href="{REPO}/actions">Actions</a> tab.</li>
+<li>Releases are signed; <a href="{REPO}/blob/main/SECURITY.md#checking-a-download">SECURITY.md</a> shows how to check a download.</li>
+<li>Found a way out of the sandbox? Report it privately through <a href="{REPO}/security/advisories/new">GitHub's security tab</a>.</li>
+</ul>
 <h2>How SAM is made</h2>
-<p>SAM is a one-person project, built with Claude, Anthropic's AI model, as a coding assistant. The maintainer decides what SAM does and how far each permission may go; Claude writes most of the code and tests, and every change has to pass them. An outside security review is planned before the first public beta. Found a way out of the sandbox? Please report it privately through <a href="{REPO}/security/advisories/new">GitHub's security tab</a>.</p>"""
+<p>SAM is a one-person project, built with Claude, Anthropic's AI model, as a coding assistant. The maintainer decides what SAM does and how far each permission may go; Claude writes most of the code and the tests, and a change goes in only when every test passes. No one outside the project has reviewed SAM yet; an outside security review is planned before the first public beta.</p>"""
     write(page, shell(page, "Trust SAM", body, section="trust"))
+
+
+AREA_TEXT = {
+    "A": "SAM finds AppImages, recognizes every format, unpacks them without running them, within limits, and survives damaged or hostile files.",
+    "B": "SAM recommends the least access each app needs, explains every permission, and app output can never grant access on its own.",
+    "C": "Inside the sandbox an app sees only what you allowed: files, network, desktop services, display, devices, and nothing that would let it out.",
+    "D": "Every way of starting an app goes through its sandbox, the sandbox check confirms each setting from inside, and stopping leaves nothing behind.",
+    "E": "When an app fails, SAM says why and offers fixes from mild to strong, each one reversible.",
+    "F": "SAM notices settings changed behind its back and changed or moved AppImages, and updates come over HTTPS and are checked.",
+    "G": "Removing an app or SAM deletes only what SAM made, and bug reports contain no personal data.",
+    "H": "The window: overview, Permission Manager, translations, and use with keyboard and screen reader.",
+    "I": "SAM's own files survive versions, and its parts stay cleanly separated.",
+}
+
+KINDS = [
+    ("Logic tests", "Every rule in SAM, checked with known inputs and the exact expected result.", "every change, twice (a test whose result changes is flaky and fails the run)"),
+    ("Real sandbox tests", "Start real Bubblewrap sandboxes and check from inside what an app can see, reach and change.", "every change, on Ubuntu and Fedora"),
+    ("Attack tests", "Breakout attempts from inside a sandbox, deliberately hostile AppImages, and fuzzing: thousands of damaged files fed to SAM's readers.", "every change"),
+    ("Update tests", "A local HTTPS server serves real updates; SAM must apply genuine ones and refuse damaged downloads and plain HTTP.", "every change"),
+    ("Window tests", "A script clicks through the window like a person, through the accessibility interface screen readers use.", "every change"),
+    ("Upgrade test", "Builds the previous version, creates apps and settings with it, and checks that the new version keeps them and still starts the apps.", "before every release"),
+    ("Real AppImages", "120 real AppImages of every kind go through SAM's whole flow in a hidden session.", "before every release"),
+    ("Mutation testing", "Puts thousands of small mistakes into the security code on purpose; a mistake the tests miss is a missing test.", "before every release"),
+    ("Install tests", "The finished AppImage on fresh Ubuntu, Debian, Fedora, Arch and openSUSE systems.", "every release build"),
+]
 
 
 def dashboard(f):
     page = "trust/dashboard.html"
     reps = f["reports"]
-    if not reps:
-        write(page, shell(page, "Dashboard", "<h1>Dashboard</h1><p>No version report yet.</p>", section="trust"))
-        return
-    last = reps[-1]
-    tests = last.get("tests", [])
-    ok = sum(1 for t in tests if t.get("result") == "ok")
-    failed = sum(1 for t in tests if t.get("result") == "FAILED")
-    status = '<span class="pill ok">all passing</span>' if failed == 0 else f'<span class="pill bad">{failed} failing</span>'
-    cov = "".join(
-        f'<div class="bar"><span>{html.escape(part)}</span><div class="track"><div class="fill" style="width:{v.get("percent", 0)}%"></div></div><span>{v.get("percent", 0):.0f} %</span></div>'
-        for part, v in sorted(last.get("coverage", {}).items()) if isinstance(v, dict))
-    peak = max(len([t for t in r.get("tests", []) if t.get("result") == "ok"]) for r in reps) or 1
+    last = reps[-1] if reps else {}
+    results = {t.get("test"): t.get("result") for t in last.get("tests", [])}
+    funcs = tomllib.loads((ROOT / "docs/functions.toml").read_text())
+    names = {a["id"]: a["name"] for a in funcs["area"]}
+    rows = []
+    total_ok = total_bad = total_new = 0
+    for area in names:
+        fs = [x for x in funcs["function"] if x["area"] == area]
+        ts = sorted({t for x in fs for t in x.get("tests", [])})
+        ok = sum(1 for t in ts if results.get(t) == "ok")
+        bad = sum(1 for t in ts if results.get(t) == "FAILED")
+        new = len(ts) - ok - bad
+        total_ok, total_bad, total_new = total_ok + ok, total_bad + bad, total_new + new
+        state = (f'<span class="pill bad">{bad} failing</span>' if bad else '<span class="pill ok">passing</span>')
+        extra = f" · {new} newer than the report" if new else ""
+        rows.append(f"<tr><td><b>{html.escape(names[area])}</b><br><span class=muted>{AREA_TEXT.get(area, '')}</span></td>"
+                    f"<td>{len(fs)}</td><td>{len(ts)}</td><td>{state}<br><span class=muted>{ok} passed{extra}</span></td></tr>")
+    when = html.escape(last.get("generated", "").replace("T", " ")[:16]) or "none yet"
+    headline = (f"All {total_ok} tests in the newest report pass" if total_bad == 0 else f"{total_bad} tests fail")
+    kinds = "".join(f"<tr><td><b>{k}</b></td><td>{d}</td><td>{w}</td></tr>" for k, d, w in KINDS)
+    peak = max([len([t for t in r.get("tests", []) if t.get("result") == "ok"]) for r in reps] or [1])
     hist = "".join(
-        f'<div style="height:{100 * n / peak:.0f}%" title="{html.escape(r.get("generated", ""))}"><span>{n}</span></div>'
+        f'<div style="height:{100 * n / peak:.0f}%" title="{html.escape(r.get("generated", "")[:10])}"><span>{n}</span></div>'
         for r in reps for n in [len([t for t in r.get("tests", []) if t.get("result") == "ok"])])
-    bench = "".join(f"<tr><td>{html.escape(b.get('what', b.get('key', '')))}</td><td>{b['best_ms']:.3f} ms</td></tr>"
-                    for b in last.get("bench", []) if isinstance(b.get("best_ms"), (int, float)))
+    bench = "".join(f"<tr><td>{html.escape(b.get('what', ''))}</td><td>{b['best_ms']:.2f} ms</td></tr>"
+                    for b in last.get("bench", []) if isinstance(b.get("best_ms"), (int, float)) and b.get("what"))
     body = f"""<h1>Dashboard</h1>
-<p>From the newest version report ({html.escape(last.get("generated", "").replace("T", " "))}). Reports are made before each version with <code>make report</code>.</p>
-<div class="stats" style="margin:1.5rem 0">
-<div class="stat"><b>{ok}</b><span>tests passed {status}</span></div>
-<div class="stat"><b>{f['functions']}</b><span>functions</span></div>
-<div class="stat"><b>{len(reps)}</b><span>version reports</span></div>
-</div>
+<p class="lead-p"><b>{headline}.</b> The newest version report is from {when}. A version report runs the whole test suite and records the results before each version (<code>make report</code>); in between, the same tests run on GitHub with every change.</p>
+<h2>What the tests prove</h2>
+<p>SAM's promises are grouped into areas. Each function in an area has at least one test that proves it; the <a href="functions.html">function map</a> lists them one by one.</p>
+<table><thead><tr><th>Area and what it covers</th><th>Functions</th><th>Tests</th><th>Result</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+<h2>How SAM is tested</h2>
+<table><thead><tr><th>Kind</th><th>What it does</th><th>When</th></tr></thead><tbody>{kinds}</tbody></table>
+<p>The latest <a href="mutation-testing.html">mutation testing</a> caught 88.5 % of 2,609 deliberate mistakes; the gaps that mattered got tests.</p>
 <h2>Passing tests, report by report</h2>
+<p>Each bar is one version report; the number is how many tests passed. It grows because every change comes with tests.</p>
 <div class="history" role="img" aria-label="Passing tests in each version report">{hist}</div>
-<h2>Line coverage per part</h2>
-<p>Coverage finds code no test runs; it does not say how good the tests are. The window is tested mostly by clicking through it, which coverage does not count.</p>
-<div class="bars">{cov}</div>
-<h2>Speed</h2>
-<table><thead><tr><th>What</th><th>Best time</th></tr></thead><tbody>{bench}</tbody></table>"""
+<h2>How fast SAM is</h2>
+<p>Measured in the newest report on the maintainer's computer; the best of several runs.</p>
+<table><thead><tr><th>What</th><th>Time</th></tr></thead><tbody>{bench}</tbody></table>"""
     write(page, shell(page, "Dashboard", body, section="trust"))
 
 
 def documents():
     for section, page, source, title in PAGES:
-        if "#" in source:
-            path, _, name = source.partition("#")
-            text = f"# {title}\n\n" + section_of_readme(name.title())
-            src_file = path
-        else:
-            src_file = source
-            text = (ROOT / source).read_text()
+        src_file = source
+        text = (ROOT / source).read_text()
         body, toc = render(text)
         body = rewrite_links(body, src_file, page)
         write(page, shell(page, title, body, section=section, toc=toc, source=src_file))

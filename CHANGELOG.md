@@ -153,6 +153,13 @@ version.
 
 ### Tests and documentation
 
+- The website's front page explains why SAM is good (the gap it closes,
+  what it does differently, its five promises); line icons replace emoji;
+  the dashboard explains what the tests prove, area by area, and how SAM is
+  tested; it works on phones without sideways scrolling.
+- docs/install.md is an install guide for users, honest that the first
+  release is still being prepared, with building from source as a section
+  for testers. The README's install section points to it.
 - SAM has a website (GitHub Pages), built from the repository on every
   change: Use SAM (install, guide), Trust SAM (security, threat model,
   dashboard, functions, tests, mutation testing) and Maintain SAM.
