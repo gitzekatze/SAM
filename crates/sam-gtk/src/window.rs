@@ -140,6 +140,24 @@ impl App {
         }
     }
 
+    /// After a new language was chosen: a note with a button that starts
+    /// the window again in that language. Apps keep running.
+    pub fn offer_restart(&self) {
+        let t = adw::Toast::builder()
+            .title(esc(&tr("The new language is used after SAM restarts. Your apps keep running.")))
+            .button_label(tr("Restart Now"))
+            .timeout(0)
+            .build();
+        let window = self.window.clone();
+        t.connect_button_clicked(move |_| {
+            crate::i18n::RESTART.store(true, std::sync::atomic::Ordering::SeqCst);
+            if let Some(a) = window.application() {
+                a.quit();
+            }
+        });
+        self.toasts.add_toast(t);
+    }
+
     pub fn report_error(&self, e: &str) {
         eprintln!("sam-jail: {e}");
         let t = adw::Toast::builder().title(esc(e)).timeout(8).build();
@@ -317,6 +335,13 @@ impl App {
         sect.append(Some(&tr("Diagnostics")), Some("win.show-diagnostics"));
         sect.append(Some(&tr("User Guide")), Some("win.show-guide"));
         sect.append(Some(&tr("Preferences")), Some("win.show-preferences"));
+        // The language the window shows now, named in that language.
+        let shown = std::env::var_os(sam_core::i18n::SYSTEM_LANGUAGE_VAR)
+            .and_then(|_| std::env::var("LANGUAGE").ok())
+            .and_then(|c| crate::i18n::chosen_language_name(&c))
+            .map(str::to_string)
+            .unwrap_or_else(|| tr("System"));
+        sect.append(Some(&crate::i18n::trf("Language: {language}", &[("language", &shown)])), Some("win.show-language"));
         menu.append_section(None, &sect);
         let about = gio::Menu::new();
         // SAM updates itself only as an AppImage; packages update through
@@ -432,7 +457,7 @@ impl App {
         found_head.append(&refresh);
         filter_box.append(&found_head);
         let all_perms = gtk::Button::builder()
-            .label(tr("Permissions of All Apps"))
+            .label(tr("Permission Manager"))
             .tooltip_text(tr("See what every sandboxed app may access, and change several apps at once"))
             .action_name("win.show-permissions")
             .margin_top(HEAD_GAP)
@@ -856,6 +881,10 @@ impl App {
                 let p = crate::pages::diagnostics(self);
                 self.show(&p, None);
             }
+            "language" => {
+                let p = crate::pages::language(self);
+                self.show(&p, None);
+            }
             "guide" => {
                 let p = crate::guide::page();
                 self.show(&p, None);
@@ -920,6 +949,7 @@ impl App {
         add("show-permissions", Box::new(|me| me.show_permissions()));
         add("show-diagnostics", Box::new(|me| me.show_section("diagnostics")));
         add("show-preferences", Box::new(|me| me.show_section("preferences")));
+        add("show-language", Box::new(|me| me.show_section("language")));
         add("refresh", Box::new(|me| me.refresh_apps_later()));
         add("self-update", Box::new(|me| me.self_update()));
         add(
@@ -1241,7 +1271,9 @@ impl App {
                         p.preselect(s.app.split(',').filter(|i| !i.is_empty()).map(String::from).collect());
                     }
                 }
-                "presets" | "preferences" | "settings" | "diagnostics" | "guide" => me.show_section(if s.page == "settings" { "preferences" } else { &s.page }),
+                "presets" | "preferences" | "settings" | "diagnostics" | "guide" | "language" => {
+                    me.show_section(if s.page == "settings" { "preferences" } else { &s.page })
+                }
                 _ => {}
             }
             me.add_files(s.files);

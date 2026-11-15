@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! SAM's GUI (GTK 4 / libadwaita).
 //!
-//!   sam-jail-gui [--page app|file|permissions|presets|preferences|diagnostics] [--app <id>[,<id>…]] [FILES…]
+//!   sam-jail-gui [--page app|file|permissions|presets|preferences|diagnostics|language] [--app <id>[,<id>…]] [FILES…]
 //!   sam-jail-gui --screenshot out.png [--size 1180x800] [--delay 3000] [--page …] [--focus-walk]
 //!
 //! --screenshot renders the window once it has loaded, saves it as PNG and
@@ -131,7 +131,7 @@ fn parse_args() -> Options {
             "--delay" => o.delay = args.next().and_then(|s| s.parse().ok()).unwrap_or(3000),
             "--focus-walk" => o.focus_walk = true,
             "-h" | "--help" => {
-                println!("Usage: sam-jail-gui [--page app|file|permissions|presets|preferences|diagnostics] [--app ID] [FILES…]");
+                println!("Usage: sam-jail-gui [--page app|file|permissions|presets|preferences|diagnostics|language] [--app ID] [FILES…]");
                 std::process::exit(0);
             }
             "--version" => {
@@ -145,6 +145,7 @@ fn parse_args() -> Options {
 }
 
 fn main() -> glib::ExitCode {
+    i18n::apply_language_setting();
     i18n::init();
     let opts = parse_args();
     glib::set_application_name("SAM - Sandboxed AppImage Manager");
@@ -247,7 +248,18 @@ fn main() -> glib::ExitCode {
             glib::Propagation::Proceed
         });
     });
-    app.run_with_args::<&str>(&[])
+    let code = app.run_with_args::<&str>(&[]);
+    drop(app);
+    // A new language: start the window again, with the same arguments, so
+    // every text is loaded in that language. Apps keep running.
+    if i18n::RESTART.load(std::sync::atomic::Ordering::SeqCst) {
+        use std::os::unix::process::CommandExt;
+        if let Ok(exe) = std::env::current_exe() {
+            let err = std::process::Command::new(exe).args(std::env::args_os().skip(1)).exec();
+            eprintln!("sam-jail-gui: {err}");
+        }
+    }
+    code
 }
 
 /// Saves the window, plus (as `<file>-content.png`) the full scrollable

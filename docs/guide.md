@@ -15,13 +15,14 @@
 | Give an app access to a folder | Its page → **Files** |
 | Confirm the sandbox really applies your settings and the app starts | **Test** next to Launch, results under **Test** |
 | Fix an app that does not start | Its page → **Troubleshooting** |
-| Change a permission for several apps | **Permissions of All Apps** above the list, select the apps, change the switch |
+| Change a permission for several apps | **Permission Manager** above the list, select the apps, change the switch |
 | Reuse settings for other apps | Its page → **My Presets** → *Name for the new preset* |
 | Find out what a label means | Hover over it |
 | Remove a sandbox | The round trash button left of **Test** |
 | Close an app that hides in the tray | The trash button offers *Close and Remove*, or `sam-jail stop app` |
 | Use changed settings while the app runs | The bar "… is running" at the top of its page → **Restart** |
 | Go back to the start page | Click SAM's logo at the top left |
+| Change SAM's language | Main menu → **Language**, choose one, then **Restart Now** (apps keep your system's language) |
 
 ---
 
@@ -126,9 +127,9 @@ Programs that run in a terminal (Helix, Neovim, command-line tools) open in your
 
 ---
 
-## Permissions of All Apps
+## Permission Manager
 
-The button **Permissions of All Apps** above the list of AppImages opens a page that shows every sandboxed app with tags for what it may access. The tags use the same words as the switches and come in four groups: Network, Files, Devices and Desktop. Their color shows the risk, the same way everywhere in SAM: grey means harmless, amber means think twice, and red means dangerous. A filled tag means read and write access, an outlined tag means read-only or limited access. Hovering over a tag explains what the permission allows. The app's own page shows the same tags under its name.
+The button **Permission Manager** above the list of AppImages opens a page that shows every sandboxed app with tags for what it may access. The tags use the same words as the switches and come in four groups: Network, Files, Devices and Desktop. Their color shows the risk, the same way everywhere in SAM: grey means harmless, amber means think twice, and red means dangerous. A filled tag means read and write access, an outlined tag means read-only or limited access. Hovering over a tag explains what the permission allows. The app's own page shows the same tags under its name.
 
 - **Filter** by clicking a tag above the list: the first click shows only the apps that have this permission, the second click shows only the apps without it, and the third click turns the filter off. *Running*, *Needs review* and *May not start* filter by state.
 - **Select** apps with the check boxes. Shift-click selects a range, and *Select all* selects every app the filter shows. Clicking an app selects only that app.

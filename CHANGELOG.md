@@ -24,6 +24,10 @@ version.
 
 ### German, Spanish and French
 
+- The main menu has **Language**: follow the system, or choose English,
+  Deutsch, Español or Français, each named in its own language. SAM's window
+  restarts in the new language; apps keep the language of the system.
+- *Permissions of All Apps* is now called **Permission Manager**.
 - SAM speaks German, Spanish and French: every text in the window, every
   message from SAM's core (permissions, warnings, repair advice, check
   results, update and error messages) and the command line's sentences.

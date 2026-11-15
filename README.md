@@ -113,7 +113,7 @@ Every permission has a plain-language explanation and a risk level
   would take away access an app needs.
 - **Before a sandbox exists,** the right column shows SAM's recommendation,
   ready to adjust.
-- **All apps at a glance:** *Permissions of All Apps* shows what every
+- **All apps at a glance:** *Permission Manager* shows what every
   sandboxed app may access and changes a permission for several apps at
   once, with Undo.
 - **Everything else:** your own presets, troubleshooting, logs, diagnostics and a

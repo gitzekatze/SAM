@@ -24,6 +24,16 @@ unsafe extern "C" {
     fn bind_textdomain_codeset(domain: *const libc::c_char, codeset: *const libc::c_char) -> *mut libc::c_char;
 }
 
+/// The languages SAM speaks, each with its name in its own language. The
+/// setting `general.language` is one of the codes, or empty to follow the
+/// system.
+pub const LANGUAGES: &[(&str, &str)] = &[("en", "English"), ("de", "Deutsch"), ("es", "Español"), ("fr", "Français")];
+
+/// Set by SAM's window when it shows a language of its own: the system's
+/// `LANGUAGE` from before (empty when it had none). Apps get that one, so
+/// SAM's language setting never changes the language of the apps.
+pub const SYSTEM_LANGUAGE_VAR: &str = "SAM_SYSTEM_LANGUAGE";
+
 /// Sets up translations. `set_locale` is for programs without GTK (the
 /// command line); GTK sets the locale itself when it starts. Call once at
 /// the start, before other threads exist.
@@ -114,6 +124,17 @@ mod tests {
     /// Without a translation, texts come back as written, placeholders are
     /// filled in by name (so a translation may reorder them), and the
     /// plural form follows the number.
+    /// Every language with a translation (po/LINGUAS) can be chosen, and
+    /// English, which needs none.
+    #[test]
+    fn every_translated_language_can_be_chosen() {
+        let linguas = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../po/LINGUAS")).unwrap();
+        for l in linguas.split_whitespace() {
+            assert!(LANGUAGES.iter().any(|(c, _)| *c == l), "{l} is translated but cannot be chosen");
+        }
+        assert!(LANGUAGES.iter().any(|(c, _)| *c == "en"));
+    }
+
     #[test]
     fn texts_without_a_translation_come_back_with_their_values() {
         assert_eq!(tr("Create Sandbox"), "Create Sandbox");

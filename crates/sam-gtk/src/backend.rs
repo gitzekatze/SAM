@@ -211,7 +211,7 @@ impl Backend {
 
 /// Lookup order: an environment override, next to this binary, the newest
 /// build of a source checkout (`target/release` or `target/debug`), $PATH.
-fn find_tool(name: &str, env: &str) -> PathBuf {
+pub(crate) fn find_tool(name: &str, env: &str) -> PathBuf {
     if let Some(p) = std::env::var_os(env).filter(|v| !v.is_empty()) {
         return PathBuf::from(p);
     }

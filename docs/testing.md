@@ -184,7 +184,7 @@ Electron app, Qt app, GTK app):
 - [ ] While a sandboxed app runs, its page shows "… is running. Changed settings apply the next time it starts."; **Restart** closes it and starts it again; the bar disappears a few seconds after the app is closed.
 - [ ] The round trash button left of **Check** asks before removing a sandbox; every header button explains itself on hover.
 - [ ] A sandboxed Wayland app shows its own icon and name in the taskbar (KDE Plasma).
-- [ ] *Permissions of All Apps*: a tag filter cycles has / has not / off; Shift-click selects a range; turning the internet off for several apps shows one toast with Undo, and Undo restores every app.
+- [ ] *Permission Manager*: a tag filter cycles has / has not / off; Shift-click selects a range; turning the internet off for several apps shows one toast with Undo, and Undo restores every app.
 - [ ] *Copy bug report* produces a report without your username or home path.
 
 ## 10. Compatibility helpers

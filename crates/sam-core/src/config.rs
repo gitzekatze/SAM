@@ -56,6 +56,14 @@ pub struct General {
     /// Single AppImage files added by hand to the overview.
     pub scan_files: Vec<String>,
     pub desktop_integration: bool,
+    /// The window's language: a code from `i18n::LANGUAGES`, or empty to
+    /// follow the system.
+    pub language: String,
+}
+
+/// Empty (follow the system) or one of the languages SAM speaks.
+fn language_known(l: &str) -> bool {
+    l.is_empty() || crate::i18n::LANGUAGES.iter().any(|(c, _)| *c == l)
 }
 
 impl Default for General {
@@ -66,6 +74,7 @@ impl Default for General {
             scan_downloads: false,
             scan_files: vec![],
             desktop_integration: true,
+            language: String::new(),
         }
     }
 }
@@ -203,6 +212,9 @@ impl Config {
             if !THEMES.contains(&c.general.theme.as_str()) {
                 c.general.theme = "system".into();
             }
+            if !language_known(&c.general.language) {
+                c.general.language.clear();
+            }
             if (Config { extraction: c.extraction.clone(), ..Config::default() }).validate().is_err() {
                 c.extraction.location.clear();
             }
@@ -238,6 +250,16 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<()> {
+        if !language_known(&self.general.language) {
+            let choices: Vec<&str> = crate::i18n::LANGUAGES.iter().map(|(c, _)| *c).collect();
+            bail!(
+                "{}",
+                crate::i18n::trf(
+                    "unknown language '{language}'; choose one of: {choices}, or leave it empty to follow the system",
+                    &[("language", &self.general.language), ("choices", &choices.join(", "))]
+                )
+            );
+        }
         if !THEMES.contains(&self.general.theme.as_str()) {
             bail!(
                 "{}",
@@ -341,6 +363,27 @@ cleanup_stale = true
         assert!(c.dependencies.dynamic_fallback);
         assert_eq!(c.extraction.location, "~/.local/share/sam/extracted");
         c.validate().unwrap();
+    }
+
+    /// The window's language is empty (follow the system) or one of the
+    /// languages SAM speaks; anything else is refused, and a wrong value in
+    /// the file is reset to the system's language.
+    #[test]
+    fn the_language_is_the_system_or_one_sam_speaks() {
+        let mut c = Config::default();
+        assert_eq!(c.general.language, "", "the system's language by default");
+        c.set_key("general.language", "de").unwrap();
+        assert_eq!(c.general.language, "de");
+        assert!(c.set_key("general.language", "xx").is_err());
+        assert_eq!(c.general.language, "de", "a refused value changes nothing");
+        c.set_key("general.language", "").unwrap();
+        let t = tempfile::tempdir().unwrap();
+        let paths = crate::paths::Paths::rooted(t.path());
+        std::fs::create_dir_all(paths.config_file().parent().unwrap()).unwrap();
+        std::fs::write(paths.config_file(), "format = 1\n[general]\nlanguage = \"klingon\"\ntheme = \"dark\"\n").unwrap();
+        let loaded = Config::load(&paths).unwrap();
+        assert_eq!(loaded.general.language, "", "an unknown language in the file is reset");
+        assert_eq!(loaded.general.theme, "dark", "the other settings stay");
     }
 
     /// Settings can be changed by key, and old theme names are migrated to Light, Dark or System.

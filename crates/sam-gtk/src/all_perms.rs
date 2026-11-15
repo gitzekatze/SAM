@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The Permissions page ("Permissions of All Apps"). It covers the whole
+//! The Permissions page ("Permission Manager"). It covers the whole
 //! window: on the left (two thirds) every sandboxed app with tags for what
 //! it may access, a filter bar and a check column; on the right (one third)
 //! the switches for the selected apps.
@@ -171,7 +171,7 @@ impl PermsPage {
         let back = gtk::Button::builder().icon_name("go-previous-symbolic").tooltip_text(tr("Back to the AppImages")).build();
         header.pack_start(&back);
         header.set_title_widget(Some(&adw::WindowTitle::new(
-            &tr("Permissions"),
+            &tr("Permission Manager"),
             &tr("What your sandboxed apps may access. Select several to change them together."),
         )));
         let show_side = gtk::ToggleButton::builder().icon_name("sidebar-show-right-symbolic").tooltip_text(tr("Show the switches")).visible(false).build();
@@ -225,7 +225,7 @@ impl PermsPage {
         let side = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).build();
         let intro = adw::StatusPage::builder()
             .icon_name("io.github.gitzekatze.SAM")
-            .title(tr("Permissions"))
+            .title(tr("Permission Manager"))
             .description(tr(
                 "Select an app on the left to see what it may access. Select several apps to change a permission for all of them at once. Changes apply immediately and can be undone.",
             ))

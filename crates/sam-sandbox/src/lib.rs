@@ -249,6 +249,18 @@ const THEME_FILES: &[&str] = &[
     ".local/share/color-schemes",
 ];
 
+/// The value a forwarded variable gets inside the sandbox. When SAM's
+/// window shows a language of its own, `LANGUAGE` is the system's from
+/// before, so an app started from the window keeps the user's language.
+fn forwarded_value(key: &str, get: impl Fn(&str) -> Option<String>) -> Option<String> {
+    if key == "LANGUAGE" {
+        if let Some(system) = get(sam_core::i18n::SYSTEM_LANGUAGE_VAR) {
+            return (!system.is_empty()).then_some(system);
+        }
+    }
+    get(key)
+}
+
 /// Host env vars forwarded by default (locale, scaling, theming).
 const ENV_FORWARD: &[&str] = &[
     "LANG",
@@ -1091,7 +1103,7 @@ impl Section<'_> {
             a.setenv("SDL_AUDIO_DRIVER", "dummy");
         }
         for k in ENV_FORWARD.iter().map(|s| s.to_string()).chain(p.environment.passthrough.iter().cloned()) {
-            if let Ok(v) = std::env::var(&k) {
+            if let Some(v) = forwarded_value(&k, |n| std::env::var(n).ok()) {
                 a.setenv(&k, v);
             }
         }
@@ -1665,6 +1677,24 @@ mod tests {
 mod guard_tests {
     use super::*;
     use sam_core::sandbox::sample_context;
+
+    /// An app started from SAM's window keeps the system's language, even
+    /// when the window itself shows another one.
+    #[test]
+    fn apps_keep_the_system_language_whatever_sams_window_shows() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string());
+        let sys = sam_core::i18n::SYSTEM_LANGUAGE_VAR;
+        // No language of its own: forwarded as it is.
+        assert_eq!(forwarded_value("LANGUAGE", env(&[("LANGUAGE", "fr")])).as_deref(), Some("fr"));
+        // The window shows German; the system had French.
+        let both: &'static [(&str, &str)] = &[("LANGUAGE", "de"), ("SAM_SYSTEM_LANGUAGE", "fr")];
+        assert_eq!(sys, "SAM_SYSTEM_LANGUAGE");
+        assert_eq!(forwarded_value("LANGUAGE", env(both)).as_deref(), Some("fr"));
+        // The window shows German; the system had no LANGUAGE at all.
+        assert_eq!(forwarded_value("LANGUAGE", env(&[("LANGUAGE", "de"), ("SAM_SYSTEM_LANGUAGE", "")])), None);
+        // Other variables are untouched.
+        assert_eq!(forwarded_value("LANG", env(both)), None);
+    }
 
     fn args_of(ctx: &LaunchContext) -> Vec<String> {
         Bubblewrap.build(ctx).unwrap().args

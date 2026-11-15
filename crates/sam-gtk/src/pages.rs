@@ -21,6 +21,58 @@ fn page_with(title: &str, content: &impl IsA<gtk::Widget>, header: &adw::HeaderB
     adw::NavigationPage::builder().title(title).child(&view).build()
 }
 
+// ---------------------------------------------------------------- language
+
+/// The window's language: the system's, or one SAM speaks, each named in
+/// its own language. A new choice takes effect after a restart of the
+/// window, which the page offers; apps keep the system's language.
+pub fn language(app: &Rc<App>) -> adw::NavigationPage {
+    let pref = adw::PreferencesPage::new();
+    let header = adw::HeaderBar::new();
+    let page = page_with(&tr("Language"), &pref, &header);
+    let current = util::str_of(&app.state.borrow().config, "general.language").to_string();
+    let g = adw::PreferencesGroup::builder()
+        .title(tr("Language of SAM"))
+        .description(tr("The language of SAM's window and messages. Apps keep the language of your system."))
+        .build();
+    let mut options: Vec<(String, String, String)> = vec![(String::new(), tr("Follow the system"), String::new())];
+    options.extend(sam_core::i18n::LANGUAGES.iter().map(|(code, name)| (code.to_string(), name.to_string(), code.to_uppercase())));
+    let mut first: Option<gtk::CheckButton> = None;
+    for (code, name, tag) in options {
+        let check = gtk::CheckButton::builder().valign(gtk::Align::Center).active(code == current).build();
+        if let Some(f) = &first {
+            check.set_group(Some(f));
+        } else {
+            first = Some(check.clone());
+        }
+        let row = adw::ActionRow::builder().title(esc(&name)).activatable_widget(&check).build();
+        row.add_prefix(&check);
+        if !tag.is_empty() {
+            let l = gtk::Label::new(Some(&tag));
+            l.add_css_class("dim-label");
+            l.add_css_class("caption");
+            row.add_suffix(&l);
+        }
+        // The name is read out as it is written, in its own language.
+        check.update_property(&[gtk::accessible::Property::Label(&name)]);
+        let w = Rc::downgrade(app);
+        check.connect_toggled(move |c| {
+            if !c.is_active() {
+                return;
+            }
+            let Some(app) = w.upgrade() else { return };
+            let code = code.clone();
+            glib::spawn_future_local(async move {
+                app.set_config("general.language", &code).await;
+                app.offer_restart();
+            });
+        });
+        g.add(&row);
+    }
+    pref.add(&g);
+    page
+}
+
 // ---------------------------------------------------------------- preferences
 
 pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
