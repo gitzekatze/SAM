@@ -101,6 +101,13 @@ pub fn parse_trace(text: &str) -> BTreeMap<String, (String, String)> {
             continue;
         }
         let Some(q1) = line.find('"') else { continue };
+        // Asking to write under /usr or /etc (access with W_OK, or an open
+        // for writing) fails for every ordinary user; apps often just check.
+        let writes = line.contains("W_OK") || line.contains("O_WRONLY") || line.contains("O_RDWR") || line.contains("O_CREAT");
+        let system = line[q1 + 1..].starts_with("/usr/") || line[q1 + 1..].starts_with("/etc/");
+        if writes && system {
+            continue;
+        }
         let Some(q2) = line[q1 + 1..].find('"') else { continue };
         let path = &line[q1 + 1..q1 + 1 + q2];
         if !path.starts_with('/') || path.starts_with("/proc/") || path.starts_with("/opt/app") || path.starts_with("/run/sam") {
@@ -168,6 +175,16 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         if ETC_SENSITIVE.iter().any(|s| path.starts_with(s)) {
             return Some(mk(RiskLevel::Dangerous, format!("The app tried to read {path}, which holds sensitive system data (left denied)."), None));
         }
+        // Files in /etc describe this computer (its disks, its system, its
+        // package sources). Apps ran without them, so they are suggested
+        // and never added by themselves.
+        if path.starts_with("/etc/") {
+            return Some(mk(
+                RiskLevel::Medium,
+                format!("The app looked for {path}, which the sandbox hides because it describes this computer. Allow it only if the app misses something."),
+                Some(("filesystem.custom_read", path.to_string())),
+            ));
+        }
         let top: PathBuf = p.components().take(4).collect();
         let dir = if p.is_dir() { p.to_path_buf() } else { top.clone() };
         let dir = if dir.as_os_str().len() > top.as_os_str().len() { top } else { dir };
@@ -178,15 +195,15 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         ));
     }
     if let Ok(rel) = p.strip_prefix(&host.home) {
-        if is_sensitive_path(path) {
-            return Some(mk(RiskLevel::Dangerous, format!("The app tried to access {} (sensitive; left denied).", tildify(p)), None));
-        }
         // The app's own cache, settings and data live in its private home,
         // where they do not exist yet on the first start; the app creates
         // them itself. Granting the real folder would only share yours.
         let own = [".cache", ".config", ".local"];
         if err == "ENOENT" && rel.components().next().is_some_and(|c| own.iter().any(|o| c.as_os_str() == *o)) {
             return None;
+        }
+        if is_sensitive_path(path) {
+            return Some(mk(RiskLevel::Dangerous, format!("The app tried to access {} (sensitive; left denied).", tildify(p)), None));
         }
         // Suggest the closest top-level folder in home.
         let first: PathBuf = host.home.join(rel.components().next().map(|c| c.as_os_str()).unwrap_or_default());
@@ -230,6 +247,9 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
     let mut findings: Vec<Finding> =
         parse_trace(&trace).into_iter().filter_map(|(p, (e, line))| classify(&p, &e, &host).map(|f| Finding { trace_line: line, ..f })).collect();
     findings.dedup_by(|a, b| a.fix == b.fix && a.fix.is_some());
+    if entry.profile.permissions.network.mode != sam_core::permissions::NetworkMode::Full {
+        findings.retain(|f| !is_network_file(&f.path));
+    }
     mark_already_granted(&mut findings, &entry.profile.permissions);
     // The whole trace stays in the app's log folder, so a finding can be
     // checked against what really happened.
@@ -261,6 +281,12 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
     }
     let _ = fs::remove_dir_all(&diag_dir);
     Ok(DiagnoseResult { findings, applied, log_file: rec.log_file, trace_file, launch_summary: rec.summary })
+}
+
+/// The network's configuration files, which the sandbox hides on purpose
+/// when the app has no full network access.
+pub fn is_network_file(path: &str) -> bool {
+    ["/etc/resolv.conf", "/etc/hosts", "/etc/host.conf", "/etc/gai.conf", "/etc/services", "/etc/protocols", "/etc/nsswitch.conf"].contains(&path)
 }
 
 /// Marks findings whose fix the app already has: the access failed for
@@ -367,5 +393,46 @@ mod tests {
         assert!(!m.contains_key("/dev/nvidia-modeset"));
         assert!(!m.contains_key("/usr/share/foo"));
         assert!(m.contains_key("/dev/nvidia0"), "a failed open still counts");
+    }
+
+    /// Checking whether a system file is writable is not missing access
+    /// (regression: Zrythm and mpv ask access(W_OK) for files in /usr, which
+    /// fails for every user, and diagnose suggested granting /usr/lib/lv2).
+    #[test]
+    fn write_checks_on_system_folders_are_not_missing_access() {
+        let t = "35 access(\"/usr/lib/lv2/x.lv2/.\", W_OK) = -1 EACCES (Permission denied)\n35 openat(AT_FDCWD, \"/etc/foo.conf\", O_WRONLY|O_CREAT, 0644) = -1 EROFS (Read-only file system)\n35 access(\"/usr/share/icons/x/index.theme\", R_OK) = -1 EACCES (Permission denied)\n";
+        let m = parse_trace(t);
+        assert!(!m.contains_key("/usr/lib/lv2/x.lv2/."));
+        assert!(!m.contains_key("/etc/foo.conf"));
+        assert!(m.contains_key("/usr/share/icons/x/index.theme"), "a failed read still counts");
+    }
+
+    /// A file in /etc is suggested, never added by itself, because it
+    /// describes this computer (regression: /etc/fstab and /etc/pacman.conf
+    /// were "low risk" and added automatically, although the apps ran
+    /// without them).
+    #[test]
+    fn files_in_etc_are_suggested_and_not_added_automatically() {
+        let host = sample_context().host;
+        if Path::new("/etc/fstab").exists() {
+            let f = classify("/etc/fstab", "ENOENT", &host).unwrap();
+            assert_eq!(f.risk, RiskLevel::Medium);
+        }
+        assert!(is_network_file("/etc/resolv.conf"));
+        assert!(!is_network_file("/etc/fstab"));
+    }
+
+    /// The app's own settings folder in its private home is not reported as
+    /// a sensitive folder (regression: ~/.config was "dangerous").
+    #[test]
+    fn the_apps_own_settings_folder_is_not_reported_as_sensitive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut host = sample_context().host;
+        host.home = tmp.path().to_path_buf();
+        fs::create_dir_all(tmp.path().join(".config/kwinrc")).unwrap();
+        for p in [".config", ".config/kwinrc", ".local"] {
+            fs::create_dir_all(tmp.path().join(p)).unwrap();
+            assert!(classify(tmp.path().join(p).to_str().unwrap(), "ENOENT", &host).is_none(), "{p}");
+        }
     }
 }
