@@ -116,7 +116,7 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
         ));
     }
     match &app.extraction {
-        None => errors.push(sam_core::i18n::tr("The AppImage has not been unpacked. Use Re-extract (sam-jail reextract).")),
+        None => errors.push(sam_core::i18n::tr("The AppImage has not been unpacked. Use Unpack Again (sam-jail reextract).")),
         Some(x) => {
             if !x.appdir.join(&x.entry).exists() {
                 errors.push(sam_core::i18n::trf(
@@ -130,14 +130,14 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
         warns.push(Warning::warn(
             "source-missing",
             "AppImage missing",
-            "The selected AppImage no longer exists. SAM will run the last extracted copy; APPIMAGE is unset.",
+            "The selected AppImage no longer exists. SAM runs the last unpacked copy; APPIMAGE is not set.",
         ));
     } else if let Some(x) = &app.extraction {
         if let Ok(SourceStatus::Changed { .. }) = fingerprint::check(&app.source_path, &x.source, false) {
             warns.push(Warning::warn(
                 "source-stale",
                 "AppImage changed",
-                "The AppImage changed since it was extracted. Running the previous version; re-extract to update.",
+                "The AppImage changed since it was unpacked. SAM runs the previous version until you unpack it again.",
             ));
         }
     }
@@ -149,7 +149,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     if let Some(e) = errors.first() {
         bail!("{e}");
     }
-    let x = app.extraction.as_ref().context(sam_core::i18n::tr("the AppImage has not been extracted"))?;
+    let x = app.extraction.as_ref().context(sam_core::i18n::tr("the AppImage has not been unpacked"))?;
     let sandbox = crate::bwrap::check(host)?;
     let perms = &app.profile.permissions;
 

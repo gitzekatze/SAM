@@ -109,7 +109,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             Warning::danger(
                 "full-home",
                 "Full home access",
-                "The app can read and write every file in your home directory, including other apps' settings. This is high risk and usually not required.",
+                "The app can read and write every file in your home folder, including other apps' settings. This is high risk and usually not required.",
             )
             .with_key("filesystem.home"),
         );

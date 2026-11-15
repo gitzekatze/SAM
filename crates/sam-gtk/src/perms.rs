@@ -172,7 +172,7 @@ impl Editor {
             return Info {
                 title: crate::i18n::tr("Environment variables"),
                 description: crate::i18n::tr(
-                    "Variables set inside the sandbox, as NAME=value, e.g. QT_SCALE_FACTOR=1.5. They override variables passed through.",
+                    "Variables set inside the sandbox, as NAME=value, for example QT_SCALE_FACTOR=1.5. They override variables passed through.",
                 ),
                 risk: "medium".into(),
             };
@@ -403,7 +403,7 @@ impl Editor {
         if key == "sockets.custom" {
             let p = sam_core::util::expand_home(item);
             if !p.is_absolute() {
-                self.notify(&crate::i18n::tr("Give the full path of the socket, e.g. /run/user/1000/app.sock"));
+                self.notify(&crate::i18n::tr("Give the full path of the socket, for example /run/user/1000/app.sock"));
                 return;
             }
             use std::os::unix::fs::FileTypeExt;
@@ -488,7 +488,7 @@ impl Editor {
             ],
             Always,
         );
-        self.list(&g, "network.host_ports", &crate::i18n::tr("Port on this computer, e.g. 11434 for Ollama"), false, LocalNet);
+        self.list(&g, "network.host_ports", &crate::i18n::tr("Port on this computer, for example 11434 for Ollama"), false, LocalNet);
         self.list(&g, "network.app_ports", &crate::i18n::tr("Port of the app (empty = automatic)"), false, LocalNet);
 
         let g = self.group("Display", &crate::i18n::tr("How the app shows its windows."));

@@ -677,13 +677,13 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
     }
     if links.parsed == 0 {
         worsen(&mut compat, Compatibility::LikelyBroken);
-        report.warnings.push(Warning::warn("no-elf", "No executables found", "No ELF executables were found in the AppImage payload."));
+        report.warnings.push(Warning::warn("no-elf", "No executables found", "No programs were found in the AppImage."));
     }
     if report.entry_is_script && report.entry_binary.is_none() {
         report.notes.push(sam_core::i18n::tr("AppRun is a script; the main binary could not be determined"));
     }
     if w.truncated {
-        report.notes.push(sam_core::i18n::tr("analysis was truncated because the payload is very large"));
+        report.notes.push(sam_core::i18n::tr("the analysis was cut short because the app is very large"));
     }
     compat
 }
@@ -865,7 +865,10 @@ fn isolation_verdict(
         report.warnings.push(Warning::danger(
             "privileged",
             "Requires privileged access",
-            sam_core::i18n::trf("The AppImage's launcher calls '{tool}'. It appears to require root access, which cannot be sandboxed.", &[("tool", &tool)]),
+            sam_core::i18n::trf(
+                "The AppImage's start script calls '{tool}'. It appears to require administrator rights, which cannot be sandboxed.",
+                &[("tool", &tool)],
+            ),
         ));
         Some(IsolationVerdict::UnsafeToSandbox)
     } else if !w.kernel_modules.is_empty() {

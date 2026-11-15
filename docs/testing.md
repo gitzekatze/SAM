@@ -142,7 +142,7 @@ Electron app, Qt app, GTK app):
 
 - [ ] Replace an AppImage with a newer version. `sam-jail refresh` reports it
       as stale and the GUI shows the *Stale* badge.
-- [ ] Re-extract. A customized profile is kept, and new needs are listed under
+- [ ] Unpack Again. Your own settings are kept, and new needs are listed under
       "Update needs new permissions".
 - [ ] Move the AppImage. The overview shows it as a moved copy;
       *Reconnect* or *Locate…* fixes the path.

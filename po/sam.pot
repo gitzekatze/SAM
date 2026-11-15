@@ -199,7 +199,7 @@ msgid "Full home access"
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:746
-msgid "Allows the app to read and write all files in your home directory. This is high risk and usually not required."
+msgid "Allows the app to read and write all files in your home folder. This is high risk and usually not required."
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:748
@@ -287,7 +287,7 @@ msgid "Files you open with the app"
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:768
-msgid "Files you open with this app (e.g. 'Open with' in the file manager). Read & write lets it save them; read-only lets it only view them."
+msgid "Files you open with this app (for example with 'Open with' in the file manager). Read & write lets it save them; read-only lets it only view them."
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:770
@@ -311,7 +311,7 @@ msgid "Network access"
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:774
-msgid "'Full network' shares your internet connection with the app. 'This computer only' blocks the internet and the local network, but keeps the services on this computer that you list reachable (e.g. a local AI model), and the app's own web page opens in your browser. 'No network' gives the app no connection at all."
+msgid "'Full network' shares your internet connection with the app. 'This computer only' blocks the internet and the local network, but keeps the services on this computer that you list reachable (for example a local AI model), and the app's own web page opens in your browser. 'No network' gives the app no connection at all."
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:776
@@ -319,7 +319,7 @@ msgid "Local services the app may reach"
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:776
-msgid "With 'This computer only': ports on this computer the app may connect to, e.g. 11434 for Ollama or 1234 for LM Studio. Nothing else on your computer is reachable."
+msgid "With 'This computer only': ports on this computer the app may connect to, for example 11434 for Ollama or 1234 for LM Studio. Nothing else on your computer is reachable."
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:778
@@ -327,7 +327,7 @@ msgid "The app's own ports"
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:778
-msgid "With 'This computer only': ports of the app (e.g. its web page) reachable from this computer. Empty = detected automatically, except privileged ports and well-known local services."
+msgid "With 'This computer only': ports of the app (for example its web page) reachable from this computer. When empty, SAM detects them, except privileged ports and well-known local services."
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:780 crates/sam-core/src/risk.rs:130
@@ -487,7 +487,7 @@ msgid "Input method"
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:818
-msgid "Typing through Fcitx5 or IBus (their sandbox frontends), e.g. for Chinese, Japanese or Korean, and emoji pickers."
+msgid "Typing through Fcitx5 or IBus (their sandbox frontends), for example for Chinese, Japanese or Korean, and emoji pickers."
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:820 crates/sam-core/src/risk.rs:205 crates/sam-runner/src/verify.rs:243
@@ -511,7 +511,7 @@ msgid "Extra sockets"
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:824
-msgid "Paths of other service sockets the app may connect to, e.g. a password manager's browser connection. The app can do whatever that service allows. Only real socket files are passed into the sandbox."
+msgid "Paths of other service sockets the app may connect to, for example a password manager's browser connection. The app can do whatever that service allows. Only real socket files are passed into the sandbox."
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:826
@@ -599,7 +599,7 @@ msgid "Writable app folder"
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:846
-msgid "For portable apps that save settings next to themselves. Changes go to a separate layer; the extracted app stays untouched."
+msgid "For portable apps that save settings next to themselves. Changes go to a separate layer; the unpacked app stays untouched."
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:848
@@ -688,7 +688,7 @@ msgid "The app cannot open windows. This is only correct for command-line tools.
 msgstr ""
 
 #: crates/sam-core/src/warnings.rs:109
-msgid "The app can read and write every file in your home directory, including other apps' settings. This is high risk and usually not required."
+msgid "The app can read and write every file in your home folder, including other apps' settings. This is high risk and usually not required."
 msgstr ""
 
 #: crates/sam-core/src/warnings.rs:117
@@ -827,11 +827,11 @@ msgid "SquashFS found by scanning at offset {off}"
 msgstr ""
 
 #: crates/sam-detect/src/appimage.rs:130
-msgid "AppImage magic bytes missing; treating as Type 2 because a SquashFS payload is present"
+msgid "The AppImage marker is missing; it is treated as Type 2 because it contains a SquashFS image"
 msgstr ""
 
 #: crates/sam-detect/src/appimage.rs:133
-msgid "AppImage magic present but no payload found"
+msgid "The AppImage marker is present, but the file contains no app image"
 msgstr ""
 
 #: crates/sam-detect/src/appimage.rs:224
@@ -924,7 +924,7 @@ msgid "No executables found"
 msgstr ""
 
 #: crates/sam-detect/src/elf.rs:680
-msgid "No ELF executables were found in the AppImage payload."
+msgid "No programs were found in the AppImage."
 msgstr ""
 
 #: crates/sam-detect/src/elf.rs:683
@@ -932,7 +932,7 @@ msgid "AppRun is a script; the main binary could not be determined"
 msgstr ""
 
 #: crates/sam-detect/src/elf.rs:686
-msgid "analysis was truncated because the payload is very large"
+msgid "the analysis was cut short because the app is very large"
 msgstr ""
 
 #: crates/sam-detect/src/elf.rs:812
@@ -1001,35 +1001,35 @@ msgstr ""
 
 #: crates/sam-detect/src/elf.rs:868
 #. Keep the {placeholders}; their order may change.
-msgid "The AppImage's launcher calls '{tool}'. It appears to require root access, which cannot be sandboxed."
-msgstr ""
-
-#: crates/sam-detect/src/elf.rs:872
-msgid "Contains kernel modules"
+msgid "The AppImage's start script calls '{tool}'. It appears to require administrator rights, which cannot be sandboxed."
 msgstr ""
 
 #: crates/sam-detect/src/elf.rs:875
+msgid "Contains kernel modules"
+msgstr ""
+
+#: crates/sam-detect/src/elf.rs:878
 #. Keep the {placeholders}; their order may change.
 msgid "The AppImage contains kernel modules ({modules}). Software that runs in the kernel cannot be sandboxed."
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:886
+#: crates/sam-detect/src/elf.rs:889
 msgid "X11-only application: isolation between windows is limited"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:911
+#: crates/sam-detect/src/elf.rs:914
 msgid "Wayland client libraries / toolkit support"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:912
+#: crates/sam-detect/src/elf.rs:915
 msgid "links X11 libraries"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:913
+#: crates/sam-detect/src/elf.rs:916
 msgid "links audio libraries"
 msgstr ""
 
-#: crates/sam-detect/src/elf.rs:914
+#: crates/sam-detect/src/elf.rs:917
 msgid "links D-Bus libraries"
 msgstr ""
 
@@ -1346,7 +1346,7 @@ msgstr ""
 msgid "Start"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/data.rs:80 crates/sam-runner/src/progress.rs:36
+#: crates/sam-gtk/src/app_page/data.rs:80 crates/sam-gtk/src/pages.rs:160 crates/sam-runner/src/progress.rs:36
 msgid "Unpacking"
 msgstr ""
 
@@ -1816,7 +1816,7 @@ msgid "Update Now"
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/render.rs:241
-msgid "The AppImage changed since it was extracted. Re-extract it to use the new version."
+msgid "The AppImage changed since it was unpacked. Unpack it again to use the new version."
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/render.rs:242
@@ -2013,7 +2013,7 @@ msgstr ""
 
 #: crates/sam-gtk/src/app_page/render.rs:686
 #. Keep the {placeholders}; their order may change.
-msgid "Setup check: {bad} thing(s) to look at"
+msgid "Setup check: {bad} things to look at"
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/render.rs:708
@@ -2084,7 +2084,7 @@ msgid "Reset to Recommended"
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/wiring.rs:99
-msgid "Re-extract AppImage"
+msgid "Unpack Again"
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/wiring.rs:101
@@ -2396,16 +2396,12 @@ msgstr ""
 msgid "Read-only system data such as fonts or themes found during a diagnostic run is granted without asking."
 msgstr ""
 
-#: crates/sam-gtk/src/pages.rs:160
-msgid "Extraction"
-msgstr ""
-
 #: crates/sam-gtk/src/pages.rs:166
 msgid "Location"
 msgstr ""
 
 #: crates/sam-gtk/src/pages.rs:170 crates/sam-gtk/src/pages.rs:195
-msgid "New sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to."
+msgid "New sandboxes are unpacked here; existing ones move when you unpack them again. Pick a folder no sandboxed app may write to."
 msgstr ""
 
 #: crates/sam-gtk/src/pages.rs:173 crates/sam-gtk/src/perms.rs:354 crates/sam-gtk/src/perms.rs:359
@@ -2425,7 +2421,7 @@ msgid "Clean up stale extractions"
 msgstr ""
 
 #: crates/sam-gtk/src/pages.rs:225
-msgid "Offer the AppImage's own extractor as fallback"
+msgid "Offer to let the AppImage unpack itself when SAM cannot"
 msgstr ""
 
 #: crates/sam-gtk/src/pages.rs:226
@@ -2433,7 +2429,7 @@ msgid "Only used after asking you, and only inside a restricted sandbox."
 msgstr ""
 
 #: crates/sam-gtk/src/pages.rs:228
-msgid "Maximum extracted size (MiB)"
+msgid "Maximum unpacked size (MiB)"
 msgstr ""
 
 #: crates/sam-gtk/src/pages.rs:229
@@ -2441,7 +2437,7 @@ msgid "Maximum number of files"
 msgstr ""
 
 #: crates/sam-gtk/src/pages.rs:230
-msgid "Maximum extraction time (s)"
+msgid "Maximum unpacking time (s)"
 msgstr ""
 
 #: crates/sam-gtk/src/pages.rs:233 crates/sam-gtk/src/window.rs:317
@@ -2638,7 +2634,7 @@ msgid "Environment variables"
 msgstr ""
 
 #: crates/sam-gtk/src/perms.rs:174
-msgid "Variables set inside the sandbox, as NAME=value, e.g. QT_SCALE_FACTOR=1.5. They override variables passed through."
+msgid "Variables set inside the sandbox, as NAME=value, for example QT_SCALE_FACTOR=1.5. They override variables passed through."
 msgstr ""
 
 #: crates/sam-gtk/src/perms.rs:223
@@ -2682,7 +2678,7 @@ msgid "default"
 msgstr ""
 
 #: crates/sam-gtk/src/perms.rs:406
-msgid "Give the full path of the socket, e.g. /run/user/1000/app.sock"
+msgid "Give the full path of the socket, for example /run/user/1000/app.sock"
 msgstr ""
 
 #: crates/sam-gtk/src/perms.rs:412
@@ -2727,7 +2723,7 @@ msgid "The app uses your internet connection like any other program."
 msgstr ""
 
 #: crates/sam-gtk/src/perms.rs:491
-msgid "Port on this computer, e.g. 11434 for Ollama"
+msgid "Port on this computer, for example 11434 for Ollama"
 msgstr ""
 
 #: crates/sam-gtk/src/perms.rs:492
@@ -3153,7 +3149,7 @@ msgid "The risk changes from {before} to {after}."
 msgstr ""
 
 #: crates/sam-gtk/src/window.rs:1110
-msgid "Re-extracted"
+msgid "Unpacked again"
 msgstr ""
 
 #: crates/sam-gtk/src/window.rs:1113
@@ -3271,11 +3267,11 @@ msgid "the menu entry file is missing"
 msgstr ""
 
 #: crates/sam-intake/src/desktop.rs:197
-msgid "launcher does not start the app through sam-jail-run"
+msgid "the menu entry does not start the app through sam-jail-run"
 msgstr ""
 
 #: crates/sam-intake/src/desktop.rs:198
-msgid "launcher has no Exec line"
+msgid "the menu entry has no Exec line"
 msgstr ""
 
 #: crates/sam-intake/src/desktop.rs:207
@@ -3285,7 +3281,7 @@ msgstr ""
 
 #: crates/sam-intake/src/extract.rs:121
 #. Keep the {placeholders}; their order may change.
-msgid "There is not enough free space to unpack this AppImage: it needs about {needed}, but the folder {folder} has only {free} free. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location."
+msgid "There is not enough free space to unpack this AppImage: it needs about {needed}, but the folder {folder} has only {free} free. Free some space, or choose another folder for unpacked apps under Preferences → Unpacking → Location."
 msgstr ""
 
 #: crates/sam-intake/src/extract.rs:134
@@ -3294,7 +3290,7 @@ msgid "SAM stopped unpacking this AppImage: {reason}. The limits protect your co
 msgstr ""
 
 #: crates/sam-intake/src/extract.rs:165 crates/sam-intake/src/extract.rs:188 crates/sam-intake/src/peek.rs:45
-msgid "no payload offset"
+msgid "the app image inside the AppImage was not found"
 msgstr ""
 
 #: crates/sam-intake/src/extract.rs:184
@@ -3316,7 +3312,7 @@ msgstr ""
 
 #: crates/sam-intake/src/extract.rs:290
 #. Keep the {placeholders}; their order may change.
-msgid "The disk became full while unpacking this AppImage into {folder}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location."
+msgid "The disk became full while unpacking this AppImage into {folder}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Unpacking → Location."
 msgstr ""
 
 #: crates/sam-intake/src/extract.rs:315
@@ -3335,44 +3331,44 @@ msgid "{path} is not a folder"
 msgstr ""
 
 #: crates/sam-intake/src/extract.rs:394
-msgid "extraction limit exceeded: payload too large"
+msgid "unpacking limit exceeded: the app is too large"
 msgstr ""
 
 #: crates/sam-intake/src/extract.rs:412 crates/sam-intake/src/normalize.rs:70
 #. Keep the {placeholders}; their order may change.
-msgid "extraction limit exceeded: more than {count} files"
+msgid "unpacking limit exceeded: more than {count} files"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:415 crates/sam-intake/src/extract.rs:462 crates/sam-intake/src/normalize.rs:76
+#: crates/sam-intake/src/extract.rs:415 crates/sam-intake/src/extract.rs:465 crates/sam-intake/src/normalize.rs:73
 #. Keep the {placeholders}; their order may change.
-msgid "extraction limit exceeded: took longer than {seconds} seconds"
+msgid "unpacking limit exceeded: it took longer than {seconds} seconds"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:426
+#: crates/sam-intake/src/extract.rs:429
 msgid "entry without name"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:475
-msgid "spawning extraction tool"
+#: crates/sam-intake/src/extract.rs:481
+msgid "starting the unpacking tool"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:501
-msgid "bubblewrap is required for sandboxed fallback extraction"
+#: crates/sam-intake/src/extract.rs:507
+msgid "Bubblewrap is needed to let the AppImage unpack itself in a sandbox"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:517
-msgid "copying the AppImage to run its extractor"
+#: crates/sam-intake/src/extract.rs:523
+msgid "copying the AppImage so it can unpack itself"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:518
+#: crates/sam-intake/src/extract.rs:524
 msgid "making the copy executable"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:549
+#: crates/sam-intake/src/extract.rs:555
 msgid "--appimage-extract produced no squashfs-root"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:551
+#: crates/sam-intake/src/extract.rs:557
 #. Keep the {placeholders}; their order may change.
 msgid "moving the unpacked app to {folder}"
 msgstr ""
@@ -3414,9 +3410,9 @@ msgstr ""
 msgid "special file removed: {path}"
 msgstr ""
 
-#: crates/sam-intake/src/normalize.rs:106
+#: crates/sam-intake/src/normalize.rs:103
 #. Keep the {placeholders}; their order may change.
-msgid "extraction limit exceeded: more than {size} unpacked"
+msgid "unpacking limit exceeded: more than {size} unpacked"
 msgstr ""
 
 #: crates/sam-intake/src/peek.rs:35
@@ -3996,8 +3992,8 @@ msgstr ""
 msgid "Install xdg-dbus-proxy."
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:102 crates/sam-runner/src/doctor.rs:232 crates/sam-runner/src/doctor.rs:235 crates/sam-runner/src/doctor.rs:238
-msgid "AppImage extraction"
+#: crates/sam-runner/src/doctor.rs:102 crates/sam-runner/src/doctor.rs:232 crates/sam-runner/src/doctor.rs:235 crates/sam-runner/src/doctor.rs:239
+msgid "Unpacking the AppImage"
 msgstr ""
 
 #: crates/sam-runner/src/doctor.rs:104 crates/sam-runner/src/doctor.rs:105
@@ -4129,43 +4125,43 @@ msgid "The selected AppImage no longer exists ({file})."
 msgstr ""
 
 #: crates/sam-runner/src/doctor.rs:235
-msgid "extracted payload is missing"
+msgid "the unpacked app is missing"
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:235
-msgid "Re-extract the AppImage."
+#: crates/sam-runner/src/doctor.rs:236
+msgid "Unpack the AppImage again."
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:239
-msgid "Re-extract the AppImage (optionally allowing the fallback extractor)."
+#: crates/sam-runner/src/doctor.rs:240
+msgid "Unpack the AppImage again (if SAM cannot, allow the AppImage to unpack itself)."
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:249
+#: crates/sam-runner/src/doctor.rs:250
 msgid "Dependency detection"
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:253
+#: crates/sam-runner/src/doctor.rs:254
 #. Keep the {placeholders}; their order may change.
 msgid "{resources} controlled host resources required; toolkit {toolkit}; {libraries} libraries expected from the host"
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:260 crates/sam-runner/src/doctor.rs:261
+#: crates/sam-runner/src/doctor.rs:261 crates/sam-runner/src/doctor.rs:262
 msgid "Sandbox"
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:267 crates/sam-runner/src/doctor.rs:269 crates/sam-runner/src/doctor.rs:273
+#: crates/sam-runner/src/doctor.rs:268 crates/sam-runner/src/doctor.rs:270 crates/sam-runner/src/doctor.rs:274
 msgid "Desktop entry"
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:270
-msgid "Reinstall the launcher (sam-jail desktop <app> install)."
+#: crates/sam-runner/src/doctor.rs:271
+msgid "Create the menu entry again (sam-jail desktop <app> install)."
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:273
-msgid "no launcher installed"
+#: crates/sam-runner/src/doctor.rs:274
+msgid "no menu entry"
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:283
+#: crates/sam-runner/src/doctor.rs:284
 msgid "Last launch"
 msgstr ""
 
@@ -4191,7 +4187,7 @@ msgid "The settings of {app} were changed outside SAM (by a script, another prog
 msgstr ""
 
 #: crates/sam-runner/src/launch.rs:119
-msgid "The AppImage has not been unpacked. Use Re-extract (sam-jail reextract)."
+msgid "The AppImage has not been unpacked. Use Unpack Again (sam-jail reextract)."
 msgstr ""
 
 #: crates/sam-runner/src/launch.rs:122
@@ -4204,15 +4200,15 @@ msgid "AppImage missing"
 msgstr ""
 
 #: crates/sam-runner/src/launch.rs:130
-msgid "The selected AppImage no longer exists. SAM will run the last extracted copy; APPIMAGE is unset."
+msgid "The selected AppImage no longer exists. SAM runs the last unpacked copy; APPIMAGE is not set."
 msgstr ""
 
 #: crates/sam-runner/src/launch.rs:137
-msgid "The AppImage changed since it was extracted. Running the previous version; re-extract to update."
+msgid "The AppImage changed since it was unpacked. SAM runs the previous version until you unpack it again."
 msgstr ""
 
 #: crates/sam-runner/src/launch.rs:152
-msgid "the AppImage has not been extracted"
+msgid "the AppImage has not been unpacked"
 msgstr ""
 
 #: crates/sam-runner/src/launch.rs:222 crates/sam-runner/src/launch.rs:228
@@ -4420,29 +4416,29 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: crates/sam-runner/src/ops/add.rs:179
-msgid "Fallback extraction used"
+msgid "The AppImage unpacked itself"
 msgstr ""
 
 #: crates/sam-runner/src/ops/add.rs:179
-msgid "The AppImage's own extractor was used inside a restricted sandbox."
+msgid "The AppImage unpacked itself inside a restricted sandbox."
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:207 crates/sam-runner/src/ops/add.rs:238
-msgid "the AppImage has not been unpacked yet; unpack it again with Re-extract (sam-jail reextract APP)"
+#: crates/sam-runner/src/ops/add.rs:203 crates/sam-runner/src/ops/add.rs:234
+msgid "the AppImage has not been unpacked yet; unpack it with Unpack Again (sam-jail reextract APP)"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:245
+#: crates/sam-runner/src/ops/add.rs:241
 msgid "Looking for the app's programs and libraries"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:251
+#: crates/sam-runner/src/ops/add.rs:247
 #. Keep the {placeholders}; their order may change.
 msgid "{done} of {n} program file read"
 msgid_plural "{done} of {n} program files read"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/sam-runner/src/ops/add.rs:257
+#: crates/sam-runner/src/ops/add.rs:253
 #. Keep the {placeholders}; their order may change.
 msgid "dependency detection failed: {error}"
 msgstr ""
@@ -4590,11 +4586,11 @@ msgid "Isolation assessment"
 msgstr ""
 
 #: crates/sam-runner/src/ops/overview.rs:44
-msgid "The AppImage changed since it was extracted. Re-extract to update the sandbox."
+msgid "The AppImage changed since it was unpacked. Unpack it again to update the sandbox."
 msgstr ""
 
 #: crates/sam-runner/src/ops/overview.rs:46
-msgid "The source AppImage no longer exists. You can still run the extracted copy, relocate it, or remove the app."
+msgid "The AppImage no longer exists. You can still run the unpacked copy, point SAM at the moved file, or remove the app."
 msgstr ""
 
 #: crates/sam-runner/src/ops/overview.rs:52
@@ -5085,7 +5081,7 @@ msgid "The app starts another AppImage"
 msgstr ""
 
 #: crates/sam-runner/src/repair.rs:362
-msgid "It tried to mount an AppImage with FUSE, which is not available in a sandbox. SAM already asks AppImages to extract instead; if this still fails, the inner app needs its own sandbox."
+msgid "It tried to mount an AppImage with FUSE, which is not available in a sandbox. SAM already asks AppImages to unpack themselves instead; if this still fails, the inner app needs its own sandbox."
 msgstr ""
 
 #: crates/sam-runner/src/repair.rs:369

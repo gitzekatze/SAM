@@ -41,12 +41,12 @@ impl Sam {
         }
         match e.state {
             AppState::Stale => {
-                w.push(Warning::warn("stale", "AppImage changed", "The AppImage changed since it was extracted. Re-extract to update the sandbox."))
+                w.push(Warning::warn("stale", "AppImage changed", "The AppImage changed since it was unpacked. Unpack it again to update the sandbox."))
             }
             AppState::Missing => w.push(Warning::warn(
                 "missing",
                 "AppImage missing",
-                "The source AppImage no longer exists. You can still run the extracted copy, relocate it, or remove the app.",
+                "The AppImage no longer exists. You can still run the unpacked copy, point SAM at the moved file, or remove the app.",
             )),
             AppState::Broken => {
                 w.push(Warning::danger("broken", "Not runnable", e.last_error.clone().unwrap_or_else(|| sam_core::i18n::tr("Unpacking or starting failed."))))

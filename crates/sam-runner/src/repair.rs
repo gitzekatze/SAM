@@ -359,7 +359,7 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
         push(s("pipewire", "The app wants PipeWire directly", "It has sound through PulseAudio, but tried to connect to PipeWire itself. Direct access also reaches cameras and other apps' screen streams; allow it only if sound does not work otherwise.", set("audio.pipewire", "true"), RiskLevel::High));
     }
     if has(&["fusermount", "libfuse.so.2", "appimages require fuse"]) {
-        push(s("fuse", "The app starts another AppImage", "It tried to mount an AppImage with FUSE, which is not available in a sandbox. SAM already asks AppImages to extract instead; if this still fails, the inner app needs its own sandbox.", FixAction::None, RiskLevel::Low));
+        push(s("fuse", "The app starts another AppImage", "It tried to mount an AppImage with FUSE, which is not available in a sandbox. SAM already asks AppImages to unpack themselves instead; if this still fails, the inner app needs its own sandbox.", FixAction::None, RiskLevel::Low));
     }
     drop(push);
     for x in &mut out {

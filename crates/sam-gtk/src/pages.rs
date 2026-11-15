@@ -157,7 +157,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     );
     pref.add(&g);
 
-    let g = adw::PreferencesGroup::builder().title(tr("Extraction")).build();
+    let g = adw::PreferencesGroup::builder().title(tr("Unpacking")).build();
     // Where new sandboxes are unpacked. Existing ones stay where they are
     // until they are unpacked again (Re-extract).
     let loc = util::str_of(&cfg, "extraction.location").to_string();
@@ -167,7 +167,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
         .subtitle(esc(&format!(
             "{}\n{}",
             loc_text(&loc),
-            crate::i18n::tr("New sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to.")
+            crate::i18n::tr("New sandboxes are unpacked here; existing ones move when you unpack them again. Pick a folder no sandboxed app may write to.")
         )))
         .build();
     let choose = gtk::Button::builder().icon_name("folder-open-symbolic").tooltip_text(tr("Choose a folder")).valign(gtk::Align::Center).build();
@@ -193,7 +193,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
                     "{}\n{}",
                     loc_text(&now),
                     crate::i18n::tr(
-                        "New sandboxes are unpacked here; existing ones move when you re-extract them. Pick a folder no sandboxed app may write to."
+                        "New sandboxes are unpacked here; existing ones move when you unpack them again. Pick a folder no sandboxed app may write to."
                     )
                 )));
                 reset.set_sensitive(!now.trim().is_empty());
@@ -222,12 +222,12 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     switch(
         &g,
         "extraction.allow_fallback",
-        &crate::i18n::tr("Offer the AppImage's own extractor as fallback"),
+        &crate::i18n::tr("Offer to let the AppImage unpack itself when SAM cannot"),
         &crate::i18n::tr("Only used after asking you, and only inside a restricted sandbox."),
     );
-    number(&g, "extraction.max_size_mb", &crate::i18n::tr("Maximum extracted size (MiB)"), 64.0, 1048576.0, 256.0);
+    number(&g, "extraction.max_size_mb", &crate::i18n::tr("Maximum unpacked size (MiB)"), 64.0, 1048576.0, 256.0);
     number(&g, "extraction.max_files", &crate::i18n::tr("Maximum number of files"), 1000.0, 10000000.0, 10000.0);
-    number(&g, "extraction.max_seconds", &crate::i18n::tr("Maximum extraction time (s)"), 10.0, 7200.0, 30.0);
+    number(&g, "extraction.max_seconds", &crate::i18n::tr("Maximum unpacking time (s)"), 10.0, 7200.0, 30.0);
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Diagnostics")).build();

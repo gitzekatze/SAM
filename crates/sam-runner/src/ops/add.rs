@@ -176,11 +176,7 @@ impl Sam {
             ));
         }
         if out.method.contains("appimage-extract") {
-            warnings.push(Warning::info(
-                "fallback-extraction",
-                "Fallback extraction used",
-                "The AppImage's own extractor was used inside a restricted sandbox.",
-            ));
+            warnings.push(Warning::info("fallback-extraction", "The AppImage unpacked itself", "The AppImage unpacked itself inside a restricted sandbox."));
         }
         ExtractionInfo {
             root: root.to_path_buf(),
@@ -204,7 +200,7 @@ impl Sam {
         let mut x = entry
             .extraction
             .clone()
-            .context(sam_core::i18n::tr("the AppImage has not been unpacked yet; unpack it again with Re-extract (sam-jail reextract APP)"))?;
+            .context(sam_core::i18n::tr("the AppImage has not been unpacked yet; unpack it with Unpack Again (sam-jail reextract APP)"))?;
         if !x.appdir.join("AppRun").exists() {
             // Some AppImages ship without AppRun; fall back to the desktop Exec.
             let exec = entry.metadata.exec.split_whitespace().next().unwrap_or("").to_string();
@@ -235,7 +231,7 @@ impl Sam {
         let x = entry
             .extraction
             .clone()
-            .context(sam_core::i18n::tr("the AppImage has not been unpacked yet; unpack it again with Re-extract (sam-jail reextract APP)"))?;
+            .context(sam_core::i18n::tr("the AppImage has not been unpacked yet; unpack it with Unpack Again (sam-jail reextract APP)"))?;
         let report = if self.config.dependencies.static_analysis {
             let opts = AnalyzeOptions {
                 entry: x.entry.clone(),

@@ -96,7 +96,7 @@ impl AppPage {
         if self.sandboxed() {
             menu.append(Some(&tr("Files This App Saved")), Some("page.open-folder"));
             menu.append(Some(&tr("Reset to Recommended")), Some("page.reset"));
-            menu.append(Some(&tr("Re-extract AppImage")), Some("page.reextract"));
+            menu.append(Some(&tr("Unpack Again")), Some("page.reextract"));
             let danger = gio::Menu::new();
             danger.append(Some(&tr("Remove Sandbox…")), Some("page.remove"));
             menu.append_section(None, &danger);

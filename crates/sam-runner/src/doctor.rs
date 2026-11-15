@@ -99,7 +99,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
     if host.tools.bsdtar.is_some() {
         extract_tools.push("bsdtar (Type 1)".into());
     }
-    c.push(check("extract", "AppImage extraction", if host.tools.bsdtar.is_some() { CheckStatus::Ok } else { CheckStatus::Warn }, extract_tools.join(", ")));
+    c.push(check("extract", "Unpacking the AppImage", if host.tools.bsdtar.is_some() { CheckStatus::Ok } else { CheckStatus::Warn }, extract_tools.join(", ")));
     c.push(match &host.tools.strace {
         Some(_) => check("strace", "Dynamic diagnosis", CheckStatus::Ok, "strace installed"),
         None => check("strace", "Dynamic diagnosis", CheckStatus::Info, "strace not installed (optional, used by 'sam-jail diagnose')"),
@@ -229,14 +229,15 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
     });
     match &e.extraction {
         Some(x) if x.appdir.join(&x.entry).exists() => {
-            c.push(check("extraction", "AppImage extraction", CheckStatus::Ok, format!("success via {} ({} files)", x.method, x.file_count)))
+            c.push(check("extraction", "Unpacking the AppImage", CheckStatus::Ok, format!("success via {} ({} files)", x.method, x.file_count)))
         }
         Some(_) => c.push(
-            check("extraction", "AppImage extraction", CheckStatus::Fail, "extracted payload is missing").hint(sam_core::i18n::tr("Re-extract the AppImage.")),
+            check("extraction", "Unpacking the AppImage", CheckStatus::Fail, "the unpacked app is missing")
+                .hint(sam_core::i18n::tr("Unpack the AppImage again.")),
         ),
         None => c.push(
-            check("extraction", "AppImage extraction", CheckStatus::Fail, e.last_error.clone().unwrap_or_else(|| "not extracted".into()))
-                .hint(sam_core::i18n::tr("Re-extract the AppImage (optionally allowing the fallback extractor).")),
+            check("extraction", "Unpacking the AppImage", CheckStatus::Fail, e.last_error.clone().unwrap_or_else(|| "not extracted".into()))
+                .hint(sam_core::i18n::tr("Unpack the AppImage again (if SAM cannot, allow the AppImage to unpack itself).")),
         ),
     }
     if let Some(d) = &e.detection {
@@ -267,10 +268,10 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
                 check("launcher", "Desktop entry", CheckStatus::Ok, tildify(p))
             } else {
                 check("launcher", "Desktop entry", CheckStatus::Warn, problems.join("; "))
-                    .hint(sam_core::i18n::tr("Reinstall the launcher (sam-jail desktop <app> install)."))
+                    .hint(sam_core::i18n::tr("Create the menu entry again (sam-jail desktop <app> install)."))
             });
         }
-        None => c.push(check("launcher", "Desktop entry", CheckStatus::Info, "no launcher installed")),
+        None => c.push(check("launcher", "Desktop entry", CheckStatus::Info, "no menu entry")),
     }
     if let Some(l) = &e.last_launch {
         let st = if l.sandbox_failure {

@@ -1107,7 +1107,7 @@ impl App {
         }
         match self.backend.call(&args, None).await {
             Ok(r) => {
-                self.toast(&tr("Re-extracted"));
+                self.toast(&tr("Unpacked again"));
                 let pending = util::list_of(&r, "pending_changes");
                 if !pending.is_empty() {
                     self.toast(&crate::i18n::trf("The update likely needs: {needs}", &[("needs", &pending.join(", "))]));

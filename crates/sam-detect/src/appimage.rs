@@ -127,10 +127,10 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
         info.compression = Some(squashfs_compression(&mut f, off)?);
         info.kind = AppImageType::Type2;
         if !info.magic {
-            info.notes.push(sam_core::i18n::tr("AppImage magic bytes missing; treating as Type 2 because a SquashFS payload is present"));
+            info.notes.push(sam_core::i18n::tr("The AppImage marker is missing; it is treated as Type 2 because it contains a SquashFS image"));
         }
     } else if info.magic {
-        info.notes.push(sam_core::i18n::tr("AppImage magic present but no payload found"));
+        info.notes.push(sam_core::i18n::tr("The AppImage marker is present, but the file contains no app image"));
     }
     Ok(info)
 }

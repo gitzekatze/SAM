@@ -194,8 +194,8 @@ pub fn validate_launcher(path: &Path, id: &str) -> Vec<String> {
     let m = crate::metadata::parse_desktop(&text);
     match m.get("Exec") {
         Some(exec) if (exec.contains("sam-jail-run") || exec.starts_with(&exec_quote(&runner_command()))) && exec.contains(&format!("--app-id {id}")) => {}
-        Some(_) => problems.push(sam_core::i18n::tr("launcher does not start the app through sam-jail-run")),
-        None => problems.push(sam_core::i18n::tr("launcher has no Exec line")),
+        Some(_) => problems.push(sam_core::i18n::tr("the menu entry does not start the app through sam-jail-run")),
+        None => problems.push(sam_core::i18n::tr("the menu entry has no Exec line")),
     }
     if let Some(icon) = m.get("Icon") {
         if icon.starts_with('/') && !Path::new(icon).exists() {

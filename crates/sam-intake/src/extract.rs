@@ -119,7 +119,7 @@ pub fn check_space(root: &Path, source_size: u64, limits: &Limits, free: Option<
         Some(free) if free < needed => bail!(
             "{}",
             sam_core::i18n::trf(
-                "There is not enough free space to unpack this AppImage: it needs about {needed}, but the folder {folder} has only {free} free. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location.",
+                "There is not enough free space to unpack this AppImage: it needs about {needed}, but the folder {folder} has only {free} free. Free some space, or choose another folder for unpacked apps under Preferences → Unpacking → Location.",
                 &[("needed", &sam_core::util::human_size(needed)), ("folder", &root.display()), ("free", &sam_core::util::human_size(free))],
             )
         ),
@@ -162,7 +162,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         AppImageType::Type2 if req.info.payload == sam_detect::appimage::PayloadFormat::Dwarfs => {
             // DwarFS (uruntime): unpacked by the dwarfs tools, inside the
             // same minimal sandbox as the other extractors.
-            let off = req.info.payload_offset.context(sam_core::i18n::tr("no payload offset"))?;
+            let off = req.info.payload_offset.context(sam_core::i18n::tr("the app image inside the AppImage was not found"))?;
             if let Some(d) = which("dwarfsextract") {
                 methods.push((
                     "dwarfsextract",
@@ -185,7 +185,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             }
         }
         AppImageType::Type2 => {
-            let off = req.info.payload_offset.context(sam_core::i18n::tr("no payload offset"))?;
+            let off = req.info.payload_offset.context(sam_core::i18n::tr("the app image inside the AppImage was not found"))?;
             methods.push((
                 "builtin-squashfs",
                 Box::new(move |dst: &Path, log: &mut dyn Write| match &req.isolation {
@@ -288,7 +288,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                     bail!(
                         "{}",
                         sam_core::i18n::trf(
-                            "The disk became full while unpacking this AppImage into {folder}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Extraction → Location.",
+                            "The disk became full while unpacking this AppImage into {folder}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Unpacking → Location.",
                             &[("folder", &req.root.display())],
                         )
                     );
@@ -391,7 +391,7 @@ impl<R: Read> Read for LimitedReader<'_, R> {
         if *self.total > self.max {
             return Err(io::Error::other(sam_core::error::CodedError::new(
                 "extraction-limit",
-                sam_core::i18n::tr("extraction limit exceeded: payload too large"),
+                sam_core::i18n::tr("unpacking limit exceeded: the app is too large"),
             )));
         }
         Ok(n)
@@ -409,10 +409,13 @@ fn builtin_squashfs(src: &Path, offset: u64, dst: &Path, limits: &Limits, starte
     for node in sqfs.files() {
         count += 1;
         if count > limits.max_files {
-            return Err(limit_error(sam_core::i18n::trf("extraction limit exceeded: more than {count} files", &[("count", &limits.max_files)])));
+            return Err(limit_error(sam_core::i18n::trf("unpacking limit exceeded: more than {count} files", &[("count", &limits.max_files)])));
         }
         if started.elapsed() > Duration::from_secs(limits.max_seconds) {
-            return Err(limit_error(sam_core::i18n::trf("extraction limit exceeded: took longer than {seconds} seconds", &[("seconds", &limits.max_seconds)])));
+            return Err(limit_error(sam_core::i18n::trf(
+                "unpacking limit exceeded: it took longer than {seconds} seconds",
+                &[("seconds", &limits.max_seconds)],
+            )));
         }
         let Some(rel) = sanitize_archive_path(&node.fullpath) else {
             if node.fullpath.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
@@ -459,7 +462,10 @@ fn wait_with_timeout(mut child: std::process::Child, limits: &Limits, started: I
         if started.elapsed() > Duration::from_secs(limits.max_seconds) {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(limit_error(sam_core::i18n::trf("extraction limit exceeded: took longer than {seconds} seconds", &[("seconds", &limits.max_seconds)])));
+            return Err(limit_error(sam_core::i18n::trf(
+                "unpacking limit exceeded: it took longer than {seconds} seconds",
+                &[("seconds", &limits.max_seconds)],
+            )));
         }
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -472,7 +478,7 @@ fn run_tool(cmd: &mut Command, limits: &Limits, started: Instant, log: &mut dyn 
         .stdout(Stdio::null())
         .stderr(Stdio::from(errf.try_clone()?))
         .spawn()
-        .context(sam_core::i18n::tr("spawning extraction tool"))?;
+        .context(sam_core::i18n::tr("starting the unpacking tool"))?;
     let st = wait_with_timeout(child, limits, started)?;
     let mut err = String::new();
     let mut f = errf;
@@ -498,7 +504,7 @@ fn tempfile_in_tmp() -> Result<File> {
 /// Run `<appimage> --appimage-extract` inside a minimal bubblewrap sandbox:
 /// no network, no home, read-only system, only the staging dir writable.
 fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: Instant, log: &mut dyn Write) -> Result<()> {
-    let bwrap = which("bwrap").context(sam_core::i18n::tr("bubblewrap is required for sandboxed fallback extraction"))?;
+    let bwrap = which("bwrap").context(sam_core::i18n::tr("Bubblewrap is needed to let the AppImage unpack itself in a sandbox"))?;
     let work = staging.with_extension("work");
     if work.exists() {
         fs::remove_dir_all(&work)?;
@@ -514,7 +520,7 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
         if executable {
             src.to_path_buf()
         } else {
-            fs::copy(src, &exe_copy).context(sam_core::i18n::tr("copying the AppImage to run its extractor"))?;
+            fs::copy(src, &exe_copy).context(sam_core::i18n::tr("copying the AppImage so it can unpack itself"))?;
             fs::set_permissions(&exe_copy, fs::Permissions::from_mode(0o755)).context(sam_core::i18n::tr("making the copy executable"))?;
             exe_copy.clone()
         }
@@ -565,7 +571,7 @@ mod space_tests {
         let lim = Limits::default();
         let size = 500 * 1024 * 1024;
         let err = check_space(Path::new("/data/unpacked"), size, &lim, Some(100 * 1024 * 1024)).unwrap_err().to_string();
-        assert!(err.contains("/data/unpacked") && err.contains("100.0 MiB") && err.contains("Preferences → Extraction → Location"), "{err}");
+        assert!(err.contains("/data/unpacked") && err.contains("100.0 MiB") && err.contains("Preferences → Unpacking → Location"), "{err}");
         assert!(check_space(Path::new("/x"), size, &lim, Some(10 * 1024 * 1024 * 1024)).is_ok());
         assert!(check_space(Path::new("/x"), size, &lim, None).is_ok(), "unknown free space does not block");
         assert!(space_needed(u64::MAX / 2, &lim) <= lim.max_bytes + 64 * 1024 * 1024, "never more than the unpack limit");

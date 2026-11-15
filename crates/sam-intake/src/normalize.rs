@@ -67,14 +67,11 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
 
         r.file_count += 1;
         if r.file_count > limits.max_files {
-            return Err(crate::extract::limit_error(sam_core::i18n::trf(
-                "extraction limit exceeded: more than {count} files",
-                &[("count", &limits.max_files)],
-            )));
+            return Err(crate::extract::limit_error(sam_core::i18n::trf("unpacking limit exceeded: more than {count} files", &[("count", &limits.max_files)])));
         }
         if started.elapsed().as_secs() > limits.max_seconds {
             return Err(crate::extract::limit_error(sam_core::i18n::trf(
-                "extraction limit exceeded: took longer than {seconds} seconds",
+                "unpacking limit exceeded: it took longer than {seconds} seconds",
                 &[("seconds", &limits.max_seconds)],
             )));
         }
@@ -104,7 +101,7 @@ fn walk(root: &Path, rel: &Path, limits: &Limits, started: Instant, r: &mut Norm
             r.total_size += meta.len();
             if r.total_size > limits.max_bytes {
                 return Err(crate::extract::limit_error(sam_core::i18n::trf(
-                    "extraction limit exceeded: more than {size} unpacked",
+                    "unpacking limit exceeded: more than {size} unpacked",
                     &[("size", &sam_core::util::human_size(limits.max_bytes))],
                 )));
             }

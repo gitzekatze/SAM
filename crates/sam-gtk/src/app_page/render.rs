@@ -238,7 +238,7 @@ impl AppPage {
             let badge = util::str_of(s, "badge");
             if ["stale", "broken", "missing"].contains(&badge) {
                 let text = match badge {
-                    "stale" => crate::i18n::tr("The AppImage changed since it was extracted. Re-extract it to use the new version."),
+                    "stale" => crate::i18n::tr("The AppImage changed since it was unpacked. Unpack it again to use the new version."),
                     "missing" => crate::i18n::tr("The AppImage file is missing. Point SAM at its new location, or remove the sandbox."),
                     _ => util::plain(util::get(e, "last_error").and_then(Value::as_str).unwrap_or(&crate::i18n::tr("This app cannot start."))),
                 };
@@ -683,7 +683,7 @@ impl AppPage {
                     app.toast(&if bad == 0 {
                         crate::i18n::tr("Setup check: everything is in order")
                     } else {
-                        crate::i18n::trf("Setup check: {bad} thing(s) to look at", &[("bad", &bad)])
+                        crate::i18n::trf("Setup check: {bad} things to look at", &[("bad", &bad)])
                     });
                     *me.setup_report.borrow_mut() = Some(r);
                     me.reload();
@@ -718,7 +718,7 @@ impl AppPage {
             }
             None => crate::i18n::tr("Not unpacked"),
         };
-        self.add_dynamic(&g, &text_row("Extraction", &extraction));
+        self.add_dynamic(&g, &text_row("Unpacking", &extraction));
 
         let signature = match util::str_of(e, "signature.state") {
             "" => crate::i18n::tr("Not checked"),
