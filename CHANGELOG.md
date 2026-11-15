@@ -24,6 +24,9 @@ version.
 
 ### Reliability beyond the first start
 
+- When SAM's own SquashFS reader stopped at the size limit, the window
+  did not recognize it as a limit (the error lost its code), so it did not
+  explain how to raise the limit. Mutation testing found it.
 - The check whether the unpacking folder supports overlays no longer
   leaves a locked `.overlay-check-…` folder behind in SAM's data each time
   it runs, and removes the ones earlier versions left.

@@ -355,12 +355,6 @@ pub(crate) fn limit_error(message: String) -> anyhow::Error {
 
 fn is_limit_error(e: &anyhow::Error) -> bool {
     sam_core::error::code_of(e) == Some("extraction-limit")
-        || e.chain().any(|c| {
-            c.downcast_ref::<io::Error>()
-                .and_then(|io| io.get_ref())
-                .and_then(|inner| inner.downcast_ref::<sam_core::error::CodedError>())
-                .is_some_and(|c| c.code == "extraction-limit")
-        })
 }
 
 /// Make sure every existing ancestor of `rel` inside `root` is a real
@@ -437,7 +431,7 @@ fn builtin_squashfs(src: &Path, offset: u64, dst: &Path, limits: &Limits, starte
                 }
                 let mut out = File::create(&target)?;
                 let mut r = LimitedReader { inner: sqfs.file(f).reader(), total: &mut total, max: limits.max_bytes };
-                io::copy(&mut r, &mut out).map_err(|e| anyhow!("{}: {e}", rel.display()))?;
+                io::copy(&mut r, &mut out).map_err(|e| anyhow::Error::new(e).context(rel.display().to_string()))?;
                 let mode = if node.header.permissions & 0o111 != 0 { 0o755 } else { 0o644 };
                 fs::set_permissions(&target, fs::Permissions::from_mode(mode))?;
             }

@@ -28,9 +28,16 @@ impl fmt::Display for CodedError {
 
 impl std::error::Error for CodedError {}
 
-/// The code of the first coded error in an error chain, if any.
+/// The code of the first coded error in an error chain, if any. Code that
+/// must return an `io::Error` (a `Read` implementation) carries its coded
+/// error inside it; that one is found too.
 pub fn code_of(e: &anyhow::Error) -> Option<&'static str> {
-    e.chain().find_map(|c| c.downcast_ref::<CodedError>()).map(|c| c.code)
+    e.chain()
+        .find_map(|c| {
+            c.downcast_ref::<CodedError>()
+                .or_else(|| c.downcast_ref::<std::io::Error>().and_then(|io| io.get_ref()).and_then(|inner| inner.downcast_ref::<CodedError>()))
+        })
+        .map(|c| c.code)
 }
 
 #[cfg(test)]
@@ -44,6 +51,8 @@ mod tests {
         use anyhow::Context;
         let e: anyhow::Error = Err::<(), _>(CodedError::new("signing-key-changed", "Der Schlüssel hat sich geändert.")).context("updating Krita").unwrap_err();
         assert_eq!(code_of(&e), Some("signing-key-changed"));
+        let inside_io: anyhow::Error = anyhow::Error::new(std::io::Error::other(CodedError::new("extraction-limit", "zu groß"))).context("usr/lib/x.so");
+        assert_eq!(code_of(&inside_io), Some("extraction-limit"), "a code inside an I/O error is found");
         assert_eq!(code_of(&anyhow::anyhow!("plain")), None);
     }
 }

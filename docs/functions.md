@@ -9,13 +9,13 @@
 >
 > Test results are from the newest version report (2026-11-15 11:01:46).
 
-**40 functions:** 38 proven by passing tests, 1 by scripted checks, 0 with a gap, 224 tests in all.
+**40 functions:** 37 proven by passing tests, 1 by scripted checks, 0 with a gap, 225 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
 | 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 5 | ✅ |
 | 2 | [SAM recognizes every AppImage format (type 2, SquashFS, DwarFS) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 7 | ✅ |
-| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 11 | ✅ |
+| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 12 | ❌ unpacking_stops_exactly_at_its_limits |
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 6 | ✅ |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 6 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 15 | ✅ |
@@ -107,8 +107,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L569) | Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | ✅ |
-| [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L582) | A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | ✅ |
+| [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L563) | Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | ✅ |
+| [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L576) | A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | ✅ |
 | [`unpacking_stops_at_the_time_limit`](../crates/sam-intake/src/normalize.rs#L181) | Unpacking stops with a clear error when it takes longer than the time limit, so a huge or hostile AppImage cannot keep SAM busy forever. | ✅ |
 | [`symlinks_pointing_outside_the_app_are_recognized`](../crates/sam-intake/src/normalize.rs#L192) | A symlink that points outside the unpacked app is recognized. | ✅ |
 | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L202) | Paths from the AppImage image are made relative, and paths that climb out with .. | ✅ |
@@ -118,6 +118,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L205) | Unpacking stops at the size limit and leaves no partial files behind. | ✅ |
 | [`fractions_follow_the_step_weights`](../crates/sam-runner/src/progress.rs#L131) | The progress bar follows the weights of the steps of creating a sandbox. | ✅ |
 | [`bytes_written_are_counted`](../crates/sam-runner/src/progress.rs#L150) | Unpacking progress counts the bytes written. | ✅ |
+| [`unpacking_stops_exactly_at_its_limits`](../crates/sam-intake/tests/limits.rs#L42) | The file-count and size limits let an app through that reaches them exactly and stop one entry or one byte more; a time limit of zero stops at once. | – |
 
 **Code:** [`sam-intake/src/extract.rs`](../crates/sam-intake/src/extract.rs), [`sam-intake/src/normalize.rs`](../crates/sam-intake/src/normalize.rs), [`sam-runner/src/progress.rs`](../crates/sam-runner/src/progress.rs)
 
@@ -661,7 +662,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_sandbox_builder_depends_only_on_the_permission_model`](../crates/sam-jail-cli/tests/architecture.rs#L79) | The sandbox command builder depends only on the permission model, so what it builds follows from the permissions alone. | ✅ |
 | [`the_component_diagram_shows_the_real_dependencies`](../crates/sam-jail-cli/tests/architecture.rs#L86) | The component diagram in docs/architecture.md shows exactly the real dependencies between the parts: no arrow is missing and none is invented. | ✅ |
 | [`version_reports_the_json_interface`](../crates/sam-jail-cli/tests/robustness.rs#L157) | `sam-jail version` answers with the JSON interface version even when the configuration cannot be read. | ✅ |
-| [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L42) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | ✅ |
+| [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L49) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | ✅ |
 
 **Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md)
 
