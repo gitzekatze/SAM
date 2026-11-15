@@ -41,6 +41,8 @@ version.
 
 ### Reliability beyond the first start
 
+- A new SAM icon now reaches the taskbar: SAM marks the icon folders as
+  changed, so the desktop's icon cache stops showing the old icon.
 - When SAM's own SquashFS reader stopped at the size limit, the window
   did not recognize it as a limit (the error lost its code), so it did not
   explain how to raise the limit. Mutation testing found it.

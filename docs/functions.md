@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 17:32:32).
 
-**40 functions:** 38 proven by passing tests, 1 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 241 tests in all.
+**40 functions:** 37 proven by passing tests, 2 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 242 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -48,7 +48,7 @@
 | 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 6 | ✅ |
 | 34 | [A bug report that never contains your name or home path.](#34) | sam-runner | 1 | ✅ |
 | 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-storage, sam-core | 5 | ✅ |
-| 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 11 | ✅ |
+| 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 12 | ✅ 🆕 1 new test since the report |
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 6 | ✅ 🆕 4 new tests since the report |
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 12 | ✅ |
@@ -81,7 +81,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_appimage_behind_a_foreign_menu_entry_is_found`](../crates/sam-intake/src/menu.rs#L231) | The AppImage a foreign menu entry starts is found in its Exec line, also behind env and with quotes. | ✅ |
 | [`app_ids_stay_unique_when_names_collide`](../crates/sam-intake/src/id.rs#L72) | App IDs are stable and unique, also when two AppImages have the same name. | ✅ |
 | [`found_appimages_get_a_menu_entry_only_with_a_sandbox`](../crates/sam-runner/tests/overview.rs#L12) | AppImages are listed before they have a sandbox; only creating the sandbox adds SAM's menu entry and hides unsandboxed ones, and removing it puts them back. | ✅ |
-| [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1403) | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | ✅ |
+| [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1405) | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | ✅ |
 
 **Code:** [`sam-intake/src/peek.rs`](../crates/sam-intake/src/peek.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-intake/src/id.rs`](../crates/sam-intake/src/id.rs), [`sam-runner/src/ops/overview.rs`](../crates/sam-runner/src/ops/overview.rs), [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs)
 
@@ -612,8 +612,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`shift_click_selects_the_apps_between_two_clicks`](../crates/sam-gtk/src/all_perms.rs#L993) | Shift-click selects every app between the app clicked before and the app clicked now, in either direction; without an earlier click, only the app clicked now. | ✅ |
 | [`a_tag_filter_cycles_through_has_has_not_and_off`](../crates/sam-gtk/src/all_perms.rs#L1005) | A tag filter cycles through three states with each click: only apps with the permission, only apps without it, and off. | ✅ |
 | [`the_list_shows_only_apps_that_pass_every_filter`](../crates/sam-gtk/src/all_perms.rs#L1014) | The list shows an app only when it passes every filter at once: the search text, each state filter, and each tag filter in its state. | ✅ |
-| [`the_style_sheet_handler_is_connected_before_register`](../crates/sam-gtk/src/main.rs#L440) ⟲ | Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | ✅ |
-| [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L451) | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | ✅ |
+| [`the_style_sheet_handler_is_connected_before_register`](../crates/sam-gtk/src/main.rs#L500) ⟲ | Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | ✅ |
+| [`a_new_icon_marks_its_folders_as_changed`](../crates/sam-gtk/src/main.rs#L459) | A new icon is noticed by the desktop's icon caches: the folders from the icon up to the theme are marked as changed, also when an earlier version had replaced the icon in place; once they are newer than the icon, nothing is touched again (regression: the taskbar kept SAM's old icon). | 🆕 new |
+| [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L511) | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | ✅ |
 
 **Code:** [`sam-gtk/src/all_perms.rs`](../crates/sam-gtk/src/all_perms.rs), [`sam-gtk/src/perms.rs`](../crates/sam-gtk/src/perms.rs), [`sam-profile/src/tags.rs`](../crates/sam-profile/src/tags.rs), [`sam-gtk/src/main.rs`](../crates/sam-gtk/src/main.rs)
 

@@ -1162,6 +1162,7 @@ dependencies = [
  "pulldown-cmark",
  "sam-core",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -300,7 +300,7 @@ id = 36
 area = "H"
 promise = "The Permission Manager, for one app or several, with tags in the same colors everywhere."
 code = ["sam-gtk/src/all_perms.rs", "sam-gtk/src/perms.rs", "sam-profile/src/tags.rs", "sam-gtk/src/main.rs"]
-tests = ["a_strict_window_app_has_no_tags", "tags_follow_the_family_order_and_mark_read_only", "dangerous_access_is_red_and_filtered_bus_has_no_tag", "tags_and_the_risk_list_use_the_same_words", "the_overview_lists_every_sandboxed_app_with_tags_and_states", "group_switches_offer_only_valid_values", "shift_click_selects_the_apps_between_two_clicks", "a_tag_filter_cycles_through_has_has_not_and_off", "the_list_shows_only_apps_that_pass_every_filter", "the_style_sheet_handler_is_connected_before_register", "every_color_in_use_has_a_style_rule"]
+tests = ["a_strict_window_app_has_no_tags", "tags_follow_the_family_order_and_mark_read_only", "dangerous_access_is_red_and_filtered_bus_has_no_tag", "tags_and_the_risk_list_use_the_same_words", "the_overview_lists_every_sandboxed_app_with_tags_and_states", "group_switches_offer_only_valid_values", "shift_click_selects_the_apps_between_two_clicks", "a_tag_filter_cycles_through_has_has_not_and_off", "the_list_shows_only_apps_that_pass_every_filter", "the_style_sheet_handler_is_connected_before_register", "a_new_icon_marks_its_folders_as_changed", "every_color_in_use_has_a_style_rule"]
 checks = ["tests/gui/permissions-atspi.sh"]
 
 [[function]]

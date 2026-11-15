@@ -277,11 +277,34 @@ const ICON_SVG: &[u8] = include_bytes!("../../../data/io.github.gitzekatze.SAM.s
 fn own_icon_dir() -> Option<std::path::PathBuf> {
     let root = sam_core::Paths::from_env().data_dir.join("theme");
     let file = root.join("hicolor/scalable/apps").join(format!("{APP_ID}.svg"));
-    if std::fs::read(&file).ok().as_deref() != Some(ICON_SVG) {
-        std::fs::create_dir_all(file.parent()?).ok()?;
-        std::fs::write(&file, ICON_SVG).ok()?;
-    }
+    install_icon(&file, &root.join("hicolor"), ICON_SVG)?;
     Some(root)
+}
+
+/// Writes an icon so that desktops notice a new one. Icon caches (GTK's
+/// icon-theme.cache, KDE's icon cache) look only at the folders' change
+/// times, and overwriting a file in place changes none of them: the
+/// taskbar kept showing SAM's old icon. So the icon is written as a new
+/// file, and every folder from the icon up to `theme_root` that is older
+/// than the icon is marked as changed (this also repairs an icon that was
+/// replaced in place before).
+fn install_icon(file: &std::path::Path, theme_root: &std::path::Path, svg: &[u8]) -> Option<()> {
+    if std::fs::read(file).ok().as_deref() != Some(svg) {
+        std::fs::create_dir_all(file.parent()?).ok()?;
+        let tmp = file.with_extension("svg.new");
+        std::fs::write(&tmp, svg).ok()?;
+        std::fs::rename(&tmp, file).ok()?;
+    }
+    let icon_time = std::fs::metadata(file).and_then(|m| m.modified()).ok()?;
+    for dir in file.ancestors().skip(1) {
+        if !dir.starts_with(theme_root) {
+            break;
+        }
+        if std::fs::metadata(dir).and_then(|m| m.modified()).is_ok_and(|t| t < icon_time) {
+            let _ = std::fs::File::open(dir).and_then(|d| d.set_modified(std::time::SystemTime::now()));
+        }
+    }
+    Some(())
 }
 
 fn desktop_identity() {
@@ -320,10 +343,7 @@ fn desktop_identity() {
         let _ = std::fs::create_dir_all(ours.parent().unwrap());
         let _ = std::fs::write(&ours, entry);
     }
-    if std::fs::read(&icon).ok().as_deref() != Some(ICON_SVG) {
-        let _ = std::fs::create_dir_all(icon.parent().unwrap());
-        let _ = std::fs::write(&icon, ICON_SVG);
-    }
+    let _ = install_icon(&icon, &data_home.join("icons/hicolor"), ICON_SVG);
 }
 
 fn save_screenshot(window: &adw::ApplicationWindow, file: &str) {
@@ -431,6 +451,46 @@ fn walk_focus(window: &adw::ApplicationWindow, app: adw::Application) {
 
 #[cfg(test)]
 mod tests {
+    /// A new icon is noticed by the desktop's icon caches: the folders
+    /// from the icon up to the theme are marked as changed, also when an
+    /// earlier version had replaced the icon in place; once they are newer
+    /// than the icon, nothing is touched again (regression: the taskbar
+    /// kept SAM's old icon).
+    #[test]
+    fn a_new_icon_marks_its_folders_as_changed() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("icons/hicolor");
+        let apps = root.join("scalable/apps");
+        std::fs::create_dir_all(&apps).unwrap();
+        let file = apps.join("app.svg");
+        std::fs::write(&file, b"<svg>old</svg>").unwrap();
+        let long_ago = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        let age = |p: &std::path::Path| std::fs::metadata(p).unwrap().modified().unwrap();
+        let set_old = || {
+            for d in [&root, &root.join("scalable"), &apps] {
+                std::fs::File::open(d).unwrap().set_modified(long_ago).unwrap();
+            }
+        };
+        set_old();
+        super::install_icon(&file, &root, b"<svg>new</svg>").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"<svg>new</svg>");
+        for d in [&root, &root.join("scalable"), &apps] {
+            assert!(age(d) > long_ago, "{} was not marked as changed", d.display());
+        }
+        assert!(age(t.path()) <= age(&root), "folders above the theme are not touched");
+        // The icon was already replaced in place earlier: the folders are
+        // still marked, because they are older than the icon.
+        set_old();
+        super::install_icon(&file, &root, b"<svg>new</svg>").unwrap();
+        assert!(age(&root) > long_ago);
+        // Up to date: nothing changes on the next start.
+        let before = age(&root);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        super::install_icon(&file, &root, b"<svg>new</svg>").unwrap();
+        assert_eq!(age(&root), before);
+        assert!(!apps.join("app.svg.new").exists());
+    }
+
     use super::CSS;
 
     /// Regression: the "startup" handler that loads SAM's style sheet was
