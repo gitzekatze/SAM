@@ -70,6 +70,8 @@ package_sam-jail-cli() {
   install -Dm644 docs/security.md   "$pkgdir/usr/share/doc/sam/security.md"
   install -Dm644 docs/profiles.md   "$pkgdir/usr/share/doc/sam/profiles.md"
   install -Dm644 CHANGELOG.md       "$pkgdir/usr/share/doc/sam/CHANGELOG.md"
+  install -Dm644 LICENSE            "$pkgdir/usr/share/licenses/sam/LICENSE"
+  install -Dm644 THIRD-PARTY-LICENSES.md "$pkgdir/usr/share/licenses/sam/THIRD-PARTY-LICENSES.md"
   for f in data/man/sam-jail*.1; do
     [ "${f##*/}" = sam-jail-gui.1 ] || install -Dm644 "$f" "$pkgdir/usr/share/man/man1/${f##*/}"
   done

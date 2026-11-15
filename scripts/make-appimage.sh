@@ -57,6 +57,7 @@ install -Dm644 "data/$id.svg"              "$app/usr/share/icons/hicolor/scalabl
 install -Dm644 "data/$id.desktop"          "$app/usr/share/applications/$id.desktop"
 install -Dm644 "data/$id.metainfo.xml"     "$app/usr/share/metainfo/$id.appdata.xml"
 install -Dm644 LICENSE                     "$app/usr/share/licenses/sam/LICENSE"
+install -Dm644 THIRD-PARTY-LICENSES.md     "$app/usr/share/licenses/sam/THIRD-PARTY-LICENSES.md"
 make -s mo
 for f in target/locale/*/LC_MESSAGES/sam.mo; do
     [ -f "$f" ] && install -Dm644 "$f" "$app/usr/share/locale/${f#target/locale/}"

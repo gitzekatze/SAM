@@ -295,7 +295,9 @@ Also: `data/` (menu entry, AppStream metainfo, icon, man pages),
 
 ## License
 
-GPL-3.0-or-later.
+GPL-3.0-or-later. SAM's programs contain libraries by other people under their
+own licenses (mostly MIT and Apache-2.0); [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)
+lists them with their license texts and is installed with every package.
 
 The app icon (`data/io.github.gitzekatze.SAM.svg`) is based on the seal icon
 from [Arcticons](https://github.com/Arcticons-Team/Arcticons), licensed under

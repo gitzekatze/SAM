@@ -26,7 +26,7 @@ else
 CARGO ?= cargo
 endif
 
-.PHONY: all cli gui test test-library report dashboard install install-cli install-gui clean dist appimage man pot mo
+.PHONY: all cli gui test test-library report dashboard licenses install install-cli install-gui clean dist appimage man pot mo
 
 # Languages with a translation (po/LINGUAS).
 LINGUAS := $(shell cat po/LINGUAS 2>/dev/null)
@@ -66,6 +66,10 @@ report:
 dashboard:
 	python3 scripts/dashboard.py
 
+# THIRD-PARTY-LICENSES.md, after the dependencies change (CI checks it).
+licenses:
+	python3 scripts/third-party-licenses.py
+
 install-cli:
 	install -Dm755 target/release/sam-jail     "$(BINDIR)/sam-jail"
 	install -Dm755 target/release/sam-jail-run "$(BINDIR)/sam-jail-run"
@@ -73,6 +77,8 @@ install-cli:
 	install -Dm644 docs/security.md           "$(DATADIR)/doc/sam/security.md"
 	install -Dm644 docs/profiles.md           "$(DATADIR)/doc/sam/profiles.md"
 	install -Dm644 CHANGELOG.md               "$(DATADIR)/doc/sam/CHANGELOG.md"
+	install -Dm644 LICENSE                    "$(DATADIR)/licenses/sam/LICENSE"
+	install -Dm644 THIRD-PARTY-LICENSES.md    "$(DATADIR)/licenses/sam/THIRD-PARTY-LICENSES.md"
 	for f in data/man/sam-jail*.1; do case "$$f" in *sam-jail-gui.1) ;; *) install -Dm644 "$$f" "$(DATADIR)/man/man1/$${f##*/}" ;; esac; done
 
 install-gui:

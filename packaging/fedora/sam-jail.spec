@@ -87,7 +87,7 @@ export CARGO_HOME="$PWD/.cargo-home"
 cargo test --frozen --offline --workspace
 
 %files -f sam.lang
-%license LICENSE
+%license LICENSE THIRD-PARTY-LICENSES.md
 %{_bindir}/sam-jail-gui
 %{_datadir}/applications/io.github.gitzekatze.SAM.desktop
 %{_metainfodir}/io.github.gitzekatze.SAM.metainfo.xml
@@ -95,7 +95,7 @@ cargo test --frozen --offline --workspace
 %{_mandir}/man1/sam-jail-gui.1*
 
 %files -n sam-jail-cli
-%license LICENSE
+%license LICENSE THIRD-PARTY-LICENSES.md
 %doc README.md CHANGELOG.md docs/security.md docs/profiles.md
 %{_bindir}/sam-jail
 %{_bindir}/sam-jail-run

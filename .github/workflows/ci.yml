@@ -114,6 +114,9 @@ jobs:
       - name: Test library is up to date
         run: python3 scripts/test-library.py --check
 
+      - name: Third-party licenses are up to date
+        run: python3 scripts/third-party-licenses.py --check
+
       - name: Translations compile
         run: make mo
 
