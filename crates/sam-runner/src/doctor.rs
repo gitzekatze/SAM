@@ -664,8 +664,9 @@ fn redact_ipv4(s: &str) -> String {
     let mut last = 0;
     while k < chars.len() {
         let (i, c) = chars[k];
-        let starts = c.is_ascii_digit()
-            && (k == 0 || !(chars[k - 1].1.is_alphanumeric() || chars[k - 1].1 == '.'));
+        // A run of digits and dots swallows its dots, so only a letter or
+        // digit before it can glue it to another word.
+        let starts = c.is_ascii_digit() && (k == 0 || !chars[k - 1].1.is_alphanumeric());
         if starts {
             let mut j = k;
             while j < chars.len() && (chars[j].1.is_ascii_digit() || chars[j].1 == '.') {
@@ -675,11 +676,12 @@ fn redact_ipv4(s: &str) -> String {
             let cand = s[i..end_byte].trim_end_matches('.');
             let parts: Vec<&str> = cand.split('.').collect();
             let next_ok = j >= chars.len() || !chars[j].1.is_alphanumeric();
+            // Each part is 0 to 255, written with at most three digits.
             let is_ip = next_ok
                 && parts.len() == 4
-                && parts.iter().all(|p| {
-                    !p.is_empty() && p.len() <= 3 && p.parse::<u16>().is_ok_and(|n| n <= 255)
-                });
+                && parts
+                    .iter()
+                    .all(|p| p.len() <= 3 && p.parse::<u8>().is_ok());
             if is_ip && !cand.starts_with("127.") && cand != "0.0.0.0" {
                 out.push_str(&s[last..i]);
                 out.push_str("<ip>");
@@ -788,6 +790,27 @@ mod tests {
         );
     }
 
+    /// A whole bug report (the system part) is produced and redacted: it
+    /// names SAM's version and never the home folder or user name.
+    #[test]
+    fn a_bug_report_is_complete_and_redacted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(sam_core::Paths::rooted(tmp.path())).unwrap();
+        let mut host = sam_core::sandbox::sample_context().host;
+        host.user = "erika".into();
+        host.home = "/home/erika".into();
+        let text = bug_report(&sam, None, &host);
+        assert!(
+            text.starts_with("## SAM bug report") && text.contains(SAM_VERSION),
+            "{text}"
+        );
+        assert!(text.contains("### Environment"), "{text}");
+        assert!(
+            !text.contains("/home/erika") && !text.contains("erika"),
+            "{text}"
+        );
+    }
+
     /// Bug reports hide everything that identifies the user or gives access:
     /// a home folder with spaces, other users' folders, short user names,
     /// the computer's name, email addresses, logins and tokens in links, IP
@@ -826,6 +849,33 @@ mod tests {
             r("an @ sign and user@localhost"),
             "an @ sign and user@localhost"
         );
+
+        // Edges: at the start or end of a text, glued to other words.
+        assert_eq!(
+            r("a@b.de wrote to x.y@mail.example.com"),
+            "<email> wrote to <email>"
+        );
+        assert_eq!(r("10.0.0.7 answered"), "<ip> answered");
+        assert_eq!(
+            r("build v192.168.1.1 and 192.168.1.1x and 1.192.168.1.1"),
+            "build v192.168.1.1 and 192.168.1.1x and 1.192.168.1.1"
+        );
+        assert_eq!(
+            r("at /home/ and /home/<user>/x"),
+            "at /home/ and /home/<user>/x"
+        );
+        assert_eq!(
+            r("http://example.org/plain stays"),
+            "http://example.org/plain stays"
+        );
+        // A one-letter user name is not hidden: it would mangle every word.
+        assert_eq!(redact_with("a cat", "/home/a", "a", "h"), "a cat");
+        assert_eq!(
+            redact_with("h is /usr/bin", "/", "erika", "h"),
+            "h is /usr/bin",
+            "no one-letter computer name, no home of /"
+        );
+        assert_eq!(r("1.2.3.0001 and 1.2.3.256"), "1.2.3.0001 and 1.2.3.256");
 
         let mut p = sam_core::permissions::PermissionSet::strict_gui();
         p.environment
