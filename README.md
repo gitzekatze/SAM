@@ -274,7 +274,7 @@ AppImage.
 |---|---|
 | [User guide](docs/guide.md) | everyone: the window, every setting, troubleshooting |
 | [Security](docs/security.md) | what the sandbox protects against, and its limits |
-| [Profiles and presets](docs/profiles.md) | the permission file format |
+| [Permissions](docs/permissions.md) | permission keys, preset files, group changes |
 | [Packaging](docs/packaging.md) | building packages and the AppImage |
 | [JSON interface](docs/json-interface.md) | scripts: the `--json` output of every command |
 | [Development dashboard](DEVELOPMENT.md) | developers: the current state, every test, the version reports and the latest commits |

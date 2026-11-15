@@ -358,12 +358,6 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     g.add(&row);
     switch(
         &g,
-        "extraction.cleanup_stale",
-        &crate::i18n::tr("Remove unpacked copies of apps that are gone"),
-        "",
-    );
-    switch(
-        &g,
         "extraction.allow_fallback",
         &crate::i18n::tr("Offer to let the AppImage unpack itself when SAM cannot"),
         &crate::i18n::tr("Only used after asking you, and only inside a restricted sandbox."),
@@ -397,12 +391,6 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let g = adw::PreferencesGroup::builder()
         .title(tr("Diagnostics"))
         .build();
-    switch(
-        &g,
-        "diagnostics.verbose_logging",
-        &crate::i18n::tr("Verbose logging"),
-        "",
-    );
     number(
         &g,
         "diagnostics.keep_logs",

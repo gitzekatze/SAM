@@ -210,7 +210,7 @@ id = 25
 area = "E"
 promise = "The diagnose run finds missing files and suggests only what helps."
 code = ["sam-runner/src/diagnose.rs"]
-tests = ["failed_accesses_are_read_from_a_trace", "failed_accesses_map_to_the_permission_that_fixes_them", "a_failure_despite_the_permission_is_not_suggested_again", "the_apps_own_folders_in_its_private_home_are_not_reported", "failed_changes_to_a_file_are_not_missing_access", "write_checks_on_system_folders_are_not_missing_access", "files_in_etc_are_suggested_and_not_added_automatically", "the_apps_own_settings_folder_is_not_reported_as_sensitive"]
+tests = ["failed_accesses_are_read_from_a_trace", "failed_accesses_map_to_the_permission_that_fixes_them", "a_failure_despite_the_permission_is_not_suggested_again", "the_apps_own_folders_in_its_private_home_are_not_reported", "failed_changes_to_a_file_are_not_missing_access", "write_checks_on_system_folders_are_not_missing_access", "files_in_etc_are_suggested_and_not_added_automatically", "the_apps_own_settings_folder_is_not_reported_as_sensitive", "diagnostic_runs_obey_the_preference"]
 
 [[function]]
 id = 26

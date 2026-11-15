@@ -93,7 +93,7 @@ sam-jail --json version
 | `from_menu`, `manual` | found through a menu entry; added as a single file |
 
 **Permissions** are the profile object described in
-[profiles.md](profiles.md). Keys in `set`, `get` and repair steps use the
+[permissions.md](permissions.md). Keys in `set`, `get` and repair steps use the
 dotted form shown there (`network.mode`, `audio.pipewire`, …).
 
 ---

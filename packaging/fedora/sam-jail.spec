@@ -96,7 +96,7 @@ cargo test --frozen --offline --workspace
 
 %files -n sam-jail-cli
 %license LICENSE THIRD-PARTY-LICENSES.md
-%doc README.md CHANGELOG.md docs/security.md docs/profiles.md
+%doc README.md CHANGELOG.md docs/security.md docs/permissions.md
 %{_bindir}/sam-jail
 %{_bindir}/sam-jail-run
 %{_mandir}/man1/sam-jail.1*

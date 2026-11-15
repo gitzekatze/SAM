@@ -89,7 +89,7 @@ install-cli:
 	install -Dm755 target/release/sam-jail-run "$(BINDIR)/sam-jail-run"
 	install -Dm644 README.md                  "$(DATADIR)/doc/sam/README.md"
 	install -Dm644 docs/security.md           "$(DATADIR)/doc/sam/security.md"
-	install -Dm644 docs/profiles.md           "$(DATADIR)/doc/sam/profiles.md"
+	install -Dm644 docs/permissions.md           "$(DATADIR)/doc/sam/permissions.md"
 	install -Dm644 CHANGELOG.md               "$(DATADIR)/doc/sam/CHANGELOG.md"
 	install -Dm644 LICENSE                    "$(DATADIR)/licenses/sam/LICENSE"
 	install -Dm644 THIRD-PARTY-LICENSES.md    "$(DATADIR)/licenses/sam/THIRD-PARTY-LICENSES.md"

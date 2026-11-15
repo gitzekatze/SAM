@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 17:32:32).
 
-**40 functions:** 35 proven by passing tests, 4 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 246 tests in all.
+**40 functions:** 34 proven by passing tests, 5 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 247 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -37,7 +37,7 @@
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 2 | ✅ |
 | 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 6 | ✅ |
 | 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | sam-runner, sam-sandbox | 7 | ✅ |
-| 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 8 | ✅ |
+| 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 9 | ✅ 🆕 1 new test since the report |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 2 | ✅ |
 | 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | sam-runner, sam-storage | 2 | ✅ |
 | 28 | [Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 19 | ✅ 🆕 1 new test since the report |
@@ -454,14 +454,15 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`failed_accesses_are_read_from_a_trace`](../crates/sam-runner/src/diagnose.rs#L468) | Failed file and socket accesses are read from a diagnostic trace. | ✅ |
-| [`failed_accesses_map_to_the_permission_that_fixes_them`](../crates/sam-runner/src/diagnose.rs#L488) | Failed accesses are mapped to the permission that would fix them (X11 socket, GPU device), and unknown paths to none. | ✅ |
-| [`a_failure_despite_the_permission_is_not_suggested_again`](../crates/sam-runner/src/diagnose.rs#L505) | A GPU device that fails to open while the GPU is already allowed is reported as "already granted", not as a suggestion to allow the GPU (regression: neovide on NVIDIA got "Enable GPU acceleration" twice). | ✅ |
-| [`the_apps_own_folders_in_its_private_home_are_not_reported`](../crates/sam-runner/src/diagnose.rs#L527) | A missing cache, settings or data folder in the app's private home is the app's own and is not reported, while a missing document folder is (regression: ~/.cache/nvidia was suggested as a folder to grant). | ✅ |
-| [`failed_changes_to_a_file_are_not_missing_access`](../crates/sam-runner/src/diagnose.rs#L544) | A failed attempt to change a file's mode is not missing access (regression: NVIDIA's driver chmods /dev/nvidia-modeset, which fails for every ordinary user, and diagnose reported it as a GPU problem). | ✅ |
-| [`write_checks_on_system_folders_are_not_missing_access`](../crates/sam-runner/src/diagnose.rs#L556) | Checking whether a system file is writable is not missing access (regression: Zrythm and mpv ask access(W_OK) for files in /usr, which fails for every user, and diagnose suggested granting /usr/lib/lv2). | ✅ |
-| [`files_in_etc_are_suggested_and_not_added_automatically`](../crates/sam-runner/src/diagnose.rs#L572) | A file in /etc is suggested, never added by itself, because it describes this computer (regression: /etc/fstab and /etc/pacman.conf were "low risk" and added automatically, although the apps ran without them). | ✅ |
-| [`the_apps_own_settings_folder_is_not_reported_as_sensitive`](../crates/sam-runner/src/diagnose.rs#L585) | The app's own settings folder in its private home is not reported as a sensitive folder (regression: ~/.config was "dangerous"). | ✅ |
+| [`failed_accesses_are_read_from_a_trace`](../crates/sam-runner/src/diagnose.rs#L471) | Failed file and socket accesses are read from a diagnostic trace. | ✅ |
+| [`failed_accesses_map_to_the_permission_that_fixes_them`](../crates/sam-runner/src/diagnose.rs#L491) | Failed accesses are mapped to the permission that would fix them (X11 socket, GPU device), and unknown paths to none. | ✅ |
+| [`a_failure_despite_the_permission_is_not_suggested_again`](../crates/sam-runner/src/diagnose.rs#L508) | A GPU device that fails to open while the GPU is already allowed is reported as "already granted", not as a suggestion to allow the GPU (regression: neovide on NVIDIA got "Enable GPU acceleration" twice). | ✅ |
+| [`the_apps_own_folders_in_its_private_home_are_not_reported`](../crates/sam-runner/src/diagnose.rs#L530) | A missing cache, settings or data folder in the app's private home is the app's own and is not reported, while a missing document folder is (regression: ~/.cache/nvidia was suggested as a folder to grant). | ✅ |
+| [`failed_changes_to_a_file_are_not_missing_access`](../crates/sam-runner/src/diagnose.rs#L547) | A failed attempt to change a file's mode is not missing access (regression: NVIDIA's driver chmods /dev/nvidia-modeset, which fails for every ordinary user, and diagnose reported it as a GPU problem). | ✅ |
+| [`write_checks_on_system_folders_are_not_missing_access`](../crates/sam-runner/src/diagnose.rs#L559) | Checking whether a system file is writable is not missing access (regression: Zrythm and mpv ask access(W_OK) for files in /usr, which fails for every user, and diagnose suggested granting /usr/lib/lv2). | ✅ |
+| [`files_in_etc_are_suggested_and_not_added_automatically`](../crates/sam-runner/src/diagnose.rs#L575) | A file in /etc is suggested, never added by itself, because it describes this computer (regression: /etc/fstab and /etc/pacman.conf were "low risk" and added automatically, although the apps ran without them). | ✅ |
+| [`the_apps_own_settings_folder_is_not_reported_as_sensitive`](../crates/sam-runner/src/diagnose.rs#L607) | The apps own settings folder is not reported as sensitive. | ✅ |
+| [`diagnostic_runs_obey_the_preference`](../crates/sam-runner/src/diagnose.rs#L590) | The app's own settings folder in its private home is not reported as a sensitive folder (regression: ~/.config was "dangerous"). | 🆕 new |
 
 **Code:** [`sam-runner/src/diagnose.rs`](../crates/sam-runner/src/diagnose.rs)
 
@@ -581,7 +582,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L777) | A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | ✅ |
 | [`bug_reports_hide_names_addresses_and_secrets`](../crates/sam-runner/src/doctor.rs#L819) | Bug reports hide everything that identifies the user or gives access: a home folder with spaces, other users' folders, short user names, the computer's name, email addresses, logins and tokens in links, IP addresses, and the values of environment variables given to the app. | 🆕 new |
 | [`a_bug_report_is_complete_and_redacted`](../crates/sam-runner/src/doctor.rs#L795) | A whole bug report (the system part) is produced and redacted: it names SAM's version and never the home folder or user name. | 🆕 new |
-| [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L455) | SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | 🆕 new |
+| [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L449) | SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | 🆕 new |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs)
 
@@ -632,7 +633,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L193) | Texts without a translation come back with their values. | ✅ |
 | [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L17) | The command line speaks german when asked. | ✅ |
 | [`every_translated_language_can_be_chosen`](../crates/sam-core/src/i18n.rs#L179) | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | 🆕 new |
-| [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L468) | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | 🆕 new |
+| [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L462) | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | 🆕 new |
 | [`the_chosen_language_and_the_systems_are_kept_apart`](../crates/sam-gtk/src/i18n.rs#L90) | Choosing a language sets it for the window and remembers the system's; going back to the system restores exactly what it had, also after several restarts. | 🆕 new |
 | [`apps_keep_the_system_language_whatever_sams_window_shows`](../crates/sam-sandbox/src/lib.rs#L2083) | An app started from SAM's window keeps the system's language, even when the window itself shows another one. | 🆕 new |
 
@@ -654,8 +655,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`a_complete_configuration_file_loads_every_setting`](../crates/sam-core/src/config.rs#L415) | A complete configuration file with every section loads without loss. | ✅ |
-| [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L494) | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | ✅ |
+| [`a_complete_configuration_file_loads_every_setting`](../crates/sam-core/src/config.rs#L409) | A complete configuration file with every section loads without loss. | ✅ |
+| [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L488) | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | ✅ |
 | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | ✅ |
 | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1058) | Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | ✅ |
 | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1108) | Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | ✅ |

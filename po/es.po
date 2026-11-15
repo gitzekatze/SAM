@@ -10,12 +10,12 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:234
+#: crates/sam-core/src/config.rs:228
 msgid "{file}: {error}; that setting was reset"
 msgstr "{file}: {error}; se restableció ese ajuste"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:267
+#: crates/sam-core/src/config.rs:261
 msgid ""
 "{file} could not be read; it was moved to {moved} and the default settings "
 "are used"
@@ -24,12 +24,12 @@ msgstr ""
 "predeterminados"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:272
+#: crates/sam-core/src/config.rs:266
 msgid "{file} could not be read; the default settings are used"
 msgstr "No se pudo leer {file}; se usan los ajustes predeterminados"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:290
+#: crates/sam-core/src/config.rs:284
 msgid ""
 "unknown language '{language}'; choose one of: {choices}, or leave it empty "
 "to follow the system"
@@ -38,17 +38,17 @@ msgstr ""
 "para usar el del sistema"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:299
+#: crates/sam-core/src/config.rs:293
 msgid "unknown theme '{theme}'; choose one of: {choices}"
 msgstr "tema desconocido «{theme}»; elige uno de estos: {choices}"
 
-#: crates/sam-core/src/config.rs:317
+#: crates/sam-core/src/config.rs:311
 msgid ""
 "extraction.location must be an absolute path (or start with ~/), without '..'"
 msgstr ""
 "extraction.location debe ser una ruta absoluta (o empezar por ~/), sin «..»"
 
-#: crates/sam-core/src/config.rs:320
+#: crates/sam-core/src/config.rs:314
 msgid ""
 "extraction.location cannot be / or the home folder itself; choose a folder "
 "of its own"
@@ -57,22 +57,22 @@ msgstr ""
 "carpeta propia"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:353 crates/sam-core/src/config.rs:370
-#: crates/sam-core/src/config.rs:383
+#: crates/sam-core/src/config.rs:347 crates/sam-core/src/config.rs:364
+#: crates/sam-core/src/config.rs:377
 msgid "unknown config key '{key}'"
 msgstr "clave de configuración desconocida «{key}»"
 
-#: crates/sam-core/src/config.rs:364 crates/sam-core/src/permissions.rs:836
+#: crates/sam-core/src/config.rs:358 crates/sam-core/src/permissions.rs:836
 msgid "empty key"
 msgstr "clave vacía"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:377
+#: crates/sam-core/src/config.rs:371
 msgid "'{key}' is not settable"
 msgstr "«{key}» no se puede ajustar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:399 crates/sam-core/src/permissions.rs:862
+#: crates/sam-core/src/config.rs:393 crates/sam-core/src/permissions.rs:862
 msgid "invalid value for '{key}': {raw}"
 msgstr "valor no válido para «{key}»: {raw}"
 
@@ -2182,8 +2182,8 @@ msgstr ""
 msgid "What Went Wrong Last Time"
 msgstr "Qué falló la última vez"
 
-#: crates/sam-gtk/src/app_page/mod.rs:266 crates/sam-gtk/src/pages.rs:441
-#: crates/sam-gtk/src/pages.rs:445 crates/sam-gtk/src/window.rs:414
+#: crates/sam-gtk/src/app_page/mod.rs:266 crates/sam-gtk/src/pages.rs:429
+#: crates/sam-gtk/src/pages.rs:433 crates/sam-gtk/src/window.rs:414
 msgid "My Presets"
 msgstr "Mis plantillas"
 
@@ -2902,8 +2902,8 @@ msgstr "Búsqueda de actualizaciones terminada"
 msgid "Disk space"
 msgstr "Espacio en disco"
 
-#: crates/sam-gtk/src/app_page/render.rs:1103 crates/sam-gtk/src/pages.rs:993
-#: crates/sam-gtk/src/pages.rs:1040
+#: crates/sam-gtk/src/app_page/render.rs:1103 crates/sam-gtk/src/pages.rs:981
+#: crates/sam-gtk/src/pages.rs:1028
 msgid "Checking…"
 msgstr "Comprobando…"
 
@@ -3491,52 +3491,44 @@ msgid "Folder for unpacked AppImages"
 msgstr "Carpeta para los AppImage desempaquetados"
 
 #: crates/sam-gtk/src/pages.rs:362
-msgid "Remove unpacked copies of apps that are gone"
-msgstr "Quitar las copias desempaquetadas de aplicaciones que ya no están"
-
-#: crates/sam-gtk/src/pages.rs:368
 msgid "Offer to let the AppImage unpack itself when SAM cannot"
 msgstr "Ofrecer que el AppImage se desempaquete a sí mismo cuando SAM no pueda"
 
-#: crates/sam-gtk/src/pages.rs:369
+#: crates/sam-gtk/src/pages.rs:363
 msgid "Only used after asking you, and only inside a restricted sandbox."
 msgstr ""
 "Solo después de preguntarle, y solo dentro de un entorno aislado restringido."
 
-#: crates/sam-gtk/src/pages.rs:374
+#: crates/sam-gtk/src/pages.rs:368
 msgid "Maximum unpacked size (MiB)"
 msgstr "Tamaño máximo desempaquetado (MiB)"
 
-#: crates/sam-gtk/src/pages.rs:382
+#: crates/sam-gtk/src/pages.rs:376
 msgid "Maximum number of files"
 msgstr "Número máximo de archivos"
 
-#: crates/sam-gtk/src/pages.rs:390
+#: crates/sam-gtk/src/pages.rs:384
 msgid "Maximum unpacking time (s)"
 msgstr "Tiempo máximo de desempaquetado (s)"
 
-#: crates/sam-gtk/src/pages.rs:398 crates/sam-gtk/src/pages.rs:862
+#: crates/sam-gtk/src/pages.rs:392 crates/sam-gtk/src/pages.rs:850
 #: crates/sam-gtk/src/window.rs:415
 msgid "Diagnostics"
 msgstr "Diagnóstico"
 
-#: crates/sam-gtk/src/pages.rs:403
-msgid "Verbose logging"
-msgstr "Registro detallado"
-
-#: crates/sam-gtk/src/pages.rs:409
+#: crates/sam-gtk/src/pages.rs:397
 msgid "Launch logs to keep per app"
 msgstr "Registros de inicio que se conservan por aplicación"
 
-#: crates/sam-gtk/src/pages.rs:432
+#: crates/sam-gtk/src/pages.rs:420
 msgid "New preset"
 msgstr "Nueva plantilla"
 
-#: crates/sam-gtk/src/pages.rs:436 crates/sam-gtk/src/pages.rs:472
+#: crates/sam-gtk/src/pages.rs:424 crates/sam-gtk/src/pages.rs:460
 msgid "Import a preset"
 msgstr "Importar una plantilla"
 
-#: crates/sam-gtk/src/pages.rs:442
+#: crates/sam-gtk/src/pages.rs:430
 msgid ""
 "Sets of permissions you saved under a name. Apply one to an app from the "
 "menu of the preset."
@@ -3545,15 +3537,15 @@ msgstr ""
 "desde el menú de la plantilla."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:481
+#: crates/sam-gtk/src/pages.rs:469
 msgid "Imported “{name}”"
 msgstr "Se importó «{name}»"
 
-#: crates/sam-gtk/src/pages.rs:523
+#: crates/sam-gtk/src/pages.rs:511
 msgid "You have no presets yet"
 msgstr "Aún no tienes plantillas"
 
-#: crates/sam-gtk/src/pages.rs:524
+#: crates/sam-gtk/src/pages.rs:512
 msgid ""
 "Save the settings of an app on its page under “My Presets”, or create a new "
 "preset with the + button."
@@ -3561,153 +3553,153 @@ msgstr ""
 "Guarda los ajustes de una aplicación en su página, en «Mis plantillas», o "
 "crea una plantilla nueva con el botón +."
 
-#: crates/sam-gtk/src/pages.rs:552
+#: crates/sam-gtk/src/pages.rs:540
 msgid "Apply to"
 msgstr "Aplicar a"
 
-#: crates/sam-gtk/src/pages.rs:555
+#: crates/sam-gtk/src/pages.rs:543
 msgid "Edit"
 msgstr "Editar"
 
-#: crates/sam-gtk/src/pages.rs:556
+#: crates/sam-gtk/src/pages.rs:544
 msgid "Duplicate"
 msgstr "Duplicar"
 
-#: crates/sam-gtk/src/pages.rs:557
+#: crates/sam-gtk/src/pages.rs:545
 msgid "Export…"
 msgstr "Exportar…"
 
-#: crates/sam-gtk/src/pages.rs:560 crates/sam-gtk/src/pages.rs:697
-#: crates/sam-gtk/src/pages.rs:1046 crates/sam-gtk/src/pages.rs:1101
+#: crates/sam-gtk/src/pages.rs:548 crates/sam-gtk/src/pages.rs:685
+#: crates/sam-gtk/src/pages.rs:1034 crates/sam-gtk/src/pages.rs:1089
 msgid "Delete"
 msgstr "Borrar"
 
-#: crates/sam-gtk/src/pages.rs:594
+#: crates/sam-gtk/src/pages.rs:582
 msgid "More actions"
 msgstr "Más acciones"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:654
+#: crates/sam-gtk/src/pages.rs:642
 msgid "Created “{name}”"
 msgstr "Se creó «{name}»"
 
-#: crates/sam-gtk/src/pages.rs:668
+#: crates/sam-gtk/src/pages.rs:656
 msgid "Export preset"
 msgstr "Exportar la plantilla"
 
-#: crates/sam-gtk/src/pages.rs:678
+#: crates/sam-gtk/src/pages.rs:666
 msgid "Exported"
 msgstr "Exportada"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:695
+#: crates/sam-gtk/src/pages.rs:683
 msgid "Delete “{name}”?"
 msgstr "¿Eliminar «{name}»?"
 
-#: crates/sam-gtk/src/pages.rs:696
+#: crates/sam-gtk/src/pages.rs:684
 msgid "Apps that use this preset keep their current permissions."
 msgstr ""
 "Las aplicaciones que usan esta plantilla conservan sus permisos actuales."
 
-#: crates/sam-gtk/src/pages.rs:734
+#: crates/sam-gtk/src/pages.rs:722
 msgid "Back to presets"
 msgstr "Volver a las plantillas"
 
-#: crates/sam-gtk/src/pages.rs:737
+#: crates/sam-gtk/src/pages.rs:725
 msgid "Save"
 msgstr "Guardar"
 
-#: crates/sam-gtk/src/pages.rs:742 crates/sam-gtk/src/pages.rs:766
+#: crates/sam-gtk/src/pages.rs:730 crates/sam-gtk/src/pages.rs:754
 msgid "New Preset"
 msgstr "Nueva plantilla"
 
-#: crates/sam-gtk/src/pages.rs:744
+#: crates/sam-gtk/src/pages.rs:732
 msgid "Preset"
 msgstr "Plantilla"
 
-#: crates/sam-gtk/src/pages.rs:748
+#: crates/sam-gtk/src/pages.rs:736
 msgid "Name"
 msgstr "Nombre"
 
-#: crates/sam-gtk/src/pages.rs:753
+#: crates/sam-gtk/src/pages.rs:741
 msgid "Description"
 msgstr "Descripción"
 
-#: crates/sam-gtk/src/pages.rs:757
+#: crates/sam-gtk/src/pages.rs:745
 msgid "Compatibility notes"
 msgstr "Notas de compatibilidad"
 
-#: crates/sam-gtk/src/pages.rs:801
+#: crates/sam-gtk/src/pages.rs:789
 msgid "Give the preset a name"
 msgstr "Ponga un nombre a la plantilla"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:811
+#: crates/sam-gtk/src/pages.rs:799
 msgid "Preset “{name}” saved"
 msgstr "Plantilla «{name}» guardada"
 
-#: crates/sam-gtk/src/pages.rs:845
+#: crates/sam-gtk/src/pages.rs:833
 msgid "Check again"
 msgstr "Volver a comprobar"
 
-#: crates/sam-gtk/src/pages.rs:849
+#: crates/sam-gtk/src/pages.rs:837
 msgid "Copy a redacted bug report"
 msgstr "Copiar un informe de error depurado"
 
-#: crates/sam-gtk/src/pages.rs:854 crates/sam-gtk/src/window.rs:423
+#: crates/sam-gtk/src/pages.rs:842 crates/sam-gtk/src/window.rs:423
 #: crates/sam-runner/src/verify.rs:190 crates/sam-runner/src/verify.rs:198
 #: crates/sam-runner/src/verify.rs:206 crates/sam-runner/src/verify.rs:214
 msgid "System"
 msgstr "Sistema"
 
-#: crates/sam-gtk/src/pages.rs:855
+#: crates/sam-gtk/src/pages.rs:843
 msgid "What SAM needs from this computer."
 msgstr "Lo que SAM necesita de este equipo."
 
-#: crates/sam-gtk/src/pages.rs:859
+#: crates/sam-gtk/src/pages.rs:847
 msgid "Maintenance"
 msgstr "Mantenimiento"
 
-#: crates/sam-gtk/src/pages.rs:919
+#: crates/sam-gtk/src/pages.rs:907
 msgid "Redacted report copied"
 msgstr "Informe depurado copiado"
 
-#: crates/sam-gtk/src/pages.rs:942
+#: crates/sam-gtk/src/pages.rs:930
 msgid "Check all AppImages for changes"
 msgstr "Comprobar si los AppImage han cambiado"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:960
+#: crates/sam-gtk/src/pages.rs:948
 msgid "{n} app changed or is missing."
 msgid_plural "{n} apps changed or are missing."
 msgstr[0] "{n} aplicación ha cambiado o falta."
 msgstr[1] "{n} aplicaciones han cambiado o faltan."
 
-#: crates/sam-gtk/src/pages.rs:967
+#: crates/sam-gtk/src/pages.rs:955
 msgid "All AppImages are unchanged"
 msgstr "Ningún AppImage ha cambiado"
 
-#: crates/sam-gtk/src/pages.rs:974
+#: crates/sam-gtk/src/pages.rs:962
 msgid "Remove unused unpacked copies"
 msgstr "Quitar las copias desempaquetadas sin usar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:980 crates/sam-jail-cli/src/main.rs:1283
+#: crates/sam-gtk/src/pages.rs:968 crates/sam-jail-cli/src/main.rs:1283
 msgid "Removed {n} unused unpacked copy"
 msgid_plural "Removed {n} unused unpacked copies"
 msgstr[0] "Se quitó {n} copia desempaquetada sin usar"
 msgstr[1] "Se quitaron {n} copias desempaquetadas sin usar"
 
-#: crates/sam-gtk/src/pages.rs:992
+#: crates/sam-gtk/src/pages.rs:980
 msgid "Disk space of sandboxed apps"
 msgstr "Espacio en disco de las aplicaciones aisladas"
 
-#: crates/sam-gtk/src/pages.rs:1025
+#: crates/sam-gtk/src/pages.rs:1013
 msgid "No sandboxed apps."
 msgstr "No hay aplicaciones aisladas."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:1027
+#: crates/sam-gtk/src/pages.rs:1015
 msgid ""
 "{size} for {n} app. Largest: {largest}. Free space from an app's page → "
 "Details."
@@ -3721,16 +3713,16 @@ msgstr[1] ""
 "{size} para {n} aplicaciones. Las más grandes: {largest}. Libera espacio "
 "desde la página de una aplicación → Detalles."
 
-#: crates/sam-gtk/src/pages.rs:1039
+#: crates/sam-gtk/src/pages.rs:1027
 msgid "Data of removed sandboxes"
 msgstr "Datos de entornos aislados quitados"
 
-#: crates/sam-gtk/src/pages.rs:1074
+#: crates/sam-gtk/src/pages.rs:1062
 msgid "Nothing left behind."
 msgstr "No queda nada."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:1076
+#: crates/sam-gtk/src/pages.rs:1064
 msgid ""
 "Settings and files of {n} app whose sandbox was removed: {size}. A new "
 "sandbox for the same AppImage would use them again."
@@ -3744,11 +3736,11 @@ msgstr[1] ""
 "Ajustes y archivos de {n} aplicaciones cuyo entorno aislado se quitó: "
 "{size}. Un nuevo entorno aislado para el mismo AppImage volvería a usarlos."
 
-#: crates/sam-gtk/src/pages.rs:1099
+#: crates/sam-gtk/src/pages.rs:1087
 msgid "Delete Data of Removed Sandboxes?"
 msgstr "¿Eliminar los datos de entornos aislados quitados?"
 
-#: crates/sam-gtk/src/pages.rs:1100
+#: crates/sam-gtk/src/pages.rs:1088
 msgid ""
 "The settings, logins and saved files of apps whose sandbox was removed are "
 "deleted. This cannot be undone."
@@ -3757,11 +3749,11 @@ msgstr ""
 "aplicaciones cuyo entorno aislado se quitó. No se puede deshacer."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:1110
+#: crates/sam-gtk/src/pages.rs:1098
 msgid "Deleted {size}"
 msgstr "Se eliminaron {size}"
 
-#: crates/sam-gtk/src/pages.rs:1119
+#: crates/sam-gtk/src/pages.rs:1107
 msgid "Command line"
 msgstr "Línea de órdenes"
 
@@ -4854,13 +4846,13 @@ msgstr ""
 "la imagen SquashFS del AppImage está dañada, así que SAM no puede leer su "
 "nombre ni su icono"
 
-#: crates/sam-intake/src/testkit.rs:79
+#: crates/sam-intake/src/testkit.rs:83
 msgid "no host ELF available for the runtime stub"
 msgstr ""
 "no hay ningún programa ELF del sistema para el esqueleto del entorno de "
 "ejecución"
 
-#: crates/sam-intake/src/testkit.rs:84
+#: crates/sam-intake/src/testkit.rs:92
 msgid "cannot parse host ELF"
 msgstr "no se puede analizar el programa ELF del sistema"
 
@@ -5606,7 +5598,15 @@ msgid "The app tried to access {path}. Grant the folder if this is expected."
 msgstr ""
 "La aplicación intentó acceder a {path}. Permite la carpeta si es lo esperado."
 
-#: crates/sam-runner/src/diagnose.rs:333
+#: crates/sam-runner/src/diagnose.rs:331
+msgid ""
+"diagnostic runs are switched off; turn on Preferences → Allow diagnostic "
+"runs to run an app under strace"
+msgstr ""
+"las ejecuciones de diagnóstico están desactivadas; activa Preferencias → "
+"Permitir ejecuciones de diagnóstico para ejecutar una aplicación con strace"
+
+#: crates/sam-runner/src/diagnose.rs:336
 msgid ""
 "strace is not installed; install it to use dynamic diagnosis (sudo pacman -S "
 "strace)"
@@ -5614,14 +5614,14 @@ msgstr ""
 "strace no está instalado; instálelo para usar el diagnóstico dinámico (sudo "
 "pacman -S strace)"
 
-#: crates/sam-runner/src/diagnose.rs:338
+#: crates/sam-runner/src/diagnose.rs:341
 msgid "diagnostic runs are refused while full home access is granted"
 msgstr ""
 "las ejecuciones de diagnóstico se rechazan mientras haya acceso completo a "
 "la carpeta personal"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/diagnose.rs:454
+#: crates/sam-runner/src/diagnose.rs:457
 msgid ""
 "{path} could not be opened ({error}), although the app already has this "
 "access. The cause is elsewhere; the trace line shows the call."

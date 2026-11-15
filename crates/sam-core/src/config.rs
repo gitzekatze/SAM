@@ -136,7 +136,6 @@ pub struct Extraction {
     /// Extraction root. Empty = `<data dir>/extracted`
     /// (`~/.local/share/sam/extracted` by default).
     pub location: String,
-    pub cleanup_stale: bool,
     pub max_files: u64,
     pub max_size_mb: u64,
     pub max_seconds: u64,
@@ -148,7 +147,6 @@ impl Default for Extraction {
     fn default() -> Self {
         Extraction {
             location: String::new(),
-            cleanup_stale: true,
             max_files: 200_000,
             max_size_mb: 8192,
             max_seconds: 600,
@@ -160,17 +158,13 @@ impl Default for Extraction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Diagnostics {
-    pub verbose_logging: bool,
     /// How many launch logs to keep per app.
     pub keep_logs: usize,
 }
 
 impl Default for Diagnostics {
     fn default() -> Self {
-        Diagnostics {
-            verbose_logging: false,
-            keep_logs: 20,
-        }
+        Diagnostics { keep_logs: 20 }
     }
 }
 

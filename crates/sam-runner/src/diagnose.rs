@@ -327,6 +327,9 @@ pub fn diagnose(
     timeout: u64,
     apply_low_risk: bool,
 ) -> Result<DiagnoseResult> {
+    if !sam.config.dependencies.dynamic_fallback {
+        bail!("{}", sam_core::i18n::tr("diagnostic runs are switched off; turn on Preferences → Allow diagnostic runs to run an app under strace"));
+    }
     let host = HostInfo::probe();
     let strace = host.tools.strace.clone();
     let Some(strace) = strace else {
@@ -582,6 +585,25 @@ mod tests {
 
     /// The app's own settings folder in its private home is not reported as
     /// a sensitive folder (regression: ~/.config was "dangerous").
+    /// "Allow diagnostic runs" in Preferences is respected: when it is
+    /// off, no app is run under strace.
+    #[test]
+    fn diagnostic_runs_obey_the_preference() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = sam_core::Paths::rooted(tmp.path());
+        std::fs::create_dir_all(paths.config_file().parent().unwrap()).unwrap();
+        std::fs::write(
+            paths.config_file(),
+            "format = 1\n[dependencies]\ndynamic_fallback = false\n",
+        )
+        .unwrap();
+        let sam = Sam::with_paths(paths).unwrap();
+        let err = diagnose(&sam, &mut AppEntry::default(), 1, false)
+            .err()
+            .expect("refused");
+        assert!(err.to_string().contains("switched off"), "{err}");
+    }
+
     #[test]
     fn the_apps_own_settings_folder_is_not_reported_as_sensitive() {
         let tmp = tempfile::tempdir().unwrap();

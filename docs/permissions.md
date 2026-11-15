@@ -1,31 +1,17 @@
-# Profiles and presets
+# Permissions: keys, presets and group changes
 
-## Recommended profiles
+A reference for people who use the command line or edit files by hand. The
+window shows the same permissions with plain-language explanations.
 
-SAM infers a category from the desktop file's `Categories`, then the app
-name, then the toolkit. It then adjusts the result with what dependency
-detection found:
+## How SAM recommends permissions
 
-| Category | Default grants |
-|---|---|
-| Browser | network, Downloads read/write, audio, GPU |
-| Communication | network, Downloads read/write, audio, GPU |
-| Media player | Music and Videos read/write, Pictures read-only, audio, GPU, no network |
-| Image editor | Pictures and Documents read/write, GPU |
-| Video editor | Videos read/write, Music and Pictures read-only, audio, GPU |
-| Audio editor | Music and Documents read/write, audio |
-| Game | GPU, audio; network if it links networking libraries |
-| Text editor / Office / Terminal | Documents read/write |
-| Development | Documents and `~/Projects` read/write |
-| Utility | Wayland window only |
-
-Every profile starts with a private home, Wayland, a filtered session bus
-(portals, notifications, tray) and no system bus. Detection then adds:
-
-- **GPU** when the app links OpenGL or Vulkan.
-- **Audio** when it links audio libraries.
-- **X11** when no Wayland support is found (or for Electron and Java apps).
-- **Nested namespaces** for Electron apps.
+SAM starts every app as strictly as it can: a private home, Wayland, a
+filtered session bus (file dialogs, notifications, tray) and nothing else.
+It then adds only what the app shows it needs: what kind of app it is (from
+its desktop file, name and toolkit) and what it contains (graphics, sound or
+network libraries, X11 without Wayland, its own browser sandbox). The app's
+page says why each permission was recommended; the tests behind this are
+listed under function 6 in [functions.md](functions.md).
 
 ## Permission keys
 
@@ -43,12 +29,11 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `audio.enabled`, `audio.pipewire`, `audio.alsa_raw` | `true` / `false` |
 | `display.wayland`, `display.x11`, `display.wayland_privileged` | `true` / `false` |
 | `dbus.session.mode`, `dbus.system.mode` | `none` / `filtered` / `full` |
-| `dbus.session.allow`, `dbus.session.own` | list of bus names (wildcards allowed) |
-| `sockets.ssh_agent`, `sockets.cups` | `true` / `false` |
-| `sockets.custom` | list of socket paths |
-| `environment.passthrough` | list of variable names |
-| `sockets.custom` | paths of extra service sockets; only real socket files are passed in |
+| `dbus.session.allow` | bus names the app may talk to (wildcards allowed) |
 | `dbus.session.own` | extra bus names the app may own (filtered bus) |
+| `sockets.ssh_agent`, `sockets.cups` | `true` / `false` |
+| `sockets.custom` | paths of extra service sockets; only real socket files are passed in |
+| `environment.passthrough` | list of variable names |
 | `dbus.session.deny` | bus names that stay blocked even if allowed elsewhere |
 | `environment.set` | variables set inside the sandbox, e.g. `{"QT_SCALE_FACTOR": "1.5"}` (names: letters, digits, `_`) |
 | `advanced.host_runtime` | `minimal` / `full` |

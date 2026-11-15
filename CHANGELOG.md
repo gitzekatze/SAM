@@ -43,6 +43,11 @@ version.
 
 ### Reliability beyond the first start
 
+- "Allow diagnostic runs" in Preferences now works: when it is off, SAM runs
+  no app under strace. Two switches that did nothing ("Remove unpacked
+  copies of apps that are gone", "Verbose logging") are gone.
+- docs/profiles.md is now docs/permissions.md: the permission keys, preset
+  files and group changes, without the outdated table of category defaults.
 - A new SAM icon now reaches the taskbar: SAM marks the icon folders as
   changed, so the desktop's icon cache stops showing the old icon.
 - When SAM's own SquashFS reader stopped at the size limit, the window
