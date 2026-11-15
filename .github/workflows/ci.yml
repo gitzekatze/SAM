@@ -123,6 +123,9 @@ jobs:
             ${{ runner.temp }}/gui/*.log
           if-no-files-found: ignore
 
+      - name: Shell scripts parse
+        run: for f in scripts/*.sh tests/real-apps/*.sh tests/gui/*.sh; do sh -n "$f" || exit 1; done
+
       - name: Test library is up to date
         run: python3 scripts/test-library.py --check
 

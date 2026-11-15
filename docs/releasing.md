@@ -32,7 +32,27 @@ the steps; the list says what it does and what stays a person's job.
    extend it before then (`gpg --quick-set-expire <fingerprint> 3y`) and
    publish the extended public key.
 
-## Making the release
+## Making the release: one command
+
+After the checks above, one command does the rest, up to the last click:
+
+```sh
+scripts/new-version.sh X.Y.Z --dry-run   # only checks that everything is ready
+scripts/new-version.sh X.Y.Z
+```
+
+It checks that the version is new, the tree is clean, `main` matches GitHub,
+the last CI run on it passed and the release key is here. It asks once for
+the key's passphrase and keeps GnuPG from forgetting it during the release.
+Then it runs `scripts/release.sh`, pushes `main` and the tag, waits for the
+*Release* workflow, and seals the AppImages with `scripts/sign-release.sh`.
+It ends with the address of the draft release; publishing it is a person's
+click. If a step fails, it stops and says what, and nothing is published.
+
+The sections below are what it does, step by step, for when a step has to be
+repeated by hand.
+
+## Making the release by hand
 
 ```sh
 SIGN_KEY=AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 scripts/release.sh X.Y.Z

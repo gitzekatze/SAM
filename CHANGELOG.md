@@ -17,6 +17,10 @@ version.
 - The AppImages are signed on the maintainer's computer after GitHub has
   built and tested them (`scripts/sign-release.sh`), so the key never goes to
   GitHub; every release file also gets a detached `.asc` signature.
+- `scripts/new-version.sh X.Y.Z` makes a release in one go: it checks that
+  everything is ready, asks once for the key's passphrase, tags, pushes,
+  waits for GitHub's build and seals the AppImages, and ends at the draft
+  release, which a person publishes.
 
 ### German, Spanish and French
 
