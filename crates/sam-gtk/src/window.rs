@@ -1106,6 +1106,16 @@ impl App {
                 Ok(v) => v,
                 Err(e) => return me.report_error(&e),
             };
+            if util::str_of(&check, "state") == "manual" {
+                let page = util::str_of(&check, "page").to_string();
+                let body = util::plain(util::str_of(&check, "detail"));
+                if !page.is_empty() && confirm(&me.window, &tr("New Version of SAM"), &body, &tr("Open Release Page"), false).await {
+                    gtk::UriLauncher::new(&page).launch(Some(&me.window), gio::Cancellable::NONE, |_| {});
+                } else if page.is_empty() {
+                    me.toast(&body);
+                }
+                return;
+            }
             if util::str_of(&check, "state") != "available" {
                 me.toast(&tr("SAM is up to date"));
                 return;

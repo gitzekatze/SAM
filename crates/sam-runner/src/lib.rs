@@ -21,6 +21,7 @@ pub mod ops;
 pub mod probe;
 pub mod progress;
 pub mod pty;
+pub mod release_key;
 pub mod repair;
 pub mod updates;
 pub mod verify;

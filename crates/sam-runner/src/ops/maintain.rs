@@ -580,6 +580,11 @@ impl Sam {
     /// puts it next to the old one under its published name. The old file
     /// moves to `<data>/update-backups/sam/`. SAM must be restarted.
     pub fn self_update(&self, appimage: &Path, check_only: bool) -> Result<SelfUpdate> {
+        self.self_update_with_keys(appimage, check_only, crate::release_key::RELEASE_KEYS)
+    }
+
+    /// `self_update` with the release keys given (for tests).
+    pub fn self_update_with_keys(&self, appimage: &Path, check_only: bool, keys: &[&str]) -> Result<SelfUpdate> {
         if !appimage.is_absolute() || !appimage.is_file() {
             bail!("SAM is not running from an AppImage; update it with your package manager");
         }
@@ -588,6 +593,22 @@ impl Sam {
         };
         let latest = p.filename.clone().or(p.release.clone());
         let page = p.page.clone();
+        // Without a release key SAM cannot check where an update comes
+        // from: it says so and points to the release page instead of
+        // downloading anything (see release_key).
+        if keys.is_empty() {
+            let name = latest.clone().unwrap_or_else(|| "A newer version".into());
+            return Ok(SelfUpdate {
+                state: "manual".into(),
+                detail: format!(
+                    "{} is published. This SAM cannot yet check where an update comes from, so it does not update itself: download the new version from the release page.",
+                    sam_core::util::display_safe(&name, 120)
+                ),
+                latest,
+                path: appimage.to_path_buf(),
+                page,
+            });
+        }
         if check_only {
             let name = latest.clone().unwrap_or_else(|| "A newer version".into());
             return Ok(SelfUpdate {
@@ -613,6 +634,8 @@ impl Sam {
             if !inspect(&tmp)?.is_appimage() {
                 bail!("the downloaded file is not an AppImage; it was deleted");
             }
+            // Only SAM's makers may replace SAM (see release_key).
+            crate::release_key::check(&sam_detect::signature::check(&tmp), keys)?;
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))?;
             let backup_dir = self.paths.data_dir.join("update-backups").join("sam");
