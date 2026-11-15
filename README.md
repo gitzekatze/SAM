@@ -308,31 +308,40 @@ Also: `data/` (menu entry, AppStream metainfo, icon, man pages),
 
 ## How SAM is made
 
-SAM is a one-person project. Most of its code and documentation was written
-with [Claude](https://www.anthropic.com/claude), Anthropic's AI model, as a
-coding assistant; the commits it helped with say so ("Co-Authored-By"). The
-maintainer decides what SAM does and how far each permission may go, sets
-the priorities and tries SAM on a real desktop; Claude writes most of the
-code and the tests, and every change has to pass them before it goes in.
+One person, one AI assistant, and a lot of proof.
 
-Because the code came about quickly and with AI help, SAM does not ask to be
-trusted on its word. Every promise it makes is meant to be checked:
+SAM is a one-person project, built with [Claude](https://www.anthropic.com/claude),
+Anthropic's AI model, as a coding assistant; the commits it helped with say so.
+The maintainer decides what SAM does and how far each permission may go, sets
+the priorities and tries SAM on a real desktop. Claude writes most of the code
+and the tests, and a change goes in only when every test passes.
 
-- each security promise in [docs/security.md](docs/security.md) names the
-  test that proves it, and the [threat model](docs/threat-model.md) says
-  what SAM does *not* protect against;
-- each function SAM offers is mapped to its tests in
-  [docs/functions.md](docs/functions.md), generated on every change;
-- breakout tests run in a real sandbox in CI on Ubuntu and Fedora, untrusted
-  input is fuzzed, and before each version mutation testing checks that the
-  tests notice deliberate mistakes ([latest report](docs/reports/mutants-2026-11-15.md));
-- the AppImage is tested on five distributions before each release, and
-  releases are signed.
+SAM doesn't ask for your trust. It shows its work:
 
-An outside security review is planned before the first public beta. Until
-then, treat SAM as what it is: young, carefully tested software that has not
-yet been reviewed by anyone but its makers. If you find a way out of the
-sandbox, please report it privately ([SECURITY.md](SECURITY.md)).
+- **242 tests** guard **40 functions**, and
+  [docs/functions.md](docs/functions.md) shows, after every change, which
+  tests prove which function. A fixed bug gets a test that fails without
+  the fix.
+- **Every security promise** in [docs/security.md](docs/security.md) names
+  the test that proves it, and the [threat model](docs/threat-model.md) is
+  just as clear about what SAM does *not* protect against.
+- **Breakout tests** run inside a real sandbox on every push, on Ubuntu and
+  on Fedora, and SAM's readers of untrusted files are fuzzed.
+- **Mutation testing** changed the security-critical code 2,821 times on
+  purpose; the tests caught 88.5 % of the changes that could be built, and
+  each gap that mattered got a test
+  ([report](docs/reports/mutants-2026-11-15.md)).
+- **120 real AppImages**, from Electron and Qt apps to games, Wine and
+  Flutter, run through SAM's whole flow before a release: 117 start in
+  their sandbox, 2 fail for reasons inside the app, and one built for
+  another processor is turned away at the door.
+- **Every release** is tested on five Linux distributions before it is
+  published, and signed with SAM's release key, the only key SAM accepts for
+  updates of itself.
+
+The next step is a pair of fresh eyes: an outside security review, planned
+before the first public beta. Found a way out of the sandbox? Please report it privately
+([SECURITY.md](SECURITY.md)).
 
 ---
 
