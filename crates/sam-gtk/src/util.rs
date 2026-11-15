@@ -42,7 +42,7 @@ pub fn folder_path(key: &str) -> Option<String> {
 /// description, with the folder's path for personal folders.
 pub fn explain(key: &str, description: &str) -> String {
     match folder_path(key) {
-        Some(p) => format!("{description} Folder: {p}"),
+        Some(p) => crate::i18n::trf("{description} Folder: {folder}", &[("description", &description), ("folder", &p)]),
         None => description.to_string(),
     }
 }
@@ -168,10 +168,10 @@ pub fn risk_tooltip(risk: &Value) -> String {
     for lvl in ["dangerous", "high", "medium"] {
         let names: Vec<&str> = items.iter().filter(|(_, l)| l == lvl).map(|(t, _)| t.as_str()).collect();
         if !names.is_empty() {
-            lines.push(format!("{}: {}", risk_label(lvl).trim_end_matches(" risk"), names.join(", ")));
+            lines.push(format!("{}: {}", risk_label(lvl), names.join(", ")));
         }
     }
-    lines.push("Details under Overview.".into());
+    lines.push(crate::i18n::tr("Details under Overview."));
     lines.join("\n")
 }
 
@@ -206,7 +206,7 @@ pub fn chip(text: &str, folder: bool, on_remove: impl Fn() + 'static) -> gtk::Wi
     let l = gtk::Label::builder().label(plain(text)).ellipsize(gtk::pango::EllipsizeMode::Middle).max_width_chars(40).build();
     b.append(&l);
     let x = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text(tr("Remove")).valign(gtk::Align::Center).build();
-    x.update_property(&[gtk::accessible::Property::Label(&format!("Remove {}", plain(text)))]);
+    x.update_property(&[gtk::accessible::Property::Label(&crate::i18n::trf("Remove {item}", &[("item", &plain(text))]))]);
     x.add_css_class("flat");
     x.add_css_class("circular");
     x.connect_clicked(move |_| on_remove());

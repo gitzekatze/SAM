@@ -245,7 +245,7 @@ impl AppPage {
         launch_group.add(&files_row);
         launch_group.add(&args_row);
         let compat_row = adw::ActionRow::builder().title(tr("Compatibility mode")).build();
-        let compat_badge = util::badge("High risk", "bad");
+        let compat_badge = util::badge(&crate::i18n::tr("High risk"), "bad");
         compat_badge.set_visible(false);
         let compat_switch = gtk::Switch::builder().valign(gtk::Align::Center).name("compat-switch").build();
         compat_row.add_suffix(&compat_badge);
@@ -296,7 +296,7 @@ impl AppPage {
         let copy_log = gtk::Button::builder().icon_name("edit-copy-symbolic").tooltip_text(tr("Copy")).valign(gtk::Align::Center).build();
         refresh_log.add_css_class("flat");
         copy_log.add_css_class("flat");
-        let log_drop = gtk::DropDown::from_strings(&["No logs yet"]);
+        let log_drop = gtk::DropDown::from_strings(&[crate::i18n::tr("No logs yet").as_str()]);
         log_drop.set_valign(gtk::Align::Center);
         log_drop.set_widget_name("log-picker");
         log_drop.set_tooltip_text(Some(&crate::i18n::tr("Which log to show")));
@@ -605,7 +605,7 @@ impl CreationProgress {
         let n = p.get("step").and_then(Value::as_u64).unwrap_or(0);
         let total = p.get("steps").and_then(Value::as_u64).unwrap_or(0);
         let fraction = p.get("fraction").and_then(Value::as_f64).unwrap_or(0.0).clamp(0.0, 1.0);
-        self.step.set_label(&format!("Step {n} of {total}: {}", tr(util::str_of(p, "title"))));
+        self.step.set_label(&crate::i18n::trf("Step {n} of {total}: {step}", &[("n", &n), ("total", &total), ("step", &tr(util::str_of(p, "title")))]));
         self.bar.set_fraction(fraction);
         self.bar.set_text(Some(&format!("{:.0} %", fraction * 100.0)));
         self.detail.set_label(util::str_of(p, "detail"));

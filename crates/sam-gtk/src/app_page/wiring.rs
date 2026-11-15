@@ -73,7 +73,7 @@ impl AppPage {
             "reset",
             Box::new(|me| {
                 if me.sandboxed() {
-                    me.simple(vec!["profile".into(), "reset".into(), me.app_id.clone()], "Settings reset");
+                    me.simple(vec!["profile".into(), "reset".into(), me.app_id.clone()], &crate::i18n::tr("Settings reset"));
                 } else {
                     me.reload();
                 }
@@ -198,7 +198,7 @@ impl AppPage {
             return;
         }
         self.check_button.set_sensitive(false);
-        self.check_summary.set_title("Testing…");
+        self.check_summary.set_title(&crate::i18n::tr("Testing…"));
         self.check_summary.set_subtitle(&crate::i18n::tr("Starting the sandbox with SAM's test program, then the app itself for a few seconds."));
         let me = self.clone();
         glib::spawn_future_local(async move {
@@ -283,7 +283,7 @@ impl AppPage {
                 let when = util::format_time(util::get(r, "at").and_then(Value::as_i64).unwrap_or(0));
                 let total = passed as usize + failed.len();
                 if !current {
-                    self.check_summary.set_title("Out of date");
+                    self.check_summary.set_title(&crate::i18n::tr("Out of date"));
                     self.check_summary.set_subtitle(&esc(&crate::i18n::trf(
                         "The settings, SAM or this computer changed since the last test ({when}). Test again.",
                         &[("when", &when)],
@@ -293,16 +293,22 @@ impl AppPage {
                     self.check_badge
                         .set_tooltip_text(Some(&crate::i18n::tr("The settings, SAM or this computer changed since the last test; press Test again")));
                 } else if failed.is_empty() {
-                    self.check_summary.set_title(&format!("All {total} settings apply"));
-                    self.check_summary.set_subtitle(&esc(&format!("Tested {when}.")));
+                    self.check_summary.set_title(&crate::i18n::trn("The setting applies", "All {n} settings apply", total as u64, &[]));
+                    self.check_summary.set_subtitle(&esc(&crate::i18n::trf("Tested {when}.", &[("when", &when)])));
                     set_badge_visible(&self.check_badge, true);
-                    util::set_badge(&self.check_badge, &format!("Tested {when}"), "good");
+                    util::set_badge(&self.check_badge, &crate::i18n::trf("Tested {when}", &[("when", &when)]), "good");
                     self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("The test confirmed that every setting applies; see Test below")));
                 } else {
-                    self.check_summary.set_title(&format!("{} of {total} checks failed", failed.len()));
-                    self.check_summary.set_subtitle(&esc(&format!("Not applied: {}. Tested {when}.", failed.join(", "))));
+                    self.check_summary.set_title(&crate::i18n::trn(
+                        "{failed} of {n} check failed",
+                        "{failed} of {n} checks failed",
+                        total as u64,
+                        &[("failed", &failed.len())],
+                    ));
+                    self.check_summary
+                        .set_subtitle(&esc(&crate::i18n::trf("Not applied: {settings}. Tested {when}.", &[("settings", &failed.join(", ")), ("when", &when)])));
                     set_badge_visible(&self.check_badge, true);
-                    util::set_badge(&self.check_badge, "Test failed", "bad");
+                    util::set_badge(&self.check_badge, &crate::i18n::tr("Test failed"), "bad");
                     self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("The test found settings that do not apply; see Test below")));
                 }
             }
@@ -340,7 +346,7 @@ impl AppPage {
                 set_badge_visible(&self.check_badge, false);
             }
             Some(_) if !current => {
-                self.check_summary.set_title("Out of date");
+                self.check_summary.set_title(&crate::i18n::tr("Out of date"));
                 self.check_summary.set_subtitle(&crate::i18n::tr("The settings changed since the last check. Check again."));
                 set_badge_visible(&self.check_badge, false);
             }
@@ -350,17 +356,22 @@ impl AppPage {
                     results.iter().filter(|x| util::get(x, "ok") == Some(&Value::Bool(false))).map(|x| util::str_of(x, "title").to_string()).collect();
                 let total = results.iter().filter(|x| matches!(util::get(x, "ok"), Some(Value::Bool(_)))).count();
                 if failed.is_empty() {
-                    self.check_summary.set_title(&format!("All {total} checks passed"));
+                    self.check_summary.set_title(&crate::i18n::trn("The check passed", "All {n} checks passed", total as u64, &[]));
                     self.check_summary.set_subtitle(&crate::i18n::tr("Every setting below applies. Not stored: the sandbox does not exist yet."));
                     set_badge_visible(&self.check_badge, true);
-                    util::set_badge(&self.check_badge, "Checked", "good");
+                    util::set_badge(&self.check_badge, &crate::i18n::tr("Checked"), "good");
                     self.check_badge
                         .set_tooltip_text(Some(&crate::i18n::tr("The sandbox check confirmed that every setting applies; see Sandbox Check below")));
                 } else {
-                    self.check_summary.set_title(&format!("{} of {total} checks failed", failed.len()));
-                    self.check_summary.set_subtitle(&esc(&format!("Not applied: {}.", failed.join(", "))));
+                    self.check_summary.set_title(&crate::i18n::trn(
+                        "{failed} of {n} check failed",
+                        "{failed} of {n} checks failed",
+                        total as u64,
+                        &[("failed", &failed.len())],
+                    ));
+                    self.check_summary.set_subtitle(&esc(&crate::i18n::trf("Not applied: {settings}.", &[("settings", &failed.join(", "))])));
                     set_badge_visible(&self.check_badge, true);
-                    util::set_badge(&self.check_badge, "Check failed", "bad");
+                    util::set_badge(&self.check_badge, &crate::i18n::tr("Check failed"), "bad");
                     self.check_badge.set_tooltip_text(Some(&crate::i18n::tr("The sandbox check found settings that do not apply; see Sandbox Check below")));
                 }
             }
@@ -438,7 +449,7 @@ impl AppPage {
         glib::spawn_future_local(async move {
             if on && !window::confirm(
                 &app.window,
-                "Turn On Compatibility Mode?",
+                &crate::i18n::tr("Turn On Compatibility Mode?"),
                 &crate::i18n::tr("The app gets broad access: the network, the whole session bus, all of /usr, X11, the GPU and sound. Use it when nothing else helps.\n\nYour current settings are remembered and come back when you turn it off."),
                 &crate::i18n::tr("Turn On"),
                 true,
@@ -486,7 +497,7 @@ impl AppPage {
             if exists
                 && !window::confirm(
                     &app.window,
-                    &format!("Replace “{name}”?"),
+                    &crate::i18n::trf("Replace “{name}”?", &[("name", &name)]),
                     &crate::i18n::tr(
                         "A preset with this name exists. Its settings are replaced by the ones shown here. Apps that used it keep their current settings.",
                     ),

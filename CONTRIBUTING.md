@@ -77,7 +77,9 @@ reset the last one (0.1.4 → 0.2.0).
 - SAM never runs an app without a sandbox, and nothing an app prints may
   grant it more access.
 - Text people see is plain and specific; explain what happens and what to
-  do.
+  do. Write whole sentences and wrap them in `tr`, `trf` or `trn` so they
+  can be translated, then add the German, Spanish and French translations
+  ([docs/translating.md](docs/translating.md)).
 - The `--json` output is SAM's interface (`docs/json-interface.md`): raise
   `JSON_INTERFACE` in `sam-core` for any change an older reader would
   misread.

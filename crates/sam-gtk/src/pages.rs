@@ -26,7 +26,7 @@ fn page_with(title: &str, content: &impl IsA<gtk::Widget>, header: &adw::HeaderB
 pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let pref = adw::PreferencesPage::new();
     let header = adw::HeaderBar::new();
-    let page = page_with("Preferences", &pref, &header);
+    let page = page_with(&crate::i18n::tr("Preferences"), &pref, &header);
     let cfg = app.state.borrow().config.clone();
 
     let switch = |g: &adw::PreferencesGroup, key: &'static str, title: &str, subtitle: &str| {
@@ -105,7 +105,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder().title(tr("Warnings")).build();
-    switch(&g, "security.warn_x11", "Warn about X11 access", "");
+    switch(&g, "security.warn_x11", &crate::i18n::tr("Warn about X11 access"), "");
     switch(&g, "security.warn_full_home", &crate::i18n::tr("Warn about full home access"), "");
     pref.add(&g);
 
@@ -218,7 +218,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     }
     reset.connect_clicked(move |_| set_loc(String::new()));
     g.add(&row);
-    switch(&g, "extraction.cleanup_stale", &crate::i18n::tr("Clean up stale extractions"), "");
+    switch(&g, "extraction.cleanup_stale", &crate::i18n::tr("Remove unpacked copies of apps that are gone"), "");
     switch(
         &g,
         "extraction.allow_fallback",
@@ -258,7 +258,7 @@ pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
         .description(tr("Sets of permissions you saved under a name. Apply one to an app from the menu of the preset."))
         .build();
     pref.add(&list);
-    let page = page_with("My Presets", &pref, &header);
+    let page = page_with(&crate::i18n::tr("My Presets"), &pref, &header);
     let me = Rc::new(Presets { app: Rc::downgrade(app), list, rows: RefCell::default(), presets: RefCell::default() });
 
     let w = Rc::downgrade(&me);
@@ -283,7 +283,7 @@ pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
             if let Ok(f) = d.open_future(Some(&app.window)).await {
                 if let Some(p) = f.path() {
                     match app.backend.call(&["preset", "import", &p.to_string_lossy()], None).await {
-                        Ok(r) => app.toast(&format!("Imported “{}”", util::str_of(&r, "name"))),
+                        Ok(r) => app.toast(&crate::i18n::trf("Imported “{name}”", &[("name", &util::str_of(&r, "name"))])),
                         Err(e) => app.report_error(&e),
                     }
                     me.reload();
@@ -340,7 +340,7 @@ impl Presets {
                 apply_menu.append_item(&item);
             }
             if !apps.is_empty() {
-                menu.append_submenu(Some("Apply to"), &apply_menu);
+                menu.append_submenu(Some(&crate::i18n::tr("Apply to")), &apply_menu);
             }
             let edit = gio::Menu::new();
             edit.append(Some(&tr("Edit")), Some("row.edit"));
@@ -419,7 +419,7 @@ impl Presets {
         let me = self.clone();
         glib::spawn_future_local(async move {
             match app.backend.call(&["preset", "duplicate", &base, &name], None).await {
-                Ok(_) => app.toast(&format!("Created “{name}”")),
+                Ok(_) => app.toast(&crate::i18n::trf("Created “{name}”", &[("name", &name)])),
                 Err(e) => app.report_error(&e),
             }
             me.reload();
@@ -449,7 +449,7 @@ impl Presets {
         glib::spawn_future_local(async move {
             if window::confirm(
                 &app.window,
-                &format!("Delete “{name}”?"),
+                &crate::i18n::trf("Delete “{name}”?", &[("name", &name)]),
                 &crate::i18n::tr("Apps that use this preset keep their current permissions."),
                 &crate::i18n::tr("Delete"),
                 true,
@@ -530,7 +530,7 @@ impl PresetEditor {
             glib::spawn_future_local(async move {
                 match app.backend.call(&["preset", "put"], Some(p.to_string())).await {
                     Ok(_) => {
-                        app.toast(&format!("Preset “{}” saved", util::str_of(&p, "name")));
+                        app.toast(&crate::i18n::trf("Preset “{name}” saved", &[("name", &util::str_of(&p, "name"))]));
                         app.show_section("presets");
                     }
                     Err(e) => app.report_error(&e),
@@ -567,7 +567,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
     pref.add(&system);
     let maint = adw::PreferencesGroup::builder().title(tr("Maintenance")).build();
     pref.add(&maint);
-    let page = page_with("Diagnostics", &pref, &header);
+    let page = page_with(&crate::i18n::tr("Diagnostics"), &pref, &header);
 
     let rows: Rc<RefCell<Vec<adw::ActionRow>>> = Rc::default();
     let load = {
@@ -652,12 +652,13 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         }),
     );
     button(
-        &crate::i18n::tr("Remove unused extractions"),
+        &crate::i18n::tr("Remove unused unpacked copies"),
         "edit-clear-all-symbolic",
         Box::new(|app| {
             glib::spawn_future_local(async move {
                 if let Ok(r) = app.backend.call(&["cleanup"], None).await {
-                    app.toast(&format!("Removed {} unused extraction(s)", r.as_array().map(Vec::len).unwrap_or(0)));
+                    let n = r.as_array().map(Vec::len).unwrap_or(0);
+                    app.toast(&crate::i18n::trn("Removed {n} unused unpacked copy", "Removed {n} unused unpacked copies", n as u64, &[]));
                 }
             });
         }),
@@ -737,7 +738,7 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
         glib::spawn_future_local(async move {
             if !window::confirm(
                 &app.window,
-                "Delete Data of Removed Sandboxes?",
+                &crate::i18n::tr("Delete Data of Removed Sandboxes?"),
                 &crate::i18n::tr("The settings, logins and saved files of apps whose sandbox was removed are deleted. This cannot be undone."),
                 &crate::i18n::tr("Delete"),
                 true,
@@ -747,7 +748,9 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
                 return;
             }
             match app.backend.call(&["cleanup", "--data"], None).await {
-                Ok(r) => app.toast(&format!("Deleted {}", glib::format_size(util::get(&r, "total").and_then(Value::as_u64).unwrap_or(0)))),
+                Ok(r) => {
+                    app.toast(&crate::i18n::trf("Deleted {size}", &[("size", &glib::format_size(util::get(&r, "total").and_then(Value::as_u64).unwrap_or(0)))]))
+                }
                 Err(e) => app.report_error(&e),
             }
             reload();

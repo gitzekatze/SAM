@@ -23,7 +23,7 @@ pub(crate) fn config_cmd(app: &Sam, out: &Out, cmd: ConfigCmd) -> Result<()> {
             let c: Config = serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr("expected the configuration as JSON on stdin"))?;
             c.validate()?;
             c.save(&app.paths)?;
-            out.emit(&c, || println!("Configuration saved"));
+            out.emit(&c, || println!("{}", sam_core::i18n::tr("Configuration saved")));
         }
         ConfigCmd::Path => {
             let v: Value = json!({

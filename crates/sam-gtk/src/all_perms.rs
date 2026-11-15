@@ -531,7 +531,7 @@ impl PermsPage {
             let row = gtk::ListBoxRow::builder().activatable(true).build();
             let b = gtk::Box::builder().spacing(10).margin_start(8).margin_end(10).margin_top(6).margin_bottom(6).build();
             let check = gtk::CheckButton::builder().valign(gtk::Align::Center).build();
-            check.update_property(&[gtk::accessible::Property::Label(&format!("Select {name}"))]);
+            check.update_property(&[gtk::accessible::Property::Label(&crate::i18n::trf("Select {name}", &[("name", &name)]))]);
             b.append(&check);
             b.append(&window::app_icon(util::str_of(a, "icon_path"), 32));
             let text = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).hexpand(true).valign(gtk::Align::Center).build();
@@ -723,7 +723,7 @@ impl PermsPage {
         let total = apps.len();
         let catalog = self.app().map(|a| a.state.borrow().catalog.clone()).unwrap_or_default();
         let head = adw::PreferencesGroup::builder()
-            .title(format!("{total} Apps Selected"))
+            .title(crate::i18n::trn("{n} App Selected", "{n} Apps Selected", total as u64, &[]))
             .description(tr(
                 "Each row shows one permission and the setting that the apps in that row have. If the selected apps have different settings for a permission, that permission gets one row for each setting. The control at the end of a row changes every app in that row; to change one app on its own, unfold the row with the arrow. Changes apply at once and can be undone from the message at the bottom of the window. SAM asks first only when an app would probably stop working.",
             ))

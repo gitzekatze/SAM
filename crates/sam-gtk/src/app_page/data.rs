@@ -88,7 +88,7 @@ impl AppPage {
         let pick = files.iter().position(|f| util::str_of(f, "kind") == "launch").unwrap_or(0);
         self.updating.set(true);
         if labels.is_empty() {
-            self.log_drop.set_model(Some(&gtk::StringList::new(&["No logs yet"])));
+            self.log_drop.set_model(Some(&gtk::StringList::new(&[crate::i18n::tr("No logs yet").as_str()])));
             self.log_drop.set_sensitive(false);
         } else {
             let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
@@ -101,7 +101,7 @@ impl AppPage {
         *self.log_files.borrow_mut() = files;
         match first {
             Some(f) => self.show_log_file(&f).await,
-            None => set_mono_text(&self.log_view, "No logs yet."),
+            None => set_mono_text(&self.log_view, &crate::i18n::tr("No logs yet.")),
         }
     }
 
@@ -377,7 +377,7 @@ impl AppPage {
             let args = if as_repair { vec!["repair", &me.app_id, "--apply", &id] } else { vec!["hints", &me.app_id, "--apply", &id] };
             match app.backend.call(&args, None).await {
                 Ok(_) => {
-                    app.toast(&format!("Applied: {title}"));
+                    app.toast(&crate::i18n::trf("Applied: {step}", &[("step", &title)]));
                     if then_run {
                         app.launch(&me.app_id);
                     }

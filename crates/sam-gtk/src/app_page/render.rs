@@ -52,7 +52,7 @@ impl AppPage {
     pub(super) fn show_running(self: &Rc<Self>, running: bool) {
         let name = util::plain(&self.name());
         self.running_banner.set_title(&esc(&crate::i18n::trf("{name} is running. Changed settings apply the next time it starts.", &[("name", &name)])));
-        self.running_banner.set_button_label(Some(&format!("Restart {name}")));
+        self.running_banner.set_button_label(Some(&crate::i18n::trf("Restart {name}", &[("name", &name)])));
         self.running_banner.set_revealed(running && self.sandboxed());
         if running {
             self.watch_running();
@@ -115,10 +115,10 @@ impl AppPage {
         }
         self.icon_slot.append(&window::app_icon(&icon, 64));
         if sandboxed {
-            util::set_badge(&self.status_badge, "Sandboxed", "good");
+            util::set_badge(&self.status_badge, &crate::i18n::tr("Sandboxed"), "good");
             self.status_badge.set_tooltip_text(Some(&crate::i18n::tr("SAM runs this app in its sandbox, with exactly the access listed below")));
         } else {
-            util::set_badge(&self.status_badge, "Not sandboxed", "neutral");
+            util::set_badge(&self.status_badge, &crate::i18n::tr("Not sandboxed"), "neutral");
             self.status_badge
                 .set_tooltip_text(Some(&crate::i18n::tr("No sandbox yet. Nothing has been unpacked or run; below are the settings SAM recommends")));
         }
@@ -147,7 +147,7 @@ impl AppPage {
         };
         let have_data = if sandboxed { info.is_some() } else { self.preview.borrow().is_some() };
         if have_data && selection.as_ref().is_none_or(Value::is_null) {
-            util::set_badge(&self.sandbox_badge, "Sandbox unavailable", "bad");
+            util::set_badge(&self.sandbox_badge, &crate::i18n::tr("Sandbox unavailable"), "bad");
             self.sandbox_badge.set_tooltip_text(Some(&crate::i18n::tr("Bubblewrap cannot run on this system; see Diagnostics")));
         } else {
             util::set_badge(&self.sandbox_badge, "Bubblewrap", "blue");
@@ -247,7 +247,10 @@ impl AppPage {
                     if badge == "stale" { "dialog-warning-symbolic" } else { "dialog-error-symbolic" },
                     if badge == "stale" { "warning" } else { "error" },
                 ));
-                let btn = gtk::Button::builder().label(if badge == "missing" { "Locate…" } else { "Re-extract" }).valign(gtk::Align::Center).build();
+                let btn = gtk::Button::builder()
+                    .label(if badge == "missing" { crate::i18n::tr("Locate…") } else { crate::i18n::tr("Unpack Again") })
+                    .valign(gtk::Align::Center)
+                    .build();
                 let w = Rc::downgrade(self);
                 let missing = badge == "missing";
                 btn.connect_clicked(move |_| {
@@ -513,7 +516,7 @@ impl AppPage {
         let row = adw::ActionRow::builder().title(esc(&title)).subtitle(esc(&sub)).build();
         row.add_prefix(&status_icon("applications-utilities-symbolic", if on { "warning" } else { "accent" }));
         let sw = gtk::Switch::builder().active(on).valign(gtk::Align::Center).build();
-        sw.update_property(&[gtk::accessible::Property::Label(&format!("Repair step: {title}"))]);
+        sw.update_property(&[gtk::accessible::Property::Label(&crate::i18n::trf("Repair step: {step}", &[("step", &title)]))]);
         row.add_suffix(&sw);
         row.set_activatable_widget(Some(&sw));
         let w = Rc::downgrade(self);
@@ -624,7 +627,7 @@ impl AppPage {
                 "edit-undo-symbolic",
                 &crate::i18n::tr("Switch off all repair steps"),
                 &crate::i18n::trf("Puts back the settings from before the first step. Applied: {applied}", &[("applied", &applied)]),
-                |me| me.simple(vec!["repair".into(), me.app_id.clone(), "--undo".into()], "Repairs undone"),
+                |me| me.simple(vec!["repair".into(), me.app_id.clone(), "--undo".into()], &crate::i18n::tr("Repairs undone")),
             );
         }
         self.button_row(
@@ -633,7 +636,7 @@ impl AppPage {
             "Re-run detection",
             &crate::i18n::tr("Inspects the app again and updates SAM's recommendation. Your settings are kept; anything new is listed above."),
             |me| {
-                me.simple(vec!["redetect".into(), me.app_id.clone()], "Detection finished");
+                me.simple(vec!["redetect".into(), me.app_id.clone()], &crate::i18n::tr("Detection finished"));
             },
         );
         self.button_row(
@@ -704,13 +707,13 @@ impl AppPage {
         // or an unknown category would tell nothing.
         let cat = util::str_of(e, "category");
         if !matches!(cat, "" | "utility" | "other" | "unknown") {
-            let row = text_row("Recognized as", &util::category_label(cat));
+            let row = text_row(&crate::i18n::tr("Recognized as"), &util::category_label(cat));
             row.set_tooltip_text(Some(&crate::i18n::tr(
                 "SAM's recommendation starts from what apps of this kind usually need, then adjusts it to what it found in this app.",
             )));
             self.add_dynamic(&g, &row);
         }
-        self.add_dynamic(&g, &text_row("AppImage type", util::str_of(e, "appimage_type")));
+        self.add_dynamic(&g, &text_row(&crate::i18n::tr("AppImage type"), util::str_of(e, "appimage_type")));
         let extraction = match e.get("extraction").filter(|x| !x.is_null()) {
             Some(x) => {
                 let count = util::get(x, "file_count").and_then(Value::as_u64).unwrap_or(0);
@@ -718,13 +721,13 @@ impl AppPage {
             }
             None => crate::i18n::tr("Not unpacked"),
         };
-        self.add_dynamic(&g, &text_row("Unpacking", &extraction));
+        self.add_dynamic(&g, &text_row(&crate::i18n::tr("Unpacking"), &extraction));
 
         let signature = match util::str_of(e, "signature.state") {
             "" => crate::i18n::tr("Not checked"),
             _ => util::str_of(e, "signature.detail").to_string(),
         };
-        self.add_dynamic(&g, &text_row("Signature", &signature));
+        self.add_dynamic(&g, &text_row(&crate::i18n::tr("Signature"), &signature));
 
         // Updates: the last check, and a button to check now.
         let checked = util::get(e, "update.checked_at").and_then(Value::as_i64).unwrap_or(0);

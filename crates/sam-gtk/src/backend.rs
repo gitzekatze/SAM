@@ -249,7 +249,7 @@ fn envelope(out: &str) -> Option<Reply> {
                 } else {
                     Err(CliError {
                         code: m.get("code").and_then(Value::as_str).map(str::to_string),
-                        message: m.get("error").and_then(Value::as_str).unwrap_or("Unknown error").to_string(),
+                        message: m.get("error").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| crate::i18n::tr("Unknown error")),
                     })
                 });
             }

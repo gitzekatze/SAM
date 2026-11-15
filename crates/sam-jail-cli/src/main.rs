@@ -194,7 +194,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         println!("{}", trf("No more repair steps. Check the logs (sam-jail logs {id}).", &[("id", &e.id)]));
                     }
                     if e.repair_backup.is_some() {
-                        println!("Undo all repairs: sam-jail repair {} --undo", e.id);
+                        println!("{}", sam_core::i18n::trf("Undo all repairs: sam-jail repair {id} --undo", &[("id", &e.id)]));
                     }
                 },
             );
@@ -204,7 +204,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let mut results = Vec::new();
             for mut e in list {
                 if !out.json {
-                    eprintln!("testing {} for {seconds}s…", e.display_name());
+                    eprintln!("{}", sam_core::i18n::trf("Testing {name} for {seconds} s…", &[("name", &e.display_name()), ("seconds", &seconds)]));
                 }
                 let opts = LaunchOptions { timeout_secs: Some(seconds), quiet: true, ..Default::default() };
                 let (status, detail, findings) = match run(&mut e, &opts, &app.config, &app.paths, &app.host()) {
@@ -331,7 +331,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             out.emit(&apps, || {
                 if apps.is_empty() {
-                    println!("No apps registered. Add one with `sam-jail add <file.AppImage>` or `sam-jail scan --add`.");
+                    println!("{}", sam_core::i18n::tr("No apps are registered. Add one with `sam-jail add <file.AppImage>` or `sam-jail scan --add`."));
                     return;
                 }
                 let w = apps.iter().map(|a| a.id.len()).max().unwrap_or(10);
@@ -383,7 +383,11 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             let (e, problems) = app.remove(&q, keep_data)?;
             out.emit(&json!({"removed": e.id, "warnings": problems}), || {
-                println!("Removed {} ({}){}", e.display_name(), e.id, if keep_data { "; private data kept" } else { "" });
+                if keep_data {
+                    println!("{}", sam_core::i18n::trf("Removed {name} ({id}); its private data was kept", &[("name", &e.display_name()), ("id", &e.id)]));
+                } else {
+                    println!("{}", sam_core::i18n::trf("Removed {name} ({id})", &[("name", &e.display_name()), ("id", &e.id)]));
+                };
                 for p in &problems {
                     eprintln!("{} {p}", paint("warning:", "33"));
                 }
@@ -490,7 +494,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     eprintln!("{} {p}", paint("warning:", "33"));
                 }
                 if !yes {
-                    println!("Your AppImage files stay. Run again with --yes to remove.");
+                    println!("{}", sam_core::i18n::tr("Your AppImage files stay. Run again with --yes to remove SAM."));
                 } else {
                     println!("{}", tr("Your AppImage files were not touched. Remove the SAM package or AppImage to finish."));
                 }
@@ -500,9 +504,9 @@ fn real_main(cli: Cli) -> Result<()> {
             let n = app.stop(&q)?;
             out.emit(&json!({"stopped": n}), || {
                 if n == 0 {
-                    println!("Not running");
+                    println!("{}", sam_core::i18n::tr("Not running"));
                 } else {
-                    println!("Closed {n} running launch(es)");
+                    println!("{}", sam_core::i18n::trn("Closed {n} running launch", "Closed {n} running launches", n as u64, &[]));
                 }
             });
         }
@@ -639,7 +643,11 @@ fn real_main(cli: Cli) -> Result<()> {
             let on = matches!(state.as_str(), "on" | "true" | "1" | "yes");
             let e = app.set_compat(&q, on)?;
             out.emit(&AppSummary::from_entry(&e), || {
-                println!("Compatibility mode {} for {}", if on { "enabled" } else { "disabled" }, e.display_name());
+                if on {
+                    println!("{}", sam_core::i18n::trf("Compatibility mode turned on for {name}", &[("name", &e.display_name())]));
+                } else {
+                    println!("{}", sam_core::i18n::trf("Compatibility mode turned off for {name}", &[("name", &e.display_name())]));
+                };
                 if on {
                     println!("{}", paint(&tr(sam_profile::COMPAT_WARNING), "33"));
                 }
@@ -759,8 +767,8 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             app.registry().save(&mut e)?;
             out.emit(&json!({"desktop_entry": e.desktop_entry}), || match &e.desktop_entry {
-                Some(p) => println!("Launcher installed: {}", tildify(p)),
-                None => println!("Launcher removed"),
+                Some(p) => println!("{}", sam_core::i18n::trf("Launcher installed: {path}", &[("path", &tildify(p))])),
+                None => println!("{}", sam_core::i18n::tr("Launcher removed")),
             });
         }
         Cmd::Diagnose { app: q, timeout, apply } => {
@@ -776,7 +784,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             let r = sam_runner::diagnose::diagnose(&app, &mut e, timeout, apply)?;
             out.emit(&r, || {
-                println!("Diagnostic run: {}", r.launch_summary);
+                println!("{}", sam_core::i18n::trf("Diagnostic run: {summary}", &[("summary", &r.launch_summary)]));
                 if r.findings.is_empty() {
                     println!("{}", tr("No missing resources were detected."));
                 }
@@ -849,7 +857,7 @@ fn real_main(cli: Cli) -> Result<()> {
             } else {
                 let removed = if list { vec![] } else { app.cleanup()? };
                 out.emit(&removed, || {
-                    println!("Removed {} unreferenced extraction(s)", removed.len());
+                    println!("{}", sam_core::i18n::trn("Removed {n} unused unpacked copy", "Removed {n} unused unpacked copies", removed.len() as u64, &[]));
                 });
             }
         }
@@ -892,7 +900,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let data = sam_runner::zsync::make(&file, &name, url.as_deref().unwrap_or(&name), &mtime)?;
             let dest = dest.unwrap_or_else(|| file.with_file_name(format!("{name}.zsync")));
             std::fs::write(&dest, data)?;
-            out.emit(&json!({"zsync": dest}), || println!("Wrote {}", dest.display()));
+            out.emit(&json!({"zsync": dest}), || println!("{}", sam_core::i18n::trf("Wrote {path}", &[("path", &dest.display())])));
         }
         Cmd::Dev { cmd: DevCmd::MakeFixture { path, name, categories, apprun } } => {
             let mut spec = sam_intake::testkit::FixtureSpec::hello(&name);
@@ -901,7 +909,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 spec.apprun = std::fs::read_to_string(a)?;
             }
             sam_intake::testkit::build(&path, &spec)?;
-            out.emit(&json!({"path": path}), || println!("Wrote {}", path.display()));
+            out.emit(&json!({"path": path}), || println!("{}", sam_core::i18n::trf("Wrote {path}", &[("path", &path.display())])));
         }
     }
     Ok(())

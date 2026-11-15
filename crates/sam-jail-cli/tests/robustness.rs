@@ -29,6 +29,9 @@ fn sam(e: &Env, args: &[&str]) -> Output {
         .env("SAM_CONFIG_DIR", &e.config)
         .env("SAM_DATA_DIR", &e.data)
         .env("SAM_APPLICATIONS_DIR", &e.apps)
+        // English, whatever language the computer running the tests uses.
+        .env("LC_ALL", "C")
+        .env_remove("LANGUAGE")
         .output()
         .unwrap()
 }

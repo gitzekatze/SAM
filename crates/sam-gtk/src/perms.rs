@@ -471,7 +471,7 @@ impl Editor {
             ]
         };
 
-        let g = self.group("Network", &crate::i18n::tr("Internet and connections to services on this computer."));
+        let g = self.group(&crate::i18n::tr("Network"), &crate::i18n::tr("Internet and connections to services on this computer."));
         self.choice(
             &g,
             "network.mode",
@@ -491,7 +491,7 @@ impl Editor {
         self.list(&g, "network.host_ports", &crate::i18n::tr("Port on this computer, for example 11434 for Ollama"), false, LocalNet);
         self.list(&g, "network.app_ports", &crate::i18n::tr("Port of the app (empty = automatic)"), false, LocalNet);
 
-        let g = self.group("Display", &crate::i18n::tr("How the app shows its windows."));
+        let g = self.group(&crate::i18n::tr("Display"), &crate::i18n::tr("How the app shows its windows."));
         self.switch(&g, "display.wayland", Always);
         self.switch(&g, "display.x11", Always);
         self.switch(&g, "display.wayland_privileged", Always);
@@ -507,7 +507,7 @@ impl Editor {
         self.switch(&g, "audio.pipewire", Always);
         self.switch(&g, "audio.alsa_raw", Always);
 
-        let g = self.group("Files", &crate::i18n::tr("Folders the app can see. Everything else in your home stays hidden."));
+        let g = self.group(&crate::i18n::tr("Files"), &crate::i18n::tr("Folders the app can see. Everything else in your home stays hidden."));
         for k in ["filesystem.documents", "filesystem.downloads", "filesystem.pictures", "filesystem.music", "filesystem.videos", "filesystem.desktop"] {
             self.choice(&g, k, access(), Always);
         }
@@ -520,8 +520,8 @@ impl Editor {
             ],
             Always,
         );
-        self.list(&g, "filesystem.custom_read", "Folder path, e.g. ~/Projects", true, Always);
-        self.list(&g, "filesystem.custom_write", "Folder path, e.g. ~/Projects", true, Always);
+        self.list(&g, "filesystem.custom_read", &crate::i18n::tr("Folder path, e.g. ~/Projects"), true, Always);
+        self.list(&g, "filesystem.custom_write", &crate::i18n::tr("Folder path, e.g. ~/Projects"), true, Always);
         self.switch(&g, "filesystem.home", Always);
         self.choice(
             &g,
@@ -543,7 +543,7 @@ impl Editor {
         self.switch(&g, "integrations.keyring", FilteredBus);
         self.switch(&g, "integrations.input_method", AnyBus);
 
-        let g = self.group("D-Bus", &crate::i18n::tr("How the app talks to other programs on your desktop."));
+        let g = self.group(&crate::i18n::tr("D-Bus"), &crate::i18n::tr("How the app talks to other programs on your desktop."));
         self.choice(
             &g,
             "dbus.session.mode",
@@ -554,9 +554,9 @@ impl Editor {
             ],
             Always,
         );
-        self.list(&g, "dbus.session.allow", "Bus name, e.g. org.example.Service", false, FilteredBus);
-        self.list(&g, "dbus.session.own", "Bus name, e.g. org.example.App", false, FilteredBus);
-        self.list(&g, "dbus.session.deny", "Bus name, e.g. org.freedesktop.secrets", false, FilteredBus);
+        self.list(&g, "dbus.session.allow", &crate::i18n::tr("Bus name, e.g. org.example.Service"), false, FilteredBus);
+        self.list(&g, "dbus.session.own", &crate::i18n::tr("Bus name, e.g. org.example.App"), false, FilteredBus);
+        self.list(&g, "dbus.session.deny", &crate::i18n::tr("Bus name, e.g. org.freedesktop.secrets"), false, FilteredBus);
         self.choice(
             &g,
             "dbus.system.mode",
@@ -570,11 +570,11 @@ impl Editor {
         let g = self.group(&crate::i18n::tr("Sockets and environment"), &crate::i18n::tr("Other services and settings passed into the sandbox."));
         self.switch(&g, "sockets.ssh_agent", Always);
         self.switch(&g, "sockets.cups", Always);
-        self.list(&g, "sockets.custom", "Socket path, e.g. /run/user/1000/app.sock", false, Always);
-        self.list(&g, "environment.passthrough", "Variable name, e.g. LANG", false, Always);
-        self.list_or_map(&g, "environment.set", "NAME=value, e.g. QT_SCALE_FACTOR=1.5", false, true, Always);
+        self.list(&g, "sockets.custom", &crate::i18n::tr("Socket path, e.g. /run/user/1000/app.sock"), false, Always);
+        self.list(&g, "environment.passthrough", &crate::i18n::tr("Variable name, e.g. LANG"), false, Always);
+        self.list_or_map(&g, "environment.set", &crate::i18n::tr("NAME=value, e.g. QT_SCALE_FACTOR=1.5"), false, true, Always);
 
-        let g = self.group("Advanced", &crate::i18n::tr("Change these only if an app does not work."));
+        let g = self.group(&crate::i18n::tr("Advanced"), &crate::i18n::tr("Change these only if an app does not work."));
         self.choice(
             &g,
             "advanced.host_runtime",
@@ -588,13 +588,13 @@ impl Editor {
         self.switch(&g, "advanced.writable_appdir", Always);
         self.switch(&g, "advanced.host_themes", Always);
         self.switch(&g, "advanced.allow_userns", Always);
-        self.list(&g, "advanced.extra_bwrap_args", "Raw bwrap argument, e.g. --setenv FOO 1", false, Always);
+        self.list(&g, "advanced.extra_bwrap_args", &crate::i18n::tr("Raw bwrap argument, e.g. --setenv FOO 1"), false, Always);
 
         // The security engine's extra layers, apart from the other expert
         // settings and with an explanation: turning one off weakens the
         // sandbox for every permission at once.
         let g = self.group(
-            "Extra Protection Layers",
+            &crate::i18n::tr("Extra Protection Layers"),
             &crate::i18n::tr("Protection on top of the sandbox: a filter that blocks dangerous system calls, and Landlock, which lets the kernel itself stop writes outside the granted folders. They cost nothing while an app works. Turn one off only when an app's log shows it fails because of it, and only for that app; SAM's repair steps say so when that is the case."),
         );
         self.switch(&g, "advanced.seccomp_baseline", Always);
@@ -797,7 +797,7 @@ impl Editor {
                 .unwrap_or_default();
             if !added.is_empty() {
                 ask = Some((
-                    format!("Allow “{}”?", added.join(", ")),
+                    crate::i18n::trf("Allow “{permissions}”?", &[("permissions", &added.join(", "))]),
                     crate::i18n::tr("This service can act outside the sandbox: start programs, run scripts in the desktop shell or change any setting. An app with access to it can escape the sandbox."),
                     crate::i18n::tr("Allow Anyway"),
                 ));
@@ -813,7 +813,7 @@ impl Editor {
                 .collect();
             if !why.is_empty() {
                 ask = Some((
-                    format!("Allow “{}”?", added.join(", ")),
+                    crate::i18n::trf("Allow “{permissions}”?", &[("permissions", &added.join(", "))]),
                     format!(
                         "{}.\n\n{}",
                         why.join(". "),
@@ -826,7 +826,7 @@ impl Editor {
         let info = self.info(key);
         if ask.is_none() && self.is_enabling(key, &v) && (info.risk == "dangerous" || key == "dbus.session.mode" || key == "integrations.keyring") {
             ask = Some((
-                format!("Grant “{}”?", info.title),
+                crate::i18n::trf("Grant “{permission}”?", &[("permission", &info.title)]),
                 format!("{}\n\n{}", info.description, crate::i18n::tr("This is a high-risk permission. Only grant it to apps you trust.")),
                 crate::i18n::tr("Grant"),
             ));

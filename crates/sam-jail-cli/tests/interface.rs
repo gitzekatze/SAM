@@ -22,6 +22,9 @@ impl Env {
             .env("SAM_CONFIG_DIR", r.join("config"))
             .env("SAM_DATA_DIR", r.join("data"))
             .env("SAM_APPLICATIONS_DIR", r.join("applications"))
+            // English, whatever language the computer running the tests uses.
+            .env("LC_ALL", "C")
+            .env_remove("LANGUAGE")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

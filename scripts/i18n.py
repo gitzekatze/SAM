@@ -23,7 +23,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PO = ROOT / "po"
 POT = PO / "sam.pot"
-COMPLETE = {"de"}
+COMPLETE = {"de", "es", "fr"}
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 
 

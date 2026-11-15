@@ -132,8 +132,10 @@ jobs:
       - name: Third-party licenses are up to date
         run: python3 scripts/third-party-licenses.py --check
 
-      - name: Translations compile
-        run: make mo
+      - name: Translations are complete and compile
+        run: |
+          python3 scripts/i18n.py check
+          make mo
 
       - name: Man pages are up to date
         run: |

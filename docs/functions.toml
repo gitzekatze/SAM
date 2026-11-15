@@ -307,9 +307,9 @@ checks = ["tests/gui/permissions-atspi.sh"]
 id = 37
 area = "H"
 promise = "SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core."
-code = ["sam-gtk/src/i18n.rs", "po/de.po"]
-tests = []
-gap = "Not true yet: only 145 of about 700 texts can be translated (the window's labels), and only into German; SAM's core messages are English only. Planned before the beta, after the texts are reworded in Phase 8: all texts translatable, German, Spanish and French, and a test that keeps German complete."
+code = ["sam-core/src/i18n.rs", "sam-gtk/src/i18n.rs", "scripts/i18n.py", "po/de.po", "po/es.po", "po/fr.po"]
+tests = ["texts_without_a_translation_come_back_with_their_values", "the_command_line_speaks_german_when_asked"]
+checks = ["scripts/i18n.py"]
 
 [[function]]
 id = 40

@@ -110,20 +110,17 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
         .stderr(Stdio::null())
         .status()?
         .success();
-    let who = uid.map(|u| format!(" by {u}")).unwrap_or_default();
-    Ok(if ok {
-        SignatureInfo {
-            state: SignatureState::Valid,
-            fingerprint,
-            detail: sam_core::i18n::trf("signed{who}; the key comes with the file, so this shows it is unchanged, not who made it", &[("who", &who)]),
+    // Whole sentences with and without the signer's name: a name glued on
+    // with an English " by" would not translate.
+    let detail = match (ok, &uid) {
+        (true, Some(u)) => {
+            sam_core::i18n::trf("signed by {signer}; the key comes with the file, so this shows it is unchanged, not who made it", &[("signer", u)])
         }
-    } else {
-        SignatureInfo {
-            state: SignatureState::Invalid,
-            fingerprint,
-            detail: sam_core::i18n::trf("the signature{who} does not match the file: it was changed after signing", &[("who", &who)]),
-        }
-    })
+        (true, None) => sam_core::i18n::tr("signed; the key comes with the file, so this shows it is unchanged, not who made it"),
+        (false, Some(u)) => sam_core::i18n::trf("the signature by {signer} does not match the file: it was changed after signing", &[("signer", u)]),
+        (false, None) => sam_core::i18n::tr("the signature does not match the file: it was changed after signing"),
+    };
+    Ok(SignatureInfo { state: if ok { SignatureState::Valid } else { SignatureState::Invalid }, fingerprint, detail })
 }
 
 /// SHA-256 (lowercase hex) of the file with `zero` ranges read as zeros,

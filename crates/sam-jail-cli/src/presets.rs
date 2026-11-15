@@ -31,9 +31,15 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                     println!("  {} adds high-risk permission: {s}", paint("warning:", "31"));
                 }
                 if r.applied {
-                    println!("Applied '{}' (risk {} → {})", r.preset, c.risk_before, c.risk_after);
+                    println!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "Applied “{preset}” (risk {before} → {after})",
+                            &[("preset", &r.preset), ("before", &c.risk_before), ("after", &c.risk_after)]
+                        )
+                    );
                 } else {
-                    println!("Not applied. Re-run with --yes to confirm.");
+                    println!("{}", sam_core::i18n::tr("Not applied. Run again with --yes to confirm."));
                 }
             });
         }
@@ -43,14 +49,14 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
         }
         PresetCmd::Save { app: q, name, description } => {
             let p = app.save_preset_from_app(&q, &name, &description)?;
-            out.emit(&p, || println!("Saved preset '{}' ({})", p.name, p.risk));
+            out.emit(&p, || println!("{}", sam_core::i18n::trf("Saved the preset “{name}” ({risk})", &[("name", &p.name), ("risk", &p.risk)])));
         }
         PresetCmd::Delete { name } => {
             let ok = store.delete(&name)?;
             if !ok {
                 bail!("{}", sam_core::i18n::trf("no user preset named '{name}'", &[("name", &name)]));
             }
-            out.emit(&json!({"deleted": name}), || println!("Deleted preset '{name}'"));
+            out.emit(&json!({"deleted": name}), || println!("{}", sam_core::i18n::trf("Deleted the preset “{name}”", &[("name", &name)])));
         }
         PresetCmd::Duplicate { name, new_name } => {
             let mut p = sam_profile::find_preset(&app.paths, &name)?.with_context(|| format!("unknown preset '{name}'"))?;
@@ -60,12 +66,12 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             p.name = new_name;
             p.created_at = 0;
             store.save(&mut p)?;
-            out.emit(&p, || println!("Created preset '{}'", p.name));
+            out.emit(&p, || println!("{}", sam_core::i18n::trf("Created the preset “{name}”", &[("name", &p.name)])));
         }
         PresetCmd::Import { file } => {
             let mut p = read_preset_file(&file)?;
             let path = store.save(&mut p)?;
-            out.emit(&p, || println!("Imported '{}' → {}", p.name, tildify(&path)));
+            out.emit(&p, || println!("{}", sam_core::i18n::trf("Imported “{name}” → {path}", &[("name", &p.name), ("path", &tildify(&path))])));
         }
         PresetCmd::Export { name, file } => {
             let p = sam_profile::find_preset(&app.paths, &name)?.with_context(|| format!("unknown preset '{name}'"))?;
@@ -77,7 +83,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             }
             out.emit(&json!({"toml": text, "file": file}), || {
                 if let Some(f) = &file {
-                    println!("Exported '{}' → {}", p.name, f.display());
+                    println!("{}", sam_core::i18n::trf("Exported “{name}” → {path}", &[("name", &p.name), ("path", &f.display())]));
                 }
             });
         }
@@ -91,7 +97,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                 p.created_at = existing.created_at;
             }
             store.save(&mut p)?;
-            out.emit(&p, || println!("Saved preset '{}'", p.name));
+            out.emit(&p, || println!("{}", sam_core::i18n::trf("Saved the preset “{name}”", &[("name", &p.name)])));
         }
     }
     Ok(())
@@ -119,9 +125,25 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
                 }
                 let n = r.apps.iter().filter(|a| a.changed).count();
                 if dry_run {
-                    println!("Would change {key} to {value} for {n} app(s)");
+                    println!(
+                        "{}",
+                        sam_core::i18n::trn(
+                            "Would change {key} to {value} for {n} app",
+                            "Would change {key} to {value} for {n} apps",
+                            n as u64,
+                            &[("key", &key), ("value", &value)]
+                        )
+                    );
                 } else {
-                    println!("Changed {key} to {value} for {n} app(s)");
+                    println!(
+                        "{}",
+                        sam_core::i18n::trn(
+                            "Changed {key} to {value} for {n} app",
+                            "Changed {key} to {value} for {n} apps",
+                            n as u64,
+                            &[("key", &key), ("value", &value)]
+                        )
+                    );
                     if r.apps.iter().any(|a| a.changed && a.running) {
                         println!("{}", sam_core::i18n::tr("Running apps use the new settings the next time they start."));
                     }

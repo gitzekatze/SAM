@@ -9,6 +9,19 @@ version.
 
 ## Unreleased
 
+### German, Spanish and French
+
+- SAM speaks German, Spanish and French: every text in the window, every
+  message from SAM's core (permissions, warnings, repair advice, check
+  results, update and error messages) and the command line's sentences.
+  Logs, the technical tables of `show`, `preview` and `report`, and the JSON
+  interface stay English.
+- Every text was reworded into whole sentences first, so each language can
+  order its words freely; code that needed to know which error happened now
+  reads an error code instead of the message.
+- CI fails when a text lacks a translation in one of the three languages or
+  a translation drops a placeholder.
+
 ### Reliability beyond the first start
 
 - Unpacking checks the free space first and refuses with what to do

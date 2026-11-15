@@ -545,7 +545,7 @@ impl App {
             let prev = before.and_then(|b| rows.get(b.index() as usize)).map(|r| r.sandboxed);
             if cur.is_some() && cur != prev {
                 let l = gtk::Label::builder()
-                    .label(if cur == Some(true) { "Sandboxed" } else { "Not sandboxed" })
+                    .label(crate::i18n::tr(if cur == Some(true) { crate::i18n::n_("Sandboxed") } else { crate::i18n::n_("Not sandboxed") }))
                     .xalign(0.0)
                     .margin_start(12)
                     .margin_top(if prev.is_some() { 14 } else { 4 })
@@ -750,11 +750,11 @@ impl App {
         sb.stack.set_visible_child_name(if any || !loaded { "list" } else { "empty" });
         let filtered = !self.state.borrow().search.is_empty() || self.state.borrow().filter != "all";
         if filtered {
-            sb.empty.set_title("No AppImages Match");
+            sb.empty.set_title(&crate::i18n::tr("No AppImages Match"));
             sb.empty.set_description(Some(&crate::i18n::tr("Try another search or filter.")));
         } else {
-            sb.empty.set_title("No AppImages Found");
-            sb.empty.set_description(Some("Add a folder or a single AppImage file above, or drop an AppImage onto this window."));
+            sb.empty.set_title(&crate::i18n::tr("No AppImages Found"));
+            sb.empty.set_description(Some(&crate::i18n::tr("Add a folder or a single AppImage file above, or drop an AppImage onto this window.")));
         }
         match select_idx.and_then(|i| sb.list.row_at_index(i as i32)) {
             Some(r) => sb.list.select_row(Some(&r)),
@@ -1035,7 +1035,7 @@ impl App {
             if code != 0 {
                 let t = adw::Toast::builder()
                     .title(crate::i18n::trf("The app stopped with an error (code {code}).", &[("code", &code)]))
-                    .button_label("Fix It")
+                    .button_label(crate::i18n::tr("Fix It"))
                     .timeout(8)
                     .build();
                 let w2 = Rc::downgrade(&me);
@@ -1062,7 +1062,7 @@ impl App {
             }
         };
         if util::bool_of(&r, "applied") {
-            self.toast(&format!("Applied “{name}”"));
+            self.toast(&crate::i18n::trf("Applied “{name}”", &[("name", &name)]));
             self.refresh_registered().await;
             return true;
         }
@@ -1071,7 +1071,7 @@ impl App {
             return false;
         }
         match self.backend.call(&["preset", "apply", name, app_id, "--yes"], None).await {
-            Ok(_) => self.toast(&format!("Applied “{name}”")),
+            Ok(_) => self.toast(&crate::i18n::trf("Applied “{name}”", &[("name", &name)])),
             Err(e) => self.report_error(&e),
         }
         self.refresh_registered().await;
@@ -1096,7 +1096,7 @@ impl App {
             "The risk changes from {before} to {after}.",
             &[("before", &util::str_of(c, "risk_before")), ("after", &util::str_of(c, "risk_after"))],
         ));
-        confirm(&self.window, &format!("Apply “{name}” Anyway?"), &text, "Apply", false).await
+        confirm(&self.window, &crate::i18n::trf("Apply “{name}” Anyway?", &[("name", &name)]), &text, &crate::i18n::tr("Apply"), false).await
     }
 
     /// Re-extracts an app (after the AppImage changed).
@@ -1258,7 +1258,7 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
     let name = gtk::Label::builder().label(util::plain(&r.name)).xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build();
     name.add_css_class("heading");
     let sub_text = if r.badge == "missing" {
-        format!("File missing: {}", util::tildify(&r.path))
+        crate::i18n::trf("File missing: {path}", &[("path", &util::tildify(&r.path))])
     } else if r.moved {
         crate::i18n::tr("Moved copy of a sandboxed app")
     } else {
@@ -1285,18 +1285,18 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
     }
     // Status, or what needs attention.
     let (text, tone) = match (r.sandboxed, r.badge.as_str()) {
-        (false, _) => ("Not sandboxed", "neutral"),
-        (true, "changed-outside") => ("Changed outside SAM", "bad"),
-        (true, "needs-review") => ("Needs review", "warn"),
-        (true, "compatibility-mode") => ("Compatibility mode", "warn"),
-        (true, "compatibility-risk") => ("May not start", "warn"),
-        (true, "unsafe") => ("Unsafe", "danger"),
-        (true, "stale") => ("Changed", "warn"),
-        (true, "broken") => ("Broken", "bad"),
-        (true, "missing") => ("Missing", "bad"),
-        (true, _) => ("Sandboxed", "good"),
+        (false, _) => (crate::i18n::n_("Not sandboxed"), "neutral"),
+        (true, "changed-outside") => (crate::i18n::n_("Changed outside SAM"), "bad"),
+        (true, "needs-review") => (crate::i18n::n_("Needs review"), "warn"),
+        (true, "compatibility-mode") => (crate::i18n::n_("Compatibility mode"), "warn"),
+        (true, "compatibility-risk") => (crate::i18n::n_("May not start"), "warn"),
+        (true, "unsafe") => (crate::i18n::n_("Unsafe"), "danger"),
+        (true, "stale") => (crate::i18n::n_("Changed"), "warn"),
+        (true, "broken") => (crate::i18n::n_("Broken"), "bad"),
+        (true, "missing") => (crate::i18n::n_("Missing"), "bad"),
+        (true, _) => (crate::i18n::n_("Sandboxed"), "good"),
     };
-    let label = util::badge(text, tone);
+    let label = util::badge(&crate::i18n::tr(text), tone);
     label.set_tooltip_text(Some(&match (r.sandboxed, r.badge.as_str()) {
         (false, _) => crate::i18n::tr("No sandbox yet"),
         (true, "changed-outside") => crate::i18n::tr("Something other than SAM changed its settings; it does not start until you confirm them on its page"),
@@ -1352,7 +1352,7 @@ pub fn apply_theme(theme: &str) {
 /// Asks a yes/no question; true when the user accepted.
 pub async fn confirm(win: &adw::ApplicationWindow, heading: &str, body: &str, accept: &str, destructive: bool) -> bool {
     let d = adw::AlertDialog::new(Some(heading), Some(body));
-    d.add_responses(&[("cancel", "Cancel"), ("ok", accept)]);
+    d.add_responses(&[("cancel", crate::i18n::tr("Cancel").as_str()), ("ok", accept)]);
     d.set_response_appearance("ok", if destructive { adw::ResponseAppearance::Destructive } else { adw::ResponseAppearance::Suggested });
     d.set_default_response(Some("cancel"));
     d.set_close_response("cancel");
