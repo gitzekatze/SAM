@@ -130,42 +130,33 @@ jobs:
   sandbox-fedora:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
-    container:
-      image: registry.fedoraproject.org/fedora:latest
-      # Bubblewrap needs user namespaces, which a default container lacks.
-      options: --privileged
     steps:
       - uses: actions/checkout@v7
 
-      - name: Fedora packages
-        run: |
-          dnf install -y --setopt=install_weak_deps=False \
-            rust cargo gcc pkgconf-pkg-config \
-            bubblewrap xdg-dbus-proxy passt bsdtar squashfs-tools \
-            python3 python3-gobject glib2 dbus-daemon \
-            util-linux shadow-utils
+      # The runner's kernel is Ubuntu's, which restricts user namespaces
+      # for ordinary users through AppArmor. Inside a container this
+      # setting cannot be changed, and Bubblewrap then fails to set up its
+      # network ("loopback: Failed RTM_NEWADDR"). So it is lifted here, on
+      # the runner itself (a throwaway machine), before Fedora starts.
+      - name: Allow user namespaces on the runner
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       # SAM runs as an ordinary user; as root, pasta ("This computer only")
       # switches to "nobody" on purpose and cannot join the sandbox's
-      # network. So the build and the tests run as a user.
-      - name: Ordinary user
-        # The runner's kernel is Ubuntu's, which restricts user namespaces
-        # for ordinary users through AppArmor, also inside this container.
-        # Lifted on this throwaway machine only, as in the Ubuntu job.
+      # network. So the build and the tests run as the user "tester".
+      # The check that Bubblewrap works comes first: without it every
+      # sandbox test would skip and the job would pass without testing.
+      - name: Sandbox tests on Fedora
         run: |
-          sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-          useradd -m tester
-          chown -R tester "$GITHUB_WORKSPACE"
-
-      - name: Bubblewrap works here (as that user)
-        # Without this check every sandbox test would skip and the job would
-        # pass without testing anything.
-        run: su tester -c "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all true"
-
-      - name: Build
-        run: su tester -c "cd '$GITHUB_WORKSPACE' && cargo build --locked -p sam-jail-cli"
-
-      - name: Sandbox tests
-        run: >
-          su tester -c "cd '$GITHUB_WORKSPACE' && PATH=\"$GITHUB_WORKSPACE/target/debug:\$PATH\" cargo test --locked -p sam-runner
-          --test breakout --test evil --test matrix --test sandbox --test fuzz"
+          docker run --rm --privileged -v "$PWD:/src" registry.fedoraproject.org/fedora:latest bash -euxc '
+            dnf install -y --setopt=install_weak_deps=False \
+              rust cargo gcc pkgconf-pkg-config \
+              bubblewrap xdg-dbus-proxy passt bsdtar squashfs-tools \
+              python3 python3-gobject glib2 dbus-daemon \
+              util-linux shadow-utils
+            useradd -m tester
+            chown -R tester /src
+            su tester -c "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all true"
+            su tester -c "cd /src && cargo build --locked -p sam-jail-cli"
+            su tester -c "cd /src && PATH=/src/target/debug:\$PATH cargo test --locked -p sam-runner --test breakout --test evil --test matrix --test sandbox --test fuzz"
+          '
