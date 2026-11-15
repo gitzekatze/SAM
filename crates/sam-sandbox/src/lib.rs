@@ -520,13 +520,13 @@ impl Bubblewrap {
         let mut notes = vec![];
         let installed = tool.is_some();
         if !installed {
-            notes.push("Bubblewrap is not installed. Install the 'bubblewrap' package.".into());
+            notes.push(sam_core::i18n::tr("Bubblewrap is not installed. Install the 'bubblewrap' package."));
         }
         if !host.userns.usable() {
             notes.push(host.userns.explain());
         }
         if host.tools.xdg_dbus_proxy.is_none() {
-            notes.push("xdg-dbus-proxy not found: filtered session D-Bus will be disabled".into());
+            notes.push(sam_core::i18n::tr("xdg-dbus-proxy not found: filtered session D-Bus will be disabled"));
         }
         BubblewrapStatus {
             installed,
@@ -539,7 +539,7 @@ impl Bubblewrap {
 
     /// The bwrap command line for this launch.
     pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
-        let bwrap = ctx.host.tools.bwrap.as_ref().context("bubblewrap (bwrap) is not installed")?;
+        let bwrap = ctx.host.tools.bwrap.as_ref().context(sam_core::i18n::tr("bubblewrap (bwrap) is not installed"))?;
         // Each step adds its part of the Bubblewrap command, in this order.
         let mut s = Section { ctx, a: Args { v: Vec::new() }, notes: Vec::new(), keep_fds: Vec::new() };
         s.namespaces();
@@ -844,7 +844,7 @@ impl Section<'_> {
                     a.setenv("WAYLAND_DISPLAY", "wayland-0");
                     session_type = "wayland";
                 }
-                None => notes.push("Wayland socket not available".into()),
+                None => notes.push(sam_core::i18n::tr("Wayland socket not available")),
             }
         }
         if p.display.x11 {
@@ -864,7 +864,7 @@ impl Section<'_> {
                         session_type = "x11";
                     }
                 }
-                _ => notes.push("X11 display not available".into()),
+                _ => notes.push(sam_core::i18n::tr("X11 display not available")),
             }
         }
         a.setenv("XDG_SESSION_TYPE", session_type);
@@ -904,9 +904,9 @@ impl Section<'_> {
                 a.op2("--ro-bind", pulse, format!("{run}/pulse/native"));
                 a.setenv("PULSE_SERVER", format!("unix:{run}/pulse/native"));
             } else if h.sockets.pipewire.is_some() {
-                notes.push("PipeWire runs without its PulseAudio service (pipewire-pulse), so the app has no sound. Install or start pipewire-pulse, or allow direct PipeWire access.".into());
+                notes.push(sam_core::i18n::tr("PipeWire runs without its PulseAudio service (pipewire-pulse), so the app has no sound. Install or start pipewire-pulse, or allow direct PipeWire access."));
             } else {
-                notes.push("No sound server found. Audio may not work.".into());
+                notes.push(sam_core::i18n::tr("No sound server found. Audio may not work."));
             }
         }
         if p.audio.pipewire {
@@ -951,7 +951,7 @@ impl Section<'_> {
         } else if p.devices.gamepads {
             let pads = gamepad_nodes(Path::new("/dev/input"), Path::new("/run/udev/data"));
             if pads.is_empty() {
-                notes.push("No game controller is plugged in; controllers connected later are not seen until the app restarts".into());
+                notes.push(sam_core::i18n::tr("No game controller is plugged in; controllers connected later are not seen until the app restarts"));
             }
             for d in pads {
                 a.op2("--dev-bind-try", &d, &d);
@@ -961,7 +961,7 @@ impl Section<'_> {
             a.op2("--dev-bind-try", "/dev/bus/usb", "/dev/bus/usb");
         }
         if p.devices.bluetooth && p.dbus.system.mode == DbusMode::None {
-            notes.push("Bluetooth needs the system D-Bus; not granted".into());
+            notes.push(sam_core::i18n::tr("Bluetooth needs the system D-Bus; not granted"));
         }
         // Private shared memory: the host's /dev/shm would be a side channel
         // to other programs' segments.
@@ -972,7 +972,7 @@ impl Section<'_> {
         if p.integrations.input_method {
             a.setenv("IBUS_USE_PORTAL", "1");
             if p.dbus.session.mode == DbusMode::None {
-                notes.push("Input method needs the session D-Bus; not granted".into());
+                notes.push(sam_core::i18n::tr("Input method needs the session D-Bus; not granted"));
             }
         }
     }
@@ -993,7 +993,7 @@ impl Section<'_> {
                     a.op2("--ro-bind", sock, format!("{run}/bus"));
                     a.setenv("DBUS_SESSION_BUS_ADDRESS", format!("unix:path={run}/bus"));
                 }
-                None => notes.push("session D-Bus socket not found".into()),
+                None => notes.push(sam_core::i18n::tr("session D-Bus socket not found")),
             },
             DbusMode::Filtered => match &ctx.dbus_proxy_socket {
                 Some(proxy) => {
@@ -1002,7 +1002,7 @@ impl Section<'_> {
                 }
                 None => {
                     a.setenv("NO_AT_BRIDGE", "1");
-                    notes.push("filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); session bus disabled".into());
+                    notes.push(sam_core::i18n::tr("filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); session bus disabled"));
                 }
             },
         }

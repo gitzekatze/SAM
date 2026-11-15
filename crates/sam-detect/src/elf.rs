@@ -376,7 +376,7 @@ pub fn analyze_appdir_with(appdir: &Path, opts: &AnalyzeOptions, progress: &dyn 
     report.compatibility = compat;
     report.resources = host_resources(&report.requirements);
     if report.requirements.electron {
-        report.notes.push("Electron app: Chromium's internal sandbox needs nested user namespaces".into());
+        report.notes.push(sam_core::i18n::tr("Electron app: Chromium's internal sandbox needs nested user namespaces"));
     }
     Ok(report)
 }
@@ -539,7 +539,7 @@ fn requirements(appdir: &Path, w: &Walk, needed: &BTreeMap<String, Vec<String>>,
     // GPU their EGL setup fails and no window appears.
     if !req.gpu && programs.loads_graphics {
         req.gpu = true;
-        notes.push("A program of the app loads OpenGL or Vulkan at run time".into());
+        notes.push(sam_core::i18n::tr("A program of the app loads OpenGL or Vulkan at run time"));
     }
     if w.electron {
         req.electron = true;
@@ -668,10 +668,10 @@ fn check_compatibility(report: &mut DependencyReport, w: &Walk, links: &Links, o
         report.warnings.push(Warning::warn("no-elf", "No executables found", "No ELF executables were found in the AppImage payload."));
     }
     if report.entry_is_script && report.entry_binary.is_none() {
-        report.notes.push("AppRun is a script; the main binary could not be determined".into());
+        report.notes.push(sam_core::i18n::tr("AppRun is a script; the main binary could not be determined"));
     }
     if w.truncated {
-        report.notes.push("analysis was truncated because the payload is very large".into());
+        report.notes.push(sam_core::i18n::tr("analysis was truncated because the payload is very large"));
     }
     compat
 }
@@ -868,7 +868,7 @@ fn isolation_verdict(
     } else if needed.keys().any(|n| n.starts_with("libpolkit")) {
         Some(IsolationVerdict::WeaklyIsolated)
     } else if report.requirements.x11 && !report.requirements.wayland {
-        report.notes.push("X11-only application: isolation between windows is limited".into());
+        report.notes.push(sam_core::i18n::tr("X11-only application: isolation between windows is limited"));
         Some(IsolationVerdict::WeaklyIsolated)
     } else {
         None

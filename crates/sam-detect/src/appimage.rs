@@ -94,7 +94,7 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
             info.payload_offset = Some(0);
             return Ok(info);
         }
-        info.notes.push("type 1 magic present but no ISO 9660 signature found".into());
+        info.notes.push(sam_core::i18n::tr("type 1 magic present but no ISO 9660 signature found"));
     }
 
     // Type 2: SquashFS appended after the ELF.
@@ -127,10 +127,10 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
         info.compression = Some(squashfs_compression(&mut f, off)?);
         info.kind = AppImageType::Type2;
         if !info.magic {
-            info.notes.push("AppImage magic bytes missing; treating as Type 2 because a SquashFS payload is present".into());
+            info.notes.push(sam_core::i18n::tr("AppImage magic bytes missing; treating as Type 2 because a SquashFS payload is present"));
         }
     } else if info.magic {
-        info.notes.push("AppImage magic present but no payload found".into());
+        info.notes.push(sam_core::i18n::tr("AppImage magic present but no payload found"));
     }
     Ok(info)
 }

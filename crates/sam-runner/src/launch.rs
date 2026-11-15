@@ -110,17 +110,19 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
     let mut errors = Vec::new();
     let mut warns = Vec::new();
     if app.changed_outside {
-        errors.push(format!(
-            "The settings of {} were changed outside SAM (by a script, another program or a damaged file). SAM does not start the app until you have looked at them: open the app in SAM and confirm its settings, or run `sam-jail review {}`.",
-            sam_core::util::display_safe(app.display_name(), 80),
-            app.id
+        errors.push(sam_core::i18n::trf(
+            "The settings of {app} were changed outside SAM (by a script, another program or a damaged file). SAM does not start the app until you have looked at them: open the app in SAM and confirm its settings, or run `sam-jail review {id}`.",
+            &[("app", &sam_core::util::display_safe(app.display_name(), 80)), ("id", &app.id)],
         ));
     }
     match &app.extraction {
-        None => errors.push("The AppImage has not been extracted. Use 'Re-extract' (sam-jail reextract).".into()),
+        None => errors.push(sam_core::i18n::tr("The AppImage has not been unpacked. Use Re-extract (sam-jail reextract).")),
         Some(x) => {
             if !x.appdir.join(&x.entry).exists() {
-                errors.push(format!("The extracted payload is missing or incomplete ({}). Re-extract the AppImage.", x.appdir.display()));
+                errors.push(sam_core::i18n::trf(
+                    "The unpacked app is missing or incomplete ({folder}). Unpack the AppImage again.",
+                    &[("folder", &x.appdir.display())],
+                ));
             }
         }
     }
@@ -147,7 +149,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     if let Some(e) = errors.first() {
         bail!("{e}");
     }
-    let x = app.extraction.as_ref().context("the AppImage has not been extracted")?;
+    let x = app.extraction.as_ref().context(sam_core::i18n::tr("the AppImage has not been extracted"))?;
     let sandbox = crate::bwrap::check(host)?;
     let perms = &app.profile.permissions;
 
@@ -239,7 +241,8 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     }
 
     if perms.advanced.persistent_home {
-        fs::create_dir_all(&ctx.private_home).with_context(|| format!("creating private home {}", ctx.private_home.display()))?;
+        fs::create_dir_all(&ctx.private_home)
+            .with_context(|| sam_core::i18n::trf("creating the private home {folder}", &[("folder", &ctx.private_home.display())]))?;
     }
 
     let mut proxy = None;
@@ -263,7 +266,11 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                     }
                     proxy = Some(p);
                 }
-                Err(e) => warnings.push(Warning::warn("dbus-proxy-failed", "D-Bus proxy failed", format!("{e:#}; session bus disabled"))),
+                Err(e) => warnings.push(Warning::warn(
+                    "dbus-proxy-failed",
+                    "D-Bus proxy failed",
+                    sam_core::i18n::trf("{error}; the session bus is off for this start", &[("error", &format!("{e:#}"))]),
+                )),
             }
         }
         if perms.display.wayland && !perms.display.wayland_privileged {
@@ -282,7 +289,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
                         "Wayland functions not restricted",
                         "This desktop does not support Wayland security contexts, so the app can use every Wayland function it offers, including privileged ones some desktops provide (clipboard history, screen capture).",
                     )),
-                    Err(e) => warnings.push(Warning::warn("wayland-context-failed", "Wayland security context failed", format!("{e:#}; the app uses the normal Wayland socket"))),
+                    Err(e) => warnings.push(Warning::warn("wayland-context-failed", "Wayland security context failed", sam_core::i18n::trf("{error}; the app uses the normal Wayland socket", &[("error", &format!("{e:#}"))]))),
                 }
             }
         }
@@ -328,7 +335,7 @@ pub fn prepare(app: &AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
             warnings.push(Warning::warn(
                 "localhost-unavailable",
                 "\"This computer only\" unavailable",
-                format!("{e:#}. Until then the app starts with no network at all, never with internet access."),
+                sam_core::i18n::trf("{error}. Until then the app starts with no network at all, never with internet access.", &[("error", &format!("{e:#}"))]),
             ));
         }
     }
@@ -347,14 +354,18 @@ fn launch_writable_paths(ctx: &LaunchContext) -> Vec<PathBuf> {
     out
 }
 
-/// Did the failure come from the sandbox setup rather than the app?
-fn classify_failure(code: Option<i32>, stderr_head: &str) -> (bool, String) {
+/// Did the failure come from the sandbox setup rather than the app? Also
+/// whether Bubblewrap itself reported it (decisions go by that, never by
+/// the summary, which is translated).
+fn classify_failure(code: Option<i32>, stderr_head: &str) -> (bool, String, bool) {
     let first_bwrap = stderr_head.lines().find(|l| l.starts_with("bwrap:")).map(str::to_string);
     match code {
-        Some(_) if first_bwrap.is_some() => (true, format!("sandbox setup failed: {}", first_bwrap.unwrap_or_default())),
-        Some(126) => (true, "the entry point could not be executed (permission denied or wrong format)".into()),
-        Some(127) => (true, "the entry point or one of its interpreters was not found inside the sandbox".into()),
-        _ => (false, String::new()),
+        Some(_) if first_bwrap.is_some() => {
+            (true, sam_core::i18n::trf("sandbox setup failed: {reason}", &[("reason", &first_bwrap.unwrap_or_default())]), true)
+        }
+        Some(126) => (true, sam_core::i18n::tr("the entry point could not be executed (permission denied or wrong format)"), false),
+        Some(127) => (true, sam_core::i18n::tr("the entry point or one of its interpreters was not found inside the sandbox"), false),
+        _ => (false, String::new(), false),
     }
 }
 
@@ -455,8 +466,20 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
         // On a terminal both streams are one.
         Some(p) => Some(p.start(pty::OutputSink { head: err_head.clone(), head_limit: STDERR_HEAD_LIMIT, log: log.clone(), log_limit: 256 * 1024 })),
         None => {
-            pumps.push(pump_output(Box::new(child.stdout.take().context("no stdout pipe")?), false, log.clone(), out_head.clone(), opts.quiet));
-            pumps.push(pump_output(Box::new(child.stderr.take().context("no stderr pipe")?), true, log.clone(), err_head.clone(), opts.quiet));
+            pumps.push(pump_output(
+                Box::new(child.stdout.take().context(sam_core::i18n::tr("no stdout pipe"))?),
+                false,
+                log.clone(),
+                out_head.clone(),
+                opts.quiet,
+            ));
+            pumps.push(pump_output(
+                Box::new(child.stderr.take().context(sam_core::i18n::tr("no stderr pipe"))?),
+                true,
+                log.clone(),
+                err_head.clone(),
+                opts.quiet,
+            ));
             None
         }
     };
@@ -479,7 +502,7 @@ pub fn run(app: &mut AppEntry, opts: &LaunchOptions, cfg: &Config, paths: &Paths
     if relay_end.as_ref().is_some_and(|r| r.hung_up) && !outcome.sandbox_failure && !outcome.setup_failed {
         // The user closed the terminal window: not a failed start.
         outcome.success = true;
-        outcome.summary = "ended when its terminal was closed".into();
+        outcome.summary = sam_core::i18n::tr("ended when its terminal was closed");
     } else if app.metadata.terminal && ran_to_its_end(&outcome, status) {
         // A command-line tool that ends with an error code (wrong
         // arguments, nothing to do) has run fine in its sandbox; the code
@@ -533,7 +556,7 @@ fn terminal_banner(app: &AppEntry, prepared: &Prepared) -> String {
     let fs = &ctx.permissions.filesystem;
     let mut sees: Vec<String> = Vec::new();
     if fs.home {
-        sees.push("your home folder".into());
+        sees.push(sam_core::i18n::tr("your home folder"));
     }
     for key in sam_core::permissions::XDG_DIR_KEYS {
         if !fs.home && fs.xdg_access(key).is_granted() {
@@ -544,11 +567,17 @@ fn terminal_banner(app: &AppEntry, prepared: &Prepared) -> String {
     }
     sees.extend(fs.custom_read.iter().chain(&fs.custom_write).cloned());
     sees.extend(sam_sandbox::opened_paths(ctx).iter().map(|(p, _)| sam_core::util::tildify(p)));
-    let sees = if sees.is_empty() { "only its private home".to_string() } else { format!("{} and its private home", sees.join(", ")) };
+    let sees = if sees.is_empty() {
+        sam_core::i18n::tr("only its private home")
+    } else {
+        sam_core::i18n::trf("{folders} and its private home", &[("folders", &sees.join(", "))])
+    };
     format!(
-        "\x1b[2msam-jail: {} runs sandboxed, in a terminal of its own. It sees {sees} (files it saves anywhere else stay there). \
-         It cannot type into this shell or use the clipboard through the terminal.\x1b[0m",
-        app.display_name()
+        "\x1b[2msam-jail: {}\x1b[0m",
+        sam_core::i18n::trf(
+            "{app} runs sandboxed, in a terminal of its own. It sees {sees} (files it saves anywhere else stay there). It cannot type into this shell or use the clipboard through the terminal.",
+            &[("app", &app.display_name()), ("sees", &sees)],
+        )
     )
 }
 
@@ -620,7 +649,7 @@ impl StatusChannels {
                 ch.helper_status = Some(open_fifo_reader(&helper_fifo)?);
             }
             let args = &command.args;
-            let sep = args.iter().position(|a| a == "--").context("pasta command without '--'")?;
+            let sep = args.iter().position(|a| a == "--").context(sam_core::i18n::tr("pasta command without '--'"))?;
             let mut out: Vec<String> = args[..=sep].to_vec();
             out.extend([
                 "/bin/sh".into(),
@@ -708,18 +737,18 @@ struct Outcome {
 fn judge_outcome(status: std::process::ExitStatus, err_head: &str, bwrap_json: Option<&str>, stop_marker: bool, kept_running_for: Option<u64>) -> Outcome {
     let code = status.code();
     let signal = status.signal();
-    let (mut sandbox_failure, mut summary) = classify_failure(code, err_head);
+    let (mut sandbox_failure, mut summary, bwrap_said) = classify_failure(code, err_head);
     // Verified setup failure: bwrap never announced the app's process.
     let setup_failed = bwrap_json.is_some_and(|j| !j.contains("\"child-pid\""));
-    if bwrap_json.is_some() && summary.starts_with("sandbox setup failed") && !setup_failed {
+    if bwrap_json.is_some() && bwrap_said && !setup_failed {
         // The sandbox was built; "bwrap:" lines came from the app itself.
         sandbox_failure = false;
         summary.clear();
     }
     if setup_failed {
         sandbox_failure = true;
-        if !summary.starts_with("sandbox setup failed") {
-            summary = "sandbox setup failed (Bubblewrap could not build the sandbox)".into();
+        if !bwrap_said {
+            summary = sam_core::i18n::tr("sandbox setup failed (Bubblewrap could not build the sandbox)");
         }
     }
     // `Sam::stop` (Close and Remove, `sam-jail stop`) asked the app to quit:
@@ -727,22 +756,22 @@ fn judge_outcome(status: std::process::ExitStatus, err_head: &str, bwrap_json: O
     let closed_by_sam = !setup_failed && stop_marker;
     if closed_by_sam {
         sandbox_failure = false;
-        summary = "closed by SAM".into();
+        summary = sam_core::i18n::tr("closed by SAM");
     }
     // Still running when the time was up: it started fine.
     let kept_running = kept_running_for.is_some() && !setup_failed && !sandbox_failure;
     if kept_running {
-        summary = format!("kept running for {} s (test start, ended by SAM)", kept_running_for.unwrap_or(0));
+        summary = sam_core::i18n::trf("kept running for {seconds} s (test start, ended by SAM)", &[("seconds", &kept_running_for.unwrap_or(0))]);
     }
     let success = status.success() || closed_by_sam || kept_running;
     if summary.is_empty() {
         summary = match (code, signal) {
-            (Some(0), _) => "exited normally".into(),
+            (Some(0), _) => sam_core::i18n::tr("exited normally"),
             (Some(c), _) => sam_core::i18n::trf("exited with code {code}", &[("code", &c)]),
-            (None, Some(11)) => "terminated by signal 11 (segmentation fault)".into(),
-            (None, Some(6)) => "terminated by signal 6 (abort)".into(),
+            (None, Some(11)) => sam_core::i18n::tr("ended by signal 11 (segmentation fault)"),
+            (None, Some(6)) => sam_core::i18n::tr("ended by signal 6 (abort)"),
             (None, Some(s)) => sam_core::i18n::trf("ended by signal {signal}", &[("signal", &s)]),
-            _ => "finished".into(),
+            _ => sam_core::i18n::tr("finished"),
         };
     }
     Outcome { success, sandbox_failure, setup_failed, summary }
@@ -938,7 +967,7 @@ mod tests {
         // A time limit does not hide an entry point that could not run.
         assert!(!judge_outcome(exited(127), "", started, false, Some(20)).success);
 
-        assert_eq!(judge_outcome(std::process::ExitStatus::from_raw(11), "", started, false, None).summary, "terminated by signal 11 (segmentation fault)");
+        assert_eq!(judge_outcome(std::process::ExitStatus::from_raw(11), "", started, false, None).summary, "ended by signal 11 (segmentation fault)");
 
         // Terminal programs: an exit code of their own is no failed start;
         // a crash, a missing entry point or a sandbox failure is.

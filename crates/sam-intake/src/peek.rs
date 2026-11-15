@@ -42,7 +42,7 @@ fn peek_unguarded(path: &Path) -> Result<Peek> {
     if info.kind != AppImageType::Type2 || info.payload != sam_detect::appimage::PayloadFormat::Squashfs {
         return Ok(Peek { metadata: AppImageMetadata::default(), icon: None });
     }
-    let offset = info.payload_offset.context("no payload offset")?;
+    let offset = info.payload_offset.context(sam_core::i18n::tr("no payload offset"))?;
     let reader = BufReader::new(std::fs::File::open(path)?);
     let sqfs = FilesystemReader::from_reader_with_offset(reader, offset).map_err(|e| anyhow!("{e}"))?;
 

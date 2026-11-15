@@ -24,8 +24,10 @@ pub struct Outcome {
     pub record: CheckRecord,
 }
 
+/// One check, with its group and title in the user's language (a title
+/// that arrives through a variable is marked with n_ where it is written).
 fn c(id: &str, group: &str, title: impl Into<String>, test: ProbeTest) -> ProbeCheck {
-    ProbeCheck { id: id.into(), group: group.into(), title: title.into(), test }
+    ProbeCheck { id: id.into(), group: sam_core::i18n::tr(group), title: sam_core::i18n::tr(&title.into()), test }
 }
 
 fn level(a: Perm) -> Access {
@@ -100,7 +102,10 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     // With full home access, the places that would start code later stay
     // closed (SAM mounts them read-only).
     if fs.home {
-        for (rel, title) in [(".config/autostart", "Autostart entries cannot be created"), (".local/share/applications", "Menu entries cannot be created")] {
+        for (rel, title) in [
+            (".config/autostart", sam_core::i18n::n_("Autostart entries cannot be created")),
+            (".local/share/applications", sam_core::i18n::n_("Menu entries cannot be created")),
+        ] {
             let path = host.home.join(rel);
             if path.is_dir() {
                 v.push(c("persist", "Files", title, ProbeTest::NotWritable { path }));
@@ -155,7 +160,11 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     v.push(c("x11", "Display", "X11 / XWayland", ProbeTest::X11 { expect: p.display.x11 && s.x11.is_some() }));
     v.push(c("audio", "Sound and devices", "Sound", ProbeTest::Audio { expect: p.audio.enabled && s.pulse.is_some() }));
     if s.pipewire.is_some() {
-        let label = if p.audio.pipewire { "Direct PipeWire access" } else { "Cameras and screen streams through PipeWire stay hidden" };
+        let label = if p.audio.pipewire {
+            sam_core::i18n::n_("Direct PipeWire access")
+        } else {
+            sam_core::i18n::n_("Cameras and screen streams through PipeWire stay hidden")
+        };
         v.push(c("pipewire", "Sound and devices", label, ProbeTest::PipeWire { expect: p.audio.pipewire }));
     }
 
@@ -204,10 +213,10 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
                 || p.effective_session_bus().allow.iter().any(|a| a == n || a.strip_suffix(".*").is_some_and(|pre| n.starts_with(pre)))
         };
         for (name, title) in [
-            ("org.freedesktop.portal.Desktop", "Desktop portal"),
-            ("org.freedesktop.systemd1", "Service manager (systemd)"),
-            ("org.freedesktop.secrets", "Passwords and keyring"),
-            ("org.kde.KWin", "Window manager (KWin)"),
+            ("org.freedesktop.portal.Desktop", sam_core::i18n::n_("Desktop portal")),
+            ("org.freedesktop.systemd1", sam_core::i18n::n_("Service manager (systemd)")),
+            ("org.freedesktop.secrets", sam_core::i18n::n_("Passwords and keyring")),
+            ("org.kde.KWin", sam_core::i18n::n_("Window manager (KWin)")),
         ] {
             if on_host(name) {
                 let want = allowed(name) && !p.dbus.session.deny.iter().any(|d| d == name);
@@ -272,7 +281,7 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     v.push(c(
         "userns",
         "Security",
-        if p.advanced.allow_userns { "Nested sandboxes allowed" } else { "Nested sandboxes blocked" },
+        if p.advanced.allow_userns { sam_core::i18n::n_("Nested sandboxes allowed") } else { sam_core::i18n::n_("Nested sandboxes blocked") },
         ProbeTest::UserNamespaces { blocked: !p.advanced.allow_userns },
     ));
     ProbePlan { checks: v }
@@ -322,7 +331,7 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
         command.env(k, v);
     }
     let mut child = command.spawn().with_context(|| format!("starting {}", cmd.program.display()))?;
-    let (mut out, mut err) = (child.stdout.take().context("no stdout")?, child.stderr.take().context("no stderr")?);
+    let (mut out, mut err) = (child.stdout.take().context(sam_core::i18n::tr("no stdout"))?, child.stderr.take().context(sam_core::i18n::tr("no stderr"))?);
     let out_t = std::thread::spawn(move || {
         let mut s = String::new();
         let _ = out.read_to_string(&mut s);
@@ -351,8 +360,8 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
     let json = stdout
         .lines()
         .find_map(|l| l.strip_prefix(probe::REPORT_MARKER))
-        .with_context(|| format!("the sandbox did not start: {}", stderr.lines().take(3).collect::<Vec<_>>().join(" ")))?;
-    let report: ProbeReport = serde_json::from_str(json).context("reading the check report")?;
+        .with_context(|| sam_core::i18n::trf("the sandbox did not start: {reason}", &[("reason", &stderr.lines().take(3).collect::<Vec<_>>().join(" "))]))?;
+    let report: ProbeReport = serde_json::from_str(json).context(sam_core::i18n::tr("reading the check report"))?;
     let record = CheckRecord {
         at: sam_core::util::now(),
         key: check_key(app, cfg, host),

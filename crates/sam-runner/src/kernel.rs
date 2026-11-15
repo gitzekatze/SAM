@@ -85,8 +85,8 @@ pub fn landlock_spec(p: &PermissionSet, host: &HostInfo, runtime_dir_in_sandbox:
 /// Entry point for `sam-jail-run --sandbox-exec <spec> -- <cmd...>`:
 /// apply restrictions and exec. Never returns on success.
 pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
-    let spec: SandboxSpec = serde_json::from_slice(&std::fs::read(spec_path).context("reading sandbox spec")?)?;
-    let (prog, rest) = argv.split_first().context("no command given")?;
+    let spec: SandboxSpec = serde_json::from_slice(&std::fs::read(spec_path).context(sam_core::i18n::tr("reading sandbox spec"))?)?;
+    let (prog, rest) = argv.split_first().context(sam_core::i18n::tr("no command given"))?;
     let mut report: Vec<String> = Vec::new();
     if let Some(ll) = &spec.landlock {
         match apply_landlock(ll) {
@@ -100,7 +100,7 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
     if let Some(sc) = &spec.seccomp {
         // A filter that fails to load must stop the launch: running without
         // it while the UI says it is on would be false confidence.
-        apply_seccomp(sc).context("loading the seccomp filter")?;
+        apply_seccomp(sc).context(sam_core::i18n::tr("loading the seccomp filter"))?;
         report.push(format!("seccomp: {} loaded", if sc.strict { "strict" } else { "baseline" }));
     }
     // Report to SAM on a private fd, then close it before the app runs, so

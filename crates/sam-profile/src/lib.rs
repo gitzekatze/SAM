@@ -44,21 +44,22 @@ impl Category {
             Category::Utility => "utility",
         }
     }
-    pub fn label(self) -> &'static str {
-        match self {
-            Category::Browser => "Browser",
-            Category::MediaPlayer => "Media player",
-            Category::ImageEditor => "Image editor",
-            Category::VideoEditor => "Video editor",
-            Category::AudioEditor => "Audio editor",
-            Category::Game => "Game",
-            Category::TextEditor => "Text editor",
-            Category::Office => "Office",
-            Category::Terminal => "Terminal",
-            Category::Development => "Development",
-            Category::Communication => "Communication",
-            Category::Utility => "Utility",
-        }
+    /// The category's name, in the user's language.
+    pub fn label(self) -> String {
+        sam_core::i18n::tr(match self {
+            Category::Browser => sam_core::i18n::n_("Browser"),
+            Category::MediaPlayer => sam_core::i18n::n_("Media player"),
+            Category::ImageEditor => sam_core::i18n::n_("Image editor"),
+            Category::VideoEditor => sam_core::i18n::n_("Video editor"),
+            Category::AudioEditor => sam_core::i18n::n_("Audio editor"),
+            Category::Game => sam_core::i18n::n_("Game"),
+            Category::TextEditor => sam_core::i18n::n_("Text editor"),
+            Category::Office => sam_core::i18n::n_("Office"),
+            Category::Terminal => sam_core::i18n::n_("Terminal"),
+            Category::Development => sam_core::i18n::n_("Development"),
+            Category::Communication => sam_core::i18n::n_("Communication"),
+            Category::Utility => sam_core::i18n::n_("Utility"),
+        })
     }
     pub fn parse(s: &str) -> Option<Self> {
         ALL_CATEGORIES.iter().copied().find(|c| c.as_str() == s)
@@ -275,59 +276,62 @@ pub fn own_bus_names(md: &AppImageMetadata) -> Vec<String> {
 pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&DependencyReport>) -> Recommendation {
     let category = infer_category(md, file_name, report);
     let mut p = base_for(category);
-    let mut notes = vec![format!("Category: {} (from desktop metadata and name)", category.label())];
+    let mut notes = vec![sam_core::i18n::trf("Category: {category} (from desktop metadata and name)", &[("category", &category.label())])];
 
     if let Some(r) = report {
         let req = &r.requirements;
         if req.gpu && !p.devices.gpu {
             p.devices.gpu = true;
-            notes.push("GPU enabled: the app links OpenGL/Vulkan libraries".into());
+            notes.push(sam_core::i18n::tr("GPU enabled: the app links OpenGL/Vulkan libraries"));
         }
         if req.audio && !p.audio.enabled {
             p.audio.enabled = true;
-            notes.push("Audio enabled: the app links audio libraries".into());
+            notes.push(sam_core::i18n::tr("Audio enabled: the app links audio libraries"));
         }
         if req.x11 && !req.wayland {
             p.display.x11 = true;
-            notes.push("X11 enabled: no Wayland support detected (uses XWayland)".into());
+            notes.push(sam_core::i18n::tr("X11 enabled: no Wayland support detected (uses XWayland)"));
         } else if req.x11 && (req.java || matches!(req.toolkit.as_str(), "Electron" | "Java" | "Unknown")) {
             // Java's AWT and JavaFX draw through X11 only, whatever toolkit
             // they load (JavaFX uses GTK on X11).
             p.display.x11 = true;
-            notes.push(format!("X11 enabled: {} apps usually need XWayland", if req.java { "Java" } else { req.toolkit.as_str() }));
+            notes.push(sam_core::i18n::trf(
+                "X11 enabled: {toolkit} apps usually need XWayland",
+                &[("toolkit", &if req.java { "Java" } else { req.toolkit.as_str() })],
+            ));
         }
         if !req.x11 && !req.wayland && r.elf_count > 0 && req.toolkit == "Unknown" {
             // Nothing linked: the app loads its graphics stack at start
             // (Rust/wgpu, game engines). Those need the GPU to open a window.
             if !p.devices.gpu {
                 p.devices.gpu = true;
-                notes.push("GPU enabled: the app loads its graphics libraries at start (common for Rust apps and game engines)".into());
+                notes.push(sam_core::i18n::tr("GPU enabled: the app loads its graphics libraries at start (common for Rust apps and game engines)"));
             }
-            notes.push("No display libraries detected; if the window does not appear, enable X11".into());
+            notes.push(sam_core::i18n::tr("No display libraries detected; if the window does not appear, enable X11"));
         }
         if req.network && p.network.mode == NetworkMode::None {
             if category == Category::Game {
                 p.network.mode = NetworkMode::Full;
-                notes.push("Network enabled: game links networking libraries (multiplayer is likely)".into());
+                notes.push(sam_core::i18n::tr("Network enabled: game links networking libraries (multiplayer is likely)"));
             } else if !needs_network_by_purpose(md, file_name) {
-                notes.push("The app links networking libraries but its category does not need the network; network stays off".into());
+                notes.push(sam_core::i18n::tr("The app links networking libraries but its category does not need the network; network stays off"));
             }
         }
         if req.electron {
             p.advanced.allow_userns = true;
-            notes.push("Electron app: nested namespaces allowed so Chromium's own sandbox can start".into());
+            notes.push(sam_core::i18n::tr("Electron app: nested namespaces allowed so Chromium's own sandbox can start"));
         } else if req.nested_sandbox {
             p.advanced.allow_userns = true;
-            notes.push("Nested namespaces allowed: the app's web engine (Chromium or WebKit) starts its own sandbox".into());
+            notes.push(sam_core::i18n::tr("Nested namespaces allowed: the app's web engine (Chromium or WebKit) starts its own sandbox"));
         }
         if r.arch == "i686" {
             // The syscall filter is built for 64-bit programs; a 32-bit one
             // is stopped by its architecture check at the first call.
             p.advanced.seccomp_baseline = false;
-            notes.push("32-bit app: the baseline syscall filter is off, because it only supports 64-bit programs and would stop the app".into());
+            notes.push(sam_core::i18n::tr("32-bit app: the baseline syscall filter is off, because it only supports 64-bit programs and would stop the app"));
         }
         if r.compatibility != sam_core::Compatibility::Good {
-            notes.push("Compatibility issues were detected; see the dependency report".into());
+            notes.push(sam_core::i18n::tr("Compatibility issues were detected; see the dependency report"));
         }
     }
     // Terminal programs run in the terminal that starts them: no window,
@@ -337,18 +341,18 @@ pub fn recommend(md: &AppImageMetadata, file_name: &str, report: Option<&Depende
         p.display.x11 = false;
         p.devices.gpu = false;
         p.dbus.session.mode = sam_core::permissions::DbusMode::None;
-        notes.push("Terminal program: no display, GPU or desktop services; it runs in a terminal window".into());
+        notes.push(sam_core::i18n::tr("Terminal program: no display, GPU or desktop services; it runs in a terminal window"));
     }
     if p.network.mode == NetworkMode::None && needs_network_by_purpose(md, file_name) {
         p.network.mode = NetworkMode::Full;
-        notes.push("Network enabled: this looks like an AI, web-UI or server app, which talks to models or services over the network. If it only uses local models, 'This computer only' blocks the internet but keeps local servers reachable.".into());
+        notes.push(sam_core::i18n::tr("Network enabled: this looks like an AI, web-UI or server app, which talks to models or services over the network. If it only uses local models, 'This computer only' blocks the internet but keeps local servers reachable."));
     }
     // Desktop integrations.
     if category == Category::MediaPlayer {
         // Players only need to read the files they are given.
         p.filesystem.opened_files = Access::Ro;
         p.integrations.media_controls = true;
-        notes.push("Media controls enabled: media keys, 'now playing' and keeping the screen awake".into());
+        notes.push(sam_core::i18n::tr("Media controls enabled: media keys, 'now playing' and keeping the screen awake"));
     }
     if XDG_DIR_KEYS.iter().any(|k| p.filesystem.xdg_access(k).is_granted()) {
         p.integrations.file_manager = true;
@@ -473,9 +477,9 @@ pub fn check_change(app: &AppEntry, new: &PermissionSet) -> ChangeCheck {
     removed(need.devices.gpu && !new.devices.gpu, "GPU acceleration");
     removed(need.audio.enabled && !new.audio.enabled, "sound");
     removed(need.network.mode == NetworkMode::Full && new.network.mode != NetworkMode::Full, "network access");
-    removed(need.network.mode == NetworkMode::Localhost && new.network.mode == NetworkMode::None, "connections to this computer");
+    removed(need.network.mode == NetworkMode::Localhost && new.network.mode == NetworkMode::None, &sam_core::i18n::tr("connections to this computer"));
     removed(need.display.x11 && !new.display.x11 && !(need.display.wayland && new.display.wayland && !needs_x11_only(app)), "X11 display");
-    removed(!new.display.x11 && !new.display.wayland && (need.display.x11 || need.display.wayland), "any display access");
+    removed(!new.display.x11 && !new.display.wayland && (need.display.x11 || need.display.wayland), &sam_core::i18n::tr("any display access"));
     removed(need.dbus.session.mode != DbusMode::None && new.dbus.session.mode == DbusMode::None, "desktop services (D-Bus)");
     for key in XDG_DIR_KEYS {
         if need.filesystem.xdg_access(key).is_granted() && !new.filesystem.xdg_access(key).is_granted() {
@@ -600,7 +604,7 @@ mod tests {
         new.network.mode = NetworkMode::None;
         new.dbus.session.mode = DbusMode::None;
         let c = check_change(&app, &new);
-        assert!(c.removes_needed.iter().any(|s| s == "connections to this computer"));
+        assert!(c.removes_needed.iter().any(|s| s == &sam_core::i18n::tr("connections to this computer")));
         assert!(c.removes_needed.iter().any(|s| s.contains("D-Bus")));
     }
 

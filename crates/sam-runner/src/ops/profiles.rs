@@ -205,7 +205,7 @@ impl Sam {
             .position(|r| r.step.as_ref().is_some_and(|s| s.id == step_id))
             .with_context(|| sam_core::i18n::trf("the repair step '{step_id}' is not applied", &[("step_id", &step_id)]))?;
         let r = e.applied_repairs.remove(i);
-        let step = r.step.clone().context("damaged repair record")?;
+        let step = r.step.clone().context(sam_core::i18n::tr("damaged repair record"))?;
         match &step.action {
             FixAction::Set { .. } => {
                 for (key, old) in &r.before {

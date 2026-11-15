@@ -430,9 +430,9 @@ fn denied_home_path(line: &str) -> Option<String> {
 fn words(key: &str) -> (String, String) {
     let info = sam_core::permissions::permission_catalog().into_iter().find(|i| i.key == key);
     let title = match key {
-        "network.mode" => "Full network".to_string(),
-        "dbus.session.mode" => "Session bus: full access".to_string(),
-        "advanced.host_runtime" => "All of /usr".to_string(),
+        "network.mode" => tr("Full network"),
+        "dbus.session.mode" => tr("Session bus: full access"),
+        "advanced.host_runtime" => tr("All of /usr"),
         _ => info.as_ref().map(|i| i.title.to_string()).unwrap_or_else(|| key.to_string()),
     };
     (title, info.map(|i| i.description.to_string()).unwrap_or_default())
@@ -452,22 +452,30 @@ pub fn effect(s: &Suggestion, p: &PermissionSet) -> String {
         FixAction::Set { key, value } => {
             let (title, desc) = words(key);
             let off = matches!(value.as_str(), "false" | "none" | "minimal");
-            format!("{} “{}”. {}", if off { "Turns off" } else { "Turns on" }, if off { words_plain(key) } else { title }, desc)
+            // Whole sentences, so a translation can place the setting freely.
+            if off {
+                sam_core::i18n::trf("Turns off “{setting}”. {explanation}", &[("setting", &words_plain(key)), ("explanation", &desc)])
+            } else {
+                sam_core::i18n::trf("Turns on “{setting}”. {explanation}", &[("setting", &title), ("explanation", &desc)])
+            }
         }
         FixAction::Add { key, value } => {
             let (title, desc) = words(key);
-            format!("Adds {value} to “{title}”. {desc}")
+            sam_core::i18n::trf("Adds {value} to “{setting}”. {explanation}", &[("value", &value), ("setting", &title), ("explanation", &desc)])
         }
         FixAction::Compat => {
             let c = compat_changes(p);
             if c.is_empty() {
-                "Compatibility mode changes nothing more for these settings.".into()
+                tr("Compatibility mode changes nothing more for these settings.")
             } else {
-                format!("Turns on: {}. Each of these weakens the sandbox; once the app works, try turning them off one by one.", c.join(", "))
+                sam_core::i18n::trf(
+                    "Turns on: {settings}. Each of these weakens the sandbox; once the app works, try turning them off one by one.",
+                    &[("settings", &c.join(", "))],
+                )
             }
         }
         FixAction::AddArg { value } if value == "--no-sandbox" => {
-            "Starts the app with --no-sandbox, which turns off the app's own internal sandbox; SAM's sandbox stays.".into()
+            tr("Starts the app with --no-sandbox, which turns off the app's own internal sandbox; SAM's sandbox stays.")
         }
         FixAction::AddArg { value } => sam_core::i18n::trf("Starts the app with {value} every time.", &[("value", &value)]),
         FixAction::None => String::new(),

@@ -16,7 +16,7 @@ pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bo
     let path = address
         .split(';')
         .find_map(|a| a.strip_prefix("unix:").and_then(|rest| rest.split(',').find_map(|kv| kv.strip_prefix("path="))))
-        .context("only unix:path= bus addresses are supported")?;
+        .context(sam_core::i18n::tr("only unix:path= bus addresses are supported"))?;
     let mut s = UnixStream::connect(path).with_context(|| format!("connecting to {path}"))?;
     s.set_read_timeout(Some(timeout))?;
     s.set_write_timeout(Some(timeout))?;

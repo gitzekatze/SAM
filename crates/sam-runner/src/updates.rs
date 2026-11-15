@@ -62,7 +62,7 @@ pub struct Published {
 /// What the source publishes: `Ok(None)` when one of the published files
 /// is exactly `appimage` (it is current).
 pub fn newest(appimage: &Path) -> Result<Option<Published>> {
-    let source = update_info::read(appimage).context("this AppImage does not say where updates are published")?;
+    let source = update_info::read(appimage).context(sam_core::i18n::tr("this AppImage does not say where updates are published"))?;
     newest_from(appimage, &source)
 }
 
@@ -77,7 +77,7 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
             } else {
                 format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}")
             };
-            let json: serde_json::Value = serde_json::from_slice(&fetch(&api, None)?).context("GitHub's answer")?;
+            let json: serde_json::Value = serde_json::from_slice(&fetch(&api, None)?).context(sam_core::i18n::tr("GitHub's answer"))?;
             let tag_name = json.get("tag_name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
             let page = json.get("html_url").and_then(|v| v.as_str()).map(str::to_string);
             let urls: Vec<String> = json
@@ -106,8 +106,8 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
             first = Some((url.clone(), h));
         }
     }
-    let (zsync_url, h) = first.context("no update description")?;
-    let file_url = resolve(&zsync_url, h.url.as_deref().or(h.filename.as_deref()).context("the update description names no file")?)?;
+    let (zsync_url, h) = first.context(sam_core::i18n::tr("no update description"))?;
+    let file_url = resolve(&zsync_url, h.url.as_deref().or(h.filename.as_deref()).context(sam_core::i18n::tr("the update description names no file"))?)?;
     Ok(Some(Published {
         file_url,
         sha1: h.sha1.to_ascii_lowercase(),
@@ -151,7 +151,7 @@ fn resolve(zsync_url: &str, file: &str) -> Result<String> {
     if file.is_empty() || file.contains("..") || file.starts_with('/') {
         bail!("the update description names an unusable file ({})", sam_core::util::display_safe(file, 80));
     }
-    let base = zsync_url.rsplit_once('/').map(|(b, _)| b).context("bad update address")?;
+    let base = zsync_url.rsplit_once('/').map(|(b, _)| b).context(sam_core::i18n::tr("bad update address"))?;
     Ok(format!("{base}/{file}"))
 }
 
@@ -207,9 +207,10 @@ fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetch
 /// Bytes `start..end` of `url` (an HTTP range request).
 fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
-        bail!("not HTTPS");
+        bail!("{}", sam_core::i18n::tr("not HTTPS"));
     }
-    let curl = sam_core::util::which("curl").context("curl is not installed, so SAM cannot check for or download updates. Install the package curl.")?;
+    let curl = sam_core::util::which("curl")
+        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     let out = Command::new(curl)
         .args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
         .args(["--max-redirs", "5", "--connect-timeout", "15", "--speed-limit", "1024", "--speed-time", "60"])
@@ -235,7 +236,8 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
     if !p.file_url.starts_with("https://") {
         bail!("{}", sam_core::i18n::tr("the update file is not offered over HTTPS"));
     }
-    let curl = sam_core::util::which("curl").context("curl is not installed, so SAM cannot check for or download updates. Install the package curl.")?;
+    let curl = sam_core::util::which("curl")
+        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     let mut cmd = Command::new(curl);
     cmd.args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
         .args(["--max-redirs", "5", "--connect-timeout", "15", "--speed-limit", "1024", "--speed-time", "60"])
@@ -243,7 +245,7 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
     if let Some(len) = p.length {
         cmd.args(["--max-filesize", &(len + 1).to_string()]);
     }
-    let out = cmd.arg("--output").arg(dest).arg("--").arg(&p.file_url).stdin(Stdio::null()).output().context("starting curl")?;
+    let out = cmd.arg("--output").arg(dest).arg("--").arg(&p.file_url).stdin(Stdio::null()).output().context(sam_core::i18n::tr("starting curl"))?;
     if !out.status.success() {
         bail!("download failed: {}", curl_error(&String::from_utf8_lossy(&out.stderr)));
     }
@@ -319,7 +321,8 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
         bail!("the update address is not HTTPS ({})", sam_core::util::display_safe(url, 120));
     }
-    let curl = sam_core::util::which("curl").context("curl is not installed, so SAM cannot check for or download updates. Install the package curl.")?;
+    let curl = sam_core::util::which("curl")
+        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     let mut cmd = Command::new(curl);
     cmd.args(["--silent", "--show-error", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https"])
         .args(["--max-redirs", "5", "--connect-timeout", "10", "--max-time", "30"])
@@ -328,10 +331,10 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
         cmd.args(["--range", &format!("0-{}", n - 1)]);
     }
     cmd.arg("--").arg(url).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().context("starting curl")?;
+    let mut child = cmd.spawn().context(sam_core::i18n::tr("starting curl"))?;
     let max = limit.unwrap_or(MAX_ANSWER);
     let mut out = Vec::new();
-    child.stdout.take().context("curl output")?.take(max as u64).read_to_end(&mut out)?;
+    child.stdout.take().context(sam_core::i18n::tr("curl output"))?.take(max as u64).read_to_end(&mut out)?;
     // Servers that ignore the range send everything: enough was read.
     if out.len() >= max {
         let _ = child.kill();

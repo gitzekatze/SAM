@@ -52,7 +52,7 @@ pub fn home_dir() -> PathBuf {
 
 /// Write a file atomically (write to temp file in same dir, then rename).
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
-    let dir = path.parent().context("path has no parent")?;
+    let dir = path.parent().context(crate::i18n::tr("path has no parent"))?;
     fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     let tmp = dir.join(format!(".{}.tmp-{}", path.file_name().and_then(OsStr::to_str).unwrap_or("file"), std::process::id()));
     {

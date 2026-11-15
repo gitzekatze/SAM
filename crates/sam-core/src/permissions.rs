@@ -261,20 +261,20 @@ pub const PORTAL_NAME: &str = "org.freedesktop.portal.Desktop";
 /// run scripts in the desktop shell, change any setting, bypass the portal
 /// filter), with the reason. Exact names and prefixes ending in `.`.
 const DANGEROUS_BUS_NAMES: &[(&str, &str)] = &[
-    ("org.freedesktop.systemd1", "can start any program outside the sandbox"),
-    ("org.freedesktop.Flatpak", "can start programs outside the sandbox"),
-    ("org.freedesktop.portal.Flatpak", "can start new sandboxes and programs"),
-    ("org.freedesktop.impl.portal.", "bypasses the portal and its prompts"),
-    ("org.kde.KWin", "can run scripts in the window manager"),
-    ("org.kde.plasmashell", "can run scripts in the desktop shell"),
-    ("org.kde.klauncher", "can start programs outside the sandbox"),
-    ("org.kde.kded", "controls desktop background services"),
-    ("org.kde.krunner", "can run commands"),
-    ("org.kde.ksmserver", "controls the session (log out, restore programs)"),
-    ("org.kde.kglobalaccel", "can register global shortcuts and observe key presses"),
-    ("org.gnome.Shell", "can run scripts in the desktop shell"),
-    ("org.gnome.SessionManager", "controls the session"),
-    ("ca.desrt.dconf", "can change any desktop setting, including autostart"),
+    ("org.freedesktop.systemd1", crate::i18n::n_("can start any program outside the sandbox")),
+    ("org.freedesktop.Flatpak", crate::i18n::n_("can start programs outside the sandbox")),
+    ("org.freedesktop.portal.Flatpak", crate::i18n::n_("can start new sandboxes and programs")),
+    ("org.freedesktop.impl.portal.", crate::i18n::n_("bypasses the portal and its prompts")),
+    ("org.kde.KWin", crate::i18n::n_("can run scripts in the window manager")),
+    ("org.kde.plasmashell", crate::i18n::n_("can run scripts in the desktop shell")),
+    ("org.kde.klauncher", crate::i18n::n_("can start programs outside the sandbox")),
+    ("org.kde.kded", crate::i18n::n_("controls desktop background services")),
+    ("org.kde.krunner", crate::i18n::n_("can run commands")),
+    ("org.kde.ksmserver", crate::i18n::n_("controls the session (log out, restore programs)")),
+    ("org.kde.kglobalaccel", crate::i18n::n_("can register global shortcuts and observe key presses")),
+    ("org.gnome.Shell", crate::i18n::n_("can run scripts in the desktop shell")),
+    ("org.gnome.SessionManager", crate::i18n::n_("controls the session")),
+    ("ca.desrt.dconf", crate::i18n::n_("can change any desktop setting, including autostart")),
 ];
 
 /// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
@@ -285,15 +285,15 @@ const DANGEROUS_BUS_NAMES: &[(&str, &str)] = &[
 pub fn dangerous_socket(path: &str) -> Option<String> {
     let p = path.trim();
     let bad: &[(&str, &str)] = &[
-        ("docker.sock", "controls Docker, which equals full control of the computer"),
-        ("podman.sock", "controls Podman containers on this computer"),
-        ("containerd.sock", "controls containers on this computer"),
-        ("/run/dbus/system_bus_socket", "is the system bus, unfiltered"),
-        ("systemd/private", "controls systemd"),
-        ("/bus", "is a D-Bus socket, which bypasses SAM's D-Bus filter"),
-        ("libvirt", "controls virtual machines"),
+        ("docker.sock", crate::i18n::n_("controls Docker, which equals full control of the computer")),
+        ("podman.sock", crate::i18n::n_("controls Podman containers on this computer")),
+        ("containerd.sock", crate::i18n::n_("controls containers on this computer")),
+        ("/run/dbus/system_bus_socket", crate::i18n::n_("is the system bus, unfiltered")),
+        ("systemd/private", crate::i18n::n_("controls systemd")),
+        ("/bus", crate::i18n::n_("is a D-Bus socket, which bypasses SAM's D-Bus filter")),
+        ("libvirt", crate::i18n::n_("controls virtual machines")),
     ];
-    bad.iter().find(|(needle, _)| p.contains(needle)).map(|(_, why)| format!("{p} {why}"))
+    bad.iter().find(|(needle, _)| p.contains(needle)).map(|(_, why)| format!("{p} {}", crate::i18n::tr(why)))
 }
 
 /// True when a bus-name pattern (`org.kde.*`, `org.kde*`, exact) covers `name`.
@@ -349,7 +349,7 @@ pub fn dangerous_bus_name(name: &str) -> Option<String> {
             }
         };
         if hit {
-            return Some(format!("{name} {why}"));
+            return Some(format!("{name} {}", crate::i18n::tr(why)));
         }
     }
     None
@@ -673,7 +673,7 @@ impl PermissionSet {
     pub fn set_key(&mut self, key: &str, raw: &str) -> Result<()> {
         let mut v = serde_json::to_value(&*self)?;
         let parts: Vec<&str> = key.split('.').collect();
-        let (last, parents) = parts.split_last().context("empty key")?;
+        let (last, parents) = parts.split_last().context(crate::i18n::tr("empty key"))?;
         let mut cur = &mut v;
         for part in parents {
             cur = cur.get_mut(*part).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])))?;

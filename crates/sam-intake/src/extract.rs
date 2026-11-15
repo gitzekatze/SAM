@@ -157,7 +157,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         AppImageType::Type2 if req.info.payload == sam_detect::appimage::PayloadFormat::Dwarfs => {
             // DwarFS (uruntime): unpacked by the dwarfs tools, inside the
             // same minimal sandbox as the other extractors.
-            let off = req.info.payload_offset.context("no payload offset")?;
+            let off = req.info.payload_offset.context(sam_core::i18n::tr("no payload offset"))?;
             if let Some(d) = which("dwarfsextract") {
                 methods.push((
                     "dwarfsextract",
@@ -175,11 +175,12 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                     }),
                 ));
             } else {
-                attempts.push("this AppImage uses a DwarFS image; install the dwarfs tools (dwarfsextract) to unpack it without running it".into());
+                attempts
+                    .push(sam_core::i18n::tr("this AppImage uses a DwarFS image; install the dwarfs tools (dwarfsextract) to unpack it without running it"));
             }
         }
         AppImageType::Type2 => {
-            let off = req.info.payload_offset.context("no payload offset")?;
+            let off = req.info.payload_offset.context(sam_core::i18n::tr("no payload offset"))?;
             methods.push((
                 "builtin-squashfs",
                 Box::new(move |dst: &Path, log: &mut dyn Write| match &req.isolation {
@@ -248,7 +249,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                     }),
                 ));
             } else {
-                attempts.push("bsdtar (libarchive) is not installed".into());
+                attempts.push(sam_core::i18n::tr("bsdtar (libarchive) is not installed"));
             }
         }
         AppImageType::Unknown => bail!("{} is not a recognized AppImage", req.source.display()),
@@ -399,7 +400,7 @@ fn builtin_squashfs(src: &Path, offset: u64, dst: &Path, limits: &Limits, starte
         };
         let parent_rel = rel.parent().unwrap_or(Path::new(""));
         let parent = safe_mkdirs(dst, parent_rel)?;
-        let target = parent.join(rel.file_name().context("entry without name")?);
+        let target = parent.join(rel.file_name().context(sam_core::i18n::tr("entry without name"))?);
         match &node.inner {
             InnerNode::Dir(_) => {
                 safe_mkdirs(dst, &rel)?;
@@ -443,7 +444,12 @@ fn wait_with_timeout(mut child: std::process::Child, limits: &Limits, started: I
 
 fn run_tool(cmd: &mut Command, limits: &Limits, started: Instant, log: &mut dyn Write) -> Result<()> {
     let errf = tempfile_in_tmp()?;
-    let child = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::from(errf.try_clone()?)).spawn().context("spawning extraction tool")?;
+    let child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(errf.try_clone()?))
+        .spawn()
+        .context(sam_core::i18n::tr("spawning extraction tool"))?;
     let st = wait_with_timeout(child, limits, started)?;
     let mut err = String::new();
     let mut f = errf;
@@ -469,7 +475,7 @@ fn tempfile_in_tmp() -> Result<File> {
 /// Run `<appimage> --appimage-extract` inside a minimal bubblewrap sandbox:
 /// no network, no home, read-only system, only the staging dir writable.
 fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: Instant, log: &mut dyn Write) -> Result<()> {
-    let bwrap = which("bwrap").context("bubblewrap is required for sandboxed fallback extraction")?;
+    let bwrap = which("bwrap").context(sam_core::i18n::tr("bubblewrap is required for sandboxed fallback extraction"))?;
     let work = staging.with_extension("work");
     if work.exists() {
         fs::remove_dir_all(&work)?;
@@ -485,8 +491,8 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
         if executable {
             src.to_path_buf()
         } else {
-            fs::copy(src, &exe_copy).context("copying the AppImage to run its extractor")?;
-            fs::set_permissions(&exe_copy, fs::Permissions::from_mode(0o755)).context("making the copy executable")?;
+            fs::copy(src, &exe_copy).context(sam_core::i18n::tr("copying the AppImage to run its extractor"))?;
+            fs::set_permissions(&exe_copy, fs::Permissions::from_mode(0o755)).context(sam_core::i18n::tr("making the copy executable"))?;
             exe_copy.clone()
         }
     };
@@ -517,7 +523,7 @@ fn self_extract_sandboxed(src: &Path, staging: &Path, limits: &Limits, started: 
         .find(|p| p.starts_with(fs::canonicalize(&work).unwrap_or_else(|_| work.clone())) && p.is_dir());
     let Some(out) = out else {
         let _ = fs::remove_dir_all(&work);
-        bail!("--appimage-extract produced no squashfs-root");
+        bail!("{}", sam_core::i18n::tr("--appimage-extract produced no squashfs-root"));
     };
     fs::rename(&out, staging).with_context(|| format!("moving the unpacked app to {}", staging.display()))?;
     let _ = fs::remove_dir_all(&work);

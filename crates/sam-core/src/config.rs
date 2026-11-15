@@ -274,7 +274,7 @@ impl Config {
         use serde_json::Value;
         let mut v = serde_json::to_value(&*self)?;
         let parts: Vec<&str> = key.split('.').collect();
-        let (last, parents) = parts.split_last().context("empty key")?;
+        let (last, parents) = parts.split_last().context(crate::i18n::tr("empty key"))?;
         let mut cur = &mut v;
         for p in parents {
             cur = cur.get_mut(*p).ok_or_else(|| anyhow!("{}", crate::i18n::trf("unknown config key '{key}'", &[("key", &key)])))?;

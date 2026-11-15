@@ -71,10 +71,12 @@ fn hdr(mode: u16) -> NodeHeader {
 
 pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
     // Runtime stub.
-    let elf_src =
-        ["/usr/bin/true", "/bin/true", "/usr/bin/env"].iter().find(|p| Path::new(p).exists()).context("no host ELF available for the runtime stub")?;
+    let elf_src = ["/usr/bin/true", "/bin/true", "/usr/bin/env"]
+        .iter()
+        .find(|p| Path::new(p).exists())
+        .context(sam_core::i18n::tr("no host ELF available for the runtime stub"))?;
     let elf = std::fs::read(elf_src)?;
-    let end = sam_detect::appimage::elf_end_offset(&elf).context("cannot parse host ELF")? as usize;
+    let end = sam_detect::appimage::elf_end_offset(&elf).context(sam_core::i18n::tr("cannot parse host ELF"))? as usize;
     let mut out = elf[..end.min(elf.len())].to_vec();
     out.resize(end, 0);
     out[8] = b'A';

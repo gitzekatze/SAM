@@ -53,7 +53,7 @@ pub fn start(display: &Path, runtime_dir: &Path, app_id: &str, instance: &str) -
     let socket = runtime_dir.join("wayland-0");
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket).with_context(|| format!("creating {}", socket.display()))?;
-    let (close_r, close_w) = std::io::pipe().context("creating the close pipe")?;
+    let (close_r, close_w) = std::io::pipe().context(sam_core::i18n::tr("creating the close pipe"))?;
     let ctx = manager.create_listener(listener.as_fd(), close_r.as_fd(), &qh, ());
     ctx.set_sandbox_engine(ENGINE.into());
     ctx.set_app_id(app_id.into());
@@ -63,7 +63,7 @@ pub fn start(display: &Path, runtime_dir: &Path, app_id: &str, instance: &str) -
     manager.destroy();
     // The compositor answers a refused context (e.g. SAM itself running in
     // a sandbox) with a protocol error, which the round trip reports.
-    queue.roundtrip(&mut State).context("the compositor refused the security context")?;
+    queue.roundtrip(&mut State).context(sam_core::i18n::tr("the compositor refused the security context"))?;
     // The compositor keeps its own copies of the listening socket and the
     // read end; ours can go.
     drop(listener);
@@ -75,8 +75,8 @@ type Connected = (Connection, wayland_client::globals::GlobalList, wayland_clien
 
 fn connect(display: &Path) -> Result<Connected> {
     let stream = UnixStream::connect(display).with_context(|| format!("connecting to {}", display.display()))?;
-    let conn = Connection::from_socket(stream).context("Wayland connection")?;
-    let (globals, queue) = registry_queue_init::<State>(&conn).context("reading the compositor's globals")?;
+    let conn = Connection::from_socket(stream).context(sam_core::i18n::tr("Wayland connection"))?;
+    let (globals, queue) = registry_queue_init::<State>(&conn).context(sam_core::i18n::tr("reading the compositor's globals"))?;
     Ok((conn, globals, queue))
 }
 

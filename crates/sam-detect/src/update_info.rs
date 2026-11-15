@@ -44,8 +44,12 @@ pub fn write(path: &Path, info: &str) -> anyhow::Result<()> {
     use std::io::{Seek, SeekFrom, Write};
     anyhow::ensure!(parse(info).is_some(), "not an update information string SAM understands: {info}");
     let data = std::fs::read(path)?;
-    let elf = goblin::elf::Elf::parse(&data).context("not an ELF file")?;
-    let sh = elf.section_headers.iter().find(|sh| elf.shdr_strtab.get_at(sh.sh_name) == Some(".upd_info")).context("the runtime has no .upd_info section")?;
+    let elf = goblin::elf::Elf::parse(&data).context(sam_core::i18n::tr("not an ELF file"))?;
+    let sh = elf
+        .section_headers
+        .iter()
+        .find(|sh| elf.shdr_strtab.get_at(sh.sh_name) == Some(".upd_info"))
+        .context(sam_core::i18n::tr("the runtime has no .upd_info section"))?;
     anyhow::ensure!(info.len() < sh.sh_size as usize, ".upd_info holds only {} bytes", sh.sh_size);
     let mut buf = vec![0u8; sh.sh_size as usize];
     buf[..info.len()].copy_from_slice(info.as_bytes());

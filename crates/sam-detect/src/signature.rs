@@ -59,12 +59,12 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
     };
     let digest = digest_without(path, &[sig_range, key_range])?;
 
-    let tmp = tempfile::tempdir().context("temporary folder")?;
+    let tmp = tempfile::tempdir().context(sam_core::i18n::tr("temporary folder"))?;
     let home = tmp.path();
     std::fs::write(home.join("key.asc"), &key)?;
     std::fs::write(home.join("digest"), digest.as_bytes())?;
     std::fs::write(home.join("digest.sig"), &sig)?;
-    let gpg = sam_core::util::which("gpg").context("GnuPG (gpg) is needed to read the signer's key")?;
+    let gpg = sam_core::util::which("gpg").context(sam_core::i18n::tr("GnuPG (gpg) is needed to read the signer's key"))?;
     // Keyring for gpgv, plus the key's fingerprint.
     let keyring = home.join("keyring.gpg");
     let st = Command::new(&gpg)
@@ -179,8 +179,8 @@ fn trim_zeros(b: &[u8]) -> &[u8] {
 pub fn sign_for_test(path: &Path, gpg_home: &Path, key_id: &str) -> Result<()> {
     let mut data = Vec::new();
     File::open(path)?.read_to_end(&mut data)?;
-    let (sig_range, key_range) = sections(&data).context("no signature sections")?;
-    let gpg = sam_core::util::which("gpg").context("gpg missing")?;
+    let (sig_range, key_range) = sections(&data).context(sam_core::i18n::tr("no signature sections"))?;
+    let gpg = sam_core::util::which("gpg").context(sam_core::i18n::tr("gpg missing"))?;
     let key = Command::new(&gpg).arg("--homedir").arg(gpg_home).args(["--batch", "--armor", "--export", key_id]).output()?.stdout;
     anyhow::ensure!(key.len() <= key_range.len(), "key too large");
     let mut zeroed = data.clone();

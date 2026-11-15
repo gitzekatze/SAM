@@ -9,13 +9,19 @@ impl Sam {
     /// Re-extract after an update or failure.
     pub fn reextract(&self, query: &str, consent_fallback: bool) -> Result<AppEntry> {
         let mut entry = self.resolve(query)?;
-        self.ensure_not_running(&entry, "unpack it again")?;
+        self.ensure_not_running(&entry, &sam_core::i18n::tr("unpack it again"))?;
         if !entry.source_path.exists() {
-            bail!("the source AppImage {} no longer exists; use `sam-jail relocate` to point SAM at its new location", tildify(&entry.source_path));
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the AppImage {file} no longer exists; use `sam-jail relocate` to point SAM at its new location",
+                    &[("file", &tildify(&entry.source_path))]
+                )
+            );
         }
         let info = inspect(&entry.source_path)?;
         if !info.is_appimage() {
-            bail!("{} is no longer a valid AppImage", tildify(&entry.source_path));
+            bail!("{}", sam_core::i18n::trf("{file} is no longer a valid AppImage", &[("file", &tildify(&entry.source_path))]));
         }
         let fp = fingerprint::compute(&entry.source_path)?;
         let root = self.extracted_root().join(&entry.id);
@@ -96,7 +102,7 @@ impl Sam {
                     if a.state == AppState::Missing {
                         a.state = AppState::Ready;
                     }
-                    ("touched", vec!["file metadata changed, content identical".into()])
+                    ("touched", vec![sam_core::i18n::tr("the file's details changed, its content is the same")])
                 }
                 SourceStatus::Changed { new, reasons } => {
                     a.source = new;
@@ -210,7 +216,7 @@ impl Sam {
                     signal(r, libc::SIGKILL);
                 }
                 if !wait(3) {
-                    bail!("{} could not be closed", sam_core::util::display_safe(&entry.metadata.name, 80));
+                    bail!("{}", sam_core::i18n::trf("{app} could not be closed", &[("app", &sam_core::util::display_safe(&entry.metadata.name, 80))]));
                 }
             }
         }
@@ -219,19 +225,28 @@ impl Sam {
 
     pub(super) fn ensure_not_running(&self, entry: &AppEntry, what: &str) -> Result<()> {
         if !self.running(&entry.id).is_empty() {
-            bail!("{} is running (maybe only in the system tray). Close it first, then {what}.", sam_core::util::display_safe(&entry.metadata.name, 80));
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "{app} is running (maybe only in the system tray). Close it first, then {what}.",
+                    &[("app", &sam_core::util::display_safe(&entry.metadata.name, 80)), ("what", &what)]
+                )
+            );
         }
         Ok(())
     }
 
     pub fn remove(&self, query: &str, keep_data: bool) -> Result<(AppEntry, Vec<String>)> {
         let entry = self.resolve(query)?;
-        self.ensure_not_running(&entry, "remove its sandbox")?;
+        self.ensure_not_running(&entry, &sam_core::i18n::tr("remove its sandbox"))?;
         let mut problems = Vec::new();
         desktop::remove_launcher(&self.paths, &entry.id)?;
         for h in &entry.hidden_entries {
             if let Err(e) = menu::restore(h, &entry.id) {
-                problems.push(format!("could not restore the menu entry {}: {e:#}", h.original.display()));
+                problems.push(sam_core::i18n::trf(
+                    "could not restore the menu entry {entry}: {error}",
+                    &[("entry", &h.original.display()), ("error", &format!("{e:#}"))],
+                ));
             }
         }
         if let Some(x) = &entry.extraction {
@@ -349,9 +364,15 @@ impl Sam {
     /// [`Sam::ensure_unpacked`]). Returns the bytes freed.
     pub fn free_space(&self, query: &str) -> Result<u64> {
         let entry = self.resolve(query)?;
-        self.ensure_not_running(&entry, "free its space")?;
+        self.ensure_not_running(&entry, &sam_core::i18n::tr("free its space"))?;
         if !entry.source_path.exists() {
-            bail!("the AppImage {} is missing, so the unpacked copy is the only one left; it is kept", tildify(&entry.source_path));
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the AppImage {file} is missing, so the unpacked copy is the only one left; it is kept",
+                    &[("file", &tildify(&entry.source_path))]
+                )
+            );
         }
         let root = self.extracted_root().join(&entry.id);
         let size = tree_size(&root);
@@ -464,12 +485,15 @@ impl Sam {
         self.ensure_not_running(&entry, "update it")?;
         let old = entry.source_path.clone();
         if !old.exists() {
-            bail!("the AppImage {} is missing; relocate it first", tildify(&old));
+            bail!("{}", sam_core::i18n::trf("the AppImage {file} is missing; relocate it first", &[("file", &tildify(&old))]));
         }
         let Some(p) = crate::updates::newest(&old)? else {
-            bail!("{} is already the newest published version", sam_core::util::display_safe(entry.display_name(), 80));
+            bail!(
+                "{}",
+                sam_core::i18n::trf("{app} is already the newest published version", &[("app", &sam_core::util::display_safe(entry.display_name(), 80))])
+            );
         };
-        let dir = old.parent().context("no folder")?.to_path_buf();
+        let dir = old.parent().context(sam_core::i18n::tr("no folder"))?.to_path_buf();
         let old_name = old.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         // The new file keeps its published name, if that is a plain name and
         // does not clash with another file.
@@ -515,7 +539,7 @@ impl Sam {
             move_file(&old, &backup)?;
             if let Err(e) = fs::rename(&tmp, &target) {
                 let _ = move_file(&backup, &old);
-                return Err(anyhow::Error::new(e).context("putting the new version in place"));
+                return Err(anyhow::Error::new(e).context(sam_core::i18n::tr("putting the new version in place")));
             }
             Ok(backup)
         })();
@@ -534,12 +558,14 @@ impl Sam {
             latest: p.filename.or(p.release),
             download_page: p.page,
             detail: match fetched {
-                crate::updates::Fetched::Delta { bytes, total } => format!(
-                    "Updated; this is the newest published version. Only the changed parts were downloaded ({:.1} of {:.1} MB).",
-                    bytes as f64 / 1e6,
-                    total as f64 / 1e6
+                crate::updates::Fetched::Delta { bytes, total } => sam_core::i18n::trf(
+                    "Updated; this is the newest published version. Only the changed parts were downloaded ({part} of {whole} MB).",
+                    &[("part", &format!("{:.1}", bytes as f64 / 1e6)), ("whole", &format!("{:.1}", total as f64 / 1e6))],
                 ),
-                crate::updates::Fetched::Full { total } => format!("Updated; this is the newest published version ({:.1} MB downloaded).", total as f64 / 1e6),
+                crate::updates::Fetched::Full { total } => sam_core::i18n::trf(
+                    "Updated; this is the newest published version ({size} MB downloaded).",
+                    &[("size", &format!("{:.1}", total as f64 / 1e6))],
+                ),
             },
             checked_at: now(),
         });
@@ -552,21 +578,24 @@ impl Sam {
     pub fn undo_update(&self, query: &str) -> Result<AppEntry> {
         let entry = self.resolve(query)?;
         self.ensure_not_running(&entry, "go back")?;
-        let b = entry.update_backup.clone().context("there is no earlier version to go back to")?;
+        let b = entry.update_backup.clone().context(sam_core::i18n::tr("there is no earlier version to go back to"))?;
         if !b.file.exists() {
-            bail!("the earlier version is no longer there ({})", tildify(&b.file));
+            bail!("{}", sam_core::i18n::trf("the earlier version is no longer there ({file})", &[("file", &tildify(&b.file))]));
         }
         // SAM keeps earlier versions only in its own backup folder; a record
         // changed outside SAM must not make it move any other file.
         let backups = fs::canonicalize(self.paths.data_dir.join("update-backups")).ok();
         if !backups.is_some_and(|dir| fs::canonicalize(&b.file).is_ok_and(|f| f.starts_with(&dir))) {
-            bail!("the earlier version is not in SAM's backup folder ({}); SAM does not move it", tildify(&b.file));
+            bail!(
+                "{}",
+                sam_core::i18n::trf("the earlier version is not in SAM's backup folder ({file}); SAM does not move it", &[("file", &tildify(&b.file))])
+            );
         }
         if b.original_path.exists() && b.original_path != entry.source_path {
-            bail!("{} exists again; move it away first", tildify(&b.original_path));
+            bail!("{}", sam_core::i18n::trf("{file} exists again; move it away first", &[("file", &tildify(&b.original_path))]));
         }
         let current = entry.source_path.clone();
-        let keep = b.file.with_file_name(current.file_name().context("no name")?);
+        let keep = b.file.with_file_name(current.file_name().context(sam_core::i18n::tr("no name"))?);
         if current.exists() {
             move_file(&current, &keep)?;
         }
@@ -594,7 +623,13 @@ impl Sam {
             bail!("{}", sam_core::i18n::tr("SAM is not running from an AppImage; update it with your package manager"));
         }
         let Some(p) = crate::updates::newest(appimage)? else {
-            return Ok(SelfUpdate { state: "current".into(), latest: None, path: appimage.to_path_buf(), detail: "SAM is up to date.".into(), page: None });
+            return Ok(SelfUpdate {
+                state: "current".into(),
+                latest: None,
+                path: appimage.to_path_buf(),
+                detail: sam_core::i18n::tr("SAM is up to date."),
+                page: None,
+            });
         };
         let latest = p.filename.clone().or(p.release.clone());
         let page = p.page.clone();
@@ -602,12 +637,12 @@ impl Sam {
         // from: it says so and points to the release page instead of
         // downloading anything (see release_key).
         if keys.is_empty() {
-            let name = latest.clone().unwrap_or_else(|| "A newer version".into());
+            let name = latest.clone().unwrap_or_else(|| sam_core::i18n::tr("A newer version"));
             return Ok(SelfUpdate {
                 state: "manual".into(),
-                detail: format!(
-                    "{} is published. This SAM cannot yet check where an update comes from, so it does not update itself: download the new version from the release page.",
-                    sam_core::util::display_safe(&name, 120)
+                detail: sam_core::i18n::trf(
+                    "{version} is published. This SAM cannot yet check where an update comes from, so it does not update itself: download the new version from the release page.",
+                    &[("version", &sam_core::util::display_safe(&name, 120))],
                 ),
                 latest,
                 path: appimage.to_path_buf(),
@@ -615,7 +650,7 @@ impl Sam {
             });
         }
         if check_only {
-            let name = latest.clone().unwrap_or_else(|| "A newer version".into());
+            let name = latest.clone().unwrap_or_else(|| sam_core::i18n::tr("A newer version"));
             return Ok(SelfUpdate {
                 state: "available".into(),
                 detail: format!("{} is published.", sam_core::util::display_safe(&name, 120)),
@@ -624,7 +659,7 @@ impl Sam {
                 page,
             });
         }
-        let dir = appimage.parent().context("no folder")?;
+        let dir = appimage.parent().context(sam_core::i18n::tr("no folder"))?;
         let old_name = appimage.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let name = p
             .filename
@@ -653,7 +688,7 @@ impl Sam {
             move_file(appimage, &backup_dir.join(&old_name))?;
             if let Err(e) = fs::rename(&tmp, &target) {
                 let _ = move_file(&backup_dir.join(&old_name), appimage);
-                return Err(anyhow::Error::new(e).context("putting the new version in place"));
+                return Err(anyhow::Error::new(e).context(sam_core::i18n::tr("putting the new version in place")));
             }
             Ok(())
         })();
@@ -662,9 +697,10 @@ impl Sam {
             return Err(e);
         }
         let how = match fetched {
-            crate::updates::Fetched::Delta { bytes, total } => {
-                format!("only the changed parts were downloaded ({:.1} of {:.1} MB)", bytes as f64 / 1e6, total as f64 / 1e6)
-            }
+            crate::updates::Fetched::Delta { bytes, total } => sam_core::i18n::trf(
+                "only the changed parts were downloaded ({part} of {whole} MB)",
+                &[("part", &format!("{:.1}", bytes as f64 / 1e6)), ("whole", &format!("{:.1}", total as f64 / 1e6))],
+            ),
             crate::updates::Fetched::Full { total } => format!("{:.1} MB downloaded", total as f64 / 1e6),
         };
         Ok(SelfUpdate {

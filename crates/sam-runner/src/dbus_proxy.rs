@@ -19,13 +19,13 @@ pub struct DbusProxy {
 
 impl DbusProxy {
     pub fn start(host: &HostInfo, perms: &DbusBusPerms, runtime_dir: &Path, app_id: &str) -> Result<DbusProxy> {
-        let tool = host.tools.xdg_dbus_proxy.as_ref().context("xdg-dbus-proxy is not installed, so SAM cannot give the app filtered access to desktop services (file dialogs, notifications, the tray). Install the package xdg-dbus-proxy, or turn the app's session bus to No access.")?;
+        let tool = host.tools.xdg_dbus_proxy.as_ref().context(sam_core::i18n::tr("xdg-dbus-proxy is not installed, so SAM cannot give the app filtered access to desktop services (file dialogs, notifications, the tray). Install the package xdg-dbus-proxy, or turn the app's session bus to No access."))?;
         let address = host
             .sockets
             .dbus_session_address
             .clone()
             .or_else(|| host.sockets.dbus_session.as_ref().map(|p| format!("unix:path={}", p.display())))
-            .context("no session bus address")?;
+            .context(sam_core::i18n::tr("no session bus address"))?;
         let socket = runtime_dir.join("bus");
         let _ = std::fs::remove_file(&socket);
         let mut args = vec![address, socket.to_string_lossy().into_owned(), "--filter".into()];
@@ -83,7 +83,7 @@ impl DbusProxy {
                 Ok(())
             });
         }
-        let mut child = cmd.spawn().context("starting xdg-dbus-proxy")?;
+        let mut child = cmd.spawn().context(sam_core::i18n::tr("starting xdg-dbus-proxy"))?;
         let deadline = Instant::now() + Duration::from_secs(3);
         while !socket.exists() {
             if let Some(st) = child.try_wait()? {

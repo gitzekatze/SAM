@@ -75,7 +75,7 @@ fn md4_of(block: &[u8], blocksize: usize) -> [u8; 16] {
 
 /// Parses a whole control file.
 pub fn parse(data: &[u8]) -> Result<Control> {
-    let split = data.windows(2).position(|w| w == b"\n\n").context("the update description (.zsync) has no end of header")?;
+    let split = data.windows(2).position(|w| w == b"\n\n").context(sam_core::i18n::tr("the update description (.zsync) has no end of header"))?;
     let header = String::from_utf8_lossy(&data[..split]);
     let body = &data[split + 2..];
     let mut c =
@@ -92,7 +92,7 @@ pub fn parse(data: &[u8]) -> Result<Control> {
             "Hash-Lengths" => {
                 let n: Vec<usize> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
                 if n.len() != 3 {
-                    bail!("bad Hash-Lengths");
+                    bail!("{}", sam_core::i18n::tr("bad Hash-Lengths"));
                 }
                 (c.seq_matches, c.rsum_bytes, c.checksum_bytes) = (n[0], n[1], n[2]);
             }

@@ -85,7 +85,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             let input = read_stdin()?;
             let mut p: Preset = match serde_json::from_str::<Preset>(&input) {
                 Ok(p) => p,
-                Err(_) => parse_preset_toml(&input).context("expected a preset as JSON or TOML on stdin")?,
+                Err(_) => parse_preset_toml(&input).context(sam_core::i18n::tr("expected a preset as JSON or TOML on stdin"))?,
             };
             if let Some(existing) = store.get(&p.name)? {
                 p.created_at = existing.created_at;
@@ -129,7 +129,8 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
             });
         }
         GroupCmd::Restore => {
-            let previous = serde_json::from_str(&read_stdin()?).context("expected the \"previous\" object of `group set` as JSON on stdin")?;
+            let previous =
+                serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr("expected the \"previous\" object of `group set` as JSON on stdin"))?;
             let n = app.group_restore(previous)?;
             out.emit(&json!({"restored": n}), || println!("Restored the settings of {n} app(s)"));
         }

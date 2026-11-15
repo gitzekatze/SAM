@@ -104,7 +104,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
     let mut entry =
         app.registry().get(&id)?.or_else(|| app.resolve(&id).ok()).with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))?;
     // After "Free space": unpack again first (the file is unchanged).
-    app.ensure_unpacked(&mut entry).context("unpacking the AppImage again")?;
+    app.ensure_unpacked(&mut entry).context(sam_core::i18n::tr("unpacking the AppImage again"))?;
     let host = sam_core::HostInfo::probe();
     if app.config.security.check_before_launch {
         // Only when the settings, SAM or this computer changed since the
@@ -112,7 +112,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
         let key = sam_runner::verify::check_key(&entry, &app.config, &host);
         let fresh = entry.last_check.as_ref().is_some_and(|c| c.key == key && c.failed.is_empty());
         if !fresh {
-            let out = app.verify(&entry.id).context("checking the sandbox before starting")?;
+            let out = app.verify(&entry.id).context(sam_core::i18n::tr("checking the sandbox before starting"))?;
             if !out.record.failed.is_empty() {
                 let list = out.record.failed.join(", ");
                 notify(

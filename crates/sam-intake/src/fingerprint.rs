@@ -65,10 +65,10 @@ pub fn check(path: &Path, known: &Fingerprint, deep: bool) -> Result<SourceStatu
         reasons.push(format!("size changed ({} -> {})", known.size, q.size));
     }
     if q.mtime != known.mtime {
-        reasons.push("modification time changed".to_string());
+        reasons.push(sam_core::i18n::tr("modification time changed"));
     }
     if q.inode != known.inode || q.device != known.device {
-        reasons.push("file was replaced (inode changed)".to_string());
+        reasons.push(sam_core::i18n::tr("file was replaced (inode changed)"));
     }
     if reasons.is_empty() && !deep {
         return Ok(SourceStatus::Unchanged);
