@@ -13,6 +13,7 @@ the steps; the list says what it does and what stays a person's job.
    in the version report.
 
    ```sh
+   # Through a guard: a mutant that breaks a loop can write without end.
    cargo install --locked cargo-mutants
    cargo mutants -p sam-sandbox -p sam-runner -p sam-intake -p sam-detect --test-workspace=true -j 6 --timeout 120 -o ../.work/mutants
    ```

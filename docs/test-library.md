@@ -77,7 +77,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 
-26 tests.
+27 tests.
 
 | Promise | Test |
 |---|---|
@@ -87,6 +87,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | [`launcher_mime_types_drop_hijack_targets`](../crates/sam-intake/src/desktop.rs#L289) |
 | Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L563) |
 | A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L576) |
+| Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L585) |
 | A changed AppImage file is noticed by its fingerprint. | [`a_changed_appimage_file_is_noticed`](../crates/sam-intake/src/fingerprint.rs#L94) |
 | A readable name is taken from an AppImage's file name, without version and architecture. | [`a_readable_name_is_taken_from_the_file_name`](../crates/sam-intake/src/id.rs#L64) |
 | App IDs are stable and unique, also when two AppImages have the same name. | [`app_ids_stay_unique_when_names_collide`](../crates/sam-intake/src/id.rs#L72) |
@@ -130,7 +131,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-sandbox: Building the Bubblewrap command from the permissions
 
-17 tests.
+22 tests.
 
 | Promise | Test |
 |---|---|
@@ -151,10 +152,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](../crates/sam-sandbox/src/lib.rs#L1612) |
 | Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](../crates/sam-sandbox/src/lib.rs#L1623) |
 | A bundled library listed in advanced.system_libraries is replaced by the system's copy at its place in the app folder; names with folders or `..`, libraries the app does not bundle and libraries the system does not have are ignored. | [`system_copies_replace_only_bundled_libraries_by_plain_name`](../crates/sam-sandbox/src/lib.rs#L1641) |
+| The app's own folder stays read-only unless "writable app folder" is granted, even when SAM has an overlay for it prepared. | [`the_app_folder_stays_read_only_unless_writable_is_granted`](../crates/sam-sandbox/src/lib.rs#L1679) |
+| SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | [`sams_own_folders_stay_hidden_inside_a_granted_folder`](../crates/sam-sandbox/src/lib.rs#L1695) |
+| With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | [`credential_files_and_folders_in_the_home_are_masked`](../crates/sam-sandbox/src/lib.rs#L1710) |
+| Protected folders are created in the real home only before a start that can write the home, never otherwise. | [`home_protection_is_prepared_only_for_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L1731) |
+| Only proper variable names are set inside the sandbox, and no value with a NUL byte. | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L1747) |
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-86 tests.
+89 tests.
 
 | Promise | Test |
 |---|---|
@@ -185,13 +191,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The progress bar follows the weights of the steps of creating a sandbox. | [`fractions_follow_the_step_weights`](../crates/sam-runner/src/progress.rs#L131) |
 | Unpacking progress counts the bytes written. | [`bytes_written_are_counted`](../crates/sam-runner/src/progress.rs#L150) |
 | Ordinary terminal output, colors and links pass through the relay unchanged. | [`ordinary_output_passes_unchanged`](../crates/sam-runner/src/pty.rs#L622) |
-| Escape codes that read or write the clipboard are removed from an app's terminal output. | [`clipboard_codes_are_removed`](../crates/sam-runner/src/pty.rs#L632) |
-| Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed. | [`title_reports_and_tmux_passthrough_are_removed`](../crates/sam-runner/src/pty.rs#L651) |
-| An escape code hidden inside a removed code cannot slip through. | [`an_escape_inside_a_removed_code_starts_a_new_sequence`](../crates/sam-runner/src/pty.rs#L665) |
-| Logs get plain text without escape codes. | [`plain_text_for_the_log`](../crates/sam-runner/src/pty.rs#L674) |
-| Apps started from a terminal get SAM's terminal relay; apps without a terminal get none. | [`terminal_apps_get_sams_terminal_relay`](../crates/sam-runner/src/pty.rs#L680) |
-| A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | [`typing_and_output_pass_and_leftover_replies_are_discarded`](../crates/sam-runner/src/pty.rs#L691) |
-| An app on SAM's terminal relay cannot type into the user's real terminal. | [`the_app_cannot_reach_the_outer_terminal`](../crates/sam-runner/src/pty.rs#L750) |
+| A doubled ESC in front of a clipboard code does not smuggle it past the filter: the terminal reads the second ESC as the start of the code, so the filter must too. | [`a_doubled_escape_does_not_smuggle_a_clipboard_code`](../crates/sam-runner/src/pty.rs#L634) |
+| Escape codes that read or write the clipboard are removed from an app's terminal output. | [`clipboard_codes_are_removed`](../crates/sam-runner/src/pty.rs#L652) |
+| Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed. | [`title_reports_and_tmux_passthrough_are_removed`](../crates/sam-runner/src/pty.rs#L671) |
+| An escape code hidden inside a removed code cannot slip through. | [`an_escape_inside_a_removed_code_starts_a_new_sequence`](../crates/sam-runner/src/pty.rs#L685) |
+| Logs get plain text without escape codes. | [`plain_text_for_the_log`](../crates/sam-runner/src/pty.rs#L694) |
+| Apps started from a terminal get SAM's terminal relay; apps without a terminal get none. | [`terminal_apps_get_sams_terminal_relay`](../crates/sam-runner/src/pty.rs#L700) |
+| A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | [`typing_and_output_pass_and_leftover_replies_are_discarded`](../crates/sam-runner/src/pty.rs#L711) |
+| An app on SAM's terminal relay cannot type into the user's real terminal. | [`the_app_cannot_reach_the_outer_terminal`](../crates/sam-runner/src/pty.rs#L770) |
 | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L67) |
 | Without a built-in release key, SAM never updates itself, whatever the download looks like. | [`without_a_release_key_sam_never_updates_itself`](../crates/sam-runner/src/release_key.rs#L82) |
 | Compatibility mode lists only what it actually changes, in the words of the switches. | [`compatibility_mode_names_only_what_it_changes`](../crates/sam-runner/src/repair.rs#L556) |
@@ -200,12 +207,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Error messages in an app's output are mapped to the repair step that fixes them. | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L604) |
 | The repair ladder leaves out steps already applied and steps that would change nothing. | [`ladder_skips_applied_and_noop_steps`](../crates/sam-runner/src/repair.rs#L651) |
 | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L671) |
-| The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L363) |
-| Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L373) |
-| Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L384) |
-| An update is rebuilt from the old version plus the changed blocks. | [`an_update_is_rebuilt_from_the_old_version_and_changed_blocks`](../crates/sam-runner/src/zsync.rs#L311) |
-| The rolling checksum of the update transfer matches a direct computation at every offset. | [`the_rolling_checksum_matches_a_direct_computation`](../crates/sam-runner/src/zsync.rs#L347) |
-| Compressed or incomplete zsync files are refused. | [`refuses_compressed_and_broken_files`](../crates/sam-runner/src/zsync.rs#L361) |
+| The checksum of a downloaded update is SHA-1 of the whole file, read in pieces; a file larger than one piece gives the same result. | [`the_download_checksum_is_sha1_of_the_whole_file`](../crates/sam-runner/src/updates.rs#L364) |
+| The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L376) |
+| Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L386) |
+| Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L397) |
+| The block checksums are the ones zsync defines: MD4 of a block padded with zeros to the block size, and the weak sum cut to its last bytes. | [`block_checksums_match_the_zsync_definition`](../crates/sam-runner/src/zsync.rs#L304) |
+| An update is rebuilt from the old version plus the changed blocks. | [`an_update_is_rebuilt_from_the_old_version_and_changed_blocks`](../crates/sam-runner/src/zsync.rs#L327) |
+| The rolling checksum of the update transfer matches a direct computation at every offset. | [`the_rolling_checksum_matches_a_direct_computation`](../crates/sam-runner/src/zsync.rs#L363) |
+| Compressed or incomplete zsync files are refused. | [`refuses_compressed_and_broken_files`](../crates/sam-runner/src/zsync.rs#L377) |
 | H1: an app printing a fake Bubblewrap error is not a sandbox failure. | [`fake_bwrap_error_is_not_a_sandbox_failure`](../crates/sam-runner/tests/adversarial.rs#L20) |
 | H2/M4: suggestions derived from app output never grant escape-capable services or protected folders, and are always marked as app-derived. | [`app_output_cannot_buy_dangerous_grants`](../crates/sam-runner/tests/adversarial.rs#L43) |
 | H3: markup in an AppImage's name or comment is neutralized before it is stored or shown. | [`markup_in_metadata_is_neutralized`](../crates/sam-runner/tests/adversarial.rs#L61) |
@@ -311,4 +320,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 225 automated Rust tests plus 7 scripted checks.
+Total: 234 automated Rust tests plus 7 scripted checks.

@@ -579,4 +579,12 @@ mod space_tests {
         assert!(is_disk_full(&e));
         assert!(!is_disk_full(&anyhow!("some other problem")));
     }
+
+    /// Only an exceeded limit counts as one: other errors are not explained
+    /// as a limit the user could raise.
+    #[test]
+    fn only_an_exceeded_limit_counts_as_one() {
+        assert!(is_limit_error(&limit_error("more than 10 files".into()).context("unpacking")));
+        assert!(!is_limit_error(&anyhow!("the image is damaged")));
+    }
 }

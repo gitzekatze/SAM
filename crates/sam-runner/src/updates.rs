@@ -359,6 +359,19 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
+    /// The checksum of a downloaded update is SHA-1 of the whole file, read
+    /// in pieces; a file larger than one piece gives the same result.
+    #[test]
+    fn the_download_checksum_is_sha1_of_the_whole_file() {
+        let t = tempfile::tempdir().unwrap();
+        let f = t.path().join("abc");
+        std::fs::write(&f, b"abc").unwrap();
+        assert_eq!(sha1_of(&f).unwrap(), "a9993e364706816aba3e25717850c26c9cd0d89d", "SHA-1 test vector");
+        let big = t.path().join("big");
+        std::fs::write(&big, vec![b'a'; 1_000_000]).unwrap();
+        assert_eq!(sha1_of(&big).unwrap(), "34aa973cd4c4daa4f61eeb2bdbad27316534016f", "SHA-1 of a million a");
+    }
+
     /// The header of a zsync file is read (file name, size, checksum).
     #[test]
     fn the_zsync_header_is_read() {

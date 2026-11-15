@@ -297,6 +297,22 @@ pub fn assemble(
 mod tests {
     use super::*;
 
+    /// The block checksums are the ones zsync defines: MD4 of a block padded
+    /// with zeros to the block size, and the weak sum cut to its last bytes.
+    /// A wrong one would make every downloaded block look changed or, worse,
+    /// a changed block look unchanged.
+    #[test]
+    fn block_checksums_match_the_zsync_definition() {
+        let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+        assert_eq!(hex(&md4_of(b"abc", 3)), "a448017aaf21d8525fc10ae87aa6729d", "MD4 test vector");
+        assert_eq!(md4_of(b"abc", 8), md4_of(b"abc\0\0\0\0\0", 8), "short blocks are padded with zeros");
+        assert_ne!(md4_of(b"abc", 8), md4_of(b"abc", 3));
+        let r = Rsum { a: 0x1234, b: 0x5678 };
+        assert_eq!(rsum_key(r, 4), 0x1234_5678);
+        assert_eq!(rsum_key(Rsum { a: 0x1234, b: 0x5678 }, 2), 0x5678);
+        assert_eq!(rsum_key(Rsum { a: 0x1234, b: 0x5678 }, 3), 0x34_5678);
+    }
+
     fn sample(n: usize, seed: u32) -> Vec<u8> {
         let mut x = seed;
         (0..n)

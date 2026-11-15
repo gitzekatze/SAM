@@ -628,6 +628,26 @@ mod tests {
         assert!(f.blocked.is_empty());
     }
 
+    /// A doubled ESC in front of a clipboard code does not smuggle it past
+    /// the filter: the terminal reads the second ESC as the start of the
+    /// code, so the filter must too. Also after cancelled sequences.
+    #[test]
+    fn a_doubled_escape_does_not_smuggle_a_clipboard_code() {
+        let (out, f) = run(&[b"a\x1b\x1b]52;c;aGVsbG8=\x07b"]);
+        assert!(!out.windows(3).any(|w| w == b"]52"), "the clipboard code was removed: {:?}", String::from_utf8_lossy(&out));
+        assert!(f.blocked.contains("clipboard"));
+        // A CSI sequence cancelled by CAN or SUB ends there; what follows is
+        // filtered again.
+        for cancel in [0x18u8, 0x1a] {
+            let mut s = b"\x1b[12".to_vec();
+            s.push(cancel);
+            s.extend_from_slice(b"\x1b]52;c;aGk=\x07z");
+            let (out, f) = run(&[&s]);
+            assert!(out.ends_with(b"z") && !out.windows(3).any(|w| w == b"]52"), "{:?}", String::from_utf8_lossy(&out));
+            assert!(f.blocked.contains("clipboard"));
+        }
+    }
+
     /// Escape codes that read or write the clipboard are removed from an app's terminal output.
     #[test]
     fn clipboard_codes_are_removed() {

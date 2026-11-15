@@ -124,6 +124,10 @@ version.
 
 ### Tests and documentation
 
+- Mutation testing before the release ([report](docs/reports/mutants-2026-11-15.md)):
+  88.5 % of 2,609 deliberate code changes were caught; the gaps it showed in
+  the unpacking limits, the sandbox command, the terminal filter and the
+  update checksums now have tests.
 - The test library (docs/test-library.md, made by `scripts/test-library.py`)
   lists every automated test with the promise it keeps; CI fails when it is
   out of date. Every change now comes with a test, every fixed bug with a

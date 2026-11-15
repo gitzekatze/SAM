@@ -653,7 +653,7 @@ impl Sam {
             let name = latest.clone().unwrap_or_else(|| sam_core::i18n::tr("A newer version"));
             return Ok(SelfUpdate {
                 state: "available".into(),
-                detail: format!("{} is published.", sam_core::util::display_safe(&name, 120)),
+                detail: sam_core::i18n::trf("{version} is published.", &[("version", &sam_core::util::display_safe(&name, 120))]),
                 latest,
                 path: appimage.to_path_buf(),
                 page,

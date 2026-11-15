@@ -56,6 +56,11 @@ fn unpacking_stops_exactly_at_its_limits() {
     // The reader also counts the image's root folder.
     let files = entries + 1;
     assert!(bytes > 800_000, "the parts were unpacked: {bytes} bytes");
+    // Modes come through: a data file stays non-executable, the entry point
+    // stays executable.
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(fs::metadata(out.join("usr/share/big/part-0.bin")).unwrap().permissions().mode() & 0o777, 0o644);
+    assert_eq!(fs::metadata(out.join("AppRun")).unwrap().permissions().mode() & 0o111, 0o111);
 
     assert!(unpack(&img, offset, &out, Limits { max_files: files, ..roomy }).is_ok(), "exactly {files} entries are allowed");
     let r = unpack(&img, offset, &out, Limits { max_files: files - 1, ..roomy });

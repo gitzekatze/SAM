@@ -34,7 +34,7 @@ id = 3
 area = "A"
 promise = "SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space."
 code = ["sam-intake/src/extract.rs", "sam-intake/src/normalize.rs", "sam-runner/src/progress.rs"]
-tests = ["unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_during_unpacking_is_recognized", "unpacking_stops_at_the_time_limit", "symlinks_pointing_outside_the_app_are_recognized", "paths_climbing_out_of_the_image_are_refused", "unpacking_removes_setuid_bits", "unpacking_stops_at_the_file_limit", "a_built_appimage_is_detected_and_unpacked_safely", "size_limit_aborts_and_cleans_up", "fractions_follow_the_step_weights", "bytes_written_are_counted", "unpacking_stops_exactly_at_its_limits"]
+tests = ["unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_during_unpacking_is_recognized", "unpacking_stops_at_the_time_limit", "symlinks_pointing_outside_the_app_are_recognized", "paths_climbing_out_of_the_image_are_refused", "unpacking_removes_setuid_bits", "unpacking_stops_at_the_file_limit", "a_built_appimage_is_detected_and_unpacked_safely", "size_limit_aborts_and_cleans_up", "fractions_follow_the_step_weights", "bytes_written_are_counted", "unpacking_stops_exactly_at_its_limits", "only_an_exceeded_limit_counts_as_one"]
 
 [[function]]
 id = 4
@@ -93,14 +93,14 @@ id = 10
 area = "C"
 promise = "The app sees only a private home folder and the folders you grant."
 code = ["sam-sandbox/src/lib.rs"]
-tests = ["the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+tests = ["the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "only_proper_variable_names_are_set"]
 
 [[function]]
 id = 11
 area = "C"
 promise = "Keys, passwords and the files of your other apps stay hidden, even with full home access."
 code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs"]
-tests = ["key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape"]
+tests = ["key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "credential_files_and_folders_in_the_home_are_masked", "home_protection_is_prepared_only_for_a_writable_home", "sams_own_folders_stay_hidden_inside_a_granted_folder"]
 
 [[function]]
 id = 12
@@ -142,14 +142,14 @@ id = 17
 area = "C"
 promise = "The app can't type into your terminal."
 code = ["sam-runner/src/pty.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs"]
-tests = ["a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape"]
+tests = ["a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code"]
 
 [[function]]
 id = 18
 area = "C"
 promise = "Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/launch.rs", "sam-core/src/host.rs"]
-tests = ["writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work"]
+tests = ["writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted"]
 
 [[area]]
 id = "D"
@@ -235,7 +235,7 @@ id = 28
 area = "F"
 promise = "Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it."
 code = ["sam-runner/src/updates.rs", "sam-runner/src/zsync.rs", "sam-runner/src/release_key.rs", "sam-detect/src/update_info.rs", "sam-detect/src/signature.rs"]
-tests = ["both_forms_of_update_information_are_understood", "update_wildcards_match_only_the_right_build", "signed_appimage_is_checked", "key_changes_are_noticed", "sam_updates_itself_only_with_its_release_key", "without_a_release_key_sam_never_updates_itself", "the_zsync_header_is_read", "update_download_addresses_are_resolved_and_http_refused", "updates_are_downloaded_over_https_only", "an_update_is_rebuilt_from_the_old_version_and_changed_blocks", "the_rolling_checksum_matches_a_direct_computation", "refuses_compressed_and_broken_files", "undo_puts_the_previous_version_back", "undoing_an_update_never_moves_files_outside_sams_backup_folder"]
+tests = ["both_forms_of_update_information_are_understood", "update_wildcards_match_only_the_right_build", "signed_appimage_is_checked", "key_changes_are_noticed", "sam_updates_itself_only_with_its_release_key", "without_a_release_key_sam_never_updates_itself", "the_zsync_header_is_read", "update_download_addresses_are_resolved_and_http_refused", "updates_are_downloaded_over_https_only", "an_update_is_rebuilt_from_the_old_version_and_changed_blocks", "the_rolling_checksum_matches_a_direct_computation", "refuses_compressed_and_broken_files", "undo_puts_the_previous_version_back", "undoing_an_update_never_moves_files_outside_sams_backup_folder", "block_checksums_match_the_zsync_definition", "the_download_checksum_is_sha1_of_the_whole_file"]
 
 [[function]]
 id = 29

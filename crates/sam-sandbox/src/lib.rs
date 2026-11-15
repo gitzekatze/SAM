@@ -1658,3 +1658,102 @@ mod tests {
         assert!(binds[0].0.starts_with("/usr") || binds[0].0.starts_with("/lib"));
     }
 }
+
+/// Found by mutation testing: each of these changes weakened the sandbox
+/// without any test noticing.
+#[cfg(test)]
+mod guard_tests {
+    use super::*;
+    use sam_core::sandbox::sample_context;
+
+    fn args_of(ctx: &LaunchContext) -> Vec<String> {
+        Bubblewrap.build(ctx).unwrap().args
+    }
+
+    fn has_seq(v: &[String], seq: &[&str]) -> bool {
+        v.windows(seq.len()).any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
+    }
+
+    /// The app's own folder stays read-only unless "writable app folder" is
+    /// granted, even when SAM has an overlay for it prepared.
+    #[test]
+    fn the_app_folder_stays_read_only_unless_writable_is_granted() {
+        let mut ctx = sample_context();
+        ctx.appdir_overlay = Some("/data/overlays/app".into());
+        let appdir = ctx.appdir.to_string_lossy().into_owned();
+        let inside = ctx.sandbox_appdir.to_string_lossy().into_owned();
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--ro-bind", &appdir, &inside]), "{a:?}");
+        assert!(!a.iter().any(|x| x == "--overlay"), "no writable layer without the grant");
+        ctx.permissions.advanced.writable_appdir = true;
+        let a = args_of(&ctx);
+        assert!(a.iter().any(|x| x == "--overlay") && !has_seq(&a, &["--ro-bind", &appdir, &inside]));
+    }
+
+    /// SAM's own folders stay hidden when a granted folder contains them,
+    /// and nothing extra is added when no grant shows them.
+    #[test]
+    fn sams_own_folders_stay_hidden_inside_a_granted_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = t.path().join("samdata");
+        fs::create_dir(&sam).unwrap();
+        let mut ctx = sample_context();
+        ctx.sam_dirs = vec![sam.clone()];
+        let sam_s = sam.to_string_lossy().into_owned();
+        assert!(!has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]), "not hidden when nothing shows it");
+        ctx.permissions.filesystem.custom_read = vec![t.path().to_string_lossy().into_owned()];
+        assert!(has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]), "hidden inside the granted folder");
+    }
+
+    /// With the whole home granted, credential files are replaced by an
+    /// empty file and credential folders by an empty folder.
+    #[test]
+    fn credential_files_and_folders_in_the_home_are_masked() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path();
+        fs::write(home.join(".netrc"), "machine x password y").unwrap();
+        fs::create_dir(home.join(".aws")).unwrap();
+        fs::create_dir(home.join(".ssh")).unwrap();
+        let mut ctx = sample_context();
+        ctx.host.home = home.to_path_buf();
+        ctx.permissions.filesystem.home = true;
+        ctx.permissions.filesystem.home_access = Access::Rw;
+        let a = args_of(&ctx);
+        let p = |n: &str| home.join(n).to_string_lossy().into_owned();
+        assert!(has_seq(&a, &["--ro-bind", "/dev/null", &p(".netrc")]), "{a:?}");
+        assert!(has_seq(&a, &["--tmpfs", &p(".aws")]));
+        assert!(has_seq(&a, &["--tmpfs", &p(".ssh")]));
+        assert!(!has_seq(&a, &["--tmpfs", &p(".netrc")]), "a file is not covered by a folder");
+    }
+
+    /// Protected folders are created in the real home only before a start
+    /// that can write the home, never otherwise.
+    #[test]
+    fn home_protection_is_prepared_only_for_a_writable_home() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path();
+        let mut p = sample_context().permissions;
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Ro;
+        prepare_home_protection(&p, home);
+        assert!(!home.join(".config/autostart").exists(), "a read-only home is left alone");
+        p.filesystem.home_access = Access::Rw;
+        prepare_home_protection(&p, home);
+        assert!(home.join(".config/autostart").is_dir() && home.join(".bashrc").is_file());
+    }
+
+    /// Only proper variable names are set inside the sandbox, and no value
+    /// with a NUL byte.
+    #[test]
+    fn only_proper_variable_names_are_set() {
+        let mut ctx = sample_context();
+        for (k, v) in [("_OK", "1"), ("Z9", "2"), ("9BAD", "3"), ("A-B", "4"), ("NUL", "a\0b")] {
+            ctx.permissions.environment.set.insert(k.into(), v.into());
+        }
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--setenv", "_OK", "1"]) && has_seq(&a, &["--setenv", "Z9", "2"]));
+        for bad in ["9BAD", "A-B", "NUL"] {
+            assert!(!has_seq(&a, &["--setenv", bad]), "{bad} is refused");
+        }
+    }
+}
