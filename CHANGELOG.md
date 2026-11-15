@@ -9,6 +9,15 @@ version.
 
 ## Unreleased
 
+### Signed releases
+
+- SAM has a release key (fingerprint
+  `AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6`), and SAM updates itself only to
+  an AppImage signed with it.
+- The AppImages are signed on the maintainer's computer after GitHub has
+  built and tested them (`scripts/sign-release.sh`), so the key never goes to
+  GitHub; every release file also gets a detached `.asc` signature.
+
 ### German, Spanish and French
 
 - SAM speaks German, Spanish and French: every text in the window, every

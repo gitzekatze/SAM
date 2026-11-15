@@ -165,3 +165,19 @@ fn version_reports_the_json_interface() {
     assert!(out.contains(&format!("\"interface\":{}", sam_core::JSON_INTERFACE)), "{out}");
     assert!(out.contains(env!("CARGO_PKG_VERSION")), "{out}");
 }
+
+/// Signing a file that has no AppImage signature sections is refused with
+/// a clear message, before GnuPG is asked anything, and the file stays as
+/// it was.
+#[test]
+fn signing_a_file_without_signature_sections_is_refused() {
+    let e = env();
+    let f = e.config.join("NotSignable.AppImage");
+    fs::write(&f, b"\x7fELF not really a runtime").unwrap();
+    let before = fs::read(&f).unwrap();
+    let o = sam(&e, &["--json", "dev", "sign-appimage", f.to_str().unwrap(), "--key", "AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6"]);
+    assert!(!o.status.success());
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(out.contains("no signature sections"), "{out}");
+    assert_eq!(fs::read(&f).unwrap(), before, "the file is unchanged");
+}

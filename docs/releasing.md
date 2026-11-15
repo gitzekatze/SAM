@@ -25,21 +25,23 @@ the steps; the list says what it does and what stays a person's job.
    updates the dashboard and the function map's results.
 6. **The changelog** has every user-visible change under *Unreleased*, in
    whole sentences.
-7. **The release key:** the GPG key that signs the release is on this
-   computer, and its fingerprint is in `RELEASE_KEYS`
-   (`crates/sam-runner/src/release_key.rs`). Without it, SAM cannot check its
-   own updates and says so.
+7. **The release key** is on this computer. Its fingerprint,
+   `AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6`, is built into SAM
+   (`RELEASE_KEYS` in `crates/sam-runner/src/release_key.rs`): SAM updates
+   itself only to AppImages signed with it. The key expires on 2029-11-14;
+   extend it before then (`gpg --quick-set-expire <fingerprint> 3y`) and
+   publish the extended public key.
 
 ## Making the release
 
 ```sh
-SIGN_KEY=<key id> RUNTIME=/path/to/runtime-x86_64 scripts/release.sh X.Y.Z
+SIGN_KEY=AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 scripts/release.sh X.Y.Z
 ```
 
 The script checks that the tree is clean and the version is new, sets the
 version everywhere, dates the changelog, runs clippy and all tests, commits
-"Release X.Y.Z", makes a signed tag `vX.Y.Z`, and builds and signs the
-release files. It pushes nothing.
+"Release X.Y.Z", makes a signed tag `vX.Y.Z`, and builds the source files.
+It pushes nothing. GnuPG asks for the passphrase.
 
 Then push the commit and the tag:
 
@@ -51,13 +53,28 @@ git push && git push origin vX.Y.Z
 
 The *Release* workflow builds the AppImages for x86_64 and aarch64 from the
 tag, tests them on fresh Ubuntu, Debian, Fedora, Arch and openSUSE
-containers, adds build provenance (once the repository is public) and makes
-a **draft** release with the files and the changelog as notes.
+containers, adds build provenance for the source files (once the repository
+is public) and makes a **draft** release with the files and the changelog as
+notes.
 
-1. Check the draft: every file is there (AppImages, source and vendored
-   tarballs, checksums, signatures), and the notes read well.
-2. Optionally check a file's provenance:
-   `gh attestation verify SAM-X.Y.Z-x86_64.AppImage --repo gitzekatze/SAM`.
+1. **Sign the AppImages** on this computer, so the key never goes to GitHub:
+
+   ```sh
+   SIGN_KEY=AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 scripts/sign-release.sh vX.Y.Z
+   ```
+
+   It downloads the draft's files, writes the signature into each AppImage
+   and checks it, writes the `.zsync` and `.sha256` files again (they
+   depend on the signed file), adds a detached `.asc` signature to every
+   file and uploads them to the draft.
+2. Check the draft: every file is there (AppImages with `.zsync`, `.sha256`
+   and `.asc`, source and vendored tarballs, `SHA256SUMS`), and the notes
+   read well.
 3. **Publish the draft.** This stays a person's decision.
 4. Update the packages that are not built from the tag (AUR, COPR) with the
    checksums the script wrote.
+
+Anyone can check a file with the public key:
+`gpg --verify SAM-X.Y.Z-x86_64.AppImage.asc`, and, once the repository is
+public, a source file's provenance with
+`gh attestation verify sam-X.Y.Z.tar.gz --repo gitzekatze/SAM`.

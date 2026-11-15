@@ -1,7 +1,8 @@
 # On a version tag (made by scripts/release.sh): build the release files and
 # the AppImages (x86_64 and aarch64) from the tag, test the AppImages on
-# fresh systems, and attach them to a *draft* release. Publishing the draft
-# stays a manual step. Started by hand (workflow_dispatch), it builds and
+# fresh systems, and attach them to a *draft* release. The AppImages are
+# signed afterwards on the maintainer's computer (scripts/sign-release.sh);
+# publishing the draft stays a manual step. Started by hand (workflow_dispatch), it builds and
 # tests without making a draft.
 name: Release
 
@@ -128,12 +129,17 @@ jobs:
       # Build provenance: a signed statement from GitHub that these files
       # were built by this workflow from this tag. Anyone can check a file
       # with `gh attestation verify FILE --repo gitzekatze/SAM`. GitHub
-      # offers it for public repositories only.
+      # offers it for public repositories only. The AppImages are left out:
+      # scripts/sign-release.sh writes the release key's signature into them
+      # afterwards, which changes the files; that signature vouches for them.
       - name: Build provenance
         if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: dist/*
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.tar.xz
+            dist/SHA256SUMS
 
       - name: Draft release
         env:

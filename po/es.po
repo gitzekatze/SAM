@@ -1528,15 +1528,20 @@ msgstr ""
 msgid "the signature does not match the file: it was changed after signing"
 msgstr "la firma no coincide con el archivo: se modificó después de firmarlo"
 
-#: crates/sam-detect/src/signature.rs:188
+#: crates/sam-detect/src/signature.rs:197
 msgid "no signature sections"
 msgstr "sin secciones de firma"
 
-#: crates/sam-detect/src/signature.rs:189
+#: crates/sam-detect/src/signature.rs:198
 msgid "gpg missing"
 msgstr "falta gpg"
 
-#: crates/sam-detect/src/signature.rs:205
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/signature.rs:207
+msgid "GnuPG has no key {key}"
+msgstr "GnuPG no tiene la clave {key}"
+
+#: crates/sam-detect/src/signature.rs:220
 msgid "signature missing or too large"
 msgstr "falta la firma o es demasiado grande"
 
@@ -4703,58 +4708,58 @@ msgstr ""
 "  {attempts}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:373
+#: crates/sam-intake/src/extract.rs:367
 msgid "a link at {path} points outside the app"
 msgstr "un enlace en {path} apunta fuera de la aplicación"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:375
+#: crates/sam-intake/src/extract.rs:369
 msgid "{path} is not a folder"
 msgstr "{path} no es una carpeta"
 
-#: crates/sam-intake/src/extract.rs:394
+#: crates/sam-intake/src/extract.rs:388
 msgid "unpacking limit exceeded: the app is too large"
 msgstr "límite de desempaquetado superado: la aplicación es demasiado grande"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:412 crates/sam-intake/src/normalize.rs:70
+#: crates/sam-intake/src/extract.rs:406 crates/sam-intake/src/normalize.rs:70
 msgid "unpacking limit exceeded: more than {count} files"
 msgstr "límite de desempaquetado superado: más de {count} archivos"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:415 crates/sam-intake/src/extract.rs:465
+#: crates/sam-intake/src/extract.rs:409 crates/sam-intake/src/extract.rs:459
 #: crates/sam-intake/src/normalize.rs:73
 msgid "unpacking limit exceeded: it took longer than {seconds} seconds"
 msgstr "límite de desempaquetado superado: tardó más de {seconds} segundos"
 
-#: crates/sam-intake/src/extract.rs:429
+#: crates/sam-intake/src/extract.rs:423
 msgid "entry without name"
 msgstr "entrada sin nombre"
 
-#: crates/sam-intake/src/extract.rs:481
+#: crates/sam-intake/src/extract.rs:475
 msgid "starting the unpacking tool"
 msgstr "iniciando la herramienta de desempaquetado"
 
-#: crates/sam-intake/src/extract.rs:507
+#: crates/sam-intake/src/extract.rs:501
 msgid "Bubblewrap is needed to let the AppImage unpack itself in a sandbox"
 msgstr ""
 "Se necesita Bubblewrap para que el AppImage se desempaquete a sí mismo en un "
 "entorno aislado"
 
-#: crates/sam-intake/src/extract.rs:523
+#: crates/sam-intake/src/extract.rs:517
 msgid "copying the AppImage so it can unpack itself"
 msgstr "copiando el AppImage para que pueda desempaquetarse a sí mismo"
 
-#: crates/sam-intake/src/extract.rs:524
+#: crates/sam-intake/src/extract.rs:518
 msgid "making the copy executable"
 msgstr "haciendo ejecutable la copia"
 
-#: crates/sam-intake/src/extract.rs:555
+#: crates/sam-intake/src/extract.rs:549
 msgid "--appimage-extract produced no squashfs-root"
 msgstr "--appimage-extract no creó ningún squashfs-root"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:557
+#: crates/sam-intake/src/extract.rs:551
 msgid "moving the unpacked app to {folder}"
 msgstr "moviendo la aplicación desempaquetada a {folder}"
 
@@ -5194,9 +5199,19 @@ msgid "no file name"
 msgstr "sin nombre de archivo"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:903 crates/sam-jail-cli/src/main.rs:912
+#: crates/sam-jail-cli/src/main.rs:903 crates/sam-jail-cli/src/main.rs:923
 msgid "Wrote {path}"
 msgstr "Se escribió {path}"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-jail-cli/src/main.rs:910
+msgid "the signature in {file} does not check out: {detail}"
+msgstr "la firma de {file} no es válida: {detail}"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-jail-cli/src/main.rs:913
+msgid "Signed {path} with {key}"
+msgstr "{path} firmado con {key}"
 
 #: crates/sam-jail-cli/src/output.rs:149
 msgid "private home only"
@@ -6355,6 +6370,12 @@ msgstr ""
 "desde la página de la versión."
 
 #. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:656
+#: crates/sam-runner/src/updates.rs:139
+msgid "{version} is published."
+msgstr "Se ha publicado {version}."
+
+#. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/ops/maintain.rs:700
 msgid "only the changed parts were downloaded ({part} of {whole} MB)"
 msgstr "solo se descargaron las partes cambiadas ({part} de {whole} MB)"
@@ -6622,7 +6643,7 @@ msgstr "Creando la entrada del menú"
 msgid "could not create a terminal for the app: {error}"
 msgstr "no se pudo crear un terminal para la aplicación: {error}"
 
-#: crates/sam-runner/src/release_key.rs:26
+#: crates/sam-runner/src/release_key.rs:29
 msgid ""
 "this SAM was built without a release key, so it cannot check where an update "
 "comes from and does not update itself; download new versions from the "
@@ -6633,7 +6654,7 @@ msgstr ""
 "versiones nuevas desde la página de la versión o use su gestor de paquetes"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/release_key.rs:36
+#: crates/sam-runner/src/release_key.rs:39
 msgid ""
 "the update is signed, but not with SAM's release key ({key}); it was not "
 "installed"
@@ -6641,11 +6662,11 @@ msgstr ""
 "la actualización está firmada, pero no con la clave de publicación de SAM "
 "({key}); no se instaló"
 
-#: crates/sam-runner/src/release_key.rs:38
+#: crates/sam-runner/src/release_key.rs:41
 msgid "unknown key"
 msgstr "clave desconocida"
 
-#: crates/sam-runner/src/release_key.rs:43
+#: crates/sam-runner/src/release_key.rs:46
 msgid ""
 "the update is not signed, so its origin cannot be checked; it was not "
 "installed"
@@ -6653,7 +6674,7 @@ msgstr ""
 "la actualización no está firmada, así que no se puede comprobar su origen; "
 "no se instaló"
 
-#: crates/sam-runner/src/release_key.rs:45
+#: crates/sam-runner/src/release_key.rs:48
 msgid ""
 "the update's signature does not match the file, so it was changed after "
 "signing; it was not installed"
@@ -6662,7 +6683,7 @@ msgstr ""
 "después de firmarlo; no se instaló"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/release_key.rs:48
+#: crates/sam-runner/src/release_key.rs:51
 msgid ""
 "the update's signature could not be checked ({reason}); it was not installed"
 msgstr ""
@@ -7207,11 +7228,6 @@ msgstr "versión {release}"
 #: crates/sam-runner/src/updates.rs:135
 msgid "a newer version"
 msgstr "una versión más reciente"
-
-#. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:139
-msgid "{version} is published."
-msgstr "Se ha publicado {version}."
 
 #: crates/sam-runner/src/updates.rs:154 crates/sam-runner/src/updates.rs:242
 msgid "the update file is not offered over HTTPS"

@@ -17,7 +17,10 @@ use sam_core::model::{SignatureInfo, SignatureState};
 /// Fingerprints (40 hex characters) of the keys that sign SAM's releases.
 /// Add a new key here, in a release signed with the old one, before
 /// switching to it.
-pub const RELEASE_KEYS: &[&str] = &[];
+pub const RELEASE_KEYS: &[&str] = &[
+    // SAM release key, created 2026-11-15, expires 2029-11-14.
+    "AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6",
+];
 
 /// Whether `sig` (the checked signature of a downloaded SAM) comes from one
 /// of `keys`. The error says why not, in a sentence for people.
@@ -53,6 +56,16 @@ pub fn check(sig: &SignatureInfo, keys: &[&str]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every built-in release key is a full fingerprint (40 hex
+    /// characters), never a short key id that another key could share.
+    #[test]
+    fn release_keys_are_full_fingerprints() {
+        assert!(!RELEASE_KEYS.is_empty(), "SAM has a release key");
+        for k in RELEASE_KEYS {
+            assert!(k.len() == 40 && k.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_lowercase()), "{k}");
+        }
+    }
 
     const OURS: &str = "0123456789ABCDEF0123456789ABCDEF01234567";
 

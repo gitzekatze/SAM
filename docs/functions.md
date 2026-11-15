@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 11:01:46).
 
-**40 functions:** 32 proven by passing tests, 1 by scripted checks, 0 with a gap, 234 tests in all.
+**40 functions:** 32 proven by passing tests, 1 by scripted checks, 0 with a gap, 236 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -40,7 +40,7 @@
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 8 | ✅ |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 2 | ✅ |
 | 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | sam-runner, sam-storage | 2 | ✅ |
-| 28 | [Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 16 | ❌ block_checksums_match_the_zsync_definition, the_download_checksum_is_sha1_of_the_whole_file |
+| 28 | [Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 18 | ❌ release_keys_are_full_fingerprints, signing_a_file_without_signature_sections_is_refused, block_checksums_match_the_zsync_definition, the_download_checksum_is_sha1_of_the_whole_file |
 | 29 | [SAM notices AppImages that were moved or changed.](#29) | sam-runner, sam-intake | 2 | ✅ |
 | 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 6 | ✅ |
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 1 | ✅ |
@@ -496,8 +496,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`update_wildcards_match_only_the_right_build`](../crates/sam-detect/src/update_info.rs#L126) | Wildcards in update information match the right file name and not the build for another processor. | ✅ |
 | [`signed_appimage_is_checked`](../crates/sam-detect/tests/signature.rs#L19) | The signature of a signed AppImage is checked with GnuPG. | ✅ |
 | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L443) | An update signed with another key, or not signed at all, is noticed. | ✅ |
-| [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L67) | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | ✅ |
-| [`without_a_release_key_sam_never_updates_itself`](../crates/sam-runner/src/release_key.rs#L82) | Without a built-in release key, SAM never updates itself, whatever the download looks like. | ✅ |
+| [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L80) | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | ✅ |
+| [`release_keys_are_full_fingerprints`](../crates/sam-runner/src/release_key.rs#L62) | Every built-in release key is a full fingerprint (40 hex characters), never a short key id that another key could share. | – |
+| [`signing_a_file_without_signature_sections_is_refused`](../crates/sam-jail-cli/tests/robustness.rs#L172) | Signing a file that has no AppImage signature sections is refused with a clear message, before GnuPG is asked anything, and the file stays as it was. | – |
+| [`without_a_release_key_sam_never_updates_itself`](../crates/sam-runner/src/release_key.rs#L95) | Without a built-in release key, SAM never updates itself, whatever the download looks like. | ✅ |
 | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L376) | The header of a zsync file is read (file name, size, checksum). | ✅ |
 | [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L386) | Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | ✅ |
 | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L397) | Update downloads use HTTPS only; HTTP and file addresses are refused. | ✅ |

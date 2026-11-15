@@ -14,6 +14,8 @@
 # from https://github.com/AppImage/type2-runtime/releases (runtime-ARCH).
 # The runtime's SHA-256 is checked against RUNTIME_SHA256 (defaults: the
 # pinned runtimes below); set it to the digest GitHub shows for a newer one.
+# With SIGN_KEY=<fingerprint> the AppImage is signed before its .zsync and
+# checksum are written (GnuPG asks for the passphrase).
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -122,6 +124,9 @@ cp "$RUNTIME" "$work/runtime"
 "$bin/sam-jail" dev set-update-info "$work/runtime" "gh-releases-zsync|gitzekatze|SAM|latest|SAM-*-$arch.AppImage.zsync" >/dev/null
 cat "$work/runtime" "$work/fs.squashfs" > "$target"
 chmod 755 "$target"
+if [ -n "${SIGN_KEY:-}" ]; then
+    "$bin/sam-jail" dev sign-appimage "$target" --key "$SIGN_KEY" >/dev/null
+fi
 "$bin/sam-jail" dev make-zsync "$target" >/dev/null
 (cd "$out" && sha256sum "$(basename "$target")" > "$(basename "$target").sha256")
 echo "Wrote $target"

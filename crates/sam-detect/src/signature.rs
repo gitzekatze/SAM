@@ -180,22 +180,37 @@ fn trim_zeros(b: &[u8]) -> &[u8] {
 }
 
 /// Writes a signature into an AppImage whose runtime has empty signature
-/// sections; for tests (a real AppImage is signed by appimagetool).
+/// sections; for tests.
 #[doc(hidden)]
 pub fn sign_for_test(path: &Path, gpg_home: &Path, key_id: &str) -> Result<()> {
+    sign_embedded(path, Some(gpg_home), key_id)
+}
+
+/// Signs an AppImage the way AppImage tools check it: the SHA-256 of the
+/// file with both signature sections empty is signed with `key_id`, and the
+/// signature and the public key are written into those sections. GnuPG
+/// asks for the passphrase itself. `gpg_home` is GnuPG's own folder when
+/// not given.
+pub fn sign_embedded(path: &Path, gpg_home: Option<&Path>, key_id: &str) -> Result<()> {
     let mut data = Vec::new();
     File::open(path)?.read_to_end(&mut data)?;
     let (sig_range, key_range) = sections(&data).context(sam_core::i18n::tr("no signature sections"))?;
     let gpg = sam_core::util::which("gpg").context(sam_core::i18n::tr("gpg missing"))?;
-    let key = Command::new(&gpg).arg("--homedir").arg(gpg_home).args(["--batch", "--armor", "--export", key_id]).output()?.stdout;
+    let gpg_cmd = || {
+        let mut c = Command::new(&gpg);
+        if let Some(h) = gpg_home {
+            c.arg("--homedir").arg(h);
+        }
+        c
+    };
+    let key = gpg_cmd().args(["--batch", "--armor", "--export", key_id]).output()?.stdout;
+    anyhow::ensure!(!key.is_empty(), "{}", sam_core::i18n::trf("GnuPG has no key {key}", &[("key", &key_id)]));
     anyhow::ensure!(key.len() <= key_range.len(), "key too large");
     let mut zeroed = data.clone();
     zeroed[sig_range.clone()].fill(0);
     zeroed[key_range.clone()].fill(0);
     let digest = sam_core::util::hex(&Sha256::digest(&zeroed));
-    let mut child = Command::new(&gpg)
-        .arg("--homedir")
-        .arg(gpg_home)
+    let mut child = gpg_cmd()
         .args(["--batch", "--yes", "--armor", "--detach-sign", "--local-user", key_id, "--output", "-"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

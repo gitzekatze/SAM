@@ -445,6 +445,14 @@ pub(crate) enum DevCmd {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Sign an AppImage with a GnuPG key (release builds): the signature
+    /// goes into the AppImage, and is checked afterwards.
+    SignAppimage {
+        file: PathBuf,
+        /// The key's full fingerprint.
+        #[arg(long)]
+        key: String,
+    },
     /// Built-in SquashFS reader, run by SAM inside a sandbox during extraction.
     ExtractSquashfs {
         source: PathBuf,

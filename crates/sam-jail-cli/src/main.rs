@@ -902,6 +902,17 @@ fn real_main(cli: Cli) -> Result<()> {
             std::fs::write(&dest, data)?;
             out.emit(&json!({"zsync": dest}), || println!("{}", sam_core::i18n::trf("Wrote {path}", &[("path", &dest.display())])));
         }
+        Cmd::Dev { cmd: DevCmd::SignAppimage { file, key } } => {
+            sam_detect::signature::sign_embedded(&file, None, &key)?;
+            let sig = sam_detect::signature::check(&file);
+            let fp = sig.fingerprint.clone().unwrap_or_default();
+            if sig.state != sam_core::model::SignatureState::Valid || !fp.eq_ignore_ascii_case(&key) {
+                bail!("{}", sam_core::i18n::trf("the signature in {file} does not check out: {detail}", &[("file", &file.display()), ("detail", &sig.detail)]));
+            }
+            out.emit(&json!({"path": file, "fingerprint": fp}), || {
+                println!("{}", sam_core::i18n::trf("Signed {path} with {key}", &[("path", &file.display()), ("key", &fp)]))
+            });
+        }
         Cmd::Dev { cmd: DevCmd::MakeFixture { path, name, categories, apprun } } => {
             let mut spec = sam_intake::testkit::FixtureSpec::hello(&name);
             spec.categories = categories;
