@@ -520,18 +520,177 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
     }
 }
 
-/// Replace identifying information before a report leaves the machine.
+/// Replace identifying information before a report leaves the machine: the
+/// home folder, other users' folders, the user and computer names, email
+/// addresses, logins and query strings in links, and IP addresses (apps print
+/// all of these into their logs).
 pub fn redact(s: &str, host: &HostInfo) -> String {
-    let mut out = s.replace(&host.home.display().to_string(), "~");
-    if host.user.len() > 2 {
-        out = out.replace(&host.user, "<user>");
+    let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    redact_with(
+        s,
+        &host.home.display().to_string(),
+        &host.user,
+        hostname.trim(),
+    )
+}
+
+fn redact_with(s: &str, home: &str, user: &str, hostname: &str) -> String {
+    let mut out = redact_links(s);
+    out = redact_emails(&out);
+    if home.len() > 1 {
+        out = out.replace(home, "~");
     }
-    if let Ok(h) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
-        let h = h.trim();
-        if h.len() > 2 {
-            out = out.replace(h, "<host>");
+    for root in ["/home/", "/run/media/", "/media/"] {
+        out = redact_user_folders(&out, root);
+    }
+    // The computer's name first: it often contains the user name.
+    if hostname.len() > 1 {
+        out = replace_word(&out, hostname, "<host>");
+    }
+    if user.len() > 1 {
+        out = replace_word(&out, user, "<user>");
+    }
+    redact_ipv4(&out)
+}
+
+fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// Replaces `word` where it stands as a whole word.
+fn replace_word(s: &str, word: &str, with: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find(word) {
+        let before = rest[..i].chars().next_back();
+        let after = rest[i + word.len()..].chars().next();
+        out.push_str(&rest[..i]);
+        if before.is_some_and(is_word_char) || after.is_some_and(is_word_char) {
+            out.push_str(word);
+        } else {
+            out.push_str(with);
+        }
+        rest = &rest[i + word.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `/home/<anyone>` becomes `/home/<user>` (also /run/media and /media).
+fn redact_user_folders(s: &str, root: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find(root) {
+        out.push_str(&rest[..i + root.len()]);
+        rest = &rest[i + root.len()..];
+        let end = rest
+            .find(|c: char| c == '/' || c.is_whitespace() || "\"'`)]>,;:".contains(c))
+            .unwrap_or(rest.len());
+        if end > 0 && !rest[..end].starts_with('<') {
+            out.push_str("<user>");
+        } else {
+            out.push_str(&rest[..end]);
+        }
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// In links: a login (`user:password@`) and the query string, which often
+/// carries tokens.
+fn redact_links(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find("://") {
+        out.push_str(&rest[..i + 3]);
+        rest = &rest[i + 3..];
+        let end = rest
+            .find(|c: char| c.is_whitespace() || "\"'`<>)]".contains(c))
+            .unwrap_or(rest.len());
+        let mut link = rest[..end].to_string();
+        let path_start = link.find('/').unwrap_or(link.len());
+        if let Some(at) = link[..path_start].rfind('@') {
+            link.replace_range(..at, "<login>");
+        }
+        if let Some(q) = link.find('?') {
+            link.replace_range(q.., "?<hidden>");
+        }
+        out.push_str(&link);
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn redact_emails(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find('@') {
+        let left_ok = |c: char| c.is_alphanumeric() || "._%+-".contains(c);
+        let right_ok = |c: char| c.is_alphanumeric() || ".-".contains(c);
+        let start = rest[..i]
+            .char_indices()
+            .rev()
+            .take_while(|&(_, c)| left_ok(c))
+            .last()
+            .map(|(j, _)| j)
+            .unwrap_or(i);
+        let end = rest[i + 1..]
+            .char_indices()
+            .take_while(|&(_, c)| right_ok(c))
+            .last()
+            .map(|(j, c)| i + 1 + j + c.len_utf8())
+            .unwrap_or(i + 1);
+        let domain = rest[i + 1..end].trim_end_matches('.');
+        if start < i && domain.contains('.') && !domain.starts_with('.') {
+            out.push_str(&rest[..start]);
+            out.push_str("<email>");
+            rest = &rest[i + 1 + domain.len()..];
+        } else {
+            out.push_str(&rest[..i + 1]);
+            rest = &rest[i + 1..];
         }
     }
+    out.push_str(rest);
+    out
+}
+
+/// IPv4 addresses, except the local ones (127.x, 0.0.0.0).
+fn redact_ipv4(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    let mut k = 0;
+    let mut last = 0;
+    while k < chars.len() {
+        let (i, c) = chars[k];
+        let starts = c.is_ascii_digit()
+            && (k == 0 || !(chars[k - 1].1.is_alphanumeric() || chars[k - 1].1 == '.'));
+        if starts {
+            let mut j = k;
+            while j < chars.len() && (chars[j].1.is_ascii_digit() || chars[j].1 == '.') {
+                j += 1;
+            }
+            let end_byte = if j < chars.len() { chars[j].0 } else { s.len() };
+            let cand = s[i..end_byte].trim_end_matches('.');
+            let parts: Vec<&str> = cand.split('.').collect();
+            let next_ok = j >= chars.len() || !chars[j].1.is_alphanumeric();
+            let is_ip = next_ok
+                && parts.len() == 4
+                && parts.iter().all(|p| {
+                    !p.is_empty() && p.len() <= 3 && p.parse::<u16>().is_ok_and(|n| n <= 255)
+                });
+            if is_ip && !cand.starts_with("127.") && cand != "0.0.0.0" {
+                out.push_str(&s[last..i]);
+                out.push_str("<ip>");
+                last = i + cand.len();
+            }
+            k = j;
+            continue;
+        }
+        k += 1;
+    }
+    out.push_str(&s[last..]);
     out
 }
 
@@ -576,7 +735,7 @@ pub fn bug_report(app: &Sam, e: Option<&AppEntry>, host: &HostInfo) -> String {
             s += &format!("- [{:?}] {}: {}\n", ch.status, ch.label, ch.detail);
         }
         s += "\n#### Permissions\n\n```toml\n";
-        s += &toml_string(&e.profile.permissions);
+        s += &permissions_for_report(&e.profile.permissions);
         s += "```\n";
         let logs = Logs::new(&app.paths);
         if let Ok(Some(l)) = logs.latest(&e.id, Some(LogKind::Launch)) {
@@ -586,6 +745,17 @@ pub fn bug_report(app: &Sam, e: Option<&AppEntry>, host: &HostInfo) -> String {
         }
     }
     redact(&s, host)
+}
+
+/// An app's permissions for a bug report: values given to the app as
+/// environment variables (often API keys or tokens) are hidden; their names
+/// stay, because they help to find the problem.
+fn permissions_for_report(p: &sam_core::permissions::PermissionSet) -> String {
+    let mut p = p.clone();
+    for v in p.environment.set.values_mut() {
+        *v = "<hidden>".into();
+    }
+    toml_string(&p)
 }
 
 fn toml_string<T: serde::Serialize>(v: &T) -> String {
@@ -615,6 +785,56 @@ mod tests {
         assert!(
             text.contains("~/Documents/x.png"),
             "paths stay readable: {text}"
+        );
+    }
+
+    /// Bug reports hide everything that identifies the user or gives access:
+    /// a home folder with spaces, other users' folders, short user names,
+    /// the computer's name, email addresses, logins and tokens in links, IP
+    /// addresses, and the values of environment variables given to the app.
+    /// Ordinary words, versions and local addresses stay readable.
+    #[test]
+    fn bug_reports_hide_names_addresses_and_secrets() {
+        let r = |s: &str| redact_with(s, "/home/jo smith", "jo", "jo-laptop");
+        assert_eq!(r("open /home/jo smith/Docs/a b.txt"), "open ~/Docs/a b.txt");
+        assert_eq!(r("jo started the journal"), "<user> started the journal");
+        assert_eq!(
+            r("copied from /home/bob/.config and /run/media/jo/USB"),
+            "copied from /home/<user>/.config and /run/media/<user>/USB"
+        );
+        assert_eq!(
+            r("connected to jo-laptop.local"),
+            "connected to <host>.local"
+        );
+        assert_eq!(
+            r("signed in as erika.m+sam@example.org."),
+            "signed in as <email>."
+        );
+        assert_eq!(
+            r("GET https://alice:s3cret@api.example.com/v1/x?token=abc123 failed"),
+            "GET https://<login>@api.example.com/v1/x?<hidden> failed"
+        );
+        assert_eq!(
+            r("from 192.168.1.20:8080 to 127.0.0.1 and 0.0.0.0"),
+            "from <ip>:8080 to 127.0.0.1 and 0.0.0.0"
+        );
+        assert_eq!(
+            r("glibc 2.38, GTK 4.14.5, libfoo.so.1.2"),
+            "glibc 2.38, GTK 4.14.5, libfoo.so.1.2"
+        );
+        assert_eq!(
+            r("an @ sign and user@localhost"),
+            "an @ sign and user@localhost"
+        );
+
+        let mut p = sam_core::permissions::PermissionSet::strict_gui();
+        p.environment
+            .set
+            .insert("OPENAI_API_KEY".into(), "sk-very-secret".into());
+        let text = permissions_for_report(&p);
+        assert!(
+            text.contains("OPENAI_API_KEY") && !text.contains("sk-very-secret"),
+            "{text}"
         );
     }
 }

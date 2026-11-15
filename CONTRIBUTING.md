@@ -2,6 +2,22 @@
 
 Thank you for helping. A few notes make it smoother.
 
+## What SAM stands for
+
+Every change is weighed against five columns:
+
+1. **Reliable opening:** SAM opens nearly any AppImage, measured on many
+   real ones, not just test files.
+2. **A simple flow:** from "found an AppImage" to "it runs safely" in a few
+   clear steps, without hiding what matters.
+3. **Real security:** protections that hold up, each promise proven by a
+   test (docs/security.md).
+4. **Privacy:** what SAM learns about you stays on your computer. No
+   telemetry, network use only when asked, and bug reports that hide
+   personal data.
+5. **Clean code:** well structured, auditable and tested, so others can
+   check it.
+
 ## Before you start
 
 - **Bugs:** open an issue with the *Bug report* form. For anything that

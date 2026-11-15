@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 17:32:32).
 
-**40 functions:** 37 proven by passing tests, 2 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 242 tests in all.
+**40 functions:** 36 proven by passing tests, 3 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 244 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -46,7 +46,7 @@
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 1 | ✅ |
 | 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | sam-runner, sam-intake | 2 | ✅ |
 | 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 6 | ✅ |
-| 34 | [A bug report that never contains your name or home path.](#34) | sam-runner | 1 | ✅ |
+| 34 | [Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.](#34) | sam-runner | 3 | ✅ 🆕 2 new tests since the report |
 | 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-storage, sam-core | 5 | ✅ |
 | 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 12 | ✅ 🆕 1 new test since the report |
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 6 | ✅ 🆕 4 new tests since the report |
@@ -573,11 +573,13 @@ The components are those of the [architecture](architecture.md#level-3-component
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs), [`sam-runner/src/bwrap.rs`](../crates/sam-runner/src/bwrap.rs), [`sam-runner/src/dbus_check.rs`](../crates/sam-runner/src/dbus_check.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
 <a id="34"></a>
-### 34. A bug report that never contains your name or home path.
+### 34. Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.
 
 | Test | Promise | Result |
 |---|---|---|
-| [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L605) | A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | ✅ |
+| [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L775) | A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | ✅ |
+| [`bug_reports_hide_names_addresses_and_secrets`](../crates/sam-runner/src/doctor.rs#L796) | Bug reports hide everything that identifies the user or gives access: a home folder with spaces, other users' folders, short user names, the computer's name, email addresses, logins and tokens in links, IP addresses, and the values of environment variables given to the app. | 🆕 new |
+| [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L455) | SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | 🆕 new |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs)
 
@@ -628,7 +630,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L193) | Texts without a translation come back with their values. | ✅ |
 | [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L17) | The command line speaks german when asked. | ✅ |
 | [`every_translated_language_can_be_chosen`](../crates/sam-core/src/i18n.rs#L179) | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | 🆕 new |
-| [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L456) | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | 🆕 new |
+| [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L468) | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | 🆕 new |
 | [`the_chosen_language_and_the_systems_are_kept_apart`](../crates/sam-gtk/src/i18n.rs#L90) | Choosing a language sets it for the window and remembers the system's; going back to the system restores exactly what it had, also after several restarts. | 🆕 new |
 | [`apps_keep_the_system_language_whatever_sams_window_shows`](../crates/sam-sandbox/src/lib.rs#L2083) | An app started from SAM's window keeps the system's language, even when the window itself shows another one. | 🆕 new |
 
@@ -651,7 +653,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Test | Promise | Result |
 |---|---|---|
 | [`a_complete_configuration_file_loads_every_setting`](../crates/sam-core/src/config.rs#L415) | A complete configuration file with every section loads without loss. | ✅ |
-| [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L482) | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | ✅ |
+| [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L494) | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | ✅ |
 | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | ✅ |
 | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1058) | Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | ✅ |
 | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1108) | Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | ✅ |

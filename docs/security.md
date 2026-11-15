@@ -323,6 +323,35 @@ SAM's GitHub releases.
 
 ---
 
+## Privacy
+
+SAM keeps what it learns about you on your computer.
+
+- **No telemetry.** SAM has no usage statistics, crash reporting or
+  "phone home" of any kind. The only network traffic SAM itself makes is
+  described above: update checks and updates, when you ask for them, and
+  the daily check only if you switch it on
+  (`update_checks_stay_off_unless_switched_on`).
+- **What stays on your disk:** SAM's settings, the app records and, per app,
+  the last 20 launch logs (Preferences → Diagnostics). A launch log holds
+  what the app printed, which can include personal data; it never leaves your
+  computer unless you send it, and older logs are deleted automatically
+  (`the_newest_log_survives_pruning_within_one_second`).
+- **Your folders:** SAM looks into the folders you add and reads nothing
+  there but the AppImages it lists. It also looks at the file names in your
+  Downloads folder, to offer adding it when AppImages are waiting there;
+  that stays on your computer.
+- **Bug reports** (Diagnostics → *Copy a redacted bug report*, or
+  `sam-jail report`) are made to be shared, so SAM removes what identifies
+  you or gives access before you see the text: your home folder and other
+  users' folders, your user name and the computer's name, email addresses,
+  logins and query strings in links (they often carry tokens), IP addresses,
+  and the values of environment variables you gave an app
+  (`bug_reports_hide_names_addresses_and_secrets`). Read it once before you
+  paste it anywhere: an app can print personal data SAM cannot recognize.
+
+---
+
 ## Signatures
 
 AppImages can carry a GPG signature and the signer's public key inside the

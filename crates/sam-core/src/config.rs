@@ -450,6 +450,18 @@ cleanup_stale = true
         c.validate().unwrap();
     }
 
+    /// SAM contacts no update source on its own: the daily check when the
+    /// window opens is off until the user switches it on.
+    #[test]
+    fn update_checks_stay_off_unless_switched_on() {
+        assert!(!Config::default().updates.check_on_start);
+        let c: Config = toml::from_str("format = 1\n").unwrap();
+        assert!(
+            !c.updates.check_on_start,
+            "a settings file without the switch keeps it off"
+        );
+    }
+
     /// The window's language is empty (follow the system) or one of the
     /// languages SAM speaks; anything else is refused, and a wrong value in
     /// the file is reset to the system's language.
