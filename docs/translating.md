@@ -56,7 +56,7 @@ stays that way.
 | Sandbox Check | Sandbox-Prüfung | Comprobación del entorno aislado | Vérification du bac à sable |
 | menu entry | Menüeintrag | entrada del menú | entrée de menu |
 
-Address the user formally (Sie, usted, vous).
+Address the user informally, as a friend would: du in German, tú in Spanish, tu in French. `scripts/i18n.py check` fails on the formal forms (Sie, usted, vous).
 
 ## Marking texts in the code
 

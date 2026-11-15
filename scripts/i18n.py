@@ -25,6 +25,17 @@ PO = ROOT / "po"
 POT = PO / "sam.pot"
 COMPLETE = {"de", "es", "fr"}
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
+# SAM addresses people informally (decided 2026-11-15): du, tú, tu. These
+# catch the formal forms (Sie, usted, vous) in a translation.
+_ES_IMPERATIVES = ("Vuelva|Compruebe|Pruebe|Intente|Consulte|Asegúrese|Elija|Indique|Instale|Active|Desactive|Permita|Muestre|"
+                   "Abra|Seleccione|Escriba|Pulse|Haga|Revise|Guarde|Cree|Quite|Libere|Ejecute|Inicie|Conceda|Añada|Use|Dele|"
+                   "Deje|Confirme|Descargue|Actualice|Cierre|Suba|Reinicie|Cambie|Borre|Elimine")
+FORMAL = {
+    "de": re.compile(r"\b\w+en Sie\b|(?:^|[.!?:;]\s+|\n)Sie (?:können|haben|müssen|sehen|finden|werden|möchten|sollten|dürfen|brauchen)\b"
+                     r"|(?<![.!?:]\s)(?<!^)\b(?:Ihnen|Ihr|Ihre|Ihren|Ihrem|Ihrer|Ihres)\b"),
+    "es": re.compile(r"\busted(?:es)?\b|(?:^|[.!?:;]\s+|\n)(?i:" + _ES_IMPERATIVES + r")\b"),
+    "fr": re.compile(r"\b(?:vous|votre|vos)\b", re.I),
+}
 
 
 # ---- reading Rust source
@@ -261,6 +272,8 @@ def check():
             done = e is not None and not e["fuzzy"] and all(e["str"]) and e["str"]
             if lang in COMPLETE and not done:
                 problems.append(f"{lang}: no translation for {key[0][:70]!r}")
+            if done and lang in FORMAL and any(FORMAL[lang].search(x) for x in e["str"]):
+                problems.append(f"{lang}: formal address (SAM says du / tú / tu) in {key[0][:60]!r}")
             if done:
                 want = set(PLACEHOLDER.findall(key[0] + (key[1] or "")))
                 for s in e["str"]:
