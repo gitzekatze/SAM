@@ -1,0 +1,66 @@
+# The maintainer handbook
+
+This handbook is for whoever looks after SAM: you, after a long break, or
+someone who joins later. It assumes no experience with GitHub or Rust. Each
+page says **what** a task is, **how** to do it and **why** it is done that
+way. Read this page first; it tells you where everything is and what to do
+next.
+
+## SAM in one minute
+
+SAM sandboxes AppImages: it unpacks an AppImage without running it, gives it
+a sandbox built by Bubblewrap with only the access you allow, and starts it
+there. It is written in Rust and has two faces: the window (`sam-jail-gui`)
+and the command line (`sam-jail`). The window does everything through the
+command line, so both always behave the same.
+
+Five promises guide every change (from [CONTRIBUTING](../../CONTRIBUTING.md)):
+reliable opening of nearly any AppImage, a simple flow, real security,
+privacy, and clean, tested code.
+
+## Where everything is
+
+| Place | What it holds |
+|---|---|
+| **GitHub** (github.com/gitzekatze/SAM) | the public home: code, issues, pull requests, releases, the website, CI results |
+| **`SAM/sam/`** on your computer | your copy of the repository, where changes are made |
+| **`SAM/personal/`** | your private notes and guides, never published (for example the release key guide) |
+| **`SAM/claude/`** | Claude's working files: test AppImages, test runs, caches |
+
+Inside the repository:
+
+| Folder | What it holds |
+|---|---|
+| `crates/` | the code, in nine parts ([architecture](../architecture.md) explains them) |
+| `docs/` | documentation; `docs/handbook/` is this handbook |
+| `tests/` | test scripts that need more than `cargo test` (the window, real apps, upgrades) |
+| `scripts/` | tools for releasing, reports and checks ([your tools](tools.md)) |
+| `po/` | the translations |
+| `data/`, `packaging/` | menu entry, icon, man pages, packages for distributions |
+
+## The pages of this handbook
+
+1. [How GitHub works for SAM](github.md): repository, commits, branches,
+   pull requests, CI, releases, the website, issues and security reports.
+2. [Everyday work](workflow.md): making a change, from idea to merged.
+3. [Your tools](tools.md): every command and script, what it does and when.
+4. [Releasing a version](../releasing.md): the checklist, and the one
+   command that does most of it.
+5. [Keeping SAM healthy](care.md): what to look at weekly, monthly, yearly.
+6. Deeper references: [testing](../testing.md), [translating](../translating.md),
+   [architecture](../architecture.md), [the JSON interface](../json-interface.md),
+   [packaging](../packaging.md).
+
+## What to do next
+
+When you come back after a break, in this order:
+
+1. **Look at GitHub:** open issues, security reports (Security tab), and the
+   newest CI run on `main` (Actions tab). [Keeping SAM healthy](care.md) says
+   what each means.
+2. **Update your copy:** in `SAM/sam`, run `git switch main` and `git pull`.
+3. **Check that everything still works:** `make test`.
+4. **Read the newest entries** under *Unreleased* in [CHANGELOG.md](../../CHANGELOG.md):
+   that is what changed since the last version.
+5. **Pick the next task:** from the issues, or ask Claude to read this
+   handbook and the changelog and propose the next steps.

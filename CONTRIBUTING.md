@@ -18,6 +18,9 @@ Every change is weighed against five columns:
 5. **Clean code:** well structured, auditable and tested, so others can
    check it.
 
+New to maintaining SAM, or back after a break? Start with the
+[maintainer handbook](docs/handbook/index.md).
+
 ## Before you start
 
 - **Bugs:** open an issue with the *Bug report* form. For anything that

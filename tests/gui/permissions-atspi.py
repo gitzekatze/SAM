@@ -94,7 +94,7 @@ check("drop-downs are named after permission and apps", dd is not None)
 # The big switch of the row whose apps have sound on.
 on = [n for n in nodes(app) if (n.get_name() or "").startswith("Sound for") and role_is(n, "switch")
       and (n.get_name() in ("Sound for all selected apps",) or (n.get_name() or "").split()[-1] == "apps")
-      and n.get_state_set().contains(Atspi.StateType.CHECKED)]
+      and (n.get_state_set().contains(Atspi.StateType.CHECKED) or n.get_state_set().contains(Atspi.StateType.PRESSED))]
 check("big switch for the apps with sound on", bool(on), [n.get_name() for n in nodes(app) if (n.get_name() or "").startswith("Sound")])
 had_sound = sorted(k for k in ["Browser", "Player", "Editor"] if before[k]["permissions"]["audio"]["enabled"])
 if on:

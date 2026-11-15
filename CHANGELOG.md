@@ -150,6 +150,12 @@ version.
 
 ### Tests and documentation
 
+- SAM has a website (GitHub Pages), built from the repository on every
+  change: Use SAM (install, guide), Trust SAM (security, threat model,
+  dashboard, functions, tests, mutation testing) and Maintain SAM.
+- A maintainer handbook (docs/handbook/) for beginners: where everything
+  is, how GitHub works for SAM, everyday work, every tool, and what to look
+  at weekly, monthly and yearly.
 - The window is clicked through on every push: a new test follows the main
   flow (Create Sandbox, Launch) and the window in German and English, and
   the app page, Permission Manager and accessibility tests now run in CI too.
