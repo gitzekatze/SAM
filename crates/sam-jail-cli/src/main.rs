@@ -741,6 +741,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
                 for f in &r.findings {
                     let fix = f.fix.as_ref().map(|(k, v)| format!("  fix: sam-jail set {} {k} {v}", e.id)).unwrap_or_default();
+                    let fix = if f.already_granted { String::new() } else { fix };
                     println!(
                         "  [{}] {} ({}){}{}",
                         risk_str(f.risk),
@@ -749,6 +750,12 @@ fn real_main(cli: Cli) -> Result<()> {
                         if f.applied { paint("  applied", "32") } else { String::new() },
                         if f.applied { String::new() } else { fix }
                     );
+                    if f.already_granted {
+                        println!("      {}", f.trace_line);
+                    }
+                }
+                if let Some(t) = &r.trace_file {
+                    println!("The full trace is in {}.", tildify(t));
                 }
                 if r.applied > 0 {
                     println!("{} low-risk fix(es) applied automatically.", r.applied);

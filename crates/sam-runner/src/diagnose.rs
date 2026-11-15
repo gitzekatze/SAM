@@ -30,6 +30,11 @@ pub struct Finding {
     /// `(permission key, value)` that would fix it.
     pub fix: Option<(String, String)>,
     pub applied: bool,
+    /// The fix is already in effect, so the access failed for another
+    /// reason; `trace_line` shows the call as the app made it.
+    pub already_granted: bool,
+    /// The failed call, exactly as strace recorded it.
+    pub trace_line: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,19 +42,62 @@ pub struct DiagnoseResult {
     pub findings: Vec<Finding>,
     pub applied: usize,
     pub log_file: Option<PathBuf>,
+    /// The full trace of the diagnostic run, kept in the app's log folder.
+    pub trace_file: Option<PathBuf>,
     pub launch_summary: String,
 }
 
 const ETC_SENSITIVE: &[&str] =
     &["/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/etc/ssh", "/etc/NetworkManager", "/etc/polkit-1", "/etc/pam.d", "/etc/security"];
 
+/// System calls that change a file rather than read or reach it.
+const CHANGE_CALLS: &[&str] = &[
+    "chmod",
+    "fchmodat",
+    "fchmodat2",
+    "chown",
+    "lchown",
+    "fchownat",
+    "utime",
+    "utimes",
+    "utimensat",
+    "futimesat",
+    "mkdir",
+    "mkdirat",
+    "unlink",
+    "unlinkat",
+    "rmdir",
+    "rename",
+    "renameat",
+    "renameat2",
+    "link",
+    "linkat",
+    "symlink",
+    "symlinkat",
+    "mknod",
+    "mknodat",
+    "truncate",
+    "setxattr",
+    "lsetxattr",
+    "removexattr",
+    "lremovexattr",
+];
+
 /// Parse strace lines: `123 openat(AT_FDCWD, "/path", O_RDONLY) = -1 ENOENT (No such file or directory)`.
-pub fn parse_trace(text: &str) -> BTreeMap<String, String> {
+/// Returns each path once, with its error and the first line that failed.
+pub fn parse_trace(text: &str) -> BTreeMap<String, (String, String)> {
     let mut out = BTreeMap::new();
     for line in text.lines() {
         let Some(eq) = line.rfind(" = -1 ") else { continue };
         let err = line[eq + 6..].split_whitespace().next().unwrap_or("").to_string();
         if !matches!(err.as_str(), "ENOENT" | "EACCES" | "EPERM" | "EROFS" | "ECONNREFUSED") {
+            continue;
+        }
+        // Failed attempts to change a file (its mode, owner, name) are not
+        // missing access: they fail for any ordinary user, sandbox or not.
+        // NVIDIA's driver, for one, tries to chmod its device nodes.
+        let call = line.split_whitespace().nth(1).and_then(|c| c.split('(').next()).unwrap_or("");
+        if CHANGE_CALLS.contains(&call) {
             continue;
         }
         let Some(q1) = line.find('"') else { continue };
@@ -58,7 +106,7 @@ pub fn parse_trace(text: &str) -> BTreeMap<String, String> {
         if !path.starts_with('/') || path.starts_with("/proc/") || path.starts_with("/opt/app") || path.starts_with("/run/sam") {
             continue;
         }
-        out.entry(path.to_string()).or_insert(err);
+        out.entry(path.to_string()).or_insert((err, line.trim().to_string()));
     }
     out
 }
@@ -72,6 +120,8 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         suggestion,
         fix: fix.map(|(k, v)| (k.to_string(), v)),
         applied: false,
+        already_granted: false,
+        trace_line: String::new(),
     };
     let run = format!("/run/user/{}", host.uid);
     if path.starts_with("/dev/dri") || path.starts_with("/dev/nvidia") {
@@ -131,6 +181,13 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         if is_sensitive_path(path) {
             return Some(mk(RiskLevel::Dangerous, format!("The app tried to access {} (sensitive; left denied).", tildify(p)), None));
         }
+        // The app's own cache, settings and data live in its private home,
+        // where they do not exist yet on the first start; the app creates
+        // them itself. Granting the real folder would only share yours.
+        let own = [".cache", ".config", ".local"];
+        if err == "ENOENT" && rel.components().next().is_some_and(|c| own.iter().any(|o| c.as_os_str() == *o)) {
+            return None;
+        }
         // Suggest the closest top-level folder in home.
         let first: PathBuf = host.home.join(rel.components().next().map(|c| c.as_os_str()).unwrap_or_default());
         let key = if err == "EROFS" { "filesystem.custom_write" } else { "filesystem.custom_read" };
@@ -170,13 +227,19 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
     };
     let rec = run(entry, &opts, &sam.config, &sam.paths, &host)?;
     let trace = fs::read_to_string(diag_dir.join("trace.log")).unwrap_or_default();
-    let mut findings: Vec<Finding> = parse_trace(&trace).iter().filter_map(|(p, e)| classify(p, e, &host)).collect();
+    let mut findings: Vec<Finding> =
+        parse_trace(&trace).into_iter().filter_map(|(p, (e, line))| classify(&p, &e, &host).map(|f| Finding { trace_line: line, ..f })).collect();
     findings.dedup_by(|a, b| a.fix == b.fix && a.fix.is_some());
+    mark_already_granted(&mut findings, &entry.profile.permissions);
+    // The whole trace stays in the app's log folder, so a finding can be
+    // checked against what really happened.
+    let logs = sam.paths.app_logs_dir(&entry.id);
+    let trace_file = fs::create_dir_all(&logs).and_then(|_| fs::write(logs.join("diagnose-trace.log"), &trace)).ok().map(|_| logs.join("diagnose-trace.log"));
 
     let mut applied = 0;
     if apply_low_risk && sam.config.dependencies.automatic_low_risk_fixes {
         let mut perms: PermissionSet = entry.profile.permissions.clone();
-        for f in findings.iter_mut().filter(|f| f.risk == RiskLevel::Low) {
+        for f in findings.iter_mut().filter(|f| f.risk == RiskLevel::Low && !f.already_granted) {
             if let Some((k, v)) = &f.fix {
                 let ok = if k == "filesystem.custom_read" {
                     if !perms.filesystem.custom_read.contains(v) {
@@ -197,7 +260,31 @@ pub fn diagnose(sam: &Sam, entry: &mut AppEntry, timeout: u64, apply_low_risk: b
         }
     }
     let _ = fs::remove_dir_all(&diag_dir);
-    Ok(DiagnoseResult { findings, applied, log_file: rec.log_file, launch_summary: rec.summary })
+    Ok(DiagnoseResult { findings, applied, log_file: rec.log_file, trace_file, launch_summary: rec.summary })
+}
+
+/// Marks findings whose fix the app already has: the access failed for
+/// another reason, and suggesting the same switch again would mislead.
+pub fn mark_already_granted(findings: &mut [Finding], perms: &PermissionSet) {
+    for f in findings.iter_mut() {
+        let Some((k, v)) = &f.fix else { continue };
+        let has = match k.as_str() {
+            "filesystem.custom_read" => perms.filesystem.custom_read.contains(v) || perms.filesystem.custom_write.contains(v),
+            "filesystem.custom_write" => perms.filesystem.custom_write.contains(v),
+            _ => perms.get_key(k).ok().is_some_and(|cur| match cur {
+                serde_json::Value::String(s) => s == *v,
+                other => serde_json::from_str::<serde_json::Value>(v).is_ok_and(|want| want == other),
+            }),
+        };
+        if has {
+            f.already_granted = true;
+            f.suggestion = format!(
+                "{path} could not be opened ({err}), although the app already has this access. The cause is elsewhere; the trace line shows the call.",
+                path = f.path,
+                err = f.error
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -214,7 +301,7 @@ mod tests {
 12 openat(AT_FDCWD, "/etc/hosts", O_RDONLY) = 3
 "#;
         let m = parse_trace(t);
-        assert!(m.contains_key("/usr/share/X11/xkb/rules/evdev"));
+        assert!(m["/usr/share/X11/xkb/rules/evdev"].1.starts_with("12 openat(AT_FDCWD, \"/usr/share/X11/xkb/rules/evdev\""), "the raw line is kept");
         assert!(m.contains_key("/tmp/.X11-unix/X0"));
         assert!(!m.contains_key("/opt/app/usr/lib/libfoo.so"));
         assert!(!m.contains_key("/etc/hosts"));
@@ -233,5 +320,52 @@ mod tests {
             let f = classify("/usr/share/zoneinfo", "ENOENT", &host).unwrap();
             assert_eq!(f.risk, RiskLevel::Low);
         }
+    }
+
+    /// A GPU device that fails to open while the GPU is already allowed is
+    /// reported as "already granted", not as a suggestion to allow the GPU
+    /// (regression: neovide on NVIDIA got "Enable GPU acceleration" twice).
+    #[test]
+    fn a_failure_despite_the_permission_is_not_suggested_again() {
+        let host = sample_context().host;
+        let mut perms = PermissionSet::default();
+        perms.devices.gpu = true;
+        let mut f = vec![classify("/dev/nvidia-modeset", "EACCES", &host).unwrap()];
+        mark_already_granted(&mut f, &perms);
+        assert!(f[0].already_granted);
+        assert!(f[0].suggestion.contains("already has this access"), "{}", f[0].suggestion);
+        perms.devices.gpu = false;
+        let mut f = vec![classify("/dev/nvidia-modeset", "EACCES", &host).unwrap()];
+        mark_already_granted(&mut f, &perms);
+        assert!(!f[0].already_granted);
+    }
+
+    /// A missing cache, settings or data folder in the app's private home is
+    /// the app's own and is not reported, while a missing document folder
+    /// is (regression: ~/.cache/nvidia was suggested as a folder to grant).
+    #[test]
+    fn the_apps_own_folders_in_its_private_home_are_not_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut host = sample_context().host;
+        host.home = tmp.path().to_path_buf();
+        for d in [".cache/nvidia", "Documents"] {
+            fs::create_dir_all(tmp.path().join(d)).unwrap();
+        }
+        let cache = tmp.path().join(".cache/nvidia");
+        assert!(classify(cache.to_str().unwrap(), "ENOENT", &host).is_none());
+        let docs = tmp.path().join("Documents");
+        assert!(classify(docs.to_str().unwrap(), "ENOENT", &host).is_some());
+    }
+
+    /// A failed attempt to change a file's mode is not missing access
+    /// (regression: NVIDIA's driver chmods /dev/nvidia-modeset, which fails
+    /// for every ordinary user, and diagnose reported it as a GPU problem).
+    #[test]
+    fn failed_changes_to_a_file_are_not_missing_access() {
+        let t = "5     chmod(\"/dev/nvidia-modeset\", 0666) = -1 EPERM (Operation not permitted)\n5     mkdir(\"/usr/share/foo\", 0755) = -1 EROFS (Read-only file system)\n5     openat(AT_FDCWD, \"/dev/nvidia0\", O_RDWR) = -1 EACCES (Permission denied)\n";
+        let m = parse_trace(t);
+        assert!(!m.contains_key("/dev/nvidia-modeset"));
+        assert!(!m.contains_key("/usr/share/foo"));
+        assert!(m.contains_key("/dev/nvidia0"), "a failed open still counts");
     }
 }

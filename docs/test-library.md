@@ -146,7 +146,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-75 tests.
+78 tests.
 
 | Promise | Test |
 |---|---|
@@ -156,8 +156,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | SAM's own bus check reaches the session bus on a desktop. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L172) |
 | SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L184) |
 | An app may register a tray icon only while the tray service is allowed. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L114) |
-| Failed file and socket accesses are read from a diagnostic trace. | [`failed_accesses_are_read_from_a_trace`](../crates/sam-runner/src/diagnose.rs#L209) |
-| Failed accesses are mapped to the permission that would fix them (X11 socket, GPU device), and unknown paths to none. | [`failed_accesses_map_to_the_permission_that_fixes_them`](../crates/sam-runner/src/diagnose.rs#L224) |
+| Failed file and socket accesses are read from a diagnostic trace. | [`failed_accesses_are_read_from_a_trace`](../crates/sam-runner/src/diagnose.rs#L296) |
+| Failed accesses are mapped to the permission that would fix them (X11 socket, GPU device), and unknown paths to none. | [`failed_accesses_map_to_the_permission_that_fixes_them`](../crates/sam-runner/src/diagnose.rs#L311) |
+| A GPU device that fails to open while the GPU is already allowed is reported as "already granted", not as a suggestion to allow the GPU (regression: neovide on NVIDIA got "Enable GPU acceleration" twice). | [`a_failure_despite_the_permission_is_not_suggested_again`](../crates/sam-runner/src/diagnose.rs#L328) |
+| A missing cache, settings or data folder in the app's private home is the app's own and is not reported, while a missing document folder is (regression: ~/.cache/nvidia was suggested as a folder to grant). | [`the_apps_own_folders_in_its_private_home_are_not_reported`](../crates/sam-runner/src/diagnose.rs#L346) |
+| A failed attempt to change a file's mode is not missing access (regression: NVIDIA's driver chmods /dev/nvidia-modeset, which fails for every ordinary user, and diagnose reported it as a GPU problem). | [`failed_changes_to_a_file_are_not_missing_access`](../crates/sam-runner/src/diagnose.rs#L363) |
 | A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L334) |
 | The Landlock rules allow writing exactly in the folders the permissions grant. | [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L313) |
 | The syscall filter compiles in every variant and always blocks mount and io_uring. | [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L330) |
@@ -288,4 +291,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 203 automated Rust tests plus 6 scripted checks.
+Total: 206 automated Rust tests plus 6 scripted checks.
