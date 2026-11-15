@@ -58,7 +58,7 @@ impl AppPage {
             &self.command_view,
             &match cmd {
                 Ok(c) => util::str_of(&c, "command").to_string(),
-                Err(e) => e,
+                Err(e) => e.message,
             },
         );
         *self.menu_state.borrow_mut() = app.backend.call(&["menu", "list", &self.app_id], None).await.ok();
@@ -109,7 +109,7 @@ impl AppPage {
         let Some(app) = self.app() else { return };
         let text = match app.backend.call(&["logs", &self.app_id, "--file", file, "--tail", "400"], None).await {
             Ok(l) => util::str_of(&l, "text").to_string(),
-            Err(e) => e,
+            Err(e) => e.message,
         };
         set_mono_text(&self.log_view, if text.is_empty() { "(empty)" } else { &text });
     }
@@ -188,7 +188,7 @@ impl AppPage {
                     if util::bool_of(&r, "needs_fallback_consent") {
                         // DwarFS AppImages (\"anylinux\", uruntime) need the dwarfs tools for
                         // SAM to unpack them itself: say so, it avoids the question.
-                        let dwarfs = r.get("warnings").is_some_and(|w| w.to_string().contains("DwarFS"));
+                        let dwarfs = util::str_of(&r, "missing_tool") == "dwarfs";
                         let why = if dwarfs {
                             format!("{} is packed in the newer DwarFS format. SAM can unpack it by itself once the dwarfs tools are installed (package \u{201c}dwarfs\u{201d}).", util::plain(&name))
                         } else {
@@ -404,7 +404,7 @@ impl AppPage {
             let mut args = vec!["update".to_string(), me.app_id.clone()];
             let mut result = app.backend.call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None).await;
             if let Err(e) = &result {
-                if e.starts_with("signing key changed") {
+                if e.is("signing-key-changed") {
                     let ok = window::confirm(&app.window, &tr("Signed With Another Key"), e, &tr("Update Anyway"), true).await;
                     if ok {
                         args.push("--accept-key-change".into());

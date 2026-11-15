@@ -1159,7 +1159,7 @@ impl App {
         let found = match &reply {
             Ok(v) if v.get("interface").and_then(Value::as_u64) == Some(sam_core::JSON_INTERFACE as u64) => return,
             Ok(v) => format!("version {} (interface {})", util::str_of(v, "version"), v.get("interface").and_then(Value::as_u64).unwrap_or(0)),
-            Err(e) if e.starts_with("Could not start") => {
+            Err(e) if e.is("cli-not-started") => {
                 self.report_error(e);
                 return;
             }

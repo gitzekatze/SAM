@@ -490,10 +490,14 @@ impl Sam {
             let new_sig = sam_detect::signature::check(&tmp);
             if let Some(before) = signing_key_change(entry.signature.as_ref(), &new_sig) {
                 if !accept_key_change {
-                    bail!(
-                        "signing key changed: the installed version was {before}, the new file is {}. The download was deleted; update again and accept the change only if you trust it.",
-                        sig_words(&new_sig)
-                    );
+                    return Err(sam_core::error::CodedError::new(
+                        "signing-key-changed",
+                        format!(
+                            "The signing key changed: the installed version was {before}, the new file is {}. The download was deleted; update again and accept the change only if you trust it.",
+                            sig_words(&new_sig)
+                        ),
+                    )
+                    .into());
                 }
             }
             {

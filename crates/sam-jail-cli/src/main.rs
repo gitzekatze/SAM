@@ -55,7 +55,11 @@ fn main() {
     let json_mode = cli.json;
     if let Err(e) = real_main(cli) {
         if json_mode {
-            println!("{}", json!({"ok": false, "error": format!("{e:#}")}));
+            // A code lets callers react without reading the (translated) message.
+            match sam_core::error::code_of(&e) {
+                Some(code) => println!("{}", json!({"ok": false, "error": format!("{e:#}"), "code": code})),
+                None => println!("{}", json!({"ok": false, "error": format!("{e:#}")})),
+            }
         } else {
             eprintln!("{} {e:#}", paint("error:", "1;31"));
         }

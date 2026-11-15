@@ -38,7 +38,7 @@ impl Sam {
                 moved.state = AppState::Ready;
             }
             reg.save(&mut moved)?;
-            return Ok(AddOutcome { entry: moved, created: false, relocated: true, needs_fallback_consent: false, warnings: vec![] });
+            return Ok(AddOutcome { entry: moved, created: false, relocated: true, needs_fallback_consent: false, missing_tool: None, warnings: vec![] });
         }
 
         let t = now();
@@ -143,7 +143,8 @@ impl Sam {
         reg.save(&mut entry)?;
         let warnings = self.app_warnings(&entry, &self.host());
         pr.step(ADD_STEPS, 4, 1.0, "");
-        Ok(AddOutcome { entry, created: true, relocated: false, needs_fallback_consent: needs_consent, warnings })
+        let missing_tool = (needs_consent && info.payload == sam_detect::PayloadFormat::Dwarfs).then_some("dwarfs");
+        Ok(AddOutcome { entry, created: true, relocated: false, needs_fallback_consent: needs_consent, missing_tool, warnings })
     }
 
     pub(super) fn extraction_info(

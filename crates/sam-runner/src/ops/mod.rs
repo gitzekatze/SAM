@@ -100,6 +100,10 @@ pub struct AddOutcome {
     pub created: bool,
     pub relocated: bool,
     pub needs_fallback_consent: bool,
+    /// A tool that would let SAM unpack the AppImage itself (`dwarfs` for
+    /// DwarFS images), when the fallback needs consent only for want of it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub missing_tool: Option<&'static str>,
     pub warnings: Vec<Warning>,
 }
 

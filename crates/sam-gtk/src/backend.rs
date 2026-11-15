@@ -23,7 +23,51 @@ pub struct Backend {
     busy_changed: Rc<dyn Fn(bool)>,
 }
 
-pub type Reply = Result<Value, String>;
+pub type Reply = Result<Value, CliError>;
+
+/// An error from `sam-jail`: the message for people, plus the code the
+/// window may react to (`signing-key-changed`, `cli-not-started`). The
+/// message may be translated, so decisions go by the code only. It reads
+/// like the message everywhere a string is expected.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CliError {
+    pub code: Option<String>,
+    pub message: String,
+}
+
+impl CliError {
+    pub fn coded(code: &str, message: impl Into<String>) -> Self {
+        CliError { code: Some(code.to_string()), message: message.into() }
+    }
+    pub fn is(&self, code: &str) -> bool {
+        self.code.as_deref() == Some(code)
+    }
+}
+
+impl From<&str> for CliError {
+    fn from(message: &str) -> Self {
+        CliError { code: None, message: message.to_string() }
+    }
+}
+
+impl From<String> for CliError {
+    fn from(message: String) -> Self {
+        CliError { code: None, message }
+    }
+}
+
+impl std::ops::Deref for CliError {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for CliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
 
 impl Backend {
     pub fn new(busy_changed: impl Fn(bool) + 'static) -> Self {
@@ -66,8 +110,8 @@ impl Backend {
         if input.is_some() {
             flags |= gio::SubprocessFlags::STDIN_PIPE;
         }
-        let proc =
-            gio::Subprocess::newv(&argv_ref, flags).map_err(|e| format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e))?;
+        let proc = gio::Subprocess::newv(&argv_ref, flags)
+            .map_err(|e| CliError::coded("cli-not-started", format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e)))?;
         if let (Some(text), Some(stdin)) = (input, proc.stdin_pipe()) {
             let _ = stdin.write_all_future(text.into_bytes(), glib::Priority::DEFAULT).await;
             let _ = stdin.close_future(glib::Priority::DEFAULT).await;
@@ -109,7 +153,7 @@ impl Backend {
             return r;
         }
         let err = errors.borrow().trim().to_string();
-        Err(if err.is_empty() { "No response from the sam-jail command line tool.".into() } else { err })
+        Err(CliError::from(if err.is_empty() { "No response from the sam-jail command line tool.".to_string() } else { err }))
     }
 
     async fn call_inner(&self, args: &[&str], input: Option<String>) -> Reply {
@@ -120,15 +164,15 @@ impl Backend {
         if input.is_some() {
             flags |= gio::SubprocessFlags::STDIN_PIPE;
         }
-        let proc =
-            gio::Subprocess::newv(&argv_ref, flags).map_err(|e| format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e))?;
+        let proc = gio::Subprocess::newv(&argv_ref, flags)
+            .map_err(|e| CliError::coded("cli-not-started", format!("Could not start '{}': {}. Is SAM installed correctly?", self.cli.display(), e)))?;
         let (out, err) = proc.communicate_utf8_future(input).await.map_err(|e| format!("sam-jail failed: {e}"))?;
         let out = out.map(|s| s.to_string()).unwrap_or_default();
         if let Some(r) = envelope(&out) {
             return r;
         }
         let err = err.map(|s| s.trim().to_string()).unwrap_or_default();
-        Err(if err.is_empty() { "No response from the sam-jail command line tool.".into() } else { err })
+        Err(CliError::from(if err.is_empty() { "No response from the sam-jail command line tool.".to_string() } else { err }))
     }
 
     /// Starts an app in its sandbox. The app keeps running when SAM closes;
@@ -194,7 +238,10 @@ fn envelope(out: &str) -> Option<Reply> {
                 return Some(if ok {
                     Ok(m.get("data").cloned().unwrap_or(Value::Null))
                 } else {
-                    Err(m.get("error").and_then(Value::as_str).unwrap_or("Unknown error").to_string())
+                    Err(CliError {
+                        code: m.get("code").and_then(Value::as_str).map(str::to_string),
+                        message: m.get("error").and_then(Value::as_str).unwrap_or("Unknown error").to_string(),
+                    })
                 });
             }
         }

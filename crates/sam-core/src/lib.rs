@@ -5,6 +5,7 @@
 //! paths, host probing and the sandbox launch context.
 
 pub mod config;
+pub mod error;
 pub mod format;
 pub mod host;
 pub mod model;
