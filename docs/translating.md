@@ -16,7 +16,7 @@ file per language, and `po/LINGUAS` lists the languages.
 
 These stay English on purpose:
 
-- log files, and the key/value tables of `sam-jail show`, `preview` and
+- log files, and the key/value tables of `sam-jail info`, `preview` and
   `report`, because they are technical and go into bug reports;
 - the patterns SAM matches in an app's own output (apps print English);
 - codes and keys in the JSON interface and in files;

@@ -33,7 +33,7 @@ version.
 - SAM speaks German, Spanish and French: every text in the window, every
   message from SAM's core (permissions, warnings, repair advice, check
   results, update and error messages) and the command line's sentences.
-  Logs, the technical tables of `show`, `preview` and `report`, and the JSON
+  Logs, the technical tables of `info`, `preview` and `report`, and the JSON
   interface stay English.
 - Every text was reworded into whole sentences first, so each language can
   order its words freely; code that needed to know which error happened now
@@ -153,6 +153,15 @@ version.
 
 ### Tests and documentation
 
+- A review of every document against SAM as it is: wrong command names in
+  the README and testing guide (`sam-jail sandbox`, `sam-jail show`), an
+  install section that described packages not yet published, the risk
+  levels, outdated button and mode names, a `tests/README.md` that named a
+  folder that does not exist, and an overstated claim ("every security
+  promise names its test": the threat model does; the security page is
+  checked by the breakout test). CI now fails when the threat model names a
+  test that does not exist. The testing guide starts with an overview of
+  every kind of test.
 - The website's front page explains why SAM is good (the gap it closes,
   what it does differently, its five promises); line icons replace emoji;
   the dashboard explains what the tests prove, area by area, and how SAM is
