@@ -150,7 +150,11 @@ repository is planned.
 ### AppImage (any distribution)
 
 `SAM-X.Y.Z-x86_64.AppImage` (or `-aarch64` for 64-bit ARM) from the GitHub
-release runs on any recent distribution that has Bubblewrap, GTK 4 and libadwaita 1.5 or newer:
+release runs on any recent distribution that has Bubblewrap, GTK 4 and libadwaita 1.5 or newer.
+Before every release, the finished AppImage is tested on fresh installations of
+Ubuntu 24.04, Debian 13, Fedora, Arch Linux and openSUSE Tumbleweed. Older
+systems such as Debian 12 and Ubuntu 22.04 have a C library (glibc) that is too
+old; there the AppImage says so and does not start.
 
 ```sh
 chmod +x SAM-*-x86_64.AppImage

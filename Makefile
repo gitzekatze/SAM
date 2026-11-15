@@ -26,7 +26,7 @@ else
 CARGO ?= cargo
 endif
 
-.PHONY: all cli gui test test-library report dashboard licenses install install-cli install-gui clean dist appimage man pot mo
+.PHONY: all cli gui test test-library report dashboard licenses test-shipped install install-cli install-gui clean dist appimage man pot mo
 
 # Languages with a translation (po/LINGUAS).
 LINGUAS := $(shell cat po/LINGUAS 2>/dev/null)
@@ -65,6 +65,11 @@ report:
 # The development dashboard (DEVELOPMENT.md); `make report` also writes it.
 dashboard:
 	python3 scripts/dashboard.py
+
+# A finished AppImage on fresh systems (podman or docker), e.g.
+# make test-shipped APPIMAGE=dist/SAM-0.1.0-x86_64.AppImage
+test-shipped:
+	sh scripts/test-shipped.sh $(APPIMAGE)
 
 # THIRD-PARTY-LICENSES.md, after the dependencies change (CI checks it).
 licenses:

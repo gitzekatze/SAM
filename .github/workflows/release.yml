@@ -1,6 +1,8 @@
 # On a version tag (made by scripts/release.sh): build the release files and
-# the AppImages (x86_64 and aarch64) from the tag and attach them to a
-# *draft* release. Publishing the draft stays a manual step.
+# the AppImages (x86_64 and aarch64) from the tag, test the AppImages on
+# fresh systems, and attach them to a *draft* release. Publishing the draft
+# stays a manual step. Started by hand (workflow_dispatch), it builds and
+# tests without making a draft.
 name: Release
 
 on:
@@ -60,8 +62,53 @@ jobs:
           name: dist-${{ matrix.arch }}
           path: dist/*
 
-  draft:
+  # Test what we ship: the finished AppImage in fresh containers of the
+  # supported distributions, plus a plain refusal on older ones. No draft
+  # release is made unless every system passes.
+  test-shipped:
     needs: appimage
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            systems: >-
+              docker.io/library/ubuntu:24.04=works
+              docker.io/library/debian:13=works
+              registry.fedoraproject.org/fedora:latest=works
+              docker.io/library/archlinux:latest=works
+              registry.opensuse.org/opensuse/tumbleweed:latest=works
+              docker.io/library/debian:12=too-old
+              docker.io/library/ubuntu:22.04=too-old
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            systems: >-
+              docker.io/library/ubuntu:24.04=works
+              docker.io/library/debian:13=works
+              registry.fedoraproject.org/fedora:latest=works
+              docker.io/library/debian:12=too-old
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist-${{ matrix.arch }}
+          path: dist
+
+      # The runner's kernel restricts user namespaces for ordinary users
+      # through AppArmor, which the sandboxes inside the containers need.
+      - name: Allow user namespaces on the runner
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Test the AppImage on every system
+        run: sh scripts/test-shipped.sh dist/SAM-*-${{ matrix.arch }}.AppImage ${{ matrix.systems }}
+
+  draft:
+    needs: [appimage, test-shipped]
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7

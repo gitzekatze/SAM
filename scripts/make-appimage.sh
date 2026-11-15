@@ -10,7 +10,7 @@
 # GTK 4 and libadwaita (1.5 or newer) installed on the computer, like
 # Bubblewrap, which SAM needs anyway. Nothing else is bundled.
 #
-# Needs: cargo, mksquashfs (squashfs-tools) and the AppImage type 2 runtime
+# Needs: cargo, mksquashfs (squashfs-tools), objdump (binutils) and the AppImage type 2 runtime
 # from https://github.com/AppImage/type2-runtime/releases (runtime-ARCH).
 # The runtime's SHA-256 is checked against RUNTIME_SHA256 (defaults: the
 # pinned runtimes below); set it to the digest GitHub shows for a newer one.
@@ -73,6 +73,21 @@ cat > "$app/AppRun" <<'EOF'
 #   SAM.AppImage --app-id ID ...  start a sandboxed app (used by menu entries)
 #   SAM.AppImage cli ARGS...      the command line, like `sam-jail ARGS`
 HERE=$(dirname "$(readlink -f "$0")")
+# SAM's programs need this C library (glibc) or newer. On an older system
+# they would fail with a loader error, so say plainly what is missing.
+need="@GLIBC_NEEDED@"
+have=$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')
+if [ -n "$have" ] && [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -n1)" != "$need" ]; then
+    msg="SAM needs a newer system: its programs need the C library glibc $need or newer, and this system has glibc $have (for example Debian 12 or Ubuntu 22.04). Use a newer release of your distribution, or a SAM package built for it."
+    echo "$msg" >&2
+    if [ "${1:-}" != cli ] && [ "${1:-}" != --app-id ]; then
+        if command -v kdialog >/dev/null; then kdialog --title SAM --error "$msg"
+        elif command -v zenity >/dev/null; then zenity --error --title=SAM --text="$msg"
+        elif command -v notify-send >/dev/null; then notify-send --app-name=SAM "SAM cannot start" "$msg"
+        fi
+    fi
+    exit 1
+fi
 case "${1:-}" in
     --app-id) exec "$HERE/usr/bin/sam-jail-run" "$@" ;;
     cli) shift; exec "$HERE/usr/bin/sam-jail" "$@" ;;
@@ -90,6 +105,10 @@ if ! "$HERE/usr/bin/sam-jail-gui" --version >/dev/null 2>&1; then
 fi
 exec "$HERE/usr/bin/sam-jail-gui" "$@"
 EOF
+# The newest glibc symbol version any of SAM's programs uses.
+glibc=$(objdump -T "$app"/usr/bin/* | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -n1)
+[ -n "$glibc" ] || { echo "could not read the glibc version the programs need (objdump)" >&2; exit 1; }
+sed -i "s/@GLIBC_NEEDED@/$glibc/" "$app/AppRun"
 chmod 755 "$app/AppRun"
 
 # Reproducible image: fixed owner and times.
