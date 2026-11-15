@@ -107,6 +107,8 @@ def render(m, tests):
     areas = {a["id"]: a["name"] for a in m["area"]}
     funcs = m["function"]
     proven = [f for f in funcs if f.get("tests") and all(results.get(t) == "ok" for t in f["tests"])] if results else []
+    failing = [f for f in funcs if any(results.get(t) == "FAILED" for t in f.get("tests", []))]
+    awaiting = [f for f in funcs if f.get("tests") and f not in proven and f not in failing and results]
     by_checks = [f for f in funcs if not f.get("tests") and f.get("checks") and not f.get("gap")]
     gaps = [f for f in funcs if f.get("gap")]
     L = [
@@ -121,7 +123,8 @@ def render(m, tests):
         ">",
         f"> Test results are from the newest version report ({generated.replace('T', ' ') if generated else 'none yet'}).",
         "",
-        f"**{len(funcs)} functions:** {len(proven)} proven by passing tests, {len(by_checks)} by scripted checks, {len(gaps)} with a gap, "
+        f"**{len(funcs)} functions:** {len(proven)} proven by passing tests, {len(awaiting)} with new tests not yet in a report, "
+        f"{len(failing)} with a failing test, {len(by_checks)} by scripted checks, {len(gaps)} with a gap, "
         f"{len(tests)} tests in all.",
         "",
         "| | Function | Components | Tests | Result |",
@@ -135,10 +138,13 @@ def render(m, tests):
             state = "scripted check"
         elif not results:
             state = "not run yet"
+        elif any(results.get(t) == "FAILED" for t in f["tests"]):
+            state = "❌ failing: " + ", ".join(t for t in f["tests"] if results.get(t) == "FAILED")
         elif all(results.get(t) == "ok" for t in f["tests"]):
             state = "✅"
         else:
-            state = "❌ " + ", ".join(t for t in f["tests"] if results.get(t) != "ok")
+            new = [t for t in f["tests"] if t not in results]
+            state = f"✅ 🆕 {len(new)} new test{'s' if len(new) != 1 else ''} since the report"
         L.append(f"| {f['id']} | [{f['promise']}](#{f['id']}) | {', '.join(parts(f))} | {n} | {state} |")
     L.append("")
     L += [
@@ -167,14 +173,19 @@ def render(m, tests):
             L += ["| Test | Promise | Result |", "|---|---|---|"]
             for t in f["tests"]:
                 path, line, promise, reg = tests[t]
-                res = {"ok": "✅", "FAILED": "❌"}.get(results.get(t), "–")
+                res = {"ok": "✅", "FAILED": "❌"}.get(results.get(t), "🆕 new")
                 L.append(f"| [`{t}`](../{path}#L{line}){' ⟲' if reg else ''} | {promise} | {res} |")
             L.append("")
         code = ", ".join(f"[`{c}`](../{'crates/' if (ROOT / 'crates' / c).exists() else ''}{c})" for c in f.get("code", []))
         L += [f"**Code:** {code}", ""]
         if f.get("checks"):
             L += ["**Also tried by:** " + ", ".join(f"[`{c}`](../{c})" for c in f["checks"]), ""]
-    L += ["⟲ marks a regression test: it guards against a bug that really happened.", ""]
+    L += [
+        "✅ passed in the newest version report · ❌ failed there · 🆕 new: added after that report, so it has no result yet "
+        "(every test passes before it is committed; the next report fills it in) · "
+        "⟲ a regression test: it guards against a bug that really happened.",
+        "",
+    ]
     return "\n".join(L)
 
 
