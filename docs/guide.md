@@ -84,7 +84,7 @@ The **risk** of the current settings: *low*, *medium*, *high* or *dangerous*. It
 
 **Wayland** shows windows through your compositor, which keeps apps apart. **X11 / XWayland** is for apps without Wayland support; X11 lets an app observe input and other windows, so only turn it on when needed.
 
-On desktops that support it (KDE Plasma, GNOME 47+, Sway, Hyprland), SAM tells the compositor that the app is sandboxed, and the desktop hides privileged functions from it: reading the clipboard in the background, capturing the screen, typing as a virtual keyboard. **Privileged Wayland protocols** (advanced) turns that off for the few tools that are exactly that, such as clipboard managers or screenshot tools.
+On desktops that support it, SAM tells the compositor that the app is sandboxed, and the desktop hides privileged functions from it: reading the clipboard in the background, capturing the screen, typing as a virtual keyboard. **Privileged Wayland protocols** (advanced) turns that off for the few tools that are exactly that, such as clipboard managers or screenshot tools. This is tested on KDE Plasma; other desktops that offer the protocol behave the same, and **Diagnostics** (or `sam-jail doctor`) tells whether yours does.
 
 ### Sound and devices
 

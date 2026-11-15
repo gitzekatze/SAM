@@ -8,10 +8,13 @@ desktop. Unlike Flatseal, SAM also builds the sandbox itself, using
 [Bubblewrap](https://github.com/containers/bubblewrap).
 
 It is written in Rust, with a GTK 4 / libadwaita window and a full command
-line (`sam-jail`). SAM is developed and tested on CachyOS (Arch). The test
-suite also runs on Ubuntu 24.04 (CI) and in a Fedora package build; other
-distributions should work but have not been tried on real systems yet
-([docs/testing.md](docs/testing.md)).
+line (`sam-jail`). SAM is developed on CachyOS (Arch), where it is also tried
+with 120 real AppImages. Every change runs the test suite on Ubuntu 24.04 and
+the sandbox tests on Fedora, and before every release the finished AppImage is
+tested on fresh Ubuntu, Debian, Fedora, Arch and openSUSE systems. Other
+desktops and distributions have not been tried on real machines yet
+([docs/testing.md](docs/testing.md)). [Functions and their proofs](docs/functions.md)
+lists every promise SAM makes with the tests that prove it.
 
 > [!NOTE]
 > SAM makes AppImages much safer, but no sandbox makes every app perfectly
@@ -81,15 +84,17 @@ Every permission has a plain-language explanation and a risk level
   *Undo all*.
 - **Compatibility mode:** broader access for stubborn apps. Turning it off
   restores your previous settings.
-- **Built in:** links open in your normal browser; DNS works with any
-  `resolv.conf` setup; AppImages started from inside a sandbox work without
-  FUSE.
+- **Built in:** links open in your normal browser; DNS works with the usual
+  setups (a plain `resolv.conf`, systemd-resolved, NetworkManager); AppImages
+  started from inside a sandbox work without FUSE; AppImages for another
+  processor are refused with a message that says which version to download.
 
 ### Safe intake
 
-- Type 1 and Type 2 AppImages (gzip, xz, zstd and lz4), unpacked by SAM's
-  own SquashFS reader inside a minimal sandbox. DwarFS-based AppImages are
-  unpacked with `dwarfsextract` when it is installed.
+- Type 2 AppImages (gzip, xz, zstd and lz4), unpacked by SAM's own SquashFS
+  reader inside a minimal sandbox. DwarFS-based AppImages are unpacked with
+  `dwarfsextract` when it is installed. The old, rare Type 1 format is
+  unpacked with `bsdtar`; no automated test covers it yet.
 - Setuid bits, links that point outside the app and special files are
   removed. Size, file-count and time limits apply.
 - Names, descriptions and file names from an AppImage are shown as plain
@@ -102,8 +107,10 @@ Every permission has a plain-language explanation and a risk level
   every AppImage found, grouped into *Sandboxed* and *Not sandboxed*. On the
   right: the selected app, its main button (*Launch* or *Create sandbox*) and
   every setting.
-- **Nothing hidden.** No modes and no popups. Settings that don't apply are
-  greyed out, so you always see what is on and what is off.
+- **Nothing hidden.** There are no modes to switch. Settings that don't apply
+  are greyed out, so you always see what is on and what is off. SAM asks only
+  before something that cannot be undone, such as removing a sandbox, or that
+  would take away access an app needs.
 - **Before a sandbox exists,** the right column shows SAM's recommendation,
   ready to adjust.
 - **All apps at a glance:** *Permissions of All Apps* shows what every

@@ -49,15 +49,24 @@ Test before publishing: copy both files next to the PKGBUILD (or point
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push and pull request (Ubuntu
-24.04): build, clippy with warnings as errors, the whole test suite with the
-end-to-end sandbox tests (Ubuntu's AppArmor restriction on user namespaces is
-lifted on the throwaway runner), desktop file and metainfo validation, and a
-check that `data/man` matches the commands (`make man`), that the
-translations compile, and a window smoke test (`tests/gui/smoke.sh` on GTK's
-Broadway backend: every page opens without GTK warnings; screenshots are
-kept as a CI artifact).
+24.04): build, format check, clippy with warnings as errors (every `unsafe`
+block needs a `// SAFETY:` comment), and the whole test suite **twice**
+(`scripts/flaky-check.py`): a test whose result differs between the two runs
+is flaky and fails the job. The end-to-end sandbox tests run too (Ubuntu's
+AppArmor restriction on user namespaces is lifted on the throwaway runner).
+Then desktop file and metainfo validation; checks that `data/man` matches the
+commands (`make man`), that the test library, the function map
+(`docs/functions.md`) and `THIRD-PARTY-LICENSES.md` are up to date, and that
+the translations compile; and a window smoke test (`tests/gui/smoke.sh` on
+GTK's Broadway backend: every page opens without GTK warnings; screenshots
+are kept as a CI artifact). The run page ends with a summary of which of
+SAM's functions the change touches and how their tests did.
 
-A second job runs `cargo deny check` (`deny.toml`): known security
+A second job runs the sandbox tests (breakout, hostile AppImages, the
+permission matrix, fuzzing) on Fedora, in a privileged container, as an
+ordinary user.
+
+A third job runs `cargo deny check` (`deny.toml`): known security
 advisories, licences that fit GPL-3.0-or-later, banned crates, and crates
 only from crates.io. Dependabot (`.github/dependabot.yml`) proposes updates
 for the Actions and the crates every week.

@@ -340,7 +340,9 @@ key, or no longer signed, the app page shows a warning.
 
 ## Safe unpacking
 
-SAM unpacks AppImages with its own reader and never runs them to do so.
+SAM unpacks AppImages with its own reader and does not run them to do so.
+Only when its reader fails and you agree does the AppImage unpack itself
+(see the end of this section).
 Unpacking happens inside a minimal Bubblewrap sandbox (the AppImage
 read-only, only the target writable, no network, no privileges) whenever
 Bubblewrap works; the unpacking log says whether it was isolated.

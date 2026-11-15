@@ -27,8 +27,8 @@ for example
 - an AppImage that runs code while SAM only inspects or unpacks it;
 - an AppImage's name, metadata or output that makes SAM grant more access.
 
-Out of scope, because SAM does not claim to stop them (see the threat model
-in docs/security.md): what X11 apps can do once X11 is allowed, kernel
+Out of scope, because SAM does not claim to stop them (see the
+[threat model](docs/threat-model.md)): what X11 apps can do once X11 is allowed, kernel
 exploits, malware that is already root, and access the user granted.
 
 ## Supported versions

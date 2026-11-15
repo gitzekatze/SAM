@@ -38,10 +38,18 @@ stop the desktop portals that Flatpak apps rely on.
   regression tests that guard a real promise over tests that only raise
   line coverage.
 - Logic that runs without a display gets unit or integration tests; the
-  window is checked by `tests/gui/smoke.sh` and
-  `tests/gui/permissions-atspi.sh`.
-- After adding or renaming tests, run `scripts/test-library.py` and commit
-  `docs/test-library.md`; CI fails when it is out of date.
+  window is checked by `tests/gui/smoke.sh`, `tests/gui/permissions-atspi.sh`
+  and `tests/gui/a11y-atspi.sh` (every control has a name for screen readers
+  and takes keyboard focus).
+- Every test belongs to one of SAM's functions: add its name under the
+  function it proves in `docs/functions.toml`. A test may prove several
+  functions; a new function needs a test, a scripted check, or a stated gap.
+- A test must give the same result every time. CI runs the suite twice and
+  fails on a test whose result differs (flaky), for example because two tests
+  change the same environment variable at once.
+- After adding, moving or renaming tests, run `make test-library` and commit
+  `docs/test-library.md` and `docs/functions.md`; CI fails when they are out
+  of date.
 
 ## The version report
 
