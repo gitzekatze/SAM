@@ -175,10 +175,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Without Bubblewrap, the message says which package to install. | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L55) |
 | When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L66) |
 | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L85) |
-| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L412) |
-| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L418) |
-| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L430) |
-| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L470) |
+| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L419) |
+| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L425) |
+| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L437) |
+| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L488) |
 | SAM's own bus check reaches the session bus on a desktop. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L199) |
 | SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L215) |
 | An app may register a tray icon only while the tray service is allowed. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L164) |

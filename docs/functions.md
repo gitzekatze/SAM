@@ -584,11 +584,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L199) | SAM's own bus check reaches the session bus on a desktop. | ✅ |
 | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L215) | SAM's own D-Bus message for the bus check has the correct wire format. | ✅ |
 | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L228) | Bubblewrap versions are compared correctly, including missing or malformed version text. | ✅ |
-| [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L412) | The built in contract map parses. | 🆕 new |
-| [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L418) | Every contract probe is known. | 🆕 new |
-| [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L470) | A missing portal interface breaks the portal contract. | 🆕 new |
+| [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L419) | The built in contract map parses. | 🆕 new |
+| [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L425) | Every contract probe is known. | 🆕 new |
+| [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L488) | A missing portal interface breaks the portal contract. | 🆕 new |
 | [`the_quick_checks_notice_a_broken_or_missing_tool`](../crates/sam-jail-cli/tests/contracts.rs#L47) | The quick checks notice a broken or missing tool. | 🆕 new |
-| [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L430) | A broken contract fails a test with its name and playbook. | 🆕 new |
+| [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L437) | A broken contract fails a test with its name and playbook. | 🆕 new |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs), [`sam-runner/src/bwrap.rs`](../crates/sam-runner/src/bwrap.rs), [`sam-runner/src/dbus_check.rs`](../crates/sam-runner/src/dbus_check.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
