@@ -56,6 +56,7 @@ Bubblewrap builds the sandbox with these options and behaves as documented: sepa
 - **SAM functions that rely on it:** [10](functions.md#10), [11](functions.md#11), [19](functions.md#19), [20](functions.md#20)
 - **Quick check:** `bwrap-runs`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Checked first by:** `breakout.rs`, `evil.rs`, `matrix.rs`, `overlay_fallback.rs`, `sandbox.rs`, `teardown.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:bwrap`, `path:/usr/bin/bwrap`, `option:--unshare-user`, `option:--unshare-pid`, `option:--unshare-uts`, `option:--unshare-ipc`, `option:--unshare-cgroup-try`, `option:--unshare-net`, `option:--unshare-all`, `option:--uid`, `option:--gid`, `option:--die-with-parent`, `option:--new-session`, `option:--cap-drop`, `option:--clearenv`, `option:--setenv`, `option:--chdir`, `option:--proc`, `option:--dev`, `option:--tmpfs`, `option:--dir`, `option:--perms`, `option:--symlink`, `option:--bind`, `option:--bind-try`, `option:--ro-bind`, `option:--ro-bind-try`, `option:--dev-bind`, `option:--dev-bind-try`, `option:--remount-ro`, `option:--hostname`, `option:--json-status-fd`, `option:--seccomp`, `option:--version`, `option:-V`
 - **If it breaks:** Read the Bubblewrap release notes for the options above. A renamed option: build the old or new form from the version `bwrap --version` reports (sam-sandbox). A changed behavior: the breakout and matrix tests name the permission; fix the command in sam-sandbox/src/lib.rs.
 
@@ -68,6 +69,7 @@ Bubblewrap 0.8 or newer understands --disable-userns, which stops an app from cr
 - **SAM functions that rely on it:** [11](functions.md#11), [16](functions.md#16)
 - **Quick check:** `bwrap-option:--disable-userns`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`
+- **Checked first by:** `breakout.rs` (a broken contract stops these tests with its name)
 - **Covers:** `option:--disable-userns`
 - **If it breaks:** Bubblewrap rejects an option it does not know, so the start fails instead of running without the protection. Raise the minimum version in install.md, or offer allow_userns only where the option is missing.
 
@@ -92,6 +94,7 @@ pasta --splice-only creates a network namespace with only loopback, forwards onl
 - **SAM functions that rely on it:** [12](functions.md#12)
 - **Quick check:** `pasta-splice-only`
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `with_this_computer_only_the_sandbox_dies_with_its_launcher`
+- **Checked first by:** `matrix.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:pasta`, `option:--splice-only`, `option:-t`, `option:-T`, `option:-u`, `option:-U`, `option:--quiet`
 - **If it breaks:** A pasta without --splice-only is never used: the app starts with no network at all and a warning says why (tested in the matrix). If options change, adapt netns.rs and check that an unlisted host port stays unreachable.
 
@@ -104,6 +107,7 @@ xdg-dbus-proxy filters the session bus by the --talk, --own, --call and --broadc
 - **SAM functions that rely on it:** [13](functions.md#13)
 - **Quick check:** `dbus-proxy-present`
 - **Tests:** `every_hostile_appimage_fails_to_escape`, `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Checked first by:** `evil.rs`, `matrix.rs` (a broken contract stops these tests with its name)
 - **Covers:** `path:/usr/bin/xdg-dbus-proxy`, `option:--talk=`, `option:--own=`, `option:--call=`, `option:--broadcast=`, `option:--filter`, `option:--log`
 - **If it breaks:** Without the proxy the app gets no session bus at all. If the rule syntax changes, adapt dbus_proxy.rs; the evil suite shows whether blocked services stay blocked.
 
@@ -152,6 +156,7 @@ curl downloads over HTTPS only (also after redirects) with these limits, and fet
 - **SAM functions that rely on it:** [28](functions.md#28), [34](functions.md#34)
 - **Quick check:** `program:curl`
 - **Tests:** `updates_are_downloaded_over_https_only`, `updates_download_only_changes_check_them_and_refuse_tampering`
+- **Checked first by:** `update_server.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--max-filesize`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`
 - **If it breaks:** No update is installed when curl fails; the old version stays. A changed option shows in the update server test.
 
@@ -200,6 +205,7 @@ Unprivileged user namespaces are available; the distribution's switches for them
 - **SAM functions that rely on it:** [19](functions.md#19), [33](functions.md#33)
 - **Quick check:** `userns`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`
+- **Checked first by:** `breakout.rs` (a broken contract stops these tests with its name)
 - **Covers:** `path:/proc/sys/kernel/unprivileged_userns_clone`, `path:/proc/sys/kernel/apparmor_restrict_unprivileged_userns`, `path:/proc/sys/user/max_user_namespaces`
 - **If it breaks:** Without user namespaces no sandbox starts, and the doctor names the switch to change. A new distribution switch: add its path to host.rs (userns) so the doctor can explain it.
 
@@ -223,6 +229,7 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 - **SAM functions that rely on it:** [16](functions.md#16), [17](functions.md#17)
 - **Quick check:** `seccomp`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `every_known_syscall_has_been_reviewed`
+- **Checked first by:** `breakout.rs`, `evil.rs` (a broken contract stops these tests with its name)
 - **Covers:** `syscall:*`
 - **If it breaks:** A filter that fails to load stops the start. When the syscall review check reports a new syscall, decide whether the baseline blocks it (kernel.rs) and add it to docs/syscalls-reviewed.txt.
 
@@ -247,6 +254,7 @@ Programs and libraries live under /usr (merged /usr, or the classic split with /
 - **SAM functions that rely on it:** [10](functions.md#10), [19](functions.md#19)
 - **Quick check:** `fs-layout`
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `a_real_sandbox_shows_exactly_what_each_profile_allows`
+- **Checked first by:** `matrix.rs`, `sandbox.rs` (a broken contract stops these tests with its name)
 - **Covers:** `path:/usr`, `path:/usr/`, `path:/usr/bin`, `path:/usr/bin:/bin`, `path:/usr/sbin`, `path:/usr/lib`, `path:/usr/lib/`, `path:/usr/lib/*-linux-gnu`, `path:/usr/lib32`, `path:/usr/lib64`, `path:/usr/libexec`, `path:/usr/local`, `path:/usr/local/lib`, `path:/usr/local/bin:/usr/bin:/bin`, `path:/usr/local/share:/usr/share`, `path:/usr/bin/true`, `path:/bin`, `path:/bin/sh`, `program:/bin/sh`, `option:-c`, `path:/sbin`, `path:/lib`, `path:/lib/*-linux-gnu`, `path:/lib64`, `path:/opt`, `path:/tmp`, `path:/var`, `path:/var/tmp`, `path:/run`, `path:/dev`, `path:/dev/null`, `path:/dev/shm`, `path:/sys`, `path:/etc`, `path:/etc/`
 - **If it breaks:** A new layout shows as apps that cannot find their libraries inside the sandbox. The sandbox mirrors /bin, /lib and /lib64 as they are on the host (mirror in sam-sandbox).
 
@@ -271,6 +279,7 @@ User identity and name resolution come from these /etc files (passwd, group, hos
 - **SAM functions that rely on it:** [10](functions.md#10), [12](functions.md#12)
 - **Quick check:** `name-resolution`
 - **Tests:** `a_real_sandbox_shows_exactly_what_each_profile_allows`
+- **Checked first by:** `sandbox.rs` (a broken contract stops these tests with its name)
 - **Covers:** `path:/etc/passwd`, `path:/etc/group`, `path:/etc/hosts`, `path:/etc/resolv.conf`, `path:/etc/nsswitch.conf`, `path:/etc/gai.conf`, `path:/etc/host.conf`, `path:/etc/protocols`, `path:/etc/services`, `path:/run/systemd/resolve`, `path:/etc/NetworkManager`
 - **If it breaks:** A new resolver setup shows as apps that cannot resolve names. Add its file to the /etc list in sam-sandbox; never bind all of /etc.
 

@@ -348,6 +348,57 @@ pub fn check_all(host: &HostInfo) -> ContractReport {
     }
 }
 
+/// For the sandbox tests: checks the contracts a test relies on before it
+/// runs. A broken contract fails the test at once with the contract's name
+/// and playbook ("the outside world changed"), instead of a confusing
+/// failure deep inside. The returned guard notes, if the test fails later,
+/// that its contracts held, so the failure is in SAM's own code.
+pub fn guard(ids: &[&str]) -> Result<Guard, String> {
+    guard_with(&check_all(&HostInfo::probe()), ids)
+}
+
+/// `guard` with a report given (for testing the guard itself).
+pub fn guard_with(report: &ContractReport, ids: &[&str]) -> Result<Guard, String> {
+    let mut broken = Vec::new();
+    for id in ids {
+        match report.contracts.iter().find(|c| c.id == *id) {
+            None => return Err(format!("no contract {id} in docs/contracts.toml")),
+            Some(c) if c.state == State::Broken => broken.push(format!(
+                "CONTRACT BROKEN: {} ({}) -> {}",
+                c.id, c.detail, c.playbook
+            )),
+            Some(_) => {}
+        }
+    }
+    if broken.is_empty() {
+        Ok(Guard {
+            ids: ids.iter().map(|s| s.to_string()).collect(),
+        })
+    } else {
+        Err(format!(
+            "the outside world changed, not SAM:\n{}",
+            broken.join("\n")
+        ))
+    }
+}
+
+/// Says, when a test fails after its contracts were checked, that the
+/// failure is SAM's own.
+pub struct Guard {
+    ids: Vec<String>,
+}
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!(
+                "SAM ERROR: the contracts this test relies on hold ({}); the failure is in SAM's own code, not in the outside world.",
+                self.ids.join(", ")
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,6 +425,46 @@ mod tests {
                 c.probe
             );
         }
+    }
+
+    #[test]
+    fn a_broken_contract_fails_a_test_with_its_name_and_playbook() {
+        let state = |id: &str, state: State| ContractState {
+            id: id.into(),
+            component: "bubblewrap".into(),
+            state,
+            detail: "bwrap does not know --disable-userns".into(),
+            on_break: "refuse".into(),
+            assumes: String::new(),
+            playbook: "raise the minimum version".into(),
+        };
+        let report = ContractReport {
+            contracts: vec![
+                state("bwrap-core", State::Holds),
+                state("bwrap-disable-userns", State::Broken),
+                state("dwarfs", State::Absent),
+            ],
+            components: Vec::new(),
+        };
+        let err = guard_with(&report, &["bwrap-core", "bwrap-disable-userns"])
+            .err()
+            .unwrap();
+        assert!(
+            err.contains("CONTRACT BROKEN: bwrap-disable-userns"),
+            "{err}"
+        );
+        assert!(
+            err.contains("raise the minimum version"),
+            "the playbook: {err}"
+        );
+        assert!(
+            guard_with(&report, &["bwrap-core", "dwarfs"]).is_ok(),
+            "absent is not broken"
+        );
+        assert!(
+            guard_with(&report, &["no-such-contract"]).is_err(),
+            "a typo is caught"
+        );
     }
 
     #[test]

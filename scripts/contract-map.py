@@ -124,6 +124,9 @@ def problems(m, inv):
         for t in c.get("tests", []) + ([c["on_break_test"]] if c.get("on_break_test") else []):
             if t not in tests:
                 errs.append(f"contract {cid}: no test {t}")
+    for where, gid in guards():
+        if gid not in ids:
+            errs.append(f"{where}: the test guards an unknown contract {gid}")
     patterns = [p for c in m["contract"] for p in c.get("covers", [])]
     own = [p for o in m.get("own", []) for p in o["covers"]]
     for item, where in sorted(inv.items()):
@@ -134,6 +137,19 @@ def problems(m, inv):
         if kind not in PATTERNS:
             errs.append(f"unknown kind in pattern {p}")
     return errs
+
+
+def guards():
+    """(place, contract id) for every contract a test checks first with
+    sam_runner::contracts::guard(&[...])."""
+    out = []
+    for f in sorted((ROOT / "crates").glob("*/tests/*.rs")):
+        text = f.read_text()
+        for mt in re.finditer(r"contracts::guard\(\s*&\[([^\]]*)\]", text):
+            line = text[: mt.start()].count("\n") + 1
+            for gid in re.findall(r'"([a-z0-9-]+)"', mt.group(1)):
+                out.append((f"{f.relative_to(ROOT)}:{line}", gid))
+    return out
 
 
 def page(m):
@@ -167,6 +183,9 @@ def page(m):
             out.append("- **SAM functions that rely on it:** " + ", ".join(f"[{f}](functions.md#{f})" for f in c["functions"]))
         out.append(f"- **Quick check:** `{c['probe']}`" if c["probe"] != "none" else "- **Quick check:** none (only the tests below)")
         out.append("- **Tests:** " + ", ".join(f"`{t}`" for t in c["tests"]))
+        guarded = sorted({w.split(":")[0].split("/")[-1] for w, g in guards() if g == c["id"]})
+        if guarded:
+            out.append("- **Checked first by:** " + ", ".join(f"`{g}`" for g in guarded) + " (a broken contract stops these tests with its name)")
         if c.get("covers"):
             out.append("- **Covers:** " + ", ".join(f"`{x}`" for x in c["covers"]))
         out += [f"- **If it breaks:** {c['playbook']}", ""]

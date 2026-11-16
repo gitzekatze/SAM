@@ -155,6 +155,14 @@ fn every_breakout_attempt_from_a_real_sandbox_fails() {
         eprintln!("skipping: bubblewrap, sam-jail-run or python3 not available");
         return;
     }
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts = sam_runner::contracts::guard(&[
+        "bwrap-core",
+        "bwrap-disable-userns",
+        "kernel-userns",
+        "kernel-seccomp",
+    ])
+    .unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let home = root.join("home/tester");

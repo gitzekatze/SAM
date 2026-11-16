@@ -69,6 +69,9 @@ fn sam(root: &Path) -> Command {
 }
 
 fn killing_the_launcher_ends_the_sandbox(network: &str) {
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let marker = format!("sam-teardown-{}-{network}", std::process::id());
