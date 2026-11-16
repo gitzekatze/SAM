@@ -448,7 +448,7 @@ playbook = "Without it SAM warns that the app can use every Wayland function the
 [[contract]]
 id = "x11"
 component = "x11"
-assumes = "X11 displays are reached through /tmp/.X11-unix/X<n> for DISPLAY=:<n>, with the cookie in XAUTHORITY."
+assumes = "X11 displays are reached through /tmp/.X11-unix/X<n> for DISPLAY=:<n>, with the cookie in XAUTHORITY (or ~/.Xauthority)."
 covers = ["env:DISPLAY", "env:XAUTHORITY", "path:/tmp/.X11-unix", "path:/tmp/.X11-unix/*"]
 functions = [14]
 probe = "x11-socket"
@@ -525,7 +525,7 @@ playbook = "The probe compares the installed portal descriptions (/usr/share/dbu
 [[contract]]
 id = "dbus-activatable"
 component = "dbus"
-assumes = "Services that start on demand are listed in /usr/share/dbus-1/services and /usr/local/share/dbus-1/services; SAM refuses to let an app own such a name."
+assumes = "Services that start on demand are listed in /usr/share/dbus-1/services, /usr/local/share/dbus-1/services and ~/.local/share/dbus-1/services; SAM refuses to let an app own such a name."
 covers = ["path:/usr/share/dbus-1/services", "path:/usr/local/share/dbus-1/services"]
 functions = [13]
 probe = "dbus-services-dir"
@@ -563,8 +563,8 @@ playbook = "A moved socket or mount point only loses that feature."
 [[contract]]
 id = "xdg-folders"
 component = "freedesktop"
-assumes = "The home folder, user name, XDG base folders, the desktop's name, the search path and the language come from these variables, following the XDG specifications."
-covers = ["env:HOME", "env:USER", "env:PATH", "env:XDG_CONFIG_HOME", "env:XDG_DATA_HOME", "env:XDG_DATA_DIRS", "env:XDG_CURRENT_DESKTOP", "env:LANGUAGE", "env:NO_COLOR"]
+assumes = "The home folder, user name, XDG base folders, the desktop's name, the search path and the language come from these variables, following the XDG specifications; the folders for documents, downloads and the rest come from ~/.config/user-dirs.dirs."
+covers = ["path:/run/user/", "env:HOME", "env:USER", "env:PATH", "env:XDG_CONFIG_HOME", "env:XDG_DATA_HOME", "env:XDG_DATA_DIRS", "env:XDG_CURRENT_DESKTOP", "env:LANGUAGE", "env:NO_COLOR"]
 functions = [1, 37, 38]
 probe = "none"
 tests = ["old_formats_are_migrated_and_kept"]

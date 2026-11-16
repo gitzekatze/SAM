@@ -7,6 +7,11 @@ assumption it makes about them is written down here, with what SAM does when
 it breaks and how it is checked. CI fails when the code uses something
 outside SAM that no contract covers, so the list cannot fall behind the code.
 
+What the check cannot see: names joined to a folder at runtime, such as
+`pipewire-0` or `pulse/native` under the runtime folder. They are found in
+one place (`probe_sockets` in sam-core `host.rs`) and named in the
+contracts by hand; a new one there needs a contract entry too.
+
 When something stops working after an update, `sam-jail doctor --contracts`
 names the contract that broke and the versions involved; its playbook says
 where to look.
@@ -335,7 +340,7 @@ The compositor offers wp_security_context_manager_v1, so SAM can mark the app's 
 
 ## x11
 
-X11 displays are reached through /tmp/.X11-unix/X<n> for DISPLAY=:<n>, with the cookie in XAUTHORITY.
+X11 displays are reached through /tmp/.X11-unix/X<n> for DISPLAY=:<n>, with the cookie in XAUTHORITY (or ~/.Xauthority).
 
 - **Component:** X11 / XWayland ([releases](https://gitlab.freedesktop.org/xorg/xserver/-/tags))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
@@ -407,7 +412,7 @@ xdg-desktop-portal offers the interfaces SAM allows (file chooser, open URI, inp
 
 ## dbus-activatable
 
-Services that start on demand are listed in /usr/share/dbus-1/services and /usr/local/share/dbus-1/services; SAM refuses to let an app own such a name.
+Services that start on demand are listed in /usr/share/dbus-1/services, /usr/local/share/dbus-1/services and ~/.local/share/dbus-1/services; SAM refuses to let an app own such a name.
 
 - **Component:** D-Bus and desktop services ([releases](https://gitlab.freedesktop.org/dbus/dbus/-/tags))
 - **When it breaks:** SAM falls back to less access.
@@ -443,13 +448,13 @@ Printing is at /run/cups/cups.sock, the SSH agent at SSH_AUTH_SOCK, and removabl
 
 ## xdg-folders
 
-The home folder, user name, XDG base folders, the desktop's name, the search path and the language come from these variables, following the XDG specifications.
+The home folder, user name, XDG base folders, the desktop's name, the search path and the language come from these variables, following the XDG specifications; the folders for documents, downloads and the rest come from ~/.config/user-dirs.dirs.
 
 - **Component:** freedesktop.org conventions (XDG folders, menus) ([releases](https://specifications.freedesktop.org/))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [1](functions.md#1), [37](functions.md#37), [38](functions.md#38)
 - **Quick check:** none (only the tests below)
 - **Tests:** `old_formats_are_migrated_and_kept` (partly: Covered indirectly through SAM's own folders; XDG variables pointing elsewhere are not tested.)
-- **Covers:** `env:HOME`, `env:USER`, `env:PATH`, `env:XDG_CONFIG_HOME`, `env:XDG_DATA_HOME`, `env:XDG_DATA_DIRS`, `env:XDG_CURRENT_DESKTOP`, `env:LANGUAGE`, `env:NO_COLOR`
+- **Covers:** `path:/run/user/`, `env:HOME`, `env:USER`, `env:PATH`, `env:XDG_CONFIG_HOME`, `env:XDG_DATA_HOME`, `env:XDG_DATA_DIRS`, `env:XDG_CURRENT_DESKTOP`, `env:LANGUAGE`, `env:NO_COLOR`
 - **If it breaks:** These are long-stable standards; a change would show in SAM's own folders and menu entries.
 

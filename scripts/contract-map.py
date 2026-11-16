@@ -31,7 +31,9 @@ TEST_ONLY = {"crates/sam-intake/src/testkit.rs", "crates/sam-jail-cli/src/bench.
 PATTERNS = {
     "program": [r'Command::new\("([^"/][^"]*|/[^"]+)"\)', r'which\("([^"]+)"\)'],
     "option": [r'"(--[a-z][a-z0-9-]*=?)"', r'"(-[A-Za-z])"', r'format!\("(--[a-z][a-z0-9-]*=)'],
-    "path": [r'"(/(?:etc|run|sys|proc|dev|usr|tmp|var|opt|media|mnt|lib|lib64|bin|sbin)(?:/[^"{} ]*)?)"'],
+    "path": [r'"(/(?:etc|run|sys|proc|dev|usr|tmp|var|opt|media|mnt|lib|lib64|bin|sbin)(?:/[^"{} ]*)?)"',
+             # Paths built at runtime: the fixed part before the first {} counts.
+             r'format!\(\s*"(/(?:etc|run|sys|proc|dev|usr|tmp|var|opt|media|mnt|lib|lib64|bin|sbin)/[^"{} ]*)\{'],
     "env": [r'env::var(?:_os)?\("([A-Z][A-Z0-9_]*)"\)', r'\benv\("([A-Z][A-Z0-9_]*)"\)'],
     "dbus": [r'"((?:org|com|ca|net)\.[A-Za-z0-9_.*]+[A-Za-z0-9_*])"'],
     "syscall": [r"libc::SYS_([a-z0-9_]+)"],
@@ -167,6 +169,11 @@ def page(m):
         "assumption it makes about them is written down here, with what SAM does when",
         "it breaks and how it is checked. CI fails when the code uses something",
         "outside SAM that no contract covers, so the list cannot fall behind the code.",
+        "",
+        "What the check cannot see: names joined to a folder at runtime, such as",
+        "`pipewire-0` or `pulse/native` under the runtime folder. They are found in",
+        "one place (`probe_sockets` in sam-core `host.rs`) and named in the",
+        "contracts by hand; a new one there needs a contract entry too.",
         "",
         "When something stops working after an update, `sam-jail doctor --contracts`",
         "names the contract that broke and the versions involved; its playbook says",
