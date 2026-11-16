@@ -573,6 +573,17 @@ fn gpu_devices() -> Vec<PathBuf> {
 
 /// Parse `~/.config/user-dirs.dirs` with sensible fallbacks.
 pub fn xdg_user_dirs(home: &Path) -> BTreeMap<String, PathBuf> {
+    let cfg_home = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
+    let text = fs::read_to_string(cfg_home.join("user-dirs.dirs")).unwrap_or_default();
+    parse_user_dirs(&text, home)
+}
+
+/// The user folders from the text of `user-dirs.dirs`, with the usual
+/// names as fallbacks; a folder set to $HOME means "disabled".
+fn parse_user_dirs(text: &str, home: &Path) -> BTreeMap<String, PathBuf> {
     let mut m = BTreeMap::new();
     let defaults = [
         ("desktop", "DESKTOP", "Desktop"),
@@ -582,11 +593,6 @@ pub fn xdg_user_dirs(home: &Path) -> BTreeMap<String, PathBuf> {
         ("pictures", "PICTURES", "Pictures"),
         ("videos", "VIDEOS", "Videos"),
     ];
-    let cfg_home = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".config"));
-    let text = fs::read_to_string(cfg_home.join("user-dirs.dirs")).unwrap_or_default();
     for (key, var, fallback) in defaults {
         let from_file = text.lines().find_map(|l| {
             let l = l.trim();
@@ -638,7 +644,38 @@ pub fn landlock_abi() -> Option<u32> {
 
 #[cfg(test)]
 mod socket_tests {
-    use super::socket;
+    use super::{activatable_bus_names, parse_user_dirs, socket};
+    use std::path::Path;
+
+    /// Services that start on demand are recognized from their folders,
+    /// including the user's own (contract dbus-activatable).
+    #[test]
+    fn services_that_start_on_demand_are_recognized() {
+        let home = tempfile::tempdir().unwrap();
+        let dir = home.path().join(".local/share/dbus-1/services");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("org.example.OnDemand.service"),
+            "[D-BUS Service]\nName=org.example.OnDemand\nExec=/usr/bin/false\n",
+        )
+        .unwrap();
+        assert!(activatable_bus_names(home.path()).contains("org.example.OnDemand"));
+    }
+
+    /// The user folders come from user-dirs.dirs, with the usual names as
+    /// fallbacks; a folder set to $HOME is disabled (contract xdg-folders).
+    #[test]
+    fn user_folders_come_from_user_dirs_dirs() {
+        let home = Path::new("/home/u");
+        let m = parse_user_dirs(
+            "XDG_DOCUMENTS_DIR=\"$HOME/Dokumente\"\nXDG_DOWNLOAD_DIR=\"/data/dl\"\nXDG_MUSIC_DIR=\"$HOME\"\n",
+            home,
+        );
+        assert_eq!(m["documents"], home.join("Dokumente"));
+        assert_eq!(m["downloads"], Path::new("/data/dl"));
+        assert_eq!(m["pictures"], home.join("Pictures"), "fallback");
+        assert!(!m.contains_key("music"), "$HOME means disabled");
+    }
 
     #[test]
     fn only_a_real_socket_counts_as_a_desktop_service() {

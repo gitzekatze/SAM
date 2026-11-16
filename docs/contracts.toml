@@ -529,10 +529,9 @@ assumes = "Services that start on demand are listed in /usr/share/dbus-1/service
 covers = ["path:/usr/share/dbus-1/services", "path:/usr/local/share/dbus-1/services"]
 functions = [13]
 probe = "dbus-services-dir"
-tests = ["every_hostile_appimage_fails_to_escape"]
+tests = ["every_hostile_appimage_fails_to_escape", "services_that_start_on_demand_are_recognized"]
 on_break = "safer"
-coverage = "partial"
-gaps = "That owning an activatable name is refused is not tested against a real service folder."
+coverage = "full"
 playbook = "If services move elsewhere, add the folder in host.rs so owning them stays refused."
 
 [[contract]]
@@ -567,10 +566,10 @@ assumes = "The home folder, user name, XDG base folders, the desktop's name, the
 covers = ["path:/run/user/", "env:HOME", "env:USER", "env:PATH", "env:XDG_CONFIG_HOME", "env:XDG_DATA_HOME", "env:XDG_DATA_DIRS", "env:XDG_CURRENT_DESKTOP", "env:LANGUAGE", "env:NO_COLOR"]
 functions = [1, 37, 38]
 probe = "none"
-tests = ["old_formats_are_migrated_and_kept"]
+tests = ["old_formats_are_migrated_and_kept", "user_folders_come_from_user_dirs_dirs"]
 on_break = "feature"
 coverage = "partial"
-gaps = "Covered indirectly through SAM's own folders; XDG variables pointing elsewhere are not tested."
+gaps = "user-dirs.dirs is tested; XDG_CONFIG_HOME and XDG_DATA_HOME pointing elsewhere are not."
 playbook = "These are long-stable standards; a change would show in SAM's own folders and menu entries."
 
 # --------------------------------------------- SAM's own names (not contracts)
