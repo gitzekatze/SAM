@@ -393,6 +393,16 @@ fn os_release_name() -> String {
         .unwrap_or_default()
 }
 
+/// `p` when it is a socket. The paths come from variables of the user's
+/// session; a wrong value (a file instead of a socket, for example a key)
+/// must never be shared with a sandbox as if it were a desktop service.
+fn socket(p: PathBuf) -> Option<PathBuf> {
+    use std::os::unix::fs::FileTypeExt;
+    std::fs::metadata(&p)
+        .is_ok_and(|m| m.file_type().is_socket())
+        .then_some(p)
+}
+
 fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
     let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
     let mut s = Sockets::default();
@@ -405,16 +415,13 @@ fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
     } else {
         runtime.map(|r| r.join(&wd))
     };
-    s.wayland = wpath.filter(|p| p.exists());
+    s.wayland = wpath.and_then(socket);
 
     // X11
     if let Some(display) = env("DISPLAY") {
         s.x11_display = Some(display.clone());
         if let Some(n) = x11_display_number(&display) {
-            let sock = PathBuf::from(format!("/tmp/.X11-unix/X{n}"));
-            if sock.exists() {
-                s.x11 = Some(sock);
-            }
+            s.x11 = socket(PathBuf::from(format!("/tmp/.X11-unix/X{n}")));
         }
         s.xauthority = env("XAUTHORITY")
             .map(PathBuf::from)
@@ -423,13 +430,14 @@ fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
     }
 
     if let Some(r) = runtime {
-        s.pipewire = Some(r.join("pipewire-0")).filter(|p| p.exists());
-        s.pulse = Some(r.join("pulse/native")).filter(|p| p.exists());
+        s.pipewire = socket(r.join("pipewire-0"));
+        s.pulse = socket(r.join("pulse/native"));
     }
-    if let Some(ps) = env("PULSE_SERVER").and_then(|v| v.strip_prefix("unix:").map(PathBuf::from)) {
-        if ps.exists() {
-            s.pulse = Some(ps);
-        }
+    if let Some(ps) = env("PULSE_SERVER")
+        .and_then(|v| v.strip_prefix("unix:").map(PathBuf::from))
+        .and_then(socket)
+    {
+        s.pulse = Some(ps);
     }
 
     s.dbus_session_address = env("DBUS_SESSION_BUS_ADDRESS");
@@ -438,11 +446,9 @@ fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
         .as_deref()
         .and_then(dbus_unix_path)
         .or_else(|| runtime.map(|r| r.join("bus")))
-        .filter(|p| p.exists());
-    s.dbus_system = Some(PathBuf::from("/run/dbus/system_bus_socket")).filter(|p| p.exists());
-    s.ssh_agent = env("SSH_AUTH_SOCK")
-        .map(PathBuf::from)
-        .filter(|p| p.exists());
+        .and_then(socket);
+    s.dbus_system = socket(PathBuf::from("/run/dbus/system_bus_socket"));
+    s.ssh_agent = env("SSH_AUTH_SOCK").map(PathBuf::from).and_then(socket);
     s.cups = Some(PathBuf::from("/run/cups/cups.sock")).filter(|p| p.exists());
     s
 }
@@ -628,6 +634,26 @@ pub fn landlock_abi() -> Option<u32> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod socket_tests {
+    use super::socket;
+
+    #[test]
+    fn only_a_real_socket_counts_as_a_desktop_service() {
+        let dir = std::env::temp_dir().join(format!("sam-socket-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("id_ed25519");
+        std::fs::write(&file, "secret").unwrap();
+        let sock = dir.join("wayland-test");
+        let _listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        assert_eq!(socket(file.clone()), None, "a file is not a socket");
+        assert_eq!(socket(dir.clone()), None, "a folder is not a socket");
+        assert_eq!(socket(dir.join("missing")), None);
+        assert_eq!(socket(sock.clone()), Some(sock));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
 
 #[cfg(test)]

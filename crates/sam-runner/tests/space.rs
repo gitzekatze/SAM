@@ -1,6 +1,7 @@
 //! Disk space: an app's unpacked copy can be deleted ("Free space") and is
 //! unpacked again before the next start, with settings kept. A changed or
 //! missing AppImage is never unpacked behind the user's back.
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 

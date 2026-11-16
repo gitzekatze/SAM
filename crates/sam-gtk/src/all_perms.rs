@@ -356,7 +356,10 @@ impl PermsPage {
             .height_request(300)
             .child(&split)
             .build();
-        let bp = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 720px").unwrap());
+        let bp = adw::Breakpoint::new(
+            adw::BreakpointCondition::parse("max-width: 720px")
+                .expect("a fixed breakpoint condition parses"),
+        );
         bp.add_setter(&split, "collapsed", Some(&true.to_value()));
         bp.add_setter(&show_side, "visible", Some(&true.to_value()));
         bin.add_breakpoint(bp);
@@ -1263,7 +1266,11 @@ impl PermsPage {
                             format!(
                                 "{title}: {} for {}",
                                 opt_label(opts, tok),
-                                me.name_of(previous.as_object().unwrap().keys().next().unwrap())
+                                previous
+                                    .as_object()
+                                    .and_then(|o| o.keys().next())
+                                    .map(|k| me.name_of(k))
+                                    .unwrap_or_default()
                             )
                         } else {
                             format!("{title}: {} for {n} apps", opt_label(opts, tok))

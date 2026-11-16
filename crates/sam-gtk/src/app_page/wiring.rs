@@ -587,7 +587,7 @@ impl AppPage {
                 .backend
                 .call(
                     &["args", &me.app_id, "--stdin"],
-                    Some(serde_json::to_string(&args).unwrap()),
+                    Some(serde_json::to_string(&args).expect("a list of strings serializes")),
                 )
                 .await
             {

@@ -2,6 +2,7 @@
 //! sandbox, its menu entry, SAM's own entry and icon, settings and data),
 //! restores the menu entry SAM hid, and never touches the AppImage. Uses a
 //! fake `$HOME`; needs no Bubblewrap (nothing is started).
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 

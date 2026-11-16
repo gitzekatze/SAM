@@ -395,7 +395,9 @@ fn desktop_identity() {
         exe.display()
     );
     if std::fs::read_to_string(&ours).ok().as_deref() != Some(entry.as_str()) {
-        let _ = std::fs::create_dir_all(ours.parent().unwrap());
+        if let Some(dir) = ours.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
         let _ = std::fs::write(&ours, entry);
     }
     let _ = install_icon(&icon, &data_home.join("icons/hicolor"), ICON_SVG);

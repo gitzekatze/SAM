@@ -9,6 +9,42 @@ version.
 
 ## Unreleased
 
+### Security and reliability (from an outside code audit)
+
+- **A sandbox with "This computer only" could outlive SAM.** When SAM's
+  launcher was killed, pasta (which sits between SAM and the sandbox in this
+  mode) kept running, and the app with it. The process SAM starts now dies
+  with the launcher in every mode; a test kills the launcher hard and checks
+  that nothing of the sandbox survives.
+- A test now proves that with "This computer only" a listed port on your
+  computer is reachable and an unlisted one is not.
+- Desktop services are shared with a sandbox only when they are real
+  sockets, so a wrong session variable can never put an ordinary file into
+  the sandbox.
+- A malformed internal pasta command is refused with an error instead of a
+  crash.
+- No `.unwrap()` outside tests anymore (a lint enforces it): every possible
+  failure is handled, or its `expect` says why it cannot happen.
+- SHA-1 and MD4, which the zsync update format prescribes, are confined to
+  the update code by a test; the threat model states what updates of
+  unsigned apps can and cannot promise.
+- **No silent loss of protection.** When a start lacks a layer its settings
+  ask for (Landlock or the syscall filter, for example because SAM's helper
+  is missing), the command line warns, the app's page says which layer was
+  missing, and the overview marks the app *Protection missing* until a start
+  has every layer again.
+- `panic!`, `todo!` and `unimplemented!` are not allowed outside tests (a
+  lint enforces it).
+- Every release comes with an SBOM (SPDX): every component built into SAM,
+  with version and license, signed like the other release files.
+- The security page names where an outside review should start.
+
+### First start
+
+- The app page shows the settings first; saving a preset comes last.
+- The "Bubblewrap" tag appears only when the sandbox cannot run.
+- The filter says "Not sandboxed", like the list.
+
 ### Website
 
 - Every page has a breadcrumb trail, Previous and Next links that go round

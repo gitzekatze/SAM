@@ -2,6 +2,7 @@
 //! overview (docs/architecture.md). A part that starts to depend on one it
 //! must not, or a diagram that no longer shows the real dependencies, fails
 //! here.
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -194,5 +195,54 @@ fn diagram_labels_are_quoted_so_github_draws_them() {
         bad.is_empty(),
         "quote these diagram labels:\n{}",
         bad.join("\n")
+    );
+}
+
+/// SHA-1 and MD4 are broken as protection against tampering. SAM uses them
+/// only where the zsync update format prescribes them (the published file's
+/// SHA-1, the blocks' MD4), and there only against damaged downloads: an
+/// update's authenticity comes from its signature. This keeps them from
+/// spreading to anything that must resist tampering.
+#[test]
+fn the_weak_hashes_stay_in_the_zsync_update_code() {
+    let allowed = [
+        "crates/sam-runner/src/updates.rs",
+        "crates/sam-runner/src/zsync.rs",
+        // This test names them to look for them.
+        "crates/sam-jail-cli/tests/architecture.rs",
+    ];
+    let mut offenders = Vec::new();
+    let mut stack = vec![root().join("crates")];
+    while let Some(dir) = stack.pop() {
+        for e in fs::read_dir(&dir).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if p.file_name().is_some_and(|n| n != "target") {
+                    stack.push(p);
+                }
+                continue;
+            }
+            let rel = p
+                .strip_prefix(root())
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            let text = fs::read_to_string(&p).unwrap_or_default();
+            let uses = if rel.ends_with(".rs") {
+                text.contains("sha1::") || text.contains("md4::")
+            } else if rel.ends_with("Cargo.toml") && rel != "crates/sam-runner/Cargo.toml" {
+                text.lines()
+                    .any(|l| l.starts_with("sha1") || l.starts_with("md4"))
+            } else {
+                false
+            };
+            if uses && !allowed.contains(&rel.as_str()) {
+                offenders.push(rel);
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "SHA-1 or MD4 used outside the zsync update code: {offenders:?}"
     );
 }

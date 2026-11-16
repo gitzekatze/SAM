@@ -70,6 +70,12 @@ the sandbox, just before the app starts.
   intended, the kernel still blocks the write.
 - Read-only folders inside the home (such as a read-only *Documents*) are
   protected by their read-only mount, which the app cannot change.
+- If Landlock (or the syscall filter) cannot be applied at a start, for
+  example because SAM's helper `sam-jail-run` is missing, the app still
+  starts in its Bubblewrap sandbox, but never silently: the command line
+  warns, the app's page says which layer was missing, and the overview marks
+  the app *Protection missing* until a start has every layer again. A
+  syscall filter that fails to load stops the start.
 - With kernel 6.12+ (Landlock ABI 6), connections to abstract sockets outside
   the sandbox are blocked too, for example XWayland's
   `@/tmp/.X11-unix/X0`.
@@ -439,3 +445,30 @@ was easily misread.
   on this page checked by a breakout test, with the fixes it led to.
 - The breakout tests run in CI on every push
   (`crates/sam-runner/tests/breakout.rs`).
+- The audit of 2026-11-16 (an outside, automated code audit): its points
+  were checked against the code; what held was fixed with a test, including
+  a sandbox that outlived a killed launcher with "This computer only". See
+  the changelog.
+
+## For reviewers: where to start
+
+An outside review is planned before the wide announcement. The question to
+ask of each part is not *does it work* but *how can it fail in a way that
+helps the app inside*. The parts where that matters most:
+
+| Part | What it does |
+|---|---|
+| `crates/sam-runner/src/launch.rs` | prepares and starts a sandbox, its status pipes and the launch record |
+| `crates/sam-runner/src/pty.rs` | the terminal relay and its escape-code filter |
+| `crates/sam-runner/src/dbus_proxy.rs` | the filtered session bus |
+| `crates/sam-runner/src/netns.rs` | "This computer only" through pasta |
+| `crates/sam-runner/src/kernel.rs` | Landlock and the syscall filter, applied inside the sandbox |
+| `crates/sam-sandbox/src/lib.rs` | the Bubblewrap command built from the settings |
+| `crates/sam-core/src/permissions.rs` | the settings, their risk and the D-Bus rules |
+| `crates/sam-intake/src/extract.rs`, `normalize.rs` | unpacking untrusted AppImages |
+| `crates/sam-runner/src/updates.rs`, `zsync.rs`, `release_key.rs` | updates and their checks |
+| every `unsafe` block | each carries a `SAFETY:` comment (enforced by a lint) |
+
+The [threat model](threat-model.md) names the test behind each promise, and
+the [test library](test-library.md) lists every test with what it proves.
+

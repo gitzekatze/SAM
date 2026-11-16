@@ -126,6 +126,18 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # The software bill of materials (SBOM): every component built into
+      # SAM, with its version and license, in the SPDX format that tools for
+      # checking known vulnerabilities read. Made from Cargo.lock.
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/sam-${{ github.ref_name }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
       # Build provenance: a signed statement from GitHub that these files
       # were built by this workflow from this tag. Anyone can check a file
       # with `gh attestation verify FILE --repo gitzekatze/SAM`. GitHub
@@ -139,6 +151,7 @@ jobs:
           subject-path: |
             dist/*.tar.gz
             dist/*.tar.xz
+            dist/*.spdx.json
             dist/SHA256SUMS
 
       - name: Draft release

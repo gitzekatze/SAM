@@ -2,6 +2,7 @@
 //! starts with a read-only app folder and a warning. In its own file
 //! because it sets `HOME` for the whole test process, which would race
 //! with the other sandbox tests.
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::collections::HashMap;
 use std::fs;

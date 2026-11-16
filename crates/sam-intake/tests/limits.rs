@@ -1,6 +1,7 @@
 //! The unpacking limits hold exactly: SAM's own SquashFS reader unpacks an
 //! AppImage that reaches a limit and refuses one that goes one past it, with
 //! the error code the window recognizes.
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 use std::path::Path;

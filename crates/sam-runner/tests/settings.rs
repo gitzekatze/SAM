@@ -1,6 +1,7 @@
 //! The user's settings survive SAM's own buttons: compatibility mode, repair
 //! steps, "reset to recommendation" and removing a sandbox each do exactly
 //! what they promise and can be taken back where SAM says so.
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 

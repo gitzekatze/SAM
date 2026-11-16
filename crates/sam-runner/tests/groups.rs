@@ -1,6 +1,7 @@
 //! Changing a permission for several apps at once (the Permissions page,
 //! `sam-jail group`), and the user's own presets after the built-in presets
 //! were removed. Regression tests for the promises of phase 1.
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::collections::BTreeMap;
 use std::fs;

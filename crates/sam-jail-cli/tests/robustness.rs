@@ -1,6 +1,7 @@
 //! SAM's files from older, newer and broken SAMs: the real `sam-jail` binary
 //! must migrate old ones (keeping the original), leave newer ones untouched,
 //! move damaged ones aside and carry on, and never panic on mangled data.
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 use std::path::Path;

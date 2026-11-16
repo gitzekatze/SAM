@@ -47,7 +47,9 @@ protection ends. Each protection names the test that proves it; the
 | An app starts a program outside the sandbox through a desktop service (systemd, the Flatpak spawn portal, a launcher) | The filtered D-Bus proxy allows only a short list of services; host tools like `systemd-run` are replaced by stand-ins | the evil suite (Systemd, FlatpakSpawn, Launcher), the breakout test |
 | An app poses as a desktop service (takes over a portal's or the notification service's name) | SAM refuses dangerous names and names of services that start on demand | the evil suite (ImpersonatePortal), `own_names_that_are_refused` |
 | An app reads your passwords from the keyring | The keyring is blocked unless you allow it, and the switch says that the keyring does not separate apps | the evil suite (Keyring) |
-| An app uses the network when it should not | No network: its own empty network; "This computer only": pasta with only the ports you list | the evil suite (NetworkWhenOff), `each_permission_grants_exactly_its_access_in_a_real_sandbox` |
+| An app uses the network when it should not | No network: its own empty network; "This computer only": pasta with only the ports you list, every other service on your computer stays unreachable | the evil suite (NetworkWhenOff), `each_permission_grants_exactly_its_access_in_a_real_sandbox` (a listed and an unlisted port) |
+| An app keeps running unsupervised after SAM's launcher crashes or is killed | The sandbox dies with its launcher: Bubblewrap's `--die-with-parent`, and a parent-death signal on the process SAM starts (pasta with "This computer only") | `without_network_the_sandbox_dies_with_its_launcher`, `with_this_computer_only_the_sandbox_dies_with_its_launcher` |
+| SAM claims protection it did not apply (Landlock or the syscall filter missing at a start) | The start is recorded with its missing layers; the command line warns, the app's page and the overview show it; a syscall filter that fails to load stops the start | `a_start_without_the_helper_reports_its_missing_layers`, `a_wanted_layer_that_was_not_applied_is_reported_missing`, `a_start_without_a_wanted_protection_layer_is_marked` |
 | An app watches your other windows or keystrokes | Wayland with a security context; X11 only when you allow it (and the X11 switch says what it costs) | `wayland_security_context_socket_is_used` |
 | A hostile AppImage escapes while being unpacked (paths with `..`, symlinks out of the image, setuid bits, huge images) | SAM's own unpacker with limits on size, files and time, run in a sandbox; setuid bits removed; paths checked | `paths_climbing_out_of_the_image_are_refused`, `unpacking_removes_setuid_bits`, the evil suite (SymlinkToKey, SetuidInImage) |
 | A damaged or hostile AppImage crashes SAM | The parsers are fuzzed; a reader crash becomes an error; one bad file does not stop the list | `changed_appimages_never_crash_or_escape_the_unpacker`, `one_damaged_appimage_does_not_stop_the_list` |
@@ -90,6 +92,12 @@ These limits are real, and SAM says so rather than pretend otherwise.
   services on your computer whose ports you list, and whatever they allow.
 - **Portals** let an app ask for things (a file, a screenshot, a camera);
   your desktop asks you first, and SAM relies on that.
+- **Updates of unsigned apps.** Most AppImages are not signed. Their updates
+  come from the publisher's server over HTTPS and are checked against the
+  checksum that server publishes, which catches damaged downloads but not a
+  server that was taken over. Such an update runs in the same sandbox with
+  the same access as before, and it can be undone. Signed apps are safer:
+  an update whose signing key changes is refused until you accept it.
 
 ## How this is checked
 

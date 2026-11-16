@@ -83,7 +83,7 @@ pub fn set(v: &mut Value, key: &str, val: Value) {
         if !cur.get(*p).is_some_and(Value::is_object) {
             cur[*p] = Value::Object(Default::default());
         }
-        cur = cur.get_mut(*p).unwrap();
+        cur = cur.get_mut(*p).expect("the key was just made an object");
     }
     cur[parts[parts.len() - 1]] = val;
 }

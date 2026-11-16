@@ -9,6 +9,7 @@
 //! repeated. CI runs a few hundred rounds; `SAM_FUZZ_ITERS=100000` runs an
 //! overnight session. An input that crashes a parser is saved to
 //! target/fuzz-crashes/ so it can be turned into a regression test.
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};

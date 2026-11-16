@@ -17,6 +17,8 @@ use std::process::{Command, Stdio};
 use anyhow::{bail, Context, Result};
 use sam_core::model::{UpdateState, UpdateStatus};
 use sam_detect::update_info::{self, UpdateSource};
+// SHA-1 only because the zsync format names the published file by it; it
+// catches damaged downloads, not tampering (the signature check does that).
 use sha1::{Digest, Sha1};
 
 /// The most read from any answer.
