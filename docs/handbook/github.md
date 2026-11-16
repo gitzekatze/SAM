@@ -56,8 +56,10 @@ GitHub's computers. See it in the **Actions** tab. Its jobs:
 | **test** | builds SAM, checks the code format and lints, runs all tests twice (a test that changes its answer is flaky), checks the generated documents and translations, and opens every page of the window |
 | **sandbox-fedora** | the real sandbox tests (breakout attempts, hostile AppImages) on Fedora |
 | **window-flows** | clicks through the window like a person, through the accessibility interface, under KDE's KWin |
-| **window-flows-gnome** | the same under GNOME's Mutter (not yet required for merging; it becomes required once it has proved stable) |
+| **window-flows-gnome** | the same under GNOME's Mutter |
 | **deny** | dependencies: known security problems, licenses, where they come from |
+| **changes** | decides whether the change touches code; for documents only, the heavy jobs are skipped |
+| **Needs your approval** (workflow *Approval*) | the contract verifier: green unless the change weakens a promise, changes a protected test or adds a dependency; then it waits for your label `owner-approved` |
 
 **Document-only changes are quick:** when a pull request changes only
 documents or the website, the build, test, window and sandbox steps are

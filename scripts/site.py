@@ -370,6 +370,7 @@ def trust_index(f):
 <li>The <a href="threat-model.html">threat model</a> lists each threat with what stops it and the test that proves it; every promise on the <a href="security.html">security page</a> is attacked by a breakout test from inside a real sandbox; the <a href="tests.html">test library</a> links each test to its code.</li>
 <li>The tests run on every change on GitHub, on Ubuntu and Fedora; the results are public in the repository's <a href="{REPO}/actions">Actions</a> tab.</li>
 <li>Releases are signed; <a href="{REPO}/blob/main/SECURITY.md#checking-a-download">SECURITY.md</a> shows how to check a download.</li>
+<li>Linux keeps changing under SAM. Every assumption SAM makes about it is a <a href="../maintain/contracts.html">contract</a> with a test, and every night SAM is built and tested on the distributions that come next, so a change is noticed before it reaches you.</li>
 <li>Found a way out of the sandbox? Report it privately through <a href="{REPO}/security/advisories/new">GitHub's security tab</a>.</li>
 </ul>
 <h2>How SAM is made</h2>

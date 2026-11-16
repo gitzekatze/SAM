@@ -72,7 +72,7 @@ sam-jail --json version
 | `id` | app id, e.g. `appimage-krita-1a2b` |
 | `name`, `comment` | from the AppImage's desktop file, cleaned |
 | `icon_path`, `source_path` | cached icon, the AppImage file |
-| `state`, `badge`, `badge_label` | lifecycle state, status badge and its label |
+| `state`, `badge`, `badge_label` | lifecycle state, status badge and its label; `badge` is `ready`, `needs-review`, `compatibility-mode`, `compatibility-risk`, `stale`, `broken`, `unsafe`, `missing`, `changed-outside` or `protection-missing` |
 | `category` | `browser`, `game`, `utility`, … |
 | `risk` | `{level, score, items}`: the level, the weighted score, and the permissions that raise it |
 | `added_at`, `last_launched` | Unix seconds (`last_launched` may be `null`) |
@@ -130,9 +130,10 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `diagnose APP` | the diagnostic run (`strace`) result |
 | `logs APP [--list/--file/--kind]` | file list, or `{file, kind, text}` |
 | `doctor [APP]` | `{checks: [{id, label, status, detail, hint}], …}` |
+| `doctor --contracts` | `{contracts: [{id, component, state, detail, on_break, assumes, playbook}], components: [{id, name, version}]}`; `state` is `holds`, `broken`, `absent` or `not-here` ([contracts](contracts.md)) |
 | `report APP` | `{report}`: redacted text for a bug report |
 | `preset list/show/template/apply/save/delete/duplicate/import/export/put` | the user's preset objects; `put` reads one on stdin |
-| `info APP` | also `repair_effects` (step id → what the step changes and costs) and `compat_changes` (the switches compatibility mode turns on, or turned on) |
+| `info APP` | the app's record; its `last_launch` has `missing_layers` (protection layers the last start lacked, for example `["Landlock"]`); also `repair_effects` (step id → what the step changes and costs) and `compat_changes` (the switches compatibility mode turns on, or turned on) |
 | `repair APP [--apply ID / --next / --undo / --undo-step ID]` | `--undo-step` switches off one applied step and keeps the others |
 | `group list` | every sandboxed app: the app summary plus `permissions`, `tags: [{key, label, family, level, read_only}]`, `running`, `needs_review`, `may_not_start` |
 | `group set KEY VALUE APP… [--dry-run]` | `{key, value, applied, apps: [{id, name, check, running, changed}], previous: {id: permissions}}` |

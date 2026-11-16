@@ -76,6 +76,13 @@ stop the desktop portals that Flatpak apps rely on.
 - A test must give the same result every time. CI runs the suite twice and
   fails on a test whose result differs (flaky), for example because two tests
   change the same environment variable at once.
+- The tests that prove SAM's security promises are **protected**
+  (`keeper.toml`): they may gain lines, never lose or change them. A change
+  that weakens a promise, changes a protected test or adds a dependency
+  needs the owner's label `owner-approved` ([AUTOMATION.md](AUTOMATION.md)).
+- Code that starts using something outside SAM (a program, an option, a
+  path, a variable, a D-Bus name, a syscall) needs a contract in
+  `docs/contracts.toml`; `python3 scripts/contract-map.py` says which.
 - After adding, moving or renaming tests, run `make test-library` and commit
   `docs/test-library.md` and `docs/functions.md`; CI fails when they are out
   of date.

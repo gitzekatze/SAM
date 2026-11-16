@@ -25,6 +25,9 @@ the steps; the list says what it does and what stays a person's job.
    checks that this version keeps them and still starts the apps.
    `scripts/new-version.sh` runs it by itself.
 5. **Translations are complete:** `python3 scripts/i18n.py check`.
+5a. **The outside world is fine:** no open `early-warning` issue for a
+    distribution SAM supports, and `sam-jail doctor --contracts` shows no
+    broken contract on this computer.
 6. **The version report** for the finished state: `make report`. It also
    updates the dashboard and the function map's results.
 7. **The changelog** has every user-visible change under *Unreleased*, in
@@ -103,7 +106,7 @@ notes.
    depend on the signed file), adds a detached `.asc` signature to every
    file and uploads them to the draft.
 2. Check the draft: every file is there (AppImages with `.zsync`, `.sha256`
-   and `.asc`, source and vendored tarballs, `SHA256SUMS`), and the notes
+   and `.asc`, source and vendored tarballs, `SHA256SUMS`, the SBOM `sam-vX.Y.Z.spdx.json`), and the notes
    read well.
 3. **Publish the draft.** This stays a person's decision.
 4. Update the packages that are not built from the tag (AUR, COPR) with the

@@ -51,7 +51,7 @@ Inside the repository:
 7. [Keeping SAM healthy](care.md): what to look at weekly, monthly, yearly.
 8. Deeper references: [testing](../testing.md), [translating](../translating.md),
    [architecture](../architecture.md), [the JSON interface](../json-interface.md),
-   [packaging](../packaging.md).
+   [packaging](../packaging.md), [contracts](../contracts.md), [AUTOMATION.md](../../AUTOMATION.md).
 
 ## What to do next
 

@@ -245,6 +245,7 @@ reading; this table is the same set in the repository.
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |
 | [AUTOMATION.md](AUTOMATION.md) | what automation may do in this repository, its checks and the kill switch |
+| [Contracts](docs/contracts.md) | every assumption SAM makes about the outside world, what happens when one breaks, and how each is checked |
 | [Maintainer handbook](docs/handbook/index.md) | whoever looks after SAM: GitHub, everyday work, tools, care |
 | [Releasing](docs/releasing.md) | the checklist for a new version |
 | [Translating](docs/translating.md) | adding a language |
