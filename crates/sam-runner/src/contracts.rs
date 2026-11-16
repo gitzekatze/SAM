@@ -139,6 +139,7 @@ fn version_of(program: &str) -> Option<String> {
     let args: &[&str] = match program {
         "unsquashfs" => &["-version"],
         "strace" => &["-V"],
+        "Xwayland" => &["-version"],
         _ => &["--version"],
     };
     let text = output(program, args)?;

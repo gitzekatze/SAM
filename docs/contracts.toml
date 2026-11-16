@@ -112,18 +112,21 @@ upstream = "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/tags"
 [[component]]
 id = "x11"
 name = "X11 / XWayland"
+program = "Xwayland"
 repology = "xwayland"
 upstream = "https://gitlab.freedesktop.org/xorg/xserver/-/tags"
 
 [[component]]
 id = "audio"
 name = "PipeWire and PulseAudio"
+program = "pipewire"
 repology = "pipewire"
 upstream = "https://gitlab.freedesktop.org/pipewire/pipewire/-/releases"
 
 [[component]]
 id = "dbus"
 name = "D-Bus and desktop services"
+program = "dbus-daemon"
 repology = "dbus"
 upstream = "https://gitlab.freedesktop.org/dbus/dbus/-/tags"
 
