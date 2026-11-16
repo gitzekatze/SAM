@@ -51,6 +51,7 @@ PAGES = [
 # The maintainer handbook.
 HANDBOOK = [
     ("maintain", "maintain/index.html", "docs/handbook/index.md", "Start here"),
+    ("maintain", "maintain/looks-after-itself.html", "docs/handbook/looks-after-itself.md", "How SAM looks after itself"),
     ("maintain", "maintain/github.html", "docs/handbook/github.md", "How GitHub works"),
     ("maintain", "maintain/workflow.html", "docs/handbook/workflow.md", "Everyday work"),
     ("maintain", "maintain/tips.html", "docs/handbook/tips.md", "Updating SAM and the repository"),
@@ -78,7 +79,7 @@ PAGE_ICONS = {
     "trust/functions.html": "check", "trust/tests.html": "flask", "trust/mutation-testing.html": "shuffle",
     "trust/security-review.html": "doc", "trust/testing.html": "flask", "trust/architecture.html": "layers",
     "use/changelog.html": "clock",
-    "maintain/index.html": "flag", "maintain/github.html": "branch", "maintain/workflow.html": "flow", "maintain/tips.html": "undo", "maintain/outside.html": "shield", "maintain/contracts.html": "check", "maintain/automation.html": "shuffle", "maintain/tools.html": "wrench",
+    "maintain/index.html": "flag", "maintain/looks-after-itself.html": "shield", "maintain/github.html": "branch", "maintain/workflow.html": "flow", "maintain/tips.html": "undo", "maintain/outside.html": "shield", "maintain/contracts.html": "check", "maintain/automation.html": "shuffle", "maintain/tools.html": "wrench",
     "maintain/releasing.html": "tag", "maintain/care.html": "heart",
     "maintain/translating.html": "globe", "maintain/json-interface.html": "code",
     "maintain/packaging.html": "box", "maintain/contributing.html": "users",
@@ -370,6 +371,7 @@ def trust_index(f):
 <li>The <a href="threat-model.html">threat model</a> lists each threat with what stops it and the test that proves it; every promise on the <a href="security.html">security page</a> is attacked by a breakout test from inside a real sandbox; the <a href="tests.html">test library</a> links each test to its code.</li>
 <li>The tests run on every change on GitHub, on Ubuntu and Fedora; the results are public in the repository's <a href="{REPO}/actions">Actions</a> tab.</li>
 <li>Releases are signed; <a href="{REPO}/blob/main/SECURITY.md#checking-a-download">SECURITY.md</a> shows how to check a download.</li>
+<li>Linux keeps changing under SAM. Every assumption SAM makes about it is a <a href="../maintain/contracts.html">contract</a> with a test, and every night SAM is built and tested on the distributions that come next, so a change is noticed before it reaches you.</li>
 <li>Found a way out of the sandbox? Report it privately through <a href="{REPO}/security/advisories/new">GitHub's security tab</a>.</li>
 </ul>
 <h2>How SAM is made</h2>

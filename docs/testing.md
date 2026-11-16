@@ -16,6 +16,8 @@ checks a person still does by hand.
 | Real AppImages | 120 real AppImages through SAM's whole flow (`tests/real-apps/`) | see below | before every release |
 | Mutation testing | deliberate mistakes in the code that the tests must notice | `make mutants-diff`; `cargo mutants` for whole parts | per change for security code; whole parts before every release |
 | Install tests | the finished AppImage on fresh distributions | `make test-shipped APPIMAGE=…` | every release build |
+| Contract checks | SAM's assumptions about the outside world hold here (`sam-jail doctor --contracts`), and the code uses nothing no contract covers (`scripts/contract-map.py`) | see [contracts](contracts.md) | every change |
+| Early warning | the contracts and sandbox tests on tomorrow's distributions (`tests/canary/`) | Actions → Early warning | every night |
 | Manual checks | what needs a real desktop or a person (this page, below) | by hand | before a release |
 
 The complete list of automated tests, each with the promise it keeps, is the
@@ -23,6 +25,11 @@ The complete list of automated tests, each with the promise it keeps, is the
 the [function map](functions.md). How each part of SAM does from version to
 version (tests, line coverage, timings, dependencies) is in the
 [version reports](reports/), made with `make report`.
+
+**No silent skips in CI:** a sandbox test that cannot run (no working
+Bubblewrap, no kernel headers) skips on your computer with a note, but CI
+sets `SAM_REQUIRE_SANDBOX=1`, which turns such a skip into a failure: a
+green run always tested the sandbox.
 
 **How CI judges the tests:** it runs the whole suite twice
 (`scripts/flaky-check.py`). A test whose result differs between the two runs

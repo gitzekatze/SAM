@@ -16,6 +16,9 @@ it exists. Run them in your clone of the repository.
 | `make mo` | compiles the translations | to try them in the window |
 | `sam-jail doctor --contracts` | checks every contract with the outside world on this computer, with the versions | after a system update, or when something stopped working |
 | `python3 scripts/contract-map.py` | checks the contract map against the code and writes docs/contracts.md | after the code starts using something outside SAM (CI says so) |
+| `python3 scripts/risk-class.py` | the risk class of your branch's changes (low to critical) | before a pull request; CI shows it too |
+| `python3 scripts/contract-verifier.py` | what in your branch weakens a promise or a protected test and would need `owner-approved` | before a pull request; CI runs it as "Needs your approval" |
+| `python3 scripts/workflow-check.py` | the GitHub workflows have no known injection hole | after changing `.github/workflows/` |
 | `make mutants-diff` | changes the code you touched on purpose and lists every change no test noticed | before pushing security-relevant code |
 
 ## Releasing

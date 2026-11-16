@@ -37,6 +37,7 @@ make test                         # all tests
 cargo fmt --all                   # the code format
 cargo clippy --workspace --all-targets -- -D warnings
 make test-library                 # after adding or renaming tests
+python3 scripts/contract-map.py    # after the code starts using something outside SAM
 python3 scripts/i18n.py check     # after changing texts people read
 make mutants-diff                 # for security-relevant code: do the tests catch mistakes?
 ```
@@ -54,7 +55,13 @@ git push -u origin short-name
 gh pr create --fill
 ```
 
-Then open the pull request on GitHub and wait for the checks.
+Then open the pull request on GitHub and wait for the checks. A change that
+only touches documents is checked in about a minute.
+
+If **Needs your approval** is red, the change weakens a promise, changes a
+protected test or adds a dependency: its summary lists exactly what. If that
+is what you want, set the label **owner-approved** (pull request → Labels);
+only that check runs again. See [AUTOMATION.md](../../AUTOMATION.md).
 
 ## 6. Merge
 

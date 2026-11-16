@@ -16,7 +16,7 @@
 | Confirm the sandbox really applies your settings and the app starts | **Test** next to Launch, results under **Test** |
 | Fix an app that does not start | Its page → **Troubleshooting** |
 | Change a permission for several apps | **Permission Manager** above the list, select the apps, change the switch |
-| Reuse settings for other apps | Its page → **My Presets** → *Name for the new preset* |
+| Reuse settings for other apps | Its page, at the end → **My Presets** → *Name for the new preset* |
 | Find out what a label means | Hover over it |
 | Remove a sandbox | The round trash button left of **Test** |
 | Close an app that hides in the tray | The trash button offers *Close and Remove*, or `sam-jail stop app` |
@@ -42,23 +42,25 @@
 **Left column**
 
 - **AppImage locations:** the folders and single files SAM searches. The ✕ removes a location (your files are not touched). When your Downloads folder holds AppImages but is not a location, a line says so and **Add Downloads** adds it like any other folder. The list grows with every location you add; the whole left column scrolls. New AppImages in these locations appear by themselves.
-- **AppImages found:** every AppImage in those locations, grouped into *Sandboxed* and *Not sandboxed*. Use **All / Sandboxed / Unsandboxed** to filter and the search field to find one by name or path.
+- **AppImages found:** every AppImage in those locations, grouped into *Sandboxed* and *Not sandboxed*. Use **All / Sandboxed / Not sandboxed** to filter and the search field to find one by name or path.
 - Each row shows the app's icon, name, file name and a status. Hover over any status to see what it means.
   - *Sandboxed* / *Not sandboxed*: whether the app has a sandbox yet.
   - *Needs review*: look over the settings SAM chose, or new access the app asks for.
   - *Compatibility mode*: you turned on compatibility mode, so the app has broad access.
   - *May not start* / *Likely won't start*: SAM's analysis found the app relies on libraries it does not bring itself (or something worse). It is only a warning: launch the app, and the label disappears once it has started.
   - *Changed*, *Broken*, *Missing*: the AppImage file changed, the last start failed, or the file is gone.
+  - *Changed outside SAM*: something other than SAM changed the app's settings; it does not start until you confirm them on its page.
+  - *Protection missing*: the last start lacked a protection layer its settings ask for (Landlock or the syscall filter, for example because SAM's helper is missing); the app's page says which.
 - A ⚠ next to a row means something needs attention; hover over it to see what.
 
 **Right column**
 
 - **The header** shows the app, its file and labels for its state. Hover over a label to see what it means.
   - *Sandboxed* (green) or *Not sandboxed*.
-  - *Bubblewrap* (blue): the sandbox technology.
+  - *Sandbox unavailable* (red), only when Bubblewrap cannot run on this computer; *Diagnostics* says why.
   - The test state: *Not tested yet*, *Tested* with the date, *Test out of date* (the settings, SAM or the computer changed since) or *Test failed*.
   - Below them, the same permission tags as in the Permission Manager.
-  - Anything that needs attention, such as *Needs review* or *May not start*.
+  - Anything that needs attention, such as *Needs review* or *May not start*. When the last start lacked a protection layer, a warning at the top of the page names it.
 - The round trash button, **Test** and **Launch** (or **Create Sandbox**) sit on the right of the header; the trash button stays away from Launch so it is not hit by mistake. In a narrow window, the buttons stack. Every button explains itself when you hover over it.
 - While the app runs, a bar at the top of its page says that changed settings apply the next time it starts, and **Restart** closes the app (it may save first) and starts it again with the new settings.
 - **Below the header** come all settings and tools for the app, always visible. Settings that do not apply right now are greyed out, never hidden.
