@@ -349,10 +349,13 @@ pub fn check_all(host: &HostInfo) -> ContractReport {
 }
 
 /// For the sandbox tests: checks the contracts a test relies on before it
-/// runs. A broken contract fails the test at once with the contract's name
-/// and playbook ("the outside world changed"), instead of a confusing
-/// failure deep inside. The returned guard notes, if the test fails later,
-/// that its contracts held, so the failure is in SAM's own code.
+/// runs. A broken contract whose break makes SAM refuse to start a sandbox
+/// fails the test at once with the contract's name and playbook ("the
+/// outside world changed"), instead of a confusing failure deep inside. A
+/// broken contract that SAM handles by falling back (safer, warn, feature)
+/// is a normal state the test must check, so it is only noted. The returned
+/// guard notes, if the test fails later, that its contracts held, so the
+/// failure is in SAM's own code.
 pub fn guard(ids: &[&str]) -> Result<Guard, String> {
     guard_with(&check_all(&HostInfo::probe()), ids)
 }
@@ -363,6 +366,10 @@ pub fn guard_with(report: &ContractReport, ids: &[&str]) -> Result<Guard, String
     for id in ids {
         match report.contracts.iter().find(|c| c.id == *id) {
             None => return Err(format!("no contract {id} in docs/contracts.toml")),
+            Some(c) if c.state == State::Broken && c.on_break != "refuse" => eprintln!(
+                "note: contract {} does not hold here ({}); SAM falls back ({}), which this test checks",
+                c.id, c.detail, c.on_break
+            ),
             Some(c) if c.state == State::Broken => broken.push(format!(
                 "CONTRACT BROKEN: {} ({}) -> {}",
                 c.id, c.detail, c.playbook
@@ -434,7 +441,12 @@ mod tests {
             component: "bubblewrap".into(),
             state,
             detail: "bwrap does not know --disable-userns".into(),
-            on_break: "refuse".into(),
+            on_break: if id == "pasta-splice-only" {
+                "safer"
+            } else {
+                "refuse"
+            }
+            .into(),
             assumes: String::new(),
             playbook: "raise the minimum version".into(),
         };
@@ -443,6 +455,7 @@ mod tests {
                 state("bwrap-core", State::Holds),
                 state("bwrap-disable-userns", State::Broken),
                 state("dwarfs", State::Absent),
+                state("pasta-splice-only", State::Broken),
             ],
             components: Vec::new(),
         };
@@ -460,6 +473,11 @@ mod tests {
         assert!(
             guard_with(&report, &["bwrap-core", "dwarfs"]).is_ok(),
             "absent is not broken"
+        );
+        // An old pasta: SAM falls back to no network, and the test checks that.
+        assert!(
+            guard_with(&report, &["bwrap-core", "pasta-splice-only"]).is_ok(),
+            "a broken contract SAM falls back from does not stop the test"
         );
         assert!(
             guard_with(&report, &["no-such-contract"]).is_err(),

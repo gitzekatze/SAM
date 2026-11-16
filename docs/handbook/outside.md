@@ -32,7 +32,7 @@ the safe side:
 | **An issue "Early warning: Fedora Rawhide: pasta-splice-only"** | the nightly run found a contract broken on a distribution that is not released yet: you have weeks before users get it |
 | **An issue "Upstream: Bubblewrap 0.14.0"** | the weekly watch found release notes that mention an option SAM uses, or a removal |
 | **A red CI run** | the run's summary ends with "What changed outside SAM": the versions and contract states that differ from the last green run. "No component changed" means the cause is in the change itself |
-| **A failed sandbox test** | starts with "CONTRACT BROKEN: …" (the outside world changed) or ends with "SAM ERROR: the contracts this test relies on hold" (SAM's own code) |
+| **A failed sandbox test** | starts with "CONTRACT BROKEN: …" when a contract SAM cannot work without broke (the outside world changed), or ends with "SAM ERROR: the contracts this test relies on hold" (SAM's own code). A broken contract SAM falls back from (an old pasta, for example) does not stop the test: the test checks the fallback |
 | **A bug report** | its "Contracts" section lists what does not hold on that computer, with every version |
 | **On your computer** | `sam-jail doctor --contracts` checks everything now |
 

@@ -261,9 +261,10 @@ hand:
       in German; *Follow the system* brings back the system's language.
 
 Sandbox tests check the contracts they rely on first
-(`sam_runner::contracts::guard`): a broken one stops the test with its name
-and playbook, so a failure says whether the outside world or SAM changed
-([contracts](contracts.md)).
+(`sam_runner::contracts::guard`): a broken one that SAM cannot work without
+stops the test with its name and playbook, so a failure says whether the
+outside world or SAM changed ([contracts](contracts.md)). A broken contract
+SAM falls back from is only noted, and the test checks the fallback.
 
 CI runs all click-through tests on every push, under KDE's KWin (job *window-flows*) and under GNOME's Mutter (job *window-flows-gnome*); `SAM_SESSION=mutter` runs them under Mutter locally.
 
