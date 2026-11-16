@@ -11,8 +11,8 @@ shows everything it may reach as a plain switch.
 
 1. **Simple.** AppImages are the easiest way to get software on Linux: you
    download one file and run it.
-2. **Unprotected.** That file then runs with all your rights. It can read
-   your documents, your keys and your browser profiles, and nothing shows you
+2. **Unprotected.** That file can then reach everything you can: your
+   documents, your keys and your browser profiles, and nothing shows you
    what it does.
 3. **Sandboxed.** SAM gives each AppImage its own sandbox, with exactly
    the access you allow, in a window anyone can use.
