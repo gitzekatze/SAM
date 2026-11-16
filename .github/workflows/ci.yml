@@ -209,6 +209,22 @@ jobs:
       - name: Contract map covers every outside assumption
         run: python3 scripts/contract-map.py --check
 
+      # AUTOMATION.md: no workflow hands an attacker the repository, and
+      # every pull request shows its risk class.
+      - name: Workflows are safe, and the automation rules work
+        run: |
+          python3 scripts/workflow-check.py
+          python3 scripts/workflow-check.py --self-test
+          python3 scripts/risk-class.py --self-test
+
+      - name: Risk class of this change
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git fetch -q origin "$BASE"
+          python3 scripts/risk-class.py "origin/$BASE" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Third-party licenses are up to date
         if: env.CODE == 'true'
         run: python3 scripts/third-party-licenses.py --check
