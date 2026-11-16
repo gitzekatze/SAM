@@ -11,11 +11,18 @@
 # 2. Asks once for the release key's passphrase and keeps GnuPG from
 #    forgetting it while the release runs (GnuPG forgets after 10 minutes
 #    without use; a tiny signature every 5 minutes keeps it).
-# 3. scripts/release.sh: version everywhere, all tests, signed tag.
-# 4. Pushes main and the tag; GitHub builds and tests the AppImages and
-#    makes a draft release (about 45 minutes); waits for it and shows a
-#    spinner with the minutes and the jobs done meanwhile.
+# 3. scripts/release.sh, on a branch release-X.Y.Z (main is protected and
+#    takes changes only through pull requests): version everywhere, all
+#    tests, signed tag.
+# 4. Pushes the branch and the tag and opens the pull request "Release
+#    X.Y.Z". GitHub builds and tests the AppImages from the tag and makes a
+#    draft release (about 45 minutes); waits for it and shows a spinner with
+#    the minutes and the jobs done meanwhile.
 # 5. scripts/sign-release.sh: seals the draft's AppImages with the key.
+# 6. Waits for the pull request's checks and merges it with a merge commit,
+#    so the tagged commit is part of main's history (a squash merge would
+#    leave the tag outside main, and the next release's upgrade test could
+#    not find it).
 #
 # Then it prints the draft's address: publishing it is your click.
 # If anything fails, it stops and says what; nothing is published.
@@ -68,6 +75,7 @@ dry=${2:-}
 echo "$new" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || die "usage: scripts/new-version.sh X.Y.Z [--dry-run]"
 [ -z "$dry" ] || [ "$dry" = --dry-run ] || die "unknown option '$dry'"
 tag="v$new"
+branch="release-$new"
 
 # The release key: the first fingerprint built into SAM.
 key=$(sed -n 's/^ *"\([0-9A-F]\{40\}\)",.*/\1/p' crates/sam-runner/src/release_key.rs | head -n1)
@@ -77,11 +85,13 @@ step "Checking that everything is ready"
 old=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
 [ "$(printf '%s\n%s\n' "$old" "$new" | sort -V | tail -n1)" = "$new" ] && [ "$new" != "$old" ] || die "$new is not newer than the current version $old"
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "the tag $tag exists already"
+git rev-parse -q --verify "refs/heads/$branch" >/dev/null && die "the branch $branch exists already; delete it if it is left over from a failed try (git branch -D $branch)"
 [ "$(git branch --show-current)" = main ] || die "switch to the main branch first"
 [ -z "$(git status --porcelain)" ] || die "there are uncommitted changes; commit or stash them first"
 command -v gh >/dev/null || die "the GitHub command line (gh) is not installed"
 gh auth status >/dev/null 2>&1 || die "gh is not signed in: run 'gh auth login'"
 git fetch -q origin main
+git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1 && die "the branch $branch exists on GitHub already; delete it there if it is left over from a failed try"
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || die "main differs from GitHub: push or pull first"
 ci=$(gh run list --workflow ci.yml --branch main --commit "$(git rev-parse HEAD)" --json conclusion --jq '.[0].conclusion' 2>/dev/null || true)
 [ "$ci" = success ] || die "the CI run for the current commit has not passed (status: ${ci:-none yet}); wait for it or fix it first"
@@ -119,12 +129,17 @@ gpg --yes -u "$key" --detach-sign -o "$work/unlock.sig" "$work/unlock" || die "t
 ( while sleep 300; do gpg --batch --yes -u "$key" --detach-sign -o "$work/alive.sig" "$work/unlock" 2>/dev/null || true; done ) &
 keepalive=$!
 
-step "Tagging $tag (all tests run first; this takes a few minutes)"
+step "Tagging $tag on the branch $branch (all tests run first; this takes a few minutes)"
+git switch -q -c "$branch"
 SIGN_KEY="$key" scripts/release.sh "$new"
 
-step "Pushing to GitHub"
-git push -q origin main
+step "Pushing to GitHub and opening the pull request"
+git push -q -u origin "$branch"
 git push -q origin "$tag"
+notes=$(awk '/^## \[?'"$new"'/{f=1; next} /^## /{f=0} f' CHANGELOG.md | sed -e '/./,$!d')
+gh pr create --base main --head "$branch" --title "Release $new" \
+    --body "$(printf 'SAM %s. Made by scripts/new-version.sh; merge it with a merge commit (the script does).\n\n%s' "$new" "$notes")" >/dev/null \
+    || die "the pull request could not be opened; open it for the branch $branch on GitHub and tell Claude"
 
 step "Waiting for GitHub to build and test the AppImages (about 45 minutes)"
 run=
@@ -139,6 +154,15 @@ wait_for_run "$run" "GitHub is building and testing" || die "GitHub's release bu
 
 step "Sealing the AppImages with the release key"
 SIGN_KEY="$key" scripts/sign-release.sh "$tag"
+
+step "Waiting for the pull request's checks, then merging it into main"
+sleep 20
+gh pr checks "$branch" --watch --fail-fast --interval 60 >/dev/null 2>&1 \
+    || die "the checks of the pull request 'Release $new' failed; the draft release is ready but main does not have the release yet. Tell Claude"
+gh pr merge "$branch" --merge --delete-branch >/dev/null \
+    || die "the pull request 'Release $new' could not be merged; merge it on GitHub with 'Create a merge commit'"
+git switch -q main
+git pull -q --ff-only origin main
 
 url=$(gh release view "$tag" --json url --jq .url)
 step "Done: SAM $new is ready to publish"

@@ -103,7 +103,7 @@ fi
 
 echo
 echo "SAM $new is ready (not pushed). Next:"
-echo "  git push origin main v$new"
+echo "  git push -u origin $(git branch --show-current) v$new, then a pull request into main, merged with a merge commit"
 echo "  GitHub release v$new with the files in dist/ (the CI draft has them; add the .asc signatures):"
 ls dist | grep -F "$new" | sed 's/^/    /'
 echo "  AUR: copy packaging/arch/PKGBUILD and .SRCINFO into the AUR repository and push"

@@ -48,10 +48,16 @@ scripts/new-version.sh X.Y.Z
 It checks that the version is new, the tree is clean, `main` matches GitHub,
 the last CI run on it passed and the release key is here. It asks once for
 the key's passphrase and keeps GnuPG from forgetting it during the release.
-Then it runs `scripts/release.sh`, pushes `main` and the tag, waits for the
-*Release* workflow, and seals the AppImages with `scripts/sign-release.sh`.
-It ends with the address of the draft release; publishing it is a person's
-click. If a step fails, it stops and says what, and nothing is published.
+Then it makes a branch `release-X.Y.Z` (`main` is protected and takes
+changes only through pull requests), runs `scripts/release.sh` there, pushes
+the branch and the tag, and opens the pull request *Release X.Y.Z*. It waits
+for the *Release* workflow, seals the AppImages with
+`scripts/sign-release.sh`, waits for the pull request's checks and merges it
+with a merge commit. A merge commit keeps the tagged commit in `main`'s
+history; a squash merge would not, and the next release's upgrade test would
+not find the tag. It ends with the address of the draft release; publishing
+it is a person's click. If a step fails, it stops and says what, and nothing
+is published.
 
 The sections below are what it does, step by step, for when a step has to be
 repeated by hand.
@@ -59,6 +65,7 @@ repeated by hand.
 ## Making the release by hand
 
 ```sh
+git switch -c release-X.Y.Z
 SIGN_KEY=AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 scripts/release.sh X.Y.Z
 ```
 
@@ -67,11 +74,15 @@ version everywhere, dates the changelog, runs clippy and all tests, commits
 "Release X.Y.Z", makes a signed tag `vX.Y.Z`, and builds the source files.
 It pushes nothing. GnuPG asks for the passphrase.
 
-Then push the commit and the tag:
+Then push the branch and the tag, and open the pull request:
 
 ```sh
-git push && git push origin vX.Y.Z
+git push -u origin release-X.Y.Z && git push origin vX.Y.Z
+gh pr create --base main --title "Release X.Y.Z" --fill
 ```
+
+Merge the pull request once its checks pass, with **Create a merge commit**
+(not *Squash*), so the tagged commit becomes part of `main`.
 
 ## After the push
 

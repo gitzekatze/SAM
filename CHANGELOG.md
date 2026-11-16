@@ -30,9 +30,11 @@ version.
   built and tested them (`scripts/sign-release.sh`), so the key never goes to
   GitHub; every release file also gets a detached `.asc` signature.
 - `scripts/new-version.sh X.Y.Z` makes a release in one go: it checks that
-  everything is ready, asks once for the key's passphrase, tags, pushes,
-  waits for GitHub's build and seals the AppImages, and ends at the draft
-  release, which a person publishes.
+  everything is ready, asks once for the key's passphrase, tags on a branch
+  `release-X.Y.Z`, opens a pull request (`main` is protected), waits for
+  GitHub's build, seals the AppImages, merges the pull request with a merge
+  commit once its checks pass, and ends at the draft release, which a
+  person publishes.
 
 ### German, Spanish and French
 
