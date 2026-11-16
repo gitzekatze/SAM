@@ -345,19 +345,6 @@ def home(f):
         for i, (ic, title, text) in enumerate(flow, 1))
     promises = "".join(
         f'<div class="promise">{icon(ic, meaning=title)}<h3>{title}</h3><p>{text}</p></div>' for ic, title, text in columns)
-    # An example of the app page, drawn with SAM's own words for permissions and risk.
-    mock = """<figure class="mock" aria-label="Example: the permissions SAM shows for a music player">
-<div class="mock-head"><span class="app" aria-hidden="true">♪</span><div><b>Music player</b><code>player-3.1-x86_64.AppImage</code></div><span class="tag">Sandboxed</span></div>
-<ul>
-<li><span>Network</span><em class="pill off">No network</em></li>
-<li><span>Music folder</span><em class="pill">Read-only</em></li>
-<li><span>Documents</span><em class="pill off">No access</em></li>
-<li><span>Sound</span><i class="switch on" aria-label="on"></i></li>
-<li><span>Camera</span><i class="switch" aria-label="off"></i></li>
-</ul>
-<div class="mock-foot"><span>Risk of these settings</span><em class="risk">Harmless</em></div>
-<figcaption>An example of what SAM shows for a music player.</figcaption>
-</figure>"""
     body = f"""
 <section class="hero"><div class="wrap hero-grid">
 <div class="hero-text">
@@ -367,7 +354,6 @@ def home(f):
 <div class="buttons"><a class="btn primary" href="use/install.html">Get SAM</a><a class="btn ghost" href="trust/index.html">See the evidence</a></div>
 <p class="note">Free and open source · Linux · English, Deutsch, Español, Français</p>
 </div>
-{mock}
 </div></section>
 
 <section class="band"><div class="wrap">
