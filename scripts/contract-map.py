@@ -116,6 +116,10 @@ def problems(m, inv):
                 errs.append(f"contract {cid} has no {key}")
         if c.get("component") not in comps:
             errs.append(f"contract {cid}: unknown component {c.get('component')}")
+        if c.get("coverage") not in ("full", "partial"):
+            errs.append(f"contract {cid}: coverage must be full or partial")
+        if c.get("coverage") == "partial" and not c.get("gaps"):
+            errs.append(f"contract {cid}: a partly tested contract says what is not tested (gaps)")
         if c.get("on_break") not in ON_BREAK:
             errs.append(f"contract {cid}: on_break must be one of {', '.join(ON_BREAK)}")
         for f in c.get("functions", []):
@@ -168,11 +172,13 @@ def page(m):
         "names the contract that broke and the versions involved; its playbook says",
         "where to look.",
         "",
-        "| Contract | Component | When it breaks |",
-        "|---|---|---|",
+        "| Contract | Component | When it breaks | Tested |",
+        "|---|---|---|---|",
     ]
     for c in m["contract"]:
-        out.append(f"| [{c['id']}](#{c['id']}) | {comps[c['component']]['name']} | {KINDS[c['on_break']]} |")
+        out.append(f"| [{c['id']}](#{c['id']}) | {comps[c['component']]['name']} | {KINDS[c['on_break']]} | {'fully' if c['coverage'] == 'full' else 'partly'} |")
+    n = sum(c["coverage"] == "full" for c in m["contract"])
+    out += ["", f"{n} of {len(m['contract'])} contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that."]
     out.append("")
     for c in m["contract"]:
         comp = comps[c["component"]]
@@ -182,7 +188,7 @@ def page(m):
         if c.get("functions"):
             out.append("- **SAM functions that rely on it:** " + ", ".join(f"[{f}](functions.md#{f})" for f in c["functions"]))
         out.append(f"- **Quick check:** `{c['probe']}`" if c["probe"] != "none" else "- **Quick check:** none (only the tests below)")
-        out.append("- **Tests:** " + ", ".join(f"`{t}`" for t in c["tests"]))
+        out.append("- **Tests:** " + ", ".join(f"`{t}`" for t in c["tests"]) + (" (fully)" if c["coverage"] == "full" else f" (partly: {c['gaps']})"))
         guarded = sorted({w.split(":")[0].split("/")[-1] for w, g in guards() if g == c["id"]})
         if guarded:
             out.append("- **Checked first by:** " + ", ".join(f"`{g}`" for g in guarded) + " (a broken contract stops these tests with its name)")
