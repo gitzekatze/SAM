@@ -52,6 +52,48 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
           [ "$code" = true ] && echo "Code changed: every job runs." || echo "Only documents changed: the code jobs are skipped."
 
+  # The owner's decision (AUTOMATION.md): a change that weakens a security
+  # promise, changes a protected test or adds a dependency waits here for
+  # the label owner-approved. Its own check, so the tests stay green and
+  # this one says plainly what it needs.
+  owner-approval:
+    name: Needs your approval
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: What in this change needs the owner
+        env:
+          BASE: ${{ github.base_ref }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          git fetch -q origin "$BASE"
+          approved=
+          case ",$LABELS," in *,owner-approved,*) approved=--approved ;; esac
+          set +e
+          python3 scripts/contract-verifier.py "origin/$BASE" $approved > verdict.md
+          rc=$?
+          set -e
+          {
+            if [ $rc -eq 1 ]; then
+              echo "## This change needs your decision"
+              echo
+              echo "Read the list below. If it is what you want, open the pull request, click **Labels** in the right sidebar and choose **owner-approved**. This check then runs again by itself and turns green."
+              echo
+            elif [ $rc -eq 0 ] && [ -n "$approved" ]; then
+              echo "## Approved by you (label owner-approved)"
+              echo
+            elif [ $rc -eq 0 ]; then
+              echo "## Nothing in this change needs your approval"
+              echo
+            fi
+            cat verdict.md
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
   # Dependencies: security advisories, licences, banned crates, sources
   # (deny.toml).
   deny:
@@ -230,17 +272,6 @@ jobs:
           git fetch -q origin "$BASE"
           python3 scripts/risk-class.py "origin/$BASE" | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # A change that weakens a security promise needs the owner's label.
-      - name: Contract verifier
-        if: github.event_name == 'pull_request'
-        env:
-          BASE: ${{ github.base_ref }}
-          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: |
-          approved=
-          case ",$LABELS," in *,owner-approved,*) approved=--approved ;; esac
-          python3 scripts/contract-verifier.py "origin/$BASE" $approved | tee -a "$GITHUB_STEP_SUMMARY"
-          exit "${PIPESTATUS[0]}"
 
       - name: Third-party licenses are up to date
         if: env.CODE == 'true'

@@ -43,7 +43,8 @@ you, can change it directly. Every change goes like this:
 change SAM behind your back. The protection rules: a pull request is
 required, all five CI jobs must pass (the tests on Intel/AMD and on ARM
 processors, the Fedora sandbox tests, the window tests and the dependency
-check), and nobody can rewrite or delete `main`.
+check), plus "Needs your approval" once you have added it (AUTOMATION.md),
+and nobody can rewrite or delete `main`.
 
 ## CI: the tests GitHub runs for you
 
@@ -95,9 +96,10 @@ What automation may do, what it may never do, the risk class of every
 pull request, the contract verifier, protected tests and the kill switch
 are in [AUTOMATION.md](../../AUTOMATION.md). In short: a pull request that
 weakens a security promise, changes a protected test or adds a dependency
-passes only when you set the label **`owner-approved`** on it. Read the
-"Contract verifier" section of the CI run first: it lists exactly what is
-weakened.
+passes only when you set the label **`owner-approved`** on it. Every pull
+request shows a check **"Needs your approval"**: green when nothing needs
+you; otherwise its summary lists what to look at. To approve: pull request
+→ **Labels** (right sidebar) → **owner-approved**.
 
 ## Issues, suggestions and security reports
 
