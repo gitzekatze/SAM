@@ -142,11 +142,11 @@ html, body { overflow-x: hidden; }
   content: ""; position: absolute; z-index: -1; width: 46rem; height: 46rem; right: -14rem; top: -16rem;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--green-light) 20%, transparent), transparent);
 }
-.hero-grid { max-width: 46rem; }
+.hero-grid > * { max-width: 46rem; }
 .eyebrow { display: inline-flex; align-items: center; gap: 0.6rem; margin: 0; font-weight: 700; color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase; font-size: 0.8rem; }
 .eyebrow img { width: 30px; height: 30px; }
 .hero h1 { font-size: clamp(2.3rem, 5.2vw, 3.7rem); line-height: 1.06; margin: 1rem 0 1.1rem; max-width: 15ch; letter-spacing: -0.03em; font-weight: 800; text-wrap: balance; }
-.hero h1 span { color: var(--bright); }
+.hero h1 span, .hero h1 em { color: var(--bright); font-style: normal; }
 .hero p.lead { font-size: 1.22rem; color: var(--muted); max-width: 34rem; margin: 0 0 2rem; }
 .buttons { display: flex; gap: 0.75rem; flex-wrap: wrap; }
 .btn { display: inline-block; padding: 0.8rem 1.5rem; border-radius: 999px; font-weight: 700; text-decoration: none; border: 2px solid transparent; transition: transform 0.15s; }
@@ -245,6 +245,48 @@ a.row:hover .more { transform: translateX(3px); }
 .doc p.lead-p { font-size: 1.1rem; }
 .doc details { border: 1px solid var(--line); border-radius: 12px; padding: 0.8rem 1.1rem; background: var(--card); margin: 1.2rem 0; }
 .doc summary { cursor: pointer; font-weight: 650; }
+
+
+/* Front page: each README section is a band; running text stays readable */
+.prose-band > h2 { max-width: 46rem; }
+.prose-band > p, .prose-band > h3, .prose-band > ul, .prose-band > ol:not(.flow):not(.how), .prose-band > pre, .prose-band > aside { max-width: 46rem; }
+.prose-band > p { color: var(--muted); font-size: 1.05rem; }
+.prose-band > h3 { font-size: 1.25rem; margin: 2.4rem 0 0.6rem; letter-spacing: -0.01em; }
+.prose-band > .how { max-width: 46rem; margin-top: 1.6rem; }
+.prose-band > .flow, .prose-band > .rows, .prose-band > .grid { margin-bottom: 2rem; }
+.prose-band code, .doc .tile code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 5px; font-size: 0.88em; }
+.prose-band pre { background: var(--code-bg); padding: 1rem 1.1rem; border-radius: 12px; overflow-x: auto; font-size: 0.88rem; line-height: 1.55; }
+.prose-band pre code { background: none; padding: 0; }
+.prose-band .table-wrap { background: var(--card); }
+.prose-band table { border-collapse: collapse; width: 100%; font-size: 0.95rem; line-height: 1.5; }
+.prose-band th, .prose-band td { border-bottom: 1px solid var(--line); padding: 0.65rem 0.9rem; text-align: left; vertical-align: top; }
+.prose-band tr:last-child td { border-bottom: 0; }
+.prose-band th { background: var(--bg-soft); font-weight: 650; }
+.prose-band ul li { margin: 0.35rem 0; color: var(--muted); }
+.prose-band ul li strong { color: var(--text); }
+.flow .flow-step { display: contents; }
+.flow .flow-step > div > h3 { margin: 0.9rem 0 0.35rem; font-size: 1.2rem; }
+.flow .flow-step > div > p { margin: 0; color: var(--muted); }
+.row > div > h3, .card > div > h3 { text-wrap: balance; }
+
+/* Callouts from GitHub's alert boxes (> [!NOTE]) */
+.callout { margin: 1.6rem 0; padding: 0.9rem 1.2rem 1rem; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); background: color-mix(in srgb, var(--green) 7%, var(--card)); }
+.callout p { margin: 0.2rem 0; color: var(--text); }
+.callout .callout-label { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.callout.warning, .callout.caution { border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: var(--warn-soft); }
+.callout.warning .callout-label, .callout.caution .callout-label { color: var(--warn); }
+
+/* Dashboard tiles: a table with bold labels becomes tiles with the number large */
+.tiles { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); margin: 1.4rem 0; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 1rem 1.1rem; min-width: 0; }
+.tile span { display: block; font-size: 0.74rem; font-weight: 750; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.tile b { display: block; font-size: 2rem; line-height: 1.15; margin: 0.25rem 0 0.2rem; color: var(--accent); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.tile p { margin: 0; font-size: 0.88rem; color: var(--muted); overflow-wrap: anywhere; }
+
+/* Bars drawn with block characters in a document become real bars */
+.meter { display: inline-block; vertical-align: middle; width: 7.5rem; height: 0.6rem; border-radius: 999px; background: var(--bg-soft); border: 1px solid var(--line); overflow: hidden; margin-right: 0.45rem; }
+.meter i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--green-dark), var(--green-light)); }
+.history { margin: 2.2rem 0 1rem; }
 
 /* Dashboard */
 .bars { display: grid; gap: 0.55rem; }

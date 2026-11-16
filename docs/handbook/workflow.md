@@ -6,8 +6,8 @@ Claude; the steps are the same either way.
 ## 1. Agree on what and why
 
 Write down what should change and why, in one or two sentences. Check it
-against SAM's five promises (reliable opening, simple flow, real security,
-privacy, clean code). For a larger change, open an issue first, so the
+against SAM's five columns (Reliability, Security, Simplicity, Compatibility,
+Privacy; see [CONTRIBUTING](../../CONTRIBUTING.md)). For a larger change, open an issue first, so the
 decision is on record.
 
 ## 2. Start a branch

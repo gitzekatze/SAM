@@ -4,19 +4,24 @@ Thank you for helping. A few notes make it smoother.
 
 ## What SAM stands for
 
-Every change is weighed against five columns:
+Every change and every design decision is weighed against SAM's five
+columns. They are for the people who build SAM; they guide the work and are
+not a promise on the website.
 
-1. **Reliable opening:** SAM opens nearly any AppImage, measured on many
-   real ones, not just test files.
-2. **A simple flow:** from "found an AppImage" to "it runs safely" in a few
-   clear steps, without hiding what matters.
-3. **Real security:** protections that hold up, each promise proven by a
-   test (docs/security.md).
-4. **Privacy:** what SAM learns about you stays on your computer. No
+1. **Reliability:** apps work in their sandbox and keep working, measured on
+   many real AppImages, not just test files.
+2. **Security:** the protection really holds and gives no false sense of
+   safety. Each promise is proven by a test (docs/security.md).
+3. **Simplicity:** "Simplicity is the highest form of sophistication", for
+   the person using SAM and for every design decision behind it.
+4. **Compatibility:** every kind of AppImage, through rules that fit whole
+   groups of apps, never special cases for single apps.
+5. **Privacy:** what SAM learns about you stays on your computer. No
    telemetry, network use only when asked, and bug reports that hide
    personal data.
-5. **Clean code:** well structured, auditable and tested, so others can
-   check it.
+
+Clean, auditable and tested code serves all five, above all Security and
+Simplicity.
 
 New to maintaining SAM, or back after a break? Start with the
 [maintainer handbook](docs/handbook/index.md).

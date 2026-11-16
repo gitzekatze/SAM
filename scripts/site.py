@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Builds SAM's website from the repository: the documents in docs/, the
-function map, the test library and the version reports. Nothing on the site
-is written by hand except the home page text below, so it never drifts from
-the repository. The Pages workflow runs it on every change to main.
+"""Builds SAM's website from the repository's documents: README.md becomes
+the front page, every document in docs/ a page, and the dashboard comes from
+scripts/dashboard.py. This script writes no content of its own: it only lays
+documents out, styles them and gives them icons, so the website changes
+whenever the documents do. The Pages workflow runs it on every change to main.
 
     python3 scripts/site.py [OUTDIR]        (default: target/site)
 
@@ -16,13 +17,13 @@ diagram library, when present in OUTDIR/assets, is served by the site itself.
 """
 import hashlib
 import html
-import json
 import os
 import pathlib
 import re
 import shutil
 import sys
-import tomllib
+
+import importlib.util
 
 import markdown
 
@@ -31,21 +32,35 @@ OUT = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "target" / "sit
 REPO = "https://github.com/gitzekatze/SAM"
 # A stamp of the stylesheet's content in its link: browsers keep a stylesheet
 # for a while, and a new stamp makes them load a changed one at once.
+# The dashboard's text comes from scripts/dashboard.py, built fresh for the site.
+_spec = importlib.util.spec_from_file_location("dashboard", pathlib.Path(__file__).resolve().parent / "dashboard.py")
+dashboard_md = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(dashboard_md)
 STYLE_STAMP = hashlib.sha256((ROOT / "docs/site/style.css").read_bytes()).hexdigest()[:10]
 
 # Section, page path on the site, source document, title in navigation.
+def newest(pattern):
+    """The newest report of a kind; the site always shows the latest one."""
+    return str(sorted((ROOT / "docs" / "reports").glob(pattern))[-1].relative_to(ROOT))
+
+
 PAGES = [
+    ("use", "use/index.html", "docs/use.md", "Overview"),
     ("use", "use/install.html", "docs/install.md", "Install SAM"),
     ("use", "use/guide.html", "docs/guide.md", "User guide"),
     ("use", "use/permissions.html", "docs/permissions.md", "Permissions reference"),
+    ("trust", "trust/index.html", "docs/trust.md", "Overview"),
+    ("trust", "trust/dashboard.html", "DEVELOPMENT.md", "Dashboard"),
     ("trust", "trust/security.html", "docs/security.md", "Security"),
     ("trust", "trust/threat-model.html", "docs/threat-model.md", "Threat model"),
     ("trust", "trust/functions.html", "docs/functions.md", "Functions and their tests"),
     ("trust", "trust/tests.html", "docs/test-library.md", "Test library"),
-    ("trust", "trust/mutation-testing.html", "docs/reports/mutants-2026-11-15.md", "Mutation testing"),
+    ("trust", "trust/real-apps.html", newest("real-apps-*.md"), "Real AppImages"),
+    ("trust", "trust/mutation-testing.html", newest("mutants-*.md"), "Mutation testing"),
     ("trust", "trust/security-review.html", "docs/reports/security-review-2026-11-10.md", "Security review"),
     ("trust", "trust/testing.html", "docs/testing.md", "How SAM is tested"),
     ("trust", "trust/architecture.html", "docs/architecture.md", "Architecture"),
+    ("trust", "trust/reporting.html", "SECURITY.md", "Reporting a problem"),
     ("use", "use/changelog.html", "CHANGELOG.md", "What's new"),
 ]
 # The maintainer handbook.
@@ -69,8 +84,8 @@ HANDBOOK = [
 PAGES += HANDBOOK
 SOURCE_TO_PAGE = {src: page for _, page, src, _ in PAGES}
 SOURCE_TO_PAGE["README.md"] = "index.html"
-SOURCE_TO_PAGE["DEVELOPMENT.md"] = "trust/dashboard.html"
-SOURCE_TO_PAGE["SECURITY.md"] = "trust/security.html"
+# Pages whose lists and tables become cards, rows, flows and tiles (see showcase()).
+SHOWCASE = {"use/index.html", "trust/index.html", "trust/dashboard.html"}
 SECTION_NAMES = {"use": "Use SAM", "trust": "Trust SAM", "maintain": "Maintain SAM"}
 OVERVIEWS = {"use": "use/index.html", "trust": "trust/index.html", "maintain": "maintain/index.html"}
 # One icon per page, used wherever the page is linked. No two pages, and no
@@ -81,6 +96,7 @@ PAGE_ICONS = {
     "trust/index.html": "scale", "trust/dashboard.html": "chart", "trust/security.html": "shield", "trust/threat-model.html": "target",
     "trust/functions.html": "check", "trust/tests.html": "archive", "trust/mutation-testing.html": "bug",
     "trust/security-review.html": "badge", "trust/testing.html": "flask", "trust/architecture.html": "layers",
+    "trust/real-apps.html": "rocket", "trust/reporting.html": "flag",
     "maintain/index.html": "wrench", "maintain/looks-after-itself.html": "cycle", "maintain/github.html": "branch",
     "maintain/workflow.html": "calendar", "maintain/tips.html": "update", "maintain/outside.html": "radar",
     "maintain/contracts.html": "pen", "maintain/automation.html": "cpu", "maintain/tools.html": "terminal",
@@ -105,10 +121,7 @@ def claim(name, meaning):
 
 def section_pages(section):
     """The pages of a section in reading order, its overview first."""
-    pages = [(p, t) for s, p, _, t in PAGES if s == section]
-    extra = {"use": [("use/index.html", "Overview")],
-             "trust": [("trust/index.html", "Overview"), ("trust/dashboard.html", "Dashboard")]}.get(section, [])
-    return extra + [x for x in pages if x[0] not in dict(extra)]
+    return [(p, t) for s, p, _, t in PAGES if s == section]
 SECTIONS = [("index.html", "Home", None), ("use/index.html", "Use SAM", "use"),
             ("trust/index.html", "Trust SAM", "trust"), ("maintain/index.html", "Maintain SAM", "maintain")]
 
@@ -208,21 +221,6 @@ def write(page, text):
     path.write_text(text)
 
 
-def facts():
-    """Numbers shown on the home page and dashboard, from the repository."""
-    funcs = tomllib.loads((ROOT / "docs/functions.toml").read_text())["function"]
-    tests = {t for f in funcs for t in f.get("tests", [])}
-    reports = []
-    for p in sorted((ROOT / "docs/reports").glob("*.json")):
-        try:
-            reports.append(json.loads(p.read_text()))
-        except ValueError:
-            pass
-    reports.sort(key=lambda r: r.get("generated", ""))
-    langs = len((ROOT / "po/LINGUAS").read_text().split()) + 1
-    return {"functions": len(funcs), "tests": len(tests), "reports": reports, "languages": langs}
-
-
 # Line icons (24 × 24, stroked), drawn inline so the site loads nothing else.
 ICONS = {
     # Pages
@@ -266,11 +264,22 @@ ICONS = {
     "lifebuoy": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM5.6 5.6l3.6 3.6M14.8 14.8l3.6 3.6M18.4 5.6l-3.6 3.6M9.2 14.8l-3.6 3.6",
     "menu": "M4 6h16M4 12h16M4 18h10",
     "bricks": "M3 5h18v6H3zM12 5v6M3 13h18v6H3zM8 13v6M16 13v6",
-    "anchor": "M12 8a2 2 0 100-4 2 2 0 000 4zM12 8v13M8 11h8M5 14a7 7 0 0014 0",
-    "feather": "M20.2 3.8a6 6 0 00-8.5 0L5 10.5V19h8.5l6.7-6.7a6 6 0 000-8.5zM16 8L2 22M17.5 15H9",
-    "keyhole": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a2 2 0 100 4 2 2 0 000-4zM12 12v4",
-    "eyeoff": "M3 3l18 18M10.6 6.1A10 10 0 0112 6c6 0 9.5 6 9.5 6a17 17 0 01-2.9 3.6M6.6 6.6C3.9 8.4 2.5 12 2.5 12s3.5 6 9.5 6a9.6 9.6 0 004.4-1.1M9.9 9.9a3 3 0 004.2 4.2",
     "search": "M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM20 20l-4.8-4.8",
+    "boxes": "M3 13h8v8H3zM13 13h8v8h-8zM8 3h8v8H8z",
+    "grid": "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+    "zap": "M13 2L4 14h7l-1 8 9-12h-7z",
+    "microscope": "M6 18h8M3 22h18M14 22a7 7 0 100-14h-1M9 14h2M9 12a2 2 0 01-2-2V6h6v4a2 2 0 01-2 2zM12 6V3a1 1 0 00-1-1H9a1 1 0 00-1 1v3",
+    "shuffle": "M16 4h4v4M4 20L20 4M20 16v4h-4M14.5 14.5L20 20M4 4l5 5",
+    "stamp": "M5 21h14M6 17h12v4H6zM10 17V10a2 2 0 114 0v7",
+    "power": "M12 3v9M6.3 6.3a8 8 0 1011.4 0",
+    "play": "M8 5v14l11-7z",
+    "bookmark": "M6 3h12v18l-6-4-6 4z",
+    "activity": "M3 12h4l3-8 4 16 3-8h4",
+    "key": "M8 15a4 4 0 100-8 4 4 0 000 8zM11 11h10M18 11v3M15 11v2",
+    "link": "M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1.5 1.5M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1.5-1.5",
+    "mail": "M3 5h18v14H3zM3 6l9 7 9-7",
+    "rocket": "M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M9 15l-3-3c1.5-4 5-8 12-9-1 7-5 10.5-9 12zM14 7.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z",
+    "flag": "M5 21V4M5 4h11l-2 4 2 4H5",
     # Navigation
     "home": "M4 11l8-7 8 7M6 9.5V20h12V9.5",
     "left": "M15 6l-6 6 6 6",
@@ -289,244 +298,216 @@ def page_icon(page, size=""):
     return icon(PAGE_ICONS[page], size, meaning=page)
 
 
-def cards(items, links=True, page=""):
-    """Up to four items become cards side by side; longer lists become rows,
-    which stay readable however many there are. Linked items carry the icon
-    of the page they lead to."""
-    rows = len(items) > 4
-    out = []
-    for item in items:
-        href, ic, title, text = item if links else (None, *item)
-        mark = (icon(PAGE_ICONS[target], meaning=target)
-                if links and (target := os.path.normpath(os.path.join(os.path.dirname(page), href))) in PAGE_ICONS
-                else icon(ic, meaning=title))
-        inner = f"{mark}<div><h3>{title}</h3><p>{text}</p></div>"
-        cls = "row" if rows else "card"
-        out.append(f'<a class="{cls}" href="{href}">{inner}<span class="more" aria-hidden="true">{"→" if rows else "Open →"}</span></a>' if links
-                   else f'<div class="{cls}">{inner}</div>')
-    return f'<div class="{"rows" if rows else "grid"}">{"".join(out)}</div>'
-
-
-def home(f):
-    page = "index.html"
-    flow = [
-        ("file", "One file", "AppImages are the easiest way to get software on Linux: download one file and run it."),
-        ("unlock", "All your rights", "That file then runs with all your rights. It can read your documents, keys and browser profiles."),
-        ("sandbox", "Its own sandbox", "SAM gives each AppImage its own sandbox, with exactly the access you allow, in a window anyone can use."),
-    ]
-    why = [
-        ("eye", "Nothing runs before you decide",
-         "SAM reads an AppImage's name, icon and needs without running it, and unpacks it without running it. The app starts only when you press Launch."),
-        ("lock", "Least access, chosen for each app",
-         "Every app starts with a private home folder and its own window, nothing more. SAM adds only what this app shows it needs: sound for a player, the network for a browser."),
-        ("toggle", "Every switch says what it costs",
-         "Each permission is explained in a sentence and marked harmless, think twice or dangerous. No jargon, no hidden defaults."),
-        ("lifebuoy", "When an app struggles, SAM finds out why",
-         "After a failed start SAM reads what went wrong and offers the one change that helps, from mild to strong, each one reversible."),
-        ("menu", "Fits into your desktop",
-         "Sandboxed apps appear in your application menu and always start through SAM. Menu entries that would start an app without its sandbox are hidden."),
-        ("bricks", "Built on proven parts",
-         "Bubblewrap, the sandbox Flatpak uses, plus Landlock, a system-call filter and filtered desktop services. SAM adds no new privileged code."),
-    ]
-    columns = [
-        ("anchor", "Reliable", "117 of 120 real AppImages, from Electron and Qt apps to games and Wine, start in their sandbox. The other three fail for reasons inside the app."),
-        ("feather", "Simple", "Pick an AppImage, look over the access, press Create Sandbox. Settings for experts stay out of the way until you need them."),
-        ("keyhole", "Secure", "A breakout test attacks every security promise from inside a real sandbox, and the threat model says just as clearly what SAM cannot stop."),
-        ("eyeoff", "Private", "No telemetry, no account, no network unless you ask. Bug reports remove your name, folders, addresses and secrets."),
-        ("search", "Auditable", f"Open source under the GPL. {f['tests']} tests guard {f['functions']} functions, and the results are published on this site."),
-    ]
-    doors = [
-        ("use/index.html", None, "Use SAM", "How to install SAM, your first sandbox, and every setting explained."),
-        ("trust/index.html", None, "Trust SAM", "The evidence: how the sandbox works, what it cannot do, and test results you can check."),
-        ("maintain/index.html", None, "Maintain SAM", "The handbook: how to change, update and release SAM, and look after its repository."),
-    ]
-    flow_html = "".join(
-        f'<li class="step s{i}">{icon(ic, meaning=title)}<h3>{title}</h3><p>{text}</p></li>'
-        for i, (ic, title, text) in enumerate(flow, 1))
-    promises = "".join(
-        f'<div class="promise">{icon(ic, meaning=title)}<h3>{title}</h3><p>{text}</p></div>' for ic, title, text in columns)
-    body = f"""
-<section class="hero"><div class="wrap hero-grid">
-<div class="hero-text">
-<p class="eyebrow"><img src="assets/logo.svg" alt="">Sandboxed AppImage Manager</p>
-<h1>Every AppImage, in a <span>sandbox you control</span></h1>
-<p class="lead">SAM runs each AppImage sealed off from your files, keys and accounts, and shows what it may reach as plain switches.</p>
-<div class="buttons"><a class="btn primary" href="use/install.html">Get SAM</a><a class="btn ghost" href="trust/index.html">See the evidence</a></div>
-<p class="note">Free and open source · Linux · English, Deutsch, Español, Français</p>
-</div>
-</div></section>
-
-<section class="band"><div class="wrap">
-<h2>Why AppImages need a sandbox</h2>
-<ol class="flow">{flow_html}</ol>
-</div></section>
-
-<section class="band soft"><div class="wrap split">
-<div class="split-head">
-<h2>The gap SAM closes</h2>
-<p>Flatpak apps come with a sandbox and tools like Flatseal to adjust it. AppImages have neither. Wrapping them by hand needs command-line tools and knowing which access each app needs. SAM does that work for you, and shows its reasoning.</p>
-</div>
-<ol class="how">
-<li><h3>Pick an AppImage</h3><p>SAM lists the AppImages in your folders, sandboxed or not, and reads them without running them.</p></li>
-<li><h3>Look over the access</h3><p>SAM recommends the least access this app needs, and explains every switch in plain words.</p></li>
-<li><h3>Run it in its sandbox</h3><p>Launch it from SAM or your application menu. SAM can check from inside the sandbox that every setting holds.</p></li>
-</ol>
-</div></section>
-
-<section class="band"><div class="wrap">
-<h2>Why SAM</h2><p class="sub">What it does differently.</p>
-{cards(why, links=False)}</div></section>
-
-<section class="band soft"><div class="wrap">
-<h2>What SAM stands for</h2><p class="sub">Five promises every change is checked against.</p>
-<div class="promises">{promises}</div>
-<div class="stats">
-<div class="stat"><b>{f['tests']}</b><span>automated tests</span></div>
-<div class="stat"><b>{f['functions']}</b><span>functions, each with proof</span></div>
-<div class="stat"><b>120</b><span>real AppImages tried</span></div>
-<div class="stat"><b>{f['languages']}</b><span>languages</span></div>
-</div></div></section>
-
-<section class="band"><div class="wrap">
-<h2>Find your way</h2><p class="sub">Use SAM, check it, or look after it.</p>
-{cards(doors, page=page)}</div></section>
-
-<section class="band soft"><div class="wrap honest">
-<h2>How SAM is made</h2>
-<p>SAM is a one-person project built with Claude, Anthropic's AI model, as a coding assistant. That is why it asks to be checked rather than trusted: every promise is tied to a test, the tests run on every change, and the results are on this site. An outside security review is the next step before the first public beta.</p>
-<p><a href="trust/index.html">See the evidence →</a></p>
-</div></section>"""
-    write(page, shell(page, "Sandboxed AppImage Manager", body))
-
-
-def use_index(f):
-    page = "use/index.html"
-    items = [
-        ("install.html", "download", "Install SAM", "What your computer needs, installing the AppImage, and your first sandbox."),
-        ("guide.html", "book", "User guide", "The window, every setting group by group, and what to do when an app does not work."),
-        ("permissions.html", "sliders", "Permissions reference", "For the command line: every permission key, preset files and changing several apps at once."),
-        ("changelog.html", "clock", "What's new", "What changed in each version of SAM, newest first."),
-    ]
-    body = f"""<h1>Use SAM</h1>
-<p>Everything you need to run your AppImages in a sandbox: getting SAM onto your computer, your first sandbox, and what each switch does. You never need the command line, but everything works there too.</p>
-{cards(items, page=page)}
-<h2>The short version</h2>
-<ol>
-<li>Install SAM and open it. It lists the AppImages in your usual folders.</li>
-<li>Select an AppImage and look over the access SAM recommends.</li>
-<li>Press <b>Create Sandbox</b>, then <b>Launch</b>.</li>
-</ol>
-<p>Not sure an app gets what it needs? <b>Test</b>, next to Launch, checks from inside the sandbox that every setting holds and that the app starts.</p>"""
-    write(page, shell(page, "Use SAM", body, section="use"))
-
-
-def trust_index(f):
-    page = "trust/index.html"
-    items = [
-        ("dashboard.html", "chart", "Dashboard", "What the tests prove, area by area, how they work, and their newest results."),
-        ("security.html", "shield", "Security", "What the sandbox shows and hides, layer by layer, and how it is built."),
-        ("threat-model.html", "target", "Threat model", "Who SAM protects you from, and just as clearly, what it does not."),
-        ("functions.html", "check", "Functions and their proof", f"All {f['functions']} functions SAM promises, each with the tests that prove it."),
-        ("tests.html", "flask", "Test library", f"Every one of the {f['tests']} tests and the promise it keeps."),
-        ("mutation-testing.html", "shuffle", "Mutation testing", "2,821 deliberate mistakes put into the security code, to see whether the tests notice."),
-        ("security-review.html", "doc", "Security review", "The review that checked every security promise against a test."),
-        ("testing.html", "flask", "How SAM is tested", "The kinds of tests, what each one proves, and how to run them yourself."),
-        ("architecture.html", "layers", "Architecture", "SAM's parts, how they work together, and where the trust boundary runs."),
-    ]
-    body = f"""<h1>Trust SAM</h1>
-<p>SAM protects you from programs you download, so it should not ask for blind trust. This section publishes what anyone needs to judge it: how the sandbox works, what it cannot do, and the tests that check every promise, with their results.</p>
-{cards(items, page=page)}
-<h2>How to check SAM yourself</h2>
-<ul>
-<li>The <a href="threat-model.html">threat model</a> lists each threat with what stops it and the test that proves it; every promise on the <a href="security.html">security page</a> is attacked by a breakout test from inside a real sandbox; the <a href="tests.html">test library</a> links each test to its code.</li>
-<li>The tests run on every change on GitHub, on Ubuntu and Fedora; the results are public in the repository's <a href="{REPO}/actions">Actions</a> tab.</li>
-<li>Releases are signed; <a href="{REPO}/blob/main/SECURITY.md#checking-a-download">SECURITY.md</a> shows how to check a download.</li>
-<li>Linux keeps changing under SAM. Every assumption SAM makes about it is a <a href="../maintain/contracts.html">contract</a> with a test, and every night SAM is built and tested on the distributions that come next, so a change is noticed before it reaches you.</li>
-<li>Found a way out of the sandbox? Report it privately through <a href="{REPO}/security/advisories/new">GitHub's security tab</a>.</li>
-</ul>
-<h2>How SAM is made</h2>
-<p>SAM is a one-person project, built with Claude, Anthropic's AI model, as a coding assistant. The maintainer decides what SAM does and how far each permission may go; Claude writes most of the code and the tests, and a change goes in only when every test passes. No one outside the project has reviewed SAM yet; an outside security review is planned before the first public beta.</p>"""
-    write(page, shell(page, "Trust SAM", body, section="trust"))
-
-
-AREA_TEXT = {
-    "A": "SAM finds AppImages, recognizes every format, unpacks them without running them, within limits, and survives damaged or hostile files.",
-    "B": "SAM recommends the least access each app needs, explains every permission, and app output can never grant access on its own.",
-    "C": "Inside the sandbox an app sees only what you allowed: files, network, desktop services, display, devices, and nothing that would let it out.",
-    "D": "Every way of starting an app goes through its sandbox, the sandbox check confirms each setting from inside, and stopping leaves nothing behind.",
-    "E": "When an app fails, SAM says why and offers fixes from mild to strong, each one reversible.",
-    "F": "SAM notices settings changed behind its back and changed or moved AppImages, and updates come over HTTPS and are checked.",
-    "G": "Removing an app or SAM deletes only what SAM made, and bug reports contain no personal data.",
-    "H": "The window: overview, Permission Manager, translations, and use with keyboard and screen reader.",
-    "I": "SAM's own files survive versions, and its parts stay cleanly separated.",
+# How a document's structure becomes the design. These rules work on any
+# document, so writing a document in this shape is all it takes:
+#   1. **Title.** text   in a numbered list of three   -> a flow with arrows
+#   1. **Title.** text   in a longer numbered list     -> a numbered timeline
+#   - **Title.** text    in a bullet list              -> cards (up to four) or rows
+#   - **[Page](doc.md):** text                         -> a card or row that opens the page
+#   a table whose first column holds only links        -> rows that open the pages
+#   a table with an empty header and bold labels       -> tiles with the number large
+#   > [!NOTE] / [!TIP] / [!IMPORTANT] / [!WARNING]     -> a callout box
+#   `████░░░░` (a bar drawn with block characters)    -> a real bar
+# Icons for points that are not links come from POINT_ICONS (design, keyed by
+# the point's title with its numbers left out); a point without one is shown
+# without an icon and named in the build output.
+POINT_ICONS = {
+    # README: why AppImages need a sandbox
+    "one file": "file", "all your rights": "unlock", "its own sandbox": "sandbox",
+    # README: what SAM does differently
+    "nothing runs before you decide": "eye", "each app gets the least access it needs": "lock",
+    "every switch says what it costs": "toggle", "sam finds out why an app struggles": "lifebuoy",
+    "sandboxed apps fit into your desktop": "menu", "sam is built on proven parts": "bricks",
+    # README: the evidence
+    "# of # real appimages start in their sandbox": "boxes", "# automated tests guard # functions": "grid",
+    "every security promise is attacked from inside a real sandbox": "zap",
+    "the tests themselves are tested": "microscope", "sam's readers of untrusted files are fuzzed": "shuffle",
+    "every release is tested and signed": "stamp",
+    # Use SAM: the short version
+    "install sam and open it": "power", "look over the access": "search", "create the sandbox and launch": "play",
+    # Trust SAM: how to check SAM yourself
+    "read the promises and their attacks": "bookmark", "watch the tests run": "activity",
+    "check a download": "key", "see how sam keeps up with linux": "link", "report a way out": "mail",
+    # Dashboard: the evidence
+    "real appimages": "boxes", "mutation testing": "microscope", "breakout and hostile-appimage tests": "zap",
 }
-
-KINDS = [
-    ("Logic tests", "Every rule in SAM, checked with known inputs and the exact expected result.", "every change, twice (a test whose result changes is flaky and fails the run)"),
-    ("Real sandbox tests", "Start real Bubblewrap sandboxes and check from inside what an app can see, reach and change.", "every change, on Ubuntu and Fedora"),
-    ("Attack tests", "Breakout attempts from inside a sandbox, deliberately hostile AppImages, and fuzzing: thousands of damaged files fed to SAM's readers.", "every change"),
-    ("Update tests", "A local HTTPS server serves real updates; SAM must apply genuine ones and refuse damaged downloads and plain HTTP.", "every change"),
-    ("Window tests", "A script clicks through the window like a person, through the accessibility interface screen readers use.", "every change"),
-    ("Upgrade test", "Builds the previous version, creates apps and settings with it, and checks that the new version keeps them and still starts the apps.", "before every release"),
-    ("Real AppImages", "120 real AppImages of every kind go through SAM's whole flow in a hidden session.", "before every release"),
-    ("Mutation testing", "Puts thousands of small mistakes into the security code on purpose; a mistake the tests miss is a missing test.", "before every release"),
-    ("Install tests", "The finished AppImage on fresh Ubuntu, Debian, Fedora, Arch and openSUSE systems.", "every release build"),
-]
+# Points that state the same thing in two documents share one meaning, so they share an icon.
+SAME_POINT = {"real appimages": "# of # real appimages start in their sandbox",
+              "mutation testing": "the tests themselves are tested",
+              "breakout and hostile-appimage tests": "every security promise is attacked from inside a real sandbox"}
+MISSING_ICONS = []
 
 
-def dashboard(f):
-    page = "trust/dashboard.html"
-    reps = f["reports"]
-    last = reps[-1] if reps else {}
-    results = {t.get("test"): t.get("result") for t in last.get("tests", [])}
-    funcs = tomllib.loads((ROOT / "docs/functions.toml").read_text())
-    names = {a["id"]: a["name"] for a in funcs["area"]}
-    rows = []
-    total_ok = total_bad = total_new = 0
-    for area in names:
-        fs = [x for x in funcs["function"] if x["area"] == area]
-        ts = sorted({t for x in fs for t in x.get("tests", [])})
-        ok = sum(1 for t in ts if results.get(t) == "ok")
-        bad = sum(1 for t in ts if results.get(t) == "FAILED")
-        new = len(ts) - ok - bad
-        total_ok, total_bad, total_new = total_ok + ok, total_bad + bad, total_new + new
-        state = (f'<span class="pill bad">{bad} failing</span>' if bad else '<span class="pill ok">passing</span>')
-        extra = f" · {new} newer than the report" if new else ""
-        rows.append(f"<tr><td><b>{html.escape(names[area])}</b><br><span class=muted>{AREA_TEXT.get(area, '')}</span></td>"
-                    f"<td>{len(fs)}</td><td>{len(ts)}</td><td>{state}<br><span class=muted>{ok} passed{extra}</span></td></tr>")
-    when = html.escape(last.get("generated", "").replace("T", " ")[:16]) or "none yet"
-    headline = (f"All {total_ok} tests in the newest report pass" if total_bad == 0 else f"{total_bad} tests fail")
-    kinds = "".join(f"<tr><td><b>{k}</b></td><td>{d}</td><td>{w}</td></tr>" for k, d, w in KINDS)
-    peak = max([len([t for t in r.get("tests", []) if t.get("result") == "ok"]) for r in reps] or [1])
-    hist = "".join(
-        f'<div style="height:{100 * n / peak:.0f}%" title="{html.escape(r.get("generated", "")[:10])}"><span>{n}</span></div>'
-        for r in reps for n in [len([t for t in r.get("tests", []) if t.get("result") == "ok"])])
-    bench = "".join(f"<tr><td>{html.escape(b.get('what', ''))}</td><td>{b['best_ms']:.2f} ms</td></tr>"
-                    for b in last.get("bench", []) if isinstance(b.get("best_ms"), (int, float)) and b.get("what"))
-    body = f"""<h1>Dashboard</h1>
-<p class="lead-p"><b>{headline}.</b> The newest version report is from {when}. A version report runs the whole test suite and records the results before each version (<code>make report</code>); in between, the same tests run on GitHub with every change.</p>
-<h2>What the tests prove</h2>
-<p>SAM's promises are grouped into areas. Each function in an area has at least one test that proves it; the <a href="functions.html">function map</a> lists them one by one.</p>
-<table><thead><tr><th>Area and what it covers</th><th>Functions</th><th>Tests</th><th>Result</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
-<h2>How SAM is tested</h2>
-<table><thead><tr><th>Kind</th><th>What it does</th><th>When</th></tr></thead><tbody>{kinds}</tbody></table>
-<p>The latest <a href="mutation-testing.html">mutation testing</a> caught 88.5 % of 2,609 deliberate mistakes; the gaps that mattered got tests.</p>
-<h2>Passing tests, report by report</h2>
-<p>Each bar is one version report; the number is how many tests passed. It grows because every change comes with tests.</p>
-<div class="history" role="img" aria-label="Passing tests in each version report">{hist}</div>
-<h2>How fast SAM is</h2>
-<p>Measured in the newest report on the maintainer's computer; the best of several runs.</p>
-<table><thead><tr><th>What</th><th>Time</th></tr></thead><tbody>{bench}</tbody></table>"""
-    write(page, shell(page, "Dashboard", body, section="trust"))
+def plain(text):
+    return re.sub(r"<[^>]+>", "", html.unescape(text)).strip()
+
+
+def point_key(title):
+    return re.sub(r"\d[\d,.]*", "#", plain(title).rstrip(".:").lower()).strip()
+
+
+def bold_items(inner):
+    """The items of a list whose every item starts with a bold title, or None."""
+    items = []
+    for li in re.findall(r"<li>(.*?)</li>", inner, re.S):
+        m = re.match(r"\s*(?:<p>)?<strong>(.*?)</strong>\s*(.*?)\s*(?:</p>)?\s*$", li, re.S)
+        if not m:
+            return None
+        title = re.sub(r"[.:]\s*$", "", m.group(1).strip())
+        title = re.sub(r"(</a>)[.:]$", r"\1", title)
+        rest = re.sub(r"^[.:]\s*", "", m.group(2).strip())
+        items.append((title, rest))
+    return items or None
+
+
+def target_of(href, page):
+    path = html.unescape(href).split("#")[0]
+    return os.path.normpath(os.path.join(os.path.dirname(page), path)) if path and not path.startswith("http") else None
+
+
+def point(title, text, page, kind):
+    """One card, row or flow step; a linked title opens its page and carries the page's icon."""
+    text = re.sub(r"^([a-z])", lambda m: m.group(1).upper(), text)  # "Title: text" -> "Text" under its own heading
+    link = re.fullmatch(r'<a href="([^"]+)">(.*?)</a>', title)
+    if link:
+        target = target_of(link.group(1), page)
+        mark = icon(PAGE_ICONS[target], meaning=target) if target in PAGE_ICONS else ""
+        inner = f"{mark}<div><h3>{link.group(2)}</h3><p>{text}</p></div>"
+        more = "→" if kind == "row" else "Open →"
+        return f'<a class="{kind}" href="{link.group(1)}">{inner}<span class="more" aria-hidden="true">{more}</span></a>'
+    key = point_key(title)
+    name = POINT_ICONS.get(key)
+    mark = icon(name, meaning=SAME_POINT.get(key, key)) if name else ""
+    return f'<div class="{kind}">{mark}<div><h3>{title}</h3><p>{text}</p></div></div>'
+
+
+def check_icons(items, page):
+    """A list is either all icons or none: a list with some is missing one."""
+    keys = [point_key(t) for t, _ in items if not t.startswith("<a ")]
+    have = [k for k in keys if k in POINT_ICONS]
+    if have and len(have) < len(keys):
+        MISSING_ICONS.extend((page, k) for k in keys if k not in POINT_ICONS)
+
+
+def showcase(body, page):
+    """Turns a rendered document's structure into the site's design (rules above)."""
+    def ordered(m):
+        items = bold_items(m.group(1))
+        if not items:
+            return m.group(0)
+        check_icons(items, page)
+        if len(items) == 3:
+            steps = "".join(f'<li class="step s{i}">{point(t, x, page, "flow-step")}</li>' for i, (t, x) in enumerate(items, 1))
+            return f'<ol class="flow">{steps}</ol>'
+        return '<ol class="how">' + "".join(f"<li><h3>{t}</h3><p>{x}</p></li>" for t, x in items) + "</ol>"
+
+    def bullets(m):
+        items = bold_items(m.group(1))
+        if not items:
+            return m.group(0)
+        check_icons(items, page)
+        kind = "row" if len(items) > 4 else "card"
+        return f'<div class="{"rows" if kind == "row" else "grid"}">' + "".join(point(t, x, page, kind) for t, x in items) + "</div>"
+
+    def link_table(m):
+        if len(re.findall(r"<th>", m.group(0))) != 2:
+            return m.group(0)
+        rows = re.findall(r"<tr>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*</tr>", m.group(2), re.S)
+        if not rows or not all(re.fullmatch(r'<a href="[^"]+">[^<]*</a>', a.strip()) for a, _ in rows):
+            return m.group(0)
+        return '<div class="rows">' + "".join(point(a.strip(), b, page, "row") for a, b in rows) + "</div>"
+
+    def tiles(m):
+        rows = re.findall(r"<tr>\s*<td><strong>(.*?)</strong></td>\s*<td>(.*?)</td>\s*</tr>", m.group(1), re.S)
+        if not rows:
+            return m.group(0)
+        out = []
+        for label, value in rows:
+            # The large value is the entry's first word when that is a number,
+            # a percentage or a version; a hash or a sentence stays small.
+            num = re.match(r"[✅❌]?\s*(\d[\d,.]*(?:\s?%)?)(?=[\s,;(]|$)", plain(value))
+            big = num.group(1).rstrip(",.") if num else ""
+            out.append(f'<div class="tile"><span>{label}</span>' + (f"<b>{big}</b>" if big else "") + f"<p>{value}</p></div>")
+        return '<div class="tiles">' + "".join(out) + "</div>"
+
+    body = re.sub(r"<ol>\s*(.*?)</ol>", ordered, body, flags=re.S)
+    body = re.sub(r"<ul>\s*(.*?)</ul>", bullets, body, flags=re.S)
+    body = re.sub(r"<table>\s*<thead>\s*<tr>\s*<th>(.*?)</th>.*?</thead>\s*<tbody>(.*?)</tbody>\s*</table>", link_table, body, flags=re.S)
+    body = re.sub(r"<table>\s*<thead>\s*<tr>\s*<th></th>\s*<th></th>\s*</tr>\s*</thead>\s*<tbody>(.*?)</tbody>\s*</table>", tiles, body, flags=re.S)
+    return body
+
+
+def callouts(body):
+    """GitHub's alert boxes (> [!NOTE]) become callouts on every page."""
+    def box(m):
+        kind = m.group(1).lower()
+        return f'<aside class="callout {kind}"><p class="callout-label">{kind.capitalize()}</p><p>{m.group(2)}'
+    body = re.sub(r"<blockquote>\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*?)(?=</p>)", box, body, flags=re.S)
+    return re.sub(r'(<aside class="callout[^"]*">.*?)</blockquote>', r"\1</aside>", body, flags=re.S)
+
+
+def meters(body):
+    """Bars drawn with block characters become real bars."""
+    def bar(m):
+        full, empty = m.group(1).count("█"), m.group(1).count("░")
+        pct = 100 * full / max(1, full + empty)
+        return f'<span class="meter" role="img" aria-label="{pct:.0f} %"><i style="width:{pct:.0f}%"></i></span>'
+    return re.sub(r"<code>([█░]+)</code>", bar, body)
+
+
+def history_chart(body):
+    """A table with a 'Tests passing' column also gets a column chart of it, oldest first."""
+    def chart(m):
+        heads = [plain(h) for h in re.findall(r"<th>(.*?)</th>", m.group(0))]
+        if "Tests passing" not in heads:
+            return m.group(0)
+        col = heads.index("Tests passing")
+        rows = [re.findall(r"<td>(.*?)</td>", r, re.S) for r in re.findall(r"<tr>(.*?)</tr>", m.group(0), re.S)[1:]]
+        values = [(plain(r[0]), int(plain(r[col]))) for r in rows if len(r) > col and plain(r[col]).isdigit()][::-1]
+        if len(values) < 2:
+            return m.group(0)
+        top = max(v for _, v in values)
+        bars = "".join(f'<div style="height:{100 * v / top:.0f}%" title="{n}: {v}"><span>{v}</span></div>' for n, v in values)
+        return f'<div class="history" role="img" aria-label="Tests passing in each version report, oldest first">{bars}</div>' + m.group(0)
+    return re.sub(r"<table>.*?</table>", chart, body, flags=re.S)
+
+
+def home():
+    """The front page: README.md, with its first part as the opening and each
+    section as a band of its own."""
+    page, source = "index.html", "README.md"
+    body, _ = render((ROOT / source).read_text())
+    body = rewrite_links(body, source, page)
+    body = re.sub(r"<p><strong>Website:</strong>.*?</p>", "", body, flags=re.S)  # the site itself
+    body = re.sub(r"<hr\s*/?>", "", body)
+    body = callouts(showcase(body, page))
+    parts = re.split(r"(?=<h2[ >])", body)
+    head, sections = parts[0], parts[1:]
+    title = re.search(r"<h1[^>]*>(.*?)</h1>", head, re.S).group(1)
+    name, _, subtitle = title.partition(" - ")
+    # The bold line under the title is the headline; the paragraph after it the lead.
+    tagline = re.search(r"<p><strong>(.*?)</strong></p>\s*<p>(.*?)</p>", head, re.S)
+    headline, lead = (tagline.group(1), tagline.group(2)) if tagline else (title, "")
+    hero = f"""<section class="hero"><div class="wrap hero-grid">
+<p class="eyebrow"><img src="assets/logo.svg" alt="">{subtitle or name}</p>
+<h1>{headline}</h1>
+<p class="lead">{lead}</p>
+<div class="buttons"><a class="btn primary" href="use/install.html">Get SAM</a><a class="btn ghost" href="trust/index.html">See the evidence</a></div>
+</div></section>"""
+    bands = "".join(f'<section class="band{" soft" if i % 2 else ""}"><div class="wrap prose-band">{s}</div></section>'
+                    for i, s in enumerate(sections))
+    write(page, shell(page, subtitle or name, hero + bands))
 
 
 def documents():
     for section, page, source, title in PAGES:
-        src_file = source
-        text = (ROOT / source).read_text()
+        text = dashboard_md.build() if source == "DEVELOPMENT.md" else (ROOT / source).read_text()
         body, toc = render(text)
-        body = rewrite_links(body, src_file, page)
-        write(page, shell(page, title, body, section=section, toc=toc, source=src_file))
+        body = rewrite_links(body, source, page)
+        body = callouts(body)
+        if page in SHOWCASE:
+            body = history_chart(meters(showcase(body, page)))
+        write(page, shell(page, title, body, section=section, toc=toc, source=source))
 
 
 def main():
@@ -541,20 +522,18 @@ def main():
         (OUT / "assets" / "mermaid.min.js").write_bytes(saved)
     shutil.copy(ROOT / "docs/site/style.css", OUT / "assets/style.css")
     shutil.copy(ROOT / "data/io.github.gitzekatze.SAM.svg", OUT / "assets/logo.svg")
-    f = facts()
-    home(f)
-    use_index(f)
-    trust_index(f)
-    dashboard(f)
+    home()
     documents()
     (OUT / ".nojekyll").write_text("")
     broken = check_links()
     print(f"wrote {OUT}: {sum(1 for _ in OUT.rglob('*.html'))} pages, {len(broken)} broken links")
     for page, url in broken[:20]:
         print(f"  {page}: {url}")
+    for page, key in MISSING_ICONS:
+        print(f"  '{key}' on {page} has no icon, while the other points of its list have one; add it to POINT_ICONS")
     for name, first, second in ICON_CLASH:
         print(f"  icon '{name}' stands for both '{first}' and '{second}'; give one of them its own icon")
-    sys.exit(1 if broken or ICON_CLASH else 0)
+    sys.exit(1 if broken or ICON_CLASH or MISSING_ICONS else 0)
 
 
 def check_links():

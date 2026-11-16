@@ -14,9 +14,9 @@ there. It is written in Rust and has two faces: the window (`sam-jail-gui`)
 and the command line (`sam-jail`). The window does everything through the
 command line, so both always behave the same.
 
-Five promises guide every change (from [CONTRIBUTING](../../CONTRIBUTING.md)):
-reliable opening of nearly any AppImage, a simple flow, real security,
-privacy, and clean, tested code.
+Five columns guide every change and every design decision (from
+[CONTRIBUTING](../../CONTRIBUTING.md)): Reliability, Security, Simplicity,
+Compatibility and Privacy.
 
 ## Where everything is
 
