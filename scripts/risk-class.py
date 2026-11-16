@@ -8,7 +8,7 @@ merge it; it is never lowered by automation.
                                         (default origin/main), Markdown
     scripts/risk-class.py --self-test   checks the rules with made-up changes
 
-Rules, first match per file:
+Rules (from keeper.toml, [risk]), first match per file:
   critical  sandbox, launch, network, D-Bus proxy, terminal relay, kernel
             layers, Wayland context, updates, signatures, release keys,
             unpacking, permissions and risk, the contract and security
@@ -20,37 +20,18 @@ Rules, first match per file:
   low       website, handbook, generated pages, other documents
 """
 import fnmatch
+import pathlib
 import subprocess
 import sys
+import tomllib
 
 ORDER = ["low", "medium", "high", "critical"]
 
-RULES = [
-    ("critical", [
-        "crates/sam-sandbox/*",
-        "crates/sam-runner/src/launch.rs", "crates/sam-runner/src/netns.rs",
-        "crates/sam-runner/src/dbus_proxy.rs", "crates/sam-runner/src/pty.rs",
-        "crates/sam-runner/src/kernel.rs", "crates/sam-runner/src/wayland_ctx.rs",
-        "crates/sam-runner/src/updates.rs", "crates/sam-runner/src/zsync.rs",
-        "crates/sam-runner/src/release_key.rs", "crates/sam-runner/src/contracts.rs",
-        "crates/sam-jail-cli/src/bin/sam-jail-run.rs",
-        "crates/sam-intake/src/extract.rs", "crates/sam-intake/src/normalize.rs",
-        "crates/sam-detect/src/signature.rs",
-        "crates/sam-core/src/permissions.rs", "crates/sam-core/src/risk.rs",
-        "docs/contracts.toml", "docs/syscalls-reviewed.txt", "docs/threat-model.md",
-        "docs/security.md", "docs/functions.toml", "SECURITY.md",
-        "scripts/release.sh", "scripts/new-version.sh", "scripts/sign-release.sh",
-        "scripts/risk-class.py", "scripts/workflow-check.py", "scripts/contract-verifier.py",
-        "AUTOMATION.md", "automation/*", ".github/CODEOWNERS",
-    ]),
-    ("high", [
-        ".github/*", "Cargo.toml", "Cargo.lock", "*/Cargo.toml", "deny.toml", "clippy.toml",
-        "Makefile", "packaging/*", "crates/sam-storage/*", "crates/sam-core/src/model.rs",
-        "crates/sam-core/src/config.rs", "build.rs", "*/build.rs",
-    ]),
-    ("medium", ["crates/*", "tests/*", "scripts/*", "po/*", "data/*"]),
-    ("low", ["*"]),
-]
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+_cfg = tomllib.loads((ROOT / "keeper.toml").read_text())["risk"]
+# keeper.toml decides what is critical, so it is critical itself.
+RULES = [("critical", _cfg["critical"] + ["keeper.toml"]), ("high", _cfg["high"]),
+         ("medium", _cfg["medium"]), ("low", ["*"])]
 
 
 def class_of(path):

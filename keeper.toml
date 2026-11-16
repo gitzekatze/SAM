@@ -1,0 +1,120 @@
+# How this repository is kept (AUTOMATION.md). The automation scripts read
+# their repository-specific lists from here, so the scripts themselves stay
+# general (the first step towards the reusable maintenance tool, plan
+# phase 6). Changing this file is a critical change: it decides what counts
+# as critical, which tests are protected and what the verifier watches.
+
+# Risk classes (scripts/risk-class.py): first match per file wins, in the
+# order critical, high, medium; everything else is low. Patterns as in
+# shell globs; * also crosses folders.
+[risk]
+critical = [
+  "crates/sam-sandbox/*",
+  "crates/sam-runner/src/launch.rs",
+  "crates/sam-runner/src/netns.rs",
+  "crates/sam-runner/src/dbus_proxy.rs",
+  "crates/sam-runner/src/pty.rs",
+  "crates/sam-runner/src/kernel.rs",
+  "crates/sam-runner/src/wayland_ctx.rs",
+  "crates/sam-runner/src/updates.rs",
+  "crates/sam-runner/src/zsync.rs",
+  "crates/sam-runner/src/release_key.rs",
+  "crates/sam-runner/src/contracts.rs",
+  "crates/sam-jail-cli/src/bin/sam-jail-run.rs",
+  "crates/sam-intake/src/extract.rs",
+  "crates/sam-intake/src/normalize.rs",
+  "crates/sam-detect/src/signature.rs",
+  "crates/sam-core/src/permissions.rs",
+  "crates/sam-core/src/risk.rs",
+  "docs/contracts.toml",
+  "docs/syscalls-reviewed.txt",
+  "docs/threat-model.md",
+  "docs/security.md",
+  "docs/functions.toml",
+  "SECURITY.md",
+  "scripts/release.sh",
+  "scripts/new-version.sh",
+  "scripts/sign-release.sh",
+  "scripts/risk-class.py",
+  "scripts/workflow-check.py",
+  "scripts/contract-verifier.py",
+  "AUTOMATION.md",
+  "automation/*",
+  ".github/CODEOWNERS",
+]
+high = [
+  ".github/*",
+  "Cargo.toml",
+  "Cargo.lock",
+  "*/Cargo.toml",
+  "deny.toml",
+  "clippy.toml",
+  "Makefile",
+  "packaging/*",
+  "crates/sam-storage/*",
+  "crates/sam-core/src/model.rs",
+  "crates/sam-core/src/config.rs",
+  "build.rs",
+  "*/build.rs",
+]
+medium = [
+  "crates/*",
+  "tests/*",
+  "scripts/*",
+  "po/*",
+  "data/*",
+]
+
+# The contract verifier (scripts/contract-verifier.py).
+[verifier]
+# The documents that hold SAM's promises, by kind.
+contracts = "docs/contracts.toml"
+functions = "docs/functions.toml"
+syscalls = "docs/syscalls-reviewed.txt"
+threat_model = "docs/threat-model.md"
+lockfile = "Cargo.lock"
+# Tests that may only gain lines.
+protected_tests = [
+  "crates/sam-runner/tests/breakout.rs",
+  "crates/sam-runner/tests/evil.rs",
+  "crates/sam-runner/tests/matrix.rs",
+  "crates/sam-runner/tests/sandbox.rs",
+  "crates/sam-runner/tests/verify.rs",
+  "crates/sam-runner/tests/syscalls.rs",
+  "crates/sam-runner/tests/fuzz.rs",
+  "crates/sam-runner/tests/tamper.rs",
+  "crates/sam-runner/tests/update_server.rs",
+  "crates/sam-jail-cli/tests/teardown.rs",
+  "crates/sam-jail-cli/tests/layers.rs",
+  "crates/sam-jail-cli/tests/contracts.rs",
+  "crates/sam-jail-cli/tests/architecture.rs",
+  "crates/sam-intake/tests/damaged.rs",
+]
+# Safety lists in the code: removing an entry is a weakening.
+lists = [
+  { file = "crates/sam-runner/src/netns.rs", names = ["NEVER_FORWARD_FROM_APP"] },
+  { file = "crates/sam-core/src/permissions.rs", names = ["DANGEROUS_BUS_NAMES"] },
+  { file = "crates/sam-core/src/risk.rs", names = ["SENSITIVE_PATHS"] },
+  { file = "crates/sam-sandbox/src/lib.rs", names = ["PROTECTED_RO", "SENSITIVE_DOTFILES"] },
+]
+
+# The contract map (scripts/contract-map.py).
+[contracts]
+# Code only tests use: its outside assumptions are not SAM's.
+test_only = [
+  "crates/sam-intake/src/testkit.rs",
+  "crates/sam-jail-cli/src/bench.rs",
+]
+# Folders whose option strings are SAM's own command line, not an outside tool's.
+own_cli_callers = ["crates/sam-gtk/"]
+
+# The nightly early warning (.github/workflows/canary.yml): the
+# distributions that come next.
+[canary]
+distributions = [
+  { name = "rawhide", label = "Fedora Rawhide", image = "registry.fedoraproject.org/fedora:rawhide" },
+  { name = "debian-testing", label = "Debian testing", image = "docker.io/library/debian:testing" },
+  { name = "ubuntu-devel", label = "Ubuntu development release", image = "docker.io/library/ubuntu:devel" },
+  { name = "arch", label = "Arch Linux", image = "docker.io/library/archlinux:latest" },
+  { name = "tumbleweed", label = "openSUSE Tumbleweed", image = "registry.opensuse.org/opensuse/tumbleweed:latest" },
+]

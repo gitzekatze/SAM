@@ -15,21 +15,23 @@ permissions:
   contents: read
 
 jobs:
+  # The distributions come from keeper.toml ([canary]).
+  distributions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: read
+        run: |
+          python3 -c 'import json, tomllib; d = tomllib.load(open("keeper.toml", "rb"))["canary"]["distributions"]; print("matrix=" + json.dumps({"include": [{"name": x["name"], "image": x["image"]} for x in d]}))' >> "$GITHUB_OUTPUT"
+
   check:
+    needs: distributions
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: rawhide
-            image: registry.fedoraproject.org/fedora:rawhide
-          - name: debian-testing
-            image: docker.io/library/debian:testing
-          - name: ubuntu-devel
-            image: docker.io/library/ubuntu:devel
-          - name: arch
-            image: docker.io/library/archlinux:latest
-          - name: tumbleweed
-            image: registry.opensuse.org/opensuse/tumbleweed:latest
+      matrix: ${{ fromJSON(needs.distributions.outputs.matrix) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:

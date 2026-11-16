@@ -22,16 +22,11 @@ import json
 import pathlib
 import subprocess
 import sys
+import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 LABEL = "early-warning"
-NAMES = {
-    "rawhide": "Fedora Rawhide",
-    "debian-testing": "Debian testing",
-    "ubuntu-devel": "Ubuntu development release",
-    "arch": "Arch Linux",
-    "tumbleweed": "openSUSE Tumbleweed",
-}
+NAMES = {d["name"]: d["label"] for d in tomllib.loads((ROOT / "keeper.toml").read_text())["canary"]["distributions"]}
 
 spec = importlib.util.spec_from_file_location("cdiff", ROOT / "scripts" / "contract-diff.py")
 cdiff = importlib.util.module_from_spec(spec)
