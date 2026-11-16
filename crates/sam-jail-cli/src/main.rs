@@ -797,7 +797,34 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", pretty_command(&pv.argv));
             });
         }
-        Cmd::Doctor { app: q } => {
+        Cmd::Doctor {
+            contracts: true, ..
+        } => {
+            let host = HostInfo::probe_full();
+            let report = sam_runner::contracts::check_all(&host);
+            out.emit(&report, || {
+                use sam_runner::contracts::State;
+                for c in &report.contracts {
+                    let st = match c.state {
+                        State::Holds => paint(" holds ", "32"),
+                        State::Broken => paint(" BROKEN", "1;31"),
+                        State::Absent => paint(" absent", "33"),
+                        State::NotHere => paint("   -   ", "2"),
+                    };
+                    println!("{st}  {:<26} {}", c.id, c.detail);
+                    if c.state == State::Broken {
+                        println!("         {:<26} → {}", "", c.playbook);
+                    }
+                }
+                println!();
+                for v in &report.components {
+                    if let Some(ver) = &v.version {
+                        println!("  {:<40} {ver}", v.name);
+                    }
+                }
+            });
+        }
+        Cmd::Doctor { app: q, .. } => {
             let host = HostInfo::probe_full();
             let report = match &q {
                 Some(q) => sam_runner::doctor::app_report(&app, &app.resolve(q)?, &host),

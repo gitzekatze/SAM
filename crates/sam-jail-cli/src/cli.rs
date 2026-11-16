@@ -168,7 +168,14 @@ pub(crate) enum Cmd {
         args: Vec<String>,
     },
     /// Check the system (or one app) for problems.
-    Doctor { app: Option<String> },
+    Doctor {
+        app: Option<String>,
+        /// Check SAM's contracts with the outside world instead
+        /// (docs/contracts.md): which hold on this computer, which are
+        /// broken, with the versions of the components involved.
+        #[arg(long, conflicts_with = "app")]
+        contracts: bool,
+    },
     /// Show the version and the level of the JSON interface.
     Version,
     /// Check whether newer versions are published (one app, or all).

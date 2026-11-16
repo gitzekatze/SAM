@@ -135,7 +135,7 @@ id = 16
 area = "C"
 promise = "The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries)."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/kernel.rs"]
-tests = ["landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape"]
+tests = ["landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter"]
 
 [[function]]
 id = 17
@@ -274,7 +274,7 @@ id = 33
 area = "G"
 promise = "The doctor check finds problems with the system or an app."
 code = ["sam-runner/src/doctor.rs", "sam-runner/src/bwrap.rs", "sam-runner/src/dbus_check.rs", "sam-core/src/host.rs"]
-tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly"]
+tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool"]
 
 [[function]]
 id = 34

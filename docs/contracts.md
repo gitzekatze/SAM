@@ -245,7 +245,7 @@ Programs and libraries live under /usr (merged /usr, or the classic split with /
 - **Component:** The distribution's file system layout ([releases](https://uapi-group.org/specifications/))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [10](functions.md#10), [19](functions.md#19)
-- **Quick check:** none (only the tests below)
+- **Quick check:** `fs-layout`
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `a_real_sandbox_shows_exactly_what_each_profile_allows`
 - **Covers:** `path:/usr`, `path:/usr/`, `path:/usr/bin`, `path:/usr/bin:/bin`, `path:/usr/sbin`, `path:/usr/lib`, `path:/usr/lib/`, `path:/usr/lib/*-linux-gnu`, `path:/usr/lib32`, `path:/usr/lib64`, `path:/usr/libexec`, `path:/usr/local`, `path:/usr/local/lib`, `path:/usr/local/bin:/usr/bin:/bin`, `path:/usr/local/share:/usr/share`, `path:/usr/bin/true`, `path:/bin`, `path:/bin/sh`, `program:/bin/sh`, `option:-c`, `path:/sbin`, `path:/lib`, `path:/lib/*-linux-gnu`, `path:/lib64`, `path:/opt`, `path:/tmp`, `path:/var`, `path:/var/tmp`, `path:/run`, `path:/dev`, `path:/dev/null`, `path:/dev/shm`, `path:/sys`, `path:/etc`, `path:/etc/`
 - **If it breaks:** A new layout shows as apps that cannot find their libraries inside the sandbox. The sandbox mirrors /bin, /lib and /lib64 as they are on the host (mirror in sam-sandbox).
@@ -269,7 +269,7 @@ User identity and name resolution come from these /etc files (passwd, group, hos
 - **Component:** The distribution's file system layout ([releases](https://uapi-group.org/specifications/))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [10](functions.md#10), [12](functions.md#12)
-- **Quick check:** none (only the tests below)
+- **Quick check:** `name-resolution`
 - **Tests:** `a_real_sandbox_shows_exactly_what_each_profile_allows`
 - **Covers:** `path:/etc/passwd`, `path:/etc/group`, `path:/etc/hosts`, `path:/etc/resolv.conf`, `path:/etc/nsswitch.conf`, `path:/etc/gai.conf`, `path:/etc/host.conf`, `path:/etc/protocols`, `path:/etc/services`, `path:/run/systemd/resolve`, `path:/etc/NetworkManager`
 - **If it breaks:** A new resolver setup shows as apps that cannot resolve names. Add its file to the /etc list in sam-sandbox; never bind all of /etc.
@@ -329,7 +329,7 @@ X11 displays are reached through /tmp/.X11-unix/X<n> for DISPLAY=:<n>, with the 
 - **Component:** X11 / XWayland ([releases](https://gitlab.freedesktop.org/xorg/xserver/-/tags))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [14](functions.md#14)
-- **Quick check:** none (only the tests below)
+- **Quick check:** `x11-socket`
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
 - **Covers:** `env:DISPLAY`, `env:XAUTHORITY`, `path:/tmp/.X11-unix`, `path:/tmp/.X11-unix/*`
 - **If it breaks:** X11 is optional; without the socket the app has Wayland only.
@@ -391,7 +391,7 @@ xdg-desktop-portal offers the interfaces SAM allows (file chooser, open URI, inp
 - **SAM functions that rely on it:** [13](functions.md#13)
 - **Quick check:** `portal-interfaces`
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
-- **Covers:** `dbus:org.freedesktop.portal.[*]`, `dbus:org.freedesktop.portal.Desktop`, `dbus:org.freedesktop.portal.OpenURI`, `dbus:org.freedesktop.portal.IBus`, `dbus:org.freedesktop.portal.Fcitx`
+- **Covers:** `dbus:org.freedesktop.portal.[*]`, `dbus:org.freedesktop.portal.FileChooser.xml`, `path:/usr/share/dbus-1/interfaces`, `dbus:org.freedesktop.portal.Desktop`, `dbus:org.freedesktop.portal.OpenURI`, `dbus:org.freedesktop.portal.IBus`, `dbus:org.freedesktop.portal.Fcitx`
 - **If it breaks:** The probe compares the installed portal descriptions (/usr/share/dbus-1/interfaces) with what SAM allows. A removed interface only loses that feature; update portal_interfaces in permissions.rs.
 
 ## dbus-activatable
@@ -401,7 +401,7 @@ Services that start on demand are listed in /usr/share/dbus-1/services and /usr/
 - **Component:** D-Bus and desktop services ([releases](https://gitlab.freedesktop.org/dbus/dbus/-/tags))
 - **When it breaks:** SAM falls back to less access.
 - **SAM functions that rely on it:** [13](functions.md#13)
-- **Quick check:** none (only the tests below)
+- **Quick check:** `dbus-services-dir`
 - **Tests:** `every_hostile_appimage_fails_to_escape`
 - **Covers:** `path:/usr/share/dbus-1/services`, `path:/usr/local/share/dbus-1/services`
 - **If it breaks:** If services move elsewhere, add the folder in host.rs so owning them stays refused.
