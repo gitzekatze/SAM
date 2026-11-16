@@ -41,10 +41,10 @@ you, can change it directly. Every change goes like this:
 
 **Why:** every change is tested before it reaches `main`, and nobody can
 change SAM behind your back. The protection rules: a pull request is
-required, all five CI jobs must pass (the tests on Intel/AMD and on ARM
-processors, the Fedora sandbox tests, the window tests and the dependency
-check), plus "Needs your approval" once you have added it (AUTOMATION.md),
-and nobody can rewrite or delete `main`.
+required, and seven checks must pass: the tests on Intel/AMD and on ARM
+processors, the Fedora sandbox tests, the window tests under KDE and under
+GNOME, the dependency check, and "Needs your approval" (AUTOMATION.md);
+the rules apply to you as admin too, and nobody can rewrite or delete `main`.
 
 ## CI: the tests GitHub runs for you
 
