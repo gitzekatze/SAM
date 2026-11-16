@@ -349,6 +349,63 @@ pub fn check_all(host: &HostInfo) -> ContractReport {
     }
 }
 
+/// Named sections for the large sandbox tests (matrix, breakout, hostile
+/// AppImages). Each section runs its checks; a failing one is recorded with
+/// its name and message, and the next section still runs. `finish` lists
+/// every failed section, so a failure names the exact part
+/// ("CHECK FAIL network: ...") instead of stopping at the first assertion.
+/// The sections share one sandbox setup, so the test stays one test (its
+/// steps change the process environment and must not run in parallel).
+pub struct Checks {
+    test: String,
+    failed: Vec<String>,
+    passed: Vec<String>,
+}
+
+impl Checks {
+    pub fn new(test: &str) -> Self {
+        Checks {
+            test: test.into(),
+            failed: Vec::new(),
+            passed: Vec::new(),
+        }
+    }
+
+    pub fn section(&mut self, name: &str, f: impl FnOnce()) {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        match result {
+            Ok(()) => {
+                println!("CHECK ok   {}/{name}", self.test);
+                self.passed.push(name.into());
+            }
+            Err(e) => {
+                let msg = e
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                println!("CHECK FAIL {}/{name}: {msg}", self.test);
+                self.failed.push(format!("{name}: {msg}"));
+            }
+        }
+    }
+
+    /// Ok when every section passed; otherwise every failed section.
+    pub fn finish(self) -> Result<(), String> {
+        if self.failed.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} of {} sections failed in {}:\n{}",
+                self.failed.len(),
+                self.failed.len() + self.passed.len(),
+                self.test,
+                self.failed.join("\n")
+            ))
+        }
+    }
+}
+
 /// For tests that need something from the computer they run on (a working
 /// Bubblewrap, kernel headers, a local HTTPS server). Locally a missing
 /// requirement skips the test with a note. Where the run must prove
@@ -501,6 +558,23 @@ mod tests {
             guard_with(&report, &["no-such-contract"]).is_err(),
             "a typo is caught"
         );
+    }
+
+    #[test]
+    fn a_failing_section_is_named_and_the_next_still_runs() {
+        let mut c = Checks::new("demo");
+        let mut ran = false;
+        c.section("first", || panic!("boom"));
+        c.section("second", || ran = true);
+        assert!(ran, "the second section ran after the first failed");
+        let err = c.finish().unwrap_err();
+        assert!(
+            err.contains("1 of 2 sections failed") && err.contains("first: boom"),
+            "{err}"
+        );
+        let mut ok = Checks::new("demo");
+        ok.section("only", || {});
+        assert!(ok.finish().is_ok());
     }
 
     /// Where a run must prove everything (CI), a skip is an error; locally it
