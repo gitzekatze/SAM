@@ -18,6 +18,11 @@ version.
   code names wrap instead of squeezing the columns.
 - *Use SAM* has an overview page and a *What's new* page (the changelog);
   *How SAM is tested* and *Architecture* moved to *Trust SAM*.
+- The window tests also run under GNOME (a headless Mutter), not only under
+  KDE's KWin.
+- CI skips the build, test, window and sandbox jobs for pull requests that
+  change only documents or the website, so they can be merged in about a
+  minute; every change to code still runs all of them.
 - The maintainer handbook (*Maintain SAM*) is about processes: changing,
   updating and releasing SAM, and looking after its repository.
 

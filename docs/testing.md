@@ -260,7 +260,7 @@ hand:
 - [ ] Main menu → Language → Deutsch → *Restart Now*: the window comes back
       in German; *Follow the system* brings back the system's language.
 
-CI runs all click-through tests on every push (job *window-flows*).
+CI runs all click-through tests on every push, under KDE's KWin (job *window-flows*) and under GNOME's Mutter (job *window-flows-gnome*); `SAM_SESSION=mutter` runs them under Mutter locally.
 
 `tests/gui/a11y-atspi.sh OUTDIR` opens every page of the window in the
 invisible session and reads it through the accessibility interface: every

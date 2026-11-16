@@ -7,12 +7,12 @@
 #
 #   tests/gui/permissions-atspi.sh OUTDIR
 #
-# Needs kwin_wayland, at-spi2-core and python3-gobject (Atspi).
+# Needs kwin_wayland (or mutter, with SAM_SESSION=mutter), at-spi2-core and python3-gobject (Atspi).
 set -eu
 here=$(cd "$(dirname "$0")/../.." && pwd)
 out=$(mkdir -p "${1:?usage: permissions-atspi.sh OUTDIR}" && cd "$1" && pwd)
 if [ "${INSIDE:-}" != 1 ]; then
-    INSIDE=1 SAM_SESSION=kwin exec "$here/tests/gui/session.sh" "$out" "$0" "$out"
+    INSIDE=1 SAM_SESSION=${SAM_SESSION:-kwin} exec "$here/tests/gui/session.sh" "$out" "$0" "$out"
 fi
 bin="$here/target/debug"
 rm -rf "$out/data-set"; mkdir -p "$out/data-set/apps-folder" "$out/data-set/config"

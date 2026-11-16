@@ -15,9 +15,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Does the change touch anything but documents and the website? Text
+  # cannot break SAM's code, so for a change that only touches documents
+  # the build, test, window and sandbox steps are skipped; the website, the
+  # test library and the function map are still checked. GitHub counts a
+  # skipped job as passed, so such a pull request can be merged in about a
+  # minute. Two documents are part of the code: docs/guide.md is built into
+  # the window, and a test reads docs/architecture.md.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.check.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          docs='^(docs/|[^/]+\.md$|scripts/site\.py$|\.github/ISSUE_TEMPLATE/)'
+          code_docs='^docs/(guide|architecture)\.md$'
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            code=true    # run by hand, or no earlier commit to compare with
+          elif git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Ev "$docs" | grep -q . \
+            || git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Eq "$code_docs"; then
+            code=true
+          else
+            code=false
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" = true ] && echo "Code changed: every job runs." || echo "Only documents changed: the code jobs are skipped."
+
   # Dependencies: security advisories, licences, banned crates, sources
   # (deny.toml).
   deny:
+    needs: changes
+    # Runs unless the change is known to touch documents only (fail-safe).
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -28,6 +64,8 @@ jobs:
           arguments: --locked
 
   test:
+    needs: changes
+    if: ${{ !cancelled() }}
     # x86_64, and aarch64 (GitHub's free arm64 runners are for public
     # repositories, so that one starts once SAM is public).
     strategy:
@@ -36,6 +74,11 @@ jobs:
         runner: ${{ fromJSON(github.event.repository.private && '["ubuntu-24.04"]' || '["ubuntu-24.04", "ubuntu-24.04-arm"]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    # Not skipped as a whole: a skipped matrix job reports one check named
+    # "test" instead of the two required ones. The code steps are skipped
+    # one by one instead (env.CODE).
+    env:
+      CODE: ${{ needs.changes.outputs.code != 'false' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -45,6 +88,7 @@ jobs:
       # A stuck package mirror fails the step after 10 minutes instead of
       # holding the whole job for 45.
       - name: System packages
+        if: env.CODE == 'true'
         timeout-minutes: 10
         run: |
           # Ubuntu's own archive: GitHub's Azure mirror of it was unreachable
@@ -61,15 +105,18 @@ jobs:
       # Bubblewrap cannot run and the end-to-end sandbox tests would skip.
       # Lift it on this throwaway machine only.
       - name: Allow user namespaces for Bubblewrap
+        if: env.CODE == 'true'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Rust (stable, SAM needs 1.92+)
+        if: env.CODE == 'true'
         run: |
           rustup toolchain install stable --profile minimal -c clippy -c rustfmt
           rustup default stable
           rustc --version
 
       - uses: actions/cache@v6
+        if: env.CODE == 'true'
         with:
           path: |
             ~/.cargo/registry
@@ -79,12 +126,15 @@ jobs:
           restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build
+        if: env.CODE == 'true'
         run: cargo build --workspace --locked
 
       - name: Format (rustfmt.toml)
+        if: env.CODE == 'true'
         run: cargo fmt --all --check
 
       - name: Clippy
+        if: env.CODE == 'true'
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       # The whole suite twice: a test whose result differs between the two
@@ -92,15 +142,17 @@ jobs:
       # and fails the job, like a test that fails.
       # SAM_TEST_GPG: also sign and check a test AppImage with GnuPG.
       - name: Tests (twice, to catch flaky ones)
+        if: env.CODE == 'true'
         run: SAM_TEST_GPG=1 PATH="$PWD/target/debug:$PATH" python3 scripts/flaky-check.py --runs 2
 
       # On the run page: which of SAM's functions the change touches, and
       # how their tests did (docs/functions.toml).
       - name: Summary of the change
-        if: always()
+        if: always() && env.CODE == 'true'
         run: python3 scripts/push-summary.py "${{ github.event.pull_request.base.sha || github.event.before }}" "${{ github.sha }}"
 
       - name: Desktop file and metainfo
+        if: env.CODE == 'true'
         run: |
           desktop-file-validate data/io.github.gitzekatze.SAM.desktop
           appstreamcli validate --no-net data/io.github.gitzekatze.SAM.metainfo.xml
@@ -108,13 +160,14 @@ jobs:
       # Opens every page of the window on GTK's Broadway backend (no
       # desktop needed) and fails on GTK criticals, warnings or panics.
       - name: Window smoke test
+        if: env.CODE == 'true'
         run: |
           gtk4-broadwayd :5 &
           sleep 1
           GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 dbus-run-session -- tests/gui/smoke.sh "$RUNNER_TEMP/gui"
 
       - name: Window screenshots
-        if: always()
+        if: always() && env.CODE == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: window-screenshots-${{ runner.arch }}
@@ -125,7 +178,7 @@ jobs:
 
       - name: The website builds, with no broken links
         run: |
-          sudo apt-get install -y -q --no-install-recommends python3-markdown
+          sudo apt-get update -q -o Acquire::Retries=3 && sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 python3-markdown
           python3 scripts/site.py "$RUNNER_TEMP/site"
 
       - name: Shell scripts parse
@@ -138,14 +191,17 @@ jobs:
         run: python3 scripts/function-map.py --check
 
       - name: Third-party licenses are up to date
+        if: env.CODE == 'true'
         run: python3 scripts/third-party-licenses.py --check
 
       - name: Translations are complete and compile
+        if: env.CODE == 'true'
         run: |
           python3 scripts/i18n.py check
           make mo
 
       - name: Man pages are up to date
+        if: env.CODE == 'true'
         run: |
           target/debug/sam-jail man "$RUNNER_TEMP/man"
           for f in "$RUNNER_TEMP"/man/*.1; do
@@ -160,6 +216,9 @@ jobs:
   # page, the Permission Manager, keyboard and screen-reader names, and the
   # window in German and English (tests/gui/*-atspi.sh).
   window-flows:
+    needs: changes
+    # Runs unless the change is known to touch documents only (fail-safe).
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -219,7 +278,74 @@ jobs:
             ${{ runner.temp }}/gui-*/*.png
           if-no-files-found: ignore
 
+
+  # The same window tests under GNOME: a headless Mutter, GNOME's
+  # compositor, instead of KWin. Ubuntu and Fedora use GNOME by default.
+  window-flows-gnome:
+    needs: changes
+    # Runs unless the change is known to touch documents only (fail-safe).
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: System packages
+        timeout-minutes: 10
+        run: |
+          sudo sed -i -e 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|g' -e 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get update -q -o Acquire::Retries=3 -o Acquire::http::Timeout=30
+          sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+            libgtk-4-dev libadwaita-1-dev pkg-config \
+            bubblewrap xdg-dbus-proxy passt squashfs-tools python3 gettext dbus \
+            mutter gsettings-desktop-schemas at-spi2-core python3-gi gir1.2-atspi-2.0 locales adwaita-icon-theme
+          sudo locale-gen en_US.UTF-8
+
+      - name: Allow user namespaces for Bubblewrap
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build and translations
+        run: |
+          cargo build --workspace --locked
+          make mo
+
+      - name: Window tests
+        run: |
+          rc=0
+          for t in flow app-page permissions a11y; do
+            echo "== $t"
+            SAM_SESSION=mutter sh tests/gui/$t-atspi.sh "$RUNNER_TEMP/gui-$t" || rc=1
+          done
+          exit $rc
+
+      - name: Window test logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: window-flows-gnome
+          path: |
+            ${{ runner.temp }}/gui-*/*.log
+            ${{ runner.temp }}/gui-*/*.png
+            ${{ runner.temp }}/gui-*/mutter.log
+          if-no-files-found: ignore
   sandbox-fedora:
+    needs: changes
+    # Runs unless the change is known to touch documents only (fail-safe).
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:

@@ -6,9 +6,10 @@
 #
 #   tests/gui/session.sh OUTDIR CMD [ARGS…]
 #
-# SAM_SESSION=kwin uses a hidden nested KWin (Wayland; needed for the
-# accessibility interface, which GTK offers only on Wayland and X11);
-# otherwise GTK's Broadway backend. Adwaita icons and GTK settings come from
+# SAM_SESSION=kwin uses a hidden nested KWin (KDE), SAM_SESSION=mutter a
+# headless Mutter (GNOME); both are Wayland, which the accessibility
+# interface needs (GTK offers it only on Wayland and X11). Otherwise GTK's
+# Broadway backend. Adwaita icons and GTK settings come from
 # OUTDIR, unless REAL_XDG=1 keeps the user's own settings.
 set -eu
 out=$(mkdir -p "${1:?usage: session.sh OUTDIR CMD…}" && cd "$1" && pwd); shift
@@ -31,6 +32,10 @@ export DBUS_SESSION_BUS_ADDRESS=$(echo "$bus" | sed -n 1p); buspid=$(echo "$bus"
 if [ "${SAM_SESSION:-broadway}" = kwin ]; then
     kwin_wayland --virtual --no-lockscreen --no-global-shortcuts --socket samtest-wl --width 1180 --height 800 >"$out/kwin.log" 2>&1 & disp=$!
     # GL instead of Vulkan: Vulkan layers installed by the user print warnings.
+    export WAYLAND_DISPLAY=samtest-wl GDK_BACKEND=wayland GSK_RENDERER=gl GDK_DISABLE=vulkan
+    sleep 3
+elif [ "${SAM_SESSION:-broadway}" = mutter ]; then
+    mutter --headless --wayland --no-x11 --virtual-monitor 1180x800 --wayland-display samtest-wl >"$out/mutter.log" 2>&1 & disp=$!
     export WAYLAND_DISPLAY=samtest-wl GDK_BACKEND=wayland GSK_RENDERER=gl GDK_DISABLE=vulkan
     sleep 3
 else
