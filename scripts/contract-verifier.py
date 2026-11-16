@@ -19,6 +19,9 @@ Weakening means:
   code lists       an entry removed from NEVER_FORWARD_FROM_APP,
                    DANGEROUS_BUS_NAMES, SENSITIVE_PATHS, PROTECTED_RO or
                    SENSITIVE_DOTFILES
+  protected tests  a protected test file deleted, fewer tests or
+                   assertions in it, or #[ignore] added
+  dependencies     a crate new in Cargo.lock
 
 Verdict: PASS, NEEDS-OWNER (exit 1 without --approved), FAIL (exit 2:
 something could not be read; the safe answer is no).
@@ -101,6 +104,40 @@ def code_lists(path, old, new):
     return out
 
 
+# The tests that prove SAM's security promises: automation may add to them,
+# never remove, skip or weaken them.
+PROTECTED = [
+    "crates/sam-runner/tests/breakout.rs", "crates/sam-runner/tests/evil.rs",
+    "crates/sam-runner/tests/matrix.rs", "crates/sam-runner/tests/sandbox.rs",
+    "crates/sam-runner/tests/verify.rs", "crates/sam-runner/tests/syscalls.rs",
+    "crates/sam-runner/tests/fuzz.rs", "crates/sam-runner/tests/tamper.rs",
+    "crates/sam-runner/tests/update_server.rs", "crates/sam-jail-cli/tests/teardown.rs",
+    "crates/sam-jail-cli/tests/layers.rs", "crates/sam-jail-cli/tests/contracts.rs",
+    "crates/sam-jail-cli/tests/architecture.rs", "crates/sam-intake/tests/damaged.rs",
+]
+
+
+def protected(path, old, new):
+    if not old:
+        return []
+    if not new:
+        return [f"protected test file {path} deleted"]
+    out = []
+    count = lambda t, pat: len(re.findall(pat, t))
+    if count(new, r"#\[test\]") < count(old, r"#\[test\]"):
+        out.append(f"{path}: fewer tests")
+    if count(new, r"\bassert") < count(old, r"\bassert"):
+        out.append(f"{path}: fewer assertions")
+    if count(new, r"#\[ignore") > count(old, r"#\[ignore"):
+        out.append(f"{path}: a test is skipped (#[ignore])")
+    return out
+
+
+def dependencies(old, new):
+    names = lambda t: set(re.findall(r'^name = "([^"]+)"', t, re.M))
+    return [f"new dependency {d} (needs review: purpose, maintenance, license)" for d in sorted(names(new) - names(old))]
+
+
 CHECKS = {
     "docs/contracts.toml": contracts,
     "docs/functions.toml": functions,
@@ -114,6 +151,10 @@ def weakenings(path, old, new):
         return CHECKS[path](old, new)
     if path in LISTS:
         return code_lists(path, old, new)
+    if path in PROTECTED:
+        return protected(path, old, new)
+    if path == "Cargo.lock":
+        return dependencies(old, new)
     return []
 
 
@@ -142,6 +183,13 @@ def self_test():
         ("crates/sam-runner/src/netns.rs", 'const NEVER_FORWARD_FROM_APP: &[&str] = &[\n    "~1-1023", "~11434",\n];', 'const NEVER_FORWARD_FROM_APP: &[&str] = &[\n    "~1-1023",\n];', 1),
         ("crates/sam-runner/src/netns.rs", 'const NEVER_FORWARD_FROM_APP: &[&str] = &["~1"];', 'const NEVER_FORWARD_FROM_APP: &[&str] = &["~1", "~2"];', 0),
         ("README.md", "a", "b", 0),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() { assert!(x); }\n#[test]\nfn b() { assert!(y); }", "#[test]\nfn a() { assert!(x); }", 1),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() { assert!(x); assert!(y); }", "#[test]\nfn a() { assert!(x); }", 1),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() { assert!(x); }", "#[test]\n#[ignore]\nfn a() { assert!(x); }", 1),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() { assert!(x); }", "", 1),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() { assert!(x); }", "#[test]\nfn a() { assert!(x); assert!(z); }", 0),
+        ("Cargo.lock", 'name = "serde"\n', 'name = "serde"\nname = "evil-crate"\n', 1),
+        ("Cargo.lock", 'name = "serde"\nname = "old"\n', 'name = "serde"\n', 0),
     ]
     wrong = 0
     for path, old, new, want in cases:
@@ -163,7 +211,7 @@ def main():
                                text=True, check=True).stdout.split()
         found = []
         for f in files:
-            if f in CHECKS or f in LISTS:
+            if f in CHECKS or f in LISTS or f in PROTECTED or f == "Cargo.lock":
                 found += weakenings(f, show(base, f), show("HEAD", f))
     except Exception as e:
         print(f"### Contract verifier: FAIL\n\nCould not compare with {base}: {e}. The safe answer is no.")
