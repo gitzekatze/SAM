@@ -7,45 +7,52 @@ assumption it makes about them is written down here, with what SAM does when
 it breaks and how it is checked. CI fails when the code uses something
 outside SAM that no contract covers, so the list cannot fall behind the code.
 
+What the check cannot see: names joined to a folder at runtime, such as
+`pipewire-0` or `pulse/native` under the runtime folder. They are found in
+one place (`probe_sockets` in sam-core `host.rs`) and named in the
+contracts by hand; a new one there needs a contract entry too.
+
 When something stops working after an update, `sam-jail doctor --contracts`
 names the contract that broke and the versions involved; its playbook says
 where to look.
 
-| Contract | Component | When it breaks |
-|---|---|---|
-| [bwrap-core](#bwrap-core) | Bubblewrap | Refuses |
-| [bwrap-disable-userns](#bwrap-disable-userns) | Bubblewrap | Refuses |
-| [bwrap-overlay](#bwrap-overlay) | Bubblewrap | Loses a feature |
-| [pasta-splice-only](#pasta-splice-only) | passt / pasta | Falls back to less |
-| [dbus-proxy-filter](#dbus-proxy-filter) | xdg-dbus-proxy | Falls back to less |
-| [unpack-tools](#unpack-tools) | squashfs-tools (unsquashfs) | Falls back to less |
-| [dwarfs](#dwarfs) | DwarFS (dwarfsextract) | Loses a feature |
-| [appimage-format](#appimage-format) | The AppImage format | Refuses |
-| [updates-curl](#updates-curl) | curl | Refuses |
-| [signatures-gnupg](#signatures-gnupg) | GnuPG | Refuses |
-| [diagnose-strace](#diagnose-strace) | strace | Loses a feature |
-| [desktop-notify-menu](#desktop-notify-menu) | libnotify and desktop-file-utils | Loses a feature |
-| [kernel-userns](#kernel-userns) | Linux kernel | Refuses |
-| [kernel-landlock](#kernel-landlock) | Linux kernel | Warns |
-| [kernel-seccomp](#kernel-seccomp) | Linux kernel | Refuses |
-| [kernel-procfs](#kernel-procfs) | Linux kernel | Warns |
-| [fs-layout](#fs-layout) | The distribution's file system layout | Loses a feature |
-| [system-data](#system-data) | The distribution's file system layout | Loses a feature |
-| [etc-identity-and-names](#etc-identity-and-names) | The distribution's file system layout | Loses a feature |
-| [sensitive-system-files](#sensitive-system-files) | The distribution's file system layout | Nothing breaks |
-| [devices](#devices) | Linux kernel | Loses a feature |
-| [wayland-socket](#wayland-socket) | Wayland compositor | Loses a feature |
-| [wayland-security-context](#wayland-security-context) | Wayland compositor | Warns |
-| [x11](#x11) | X11 / XWayland | Loses a feature |
-| [audio-sockets](#audio-sockets) | PipeWire and PulseAudio | Loses a feature |
-| [dbus-buses](#dbus-buses) | D-Bus and desktop services | Loses a feature |
-| [dbus-dangerous-names](#dbus-dangerous-names) | D-Bus and desktop services | Nothing breaks |
-| [dbus-integrations](#dbus-integrations) | D-Bus and desktop services | Loses a feature |
-| [portal-interfaces](#portal-interfaces) | xdg-desktop-portal | Loses a feature |
-| [dbus-activatable](#dbus-activatable) | D-Bus and desktop services | Falls back to less |
-| [host-escape-tools](#host-escape-tools) | D-Bus and desktop services | Nothing breaks |
-| [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature |
-| [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature |
+| Contract | Component | When it breaks | Tested |
+|---|---|---|---|
+| [bwrap-core](#bwrap-core) | Bubblewrap | Refuses | fully |
+| [bwrap-disable-userns](#bwrap-disable-userns) | Bubblewrap | Refuses | fully |
+| [bwrap-overlay](#bwrap-overlay) | Bubblewrap | Loses a feature | fully |
+| [pasta-splice-only](#pasta-splice-only) | passt / pasta | Falls back to less | fully |
+| [dbus-proxy-filter](#dbus-proxy-filter) | xdg-dbus-proxy | Falls back to less | fully |
+| [unpack-tools](#unpack-tools) | squashfs-tools (unsquashfs) | Falls back to less | fully |
+| [dwarfs](#dwarfs) | DwarFS (dwarfsextract) | Loses a feature | partly |
+| [appimage-format](#appimage-format) | The AppImage format | Refuses | fully |
+| [updates-curl](#updates-curl) | curl | Refuses | fully |
+| [signatures-gnupg](#signatures-gnupg) | GnuPG | Refuses | fully |
+| [diagnose-strace](#diagnose-strace) | strace | Loses a feature | partly |
+| [desktop-notify-menu](#desktop-notify-menu) | libnotify and desktop-file-utils | Loses a feature | partly |
+| [kernel-userns](#kernel-userns) | Linux kernel | Refuses | partly |
+| [kernel-landlock](#kernel-landlock) | Linux kernel | Warns | fully |
+| [kernel-seccomp](#kernel-seccomp) | Linux kernel | Refuses | fully |
+| [kernel-procfs](#kernel-procfs) | Linux kernel | Warns | partly |
+| [fs-layout](#fs-layout) | The distribution's file system layout | Loses a feature | partly |
+| [system-data](#system-data) | The distribution's file system layout | Loses a feature | partly |
+| [etc-identity-and-names](#etc-identity-and-names) | The distribution's file system layout | Loses a feature | partly |
+| [sensitive-system-files](#sensitive-system-files) | The distribution's file system layout | Nothing breaks | fully |
+| [devices](#devices) | Linux kernel | Loses a feature | partly |
+| [wayland-socket](#wayland-socket) | Wayland compositor | Loses a feature | partly |
+| [wayland-security-context](#wayland-security-context) | Wayland compositor | Warns | partly |
+| [x11](#x11) | X11 / XWayland | Loses a feature | partly |
+| [audio-sockets](#audio-sockets) | PipeWire and PulseAudio | Loses a feature | partly |
+| [dbus-buses](#dbus-buses) | D-Bus and desktop services | Loses a feature | partly |
+| [dbus-dangerous-names](#dbus-dangerous-names) | D-Bus and desktop services | Nothing breaks | fully |
+| [dbus-integrations](#dbus-integrations) | D-Bus and desktop services | Loses a feature | partly |
+| [portal-interfaces](#portal-interfaces) | xdg-desktop-portal | Loses a feature | partly |
+| [dbus-activatable](#dbus-activatable) | D-Bus and desktop services | Falls back to less | partly |
+| [host-escape-tools](#host-escape-tools) | D-Bus and desktop services | Nothing breaks | fully |
+| [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
+| [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
+
+14 of 33 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
 
 ## bwrap-core
 
@@ -55,8 +62,8 @@ Bubblewrap builds the sandbox with these options and behaves as documented: sepa
 - **When it breaks:** SAM does not start the sandbox and says why. Proven by `without_network_the_sandbox_dies_with_its_launcher`.
 - **SAM functions that rely on it:** [10](functions.md#10), [11](functions.md#11), [19](functions.md#19), [20](functions.md#20)
 - **Quick check:** `bwrap-runs`
-- **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `each_permission_grants_exactly_its_access_in_a_real_sandbox`
-- **Checked first by:** `breakout.rs`, `evil.rs`, `matrix.rs`, `overlay_fallback.rs`, `sandbox.rs`, `teardown.rs` (a broken contract stops these tests with its name)
+- **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (fully)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `layers.rs`, `matrix.rs`, `overlay_fallback.rs`, `sandbox.rs`, `stop.rs`, `teardown.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:bwrap`, `path:/usr/bin/bwrap`, `option:--unshare-user`, `option:--unshare-pid`, `option:--unshare-uts`, `option:--unshare-ipc`, `option:--unshare-cgroup-try`, `option:--unshare-net`, `option:--unshare-all`, `option:--uid`, `option:--gid`, `option:--die-with-parent`, `option:--new-session`, `option:--cap-drop`, `option:--clearenv`, `option:--setenv`, `option:--chdir`, `option:--proc`, `option:--dev`, `option:--tmpfs`, `option:--dir`, `option:--perms`, `option:--symlink`, `option:--bind`, `option:--bind-try`, `option:--ro-bind`, `option:--ro-bind-try`, `option:--dev-bind`, `option:--dev-bind-try`, `option:--remount-ro`, `option:--hostname`, `option:--json-status-fd`, `option:--seccomp`, `option:--version`, `option:-V`
 - **If it breaks:** Read the Bubblewrap release notes for the options above. A renamed option: build the old or new form from the version `bwrap --version` reports (sam-sandbox). A changed behavior: the breakout and matrix tests name the permission; fix the command in sam-sandbox/src/lib.rs.
 
@@ -68,7 +75,7 @@ Bubblewrap 0.8 or newer understands --disable-userns, which stops an app from cr
 - **When it breaks:** SAM does not start the sandbox and says why.
 - **SAM functions that rely on it:** [11](functions.md#11), [16](functions.md#16)
 - **Quick check:** `bwrap-option:--disable-userns`
-- **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`
+- **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails` (fully)
 - **Checked first by:** `breakout.rs` (a broken contract stops these tests with its name)
 - **Covers:** `option:--disable-userns`
 - **If it breaks:** Bubblewrap rejects an option it does not know, so the start fails instead of running without the protection. Raise the minimum version in install.md, or offer allow_userns only where the option is missing.
@@ -81,7 +88,7 @@ Bubblewrap 0.10 or newer offers overlays (--overlay-src, --overlay) for a writab
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [18](functions.md#18)
 - **Quick check:** `bwrap-option:--overlay-src`
-- **Tests:** `an_app_starts_read_only_when_its_writable_app_folder_cannot_work`
+- **Tests:** `an_app_starts_read_only_when_its_writable_app_folder_cannot_work` (fully)
 - **Covers:** `option:--overlay`, `option:--overlay-src`
 - **If it breaks:** Without working overlays the app starts with its app folder read-only, as it would without the option (tested). Only the writable app folder is lost.
 
@@ -93,7 +100,7 @@ pasta --splice-only creates a network namespace with only loopback, forwards onl
 - **When it breaks:** SAM falls back to less access.
 - **SAM functions that rely on it:** [12](functions.md#12)
 - **Quick check:** `pasta-splice-only`
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `with_this_computer_only_the_sandbox_dies_with_its_launcher`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `with_this_computer_only_the_sandbox_dies_with_its_launcher` (fully)
 - **Checked first by:** `matrix.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:pasta`, `option:--splice-only`, `option:-t`, `option:-T`, `option:-u`, `option:-U`, `option:--quiet`
 - **If it breaks:** A pasta without --splice-only is never used: the app starts with no network at all and a warning says why (tested in the matrix). If options change, adapt netns.rs and check that an unlisted host port stays unreachable.
@@ -106,7 +113,7 @@ xdg-dbus-proxy filters the session bus by the --talk, --own, --call and --broadc
 - **When it breaks:** SAM falls back to less access.
 - **SAM functions that rely on it:** [13](functions.md#13)
 - **Quick check:** `dbus-proxy-present`
-- **Tests:** `every_hostile_appimage_fails_to_escape`, `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `every_hostile_appimage_fails_to_escape`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (fully)
 - **Checked first by:** `evil.rs`, `matrix.rs` (a broken contract stops these tests with its name)
 - **Covers:** `path:/usr/bin/xdg-dbus-proxy`, `option:--talk=`, `option:--own=`, `option:--call=`, `option:--broadcast=`, `option:--filter`, `option:--log`
 - **If it breaks:** Without the proxy the app gets no session bus at all. If the rule syntax changes, adapt dbus_proxy.rs; the evil suite shows whether blocked services stay blocked.
@@ -119,7 +126,7 @@ unsquashfs and bsdtar unpack SquashFS images with these options, without keeping
 - **When it breaks:** SAM falls back to less access.
 - **SAM functions that rely on it:** [3](functions.md#3), [5](functions.md#5)
 - **Quick check:** `program:unsquashfs`
-- **Tests:** `appimages_with_every_compression_unpack`, `without_consent_the_appimages_own_unpacker_never_runs`
+- **Tests:** `appimages_with_every_compression_unpack`, `without_consent_the_appimages_own_unpacker_never_runs` (fully)
 - **Covers:** `program:unsquashfs`, `program:bsdtar`, `option:-d`, `option:-f`, `option:-C`, `option:-o`, `option:-O`, `option:-i`, `option:--no-same-owner`, `option:--no-acls`, `option:--no-xattrs`
 - **If it breaks:** SAM has its own SquashFS reader and tries the tools only after it; when all fail, it asks before running the AppImage's own unpacker. A changed option shows as a failing unpack test.
 
@@ -131,7 +138,7 @@ dwarfsextract unpacks AppImages whose payload is a DwarFS image (-i input, -o ou
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [2](functions.md#2), [3](functions.md#3)
 - **Quick check:** `program:dwarfsextract`
-- **Tests:** `an_appimage_with_a_dwarfs_image_is_recognized`
+- **Tests:** `an_appimage_with_a_dwarfs_image_is_recognized` (partly: Only recognizing a DwarFS AppImage is tested; unpacking with dwarfsextract is not (CI has no dwarfsextract).)
 - **Covers:** `program:dwarfsextract`
 - **If it breaks:** Without dwarfsextract SAM asks before using the AppImage's own unpacker. DwarFS AppImages are rare; check the option names in the dwarfs release notes.
 
@@ -143,7 +150,7 @@ AppImages are type 2: an ELF runtime followed by a SquashFS or DwarFS image at t
 - **When it breaks:** SAM does not start the sandbox and says why.
 - **SAM functions that rely on it:** [1](functions.md#1), [2](functions.md#2), [4](functions.md#4), [5](functions.md#5)
 - **Quick check:** none (only the tests below)
-- **Tests:** `a_type_2_appimage_is_recognized`, `appimages_with_every_compression_unpack`, `every_hostile_appimage_fails_to_escape`
+- **Tests:** `a_type_2_appimage_is_recognized`, `appimages_with_every_compression_unpack`, `every_hostile_appimage_fails_to_escape` (fully)
 - **Covers:** `option:--appimage-extract`, `env:APPIMAGE`, `env:APPDIR`
 - **If it breaks:** A new AppImage type or payload format is reported as not an AppImage; nothing runs. Add the format to sam-detect, with a fixture in the testkit.
 
@@ -155,7 +162,7 @@ curl downloads over HTTPS only (also after redirects) with these limits, and fet
 - **When it breaks:** SAM does not start the sandbox and says why.
 - **SAM functions that rely on it:** [28](functions.md#28), [34](functions.md#34)
 - **Quick check:** `program:curl`
-- **Tests:** `updates_are_downloaded_over_https_only`, `updates_download_only_changes_check_them_and_refuse_tampering`
+- **Tests:** `updates_are_downloaded_over_https_only`, `updates_download_only_changes_check_them_and_refuse_tampering` (fully)
 - **Checked first by:** `update_server.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--max-filesize`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`
 - **If it breaks:** No update is installed when curl fails; the old version stays. A changed option shows in the update server test.
@@ -168,7 +175,7 @@ gpg and gpgv check the signature embedded in an AppImage against a keyring, with
 - **When it breaks:** SAM does not start the sandbox and says why.
 - **SAM functions that rely on it:** [28](functions.md#28)
 - **Quick check:** `program:gpgv`
-- **Tests:** `sam_updates_itself_only_with_its_release_key`, `key_changes_are_noticed`
+- **Tests:** `sam_updates_itself_only_with_its_release_key`, `key_changes_are_noticed` (fully)
 - **Covers:** `program:gpg`, `program:gpgv`, `option:--batch`, `option:--no-options`, `option:--homedir`, `option:--keyring`, `option:--no-default-keyring`, `option:--with-colons`, `option:--fingerprint`, `option:--list-keys`, `option:--import`, `option:--export`, `option:--armor`, `option:--detach-sign`, `option:--local-user`, `option:--output`, `option:--yes`
 - **If it breaks:** Without a working gpg SAM never updates itself and treats app signatures as unknown. Check the --with-colons format in GnuPG's release notes.
 
@@ -180,7 +187,7 @@ strace follows an app's processes (-f) and logs failed file opens (-e) to a file
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [25](functions.md#25)
 - **Quick check:** `program:strace`
-- **Tests:** `diagnostic_runs_obey_the_preference`
+- **Tests:** `diagnostic_runs_obey_the_preference` (partly: The diagnose run's strace options and output format are not checked against a real strace in CI.)
 - **Covers:** `option:-e`
 - **If it breaks:** Without strace the diagnose run is unavailable and SAM says so; repairs still work from the app's own output.
 
@@ -192,7 +199,7 @@ notify-send shows a notification when a menu start fails, and update-desktop-dat
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [19](functions.md#19), [23](functions.md#23)
 - **Quick check:** none (only the tests below)
-- **Tests:** `found_appimages_get_a_menu_entry_only_with_a_sandbox`
+- **Tests:** `found_appimages_get_a_menu_entry_only_with_a_sandbox` (partly: Notifications and the menu cache refresh are not tested.)
 - **Covers:** `program:notify-send`, `program:update-desktop-database`, `option:-q`
 - **If it breaks:** Missing tools only lose the notification or a faster menu refresh.
 
@@ -204,7 +211,7 @@ Unprivileged user namespaces are available; the distribution's switches for them
 - **When it breaks:** SAM does not start the sandbox and says why.
 - **SAM functions that rely on it:** [19](functions.md#19), [33](functions.md#33)
 - **Quick check:** `userns`
-- **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`
+- **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails` (partly: Only computers with user namespaces are tested; the refusal and its explanation on a computer without them are not.)
 - **Checked first by:** `breakout.rs` (a broken contract stops these tests with its name)
 - **Covers:** `path:/proc/sys/kernel/unprivileged_userns_clone`, `path:/proc/sys/kernel/apparmor_restrict_unprivileged_userns`, `path:/proc/sys/user/max_user_namespaces`
 - **If it breaks:** Without user namespaces no sandbox starts, and the doctor names the switch to change. A new distribution switch: add its path to host.rs (userns) so the doctor can explain it.
@@ -217,7 +224,7 @@ Landlock (ABI 3, with the abstract-socket scope from ABI 6) restricts writes ins
 - **When it breaks:** the start goes ahead with a visible warning.
 - **SAM functions that rely on it:** [10](functions.md#10), [16](functions.md#16)
 - **Quick check:** `landlock`
-- **Tests:** `a_start_without_the_helper_reports_its_missing_layers`, `a_wanted_layer_that_was_not_applied_is_reported_missing`
+- **Tests:** `a_start_without_the_helper_reports_its_missing_layers`, `a_wanted_layer_that_was_not_applied_is_reported_missing` (fully)
 - **If it breaks:** A start without Landlock is marked 'Protection missing'. A newer ABI only adds rights SAM does not use yet; review kernel.rs when one appears.
 
 ## kernel-seccomp
@@ -228,8 +235,8 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 - **When it breaks:** SAM does not start the sandbox and says why.
 - **SAM functions that rely on it:** [16](functions.md#16), [17](functions.md#17)
 - **Quick check:** `seccomp`
-- **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `every_known_syscall_has_been_reviewed`
-- **Checked first by:** `breakout.rs`, `evil.rs` (a broken contract stops these tests with its name)
+- **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `every_known_syscall_has_been_reviewed` (fully)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `syscall:*`
 - **If it breaks:** A filter that fails to load stops the start. When the syscall review check reports a new syscall, decide whether the baseline blocks it (kernel.rs) and add it to docs/syscalls-reviewed.txt.
 
@@ -241,7 +248,7 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 - **When it breaks:** the start goes ahead with a visible warning.
 - **SAM functions that rely on it:** [20](functions.md#20), [33](functions.md#33)
 - **Quick check:** none (only the tests below)
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Checked only indirectly, through the sandbox check in the matrix test.)
 - **Covers:** `path:/proc`, `path:/proc/`, `path:/proc/self/status`, `path:/proc/net/*`, `path:/proc/sys/kernel/hostname`, `path:/proc/sys/kernel/osrelease`
 - **If it breaks:** The sandbox check then reports the setting as unknown instead of passed.
 
@@ -253,7 +260,7 @@ Programs and libraries live under /usr (merged /usr, or the classic split with /
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [10](functions.md#10), [19](functions.md#19)
 - **Quick check:** `fs-layout`
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `a_real_sandbox_shows_exactly_what_each_profile_allows`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `a_real_sandbox_shows_exactly_what_each_profile_allows` (partly: Tested on the layouts of the CI and early-warning distributions (merged /usr); a split /usr is not tested.)
 - **Checked first by:** `matrix.rs`, `sandbox.rs` (a broken contract stops these tests with its name)
 - **Covers:** `path:/usr`, `path:/usr/`, `path:/usr/bin`, `path:/usr/bin:/bin`, `path:/usr/sbin`, `path:/usr/lib`, `path:/usr/lib/`, `path:/usr/lib/*-linux-gnu`, `path:/usr/lib32`, `path:/usr/lib64`, `path:/usr/libexec`, `path:/usr/local`, `path:/usr/local/lib`, `path:/usr/local/bin:/usr/bin:/bin`, `path:/usr/local/share:/usr/share`, `path:/usr/bin/true`, `path:/bin`, `path:/bin/sh`, `program:/bin/sh`, `option:-c`, `path:/sbin`, `path:/lib`, `path:/lib/*-linux-gnu`, `path:/lib64`, `path:/opt`, `path:/tmp`, `path:/var`, `path:/var/tmp`, `path:/run`, `path:/dev`, `path:/dev/null`, `path:/dev/shm`, `path:/sys`, `path:/etc`, `path:/etc/`
 - **If it breaks:** A new layout shows as apps that cannot find their libraries inside the sandbox. The sandbox mirrors /bin, /lib and /lib64 as they are on the host (mirror in sam-sandbox).
@@ -266,21 +273,21 @@ Shared read-only data (fonts, icons, themes, locales, certificates, graphics dri
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [10](functions.md#10), [15](functions.md#15)
 - **Quick check:** none (only the tests below)
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Fonts and certificates are asserted (matrix test); icons, themes, locales and graphics data are not.)
 - **Covers:** `path:/usr/share`, `path:/usr/share/`, `path:/usr/share/*`, `path:/usr/lib/dri`, `path:/etc/fonts`, `path:/etc/ld.so.cache`, `path:/etc/ld.so.conf.d`, `path:/etc/ssl/certs`, `path:/etc/vulkan`, `path:/etc/os-release`, `path:/var/cache/fontconfig`
 - **If it breaks:** A moved folder shows as missing fonts, icons or certificates inside apps. Add the new path next to the old one in sam-sandbox (both with -try).
 
 ## etc-identity-and-names
 
-User identity and name resolution come from these /etc files (passwd, group, hosts, resolv.conf and its systemd-resolved or NetworkManager target, nsswitch, gai, host.conf, protocols, services). SAM shows only listed /etc files, so anything new there stays hidden.
+User identity and name resolution come from these /etc files (passwd, group, hosts, resolv.conf and its systemd-resolved or NetworkManager target, nsswitch, gai, host.conf, protocols, services), or for the vendor defaults from the same names in /usr/etc (openSUSE). SAM shows only listed /etc files, so anything new there stays hidden.
 
 - **Component:** The distribution's file system layout ([releases](https://uapi-group.org/specifications/))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [10](functions.md#10), [12](functions.md#12)
 - **Quick check:** `name-resolution`
-- **Tests:** `a_real_sandbox_shows_exactly_what_each_profile_allows`
+- **Tests:** `a_real_sandbox_shows_exactly_what_each_profile_allows` (partly: Resolving localhost is tested; real name resolution through DNS is not (CI sandboxes have no network).)
 - **Checked first by:** `sandbox.rs` (a broken contract stops these tests with its name)
-- **Covers:** `path:/etc/passwd`, `path:/etc/group`, `path:/etc/hosts`, `path:/etc/resolv.conf`, `path:/etc/nsswitch.conf`, `path:/etc/gai.conf`, `path:/etc/host.conf`, `path:/etc/protocols`, `path:/etc/services`, `path:/run/systemd/resolve`, `path:/etc/NetworkManager`
+- **Covers:** `path:/usr/etc`, `path:/usr/etc/nsswitch.conf`, `path:/etc/passwd`, `path:/etc/group`, `path:/etc/hosts`, `path:/etc/resolv.conf`, `path:/etc/nsswitch.conf`, `path:/etc/gai.conf`, `path:/etc/host.conf`, `path:/etc/protocols`, `path:/etc/services`, `path:/run/systemd/resolve`, `path:/etc/NetworkManager`
 - **If it breaks:** A new resolver setup shows as apps that cannot resolve names. Add its file to the /etc list in sam-sandbox; never bind all of /etc.
 
 ## sensitive-system-files
@@ -291,7 +298,7 @@ System secrets live in files like /etc/shadow, gshadow, sudoers, pam.d, polkit-1
 - **When it breaks:** nothing breaks: the assumption only ever narrows access.
 - **SAM functions that rely on it:** [11](functions.md#11)
 - **Quick check:** none (only the tests below)
-- **Tests:** `files_and_folders_named_on_the_command_line`, `every_breakout_attempt_from_a_real_sandbox_fails`
+- **Tests:** `files_and_folders_named_on_the_command_line`, `every_breakout_attempt_from_a_real_sandbox_fails` (fully)
 - **Covers:** `path:/etc/shadow`, `path:/etc/gshadow`, `path:/etc/sudoers`, `path:/etc/pam.d`, `path:/etc/polkit-1`, `path:/etc/security`, `path:/etc/ssh`
 - **If it breaks:** Nothing to fix when a new secret location appears: it is not on the allow list. Add it to SENSITIVE_PATHS (sam-core risk.rs) so a grant of it is also marked dangerous.
 
@@ -303,7 +310,7 @@ Devices appear under these names: GPUs as /dev/dri/card* and renderD*, NVIDIA as
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [15](functions.md#15)
 - **Quick check:** none (only the tests below)
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Device checks only assert where the computer has the device; CI has no GPU, sound card, camera or gamepad.)
 - **Covers:** `path:/dev/bus/usb`, `path:/dev/dri`, `path:/dev/dri/card0`, `path:/dev/dri/renderD128`, `path:/dev/input`, `path:/dev/nvidia`, `path:/dev/snd`, `path:/dev/uinput`, `path:/dev/video`, `path:/run/udev/data`, `path:/sys/bus`, `path:/sys/class`, `path:/sys/dev`, `path:/sys/devices`, `path:/sys/devices/system/cpu`, `path:/sys/module`
 - **If it breaks:** A renamed device is simply not passed in: the app loses that device, never gains another. Add the new name in sam-sandbox (devices) and host.rs (gpu_devices).
 
@@ -315,7 +322,7 @@ The compositor's socket is $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY (or an absolute WAY
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [14](functions.md#14)
 - **Quick check:** `wayland-socket`
-- **Tests:** `only_a_real_socket_counts_as_a_desktop_service`, `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `only_a_real_socket_counts_as_a_desktop_service`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: The sandbox tests in CI run without a Wayland session; only the window tests use one.)
 - **Covers:** `env:WAYLAND_DISPLAY`, `env:XDG_RUNTIME_DIR`, `env:XDG_SESSION_TYPE`
 - **If it breaks:** Without a socket the app gets no Wayland display (X11 only if allowed). Check how the desktop names its socket.
 
@@ -327,19 +334,19 @@ The compositor offers wp_security_context_manager_v1, so SAM can mark the app's 
 - **When it breaks:** the start goes ahead with a visible warning.
 - **SAM functions that rely on it:** [14](functions.md#14)
 - **Quick check:** `wayland-security-context`
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Not asserted in a test; only the quick check confirms it.)
 - **Covers:** `wayland:wp_security_context_manager_v1`
 - **If it breaks:** Without it SAM warns that the app can use every Wayland function the desktop offers. A new protocol version: update the wayland-protocols crate.
 
 ## x11
 
-X11 displays are reached through /tmp/.X11-unix/X<n> for DISPLAY=:<n>, with the cookie in XAUTHORITY.
+X11 displays are reached through /tmp/.X11-unix/X<n> for DISPLAY=:<n>, with the cookie in XAUTHORITY (or ~/.Xauthority).
 
 - **Component:** X11 / XWayland ([releases](https://gitlab.freedesktop.org/xorg/xserver/-/tags))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [14](functions.md#14)
 - **Quick check:** `x11-socket`
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: CI has no X11 display; the X11 check asserts only where one exists.)
 - **Covers:** `env:DISPLAY`, `env:XAUTHORITY`, `path:/tmp/.X11-unix`, `path:/tmp/.X11-unix/*`
 - **If it breaks:** X11 is optional; without the socket the app has Wayland only.
 
@@ -351,7 +358,7 @@ Sound goes through PipeWire's $XDG_RUNTIME_DIR/pipewire-0 or PulseAudio's pulse/
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [15](functions.md#15)
 - **Quick check:** `audio-sockets`
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: CI has no PipeWire or PulseAudio; sound is checked only where the computer has it.)
 - **Covers:** `env:PULSE_SERVER`
 - **If it breaks:** A renamed socket means no sound in apps. Add the new name in host.rs (probe_sockets).
 
@@ -363,7 +370,7 @@ The session bus is at DBUS_SESSION_BUS_ADDRESS (or $XDG_RUNTIME_DIR/bus), the sy
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [13](functions.md#13)
 - **Quick check:** `dbus-buses`
-- **Tests:** `only_a_real_socket_counts_as_a_desktop_service`, `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `only_a_real_socket_counts_as_a_desktop_service`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: The session bus is tested with a private bus; the system bus is not.)
 - **Covers:** `env:DBUS_SESSION_BUS_ADDRESS`, `path:/run/dbus/system_bus_socket`
 - **If it breaks:** Without a bus, apps lose desktop services. Check the bus address the session sets.
 
@@ -375,7 +382,7 @@ These desktop services can start programs outside the sandbox, control the deskt
 - **When it breaks:** nothing breaks: the assumption only ever narrows access.
 - **SAM functions that rely on it:** [9](functions.md#9), [13](functions.md#13)
 - **Quick check:** none (only the tests below)
-- **Tests:** `every_hostile_appimage_fails_to_escape`
+- **Tests:** `every_hostile_appimage_fails_to_escape` (fully)
 - **Covers:** `dbus:org.freedesktop.[*]`, `dbus:org.freedesktop.DBus`, `dbus:org.freedesktop.systemd1`, `dbus:org.freedesktop.Flatpak`, `dbus:org.freedesktop.portal.Flatpak`, `dbus:org.freedesktop.secrets`, `dbus:org.gnome.Shell`, `dbus:org.gnome.SessionManager`, `dbus:org.kde.KWin`, `dbus:org.kde.kded`, `dbus:org.kde.kglobalaccel`, `dbus:org.kde.klauncher`, `dbus:org.kde.krunner`, `dbus:org.kde.ksmserver`, `dbus:org.kde.kwalletd5`, `dbus:org.kde.kwalletd6`, `dbus:org.kde.plasmashell`, `dbus:ca.desrt.dconf`
 - **If it breaks:** A desktop that adds a new launcher service: add it to DANGEROUS_BUS_NAMES (sam-core permissions.rs) and to the evil suite.
 
@@ -387,7 +394,7 @@ Notifications, tray icons (StatusNotifier), media keys (MPRIS), screen saver and
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [13](functions.md#13)
 - **Quick check:** none (only the tests below)
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Only the input method integration is asserted; notifications, tray, media keys and the file manager are not.)
 - **Covers:** `dbus:org.freedesktop.Notifications`, `dbus:org.freedesktop.StatusNotifierItem`, `dbus:org.kde.StatusNotifierItem`, `dbus:org.kde.StatusNotifierWatcher`, `dbus:org.mpris.MediaPlayer2.[*]`, `dbus:org.freedesktop.ScreenSaver`, `dbus:org.freedesktop.PowerManagement`, `dbus:org.freedesktop.FileManager1`
 - **If it breaks:** A renamed service only loses that integration. Update bus_names in sam-core permissions.rs.
 
@@ -399,19 +406,19 @@ xdg-desktop-portal offers the interfaces SAM allows (file chooser, open URI, inp
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [13](functions.md#13)
 - **Quick check:** `portal-interfaces`
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Only the installed interface descriptions are checked; a live portal call is not tested.)
 - **Covers:** `dbus:org.freedesktop.portal.[*]`, `dbus:org.freedesktop.portal.FileChooser.xml`, `path:/usr/share/dbus-1/interfaces`, `dbus:org.freedesktop.portal.Desktop`, `dbus:org.freedesktop.portal.OpenURI`, `dbus:org.freedesktop.portal.IBus`, `dbus:org.freedesktop.portal.Fcitx`
 - **If it breaks:** The probe compares the installed portal descriptions (/usr/share/dbus-1/interfaces) with what SAM allows. A removed interface only loses that feature; update portal_interfaces in permissions.rs.
 
 ## dbus-activatable
 
-Services that start on demand are listed in /usr/share/dbus-1/services and /usr/local/share/dbus-1/services; SAM refuses to let an app own such a name.
+Services that start on demand are listed in /usr/share/dbus-1/services, /usr/local/share/dbus-1/services and ~/.local/share/dbus-1/services; SAM refuses to let an app own such a name.
 
 - **Component:** D-Bus and desktop services ([releases](https://gitlab.freedesktop.org/dbus/dbus/-/tags))
 - **When it breaks:** SAM falls back to less access.
 - **SAM functions that rely on it:** [13](functions.md#13)
 - **Quick check:** `dbus-services-dir`
-- **Tests:** `every_hostile_appimage_fails_to_escape`
+- **Tests:** `every_hostile_appimage_fails_to_escape` (partly: That owning an activatable name is refused is not tested against a real service folder.)
 - **Covers:** `path:/usr/share/dbus-1/services`, `path:/usr/local/share/dbus-1/services`
 - **If it breaks:** If services move elsewhere, add the folder in host.rs so owning them stays refused.
 
@@ -423,7 +430,7 @@ systemd-run and flatpak-spawn are the host tools that start programs outside a s
 - **When it breaks:** nothing breaks: the assumption only ever narrows access.
 - **SAM functions that rely on it:** [16](functions.md#16)
 - **Quick check:** none (only the tests below)
-- **Tests:** `every_hostile_appimage_fails_to_escape`
+- **Tests:** `every_hostile_appimage_fails_to_escape` (fully)
 - **Covers:** `path:/usr/bin/systemd-run`, `path:/usr/bin/flatpak-spawn`, `option:--scope`, `option:--unit`, `option:--user`
 - **If it breaks:** A new tool of this kind still needs a blocked D-Bus service to act; add a stand-in for it too and an evil-suite case.
 
@@ -435,19 +442,19 @@ Printing is at /run/cups/cups.sock, the SSH agent at SSH_AUTH_SOCK, and removabl
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [10](functions.md#10), [15](functions.md#15)
 - **Quick check:** none (only the tests below)
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `files_and_folders_named_on_the_command_line`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `files_and_folders_named_on_the_command_line` (partly: Printing, the SSH agent and removable drives are not tested in CI.)
 - **Covers:** `path:/run/cups/cups.sock`, `env:SSH_AUTH_SOCK`, `path:/media`, `path:/media/`, `path:/mnt`, `path:/run/media`, `path:/run/media/`
 - **If it breaks:** A moved socket or mount point only loses that feature.
 
 ## xdg-folders
 
-The home folder, user name, XDG base folders, the desktop's name, the search path and the language come from these variables, following the XDG specifications.
+The home folder, user name, XDG base folders, the desktop's name, the search path and the language come from these variables, following the XDG specifications; the folders for documents, downloads and the rest come from ~/.config/user-dirs.dirs.
 
 - **Component:** freedesktop.org conventions (XDG folders, menus) ([releases](https://specifications.freedesktop.org/))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [1](functions.md#1), [37](functions.md#37), [38](functions.md#38)
 - **Quick check:** none (only the tests below)
-- **Tests:** `old_formats_are_migrated_and_kept`
-- **Covers:** `env:HOME`, `env:USER`, `env:PATH`, `env:XDG_CONFIG_HOME`, `env:XDG_DATA_HOME`, `env:XDG_DATA_DIRS`, `env:XDG_CURRENT_DESKTOP`, `env:LANGUAGE`, `env:NO_COLOR`
+- **Tests:** `old_formats_are_migrated_and_kept` (partly: Covered indirectly through SAM's own folders; XDG variables pointing elsewhere are not tested.)
+- **Covers:** `path:/run/user/`, `env:HOME`, `env:USER`, `env:PATH`, `env:XDG_CONFIG_HOME`, `env:XDG_DATA_HOME`, `env:XDG_DATA_DIRS`, `env:XDG_CURRENT_DESKTOP`, `env:LANGUAGE`, `env:NO_COLOR`
 - **If it breaks:** These are long-stable standards; a change would show in SAM's own folders and menu entries.
 

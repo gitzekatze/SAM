@@ -801,6 +801,19 @@ impl Section<'_> {
         for e in etc {
             ro_follow(a, &Path::new("/etc").join(e));
         }
+        // openSUSE (and others following the "hermetic /usr" idea) keep the
+        // vendor defaults of these files in /usr/etc and leave /etc for the
+        // administrator's changes; glibc reads them from there. Only these
+        // files, never all of /usr/etc (contract etc-identity-and-names).
+        for e in [
+            "nsswitch.conf",
+            "services",
+            "protocols",
+            "gai.conf",
+            "host.conf",
+        ] {
+            ro_follow(a, &Path::new("/usr/etc").join(e));
+        }
         // The system's font cache: only names, paths and properties of the
         // fonts above. Without it every app builds its own on its first
         // start, which takes half a minute with many fonts (WezTerm: 35 s

@@ -139,6 +139,7 @@ fn version_of(program: &str) -> Option<String> {
     let args: &[&str] = match program {
         "unsquashfs" => &["-version"],
         "strace" => &["-V"],
+        "Xwayland" => &["-version"],
         _ => &["--version"],
     };
     let text = output(program, args)?;
@@ -259,13 +260,13 @@ fn probe(name: &str, host: &HostInfo) -> (State, String) {
             }
         }
         "name-resolution" => {
-            if ["/etc/hosts", "/etc/nsswitch.conf"]
-                .iter()
-                .all(|f| Path::new(f).exists())
-            {
-                holds("/etc/hosts and /etc/nsswitch.conf are there")
-            } else {
-                broken("/etc/hosts or /etc/nsswitch.conf is missing".into())
+            // openSUSE keeps the vendor default in /usr/etc.
+            let nss = ["/etc/nsswitch.conf", "/usr/etc/nsswitch.conf"]
+                .into_iter()
+                .find(|f| Path::new(f).exists());
+            match (Path::new("/etc/hosts").exists(), nss) {
+                (true, Some(n)) => holds(&format!("/etc/hosts and {n} are there")),
+                _ => broken("/etc/hosts, or nsswitch.conf in /etc or /usr/etc, is missing".into()),
             }
         }
         "dbus-services-dir" => {

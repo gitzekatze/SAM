@@ -37,8 +37,16 @@ jobs:
 
       # Bubblewrap inside the container needs user namespaces, which
       # Ubuntu's AppArmor restricts on the runner itself.
-      - name: Allow user namespaces on the runner
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # GitHub's machine runs Ubuntu, whose AppArmor rules for pasta also
+      # apply inside the container (same kernel) and stop it from reading
+      # /proc/sys/net (found on the first run). They belong to the runner,
+      # not to the distribution under test, so they are lifted here.
+      - name: Allow user namespaces and pasta on the runner
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          for p in /etc/apparmor.d/*passt* /etc/apparmor.d/*pasta*; do
+            [ -f "$p" ] && sudo apparmor_parser -R "$p" || true
+          done
 
       - name: Check the contracts on ${{ matrix.name }}
         run: |
