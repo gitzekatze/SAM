@@ -33,15 +33,21 @@ if [ "${SAM_SESSION:-broadway}" = kwin ]; then
     kwin_wayland --virtual --no-lockscreen --no-global-shortcuts --socket samtest-wl --width 1180 --height 800 >"$out/kwin.log" 2>&1 & disp=$!
     # GL instead of Vulkan: Vulkan layers installed by the user print warnings.
     export WAYLAND_DISPLAY=samtest-wl GDK_BACKEND=wayland GSK_RENDERER=gl GDK_DISABLE=vulkan
-    sleep 3
 elif [ "${SAM_SESSION:-broadway}" = mutter ]; then
     mutter --headless --wayland --no-x11 --virtual-monitor 1180x800 --wayland-display samtest-wl >"$out/mutter.log" 2>&1 & disp=$!
     export WAYLAND_DISPLAY=samtest-wl GDK_BACKEND=wayland GSK_RENDERER=gl GDK_DISABLE=vulkan
-    sleep 3
 else
     gtk4-broadwayd :17 >/dev/null 2>&1 & disp=$!
     export GDK_BACKEND=broadway BROADWAY_DISPLAY=:17
     sleep 1
+fi
+# Wait until the compositor accepts windows: a fixed pause was too short for
+# Mutter's first start on a fresh machine (about 4.5 seconds).
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    i=0
+    while [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+    [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] || echo "session.sh: the compositor did not start within 30 seconds" >&2
+    sleep 0.5
 fi
 if [ -z "${REAL_XDG:-}" ]; then
     mkdir -p "$out/xdg-config/gtk-4.0"
