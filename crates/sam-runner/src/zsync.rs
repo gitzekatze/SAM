@@ -13,6 +13,8 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+// MD4 only because the zsync format checks blocks with it; the whole file is
+// then checked (SHA-1) and its signature compared.
 use md4::{Digest as _, Md4};
 use sha1::Sha1;
 

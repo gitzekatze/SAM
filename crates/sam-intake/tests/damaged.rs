@@ -2,6 +2,7 @@
 //! crates/sam-runner/tests/fuzz.rs) made the SquashFS reader panic. Reading
 //! names and icons runs in SAM's own process for every AppImage in the
 //! searched folders, so one such file stopped the whole list from loading.
+#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
 
 use std::path::PathBuf;
 

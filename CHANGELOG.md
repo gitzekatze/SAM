@@ -9,6 +9,32 @@ version.
 
 ## Unreleased
 
+### Security and reliability (from an outside code audit)
+
+- **A sandbox with "This computer only" could outlive SAM.** When SAM's
+  launcher was killed, pasta (which sits between SAM and the sandbox in this
+  mode) kept running, and the app with it. The process SAM starts now dies
+  with the launcher in every mode; a test kills the launcher hard and checks
+  that nothing of the sandbox survives.
+- A test now proves that with "This computer only" a listed port on your
+  computer is reachable and an unlisted one is not.
+- Desktop services are shared with a sandbox only when they are real
+  sockets, so a wrong session variable can never put an ordinary file into
+  the sandbox.
+- A malformed internal pasta command is refused with an error instead of a
+  crash.
+- No `.unwrap()` outside tests anymore (a lint enforces it): every possible
+  failure is handled, or its `expect` says why it cannot happen.
+- SHA-1 and MD4, which the zsync update format prescribes, are confined to
+  the update code by a test; the threat model states what updates of
+  unsigned apps can and cannot promise.
+
+### First start
+
+- The app page shows the settings first; saving a preset comes last.
+- The "Bubblewrap" tag appears only when the sandbox cannot run.
+- The filter says "Not sandboxed", like the list.
+
 ### Website
 
 - Every page has a breadcrumb trail, Previous and Next links that go round

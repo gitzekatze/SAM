@@ -34,7 +34,7 @@ fn time(runs: usize, mut f: impl FnMut() -> Result<()>) -> Result<(f64, f64)> {
         f()?;
         v.push(t.elapsed().as_secs_f64() * 1000.0);
     }
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v.sort_by(f64::total_cmp);
     Ok((v[v.len() / 2], v[0]))
 }
 

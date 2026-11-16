@@ -3,6 +3,7 @@
 //! depend on host hardware or services (GPU, gamepads, PipeWire, Wayland, …)
 //! only assert when the host has them. Uses a fake `$HOME`. Skipped when
 //! bubblewrap cannot run here.
+#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
 
 use std::collections::HashMap;
 use std::fs;
@@ -49,6 +50,13 @@ touch "$HOME/marker" 2>/dev/null
 yn '[ -e /usr/share/sam-matrix-never ] || [ -d /usr/include ]' FULL_USR
 yn 'unshare -U true' USERNS
 yn '[ -d /sys/class ]' SYSFS
+# Services on the host's loopback: one port listed in network.host_ports, one not.
+tcp() { bash -c "exec 3<>/dev/tcp/127.0.0.1/$1" 2>/dev/null; }
+yn 'command -v bash' HAVE_BASH
+if [ -n "${SAM_MATRIX_PORT_LISTED:-}" ]; then
+  yn 'tcp "$SAM_MATRIX_PORT_LISTED"' PORT_LISTED
+  yn 'tcp "$SAM_MATRIX_PORT_UNLISTED"' PORT_UNLISTED
+fi
 echo "END=1"
 [ "$1" = sleep ] && sleep 3
 exit 0
@@ -364,10 +372,31 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let r = launch("localhost-old-pasta", p);
         assert_eq!(r["NET"], "lo,", "no network at all with an old pasta");
     } else if host.tools_extra_pasta() {
+        // Two services on the host's loopback: the app reaches the one whose
+        // port is listed, and not the other ("Other local services stay
+        // unreachable").
+        let listed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let unlisted = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let listed_port = listed.local_addr().unwrap().port();
+        std::env::set_var("SAM_MATRIX_PORT_LISTED", listed_port.to_string());
+        std::env::set_var(
+            "SAM_MATRIX_PORT_UNLISTED",
+            unlisted.local_addr().unwrap().port().to_string(),
+        );
         let mut p = base();
         p.network.mode = NetworkMode::Localhost;
+        p.network.host_ports = vec![listed_port.to_string()];
+        p.environment.passthrough.extend([
+            "SAM_MATRIX_PORT_LISTED".into(),
+            "SAM_MATRIX_PORT_UNLISTED".into(),
+        ]);
         let r = launch("localhost", p);
         assert!(r["NET"].contains("lo"), "this computer only: {}", r["NET"]);
+        if r["HAVE_BASH"] == "yes" {
+            assert_eq!(r["PORT_LISTED"], "yes", "a listed host port is reachable");
+            assert_eq!(r["PORT_UNLISTED"], "no", "an unlisted host port is not");
+        }
+        drop((listed, unlisted));
         let rec = last.borrow().clone().unwrap();
         assert!(!rec.setup_failed, "bwrap status reached SAM through pasta");
         if sam_runner::find_helper().is_some() {

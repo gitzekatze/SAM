@@ -1,4 +1,5 @@
 //! An AppImage built for another processor gets no sandbox.
+#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
 
 use std::fs;
 

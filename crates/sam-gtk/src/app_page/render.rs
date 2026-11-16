@@ -219,7 +219,11 @@ impl AppPage {
             self.sandbox_badge.set_tooltip_text(Some(&crate::i18n::tr(
                 "Bubblewrap cannot run on this system; see Diagnostics",
             )));
+            self.sandbox_badge.set_visible(true);
         } else {
+            // The technology's name tells a newcomer nothing; the tag shows
+            // only when the sandbox cannot run.
+            self.sandbox_badge.set_visible(false);
             util::set_badge(&self.sandbox_badge, "Bubblewrap", "blue");
             self.sandbox_badge.set_tooltip_text(Some(&crate::i18n::tr(
                 "The sandbox technology: Bubblewrap gives the app its own view of the system with only the folders, devices and services allowed below",

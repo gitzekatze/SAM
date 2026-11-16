@@ -5,6 +5,7 @@
 //! checksum is refused and leaves nothing behind; plain HTTP is refused.
 //!
 //! Needs python3, openssl, objcopy and curl; skipped without them.
+#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
 
 use std::fs;
 use std::io::{BufRead, BufReader};

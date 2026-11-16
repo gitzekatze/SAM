@@ -1,6 +1,7 @@
 //! The overview flow: AppImages are listed before they have a sandbox; only
 //! "create sandbox" adds SAM's menu entry, optionally hiding an existing
 //! unsandboxed one, and removing the sandbox puts that entry back.
+#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
 
 use std::fs;
 

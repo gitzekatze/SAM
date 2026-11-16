@@ -2,6 +2,7 @@
 //! sandbox that gives the app more than its settings say. Uses a fake
 //! `$HOME`. Skipped when Bubblewrap cannot run here or SAM's helper
 //! (sam-jail-run) is not on PATH.
+#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
 
 use std::fs;
 

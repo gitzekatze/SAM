@@ -1,5 +1,6 @@
 //! The command line speaks the user's language: the German catalog is
 //! compiled from po/de.po and the real `sam-jail` binary uses it.
+#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
 
 use std::path::Path;
 use std::process::Command;

@@ -13,6 +13,7 @@
 //!
 //! Uses a fake `$HOME`. Skipped when Bubblewrap cannot run, or when
 //! sam-jail-run (which applies Landlock and seccomp) or python3 is missing.
+#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
 
 use std::collections::HashMap;
 use std::fs;

@@ -2,6 +2,7 @@
 //! folder) returns to its old place, the newer file is kept for switching
 //! again, settings stay. The download itself is tested against a local
 //! HTTPS server in update_server.rs.
+#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
 
 use std::fs;
 

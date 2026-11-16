@@ -104,7 +104,13 @@ fn render(md: &str, root: &gtk::Box) {
     let mut item_text: Vec<String> = Vec::new();
     let mut item_shown: Vec<bool> = Vec::new();
 
-    let push = |frames: &Vec<Frame>, w: &gtk::Widget| frames.last().unwrap().container.append(w);
+    let push = |frames: &Vec<Frame>, w: &gtk::Widget| {
+        frames
+            .last()
+            .expect("the guide's first frame stays on the stack")
+            .container
+            .append(w)
+    };
 
     for ev in parser {
         match ev {

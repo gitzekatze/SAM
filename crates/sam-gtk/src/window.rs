@@ -109,7 +109,10 @@ impl App {
         window.set_content(Some(&toasts));
         // px, not sp: libadwaita 1.5 (Ubuntu 24.04) did not apply an `sp`
         // condition here, so narrow windows kept both columns and overflowed.
-        let bp = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 720px").unwrap());
+        let bp = adw::Breakpoint::new(
+            adw::BreakpointCondition::parse("max-width: 720px")
+                .expect("a fixed breakpoint condition parses"),
+        );
         bp.add_setter(&split, "collapsed", Some(&true.to_value()));
         window.add_breakpoint(bp);
 
@@ -207,7 +210,7 @@ impl App {
                                 "config",
                                 "set",
                                 "general.scan_directories",
-                                &serde_json::to_string(&dirs).unwrap(),
+                                &serde_json::to_string(&dirs).expect("a list of paths serializes"),
                             ],
                             None,
                         )
@@ -607,7 +610,7 @@ impl App {
         for (name, label) in [
             ("all", crate::i18n::n_("All")),
             ("sandboxed", crate::i18n::n_("Sandboxed")),
-            ("unsandboxed", crate::i18n::n_("Unsandboxed")),
+            ("unsandboxed", crate::i18n::n_("Not sandboxed")),
         ] {
             let b = gtk::ToggleButton::builder()
                 .label(tr(label))
@@ -710,7 +713,10 @@ impl App {
             let (Some(me), Some(row)) = (w.upgrade(), row) else {
                 return;
             };
-            let sb = me.sidebar.get().unwrap();
+            let sb = me
+                .sidebar
+                .get()
+                .expect("the sidebar is set when the window is built");
             if sb.selecting.get() {
                 return;
             }
@@ -917,12 +923,12 @@ impl App {
         glib::spawn_future_local(async move {
             me.set_config(
                 "general.scan_directories",
-                &serde_json::to_string(&dirs).unwrap(),
+                &serde_json::to_string(&dirs).expect("a list of paths serializes"),
             )
             .await;
             me.set_config(
                 "general.scan_files",
-                &serde_json::to_string(&files).unwrap(),
+                &serde_json::to_string(&files).expect("a list of paths serializes"),
             )
             .await;
             me.refresh_apps().await;
@@ -1335,14 +1341,14 @@ impl App {
             if !new_dirs.is_empty() {
                 me.set_config(
                     "general.scan_directories",
-                    &serde_json::to_string(&dirs).unwrap(),
+                    &serde_json::to_string(&dirs).expect("a list of paths serializes"),
                 )
                 .await;
             }
             if !new_files.is_empty() {
                 me.set_config(
                     "general.scan_files",
-                    &serde_json::to_string(&files).unwrap(),
+                    &serde_json::to_string(&files).expect("a list of paths serializes"),
                 )
                 .await;
             }

@@ -220,7 +220,7 @@ impl AppPage {
             .build();
         let narrow = adw::Breakpoint::new(
             adw::BreakpointCondition::parse(&format!("max-width: {}px", HERO_SIDE_BY_SIDE))
-                .unwrap(),
+                .expect("a fixed breakpoint condition parses"),
         );
         narrow.add_setter(
             &top_buttons,
@@ -277,7 +277,6 @@ impl AppPage {
         // (and stays hidden otherwise).
         pref.add(&findings);
         pref.add(&hints);
-        pref.add(&preset_group);
         editor.add_to(&pref);
 
         // Launching: how SAM starts this app.
@@ -341,6 +340,9 @@ impl AppPage {
         menu_group.add(&sam_menu_row);
         menu_group.add(&hide_row);
         pref.add(&menu_group);
+        // Saving a preset is for later: it comes after every setting, so a
+        // first look at an app starts with what it may do.
+        pref.add(&preset_group);
 
         // Sandbox check: start the sandbox with a probe and confirm every setting.
         let check_group = adw::PreferencesGroup::builder()

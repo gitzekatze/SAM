@@ -548,6 +548,24 @@ pub fn run(
     let channels = StatusChannels::new(&prepared, host)?;
     let mut cmd = Command::new(&prepared.command.program);
     cmd.args(channels.args.as_ref().unwrap_or(&prepared.command.args));
+    // The sandbox dies with this launcher, however the launcher ends (even
+    // SIGKILL, when no clean-up code runs). Bubblewrap's --die-with-parent
+    // covers the processes inside; this covers the process started here,
+    // which is pasta with "This computer only": without it pasta, and with
+    // it the sandbox, would outlive the launcher.
+    let launcher = std::process::id();
+    // SAFETY: runs between fork and exec and calls only prctl, getppid and
+    // _exit, which are async-signal-safe.
+    unsafe {
+        cmd.pre_exec(move || {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+            // The launcher may have died before prctl took effect.
+            if libc::getppid() as u32 != launcher {
+                libc::_exit(1);
+            }
+            Ok(())
+        });
+    }
     // The app never gets the user's terminal itself (see `pty`).
     let mode = prepared.terminal;
     let pty = match mode {
@@ -868,37 +886,49 @@ impl StatusChannels {
             if with_helper {
                 ch.helper_status = Some(open_fifo_reader(&helper_fifo)?);
             }
-            let args = &command.args;
-            let sep = args
-                .iter()
-                .position(|a| a == "--")
-                .context(sam_core::i18n::tr("pasta command without '--'"))?;
-            let mut out: Vec<String> = args[..=sep].to_vec();
-            out.extend([
-                "/bin/sh".into(),
-                "-c".into(),
-                r#"exec 3>"$1"; if [ -n "$2" ]; then exec 4>"$2"; fi; shift 2; exec "$@""#.into(),
-                "sh".into(),
-                status_fifo.display().to_string(),
-                if with_helper {
-                    helper_fifo.display().to_string()
-                } else {
-                    String::new()
-                },
-                args[sep + 1].clone(),
-            ]);
-            out.extend(with_status_options(
-                &args[sep + 2..],
-                3,
-                with_helper.then_some(4),
-            ));
-            ch.args = Some(out);
+            ch.args = Some(pasta_with_status(
+                &command.args,
+                &status_fifo,
+                with_helper.then_some(helper_fifo.as_path()),
+            )?);
         }
         Ok(ch)
     }
 }
 
 /// bwrap's own arguments with the status options inserted.
+/// The pasta command with bwrap's status pipes opened inside pasta's
+/// namespace: `pasta … -- PROG ARGS…` becomes `pasta … -- /bin/sh -c '…'
+/// PROG ARGS…` with the status options added to PROG's arguments. A command
+/// without a program after `--` is refused, never indexed past its end.
+fn pasta_with_status(
+    args: &[String],
+    status_fifo: &Path,
+    helper_fifo: Option<&Path>,
+) -> Result<Vec<String>> {
+    let sep = args
+        .iter()
+        .position(|a| a == "--")
+        .context(sam_core::i18n::tr("pasta command without '--'"))?;
+    let (prog, rest) = args[sep + 1..].split_first().context(sam_core::i18n::tr(
+        "pasta command without a program after '--'",
+    ))?;
+    let mut out: Vec<String> = args[..=sep].to_vec();
+    out.extend([
+        "/bin/sh".into(),
+        "-c".into(),
+        r#"exec 3>"$1"; if [ -n "$2" ]; then exec 4>"$2"; fi; shift 2; exec "$@""#.into(),
+        "sh".into(),
+        status_fifo.display().to_string(),
+        helper_fifo
+            .map(|p| p.display().to_string())
+            .unwrap_or_default(),
+        prog.clone(),
+    ]);
+    out.extend(with_status_options(rest, 3, helper_fifo.map(|_| 4)));
+    Ok(out)
+}
+
 fn with_status_options(
     bwrap_args: &[String],
     status_fd: i32,
@@ -1196,6 +1226,37 @@ pub fn tail(path: &Path, max_lines: usize) -> String {
     };
     let lines: Vec<&str> = text.lines().collect();
     lines[lines.len().saturating_sub(max_lines)..].join("\n")
+}
+
+#[cfg(test)]
+mod pasta_status_tests {
+    use super::*;
+
+    fn v(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_pasta_command_ending_in_the_separator_is_refused_not_a_panic() {
+        let fifo = Path::new("/run/s");
+        assert!(pasta_with_status(&v(&["pasta", "--config-net", "--"]), fifo, None).is_err());
+        assert!(pasta_with_status(&v(&["pasta", "--config-net"]), fifo, None).is_err());
+    }
+
+    #[test]
+    fn the_status_shell_goes_between_the_separator_and_the_program() {
+        let out = pasta_with_status(
+            &v(&["pasta", "--", "bwrap", "--unshare-all", "--", "app"]),
+            Path::new("/run/s"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(&out[..4], &v(&["pasta", "--", "/bin/sh", "-c"]));
+        assert_eq!(out[6], "/run/s");
+        assert_eq!(out[7], "", "no helper pipe");
+        assert_eq!(out[8], "bwrap");
+        assert!(out[9..].contains(&"--unshare-all".to_string()));
+    }
 }
 
 #[cfg(test)]

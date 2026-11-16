@@ -67,3 +67,7 @@ strip = true
 [workspace.lints.clippy]
 # Every `unsafe` block says why it is correct, in a `// SAFETY:` comment.
 undocumented_unsafe_blocks = "deny"
+# No `.unwrap()` outside tests: a failure becomes an error the caller handles,
+# or an `.expect("…")` that states why it cannot happen (clippy.toml allows
+# unwrap in tests).
+unwrap_used = "deny"
