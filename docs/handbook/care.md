@@ -35,10 +35,29 @@ changelog. `scripts/new-version.sh` checks most of it itself.
 - **The test AppImages:** add new kinds of apps to the real-app sets, so SAM
   keeps opening "nearly any AppImage".
 
-## Every three years
+## The release key
 
-- **The release key expires on 2029-11-14.** Extend it before then: your
-  private guide (`SAM/personal/release-key-guide.md`), section 5.
+SAM updates itself only to AppImages signed with the release key
+(`AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6`). The secret part and its
+passphrase never go into the repository, the chat or GitHub.
+
+- **Keep a backup** of the secret key and its revocation certificate
+  somewhere safe and offline, for example a password manager or a USB stick
+  in a drawer.
+- **It expires on 2029-11-14.** Extend it before then, then publish the
+  extended public key (`sam-release-key.asc` in the repository) with the
+  next release:
+
+  ```sh
+  gpg --quick-set-expire AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 3y
+  gpg --armor --export AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 > sam-release-key.asc
+  ```
+
+- **If it is lost or stolen:** publish the revocation certificate, make a new
+  key, put its fingerprint into `RELEASE_KEYS`
+  (`crates/sam-runner/src/release_key.rs`) and release a new version signed
+  with the old key if you still have it. Without the old key, people must
+  download the new version by hand; say so in a security advisory.
 
 ## When something goes wrong
 
@@ -47,5 +66,5 @@ changelog. `scripts/new-version.sh` checks most of it itself.
 | CI is red on a pull request | read the red step's last lines; fix on the branch; ask Claude with the link |
 | CI is red on `main` | usually an outside change; open an issue and look at it before the next release |
 | a security report arrives | do not discuss it publicly; reproduce, fix, release, publish the advisory |
-| the release key is lost or stolen | your private guide, section 7 |
+| the release key is lost or stolen | [The release key](#the-release-key), above |
 | you lost track | start at the [handbook's first page](index.md), "What to do next" |

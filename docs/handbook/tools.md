@@ -1,7 +1,7 @@
 # Your tools
 
 Every command SAM's maintenance uses: what it does, when to use it and why
-it exists. Run them in `SAM/sam`.
+it exists. Run them in your clone of the repository.
 
 ## Everyday
 
@@ -26,8 +26,7 @@ it exists. Run them in `SAM/sam`.
 | `scripts/release.sh X.Y.Z` | version everywhere, all tests, signed tag (part of the above) |
 | `make report` | the version report: tests, coverage, speed, compared with the last one |
 
-The release key and its passphrase are explained in your private guide
-(`SAM/personal/release-key-guide.md`).
+The release key itself is described in [Keeping SAM healthy](care.md#the-release-key).
 
 ## Deeper checks
 
@@ -54,7 +53,6 @@ These are written by scripts; never edit them by hand.
 | `THIRD-PARTY-LICENSES.md` | `scripts/third-party-licenses.py` |
 | `data/man/` | `make man` |
 | the website | `scripts/site.py` (on GitHub, by the Pages workflow; `make site` locally) |
-| your copy with this handbook | `make handbook` (`scripts/site.py --private`, never published) |
 
 ## On GitHub
 

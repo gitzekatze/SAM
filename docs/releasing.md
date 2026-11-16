@@ -15,7 +15,7 @@ the steps; the list says what it does and what stays a person's job.
    ```sh
    # Through a guard: a mutant that breaks a loop can write without end.
    cargo install --locked cargo-mutants
-   cargo mutants -p sam-sandbox -p sam-runner -p sam-intake -p sam-detect --test-workspace=true -j 6 --timeout 120 -o ../claude/mutants
+   cargo mutants -p sam-sandbox -p sam-runner -p sam-intake -p sam-detect --test-workspace=true -j 6 --timeout 120 -o target/mutants
    ```
 
 3. **Real apps:** the 120-AppImage test set runs without a new failure

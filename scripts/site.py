@@ -4,14 +4,10 @@ function map, the test library and the version reports. Nothing on the site
 is written by hand except the home page text below, so it never drifts from
 the repository. The Pages workflow runs it on every change to main.
 
-    python3 scripts/site.py [OUTDIR]              the public website (default: target/site)
-    python3 scripts/site.py --private [OUTDIR]    the same plus the maintainer
-                                                  handbook, for the maintainer's
-                                                  own computer (default: target/handbook)
+    python3 scripts/site.py [OUTDIR]        (default: target/site)
 
-The public website has two sections, Use SAM and Trust SAM. The handbook
-(Maintain SAM) is never published there: `make handbook` builds the private
-copy and opens it.
+The website has three sections: Use SAM, Trust SAM and Maintain SAM (the
+maintainer handbook).
 
 Needs the `markdown` package (python3-markdown, or pip install markdown). Links between documents
 become links between pages; links to code go to GitHub. The site loads
@@ -30,9 +26,7 @@ import tomllib
 import markdown
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-PRIVATE = "--private" in sys.argv[1:]
-_args = [a for a in sys.argv[1:] if a != "--private"]
-OUT = pathlib.Path(_args[0]) if _args else ROOT / "target" / ("handbook" if PRIVATE else "site")
+OUT = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "target" / "site"
 REPO = "https://github.com/gitzekatze/SAM"
 
 # Section, page path on the site, source document, title in navigation.
@@ -50,11 +44,12 @@ PAGES = [
     ("trust", "trust/architecture.html", "docs/architecture.md", "Architecture"),
     ("use", "use/changelog.html", "CHANGELOG.md", "What's new"),
 ]
-# The maintainer handbook: only in the private build (--private).
+# The maintainer handbook.
 HANDBOOK = [
     ("maintain", "maintain/index.html", "docs/handbook/index.md", "Start here"),
     ("maintain", "maintain/github.html", "docs/handbook/github.md", "How GitHub works"),
     ("maintain", "maintain/workflow.html", "docs/handbook/workflow.md", "Everyday work"),
+    ("maintain", "maintain/tips.html", "docs/handbook/tips.md", "Updating SAM and the repository"),
     ("maintain", "maintain/tools.html", "docs/handbook/tools.md", "Your tools"),
     ("maintain", "maintain/releasing.html", "docs/releasing.md", "Releasing"),
     ("maintain", "maintain/care.html", "docs/handbook/care.md", "Keeping SAM healthy"),
@@ -63,8 +58,7 @@ HANDBOOK = [
     ("maintain", "maintain/packaging.html", "docs/packaging.md", "Packaging"),
     ("maintain", "maintain/contributing.html", "CONTRIBUTING.md", "Contributing"),
 ]
-if PRIVATE:
-    PAGES += HANDBOOK
+PAGES += HANDBOOK
 SOURCE_TO_PAGE = {src: page for _, page, src, _ in PAGES}
 SOURCE_TO_PAGE["README.md"] = "index.html"
 SOURCE_TO_PAGE["DEVELOPMENT.md"] = "trust/dashboard.html"
@@ -77,7 +71,7 @@ PAGE_ICONS = {
     "trust/functions.html": "check", "trust/tests.html": "flask", "trust/mutation-testing.html": "shuffle",
     "trust/security-review.html": "doc", "trust/testing.html": "flask", "trust/architecture.html": "layers",
     "use/changelog.html": "clock",
-    "maintain/index.html": "flag", "maintain/github.html": "branch", "maintain/workflow.html": "flow", "maintain/tools.html": "wrench",
+    "maintain/index.html": "flag", "maintain/github.html": "branch", "maintain/workflow.html": "flow", "maintain/tips.html": "undo", "maintain/tools.html": "wrench",
     "maintain/releasing.html": "tag", "maintain/care.html": "heart",
     "maintain/translating.html": "globe", "maintain/json-interface.html": "code",
     "maintain/packaging.html": "box", "maintain/contributing.html": "users",
@@ -91,9 +85,7 @@ def section_pages(section):
              "trust": [("trust/index.html", "Overview"), ("trust/dashboard.html", "Dashboard")]}.get(section, [])
     return extra + [x for x in pages if x[0] not in dict(extra)]
 SECTIONS = [("index.html", "Home", None), ("use/index.html", "Use SAM", "use"),
-            ("trust/index.html", "Trust SAM", "trust")]
-if PRIVATE:
-    SECTIONS.append(("maintain/index.html", "Maintain SAM", "maintain"))
+            ("trust/index.html", "Trust SAM", "trust"), ("maintain/index.html", "Maintain SAM", "maintain")]
 
 
 def rel(from_page, to_page):
@@ -178,7 +170,7 @@ def shell(page, title, body, section=None, toc=None, source=None):
 </div></header>
 <main>{content}</main>
 <footer><div class="wrap"><span>SAM - Sandboxed AppImage Manager · <a href="{REPO}/blob/main/LICENSE">GPL-3.0-or-later</a></span>
-<span>{"Private copy with your handbook, built on your computer. It is not published." if PRIVATE else "No trackers, no cookies, no outside requests."} Built from the <a href="{REPO}">repository</a>.</span></div></footer>
+<span>No trackers, no cookies, no outside requests. Built from the <a href="{REPO}">repository</a>.</span></div></footer>
 {mermaid}</body></html>
 """
 
@@ -283,7 +275,8 @@ def home(f):
     doors = [
         ("use/index.html", "compass", "Use SAM", "How to install SAM, your first sandbox, and every setting explained."),
         ("trust/index.html", "shield", "Trust SAM", "The evidence: how the sandbox works, what it cannot do, and test results you can check."),
-    ] + ([("maintain/index.html", "wrench", "Maintain SAM", "Your handbook: how SAM is built, tested and released.")] if PRIVATE else [])
+        ("maintain/index.html", "wrench", "Maintain SAM", "The handbook: how to change, update and release SAM, and look after its repository."),
+    ]
     body = f"""
 <section class="hero"><div class="wrap">
 <img class="logo" src="assets/logo.svg" alt="SAM's logo: a seal on a shield">
@@ -317,7 +310,7 @@ def home(f):
 </div></div></section>
 
 <section class="band"><div class="wrap">
-<h2>Find your way</h2><p class="sub">Use SAM, or check it.</p>
+<h2>Find your way</h2><p class="sub">Use SAM, check it, or look after it.</p>
 <div class="grid">{cards(doors)}</div></div></section>
 
 <section class="band soft"><div class="wrap honest">
