@@ -152,7 +152,7 @@ fn evil(name: &'static str, script: impl Into<String>) -> Evil {
 #[test]
 fn every_hostile_appimage_fails_to_escape() {
     if !usable() {
-        eprintln!("skipping: bubblewrap, sam-jail-run, python3 with GObject (gi), gdbus or dbus-daemon not available");
+        sam_runner::contracts::skip("bubblewrap, sam-jail-run, python3 with GObject (gi), gdbus or dbus-daemon not available").unwrap_or_else(|e| panic!("{e}"));
         return;
     }
     // The outside world this test relies on (docs/contracts.md).

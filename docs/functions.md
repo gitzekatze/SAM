@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 17:32:32).
 
-**40 functions:** 26 proven by passing tests, 13 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 268 tests in all.
+**40 functions:** 25 proven by passing tests, 14 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 269 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -52,7 +52,7 @@
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 6 | ✅ 🆕 4 new tests since the report |
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 12 | ✅ |
-| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 8 | ✅ |
+| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 9 | ✅ 🆕 1 new test since the report |
 
 ## Components and their functions
 
@@ -134,7 +134,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_readable_name_is_taken_from_the_file_name`](../crates/sam-intake/src/id.rs#L81) | A readable name is taken from an AppImage's file name, without version and architecture. | ✅ |
 | [`icon_paths_cannot_climb_out_of_the_app`](../crates/sam-intake/src/peek.rs#L171) | Icon paths from the AppImage cannot climb out of the unpacked app. | ✅ |
 | [`neutralizes_markup_and_controls`](../crates/sam-core/src/util.rs#L216) | Text from an app is shown without markup or control characters, and long text is shortened. | ✅ |
-| [`markup_in_metadata_is_neutralized`](../crates/sam-runner/tests/adversarial.rs#L94) | H3: markup in an AppImage's name or comment is neutralized before it is stored or shown. | ✅ |
+| [`markup_in_metadata_is_neutralized`](../crates/sam-runner/tests/adversarial.rs#L95) | H3: markup in an AppImage's name or comment is neutralized before it is stored or shown. | ✅ |
 
 **Code:** [`sam-intake/src/metadata.rs`](../crates/sam-intake/src/metadata.rs), [`sam-intake/src/peek.rs`](../crates/sam-intake/src/peek.rs), [`sam-intake/src/id.rs`](../crates/sam-intake/src/id.rs), [`sam-core/src/util.rs`](../crates/sam-core/src/util.rs)
 
@@ -144,7 +144,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Test | Promise | Result |
 |---|---|---|
 | [`a_damaged_squashfs_image_gives_an_error_instead_of_a_crash`](../crates/sam-intake/tests/damaged.rs#L15) ⟲ | Regression: reading the name and icon of an AppImage whose SquashFS image makes the reader panic gives an error instead of crashing SAM. | ✅ |
-| [`parsers_survive_garbage`](../crates/sam-runner/tests/adversarial.rs#L131) | Robustness: malformed desktop files and files that only look like AppImages must not crash the parsers (simple deterministic fuzzing). | ✅ |
+| [`parsers_survive_garbage`](../crates/sam-runner/tests/adversarial.rs#L132) | Robustness: malformed desktop files and files that only look like AppImages must not crash the parsers (simple deterministic fuzzing). | ✅ |
 | [`changed_appimages_never_crash_or_escape_the_unpacker`](../crates/sam-runner/tests/fuzz.rs#L126) | Changed AppImages are recognized or refused, and unpacked or refused, without a panic; unpacking writes only inside its own folder and keeps its time limit. | ✅ |
 | [`changed_text_inputs_never_crash_the_parsers`](../crates/sam-runner/tests/fuzz.rs#L207) | Changed desktop files, zsync files and update information are parsed or refused without a panic. | ✅ |
 | [`changed_programs_never_crash_the_analysis`](../crates/sam-runner/tests/fuzz.rs#L238) | Changed ELF programs inside an unpacked app are analyzed or skipped without a panic. | ✅ |
@@ -228,7 +228,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`app_output_cannot_buy_dangerous_grants`](../crates/sam-runner/tests/adversarial.rs#L73) | H2/M4: suggestions derived from app output never grant escape-capable services or protected folders, and are always marked as app-derived. | ✅ |
+| [`app_output_cannot_buy_dangerous_grants`](../crates/sam-runner/tests/adversarial.rs#L74) | H2/M4: suggestions derived from app output never grant escape-capable services or protected folders, and are always marked as app-derived. | ✅ |
 
 **Code:** [`sam-runner/src/repair.rs`](../crates/sam-runner/src/repair.rs)
 
@@ -332,7 +332,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) | Every security promise holds inside a real sandbox: each breakout attempt fails. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L152) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
 | [`every_known_syscall_has_been_reviewed`](../crates/sam-runner/tests/syscalls.rs#L67) | Every known syscall has been reviewed. | 🆕 new |
-| [`the_review_list_matches_the_filter`](../crates/sam-runner/tests/syscalls.rs#L85) | The review list says which syscalls the filter blocks; it must match the filter itself, or the review would describe a filter that does not exist. | 🆕 new |
+| [`the_review_list_matches_the_filter`](../crates/sam-runner/tests/syscalls.rs#L86) | The review list says which syscalls the filter blocks; it must match the filter itself, or the review would describe a filter that does not exist. | 🆕 new |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/kernel.rs`](../crates/sam-runner/src/kernel.rs)
 
@@ -378,7 +378,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`app_metadata_cannot_add_lines_to_sams_menu_entry`](../crates/sam-intake/src/desktop.rs#L309) | SAM's menu entry starts the app only through SAM's sandbox: no value taken from the app (name, comment, categories, file types, window class) can add a line such as a second "Exec=" to it, even from a record changed outside SAM. | ✅ |
 | [`menu_entry_paths_are_quoted_against_spaces_and_dollar_signs`](../crates/sam-intake/src/desktop.rs#L344) | Program paths in menu entries are quoted so spaces and dollar signs cannot change the command. | ✅ |
 | [`launcher_mime_types_drop_hijack_targets`](../crates/sam-intake/src/desktop.rs#L378) | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | ✅ |
-| [`launcher_drops_hijack_mime_types`](../crates/sam-runner/tests/adversarial.rs#L113) | M1: a launcher never registers URL schemes, directories or executables. | ✅ |
+| [`launcher_drops_hijack_mime_types`](../crates/sam-runner/tests/adversarial.rs#L114) | M1: a launcher never registers URL schemes, directories or executables. | ✅ |
 | [`hide_and_restore_user_entry`](../crates/sam-intake/src/menu.rs#L309) | An unsandboxed menu entry in the user's folder is hidden on request and restored exactly as it was. | ✅ |
 | [`system_entry_gets_override`](../crates/sam-intake/src/menu.rs#L353) | An unsandboxed menu entry in a system folder is hidden through an entry in the user's folder, without touching the system file. | ✅ |
 | [`found_appimages_get_a_menu_entry_only_with_a_sandbox`](../crates/sam-runner/tests/overview.rs#L13) | AppImages are listed before they have a sandbox; only creating the sandbox adds SAM's menu entry and hides unsandboxed ones, and removing it puts them back. | ✅ |
@@ -586,11 +586,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L199) | SAM's own bus check reaches the session bus on a desktop. | ✅ |
 | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L215) | SAM's own D-Bus message for the bus check has the correct wire format. | ✅ |
 | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L228) | Bubblewrap versions are compared correctly, including missing or malformed version text. | ✅ |
-| [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L420) | The built in contract map parses. | 🆕 new |
-| [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L426) | Every contract probe is known. | 🆕 new |
-| [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L489) | A missing portal interface breaks the portal contract. | 🆕 new |
+| [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L437) | The built in contract map parses. | 🆕 new |
+| [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L443) | Every contract probe is known. | 🆕 new |
+| [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L518) | A missing portal interface breaks the portal contract. | 🆕 new |
 | [`the_quick_checks_notice_a_broken_or_missing_tool`](../crates/sam-jail-cli/tests/contracts.rs#L47) | The quick checks notice a broken or missing tool. | 🆕 new |
-| [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L438) | A broken contract fails a test with its name and playbook. | 🆕 new |
+| [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L455) | A broken contract fails a test with its name and playbook. | 🆕 new |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs), [`sam-runner/src/bwrap.rs`](../crates/sam-runner/src/bwrap.rs), [`sam-runner/src/dbus_check.rs`](../crates/sam-runner/src/dbus_check.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
@@ -708,6 +708,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`diagram_labels_are_quoted_so_github_draws_them`](../crates/sam-jail-cli/tests/architecture.rs#L155) | Every box and arrow label in the documents' diagrams is quoted, so GitHub draws them: unquoted brackets or semicolons inside a label are a parse error there (the component diagram once failed that way). | ✅ |
 | [`version_reports_the_json_interface`](../crates/sam-jail-cli/tests/robustness.rs#L240) | `sam-jail version` answers with the JSON interface version even when the configuration cannot be read. | ✅ |
 | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L55) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | ✅ |
+| [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L508) | Where a run must prove everything (CI), a skip is an error; locally it is a note. | 🆕 new |
 
 **Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md)
 

@@ -349,6 +349,23 @@ pub fn check_all(host: &HostInfo) -> ContractReport {
     }
 }
 
+/// For tests that need something from the computer they run on (a working
+/// Bubblewrap, kernel headers, a local HTTPS server). Locally a missing
+/// requirement skips the test with a note. Where the run must prove
+/// everything (CI sets `SAM_REQUIRE_SANDBOX=1`), it is an error instead: a
+/// protected test that silently skips would turn a run green without
+/// testing anything.
+pub fn skip(reason: &str) -> Result<(), String> {
+    if std::env::var("SAM_REQUIRE_SANDBOX").as_deref() == Ok("1") {
+        Err(format!(
+            "this run must not skip (SAM_REQUIRE_SANDBOX=1), but: {reason}"
+        ))
+    } else {
+        eprintln!("skipped: {reason}");
+        Ok(())
+    }
+}
+
 /// For the sandbox tests: checks the contracts a test relies on before it
 /// runs. A broken contract whose break makes SAM refuse to start a sandbox
 /// fails the test at once with the contract's name and playbook ("the
@@ -484,6 +501,18 @@ mod tests {
             guard_with(&report, &["no-such-contract"]).is_err(),
             "a typo is caught"
         );
+    }
+
+    /// Where a run must prove everything (CI), a skip is an error; locally it
+    /// is a note. (The only test in this crate that touches the variable.)
+    #[test]
+    fn a_required_run_does_not_skip() {
+        std::env::set_var("SAM_REQUIRE_SANDBOX", "1");
+        let required = skip("bubblewrap cannot run here");
+        std::env::remove_var("SAM_REQUIRE_SANDBOX");
+        let local = skip("bubblewrap cannot run here");
+        assert!(required.is_err(), "CI must not skip");
+        assert!(local.is_ok(), "locally a skip is fine");
     }
 
     #[test]

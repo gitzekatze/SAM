@@ -32,7 +32,7 @@ fn json(out: &std::process::Output) -> serde_json::Value {
 #[test]
 fn a_start_without_the_helper_reports_its_missing_layers() {
     if !bwrap_works() {
-        eprintln!("skipped: bubblewrap cannot run here");
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
         return;
     }
     // The outside world this test relies on (docs/contracts.md).

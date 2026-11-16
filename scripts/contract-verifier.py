@@ -19,8 +19,8 @@ Weakening means:
   code lists       an entry removed from NEVER_FORWARD_FROM_APP,
                    DANGEROUS_BUS_NAMES, SENSITIVE_PATHS, PROTECTED_RO or
                    SENSITIVE_DOTFILES
-  protected tests  a protected test file deleted, fewer tests or
-                   assertions in it, or #[ignore] added
+  protected tests  a protected test file deleted, or any line in it
+                   removed or changed (it may only gain lines)
   dependencies     a crate new in Cargo.lock
 
 Verdict: PASS, NEEDS-OWNER (exit 1 without --approved), FAIL (exit 2:
@@ -118,19 +118,23 @@ PROTECTED = [
 
 
 def protected(path, old, new):
+    """A protected test file may only gain lines: any line removed or
+    changed (whitespace aside) could weaken a test, for example
+    assert!(x) becoming assert!(x || true), and needs the owner."""
     if not old:
         return []
     if not new:
         return [f"protected test file {path} deleted"]
+    from collections import Counter
+    lines = lambda t: Counter(" ".join(l.split()) for l in t.splitlines() if l.strip())
     out = []
-    count = lambda t, pat: len(re.findall(pat, t))
-    if count(new, r"#\[test\]") < count(old, r"#\[test\]"):
-        out.append(f"{path}: fewer tests")
-    if count(new, r"\bassert") < count(old, r"\bassert"):
-        out.append(f"{path}: fewer assertions")
-    if count(new, r"#\[ignore") > count(old, r"#\[ignore"):
-        out.append(f"{path}: a test is skipped (#[ignore])")
-    return out
+    if new.count("#[ignore") > old.count("#[ignore"):
+        out.append(f"{path}: a test is switched off (#[ignore] added)")
+    gone = lines(old) - lines(new)
+    if not gone:
+        return out
+    sample = "; ".join(list(gone)[:3])
+    return out + [f"{path}: {sum(gone.values())} line(s) removed or changed (protected tests may only gain lines): {sample[:160]}"]
 
 
 def dependencies(old, new):
@@ -187,7 +191,10 @@ def self_test():
         ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() { assert!(x); assert!(y); }", "#[test]\nfn a() { assert!(x); }", 1),
         ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() { assert!(x); }", "#[test]\n#[ignore]\nfn a() { assert!(x); }", 1),
         ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() { assert!(x); }", "", 1),
-        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() { assert!(x); }", "#[test]\nfn a() { assert!(x); assert!(z); }", 0),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() {\n    assert!(x);\n}", "#[test]\nfn a() {\n    assert!(x);\n    assert!(z);\n}", 0),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() {\n    assert!(x);\n}", "#[test]\nfn a() {\n    assert!(x || true);\n}", 1),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() {\n    assert!(x);\n}", "#[test]\nfn a() {\n        assert!(x);\n}", 0),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() {\n    assert!(x);\n}", "#[test]\nfn a() {\n    assert!(x);\n}\n#[test]\nfn b() {\n    assert!(y);\n}", 0),
         ("Cargo.lock", 'name = "serde"\n', 'name = "serde"\nname = "evil-crate"\n', 1),
         ("Cargo.lock", 'name = "serde"\nname = "old"\n', 'name = "serde"\n', 0),
     ]

@@ -21,7 +21,8 @@ fn bwrap_works() -> bool {
 #[test]
 fn fake_bwrap_error_is_not_a_sandbox_failure() {
     if !bwrap_works() {
-        eprintln!("skipping: bubblewrap is not functional here");
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
         return;
     }
     let tmp = tempfile::tempdir().unwrap();
