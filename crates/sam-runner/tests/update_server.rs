@@ -214,6 +214,12 @@ fn updates_download_only_changes_check_them_and_refuse_tampering() {
         log.lines().any(|l| l.contains("bytes=")),
         "only the changed parts were downloaded:\n{log}"
     );
+    // The delta itself worked: SAM did not have to fall back to fetching
+    // the whole file (which it does when a delta goes wrong).
+    assert!(
+        !log.lines().any(|l| l.ends_with(".AppImage None")),
+        "the update was put together from the changed parts, not fetched whole:\n{log}"
+    );
     let checks = sam.check_updates(Some(&id), false).unwrap();
     assert_eq!(
         checks[0].1.state,
