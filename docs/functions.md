@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 17:32:32).
 
-**40 functions:** 27 proven by passing tests, 12 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 266 tests in all.
+**40 functions:** 26 proven by passing tests, 13 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 268 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -22,10 +22,10 @@
 | 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 8 | ✅ |
 | 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 18 | ✅ |
 | 9 | [Things an app printed can never grant it access on their own; SAM always asks.](#9) | sam-runner | 1 | ✅ |
-| 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox | 7 | ✅ |
+| 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox | 8 | ✅ 🆕 1 new test since the report |
 | 11 | [Keys, passwords and the files of your other apps stay hidden, even with full home access.](#11) | sam-sandbox, sam-core | 6 | ✅ |
 | 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | sam-runner, sam-sandbox | 5 | ✅ 🆕 2 new tests since the report |
-| 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 14 | ✅ 🆕 2 new tests since the report |
+| 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 15 | ✅ 🆕 3 new tests since the report |
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 3 | ✅ |
 | 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 4 | ✅ |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 5 | ✅ 🆕 2 new tests since the report |
@@ -246,6 +246,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L63) | Inside a real sandbox, each profile shows exactly the files and services it allows. | ✅ |
 | [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L101) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L2253) | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | ✅ |
+| [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L667) | The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | 🆕 new |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs)
 
@@ -283,7 +284,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1043) | An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | ✅ |
 | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1090) | A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | ✅ |
-| [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L673) | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | ✅ |
+| [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L710) | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | ✅ |
 | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L970) | The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | ✅ |
 | [`filtered_dbus_uses_proxy`](../crates/sam-sandbox/src/lib.rs#L1896) | The filtered desktop bus reaches the app only through SAM's proxy. | ✅ |
 | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](../crates/sam-sandbox/src/lib.rs#L1919) | The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | ✅ |
@@ -294,7 +295,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) | Every security promise holds inside a real sandbox: each breakout attempt fails. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L152) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
 | [`a_socket_counts_as_ready_only_when_it_accepts`](../crates/sam-runner/src/dbus_proxy.rs#L186) | The proxy counts as ready only when its socket accepts connections, not when the file merely exists (regression: the sandbox check sometimes found the session bus refused right after the start). | 🆕 new |
-| [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L643) | Only a real socket counts as a desktop service. | 🆕 new |
+| [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L680) | Only a real socket counts as a desktop service. | 🆕 new |
+| [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L652) | Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | 🆕 new |
 
 **Code:** [`sam-runner/src/dbus_proxy.rs`](../crates/sam-runner/src/dbus_proxy.rs), [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-core/src/permissions.rs`](../crates/sam-core/src/permissions.rs), [`sam-runner/src/kernel.rs`](../crates/sam-runner/src/kernel.rs)
 
@@ -305,7 +307,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`wayland_security_context_socket_is_used`](../crates/sam-sandbox/src/lib.rs#L1819) | With a Wayland security context, the app sees only that socket, not the desktop's own. | ✅ |
 | [`xauthority_gets_the_sandbox_display_number`](../crates/sam-sandbox/src/lib.rs#L1789) | The X11 login cookie is rewritten for the display number inside the sandbox. | ✅ |
-| [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L664) | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | ✅ |
+| [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L701) | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/wayland_ctx.rs`](../crates/sam-runner/src/wayland_ctx.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 

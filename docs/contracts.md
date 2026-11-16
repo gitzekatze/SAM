@@ -47,12 +47,12 @@ where to look.
 | [dbus-dangerous-names](#dbus-dangerous-names) | D-Bus and desktop services | Nothing breaks | fully |
 | [dbus-integrations](#dbus-integrations) | D-Bus and desktop services | Loses a feature | partly |
 | [portal-interfaces](#portal-interfaces) | xdg-desktop-portal | Loses a feature | partly |
-| [dbus-activatable](#dbus-activatable) | D-Bus and desktop services | Falls back to less | partly |
+| [dbus-activatable](#dbus-activatable) | D-Bus and desktop services | Falls back to less | fully |
 | [host-escape-tools](#host-escape-tools) | D-Bus and desktop services | Nothing breaks | fully |
 | [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 | [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 
-14 of 33 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
+15 of 33 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
 
 ## bwrap-core
 
@@ -418,7 +418,7 @@ Services that start on demand are listed in /usr/share/dbus-1/services, /usr/loc
 - **When it breaks:** SAM falls back to less access.
 - **SAM functions that rely on it:** [13](functions.md#13)
 - **Quick check:** `dbus-services-dir`
-- **Tests:** `every_hostile_appimage_fails_to_escape` (partly: That owning an activatable name is refused is not tested against a real service folder.)
+- **Tests:** `every_hostile_appimage_fails_to_escape`, `services_that_start_on_demand_are_recognized` (fully)
 - **Covers:** `path:/usr/share/dbus-1/services`, `path:/usr/local/share/dbus-1/services`
 - **If it breaks:** If services move elsewhere, add the folder in host.rs so owning them stays refused.
 
@@ -454,7 +454,7 @@ The home folder, user name, XDG base folders, the desktop's name, the search pat
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [1](functions.md#1), [37](functions.md#37), [38](functions.md#38)
 - **Quick check:** none (only the tests below)
-- **Tests:** `old_formats_are_migrated_and_kept` (partly: Covered indirectly through SAM's own folders; XDG variables pointing elsewhere are not tested.)
+- **Tests:** `old_formats_are_migrated_and_kept`, `user_folders_come_from_user_dirs_dirs` (partly: user-dirs.dirs is tested; XDG_CONFIG_HOME and XDG_DATA_HOME pointing elsewhere are not.)
 - **Covers:** `path:/run/user/`, `env:HOME`, `env:USER`, `env:PATH`, `env:XDG_CONFIG_HOME`, `env:XDG_DATA_HOME`, `env:XDG_DATA_DIRS`, `env:XDG_CURRENT_DESKTOP`, `env:LANGUAGE`, `env:NO_COLOR`
 - **If it breaks:** These are long-stable standards; a change would show in SAM's own folders and menu entries.
 
