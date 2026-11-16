@@ -155,6 +155,10 @@ fn every_hostile_appimage_fails_to_escape() {
         eprintln!("skipping: bubblewrap, sam-jail-run, python3 with GObject (gi), gdbus or dbus-daemon not available");
         return;
     }
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core", "dbus-proxy-filter", "kernel-seccomp"])
+            .unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let home = root.join("home/tester");

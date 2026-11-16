@@ -1,0 +1,88 @@
+# Early warning: SAM's contracts with the outside world, checked every night
+# on the distributions that come next. Changes reach them weeks or months
+# before most users get them, so a contract that breaks here is a warning in
+# time (docs/contracts.md). Never required for merging: it watches the
+# future, not a change. Results become issues labelled "early-warning",
+# updated instead of duplicated and closed when green again.
+name: Early warning
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: rawhide
+            image: registry.fedoraproject.org/fedora:rawhide
+          - name: debian-testing
+            image: docker.io/library/debian:testing
+          - name: ubuntu-devel
+            image: docker.io/library/ubuntu:devel
+          - name: arch
+            image: docker.io/library/archlinux:latest
+          - name: tumbleweed
+            image: registry.opensuse.org/opensuse/tumbleweed:latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      # Bubblewrap inside the container needs user namespaces, which
+      # Ubuntu's AppArmor restricts on the runner itself.
+      - name: Allow user namespaces on the runner
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Check the contracts on ${{ matrix.name }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/out-${{ matrix.name }}"
+          docker run --rm --privileged -v "$PWD:/src:ro" -v "$RUNNER_TEMP/out-${{ matrix.name }}:/out" \
+            "${{ matrix.image }}" sh /src/tests/canary/in-container.sh
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: canary-${{ matrix.name }}
+          path: ${{ runner.temp }}/out-${{ matrix.name }}
+
+  report:
+    needs: check
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: canary-*
+          path: results
+
+      # The night before, for "what changed since".
+      - name: The previous night's results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(gh run list --workflow canary.yml --status completed --limit 2 --json databaseId --jq '.[1].databaseId // empty')
+          mkdir -p previous
+          [ -z "$prev" ] || gh run download "$prev" --pattern 'canary-*' --dir previous || true
+
+      - name: Issues for what broke, closed for what is green again
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # download-artifact names the folders after the artifacts.
+          for d in results/canary-* previous/canary-*; do
+            [ -d "$d" ] && mv "$d" "$(dirname "$d")/out-${d##*/canary-}"
+          done
+          python3 scripts/canary-report.py results --previous previous

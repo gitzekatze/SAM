@@ -102,6 +102,14 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         eprintln!("skipping: bubblewrap is not functional here");
         return;
     }
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts = sam_runner::contracts::guard(&[
+        "bwrap-core",
+        "pasta-splice-only",
+        "dbus-proxy-filter",
+        "fs-layout",
+    ])
+    .unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let home = root.join("home/tester");

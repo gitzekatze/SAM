@@ -40,6 +40,9 @@ fn an_app_starts_read_only_when_its_writable_app_folder_cannot_work() {
         eprintln!("skipping: bubblewrap is not functional here");
         return;
     }
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let home = root.join("home/tester");

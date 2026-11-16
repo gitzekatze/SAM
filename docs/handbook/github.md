@@ -67,8 +67,12 @@ checked. Any change to code runs everything.
 A red cross means something failed: open the run, then the red job, and read
 the last lines of the red step. Ask Claude with a link to the run.
 
-Two more workflows run on their own: **Release** builds and tests the
-AppImages when you tag a version, and **Pages** publishes the website.
+More workflows run on their own: **Release** builds and tests the
+AppImages when you tag a version, **Pages** publishes the website, **Early
+warning** checks SAM's contracts every night on the distributions that come
+next, and **Upstream watch** reads the release notes of the projects SAM
+builds on every week. The last two open issues when something breaks; see
+[When something outside SAM changes](outside.md).
 
 ## Releases
 

@@ -10,6 +10,10 @@ unless it says so.
   publish the advisory with the fixed version ([SECURITY.md](../../SECURITY.md)).
 - **Issues:** answer questions, label bugs, close what is done. A bug report
   from SAM (`sam-jail report`) already hides personal data.
+- **Issues labelled `early-warning` or `upstream-change`:** a contract broke
+  on an upcoming distribution, or release notes mention something SAM relies
+  on. Not urgent, but early: follow the playbook in
+  [When something outside SAM changes](outside.md).
 - **Actions → the newest run on `main`:** green means all is well. Red on
   `main` means something outside SAM changed (a dependency, a distribution);
   look at it soon.
@@ -64,7 +68,7 @@ passphrase never go into the repository, the chat or GitHub.
 | What happened | What to do |
 |---|---|
 | CI is red on a pull request | read the red step's last lines; fix on the branch; ask Claude with the link |
-| CI is red on `main` | usually an outside change; open an issue and look at it before the next release |
+| CI is red on `main` | the run's summary says what changed outside SAM; follow the contract's playbook |
 | a security report arrives | do not discuss it publicly; reproduce, fix, release, publish the advisory |
 | the release key is lost or stolen | [The release key](#the-release-key), above |
 | you lost track | start at the [handbook's first page](index.md), "What to do next" |

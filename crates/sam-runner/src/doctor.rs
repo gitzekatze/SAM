@@ -711,6 +711,32 @@ pub fn bug_report(app: &Sam, e: Option<&AppEntry>, host: &HostInfo) -> String {
     for ch in system_report(app, host).checks {
         s += &format!("- [{:?}] {}: {}\n", ch.status, ch.label, ch.detail);
     }
+    // Contracts with the outside world that do not hold here, and the
+    // versions of the components: they name the part that changed.
+    let contracts = crate::contracts::check_all(host);
+    s += "\n### Contracts (docs/contracts.md)\n\n";
+    let off: Vec<_> = contracts
+        .contracts
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.state,
+                crate::contracts::State::Broken | crate::contracts::State::Absent
+            )
+        })
+        .collect();
+    if off.is_empty() {
+        s += "- every contract with a quick check holds\n";
+    }
+    for c in off {
+        s += &format!("- {:?}: {} ({})\n", c.state, c.id, c.detail);
+    }
+    let versions: Vec<String> = contracts
+        .components
+        .iter()
+        .filter_map(|v| v.version.as_ref().map(|ver| format!("{} {ver}", v.id)))
+        .collect();
+    s += &format!("- Versions: {}\n", versions.join(", "));
     if let Some(e) = e {
         s += &format!(
             "\n### App: {} ({})\n\n- Type: {}\n- Category: {}\n- State: {:?} / badge {}\n",

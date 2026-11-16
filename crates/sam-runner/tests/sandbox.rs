@@ -66,6 +66,10 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
         eprintln!("skipping: bubblewrap is not functional here");
         return;
     }
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core", "fs-layout", "etc-identity-and-names"])
+            .unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let home = root.join("home/tester");

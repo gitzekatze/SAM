@@ -10,6 +10,7 @@
 //! * [`diagnose`]: dynamic dependency fallback via strace
 
 pub mod bwrap;
+pub mod contracts;
 pub mod dbus_check;
 pub mod dbus_proxy;
 pub mod diagnose;

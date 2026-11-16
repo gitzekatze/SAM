@@ -163,6 +163,9 @@ fn updates_download_only_changes_check_them_and_refuse_tampering() {
         eprintln!("skipped: needs python3, openssl, objcopy and curl");
         return;
     }
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts =
+        sam_runner::contracts::guard(&["updates-curl"]).unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let server = start_server(tmp.path());
     let url = format!(

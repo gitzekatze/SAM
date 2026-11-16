@@ -9,6 +9,28 @@ version.
 
 ## Unreleased
 
+### Contracts with the outside world
+
+- **A contract map** (`docs/contracts.toml`, page `docs/contracts.md`): every
+  assumption SAM makes about programs, the kernel, the file system,
+  sockets, variables, desktop services and file formats, with what SAM
+  does when it breaks (always to the safe side), its tests and a playbook.
+  CI fails when the code uses something outside SAM that no contract
+  covers.
+- `sam-jail doctor --contracts` checks the contracts on any computer and
+  names the versions of the components; bug reports include it.
+- Sandbox tests check their contracts first: a failure says "CONTRACT
+  BROKEN: …" (the outside world changed) or "SAM ERROR" (SAM's own code).
+- CI records each run's outside world; a failed run lists what changed
+  since the last green one.
+- Every night SAM is built and tested on Fedora Rawhide, Debian testing,
+  Ubuntu's development release, Arch and Tumbleweed, and every week the
+  release notes of the projects it builds on are read; both open issues
+  when something SAM relies on changes.
+- Every syscall of the kernel is reviewed for the baseline filter, and a
+  test names any new one. The first, `fchroot` (Linux 7.3), was found on
+  Arch and is allowed like `chroot`.
+
 ### Security and reliability (from an outside code audit)
 
 - **A sandbox with "This computer only" could outlive SAM.** When SAM's
