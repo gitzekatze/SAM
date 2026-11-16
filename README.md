@@ -244,6 +244,7 @@ reading; this table is the same set in the repository.
 | [Threat model](docs/threat-model.md) | what SAM protects, against whom, how, and where that ends |
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |
+| [AUTOMATION.md](AUTOMATION.md) | what automation may do in this repository, its checks and the kill switch |
 | [Maintainer handbook](docs/handbook/index.md) | whoever looks after SAM: GitHub, everyday work, tools, care |
 | [Releasing](docs/releasing.md) | the checklist for a new version |
 | [Translating](docs/translating.md) | adding a language |

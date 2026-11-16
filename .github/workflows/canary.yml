@@ -62,7 +62,8 @@ jobs:
 
   report:
     needs: check
-    if: always()
+    # The kill switch (AUTOMATION.md): `off` opens and closes no issues.
+    if: always() && vars.SAM_AUTOMATION != 'off'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
