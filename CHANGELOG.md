@@ -27,6 +27,13 @@ version.
   Ubuntu's development release, Arch and Tumbleweed, and every week the
   release notes of the projects it builds on are read; both open issues
   when something SAM relies on changes.
+- The first early-warning runs found that openSUSE keeps vendor settings in
+  `/usr/etc` (the sandbox now shares those few files from there too) and
+  that GitHub's machines block pasta through AppArmor (lifted on the
+  throwaway runner). Every contract now says whether its tests cover it
+  fully or partly and what is not tested; sound, D-Bus and X11 report
+  their versions; paths built at runtime are checked; ten sandbox tests
+  check their contracts first.
 - Every syscall of the kernel is reviewed for the baseline filter, and a
   test names any new one. The first, `fchroot` (Linux 7.3), was found on
   Arch and is allowed like `chroot`.

@@ -25,6 +25,9 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
         eprintln!("skipping: bubblewrap or sam-jail-run not available");
         return;
     }
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "kernel-seccomp"])
+        .unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let home = root.join("home/tester");

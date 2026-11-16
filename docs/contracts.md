@@ -63,7 +63,7 @@ Bubblewrap builds the sandbox with these options and behaves as documented: sepa
 - **SAM functions that rely on it:** [10](functions.md#10), [11](functions.md#11), [19](functions.md#19), [20](functions.md#20)
 - **Quick check:** `bwrap-runs`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (fully)
-- **Checked first by:** `breakout.rs`, `evil.rs`, `matrix.rs`, `overlay_fallback.rs`, `sandbox.rs`, `teardown.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `layers.rs`, `matrix.rs`, `overlay_fallback.rs`, `sandbox.rs`, `stop.rs`, `teardown.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:bwrap`, `path:/usr/bin/bwrap`, `option:--unshare-user`, `option:--unshare-pid`, `option:--unshare-uts`, `option:--unshare-ipc`, `option:--unshare-cgroup-try`, `option:--unshare-net`, `option:--unshare-all`, `option:--uid`, `option:--gid`, `option:--die-with-parent`, `option:--new-session`, `option:--cap-drop`, `option:--clearenv`, `option:--setenv`, `option:--chdir`, `option:--proc`, `option:--dev`, `option:--tmpfs`, `option:--dir`, `option:--perms`, `option:--symlink`, `option:--bind`, `option:--bind-try`, `option:--ro-bind`, `option:--ro-bind-try`, `option:--dev-bind`, `option:--dev-bind-try`, `option:--remount-ro`, `option:--hostname`, `option:--json-status-fd`, `option:--seccomp`, `option:--version`, `option:-V`
 - **If it breaks:** Read the Bubblewrap release notes for the options above. A renamed option: build the old or new form from the version `bwrap --version` reports (sam-sandbox). A changed behavior: the breakout and matrix tests name the permission; fix the command in sam-sandbox/src/lib.rs.
 
@@ -236,7 +236,7 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 - **SAM functions that rely on it:** [16](functions.md#16), [17](functions.md#17)
 - **Quick check:** `seccomp`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `every_known_syscall_has_been_reviewed` (fully)
-- **Checked first by:** `breakout.rs`, `evil.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `syscall:*`
 - **If it breaks:** A filter that fails to load stops the start. When the syscall review check reports a new syscall, decide whether the baseline blocks it (kernel.rs) and add it to docs/syscalls-reviewed.txt.
 

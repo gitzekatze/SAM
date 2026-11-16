@@ -65,6 +65,9 @@ fn stop_closes_running_apps() {
         eprintln!("skipping: bubblewrap or sam-jail-run not available");
         return;
     }
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let home = root.join("home/tester");

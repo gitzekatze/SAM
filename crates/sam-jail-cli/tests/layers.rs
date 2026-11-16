@@ -35,6 +35,9 @@ fn a_start_without_the_helper_reports_its_missing_layers() {
         eprintln!("skipped: bubblewrap cannot run here");
         return;
     }
+    // The outside world this test relies on (docs/contracts.md).
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     // sam-jail alone, without sam-jail-run next to it.
