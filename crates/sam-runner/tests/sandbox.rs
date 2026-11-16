@@ -63,7 +63,8 @@ fn parse(log: &Path) -> HashMap<String, String> {
 #[test]
 fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     if !bwrap_works() {
-        eprintln!("skipping: bubblewrap is not functional here");
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
         return;
     }
     // The outside world this test relies on (docs/contracts.md).

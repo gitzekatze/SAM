@@ -62,7 +62,8 @@ fn start(app: &Sam, root: &std::path::Path, name: &str, apprun: &str) -> (String
 #[test]
 fn stop_closes_running_apps() {
     if !usable() {
-        eprintln!("skipping: bubblewrap or sam-jail-run not available");
+        sam_runner::contracts::skip("bubblewrap or sam-jail-run not available")
+            .unwrap_or_else(|e| panic!("{e}"));
         return;
     }
     // The outside world this test relies on (docs/contracts.md).

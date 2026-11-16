@@ -56,6 +56,13 @@ when the owner sets the label **`owner-approved`** on the pull request.
 Only maintainers can set labels. (GitHub does not let anyone approve their
 own pull request, so a label is used instead of a review.)
 
+Every pull request shows this as its own check, **"Needs your approval"**:
+green when nothing needs the owner, waiting with a plain list of what to
+look at when something does. To approve: open the pull request, click
+**Labels** in the right sidebar, choose **owner-approved**; the check runs
+again by itself. Claude never sets this label, although a local session
+could: the label is the owner's decision.
+
 ## Never automated
 
 Signing, tagging and publishing releases; branch protection and rulesets;
@@ -99,6 +106,13 @@ instruction.
 | A promise worn down in small steps | every weakening needs `owner-approved` |
 | Automation approving itself | merges of medium and above are the owner's; the verifier is deterministic, not an AI judgment |
 | A stolen automation token | least rights; revoke it, set the kill switch to `off` |
+
+## Making the approval binding (the owner's one-time step)
+
+The check blocks a merge only when it is required: Settings → Branches →
+the rule for `main` → Edit → "Require status checks to pass" → search
+**Needs your approval** → add it → Save changes. (It appears in the search
+after it has run once.)
 
 ## Tag protection (the owner's one-time step)
 

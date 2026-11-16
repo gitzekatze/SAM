@@ -124,7 +124,7 @@ fn killing_the_launcher_ends_the_sandbox(network: &str) {
 #[test]
 fn without_network_the_sandbox_dies_with_its_launcher() {
     if !bwrap_works() {
-        eprintln!("skipped: bubblewrap cannot run here");
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
         return;
     }
     killing_the_launcher_ends_the_sandbox("none");
@@ -132,8 +132,15 @@ fn without_network_the_sandbox_dies_with_its_launcher() {
 
 #[test]
 fn with_this_computer_only_the_sandbox_dies_with_its_launcher() {
-    if !bwrap_works() || !pasta_with_splice_only() {
-        eprintln!("skipped: bubblewrap or a pasta with --splice-only is missing");
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    if !pasta_with_splice_only() {
+        // A fair skip anywhere: without --splice-only SAM never starts
+        // "This computer only" (contract pasta-splice-only), so there is no
+        // pasta to outlive the launcher.
+        eprintln!("skipped: no pasta with --splice-only here");
         return;
     }
     killing_the_launcher_ends_the_sandbox("localhost");

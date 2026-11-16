@@ -101,7 +101,8 @@ fn runtime_has(name: &str) -> bool {
 #[test]
 fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     if !bwrap_works() {
-        eprintln!("skipping: bubblewrap is not functional here");
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
         return;
     }
     // The outside world this test relies on (docs/contracts.md).

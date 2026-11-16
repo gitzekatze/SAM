@@ -160,7 +160,8 @@ fn updates_download_only_changes_check_them_and_refuse_tampering() {
         .iter()
         .all(|t| have(t))
     {
-        eprintln!("skipped: needs python3, openssl, objcopy and curl");
+        sam_runner::contracts::skip("needs python3, openssl, objcopy and curl")
+            .unwrap_or_else(|e| panic!("{e}"));
         return;
     }
     // The outside world this test relies on (docs/contracts.md).

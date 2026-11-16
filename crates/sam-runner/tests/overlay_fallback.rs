@@ -37,7 +37,8 @@ fn parse(log: &Path) -> HashMap<String, String> {
 #[test]
 fn an_app_starts_read_only_when_its_writable_app_folder_cannot_work() {
     if !bwrap_works() {
-        eprintln!("skipping: bubblewrap is not functional here");
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
         return;
     }
     // The outside world this test relies on (docs/contracts.md).

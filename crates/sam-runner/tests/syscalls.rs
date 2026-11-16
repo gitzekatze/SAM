@@ -67,7 +67,8 @@ fn reviewed() -> BTreeSet<String> {
 #[test]
 fn every_known_syscall_has_been_reviewed() {
     let Some(kernel) = kernel_syscalls() else {
-        eprintln!("skipped: no kernel headers installed");
+        sam_runner::contracts::skip("no kernel headers installed")
+            .unwrap_or_else(|e| panic!("{e}"));
         return;
     };
     let reviewed = reviewed();
