@@ -378,7 +378,7 @@ probe = "none"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
 on_break = "feature"
 coverage = "partial"
-gaps = "That fonts, icons and certificates are visible in the sandbox is not asserted."
+gaps = "Fonts and certificates are asserted (matrix test); icons, themes, locales and graphics data are not."
 playbook = "A moved folder shows as missing fonts, icons or certificates inside apps. Add the new path next to the old one in sam-sandbox (both with -try)."
 
 [[contract]]

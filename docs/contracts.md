@@ -273,7 +273,7 @@ Shared read-only data (fonts, icons, themes, locales, certificates, graphics dri
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [10](functions.md#10), [15](functions.md#15)
 - **Quick check:** none (only the tests below)
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: That fonts, icons and certificates are visible in the sandbox is not asserted.)
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Fonts and certificates are asserted (matrix test); icons, themes, locales and graphics data are not.)
 - **Covers:** `path:/usr/share`, `path:/usr/share/`, `path:/usr/share/*`, `path:/usr/lib/dri`, `path:/etc/fonts`, `path:/etc/ld.so.cache`, `path:/etc/ld.so.conf.d`, `path:/etc/ssl/certs`, `path:/etc/vulkan`, `path:/etc/os-release`, `path:/var/cache/fontconfig`
 - **If it breaks:** A moved folder shows as missing fonts, icons or certificates inside apps. Add the new path next to the old one in sam-sandbox (both with -try).
 

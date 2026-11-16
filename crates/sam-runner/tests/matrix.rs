@@ -50,6 +50,8 @@ touch "$HOME/marker" 2>/dev/null
 yn '[ -e /usr/share/sam-matrix-never ] || [ -d /usr/include ]' FULL_USR
 yn 'unshare -U true' USERNS
 yn '[ -d /sys/class ]' SYSFS
+yn '[ -n "$(ls /usr/share/fonts 2>/dev/null)" ]' FONTS
+yn '[ -n "$(ls /etc/ssl/certs 2>/dev/null)" ]' CERTS
 # Services on the host's loopback: one port listed in network.host_ports, one not.
 tcp() { bash -c "exec 3<>/dev/tcp/127.0.0.1/$1" 2>/dev/null; }
 yn 'command -v bash' HAVE_BASH
@@ -357,6 +359,15 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     p.display.wayland = false;
     let r = launch("no-wayland", p);
     assert_eq!(r["WAYLAND"], "no");
+    // Shared system data (contract system-data): fonts and certificates are
+    // visible wherever the computer has them.
+    let has = |d: &str| fs::read_dir(d).is_ok_and(|mut e| e.next().is_some());
+    if has("/usr/share/fonts") {
+        assert_eq!(r["FONTS"], "yes", "fonts are visible in the sandbox");
+    }
+    if has("/etc/ssl/certs") {
+        assert_eq!(r["CERTS"], "yes", "certificates are visible in the sandbox");
+    }
 
     let mut p = base();
     p.display.x11 = true;

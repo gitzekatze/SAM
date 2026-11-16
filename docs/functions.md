@@ -244,7 +244,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_loaders_extra_library_folders_are_shown_read_only`](../crates/sam-sandbox/src/lib.rs#L1623) | Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | ✅ |
 | [`each_permission_adds_exactly_its_part_to_the_command`](../crates/sam-sandbox/src/lib.rs#L1846) | Each granted permission adds exactly its part to the Bubblewrap command. | ✅ |
 | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L63) | Inside a real sandbox, each profile shows exactly the files and services it allows. | ✅ |
-| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L99) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
+| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L101) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L2253) | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs)
@@ -270,7 +270,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`localhost_network_leaves_netns_to_pasta`](../crates/sam-sandbox/src/lib.rs#L1964) | With "this computer only", the network namespace is left to pasta. | ✅ |
 | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L115) | With "this computer only", the app reaches only the ports on this computer the user lists. | ✅ |
-| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L99) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
+| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L101) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 | [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L1309) | A pasta command ending in the separator is refused not a panic. | 🆕 new |
 | [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L1316) | The status shell goes between the separator and the program. | 🆕 new |
 
@@ -317,7 +317,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`sdl_gets_its_silent_driver_without_sound_access`](../crates/sam-sandbox/src/lib.rs#L1611) | Games built with SDL get a silent sound driver when sound is off, so they start instead of failing. | ✅ |
 | [`gamepads_only_exposes_joysticks`](../crates/sam-sandbox/src/lib.rs#L2021) | "Game controllers" exposes only joysticks, never keyboards or mice. | ✅ |
 | [`nvidia_modules_are_exposed_with_the_gpu`](../crates/sam-sandbox/src/lib.rs#L2039) | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | ✅ |
-| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L99) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
+| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L101) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs)
 
