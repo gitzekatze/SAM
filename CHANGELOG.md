@@ -66,6 +66,19 @@ version.
   test names any new one. The first, `fchroot` (Linux 7.3), was found on
   Arch and is allowed like `chroot`.
 
+### Two promises of the threat model kept everywhere
+
+- **Unpacking always runs inside a sandbox.** A start from the menu that
+  unpacks an app again after *Free Space* used SAM's reader without a
+  sandbox, because only the program named `sam-jail` set one up. Now every
+  SAM program uses the `sam-jail` next to it, and when no sandbox can be
+  built, SAM refuses to unpack and says why instead of unpacking
+  unprotected.
+- **An update that cannot be checked needs your consent.** When the
+  installed version was signed and checked, but the update's signature
+  cannot be checked (GnuPG missing), SAM stops and asks, as it does for a
+  changed signing key. Before, such an update was installed without asking.
+
 ### Security and reliability (from an outside code audit)
 
 - **A sandbox with "This computer only" could outlive SAM.** When SAM's

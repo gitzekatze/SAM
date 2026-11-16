@@ -35,7 +35,13 @@ id = 3
 area = "A"
 promise = "SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space."
 code = ["sam-intake/src/extract.rs", "sam-intake/src/normalize.rs", "sam-runner/src/progress.rs"]
-tests = ["unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_during_unpacking_is_recognized", "unpacking_stops_at_the_time_limit", "symlinks_pointing_outside_the_app_are_recognized", "paths_climbing_out_of_the_image_are_refused", "unpacking_removes_setuid_bits", "unpacking_stops_at_the_file_limit", "a_built_appimage_is_detected_and_unpacked_safely", "size_limit_aborts_and_cleans_up", "fractions_follow_the_step_weights", "bytes_written_are_counted", "unpacking_stops_exactly_at_its_limits", "only_an_exceeded_limit_counts_as_one", "without_consent_the_appimages_own_unpacker_never_runs"]
+tests = ["unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_during_unpacking_is_recognized", "unpacking_stops_at_the_time_limit", "symlinks_pointing_outside_the_app_are_recognized", "paths_climbing_out_of_the_image_are_refused", "unpacking_removes_setuid_bits", "unpacking_stops_at_the_file_limit", "a_built_appimage_is_detected_and_unpacked_safely", "size_limit_aborts_and_cleans_up", "fractions_follow_the_step_weights", "bytes_written_are_counted", "unpacking_stops_exactly_at_its_limits", "only_an_exceeded_limit_counts_as_one", "without_consent_the_appimages_own_unpacker_never_runs",
+  "a_menu_start_after_free_space_unpacks_inside_a_sandbox",
+  "without_the_command_line_a_menu_start_refuses_to_unpack",
+  "sams_programs_never_unpack_without_a_sandbox",
+  "a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it",
+  "tests_and_benchmarks_may_unpack_in_their_own_process",
+]
 
 [[function]]
 id = 4
@@ -241,7 +247,9 @@ id = 28
 area = "F"
 promise = "Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it."
 code = ["sam-runner/src/updates.rs", "sam-runner/src/zsync.rs", "sam-runner/src/release_key.rs", "sam-detect/src/update_info.rs", "sam-detect/src/signature.rs"]
-tests = ["both_forms_of_update_information_are_understood", "update_wildcards_match_only_the_right_build", "signed_appimage_is_checked", "key_changes_are_noticed", "sam_updates_itself_only_with_its_release_key", "release_keys_are_full_fingerprints", "signing_a_file_without_signature_sections_is_refused", "without_a_release_key_sam_never_updates_itself", "the_zsync_header_is_read", "update_download_addresses_are_resolved_and_http_refused", "updates_are_downloaded_over_https_only", "an_update_is_rebuilt_from_the_old_version_and_changed_blocks", "the_rolling_checksum_matches_a_direct_computation", "refuses_compressed_and_broken_files", "undo_puts_the_previous_version_back", "undoing_an_update_never_moves_files_outside_sams_backup_folder", "block_checksums_match_the_zsync_definition", "the_download_checksum_is_sha1_of_the_whole_file", "updates_download_only_changes_check_them_and_refuse_tampering", "the_weak_hashes_stay_in_the_zsync_update_code"]
+tests = ["both_forms_of_update_information_are_understood", "update_wildcards_match_only_the_right_build", "signed_appimage_is_checked", "key_changes_are_noticed", "sam_updates_itself_only_with_its_release_key", "release_keys_are_full_fingerprints", "signing_a_file_without_signature_sections_is_refused", "without_a_release_key_sam_never_updates_itself", "the_zsync_header_is_read", "update_download_addresses_are_resolved_and_http_refused", "updates_are_downloaded_over_https_only", "an_update_is_rebuilt_from_the_old_version_and_changed_blocks", "the_rolling_checksum_matches_a_direct_computation", "refuses_compressed_and_broken_files", "undo_puts_the_previous_version_back", "undoing_an_update_never_moves_files_outside_sams_backup_folder", "block_checksums_match_the_zsync_definition", "the_download_checksum_is_sha1_of_the_whole_file", "updates_download_only_changes_check_them_and_refuse_tampering", "the_weak_hashes_stay_in_the_zsync_update_code",
+  "an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature",
+]
 
 [[function]]
 id = 29

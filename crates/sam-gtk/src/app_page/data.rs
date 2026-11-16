@@ -553,15 +553,14 @@ impl AppPage {
                 .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
                 .await;
             if let Err(e) = &result {
-                if e.is("signing-key-changed") {
-                    let ok = window::confirm(
-                        &app.window,
-                        &tr("Signed With Another Key"),
-                        e,
-                        &tr("Update Anyway"),
-                        true,
-                    )
-                    .await;
+                if e.is("signing-key-changed") || e.is("signature-unchecked") {
+                    let title = if e.is("signing-key-changed") {
+                        tr("Signed With Another Key")
+                    } else {
+                        tr("Signature Not Checked")
+                    };
+                    let ok =
+                        window::confirm(&app.window, &title, e, &tr("Update Anyway"), true).await;
                     if ok {
                         args.push("--accept-key-change".into());
                         result = app

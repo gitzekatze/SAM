@@ -515,6 +515,18 @@ pub(crate) fn signing_key_change(
     }
 }
 
+/// What the earlier signature was, when it was checked and valid but the new
+/// file's signature cannot be checked (GnuPG missing): then nobody can tell
+/// whether the key changed, so it needs the same consent as a changed key.
+pub(crate) fn signature_unconfirmed(
+    old: Option<&sam_core::model::SignatureInfo>,
+    new: &sam_core::model::SignatureInfo,
+) -> Option<String> {
+    use sam_core::model::SignatureState as S;
+    let old = old.filter(|o| o.state == S::Valid && o.fingerprint.is_some())?;
+    (new.state == S::Unchecked).then(|| sig_words(old))
+}
+
 #[cfg(test)]
 mod signature_tests {
     use super::signing_key_change;
@@ -551,5 +563,33 @@ mod signature_tests {
             "first signature"
         );
         assert_eq!(signing_key_change(None, &sig(S::Unsigned, None)), None);
+    }
+
+    /// A signed app whose update cannot be checked (GnuPG missing) is not
+    /// waved through: SAM cannot tell whether the key changed.
+    #[test]
+    fn an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature() {
+        use super::signature_unconfirmed;
+        let valid = sig(S::Valid, Some("AAAA"));
+        assert!(
+            signature_unconfirmed(Some(&valid), &sig(S::Unchecked, None)).is_some(),
+            "valid before, unchecked now"
+        );
+        assert_eq!(
+            signature_unconfirmed(Some(&valid), &sig(S::Valid, Some("AAAA"))),
+            None,
+            "checked and the same"
+        );
+        assert_eq!(
+            signature_unconfirmed(Some(&sig(S::Unsigned, None)), &sig(S::Unchecked, None)),
+            None,
+            "never signed before: nothing to confirm"
+        );
+        assert_eq!(
+            signature_unconfirmed(Some(&sig(S::Unchecked, None)), &sig(S::Unchecked, None)),
+            None,
+            "never checked before"
+        );
+        assert_eq!(signature_unconfirmed(None, &sig(S::Unchecked, None)), None);
     }
 }
