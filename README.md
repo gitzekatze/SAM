@@ -90,10 +90,10 @@ repository.
   the test that proves it, and just as clearly what SAM does *not* protect
   against.
 - **The tests themselves are tested.** Mutation testing changed the
-  security-critical code <!-- fact:mutants_tested -->2,835<!-- /fact --> times on purpose to see whether the
-  tests notice. Only <!-- fact:mutants_missed -->314<!-- /fact --> of the changes (<!-- fact:mutants_missed_percent -->11.1 %<!-- /fact -->) went unnoticed,
-  and each gap that mattered got a test
-  ([report](docs/reports/mutants-2026-11-15.md)).
+  security-critical code <!-- fact:mutants_tested -->3,011<!-- /fact --> times on purpose, and the tests caught <!-- fact:mutants_caught_percent -->84.8 %<!-- /fact --> of
+  the changes that could be built. The report names the weakest files, and
+  each gap that matters gets a test
+  ([report](docs/reports/mutants-2026-11-16.md)).
 - **SAM's readers of untrusted files are fuzzed.** Hundreds of thousands of
   damaged AppImages, programs and menu files go through them without a crash.
 - **Every release is tested and signed.** The finished AppImage is tested on

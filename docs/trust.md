@@ -16,7 +16,7 @@ results.
 - **[Test library](test-library.md):** every one of the <!-- fact:tests -->270<!-- /fact -->
   tests and the promise it keeps.
 - **[Real AppImages](reports/real-apps-2026-11-15.md):** how each of the <!-- fact:apps_total -->120<!-- /fact --> test AppImages did in its sandbox.
-- **[Mutation testing](reports/mutants-2026-11-15.md):** <!-- fact:mutants_tested -->2,835<!-- /fact -->
+- **[Mutation testing](reports/mutants-2026-11-16.md):** <!-- fact:mutants_tested -->3,011<!-- /fact -->
   deliberate mistakes put into the security code, to see whether the tests
   notice them.
 - **[Security review](reports/security-review-2026-11-10.md):** the review
