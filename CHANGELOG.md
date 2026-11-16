@@ -11,6 +11,14 @@ version.
 
 ### Rules for automation
 
+- A sandbox test that cannot run fails in CI instead of skipping
+  (`SAM_REQUIRE_SANDBOX=1`), so a green run always tested the sandbox.
+- Protected tests may only gain lines; any removed or changed line needs
+  the owner's label. The approval is its own check, "Needs your approval",
+  and setting the label reruns only that check.
+- The permission matrix and the breakout test run in named sections: a
+  failure names the part (`CHECK FAIL breakout/landlock`), and the other
+  sections still run.
 - **AUTOMATION.md** sets the rules for automated upkeep: what automation
   may do, what it may never do, risk classes, and a kill switch
   (`SAM_AUTOMATION`).
