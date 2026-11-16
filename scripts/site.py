@@ -73,17 +73,34 @@ SOURCE_TO_PAGE["DEVELOPMENT.md"] = "trust/dashboard.html"
 SOURCE_TO_PAGE["SECURITY.md"] = "trust/security.html"
 SECTION_NAMES = {"use": "Use SAM", "trust": "Trust SAM", "maintain": "Maintain SAM"}
 OVERVIEWS = {"use": "use/index.html", "trust": "trust/index.html", "maintain": "maintain/index.html"}
+# One icon per page, used wherever the page is linked. No two pages, and no
+# two points on the home page, share an icon: claim() stops the build if they do.
 PAGE_ICONS = {
     "use/index.html": "compass", "use/install.html": "download", "use/guide.html": "book", "use/permissions.html": "sliders",
-    "trust/index.html": "shield", "trust/dashboard.html": "chart", "trust/security.html": "shield", "trust/threat-model.html": "target",
-    "trust/functions.html": "check", "trust/tests.html": "flask", "trust/mutation-testing.html": "shuffle",
-    "trust/security-review.html": "doc", "trust/testing.html": "flask", "trust/architecture.html": "layers",
     "use/changelog.html": "clock",
-    "maintain/index.html": "flag", "maintain/looks-after-itself.html": "shield", "maintain/github.html": "branch", "maintain/workflow.html": "flow", "maintain/tips.html": "undo", "maintain/outside.html": "shield", "maintain/contracts.html": "check", "maintain/automation.html": "shuffle", "maintain/tools.html": "wrench",
+    "trust/index.html": "scale", "trust/dashboard.html": "chart", "trust/security.html": "shield", "trust/threat-model.html": "target",
+    "trust/functions.html": "check", "trust/tests.html": "archive", "trust/mutation-testing.html": "bug",
+    "trust/security-review.html": "badge", "trust/testing.html": "flask", "trust/architecture.html": "layers",
+    "maintain/index.html": "wrench", "maintain/looks-after-itself.html": "cycle", "maintain/github.html": "branch",
+    "maintain/workflow.html": "calendar", "maintain/tips.html": "update", "maintain/outside.html": "radar",
+    "maintain/contracts.html": "pen", "maintain/automation.html": "cpu", "maintain/tools.html": "terminal",
     "maintain/releasing.html": "tag", "maintain/care.html": "heart",
     "maintain/translating.html": "globe", "maintain/json-interface.html": "code",
     "maintain/packaging.html": "box", "maintain/contributing.html": "users",
 }
+# Navigation glyphs (home, previous, next) are controls, not points, and may repeat.
+NAV_ICONS = {"home", "left", "right"}
+ICON_OWNER = {}
+ICON_CLASH = []
+
+
+def claim(name, meaning):
+    """Records that an icon stands for one page or one point; a second meaning is a clash."""
+    if name in NAV_ICONS:
+        return
+    owner = ICON_OWNER.setdefault(name, meaning)
+    if owner != meaning and (name, owner, meaning) not in ICON_CLASH:
+        ICON_CLASH.append((name, owner, meaning))
 
 
 def section_pages(section):
@@ -141,7 +158,7 @@ def shell(page, title, body, section=None, toc=None, source=None):
     if section in SECTION_NAMES:
         order = section_pages(section)
         links = "".join(
-            f'<li><a href="{rel(page, p)}"{" class=current" if p == page else ""}>{icon(PAGE_ICONS.get(p, "doc"), "small")}{html.escape(t)}</a></li>'
+            f'<li><a href="{rel(page, p)}"{" class=current" if p == page else ""}>{page_icon(p, "small")}{html.escape(t)}</a></li>'
             for p, t in order)
         side = f'<nav class="toc" aria-label="Pages"><p>{SECTION_NAMES[section]}</p><ul>{links}</ul>'
         if toc and "<li>" in toc:
@@ -208,109 +225,176 @@ def facts():
 
 # Line icons (24 × 24, stroked), drawn inline so the site loads nothing else.
 ICONS = {
-    "box": "M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8",
-    "flow": "M4 12h13M13 6l6 6-6 6",
-    "shield": "M12 3l8 3v6c0 5-3.5 8.5-8 9.5C7.5 20.5 4 17 4 12V6l8-3zM9 12l2 2 4-4",
-    "lock": "M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 017 0V11",
-    "search": "M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM20 20l-4.8-4.8",
+    # Pages
     "compass": "M12 3a9 9 0 100 18 9 9 0 000-18zM15.5 8.5l-2 5-5 2 2-5z",
-    "wrench": "M14.5 6.5a4 4 0 00-5.2 5.2L4 17l3 3 5.3-5.3a4 4 0 005.2-5.2l-2.3 2.3-2.5-.5-.5-2.5z",
-    "chart": "M4 20V11M10 20V5M16 20v-6M2.5 20h19",
-    "doc": "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
-    "target": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM12 11.5v1",
-    "flask": "M9 3h6M10 3v6l-5 9a2 2 0 001.8 3h10.4a2 2 0 001.8-3l-5-9V3M7.5 15h9",
-    "shuffle": "M16 4h4v4M4 20L20 4M20 16v4h-4M14.5 14.5L20 20M4 4l5 5",
-    "check": "M9 4h6v3H9zM15 5.5h3V21H6V5.5h3M9 14l2 2 4-4",
-    "eye": "M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12zM12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z",
-    "undo": "M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3",
-    "menu": "M4 6h16M4 12h16M4 18h10",
     "download": "M12 4v11M7 10l5 5 5-5M5 20h14",
     "book": "M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5zM4 20.5A2.5 2.5 0 016.5 18H20v3H6.5",
     "sliders": "M4 7h10M18 7h2M4 17h4M12 17h8M14 4v6M8 14v6",
-    "flag": "M5 21V4M5 4h11l-2 4 2 4H5",
+    "clock": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 2",
+    "scale": "M12 3v18M7 21h10M4 7h16M7 7l-3 7h6zM17 7l-3 7h6z",
+    "chart": "M4 20V11M10 20V5M16 20v-6M2.5 20h19",
+    "shield": "M12 3l8 3v6c0 5-3.5 8.5-8 9.5C7.5 20.5 4 17 4 12V6l8-3zM9 12l2 2 4-4",
+    "target": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM12 11.5v1",
+    "check": "M9 4h6v3H9zM15 5.5h3V21H6V5.5h3M9 14l2 2 4-4",
+    "archive": "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
+    "bug": "M8 10a4 4 0 018 0v4a4 4 0 01-8 0zM12 10v8M4 13h4M16 13h4M5 8l3 2M19 8l-3 2M5 19l3-2M19 19l-3-2M10 6L9 4M14 6l1-2",
+    "badge": "M12 3a6 6 0 100 12 6 6 0 000-12zM9 14l-2 7 5-3 5 3-2-7",
+    "flask": "M9 3h6M10 3v6l-5 9a2 2 0 001.8 3h10.4a2 2 0 001.8-3l-5-9V3M7.5 15h9",
+    "layers": "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5",
+    "wrench": "M14.5 6.5a4 4 0 00-5.2 5.2L4 17l3 3 5.3-5.3a4 4 0 005.2-5.2l-2.3 2.3-2.5-.5-.5-2.5z",
+    "cycle": "M20 11a8 8 0 00-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0014.3 4.9L20 16M20 20v-4h-4",
     "branch": "M6 4v12M6 20a2 2 0 100-4 2 2 0 000 4zM18 8a2 2 0 100-4 2 2 0 000 4zM18 8c0 5-6 4-12 8",
+    "calendar": "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
+    "update": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 16V8M8.5 11.5L12 8l3.5 3.5",
+    "radar": "M12 12l6-6M12 3a9 9 0 109 9M12 7a5 5 0 105 5M12 11a1 1 0 100 2 1 1 0 000-2z",
+    "pen": "M4 20l4-1 11-11-3-3L5 16zM14 7l3 3M13 20h7",
+    "cpu": "M7 7h10v10H7zM10 10h4v4h-4zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4",
+    "terminal": "M4 5h16v14H4zM7 10l3 2-3 2M12 15h5",
     "tag": "M3 12V4h8l10 10-8 8zM7.5 7.5h.01",
     "heart": "M12 20s-7-4.5-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.5-7 10-7 10z",
     "globe": "M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9s1-6.5 3.5-9",
-    "layers": "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5",
     "code": "M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16",
+    "box": "M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8",
     "users": "M9 11a4 4 0 100-8 4 4 0 000 8zM2 21a7 7 0 0114 0M17 11a3 3 0 100-6M22 21a6 6 0 00-5-5.9",
-    "clock": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 2",
+    # Points on the home page
+    "file": "M7 3h7l5 5v13H7zM14 3v5h5",
+    "unlock": "M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 016.8-1.2M12 15v2",
+    "sandbox": "M3 3h18v18H3zM9 7h4l2 2v8H9z",
+    "eye": "M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12zM12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z",
+    "lock": "M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 017 0V11",
+    "toggle": "M3 12a5 5 0 015-5h8a5 5 0 010 10H8a5 5 0 01-5-5zM16 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z",
+    "lifebuoy": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM5.6 5.6l3.6 3.6M14.8 14.8l3.6 3.6M18.4 5.6l-3.6 3.6M9.2 14.8l-3.6 3.6",
+    "menu": "M4 6h16M4 12h16M4 18h10",
+    "bricks": "M3 5h18v6H3zM12 5v6M3 13h18v6H3zM8 13v6M16 13v6",
+    "anchor": "M12 8a2 2 0 100-4 2 2 0 000 4zM12 8v13M8 11h8M5 14a7 7 0 0014 0",
+    "feather": "M20.2 3.8a6 6 0 00-8.5 0L5 10.5V19h8.5l6.7-6.7a6 6 0 000-8.5zM16 8L2 22M17.5 15H9",
+    "keyhole": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a2 2 0 100 4 2 2 0 000-4zM12 12v4",
+    "eyeoff": "M3 3l18 18M10.6 6.1A10 10 0 0112 6c6 0 9.5 6 9.5 6a17 17 0 01-2.9 3.6M6.6 6.6C3.9 8.4 2.5 12 2.5 12s3.5 6 9.5 6a9.6 9.6 0 004.4-1.1M9.9 9.9a3 3 0 004.2 4.2",
+    "search": "M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM20 20l-4.8-4.8",
+    # Navigation
     "home": "M4 11l8-7 8 7M6 9.5V20h12V9.5",
     "left": "M15 6l-6 6 6 6",
     "right": "M9 6l6 6-6 6",
 }
 
 
-def icon(name, size=""):
+def icon(name, size="", meaning=None):
+    claim(name, meaning or name)
     return (f'<span class="icon{" " + size if size else ""}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
             f'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{ICONS[name]}"/></svg></span>')
 
 
-def cards(items, links=True):
+def page_icon(page, size=""):
+    """A page's icon; every page must have its own (a missing one stops the build)."""
+    return icon(PAGE_ICONS[page], size, meaning=page)
+
+
+def cards(items, links=True, page=""):
+    """Up to four items become cards side by side; longer lists become rows,
+    which stay readable however many there are. Linked items carry the icon
+    of the page they lead to."""
+    rows = len(items) > 4
     out = []
     for item in items:
         href, ic, title, text = item if links else (None, *item)
-        inner = f"{icon(ic)}<h3>{title}</h3><p>{text}</p>"
-        out.append(f'<a class="card" href="{href}">{inner}<span class="more">Open →</span></a>' if links
-                   else f'<div class="card">{inner}</div>')
-    return "".join(out)
+        mark = (icon(PAGE_ICONS[target], meaning=target)
+                if links and (target := os.path.normpath(os.path.join(os.path.dirname(page), href))) in PAGE_ICONS
+                else icon(ic, meaning=title))
+        inner = f"{mark}<div><h3>{title}</h3><p>{text}</p></div>"
+        cls = "row" if rows else "card"
+        out.append(f'<a class="{cls}" href="{href}">{inner}<span class="more" aria-hidden="true">{"→" if rows else "Open →"}</span></a>' if links
+                   else f'<div class="{cls}">{inner}</div>')
+    return f'<div class="{"rows" if rows else "grid"}">{"".join(out)}</div>'
 
 
 def home(f):
     page = "index.html"
+    flow = [
+        ("file", "One file", "AppImages are the easiest way to get software on Linux: download one file and run it."),
+        ("unlock", "All your rights", "That file then runs with all your rights. It can read your documents, keys and browser profiles."),
+        ("sandbox", "Its own sandbox", "SAM gives each AppImage its own sandbox, with exactly the access you allow, in a window anyone can use."),
+    ]
     why = [
         ("eye", "Nothing runs before you decide",
          "SAM reads an AppImage's name, icon and needs without running it, and unpacks it without running it. The app starts only when you press Launch."),
         ("lock", "Least access, chosen for each app",
          "Every app starts with a private home folder and its own window, nothing more. SAM adds only what this app shows it needs: sound for a player, the network for a browser."),
-        ("doc", "Every switch says what it costs",
+        ("toggle", "Every switch says what it costs",
          "Each permission is explained in a sentence and marked harmless, think twice or dangerous. No jargon, no hidden defaults."),
-        ("undo", "When an app struggles, SAM finds out why",
+        ("lifebuoy", "When an app struggles, SAM finds out why",
          "After a failed start SAM reads what went wrong and offers the one change that helps, from mild to strong, each one reversible."),
         ("menu", "Fits into your desktop",
          "Sandboxed apps appear in your application menu and always start through SAM. Menu entries that would start an app without its sandbox are hidden."),
-        ("shield", "Built on proven parts",
+        ("bricks", "Built on proven parts",
          "Bubblewrap, the sandbox Flatpak uses, plus Landlock, a system-call filter and filtered desktop services. SAM adds no new privileged code."),
     ]
     columns = [
-        ("box", "Reliable", "117 of 120 real AppImages, from Electron and Qt apps to games and Wine, start in their sandbox. The other three fail for reasons inside the app."),
-        ("flow", "Simple", "Pick an AppImage, look over the access, press Create Sandbox. Settings for experts stay out of the way until you need them."),
-        ("shield", "Secure", "A breakout test attacks every security promise from inside a real sandbox, and the threat model says just as clearly what SAM cannot stop."),
-        ("lock", "Private", "No telemetry, no account, no network unless you ask. Bug reports remove your name, folders, addresses and secrets."),
+        ("anchor", "Reliable", "117 of 120 real AppImages, from Electron and Qt apps to games and Wine, start in their sandbox. The other three fail for reasons inside the app."),
+        ("feather", "Simple", "Pick an AppImage, look over the access, press Create Sandbox. Settings for experts stay out of the way until you need them."),
+        ("keyhole", "Secure", "A breakout test attacks every security promise from inside a real sandbox, and the threat model says just as clearly what SAM cannot stop."),
+        ("eyeoff", "Private", "No telemetry, no account, no network unless you ask. Bug reports remove your name, folders, addresses and secrets."),
         ("search", "Auditable", f"Open source under the GPL. {f['tests']} tests guard {f['functions']} functions, and the results are published on this site."),
     ]
     doors = [
-        ("use/index.html", "compass", "Use SAM", "How to install SAM, your first sandbox, and every setting explained."),
-        ("trust/index.html", "shield", "Trust SAM", "The evidence: how the sandbox works, what it cannot do, and test results you can check."),
-        ("maintain/index.html", "wrench", "Maintain SAM", "The handbook: how to change, update and release SAM, and look after its repository."),
+        ("use/index.html", None, "Use SAM", "How to install SAM, your first sandbox, and every setting explained."),
+        ("trust/index.html", None, "Trust SAM", "The evidence: how the sandbox works, what it cannot do, and test results you can check."),
+        ("maintain/index.html", None, "Maintain SAM", "The handbook: how to change, update and release SAM, and look after its repository."),
     ]
+    flow_html = "".join(
+        f'<li class="step s{i}">{icon(ic, meaning=title)}<h3>{title}</h3><p>{text}</p></li>'
+        for i, (ic, title, text) in enumerate(flow, 1))
+    promises = "".join(
+        f'<div class="promise">{icon(ic, meaning=title)}<h3>{title}</h3><p>{text}</p></div>' for ic, title, text in columns)
+    # An example of the app page, drawn with SAM's own words for permissions and risk.
+    mock = """<figure class="mock" aria-label="Example: the permissions SAM shows for a music player">
+<div class="mock-head"><span class="app" aria-hidden="true">♪</span><div><b>Music player</b><code>player-3.1-x86_64.AppImage</code></div><span class="tag">Sandboxed</span></div>
+<ul>
+<li><span>Network</span><em class="pill off">No network</em></li>
+<li><span>Music folder</span><em class="pill">Read-only</em></li>
+<li><span>Documents</span><em class="pill off">No access</em></li>
+<li><span>Sound</span><i class="switch on" aria-label="on"></i></li>
+<li><span>Camera</span><i class="switch" aria-label="off"></i></li>
+</ul>
+<div class="mock-foot"><span>Risk of these settings</span><em class="risk">Harmless</em></div>
+<figcaption>An example of what SAM shows for a music player.</figcaption>
+</figure>"""
     body = f"""
-<section class="hero"><div class="wrap">
-<img class="logo" src="assets/logo.svg" alt="SAM's logo: a seal on a shield">
+<section class="hero"><div class="wrap hero-grid">
+<div class="hero-text">
+<p class="eyebrow"><img src="assets/logo.svg" alt="">Sandboxed AppImage Manager</p>
 <h1>Every AppImage, in a <span>sandbox you control</span></h1>
-<p class="lead">AppImages are the easiest way to get software on Linux: download one file, run it. That file then runs with all your rights, and can read your documents, keys and browser profiles. SAM gives each AppImage its own sandbox, with exactly the access you allow, in a window anyone can use.</p>
+<p class="lead">SAM runs each AppImage sealed off from your files, keys and accounts, and shows what it may reach as plain switches.</p>
 <div class="buttons"><a class="btn primary" href="use/install.html">Get SAM</a><a class="btn ghost" href="trust/index.html">See the evidence</a></div>
 <p class="note">Free and open source · Linux · English, Deutsch, Español, Français</p>
+</div>
+{mock}
 </div></section>
 
-<section class="band soft"><div class="wrap">
+<section class="band"><div class="wrap">
+<h2>Why AppImages need a sandbox</h2>
+<ol class="flow">{flow_html}</ol>
+</div></section>
+
+<section class="band soft"><div class="wrap split">
+<div class="split-head">
 <h2>The gap SAM closes</h2>
-<p class="sub">Flatpak apps come with a sandbox and tools like Flatseal to adjust it. AppImages have neither: whatever you download runs unprotected. Wrapping them by hand needs command-line tools and knowing which access each app needs. SAM does that work for you, and shows its reasoning.</p>
-<div class="grid steps">
-<div class="card"><h3>Pick an AppImage</h3><p>SAM lists the AppImages in your folders, sandboxed or not, and reads them without running them.</p></div>
-<div class="card"><h3>Look over the access</h3><p>SAM recommends the least access this app needs, and explains every switch in plain words.</p></div>
-<div class="card"><h3>Run it in its sandbox</h3><p>Launch it from SAM or your application menu. SAM can check from inside the sandbox that every setting holds.</p></div>
-</div></div></section>
+<p>Flatpak apps come with a sandbox and tools like Flatseal to adjust it. AppImages have neither. Wrapping them by hand needs command-line tools and knowing which access each app needs. SAM does that work for you, and shows its reasoning.</p>
+</div>
+<ol class="how">
+<li><h3>Pick an AppImage</h3><p>SAM lists the AppImages in your folders, sandboxed or not, and reads them without running them.</p></li>
+<li><h3>Look over the access</h3><p>SAM recommends the least access this app needs, and explains every switch in plain words.</p></li>
+<li><h3>Run it in its sandbox</h3><p>Launch it from SAM or your application menu. SAM can check from inside the sandbox that every setting holds.</p></li>
+</ol>
+</div></section>
 
 <section class="band"><div class="wrap">
 <h2>Why SAM</h2><p class="sub">What it does differently.</p>
-<div class="grid">{cards(why, links=False)}</div></div></section>
+{cards(why, links=False)}</div></section>
 
 <section class="band soft"><div class="wrap">
 <h2>What SAM stands for</h2><p class="sub">Five promises every change is checked against.</p>
-<div class="grid">{cards(columns, links=False)}</div>
-<div class="stats" style="margin-top:2.5rem">
+<div class="promises">{promises}</div>
+<div class="stats">
 <div class="stat"><b>{f['tests']}</b><span>automated tests</span></div>
 <div class="stat"><b>{f['functions']}</b><span>functions, each with proof</span></div>
 <div class="stat"><b>120</b><span>real AppImages tried</span></div>
@@ -319,7 +403,7 @@ def home(f):
 
 <section class="band"><div class="wrap">
 <h2>Find your way</h2><p class="sub">Use SAM, check it, or look after it.</p>
-<div class="grid">{cards(doors)}</div></div></section>
+{cards(doors, page=page)}</div></section>
 
 <section class="band soft"><div class="wrap honest">
 <h2>How SAM is made</h2>
@@ -339,7 +423,7 @@ def use_index(f):
     ]
     body = f"""<h1>Use SAM</h1>
 <p>Everything you need to run your AppImages in a sandbox: getting SAM onto your computer, your first sandbox, and what each switch does. You never need the command line, but everything works there too.</p>
-<div class="grid" style="margin-top:1.5rem">{cards(items)}</div>
+{cards(items, page=page)}
 <h2>The short version</h2>
 <ol>
 <li>Install SAM and open it. It lists the AppImages in your usual folders.</li>
@@ -365,7 +449,7 @@ def trust_index(f):
     ]
     body = f"""<h1>Trust SAM</h1>
 <p>SAM protects you from programs you download, so it should not ask for blind trust. This section publishes what anyone needs to judge it: how the sandbox works, what it cannot do, and the tests that check every promise, with their results.</p>
-<div class="grid" style="margin-top:1.5rem">{cards(items)}</div>
+{cards(items, page=page)}
 <h2>How to check SAM yourself</h2>
 <ul>
 <li>The <a href="threat-model.html">threat model</a> lists each threat with what stops it and the test that proves it; every promise on the <a href="security.html">security page</a> is attacked by a breakout test from inside a real sandbox; the <a href="tests.html">test library</a> links each test to its code.</li>
@@ -482,7 +566,9 @@ def main():
     print(f"wrote {OUT}: {sum(1 for _ in OUT.rglob('*.html'))} pages, {len(broken)} broken links")
     for page, url in broken[:20]:
         print(f"  {page}: {url}")
-    sys.exit(1 if broken else 0)
+    for name, first, second in ICON_CLASH:
+        print(f"  icon '{name}' stands for both '{first}' and '{second}'; give one of them its own icon")
+    sys.exit(1 if broken or ICON_CLASH else 0)
 
 
 def check_links():

@@ -109,6 +109,13 @@ version.
 
 ### Website
 
+- A new front page: an example of SAM's permission panel beside the
+  headline, and the reason for SAM in three steps (one file, all your
+  rights, its own sandbox).
+- Lists of more than four items are shown as rows instead of a grid of
+  cards; up to four stay cards side by side.
+- Every page and every point has its own icon, and a page keeps its icon
+  wherever it is linked. The website build stops if two of them share one.
 - Every page has a breadcrumb trail, Previous and Next links that go round
   in a loop, and a link back to its section; the side menu and the
   overviews use small icons.
