@@ -592,6 +592,16 @@ mod tests {
                 .is_err(),
             "only the header counts"
         );
+        // A checksum that is not 40 hexadecimal digits is no checksum: the
+        // update description is refused rather than compared against junk.
+        for bad in [
+            "0123456789abcdef",                           // too short
+            "0123456789abcdef0123456789abcdef0123456789", // too long
+            "0123456789abcdefg123456789abcdef01234567",   // not hexadecimal
+        ] {
+            let z = format!("zsync: 0.6.2\nSHA-1: {bad}\n\n");
+            assert!(zsync_header(z.as_bytes()).is_err(), "{bad}");
+        }
     }
 
     /// Download addresses in zsync files are resolved, and plain-HTTP addresses are refused.

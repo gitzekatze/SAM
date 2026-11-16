@@ -1626,6 +1626,26 @@ mod tests {
         assert!(!args_of(&ctx).iter().any(|a| a == "--new-session"));
     }
 
+    /// The machine ID identifies this computer; an app sees it only with
+    /// D-Bus, which needs it, never without.
+    #[test]
+    fn the_machine_id_reaches_only_apps_with_dbus() {
+        let mut ctx = sample_context();
+        ctx.permissions.dbus.session.mode = DbusMode::None;
+        ctx.permissions.dbus.system.mode = DbusMode::None;
+        assert!(
+            !args_of(&ctx).iter().any(|a| a == "/etc/machine-id"),
+            "no D-Bus, no machine ID"
+        );
+        ctx.permissions.dbus.session.mode = DbusMode::Filtered;
+        if Path::new("/etc/machine-id").exists() {
+            assert!(
+                args_of(&ctx).iter().any(|a| a == "/etc/machine-id"),
+                "D-Bus needs the machine ID"
+            );
+        }
+    }
+
     /// Files and folders named when starting an app are passed in, but never sensitive folders like autostart.
     #[test]
     fn files_and_folders_named_on_the_command_line() {
@@ -1677,6 +1697,9 @@ mod tests {
             &["../.bashrc"],
             &["../.config/autostart"],
             &["/etc/hosts"],
+            // Sensitive and not otherwise visible in the sandbox: only the
+            // sensitive-path rule keeps it out.
+            &["/etc/shadow"],
             &[outside.to_str().unwrap()],
         ] {
             assert_eq!(granted(args, &mut ctx), Vec::<PathBuf>::new(), "{args:?}");

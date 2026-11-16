@@ -34,7 +34,7 @@ id = 3
 area = "A"
 promise = "SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space."
 code = ["sam-intake/src/extract.rs", "sam-intake/src/normalize.rs", "sam-runner/src/progress.rs"]
-tests = ["unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_during_unpacking_is_recognized", "unpacking_stops_at_the_time_limit", "symlinks_pointing_outside_the_app_are_recognized", "paths_climbing_out_of_the_image_are_refused", "unpacking_removes_setuid_bits", "unpacking_stops_at_the_file_limit", "a_built_appimage_is_detected_and_unpacked_safely", "size_limit_aborts_and_cleans_up", "fractions_follow_the_step_weights", "bytes_written_are_counted", "unpacking_stops_exactly_at_its_limits", "only_an_exceeded_limit_counts_as_one"]
+tests = ["unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_during_unpacking_is_recognized", "unpacking_stops_at_the_time_limit", "symlinks_pointing_outside_the_app_are_recognized", "paths_climbing_out_of_the_image_are_refused", "unpacking_removes_setuid_bits", "unpacking_stops_at_the_file_limit", "a_built_appimage_is_detected_and_unpacked_safely", "size_limit_aborts_and_cleans_up", "fractions_follow_the_step_weights", "bytes_written_are_counted", "unpacking_stops_exactly_at_its_limits", "only_an_exceeded_limit_counts_as_one", "without_consent_the_appimages_own_unpacker_never_runs"]
 
 [[function]]
 id = 4
@@ -281,7 +281,7 @@ id = 34
 area = "G"
 promise = "Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets."
 code = ["sam-runner/src/doctor.rs"]
-tests = ["bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on"]
+tests = ["bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus"]
 
 [[area]]
 id = "H"

@@ -38,6 +38,11 @@ version.
 - Every release comes with an SBOM (SPDX): every component built into SAM,
   with version and license, signed like the other release files.
 - The security page names where an outside review should start.
+- Mutation testing of the audited files found four gaps, now closed with
+  tests: SAM never runs an AppImage's own unpacker without consent, a
+  sensitive file named at the start stays out, the machine ID reaches only
+  apps with D-Bus, and a delta update must really be assembled from the
+  changed parts.
 
 ### First start
 
