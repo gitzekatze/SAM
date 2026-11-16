@@ -353,8 +353,8 @@ playbook = "A moved folder shows as missing fonts, icons or certificates inside 
 [[contract]]
 id = "etc-identity-and-names"
 component = "distribution"
-assumes = "User identity and name resolution come from these /etc files (passwd, group, hosts, resolv.conf and its systemd-resolved or NetworkManager target, nsswitch, gai, host.conf, protocols, services). SAM shows only listed /etc files, so anything new there stays hidden."
-covers = ["path:/etc/passwd", "path:/etc/group", "path:/etc/hosts", "path:/etc/resolv.conf", "path:/etc/nsswitch.conf", "path:/etc/gai.conf", "path:/etc/host.conf", "path:/etc/protocols", "path:/etc/services", "path:/run/systemd/resolve", "path:/etc/NetworkManager"]
+assumes = "User identity and name resolution come from these /etc files (passwd, group, hosts, resolv.conf and its systemd-resolved or NetworkManager target, nsswitch, gai, host.conf, protocols, services), or for the vendor defaults from the same names in /usr/etc (openSUSE). SAM shows only listed /etc files, so anything new there stays hidden."
+covers = ["path:/usr/etc", "path:/usr/etc/nsswitch.conf", "path:/etc/passwd", "path:/etc/group", "path:/etc/hosts", "path:/etc/resolv.conf", "path:/etc/nsswitch.conf", "path:/etc/gai.conf", "path:/etc/host.conf", "path:/etc/protocols", "path:/etc/services", "path:/run/systemd/resolve", "path:/etc/NetworkManager"]
 functions = [10, 12]
 probe = "name-resolution"
 tests = ["a_real_sandbox_shows_exactly_what_each_profile_allows"]

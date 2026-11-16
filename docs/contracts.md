@@ -272,7 +272,7 @@ Shared read-only data (fonts, icons, themes, locales, certificates, graphics dri
 
 ## etc-identity-and-names
 
-User identity and name resolution come from these /etc files (passwd, group, hosts, resolv.conf and its systemd-resolved or NetworkManager target, nsswitch, gai, host.conf, protocols, services). SAM shows only listed /etc files, so anything new there stays hidden.
+User identity and name resolution come from these /etc files (passwd, group, hosts, resolv.conf and its systemd-resolved or NetworkManager target, nsswitch, gai, host.conf, protocols, services), or for the vendor defaults from the same names in /usr/etc (openSUSE). SAM shows only listed /etc files, so anything new there stays hidden.
 
 - **Component:** The distribution's file system layout ([releases](https://uapi-group.org/specifications/))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
@@ -280,7 +280,7 @@ User identity and name resolution come from these /etc files (passwd, group, hos
 - **Quick check:** `name-resolution`
 - **Tests:** `a_real_sandbox_shows_exactly_what_each_profile_allows`
 - **Checked first by:** `sandbox.rs` (a broken contract stops these tests with its name)
-- **Covers:** `path:/etc/passwd`, `path:/etc/group`, `path:/etc/hosts`, `path:/etc/resolv.conf`, `path:/etc/nsswitch.conf`, `path:/etc/gai.conf`, `path:/etc/host.conf`, `path:/etc/protocols`, `path:/etc/services`, `path:/run/systemd/resolve`, `path:/etc/NetworkManager`
+- **Covers:** `path:/usr/etc`, `path:/usr/etc/nsswitch.conf`, `path:/etc/passwd`, `path:/etc/group`, `path:/etc/hosts`, `path:/etc/resolv.conf`, `path:/etc/nsswitch.conf`, `path:/etc/gai.conf`, `path:/etc/host.conf`, `path:/etc/protocols`, `path:/etc/services`, `path:/run/systemd/resolve`, `path:/etc/NetworkManager`
 - **If it breaks:** A new resolver setup shows as apps that cannot resolve names. Add its file to the /etc list in sam-sandbox; never bind all of /etc.
 
 ## sensitive-system-files
