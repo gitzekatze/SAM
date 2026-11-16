@@ -1,0 +1,25 @@
+# Weekly: the projects SAM builds on, watched for changes that could break
+# a contract before they reach any distribution (scripts/upstream-watch.py).
+# Opens an issue labelled "upstream-change" when release notes mention an
+# option SAM uses or a removal.
+name: Upstream watch
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Newest versions and their release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/upstream-watch.py

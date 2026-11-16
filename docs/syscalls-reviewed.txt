@@ -428,3 +428,15 @@ wait4	allowed
 waitid	allowed
 write	allowed
 writev	allowed
+#
+# Reviewed after the first list, when an upcoming distribution's headers
+# named them (nightly early warning):
+#
+# fchroot (Linux 7.3), 2026-11-16: the file-descriptor form of chroot with
+# the same rule: a directory needs CAP_SYS_CHROOT, which the sandbox drops
+# (--cap-drop ALL, no new privileges). Its one unprivileged use,
+# FD_FAILFS_ROOT, moves the caller into an empty kernel file system, which
+# only narrows its own view. Allowed, like chroot. Based on the patch
+# series and LTP tests; recheck against the fchroot(2) man page once it is
+# published.
+fchroot	allowed

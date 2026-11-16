@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: read
+  # To read the record of the last green run (what changed outside SAM).
+  actions: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -129,6 +131,20 @@ jobs:
         if: env.CODE == 'true'
         run: cargo build --workspace --locked
 
+      # The outside world of this run: every contract's state and every
+      # component's version (docs/contracts.md). Kept for the next runs, so
+      # a failure can say what changed since the last green one.
+      - name: Record the outside world
+        if: env.CODE == 'true'
+        run: target/debug/sam-jail --json doctor --contracts | tail -n 1 > "$RUNNER_TEMP/contracts.json"
+
+      - uses: actions/upload-artifact@v7
+        if: always() && env.CODE == 'true'
+        with:
+          name: contracts-${{ runner.arch }}
+          path: ${{ runner.temp }}/contracts.json
+          if-no-files-found: ignore
+
       - name: Format (rustfmt.toml)
         if: env.CODE == 'true'
         run: cargo fmt --all --check
@@ -210,6 +226,17 @@ jobs:
           for f in "$RUNNER_TEMP"/man/*.1; do
             diff -I '^\.TH' "$f" "data/man/$(basename "$f")" || { echo "data/man is out of date: run 'make man' and commit"; exit 1; }
           done
+
+      # When something failed: what changed outside SAM since the last green
+      # run on main (versions, contract states), in the run's summary.
+      - name: What changed outside SAM
+        if: failure() && env.CODE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          [ -z "$prev" ] || gh run download "$prev" --name "contracts-${{ runner.arch }}" --dir "$RUNNER_TEMP/previous" || true
+          python3 scripts/contract-diff.py "$RUNNER_TEMP/previous/contracts.json" "$RUNNER_TEMP/contracts.json" | tee -a "$GITHUB_STEP_SUMMARY"
 
   # The sandbox tests (breakout, evil AppImages, permission matrix, end to
   # end) on Fedora as well: another distribution, other versions of
