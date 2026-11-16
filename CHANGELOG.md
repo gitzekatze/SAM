@@ -11,6 +11,9 @@ version.
 
 ### Rules for automation
 
+- The handbook starts with **How SAM looks after itself**: the whole
+  maintenance machine on one page, what runs without the maintainer, where
+  they are needed, and a weekly routine of about 15 minutes.
 - A sandbox test that cannot run fails in CI instead of skipping
   (`SAM_REQUIRE_SANDBOX=1`), so a green run always tested the sandbox.
 - Protected tests may only gain lines; any removed or changed line needs

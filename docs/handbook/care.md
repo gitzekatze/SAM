@@ -3,7 +3,10 @@
 What to look at, how often, and what to do about it. Nothing here is urgent
 unless it says so.
 
-## Every week (5 minutes)
+## Every week (about 15 minutes)
+
+The short version is the weekly routine in
+[How SAM looks after itself](looks-after-itself.md#your-weekly-routine-about-15-minutes).
 
 - **Security tab → Advisories:** a private report about a way out of the
   sandbox. **Urgent:** answer within a week, fix before anything else, and

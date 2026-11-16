@@ -51,6 +51,7 @@ PAGES = [
 # The maintainer handbook.
 HANDBOOK = [
     ("maintain", "maintain/index.html", "docs/handbook/index.md", "Start here"),
+    ("maintain", "maintain/looks-after-itself.html", "docs/handbook/looks-after-itself.md", "How SAM looks after itself"),
     ("maintain", "maintain/github.html", "docs/handbook/github.md", "How GitHub works"),
     ("maintain", "maintain/workflow.html", "docs/handbook/workflow.md", "Everyday work"),
     ("maintain", "maintain/tips.html", "docs/handbook/tips.md", "Updating SAM and the repository"),
@@ -78,7 +79,7 @@ PAGE_ICONS = {
     "trust/functions.html": "check", "trust/tests.html": "flask", "trust/mutation-testing.html": "shuffle",
     "trust/security-review.html": "doc", "trust/testing.html": "flask", "trust/architecture.html": "layers",
     "use/changelog.html": "clock",
-    "maintain/index.html": "flag", "maintain/github.html": "branch", "maintain/workflow.html": "flow", "maintain/tips.html": "undo", "maintain/outside.html": "shield", "maintain/contracts.html": "check", "maintain/automation.html": "shuffle", "maintain/tools.html": "wrench",
+    "maintain/index.html": "flag", "maintain/looks-after-itself.html": "shield", "maintain/github.html": "branch", "maintain/workflow.html": "flow", "maintain/tips.html": "undo", "maintain/outside.html": "shield", "maintain/contracts.html": "check", "maintain/automation.html": "shuffle", "maintain/tools.html": "wrench",
     "maintain/releasing.html": "tag", "maintain/care.html": "heart",
     "maintain/translating.html": "globe", "maintain/json-interface.html": "code",
     "maintain/packaging.html": "box", "maintain/contributing.html": "users",

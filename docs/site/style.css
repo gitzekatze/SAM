@@ -183,3 +183,7 @@ a.card .more { display: inline-block; margin-top: 0.9rem; color: var(--accent); 
 footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; padding: 2rem 0 3rem; }
 footer .wrap { display: flex; gap: 1.5rem; flex-wrap: wrap; justify-content: space-between; }
 footer a { color: var(--muted); }
+
+/* Diagrams keep a readable size on phones and scroll sideways, like tables. */
+.doc .mermaid { overflow-x: auto; }
+.doc .mermaid svg { min-width: 640px; }

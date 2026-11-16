@@ -38,18 +38,21 @@ Inside the repository:
 
 ## The pages of this handbook
 
-1. [How GitHub works for SAM](github.md): repository, commits, branches,
+1. [How SAM looks after itself](looks-after-itself.md): the whole
+   maintenance machine on one page, what runs without you, where you are
+   needed, and your weekly routine. **Read this second.**
+2. [How GitHub works for SAM](github.md): repository, commits, branches,
    pull requests, CI, releases, the website, issues and security reports.
-2. [Everyday work](workflow.md): making a change, from idea to merged.
-3. [Updating SAM and the repository](tips.md): dependencies, Rust, and the
+3. [Everyday work](workflow.md): making a change, from idea to merged.
+4. [Updating SAM and the repository](tips.md): dependencies, Rust, and the
    Git situations that come up, each with its fix.
-4. [When something outside SAM changes](outside.md): the contract map, the
+5. [When something outside SAM changes](outside.md): the contract map, the
    early warnings, and what to do when a part of the outside world breaks.
-5. [Your tools](tools.md): every command and script, what it does and when.
-6. [Releasing a version](../releasing.md): the checklist, and the one
+6. [Your tools](tools.md): every command and script, what it does and when.
+7. [Releasing a version](../releasing.md): the checklist, and the one
    command that does most of it.
-7. [Keeping SAM healthy](care.md): what to look at weekly, monthly, yearly.
-8. Deeper references: [testing](../testing.md), [translating](../translating.md),
+8. [Keeping SAM healthy](care.md): what to look at weekly, monthly, yearly.
+9. Deeper references: [testing](../testing.md), [translating](../translating.md),
    [architecture](../architecture.md), [the JSON interface](../json-interface.md),
    [packaging](../packaging.md), [contracts](../contracts.md), [AUTOMATION.md](../../AUTOMATION.md).
 
@@ -57,9 +60,12 @@ Inside the repository:
 
 When you come back after a break, in this order:
 
-1. **Look at GitHub:** open issues, security reports (Security tab), and the
-   newest CI run on `main` (Actions tab). [Keeping SAM healthy](care.md) says
-   what each means.
+1. **Look at GitHub:** security reports (Security tab) first; then issues,
+   especially `early-warning` and `upstream-change` (the outside world
+   changed while you were away; each issue names the contract and what to
+   do); then open pull requests and the newest CI run on `main` (Actions
+   tab). [How SAM looks after itself](looks-after-itself.md) explains what
+   each one means.
 2. **Update your clone:** `git switch main` and `git pull`.
 3. **Check that everything still works:** `make test`.
 4. **Read the newest entries** under *Unreleased* in [CHANGELOG.md](../../CHANGELOG.md):
