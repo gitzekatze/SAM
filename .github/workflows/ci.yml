@@ -278,6 +278,70 @@ jobs:
             ${{ runner.temp }}/gui-*/*.png
           if-no-files-found: ignore
 
+
+  # The same window tests under GNOME: a headless Mutter, GNOME's
+  # compositor, instead of KWin. Ubuntu and Fedora use GNOME by default.
+  window-flows-gnome:
+    needs: changes
+    # Runs unless the change is known to touch documents only (fail-safe).
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: System packages
+        timeout-minutes: 10
+        run: |
+          sudo sed -i -e 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|g' -e 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get update -q -o Acquire::Retries=3 -o Acquire::http::Timeout=30
+          sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+            libgtk-4-dev libadwaita-1-dev pkg-config \
+            bubblewrap xdg-dbus-proxy passt squashfs-tools python3 gettext dbus \
+            mutter gsettings-desktop-schemas at-spi2-core python3-gi gir1.2-atspi-2.0 locales adwaita-icon-theme
+          sudo locale-gen en_US.UTF-8
+
+      - name: Allow user namespaces for Bubblewrap
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build and translations
+        run: |
+          cargo build --workspace --locked
+          make mo
+
+      - name: Window tests
+        run: |
+          rc=0
+          for t in flow app-page permissions a11y; do
+            echo "== $t"
+            SAM_SESSION=mutter sh tests/gui/$t-atspi.sh "$RUNNER_TEMP/gui-$t" || rc=1
+          done
+          exit $rc
+
+      - name: Window test logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: window-flows-gnome
+          path: |
+            ${{ runner.temp }}/gui-*/*.log
+            ${{ runner.temp }}/gui-*/*.png
+            ${{ runner.temp }}/gui-*/mutter.log
+          if-no-files-found: ignore
   sandbox-fedora:
     needs: changes
     # Runs unless the change is known to touch documents only (fail-safe).

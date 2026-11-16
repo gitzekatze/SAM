@@ -54,7 +54,8 @@ GitHub's computers. See it in the **Actions** tab. Its jobs:
 |---|---|
 | **test** | builds SAM, checks the code format and lints, runs all tests twice (a test that changes its answer is flaky), checks the generated documents and translations, and opens every page of the window |
 | **sandbox-fedora** | the real sandbox tests (breakout attempts, hostile AppImages) on Fedora |
-| **window-flows** | clicks through the window like a person, through the accessibility interface |
+| **window-flows** | clicks through the window like a person, through the accessibility interface, under KDE's KWin |
+| **window-flows-gnome** | the same under GNOME's Mutter (not yet required for merging; it becomes required once it has proved stable) |
 | **deny** | dependencies: known security problems, licenses, where they come from |
 
 **Document-only changes are quick:** when a pull request changes only

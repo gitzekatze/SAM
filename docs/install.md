@@ -41,9 +41,9 @@ check it.
 
 ## Packages for your distribution
 
-Packages that install through your usual software tool are planned with the
-first release: in the **AUR** for Arch Linux and CachyOS, and a **COPR**
-repository for Fedora.
+Packages that install through your usual software tool are planned: in the
+**AUR** for Arch Linux and CachyOS, and a **COPR** repository for Fedora.
+Until they exist, use the AppImage.
 
 ## Your first sandbox
 

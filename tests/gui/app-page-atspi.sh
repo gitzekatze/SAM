@@ -9,7 +9,7 @@ set -eu
 here=$(cd "$(dirname "$0")/../.." && pwd)
 out=$(mkdir -p "${1:?usage: app-page-atspi.sh OUTDIR}" && cd "$1" && pwd)
 if [ "${INSIDE:-}" != 1 ]; then
-    INSIDE=1 SAM_SESSION=kwin exec "$here/tests/gui/session.sh" "$out" "$0" "$out"
+    INSIDE=1 SAM_SESSION=${SAM_SESSION:-kwin} exec "$here/tests/gui/session.sh" "$out" "$0" "$out"
 fi
 bin="$here/target/debug"
 rm -rf "$out/data-set"; mkdir -p "$out/data-set/apps-folder" "$out/data-set/config"

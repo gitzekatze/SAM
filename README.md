@@ -139,7 +139,7 @@ From the first release on, SAM comes as one **AppImage** that runs on Ubuntu
 openSUSE Tumbleweed: download it from the
 [releases page](https://github.com/gitzekatze/SAM/releases), allow it to run,
 and open it. Packages in the AUR (Arch, CachyOS) and a COPR repository
-(Fedora) are planned with the first release.
+(Fedora) are planned.
 
 **[Install SAM](docs/install.md)** has the details: what your computer needs,
 the AppImage step by step, your first sandbox, and building SAM yourself.
