@@ -257,9 +257,9 @@ ICONS = {
     # Points on the home page
     "file": "M7 3h7l5 5v13H7zM14 3v5h5",
     "unlock": "M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 016.8-1.2M12 15v2",
-    "sandbox": "M3 3h18v18H3zM9 7h4l2 2v8H9z",
     "eye": "M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12zM12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z",
-    "lock": "M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 017 0V11",
+    "lock": "M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 017 0V11M12 15v2",
+    "funnel": "M3 5h18l-7 8v6l-4 2v-8z",
     "toggle": "M3 12a5 5 0 015-5h8a5 5 0 010 10H8a5 5 0 01-5-5zM16 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z",
     "lifebuoy": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM5.6 5.6l3.6 3.6M14.8 14.8l3.6 3.6M18.4 5.6l-3.6 3.6M9.2 14.8l-3.6 3.6",
     "menu": "M4 6h16M4 12h16M4 18h10",
@@ -313,9 +313,9 @@ def page_icon(page, size=""):
 # without an icon and named in the build output.
 POINT_ICONS = {
     # README: why AppImages need a sandbox
-    "one file": "file", "all your rights": "unlock", "its own sandbox": "sandbox",
+    "simple": "file", "unprotected": "unlock", "sandboxed": "lock",
     # README: what SAM does differently
-    "nothing runs before you decide": "eye", "each app gets the least access it needs": "lock",
+    "nothing runs before you decide": "eye", "each app gets the least access it needs": "funnel",
     "every switch says what it costs": "toggle", "sam finds out why an app struggles": "lifebuoy",
     "sandboxed apps fit into your desktop": "menu", "sam is built on proven parts": "bricks",
     # README: the evidence
