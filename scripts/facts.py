@@ -84,11 +84,11 @@ def compute():
     if mut:
         text = mut.read_text()
         row = lambda label: number(re.search(rf"^\| {label}[^|]*\| ([\d,]+) \|", text, re.M).group(1))
-        tested, caught, timeout, missed = row("Tested"), row("Caught by a test"), row("Caught by a timeout"), row("Missed")
+        total, missed = row("Mutants in the four crates"), row("Missed")
         src = str(mut.relative_to(ROOT))
-        f["mutants_tested"] = (fmt(tested), src)
-        stated = re.search(r"\*\*([\d.]+ %) of the buildable changes were caught", text)
-        f["mutants_caught_percent"] = (stated.group(1) if stated else f"{100 * (caught + timeout) / (caught + timeout + missed):.1f} %", src)
+        f["mutants_tested"] = (fmt(total), src)
+        f["mutants_missed"] = (fmt(missed), src)
+        f["mutants_missed_percent"] = (f"{100 * missed / total:.1f} %", src)
         f["mutants_report"] = (mut.name.removesuffix(".md"), src)
     return f
 

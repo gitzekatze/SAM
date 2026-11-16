@@ -95,7 +95,7 @@ def build():
         f"| **Tests in the code** | {F['tests'][0]}, of which {F['regression_tests'][0]} guard against bugs that really happened |",
         f"| **Functions with proof** | {F['functions'][0]}, each with the tests that prove it |",
         *([f"| **Real AppImages** | {F['apps_start'][0]} of {F['apps_total'][0]} start in their sandbox ({F['apps_date'][0]}) |"] if "apps_total" in F else []),
-        *([f"| **Mutation testing** | {F['mutants_caught_percent'][0]} of {F['mutants_tested'][0]} deliberate mistakes caught |"] if "mutants_tested" in F else []),
+        *([f"| **Mutation testing** | {F['mutants_tested'][0]} deliberate mistakes; {F['mutants_missed'][0]} went unnoticed ({F['mutants_missed_percent'][0]}) |"] if "mutants_tested" in F else []),
         f"| **Version** | {version} (the number changes only when a version is published) |",
         f"| **Latest commit** | `{git('log', '-1', '--format=%h')}` {git('log', '-1', '--format=%s').replace('|', '/')} |",
         f"| **Commits so far** | {git('rev-list', '--count', 'HEAD')} |",
@@ -141,7 +141,7 @@ def build():
               f"([report]({F['apps_total'][1]}))."]
     if "mutants_tested" in F:
         L += [f"- **Mutation testing:** {F['mutants_tested'][0]} deliberate mistakes in the security code; "
-              f"the tests caught {F['mutants_caught_percent'][0]} of those that could be built "
+              f"only {F['mutants_missed'][0]} of them ({F['mutants_missed_percent'][0]}) went unnoticed "
               f"([report]({F['mutants_tested'][1]}))."]
     L += ["- **Breakout and hostile-AppImage tests:** run inside a real sandbox on every change, "
           "on Ubuntu and Fedora ([threat model](docs/threat-model.md)).", ""]

@@ -5,7 +5,7 @@
 > the version reports changed over time, and the latest commits. For people
 > who use SAM, the front page is [README.md](README.md).
 >
-> Generated on 2026-11-16 at 20:26 by `scripts/dashboard.py`. The website
+> Generated on 2026-11-16 at 21:18 by `scripts/dashboard.py`. The website
 > builds this page again with every change to SAM; this file in the repository
 > is renewed with every version report (`make report`).
 
@@ -19,10 +19,10 @@
 | **Tests in the code** | 270, of which 7 guard against bugs that really happened |
 | **Functions with proof** | 40, each with the tests that prove it |
 | **Real AppImages** | 117 of 120 start in their sandbox (2026-11-15) |
-| **Mutation testing** | 88.5 % of 2,821 deliberate mistakes caught |
+| **Mutation testing** | 2,835 deliberate mistakes; 314 went unnoticed (11.1 %) |
 | **Version** | 0.1.0 (the number changes only when a version is published) |
-| **Latest commit** | `088732f` Front page: remove the drawn permission panel |
-| **Commits so far** | 257 |
+| **Latest commit** | `2f55b4f` Merge pull request #25 from gitzekatze/site-from-docs |
+| **Commits so far** | 260 |
 | **Version reports** | 8; the newest is [0.1.0-2ccd936](docs/reports/0.1.0-2ccd936.md) |
 
 > **How to read the badge:** it shows the last CI run on GitHub (unit,
@@ -54,7 +54,7 @@
 > report. [How SAM is tested](docs/testing.md) explains every kind of test.
 
 - **Real AppImages:** 117 of 120 start in their sandbox; 2 of them after one repair step, 2 fail for reasons inside the app, and 1 built for another processor is turned away ([report](docs/reports/real-apps-2026-11-15.md)).
-- **Mutation testing:** 2,821 deliberate mistakes in the security code; the tests caught 88.5 % of those that could be built ([report](docs/reports/mutants-2026-11-15.md)).
+- **Mutation testing:** 2,835 deliberate mistakes in the security code; only 314 of them (11.1 %) went unnoticed ([report](docs/reports/mutants-2026-11-15.md)).
 - **Breakout and hostile-AppImage tests:** run inside a real sandbox on every change, on Ubuntu and Fedora ([threat model](docs/threat-model.md)).
 
 ## Health of each part
@@ -494,8 +494,11 @@
 
 | Commit | Date | Change |
 |---|---|---|
+| [`2f55b4f`](https://github.com/gitzekatze/SAM/commit/2f55b4f) | 2026-11-16 | Merge pull request #25 from gitzekatze/site-from-docs |
+| [`86106a2`](https://github.com/gitzekatze/SAM/commit/86106a2) | 2026-11-16 | Website from the documents; README and dashboard rewritten |
 | [`088732f`](https://github.com/gitzekatze/SAM/commit/088732f) | 2026-11-16 | Front page: remove the drawn permission panel |
 | [`06d10bf`](https://github.com/gitzekatze/SAM/commit/06d10bf) | 2026-11-16 | Website: a new front page, rows for long lists, one icon per meaning |
+| [`0be9a7e`](https://github.com/gitzekatze/SAM/commit/0be9a7e) | 2026-11-16 | Merge pull request #24 from gitzekatze/docs-refresh |
 | [`1cbfded`](https://github.com/gitzekatze/SAM/commit/1cbfded) | 2026-11-16 | Handbook: How SAM looks after itself |
 | [`1c18662`](https://github.com/gitzekatze/SAM/commit/1c18662) | 2026-11-16 | Handbook: the seven required checks |
 | [`efa3eaf`](https://github.com/gitzekatze/SAM/commit/efa3eaf) | 2026-11-16 | Documents and website brought up to date |
@@ -521,8 +524,5 @@
 | [`d434b7f`](https://github.com/gitzekatze/SAM/commit/d434b7f) | 2026-11-16 | Contract map: ten sandbox tests check their contracts first |
 | [`e12d2b1`](https://github.com/gitzekatze/SAM/commit/e12d2b1) | 2026-11-16 | Contract map: runtime-built paths are checked too; the blind spot is named |
 | [`24639ee`](https://github.com/gitzekatze/SAM/commit/24639ee) | 2026-11-16 | Contract map: versions for sound, D-Bus and X11 |
-| [`7368b02`](https://github.com/gitzekatze/SAM/commit/7368b02) | 2026-11-16 | Contract map: every contract says whether its tests cover it fully |
-| [`849c951`](https://github.com/gitzekatze/SAM/commit/849c951) | 2026-11-16 | Contract map refinements from the first early-warning run |
-| [`20d7807`](https://github.com/gitzekatze/SAM/commit/20d7807) | 2026-11-16 | Merge pull request #13 from gitzekatze/contract-map |
 
 The full history is at [https://github.com/gitzekatze/SAM/commits/main](https://github.com/gitzekatze/SAM/commits/main).

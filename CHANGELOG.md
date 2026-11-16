@@ -118,6 +118,9 @@ version.
 - Numbers are never typed by hand: scripts/facts.py fills them into the
   documents from the repository (tests, functions, the newest real-AppImage
   and mutation reports), and CI fails when a document quotes an old one.
+- The mutation-testing report gives the run's own numbers: 2,835 changes,
+  314 of them unnoticed. It used to say 2,821 tested and 88.5 % caught,
+  figures that did not match the run's records.
 - The results of the 120 real AppImages are published as a report
   (docs/reports/real-apps-2026-11-15.md), made by
   `tests/real-apps/table.py --markdown`.
@@ -325,7 +328,7 @@ version.
   newer version, downloading only the changed parts, swapping the file while
   keeping the old one, refusing a damaged download, and refusing plain HTTP.
 - Mutation testing before the release ([report](docs/reports/mutants-2026-11-15.md)):
-  88.5 % of 2,609 deliberate code changes were caught; the gaps it showed in
+  314 of 2,835 deliberate code changes (11.1 %) went unnoticed; the gaps it showed in
   the unpacking limits, the sandbox command, the terminal filter and the
   update checksums now have tests.
 - The test library (docs/test-library.md, made by `scripts/test-library.py`)
