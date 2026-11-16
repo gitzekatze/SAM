@@ -9,6 +9,20 @@ version.
 
 ## Unreleased
 
+### Rules for automation
+
+- **AUTOMATION.md** sets the rules for automated upkeep: what automation
+  may do, what it may never do, risk classes, and a kill switch
+  (`SAM_AUTOMATION`).
+- Every pull request gets a risk class (low to critical) from the files it
+  touches.
+- **A contract verifier** blocks every weakening of a security promise
+  (contracts, functions, syscall review, threat model, protected tests,
+  safety lists) and every new dependency unless the owner sets the label
+  `owner-approved`.
+- A workflow check refuses the known ways a GitHub workflow can hand the
+  repository to an attacker.
+
 ### Contracts with the outside world
 
 - **A contract map** (`docs/contracts.toml`, page `docs/contracts.md`): every

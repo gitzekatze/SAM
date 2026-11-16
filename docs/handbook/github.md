@@ -89,6 +89,16 @@ change to `main`, by the **Pages** workflow and `scripts/site.py`. It is
 never edited by hand: change the documents in `docs/`, and the website
 follows.
 
+## Automation and its checks
+
+What automation may do, what it may never do, the risk class of every
+pull request, the contract verifier, protected tests and the kill switch
+are in [AUTOMATION.md](../../AUTOMATION.md). In short: a pull request that
+weakens a security promise, changes a protected test or adds a dependency
+passes only when you set the label **`owner-approved`** on it. Read the
+"Contract verifier" section of the CI run first: it lists exactly what is
+weakened.
+
 ## Issues, suggestions and security reports
 
 - **Issues** (Issues tab) are bug reports and ideas. The forms ask for what
