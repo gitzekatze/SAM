@@ -53,7 +53,8 @@ These are written by scripts; never edit them by hand.
 | `docs/reports/` | `scripts/version-report.py` (`make report`) |
 | `THIRD-PARTY-LICENSES.md` | `scripts/third-party-licenses.py` |
 | `data/man/` | `make man` |
-| the website | `scripts/site.py` (on GitHub, by the Pages workflow) |
+| the website | `scripts/site.py` (on GitHub, by the Pages workflow; `make site` locally) |
+| your copy with this handbook | `make handbook` (`scripts/site.py --private`, never published) |
 
 ## On GitHub
 

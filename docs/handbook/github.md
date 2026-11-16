@@ -78,6 +78,13 @@ change to `main`, by the **Pages** workflow and `scripts/site.py`. It is
 never edited by hand: change the documents in `docs/`, and the website
 follows.
 
+The website has two sections, *Use SAM* and *Trust SAM*. This handbook is
+not on it: it is for you. `make handbook` builds the website together with
+the handbook on your computer (in `target/handbook`) and opens it in your
+browser. The handbook's documents are still in the public repository, like
+every file of SAM, so anyone who looks in `docs/handbook/` can read them;
+nothing in them is secret. Your private notes belong in `SAM/personal/`.
+
 ## Issues, suggestions and security reports
 
 - **Issues** (Issues tab) are bug reports and ideas. The forms ask for what
