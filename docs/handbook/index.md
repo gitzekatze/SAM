@@ -43,11 +43,13 @@ Inside the repository:
 2. [Everyday work](workflow.md): making a change, from idea to merged.
 3. [Updating SAM and the repository](tips.md): dependencies, Rust, and the
    Git situations that come up, each with its fix.
-4. [Your tools](tools.md): every command and script, what it does and when.
-5. [Releasing a version](../releasing.md): the checklist, and the one
+4. [When something outside SAM changes](outside.md): the contract map, the
+   early warnings, and what to do when a part of the outside world breaks.
+5. [Your tools](tools.md): every command and script, what it does and when.
+6. [Releasing a version](../releasing.md): the checklist, and the one
    command that does most of it.
-6. [Keeping SAM healthy](care.md): what to look at weekly, monthly, yearly.
-7. Deeper references: [testing](../testing.md), [translating](../translating.md),
+7. [Keeping SAM healthy](care.md): what to look at weekly, monthly, yearly.
+8. Deeper references: [testing](../testing.md), [translating](../translating.md),
    [architecture](../architecture.md), [the JSON interface](../json-interface.md),
    [packaging](../packaging.md).
 

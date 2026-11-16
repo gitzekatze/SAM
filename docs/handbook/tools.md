@@ -14,6 +14,8 @@ it exists. Run them in your clone of the repository.
 | `python3 scripts/i18n.py check` | translations complete, placeholders kept, informal address | after changing texts people read |
 | `python3 scripts/i18n.py extract` | collects the texts to translate | after adding texts |
 | `make mo` | compiles the translations | to try them in the window |
+| `sam-jail doctor --contracts` | checks every contract with the outside world on this computer, with the versions | after a system update, or when something stopped working |
+| `python3 scripts/contract-map.py` | checks the contract map against the code and writes docs/contracts.md | after the code starts using something outside SAM (CI says so) |
 | `make mutants-diff` | changes the code you touched on purpose and lists every change no test noticed | before pushing security-relevant code |
 
 ## Releasing
@@ -38,6 +40,8 @@ The release key itself is described in [Keeping SAM healthy](care.md#the-release
 | `tests/gui/*-atspi.sh OUTDIR` | clicks through the window in a hidden session | after changing the window (CI runs them too) |
 | `tests/gui/smoke.sh OUTDIR` | opens every page and fails on warnings | after changing the window |
 | `cargo mutants …` | mutation testing of whole parts (hours) | once per version ([releasing](../releasing.md)) |
+| `scripts/contract-diff.py OLD NEW` | what changed outside SAM between two runs (versions, contract states) | CI runs it on a failure |
+| Actions → Early warning → Run workflow | the contracts on tomorrow's distributions, now instead of at night | after fixing an early-warning issue |
 | `make test-shipped APPIMAGE=…` | the finished AppImage on fresh distributions | before publishing |
 
 ## Generated pages
@@ -47,6 +51,7 @@ These are written by scripts; never edit them by hand.
 | Page | Made by |
 |---|---|
 | `docs/functions.md` | `scripts/function-map.py` (from `docs/functions.toml`) |
+| `docs/contracts.md` | `scripts/contract-map.py` (from `docs/contracts.toml`) |
 | `docs/test-library.md` | `scripts/test-library.py` |
 | `DEVELOPMENT.md` (dashboard) | `scripts/dashboard.py` |
 | `docs/reports/` | `scripts/version-report.py` (`make report`) |
