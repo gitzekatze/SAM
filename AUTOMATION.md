@@ -63,6 +63,14 @@ look at when something does. To approve: open the pull request, click
 again by itself. Claude never sets this label, although a local session
 could: the label is the owner's decision.
 
+## Where the rules live
+
+The repository-specific lists (the critical paths of the risk classes, the
+protected tests, the safety lists the verifier watches, the documents that
+hold SAM's promises, the distributions of the early warning) are in
+**`keeper.toml`**; the scripts themselves are general. `keeper.toml` is a
+critical file, and removing anything from its lists counts as a weakening.
+
 ## Never automated
 
 Signing, tagging and publishing releases; branch protection and rulesets;

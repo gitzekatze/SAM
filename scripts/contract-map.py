@@ -26,7 +26,9 @@ MAP = ROOT / "docs" / "contracts.toml"
 PAGE = ROOT / "docs" / "contracts.md"
 
 # Code that only tests use is not an assumption of SAM itself.
-TEST_ONLY = {"crates/sam-intake/src/testkit.rs", "crates/sam-jail-cli/src/bench.rs"}
+_KEEP = tomllib.loads((ROOT / "keeper.toml").read_text())["contracts"]
+TEST_ONLY = set(_KEEP["test_only"])
+OWN_CLI_CALLERS = _KEEP["own_cli_callers"]
 
 PATTERNS = {
     "program": [r'Command::new\("([^"/][^"]*|/[^"]+)"\)', r'which\("([^"]+)"\)'],
@@ -72,7 +74,7 @@ def inventory():
         for n, line in code_lines(f):
             for kind, pats in PATTERNS.items():
                 # The window calls SAM's own command line: its options are not outside assumptions.
-                if kind == "option" and rel.startswith("crates/sam-gtk/"):
+                if kind == "option" and any(rel.startswith(d) for d in OWN_CLI_CALLERS):
                     continue
                 for p in pats:
                     for m in re.finditer(p, line):

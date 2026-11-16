@@ -26,18 +26,17 @@ Weakening means:
 Verdict: PASS, NEEDS-OWNER (exit 1 without --approved), FAIL (exit 2:
 something could not be read; the safe answer is no).
 """
+import pathlib
 import re
 import subprocess
 import sys
 import tomllib
 
 SAFETY = ["refuse", "safer", "warn", "feature", "none"]
-LISTS = {
-    "crates/sam-runner/src/netns.rs": ["NEVER_FORWARD_FROM_APP"],
-    "crates/sam-core/src/permissions.rs": ["DANGEROUS_BUS_NAMES"],
-    "crates/sam-core/src/risk.rs": ["SENSITIVE_PATHS"],
-    "crates/sam-sandbox/src/lib.rs": ["PROTECTED_RO", "SENSITIVE_DOTFILES"],
-}
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+CFG = tomllib.loads((ROOT / "keeper.toml").read_text())["verifier"]
+# Safety lists in the code (keeper.toml): removing an entry is a weakening.
+LISTS = {l["file"]: l["names"] for l in CFG["lists"]}
 
 
 def contracts(old, new):
@@ -104,17 +103,9 @@ def code_lists(path, old, new):
     return out
 
 
-# The tests that prove SAM's security promises: automation may add to them,
-# never remove, skip or weaken them.
-PROTECTED = [
-    "crates/sam-runner/tests/breakout.rs", "crates/sam-runner/tests/evil.rs",
-    "crates/sam-runner/tests/matrix.rs", "crates/sam-runner/tests/sandbox.rs",
-    "crates/sam-runner/tests/verify.rs", "crates/sam-runner/tests/syscalls.rs",
-    "crates/sam-runner/tests/fuzz.rs", "crates/sam-runner/tests/tamper.rs",
-    "crates/sam-runner/tests/update_server.rs", "crates/sam-jail-cli/tests/teardown.rs",
-    "crates/sam-jail-cli/tests/layers.rs", "crates/sam-jail-cli/tests/contracts.rs",
-    "crates/sam-jail-cli/tests/architecture.rs", "crates/sam-intake/tests/damaged.rs",
-]
+# The tests that prove the security promises (keeper.toml): automation may
+# add to them, never remove, skip or weaken them.
+PROTECTED = CFG["protected_tests"]
 
 
 def protected(path, old, new):
@@ -142,11 +133,31 @@ def dependencies(old, new):
     return [f"new dependency {d} (needs review: purpose, maintenance, license)" for d in sorted(names(new) - names(old))]
 
 
+def keeper(old, new):
+    """keeper.toml decides what is critical, protected and watched: removing
+    anything from those lists is a weakening."""
+    out = []
+    o, n = tomllib.loads(old), tomllib.loads(new)
+    for section, key in [("risk", "critical"), ("verifier", "protected_tests")]:
+        for e in sorted(set(o.get(section, {}).get(key, [])) - set(n.get(section, {}).get(key, []))):
+            out.append(f"keeper.toml: {e} removed from {section}.{key}")
+    nl = {(l["file"], x) for l in n.get("verifier", {}).get("lists", []) for x in l["names"]}
+    for l in o.get("verifier", {}).get("lists", []):
+        for x in l["names"]:
+            if (l["file"], x) not in nl:
+                out.append(f"keeper.toml: the safety list {x} in {l['file']} is no longer watched")
+    for key in ("contracts", "functions", "syscalls", "threat_model"):
+        if o.get("verifier", {}).get(key) and o["verifier"][key] != n.get("verifier", {}).get(key):
+            out.append(f"keeper.toml: the watched {key} document changed")
+    return out
+
+
 CHECKS = {
-    "docs/contracts.toml": contracts,
-    "docs/functions.toml": functions,
-    "docs/syscalls-reviewed.txt": syscalls,
-    "docs/threat-model.md": threat_model,
+    CFG["contracts"]: contracts,
+    CFG["functions"]: functions,
+    CFG["syscalls"]: syscalls,
+    CFG["threat_model"]: threat_model,
+    "keeper.toml": keeper,
 }
 
 
@@ -157,7 +168,7 @@ def weakenings(path, old, new):
         return code_lists(path, old, new)
     if path in PROTECTED:
         return protected(path, old, new)
-    if path == "Cargo.lock":
+    if path == CFG["lockfile"]:
         return dependencies(old, new)
     return []
 
@@ -197,6 +208,10 @@ def self_test():
         ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() {\n    assert!(x);\n}", "#[test]\nfn a() {\n    assert!(x);\n}\n#[test]\nfn b() {\n    assert!(y);\n}", 0),
         ("Cargo.lock", 'name = "serde"\n', 'name = "serde"\nname = "evil-crate"\n', 1),
         ("Cargo.lock", 'name = "serde"\nname = "old"\n', 'name = "serde"\n', 0),
+        ("keeper.toml", '[risk]\ncritical = ["a", "b"]\n', '[risk]\ncritical = ["a"]\n', 1),
+        ("keeper.toml", '[verifier]\nprotected_tests = ["t.rs"]\n', '[verifier]\nprotected_tests = []\n', 1),
+        ("keeper.toml", '[verifier]\nlists = [{ file = "f", names = ["A", "B"] }]\n', '[verifier]\nlists = [{ file = "f", names = ["A"] }]\n', 1),
+        ("keeper.toml", '[risk]\ncritical = ["a"]\n', '[risk]\ncritical = ["a", "b"]\n', 0),
     ]
     wrong = 0
     for path, old, new, want in cases:
@@ -218,7 +233,7 @@ def main():
                                text=True, check=True).stdout.split()
         found = []
         for f in files:
-            if f in CHECKS or f in LISTS or f in PROTECTED or f == "Cargo.lock":
+            if f in CHECKS or f in LISTS or f in PROTECTED or f == CFG["lockfile"]:
                 found += weakenings(f, show(base, f), show("HEAD", f))
     except Exception as e:
         print(f"### Contract verifier: FAIL\n\nCould not compare with {base}: {e}. The safe answer is no.")

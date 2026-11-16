@@ -52,6 +52,7 @@ These are written by scripts; never edit them by hand.
 |---|---|
 | `docs/functions.md` | `scripts/function-map.py` (from `docs/functions.toml`) |
 | `docs/contracts.md` | `scripts/contract-map.py` (from `docs/contracts.toml`) |
+| (the automation's lists) | `keeper.toml`, read by the risk class, the contract verifier, the contract map and the early warning |
 | `docs/test-library.md` | `scripts/test-library.py` |
 | `DEVELOPMENT.md` (dashboard) | `scripts/dashboard.py` |
 | `docs/reports/` | `scripts/version-report.py` (`make report`) |
