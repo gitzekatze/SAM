@@ -13,6 +13,7 @@
 [[area]]
 id = "A"
 name = "Bringing an AppImage in"
+about = "SAM finds AppImages, recognizes every format, unpacks them without running them, within limits, and survives damaged or hostile files."
 
 [[function]]
 id = 1
@@ -53,6 +54,7 @@ tests = ["a_damaged_squashfs_image_gives_an_error_instead_of_a_crash", "parsers_
 [[area]]
 id = "B"
 name = "Choosing the right permissions"
+about = "SAM recommends the least access each app needs, explains every permission, and app output can never grant access on its own."
 
 [[function]]
 id = 6
@@ -87,6 +89,7 @@ tests = ["app_output_cannot_buy_dangerous_grants"]
 [[area]]
 id = "C"
 name = "The sandbox"
+about = "Inside the sandbox an app sees only what you allowed: files, network, desktop services, display, devices, and nothing that would let it out."
 
 [[function]]
 id = 10
@@ -154,6 +157,7 @@ tests = ["writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writa
 [[area]]
 id = "D"
 name = "Starting and running"
+about = "Every way of starting an app goes through its sandbox, the sandbox check confirms each setting from inside, and stopping leaves nothing behind."
 
 [[function]]
 id = 19
@@ -189,6 +193,7 @@ tests = ["the_newest_log_survives_pruning_within_one_second", "the_newest_log_is
 [[area]]
 id = "E"
 name = "Fixing apps that don't work"
+about = "When an app fails, SAM says why and offers fixes from mild to strong, each one reversible."
 
 [[function]]
 id = 23
@@ -222,6 +227,7 @@ tests = ["compatibility_mode_names_only_what_it_changes", "turning_compatibility
 [[area]]
 id = "F"
 name = "Keeping things safe over time"
+about = "SAM notices settings changed behind its back and changed or moved AppImages, and updates come over HTTPS and are checked."
 
 [[function]]
 id = 27
@@ -247,6 +253,7 @@ tests = ["a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_b
 [[area]]
 id = "G"
 name = "Managing"
+about = "Removing an app or SAM deletes only what SAM made, and bug reports contain no personal data."
 
 [[function]]
 id = 30
@@ -286,6 +293,7 @@ tests = ["bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names
 [[area]]
 id = "H"
 name = "The window"
+about = "The window: overview, Permission Manager, translations, and use with keyboard and screen reader."
 
 [[function]]
 id = 35
@@ -322,6 +330,7 @@ checks = ["tests/gui/a11y-atspi.sh"]
 [[area]]
 id = "I"
 name = "Foundations"
+about = "SAM's own files survive versions, and its parts stay cleanly separated."
 
 [[function]]
 id = 38

@@ -109,6 +109,27 @@ version.
 
 ### Website
 
+- The website shows the repository's documents and writes nothing of its
+  own: README.md is the front page, the Use and Trust overviews are
+  documents (docs/use.md, docs/trust.md), and the dashboard is built from
+  scripts/dashboard.py with every change. A document's shape decides the
+  design: three bold steps become a flow, longer lists become rows, short
+  ones cards, and bars become real bars.
+- Numbers are never typed by hand: scripts/facts.py fills them into the
+  documents from the repository (tests, functions, the newest real-AppImage
+  and mutation reports), and CI fails when a document quotes an old one.
+- The results of the 120 real AppImages are published as a report
+  (docs/reports/real-apps-2026-11-15.md), made by
+  `tests/real-apps/table.py --markdown`.
+- The README is rewritten as the front page's text: why AppImages need a
+  sandbox, what SAM does differently, how it works, and the evidence.
+- The dashboard shows what the tests prove area by area and the evidence
+  behind SAM's promises, as tiles, bars and a chart on the website.
+- Every page and every point has its own icon, and a page keeps its icon
+  wherever it is linked. The website build stops if two of them share one.
+- CONTRIBUTING.md names SAM's five columns (Reliability, Security,
+  Simplicity, Compatibility, Privacy); they guide the work and are no
+  longer shown on the website.
 - Every page has a breadcrumb trail, Previous and Next links that go round
   in a loop, and a link back to its section; the side menu and the
   overviews use small icons.

@@ -15,6 +15,7 @@ import json
 import pathlib
 import re
 import subprocess
+import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REPO = "https://github.com/gitzekatze/SAM"
@@ -23,6 +24,10 @@ REPO = "https://github.com/gitzekatze/SAM"
 spec = importlib.util.spec_from_file_location("test_library", ROOT / "scripts" / "test-library.py")
 lib = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lib)
+# SAM's numbers, from the same source as README and website.
+spec = importlib.util.spec_from_file_location("facts", ROOT / "scripts" / "facts.py")
+facts = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(facts)
 
 
 def git(*args):
@@ -60,23 +65,25 @@ def kind_of(path: pathlib.Path) -> str:
     return "integration" if "/tests/" in str(path) else "unit"
 
 
-def main():
+def build():
+    """The dashboard as Markdown; the website renders this same text."""
     version = re.search(r'^version = "([^"]+)"', (ROOT / "Cargo.toml").read_text(), re.M).group(1)
     reps = reports()
     latest = reps[-1] if reps else None
     previous = reps[-2] if len(reps) > 1 else None
     ok, failed = test_counts(latest[1]) if latest else (0, 0)
+    F = facts.compute()
 
-    L = ["# 🛠️ SAM development dashboard", ""]
+    L = ["# SAM development dashboard", ""]
     L += note(
         "**What this page is:** the front page for people who work on SAM. It shows",
         "whether SAM is healthy right now, every test with the promise it keeps, how",
         "the version reports changed over time, and the latest commits. For people",
         "who use SAM, the front page is [README.md](README.md).",
         "",
-        f"Generated on {datetime.datetime.now().strftime('%Y-%m-%d at %H:%M')} by `scripts/dashboard.py`. It is",
-        "regenerated with every version report (`make report`), so it shows the state",
-        "at the end of the last phase of work.",
+        f"Generated on {datetime.datetime.now().strftime('%Y-%m-%d at %H:%M')} by `scripts/dashboard.py`. The website",
+        "builds this page again with every change to SAM; this file in the repository",
+        "is renewed with every version report (`make report`).",
     )
 
     # ---- at a glance
@@ -85,6 +92,10 @@ def main():
         "| | |",
         "|---|---|",
         f"| **Tests** | {'✅' if failed == 0 else '❌'} {ok} pass, {failed} fail in the latest version report |",
+        f"| **Tests in the code** | {F['tests'][0]}, of which {F['regression_tests'][0]} guard against bugs that really happened |",
+        f"| **Functions with proof** | {F['functions'][0]}, each with the tests that prove it |",
+        *([f"| **Real AppImages** | {F['apps_start'][0]} of {F['apps_total'][0]} start in their sandbox ({F['apps_date'][0]}) |"] if "apps_total" in F else []),
+        *([f"| **Mutation testing** | {F['mutants_caught_percent'][0]} of {F['mutants_tested'][0]} deliberate mistakes caught |"] if "mutants_tested" in F else []),
         f"| **Version** | {version} (the number changes only when a version is published) |",
         f"| **Latest commit** | `{git('log', '-1', '--format=%h')}` {git('log', '-1', '--format=%s').replace('|', '/')} |",
         f"| **Commits so far** | {git('rev-list', '--count', 'HEAD')} |",
@@ -96,6 +107,44 @@ def main():
         "integration, sandbox and window tests on Ubuntu; sandbox tests on Fedora).",
         "Green means every test passed there; click it for the details.",
     )
+
+    # ---- what the tests prove, area by area
+    fm = tomllib.loads((ROOT / "docs/functions.toml").read_text())
+    results = {t.get("test"): t.get("result") for t in (latest[1].get("tests", []) if latest else [])}
+    L += ["## What the tests prove", ""]
+    L += note(
+        "**What you see:** SAM's promises, grouped into areas. Each function in an area",
+        "has at least one test that proves it; the [function map](docs/functions.md) lists",
+        "them one by one. *Newer than the report* counts tests added since the latest",
+        "version report; they run in CI on every change.",
+    )
+    L += ["| Area | What it covers | Functions | Tests | Result |", "|---|---|---|---|---|"]
+    for area in fm["area"]:
+        fs = [x for x in fm["function"] if x["area"] == area["id"]]
+        ts = sorted({t for x in fs for t in x.get("tests", [])})
+        good = sum(results.get(t) == "ok" for t in ts)
+        bad = sum(results.get(t) == "FAILED" for t in ts)
+        new = len(ts) - good - bad
+        state = (f"❌ {bad} failing" if bad else "✅ passing") + (f", {new} newer than the report" if new else "")
+        L.append(f"| **{area['name']}** | {area.get('about', '')} | {len(fs)} | {len(ts)} | {state} |")
+    L.append("")
+
+    L += ["## The evidence", ""]
+    L += note(
+        "**What you see:** the larger checks behind SAM's promises, each with its full",
+        "report. [How SAM is tested](docs/testing.md) explains every kind of test.",
+    )
+    if "apps_total" in F:
+        L += [f"- **Real AppImages:** {F['apps_start'][0]} of {F['apps_total'][0]} start in their sandbox; "
+              f"{F['apps_repaired'][0]} of them after one repair step, {F['apps_fail'][0]} fail for reasons inside the app, "
+              f"and {F['apps_refused'][0]} built for another processor is turned away "
+              f"([report]({F['apps_total'][1]}))."]
+    if "mutants_tested" in F:
+        L += [f"- **Mutation testing:** {F['mutants_tested'][0]} deliberate mistakes in the security code; "
+              f"the tests caught {F['mutants_caught_percent'][0]} of those that could be built "
+              f"([report]({F['mutants_tested'][1]}))."]
+    L += ["- **Breakout and hostile-AppImage tests:** run inside a real sandbox on every change, "
+          "on Ubuntu and Fedora ([threat model](docs/threat-model.md)).", ""]
 
     # ---- health of each part
     if latest:
@@ -215,7 +264,11 @@ def main():
         L.append(f"| [`{h}`]({REPO}/commit/{h}) | {d} | {s.replace('|', '/')} |")
     L += ["", f"The full history is at [{REPO}/commits/main]({REPO}/commits/main).", ""]
 
-    (ROOT / "DEVELOPMENT.md").write_text("\n".join(L))
+    return "\n".join(L)
+
+
+def main():
+    (ROOT / "DEVELOPMENT.md").write_text(build())
     print("wrote DEVELOPMENT.md")
 
 

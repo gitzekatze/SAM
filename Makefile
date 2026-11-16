@@ -41,6 +41,7 @@ gui: mo
 
 # The public website, as GitHub Pages publishes it (target/site).
 site:
+	python3 scripts/facts.py
 	python3 scripts/site.py
 
 # Translations need msgfmt (gettext); without it SAM is built in English.

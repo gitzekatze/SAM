@@ -205,6 +205,9 @@ jobs:
       - name: Test library is up to date
         run: python3 scripts/test-library.py --check
 
+      - name: Numbers in the documents are up to date
+        run: python3 scripts/facts.py --check
+
       - name: Function map is complete and up to date
         run: python3 scripts/function-map.py --check
 

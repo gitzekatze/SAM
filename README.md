@@ -1,49 +1,120 @@
 # SAM - Sandboxed AppImage Manager
 
-**Run AppImages in a sandbox, and see every permission they have as a simple switch.**
+**Every AppImage, in a *sandbox you control*.**
+
+SAM runs each AppImage sealed off from your files, keys and accounts, and
+shows everything it may reach as a plain switch.
 
 **Website:** [gitzekatze.github.io/SAM](https://gitzekatze.github.io/SAM): the user guide, the evidence behind SAM's promises, and the maintainer handbook.
 
-SAM does for AppImages what Flatseal does for Flatpak apps: a clear list of
-apps, and for each one the access it has to your files, network, devices and
-desktop. Unlike Flatseal, SAM also builds the sandbox itself, using
-[Bubblewrap](https://github.com/containers/bubblewrap).
+## Why AppImages need a sandbox
 
-It is written in Rust, with a GTK 4 / libadwaita window and a full command
-line (`sam-jail`). SAM is developed on CachyOS (Arch), where it is also tried
-with 120 real AppImages. Every change runs the test suite on Ubuntu 24.04 and
-the sandbox tests on Fedora, and before every release the finished AppImage is
-tested on fresh Ubuntu, Debian, Fedora, Arch and openSUSE systems. Other
-desktops and distributions have not been tried on real machines yet
-([docs/testing.md](docs/testing.md)). [Functions and their proofs](docs/functions.md)
-lists every promise SAM makes with the tests that prove it.
+1. **One file.** AppImages are the easiest way to get software on Linux: you
+   download one file and run it.
+2. **All your rights.** That file then runs with all your rights. It can read
+   your documents, your keys and your browser profiles, and nothing shows you
+   what it does.
+3. **Its own sandbox.** SAM gives each AppImage its own sandbox, with exactly
+   the access you allow, in a window anyone can use.
+
+Flatpak apps come with a sandbox, and Flatseal lets you adjust it. AppImages
+have neither. Wrapping them by hand needs command-line tools and knowledge of
+what each app needs. SAM does that work for you and explains every decision.
+It builds the sandbox with [Bubblewrap](https://github.com/containers/bubblewrap),
+the same tool Flatpak uses, and its window works like Flatseal's.
+
+## What SAM does differently
+
+- **Nothing runs before you decide.** SAM reads an AppImage's name, icon and
+  needs without running it, and it unpacks the app without running it. The
+  app starts only when you press *Launch*.
+- **Each app gets the least access it needs.** Every app starts with a
+  private home folder and its own window. SAM adds only what this app shows
+  it needs: sound for a music player, the network for a browser.
+- **Every switch says what it costs.** Each permission is explained in one
+  sentence and marked as harmless, think twice or dangerous.
+- **SAM finds out why an app struggles.** After a failed start, SAM reads what
+  went wrong and offers the one change that helps, from mild to strong. You
+  can undo every change.
+- **Sandboxed apps fit into your desktop.** They appear in your application
+  menu and always start through SAM. Menu entries that would start an app
+  without its sandbox are hidden.
+- **SAM is built on proven parts.** Bubblewrap, Landlock, a system-call
+  filter and filtered desktop services do the work. SAM adds no new code that
+  runs with special privileges.
+
+## How it works
+
+1. **Find.** SAM lists the AppImages in your usual folders (`~/Applications`,
+   `~/AppImages`, `~/.local/bin`, `~/bin`), in folders you add, and the ones
+   that existing menu entries start. It reads names and icons directly from
+   the file, without unpacking or running anything.
+2. **Inspect.** When you click *Create Sandbox*, SAM unpacks the AppImage
+   inside a small sandbox, **without running it**, and examines its programs
+   and libraries: toolkit, graphics, sound, network, Electron, 32-bit and more.
+3. **Recommend.** From the app's kind (browser, media player, game and so on)
+   and what the inspection found, SAM proposes the smallest set of permissions
+   the app needs. You can change any of them before you confirm.
+4. **Sandbox.** The app gets its own private home folder and a menu entry that
+   always starts it through the sandbox. If another tool, such as
+   AppImageLauncher or Gear Lever, already made a menu entry for the app, SAM
+   offers to hide that entry.
+5. **Test.** The *Test* button starts the real sandbox with a probe program
+   instead of the app, confirms from the inside that every setting applies,
+   and then starts the app for a few seconds to see that it runs.
 
 > [!NOTE]
 > SAM makes AppImages much safer, but no sandbox makes every app perfectly
 > secure. [docs/security.md](docs/security.md) explains what SAM protects
 > against and where its limits are.
 
----
+## The evidence
 
-## How it works
+SAM protects you from programs you download, so it does not ask for blind
+trust. It shows its work, and every number below comes from a report in this
+repository.
 
-1. **Find.** SAM lists the AppImages in your usual folders (`~/Applications`,
-   `~/AppImages`, `~/.local/bin`, `~/bin`), in folders you add, and the ones
-   existing menu entries start. Name and icon are read directly from the
-   file. Nothing is unpacked or run.
-2. **Inspect.** When you click *Create Sandbox*, SAM unpacks the AppImage
-   **without running it** and examines its programs and libraries: toolkit,
-   graphics, sound, network, Electron, 32-bit and more.
-3. **Recommend.** From the app's category (browser, media player, game, …)
-   and what the inspection found, SAM proposes the smallest set of
-   permissions the app needs. You can change anything before confirming.
-4. **Sandbox.** The app gets its own private home folder and a menu entry
-   that always starts it through the sandbox. If another tool such as
-   AppImageLauncher or Gear Lever already made a menu entry for it, SAM
-   offers to hide that one.
-5. **Test.** The *Test* button starts the real sandbox with a probe program
-   instead of the app, confirms from the inside that every setting really
-   applies, and then starts the app for a few seconds to see that it runs.
+- **<!-- fact:apps_start -->117<!-- /fact --> of <!-- fact:apps_total -->120<!-- /fact --> real AppImages start in their sandbox.**
+  The test sets cover Electron, Qt, GTK, Flutter, Tauri, Java, Wine, games
+  and command-line tools. <!-- fact:apps_repaired -->2<!-- /fact --> of them
+  need one repair step that SAM offers by itself, <!-- fact:apps_fail -->2<!-- /fact --> fail for reasons inside the app,
+  and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
+  is turned away with a clear message
+  ([report of <!-- fact:apps_date -->2026-11-15<!-- /fact -->](docs/reports/real-apps-2026-11-15.md)).
+- **<!-- fact:tests -->270<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
+  [Functions and their proofs](docs/functions.md) shows which tests prove
+  which function. A fixed bug gets a test that fails without the fix.
+- **Every security promise is attacked from inside a real sandbox.**
+  Breakout tests run on every change, on Ubuntu and on Fedora. The
+  [threat model](docs/threat-model.md) lists each threat with what stops it,
+  the test that proves it, and just as clearly what SAM does *not* protect
+  against.
+- **The tests themselves are tested.** Mutation testing changed the
+  security-critical code <!-- fact:mutants_tested -->2,821<!-- /fact --> times
+  on purpose, and the tests caught <!-- fact:mutants_caught_percent -->88.5 %<!-- /fact -->
+  of the changes that could be built. Each gap that mattered got a test
+  ([report](docs/reports/mutants-2026-11-15.md)).
+- **SAM's readers of untrusted files are fuzzed.** Hundreds of thousands of
+  damaged AppImages, programs and menu files go through them without a crash.
+- **Every release is tested and signed.** The finished AppImage is tested on
+  fresh Ubuntu, Debian, Fedora, Arch and openSUSE systems and signed with
+  SAM's release key ([sam-release-key.asc](sam-release-key.asc)), the only key
+  SAM accepts for updates of itself.
+
+SAM is developed on CachyOS (Arch). Other desktops and distributions have not
+been tried on real machines yet ([docs/testing.md](docs/testing.md)).
+
+### How SAM is made
+
+SAM is a one-person project, built with [Claude](https://www.anthropic.com/claude),
+Anthropic's AI model, as a coding assistant; the commits it helped with say
+so. The maintainer decides what SAM does and how far each permission may go,
+sets the priorities and tries SAM on a real desktop. Claude writes most of the
+code and the tests, and a change goes in only when every test passes.
+
+The next step is a pair of fresh eyes: an outside security review, planned
+before the first public beta. If you find a way out of the sandbox, please
+report it privately ([SECURITY.md](SECURITY.md)).
 
 ---
 
@@ -244,6 +315,7 @@ reading; this table is the same set in the repository.
 | [Threat model](docs/threat-model.md) | what SAM protects, against whom, how, and where that ends |
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |
+| [Real AppImages](docs/reports/real-apps-2026-11-15.md) | everyone: how each of the test AppImages did in its sandbox |
 | [AUTOMATION.md](AUTOMATION.md) | what automation may do in this repository, its checks and the kill switch |
 | [Contracts](docs/contracts.md) | every assumption SAM makes about the outside world, what happens when one breaks, and how each is checked |
 | [Maintainer handbook](docs/handbook/index.md) | whoever looks after SAM: GitHub, everyday work, tools, care |
@@ -268,48 +340,6 @@ reading; this table is the same set in the repository.
 Also: `data/` (menu entry, AppStream metainfo, icon, man pages),
 `packaging/` (Arch, Fedora, notes for other distributions), `scripts/`
 (release and AppImage builds) and `tests/` (real-app harness).
-
----
-
-## How SAM is made
-
-One person, one AI assistant, and a lot of proof.
-
-SAM is a one-person project, built with [Claude](https://www.anthropic.com/claude),
-Anthropic's AI model, as a coding assistant; the commits it helped with say so.
-The maintainer decides what SAM does and how far each permission may go, sets
-the priorities and tries SAM on a real desktop. Claude writes most of the code
-and the tests, and a change goes in only when every test passes.
-
-SAM doesn't ask for your trust. It shows its work:
-
-- **More than 240 tests** guard **40 functions**, and
-  [docs/functions.md](docs/functions.md) shows, after every change, which
-  tests prove which function. A fixed bug gets a test that fails without
-  the fix.
-- **Every security promise** in [docs/security.md](docs/security.md) is
-  attacked by a breakout test from inside a real sandbox, and the
-  [threat model](docs/threat-model.md) lists each threat with what stops it,
-  the test that proves it, and just as clearly what SAM does *not* protect
-  against.
-- **Breakout tests** run inside a real sandbox on every push, on Ubuntu and
-  on Fedora, and SAM's readers of untrusted files are fuzzed.
-- **Mutation testing** changed the security-critical code 2,821 times on
-  purpose; the tests caught 88.5 % of the changes that could be built, and
-  each gap that mattered got a test
-  ([report](docs/reports/mutants-2026-11-15.md)).
-- **120 real AppImages**, from Electron and Qt apps to games, Wine and
-  Flutter, run through SAM's whole flow before a release: 117 start in
-  their sandbox, 2 fail for reasons inside the app, and one built for
-  another processor is turned away at the door.
-- **Every release** is tested on five Linux distributions before it is
-  published, and signed with SAM's release key
-  ([sam-release-key.asc](sam-release-key.asc)), the only key SAM accepts for
-  updates of itself.
-
-The next step is a pair of fresh eyes: an outside security review, planned
-before the first public beta. Found a way out of the sandbox? Please report it privately
-([SECURITY.md](SECURITY.md)).
 
 ---
 
