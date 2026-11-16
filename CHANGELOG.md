@@ -18,8 +18,8 @@ version.
   code names wrap instead of squeezing the columns.
 - *Use SAM* has an overview page and a *What's new* page (the changelog);
   *How SAM is tested* and *Architecture* moved to *Trust SAM*.
-- The maintainer handbook is no longer on the public website. `make
-  handbook` builds a copy with the handbook on the maintainer's computer.
+- The maintainer handbook (*Maintain SAM*) is about processes: changing,
+  updating and releasing SAM, and looking after its repository.
 
 ### Signed releases
 

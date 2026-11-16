@@ -11,7 +11,7 @@ saved change is a **commit**: a snapshot with a message that says what
 changed and why. Commits form a timeline that never gets lost; any old state
 can be looked at or brought back.
 
-Your computer has a full copy (`SAM/sam`). You change files there, make
+Your computer has a full copy, the **clone**. You change files there, make
 commits, and **push** them to GitHub. **Pull** brings GitHub's newer commits
 to your copy.
 
@@ -77,13 +77,6 @@ The website (gitzekatze.github.io/SAM) is built from the repository on every
 change to `main`, by the **Pages** workflow and `scripts/site.py`. It is
 never edited by hand: change the documents in `docs/`, and the website
 follows.
-
-The website has two sections, *Use SAM* and *Trust SAM*. This handbook is
-not on it: it is for you. `make handbook` builds the website together with
-the handbook on your computer (in `target/handbook`) and opens it in your
-browser. The handbook's documents are still in the public repository, like
-every file of SAM, so anyone who looks in `docs/handbook/` can read them;
-nothing in them is secret. Your private notes belong in `SAM/personal/`.
 
 ## Issues, suggestions and security reports
 

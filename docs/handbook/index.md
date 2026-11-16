@@ -20,12 +20,10 @@ privacy, and clean, tested code.
 
 ## Where everything is
 
-| Place | What it holds |
-|---|---|
-| **GitHub** (github.com/gitzekatze/SAM) | the public home: code, issues, pull requests, releases, the website, CI results |
-| **`SAM/sam/`** on your computer | your copy of the repository, where changes are made |
-| **`SAM/personal/`** | your private notes and guides, never published (for example the release key guide) |
-| **`SAM/claude/`** | Claude's working files: test AppImages, test runs, caches |
+SAM lives on GitHub (github.com/gitzekatze/SAM): code, issues, pull
+requests, releases, this website and the test results. You work in a clone,
+a full copy of the repository on your computer, and send changes back
+through pull requests ([how GitHub works](github.md)).
 
 Inside the repository:
 
@@ -43,11 +41,13 @@ Inside the repository:
 1. [How GitHub works for SAM](github.md): repository, commits, branches,
    pull requests, CI, releases, the website, issues and security reports.
 2. [Everyday work](workflow.md): making a change, from idea to merged.
-3. [Your tools](tools.md): every command and script, what it does and when.
-4. [Releasing a version](../releasing.md): the checklist, and the one
+3. [Updating SAM and the repository](tips.md): dependencies, Rust, and the
+   Git situations that come up, each with its fix.
+4. [Your tools](tools.md): every command and script, what it does and when.
+5. [Releasing a version](../releasing.md): the checklist, and the one
    command that does most of it.
-5. [Keeping SAM healthy](care.md): what to look at weekly, monthly, yearly.
-6. Deeper references: [testing](../testing.md), [translating](../translating.md),
+6. [Keeping SAM healthy](care.md): what to look at weekly, monthly, yearly.
+7. Deeper references: [testing](../testing.md), [translating](../translating.md),
    [architecture](../architecture.md), [the JSON interface](../json-interface.md),
    [packaging](../packaging.md).
 
@@ -58,7 +58,7 @@ When you come back after a break, in this order:
 1. **Look at GitHub:** open issues, security reports (Security tab), and the
    newest CI run on `main` (Actions tab). [Keeping SAM healthy](care.md) says
    what each means.
-2. **Update your copy:** in `SAM/sam`, run `git switch main` and `git pull`.
+2. **Update your clone:** `git switch main` and `git pull`.
 3. **Check that everything still works:** `make test`.
 4. **Read the newest entries** under *Unreleased* in [CHANGELOG.md](../../CHANGELOG.md):
    that is what changed since the last version.

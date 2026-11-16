@@ -13,7 +13,7 @@ decision is on record.
 ## 2. Start a branch
 
 ```sh
-cd SAM/sam
+cd SAM                           # your clone of the repository
 git switch main && git pull      # start from the newest state
 git switch -c short-name         # a branch for this change
 ```

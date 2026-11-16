@@ -95,7 +95,7 @@ git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1 && die "the b
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || die "main differs from GitHub: push or pull first"
 ci=$(gh run list --workflow ci.yml --branch main --commit "$(git rev-parse HEAD)" --json conclusion --jq '.[0].conclusion' 2>/dev/null || true)
 [ "$ci" = success ] || die "the CI run for the current commit has not passed (status: ${ci:-none yet}); wait for it or fix it first"
-gpg --batch --list-secret-keys "$key" >/dev/null 2>&1 || die "the release key $key is not on this computer (see personal/release-key-guide.md, section 6)"
+gpg --batch --list-secret-keys "$key" >/dev/null 2>&1 || die "the release key $key is not on this computer (import it from your backup: gpg --import; see docs/handbook/care.md)"
 awk '/^## Unreleased/{f=1; next} /^## /{f=0} f' CHANGELOG.md | grep -q '[^[:space:]]' || die "CHANGELOG.md has no notes under '## Unreleased'"
 # Data made by the last released version must still work.
 last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)

@@ -26,7 +26,7 @@ else
 CARGO ?= cargo
 endif
 
-.PHONY: all cli gui site handbook test mutants-diff test-library report dashboard licenses test-shipped install install-cli install-gui clean dist appimage man pot mo
+.PHONY: all cli gui site test mutants-diff test-library report dashboard licenses test-shipped install install-cli install-gui clean dist appimage man pot mo
 
 # Languages with a translation (po/LINGUAS).
 LINGUAS := $(shell cat po/LINGUAS 2>/dev/null)
@@ -42,12 +42,6 @@ gui: mo
 # The public website, as GitHub Pages publishes it (target/site).
 site:
 	python3 scripts/site.py
-
-# The website plus the maintainer handbook, only on your computer
-# (target/handbook). Never published.
-handbook:
-	python3 scripts/site.py --private
-	xdg-open target/handbook/maintain/index.html >/dev/null 2>&1 &
 
 # Translations need msgfmt (gettext); without it SAM is built in English.
 mo:
