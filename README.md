@@ -9,12 +9,12 @@ shows everything it may reach as a plain switch.
 
 ## Why AppImages need a sandbox
 
-1. **One file.** AppImages are the easiest way to get software on Linux: you
+1. **Simple.** AppImages are the easiest way to get software on Linux: you
    download one file and run it.
-2. **All your rights.** That file then runs with all your rights. It can read
+2. **Unprotected.** That file then runs with all your rights. It can read
    your documents, your keys and your browser profiles, and nothing shows you
    what it does.
-3. **Its own sandbox.** SAM gives each AppImage its own sandbox, with exactly
+3. **Sandboxed.** SAM gives each AppImage its own sandbox, with exactly
    the access you allow, in a window anyone can use.
 
 Flatpak apps come with a sandbox, and Flatseal lets you adjust it. AppImages

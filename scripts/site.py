@@ -313,7 +313,7 @@ def page_icon(page, size=""):
 # without an icon and named in the build output.
 POINT_ICONS = {
     # README: why AppImages need a sandbox
-    "one file": "file", "all your rights": "unlock", "its own sandbox": "sandbox",
+    "simple": "file", "unprotected": "unlock", "sandboxed": "sandbox",
     # README: what SAM does differently
     "nothing runs before you decide": "eye", "each app gets the least access it needs": "lock",
     "every switch says what it costs": "toggle", "sam finds out why an app struggles": "lifebuoy",
