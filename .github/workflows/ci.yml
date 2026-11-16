@@ -127,6 +127,7 @@ jobs:
         run: |
           sudo apt-get install -y -q --no-install-recommends python3-markdown
           python3 scripts/site.py "$RUNNER_TEMP/site"
+          python3 scripts/site.py --private "$RUNNER_TEMP/handbook"
 
       - name: Shell scripts parse
         run: for f in scripts/*.sh tests/real-apps/*.sh tests/gui/*.sh tests/upgrade/*.sh; do sh -n "$f" || exit 1; done

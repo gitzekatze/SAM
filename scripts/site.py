@@ -4,7 +4,14 @@ function map, the test library and the version reports. Nothing on the site
 is written by hand except the home page text below, so it never drifts from
 the repository. The Pages workflow runs it on every change to main.
 
-    python3 scripts/site.py [OUTDIR]        (default: target/site)
+    python3 scripts/site.py [OUTDIR]              the public website (default: target/site)
+    python3 scripts/site.py --private [OUTDIR]    the same plus the maintainer
+                                                  handbook, for the maintainer's
+                                                  own computer (default: target/handbook)
+
+The public website has two sections, Use SAM and Trust SAM. The handbook
+(Maintain SAM) is never published there: `make handbook` builds the private
+copy and opens it.
 
 Needs the `markdown` package (python3-markdown, or pip install markdown). Links between documents
 become links between pages; links to code go to GitHub. The site loads
@@ -23,7 +30,9 @@ import tomllib
 import markdown
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-OUT = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "target" / "site"
+PRIVATE = "--private" in sys.argv[1:]
+_args = [a for a in sys.argv[1:] if a != "--private"]
+OUT = pathlib.Path(_args[0]) if _args else ROOT / "target" / ("handbook" if PRIVATE else "site")
 REPO = "https://github.com/gitzekatze/SAM"
 
 # Section, page path on the site, source document, title in navigation.
@@ -37,26 +46,54 @@ PAGES = [
     ("trust", "trust/tests.html", "docs/test-library.md", "Test library"),
     ("trust", "trust/mutation-testing.html", "docs/reports/mutants-2026-11-15.md", "Mutation testing"),
     ("trust", "trust/security-review.html", "docs/reports/security-review-2026-11-10.md", "Security review"),
+    ("trust", "trust/testing.html", "docs/testing.md", "How SAM is tested"),
+    ("trust", "trust/architecture.html", "docs/architecture.md", "Architecture"),
+    ("use", "use/changelog.html", "CHANGELOG.md", "What's new"),
+]
+# The maintainer handbook: only in the private build (--private).
+HANDBOOK = [
     ("maintain", "maintain/index.html", "docs/handbook/index.md", "Start here"),
     ("maintain", "maintain/github.html", "docs/handbook/github.md", "How GitHub works"),
     ("maintain", "maintain/workflow.html", "docs/handbook/workflow.md", "Everyday work"),
     ("maintain", "maintain/tools.html", "docs/handbook/tools.md", "Your tools"),
     ("maintain", "maintain/releasing.html", "docs/releasing.md", "Releasing"),
     ("maintain", "maintain/care.html", "docs/handbook/care.md", "Keeping SAM healthy"),
-    ("maintain", "maintain/testing.html", "docs/testing.md", "Testing"),
     ("maintain", "maintain/translating.html", "docs/translating.md", "Translating"),
-    ("maintain", "maintain/architecture.html", "docs/architecture.md", "Architecture"),
     ("maintain", "maintain/json-interface.html", "docs/json-interface.md", "JSON interface"),
     ("maintain", "maintain/packaging.html", "docs/packaging.md", "Packaging"),
     ("maintain", "maintain/contributing.html", "CONTRIBUTING.md", "Contributing"),
-    ("maintain", "maintain/changelog.html", "CHANGELOG.md", "Changelog"),
 ]
+if PRIVATE:
+    PAGES += HANDBOOK
 SOURCE_TO_PAGE = {src: page for _, page, src, _ in PAGES}
 SOURCE_TO_PAGE["README.md"] = "index.html"
 SOURCE_TO_PAGE["DEVELOPMENT.md"] = "trust/dashboard.html"
 SOURCE_TO_PAGE["SECURITY.md"] = "trust/security.html"
-SECTIONS = [("index.html", "Home", None), ("use/install.html", "Use SAM", "use"),
-            ("trust/index.html", "Trust SAM", "trust"), ("maintain/index.html", "Maintain SAM", "maintain")]
+SECTION_NAMES = {"use": "Use SAM", "trust": "Trust SAM", "maintain": "Maintain SAM"}
+OVERVIEWS = {"use": "use/index.html", "trust": "trust/index.html", "maintain": "maintain/index.html"}
+PAGE_ICONS = {
+    "use/index.html": "compass", "use/install.html": "download", "use/guide.html": "book", "use/permissions.html": "sliders",
+    "trust/index.html": "shield", "trust/dashboard.html": "chart", "trust/security.html": "shield", "trust/threat-model.html": "target",
+    "trust/functions.html": "check", "trust/tests.html": "flask", "trust/mutation-testing.html": "shuffle",
+    "trust/security-review.html": "doc", "trust/testing.html": "flask", "trust/architecture.html": "layers",
+    "use/changelog.html": "clock",
+    "maintain/index.html": "flag", "maintain/github.html": "branch", "maintain/workflow.html": "flow", "maintain/tools.html": "wrench",
+    "maintain/releasing.html": "tag", "maintain/care.html": "heart",
+    "maintain/translating.html": "globe", "maintain/json-interface.html": "code",
+    "maintain/packaging.html": "box", "maintain/contributing.html": "users",
+}
+
+
+def section_pages(section):
+    """The pages of a section in reading order, its overview first."""
+    pages = [(p, t) for s, p, _, t in PAGES if s == section]
+    extra = {"use": [("use/index.html", "Overview")],
+             "trust": [("trust/index.html", "Overview"), ("trust/dashboard.html", "Dashboard")]}.get(section, [])
+    return extra + [x for x in pages if x[0] not in dict(extra)]
+SECTIONS = [("index.html", "Home", None), ("use/index.html", "Use SAM", "use"),
+            ("trust/index.html", "Trust SAM", "trust")]
+if PRIVATE:
+    SECTIONS.append(("maintain/index.html", "Maintain SAM", "maintain"))
 
 
 def rel(from_page, to_page):
@@ -100,19 +137,30 @@ def shell(page, title, body, section=None, toc=None, source=None):
     nav = "".join(
         f'<a href="{rel(page, href)}"{" class=active" if sec and sec == section else ""}>{label}</a>'
         for href, label, sec in SECTIONS)
-    side = ""
-    if section in ("use", "trust", "maintain"):
-        items = [(p, t) for s, p, _, t in PAGES if s == section]
-        if section == "trust":
-            items = [("trust/index.html", "Overview"), ("trust/dashboard.html", "Dashboard")] + items
-        links = "".join(f'<li><a href="{rel(page, p)}">{html.escape(t)}</a></li>' for p, t in items)
-        side = f'<nav class="toc" aria-label="Pages"><p>{dict((s, l) for _, l, s in SECTIONS)[section]}</p><ul>{links}</ul>'
+    side = crumbs = pager = ""
+    if section in SECTION_NAMES:
+        order = section_pages(section)
+        links = "".join(
+            f'<li><a href="{rel(page, p)}"{" class=current" if p == page else ""}>{icon(PAGE_ICONS.get(p, "doc"), "small")}{html.escape(t)}</a></li>'
+            for p, t in order)
+        side = f'<nav class="toc" aria-label="Pages"><p>{SECTION_NAMES[section]}</p><ul>{links}</ul>'
         if toc and "<li>" in toc:
             side += f'<p style="margin-top:1.4rem">On this page</p>{toc}'
         side += "</nav>"
+        overview = OVERVIEWS[section]
+        crumbs = (f'<nav class="crumbs" aria-label="You are here"><a href="{rel(page, "index.html")}">{icon("home", "small")}Home</a>'
+                  f'<span>›</span><a href="{rel(page, overview)}">{SECTION_NAMES[section]}</a>'
+                  + (f'<span>›</span><span aria-current="page">{html.escape(title)}</span>' if page != overview else "") + "</nav>")
+        idx = [p for p, _ in order].index(page) if page in [p for p, _ in order] else 0
+        prev_p, prev_t = order[idx - 1]
+        next_p, next_t = order[(idx + 1) % len(order)]
+        pager = (f'<nav class="pager" aria-label="More pages">'
+                 f'<a class="prev" href="{rel(page, prev_p)}">{icon("left", "small")}<span><small>Previous</small>{html.escape(prev_t)}</span></a>'
+                 f'<a class="next" href="{rel(page, next_p)}"><span><small>Next</small>{html.escape(next_t)}</span>{icon("right", "small")}</a></nav>'
+                 + (f'<p class="back"><a href="{rel(page, overview)}">{icon("left", "small")}Back to {SECTION_NAMES[section]}</a></p>' if page != overview else ""))
     edit = (f'<p class="edit">This page is made from <a href="{REPO}/blob/main/{source}">{source}</a>.</p>'
             if source else "")
-    content = (f'<div class="wrap"><div class="page{" with-toc" if side else ""}"><article class="doc">{body}{edit}</article>{side}</div></div>'
+    content = (f'<div class="wrap"><div class="page{" with-toc" if side else ""}"><article class="doc">{crumbs}{body}{pager}{edit}</article>{side}</div></div>'
                if section else body)
     mermaid = (f'<script src="{rel(page, "assets/mermaid.min.js")}"></script>'
                f'<script>mermaid.initialize({{startOnLoad:true,theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"neutral"}})</script>'
@@ -130,12 +178,14 @@ def shell(page, title, body, section=None, toc=None, source=None):
 </div></header>
 <main>{content}</main>
 <footer><div class="wrap"><span>SAM - Sandboxed AppImage Manager · <a href="{REPO}/blob/main/LICENSE">GPL-3.0-or-later</a></span>
-<span>No trackers, no cookies, no outside requests. Built from the <a href="{REPO}">repository</a>.</span></div></footer>
+<span>{"Private copy with your handbook, built on your computer. It is not published." if PRIVATE else "No trackers, no cookies, no outside requests."} Built from the <a href="{REPO}">repository</a>.</span></div></footer>
 {mermaid}</body></html>
 """
 
 
 def write(page, text):
+    # Tables scroll on their own on narrow screens and use the full width otherwise.
+    text = text.replace("<table>", '<div class="table-wrap"><table>').replace("</table>", "</table></div>")
     path = OUT / page
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -174,11 +224,26 @@ ICONS = {
     "eye": "M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12zM12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z",
     "undo": "M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3",
     "menu": "M4 6h16M4 12h16M4 18h10",
+    "download": "M12 4v11M7 10l5 5 5-5M5 20h14",
+    "book": "M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5zM4 20.5A2.5 2.5 0 016.5 18H20v3H6.5",
+    "sliders": "M4 7h10M18 7h2M4 17h4M12 17h8M14 4v6M8 14v6",
+    "flag": "M5 21V4M5 4h11l-2 4 2 4H5",
+    "branch": "M6 4v12M6 20a2 2 0 100-4 2 2 0 000 4zM18 8a2 2 0 100-4 2 2 0 000 4zM18 8c0 5-6 4-12 8",
+    "tag": "M3 12V4h8l10 10-8 8zM7.5 7.5h.01",
+    "heart": "M12 20s-7-4.5-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.5-7 10-7 10z",
+    "globe": "M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9s1-6.5 3.5-9",
+    "layers": "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5",
+    "code": "M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16",
+    "users": "M9 11a4 4 0 100-8 4 4 0 000 8zM2 21a7 7 0 0114 0M17 11a3 3 0 100-6M22 21a6 6 0 00-5-5.9",
+    "clock": "M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 2",
+    "home": "M4 11l8-7 8 7M6 9.5V20h12V9.5",
+    "left": "M15 6l-6 6 6 6",
+    "right": "M9 6l6 6-6 6",
 }
 
 
-def icon(name):
-    return (f'<span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+def icon(name, size=""):
+    return (f'<span class="icon{" " + size if size else ""}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
             f'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{ICONS[name]}"/></svg></span>')
 
 
@@ -216,10 +281,9 @@ def home(f):
         ("search", "Auditable", f"Open source under the GPL. {f['tests']} tests guard {f['functions']} functions, and the results are published on this site."),
     ]
     doors = [
-        ("use/install.html", "compass", "Use SAM", "How to install SAM, your first sandbox, and every setting explained."),
+        ("use/index.html", "compass", "Use SAM", "How to install SAM, your first sandbox, and every setting explained."),
         ("trust/index.html", "shield", "Trust SAM", "The evidence: how the sandbox works, what it cannot do, and test results you can check."),
-        ("maintain/index.html", "wrench", "Maintain SAM", "The handbook: how SAM is built, tested and released, written for beginners."),
-    ]
+    ] + ([("maintain/index.html", "wrench", "Maintain SAM", "Your handbook: how SAM is built, tested and released.")] if PRIVATE else [])
     body = f"""
 <section class="hero"><div class="wrap">
 <img class="logo" src="assets/logo.svg" alt="SAM's logo: a seal on a shield">
@@ -253,7 +317,7 @@ def home(f):
 </div></div></section>
 
 <section class="band"><div class="wrap">
-<h2>Find your way</h2><p class="sub">Use SAM, check it, or look after it.</p>
+<h2>Find your way</h2><p class="sub">Use SAM, or check it.</p>
 <div class="grid">{cards(doors)}</div></div></section>
 
 <section class="band soft"><div class="wrap honest">
@@ -262,6 +326,27 @@ def home(f):
 <p><a href="trust/index.html">See the evidence →</a></p>
 </div></section>"""
     write(page, shell(page, "Sandboxed AppImage Manager", body))
+
+
+def use_index(f):
+    page = "use/index.html"
+    items = [
+        ("install.html", "download", "Install SAM", "What your computer needs, installing the AppImage, and your first sandbox."),
+        ("guide.html", "book", "User guide", "The window, every setting group by group, and what to do when an app does not work."),
+        ("permissions.html", "sliders", "Permissions reference", "For the command line: every permission key, preset files and changing several apps at once."),
+        ("changelog.html", "clock", "What's new", "What changed in each version of SAM, newest first."),
+    ]
+    body = f"""<h1>Use SAM</h1>
+<p>Everything you need to run your AppImages in a sandbox: getting SAM onto your computer, your first sandbox, and what each switch does. You never need the command line, but everything works there too.</p>
+<div class="grid" style="margin-top:1.5rem">{cards(items)}</div>
+<h2>The short version</h2>
+<ol>
+<li>Install SAM and open it. It lists the AppImages in your usual folders.</li>
+<li>Select an AppImage and look over the access SAM recommends.</li>
+<li>Press <b>Create Sandbox</b>, then <b>Launch</b>.</li>
+</ol>
+<p>Not sure an app gets what it needs? <b>Test</b>, next to Launch, checks from inside the sandbox that every setting holds and that the app starts.</p>"""
+    write(page, shell(page, "Use SAM", body, section="use"))
 
 
 def trust_index(f):
@@ -274,6 +359,8 @@ def trust_index(f):
         ("tests.html", "flask", "Test library", f"Every one of the {f['tests']} tests and the promise it keeps."),
         ("mutation-testing.html", "shuffle", "Mutation testing", "2,821 deliberate mistakes put into the security code, to see whether the tests notice."),
         ("security-review.html", "doc", "Security review", "The review that checked every security promise against a test."),
+        ("testing.html", "flask", "How SAM is tested", "The kinds of tests, what each one proves, and how to run them yourself."),
+        ("architecture.html", "layers", "Architecture", "SAM's parts, how they work together, and where the trust boundary runs."),
     ]
     body = f"""<h1>Trust SAM</h1>
 <p>SAM protects you from programs you download, so it should not ask for blind trust. This section publishes what anyone needs to judge it: how the sandbox works, what it cannot do, and the tests that check every promise, with their results.</p>
@@ -384,6 +471,7 @@ def main():
     shutil.copy(ROOT / "data/io.github.gitzekatze.SAM.svg", OUT / "assets/logo.svg")
     f = facts()
     home(f)
+    use_index(f)
     trust_index(f)
     dashboard(f)
     documents()

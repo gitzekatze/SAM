@@ -9,6 +9,18 @@ version.
 
 ## Unreleased
 
+### Website
+
+- Every page has a breadcrumb trail, Previous and Next links that go round
+  in a loop, and a link back to its section; the side menu and the
+  overviews use small icons.
+- Wide tables use the full width and scroll on their own on phones; long
+  code names wrap instead of squeezing the columns.
+- *Use SAM* has an overview page and a *What's new* page (the changelog);
+  *How SAM is tested* and *Architecture* moved to *Trust SAM*.
+- The maintainer handbook is no longer on the public website. `make
+  handbook` builds a copy with the handbook on the maintainer's computer.
+
 ### Signed releases
 
 - SAM has a release key (fingerprint
