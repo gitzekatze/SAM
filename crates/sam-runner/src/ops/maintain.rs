@@ -38,7 +38,7 @@ impl Sam {
             root: &root,
             limits: self.limits(),
             allow_fallback: consent_fallback && self.config.extraction.allow_fallback,
-            isolation: self.extract_isolation(),
+            isolation: self.extract_isolation()?,
         };
         match extract(&req, &mut log) {
             Ok(out) => {
@@ -639,6 +639,22 @@ impl Sam {
                         sam_core::i18n::trf(
                             "The signing key changed: the installed version was {before}, the new file is {now}. The download was deleted; update again and accept the change only if you trust it.",
                             &[("before", &before), ("now", &sig_words(&new_sig))],
+                        ),
+                    )
+                    .into());
+                }
+            }
+            // Signed and checked before, but the new file cannot be checked
+            // (GnuPG missing): SAM cannot tell whether the key changed, so it
+            // asks like for a changed key (threat model: a key change is
+            // refused until you accept it).
+            if let Some(before) = signature_unconfirmed(entry.signature.as_ref(), &new_sig) {
+                if !accept_key_change {
+                    return Err(sam_core::error::CodedError::new(
+                        "signature-unchecked",
+                        sam_core::i18n::trf(
+                            "The installed version was {before}, but the signature of the new file cannot be checked, so SAM cannot tell whether it comes from the same developer. Install GnuPG (gpg and gpgv) and update again; accept the update without the check only if you trust its source. The download was deleted.",
+                            &[("before", &before)],
                         ),
                     )
                     .into());
