@@ -1,0 +1,530 @@
+# SAM's contracts with the world outside it. Every assumption SAM makes about
+# programs, the kernel, the file system, sockets, variables, desktop services
+# and file formats is written down here once, with what SAM does when it
+# breaks and how it is checked. scripts/contract-map.py checks this file (CI)
+# and writes docs/contracts.md from it:
+#   - every outside program, option, host path, variable, D-Bus name, syscall
+#     and Wayland protocol the code uses is covered by a contract (`covers`,
+#     patterns as "kind:value", * as wildcard) or listed under [[own]];
+#   - every named function, test and component exists;
+#   - every contract says what happens when it breaks (`on_break`):
+#       refuse   SAM does not start the sandbox and says why
+#       safer    SAM falls back to less access (for example no network)
+#       warn     the start goes ahead with a visible warning
+#       feature  one feature is unavailable; the sandbox is unaffected
+#       none     nothing breaks: the assumption only ever narrows access
+#
+# `probe` names the quick check `sam-jail doctor --contracts` runs on any
+# computer; `tests` names the tests that check the behavior itself.
+
+# ---------------------------------------------------------------- components
+
+[[component]]
+id = "bubblewrap"
+name = "Bubblewrap"
+program = "bwrap"
+repology = "bubblewrap"
+upstream = "https://github.com/containers/bubblewrap/releases"
+
+[[component]]
+id = "passt"
+name = "passt / pasta"
+program = "pasta"
+repology = "passt"
+upstream = "https://passt.top/passt/about/"
+
+[[component]]
+id = "xdg-dbus-proxy"
+name = "xdg-dbus-proxy"
+program = "xdg-dbus-proxy"
+repology = "xdg-dbus-proxy"
+upstream = "https://github.com/flatpak/xdg-dbus-proxy/releases"
+
+[[component]]
+id = "squashfs-tools"
+name = "squashfs-tools (unsquashfs)"
+program = "unsquashfs"
+repology = "squashfs-tools"
+upstream = "https://github.com/plougher/squashfs-tools/releases"
+
+[[component]]
+id = "libarchive"
+name = "libarchive (bsdtar)"
+program = "bsdtar"
+repology = "libarchive"
+upstream = "https://github.com/libarchive/libarchive/releases"
+
+[[component]]
+id = "dwarfs"
+name = "DwarFS (dwarfsextract)"
+program = "dwarfsextract"
+repology = "dwarfs"
+upstream = "https://github.com/mhx/dwarfs/releases"
+
+[[component]]
+id = "curl"
+name = "curl"
+program = "curl"
+repology = "curl"
+upstream = "https://curl.se/changes.html"
+
+[[component]]
+id = "gnupg"
+name = "GnuPG"
+program = "gpg"
+repology = "gnupg"
+upstream = "https://gnupg.org/download/release_notes.html"
+
+[[component]]
+id = "strace"
+name = "strace"
+program = "strace"
+repology = "strace"
+upstream = "https://github.com/strace/strace/releases"
+
+[[component]]
+id = "desktop-utils"
+name = "libnotify and desktop-file-utils"
+program = "notify-send"
+repology = "libnotify"
+upstream = "https://gitlab.gnome.org/GNOME/libnotify/-/tags"
+
+[[component]]
+id = "kernel"
+name = "Linux kernel"
+repology = "linux"
+upstream = "https://kernelnewbies.org/LinuxVersions"
+
+[[component]]
+id = "distribution"
+name = "The distribution's file system layout"
+upstream = "https://uapi-group.org/specifications/"
+
+[[component]]
+id = "wayland"
+name = "Wayland compositor"
+repology = "wayland-protocols"
+upstream = "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/tags"
+
+[[component]]
+id = "x11"
+name = "X11 / XWayland"
+repology = "xwayland"
+upstream = "https://gitlab.freedesktop.org/xorg/xserver/-/tags"
+
+[[component]]
+id = "audio"
+name = "PipeWire and PulseAudio"
+repology = "pipewire"
+upstream = "https://gitlab.freedesktop.org/pipewire/pipewire/-/releases"
+
+[[component]]
+id = "dbus"
+name = "D-Bus and desktop services"
+repology = "dbus"
+upstream = "https://gitlab.freedesktop.org/dbus/dbus/-/tags"
+
+[[component]]
+id = "portal"
+name = "xdg-desktop-portal"
+repology = "xdg-desktop-portal"
+upstream = "https://github.com/flatpak/xdg-desktop-portal/releases"
+
+[[component]]
+id = "appimage"
+name = "The AppImage format"
+upstream = "https://github.com/AppImage/type2-runtime"
+
+[[component]]
+id = "freedesktop"
+name = "freedesktop.org conventions (XDG folders, menus)"
+upstream = "https://specifications.freedesktop.org/"
+
+# ----------------------------------------------------------------- contracts
+
+[[contract]]
+id = "bwrap-core"
+component = "bubblewrap"
+assumes = "Bubblewrap builds the sandbox with these options and behaves as documented: separate namespaces, the listed binds and mounts, and the process dying with its parent."
+covers = [
+  "program:bwrap", "path:/usr/bin/bwrap",
+  "option:--unshare-user", "option:--unshare-pid", "option:--unshare-uts", "option:--unshare-ipc",
+  "option:--unshare-cgroup-try", "option:--unshare-net", "option:--unshare-all", "option:--uid", "option:--gid",
+  "option:--die-with-parent", "option:--new-session", "option:--cap-drop", "option:--clearenv",
+  "option:--setenv", "option:--chdir", "option:--proc", "option:--dev", "option:--tmpfs", "option:--dir",
+  "option:--perms", "option:--symlink", "option:--bind", "option:--bind-try", "option:--ro-bind",
+  "option:--ro-bind-try", "option:--dev-bind", "option:--dev-bind-try", "option:--remount-ro",
+  "option:--hostname", "option:--json-status-fd", "option:--seccomp", "option:--version", "option:-V",
+]
+functions = [10, 11, 19, 20]
+probe = "bwrap-runs"
+tests = ["every_breakout_attempt_from_a_real_sandbox_fails", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "refuse"
+on_break_test = "without_network_the_sandbox_dies_with_its_launcher"
+playbook = "Read the Bubblewrap release notes for the options above. A renamed option: build the old or new form from the version `bwrap --version` reports (sam-sandbox). A changed behavior: the breakout and matrix tests name the permission; fix the command in sam-sandbox/src/lib.rs."
+
+[[contract]]
+id = "bwrap-disable-userns"
+component = "bubblewrap"
+assumes = "Bubblewrap 0.8 or newer understands --disable-userns, which stops an app from creating nested user namespaces (the kernel's largest attack surface for unprivileged code)."
+covers = ["option:--disable-userns"]
+functions = [11, 16]
+probe = "bwrap-option:--disable-userns"
+tests = ["every_breakout_attempt_from_a_real_sandbox_fails"]
+on_break = "refuse"
+playbook = "Bubblewrap rejects an option it does not know, so the start fails instead of running without the protection. Raise the minimum version in install.md, or offer allow_userns only where the option is missing."
+
+[[contract]]
+id = "bwrap-overlay"
+component = "bubblewrap"
+assumes = "Bubblewrap 0.10 or newer offers overlays (--overlay-src, --overlay) for a writable app folder whose changes go to a separate layer."
+covers = ["option:--overlay", "option:--overlay-src"]
+functions = [18]
+probe = "bwrap-option:--overlay-src"
+tests = ["an_app_starts_read_only_when_its_writable_app_folder_cannot_work"]
+on_break = "feature"
+playbook = "Without working overlays the app starts with its app folder read-only, as it would without the option (tested). Only the writable app folder is lost."
+
+[[contract]]
+id = "pasta-splice-only"
+component = "passt"
+assumes = "pasta --splice-only creates a network namespace with only loopback, forwards only the listed ports (-t, -T, -u, -U) and gives no route to the internet."
+covers = ["program:pasta", "option:--splice-only", "option:-t", "option:-T", "option:-u", "option:-U", "option:--quiet"]
+functions = [12]
+probe = "pasta-splice-only"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox", "with_this_computer_only_the_sandbox_dies_with_its_launcher"]
+on_break = "safer"
+playbook = "A pasta without --splice-only is never used: the app starts with no network at all and a warning says why (tested in the matrix). If options change, adapt netns.rs and check that an unlisted host port stays unreachable."
+
+[[contract]]
+id = "dbus-proxy-filter"
+component = "xdg-dbus-proxy"
+assumes = "xdg-dbus-proxy filters the session bus by the --talk, --own, --call and --broadcast rules, allows nothing else once --filter is given, and logs with --log."
+covers = ["path:/usr/bin/xdg-dbus-proxy", "option:--talk=", "option:--own=", "option:--call=", "option:--broadcast=", "option:--filter", "option:--log"]
+functions = [13]
+probe = "dbus-proxy-present"
+tests = ["every_hostile_appimage_fails_to_escape", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "safer"
+playbook = "Without the proxy the app gets no session bus at all. If the rule syntax changes, adapt dbus_proxy.rs; the evil suite shows whether blocked services stay blocked."
+
+[[contract]]
+id = "unpack-tools"
+component = "squashfs-tools"
+assumes = "unsquashfs and bsdtar unpack SquashFS images with these options, without keeping owners, ACLs or extended attributes."
+covers = ["program:unsquashfs", "program:bsdtar", "option:-d", "option:-f", "option:-C", "option:-o", "option:-O", "option:-i", "option:--no-same-owner", "option:--no-acls", "option:--no-xattrs"]
+functions = [3, 5]
+probe = "program:unsquashfs"
+tests = ["appimages_with_every_compression_unpack", "without_consent_the_appimages_own_unpacker_never_runs"]
+on_break = "safer"
+playbook = "SAM has its own SquashFS reader and tries the tools only after it; when all fail, it asks before running the AppImage's own unpacker. A changed option shows as a failing unpack test."
+
+[[contract]]
+id = "dwarfs"
+component = "dwarfs"
+assumes = "dwarfsextract unpacks AppImages whose payload is a DwarFS image (-i input, -o output)."
+covers = ["program:dwarfsextract"]
+functions = [2, 3]
+probe = "program:dwarfsextract"
+tests = ["an_appimage_with_a_dwarfs_image_is_recognized"]
+on_break = "feature"
+playbook = "Without dwarfsextract SAM asks before using the AppImage's own unpacker. DwarFS AppImages are rare; check the option names in the dwarfs release notes."
+
+[[contract]]
+id = "appimage-format"
+component = "appimage"
+assumes = "AppImages are type 2: an ELF runtime followed by a SquashFS or DwarFS image at the offset the ELF headers give; the runtime's own extractor is --appimage-extract; inside, the app sees APPIMAGE and APPDIR."
+covers = ["option:--appimage-extract", "env:APPIMAGE", "env:APPDIR"]
+functions = [1, 2, 4, 5]
+probe = "none"
+tests = ["a_type_2_appimage_is_recognized", "appimages_with_every_compression_unpack", "every_hostile_appimage_fails_to_escape"]
+on_break = "refuse"
+playbook = "A new AppImage type or payload format is reported as not an AppImage; nothing runs. Add the format to sam-detect, with a fixture in the testkit."
+
+[[contract]]
+id = "updates-curl"
+component = "curl"
+assumes = "curl downloads over HTTPS only (also after redirects) with these limits, and fetches byte ranges for delta updates."
+covers = ["program:curl", "option:--proto", "option:--proto-redir", "option:--fail", "option:--location", "option:--max-redirs", "option:--max-time", "option:--max-filesize", "option:--connect-timeout", "option:--speed-limit", "option:--speed-time", "option:--silent", "option:--show-error", "option:--user-agent", "option:--header", "option:--range"]
+functions = [28, 34]
+probe = "program:curl"
+tests = ["updates_are_downloaded_over_https_only", "updates_download_only_changes_check_them_and_refuse_tampering"]
+on_break = "refuse"
+playbook = "No update is installed when curl fails; the old version stays. A changed option shows in the update server test."
+
+[[contract]]
+id = "signatures-gnupg"
+component = "gnupg"
+assumes = "gpg and gpgv check the signature embedded in an AppImage against a keyring, with these options, and report the signer's fingerprint in --with-colons output."
+covers = ["program:gpg", "program:gpgv", "option:--batch", "option:--no-options", "option:--homedir", "option:--keyring", "option:--no-default-keyring", "option:--with-colons", "option:--fingerprint", "option:--list-keys", "option:--import", "option:--export", "option:--armor", "option:--detach-sign", "option:--local-user", "option:--output", "option:--yes"]
+functions = [28]
+probe = "program:gpgv"
+tests = ["sam_updates_itself_only_with_its_release_key", "key_changes_are_noticed"]
+on_break = "refuse"
+playbook = "Without a working gpg SAM never updates itself and treats app signatures as unknown. Check the --with-colons format in GnuPG's release notes."
+
+[[contract]]
+id = "diagnose-strace"
+component = "strace"
+assumes = "strace follows an app's processes (-f) and logs failed file opens (-e) to a file (-o) for the diagnose run."
+covers = ["option:-e"]
+functions = [25]
+probe = "program:strace"
+tests = ["diagnostic_runs_obey_the_preference"]
+on_break = "feature"
+playbook = "Without strace the diagnose run is unavailable and SAM says so; repairs still work from the app's own output."
+
+[[contract]]
+id = "desktop-notify-menu"
+component = "desktop-utils"
+assumes = "notify-send shows a notification when a menu start fails, and update-desktop-database -q refreshes the menu cache; both are optional."
+covers = ["program:notify-send", "program:update-desktop-database", "option:-q"]
+functions = [19, 23]
+probe = "none"
+tests = ["found_appimages_get_a_menu_entry_only_with_a_sandbox"]
+on_break = "feature"
+playbook = "Missing tools only lose the notification or a faster menu refresh."
+
+[[contract]]
+id = "kernel-userns"
+component = "kernel"
+assumes = "Unprivileged user namespaces are available; the distribution's switches for them sit at these /proc paths (Debian's unprivileged_userns_clone, Ubuntu's AppArmor restriction, max_user_namespaces)."
+covers = ["path:/proc/sys/kernel/unprivileged_userns_clone", "path:/proc/sys/kernel/apparmor_restrict_unprivileged_userns", "path:/proc/sys/user/max_user_namespaces"]
+functions = [19, 33]
+probe = "userns"
+tests = ["every_breakout_attempt_from_a_real_sandbox_fails"]
+on_break = "refuse"
+playbook = "Without user namespaces no sandbox starts, and the doctor names the switch to change. A new distribution switch: add its path to host.rs (userns) so the doctor can explain it."
+
+[[contract]]
+id = "kernel-landlock"
+component = "kernel"
+assumes = "Landlock (ABI 3, with the abstract-socket scope from ABI 6) restricts writes inside the sandbox as a second wall."
+covers = []
+functions = [10, 16]
+probe = "landlock"
+tests = ["a_start_without_the_helper_reports_its_missing_layers", "a_wanted_layer_that_was_not_applied_is_reported_missing"]
+on_break = "warn"
+playbook = "A start without Landlock is marked 'Protection missing'. A newer ABI only adds rights SAM does not use yet; review kernel.rs when one appears."
+
+[[contract]]
+id = "kernel-seccomp"
+component = "kernel"
+assumes = "The baseline syscall filter loads, and the syscalls it blocks have the numbers libc gives on x86_64 and aarch64. It is a deny list: a syscall added to the kernel later is allowed until it is reviewed."
+covers = ["syscall:*"]
+functions = [16, 17]
+probe = "seccomp"
+tests = ["every_breakout_attempt_from_a_real_sandbox_fails", "every_known_syscall_has_been_reviewed"]
+on_break = "refuse"
+playbook = "A filter that fails to load stops the start. When the syscall review check reports a new syscall, decide whether the baseline blocks it (kernel.rs) and add it to docs/syscalls-reviewed.txt."
+
+[[contract]]
+id = "kernel-procfs"
+component = "kernel"
+assumes = "/proc shows process status, network tables and kernel facts at these paths; the sandbox check reads them from inside."
+covers = ["path:/proc", "path:/proc/", "path:/proc/self/status", "path:/proc/net/*", "path:/proc/sys/kernel/hostname", "path:/proc/sys/kernel/osrelease"]
+functions = [20, 33]
+probe = "none"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "warn"
+playbook = "The sandbox check then reports the setting as unknown instead of passed."
+
+[[contract]]
+id = "fs-layout"
+component = "distribution"
+assumes = "Programs and libraries live under /usr (merged /usr, or the classic split with /bin, /lib and /lib64); /bin/sh is a POSIX shell; /tmp and /var/tmp are temporary."
+covers = ["path:/usr", "path:/usr/", "path:/usr/bin", "path:/usr/bin:/bin", "path:/usr/sbin", "path:/usr/lib", "path:/usr/lib/", "path:/usr/lib/*-linux-gnu", "path:/usr/lib32", "path:/usr/lib64", "path:/usr/libexec", "path:/usr/local", "path:/usr/local/lib", "path:/usr/local/bin:/usr/bin:/bin", "path:/usr/local/share:/usr/share", "path:/usr/bin/true", "path:/bin", "path:/bin/sh", "program:/bin/sh", "option:-c", "path:/sbin", "path:/lib", "path:/lib/*-linux-gnu", "path:/lib64", "path:/opt", "path:/tmp", "path:/var", "path:/var/tmp", "path:/run", "path:/dev", "path:/dev/null", "path:/dev/shm", "path:/sys", "path:/etc", "path:/etc/"]
+functions = [10, 19]
+probe = "none"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox", "a_real_sandbox_shows_exactly_what_each_profile_allows"]
+on_break = "feature"
+playbook = "A new layout shows as apps that cannot find their libraries inside the sandbox. The sandbox mirrors /bin, /lib and /lib64 as they are on the host (mirror in sam-sandbox)."
+
+[[contract]]
+id = "system-data"
+component = "distribution"
+assumes = "Shared read-only data (fonts, icons, themes, locales, certificates, graphics drivers' data, time zones, the library cache) lives at these paths; SAM binds them with -try, so a missing one is skipped."
+covers = ["path:/usr/share", "path:/usr/share/", "path:/usr/share/*", "path:/usr/lib/dri", "path:/etc/fonts", "path:/etc/ld.so.cache", "path:/etc/ld.so.conf.d", "path:/etc/ssl/certs", "path:/etc/vulkan", "path:/etc/os-release", "path:/var/cache/fontconfig"]
+functions = [10, 15]
+probe = "none"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "feature"
+playbook = "A moved folder shows as missing fonts, icons or certificates inside apps. Add the new path next to the old one in sam-sandbox (both with -try)."
+
+[[contract]]
+id = "etc-identity-and-names"
+component = "distribution"
+assumes = "User identity and name resolution come from these /etc files (passwd, group, hosts, resolv.conf and its systemd-resolved or NetworkManager target, nsswitch, gai, host.conf, protocols, services). SAM shows only listed /etc files, so anything new there stays hidden."
+covers = ["path:/etc/passwd", "path:/etc/group", "path:/etc/hosts", "path:/etc/resolv.conf", "path:/etc/nsswitch.conf", "path:/etc/gai.conf", "path:/etc/host.conf", "path:/etc/protocols", "path:/etc/services", "path:/run/systemd/resolve", "path:/etc/NetworkManager"]
+functions = [10, 12]
+probe = "none"
+tests = ["a_real_sandbox_shows_exactly_what_each_profile_allows"]
+on_break = "feature"
+playbook = "A new resolver setup shows as apps that cannot resolve names. Add its file to the /etc list in sam-sandbox; never bind all of /etc."
+
+[[contract]]
+id = "sensitive-system-files"
+component = "distribution"
+assumes = "System secrets live in files like /etc/shadow, gshadow, sudoers, pam.d, polkit-1, security and ssh. SAM never binds them; with its allow list for /etc, a secret in a new place stays hidden as well."
+covers = ["path:/etc/shadow", "path:/etc/gshadow", "path:/etc/sudoers", "path:/etc/pam.d", "path:/etc/polkit-1", "path:/etc/security", "path:/etc/ssh"]
+functions = [11]
+probe = "none"
+tests = ["files_and_folders_named_on_the_command_line", "every_breakout_attempt_from_a_real_sandbox_fails"]
+on_break = "none"
+playbook = "Nothing to fix when a new secret location appears: it is not on the allow list. Add it to SENSITIVE_PATHS (sam-core risk.rs) so a grant of it is also marked dangerous."
+
+[[contract]]
+id = "devices"
+component = "kernel"
+assumes = "Devices appear under these names: GPUs as /dev/dri/card* and renderD*, NVIDIA as /dev/nvidia*, sound as /dev/snd, cameras as /dev/video*, input as /dev/input and /dev/uinput, USB as /dev/bus/usb; /sys describes them."
+covers = ["path:/dev/bus/usb", "path:/dev/dri", "path:/dev/dri/card0", "path:/dev/dri/renderD128", "path:/dev/input", "path:/dev/nvidia", "path:/dev/snd", "path:/dev/uinput", "path:/dev/video", "path:/run/udev/data", "path:/sys/bus", "path:/sys/class", "path:/sys/dev", "path:/sys/devices", "path:/sys/devices/system/cpu", "path:/sys/module"]
+functions = [15]
+probe = "none"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "feature"
+playbook = "A renamed device is simply not passed in: the app loses that device, never gains another. Add the new name in sam-sandbox (devices) and host.rs (gpu_devices)."
+
+[[contract]]
+id = "wayland-socket"
+component = "wayland"
+assumes = "The compositor's socket is $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY (or an absolute WAYLAND_DISPLAY) and is a real socket."
+covers = ["env:WAYLAND_DISPLAY", "env:XDG_RUNTIME_DIR", "env:XDG_SESSION_TYPE"]
+functions = [14]
+probe = "wayland-socket"
+tests = ["only_a_real_socket_counts_as_a_desktop_service", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "feature"
+playbook = "Without a socket the app gets no Wayland display (X11 only if allowed). Check how the desktop names its socket."
+
+[[contract]]
+id = "wayland-security-context"
+component = "wayland"
+assumes = "The compositor offers wp_security_context_manager_v1, so SAM can mark the app's connection and the compositor can withhold privileged protocols."
+covers = ["wayland:wp_security_context_manager_v1"]
+functions = [14]
+probe = "wayland-security-context"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "warn"
+playbook = "Without it SAM warns that the app can use every Wayland function the desktop offers. A new protocol version: update the wayland-protocols crate."
+
+[[contract]]
+id = "x11"
+component = "x11"
+assumes = "X11 displays are reached through /tmp/.X11-unix/X<n> for DISPLAY=:<n>, with the cookie in XAUTHORITY."
+covers = ["env:DISPLAY", "env:XAUTHORITY", "path:/tmp/.X11-unix", "path:/tmp/.X11-unix/*"]
+functions = [14]
+probe = "none"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "feature"
+playbook = "X11 is optional; without the socket the app has Wayland only."
+
+[[contract]]
+id = "audio-sockets"
+component = "audio"
+assumes = "Sound goes through PipeWire's $XDG_RUNTIME_DIR/pipewire-0 or PulseAudio's pulse/native (or PULSE_SERVER), both real sockets; cameras are not reachable through them."
+covers = ["env:PULSE_SERVER"]
+functions = [15]
+probe = "audio-sockets"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "feature"
+playbook = "A renamed socket means no sound in apps. Add the new name in host.rs (probe_sockets)."
+
+[[contract]]
+id = "dbus-buses"
+component = "dbus"
+assumes = "The session bus is at DBUS_SESSION_BUS_ADDRESS (or $XDG_RUNTIME_DIR/bus), the system bus at /run/dbus/system_bus_socket; both are real sockets."
+covers = ["env:DBUS_SESSION_BUS_ADDRESS", "path:/run/dbus/system_bus_socket"]
+functions = [13]
+probe = "dbus-buses"
+tests = ["only_a_real_socket_counts_as_a_desktop_service", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "feature"
+playbook = "Without a bus, apps lose desktop services. Check the bus address the session sets."
+
+[[contract]]
+id = "dbus-dangerous-names"
+component = "dbus"
+assumes = "These desktop services can start programs outside the sandbox, control the desktop or read secrets. The filtered bus is an allow list, so a new service of this kind is blocked unless allowed by name; this list marks such names dangerous when someone allows them."
+covers = ["dbus:org.freedesktop.[*]", "dbus:org.freedesktop.DBus", "dbus:org.freedesktop.systemd1", "dbus:org.freedesktop.Flatpak", "dbus:org.freedesktop.portal.Flatpak", "dbus:org.freedesktop.secrets", "dbus:org.gnome.Shell", "dbus:org.gnome.SessionManager", "dbus:org.kde.KWin", "dbus:org.kde.kded", "dbus:org.kde.kglobalaccel", "dbus:org.kde.klauncher", "dbus:org.kde.krunner", "dbus:org.kde.ksmserver", "dbus:org.kde.kwalletd5", "dbus:org.kde.kwalletd6", "dbus:org.kde.plasmashell", "dbus:ca.desrt.dconf"]
+functions = [9, 13]
+probe = "none"
+tests = ["every_hostile_appimage_fails_to_escape"]
+on_break = "none"
+playbook = "A desktop that adds a new launcher service: add it to DANGEROUS_BUS_NAMES (sam-core permissions.rs) and to the evil suite."
+
+[[contract]]
+id = "dbus-integrations"
+component = "dbus"
+assumes = "Notifications, tray icons (StatusNotifier), media keys (MPRIS), screen saver and power inhibition, the file manager and input methods are reached under these names."
+covers = ["dbus:org.freedesktop.Notifications", "dbus:org.freedesktop.StatusNotifierItem", "dbus:org.kde.StatusNotifierItem", "dbus:org.kde.StatusNotifierWatcher", "dbus:org.mpris.MediaPlayer2.[*]", "dbus:org.freedesktop.ScreenSaver", "dbus:org.freedesktop.PowerManagement", "dbus:org.freedesktop.FileManager1"]
+functions = [13]
+probe = "none"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "feature"
+playbook = "A renamed service only loses that integration. Update bus_names in sam-core permissions.rs."
+
+[[contract]]
+id = "portal-interfaces"
+component = "portal"
+assumes = "xdg-desktop-portal offers the interfaces SAM allows (file chooser, open URI, input methods, screen sharing and the rest) under org.freedesktop.portal.Desktop, and asks the user itself."
+covers = ["dbus:org.freedesktop.portal.[*]", "dbus:org.freedesktop.portal.Desktop", "dbus:org.freedesktop.portal.OpenURI", "dbus:org.freedesktop.portal.IBus", "dbus:org.freedesktop.portal.Fcitx"]
+functions = [13]
+probe = "portal-interfaces"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+on_break = "feature"
+playbook = "The probe compares the installed portal descriptions (/usr/share/dbus-1/interfaces) with what SAM allows. A removed interface only loses that feature; update portal_interfaces in permissions.rs."
+
+[[contract]]
+id = "dbus-activatable"
+component = "dbus"
+assumes = "Services that start on demand are listed in /usr/share/dbus-1/services and /usr/local/share/dbus-1/services; SAM refuses to let an app own such a name."
+covers = ["path:/usr/share/dbus-1/services", "path:/usr/local/share/dbus-1/services"]
+functions = [13]
+probe = "none"
+tests = ["every_hostile_appimage_fails_to_escape"]
+on_break = "safer"
+playbook = "If services move elsewhere, add the folder in host.rs so owning them stays refused."
+
+[[contract]]
+id = "host-escape-tools"
+component = "dbus"
+assumes = "systemd-run and flatpak-spawn are the host tools that start programs outside a sandbox; inside, SAM replaces them with stand-ins (and their D-Bus services are blocked)."
+covers = ["path:/usr/bin/systemd-run", "path:/usr/bin/flatpak-spawn", "option:--scope", "option:--unit", "option:--user"]
+functions = [16]
+probe = "none"
+tests = ["every_hostile_appimage_fails_to_escape"]
+on_break = "none"
+playbook = "A new tool of this kind still needs a blocked D-Bus service to act; add a stand-in for it too and an evil-suite case."
+
+[[contract]]
+id = "printing-ssh-drives"
+component = "freedesktop"
+assumes = "Printing is at /run/cups/cups.sock, the SSH agent at SSH_AUTH_SOCK, and removable drives under /media, /mnt and /run/media."
+covers = ["path:/run/cups/cups.sock", "env:SSH_AUTH_SOCK", "path:/media", "path:/media/", "path:/mnt", "path:/run/media", "path:/run/media/"]
+functions = [10, 15]
+probe = "none"
+tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox", "files_and_folders_named_on_the_command_line"]
+on_break = "feature"
+playbook = "A moved socket or mount point only loses that feature."
+
+[[contract]]
+id = "xdg-folders"
+component = "freedesktop"
+assumes = "The home folder, user name, XDG base folders, the desktop's name, the search path and the language come from these variables, following the XDG specifications."
+covers = ["env:HOME", "env:USER", "env:PATH", "env:XDG_CONFIG_HOME", "env:XDG_DATA_HOME", "env:XDG_DATA_DIRS", "env:XDG_CURRENT_DESKTOP", "env:LANGUAGE", "env:NO_COLOR"]
+functions = [1, 37, 38]
+probe = "none"
+tests = ["old_formats_are_migrated_and_kept"]
+on_break = "feature"
+playbook = "These are long-stable standards; a change would show in SAM's own folders and menu entries."
+
+# --------------------------------------------- SAM's own names (not contracts)
+
+[[own]]
+covers = ["env:SAM_*", "program:sam-jail-run", "program:sam-jail-gui", "option:--sandbox-exec", "option:--app-id", "option:--help", "option:-h", "option:--max-bytes", "option:--max-files", "option:--max-seconds"]
+why = "SAM's own programs, their options and SAM's own variables."
+
+[[own]]
+covers = ["path:/opt/app", "path:/opt/app/", "path:/run/sam", "path:/run/sam/*", "path:/run/sam-diag", "path:/run/sam-diag/*", "path:/run/user/1000", "path:/run/user/1000/*", "path:/tmp/o"]
+why = "Paths inside the sandbox that SAM itself creates, or examples in texts."
+
+[[own]]
+covers = ["option:--no-sandbox"]
+why = "An argument SAM suggests passing to Electron apps; the app decides what it means."

@@ -20,8 +20,8 @@ jobs:
   # the build, test, window and sandbox steps are skipped; the website, the
   # test library and the function map are still checked. GitHub counts a
   # skipped job as passed, so such a pull request can be merged in about a
-  # minute. Two documents are part of the code: docs/guide.md is built into
-  # the window, and a test reads docs/architecture.md.
+  # minute. Three documents are part of the code: docs/guide.md is built into
+  # the window, and tests read docs/architecture.md and docs/syscalls-reviewed.txt.
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -36,7 +36,7 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           docs='^(docs/|[^/]+\.md$|scripts/site\.py$|\.github/ISSUE_TEMPLATE/)'
-          code_docs='^docs/(guide|architecture)\.md$'
+          code_docs='^docs/((guide|architecture)\.md|syscalls-reviewed\.txt)$'
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             code=true    # run by hand, or no earlier commit to compare with
           elif git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Ev "$docs" | grep -q . \
@@ -189,6 +189,9 @@ jobs:
 
       - name: Function map is complete and up to date
         run: python3 scripts/function-map.py --check
+
+      - name: Contract map covers every outside assumption
+        run: python3 scripts/contract-map.py --check
 
       - name: Third-party licenses are up to date
         if: env.CODE == 'true'
