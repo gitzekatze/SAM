@@ -18,6 +18,7 @@ become links between pages; links to code go to GitHub. The site loads
 nothing from other servers (privacy): no web fonts, no trackers, and the
 diagram library, when present in OUTDIR/assets, is served by the site itself.
 """
+import hashlib
 import html
 import json
 import os
@@ -34,6 +35,9 @@ PRIVATE = "--private" in sys.argv[1:]
 _args = [a for a in sys.argv[1:] if a != "--private"]
 OUT = pathlib.Path(_args[0]) if _args else ROOT / "target" / ("handbook" if PRIVATE else "site")
 REPO = "https://github.com/gitzekatze/SAM"
+# A stamp of the stylesheet's content in its link: browsers keep a stylesheet
+# for a while, and a new stamp makes them load a changed one at once.
+STYLE_STAMP = hashlib.sha256((ROOT / "docs/site/style.css").read_bytes()).hexdigest()[:10]
 
 # Section, page path on the site, source document, title in navigation.
 PAGES = [
@@ -170,7 +174,7 @@ def shell(page, title, body, section=None, toc=None, source=None):
 <title>{html.escape(title)} · SAM</title>
 <meta name="description" content="SAM - Sandboxed AppImage Manager: run AppImages in a sandbox with clear, per-app permissions.">
 <link rel="icon" href="{rel(page, "assets/logo.svg")}">
-<link rel="stylesheet" href="{rel(page, "assets/style.css")}">
+<link rel="stylesheet" href="{rel(page, "assets/style.css")}?v={STYLE_STAMP}">
 </head><body>
 <header class="top"><div class="top-inner">
 <a class="brand" href="{rel(page, "index.html")}"><img src="{rel(page, "assets/logo.svg")}" alt="">SAM</a>
@@ -490,7 +494,7 @@ def check_links():
         for url in re.findall(r'(?:href|src)="([^"#][^"]*)"', f.read_text()):
             if url.startswith(("http:", "https:", "mailto:")):
                 continue
-            target = (f.parent / html.unescape(url).split("#")[0]).resolve()
+            target = (f.parent / re.split(r"[?#]", html.unescape(url))[0]).resolve()
             if not target.exists():
                 broken.append((str(f.relative_to(OUT)), url))
     return broken
