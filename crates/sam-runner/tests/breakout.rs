@@ -294,150 +294,165 @@ fn every_breakout_attempt_from_a_real_sandbox_fails() {
     p.environment.set.insert("SAM_TEST_EXTRA".into(), ex);
     let r = launch(p);
 
-    // The syscall filter: calls an ordinary user may make are refused.
-    for k in [
-        "SC_KEYCTL",
-        "SC_USERFAULTFD",
-        "SC_UNSHARE",
-        "SC_IO_URING",
-        "SC_TIOCSTI",
-        "SC_TIOCLINUX",
-        "SC_X32_KEYCTL",
-        "SC_X32_UNSHARE",
-    ] {
-        if r[k] == "n/a" {
-            continue; // x32 exists only on x86_64
+    // Every section is checked on its own; a failure names it
+    // (CHECK FAIL breakout/<section>) and the next sections still run.
+    let mut c = sam_runner::contracts::Checks::new("breakout");
+    c.section("syscall-filter", || {
+        // The syscall filter: calls an ordinary user may make are refused.
+        for k in [
+            "SC_KEYCTL",
+            "SC_USERFAULTFD",
+            "SC_UNSHARE",
+            "SC_IO_URING",
+            "SC_TIOCSTI",
+            "SC_TIOCLINUX",
+            "SC_X32_KEYCTL",
+            "SC_X32_UNSHARE",
+        ] {
+            if r[k] == "n/a" {
+                continue; // x32 exists only on x86_64
+            }
+            assert_eq!(r[k], "EPERM", "{k} is blocked by the syscall filter");
         }
-        assert_eq!(r[k], "EPERM", "{k} is blocked by the syscall filter");
-    }
-    for k in [
-        "SC_PERF",
-        "SC_BPF",
-        "SC_INIT_MODULE",
-        "SC_OPEN_BY_HANDLE",
-        "SC_SYSLOG",
-    ] {
-        assert_ne!(r[k], "ok", "{k} must not succeed");
-    }
-    assert_eq!(r["SECCOMP"], "2", "seccomp filter mode");
-    assert_eq!(r["NONEWPRIVS"], "1");
-    assert_eq!(r["CAPEFF"], "0000000000000000");
-    // Landlock: the raw --bind made the folder writable as a mount, but the
-    // profile says read-only, so the kernel refuses the write.
-    assert_eq!(
-        r["LANDLOCK_EXTRA"], "EACCES",
-        "Landlock blocks writes the profile does not allow"
-    );
-    assert!(!extra.join("landlock.txt").exists());
-    // Abstract sockets of the host (Landlock ABI 6, kernel 6.12+).
-    if host.landlock_abi.is_some_and(|v| v >= 6) {
+        for k in [
+            "SC_PERF",
+            "SC_BPF",
+            "SC_INIT_MODULE",
+            "SC_OPEN_BY_HANDLE",
+            "SC_SYSLOG",
+        ] {
+            assert_ne!(r[k], "ok", "{k} must not succeed");
+        }
+        assert_eq!(r["SECCOMP"], "2", "seccomp filter mode");
+        assert_eq!(r["NONEWPRIVS"], "1");
+        assert_eq!(r["CAPEFF"], "0000000000000000");
+    });
+    c.section("landlock", || {
+        // Landlock: the raw --bind made the folder writable as a mount, but the
+        // profile says read-only, so the kernel refuses the write.
+        assert_eq!(
+            r["LANDLOCK_EXTRA"], "EACCES",
+            "Landlock blocks writes the profile does not allow"
+        );
+        assert!(!extra.join("landlock.txt").exists());
+    });
+    c.section("abstract-sockets", || {
+        // Abstract sockets of the host (Landlock ABI 6, kernel 6.12+).
+        if host.landlock_abi.is_some_and(|v| v >= 6) {
+            assert_ne!(
+                r["ABSTRACT"], "connected",
+                "host abstract sockets are blocked"
+            );
+        }
+        assert_ne!(r["ROOT_WRITE"], "written", "/ is read-only");
+        assert_eq!(
+            r["SAM_REGISTRY"], "hidden",
+            "SAM's own folders stay hidden inside granted folders"
+        );
+        assert_eq!(r["SHM"], "written", "the app has a /dev/shm of its own");
+        assert!(
+            !Path::new(&format!("/dev/shm/sam-breakout-{token}")).exists(),
+            "/dev/shm is private"
+        );
+        assert_eq!(
+            r["ENV_SECRET"], "absent",
+            "host environment is not passed in"
+        );
+    });
+    c.section("host-tools", || {
+        // Where the host has systemd-run, SAM's stand-in runs the command inside
+        // the sandbox; where it has none (containers), it cannot be misused.
+        let host_has_systemd_run = Path::new("/usr/bin/systemd-run").exists();
+        if host_has_systemd_run {
+            assert_eq!(
+                r["SYSTEMD_RUN"], "bubblewrap",
+                "systemd-run runs the command inside the sandbox"
+            );
+        } else {
+            assert_eq!(
+                r["SYSTEMD_RUN"], "absent",
+                "no systemd-run on this host, none inside"
+            );
+        }
+    });
+    c.section("strict-credentials", || {
+        // Strict profile: credential stores live in the real home, which is not there.
+        assert!(!r["H_SSH"].starts_with("readable"));
+    });
+    c.section("full-home-access", || {
+        // 2. Full home read/write: persistence paths read-only (also missing
+        //    ones), credential stores and SAM's own data hidden.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        let r = launch(p);
+        let protected = [
+            "P_AUTOSTART",
+            "P_SYSTEMD",
+            "P_BASHRC",
+            "P_LOCALBIN",
+            "P_DBUS_SERVICES",
+            "P_MIMEAPPS",
+            "P_APPLICATIONS",
+            "P_KWIN_SCRIPTS",
+            "P_GITCONFIG",
+        ];
+        let written: Vec<&str> = protected
+            .iter()
+            .copied()
+            .filter(|k| r[*k] == "written")
+            .collect();
+        assert!(
+            written.is_empty(),
+            "persistence paths writable under full home: {written:?}"
+        );
+        assert_eq!(
+            r["P_AUTOSTART_NEW"], "written",
+            "ordinary folders stay writable with full home"
+        );
+        for k in ["H_KEYRINGS", "H_PASS", "H_AWS", "H_SSH"] {
+            assert!(
+                !r[k].starts_with("readable"),
+                "{k} stays hidden under full home: {}",
+                r[k]
+            );
+        }
         assert_ne!(
-            r["ABSTRACT"], "connected",
-            "host abstract sockets are blocked"
+            r["H_SAM"], "readable:# sam",
+            "SAM's real configuration is hidden"
         );
-    }
-    assert_ne!(r["ROOT_WRITE"], "written", "/ is read-only");
-    assert_eq!(
-        r["SAM_REGISTRY"], "hidden",
-        "SAM's own folders stay hidden inside granted folders"
-    );
-    assert_eq!(r["SHM"], "written", "the app has a /dev/shm of its own");
-    assert!(
-        !Path::new(&format!("/dev/shm/sam-breakout-{token}")).exists(),
-        "/dev/shm is private"
-    );
-    assert_eq!(
-        r["ENV_SECRET"], "absent",
-        "host environment is not passed in"
-    );
-    // Where the host has systemd-run, SAM's stand-in runs the command inside
-    // the sandbox; where it has none (containers), it cannot be misused.
-    let host_has_systemd_run = Path::new("/usr/bin/systemd-run").exists();
-    if host_has_systemd_run {
         assert_eq!(
-            r["SYSTEMD_RUN"], "bubblewrap",
-            "systemd-run runs the command inside the sandbox"
+            fs::read_to_string(home.join(".bashrc")).unwrap(),
+            "# bashrc",
+            "startup file unchanged"
         );
-    } else {
+        // SAM's own folder is replaced by an empty, throwaway one: writes land
+        // there, never in the real configuration.
         assert_eq!(
-            r["SYSTEMD_RUN"], "absent",
-            "no systemd-run on this host, none inside"
+            fs::read_to_string(home.join(".config/sam/config.toml")).unwrap(),
+            "# sam",
+            "SAM's configuration unchanged"
         );
-    }
-    // Strict profile: credential stores live in the real home, which is not there.
-    assert!(!r["H_SSH"].starts_with("readable"));
-
-    // 2. Full home read/write: persistence paths read-only (also missing
-    //    ones), credential stores and SAM's own data hidden.
-    let mut p = PermissionSet::strict_gui();
-    p.filesystem.home = true;
-    p.filesystem.home_access = Access::Rw;
-    let r = launch(p);
-    let protected = [
-        "P_AUTOSTART",
-        "P_SYSTEMD",
-        "P_BASHRC",
-        "P_LOCALBIN",
-        "P_DBUS_SERVICES",
-        "P_MIMEAPPS",
-        "P_APPLICATIONS",
-        "P_KWIN_SCRIPTS",
-        "P_GITCONFIG",
-    ];
-    let written: Vec<&str> = protected
-        .iter()
-        .copied()
-        .filter(|k| r[*k] == "written")
-        .collect();
-    assert!(
-        written.is_empty(),
-        "persistence paths writable under full home: {written:?}"
-    );
-    assert_eq!(
-        r["P_AUTOSTART_NEW"], "written",
-        "ordinary folders stay writable with full home"
-    );
-    for k in ["H_KEYRINGS", "H_PASS", "H_AWS", "H_SSH"] {
-        assert!(
-            !r[k].starts_with("readable"),
-            "{k} stays hidden under full home: {}",
-            r[k]
-        );
-    }
-    assert_ne!(
-        r["H_SAM"], "readable:# sam",
-        "SAM's real configuration is hidden"
-    );
-    assert_eq!(
-        fs::read_to_string(home.join(".bashrc")).unwrap(),
-        "# bashrc",
-        "startup file unchanged"
-    );
-    // SAM's own folder is replaced by an empty, throwaway one: writes land
-    // there, never in the real configuration.
-    assert_eq!(
-        fs::read_to_string(home.join(".config/sam/config.toml")).unwrap(),
-        "# sam",
-        "SAM's configuration unchanged"
-    );
-    for rel in [
-        ".config/autostart/evil.desktop",
-        ".local/bin/ls",
-        ".local/share/dbus-1/services/evil.service",
-        ".local/share/kwin/scripts/evil/metadata.json",
-    ] {
-        assert!(
-            !home.join(rel).exists(),
-            "{rel} was not created on the host"
-        );
-    }
-    // Created empty by SAM so they could be mounted read-only; still empty.
-    for rel in [".config/mimeapps.list", ".gitconfig"] {
-        assert_eq!(
-            fs::read_to_string(home.join(rel)).unwrap(),
-            "",
-            "{rel} stays empty"
-        );
-    }
-    drop(listener);
+        for rel in [
+            ".config/autostart/evil.desktop",
+            ".local/bin/ls",
+            ".local/share/dbus-1/services/evil.service",
+            ".local/share/kwin/scripts/evil/metadata.json",
+        ] {
+            assert!(
+                !home.join(rel).exists(),
+                "{rel} was not created on the host"
+            );
+        }
+        // Created empty by SAM so they could be mounted read-only; still empty.
+        for rel in [".config/mimeapps.list", ".gitconfig"] {
+            assert_eq!(
+                fs::read_to_string(home.join(rel)).unwrap(),
+                "",
+                "{rel} stays empty"
+            );
+        }
+        drop(listener);
+    });
+    c.finish().unwrap_or_else(|e| panic!("{e}"));
 }

@@ -260,6 +260,13 @@ hand:
 - [ ] Main menu → Language → Deutsch → *Restart Now*: the window comes back
       in German; *Follow the system* brings back the system's language.
 
+The large sandbox tests (the permission matrix and the breakout test) run
+in named sections (`sam_runner::contracts::Checks`): every section reports
+`CHECK ok matrix/network` or `CHECK FAIL matrix/network: …`, a failing
+section does not stop the next ones, and the test lists every failed
+section at the end. (They stay one test each: their steps change the test
+process's environment and must not run in parallel.)
+
 Sandbox tests check the contracts they rely on first
 (`sam_runner::contracts::guard`): a broken one that SAM cannot work without
 stops the test with its name and playbook, so a failure says whether the

@@ -230,386 +230,400 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         r
     };
 
-    // Baseline: everything off.
-    let r = launch("strict", base());
-    for (k, v) in [
-        ("GPU", "no"),
-        ("UINPUT", "no"),
-        ("USB", "no"),
-        ("ALSA", "no"),
-        ("VIDEO", "no"),
-        ("AUDIO", "no"),
-        ("X11", "no"),
-        ("SYSBUS", "no"),
-        ("SSHAGENT", "no"),
-        ("CUPS", "no"),
-        ("SSHKEY", "no"),
-        ("DOCS", "no"),
-        ("PICS_WRITE", "no"),
-        ("EXTRA_READ", "no"),
-        ("APPDIR_WRITE", "no"),
-        ("USERNS", "no"),
-        ("SYSFS", "no"),
-        ("PASSVAR", "unset"),
-        ("IBUS_USE_PORTAL", "unset"),
-        ("JS", "0"),
-        ("EVENTS", "0"),
-    ] {
-        assert_eq!(r[k], v, "[strict] {k}");
-    }
-    assert_eq!(r["NET"], "lo,", "[strict] network");
-
-    // Devices.
-    let mut p = base();
-    p.devices.gpu = true;
-    let r = launch("gpu", p);
-    if Path::new("/dev/dri").exists() {
-        assert_eq!(r["GPU"], "yes");
-        assert_eq!(r["SYSFS"], "yes", "GPU drivers need /sys");
-    }
-    if Path::new("/sys/module/nvidia/version").exists() {
-        assert_eq!(
-            r["NVMOD"], "yes",
-            "NVIDIA's driver needs /sys/module/nvidia"
-        );
-    }
-
-    let mut p = base();
-    p.devices.gamepads = true;
-    let r = launch("gamepads", p);
-    assert_eq!(r["JS"], count_host("js").to_string(), "every joystick node");
-    assert_eq!(r["MICE"], "0", "no mice with gamepads only");
-    assert_eq!(r["UINPUT"], "no");
-    let host_events = count_host("event");
-    let got: usize = r["EVENTS"].parse().unwrap();
-    assert!(
-        host_events == 0 || got < host_events,
-        "keyboards and mice stay hidden ({got} of {host_events})"
-    );
-
-    let mut p = base();
-    p.devices.input = true;
-    let r = launch("input", p);
-    assert_eq!(r["EVENTS"], count_host("event").to_string());
-
-    let mut p = base();
-    p.devices.usb = true;
-    let r = launch("usb", p);
-    assert_eq!(
-        r["USB"],
-        if Path::new("/dev/bus/usb").exists() {
-            "yes"
-        } else {
-            "no"
+    // Every section is checked on its own; a failure names it
+    // (CHECK FAIL matrix/<section>) and the next sections still run.
+    let overlays_work = sam_core::host::overlay_works_in(&paths.data_dir.join("overlays"));
+    let mut c = sam_runner::contracts::Checks::new("matrix");
+    c.section("baseline", || {
+        // Baseline: everything off.
+        let r = launch("strict", base());
+        for (k, v) in [
+            ("GPU", "no"),
+            ("UINPUT", "no"),
+            ("USB", "no"),
+            ("ALSA", "no"),
+            ("VIDEO", "no"),
+            ("AUDIO", "no"),
+            ("X11", "no"),
+            ("SYSBUS", "no"),
+            ("SSHAGENT", "no"),
+            ("CUPS", "no"),
+            ("SSHKEY", "no"),
+            ("DOCS", "no"),
+            ("PICS_WRITE", "no"),
+            ("EXTRA_READ", "no"),
+            ("APPDIR_WRITE", "no"),
+            ("USERNS", "no"),
+            ("SYSFS", "no"),
+            ("PASSVAR", "unset"),
+            ("IBUS_USE_PORTAL", "unset"),
+            ("JS", "0"),
+            ("EVENTS", "0"),
+        ] {
+            assert_eq!(r[k], v, "[strict] {k}");
         }
-    );
-
-    let mut p = base();
-    p.devices.webcam = true;
-    let r = launch("webcam", p);
-    let cams = fs::read_dir("/dev")
-        .unwrap()
-        .flatten()
-        .any(|e| e.file_name().to_string_lossy().starts_with("video"));
-    assert_eq!(r["VIDEO"], if cams { "yes" } else { "no" });
-
-    let mut p = base();
-    p.audio.enabled = true;
-    let r = launch("audio", p);
-    if runtime_has("pulse/native") {
-        assert_eq!(r["AUDIO"], "yes");
-    }
-    assert_eq!(
-        r["PIPEWIRE"], "no",
-        "sound never brings the raw PipeWire socket (cameras, screen streams)"
-    );
-    assert_eq!(r["ALSA"], "no", "audio does not expose raw ALSA");
-
-    let mut p = base();
-    p.audio.pipewire = true;
-    let r = launch("pipewire", p);
-    assert_eq!(
-        r["PIPEWIRE"],
-        if runtime_has("pipewire-0") {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-
-    let mut p = base();
-    p.audio.alsa_raw = true;
-    let r = launch("alsa", p);
-    assert_eq!(
-        r["ALSA"],
-        if Path::new("/dev/snd").exists() {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-
-    // Display.
-    let mut p = base();
-    p.display.wayland = true;
-    let r = launch("wayland", p);
-    if std::env::var("WAYLAND_DISPLAY").is_ok_and(|d| runtime_has(&d)) {
-        assert_eq!(r["WAYLAND"], "yes");
-    }
-    let mut p = base();
-    p.display.wayland = false;
-    let r = launch("no-wayland", p);
-    assert_eq!(r["WAYLAND"], "no");
-    // Shared system data (contract system-data): fonts and certificates are
-    // visible wherever the computer has them.
-    let has = |d: &str| fs::read_dir(d).is_ok_and(|mut e| e.next().is_some());
-    if has("/usr/share/fonts") {
-        assert_eq!(r["FONTS"], "yes", "fonts are visible in the sandbox");
-    }
-    if has("/etc/ssl/certs") {
-        assert_eq!(r["CERTS"], "yes", "certificates are visible in the sandbox");
-    }
-
-    let mut p = base();
-    p.display.x11 = true;
-    let r = launch("x11", p);
-    if fs::read_dir("/tmp/.X11-unix").is_ok_and(|mut d| d.next().is_some())
-        && host.sockets.x11_display.is_some()
-    {
-        assert_eq!(r["X11"], "yes");
-    }
-
-    // Network.
-    let mut p = base();
-    p.network.mode = NetworkMode::Full;
-    let r = launch("network", p);
-    assert_ne!(r["NET"], "lo,", "full network shares host interfaces");
-    if host.tools_extra_pasta() && sam_runner::netns::pasta_usable().is_err() {
-        // A pasta without --splice-only (Ubuntu 24.04) would give the app
-        // internet access: SAM starts it with no network at all instead.
+        assert_eq!(r["NET"], "lo,", "[strict] network");
+    });
+    c.section("devices", || {
+        // Devices.
         let mut p = base();
-        p.network.mode = NetworkMode::Localhost;
-        let r = launch("localhost-old-pasta", p);
-        assert_eq!(r["NET"], "lo,", "no network at all with an old pasta");
-    } else if host.tools_extra_pasta() {
-        // Two services on the host's loopback: the app reaches the one whose
-        // port is listed, and not the other ("Other local services stay
-        // unreachable").
-        let listed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let unlisted = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let listed_port = listed.local_addr().unwrap().port();
-        std::env::set_var("SAM_MATRIX_PORT_LISTED", listed_port.to_string());
-        std::env::set_var(
-            "SAM_MATRIX_PORT_UNLISTED",
-            unlisted.local_addr().unwrap().port().to_string(),
-        );
-        let mut p = base();
-        p.network.mode = NetworkMode::Localhost;
-        p.network.host_ports = vec![listed_port.to_string()];
-        p.environment.passthrough.extend([
-            "SAM_MATRIX_PORT_LISTED".into(),
-            "SAM_MATRIX_PORT_UNLISTED".into(),
-        ]);
-        let r = launch("localhost", p);
-        assert!(r["NET"].contains("lo"), "this computer only: {}", r["NET"]);
-        if r["HAVE_BASH"] == "yes" {
-            assert_eq!(r["PORT_LISTED"], "yes", "a listed host port is reachable");
-            assert_eq!(r["PORT_UNLISTED"], "no", "an unlisted host port is not");
+        p.devices.gpu = true;
+        let r = launch("gpu", p);
+        if Path::new("/dev/dri").exists() {
+            assert_eq!(r["GPU"], "yes");
+            assert_eq!(r["SYSFS"], "yes", "GPU drivers need /sys");
         }
-        drop((listed, unlisted));
-        let rec = last.borrow().clone().unwrap();
-        assert!(!rec.setup_failed, "bwrap status reached SAM through pasta");
-        if sam_runner::find_helper().is_some() {
-            let e = rec.enforcement.unwrap_or_default();
-            assert!(
-                e.contains("landlock"),
-                "helper status reached SAM through pasta: {e:?}"
+        if Path::new("/sys/module/nvidia/version").exists() {
+            assert_eq!(
+                r["NVMOD"], "yes",
+                "NVIDIA's driver needs /sys/module/nvidia"
             );
         }
-    }
 
-    // D-Bus.
-    let mut p = base();
-    p.dbus.session.mode = DbusMode::None;
-    let r = launch("dbus-none", p);
-    assert_eq!(r["SESSBUS"], "no");
-    if host.tools.xdg_dbus_proxy.is_some() && host.sockets.dbus_session.is_some() {
         let mut p = base();
-        p.dbus.session.mode = DbusMode::Filtered;
-        p.integrations.input_method = true;
-        let r = launch("dbus-filtered", p);
-        assert_eq!(r["SESSBUS"], "yes");
-        assert_eq!(
-            r["IBUS_USE_PORTAL"], "1",
-            "input method uses the IBus portal"
-        );
-    }
-    let mut p = base();
-    p.dbus.system.mode = DbusMode::Full;
-    let r = launch("system-bus", p);
-    assert_eq!(
-        r["SYSBUS"],
-        if Path::new("/run/dbus/system_bus_socket").exists() {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-
-    // Sockets and environment.
-    let mut p = base();
-    p.sockets.ssh_agent = true;
-    let r = launch("ssh-agent", p);
-    if std::env::var_os("SSH_AUTH_SOCK").is_some_and(|s| Path::new(&s).exists()) {
-        assert_eq!(r["SSHAGENT"], "yes");
-    }
-    let mut p = base();
-    p.sockets.cups = true;
-    let r = launch("cups", p);
-    assert_eq!(
-        r["CUPS"],
-        if Path::new("/run/cups/cups.sock").exists() {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-    let mut p = base();
-    p.environment.passthrough.push("SAM_MATRIX_VAR".into());
-    let r = launch("env", p);
-    assert_eq!(r["PASSVAR"], "hello");
-
-    // Files.
-    let mut p = base();
-    p.filesystem.pictures = Access::Rw;
-    let r = launch("pictures-rw", p);
-    assert_eq!(r["PICS_WRITE"], "yes");
-    assert!(home.join("Pictures/new.png").exists());
-    let mut p = base();
-    p.filesystem.custom_read.push(extra.display().to_string());
-    let r = launch("custom-read", p);
-    assert_eq!(
-        (r["EXTRA_READ"].as_str(), r["EXTRA_WRITE"].as_str()),
-        ("yes", "no")
-    );
-    let mut p = base();
-    p.filesystem.custom_write.push(extra.display().to_string());
-    let r = launch("custom-write", p);
-    assert_eq!(
-        (r["EXTRA_READ"].as_str(), r["EXTRA_WRITE"].as_str()),
-        ("yes", "yes")
-    );
-
-    let mut p = base();
-    p.filesystem.home = true;
-    let r = launch("full-home", p.clone());
-    assert_eq!(r["DOCS"], "yes");
-    assert_eq!(
-        (r["SSHKEY"].as_str(), r["GNUPG"].as_str()),
-        ("no", "no"),
-        "keys masked"
-    );
-    p.filesystem.ssh = true;
-    p.filesystem.gnupg = true;
-    p.filesystem.hidden_files = true;
-    let r = launch("full-home-keys", p);
-    assert_eq!(
-        (
-            r["SSHKEY"].as_str(),
-            r["GNUPG"].as_str(),
-            r["HIDDEN"].as_str()
-        ),
-        ("yes", "yes", "yes")
-    );
-
-    // Advanced.
-    let mut p = base();
-    p.advanced.writable_appdir = true;
-    let r = launch("writable-appdir", p);
-    // Without overlays (Bubblewrap before 0.10, as on Ubuntu 24.04, or a
-    // filesystem that cannot hold one, as in a container) the app folder
-    // stays read-only, and the app still starts.
-    let overlays_work = sam_core::host::overlay_works_in(&paths.data_dir.join("overlays"));
-    assert_eq!(r["APPDIR_WRITE"], if overlays_work { "yes" } else { "no" });
-    let extracted = app.resolve(&id).unwrap().extraction.unwrap().appdir;
-    assert!(
-        !Path::new(&extracted).join("portable.ini").exists(),
-        "extracted copy unchanged"
-    );
-
-    let mut p = base();
-    p.advanced.persistent_home = false;
-    launch("ephemeral-1", p.clone());
-    let r = launch("ephemeral-2", p);
-    assert_eq!(r["MARKER"], "no", "home is fresh every start");
-
-    let mut p = base();
-    p.advanced.host_runtime = HostRuntime::Full;
-    let r = launch("full-usr", p);
-    if Path::new("/usr/include").is_dir() {
-        assert_eq!(r["FULL_USR"], "yes");
-    }
-
-    let mut p = base();
-    p.advanced.allow_userns = true;
-    p.advanced.seccomp_baseline = false;
-    let r = launch("userns", p);
-    assert_eq!(r["USERNS"], "yes", "nested namespaces allowed");
-
-    let mut p = base();
-    p.advanced.seccomp_strict = true;
-    p.advanced.landlock = Some(true);
-    launch("strict-filters", p);
-
-    for flag in [false, true] {
-        let mut p = base();
-        p.advanced.host_themes = flag;
-        launch("themes", p);
-    }
-
-    // A running app cannot lose its sandbox or be unpacked again.
-    let e = app.set_permissions(&id, base()).unwrap();
-    std::thread::scope(|sc| {
-        let h = sc.spawn(|| {
-            let mut e = e;
-            let opts = LaunchOptions {
-                quiet: true,
-                args: vec!["sleep".into()],
-                owd: Some(home.clone()),
-                ..Default::default()
-            };
-            run(&mut e, &opts, &app.config, &app.paths, &host).unwrap()
-        });
-        let t0 = std::time::Instant::now();
-        while app.running(&id).is_empty() && t0.elapsed().as_secs() < 5 {
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
+        p.devices.gamepads = true;
+        let r = launch("gamepads", p);
+        assert_eq!(r["JS"], count_host("js").to_string(), "every joystick node");
+        assert_eq!(r["MICE"], "0", "no mice with gamepads only");
+        assert_eq!(r["UINPUT"], "no");
+        let host_events = count_host("event");
+        let got: usize = r["EVENTS"].parse().unwrap();
         assert!(
-            !app.running(&id).is_empty(),
-            "the launch is seen as running"
+            host_events == 0 || got < host_events,
+            "keyboards and mice stay hidden ({got} of {host_events})"
         );
-        let err = app.remove(&id, false).unwrap_err().to_string();
-        assert!(err.contains("is running"), "{err}");
-        assert!(app
-            .reextract(&id, false)
-            .unwrap_err()
-            .to_string()
-            .contains("is running"));
-        assert!(h.join().unwrap().success);
+
+        let mut p = base();
+        p.devices.input = true;
+        let r = launch("input", p);
+        assert_eq!(r["EVENTS"], count_host("event").to_string());
+
+        let mut p = base();
+        p.devices.usb = true;
+        let r = launch("usb", p);
+        assert_eq!(
+            r["USB"],
+            if Path::new("/dev/bus/usb").exists() {
+                "yes"
+            } else {
+                "no"
+            }
+        );
+
+        let mut p = base();
+        p.devices.webcam = true;
+        let r = launch("webcam", p);
+        let cams = fs::read_dir("/dev")
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().starts_with("video"));
+        assert_eq!(r["VIDEO"], if cams { "yes" } else { "no" });
+
+        let mut p = base();
+        p.audio.enabled = true;
+        let r = launch("audio", p);
+        if runtime_has("pulse/native") {
+            assert_eq!(r["AUDIO"], "yes");
+        }
+        assert_eq!(
+            r["PIPEWIRE"], "no",
+            "sound never brings the raw PipeWire socket (cameras, screen streams)"
+        );
+        assert_eq!(r["ALSA"], "no", "audio does not expose raw ALSA");
+
+        let mut p = base();
+        p.audio.pipewire = true;
+        let r = launch("pipewire", p);
+        assert_eq!(
+            r["PIPEWIRE"],
+            if runtime_has("pipewire-0") {
+                "yes"
+            } else {
+                "no"
+            }
+        );
+
+        let mut p = base();
+        p.audio.alsa_raw = true;
+        let r = launch("alsa", p);
+        assert_eq!(
+            r["ALSA"],
+            if Path::new("/dev/snd").exists() {
+                "yes"
+            } else {
+                "no"
+            }
+        );
     });
-    assert!(app.running(&id).is_empty());
-    let overlay = paths.data_dir.join("overlays").join(&id);
-    // The layer exists only where overlays work.
-    assert_eq!(overlay.exists(), overlays_work, "writable app folder layer");
-    app.remove(&id, false).unwrap();
-    assert!(
-        !overlay.exists(),
-        "remove deletes the writable app folder layer"
-    );
-    assert!(
-        !paths.runtime_dir(&id).exists(),
-        "no runtime folder left behind"
-    );
+    c.section("display", || {
+        // Display.
+        let mut p = base();
+        p.display.wayland = true;
+        let r = launch("wayland", p);
+        if std::env::var("WAYLAND_DISPLAY").is_ok_and(|d| runtime_has(&d)) {
+            assert_eq!(r["WAYLAND"], "yes");
+        }
+        let mut p = base();
+        p.display.wayland = false;
+        let r = launch("no-wayland", p);
+        assert_eq!(r["WAYLAND"], "no");
+        // Shared system data (contract system-data): fonts and certificates are
+        // visible wherever the computer has them.
+        let has = |d: &str| fs::read_dir(d).is_ok_and(|mut e| e.next().is_some());
+        if has("/usr/share/fonts") {
+            assert_eq!(r["FONTS"], "yes", "fonts are visible in the sandbox");
+        }
+        if has("/etc/ssl/certs") {
+            assert_eq!(r["CERTS"], "yes", "certificates are visible in the sandbox");
+        }
+
+        let mut p = base();
+        p.display.x11 = true;
+        let r = launch("x11", p);
+        if fs::read_dir("/tmp/.X11-unix").is_ok_and(|mut d| d.next().is_some())
+            && host.sockets.x11_display.is_some()
+        {
+            assert_eq!(r["X11"], "yes");
+        }
+    });
+    c.section("network", || {
+        // Network.
+        let mut p = base();
+        p.network.mode = NetworkMode::Full;
+        let r = launch("network", p);
+        assert_ne!(r["NET"], "lo,", "full network shares host interfaces");
+        if host.tools_extra_pasta() && sam_runner::netns::pasta_usable().is_err() {
+            // A pasta without --splice-only (Ubuntu 24.04) would give the app
+            // internet access: SAM starts it with no network at all instead.
+            let mut p = base();
+            p.network.mode = NetworkMode::Localhost;
+            let r = launch("localhost-old-pasta", p);
+            assert_eq!(r["NET"], "lo,", "no network at all with an old pasta");
+        } else if host.tools_extra_pasta() {
+            // Two services on the host's loopback: the app reaches the one whose
+            // port is listed, and not the other ("Other local services stay
+            // unreachable").
+            let listed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let unlisted = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let listed_port = listed.local_addr().unwrap().port();
+            std::env::set_var("SAM_MATRIX_PORT_LISTED", listed_port.to_string());
+            std::env::set_var(
+                "SAM_MATRIX_PORT_UNLISTED",
+                unlisted.local_addr().unwrap().port().to_string(),
+            );
+            let mut p = base();
+            p.network.mode = NetworkMode::Localhost;
+            p.network.host_ports = vec![listed_port.to_string()];
+            p.environment.passthrough.extend([
+                "SAM_MATRIX_PORT_LISTED".into(),
+                "SAM_MATRIX_PORT_UNLISTED".into(),
+            ]);
+            let r = launch("localhost", p);
+            assert!(r["NET"].contains("lo"), "this computer only: {}", r["NET"]);
+            if r["HAVE_BASH"] == "yes" {
+                assert_eq!(r["PORT_LISTED"], "yes", "a listed host port is reachable");
+                assert_eq!(r["PORT_UNLISTED"], "no", "an unlisted host port is not");
+            }
+            drop((listed, unlisted));
+            let rec = last.borrow().clone().unwrap();
+            assert!(!rec.setup_failed, "bwrap status reached SAM through pasta");
+            if sam_runner::find_helper().is_some() {
+                let e = rec.enforcement.unwrap_or_default();
+                assert!(
+                    e.contains("landlock"),
+                    "helper status reached SAM through pasta: {e:?}"
+                );
+            }
+        }
+    });
+    c.section("dbus", || {
+        // D-Bus.
+        let mut p = base();
+        p.dbus.session.mode = DbusMode::None;
+        let r = launch("dbus-none", p);
+        assert_eq!(r["SESSBUS"], "no");
+        if host.tools.xdg_dbus_proxy.is_some() && host.sockets.dbus_session.is_some() {
+            let mut p = base();
+            p.dbus.session.mode = DbusMode::Filtered;
+            p.integrations.input_method = true;
+            let r = launch("dbus-filtered", p);
+            assert_eq!(r["SESSBUS"], "yes");
+            assert_eq!(
+                r["IBUS_USE_PORTAL"], "1",
+                "input method uses the IBus portal"
+            );
+        }
+        let mut p = base();
+        p.dbus.system.mode = DbusMode::Full;
+        let r = launch("system-bus", p);
+        assert_eq!(
+            r["SYSBUS"],
+            if Path::new("/run/dbus/system_bus_socket").exists() {
+                "yes"
+            } else {
+                "no"
+            }
+        );
+    });
+    c.section("sockets-and-environment", || {
+        // Sockets and environment.
+        let mut p = base();
+        p.sockets.ssh_agent = true;
+        let r = launch("ssh-agent", p);
+        if std::env::var_os("SSH_AUTH_SOCK").is_some_and(|s| Path::new(&s).exists()) {
+            assert_eq!(r["SSHAGENT"], "yes");
+        }
+        let mut p = base();
+        p.sockets.cups = true;
+        let r = launch("cups", p);
+        assert_eq!(
+            r["CUPS"],
+            if Path::new("/run/cups/cups.sock").exists() {
+                "yes"
+            } else {
+                "no"
+            }
+        );
+        let mut p = base();
+        p.environment.passthrough.push("SAM_MATRIX_VAR".into());
+        let r = launch("env", p);
+        assert_eq!(r["PASSVAR"], "hello");
+    });
+    c.section("files", || {
+        // Files.
+        let mut p = base();
+        p.filesystem.pictures = Access::Rw;
+        let r = launch("pictures-rw", p);
+        assert_eq!(r["PICS_WRITE"], "yes");
+        assert!(home.join("Pictures/new.png").exists());
+        let mut p = base();
+        p.filesystem.custom_read.push(extra.display().to_string());
+        let r = launch("custom-read", p);
+        assert_eq!(
+            (r["EXTRA_READ"].as_str(), r["EXTRA_WRITE"].as_str()),
+            ("yes", "no")
+        );
+        let mut p = base();
+        p.filesystem.custom_write.push(extra.display().to_string());
+        let r = launch("custom-write", p);
+        assert_eq!(
+            (r["EXTRA_READ"].as_str(), r["EXTRA_WRITE"].as_str()),
+            ("yes", "yes")
+        );
+
+        let mut p = base();
+        p.filesystem.home = true;
+        let r = launch("full-home", p.clone());
+        assert_eq!(r["DOCS"], "yes");
+        assert_eq!(
+            (r["SSHKEY"].as_str(), r["GNUPG"].as_str()),
+            ("no", "no"),
+            "keys masked"
+        );
+        p.filesystem.ssh = true;
+        p.filesystem.gnupg = true;
+        p.filesystem.hidden_files = true;
+        let r = launch("full-home-keys", p);
+        assert_eq!(
+            (
+                r["SSHKEY"].as_str(),
+                r["GNUPG"].as_str(),
+                r["HIDDEN"].as_str()
+            ),
+            ("yes", "yes", "yes")
+        );
+    });
+    c.section("advanced", || {
+        // Advanced.
+        let mut p = base();
+        p.advanced.writable_appdir = true;
+        let r = launch("writable-appdir", p);
+        // Without overlays (Bubblewrap before 0.10, as on Ubuntu 24.04, or a
+        // filesystem that cannot hold one, as in a container) the app folder
+        // stays read-only, and the app still starts.
+        assert_eq!(r["APPDIR_WRITE"], if overlays_work { "yes" } else { "no" });
+        let extracted = app.resolve(&id).unwrap().extraction.unwrap().appdir;
+        assert!(
+            !Path::new(&extracted).join("portable.ini").exists(),
+            "extracted copy unchanged"
+        );
+
+        let mut p = base();
+        p.advanced.persistent_home = false;
+        launch("ephemeral-1", p.clone());
+        let r = launch("ephemeral-2", p);
+        assert_eq!(r["MARKER"], "no", "home is fresh every start");
+
+        let mut p = base();
+        p.advanced.host_runtime = HostRuntime::Full;
+        let r = launch("full-usr", p);
+        if Path::new("/usr/include").is_dir() {
+            assert_eq!(r["FULL_USR"], "yes");
+        }
+
+        let mut p = base();
+        p.advanced.allow_userns = true;
+        p.advanced.seccomp_baseline = false;
+        let r = launch("userns", p);
+        assert_eq!(r["USERNS"], "yes", "nested namespaces allowed");
+
+        let mut p = base();
+        p.advanced.seccomp_strict = true;
+        p.advanced.landlock = Some(true);
+        launch("strict-filters", p);
+
+        for flag in [false, true] {
+            let mut p = base();
+            p.advanced.host_themes = flag;
+            launch("themes", p);
+        }
+    });
+    c.section("running-app-and-its-layer", || {
+        // A running app cannot lose its sandbox or be unpacked again.
+        let e = app.set_permissions(&id, base()).unwrap();
+        std::thread::scope(|sc| {
+            let h = sc.spawn(|| {
+                let mut e = e;
+                let opts = LaunchOptions {
+                    quiet: true,
+                    args: vec!["sleep".into()],
+                    owd: Some(home.clone()),
+                    ..Default::default()
+                };
+                run(&mut e, &opts, &app.config, &app.paths, &host).unwrap()
+            });
+            let t0 = std::time::Instant::now();
+            while app.running(&id).is_empty() && t0.elapsed().as_secs() < 5 {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            assert!(
+                !app.running(&id).is_empty(),
+                "the launch is seen as running"
+            );
+            let err = app.remove(&id, false).unwrap_err().to_string();
+            assert!(err.contains("is running"), "{err}");
+            assert!(app
+                .reextract(&id, false)
+                .unwrap_err()
+                .to_string()
+                .contains("is running"));
+            assert!(h.join().unwrap().success);
+        });
+        assert!(app.running(&id).is_empty());
+        let overlay = paths.data_dir.join("overlays").join(&id);
+        // The layer exists only where overlays work.
+        assert_eq!(overlay.exists(), overlays_work, "writable app folder layer");
+        app.remove(&id, false).unwrap();
+        assert!(
+            !overlay.exists(),
+            "remove deletes the writable app folder layer"
+        );
+        assert!(
+            !paths.runtime_dir(&id).exists(),
+            "no runtime folder left behind"
+        );
+    });
+    c.finish().unwrap_or_else(|e| panic!("{e}"));
 }
 
 use sam_core::Paths;
