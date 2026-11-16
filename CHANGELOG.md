@@ -11,6 +11,9 @@ version.
 
 ### Rules for automation
 
+- The automation's repository-specific lists live in `keeper.toml`; the
+  scripts are general (preparation for a reusable maintenance tool).
+  Removing anything from its lists needs the owner's label.
 - **AUTOMATION.md** sets the rules for automated upkeep: what automation
   may do, what it may never do, risk classes, and a kill switch
   (`SAM_AUTOMATION`).
