@@ -4,7 +4,7 @@
 //! launches it with Bubblewrap under several profiles. The probe prints what
 //! it can see from inside the sandbox. Uses a fake `$HOME`, so the real home
 //! directory is never touched. Skipped when bubblewrap cannot run here.
-#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::collections::HashMap;
 use std::fs;

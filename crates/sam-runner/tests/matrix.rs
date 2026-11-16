@@ -3,7 +3,7 @@
 //! depend on host hardware or services (GPU, gamepads, PipeWire, Wayland, …)
 //! only assert when the host has them. Uses a fake `$HOME`. Skipped when
 //! bubblewrap cannot run here.
-#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::collections::HashMap;
 use std::fs;

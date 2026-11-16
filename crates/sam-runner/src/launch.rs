@@ -51,6 +51,10 @@ pub struct Prepared {
     pub warnings: Vec<Warning>,
     pub landlock: bool,
     pub seccomp: bool,
+    /// The kernel layers the settings ask for, applied or not (without SAM's
+    /// helper they cannot be): what a start is checked against.
+    pub wanted_landlock: bool,
+    pub wanted_seccomp: bool,
     /// How the app's terminal is handled (see `pty`).
     pub terminal: TerminalMode,
     proxy: Option<DbusProxy>,
@@ -303,6 +307,8 @@ pub fn prepare(
     let mut wayland = None;
     let mut landlock = false;
     let mut seccomp = false;
+    let wanted_landlock: bool;
+    let wanted_seccomp: bool;
     {
         sam_sandbox::write_identity_files(&ctx)?;
         sam_sandbox::prepare_home_protection(perms, &host.home);
@@ -375,6 +381,8 @@ pub fn prepare(
         }
         let want_seccomp =
             (cfg.security.baseline_seccomp && perms.advanced.seccomp_baseline) || strict;
+        wanted_landlock = want_landlock;
+        wanted_seccomp = want_seccomp;
         if want_landlock || want_seccomp || opts.probe.is_some() {
             match crate::find_helper() {
                 Some(helper) => {
@@ -422,6 +430,8 @@ pub fn prepare(
         warnings,
         landlock,
         seccomp,
+        wanted_landlock,
+        wanted_seccomp,
         terminal,
         proxy,
         wayland_context,
@@ -747,6 +757,11 @@ pub fn run(
         success: outcome.success,
         sandbox_failure: outcome.sandbox_failure,
         setup_failed: outcome.setup_failed,
+        missing_layers: missing_layers(
+            enforcement.as_deref(),
+            prepared.wanted_landlock,
+            prepared.wanted_seccomp,
+        ),
         enforcement,
         log_file: Some(log_path),
         findings: if outcome.success {
@@ -765,6 +780,15 @@ pub fn run(
         },
         summary: outcome.summary,
     };
+    if !rec.missing_layers.is_empty() && !opts.quiet {
+        eprintln!(
+            "sam-jail: {}",
+            sam_core::i18n::trf(
+                "warning: this start ran without {layers}, which its settings ask for",
+                &[("layers", &rec.missing_layers.join(", "))]
+            )
+        );
+    }
     save_launch(app, &rec, paths)?;
     let _ = logs.prune(&app.id, LogKind::Launch, cfg.diagnostics.keep_logs);
     Ok(rec)
@@ -897,6 +921,25 @@ impl StatusChannels {
 }
 
 /// bwrap's own arguments with the status options inserted.
+/// The kernel layers a start asked for but did not get, judged from what
+/// SAM's helper reported from inside the sandbox. No report while layers
+/// were wanted means none of them was applied (the helper did not run).
+/// A partly enforced Landlock (an older kernel) counts as applied.
+pub fn missing_layers(enforcement: Option<&str>, landlock: bool, seccomp: bool) -> Vec<String> {
+    let report = enforcement.unwrap_or("");
+    let mut missing = Vec::new();
+    if landlock
+        && !(report.contains("landlock: fully enforced")
+            || report.contains("landlock: partially enforced"))
+    {
+        missing.push("Landlock".to_string());
+    }
+    if seccomp && !report.contains("seccomp: ") {
+        missing.push("seccomp".to_string());
+    }
+    missing
+}
+
 /// The pasta command with bwrap's status pipes opened inside pasta's
 /// namespace: `pasta … -- PROG ARGS…` becomes `pasta … -- /bin/sh -c '…'
 /// PROG ARGS…` with the status options added to PROG's arguments. A command
@@ -1231,6 +1274,33 @@ pub fn tail(path: &Path, max_lines: usize) -> String {
 #[cfg(test)]
 mod pasta_status_tests {
     use super::*;
+
+    #[test]
+    fn a_wanted_layer_that_was_not_applied_is_reported_missing() {
+        let full = "landlock: fully enforced; seccomp: baseline loaded";
+        assert!(missing_layers(Some(full), true, true).is_empty());
+        assert!(missing_layers(
+            Some("landlock: partially enforced; seccomp: strict loaded"),
+            true,
+            true
+        )
+        .is_empty());
+        assert_eq!(
+            missing_layers(
+                Some("landlock: NOT applied (no kernel support); seccomp: baseline loaded"),
+                true,
+                true
+            ),
+            vec!["Landlock"]
+        );
+        // No report at all: the helper did not run, nothing was applied.
+        assert_eq!(
+            missing_layers(None, true, true),
+            vec!["Landlock", "seccomp"]
+        );
+        // Layers that were not asked for are never missing.
+        assert!(missing_layers(None, false, false).is_empty());
+    }
 
     fn v(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| s.to_string()).collect()

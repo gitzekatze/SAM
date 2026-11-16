@@ -2,7 +2,7 @@
 //! or a hostile AppImage must not be able to steer SAM through text it
 //! controls (stderr, desktop-file metadata, file names) or crash it with
 //! malformed input.
-#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 

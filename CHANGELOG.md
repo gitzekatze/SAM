@@ -28,6 +28,16 @@ version.
 - SHA-1 and MD4, which the zsync update format prescribes, are confined to
   the update code by a test; the threat model states what updates of
   unsigned apps can and cannot promise.
+- **No silent loss of protection.** When a start lacks a layer its settings
+  ask for (Landlock or the syscall filter, for example because SAM's helper
+  is missing), the command line warns, the app's page says which layer was
+  missing, and the overview marks the app *Protection missing* until a start
+  has every layer again.
+- `panic!`, `todo!` and `unimplemented!` are not allowed outside tests (a
+  lint enforces it).
+- Every release comes with an SBOM (SPDX): every component built into SAM,
+  with version and license, signed like the other release files.
+- The security page names where an outside review should start.
 
 ### First start
 

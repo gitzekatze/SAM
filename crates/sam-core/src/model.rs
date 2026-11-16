@@ -43,6 +43,9 @@ pub enum Badge {
     /// The record was changed by something other than SAM; the app does not
     /// start until the user confirms the settings.
     ChangedOutside,
+    /// The last start lacked a protection layer its settings ask for
+    /// (Landlock or seccomp).
+    ProtectionMissing,
 }
 
 impl Badge {
@@ -57,6 +60,7 @@ impl Badge {
             Badge::Unsafe => "Unsafe",
             Badge::Missing => "Missing",
             Badge::ChangedOutside => "Changed Outside SAM",
+            Badge::ProtectionMissing => "Protection Missing",
         }
     }
 }
@@ -330,6 +334,10 @@ pub struct LaunchRecord {
     /// What SAM's helper actually enforced inside the sandbox, e.g.
     /// "landlock: fully enforced; seccomp: baseline loaded".
     pub enforcement: Option<String>,
+    /// Protection layers this start should have had but did not get
+    /// ("Landlock", "seccomp"): shown as a warning, never silent.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub missing_layers: Vec<String>,
     pub log_file: Option<PathBuf>,
     pub summary: String,
     /// What the app's output suggests went wrong, with fixes.
@@ -508,6 +516,9 @@ impl AppEntry {
             if d.verdict == Some(IsolationVerdict::UnsafeToSandbox) {
                 return Badge::Unsafe;
             }
+        }
+        if matches!(&self.last_launch, Some(l) if !l.missing_layers.is_empty()) {
+            return Badge::ProtectionMissing;
         }
         if !self.reviewed || !self.pending_changes.is_empty() {
             return Badge::NeedsReview;
@@ -711,5 +722,29 @@ mod badge_tests {
         assert_eq!(e.badge(), Badge::Ready, "ran for a minute: it starts");
         e.profile.compatibility_mode = true;
         assert_eq!(e.badge(), Badge::CompatibilityMode);
+    }
+
+    #[test]
+    fn a_start_without_a_wanted_protection_layer_is_marked() {
+        let mut e = AppEntry {
+            extraction: Some(ExtractionInfo::default()),
+            reviewed: true,
+            ..Default::default()
+        };
+        e.last_launch = Some(LaunchRecord {
+            success: true,
+            missing_layers: vec!["Landlock".into()],
+            ..Default::default()
+        });
+        assert_eq!(
+            e.badge(),
+            Badge::ProtectionMissing,
+            "even when the app ran fine"
+        );
+        e.last_launch = Some(LaunchRecord {
+            success: true,
+            ..Default::default()
+        });
+        assert_eq!(e.badge(), Badge::Ready, "the next full start clears it");
     }
 }

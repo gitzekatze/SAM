@@ -116,7 +116,7 @@ pub(crate) enum Cmd {
         #[arg(long)]
         search: Option<String>,
         /// Filter by badge (ready, needs-review, compatibility-mode,
-        /// compatibility-risk, stale, broken, unsafe, missing).
+        /// compatibility-risk, stale, broken, unsafe, missing, protection-missing).
         #[arg(long)]
         badge: Option<String>,
         /// Filter by risk level (low, medium, high, dangerous).

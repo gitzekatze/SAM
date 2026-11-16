@@ -11,7 +11,7 @@
 //!
 //! Uses a fake $HOME; skipped when Bubblewrap, sam-jail-run, python3 with
 //! GObject (gi), gdbus or dbus-daemon is missing.
-#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::collections::HashMap;
 use std::fs;

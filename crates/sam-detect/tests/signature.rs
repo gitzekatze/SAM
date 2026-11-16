@@ -5,7 +5,7 @@
 //! Runs only with SAM_TEST_GPG=1 (CI sets it): signing starts a gpg-agent,
 //! which puts its sockets under /run/user/<uid>/gnupg. Needs gpg, gpgv and
 //! objcopy.
-#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::process::Command;
 

@@ -1763,6 +1763,7 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
         (true, "stale") => (crate::i18n::n_("Changed"), "warn"),
         (true, "broken") => (crate::i18n::n_("Broken"), "bad"),
         (true, "missing") => (crate::i18n::n_("Missing"), "bad"),
+        (true, "protection-missing") => (crate::i18n::n_("Protection missing"), "bad"),
         (true, _) => (crate::i18n::n_("Sandboxed"), "good"),
     };
     let label = util::badge(&crate::i18n::tr(text), tone);
@@ -1778,6 +1779,7 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
         (true, "stale") => crate::i18n::tr("The AppImage file changed since it was unpacked"),
         (true, "broken") => crate::i18n::tr("The last start failed"),
         (true, "missing") => crate::i18n::tr("The AppImage file is gone"),
+        (true, "protection-missing") => crate::i18n::tr("Its last start lacked a protection layer its settings ask for; its page says which"),
         (true, _) => crate::i18n::tr("Runs in its sandbox"),
     }));
     b.append(&label);

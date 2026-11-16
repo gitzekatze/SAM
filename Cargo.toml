@@ -71,3 +71,8 @@ undocumented_unsafe_blocks = "deny"
 # or an `.expect("…")` that states why it cannot happen (clippy.toml allows
 # unwrap in tests).
 unwrap_used = "deny"
+# No deliberate crashes outside tests either: a failure is an error the
+# caller handles (tests may panic; that is how they fail).
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"

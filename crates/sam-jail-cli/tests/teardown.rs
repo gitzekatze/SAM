@@ -4,7 +4,7 @@
 //! SAM's view. Checked with no network and with "This computer only", where
 //! pasta sits between SAM and Bubblewrap. Skipped when Bubblewrap cannot
 //! run here.
-#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 use std::path::Path;

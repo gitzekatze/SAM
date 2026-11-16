@@ -1,7 +1,7 @@
 //! App records changed outside SAM (by a program that is not sandboxed, or
 //! by a damaged disk) must never make SAM delete anything outside its own
 //! folders. Regression tests for holes found in the test audit.
-#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 

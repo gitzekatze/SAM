@@ -1,6 +1,6 @@
 //! The JSON interface the window uses for the Permissions page and the
 //! user's presets, through the real `sam-jail` binary.
-#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
 use std::process::{Command, Output, Stdio};

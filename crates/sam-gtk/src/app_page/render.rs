@@ -301,6 +301,32 @@ impl AppPage {
             row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
             self.add_dynamic(&self.notices, &row);
         }
+        // A protection layer its settings ask for was missing at the last
+        // start: never silent (an older kernel, or SAM's helper not found).
+        let missing: Vec<String> = entry
+            .as_ref()
+            .and_then(|e| util::get(e, "last_launch.missing_layers"))
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !missing.is_empty() {
+            let row = adw::ActionRow::builder()
+                .title(crate::i18n::trf(
+                    "Last start without {layers}",
+                    &[("layers", &missing.join(", "))],
+                ))
+                .subtitle(tr(
+                    "The app ran with less protection than its settings ask for: the sandbox itself held, but these extra layers were missing. Diagnostics in the main menu shows why.",
+                ))
+                .build();
+            row.add_prefix(&status_icon("dialog-warning-symbolic", "warning"));
+            self.add_dynamic(&self.notices, &row);
+        }
         // A newer version is published (last update check).
         if let Some(e) = entry
             .as_ref()

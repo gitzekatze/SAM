@@ -2,7 +2,7 @@
 //! overview (docs/architecture.md). A part that starts to depend on one it
 //! must not, or a diagram that no longer shows the real dependencies, fails
 //! here.
-#![allow(clippy::unwrap_used)] // a test: a panic is a failed test
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
