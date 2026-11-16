@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
   pull_request:
+    # Labels too: the owner's `owner-approved` lets the contract verifier pass.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
@@ -216,6 +218,7 @@ jobs:
           python3 scripts/workflow-check.py
           python3 scripts/workflow-check.py --self-test
           python3 scripts/risk-class.py --self-test
+          python3 scripts/contract-verifier.py --self-test
 
       - name: Risk class of this change
         if: github.event_name == 'pull_request'
@@ -224,6 +227,18 @@ jobs:
         run: |
           git fetch -q origin "$BASE"
           python3 scripts/risk-class.py "origin/$BASE" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # A change that weakens a security promise needs the owner's label.
+      - name: Contract verifier
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          approved=
+          case ",$LABELS," in *,owner-approved,*) approved=--approved ;; esac
+          python3 scripts/contract-verifier.py "origin/$BASE" $approved | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "${PIPESTATUS[0]}"
 
       - name: Third-party licenses are up to date
         if: env.CODE == 'true'
