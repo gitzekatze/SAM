@@ -11,6 +11,7 @@
   --line: #dfe6e1;
   --code-bg: #eef3ef;
   --accent: var(--green-dark);
+  --bright: var(--green); /* headline word and main button; brighter in dark mode */
   --shadow: 0 1px 2px rgba(0, 40, 20, 0.06), 0 8px 24px rgba(0, 40, 20, 0.06);
   color-scheme: light;
 }
@@ -24,6 +25,7 @@
     --line: #2a332e;
     --code-bg: #1f2823;
     --accent: var(--green-light);
+    --bright: var(--green-light);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
     color-scheme: dark;
   }
@@ -131,11 +133,11 @@ html, body { overflow-x: hidden; }
 }
 .hero img.logo { width: 132px; height: 132px; filter: drop-shadow(0 12px 28px rgba(0, 104, 55, 0.35)); }
 .hero h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); line-height: 1.12; margin: 1.2rem auto 0.8rem; max-width: 16ch; letter-spacing: -0.02em; }
-.hero h1 span { background: linear-gradient(90deg, var(--green-dark), var(--green), var(--green-light)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero h1 span { color: var(--bright); }
 .hero p.lead { font-size: 1.2rem; color: var(--muted); max-width: 40rem; margin: 0 auto 2rem; }
 .buttons { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
 .btn { display: inline-block; padding: 0.75rem 1.4rem; border-radius: 999px; font-weight: 700; text-decoration: none; border: 2px solid transparent; }
-.btn.primary { background: linear-gradient(90deg, var(--green-dark), var(--green)); color: #fff; box-shadow: 0 6px 18px rgba(0, 104, 55, 0.3); }
+.btn.primary { background: var(--bright); border-color: var(--bright); color: #03210f; box-shadow: 0 6px 18px color-mix(in srgb, var(--bright) 30%, transparent); }
 .btn.ghost { border-color: var(--line); color: var(--text); background: var(--card); }
 .btn:hover { transform: translateY(-1px); }
 section.band { padding: 3.5rem 0; }
