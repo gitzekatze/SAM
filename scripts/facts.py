@@ -89,6 +89,9 @@ def compute():
         f["mutants_tested"] = (fmt(total), src)
         f["mutants_missed"] = (fmt(missed), src)
         f["mutants_missed_percent"] = (f"{100 * missed / total:.1f} %", src)
+        stated = re.search(r"\*\*([\d.]+ %) of the buildable changes were caught", text)
+        if stated:
+            f["mutants_caught_percent"] = (stated.group(1), src)
         f["mutants_report"] = (mut.name.removesuffix(".md"), src)
     return f
 

@@ -151,6 +151,18 @@ pub fn parse_trace(text: &str) -> BTreeMap<String, (String, String)> {
 
 pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
     let p = Path::new(path);
+    // The trace lies in a folder the app can write, so a path in it is the
+    // app's word: one with "." or ".." could point anywhere and is ignored.
+    if !p.is_absolute()
+        || p.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::CurDir | std::path::Component::ParentDir
+            )
+        })
+    {
+        return None;
+    }
     let mk = |risk, suggestion: String, fix: Option<(&str, String)>| Finding {
         path: path.to_string(),
         error: err.to_string(),
@@ -265,6 +277,14 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
         } else {
             dir
         };
+        // Granted only as the real folder, and only when it really is shared
+        // system data (a symlink could lead elsewhere).
+        let dir = fs::canonicalize(&dir).ok()?;
+        if !(dir.starts_with("/usr/share") || dir.starts_with("/usr/lib"))
+            || dir.components().count() < 4
+        {
+            return None;
+        }
         return Some(mk(
             RiskLevel::Low,
             sam_core::i18n::trf(
@@ -499,6 +519,30 @@ mod tests {
         if Path::new("/usr/share/zoneinfo").exists() {
             let f = classify("/usr/share/zoneinfo", "ENOENT", &host).unwrap();
             assert_eq!(f.risk, RiskLevel::Low);
+        }
+    }
+
+    /// A forged trace line cannot widen a low-risk grant: paths with ".."
+    /// are ignored, and a grant is only ever a real folder of shared system
+    /// data, never a parent such as /usr.
+    #[test]
+    fn a_forged_trace_line_cannot_widen_a_low_risk_grant() {
+        let host = sample_context().host;
+        for forged in ["/usr/lib/../lib/x", "/usr/lib/..", "/usr/lib/../../home"] {
+            assert!(
+                classify(forged, "ENOENT", &host).is_none(),
+                "{forged} grants nothing"
+            );
+        }
+        if Path::new("/usr/share/zoneinfo").exists() {
+            let f = classify("/usr/share/zoneinfo/Europe", "ENOENT", &host).unwrap();
+            let (key, dir) = f.fix.unwrap();
+            assert_eq!(key, "filesystem.custom_read");
+            assert!(
+                Path::new(&dir).starts_with("/usr/share")
+                    && Path::new(&dir).components().count() >= 4,
+                "a real data folder, not a parent: {dir}"
+            );
         }
     }
 

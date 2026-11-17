@@ -79,6 +79,20 @@ version.
   cannot be checked (GnuPG missing), SAM stops and asks, as it does for a
   changed signing key. Before, such an update was installed without asking.
 
+### Risk ratings that match what a permission can do
+
+- **The full session bus is rated Dangerous**, like allowing systemd by
+  name: on the full bus an app can ask systemd to start programs outside
+  its sandbox. Its explanation and compatibility mode's warning now say so.
+- **The file that says where your user folders are**
+  (`~/.config/user-dirs.dirs`) stays read-only even with a writable home,
+  so an app cannot point other apps' Documents or Downloads grant at
+  another folder.
+- **A diagnostic run cannot be talked into a wider grant.** Its trace lies
+  in a folder the app can write, so paths with `..` are ignored and a
+  low-risk grant is always a real folder of shared system data, never a
+  parent such as `/usr`.
+
 ### Security and reliability (from an outside code audit)
 
 - **A sandbox with "This computer only" could outlive SAM.** When SAM's
@@ -131,9 +145,11 @@ version.
 - Numbers are never typed by hand: scripts/facts.py fills them into the
   documents from the repository (tests, functions, the newest real-AppImage
   and mutation reports), and CI fails when a document quotes an old one.
-- The mutation-testing report gives the run's own numbers: 2,835 changes,
-  314 of them unnoticed. It used to say 2,821 tested and 88.5 % caught,
-  figures that did not match the run's records.
+- A full mutation run (docs/reports/mutants-2026-11-16.md) records every
+  change on its own: 3,011 changes, 84.8 % of the buildable ones caught,
+  and the weakest files named (the sandbox check, the terminal relay, the
+  kernel layers). The report of 2026-11-15 had figures that did not match
+  its run's records.
 - The results of the 120 real AppImages are published as a report
   (docs/reports/real-apps-2026-11-15.md), made by
   `tests/real-apps/table.py --markdown`.
