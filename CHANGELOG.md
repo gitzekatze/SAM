@@ -9,6 +9,13 @@ version.
 
 ## Unreleased
 
+### One building block fewer
+
+- SAM no longer uses the `chrono` library, which was declared unmaintained
+  (RUSTSEC-2026-0543): the current time comes from the standard library,
+  local and UTC dates from the C library SAM already uses. 175 lines fewer
+  in `Cargo.lock`, and the dependency check is green again.
+
 ### The window is checked in every state an app can be in
 
 - The window smoke test opens an app's page in each state that shows
