@@ -9,6 +9,20 @@ version.
 
 ## Unreleased
 
+### Three promises kept again (found by an independent review)
+
+- **An app can no longer write to the clipboard through leading zeros.**
+  SAM's terminal filter read at most 10 digits of a control code, so
+  `00000000052` was cut to 5 and passed on, while terminals read it as 52
+  (clipboard). Codes are now compared by value, and a number longer than
+  any real code is removed whole; `CSI 021 t` (a title report) is caught too.
+- **A bug report no longer contains the values of variables you gave an
+  app** (API keys, tokens): the launch log's command line hides them, and a
+  short run's log tail, which the report quotes, is that line.
+- **An AppImage whose start file links to `/dev/zero` (or is huge) can no
+  longer fill SAM's memory while it is added:** files inside an unpacked
+  AppImage are read only when regular, and only up to a limit.
+
 ### Rules for automation
 
 - The handbook starts with **How SAM looks after itself**: the whole

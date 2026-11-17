@@ -98,13 +98,9 @@ pub fn read_metadata(appdir: &Path) -> Result<AppImageMetadata> {
     let Some(path) = safe_resolve(appdir, &rel) else {
         return Ok(AppImageMetadata::default());
     };
-    let text = String::from_utf8_lossy(
-        &fs::read(&path)?
-            .into_iter()
-            .take(256 * 1024)
-            .collect::<Vec<u8>>(),
-    )
-    .into_owned();
+    // The first 256 KiB, read as such (not the whole file first).
+    let text =
+        String::from_utf8_lossy(&sam_core::util::read_regular(&path, 256 * 1024)?).into_owned();
     Ok(metadata_from_desktop(&text, &rel.display().to_string()))
 }
 

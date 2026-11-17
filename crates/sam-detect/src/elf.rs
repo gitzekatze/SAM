@@ -169,7 +169,8 @@ struct ElfFacts {
 }
 
 fn parse_elf(p: &Path) -> Option<ElfFacts> {
-    let data = fs::read(p).ok()?;
+    // At most 512 MiB: larger programs are not analyzed.
+    let data = sam_core::util::read_regular(p, 512 << 20).ok()?;
     let elf = goblin::elf::Elf::parse(&data).ok()?;
     let arch = match elf.header.e_machine {
         goblin::elf::header::EM_X86_64 => Some("x86_64"),
@@ -269,7 +270,9 @@ fn resolve_entry_binary(
 ) -> (Option<PathBuf>, bool, Option<String>) {
     let entry = appdir.join(&opts.entry);
     let mut script_text = None;
-    let is_script = match fs::read(&entry) {
+    // Only the start matters (#! and the script), and AppRun may be a link
+    // to anything (/dev/zero): a bounded read of a regular file.
+    let is_script = match sam_core::util::read_regular(&entry, 64 * 1024) {
         Ok(b) => {
             if b.starts_with(b"#!") {
                 script_text =
@@ -400,7 +403,9 @@ fn scan_programs(programs: &[&PathBuf], progress: &dyn Fn(usize)) -> ProgramStri
     let mut found = ProgramStrings::default();
     for (n, p) in programs.iter().enumerate() {
         progress(n + 1);
-        let Ok(data) = fs::read(p) else { continue };
+        let Ok(data) = sam_core::util::read_regular(p, 512 << 20) else {
+            continue;
+        };
         found.loads_graphics |= graphics.iter().any(|f| f.find(&data).is_some());
         if found.qt_platform_override.is_none() {
             found.qt_platform_override = memmem::find_iter(&data, QPA).find_map(|i| {

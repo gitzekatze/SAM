@@ -54,6 +54,25 @@ pub fn home_dir() -> PathBuf {
 }
 
 /// Write a file atomically (write to temp file in same dir, then rename).
+/// Reads at most `limit` bytes of a regular file. Files inside an unpacked
+/// AppImage are the AppImage's choice: a link to `/dev/zero` or a huge file
+/// must not fill SAM's memory. The type is checked on the opened file, so a
+/// swap between check and read changes nothing.
+pub fn read_regular(path: &Path, limit: u64) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let f = std::fs::File::open(path)?;
+    let meta = f.metadata()?;
+    if !meta.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    let mut data = Vec::with_capacity(meta.len().min(limit) as usize);
+    f.take(limit).read_to_end(&mut data)?;
+    Ok(data)
+}
+
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     let dir = path
         .parent()
@@ -190,6 +209,21 @@ pub fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A link to a device that never ends, or a file larger than the limit,
+    /// cannot fill SAM's memory (regression: an AppImage whose AppRun links
+    /// to /dev/zero made adding it grow without end).
+    #[test]
+    fn reading_a_file_of_an_appimage_is_bounded() {
+        let t = tempfile::tempdir().unwrap();
+        let link = t.path().join("AppRun");
+        std::os::unix::fs::symlink("/dev/zero", &link).unwrap();
+        assert!(read_regular(&link, 1024).is_err(), "a device is not read");
+        let big = t.path().join("big");
+        std::fs::write(&big, vec![7u8; 5000]).unwrap();
+        assert_eq!(read_regular(&big, 1000).unwrap().len(), 1000);
+        assert_eq!(read_regular(&big, 9000).unwrap().len(), 5000);
+    }
 
     /// Names become safe identifiers made of lowercase letters, digits and dashes.
     #[test]

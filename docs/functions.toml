@@ -58,7 +58,7 @@ id = 5
 area = "A"
 promise = "A damaged or hostile AppImage can't crash SAM or stop the list."
 code = ["sam-intake/src/peek.rs", "sam-intake/src/extract.rs", "sam-detect/src/elf.rs"]
-tests = ["a_damaged_squashfs_image_gives_an_error_instead_of_a_crash", "parsers_survive_garbage", "changed_appimages_never_crash_or_escape_the_unpacker", "changed_text_inputs_never_crash_the_parsers", "changed_programs_never_crash_the_analysis", "one_damaged_appimage_does_not_stop_the_list"]
+tests = ["reading_a_file_of_an_appimage_is_bounded", "a_damaged_squashfs_image_gives_an_error_instead_of_a_crash", "parsers_survive_garbage", "changed_appimages_never_crash_or_escape_the_unpacker", "changed_text_inputs_never_crash_the_parsers", "changed_programs_never_crash_the_analysis", "one_damaged_appimage_does_not_stop_the_list"]
 
 [[area]]
 id = "B"
@@ -161,7 +161,7 @@ id = 17
 area = "C"
 promise = "The app can't type into your terminal."
 code = ["sam-runner/src/pty.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs"]
-tests = ["a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code"]
+tests = ["leading_zeros_do_not_smuggle_a_code", "a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code"]
 
 [[function]]
 id = 18
@@ -310,7 +310,7 @@ id = 34
 area = "G"
 promise = "Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets."
 code = ["sam-runner/src/doctor.rs"]
-tests = ["bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus"]
+tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus"]
 
 [[area]]
 id = "H"
