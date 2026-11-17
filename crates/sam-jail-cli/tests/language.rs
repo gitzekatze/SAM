@@ -27,12 +27,13 @@ fn the_command_line_speaks_german_when_asked() {
         .arg(&po)
         .status()
     else {
-        eprintln!("skipped: msgfmt (gettext) is not installed");
+        sam_runner::contracts::skip("msgfmt (gettext) is not installed")
+            .unwrap_or_else(|e| panic!("{e}"));
         return;
     };
     assert!(built.success(), "po/de.po does not compile");
     let Some(locale) = real_locale() else {
-        eprintln!("skipped: no locale other than C is installed");
+        sam_runner::contracts::not_here("no locale other than C is installed");
         return;
     };
     let run = |language: &str| {

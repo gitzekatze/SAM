@@ -24,7 +24,13 @@ CARGO_TARGET_DIR="$work/target-old" cargo build -q --locked -p sam-jail-cli --ma
 old="$work/target-old/debug/sam-jail"
 
 export SAM_CONFIG_DIR="$work/data/config" SAM_DATA_DIR="$work/data/data" SAM_APPLICATIONS_DIR="$work/data/apps" TMPDIR="$work/tmp"
-unset WAYLAND_DISPLAY DISPLAY
+# Nothing of the person running it: own home and runtime folder (short,
+# for socket paths; never the real one), no desktop session, one language.
+rt="$work/run"
+[ -d "/run/user/$(id -u)" ] && [ -w "/run/user/$(id -u)" ] && rt="/run/user/$(id -u)/samupgrade-$$"
+mkdir -p "$work/home" "$rt" && chmod 700 "$rt"
+export HOME="$work/home" XDG_CONFIG_HOME="$work/home/.config" XDG_DATA_HOME="$work/home/.local/share" XDG_RUNTIME_DIR="$rt" LANG=C.UTF-8
+unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS SSH_AUTH_SOCK LC_ALL LANGUAGE
 
 echo "== creating data with SAM $ref"
 "$old" dev make-fixture --name Writer "$work/apps/Writer-1.0-x86_64.AppImage" >/dev/null

@@ -19,6 +19,9 @@ pub struct Paths {
     pub data_dir: PathBuf,
     /// Directory where launchers are installed (`~/.local/share/applications`).
     pub applications_dir: PathBuf,
+    /// Where SAM's per-launch runtime folders go when not below
+    /// `$XDG_RUNTIME_DIR/sam` (set for rooted paths: tests).
+    pub runtime_root: Option<PathBuf>,
 }
 
 impl Paths {
@@ -45,15 +48,23 @@ impl Paths {
             config_dir,
             data_dir,
             applications_dir,
+            // SAM_RUNTIME_DIR moves the per-launch runtime folders, like the
+            // three above (tests that start SAM's programs use it).
+            runtime_root: std::env::var_os("SAM_RUNTIME_DIR")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from),
         }
     }
 
-    /// Root all paths under one directory (tests).
+    /// Root all paths under one directory (tests), the runtime folder too:
+    /// a test never uses SAM's folder in the real runtime folder, and two
+    /// runs at once (app IDs are the same in both) never share one.
     pub fn rooted(root: &Path) -> Self {
         Paths {
             config_dir: root.join("config"),
             data_dir: root.join("data"),
             applications_dir: root.join("applications"),
+            runtime_root: Some(rooted_runtime(root)),
         }
     }
 
@@ -98,6 +109,9 @@ impl Paths {
     }
     /// Per-launch runtime scratch (generated passwd, D-Bus proxy socket, ...).
     pub fn runtime_dir(&self, id: &str) -> PathBuf {
+        if let Some(r) = &self.runtime_root {
+            return r.join(id);
+        }
         let base = std::env::var_os("XDG_RUNTIME_DIR")
             .filter(|v| !v.is_empty())
             .map(|v| PathBuf::from(v).join("sam"))
@@ -127,9 +141,66 @@ impl Paths {
     }
 }
 
+/// The runtime folder of rooted paths: `ROOT/run`, unless that is too long
+/// for SAM's sockets (at most 108 characters, and they sit up to about 70
+/// below it): then a folder of its own below `$XDG_RUNTIME_DIR` (or /tmp
+/// when that path is long too), named after the root, so it is still never
+/// shared.
+fn rooted_runtime(root: &Path) -> PathBuf {
+    let own = root.join("run");
+    if own.as_os_str().len() <= 36 {
+        return own;
+    }
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    root.hash(&mut h);
+    // Short in any case: the runtime folder when its own path is short
+    // (/run/user/UID), else /tmp.
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|v| !v.is_empty() && v.len() <= 24)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join(format!("samt-{:08x}", h.finish() as u32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Rooted paths (tests) keep their runtime folders apart from SAM's real
+    /// one and from every other root, and short enough for SAM's sockets.
+    #[test]
+    fn rooted_paths_have_a_runtime_folder_of_their_own() {
+        let short = Path::new("/tmp/.tmpAbC123");
+        assert_eq!(
+            Paths::rooted(short).runtime_dir("app"),
+            short.join("run/app")
+        );
+        let long_a = Path::new("/home/someone/Projects/a/rather/long/checkout/path/tmp/.tmpAbC123");
+        let long_b = Path::new("/home/someone/Projects/a/rather/long/checkout/path/tmp/.tmpXyZ789");
+        let (a, b) = (
+            Paths::rooted(long_a).runtime_dir("app"),
+            Paths::rooted(long_b).runtime_dir("app"),
+        );
+        assert_ne!(a, b, "two runs never share a runtime folder");
+        for d in [&a, &b] {
+            assert!(
+                !d.starts_with(long_a),
+                "a long root is not used: {}",
+                d.display()
+            );
+            assert!(
+                !d.to_string_lossy().contains("/sam/"),
+                "never SAM's real folder: {}",
+                d.display()
+            );
+            assert!(
+                d.as_os_str().len() <= 40,
+                "short enough for sockets: {}",
+                d.display()
+            );
+        }
+    }
 
     /// Regression: sandboxed windows carried the app's id as their app ID
     /// while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no

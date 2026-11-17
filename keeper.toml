@@ -104,6 +104,7 @@ lists = [
 test_only = [
   "crates/sam-intake/src/testkit.rs",
   "crates/sam-jail-cli/src/bench.rs",
+  "crates/sam-runner/src/testenv.rs",
 ]
 # Folders whose option strings are SAM's own command line, not an outside tool's.
 own_cli_callers = ["crates/sam-gtk/"]

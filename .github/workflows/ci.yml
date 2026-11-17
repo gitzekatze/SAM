@@ -179,10 +179,10 @@ jobs:
       # desktop needed) and fails on GTK criticals, warnings or panics.
       - name: Window smoke test
         if: env.CODE == 'true'
-        run: |
-          gtk4-broadwayd :5 &
-          sleep 1
-          GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 dbus-run-session -- tests/gui/smoke.sh "$RUNNER_TEMP/gui"
+        # session.sh, like the other window tests: a bus without service
+        # files (dbus-run-session's default one can start desktop services),
+        # its own home and settings.
+        run: tests/gui/session.sh "$RUNNER_TEMP/gui-session" tests/gui/smoke.sh "$RUNNER_TEMP/gui"
 
       - name: Window screenshots
         if: always() && env.CODE == 'true'
@@ -430,4 +430,8 @@ jobs:
             su tester -c "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all true"
             su tester -c "cd /src && cargo build --locked -p sam-jail-cli"
             su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 PATH=/src/target/debug:\$PATH cargo test --locked -p sam-runner --test breakout --test evil --test matrix --test sandbox --test overlay_fallback --test fuzz"
+            # The command-line sandbox tests too: the launcher-kill test with
+            # "This computer only" needs a pasta with --splice-only, which
+            # the Ubuntu runner lacks (there it is listed as not here).
+            su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 cargo test --locked -p sam-jail-cli --test teardown --test layers --test start_check"
           '

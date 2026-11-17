@@ -81,7 +81,7 @@ repository.
   and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-15<!-- /fact -->](docs/reports/real-apps-2026-11-15.md)).
-- **<!-- fact:tests -->298<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
+- **<!-- fact:tests -->300<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
 - **Every security promise is attacked from inside a real sandbox.**
@@ -271,8 +271,8 @@ is removed.
 **SAM and Flatpak are separate.** SAM never touches Flatpak's files or
 folders. Only its window looks like Flatseal, so it feels familiar.
 
-For testing, `SAM_CONFIG_DIR`, `SAM_DATA_DIR` and `SAM_APPLICATIONS_DIR` move
-these folders elsewhere.
+For testing, `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR` and
+`SAM_RUNTIME_DIR` move these folders elsewhere.
 
 ### Updates
 

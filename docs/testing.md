@@ -31,6 +31,18 @@ Bubblewrap, no kernel headers) skips on your computer with a note, but CI
 sets `SAM_REQUIRE_SANDBOX=1`, which turns such a skip into a failure: a
 green run always tested the sandbox.
 
+**The same result on every computer:** a test never uses anything of the
+person running it. Tests that start sandboxes get their own runtime folder
+(`Paths::rooted`, `SAM_RUNTIME_DIR`) and see the computer without its
+desktop session (`testenv::test_host`): no display, session bus, sound or
+SSH agent of yours. Where a test needs a session bus or an agent, it starts
+its own (`testenv::PrivateServices`). The window tests run in a session
+of their own (`tests/gui/session.sh`: own home, settings, runtime folder,
+bus without services, one language). Inside that session, tests may use its
+display and bus: they are the test's own (`SAM_TEST_SESSION=1`). A test that
+does not apply to a computer at all (another processor, a pasta version SAM
+refuses) says so in the skip list (`contracts::not_here`) and never fails.
+
 **How CI judges the tests:** it runs the whole suite twice
 (`scripts/flaky-check.py`). A test whose result differs between the two runs
 is *flaky*: its answer depends on timing or on other tests, not only on the
@@ -67,6 +79,8 @@ export SAM_CONFIG_DIR=/tmp/sam-test/config \
 ```
 
 Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu.
+`SAM_RUNTIME_DIR` moves the per-launch runtime folders (default
+`$XDG_RUNTIME_DIR/sam`); SAM's tests set it, so they never use the real one.
 
 ## Manual checks and details
 

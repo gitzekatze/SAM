@@ -239,6 +239,8 @@ fn every_hostile_appimage_fails_to_escape() {
     apps.push(suid);
 
     let mut host = HostInfo::probe();
+    // The same run on every computer: not the person's display or session bus.
+    host = sam_runner::testenv::test_host(host);
     host.sockets.dbus_session_address = Some(bus.address.clone());
     host.sockets.dbus_session = Some(bus.socket.clone());
     let mut results: HashMap<&str, String> = HashMap::new();

@@ -80,7 +80,14 @@ fn an_app_starts_read_only_when_its_writable_app_folder_cannot_work() {
         owd: Some(home.clone()),
         ..Default::default()
     };
-    let rec = run(&mut e, &opts, &app.config, &app.paths, &HostInfo::probe()).unwrap();
+    let rec = run(
+        &mut e,
+        &opts,
+        &app.config,
+        &app.paths,
+        &sam_runner::testenv::test_host(HostInfo::probe()),
+    )
+    .unwrap();
     assert!(rec.success, "the app starts: {}", rec.summary);
     let log = fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap();
     assert_eq!(

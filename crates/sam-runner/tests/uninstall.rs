@@ -53,6 +53,7 @@ fn uninstall_removes_everything_and_restores_menus() {
         config_dir: home.join(".config/sam"),
         data_dir: home.join(".local/share/sam"),
         applications_dir: apps_dir.clone(),
+        runtime_root: None,
     };
     let app = Sam::with_paths(paths.clone()).unwrap();
     app.config.save(&paths).unwrap();
@@ -131,6 +132,8 @@ fn uninstall_refuses_folders_that_are_not_sams() {
         config_dir: home.join(".config/sam"),
         data_dir: home.clone(),
         applications_dir: home.join("apps"),
+        // Never the real runtime folder, which uninstall would list.
+        runtime_root: Some(tmp.path().join("run")),
     };
     let app = Sam::with_paths(paths).unwrap();
     let err = app.uninstall(false, true).unwrap_err().to_string();

@@ -285,6 +285,28 @@ impl HostInfo {
         Self::probe_inner(true)
     }
 
+    /// This computer without the person's desktop session: no display, no
+    /// session bus, no sound, no SSH agent. Tests that start sandboxes use
+    /// it, so they run the same code on a desktop as on a bare CI machine
+    /// and never reach the real compositor or session bus; the desktop
+    /// parts are tested in a session of their own (tests/gui/).
+    pub fn without_desktop(mut self) -> HostInfo {
+        let s = &mut self.sockets;
+        s.wayland = None;
+        s.wayland_display = String::new();
+        s.x11 = None;
+        s.x11_display = None;
+        s.xauthority = None;
+        s.pipewire = None;
+        s.pulse = None;
+        s.dbus_session_address = None;
+        s.dbus_session = None;
+        s.ssh_agent = None;
+        self.session_type = String::new();
+        self.desktop = String::new();
+        self
+    }
+
     fn probe_inner(versions: bool) -> HostInfo {
         // SAFETY: getuid has no preconditions and cannot fail.
         let uid = unsafe { libc::getuid() };

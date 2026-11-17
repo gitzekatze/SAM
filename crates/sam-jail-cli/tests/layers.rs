@@ -35,11 +35,25 @@ fn a_start_without_the_helper_reports_its_missing_layers() {
         sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
         return;
     }
+    // With SAM installed in /usr, sam-jail finds that helper on the PATH
+    // below, so a start without the helper cannot be shown on this computer.
+    if ["/usr/bin/sam-jail-run", "/bin/sam-jail-run"]
+        .iter()
+        .any(|p| std::path::Path::new(p).exists())
+    {
+        sam_runner::contracts::skip(
+            "an installed SAM's helper is in /usr/bin, so a start without it cannot be shown here",
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
     // The outside world this test relies on (docs/contracts.md).
     let _contracts =
         sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
+    // The same run on every computer (the only test here, so its process).
+    sam_runner::testenv::isolate_this_process(root);
     // sam-jail alone, without sam-jail-run next to it.
     let bin = root.join("bin");
     fs::create_dir_all(&bin).unwrap();

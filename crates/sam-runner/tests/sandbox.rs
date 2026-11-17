@@ -124,6 +124,8 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     );
 
     let host = HostInfo::probe();
+    // The same run on every computer: not the person's display or session bus.
+    let host = sam_runner::testenv::test_host(host);
     let launch = |perms: PermissionSet, args: Vec<String>| {
         let mut e = app.set_permissions(&id, perms).unwrap();
         let opts = LaunchOptions {

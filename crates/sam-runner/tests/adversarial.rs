@@ -50,7 +50,7 @@ fn fake_bwrap_error_is_not_a_sandbox_failure() {
         },
         &sam.config,
         &sam.paths,
-        &HostInfo::probe(),
+        &sam_runner::testenv::test_host(HostInfo::probe()),
     )
     .unwrap();
     assert!(
