@@ -35,7 +35,9 @@ if [ -n "$missing" ]; then
     echo "FAIL the session lacks:$missing (see $out/*.log)"
     rc=1
 else
-    echo "ok   the session has Wayland${SAM_TEST_AUDIO:+, PipeWire and PulseAudio}"
+    echo "ok   the session has Wayland${SAM_TEST_AUDIO:+, PipeWire and PulseAudio}; bus $DBUS_SESSION_BUS_ADDRESS"
+    # The D-Bus proxy's own log, kept with the session's logs.
+    export SAM_DBUS_LOG="$out/dbus-proxy.log"
     cd "$here"
     # Inside this session the tests keep its display, bus and sound: they are
     # the test's own (SAM_TEST_SESSION=1, sam_runner::testenv).
