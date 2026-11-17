@@ -9,15 +9,68 @@ use anyhow::{Context, Result};
 
 /// Current time as unix seconds.
 pub fn now() -> i64 {
-    chrono::Utc::now().timestamp()
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Unix seconds as calendar time: local (`localtime_r`) or UTC (`gmtime_r`).
+/// The C library knows the time zone; SAM needs no date library for this.
+fn calendar(ts: i64, local: bool) -> Option<libc::tm> {
+    // time_t is 64 bits on the systems SAM runs on; a conversion keeps it
+    // correct where it is not.
+    #[allow(clippy::useless_conversion)]
+    let t: libc::time_t = ts.try_into().ok()?;
+    // SAFETY: tm is a plain C struct for which all-zero bytes are valid.
+    let mut out: libc::tm = unsafe { std::mem::zeroed() };
+    // SAFETY: both pointers are valid for the call; the _r variants write
+    // only into `out` and keep no reference to it.
+    let r = unsafe {
+        if local {
+            libc::localtime_r(&t, &mut out)
+        } else {
+            libc::gmtime_r(&t, &mut out)
+        }
+    };
+    (!r.is_null()).then_some(out)
 }
 
 /// Format unix seconds as a local, human readable timestamp.
 pub fn format_ts(ts: i64) -> String {
-    use chrono::TimeZone;
-    match chrono::Local.timestamp_opt(ts, 0) {
-        chrono::LocalResult::Single(t) => t.format("%Y-%m-%d %H:%M:%S").to_string(),
-        _ => ts.to_string(),
+    match calendar(ts, true) {
+        Some(t) => format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            t.tm_year + 1900,
+            t.tm_mon + 1,
+            t.tm_mday,
+            t.tm_hour,
+            t.tm_min,
+            t.tm_sec
+        ),
+        None => ts.to_string(),
+    }
+}
+
+/// Unix seconds as an e-mail/HTTP style UTC date, "Thu, 01 Jan 1970 00:00:00
+/// +0000" (English names, as the formats require).
+pub fn format_utc_date(ts: i64) -> String {
+    const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    match calendar(ts, false) {
+        Some(t) => format!(
+            "{}, {:02} {} {:04} {:02}:{:02}:{:02} +0000",
+            DAYS.get(t.tm_wday as usize).unwrap_or(&"Sun"),
+            t.tm_mday,
+            MONTHS.get(t.tm_mon as usize).unwrap_or(&"Jan"),
+            t.tm_year + 1900,
+            t.tm_hour,
+            t.tm_min,
+            t.tm_sec
+        ),
+        None => ts.to_string(),
     }
 }
 
@@ -190,6 +243,33 @@ pub fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Times are shown without a date library: UTC dates exactly, local
+    /// times in the computer's own zone and shape (chrono was dropped when
+    /// it became unmaintained, RUSTSEC-2026-0543).
+    #[test]
+    fn times_are_shown_without_a_date_library() {
+        assert_eq!(format_utc_date(0), "Thu, 01 Jan 1970 00:00:00 +0000");
+        assert_eq!(
+            format_utc_date(1_794_885_600),
+            "Tue, 17 Nov 2026 03:20:00 +0000"
+        );
+        assert_eq!(
+            format_utc_date(951_782_400),
+            "Tue, 29 Feb 2000 00:00:00 +0000",
+            "a leap day"
+        );
+        let local = format_ts(1_794_885_600);
+        let b = local.as_bytes();
+        assert_eq!(b.len(), 19, "{local}");
+        assert!(local.starts_with("2026-11-1"), "{local}");
+        assert!(
+            b[4] == b'-' && b[7] == b'-' && b[10] == b' ' && b[13] == b':' && b[16] == b':',
+            "{local}"
+        );
+        let n = now();
+        assert!(n > 1_794_000_000 && n < 4_000_000_000, "{n}");
+    }
 
     /// Names become safe identifiers made of lowercase letters, digits and dashes.
     #[test]
