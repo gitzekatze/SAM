@@ -34,6 +34,48 @@ memory() {
     while [ -n "$new" ]; do new=$(for q in $new; do pgrep -P "$q"; done); all="$all $new"; done
     echo "memory $(for q in $all; do ps -o rss= -p "$q" 2>/dev/null; done | awk '{s+=$1} END {printf "%d", s/1024}')" > "$out.mem"
 }
+# Level 2: whether what SAM allowed is really used, seen from outside while
+# the app runs (sandboxed processes are not dumpable, so nothing is read
+# from inside them): GPU contexts the NVIDIA driver lists for the app's
+# processes, and clients of the session's own sound server. Network use is
+# not measured (see below). One "key value" line each.
+observe() {
+    p=$(pgrep -f "selftest $id" | head -1); [ -n "$p" ] || return
+    all="$p"; new="$p"
+    while [ -n "$new" ]; do new=$(for q in $new; do pgrep -P "$q"; done); all="$all $new"; done
+    {
+        if command -v nvidia-smi >/dev/null; then
+            g=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null; nvidia-smi 2>/dev/null | awk '/ G | C\+G /{print $5}')
+            hit=no; for q in $all; do echo "$g" | grep -qx "$q" && hit=yes; done
+            echo "gpu $hit"
+        else
+            echo "gpu n/a"
+        fi
+        # Only one app runs in the session at a time, so every client of the
+        # session's sound server other than the server's own is this app
+        # (its own process number inside the sandbox differs from ours).
+        if command -v pw-dump >/dev/null; then
+            pw-dump 2>/dev/null | python3 -I -c '
+import json, sys
+own = {"pipewire", "pipewire-pulse", "pw-dump", "wireplumber"}
+n = 0
+for o in json.load(sys.stdin):
+    if o.get("type") == "PipeWire:Interface:Client":
+        pr = (o.get("info") or {}).get("props") or {}
+        name = str(pr.get("application.name") or pr.get("application.process.binary") or "")
+        if name and name.lower() not in own:
+            n += 1
+print("sound", "yes" if n else "no")' 2>/dev/null || echo "sound n/a"
+        else
+            echo "sound n/a"
+        fi
+        # Network use cannot be told apart from outside: with full network
+        # the app shares this computer's network, and its sockets are hidden
+        # (not dumpable). The start without network (CHECKS=netoff) tests
+        # how it copes instead.
+        echo "net n/a"
+    } > "$out.observe"
+}
 start() { # round
     if [ "$1" = 0 ]; then
         # The moment the first window appears, for the start time.
@@ -42,7 +84,7 @@ start() { # round
         qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null 2>&1
         date +%s%3N > "$out.t0"
     fi
-    ( sleep 20; spectacle -b -n -f -o "$out.shot$1.png" >/dev/null 2>&1; [ "$1" = 0 ] && { windows "$1"; memory; } ) &
+    ( sleep 15; [ "$1" = 0 ] && observe; sleep 5; spectacle -b -n -f -o "$out.shot$1.png" >/dev/null 2>&1; [ "$1" = 0 ] && { windows "$1"; memory; } ) &
     shot=$!
     $S --json selftest "$id" --seconds 25 > "$out.selftest$1.json" 2>&1
     echo "selftest$1 exit $?"

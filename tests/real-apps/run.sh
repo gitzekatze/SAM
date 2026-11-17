@@ -37,7 +37,17 @@ mkdir -p -m 700 "$XDG_RUNTIME_DIR"
 for f in "$@"; do (cd "$(dirname "$f")" && printf '%s\n' "$(pwd)/$(basename "$f")"); done > "$R/queue.txt"
 cat > "$run/queue" <<'Q'
 #!/bin/sh
+# A sound server of the session's own, without a session manager: apps can
+# connect (the evidence that sound works), but no real device is opened, so
+# nothing plays out loud.
+if command -v pipewire >/dev/null && command -v pipewire-pulse >/dev/null; then
+    pipewire > "$R/pipewire.log" 2>&1 & pw=$!
+    sleep 1
+    pipewire-pulse > "$R/pipewire-pulse.log" 2>&1 & pwp=$!
+    sleep 1
+fi
 while IFS= read -r img; do [ -n "$img" ] && "$TEST_ONE" "$img" < /dev/null; done < "$R/queue.txt"
+[ -n "${pwp:-}" ] && kill "$pwp" "$pw" 2>/dev/null
 Q
 chmod +x "$run/queue"
 export TEST_ONE="$here/test-one.sh" TOOLS="$here" CHECKS="${CHECKS:-}"
