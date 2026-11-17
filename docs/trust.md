@@ -25,6 +25,10 @@ results.
   proves, and how to run them yourself.
 - **[Architecture](architecture.md):** SAM's parts, how they work together,
   and where the trust boundary runs.
+- **[Reports](reports/README.md):** every report the checks have written,
+  newest first, so each claim can be checked against where it came from.
+- **[Licenses](../THIRD-PARTY-LICENSES.md):** the parts SAM is built from and
+  their licenses.
 
 ## How to check SAM yourself
 

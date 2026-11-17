@@ -60,6 +60,8 @@ PAGES = [
     ("trust", "trust/security-review.html", "docs/reports/security-review-2026-11-10.md", "Security review"),
     ("trust", "trust/testing.html", "docs/testing.md", "How SAM is tested"),
     ("trust", "trust/architecture.html", "docs/architecture.md", "Architecture"),
+    ("trust", "trust/reports.html", "docs/reports/README.md", "Reports"),
+    ("trust", "trust/licenses.html", "THIRD-PARTY-LICENSES.md", "Licenses"),
     ("trust", "trust/reporting.html", "SECURITY.md", "Reporting a problem"),
     ("use", "use/changelog.html", "CHANGELOG.md", "What's new"),
 ]
@@ -84,6 +86,45 @@ HANDBOOK = [
 PAGES += HANDBOOK
 SOURCE_TO_PAGE = {src: page for _, page, src, _ in PAGES}
 SOURCE_TO_PAGE["README.md"] = "index.html"
+
+
+def report_kind(name):
+    """The kind of a report, from its file name."""
+    for prefix, kind in [("mutants-", "Mutation testing"), ("real-apps-", "Real AppImages"),
+                         ("security-review-", "Security review")]:
+        if name.startswith(prefix):
+            return kind
+    return "Version report"
+
+
+def report_date(path):
+    """The day a report was made: in its name, or its "Generated" line."""
+    m = re.search(r"(\d{4}-\d{2}-\d{2})", path.name) or re.search(r"Generated (\d{4}-\d{2}-\d{2})", path.read_text())
+    return m.group(1) if m else ""
+
+
+# Every report gets a page (outside the navigation; the Reports page lists
+# them), except the newest of a kind, which has its page in Trust SAM already.
+REPORTS = sorted((p for p in (ROOT / "docs/reports").glob("*.md") if p.name != "README.md"),
+                 key=lambda p: (report_date(p), p.name), reverse=True)
+REPORT_PAGES = []
+for _r in REPORTS:
+    _src = str(_r.relative_to(ROOT))
+    if _src not in SOURCE_TO_PAGE:
+        _title = next((l[2:].strip() for l in _r.read_text().splitlines() if l.startswith("# ")), _r.stem)
+        REPORT_PAGES.append(("trust", f"trust/reports/{_r.stem}.html", _src, _title))
+        SOURCE_TO_PAGE[_src] = f"trust/reports/{_r.stem}.html"
+# Pages outside the navigation, and where their "back" link leads.
+PARENT = {page: ("trust/reports.html", "Reports") for _, page, _, _ in REPORT_PAGES}
+
+
+def reports_list():
+    """The table of all reports for the Reports page (links relative to docs/reports/)."""
+    rows = ["", "| Report | Kind | Date |", "|---|---|---|"]
+    for r in REPORTS:
+        title = next((l[2:].strip() for l in r.read_text().splitlines() if l.startswith("# ")), r.stem)
+        rows.append(f"| [{title}]({r.name}) | {report_kind(r.name)} | {report_date(r)} |")
+    return "\n".join(rows) + "\n"
 # Pages whose lists and tables become cards, rows, flows and tiles (see showcase()).
 SHOWCASE = {"use/index.html", "trust/index.html", "trust/dashboard.html"}
 SECTION_NAMES = {"use": "Use SAM", "trust": "Trust SAM", "maintain": "Maintain SAM"}
@@ -97,6 +138,7 @@ PAGE_ICONS = {
     "trust/functions.html": "check", "trust/tests.html": "archive", "trust/mutation-testing.html": "bug",
     "trust/security-review.html": "badge", "trust/testing.html": "flask", "trust/architecture.html": "layers",
     "trust/real-apps.html": "rocket", "trust/reporting.html": "flag",
+    "trust/reports.html": "folder", "trust/licenses.html": "certificate",
     "maintain/index.html": "wrench", "maintain/looks-after-itself.html": "cycle", "maintain/github.html": "branch",
     "maintain/workflow.html": "calendar", "maintain/tips.html": "update", "maintain/outside.html": "radar",
     "maintain/contracts.html": "pen", "maintain/automation.html": "cpu", "maintain/tools.html": "terminal",
@@ -180,14 +222,21 @@ def shell(page, title, body, section=None, toc=None, source=None):
         overview = OVERVIEWS[section]
         crumbs = (f'<nav class="crumbs" aria-label="You are here"><a href="{rel(page, "index.html")}">{icon("home", "small")}Home</a>'
                   f'<span>›</span><a href="{rel(page, overview)}">{SECTION_NAMES[section]}</a>'
+                  + (f'<span>›</span><a href="{rel(page, PARENT[page][0])}">{html.escape(PARENT[page][1])}</a>' if page in PARENT else "")
                   + (f'<span>›</span><span aria-current="page">{html.escape(title)}</span>' if page != overview else "") + "</nav>")
-        idx = [p for p, _ in order].index(page) if page in [p for p, _ in order] else 0
-        prev_p, prev_t = order[idx - 1]
-        next_p, next_t = order[(idx + 1) % len(order)]
-        pager = (f'<nav class="pager" aria-label="More pages">'
-                 f'<a class="prev" href="{rel(page, prev_p)}">{icon("left", "small")}<span><small>Previous</small>{html.escape(prev_t)}</span></a>'
-                 f'<a class="next" href="{rel(page, next_p)}"><span><small>Next</small>{html.escape(next_t)}</span>{icon("right", "small")}</a></nav>'
-                 + (f'<p class="back"><a href="{rel(page, overview)}">{icon("left", "small")}Back to {SECTION_NAMES[section]}</a></p>' if page != overview else ""))
+        ids = [p for p, _ in order]
+        if page in ids:
+            # The first page has no previous one, the last no next one.
+            idx = ids.index(page)
+            prev_link = (f'<a class="prev" href="{rel(page, order[idx - 1][0])}">{icon("left", "small")}'
+                         f'<span><small>Previous</small>{html.escape(order[idx - 1][1])}</span></a>' if idx > 0 else "<span></span>")
+            next_link = (f'<a class="next" href="{rel(page, order[idx + 1][0])}"><span><small>Next</small>'
+                         f'{html.escape(order[idx + 1][1])}</span>{icon("right", "small")}</a>' if idx + 1 < len(order) else "")
+            pager = (f'<nav class="pager" aria-label="More pages">{prev_link}{next_link}</nav>'
+                     + (f'<p class="back"><a href="{rel(page, overview)}">{icon("left", "small")}Back to {SECTION_NAMES[section]}</a></p>' if page != overview else ""))
+        else:
+            back, back_t = PARENT.get(page, (overview, SECTION_NAMES[section]))
+            pager = f'<p class="back"><a href="{rel(page, back)}">{icon("left", "small")}Back to {html.escape(back_t)}</a></p>'
     edit = (f'<p class="edit">This page is made from <a href="{REPO}/blob/main/{source}">{source}</a>.</p>'
             if source else "")
     content = (f'<div class="wrap"><div class="page{" with-toc" if side else ""}"><article class="doc">{crumbs}{body}{pager}{edit}</article>{side}</div></div>'
@@ -224,6 +273,8 @@ def write(page, text):
 # Line icons (24 × 24, stroked), drawn inline so the site loads nothing else.
 ICONS = {
     # Pages
+    "folder": "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2zM3 10h18",
+    "certificate": "M4 4h16v11H4zM8 8h8M8 11h5M15 15l-1.5 5 2.5-1.5 2.5 1.5L17 15",
     "compass": "M12 3a9 9 0 100 18 9 9 0 000-18zM15.5 8.5l-2 5-5 2 2-5z",
     "download": "M12 4v11M7 10l5 5 5-5M5 20h14",
     "book": "M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5zM4 20.5A2.5 2.5 0 016.5 18H20v3H6.5",
@@ -500,13 +551,19 @@ def home():
 
 
 def documents():
-    for section, page, source, title in PAGES:
+    for section, page, source, title in PAGES + REPORT_PAGES:
         text = dashboard_md.build() if source == "DEVELOPMENT.md" else (ROOT / source).read_text()
+        if source == "docs/reports/README.md":
+            text += reports_list()
         body, toc = render(text)
         body = rewrite_links(body, source, page)
         body = callouts(body)
         if page in SHOWCASE:
             body = history_chart(meters(showcase(body, page)))
+        # The licenses page lists 142 libraries in its first table: an outline
+        # of every license file would only fill the side.
+        if page == "trust/licenses.html":
+            toc = None
         write(page, shell(page, title, body, section=section, toc=toc, source=source))
 
 
