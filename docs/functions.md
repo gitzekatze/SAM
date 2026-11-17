@@ -716,7 +716,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_component_diagram_shows_the_real_dependencies`](../crates/sam-jail-cli/tests/architecture.rs#L105) | The component diagram in docs/architecture.md shows exactly the real dependencies between the parts: no arrow is missing and none is invented. | ✅ |
 | [`diagram_labels_are_quoted_so_github_draws_them`](../crates/sam-jail-cli/tests/architecture.rs#L155) | Every box and arrow label in the documents' diagrams is quoted, so GitHub draws them: unquoted brackets or semicolons inside a label are a parse error there (the component diagram once failed that way). | ✅ |
 | [`version_reports_the_json_interface`](../crates/sam-jail-cli/tests/robustness.rs#L240) | `sam-jail version` answers with the JSON interface version even when the configuration cannot be read. | ✅ |
-| [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L136) | An error code survives added context. | ✅ |
+| [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L137) | An error code survives added context. | ✅ |
 | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L582) | Where a run must prove everything (CI), a skip is an error; locally it is a note. | 🆕 new |
 | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L563) | A failing section is named and the next still runs. | 🆕 new |
 | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | 🆕 new |

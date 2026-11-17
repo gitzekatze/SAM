@@ -22,7 +22,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L462) |
 | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L488) |
 | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) |
-| An error code survives added context. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L136) |
+| An error code survives added context. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L137) |
 | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) |
 | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L182) |
 | Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L200) |
