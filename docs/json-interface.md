@@ -142,7 +142,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `doctor --contracts` | `{contracts: [{id, component, state, detail, on_break, assumes, playbook}], components: [{id, name, version}]}`; `state` is `holds`, `broken`, `absent` or `not-here` ([contracts](contracts.md)) |
 | `report APP` | `{report}`: redacted text for a bug report |
 | `preset list/show/template/apply/save/delete/duplicate/import/export/put` | the user's preset objects; `put` reads one on stdin |
-| `info APP` | the app's record; its `last_launch` has `missing_layers` (protection layers the last start lacked, for example `["Landlock"]`); also `repair_effects` (step id → what the step changes and costs) and `compat_changes` (the switches compatibility mode turns on, or turned on) |
+| `info APP` | the app's record; its `last_launch` has `missing_layers` (protection layers the last start lacked, for example `["Landlock"]`) and `moved_aside` (what the app left in places that would run something later, and where SAM moved it); also `repair_effects` (step id → what the step changes and costs) and `compat_changes` (the switches compatibility mode turns on, or turned on) |
 | `repair APP [--apply ID / --next / --undo / --undo-step ID]` | `--undo-step` switches off one applied step and keeps the others |
 | `group list` | every sandboxed app: the app summary plus `permissions`, `tags: [{key, label, family, level, read_only}]`, `running`, `needs_review`, `may_not_start` |
 | `group set KEY VALUE APP… [--dry-run]` | `{key, value, applied, apps: [{id, name, check, running, changed}], previous: {id: permissions}}` |

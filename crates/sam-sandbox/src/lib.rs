@@ -205,6 +205,21 @@ const PROTECTED_RO: &[&str] = &[
     ".vimrc",
     ".config/nvim",
     ".pam_environment",
+    // More files that run commands at login, logout, in a shell, an X
+    // session, an editor, a terminal multiplexer or a version control tool.
+    ".bash_login",
+    ".bash_logout",
+    ".zshenv",
+    ".zlogin",
+    ".zlogout",
+    ".xsessionrc",
+    ".xsession",
+    ".gvimrc",
+    ".exrc",
+    ".tmux.conf",
+    ".config/tmux",
+    ".screenrc",
+    ".hgrc",
 ];
 
 /// Protected paths created (empty) before a full-home read/write start when
@@ -219,6 +234,16 @@ const PROTECTED_CREATE_DIRS: &[&str] = &[
     ".local/bin",
     ".local/share/dbus-1",
     ".local/share/kwin",
+    // An empty settings folder behaves like a missing one for these programs.
+    ".config/fish",
+    ".config/plasma-workspace",
+    ".local/share/plasma",
+    ".local/share/kservices5",
+    ".local/share/kio/servicemenus",
+    ".local/share/nautilus/scripts",
+    ".config/git",
+    ".config/nvim",
+    ".config/tmux",
 ];
 const PROTECTED_CREATE_FILES: &[&str] = &[
     ".bashrc",
@@ -258,6 +283,138 @@ pub fn prepare_home_protection(p: &PermissionSet, home: &Path) {
                 .create_new(true)
                 .open(&path);
         }
+    }
+}
+
+/// The folders between the home and each protected path (`.config`,
+/// `.local`, `.local/share`, `.local/share/kio`, …), parents first.
+fn protected_ancestors() -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for p in PROTECTED_RO.iter().chain(SENSITIVE_DOTFILES) {
+        let parts: Vec<&str> = p.split('/').collect();
+        for n in 1..parts.len() {
+            let a = parts[..n].join("/");
+            if !out.contains(&a) {
+                out.push(a);
+            }
+        }
+    }
+    out.sort_by_key(|a| a.matches('/').count());
+    out
+}
+
+/// What a writable home held before a start, for the places whose mere
+/// presence makes the computer run something and the links to protected
+/// places. A mount cannot protect a file that does not exist yet (making
+/// the mount point would create it), nor a link the app can replace: so
+/// SAM looks again after the start ([`HomeWatch::settle`]).
+#[derive(Debug, Default)]
+pub struct HomeWatch {
+    home: PathBuf,
+    /// Protected paths that did not exist.
+    absent: Vec<String>,
+    /// Protected paths (and their parents) that were links: (path, target).
+    links: Vec<(String, PathBuf)>,
+}
+
+/// Something an app left in a protected place, and where SAM moved it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MovedAside {
+    /// The place in the home, e.g. `.bash_profile`.
+    pub place: String,
+    /// Where it is now.
+    pub to: PathBuf,
+}
+
+impl HomeWatch {
+    /// The snapshot before a start that can write the home (full home
+    /// read/write, or a writable folder that contains it); `None` otherwise.
+    pub fn before(p: &PermissionSet, home: &Path) -> Option<HomeWatch> {
+        let fs = &p.filesystem;
+        let full_rw = fs.home && fs.home_access == Access::Rw;
+        let grant_rw = fs
+            .custom_write
+            .iter()
+            .any(|c| home.starts_with(expand_home(c)));
+        if !(full_rw || grant_rw) {
+            return None;
+        }
+        let mut w = HomeWatch {
+            home: home.to_path_buf(),
+            ..Default::default()
+        };
+        // Places that make the computer run something, not those hidden for
+        // holding secrets (a browser creating its profile is fine), and the
+        // key folders when the app was not given them: a planted
+        // ~/.ssh/authorized_keys or ~/.gnupg/gpg-agent.conf would act later.
+        let keys = [(".ssh", fs.ssh), (".gnupg", fs.gnupg)]
+            .into_iter()
+            .filter(|(_, granted)| !granted)
+            .map(|(k, _)| k.to_string());
+        let places = PROTECTED_RO
+            .iter()
+            .map(|p| p.to_string())
+            .chain(protected_ancestors())
+            .chain(keys);
+        for rel in places {
+            let path = home.join(&rel);
+            match fs::symlink_metadata(&path) {
+                Err(_) => w.absent.push(rel),
+                Ok(m) if m.file_type().is_symlink() => {
+                    if let Ok(t) = fs::read_link(&path) {
+                        w.links.push((rel, t));
+                    }
+                }
+                Ok(_) => {}
+            }
+        }
+        Some(w)
+    }
+
+    /// After the start: whatever appeared in a place that was empty, and
+    /// whatever replaced a link, is moved into `aside` (keeping its place
+    /// in the name), and the links are put back. Returns what was moved.
+    pub fn settle(&self, aside: &Path) -> Vec<MovedAside> {
+        let mut moved = Vec::new();
+        let put_aside = |rel: &str| -> Option<PathBuf> {
+            let from = self.home.join(rel);
+            let to = aside.join(rel.replace('/', "__"));
+            fs::create_dir_all(aside).ok()?;
+            fs::rename(&from, &to).ok()?;
+            Some(to)
+        };
+        for rel in &self.absent {
+            // Inside a link's target or a moved folder only once.
+            if fs::symlink_metadata(self.home.join(rel)).is_ok()
+                && !self
+                    .absent
+                    .iter()
+                    .any(|o| o != rel && rel.starts_with(&format!("{o}/")))
+            {
+                if let Some(to) = put_aside(rel) {
+                    moved.push(MovedAside {
+                        place: rel.clone(),
+                        to,
+                    });
+                }
+            }
+        }
+        for (rel, target) in &self.links {
+            let path = self.home.join(rel);
+            let same = fs::read_link(&path).is_ok_and(|t| &t == target);
+            if !same {
+                if fs::symlink_metadata(&path).is_ok() {
+                    if let Some(to) = put_aside(rel) {
+                        moved.push(MovedAside {
+                            place: rel.clone(),
+                            to,
+                        });
+                    }
+                }
+                let _ = std::os::unix::fs::symlink(target, &path);
+            }
+        }
+        moved
     }
 }
 
@@ -484,6 +641,18 @@ impl Bubblewrap {
 /// persistence paths read-only when `writable`. Used with full home access
 /// and when a granted folder contains the home.
 fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, writable: bool) {
+    if writable {
+        // First (a later mount covers an earlier one): the folders above
+        // protected places are mount points of their own:
+        // renamed away, they would take the protection with them, and a new
+        // folder of the same name could be filled freely (`mv ~/.config …`).
+        for d in protected_ancestors() {
+            let path = home.join(d);
+            if fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir()) {
+                a.op2("--bind", &path, &path);
+            }
+        }
+    }
     let mut masks: Vec<&str> = Vec::new();
     if !fsp.ssh {
         masks.push(".ssh");
@@ -501,6 +670,15 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, writable: bool) 
                 a.push("--tmpfs").push(path.to_string_lossy());
             }
             Ok(md) if md.is_file() => a.op2("--ro-bind", "/dev/null", &path),
+            // A link (dotfiles kept elsewhere, `stow`): hidden where it
+            // points, which the app could reach through the link otherwise.
+            Ok(md) if md.file_type().is_symlink() => match fs::canonicalize(&path) {
+                Ok(t) if t.is_dir() => {
+                    a.push("--tmpfs").push(t.to_string_lossy());
+                }
+                Ok(t) if t.is_file() => a.op2("--ro-bind", "/dev/null", &t),
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -2252,6 +2430,95 @@ mod guard_tests {
         assert!(
             a.iter().any(|x| x == "--overlay") && !has_seq(&a, &["--ro-bind", &appdir, &inside])
         );
+    }
+
+    /// After a start with a writable home, only what could make the
+    /// computer run something is moved aside: a new startup file, a replaced
+    /// link to a protected folder, a key folder the app was not given. A
+    /// browser creating its profile, or an app writing to ~/.ssh it was
+    /// given, keeps its files.
+    #[test]
+    fn only_what_would_run_later_is_moved_aside() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(home.join(".config")).unwrap();
+        fs::create_dir_all(home.join("dots/git")).unwrap();
+        std::os::unix::fs::symlink(home.join("dots/git"), home.join(".config/git")).unwrap();
+        let mut p = PermissionSet::default();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        assert!(
+            HomeWatch::before(&PermissionSet::default(), &home).is_none(),
+            "nothing to watch without a writable home"
+        );
+        let w = HomeWatch::before(&p, &home).unwrap();
+        // What the app does.
+        fs::write(home.join(".bash_profile"), "x").unwrap();
+        fs::create_dir_all(home.join(".mozilla/firefox")).unwrap();
+        fs::remove_file(home.join(".config/git")).unwrap();
+        fs::create_dir_all(home.join(".config/git")).unwrap();
+        fs::create_dir_all(home.join(".ssh")).unwrap();
+        let aside = t.path().join("aside");
+        let moved: Vec<String> = w.settle(&aside).into_iter().map(|m| m.place).collect();
+        assert!(moved.contains(&".bash_profile".to_string()), "{moved:?}");
+        assert!(moved.contains(&".config/git".to_string()), "{moved:?}");
+        assert!(
+            moved.contains(&".ssh".to_string()),
+            "a key folder the app was not given: {moved:?}"
+        );
+        assert!(
+            !moved.iter().any(|m| m.starts_with(".mozilla")),
+            "a browser profile stays: {moved:?}"
+        );
+        assert!(!home.join(".bash_profile").exists());
+        assert_eq!(
+            fs::read_link(home.join(".config/git")).unwrap(),
+            home.join("dots/git"),
+            "the link is back"
+        );
+        assert!(home.join(".mozilla/firefox").is_dir());
+        // An app given ~/.ssh keeps what it creates there.
+        fs::remove_dir_all(home.join(".ssh")).ok();
+        p.filesystem.ssh = true;
+        let w = HomeWatch::before(&p, &home).unwrap();
+        fs::create_dir_all(home.join(".ssh")).unwrap();
+        assert!(w.settle(&aside).is_empty());
+        assert!(home.join(".ssh").is_dir());
+    }
+
+    /// With a writable home, the folders above protected places are mount
+    /// points of their own (so they cannot be renamed away), and a key
+    /// folder that is a link is hidden where it points.
+    #[test]
+    fn protected_parents_are_locked_and_linked_keys_hidden() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        for d in [".config", ".local/share/kio", "dots/ssh"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(home.join("dots/ssh"), home.join(".ssh")).unwrap();
+        let mut ctx = sample_context();
+        ctx.host.home = home.clone();
+        ctx.host.xdg_dirs.clear();
+        ctx.permissions.filesystem.home = true;
+        ctx.permissions.filesystem.home_access = Access::Rw;
+        let a = args_of(&ctx);
+        for d in [".config", ".local", ".local/share", ".local/share/kio"] {
+            let p = home.join(d).to_string_lossy().into_owned();
+            assert!(
+                has_seq(&a, &["--bind", &p, &p]),
+                "{d} is a mount point of its own"
+            );
+        }
+        let target = home.join("dots/ssh").to_string_lossy().into_owned();
+        assert!(
+            has_seq(&a, &["--tmpfs", &target]),
+            "the linked key folder is hidden where it points"
+        );
+        // Read-only home: nothing to lock.
+        ctx.permissions.filesystem.home_access = Access::Ro;
+        let c = home.join(".config").to_string_lossy().into_owned();
+        assert!(!has_seq(&args_of(&ctx), &["--bind", &c, &c]));
     }
 
     /// SAM's own folders stay hidden when a granted folder contains them,

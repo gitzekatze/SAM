@@ -338,6 +338,11 @@ pub struct LaunchRecord {
     /// ("Landlock", "seccomp"): shown as a warning, never silent.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub missing_layers: Vec<String>,
+    /// Things the app left in places that make the computer run something
+    /// (a new `.bash_profile`, a replaced link to a protected folder): SAM
+    /// moved them aside after the start. "place → where it is now".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub moved_aside: Vec<String>,
     pub log_file: Option<PathBuf>,
     pub summary: String,
     /// What the app's output suggests went wrong, with fixes.

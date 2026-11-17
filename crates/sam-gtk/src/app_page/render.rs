@@ -327,6 +327,30 @@ impl AppPage {
             row.add_prefix(&status_icon("dialog-warning-symbolic", "warning"));
             self.add_dynamic(&self.notices, &row);
         }
+        // The app left something that would have run outside its sandbox
+        // (a new startup file, a replaced link); SAM moved it aside.
+        let moved: Vec<String> = entry
+            .as_ref()
+            .and_then(|e| util::get(e, "last_launch.moved_aside"))
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !moved.is_empty() {
+            let row = adw::ActionRow::builder()
+                .title(tr("SAM moved something aside after the last start"))
+                .subtitle(crate::i18n::trf(
+                    "The app left something that would have run outside its sandbox later (for example a new startup file). SAM moved it out of the way; look at it before you put anything back: {items}",
+                    &[("items", &esc(&moved.join("; ")))],
+                ))
+                .build();
+            row.add_prefix(&status_icon("dialog-warning-symbolic", "error"));
+            self.add_dynamic(&self.notices, &row);
+        }
         // A newer version is published (last update check).
         if let Some(e) = entry
             .as_ref()
