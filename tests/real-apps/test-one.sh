@@ -19,7 +19,7 @@ set -u
 CHECKS=${CHECKS:-}
 # What KWin shows: one line per window (title), via a KWin script.
 windows() {
-    printf 'for (const w of workspace.windowList()) { if (w.normalWindow || w.dialog) print("SAMWIN %s " + w.caption); }\n' "$id" > "$R/tmp/windows.js"
+    printf 'for (const w of workspace.windowList()) { if (w.normalWindow || w.dialog) { print("SAMWIN %s " + w.caption); const g = w.clientGeometry; print("SAMGEO %s " + Math.round(g.x) + " " + Math.round(g.y) + " " + Math.round(g.width) + " " + Math.round(g.height)); } }\n' "$id" "$id" > "$R/tmp/windows.js"
     sid=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript "$R/tmp/windows.js" "samwin$1" 2>/dev/null)
     [ -n "$sid" ] && qdbus6 org.kde.KWin /Scripting/Script"$sid" org.kde.kwin.Script.run >/dev/null 2>&1
     sleep 1
@@ -101,6 +101,72 @@ in_own_group() {
         "$@"
     fi
 }
+# Used like a person would, once more after the checks: started with a
+# sample file of a type it opens (the types its menu entry lists; a copy of
+# its own, in the home), and closed with its windows' close buttons.
+# Linux reports from outside whether the app read the file (inotify sees
+# reads through the sandbox: the same file). Writes "file …" and "close …".
+usecheck() {
+    types=$(python3 -I -c "import json,sys; d=json.load(open(sys.argv[1])); d=d.get('data',d); print(';'.join(((d.get('entry') or {}).get('metadata') or {}).get('mime_types') or []))" "$out.info.json" 2>/dev/null)
+    sample=$(python3 -I "$TOOLS/samples.py" pick "$SAMPLES" "$types" 2>/dev/null)
+    copy=""; iw=""
+    if [ -n "$sample" ]; then
+        copy="$HOME/Documents/$id-$(basename "$sample")"
+        cp "$sample" "$copy"
+        : > "$out.fileread"
+        if command -v inotifywait >/dev/null; then
+            inotifywait -q -m -e access --format x "$copy" > "$out.fileread" 2>/dev/null & iw=$!
+            sleep 0.5
+        fi
+        $S run "$id" "$copy" > "$out.use.log" 2>&1 &
+    else
+        $S run "$id" > "$out.use.log" 2>&1 &
+    fi
+    r=$!
+    t=0; while [ "$t" -lt 12 ] && kill -0 "$r" 2>/dev/null; do sleep 1; t=$((t + 1)); done
+    if ! kill -0 "$r" 2>/dev/null; then
+        verdict="ended-by-itself ${t}s"
+    else
+        # Every window's close button, as a person clicks it.
+        printf 'for (const w of workspace.windowList()) { if (w.normalWindow || w.dialog) { print("SAMCLOSE %s " + w.caption); w.closeWindow(); } }\n' "$id" > "$R/tmp/close.js"
+        sid=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript "$R/tmp/close.js" samclose 2>/dev/null)
+        [ -n "$sid" ] && qdbus6 org.kde.KWin /Scripting/Script"$sid" org.kde.kwin.Script.run >/dev/null 2>&1
+        sleep 0.5
+        qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript samclose >/dev/null 2>&1
+        closed=$(grep -ac "SAMCLOSE $id " "$R/kwin.log" 2>/dev/null)
+        t=0; while [ "$t" -lt 10 ] && kill -0 "$r" 2>/dev/null; do sleep 1; t=$((t + 1)); done
+        if kill -0 "$r" 2>/dev/null; then
+            [ "${closed:-0}" -gt 0 ] && verdict="hung" || verdict="no-window"
+            kill -TERM "$r" 2>/dev/null; sleep 2; kill -KILL "$r" 2>/dev/null
+            $S stop "$id" >/dev/null 2>&1
+        else
+            verdict="closed ${t}s"
+        fi
+    fi
+    wait "$r" 2>/dev/null
+    # How the app ended, from SAM's record of this start (the app's own
+    # output passes through unchanged, so the record comes from `info`).
+    $S --json info "$id" > "$out.use.json" 2>/dev/null
+    how=$(python3 -I -c "
+import json,sys
+try:
+    d=json.load(open(sys.argv[1])); d=d.get('data',d)
+    r=(d.get('entry') or {}).get('last_launch') or {}
+    sig, code = r.get('signal'), r.get('exit_code')
+    print('signal-%s' % sig if sig not in (None, 15, 9) else ('code-%s' % code if code not in (None, 0) else 'ok'))
+except Exception:
+    print('?')" "$out.use.json" 2>/dev/null)
+    echo "close $verdict $how"
+    titles=$(grep -a "SAMCLOSE $id " "$R/kwin.log" 2>/dev/null | sed "s/.*SAMCLOSE $id //" | sort -u | tr '\n' ';' | sed 's/;$//')
+    [ -n "$titles" ] && echo "closed-windows $titles"
+    [ -n "$iw" ] && kill "$iw" 2>/dev/null
+    if [ -n "$copy" ]; then
+        [ -s "$out.fileread" ] && echo "file read $(basename "$sample")" || echo "file not-read $(basename "$sample")"
+        rm -f "$copy"
+    else
+        echo "file none"
+    fi
+}
 start() { # round
     if [ "$1" = 0 ]; then
         # The moment the first window appears, for the start time.
@@ -109,7 +175,10 @@ start() { # round
         qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null 2>&1
         date +%s%3N > "$out.t0"
     fi
-    ( sleep 20; spectacle -b -n -f -o "$out.shot$1.png" >/dev/null 2>&1; [ "$1" = 0 ] && { windows "$1"; memory; } ) &
+    # Two screenshots of the first start (12 s and 20 s): whether the window
+    # shows something, and whether it still changes (checks.py).
+    ( sleep 12; [ "$1" = 0 ] && spectacle -b -n -f -o "$out.shotA$1.png" >/dev/null 2>&1; sleep 8
+      spectacle -b -n -f -o "$out.shot$1.png" >/dev/null 2>&1; [ "$1" = 0 ] && { windows "$1"; memory; } ) &
     shot=$!
     watch=""
     if [ "$1" = 0 ]; then observe & watch=$!; fi
@@ -185,6 +254,7 @@ ok() { grep -q '"ok":true' "$out.selftest$1.json" && python3 -I -c "import json,
         LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8 $S --json selftest "$id" --seconds 15 > "$out.lang.json" 2>&1
         grep -q '"status":"ok"' "$out.lang.json" && echo "lang ok" || echo "lang crashed"
     fi
+    [ "$started" = 1 ] && usecheck
   } > "$out.checks" 2>&1
   $S --json hints "$id" > "$out.hints.json" 2>&1
   $S --json repair "$id" > "$out.repair.json" 2>&1
@@ -197,6 +267,8 @@ ok() { grep -q '"ok":true' "$out.selftest$1.json" && python3 -I -c "import json,
 } > "$out.txt" 2>&1
 # Window titles seen after 20 s, from KWin's log.
 grep -a "SAMWIN ${id:-none} " "$R/kwin.log" 2>/dev/null | sed "s/.*SAMWIN ${id:-none} /window /" | sort -u > "$out.windows" || true
+# Where those windows were (x y width height), for the screenshot checks.
+grep -a "SAMGEO ${id:-none} " "$R/kwin.log" 2>/dev/null | sed "s/.*SAMGEO ${id:-none} //" | sort -u > "$out.geometry" || true
 # The app's control group is empty once it has closed; what is still in it
 # kept running after SAM closed the app.
 if [ -n "$appcg" ] && ! rmdir "$appcg" 2>/dev/null; then

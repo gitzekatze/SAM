@@ -13,6 +13,8 @@ permission whether what SAM allowed was really used (GPU, sound, network).
 """
 import glob
 import json
+import shutil
+import subprocess
 import os
 import re
 import sys
@@ -65,6 +67,84 @@ def use(base):
     return ",".join(out)
 
 
+# What an app printed during its first start, sorted into what usually
+# matters: a crash, a missing library, something the sandbox refused. Lines
+# about what SAM never gives (the system bus without permission, the
+# accessibility bus of the hidden session) are left out: expected.
+MESSAGES = {
+    "crash": re.compile(r"segmentation fault|core dumped|SIGSEGV|SIGABRT|Traceback \(most recent call last\)"
+                        r"|panicked at|terminate called|Fatal Python error|\bAborted\b", re.I),
+    "library": re.compile(r"cannot open shared object|error while loading shared libraries|undefined symbol"
+                          r"|GLIBC_[0-9.]+' not found|ModuleNotFoundError|ImportError", re.I),
+    "denied": re.compile(r"permission denied|operation not permitted|read-only file system|EACCES|EPERM|EROFS"),
+}
+EXPECTED = re.compile(r"system_bus_socket|accessibility bus|org\.a11y|/run/dbus/", re.I)
+
+
+def messages(base):
+    """Counts per kind in the log of the first start, and the first line of
+    each kind (for the report)."""
+    app_id = (load(base + ".info.json").get("entry") or {}).get("id", "")
+    logs = sorted(glob.glob(os.path.join(os.path.dirname(os.path.dirname(base)), "sam", "config", "logs", app_id, "launch-*.log")))
+    found = {}
+    if app_id and logs:
+        for l in open(logs[0], errors="replace").read().splitlines():
+            if l.startswith("#") or EXPECTED.search(l):
+                continue
+            for kind, rx in MESSAGES.items():
+                if rx.search(l):
+                    found.setdefault(kind, [0, l.strip()[:120]])[0] += 1
+    return found
+
+
+def screen(base):
+    """What the screenshots of the first start show inside the app's largest
+    window: "content" or "blank" (one or two colours: an empty window),
+    whether it changed between 12 s and 20 s, and error words read from it
+    (text recognition, tesseract). Each part "?" when it cannot be told."""
+    out = {"window": "none", "changed": "?", "text": ""}
+    geo = []
+    if os.path.exists(base + ".geometry"):
+        for l in open(base + ".geometry").read().splitlines():
+            try:
+                x, y, w, h = (int(v) for v in l.split()[:4])
+                geo.append((w * h, (x, y, x + w, y + h)))
+            except ValueError:
+                pass
+    if not geo or not os.path.exists(base + ".shot0.png"):
+        return out
+    box = max(geo)[1]
+    try:
+        from PIL import Image, ImageChops
+    except ImportError:
+        out["window"] = "?"
+        return out
+    try:
+        shot = Image.open(base + ".shot0.png").convert("RGB").crop(box)
+    except Exception:
+        out["window"] = "?"
+        return out
+    small = shot.resize((max(1, shot.width // 4), max(1, shot.height // 4)))
+    colours = small.getcolors(maxcolors=64)
+    out["window"] = "blank" if colours is not None and len(colours) <= 2 else "content"
+    if os.path.exists(base + ".shotA0.png"):
+        try:
+            early = Image.open(base + ".shotA0.png").convert("RGB").crop(box)
+            out["changed"] = "yes" if ImageChops.difference(early, shot).getbbox() else "no"
+        except Exception:
+            pass
+    if shutil.which("tesseract") and out["window"] == "content":
+        crop = base + ".window.png"
+        shot.save(crop)
+        r = subprocess.run(["tesseract", crop, "-", "-l", "eng"], capture_output=True, text=True, timeout=60)
+        os.remove(crop)
+        for l in r.stdout.splitlines():
+            if ERROR_WORDS.search(l):
+                out["text"] = " ".join(l.split())[:80]
+                break
+    return out
+
+
 def line(base):
     name = os.path.basename(base)
     checks = {}
@@ -109,6 +189,21 @@ def line(base):
     for k in ("netoff", "second", "lang", "scale", "missing"):
         if k in checks:
             cols.append(f"{k}={checks[k]}")
+    # Used like a person would (test-one.sh, usecheck): the sample file read,
+    # the app closed with its close button.
+    if "file" in checks:
+        cols.append("file=" + checks["file"].split(" ")[0])
+    if "close" in checks:
+        c = checks["close"].split(" ")
+        cols.append("close=" + c[0] + ("" if c[-1] in ("ok", c[0]) else "-" + c[-1])
+                    + (f" ({checks['closed-windows'][:40]})" if c[0] == "hung" and "closed-windows" in checks else ""))
+    sc = screen(base)
+    cols.append(f"screen={sc['window']}" + (f" SCREEN-ERROR={sc['text']!r}" if sc["text"] else ""))
+    msg = messages(base)
+    cols.append("messages=" + (",".join(f"{k}:{v[0]}" for k, v in sorted(msg.items())) or "clean"))
+    extra += f"  changed={sc['changed']}"
+    if "left-running" in checks:
+        cols.append("left-running=" + checks["left-running"])
     return name, "  ".join(cols), extra
 
 
