@@ -93,6 +93,14 @@ version.
   low-risk grant is always a real folder of shared system data, never a
   parent such as `/usr`.
 
+### Every error names the part of SAM it happened in
+
+- An error from the command line, the window or a start from the menu
+  names the SAM function it happened in (`(SAM function 3)` on the
+  terminal, `"function": 3` in `--json`): the promise, its code and its
+  tests in docs/functions.md. Recognizing a file is function 2, unpacking
+  it 3, starting 19. A check makes sure every number exists.
+
 ### Security and reliability (from an outside code audit)
 
 - **A sandbox with "This computer only" could outlive SAM.** When SAM's

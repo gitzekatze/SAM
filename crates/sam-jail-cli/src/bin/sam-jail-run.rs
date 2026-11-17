@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
+use sam_core::error::InFunctionExt;
 use sam_core::util::which;
 use sam_runner::launch::{run, LaunchOptions};
 use sam_runner::ops::Sam;
@@ -94,15 +95,20 @@ fn main() {
         }
         return;
     }
-    match launch(args) {
+    // Starting from the menu is function 19; steps of another function
+    // (unpacking again: 3) mark their errors themselves.
+    match launch(args).in_function(19) {
         Ok(code) => std::process::exit(code),
         Err(e) => {
-            eprintln!("sam-jail-run: {e:#}");
+            let message = sam_core::error::message_of(&e);
+            let function = sam_core::error::function_of(&e).unwrap_or(19);
+            let part = sam_core::i18n::trf("SAM function {id}", &[("id", &function)]);
+            eprintln!("sam-jail-run: {message} ({part})");
             notify(
                 &sam_core::i18n::tr("SAM could not start the app"),
                 &sam_core::i18n::trf(
                     "{error}\nOpen SAM to repair it.",
-                    &[("error", &format!("{e:#}"))],
+                    &[("error", &format!("{message} ({part})"))],
                 ),
             );
             std::process::exit(1);
@@ -132,7 +138,8 @@ fn launch(args: Vec<String>) -> Result<i32> {
         .with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))?;
     // After "Free space": unpack again first (the file is unchanged).
     app.ensure_unpacked(&mut entry)
-        .context(sam_core::i18n::tr("unpacking the AppImage again"))?;
+        .context(sam_core::i18n::tr("unpacking the AppImage again"))
+        .in_function(3)?;
     let host = sam_core::HostInfo::probe();
     if app.config.security.check_before_launch {
         // Only when the settings, SAM or this computer changed since the

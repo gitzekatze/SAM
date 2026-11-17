@@ -1,6 +1,7 @@
 //! Creating a sandbox: unpack, detect, recommend, write the record.
 
 use super::*;
+use sam_core::error::InFunctionExt;
 
 impl Sam {
     // ------------------------------------------------------------------ add
@@ -41,25 +42,30 @@ impl Sam {
                 )
             );
         }
-        let info = inspect(&source)?;
-        if !info.is_appimage() {
-            bail!(
-                "{}",
-                sam_core::i18n::trf(
-                    "{file} is not an AppImage ({why})",
-                    &[("file", &tildify(&source)), ("why", &info.notes.join("; "))]
-                )
-            );
-        }
-        if let Some(why) = sam_detect::appimage::wrong_processor(&info) {
-            bail!(
-                "{}",
-                sam_core::i18n::trf(
-                    "{file} cannot get a sandbox: {why}",
-                    &[("file", &tildify(&source)), ("why", &why)]
-                )
-            );
-        }
+        // Recognizing the file is function 2; unpacking (below) is function 3.
+        let info = (|| -> Result<_> {
+            let info = inspect(&source)?;
+            if !info.is_appimage() {
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "{file} is not an AppImage ({why})",
+                        &[("file", &tildify(&source)), ("why", &info.notes.join("; "))]
+                    )
+                );
+            }
+            if let Some(why) = sam_detect::appimage::wrong_processor(&info) {
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "{file} cannot get a sandbox: {why}",
+                        &[("file", &tildify(&source)), ("why", &why)]
+                    )
+                );
+            }
+            Ok(info)
+        })()
+        .in_function(2)?;
         let fp = fingerprint::compute(&source)?;
 
         // Same content as a registered app whose file went missing: relocate.

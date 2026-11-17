@@ -79,6 +79,16 @@ def problems(m, tests):
                 out.append(f"function {fid} names the check {c}, which does not exist")
     for t in sorted(set(tests) - named):
         out.append(f"the test {t} ({tests[t][0]}) belongs to no function")
+    # Errors name the SAM function they happened in (`.in_function(N)` and
+    # the command table `function_for`): each number must be a function.
+    for src in sorted((ROOT / "crates").rglob("*.rs")):
+        text = src.read_text()
+        used = [int(n) for n in re.findall(r"\.in_function\((\d+)\)", text)]
+        body = re.search(r"fn function_for\(.*?\n\}", text, re.S)
+        if body:
+            used += [int(n) for n in re.findall(r"=> (\d+),", body.group(0))]
+        for n in sorted(set(used) - ids):
+            out.append(f"{src.relative_to(ROOT)} marks errors with SAM function {n}, which does not exist")
     return out
 
 
