@@ -36,7 +36,6 @@ clap = { version = "4.5", features = ["derive"] }
 sha2 = "0.11"
 sha1 = "0.11"
 md4 = "0.11"
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 libc = "0.2"
 goblin = { version = "0.10", default-features = false, features = ["elf32", "elf64", "endian_fd", "std"] }
 memchr = "2"

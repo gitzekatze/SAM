@@ -1456,10 +1456,12 @@ fn real_main(cli: Cli) -> Result<()> {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .context(sam_core::i18n::tr("no file name"))?;
-            let mtime =
-                chrono::DateTime::<chrono::Utc>::from(std::fs::metadata(&file)?.modified()?)
-                    .format("%a, %d %b %Y %H:%M:%S +0000")
-                    .to_string();
+            let modified = std::fs::metadata(&file)?
+                .modified()?
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let mtime = sam_core::util::format_utc_date(modified);
             let data =
                 sam_runner::zsync::make(&file, &name, url.as_deref().unwrap_or(&name), &mtime)?;
             let dest = dest.unwrap_or_else(|| file.with_file_name(format!("{name}.zsync")));
