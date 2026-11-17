@@ -425,8 +425,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L104) | A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | ✅ |
 | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L182) | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | ✅ |
 | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L200) | Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | ✅ |
-| [`without_network_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L124) | Without network the sandbox dies with its launcher. | 🆕 new |
-| [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L133) | With this computer only the sandbox dies with its launcher. | 🆕 new |
+| [`without_network_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L150) | Without network the sandbox dies with its launcher. | 🆕 new |
+| [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L159) | With this computer only the sandbox dies with its launcher. | 🆕 new |
 
 **Code:** [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-runner/src/ops/mod.rs`](../crates/sam-runner/src/ops/mod.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
