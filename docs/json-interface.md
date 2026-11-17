@@ -81,7 +81,7 @@ sam-jail --json version
 | `id` | app id, e.g. `appimage-krita-1a2b` |
 | `name`, `comment` | from the AppImage's desktop file, cleaned |
 | `icon_path`, `source_path` | cached icon, the AppImage file |
-| `state`, `badge`, `badge_label` | lifecycle state, status badge and its label; `badge` is `ready`, `needs-review`, `compatibility-mode`, `compatibility-risk`, `stale`, `broken`, `unsafe`, `missing`, `changed-outside` or `protection-missing` |
+| `state`, `badge`, `badge_label` | lifecycle state, status badge and its label; `badge` is `ready`, `needs-review`, `compatibility-mode`, `compatibility-risk`, `stale`, `broken`, `unsafe`, `missing`, `changed-outside` or `protection-missing` (`changed-outside` also when the AppImage file was replaced outside SAM; then `info`'s `entry.content_changed_outside` is `true`) |
 | `category` | `browser`, `game`, `utility`, … |
 | `risk` | `{level, score, items}`: the level, the weighted score, and the permissions that raise it |
 | `added_at`, `last_launched` | Unix seconds (`last_launched` may be `null`) |
