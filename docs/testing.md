@@ -78,6 +78,23 @@ computer; start the run in a scope with `Delegate=yes`
 *local* (this computer only). `table.py --markdown` adds a summary and a
 column to the report. A process still in the app's control group after SAM
 closed it is listed as `left-running`.
+
+**Whether an app works, not just starts:** every app that started is
+started once more like a person would use it: with a small sample file of a
+type its menu entry says it opens (`tests/real-apps/samples.py` makes them:
+images, text, PDF, video, sound and more), then closed with its windows'
+close buttons (a KWin script). Linux reports from outside whether the app
+read the file (inotify sees reads through the sandbox; SAM itself never
+reads it, checked). The report says per app: the file read or not, closed
+cleanly, closed with an error, did not close within 10 seconds (with the
+window's title), ended by itself, or had no window. Without extra start
+time, `checks.py` also looks at the screenshot inside the app's largest
+window (empty: one or two colours; changed between 12 and 20 seconds),
+reads its text for error words (tesseract, when installed), and sorts the
+app's own messages from the first start into crashes, missing libraries
+and refused access (lines about what SAM never gives, like the system bus,
+are left out). `table.py --markdown` adds a "Used like a person would"
+summary and a column.
 `python3 tests/real-apps/checks.py WORK [BASELINE]` prints one line per app,
 or with a baseline only what changed. The smoke subset (one app per family,
 16 apps) passed every check on 2026-11-15.
