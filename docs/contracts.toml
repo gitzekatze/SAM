@@ -556,7 +556,7 @@ probe = "none"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox", "files_and_folders_named_on_the_command_line"]
 on_break = "feature"
 coverage = "partial"
-gaps = "Printing, the SSH agent and removable drives are not tested in CI."
+gaps = "Printing and removable drives are not tested in CI. The SSH agent is, everywhere: the permission matrix starts its own (sam_runner::testenv::PrivateServices)."
 playbook = "A moved socket or mount point only loses that feature."
 
 [[contract]]

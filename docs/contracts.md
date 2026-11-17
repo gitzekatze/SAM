@@ -442,7 +442,7 @@ Printing is at /run/cups/cups.sock, the SSH agent at SSH_AUTH_SOCK, and removabl
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [10](functions.md#10), [15](functions.md#15)
 - **Quick check:** none (only the tests below)
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `files_and_folders_named_on_the_command_line` (partly: Printing, the SSH agent and removable drives are not tested in CI.)
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `files_and_folders_named_on_the_command_line` (partly: Printing and removable drives are not tested in CI. The SSH agent is, everywhere: the permission matrix starts its own (sam_runner::testenv::PrivateServices).)
 - **Covers:** `path:/run/cups/cups.sock`, `env:SSH_AUTH_SOCK`, `path:/media`, `path:/media/`, `path:/mnt`, `path:/run/media`, `path:/run/media/`
 - **If it breaks:** A moved socket or mount point only loses that feature.
 
