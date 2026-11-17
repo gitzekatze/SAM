@@ -222,6 +222,7 @@ jobs:
           python3 scripts/workflow-check.py --self-test
           python3 scripts/risk-class.py --self-test
           python3 scripts/contract-verifier.py --self-test
+          python3 scripts/changelog-check.py --self-test
 
       - name: Risk class of this change
         if: github.event_name == 'pull_request'
@@ -230,6 +231,8 @@ jobs:
         run: |
           git fetch -q origin "$BASE"
           python3 scripts/risk-class.py "origin/$BASE" | tee -a "$GITHUB_STEP_SUMMARY"
+          # A behaviour change without a changelog line is flagged, never failed.
+          python3 scripts/changelog-check.py "origin/$BASE"
 
 
       - name: Third-party licenses are up to date

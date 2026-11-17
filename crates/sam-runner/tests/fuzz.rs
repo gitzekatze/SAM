@@ -9,6 +9,8 @@
 //! repeated. CI runs a few hundred rounds; `SAM_FUZZ_ITERS=100000` runs an
 //! overnight session. An input that crashes a parser is saved to
 //! target/fuzz-crashes/ so it can be turned into a regression test.
+//! `SAM_FUZZ_SEED=N` mixes N into the seeds: the weekly upkeep run uses the
+//! week's number, so every week tries new inputs and its log names the seed.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
@@ -88,6 +90,19 @@ fn iterations() -> usize {
         .unwrap_or(150)
 }
 
+/// The built-in seed, changed by `SAM_FUZZ_SEED` (0, the default, keeps it).
+fn with_seed(base: u64) -> u64 {
+    let extra: u64 = std::env::var("SAM_FUZZ_SEED")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    // xorshift never leaves 0, so that one seed is not allowed.
+    match base ^ extra {
+        0 => base,
+        mixed => mixed,
+    }
+}
+
 /// Runs `f` and saves `input` when it panics; returns whether it panicked.
 fn guarded(what: &str, round: usize, input: &[u8], f: impl FnOnce()) -> Option<String> {
     let r = catch_unwind(AssertUnwindSafe(f));
@@ -143,6 +158,7 @@ fn changed_appimages_never_crash_or_escape_the_unpacker() {
         .expect("payload offset") as usize;
     let work = tmp.path().join("work");
     let mut rng = Rng(0x5A11_F022_0000_0001);
+    rng.0 = with_seed(rng.0);
     let mut problems = Vec::new();
     // How many changed images got as far as the unpacker: a fuzzer whose
     // inputs are all refused at the first check would test nothing.
@@ -213,6 +229,7 @@ fn changed_text_inputs_never_crash_the_parsers() {
         b"gh-releases-zsync|owner|repo|latest|App-*x86_64.AppImage.zsync".to_vec(),
     ];
     let mut rng = Rng(0x5A11_F022_0000_0002);
+    rng.0 = with_seed(rng.0);
     let mut problems = Vec::new();
     for round in 0..iterations() * 4 {
         let d = mutate(&mut rng, &desktop, 0);
@@ -247,6 +264,7 @@ fn changed_programs_never_crash_the_analysis() {
     )
     .unwrap();
     let mut rng = Rng(0x5A11_F022_0000_0003);
+    rng.0 = with_seed(rng.0);
     let mut problems = Vec::new();
     for round in 0..iterations() {
         let d = mutate(&mut rng, &seed, if round % 2 == 0 { 0 } else { 64 });
