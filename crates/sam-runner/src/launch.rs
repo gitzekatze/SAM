@@ -63,6 +63,9 @@ pub struct Prepared {
     /// The compositor offers security contexts, but making one failed: the
     /// app got the normal socket. Reported as a missing layer.
     pub wayland_context_failed: bool,
+    /// The writable home's protected places before the start (full home
+    /// read/write); looked at again when the app has ended.
+    pub home_watch: Option<sam_sandbox::HomeWatch>,
     wayland: Option<crate::wayland_ctx::WaylandContext>,
     _runtime: RuntimeDir,
 }
@@ -315,6 +318,7 @@ pub fn prepare(
     let mut proxy = None;
     let mut wayland = None;
     let mut wayland_context_failed = false;
+    let home_watch;
     let mut landlock = false;
     let mut seccomp = false;
     let wanted_landlock: bool;
@@ -322,6 +326,8 @@ pub fn prepare(
     {
         sam_sandbox::write_identity_files(&ctx)?;
         sam_sandbox::prepare_home_protection(perms, &host.home);
+        // After the folders above are made, so they do not count as new.
+        home_watch = sam_sandbox::HomeWatch::before(perms, &host.home);
         if perms.dbus.session.mode == DbusMode::Filtered
             && host.tools.xdg_dbus_proxy.is_some()
             && host.sockets.dbus_session.is_some()
@@ -449,6 +455,7 @@ pub fn prepare(
         proxy,
         wayland_context,
         wayland_context_failed,
+        home_watch,
         wayland,
         _runtime: runtime_guard,
     })
@@ -750,7 +757,27 @@ pub fn run(
         // stays in the record for scripts.
         outcome.success = true;
     }
+    // What the app left in places that make the computer run something:
+    // moved aside before anything can act on it.
+    let moved: Vec<String> = prepared
+        .home_watch
+        .as_ref()
+        .map(|w| {
+            let aside = paths
+                .data_dir
+                .join("moved-aside")
+                .join(&app.id)
+                .join(started_at.to_string());
+            w.settle(&aside)
+                .into_iter()
+                .map(|m| format!("~/{} → {}", m.place, sam_core::util::tildify(&m.to)))
+                .collect()
+        })
+        .unwrap_or_default();
     if let Ok(mut l) = log.lock() {
+        for m in &moved {
+            writeln!(l, "# moved aside (it would act outside the sandbox): {m}")?;
+        }
         if mode != TerminalMode::None {
             let what = if mode == TerminalMode::Relay {
                 "connected to the user's terminal"
@@ -797,6 +824,7 @@ pub fn run(
             prepared.wanted_seccomp,
             prepared.wayland_context_failed,
         ),
+        moved_aside: moved,
         enforcement,
         log_file: Some(log_path),
         findings: if outcome.success {
@@ -821,6 +849,15 @@ pub fn run(
             sam_core::i18n::trf(
                 "warning: this start ran without {layers}, which its settings ask for",
                 &[("layers", &rec.missing_layers.join(", "))]
+            )
+        );
+    }
+    if !rec.moved_aside.is_empty() && !opts.quiet {
+        eprintln!(
+            "sam-jail: {}",
+            sam_core::i18n::trf(
+                "the app left something that would run outside its sandbox; SAM moved it aside: {items}",
+                &[("items", &rec.moved_aside.join("; "))]
             )
         );
     }

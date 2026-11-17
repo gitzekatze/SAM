@@ -194,31 +194,42 @@ run a program the next time you log in or open a file):
 
 | Kind | Examples |
 |---|---|
-| shell and session startup | `.bashrc`, `.profile`, `.pam_environment`, `environment.d` |
+| shell and session startup | `.bashrc`, `.profile`, `.bash_profile`, `.zshrc` and the other shell start and end files, `.pam_environment`, `environment.d`, `.xprofile`, `.xsession` |
 | autostart and services | `autostart`, `systemd --user`, D-Bus service files |
 | programs on `$PATH` | `~/.local/bin`, `~/bin` |
 | menu and default apps | menu entries, `mimeapps.list` |
 | desktop scripting | KWin and Plasma scripts, file manager service menus |
-| configs that run commands | git, vim, Neovim |
+| configs that run commands | git, Mercurial, vim, Neovim, tmux, screen |
 
-Some of these are created empty first, so they are protected even before
-anything uses them: the folders for menu entries, autostart, `systemd --user`
-services, `environment.d`, `~/.local/bin`, D-Bus services and KWin scripts,
-and the files `.bashrc`, `.profile`, `.gitconfig`, `mimeapps.list` and
-`user-dirs.dirs`. The others in the table (for example the git, Neovim, fish
-and Plasma settings folders, `.bash_profile`, `.zshrc`, `.xprofile` or
-`.pam_environment`) are protected only if they already exist.
+How these stay protected with the home writable:
+
+- **Folders are created empty first** where an empty folder changes
+  nothing: menu entries, autostart, `systemd --user`, `environment.d`,
+  `~/.local/bin`, D-Bus services, the KWin, Plasma, fish, git, Neovim and
+  tmux settings folders and file manager service menus; and the files
+  `.bashrc`, `.profile`, `.gitconfig`, `mimeapps.list` and `user-dirs.dirs`.
+- **The folders above them cannot be renamed** (`.config`, `.local`,
+  `.local/share` and so on are mount points of their own), so an app cannot
+  move `.config` away and fill a new one.
+- **Files whose mere presence changes behaviour** (`.bash_profile`, `.zshrc`,
+  `.xprofile`, `.vimrc`, `.pam_environment` and the like) cannot be protected
+  by a mount before they exist: making one would create the file. So SAM
+  looks after every start: whatever the app created in one of these places,
+  and whatever replaced a link to one of them, SAM moves into
+  `~/.local/share/sam/moved-aside/APP/` (with the time of the start) and puts
+  links back. The command line, the launch log and the app's page say so.
+  The same holds for `~/.ssh` and `~/.gnupg` when the app was not given them.
+- **Key folders that are links** (dotfiles managed with `stow`, for example)
+  are hidden where they point.
 
 **What full home access does not cover.** With read and write access to the
-home, an app can change almost any file there, and programs outside the
-sandbox read many of those files: settings of other programs, scripts in
-project folders, anything a program reads when it starts. A program you
-start later could then run what the app left behind. SAM protects the usual
-places that make a computer run something (the table above); it cannot know
-every program's settings. Key folders that are links to somewhere else (for
-example managed with `stow`) are not hidden yet. So full home access is meant
-only for apps you trust, and SAM warns when you grant it. Stronger protection
-that also covers these cases is being built.
+home, an app can still change other files that programs outside the sandbox
+read: settings of programs not in the table above, scripts in project
+folders. SAM protects the places that make a computer run something by
+themselves; it cannot know every program's settings. And a file the app
+creates in a watched place exists until the app ends, before SAM moves it
+aside. So full home access is meant only for apps you trust, and SAM warns
+when you grant it.
 
 ---
 
