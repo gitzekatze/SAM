@@ -195,20 +195,54 @@ fn read_message(r: &mut impl Read) -> Result<(u8, Option<u32>)> {
 mod tests {
     use super::*;
 
-    /// SAM's own bus check reaches the session bus on a desktop.
+    /// SAM's own bus check reaches a session bus. The test starts its own
+    /// bus without any services, so it runs the same on every computer and
+    /// never touches the person's desktop bus.
     #[test]
     fn reaches_the_session_bus() {
-        // Only where a session bus exists (desktop sessions, not CI).
-        let Ok(addr) = std::env::var("DBUS_SESSION_BUS_ADDRESS") else {
-            return;
-        };
-        if !addr.contains("unix:path=") {
+        if sam_core::util::which("dbus-daemon").is_none() {
+            crate::contracts::skip("dbus-daemon is not installed")
+                .unwrap_or_else(|e| panic!("{e}"));
             return;
         }
-        assert!(name_reachable(&addr, "org.freedesktop.DBus", Duration::from_secs(2)).unwrap());
-        assert!(
-            !name_reachable(&addr, "org.example.SamNoSuchName", Duration::from_secs(2)).unwrap()
-        );
+        // Short, for the socket path (at most 108 characters).
+        let base = std::env::temp_dir();
+        let base = if base.as_os_str().len() <= 40 {
+            base
+        } else {
+            "/tmp".into()
+        };
+        let t = tempfile::tempdir_in(base).unwrap();
+        let conf = t.path().join("bus.conf");
+        std::fs::write(
+            &conf,
+            format!(
+                "<busconfig><type>session</type><listen>unix:path={}</listen>\
+                 <policy context=\"default\"><allow send_destination=\"*\"/>\
+                 <allow receive_sender=\"*\"/><allow own=\"*\"/></policy></busconfig>",
+                t.path().join("bus").display()
+            ),
+        )
+        .unwrap();
+        let mut daemon = std::process::Command::new("dbus-daemon")
+            .arg(format!("--config-file={}", conf.display()))
+            .args(["--nofork", "--print-address=1"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut addr = String::new();
+        std::io::BufRead::read_line(
+            &mut std::io::BufReader::new(daemon.stdout.take().unwrap()),
+            &mut addr,
+        )
+        .unwrap();
+        let addr = addr.trim().to_string();
+        let found = name_reachable(&addr, "org.freedesktop.DBus", Duration::from_secs(2));
+        let missing = name_reachable(&addr, "org.example.SamNoSuchName", Duration::from_secs(2));
+        let _ = daemon.kill();
+        let _ = daemon.wait();
+        assert!(found.unwrap(), "the bus itself is reachable at {addr}");
+        assert!(!missing.unwrap(), "a name nobody owns is not");
     }
 
     /// SAM's own D-Bus message for the bus check has the correct wire format.

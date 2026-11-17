@@ -64,7 +64,11 @@ impl FixtureSpec {
             ),
             files: vec![],
             symlinks: vec![],
-            host_binary: Some("/usr/bin/true".into()),
+            // A small program of this computer (not every system has /usr/bin).
+            host_binary: ["/usr/bin/true", "/bin/true", "/usr/bin/env"]
+                .iter()
+                .find(|p| Path::new(p).exists())
+                .map(|p| p.to_string()),
             compressor: Compressor::Zstd,
             update_info: None,
         }

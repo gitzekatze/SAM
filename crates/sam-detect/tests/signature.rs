@@ -19,12 +19,17 @@ fn have(tool: &str) -> bool {
 /// The signature of a signed AppImage is checked with GnuPG.
 #[test]
 fn signed_appimage_is_checked() {
-    if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1")
-        || !["gpg", "gpgv", "objcopy"].iter().all(|t| have(t))
-    {
-        eprintln!("skipping: set SAM_TEST_GPG=1 and install gpg, gpgv and objcopy");
+    let tools = ["gpg", "gpgv", "objcopy"].iter().all(|t| have(t));
+    if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
+        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
         return;
     }
+    // SAM_TEST_GPG=1 (CI) means this test must run: missing tools fail it
+    // instead of passing it silently.
+    assert!(
+        tools,
+        "SAM_TEST_GPG=1, but gpg, gpgv or objcopy is not installed"
+    );
     let tmp = tempfile::tempdir().unwrap();
     let d = tmp.path();
     let home = d.join("gnupg");

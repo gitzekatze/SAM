@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-42 tests.
+43 tests.
 
 | Promise | Test |
 |---|---|
@@ -27,17 +27,18 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L182) |
 | Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L200) |
 | Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L228) |
-| Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L652) |
-| The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L667) |
-| Only a real socket counts as a desktop service. | [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L680) |
-| The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L701) |
-| Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L710) |
+| Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L674) |
+| The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L689) |
+| Only a real socket counts as a desktop service. | [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L702) |
+| The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L723) |
+| Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L732) |
 | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | [`every_translated_language_can_be_chosen`](../crates/sam-core/src/i18n.rs#L179) |
 | Texts without a translation come back with their values. | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L193) |
 | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L668) |
 | An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L689) |
 | A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L727) |
-| ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L138) |
+| Rooted paths (tests) keep their runtime folders apart from SAM's real one and from every other root, and short enough for SAM's sockets. | [`rooted_paths_have_a_runtime_folder_of_their_own`](../crates/sam-core/src/paths.rs#L172) |
+| ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L209) |
 | An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1043) |
 | Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1058) |
 | Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L1071) |
@@ -115,9 +116,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Unpacking stops when the AppImage contains more files than the limit. | [`unpacking_stops_at_the_file_limit`](../crates/sam-intake/src/normalize.rs#L310) |
 | The name and icon of an AppImage are read without unpacking or running it. | [`peeks_name_and_icon_without_extracting`](../crates/sam-intake/src/peek.rs#L157) |
 | Icon paths from the AppImage cannot climb out of the unpacked app. | [`icon_paths_cannot_climb_out_of_the_app`](../crates/sam-intake/src/peek.rs#L171) |
-| Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L233) |
-| A built AppImage is recognized and unpacked, with setuid bits removed. | [`a_built_appimage_is_detected_and_unpacked_safely`](../crates/sam-intake/src/testkit.rs#L264) |
-| Unpacking stops at the size limit and leaves no partial files behind. | [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L323) |
+| Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L237) |
+| A built AppImage is recognized and unpacked, with setuid bits removed. | [`a_built_appimage_is_detected_and_unpacked_safely`](../crates/sam-intake/src/testkit.rs#L268) |
+| Unpacking stops at the size limit and leaves no partial files behind. | [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L327) |
 | ⟲ Regression: reading the name and icon of an AppImage whose SquashFS image makes the reader panic gives an error instead of crashing SAM. | [`a_damaged_squashfs_image_gives_an_error_instead_of_a_crash`](../crates/sam-intake/tests/damaged.rs#L15) |
 | When SAM's own readers cannot unpack an AppImage, its own unpacker (code from the AppImage) runs only after the user agreed: without consent the unpacking stops and asks, and nothing of the AppImage runs. | [`without_consent_the_appimages_own_unpacker_never_runs`](../crates/sam-intake/tests/damaged.rs#L25) |
 | The file-count and size limits let an app through that reaches them exactly and stop one entry or one byte more; a time limit of zero stops at once. | [`unpacking_stops_exactly_at_its_limits`](../crates/sam-intake/tests/limits.rs#L45) |
@@ -176,22 +177,22 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-115 tests.
+116 tests.
 
 | Promise | Test |
 |---|---|
 | Without Bubblewrap, the message says which package to install. | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L55) |
 | When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L66) |
 | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L85) |
-| A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L529) |
-| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L542) |
-| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L548) |
-| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L560) |
-| A failing section is named and the next still runs. | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L611) |
-| Where a run must prove everything (CI), a skip is an error; locally it is a note. | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L632) |
-| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L644) |
-| SAM's own bus check reaches the session bus on a desktop. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L199) |
-| SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L215) |
+| A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L537) |
+| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L550) |
+| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L556) |
+| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L568) |
+| A failing section is named and the next still runs. | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L619) |
+| Where a run must prove everything (CI), a skip is an error; locally it is a note. | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L640) |
+| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L652) |
+| SAM's own bus check reaches a session bus. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L201) |
+| SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L249) |
 | An app may register a tray icon only while the tray service is allowed. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L164) |
 | The proxy counts as ready only when its socket accepts connections, not when the file merely exists (regression: the sandbox check sometimes found the session bus refused right after the start). | [`a_socket_counts_as_ready_only_when_it_accepts`](../crates/sam-runner/src/dbus_proxy.rs#L186) |
 | Failed file and socket accesses are read from a diagnostic trace. | [`failed_accesses_are_read_from_a_trace`](../crates/sam-runner/src/diagnose.rs#L491) |
@@ -216,7 +217,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L1443) |
 | Bubblewrap setup errors are told apart from errors of the app itself. | [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L1480) |
 | A start is judged by whether Bubblewrap announced the app, not by what the app printed. | [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L1501) |
-| A test program inside Cargo's build folder finds the helper of its own build, so tests that need it run instead of skipping; an installed program never looks above its own folder. | [`tests_find_the_helper_of_their_own_build`](../crates/sam-runner/src/lib.rs#L70) |
+| A program of a Cargo build whose helper is not built gets none, even when one is on PATH (an installed SAM or another build): the test then says it cannot run, instead of checking a different version. | [`a_build_never_takes_a_helper_from_path`](../crates/sam-runner/src/lib.rs#L96) |
+| A test program inside Cargo's build folder finds the helper of its own build, so tests that need it run instead of skipping; an installed program never looks above its own folder. | [`tests_find_the_helper_of_their_own_build`](../crates/sam-runner/src/lib.rs#L120) |
 | With "this computer only", the app reaches only the ports on this computer the user lists. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L115) |
 | When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L466) |
 | An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L544) |
@@ -225,8 +227,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L474) |
 | Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L495) |
 | The sandbox check tells a real folder of the user from a private stand-in. | [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L562) |
-| The progress bar follows the weights of the steps of creating a sandbox. | [`fractions_follow_the_step_weights`](../crates/sam-runner/src/progress.rs#L147) |
-| Unpacking progress counts the bytes written. | [`bytes_written_are_counted`](../crates/sam-runner/src/progress.rs#L172) |
+| The progress bar follows the weights of the steps of creating a sandbox. | [`fractions_follow_the_step_weights`](../crates/sam-runner/src/progress.rs#L152) |
+| Unpacking progress counts the bytes written. | [`bytes_written_are_counted`](../crates/sam-runner/src/progress.rs#L177) |
 | Ordinary terminal output, colors and links pass through the relay unchanged. | [`ordinary_output_passes_unchanged`](../crates/sam-runner/src/pty.rs#L702) |
 | A doubled ESC in front of a clipboard code does not smuggle it past the filter: the terminal reads the second ESC as the start of the code, so the filter must too. | [`a_doubled_escape_does_not_smuggle_a_clipboard_code`](../crates/sam-runner/src/pty.rs#L714) |
 | Escape codes that read or write the clipboard are removed from an app's terminal output. | [`clipboard_codes_are_removed`](../crates/sam-runner/src/pty.rs#L740) |
@@ -245,10 +247,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Error messages in an app's output are mapped to the repair step that fixes them. | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L810) |
 | The repair ladder leaves out steps already applied and steps that would change nothing. | [`ladder_skips_applied_and_noop_steps`](../crates/sam-runner/src/repair.rs#L916) |
 | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L950) |
-| The checksum of a downloaded update is SHA-1 of the whole file, read in pieces; a file larger than one piece gives the same result. | [`the_download_checksum_is_sha1_of_the_whole_file`](../crates/sam-runner/src/updates.rs#L564) |
-| The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L584) |
-| Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L608) |
-| Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L625) |
+| The checksum of a downloaded update is SHA-1 of the whole file, read in pieces; a file larger than one piece gives the same result. | [`the_download_checksum_is_sha1_of_the_whole_file`](../crates/sam-runner/src/updates.rs#L571) |
+| The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L591) |
+| Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L615) |
+| Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L632) |
 | The block checksums are the ones zsync defines: MD4 of a block padded with zeros to the block size, and the weak sum cut to its last bytes. | [`block_checksums_match_the_zsync_definition`](../crates/sam-runner/src/zsync.rs#L353) |
 | An update is rebuilt from the old version plus the changed blocks. | [`an_update_is_rebuilt_from_the_old_version_and_changed_blocks`](../crates/sam-runner/src/zsync.rs#L405) |
 | The rolling checksum of the update transfer matches a direct computation at every offset. | [`the_rolling_checksum_matches_a_direct_computation`](../crates/sam-runner/src/zsync.rs#L459) |
@@ -282,7 +284,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L144) |
 | A repair step can be switched off on its own: exactly what that step changed goes back, and the other applied steps stay. | [`switching_off_one_repair_step_keeps_the_others`](../crates/sam-runner/tests/settings.rs#L165) |
 | Freeing space deletes the unpacked copy, and unpacking again brings the app back. | [`freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it`](../crates/sam-runner/tests/space.rs#L13) |
-| Closing an app ends all of its running starts. | [`stop_closes_running_apps`](../crates/sam-runner/tests/stop.rs#L62) |
+| Closing an app ends all of its running starts. | [`stop_closes_running_apps`](../crates/sam-runner/tests/stop.rs#L66) |
 | Every known syscall has been reviewed. | [`every_known_syscall_has_been_reviewed`](../crates/sam-runner/tests/syscalls.rs#L67) |
 | The review list says which syscalls the filter blocks; it must match the filter itself, or the review would describe a filter that does not exist. | [`the_review_list_matches_the_filter`](../crates/sam-runner/tests/syscalls.rs#L86) |
 | ⟲ Regression: the unpack folder in a record was only checked with Path::starts_with, which does not resolve "..": "extracted/../../victim" passed, and removing the sandbox deleted the victim folder. | [`removing_a_sandbox_never_deletes_outside_sams_unpack_folder`](../crates/sam-runner/tests/tamper.rs#L34) |
@@ -290,9 +292,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (found in the test audit): "go back to the earlier version" moved the file a record named as the backup, wherever it was. | [`undoing_an_update_never_moves_files_outside_sams_backup_folder`](../crates/sam-runner/tests/tamper.rs#L89) |
 | An app whose settings were changed outside SAM does not start until the user has confirmed them; changes SAM makes itself never count as such. | [`an_app_changed_outside_sam_starts_only_after_confirmation`](../crates/sam-runner/tests/tamper.rs#L107) |
 | Uninstalling SAM removes all of its files and restores the menu entries it had hidden. | [`uninstall_removes_everything_and_restores_menus`](../crates/sam-runner/tests/uninstall.rs#L17) |
-| Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L122) |
+| Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L123) |
 | Undoing an update puts the previous version back. | [`undo_puts_the_previous_version_back`](../crates/sam-runner/tests/update.rs#L15) |
-| Updates download only changes check them and refuse tampering. | [`updates_download_only_changes_check_them_and_refuse_tampering`](../crates/sam-runner/tests/update_server.rs#L157) |
+| Updates download only changes check them and refuse tampering. | [`updates_download_only_changes_check_them_and_refuse_tampering`](../crates/sam-runner/tests/update_server.rs#L170) |
 | The sandbox check passes when the settings apply, and catches a setting that does not apply. | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L22) |
 | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L14) |
 
@@ -338,8 +340,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `sam-jail version` answers with the JSON interface version even when the configuration cannot be read. | [`version_reports_the_json_interface`](../crates/sam-jail-cli/tests/robustness.rs#L240) |
 | Signing a file that has no AppImage signature sections is refused with a clear message, before GnuPG is asked anything, and the file stays as it was. | [`signing_a_file_without_signature_sections_is_refused`](../crates/sam-jail-cli/tests/robustness.rs#L258) |
 | Sam jail run refuses a sandbox whose settings do not apply. | [`sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`](../crates/sam-jail-cli/tests/start_check.rs#L49) |
-| Without network the sandbox dies with its launcher. | [`without_network_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L150) |
-| With this computer only the sandbox dies with its launcher. | [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L159) |
+| Without network the sandbox dies with its launcher. | [`without_network_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L160) |
+| With this computer only the sandbox dies with its launcher. | [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L169) |
 | A menu start after free space unpacks inside a sandbox. | [`a_menu_start_after_free_space_unpacks_inside_a_sandbox`](../crates/sam-jail-cli/tests/unpack.rs#L87) |
 | Without the command line a menu start refuses to unpack. | [`without_the_command_line_a_menu_start_refuses_to_unpack`](../crates/sam-jail-cli/tests/unpack.rs#L110) |
 
@@ -374,4 +376,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 288 automated Rust tests plus 7 scripted checks.
+Total: 290 automated Rust tests plus 7 scripted checks.

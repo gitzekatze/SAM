@@ -65,6 +65,8 @@ fn sam(root: &Path) -> Command {
         .env("SAM_APPLICATIONS_DIR", root.join("applications"))
         .env("LC_ALL", "C")
         .env_remove("LANGUAGE");
+    // The same run on every computer: its own runtime folder, no desktop session.
+    sam_runner::testenv::isolate_command(&mut c, root);
     c
 }
 
@@ -145,6 +147,14 @@ fn killing_the_launcher_ends_the_sandbox(network: &str) {
         "removing the app left {} behind ({network})",
         runtime.display()
     );
+    // Nothing reached the real runtime folder above, and the test's own is
+    // empty again too.
+    let own = sam_core::Paths::rooted(root).runtime_dir(&id);
+    assert!(
+        !own.exists(),
+        "removing the app left {} behind ({network})",
+        own.display()
+    );
 }
 
 #[test]
@@ -166,6 +176,9 @@ fn with_this_computer_only_the_sandbox_dies_with_its_launcher() {
         // A fair skip anywhere: without --splice-only SAM never starts
         // "This computer only" (contract pasta-splice-only), so there is no
         // pasta to outlive the launcher.
+        sam_runner::contracts::not_here(
+            "no pasta with --splice-only, so SAM never starts \"This computer only\" here",
+        );
         eprintln!("skipped: no pasta with --splice-only here");
         return;
     }

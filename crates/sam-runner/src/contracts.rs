@@ -406,6 +406,14 @@ impl Checks {
     }
 }
 
+/// A test that does not apply to this computer at all (another processor,
+/// a component version SAM itself refuses to use): never a failure, not even
+/// in CI, but recorded like a skip, so a run still says it did not run here.
+pub fn not_here(reason: &str) {
+    eprintln!("not here: {reason}");
+    record_skip(&format!("not here: {reason}"));
+}
+
 /// For tests that need something from the computer they run on (a working
 /// Bubblewrap, kernel headers, a local HTTPS server). Locally a missing
 /// requirement skips the test with a note. Where the run must prove

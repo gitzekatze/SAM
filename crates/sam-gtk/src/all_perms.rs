@@ -1432,7 +1432,9 @@ mod tests {
             "filesystem.documents",
             "Lets the app open and save files in your Documents folder.",
         );
-        assert!(e.contains("Folder: ~/") || e.contains("Folder: /"), "{e}");
+        // The folder comes from this computer's user-dirs.dirs (it may be
+        // the home folder itself, "~"): the explanation names one.
+        assert!(e.contains("Folder: ~") || e.contains("Folder: /"), "{e}");
         assert_eq!(util::explain("audio.enabled", "Play sound."), "Play sound.");
     }
 }

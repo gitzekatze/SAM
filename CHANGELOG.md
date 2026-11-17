@@ -22,6 +22,32 @@ version.
   only when something needs them. No AI is involved; the kill switch stops
   it all.
 
+### Tests give the same result on every computer
+
+- Tests that start sandboxes no longer use the runtime folder, display,
+  session bus or SSH agent of the person running them: each gets its own
+  runtime folder, and a computer without its desktop session, so a
+  developer's desktop runs the same code as CI. Before, they wrote into the
+  real `$XDG_RUNTIME_DIR/sam`, two runs at once could delete each other's
+  folders, and on a desktop they talked to the real compositor and bus.
+- The permission matrix starts its own session bus and SSH agent, so its
+  D-Bus and SSH checks run everywhere, CI included, never against yours.
+- The window tests' session gets its own home, settings, data, cache and
+  language before the compositor starts (KWin could read and write the real
+  `~/.config`); the smoke test in CI uses that session too, and two sessions
+  at once no longer share a display.
+- A test program of a Cargo build never takes SAM's helper from `PATH`, so
+  it never tests an installed SAM instead of its own build.
+- SAM's downloads ignore `~/.curlrc` (`curl --disable`): a setting there
+  could switch off certificate checks; a test proves it. New:
+  `SAM_RUNTIME_DIR` moves the runtime folders like the other `SAM_*_DIR`
+  variables; uninstall checks that folder like the others.
+- Silent passes became visible: GnuPG tools missing with `SAM_TEST_GPG=1`
+  fail; msgfmt missing is a skip CI refuses; "not on this computer" (another
+  processor, an old pasta, no locale) is listed in the skip summary.
+- Timing guesses replaced by signals: the stop test waits for the app's
+  "ready" file, unpacking progress always reports a final count.
+
 ### One building block fewer
 
 - SAM no longer uses the `chrono` library, which was declared unmaintained
