@@ -93,6 +93,13 @@ version.
   low-risk grant is always a real folder of shared system data, never a
   parent such as `/usr`.
 
+### Real AppImages compared by group
+
+- `tests/real-apps/compare.py` compares two real-app runs (or a run with
+  the last published report) by group of apps, and groups the apps a group
+  lost by their reason, so a regression points at one part of SAM instead
+  of a list of names.
+
 ### Security and reliability (from an outside code audit)
 
 - **A sandbox with "This computer only" could outlive SAM.** When SAM's
