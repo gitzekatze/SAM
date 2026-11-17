@@ -9,6 +9,15 @@ version.
 
 ## Unreleased
 
+### The sandbox is tested with a desktop on every change
+
+- CI runs the sandbox tests a second time inside a hidden KWin session with
+  PipeWire and its PulseAudio server (`tests/gui/desktop-sandbox.sh`). The
+  permission matrix must find Wayland and sound there
+  (`SAM_REQUIRE_DESKTOP`, `SAM_REQUIRE_SOUND`), so its display and sound
+  checks, which bare CI machines skip, now run on every change; without
+  them it fails with `CHECK FAIL matrix/display`.
+
 ### Tests give the same result on every computer
 
 - Tests that start sandboxes no longer use the runtime folder, display,

@@ -332,6 +332,18 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let mut p = base();
         p.audio.enabled = true;
         let r = launch("audio", p);
+        // In the desktop session of CI (tests/gui/desktop-sandbox.sh) sound
+        // must be there: the checks below would otherwise pass unseen.
+        if std::env::var("SAM_REQUIRE_SOUND").as_deref() == Ok("1") {
+            assert!(
+                runtime_has("pulse/native"),
+                "SAM_REQUIRE_SOUND=1, but there is no PulseAudio socket"
+            );
+            assert!(
+                runtime_has("pipewire-0"),
+                "SAM_REQUIRE_SOUND=1, but there is no PipeWire socket"
+            );
+        }
         if runtime_has("pulse/native") {
             assert_eq!(r["AUDIO"], "yes");
         }
@@ -370,6 +382,13 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let mut p = base();
         p.display.wayland = true;
         let r = launch("wayland", p);
+        // In the desktop session of CI the display must be there (see above).
+        if std::env::var("SAM_REQUIRE_DESKTOP").as_deref() == Ok("1") {
+            assert!(
+                std::env::var("WAYLAND_DISPLAY").is_ok_and(|d| runtime_has(&d)),
+                "SAM_REQUIRE_DESKTOP=1, but there is no Wayland display"
+            );
+        }
         if std::env::var("WAYLAND_DISPLAY").is_ok_and(|d| runtime_has(&d)) {
             assert_eq!(r["WAYLAND"], "yes");
         }

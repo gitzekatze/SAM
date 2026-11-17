@@ -285,7 +285,8 @@ jobs:
           sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
             libgtk-4-dev libadwaita-1-dev pkg-config \
             bubblewrap xdg-dbus-proxy passt squashfs-tools python3 gettext dbus \
-            kwin-wayland at-spi2-core python3-gi gir1.2-atspi-2.0 locales adwaita-icon-theme
+            kwin-wayland at-spi2-core python3-gi gir1.2-atspi-2.0 locales adwaita-icon-theme \
+            pipewire pipewire-pulse libglib2.0-bin
           # Older Ubuntu packages put KWin's virtual backend in its own package.
           sudo apt-get install -y -q --no-install-recommends kwin-wayland-backend-virtual 2>/dev/null || true
           sudo locale-gen en_US.UTF-8
@@ -320,6 +321,14 @@ jobs:
             sh tests/gui/$t-atspi.sh "$RUNNER_TEMP/gui-$t" || rc=1
           done
           exit $rc
+
+      # The sandbox tests inside this desktop session: a hidden KWin with
+      # PipeWire and its PulseAudio server, in the session's own folders. The
+      # matrix must find Wayland and sound here (SAM_REQUIRE_DESKTOP/SOUND),
+      # so the display and sound checks that bare CI machines skip run on
+      # every change.
+      - name: Sandbox tests in a desktop session (Wayland, sound)
+        run: SAM_SESSION=kwin SAM_TEST_AUDIO=1 sh tests/gui/desktop-sandbox.sh "$RUNNER_TEMP/gui-desktop"
 
       - name: Window test logs
         if: failure()
