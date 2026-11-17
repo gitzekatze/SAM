@@ -51,8 +51,10 @@ All of them run in CI and block a merge when they fail:
   pull request's code with the repository's secrets, and no text from
   issues or pull requests goes straight into a shell command.
 
-A weakening, a change to a protected test, or a new dependency passes only
-when the owner sets the label **`owner-approved`** on the pull request.
+A weakening, a protected test with a line removed or changed (adding to it
+is fine), or a new dependency passes only when the owner sets the label
+**`owner-approved`** on the pull request. Nothing else needs the label: the
+risk class decides who merges, not whether the label is needed.
 Only maintainers can set labels. (GitHub does not let anyone approve their
 own pull request, so a label is used instead of a review.)
 
@@ -89,8 +91,8 @@ variables → Actions → Variables):
 | `on` | as the current phase allows |
 | not set | like `proposals` |
 
-Today the early-warning and upstream-watch workflows read it; every
-automation workflow added later must read it first.
+Today the early-warning, upstream-watch and weekly-upkeep workflows read
+it; every automation workflow added later must read it first.
 
 ## What automation is trusted with — and what never
 

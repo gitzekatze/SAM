@@ -9,6 +9,19 @@ version.
 
 ## Unreleased
 
+### Slow checks run every week on their own
+
+- Every Saturday, mutation testing of the week's Rust code names each change
+  no test notices by its SAM function, and a long fuzz run (100,000 rounds
+  per parser) tries new inputs with the week's seed (`SAM_FUZZ_SEED`).
+- One issue, **Weekly summary**, is updated every week instead of opening
+  new ones: what needs the owner at the top, then the mutation and fuzz
+  results, whether the generated pages match the code, open pull requests
+  and the week's merges and reverts, open early-warning and upstream issues,
+  the contract coverage and the kill switch. A comment notifies the owner
+  only when something needs them. No AI is involved; the kill switch stops
+  it all.
+
 ### Tests give the same result on every computer
 
 - Tests that start sandboxes no longer use the runtime folder, display,

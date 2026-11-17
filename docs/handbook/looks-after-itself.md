@@ -16,6 +16,7 @@ flowchart LR
     CI["CI, every change"]
     EW["Early warning, nightly"]
     UW["Upstream watch, weekly"]
+    WU["Weekly upkeep: mutation, fuzzing"]
   end
   subgraph you["Where you come in"]
     direction TB
@@ -29,6 +30,7 @@ flowchart LR
   CI --> AP
   EW --> IS
   UW --> IS
+  WU --> WS["Weekly summary issue"]
 ```
 
 ## What runs without you
@@ -40,6 +42,7 @@ flowchart LR
 | **The contract verifier** | every pull request | whether a change weakens a promise ("Needs your approval") |
 | **The early warning** | every night | a contract broken on a distribution users will get in weeks or months: one issue, closed by itself when it is fixed |
 | **The upstream watch** | every Monday | release notes that mention what SAM relies on |
+| **The weekly upkeep** | every Saturday | mutation testing of the week's code (changes no test notices, by SAM function) and a long fuzz run with new inputs; all of it, with everything else that stands, in the issue **Weekly summary** |
 | **What changed outside** | when a run on `main` fails | the versions and contract states that differ from the last green run |
 | **Dependabot** | weekly | updates of SAM's building blocks as pull requests |
 
@@ -55,8 +58,9 @@ flowchart LR
 
 ## Your weekly routine (about 15 minutes)
 
-1. **GitHub → Issues:** anything labelled `early-warning` or
-   `upstream-change`? Open it; it says which contract, what was found and
+1. **GitHub → Issues → Weekly summary:** its top, "Needs your attention",
+   lists what needs you this week (or says "Nothing"). An `early-warning` or
+   `upstream-change` issue it names says which contract, what was found and
    what to do.
 2. **Pull requests:** merge the green ones; for a red "Needs your approval",
    read its summary and decide.
