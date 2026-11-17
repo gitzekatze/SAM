@@ -81,7 +81,7 @@ repository.
   and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-15<!-- /fact -->](docs/reports/real-apps-2026-11-15.md)).
-- **<!-- fact:tests -->279<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
+- **<!-- fact:tests -->284<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
 - **Every security promise is attacked from inside a real sandbox.**
@@ -127,7 +127,7 @@ report it privately ([SECURITY.md](SECURITY.md)).
 | Bubblewrap | Private home per app, read-only system, no capabilities, private `/dev/shm`. There is no unsandboxed mode: if Bubblewrap cannot run, SAM says why and starts nothing. |
 | Landlock | Writes are allowed only where the profile allows them, even if a mount were wrong. Also blocks abstract sockets outside the sandbox (kernel 6.12+). |
 | Syscall filter | A baseline filter, on by default (similar to Flatpak's), plus an optional strict filter. |
-| D-Bus filter | Session and system bus go through `xdg-dbus-proxy`; the app sees only the names it is allowed to. |
+| D-Bus filter | The session bus goes through `xdg-dbus-proxy`; the app sees only the names it is allowed to. The system bus cannot be filtered, so it is either hidden or fully open (dangerous, off by default). |
 | Portal filter | Opening links, file dialogs, notifications and printing work. Screenshots, autostart, menu-entry installation, location and remote desktop are blocked. |
 
 ### Permissions
@@ -155,8 +155,9 @@ warning before they apply.
   wrong, such as logins that need a browser or files that stay inside the
   sandbox.
 - **Log analysis:** common error messages turn into one-click fixes.
-- **Repair steps:** *Try the next fix and start*, one step at a time, with
-  *Undo all*.
+- **Repair steps:** switches that appear after a failed start, one step at a
+  time; each says what protection it costs, and *Switch off all repair
+  steps* undoes them.
 - **Compatibility mode:** broader access for stubborn apps. Turning it off
   restores your previous settings.
 - **Built in:** links open in your normal browser; DNS works with the usual

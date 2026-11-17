@@ -44,8 +44,11 @@ proves it, is in [threat-model.md](threat-model.md).
 
 ### Processes
 
-- **Namespaces:** user, PID, IPC, UTS and cgroup are always separate. The
-  network is separate too, unless the app has full network access.
+- **Namespaces:** user, PID, UTS and cgroup are always separate. IPC is
+  separate too, except for apps with X11 access: X11's shared-memory
+  extension needs the X server to see the app's shared memory (Flatpak
+  does the same). X11 itself already exposes far more than that. The
+  network is separate unless the app has full network access.
 - **No privileges:** all capabilities dropped, and the sandbox ends when
   SAM's runner ends.
 - **Never your terminal:** an app started without a terminal gets a new
@@ -258,7 +261,7 @@ or Flatpak to start a program outside the sandbox. So inside every sandbox:
 
 ## The sandbox check
 
-`sam-jail verify`, or *Check* in the window, proves that the settings apply.
+`sam-jail verify`, or **Test** in the window, proves that the settings apply.
 
 1. It takes the same path as a real start, but SAM's runner starts a test
    program instead of the app, after Landlock and the syscall filter are in

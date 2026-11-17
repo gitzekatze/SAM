@@ -43,14 +43,14 @@ pub(crate) fn badge_str(b: Badge) -> String {
     paint(b.label(), code)
 }
 
+/// Risk in the window's words (Harmless / Think twice / Dangerous), colored.
 pub(crate) fn risk_str(r: RiskLevel) -> String {
     let code = match r {
-        RiskLevel::Low => "32",
-        RiskLevel::Medium => "33",
-        RiskLevel::High => "31",
+        RiskLevel::Low | RiskLevel::Medium => "32",
+        RiskLevel::High => "33",
         RiskLevel::Dangerous => "1;31",
     };
-    paint(r.label(), code)
+    paint(&r.words(), code)
 }
 
 pub(crate) fn sev_str(s: Severity) -> String {

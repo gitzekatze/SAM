@@ -9,17 +9,17 @@
 >
 > Test results are from the newest version report (2026-11-15 17:32:32).
 
-**40 functions:** 22 proven by passing tests, 17 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 279 tests in all.
+**40 functions:** 20 proven by passing tests, 19 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 284 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
 | 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 5 | ✅ |
-| 2 | [SAM recognizes every AppImage format (type 2, SquashFS, DwarFS) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 7 | ✅ |
+| 2 | [SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image; the old, rare type 1 is unpacked with bsdtar but not tested) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 9 | ✅ 🆕 2 new tests since the report |
 | 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 19 | ✅ 🆕 6 new tests since the report |
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 6 | ✅ |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 6 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 15 | ✅ |
-| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 9 | ✅ 🆕 1 new test since the report |
+| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 10 | ✅ 🆕 2 new tests since the report |
 | 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 18 | ✅ |
 | 9 | [Things an app printed can never grant it access on their own; SAM always asks.](#9) | sam-runner | 2 | ✅ 🆕 1 new test since the report |
 | 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox | 8 | ✅ 🆕 1 new test since the report |
@@ -32,9 +32,9 @@
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 11 | ✅ |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 10 | ✅ |
-| 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 5 | ✅ 🆕 3 new tests since the report |
+| 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 6 | ✅ 🆕 4 new tests since the report |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 6 | ✅ 🆕 2 new tests since the report |
-| 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 2 | ✅ |
+| 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 3 | ✅ 🆕 1 new test since the report |
 | 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 6 | ✅ |
 | 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | sam-runner, sam-sandbox | 7 | ✅ |
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 9 | ✅ 🆕 1 new test since the report |
@@ -86,17 +86,19 @@ The components are those of the [architecture](architecture.md#level-3-component
 **Code:** [`sam-intake/src/peek.rs`](../crates/sam-intake/src/peek.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-intake/src/id.rs`](../crates/sam-intake/src/id.rs), [`sam-runner/src/ops/overview.rs`](../crates/sam-runner/src/ops/overview.rs), [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs)
 
 <a id="2"></a>
-### 2. SAM recognizes every AppImage format (type 2, SquashFS, DwarFS) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.
+### 2. SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image; the old, rare type 1 is unpacked with bsdtar but not tested) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.
 
 | Test | Promise | Result |
 |---|---|---|
-| [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L310) | An ordinary program file is not taken for an AppImage. | ✅ |
-| [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L318) | A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | ✅ |
-| [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L345) | An AppImage with a DwarFS image instead of squashfs is recognized. | ✅ |
-| [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L366) | A file that is not an ELF program is not taken for an AppImage. | ✅ |
-| [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L381) | An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | ✅ |
+| [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L328) | An ordinary program file is not taken for an AppImage. | ✅ |
+| [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L336) | A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | ✅ |
+| [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L401) | An AppImage with a DwarFS image instead of squashfs is recognized. | ✅ |
+| [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L422) | A file that is not an ELF program is not taken for an AppImage. | ✅ |
+| [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L437) | An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | ✅ |
 | [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L233) | Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | ✅ |
 | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L14) | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | ✅ |
+| [`an_appimage_shorter_than_its_image_is_incomplete`](../crates/sam-detect/src/appimage.rs#L364) | A download that broke off is recognized: the file is shorter than its SquashFS image says, and a complete one is not. | 🆕 new |
+| [`a_download_that_broke_off_is_refused_and_nothing_is_kept`](../crates/sam-runner/tests/incomplete.rs#L9) | A download that broke off is refused and nothing is kept. | 🆕 new |
 
 **Code:** [`sam-detect/src/appimage.rs`](../crates/sam-detect/src/appimage.rs), [`sam-intake/src/extract.rs`](../crates/sam-intake/src/extract.rs), [`sam-runner/src/ops/add.rs`](../crates/sam-runner/src/ops/add.rs)
 
@@ -189,15 +191,16 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`the_strictest_window_profile_is_low_risk`](../crates/sam-core/src/risk.rs#L521) | The strictest window profile is low risk. | ✅ |
-| [`full_home_is_dangerous`](../crates/sam-core/src/risk.rs#L528) | Full home access counts as dangerous, and as think twice when it is read-only. | ✅ |
-| [`network_and_x11_high`](../crates/sam-core/src/risk.rs#L538) | Full network together with X11 makes the settings think twice (high risk). | ✅ |
+| [`the_strictest_window_profile_is_low_risk`](../crates/sam-core/src/risk.rs#L553) | The strictest window profile is low risk. | ✅ |
+| [`full_home_is_dangerous`](../crates/sam-core/src/risk.rs#L560) | Full home access counts as dangerous, and as think twice when it is read-only. | ✅ |
+| [`network_and_x11_high`](../crates/sam-core/src/risk.rs#L570) | Full network together with X11 makes the settings think twice (high risk). | ✅ |
 | [`each_dangerous_setting_produces_its_warning`](../crates/sam-core/src/warnings.rs#L303) | Dangerous settings (X11, full home, system bus, network an app does not need) each produce a warning. | ✅ |
 | [`strict_has_no_danger`](../crates/sam-core/src/warnings.rs#L325) | SAM's strictest window profile produces no danger warning. | ✅ |
 | [`x11_warning_can_be_disabled`](../crates/sam-core/src/warnings.rs#L332) | The X11 warning disappears when the user turns it off in the preferences. | ✅ |
 | [`tags_and_the_risk_list_use_the_same_words`](../crates/sam-profile/src/tags.rs#L262) | One name per permission: where the risk list names a permission that also has a tag, both use the same words (regression: "Audio" vs "Sound", "GPU" vs "GPU acceleration", "Show in folder"). | ✅ |
 | [`folder_explanations_name_the_path`](../crates/sam-gtk/src/all_perms.rs#L1429) | Personal folders explain where they are; other permissions keep their description unchanged. | ✅ |
-| [`the_full_session_bus_is_rated_dangerous`](../crates/sam-core/src/risk.rs#L510) | SAM's strictest window profile counts as low risk. | 🆕 new |
+| [`risk_has_the_same_three_words_everywhere`](../crates/sam-core/src/risk.rs#L530) | SAM's strictest window profile counts as low risk. | 🆕 new |
+| [`the_full_session_bus_is_rated_dangerous`](../crates/sam-core/src/risk.rs#L542) | The full session bus reaches systemd, which can start programs outside the sandbox, so it is rated like allowing systemd by name. | 🆕 new |
 
 **Code:** [`sam-core/src/permissions.rs`](../crates/sam-core/src/permissions.rs), [`sam-core/src/risk.rs`](../crates/sam-core/src/risk.rs), [`sam-core/src/warnings.rs`](../crates/sam-core/src/warnings.rs), [`sam-gtk/src/all_perms.rs`](../crates/sam-gtk/src/all_perms.rs)
 
@@ -262,7 +265,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`key_and_system_folders_count_as_sensitive`](../crates/sam-core/src/risk.rs#L549) | Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not. | ✅ |
+| [`key_and_system_folders_count_as_sensitive`](../crates/sam-core/src/risk.rs#L581) | Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not. | ✅ |
 | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) | Every security promise holds inside a real sandbox: each breakout attempt fails. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L152) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
 | [`credential_files_and_folders_in_the_home_are_masked`](../crates/sam-sandbox/src/lib.rs#L2248) | With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | ✅ |
@@ -280,8 +283,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`localhost_network_leaves_netns_to_pasta`](../crates/sam-sandbox/src/lib.rs#L1972) | With "this computer only", the network namespace is left to pasta. | ✅ |
 | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L115) | With "this computer only", the app reaches only the ports on this computer the user lists. | ✅ |
 | [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L101) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
-| [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L1309) | A pasta command ending in the separator is refused not a panic. | 🆕 new |
-| [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L1316) | The status shell goes between the separator and the program. | 🆕 new |
+| [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L1414) | A pasta command ending in the separator is refused not a panic. | 🆕 new |
+| [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L1421) | The status shell goes between the separator and the program. | 🆕 new |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/netns.rs`](../crates/sam-runner/src/netns.rs)
 
@@ -404,9 +407,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L562) | The sandbox check tells a real folder of the user from a private stand-in. | ✅ |
 | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L22) | The sandbox check passes when the settings apply, and catches a setting that does not apply. | ✅ |
-| [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L1278) | A wanted layer that was not applied is reported missing. | 🆕 new |
+| [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L1383) | A wanted layer that was not applied is reported missing. | 🆕 new |
 | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) | A start without the helper reports its missing layers. | 🆕 new |
 | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L727) | A start without a wanted protection layer is marked. | 🆕 new |
+| [`sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`](../crates/sam-jail-cli/tests/start_check.rs#L49) | Sam jail run refuses a sandbox whose settings do not apply. | 🆕 new |
 
 **Code:** [`sam-runner/src/verify.rs`](../crates/sam-runner/src/verify.rs), [`sam-runner/src/probe.rs`](../crates/sam-runner/src/probe.rs)
 
@@ -435,6 +439,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`the_newest_log_survives_pruning_within_one_second`](../crates/sam-storage/src/lib.rs#L597) | With more launches in one second than logs are kept, the newest log survives the pruning after its launch (regression: on a fast machine a pruned name was reused, sorted as the oldest and deleted at once). | ✅ |
 | [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L715) | The newest log is found even when two logs start within the same second. | ✅ |
+| [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L1332) | An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | 🆕 new |
 
 **Code:** [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs)
 
@@ -445,9 +450,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L1338) | Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | ✅ |
-| [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L1375) | Bubblewrap setup errors are told apart from errors of the app itself. | ✅ |
-| [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L1388) | A start is judged by whether Bubblewrap announced the app, not by what the app printed. | ✅ |
+| [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L1443) | Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | ✅ |
+| [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L1480) | Bubblewrap setup errors are told apart from errors of the app itself. | ✅ |
+| [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L1501) | A start is judged by whether Bubblewrap announced the app, not by what the app printed. | ✅ |
 | [`own_name_requests_become_a_repair`](../crates/sam-runner/src/repair.rs#L778) | An app that fails to register its bus name gets a repair step that allows exactly that name. | ✅ |
 | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L810) | Error messages in an app's output are mapped to the repair step that fixes them. | ✅ |
 | [`fake_bwrap_error_is_not_a_sandbox_failure`](../crates/sam-runner/tests/adversarial.rs#L21) | H1: an app printing a fake Bubblewrap error is not a sandbox failure. | ✅ |

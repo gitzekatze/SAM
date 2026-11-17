@@ -86,7 +86,8 @@ off is expected off). Same `PATH` requirement as above.
 By hand: `sam-jail verify <app>` on a few real apps should report every check
 as passed; `sam-jail config set security.check_before_launch true`, then a
 raw `--ro-bind` of a hidden folder in `advanced.extra_bwrap_args`, must make
-`sam-jail run` refuse to start with "sandbox check failed".
+`sam-jail run` refuse to start with "sandbox check failed". The same is
+tested automatically by `sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`.
 
 ## 0a. Robustness and removal
 
@@ -181,11 +182,11 @@ Electron app, Qt app, GTK app):
 ## 6. Updates and staleness
 
 - [ ] Replace an AppImage with a newer version. `sam-jail refresh` reports it
-      as stale and the GUI shows the *Stale* badge.
+      as changed and the GUI shows the *Changed* badge.
 - [ ] Unpack Again. Your own settings are kept, and new needs are listed under
       "Update needs new permissions".
 - [ ] Move the AppImage. The overview shows it as a moved copy;
-      *Reconnect* or *Locate…* fixes the path.
+      *Locate…* fixes the path.
 
 ## 7. Diagnostics
 
@@ -202,7 +203,7 @@ Electron app, Qt app, GTK app):
 
 - [ ] The overview lists AppImages from the scan folders under *Not sandboxed*,
       with names and icons, before anything is unpacked.
-- [ ] Downloads is only listed after *Settings → Include the Downloads folder*.
+- [ ] Downloads is only listed after **Add Downloads** on the main page, which adds it as an ordinary location.
 - [ ] *Create sandbox* on an app with an AppImageLauncher/Gear Lever menu entry
       asks to hide it. *Hide it* removes it from the KDE menu; *Remove sandbox*
       brings it back unchanged.
@@ -222,7 +223,7 @@ Electron app, Qt app, GTK app):
 - [ ] The remove dialog has three choices, none preselected; the button names the chosen action (*Free Space*, *Remove Sandbox*, *Delete Everything*).
 - [ ] With the old "Also search the Downloads folder" switch on, Downloads appears once as an ordinary location; otherwise *Add Downloads* adds it.
 - [ ] While a sandboxed app runs, its page shows "… is running. Changed settings apply the next time it starts."; **Restart** closes it and starts it again; the bar disappears a few seconds after the app is closed.
-- [ ] The round trash button left of **Check** asks before removing a sandbox; every header button explains itself on hover.
+- [ ] The round trash button left of **Test** asks before removing a sandbox; every header button explains itself on hover.
 - [ ] A sandboxed Wayland app shows its own icon and name in the taskbar (KDE Plasma).
 - [ ] *Permission Manager*: a tag filter cycles has / has not / off; Shift-click selects a range; turning the internet off for several apps shows one toast with Undo, and Undo restores every app.
 - [ ] *Copy bug report* produces a report without your username or home path.
@@ -235,7 +236,7 @@ Electron app, Qt app, GTK app):
 - [ ] *Writable app folder*: a portable app keeps its settings; the extracted
       copy under `extracted/` is unchanged.
 - [ ] An app that fails at start shows a notification with the likely cause,
-      and *Details & Repair → Try the next fix and start* fixes it.
+      and its **Fix It** button leads to the app's *Advice*, where the fix and the repair steps (switches) make it start.
 - [ ] `sam-jail selftest` lists every sandboxed app as ✓ or ✗.
 - [ ] *This computer only*: the log shows `# enforced: landlock …`.
 - [ ] After using SAM, nothing named `io.github.gitzekatze.SAM` exists under

@@ -63,7 +63,7 @@ Bubblewrap builds the sandbox with these options and behaves as documented: sepa
 - **SAM functions that rely on it:** [10](functions.md#10), [11](functions.md#11), [19](functions.md#19), [20](functions.md#20)
 - **Quick check:** `bwrap-runs`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (fully)
-- **Checked first by:** `breakout.rs`, `evil.rs`, `layers.rs`, `matrix.rs`, `overlay_fallback.rs`, `sandbox.rs`, `stop.rs`, `teardown.rs`, `unpack.rs`, `verify.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `layers.rs`, `matrix.rs`, `overlay_fallback.rs`, `sandbox.rs`, `start_check.rs`, `stop.rs`, `teardown.rs`, `unpack.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:bwrap`, `path:/usr/bin/bwrap`, `option:--unshare-user`, `option:--unshare-pid`, `option:--unshare-uts`, `option:--unshare-ipc`, `option:--unshare-cgroup-try`, `option:--unshare-net`, `option:--unshare-all`, `option:--uid`, `option:--gid`, `option:--die-with-parent`, `option:--new-session`, `option:--cap-drop`, `option:--clearenv`, `option:--setenv`, `option:--chdir`, `option:--proc`, `option:--dev`, `option:--tmpfs`, `option:--dir`, `option:--perms`, `option:--symlink`, `option:--bind`, `option:--bind-try`, `option:--ro-bind`, `option:--ro-bind-try`, `option:--dev-bind`, `option:--dev-bind-try`, `option:--remount-ro`, `option:--hostname`, `option:--json-status-fd`, `option:--seccomp`, `option:--version`, `option:-V`
 - **If it breaks:** Read the Bubblewrap release notes for the options above. A renamed option: build the old or new form from the version `bwrap --version` reports (sam-sandbox). A changed behavior: the breakout and matrix tests name the permission; fix the command in sam-sandbox/src/lib.rs.
 
@@ -120,7 +120,7 @@ xdg-dbus-proxy filters the session bus by the --talk, --own, --call and --broadc
 
 ## unpack-tools
 
-unsquashfs and bsdtar unpack SquashFS images with these options, without keeping owners, ACLs or extended attributes.
+unsquashfs and bsdtar unpack SquashFS images (and bsdtar the ISO 9660 image of an old Type 1 AppImage) with these options, without keeping owners, ACLs or extended attributes.
 
 - **Component:** squashfs-tools (unsquashfs) ([releases](https://github.com/plougher/squashfs-tools/releases))
 - **When it breaks:** SAM falls back to less access.
