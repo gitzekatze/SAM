@@ -119,6 +119,32 @@ fn killing_the_launcher_ends_the_sandbox(network: &str) {
         "the sandbox outlived its launcher ({network}): {:?}",
         with_marker(&marker)
     );
+    // No clean-up code of SAM ran, so the launch's runtime folder is still
+    // there. SAM must not take it for a running app, and removing the app
+    // leaves nothing behind in the runtime folder (before, every test run
+    // left two folders there; in a plain `cargo test`, the real one).
+    let info = ok(sam(root).args(["--json", "info", &id]));
+    let running = info
+        .lines()
+        .last()
+        .and_then(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .and_then(|v| v["data"]["running"].as_u64());
+    assert_eq!(
+        running,
+        Some(0),
+        "a killed launch still counts as running ({network})"
+    );
+    ok(sam(root).args(["remove", &id]));
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|v| !v.is_empty())
+        .map(|v| Path::new(&v).join("sam"))
+        .unwrap_or_else(|| root.join("data/runtime"))
+        .join(&id);
+    assert!(
+        !runtime.exists(),
+        "removing the app left {} behind ({network})",
+        runtime.display()
+    );
 }
 
 #[test]

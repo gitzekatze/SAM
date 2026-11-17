@@ -53,15 +53,19 @@ mo:
 pot:
 	python3 scripts/i18n.py extract
 
+# A test that cannot run here (no Bubblewrap, for example) is listed at the
+# end instead of passing silently.
 test:
-	$(CARGO) test --workspace --locked
+	@mkdir -p target && : > target/test-skips.log
+	SAM_SKIP_LOG="$(CURDIR)/target/test-skips.log" $(CARGO) test --workspace --locked
+	@python3 scripts/skips.py target/test-skips.log
 
 # Mutation testing of only the code changed since main (or BASE=…): every
-# deliberate change no test notices is a missing test.
+# deliberate change no test notices is a missing test. The result is given
+# per SAM function (scripts/mutants.sh explains its settings).
 BASE ?= origin/main
 mutants-diff:
-	git diff $(BASE) -- 'crates/*.rs' 'crates/**/*.rs' > target/mutants.diff
-	cargo mutants --in-diff target/mutants.diff --test-workspace=true -j 4 --timeout 120 -o target/mutants-diff
+	scripts/mutants.sh -o target/mutants-diff --diff $(BASE)
 
 # The catalog of all tests (docs/test-library.md).
 # The generated pages about the tests: the test library and the function

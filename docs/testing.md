@@ -14,7 +14,7 @@ checks a person still does by hand.
 | Window tests | open every page, and click through the window like a person (`tests/gui/`) | `tests/gui/smoke.sh OUTDIR`, `tests/gui/flow-atspi.sh OUTDIR` | every change |
 | Upgrade test | data from the previous version still works (`tests/upgrade/run.sh`) | `tests/upgrade/run.sh vX.Y.Z WORKDIR` | before every release |
 | Real AppImages | 120 real AppImages through SAM's whole flow (`tests/real-apps/`) | see below | before every release |
-| Mutation testing | deliberate mistakes in the code that the tests must notice | `make mutants-diff`; `cargo mutants` for whole parts | per change for security code; whole parts before every release |
+| Mutation testing | deliberate mistakes in the code that the tests must notice | `make mutants-diff`; `scripts/mutants.sh FILE…` for whole parts (never plain `cargo mutants`: its settings miss the sandbox tests) | per change for security code; whole parts before every release |
 | Install tests | the finished AppImage on fresh distributions | `make test-shipped APPIMAGE=…` | every release build |
 | Contract checks | SAM's assumptions about the outside world hold here (`sam-jail doctor --contracts`), and the code uses nothing no contract covers (`scripts/contract-map.py`) | see [contracts](contracts.md) | every change |
 | Early warning | the contracts and sandbox tests on tomorrow's distributions (`tests/canary/`) | Actions → Early warning | every night |
@@ -73,15 +73,17 @@ Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu
 ## 0. Automated permission matrix
 
 `cargo test -p sam-runner --test matrix` starts a probe AppImage once per
-permission and checks from inside the sandbox what it can see. Put
-`target/debug` on `PATH` (after `cargo build -p sam-jail-cli`) so Landlock and
-seccomp are applied too; `SAM_MATRIX_DEBUG=1` with `-- --nocapture` prints
-every launch log.
+permission and checks from inside the sandbox what it can see. Build
+SAM's helper first (`cargo build -p sam-jail-cli`, or `cargo test --workspace`
+builds it), so Landlock and seccomp are applied too: tests find the helper of
+their own build without `PATH`. `SAM_MATRIX_DEBUG=1` with `-- --nocapture`
+prints every launch log. With `SAM_REQUIRE_SANDBOX=1` (as in CI) a test that
+cannot run fails instead of skipping.
 
 `cargo test -p sam-runner --test verify` covers the sandbox check
 (`sam-jail verify`): it passes for a correct sandbox, reports a folder leaked
 through a raw Bubblewrap argument, and follows the settings (syscall filter
-off is expected off). Same `PATH` requirement as above.
+off is expected off). It needs the helper, as above.
 
 By hand: `sam-jail verify <app>` on a few real apps should report every check
 as passed; `sam-jail config set security.check_before_launch true`, then a
