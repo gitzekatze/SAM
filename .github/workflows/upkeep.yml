@@ -3,9 +3,11 @@
 #     change no test notices is named with its SAM function.
 #   - A long fuzz run of the parsers of untrusted data, with this week's seed,
 #     so every week tries new inputs.
-# Results become issues labelled "weekly-upkeep" only when something was
-# found (scripts/upkeep-report.py): updated instead of duplicated, closed
-# when gone. Never required for merging.
+#   - Whether the generated pages still match the code.
+# Everything goes into one issue, "Weekly summary" (scripts/weekly-summary.py,
+# the automation plan's section 8), updated every week instead of a new one;
+# a comment notifies the owner only when something needs them. No AI is
+# involved. Never required for merging.
 name: Weekly upkeep
 
 on:
@@ -120,27 +122,37 @@ jobs:
 
   report:
     needs: [mutants, fuzz]
-    # The kill switch: `off` opens and closes no issues.
+    # The kill switch: `off` writes no summary.
     if: always() && vars.SAM_AUTOMATION != 'off'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
       issues: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          # A week of history, for the reverts of the week.
+          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           pattern: upkeep-*
           path: artifacts
-      - name: Issues for what was found, closed for what is gone
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Generated pages against the code
         run: |
           mkdir -p results
+          for g in test-library function-map contract-map facts; do python3 "scripts/$g.py" > /dev/null; done
+          git status --porcelain -- docs README.md | awk '{print $2}' > results/drift.txt
+          cat results/drift.txt
+      - name: The weekly summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SAM_AUTOMATION: ${{ vars.SAM_AUTOMATION }}
+        run: |
           for part in mutants fuzz; do
             src=$(find "artifacts/upkeep-$part" -type d -path "*results/$part" 2>/dev/null | head -n1)
             mkdir -p "results/$part"
             [ -n "$src" ] && cp -r "$src/." "results/$part/" || true
           done
-          python3 scripts/upkeep-report.py results
+          python3 scripts/weekly-summary.py results

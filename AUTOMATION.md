@@ -91,8 +91,8 @@ variables → Actions → Variables):
 | `on` | as the current phase allows |
 | not set | like `proposals` |
 
-Today the early-warning and upstream-watch workflows read it; every
-automation workflow added later must read it first.
+Today the early-warning, upstream-watch and weekly-upkeep workflows read
+it; every automation workflow added later must read it first.
 
 ## What automation is trusted with — and what never
 

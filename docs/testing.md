@@ -18,7 +18,7 @@ checks a person still does by hand.
 | Install tests | the finished AppImage on fresh distributions | `make test-shipped APPIMAGE=…` | every release build |
 | Contract checks | SAM's assumptions about the outside world hold here (`sam-jail doctor --contracts`), and the code uses nothing no contract covers (`scripts/contract-map.py`) | see [contracts](contracts.md) | every change |
 | Early warning | the contracts and sandbox tests on tomorrow's distributions (`tests/canary/`) | Actions → Early warning | every night |
-| Weekly upkeep | mutation testing of last week's code, and a long fuzz run with the week's seed (`.github/workflows/upkeep.yml`) | Actions → Weekly upkeep | every week; issues only when something is found |
+| Weekly upkeep | mutation testing of last week's code, and a long fuzz run with the week's seed (`.github/workflows/upkeep.yml`) | Actions → Weekly upkeep | every week, in the issue **Weekly summary** |
 | Manual checks | what needs a real desktop or a person (this page, below) | by hand | before a release |
 
 The complete list of automated tests, each with the promise it keeps, is the
