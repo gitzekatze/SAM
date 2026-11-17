@@ -322,7 +322,7 @@ The compositor's socket is $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY (or an absolute WAY
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [14](functions.md#14)
 - **Quick check:** `wayland-socket`
-- **Tests:** `only_a_real_socket_counts_as_a_desktop_service`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: The sandbox tests in CI run without a Wayland session; only the window tests use one.)
+- **Tests:** `only_a_real_socket_counts_as_a_desktop_service`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Covered in CI since the sandbox tests also run in a hidden KWin session (tests/gui/desktop-sandbox.sh), where the permission matrix must find Wayland. XDG_SESSION_TYPE and an absolute WAYLAND_DISPLAY are not tested.)
 - **Covers:** `env:WAYLAND_DISPLAY`, `env:XDG_RUNTIME_DIR`, `env:XDG_SESSION_TYPE`
 - **If it breaks:** Without a socket the app gets no Wayland display (X11 only if allowed). Check how the desktop names its socket.
 
@@ -358,7 +358,7 @@ Sound goes through PipeWire's $XDG_RUNTIME_DIR/pipewire-0 or PulseAudio's pulse/
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [15](functions.md#15)
 - **Quick check:** `audio-sockets`
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: CI has no PipeWire or PulseAudio; sound is checked only where the computer has it.)
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: CI's desktop session (tests/gui/desktop-sandbox.sh) has PipeWire and PulseAudio, and the permission matrix must find both there. A PULSE_SERVER pointing elsewhere is not tested.)
 - **Covers:** `env:PULSE_SERVER`
 - **If it breaks:** A renamed socket means no sound in apps. Add the new name in host.rs (probe_sockets).
 
