@@ -70,7 +70,7 @@ id = 6
 area = "B"
 promise = "SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible."
 code = ["sam-profile/src/lib.rs", "sam-detect/src/elf.rs", "sam-detect/src/classify.rs"]
-tests = ["terminal_programs_get_no_display", "the_app_category_is_recognized_from_its_desktop_categories", "recommendations_fit_the_category", "what_sam_finds_in_the_app_adjusts_the_recommendation", "bundled_libraries_are_sorted_by_what_they_reach", "programs_that_load_graphics_at_run_time", "missing_optional_libraries_name_the_feature", "programs_that_choose_the_qt_platform", "qt_wayland_plugin_needs_its_client_library", "start_scripts_that_force_x11", "the_program_behind_a_start_script_is_found", "an_appimage_asking_for_admin_rights_is_unsafe_to_sandbox", "electron_markers_and_bundled_symlinks", "origin_relative_needed_paths", "the_c_library_version_an_app_needs_is_read"]
+tests = ["a_development_tool_gets_no_project_folder_on_its_own_word", "terminal_programs_get_no_display", "the_app_category_is_recognized_from_its_desktop_categories", "recommendations_fit_the_category", "what_sam_finds_in_the_app_adjusts_the_recommendation", "bundled_libraries_are_sorted_by_what_they_reach", "programs_that_load_graphics_at_run_time", "missing_optional_libraries_name_the_feature", "programs_that_choose_the_qt_platform", "qt_wayland_plugin_needs_its_client_library", "start_scripts_that_force_x11", "the_program_behind_a_start_script_is_found", "an_appimage_asking_for_admin_rights_is_unsafe_to_sandbox", "electron_markers_and_bundled_symlinks", "origin_relative_needed_paths", "the_c_library_version_an_app_needs_is_read"]
 checks = ["tests/real-apps/run.sh"]
 
 [[function]]
@@ -161,7 +161,7 @@ id = 17
 area = "C"
 promise = "The app can't type into your terminal."
 code = ["sam-runner/src/pty.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs"]
-tests = ["plain_text_survives_unfinished_and_odd_codes", "only_tmux_itself_counts_as_tmux_passthrough", "leading_zeros_do_not_smuggle_a_code", "a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code"]
+tests = ["output_shown_in_a_terminal_is_filtered_without_the_relay", "plain_text_survives_unfinished_and_odd_codes", "only_tmux_itself_counts_as_tmux_passthrough", "leading_zeros_do_not_smuggle_a_code", "a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code"]
 
 [[function]]
 id = 18
