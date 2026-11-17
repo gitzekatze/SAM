@@ -439,4 +439,8 @@ jobs:
             su tester -c "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all true"
             su tester -c "cd /src && cargo build --locked -p sam-jail-cli"
             su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 PATH=/src/target/debug:\$PATH cargo test --locked -p sam-runner --test breakout --test evil --test matrix --test sandbox --test overlay_fallback --test fuzz"
+            # The command-line sandbox tests too: the launcher-kill test with
+            # "This computer only" needs a pasta with --splice-only, which
+            # the Ubuntu runner lacks (there it is listed as not here).
+            su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 cargo test --locked -p sam-jail-cli --test teardown --test layers --test start_check"
           '

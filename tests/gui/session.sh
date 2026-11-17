@@ -32,6 +32,9 @@ unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS NO_AT_BRIDGE
 # GTK and the window read (and KWin writes) the home and XDG folders, so the
 # session gets its own; and one language (scripts that check another set it).
 if [ -z "${REAL_XDG:-}" ]; then
+    # Rust's own folders stay where they are (build tools, not desktop
+    # state): tests inside the session may run cargo.
+    export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
     export HOME="$out/home" XDG_CONFIG_HOME="$out/xdg-config" XDG_DATA_HOME="$out/xdg-data" \
         XDG_CACHE_HOME="$out/xdg-cache" XDG_STATE_HOME="$out/xdg-state" GSETTINGS_BACKEND=memory
     mkdir -p "$HOME" "$XDG_CONFIG_HOME/gtk-4.0" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME"
