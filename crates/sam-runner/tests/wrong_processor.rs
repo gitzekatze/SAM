@@ -14,7 +14,7 @@ use sam_runner::ops::{AddOptions, Sam};
 #[test]
 fn an_appimage_for_another_processor_gets_no_sandbox() {
     if sam_detect::appimage::host_arch() != "x86_64" {
-        eprintln!("skipping: the test changes an x86-64 AppImage into an ARM one");
+        sam_runner::contracts::not_here("the test changes an x86-64 AppImage into an ARM one");
         return;
     }
     let tmp = tempfile::tempdir().unwrap();

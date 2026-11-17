@@ -259,7 +259,7 @@ playbook = "A new AppImage type or payload format is reported as not an AppImage
 id = "updates-curl"
 component = "curl"
 assumes = "curl downloads over HTTPS only (also after redirects) with these limits, and fetches byte ranges for delta updates."
-covers = ["program:curl", "option:--proto", "option:--proto-redir", "option:--fail", "option:--location", "option:--max-redirs", "option:--max-time", "option:--max-filesize", "option:--connect-timeout", "option:--speed-limit", "option:--speed-time", "option:--silent", "option:--show-error", "option:--user-agent", "option:--header", "option:--range"]
+covers = ["program:curl", "option:--proto", "option:--proto-redir", "option:--fail", "option:--location", "option:--max-redirs", "option:--max-time", "option:--max-filesize", "option:--connect-timeout", "option:--speed-limit", "option:--speed-time", "option:--silent", "option:--show-error", "option:--user-agent", "option:--header", "option:--range", "option:--disable"]
 functions = [28, 34]
 probe = "program:curl"
 tests = ["updates_are_downloaded_over_https_only", "updates_download_only_changes_check_them_and_refuse_tampering"]
@@ -556,7 +556,7 @@ probe = "none"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox", "files_and_folders_named_on_the_command_line"]
 on_break = "feature"
 coverage = "partial"
-gaps = "Printing, the SSH agent and removable drives are not tested in CI."
+gaps = "Printing and removable drives are not tested in CI. The SSH agent is, everywhere: the permission matrix starts its own (sam_runner::testenv::PrivateServices)."
 playbook = "A moved socket or mount point only loses that feature."
 
 [[contract]]

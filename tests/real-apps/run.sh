@@ -21,7 +21,8 @@ R=$(cd "$WORK" && pwd)
 export R
 mkdir -p "$R/home/.config" "$R/home/Documents" "$R/home/Downloads" "$R/home/Pictures" "$R/home/Music" "$R/home/Videos" "$R/results" "$R/empty-services" "$R/tmp"
 printf '[Daemon]\nAutolock=false\nLockOnResume=false\nTimeout=0\n' > "$R/home/.config/kscreenlockerrc"
-run=/run/user/$(id -u)/samtest
+# Its own per run: two runs at once (two checkouts) never share it.
+run=/run/user/$(id -u)/samtest-$$
 cat > "$R/session.conf" <<CONF
 <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig><type>session</type><listen>unix:tmpdir=$run</listen><servicedir>$R/empty-services</servicedir>

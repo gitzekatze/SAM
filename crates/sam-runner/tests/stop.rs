@@ -3,6 +3,7 @@
 //! runner, and removal works afterwards. Apps are started through the real
 //! `sam-jail-run`, like menu entries and the window do. Uses a fake `$HOME`.
 //! Skipped when Bubblewrap cannot run here or SAM's helper is not found.
+//! Runs the same on every computer (testenv::isolate_command).
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
@@ -39,22 +40,25 @@ fn start(app: &Sam, root: &std::path::Path, name: &str, apprun: &str) -> (String
         .unwrap()
         .entry
         .id;
-    let child = Command::new(sam_runner::find_helper().unwrap())
-        .args(["--app-id", &id])
+    let mut cmd = Command::new(sam_runner::find_helper().unwrap());
+    cmd.args(["--app-id", &id])
         .env("SAM_CONFIG_DIR", &app.paths.config_dir)
         .env("SAM_DATA_DIR", &app.paths.data_dir)
         .env("SAM_APPLICATIONS_DIR", &app.paths.applications_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+        .stderr(Stdio::null());
+    // Its runtime folder is the one of `app`; the same run on every computer.
+    sam_runner::testenv::isolate_command(&mut cmd, &root.join("sam"));
+    let child = cmd.spawn().unwrap();
+    // The app says when its signal handler is set: a fixed pause was a guess
+    // that a slow computer could miss.
+    let ready = app.paths.app_home(&id).join("ready");
     let end = Instant::now() + Duration::from_secs(20);
-    while app.running(&id).is_empty() {
+    while app.running(&id).is_empty() || !ready.exists() {
         assert!(Instant::now() < end, "{name} did not start");
         std::thread::sleep(Duration::from_millis(100));
     }
-    std::thread::sleep(Duration::from_millis(500)); // let the trap be set up
     (id, child)
 }
 
@@ -79,7 +83,7 @@ fn stop_closes_running_apps() {
     let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
 
     // 1. An app that quits on SIGTERM gets the chance to do so.
-    let (id, mut child) = start(&app, root, "Polite", "#!/bin/sh\ntrap 'touch \"$HOME/quit-cleanly\"; exit 0' TERM\nwhile :; do sleep 0.2; done\n");
+    let (id, mut child) = start(&app, root, "Polite", "#!/bin/sh\ntrap 'touch \"$HOME/quit-cleanly\"; exit 0' TERM\ntouch \"$HOME/ready\"\nwhile :; do sleep 0.2; done\n");
     assert!(
         app.remove(&id, false).is_err(),
         "removal refuses while the app runs"
@@ -111,7 +115,7 @@ fn stop_closes_running_apps() {
         &app,
         root,
         "Stubborn",
-        "#!/bin/sh\ntrap '' TERM\nwhile :; do sleep 0.2; done\n",
+        "#!/bin/sh\ntrap '' TERM\ntouch \"$HOME/ready\"\nwhile :; do sleep 0.2; done\n",
     );
     assert_eq!(app.stop(&id).unwrap(), 1);
     assert!(app.running(&id).is_empty());
@@ -123,7 +127,7 @@ fn stop_closes_running_apps() {
         &app,
         root,
         "Short",
-        "#!/bin/sh\ntrap 'exit 0' TERM\nwhile :; do sleep 0.2; done\n",
+        "#!/bin/sh\ntrap 'exit 0' TERM\ntouch \"$HOME/ready\"\nwhile :; do sleep 0.2; done\n",
     );
     app.stop(&id).unwrap();
     child.wait().unwrap();

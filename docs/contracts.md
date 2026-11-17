@@ -164,7 +164,7 @@ curl downloads over HTTPS only (also after redirects) with these limits, and fet
 - **Quick check:** `program:curl`
 - **Tests:** `updates_are_downloaded_over_https_only`, `updates_download_only_changes_check_them_and_refuse_tampering` (fully)
 - **Checked first by:** `update_server.rs` (a broken contract stops these tests with its name)
-- **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--max-filesize`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`
+- **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--max-filesize`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`, `option:--disable`
 - **If it breaks:** No update is installed when curl fails; the old version stays. A changed option shows in the update server test.
 
 ## signatures-gnupg
@@ -442,7 +442,7 @@ Printing is at /run/cups/cups.sock, the SSH agent at SSH_AUTH_SOCK, and removabl
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [10](functions.md#10), [15](functions.md#15)
 - **Quick check:** none (only the tests below)
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `files_and_folders_named_on_the_command_line` (partly: Printing, the SSH agent and removable drives are not tested in CI.)
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `files_and_folders_named_on_the_command_line` (partly: Printing and removable drives are not tested in CI. The SSH agent is, everywhere: the permission matrix starts its own (sam_runner::testenv::PrivateServices).)
 - **Covers:** `path:/run/cups/cups.sock`, `env:SSH_AUTH_SOCK`, `path:/media`, `path:/media/`, `path:/mnt`, `path:/run/media`, `path:/run/media/`
 - **If it breaks:** A moved socket or mount point only loses that feature.
 

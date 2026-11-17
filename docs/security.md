@@ -310,8 +310,10 @@ source an AppImage names (GitHub, or the app's own server) and asks for the
 first few kilobytes of the update description. It runs only when you click
 *Check* or run `sam-jail updates`, or once a day when *Check for updates when
 SAM opens* is on (off by default). It uses `curl`, HTTPS only (redirects
-included), with a generic user agent; nothing about you or your apps is
-sent, and nothing is downloaded or installed.
+included), with a generic user agent and without reading a `~/.curlrc`
+(where a setting could switch off certificate checks or send requests
+elsewhere); nothing about you or your apps is sent, and nothing is
+downloaded or installed.
 
 **Updating** (*Update Now*, `sam-jail update`) is the one time SAM
 downloads a file, and only when you ask:

@@ -217,6 +217,8 @@ fn every_breakout_attempt_from_a_real_sandbox_fails() {
         .entry
         .id;
     let host = HostInfo::probe();
+    // The same run on every computer: not the person's display or session bus.
+    let host = sam_runner::testenv::test_host(host);
 
     // A host abstract socket, a secret in the environment, a /dev/shm token.
     let abstract_name = format!("sam-breakout-{}", std::process::id());

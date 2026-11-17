@@ -37,6 +37,9 @@ real=$(locale -a 2>/dev/null | grep -i '^en_' | head -n1)
 [ -n "$real" ] && export LANG="$real" && unset LC_ALL LC_MESSAGES LANGUAGE
 for lang in de ""; do
     "$bin/sam-jail" config set general.language "$lang" >/dev/null
+    # "" follows the system language: English here, whatever locale was
+    # found above (on a German-only computer it would be German).
+    if [ -z "$lang" ]; then export LANGUAGE=en; else unset LANGUAGE; fi
     name=${lang:-en}
     "$bin/sam-jail-gui" --screenshot "$out/language-$name.png" --size 1180x800 --delay 25000 --page language > "$out/language-$name.log" 2>&1 & gui=$!
     python3 -I "$here/tests/gui/flow-atspi.py" "$( [ "$lang" = de ] && echo german || echo english )" || rc=1
