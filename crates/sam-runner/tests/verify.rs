@@ -68,6 +68,14 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
         .map(|r| format!("{}: {}", r.title, r.observed))
         .collect();
     assert!(failed.is_empty(), "unexpected failures: {failed:?}");
+    // Shown when a check below fails: every result, to see why.
+    let shown: Vec<_> = out
+        .report
+        .results
+        .iter()
+        .map(|r| format!("{}={:?} ({})", r.title, r.ok, r.observed))
+        .collect();
+    eprintln!("sandbox check results: {shown:?}");
     assert!(out
         .report
         .results
