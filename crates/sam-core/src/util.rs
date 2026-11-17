@@ -263,6 +263,33 @@ pub fn hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    /// Times are shown without a date library: UTC dates exactly, local
+    /// times in the computer's own zone and shape (chrono was dropped when
+    /// it became unmaintained, RUSTSEC-2026-0543).
+    #[test]
+    fn times_are_shown_without_a_date_library() {
+        assert_eq!(format_utc_date(0), "Thu, 01 Jan 1970 00:00:00 +0000");
+        assert_eq!(
+            format_utc_date(1_794_885_600),
+            "Tue, 17 Nov 2026 03:20:00 +0000"
+        );
+        assert_eq!(
+            format_utc_date(951_782_400),
+            "Tue, 29 Feb 2000 00:00:00 +0000",
+            "a leap day"
+        );
+        let local = format_ts(1_794_885_600);
+        let b = local.as_bytes();
+        assert_eq!(b.len(), 19, "{local}");
+        assert!(local.starts_with("2026-11-1"), "{local}");
+        assert!(
+            b[4] == b'-' && b[7] == b'-' && b[10] == b' ' && b[13] == b':' && b[16] == b':',
+            "{local}"
+        );
+        let n = now();
+        assert!(n > 1_794_000_000 && n < 4_000_000_000, "{n}");
+    }
+
     /// A link to a device that never ends, or a file larger than the limit,
     /// cannot fill SAM's memory (regression: an AppImage whose AppRun links
     /// to /dev/zero made adding it grow without end).
