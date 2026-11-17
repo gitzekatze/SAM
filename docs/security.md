@@ -77,8 +77,11 @@ the sandbox, just before the app starts.
   example because SAM's helper `sam-jail-run` is missing, the app still
   starts in its Bubblewrap sandbox, but never silently: the command line
   warns, the app's page says which layer was missing, and the overview marks
-  the app *Protection missing* until a start has every layer again. A
-  syscall filter that fails to load stops the start.
+  the app *Protection missing* until a start has every layer again. The same
+  holds for the Wayland security context: when the desktop offers it but
+  making one fails, the app gets the normal Wayland socket, and the start is
+  marked as missing that layer. A syscall filter that fails to load stops
+  the start.
 - With kernel 6.12+ (Landlock ABI 6), connections to abstract sockets outside
   the sandbox are blocked too, for example XWayland's
   `@/tmp/.X11-unix/X0`.
@@ -252,6 +255,10 @@ warning.
 
 When the terminal window is closed (or SAM is asked to quit), SAM hangs up
 the app's terminal, so the app ends, and finishes the launch normally.
+
+An app started with its input redirected (from a script, or `< file`) gets
+no terminal of its own; its output still passes the same filter whenever it
+is shown in a terminal.
 
 **Not covered:** output that misleads you (a fake prompt, a link whose text
 hides where it goes, a fake "sudo" password question: the app cannot run

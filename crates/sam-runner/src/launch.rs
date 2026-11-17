@@ -60,6 +60,9 @@ pub struct Prepared {
     proxy: Option<DbusProxy>,
     /// Whether the app's Wayland socket carries a security context.
     pub wayland_context: bool,
+    /// The compositor offers security contexts, but making one failed: the
+    /// app got the normal socket. Reported as a missing layer.
+    pub wayland_context_failed: bool,
     wayland: Option<crate::wayland_ctx::WaylandContext>,
     _runtime: RuntimeDir,
 }
@@ -305,6 +308,7 @@ pub fn prepare(
 
     let mut proxy = None;
     let mut wayland = None;
+    let mut wayland_context_failed = false;
     let mut landlock = false;
     let mut seccomp = false;
     let wanted_landlock: bool;
@@ -361,7 +365,10 @@ pub fn prepare(
                         "Wayland functions not restricted",
                         "This desktop does not support Wayland security contexts, so the app can use every Wayland function it offers, including privileged ones some desktops provide (clipboard history, screen capture).",
                     )),
-                    Err(e) => warnings.push(Warning::warn("wayland-context-failed", "Wayland security context failed", sam_core::i18n::trf("{error}; the app uses the normal Wayland socket", &[("error", &format!("{e:#}"))]))),
+                    Err(e) => {
+                        wayland_context_failed = true;
+                        warnings.push(Warning::warn("wayland-context-failed", "Wayland security context failed", sam_core::i18n::trf("{error}; the app uses the normal Wayland socket", &[("error", &format!("{e:#}"))])));
+                    }
                 }
             }
         }
@@ -435,6 +442,7 @@ pub fn prepare(
         terminal,
         proxy,
         wayland_context,
+        wayland_context_failed,
         wayland,
         _runtime: runtime_guard,
     })
@@ -777,10 +785,11 @@ pub fn run(
         success: outcome.success,
         sandbox_failure: outcome.sandbox_failure,
         setup_failed: outcome.setup_failed,
-        missing_layers: missing_layers(
+        missing_layers: layers_missing(
             enforcement.as_deref(),
             prepared.wanted_landlock,
             prepared.wanted_seccomp,
+            prepared.wayland_context_failed,
         ),
         enforcement,
         log_file: Some(log_path),
@@ -973,6 +982,22 @@ pub fn missing_layers(enforcement: Option<&str>, landlock: bool, seccomp: bool) 
     missing
 }
 
+/// [`missing_layers`], and the Wayland security context when making one
+/// failed although the compositor offers them (a compositor without them is
+/// not a missing layer: there is nothing SAM could have applied).
+pub fn layers_missing(
+    enforcement: Option<&str>,
+    landlock: bool,
+    seccomp: bool,
+    wayland_failed: bool,
+) -> Vec<String> {
+    let mut m = missing_layers(enforcement, landlock, seccomp);
+    if wayland_failed {
+        m.push("Wayland security context".to_string());
+    }
+    m
+}
+
 /// The pasta command with bwrap's status pipes opened inside pasta's
 /// namespace: `pasta … -- PROG ARGS…` becomes `pasta … -- /bin/sh -c '…'
 /// PROG ARGS…` with the status options added to PROG's arguments. A command
@@ -1048,6 +1073,12 @@ fn pump_output(
     std::thread::spawn(move || {
         let mut reader = BufReader::new(src);
         let mut line = Vec::new();
+        // Shown in a terminal, the app's output goes through the same filter
+        // as on SAM's terminal relay: with its input redirected (a script,
+        // `< file`) the app has no relay, but could still reach the terminal
+        // with escape codes (clipboard, title reports).
+        let mut filter =
+            (!quiet && pty::is_tty(if is_err { 2 } else { 1 })).then(pty::OutputFilter::default);
         loop {
             line.clear();
             match reader
@@ -1082,14 +1113,26 @@ fn pump_output(
                 }
             }
             if !quiet {
+                let shown = for_terminal(filter.as_mut(), &line);
                 if is_err {
-                    eprintln!("{text}");
+                    let _ = std::io::stderr().write_all(&shown);
                 } else {
-                    println!("{text}");
+                    let _ = std::io::stdout().write_all(&shown);
                 }
             }
         }
     })
+}
+
+/// One line of the app's output as it reaches the person: through the
+/// escape-code filter when shown in a terminal, unchanged otherwise.
+fn for_terminal(filter: Option<&mut pty::OutputFilter>, line: &[u8]) -> Vec<u8> {
+    let mut with_end = line.to_vec();
+    with_end.push(b'\n');
+    match filter {
+        Some(f) => f.filter(&with_end),
+        None => with_end,
+    }
 }
 
 /// Waits for the child; with a time limit, ends it when the time is up
@@ -1418,6 +1461,12 @@ mod pasta_status_tests {
         );
         // Layers that were not asked for are never missing.
         assert!(missing_layers(None, false, false).is_empty());
+        // A Wayland security context that could not be made is missing too.
+        assert_eq!(
+            layers_missing(Some(full), true, true, true),
+            vec!["Wayland security context"]
+        );
+        assert!(layers_missing(Some(full), true, true, false).is_empty());
     }
 
     fn v(a: &[&str]) -> Vec<String> {
@@ -1450,6 +1499,28 @@ mod pasta_status_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// With its input redirected an app has no terminal relay; its output
+    /// shown in a terminal still loses clipboard codes and title reports,
+    /// even split over two lines. Output not shown in a terminal is unchanged.
+    #[test]
+    fn output_shown_in_a_terminal_is_filtered_without_the_relay() {
+        let mut f = crate::pty::OutputFilter::default();
+        assert_eq!(for_terminal(Some(&mut f), b"a\x1b]52;c;aGk=\x07b"), b"ab\n");
+        assert_eq!(for_terminal(Some(&mut f), b"x\x1b[21t"), b"x\n");
+        let mut f = crate::pty::OutputFilter::default();
+        let first = for_terminal(Some(&mut f), b"a\x1b]52;c;");
+        let second = for_terminal(Some(&mut f), b"aGk=\x07b");
+        assert_eq!(
+            [first, second].concat(),
+            b"ab\n",
+            "a code split over two lines"
+        );
+        assert_eq!(
+            for_terminal(None, b"a\x1b]52;c;x\x07b"),
+            b"a\x1b]52;c;x\x07b\n"
+        );
+    }
 
     /// Without Bubblewrap, starting an app stops while it is being prepared,
     /// before any process is started, and the error says what to install.

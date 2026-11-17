@@ -352,8 +352,11 @@ fn base_for(cat: Category) -> PermissionSet {
             fs.documents = Access::Rw;
         }
         Category::Development => {
+            // Not ~/Projects: the AppImage names its category itself, and a
+            // writable project folder lets an app plant code that runs
+            // outside the sandbox (git hooks, .envrc). The person can grant
+            // one as an extra folder.
             fs.documents = Access::Rw;
-            fs.custom_write.push("~/Projects".into());
         }
         Category::Terminal => {
             fs.documents = Access::Rw;
@@ -750,6 +753,31 @@ mod tests {
 
     use super::*;
     use sam_core::Requirements;
+
+    /// An app that calls itself a development tool gets Documents, but no
+    /// writable project folder: the category is the AppImage's own claim, and
+    /// a project folder lets an app plant code that runs outside the sandbox
+    /// (git hooks, .envrc).
+    #[test]
+    fn a_development_tool_gets_no_project_folder_on_its_own_word() {
+        let r = recommend(
+            &md("Some IDE", &["Development", "IDE"]),
+            "ide.appimage",
+            None,
+        );
+        assert_eq!(
+            r.category,
+            Category::Development,
+            "recognized as a development tool"
+        );
+        assert_eq!(r.permissions.filesystem.documents, Access::Rw);
+        assert!(
+            r.permissions.filesystem.custom_write.is_empty(),
+            "{:?}",
+            r.permissions.filesystem.custom_write
+        );
+        assert!(r.permissions.filesystem.custom_read.is_empty());
+    }
 
     fn md(name: &str, cats: &[&str]) -> AppImageMetadata {
         AppImageMetadata {

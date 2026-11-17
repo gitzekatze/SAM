@@ -50,7 +50,7 @@
   - *May not start* / *Likely won't start*: SAM's analysis found the app relies on libraries it does not bring itself (or something worse). It is only a warning: launch the app, and the label disappears once it has started.
   - *Changed*, *Broken*, *Missing*: the AppImage file changed, the last start failed, or the file is gone.
   - *Changed outside SAM*: something other than SAM changed the app's settings; it does not start until you confirm them on its page.
-  - *Protection missing*: the last start lacked a protection layer its settings ask for (Landlock or the syscall filter, for example because SAM's helper is missing); the app's page says which.
+  - *Protection missing*: the last start lacked a protection layer its settings ask for (Landlock or the syscall filter, for example because SAM's helper is missing, or the Wayland security context, when the desktop offers it but it could not be made); the app's page says which.
 - A ⚠ next to a row means something needs attention; hover over it to see what.
 
 **Right column**
