@@ -3753,7 +3753,7 @@ msgid "Remove unused unpacked copies"
 msgstr "Supprimer les copies décompressées inutilisées"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:968 crates/sam-jail-cli/src/main.rs:1311
+#: crates/sam-gtk/src/pages.rs:968 crates/sam-jail-cli/src/main.rs:1366
 msgid "Removed {n} unused unpacked copy"
 msgid_plural "Removed {n} unused unpacked copies"
 msgstr[0] "{n} copie décompressée inutilisée supprimée"
@@ -4942,16 +4942,22 @@ msgstr ""
 msgid "cannot parse host ELF"
 msgstr "impossible d’analyser le programme ELF du système"
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:37
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:38
 msgid "Show the fix"
 msgstr "Afficher la solution"
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:102
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:105
+#: crates/sam-jail-cli/src/main.rs:89
+msgid "SAM function {id}"
+msgstr "fonction {id} de SAM"
+
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:108
 msgid "SAM could not start the app"
 msgstr "SAM n’a pas pu lancer l’application"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:103
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:109
 msgid ""
 "{error}\n"
 "Open SAM to repair it."
@@ -4960,62 +4966,64 @@ msgstr ""
 "Ouvre SAM pour réparer."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:132
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:138
 msgid "no registered app '{id}'"
 msgstr "aucune application enregistrée « {id} »"
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:135
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:141
 msgid "unpacking the AppImage again"
 msgstr "nouvelle décompression de l’AppImage"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:141
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:148
 msgid "{app} was not started"
 msgstr "{app} n’a pas été lancée"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:142
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:149
 msgid ""
 "{reason}.\n"
 "Open SAM → {app} → Test."
-msgstr "{reason}.\nOuvre SAM → {app} → Tester."
+msgstr ""
+"{reason}.\n"
+"Ouvre SAM → {app} → Tester."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:169
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:176
 msgid "{app} ended: {summary}"
 msgstr "{app} s’est terminée : {summary}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:177
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:184
 msgid "{app} did not run: {summary}"
 msgstr "{app} n’a pas fonctionné : {summary}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:185
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:192
 msgid "SAM found a likely fix: {fix}. Open SAM to apply it."
 msgstr ""
 "SAM a trouvé une solution probable : {fix}. Ouvre SAM pour l’appliquer."
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:194
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:201
 msgid "Press Enter to close this window."
 msgstr "Appuie sur Entrée pour fermer cette fenêtre."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:200
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:207
 msgid "{app} failed to start"
 msgstr "{app} n’a pas pu démarrer"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:210
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:217
 msgid "SAM found a likely fix: {fix}."
 msgstr "SAM a trouvé une solution probable : {fix}."
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:211
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:218
 msgid "SAM's repair steps may help."
 msgstr "Les étapes de réparation de SAM peuvent aider."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:214
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:221
 msgid "{app} stopped right after starting"
 msgstr "{app} s’est arrêtée juste après le démarrage"
 
@@ -5028,75 +5036,75 @@ msgid "Configuration saved"
 msgstr "Configuration enregistrée"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:110 crates/sam-jail-cli/src/main.rs:141
+#: crates/sam-jail-cli/src/main.rs:165 crates/sam-jail-cli/src/main.rs:196
 msgid "No AppImages found in: {folders}"
 msgstr "Aucun AppImage trouvé dans : {folders}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:120 crates/sam-jail-cli/src/main.rs:158
+#: crates/sam-jail-cli/src/main.rs:175 crates/sam-jail-cli/src/main.rs:213
 msgid "moved copy of {id}"
 msgstr "copie déplacée de {id}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:193
+#: crates/sam-jail-cli/src/main.rs:248
 msgid "Nothing to check for {app}."
 msgstr "Rien à vérifier pour {app}."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:231
+#: crates/sam-jail-cli/src/main.rs:286
 msgid "no repair step '{id}' for {app}"
 msgstr "aucune étape de réparation « {id} » pour {app}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:252
+#: crates/sam-jail-cli/src/main.rs:307
 msgid "Applied: {step}. Start the app again to test it."
 msgstr "Appliqué : {step}. Relance l’application pour tester."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:261
+#: crates/sam-jail-cli/src/main.rs:316
 msgid "No more repair steps. Check the logs (sam-jail logs {id})."
 msgstr ""
 "Plus d’étapes de réparation. Consulte les journaux (sam-jail logs {id})."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:264
+#: crates/sam-jail-cli/src/main.rs:319
 msgid "Undo all repairs: sam-jail repair {id} --undo"
 msgstr "Annuler toutes les réparations : sam-jail repair {id} --undo"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:280
+#: crates/sam-jail-cli/src/main.rs:335
 msgid "Testing {name} for {seconds} s…"
 msgstr "Test de {name} pendant {seconds} s…"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:301
+#: crates/sam-jail-cli/src/main.rs:356
 msgid "kept running for {seconds}s"
 msgstr "s’est maintenue {seconds} s"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:305
+#: crates/sam-jail-cli/src/main.rs:360
 msgid "ran in its sandbox and ended by itself ({summary})"
 msgstr ""
 "s’est exécutée dans son bac à sable et s’est terminée d’elle-même ({summary})"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:362
+#: crates/sam-jail-cli/src/main.rs:417
 msgid "No other menu entries start {app}."
 msgstr "Aucune autre entrée de menu ne lance {app}."
 
-#: crates/sam-jail-cli/src/main.rs:378 crates/sam-jail-cli/src/main.rs:401
-#: crates/sam-jail-cli/src/main.rs:954 crates/sam-jail-cli/src/main.rs:981
-#: crates/sam-jail-cli/src/main.rs:1023
+#: crates/sam-jail-cli/src/main.rs:433 crates/sam-jail-cli/src/main.rs:456
+#: crates/sam-jail-cli/src/main.rs:1009 crates/sam-jail-cli/src/main.rs:1036
+#: crates/sam-jail-cli/src/main.rs:1078
 msgid "expected a PermissionSet as JSON on stdin"
 msgstr "un PermissionSet était attendu en JSON sur stdin"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:426
+#: crates/sam-jail-cli/src/main.rs:481
 msgid "{app} was already registered; its location was updated."
 msgstr "{app} était déjà enregistrée ; son emplacement a été mis à jour."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:445
+#: crates/sam-jail-cli/src/main.rs:500
 msgid ""
 "Review the permissions with `sam-jail info {id}` or in the SAM app, then "
 "`sam-jail review {id}`."
@@ -5104,7 +5112,7 @@ msgstr ""
 "Vérifie les autorisations avec `sam-jail info {id}` ou dans SAM, puis `sam-"
 "jail review {id}`."
 
-#: crates/sam-jail-cli/src/main.rs:491
+#: crates/sam-jail-cli/src/main.rs:546
 msgid ""
 "No apps are registered. Add one with `sam-jail add <file.AppImage>` or `sam-"
 "jail scan --add`."
@@ -5113,16 +5121,16 @@ msgstr ""
 "<fichier.AppImage>` ou `sam-jail scan --add`."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:553
+#: crates/sam-jail-cli/src/main.rs:608
 msgid "Removed {name} ({id}); its private data was kept"
 msgstr "{name} ({id}) retiré ; ses données privées ont été conservées"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:561
+#: crates/sam-jail-cli/src/main.rs:616
 msgid "Removed {name} ({id})"
 msgstr "{name} ({id}) retiré"
 
-#: crates/sam-jail-cli/src/main.rs:581
+#: crates/sam-jail-cli/src/main.rs:636
 msgid ""
 "Nothing is due: updates.check_on_start is off, or every app was checked "
 "today."
@@ -5130,50 +5138,50 @@ msgstr ""
 "Rien à faire : updates.check_on_start est désactivé, ou chaque application a "
 "été vérifiée aujourd’hui."
 
-#: crates/sam-jail-cli/src/main.rs:588
+#: crates/sam-jail-cli/src/main.rs:643
 msgid "no update source"
 msgstr "aucune source de mises à jour"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:611
+#: crates/sam-jail-cli/src/main.rs:666
 msgid "{app} is back to {file}."
 msgstr "{app} est revenue à {file}."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:671
+#: crates/sam-jail-cli/src/main.rs:726
 msgid "Freed {size}; the next start unpacks the AppImage again."
 msgstr ""
 "{size} libérés ; au prochain démarrage, l’AppImage est de nouveau "
 "décompressé."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:683
+#: crates/sam-jail-cli/src/main.rs:738
 msgid "Man pages written to {folder}."
 msgstr "Pages de manuel écrites dans {folder}."
 
-#: crates/sam-jail-cli/src/main.rs:696
+#: crates/sam-jail-cli/src/main.rs:751
 msgid "Removed from SAM:"
 msgstr "Supprimé de SAM :"
 
-#: crates/sam-jail-cli/src/main.rs:697
+#: crates/sam-jail-cli/src/main.rs:752
 msgid "Removed from SAM (settings and app data kept):"
 msgstr "Supprimé de SAM (réglages et données des applications conservés) :"
 
-#: crates/sam-jail-cli/src/main.rs:698
+#: crates/sam-jail-cli/src/main.rs:753
 msgid "This would remove from SAM:"
 msgstr "Ceci serait supprimé de SAM :"
 
-#: crates/sam-jail-cli/src/main.rs:699
+#: crates/sam-jail-cli/src/main.rs:754
 msgid "This would remove from SAM (keeping settings and app data):"
 msgstr ""
 "Ceci serait supprimé de SAM (en conservant réglages et données des "
 "applications) :"
 
-#: crates/sam-jail-cli/src/main.rs:713
+#: crates/sam-jail-cli/src/main.rs:768
 msgid "Your AppImage files stay. Run again with --yes to remove SAM."
 msgstr "Tes fichiers AppImage restent. Relance avec --yes pour supprimer SAM."
 
-#: crates/sam-jail-cli/src/main.rs:715
+#: crates/sam-jail-cli/src/main.rs:770
 msgid ""
 "Your AppImage files were not touched. Remove the SAM package or AppImage to "
 "finish."
@@ -5181,85 +5189,85 @@ msgstr ""
 "Tes fichiers AppImage n’ont pas été touchés. Supprime le paquet ou "
 "l’AppImage de SAM pour terminer."
 
-#: crates/sam-jail-cli/src/main.rs:723
+#: crates/sam-jail-cli/src/main.rs:778
 msgid "Not running"
 msgstr "Pas en cours d’exécution"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:727
+#: crates/sam-jail-cli/src/main.rs:782
 msgid "Closed {n} running launch"
 msgid_plural "Closed {n} running launches"
 msgstr[0] "{n} lancement en cours fermé"
 msgstr[1] "{n} lancements en cours fermés"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:861
+#: crates/sam-jail-cli/src/main.rs:916
 msgid "unknown log kind '{kind}'"
 msgstr "type de journal inconnu « {kind} »"
 
-#: crates/sam-jail-cli/src/main.rs:884
+#: crates/sam-jail-cli/src/main.rs:939
 msgid "not a log file of this app"
 msgstr "pas un fichier journal de cette application"
 
-#: crates/sam-jail-cli/src/main.rs:896
+#: crates/sam-jail-cli/src/main.rs:951
 msgid "no logs yet for this app"
 msgstr "pas encore de journaux pour cette application"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:959
+#: crates/sam-jail-cli/src/main.rs:1014
 msgid "Updated permissions for {app}."
 msgstr "Autorisations de {app} mises à jour."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:971
+#: crates/sam-jail-cli/src/main.rs:1026
 msgid "{app} is back to the recommended settings."
 msgstr "{app} a de nouveau les réglages recommandés."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:997
+#: crates/sam-jail-cli/src/main.rs:1052
 msgid "Compatibility mode turned on for {name}"
 msgstr "Mode de compatibilité activé pour {name}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1005
+#: crates/sam-jail-cli/src/main.rs:1060
 msgid "Compatibility mode turned off for {name}"
 msgstr "Mode de compatibilité désactivé pour {name}"
 
-#: crates/sam-jail-cli/src/main.rs:1063
+#: crates/sam-jail-cli/src/main.rs:1118
 msgid "expected a JSON list of strings on stdin"
 msgstr "une liste JSON de chaînes était attendue sur stdin"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1072
+#: crates/sam-jail-cli/src/main.rs:1127
 msgid "No extra arguments for {app}."
 msgstr "Aucun argument supplémentaire pour {app}."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1087
+#: crates/sam-jail-cli/src/main.rs:1142
 msgid "{app} marked as reviewed [{state}]"
 msgstr "{app} marquée comme vérifiée [{state}]"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1116
+#: crates/sam-jail-cli/src/main.rs:1171
 msgid "Dependency detection finished for {app}."
 msgstr "Détection des dépendances terminée pour {app}."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1146
+#: crates/sam-jail-cli/src/main.rs:1201
 msgid "{app} now points to {file} [{state}]"
 msgstr "{app} pointe désormais vers {file} [{state}]"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1180
+#: crates/sam-jail-cli/src/main.rs:1235
 msgid "Launcher installed: {path}"
 msgstr "Lanceur installé : {path}"
 
-#: crates/sam-jail-cli/src/main.rs:1182
+#: crates/sam-jail-cli/src/main.rs:1237
 msgid "Launcher removed"
 msgstr "Lanceur supprimé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1195
+#: crates/sam-jail-cli/src/main.rs:1250
 msgid ""
 "Starting {app} in diagnostic mode for up to {seconds} s. Use the app "
 "normally, then close it."
@@ -5268,54 +5276,54 @@ msgstr ""
 "l’application normalement, puis ferme-la."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1205
+#: crates/sam-jail-cli/src/main.rs:1260
 msgid "Diagnostic run: {summary}"
 msgstr "Exécution de diagnostic : {summary}"
 
-#: crates/sam-jail-cli/src/main.rs:1211
+#: crates/sam-jail-cli/src/main.rs:1266
 msgid "No missing resources were detected."
 msgstr "Aucune ressource manquante n’a été détectée."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1243
+#: crates/sam-jail-cli/src/main.rs:1298
 msgid "The full trace is in {file}."
 msgstr "La trace complète se trouve dans {file}."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1289
+#: crates/sam-jail-cli/src/main.rs:1344
 msgid "Left behind by {n} app: {size}"
 msgid_plural "Left behind by {n} apps: {size}"
 msgstr[0] "Laissé par {n} application : {size}"
 msgstr[1] "Laissé par {n} applications : {size}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1296
+#: crates/sam-jail-cli/src/main.rs:1351
 msgid "Removed the data of {n} app: {size}"
 msgid_plural "Removed the data of {n} apps: {size}"
 msgstr[0] "Données de {n} application supprimées : {size}"
 msgstr[1] "Données de {n} applications supprimées : {size}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1385
+#: crates/sam-jail-cli/src/main.rs:1440
 msgid "Update information written to {file}."
 msgstr "Informations de mise à jour écrites dans {file}."
 
-#: crates/sam-jail-cli/src/main.rs:1403
+#: crates/sam-jail-cli/src/main.rs:1458
 msgid "no file name"
 msgstr "aucun nom de fichier"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1415 crates/sam-jail-cli/src/main.rs:1463
+#: crates/sam-jail-cli/src/main.rs:1470 crates/sam-jail-cli/src/main.rs:1518
 msgid "Wrote {path}"
 msgstr "{path} écrit"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1429
+#: crates/sam-jail-cli/src/main.rs:1484
 msgid "the signature in {file} does not check out: {detail}"
 msgstr "la signature de {file} n’est pas valide : {detail}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1438
+#: crates/sam-jail-cli/src/main.rs:1493
 msgid "Signed {path} with {key}"
 msgstr "{path} signé avec {key}"
 
@@ -6162,7 +6170,9 @@ msgstr ""
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/launch.rs:490
 msgid "a library the app needs is not available inside the sandbox: {library}"
-msgstr "une bibliothèque dont l’app a besoin n’est pas disponible dans le bac à sable : {library}"
+msgstr ""
+"une bibliothèque dont l’app a besoin n’est pas disponible dans le bac à "
+"sable : {library}"
 
 #: crates/sam-runner/src/launch.rs:498
 msgid ""
@@ -6272,65 +6282,68 @@ msgstr ""
 "n’est pas installé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:10
+#: crates/sam-runner/src/ops/add.rs:11
 #: crates/sam-runner/src/ops/overview.rs:288
 #: crates/sam-runner/src/ops/profiles.rs:130
 msgid "{file} does not exist"
 msgstr "{file} n’existe pas"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:15
+#: crates/sam-runner/src/ops/add.rs:16
 #: crates/sam-runner/src/ops/profiles.rs:135
 msgid "{file} is not a file"
 msgstr "{file} n’est pas un fichier"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:24
+#: crates/sam-runner/src/ops/add.rs:25
 msgid "{size} AppImage: format, checksum and signature"
 msgstr "AppImage de {size} : format, somme de contrôle et signature"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:34
+#: crates/sam-runner/src/ops/add.rs:35
 msgid "{file} is already registered as '{app}' ({id})"
 msgstr "{file} est déjà enregistré sous « {app} » ({id})"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:48
+#: crates/sam-runner/src/ops/add.rs:51
 msgid "{file} is not an AppImage ({why})"
 msgstr "{file} n’est pas un AppImage ({why})"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:57
+#: crates/sam-runner/src/ops/add.rs:60
 msgid "{file} cannot get a sandbox: {why}"
 msgstr "{file} ne peut pas avoir de bac à sable : {why}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:68
+#: crates/sam-runner/src/ops/add.rs:71
 msgid ""
 "{file} is incomplete: it has {have} of the {need} its contents need, so the "
 "download probably broke off. Download it again."
-msgstr "{file} est incomplet : il fait {have} sur les {need} dont son contenu a besoin, le téléchargement s’est donc probablement interrompu. Télécharge-le à nouveau."
+msgstr ""
+"{file} est incomplet : il fait {have} sur les {need} dont son contenu a "
+"besoin, le téléchargement s’est donc probablement interrompu. Télécharge-le "
+"à nouveau."
 
-#: crates/sam-runner/src/ops/add.rs:250
+#: crates/sam-runner/src/ops/add.rs:256
 msgid "Unusual files in the AppImage"
 msgstr "Fichiers inhabituels dans l’AppImage"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:253
+#: crates/sam-runner/src/ops/add.rs:259
 msgid "{n} item was made safe while unpacking: {items}"
 msgid_plural "{n} items were made safe while unpacking: {items}"
 msgstr[0] "{n} élément a été rendu sûr lors de la décompression : {items}"
 msgstr[1] "{n} éléments ont été rendus sûrs lors de la décompression : {items}"
 
-#: crates/sam-runner/src/ops/add.rs:270
+#: crates/sam-runner/src/ops/add.rs:276
 msgid "The AppImage unpacked itself"
 msgstr "L’AppImage s’est décompressé lui-même"
 
-#: crates/sam-runner/src/ops/add.rs:270
+#: crates/sam-runner/src/ops/add.rs:276
 msgid "The AppImage unpacked itself inside a restricted sandbox."
 msgstr "L’AppImage s’est décompressé lui-même dans un bac à sable restreint."
 
-#: crates/sam-runner/src/ops/add.rs:309 crates/sam-runner/src/ops/add.rs:367
+#: crates/sam-runner/src/ops/add.rs:315 crates/sam-runner/src/ops/add.rs:373
 msgid ""
 "the AppImage has not been unpacked yet; unpack it with Unpack Again (sam-"
 "jail reextract APP)"
@@ -6338,19 +6351,19 @@ msgstr ""
 "l’AppImage n’a pas encore été décompressé ; décompresse-le avec "
 "« Décompresser à nouveau » (sam-jail reextract APP)"
 
-#: crates/sam-runner/src/ops/add.rs:378
+#: crates/sam-runner/src/ops/add.rs:384
 msgid "Looking for the app's programs and libraries"
 msgstr "Recherche des programmes et bibliothèques de l’application"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:385
+#: crates/sam-runner/src/ops/add.rs:391
 msgid "{done} of {n} program file read"
 msgid_plural "{done} of {n} program files read"
 msgstr[0] "{done} fichier de programme lu sur {n}"
 msgstr[1] "{done} fichiers de programme lus sur {n}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:396
+#: crates/sam-runner/src/ops/add.rs:402
 msgid "dependency detection failed: {error}"
 msgstr "échec de la détection des dépendances : {error}"
 

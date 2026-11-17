@@ -13,7 +13,7 @@ A command prints exactly one JSON object on the last line of stdout:
 ```json
 {"ok": true, "data": …}
 {"ok": false, "error": "a message in the user's language"}
-{"ok": false, "error": "…", "code": "signing-key-changed"}
+{"ok": false, "error": "…", "code": "signing-key-changed", "function": 28}
 ```
 
 The exit status is 0 for `ok: true` and 1 otherwise. Text on stderr is for
@@ -27,6 +27,15 @@ a `code`, which stays the same in every language:
 |---|---|
 | `signing-key-changed` | `update`: the new file is signed with another key; run again with `--accept-key-change` only if you trust it |
 | `extraction-limit` | unpacking stopped at a size, file-count or time limit; the message says which one |
+| `unpack-needs-sandbox` | SAM unpacks only inside a sandbox, and none can be built here (no Bubblewrap, or SAM's `sam-jail` is not next to the program) |
+| `signature-unchecked` | `update`: the installed version was signed and checked, but the new file's signature cannot be checked (GnuPG missing); `--accept-key-change` installs it anyway |
+
+Every error also names the **SAM function** it happened in, as `function`:
+the number in [SAM's functions](functions.md), so a script or a bug report
+knows which promise, which code and which tests to look at. It is the most
+precise one known: recognizing a file is function 2, unpacking it function 3,
+starting function 19. On the terminal it ends the message, for example
+`(SAM function 3)`.
 
 Commands that take a whole object (a profile, a preset, the configuration)
 read it as JSON on stdin; the flag or subcommand is named in the table below.

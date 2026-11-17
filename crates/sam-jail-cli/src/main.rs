@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
+use sam_core::error::InFunctionExt;
 use sam_core::util::{format_ts, human_size, tildify};
 use sam_core::*;
 use sam_runner::launch::{prepare, run, LaunchOptions};
@@ -61,21 +62,75 @@ fn main() {
     sam_core::i18n::init(true);
     let cli = Cli::parse();
     let json_mode = cli.json;
-    if let Err(e) = real_main(cli) {
+    let function = function_for(&cli.cmd);
+    let result = match function {
+        Some(id) => real_main(cli).in_function(id),
+        None => real_main(cli),
+    };
+    if let Err(e) = result {
+        let message = sam_core::error::message_of(&e);
+        let function = sam_core::error::function_of(&e);
         if json_mode {
-            // A code lets callers react without reading the (translated) message.
-            match sam_core::error::code_of(&e) {
-                Some(code) => println!(
-                    "{}",
-                    json!({"ok": false, "error": format!("{e:#}"), "code": code})
-                ),
-                None => println!("{}", json!({"ok": false, "error": format!("{e:#}")})),
+            // A code lets callers react without reading the (translated)
+            // message; the function names the part of SAM it happened in.
+            let mut v = json!({"ok": false, "error": message});
+            if let Some(code) = sam_core::error::code_of(&e) {
+                v["code"] = json!(code);
             }
+            if let Some(id) = function {
+                v["function"] = json!(id);
+            }
+            println!("{v}");
         } else {
-            eprintln!("{} {e:#}", paint("error:", "1;31"));
+            match function {
+                Some(id) => eprintln!(
+                    "{} {message} ({})",
+                    paint("error:", "1;31"),
+                    sam_core::i18n::trf("SAM function {id}", &[("id", &id)])
+                ),
+                None => eprintln!("{} {message}", paint("error:", "1;31")),
+            }
         }
         std::process::exit(1);
     }
+}
+
+/// The SAM function (docs/functions.md) each command carries out, so an
+/// error names the part of SAM it happened in. Steps inside a command that
+/// belong to another function mark their errors themselves (the innermost
+/// mark wins). `scripts/function-map.py --check` makes sure each number
+/// exists.
+fn function_for(cmd: &Cmd) -> Option<u16> {
+    Some(match cmd {
+        Cmd::Scan { .. } | Cmd::Discover | Cmd::Onboarding { .. } => 1,
+        Cmd::Add { .. } | Cmd::Reextract { .. } => 3,
+        Cmd::Preview { .. } | Cmd::Redetect { .. } => 6,
+        Cmd::Info { .. } | Cmd::Get { .. } | Cmd::Evaluate { .. } => 7,
+        Cmd::Set { .. } | Cmd::Profile { .. } | Cmd::Group { .. } | Cmd::Preset { .. } => 8,
+        Cmd::Run { .. }
+        | Cmd::Menu { .. }
+        | Cmd::Args { .. }
+        | Cmd::Command { .. }
+        | Cmd::Desktop { .. } => 19,
+        Cmd::Verify { .. } | Cmd::Selftest { .. } => 20,
+        Cmd::Stop { .. } => 21,
+        Cmd::Logs { .. } => 22,
+        Cmd::Hints { .. } => 23,
+        Cmd::Repair { .. } => 24,
+        Cmd::Diagnose { .. } => 25,
+        Cmd::Compat { .. } => 26,
+        Cmd::Review { .. } => 27,
+        Cmd::Updates { .. } | Cmd::Update { .. } | Cmd::SelfUpdate { .. } => 28,
+        Cmd::Refresh { .. } | Cmd::Relocate { .. } => 29,
+        Cmd::Remove { .. } => 30,
+        Cmd::Space { .. } | Cmd::FreeSpace { .. } | Cmd::Cleanup { .. } => 31,
+        Cmd::Uninstall { .. } => 32,
+        Cmd::Doctor { .. } => 33,
+        Cmd::Report { .. } => 34,
+        Cmd::List { .. } => 35,
+        Cmd::Permissions => 36,
+        Cmd::Man { .. } | Cmd::Version | Cmd::Config { .. } | Cmd::Dev { .. } => return None,
+    })
 }
 
 fn real_main(cli: Cli) -> Result<()> {
