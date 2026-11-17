@@ -5,7 +5,10 @@
 # no services, with a fake home. Nothing appears on the desktop and the
 # real home, SAM config and sound server are not touched.
 #
-#   WORK=/path/to/scratch tests/real-apps/run.sh App1.AppImage App2.AppImage ...
+#   WORK=/path/to/scratch systemd-run --user --scope -p Delegate=yes \
+#       tests/real-apps/run.sh App1.AppImage App2.AppImage ...
+#   (Delegate=yes: each app gets a control group of its own, so its network
+#   use is measured; without it the run works, network use is "n/a".)
 #   python3 tests/real-apps/analyze.py "$WORK"
 #
 # Needs kwin_wayland, dbus-run-session and a built SAM (target/debug).
@@ -51,6 +54,13 @@ while IFS= read -r img; do [ -n "$img" ] && "$TEST_ONE" "$img" < /dev/null; done
 Q
 chmod +x "$run/queue"
 export TEST_ONE="$here/test-one.sh" TOOLS="$here" CHECKS="${CHECKS:-}"
+# A control group per app, below the run's own (start the run in a scope
+# with Delegate=yes: systemd-run --user --scope -p Delegate=yes …): each
+# app's network connections are then told apart from everything else on
+# this computer (test-one.sh, observe). Without it network use is "n/a".
+cg=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)
+if mkdir "$cg/sam-apps" 2>/dev/null; then APPS_CG="$cg/sam-apps"; else APPS_CG=""; fi
+export APPS_CG
 # KWin script output (window titles) goes to kwin.log.
 export QT_FORCE_STDERR_LOGGING=1 QT_LOGGING_RULES="js.debug=true"
 # KWin splits the session command at spaces: start it through a link.
@@ -59,6 +69,7 @@ dbus-run-session --config-file="$R/session.conf" -- \
   timeout "${SESSION_TIMEOUT:-3600}" kwin_wayland --virtual --xwayland --socket sam-test --width 1280 --height 800 \
   --exit-with-session "$run/start" > "$R/kwin.log" 2>&1 || true
 rm -rf "$run"
+[ -n "$APPS_CG" ] && { rmdir "$APPS_CG"/app-* 2>/dev/null; rmdir "$APPS_CG" 2>/dev/null; } || true
 if [ "${KEEP_DATA:-}" != 1 ]; then
   # The overlay leaves folders without permissions; open them first.
   chmod -R u+rwX "$R/sam/data" "$R/tmp" 2>/dev/null || true

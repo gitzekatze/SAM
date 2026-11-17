@@ -30,10 +30,13 @@ def load(p):
 
 def use(base):
     """Whether what SAM allowed is really used (level 2), from the
-    observation during the first start: per permission "works" (allowed and
-    used), "unused" (allowed, not used within 15 s: no failure, many apps
-    play no sound at start), "-" (not allowed) or "n/a" (not measurable here,
-    e.g. the GPU check needs NVIDIA's driver)."""
+    observation during the first start (every 2 s for its 25 s): per
+    permission "works" (allowed and used), "unused" (allowed, not used during
+    the start: no failure, many apps play no sound or go online only when
+    asked), "-" (not allowed), "local" (network for this computer only:
+    nothing may leave, nothing to measure) or "n/a" (not measurable here:
+    the GPU check needs NVIDIA's driver, the network check a run started
+    with Delegate=yes)."""
     seen = {}
     if os.path.exists(base + ".observe"):
         for l in open(base + ".observe", errors="replace").read().splitlines():
@@ -43,12 +46,15 @@ def use(base):
     allowed = {
         "gpu": bool((perms.get("devices") or {}).get("gpu")),
         "sound": bool((perms.get("audio") or {}).get("enabled")),
-        "net": (perms.get("network") or {}).get("mode") in ("full", "localhost"),
+        "net": (perms.get("network") or {}).get("mode") == "full",
     }
+    local = (perms.get("network") or {}).get("mode") == "localhost"
     out = []
     for k in ("gpu", "sound", "net"):
         v = seen.get(k)
-        if not allowed[k]:
+        if k == "net" and local:
+            out.append("net:local")
+        elif not allowed[k]:
             out.append(f"{k}:-")
         elif v in (None, "n/a"):
             out.append(f"{k}:n/a")
