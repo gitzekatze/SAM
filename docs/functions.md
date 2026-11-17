@@ -410,11 +410,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`a_check_reports_what_it_finds_not_what_it_hopes`](../crates/sam-runner/src/probe.rs#L575) | Each check reports what it finds, not what it hopes: run on facts that are the same on every computer, a check whose expectation is wrong fails, one whose expectation is right passes, and the report counts them (found by mutation testing: a check turning every failure into a pass went unnoticed). | 🆕 new |
-| [`a_skipped_check_is_neither_passed_nor_failed`](../crates/sam-runner/src/probe.rs#L724) | A verdict is exactly pass, fail or "could not check": a skipped check counts neither as passed nor as failed. | 🆕 new |
+| [`a_check_reports_what_it_finds_not_what_it_hopes`](../crates/sam-runner/src/probe.rs#L580) | Each check reports what it finds, not what it hopes: run on facts that are the same on every computer, a check whose expectation is wrong fails, one whose expectation is right passes, and the report counts them (found by mutation testing: a check turning every failure into a pass went unnoticed). | 🆕 new |
+| [`a_skipped_check_is_neither_passed_nor_failed`](../crates/sam-runner/src/probe.rs#L729) | A verdict is exactly pass, fail or "could not check": a skipped check counts neither as passed nor as failed. | 🆕 new |
 | [`the_check_expects_each_folder_as_its_settings_show_it`](../crates/sam-runner/src/verify.rs#L795) | What the check expects of each folder: the folder's own setting, but never less than the home shows it (a read-only home shows Documents read-only even when Documents has no setting; a writable folder in a read-only home stays writable); keys only with full home and their own switch; extra folders like the home inside it. | 🆕 new |
 | [`the_check_expects_the_rest_where_setting_and_computer_allow_it`](../crates/sam-runner/src/verify.rs#L880) | Network, display, sound, the session bus, the SSH agent, variables and the security layers: the check expects each only where both the setting and this computer provide it. | 🆕 new |
-| [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L756) | The sandbox check tells a real folder of the user from a private stand-in. | ✅ |
+| [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L761) | The sandbox check tells a real folder of the user from a private stand-in. | ✅ |
 | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L22) | The sandbox check passes when the settings apply, and catches a setting that does not apply. | ✅ |
 | [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L1396) | A wanted layer that was not applied is reported missing. | 🆕 new |
 | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) | A start without the helper reports its missing layers. | 🆕 new |
@@ -606,8 +606,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L55) | Without Bubblewrap, the message says which package to install. | ✅ |
 | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L66) | When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | ✅ |
 | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L85) | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | ✅ |
-| [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L201) | SAM's own bus check reaches a session bus. | ✅ |
-| [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L249) | SAM's own D-Bus message for the bus check has the correct wire format. | ✅ |
+| [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L222) | SAM's own bus check reaches a session bus. | ✅ |
+| [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L272) | SAM's own D-Bus message for the bus check has the correct wire format. | ✅ |
 | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L228) | Bubblewrap versions are compared correctly, including missing or malformed version text. | ✅ |
 | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L550) | The built in contract map parses. | 🆕 new |
 | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L556) | Every contract probe is known. | 🆕 new |

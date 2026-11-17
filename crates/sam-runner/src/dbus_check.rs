@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! A tiny D-Bus client for one question: "is this name reachable on the
-//! bus at this address?". Used by the sandbox check, both on the host (what
+//! A tiny D-Bus client for two questions: "does a bus answer at this
+//! address?" and "is this name reachable on it?". Used by the sandbox check, both on the host (what
 //! exists) and inside the sandbox (what the filter lets through). It speaks
 //! just enough of the wire protocol: EXTERNAL authentication, Hello and
 //! GetNameOwner. No external tools or libraries.
@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 
-/// True if `name` has an owner that the bus at `address` lets us see.
-pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bool> {
+/// An authenticated connection to the bus at `address` (a `unix:path=` one).
+fn connect(address: &str, timeout: Duration) -> Result<(UnixStream, BufReader<UnixStream>)> {
     let path = address
         .split(';')
         .find_map(|a| {
@@ -38,8 +38,7 @@ pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bo
         bail!("authentication refused: {}", line.trim());
     }
     s.write_all(b"BEGIN\r\n")?;
-
-    // Hello (required first), then GetNameOwner; read until its reply.
+    // Hello is required first; it gets the connection its name.
     s.write_all(&method_call(
         1,
         "org.freedesktop.DBus",
@@ -48,6 +47,28 @@ pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bo
         "Hello",
         None,
     ))?;
+    Ok((s, reader))
+}
+
+/// True if a bus answers at `address`: it accepts the connection and
+/// replies to Hello, which every bus and every filtering proxy must do.
+/// (Asking for the owner of the bus's own name is not enough: older
+/// xdg-dbus-proxy versions, as in Ubuntu 24.04, leave that unanswered when
+/// filtering, so a working bus looked absent.)
+pub fn bus_answers(address: &str, timeout: Duration) -> Result<bool> {
+    let (_s, mut reader) = connect(address, timeout)?;
+    for _ in 0..64 {
+        let (kind, reply_serial) = read_message(&mut reader)?;
+        if reply_serial == Some(1) {
+            return Ok(kind == 2); // 2 = method return, 3 = error
+        }
+    }
+    bail!("{}", sam_core::i18n::tr("no reply from the bus"))
+}
+
+/// True if `name` has an owner that the bus at `address` lets us see.
+pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bool> {
+    let (mut s, mut reader) = connect(address, timeout)?;
     s.write_all(&method_call(
         2,
         "org.freedesktop.DBus",
@@ -237,10 +258,12 @@ mod tests {
         )
         .unwrap();
         let addr = addr.trim().to_string();
+        let answers = bus_answers(&addr, Duration::from_secs(2));
         let found = name_reachable(&addr, "org.freedesktop.DBus", Duration::from_secs(2));
         let missing = name_reachable(&addr, "org.example.SamNoSuchName", Duration::from_secs(2));
         let _ = daemon.kill();
         let _ = daemon.wait();
+        assert!(answers.unwrap(), "the bus answers Hello at {addr}");
         assert!(found.unwrap(), "the bus itself is reachable at {addr}");
         assert!(!missing.unwrap(), "a name nobody owns is not");
     }

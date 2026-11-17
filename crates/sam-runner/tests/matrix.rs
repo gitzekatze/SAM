@@ -332,6 +332,18 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let mut p = base();
         p.audio.enabled = true;
         let r = launch("audio", p);
+        // In the desktop session of CI (tests/gui/desktop-sandbox.sh) sound
+        // must be there: the checks below would otherwise pass unseen.
+        if std::env::var("SAM_REQUIRE_SOUND").as_deref() == Ok("1") {
+            assert!(
+                runtime_has("pulse/native"),
+                "SAM_REQUIRE_SOUND=1, but there is no PulseAudio socket"
+            );
+            assert!(
+                runtime_has("pipewire-0"),
+                "SAM_REQUIRE_SOUND=1, but there is no PipeWire socket"
+            );
+        }
         if runtime_has("pulse/native") {
             assert_eq!(r["AUDIO"], "yes");
         }
@@ -370,6 +382,32 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let mut p = base();
         p.display.wayland = true;
         let r = launch("wayland", p);
+        // In the desktop session of CI the display must be there (see above).
+        if std::env::var("SAM_REQUIRE_DESKTOP").as_deref() == Ok("1") {
+            assert!(
+                std::env::var("WAYLAND_DISPLAY").is_ok_and(|d| runtime_has(&d)),
+                "SAM_REQUIRE_DESKTOP=1, but there is no Wayland display"
+            );
+            // Where the compositor offers Wayland security contexts, the app's
+            // connection must carry one (the contract wayland-security-context);
+            // an older KWin may not offer them, which the skip list then says.
+            let offered = host
+                .sockets
+                .wayland
+                .as_ref()
+                .is_some_and(|w| sam_runner::wayland_ctx::supported(w));
+            if offered {
+                let rec = last.borrow().clone().unwrap();
+                let log = fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap();
+                assert!(
+                    log.contains("wayland security context: true"),
+                    "the compositor offers security contexts, but the app's Wayland connection carries none: {}",
+                    log.lines().take(3).collect::<Vec<_>>().join(" | ")
+                );
+            } else {
+                sam_runner::contracts::not_here("this compositor offers no Wayland security contexts");
+            }
+        }
         if std::env::var("WAYLAND_DISPLAY").is_ok_and(|d| runtime_has(&d)) {
             assert_eq!(r["WAYLAND"], "yes");
         }
