@@ -9,6 +9,15 @@ version.
 
 ## Unreleased
 
+### Slow checks run every week on their own
+
+- Every Saturday, mutation testing of the week's Rust code names each change
+  no test notices by its SAM function, and a long fuzz run (100,000 rounds
+  per parser) tries new inputs with the week's seed (`SAM_FUZZ_SEED`). An
+  issue opens only when something is found, is updated instead of
+  duplicated, and closes itself when the finding is gone. The kill switch
+  stops both.
+
 ### Rules for automation
 
 - The handbook starts with **How SAM looks after itself**: the whole

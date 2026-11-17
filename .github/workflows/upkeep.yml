@@ -1,0 +1,146 @@
+# Weekly upkeep: the two checks too slow for every change.
+#   - Mutation testing of last week's Rust code (scripts/mutants.sh): every
+#     change no test notices is named with its SAM function.
+#   - A long fuzz run of the parsers of untrusted data, with this week's seed,
+#     so every week tries new inputs.
+# Results become issues labelled "weekly-upkeep" only when something was
+# found (scripts/upkeep-report.py): updated instead of duplicated, closed
+# when gone. Never required for merging.
+name: Weekly upkeep
+
+on:
+  schedule:
+    - cron: "23 1 * * 6"
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Test the code changed since this commit or date (default: 7 days ago)"
+        required: false
+      fuzz_rounds:
+        description: "Fuzz rounds per parser"
+        required: false
+        default: "100000"
+
+permissions:
+  contents: read
+
+jobs:
+  mutants:
+    # The kill switch (AUTOMATION.md): `off` stops the weekly runs.
+    if: vars.SAM_AUTOMATION != 'off'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - &packages
+        name: System packages
+        timeout-minutes: 10
+        run: |
+          sudo sed -i -e 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|g' -e 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get update -q -o Acquire::Retries=3 -o Acquire::http::Timeout=30
+          sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+            libgtk-4-dev libadwaita-1-dev pkg-config \
+            bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3 \
+            desktop-file-utils appstream gettext libgtk-4-bin dbus \
+            python3-gi libglib2.0-bin gnupg binutils
+      - &userns
+        name: Allow user namespaces for Bubblewrap
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - &rust
+        name: Rust (stable)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - &cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: upkeep-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: upkeep-${{ runner.os }}-${{ runner.arch }}-
+      - name: cargo-mutants
+        run: cargo install cargo-mutants --locked --version 27.1.0
+      - name: Mutation testing of last week's code
+        env:
+          SINCE: ${{ inputs.since }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/results/mutants"
+          # A commit, or else a date (git would read a commit as "now").
+          base=$(git rev-parse --verify -q "${SINCE:-none}^{commit}" || true)
+          [ -n "$base" ] || base=$(git rev-list -1 --before="${SINCE:-7 days ago}" HEAD)
+          [ -n "$base" ] || base=$(git rev-list --max-parents=0 HEAD | tail -n1)
+          echo "Code changed since $base"
+          set +e
+          JOBS=2 scripts/mutants.sh -o "$RUNNER_TEMP/mutants" --diff "$base" 2>&1 | tee "$RUNNER_TEMP/results/mutants/report.txt"
+          echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/results/mutants/exit"
+          { echo '### Mutation testing'; echo '```'; tail -n 60 "$RUNNER_TEMP/results/mutants/report.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: upkeep-mutants
+          path: |
+            ${{ runner.temp }}/results/mutants
+            ${{ runner.temp }}/mutants/mutants.out/*.txt
+            ${{ runner.temp }}/mutants/mutants.out/outcomes.json
+            ${{ runner.temp }}/mutants/baseline.log
+
+  fuzz:
+    if: vars.SAM_AUTOMATION != 'off'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v7
+      - *packages
+      - *userns
+      - *rust
+      - *cache
+      - name: Long fuzz run
+        env:
+          ROUNDS: ${{ inputs.fuzz_rounds || '100000' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/results/fuzz"
+          seed=$(date -u +%G%V)
+          echo "Seed $seed, $ROUNDS rounds per parser" | tee "$RUNNER_TEMP/results/fuzz/report.txt"
+          set +e
+          SAM_REQUIRE_SANDBOX=1 SAM_FUZZ_SEED=$seed SAM_FUZZ_ITERS=$ROUNDS \
+            cargo test --locked -p sam-runner --test fuzz -- --nocapture 2>&1 | tee -a "$RUNNER_TEMP/results/fuzz/report.txt"
+          echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/results/fuzz/exit"
+          { echo '### Long fuzz run'; echo '```'; tail -n 30 "$RUNNER_TEMP/results/fuzz/report.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: upkeep-fuzz
+          path: |
+            ${{ runner.temp }}/results/fuzz
+            target/tmp/fuzz-crashes
+
+  report:
+    needs: [mutants, fuzz]
+    # The kill switch: `off` opens and closes no issues.
+    if: always() && vars.SAM_AUTOMATION != 'off'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: upkeep-*
+          path: artifacts
+      - name: Issues for what was found, closed for what is gone
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p results
+          for part in mutants fuzz; do
+            src=$(find "artifacts/upkeep-$part" -type d -path "*results/$part" 2>/dev/null | head -n1)
+            mkdir -p "results/$part"
+            [ -n "$src" ] && cp -r "$src/." "results/$part/" || true
+          done
+          python3 scripts/upkeep-report.py results
