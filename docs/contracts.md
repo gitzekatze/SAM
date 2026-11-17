@@ -120,7 +120,7 @@ xdg-dbus-proxy filters the session bus by the --talk, --own, --call and --broadc
 
 ## unpack-tools
 
-unsquashfs and bsdtar unpack SquashFS images with these options, without keeping owners, ACLs or extended attributes.
+unsquashfs and bsdtar unpack SquashFS images (and bsdtar the ISO 9660 image of an old Type 1 AppImage) with these options, without keeping owners, ACLs or extended attributes.
 
 - **Component:** squashfs-tools (unsquashfs) ([releases](https://github.com/plougher/squashfs-tools/releases))
 - **When it breaks:** SAM falls back to less access.
