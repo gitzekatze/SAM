@@ -410,12 +410,22 @@ impl AppPage {
                 self.add_dynamic(&self.notices, &row);
             }
             if badge == "changed-outside" {
-                let row = adw::ActionRow::builder()
-                    .title(tr("Settings changed outside SAM"))
-                    .subtitle(tr(
-                        "Something other than SAM (a script, another program or a damaged file) changed this app's settings. SAM does not start the app until you have looked through the settings below and confirmed them.",
-                    ))
-                    .build();
+                let file = e.get("content_changed_outside").and_then(|v| v.as_bool()) == Some(true);
+                let row = if file {
+                    adw::ActionRow::builder()
+                        .title(tr("AppImage file changed outside SAM"))
+                        .subtitle(tr(
+                            "The AppImage file was replaced by something other than a SAM update (another app, a script, or a download over it), and the new file still has the old settings. SAM does not start it until you have looked through the settings below and confirmed them.",
+                        ))
+                        .build()
+                } else {
+                    adw::ActionRow::builder()
+                        .title(tr("Settings changed outside SAM"))
+                        .subtitle(tr(
+                            "Something other than SAM (a script, another program or a damaged file) changed this app's settings. SAM does not start the app until you have looked through the settings below and confirmed them.",
+                        ))
+                        .build()
+                };
                 row.add_prefix(&status_icon("dialog-warning-symbolic", "error"));
                 let btn = gtk::Button::builder()
                     .label(tr("Confirm Settings"))
