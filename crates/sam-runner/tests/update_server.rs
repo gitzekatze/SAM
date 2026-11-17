@@ -119,6 +119,19 @@ fn start_server(tmp: &Path) -> Server {
     let port = line.trim().parse().expect("the server prints its port");
     // curl (which SAM uses for downloads) trusts the test certificate.
     std::env::set_var("CURL_CA_BUNDLE", &cert);
+    // The same result behind any proxy of the person running it.
+    std::env::set_var("NO_PROXY", "127.0.0.1,localhost");
+    std::env::set_var("no_proxy", "127.0.0.1,localhost");
+    // SAM's curl never reads a ~/.curlrc: one that sends every request to a
+    // dead proxy changes nothing (curl looks in CURL_HOME first).
+    let curl_home = tmp.join("curl-home");
+    fs::create_dir_all(&curl_home).unwrap();
+    fs::write(
+        curl_home.join(".curlrc"),
+        "proxy = \"http://127.0.0.1:9\"\nnoproxy = \"\"\n",
+    )
+    .unwrap();
+    std::env::set_var("CURL_HOME", &curl_home);
     Server {
         child,
         port,

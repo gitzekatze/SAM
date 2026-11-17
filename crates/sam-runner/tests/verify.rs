@@ -31,6 +31,8 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
         .unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
+    // The same run on every computer (the only test here, so its process).
+    sam_runner::testenv::isolate_this_process(root);
     let home = root.join("home/tester");
     fs::create_dir_all(home.join("Documents")).unwrap();
     fs::create_dir_all(home.join(".ssh")).unwrap();

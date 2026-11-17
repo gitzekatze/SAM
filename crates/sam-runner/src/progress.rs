@@ -83,15 +83,17 @@ impl ProgressSink {
 /// process).
 pub fn watch_bytes<T>(
     dir: &Path,
-    on_bytes: impl Fn(u64) + Send + 'static,
+    on_bytes: impl Fn(u64) + Send + Sync + 'static,
     work: impl FnOnce() -> T,
 ) -> T {
     let stop = Arc::new(AtomicBool::new(false));
     let s = stop.clone();
-    let dir = dir.to_path_buf();
+    let on_bytes = Arc::new(on_bytes);
+    let report = on_bytes.clone();
+    let watched = dir.to_path_buf();
     let watcher = std::thread::spawn(move || {
         while !s.load(Ordering::SeqCst) {
-            on_bytes(bytes_below(&dir));
+            report(bytes_below(&watched));
             for _ in 0..7 {
                 if s.load(Ordering::SeqCst) {
                     return;
@@ -103,6 +105,9 @@ pub fn watch_bytes<T>(
     let out = work();
     stop.store(true, Ordering::SeqCst);
     let _ = watcher.join();
+    // The final count, also when the work ended before the first sample
+    // (a busy computer may start the watcher late).
+    on_bytes(bytes_below(dir));
     out
 }
 
@@ -182,10 +187,8 @@ mod tests {
         let out = watch_bytes(
             d.path(),
             move |b| *s.lock().unwrap() = b,
-            || {
-                std::thread::sleep(Duration::from_millis(150));
-                7
-            },
+            // No pause: the count must not depend on the watcher's timing.
+            || 7,
         );
         assert_eq!(out, 7);
         assert_eq!(*seen.lock().unwrap(), 3500);

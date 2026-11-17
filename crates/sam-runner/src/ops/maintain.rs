@@ -385,6 +385,12 @@ impl Sam {
         }
         let runtime = self.paths.runtime_dir("x").parent().map(Path::to_path_buf);
         let mut dirs: Vec<PathBuf> = runtime.into_iter().filter(|d| d.exists()).collect();
+        // The runtime folder can be moved too (SAM_RUNTIME_DIR): the same
+        // check as for the other folders, so a wrong setting never deletes
+        // a folder that is not SAM's.
+        for d in &dirs {
+            safe_to_delete(d)?;
+        }
         if !keep_data {
             for d in [
                 self.paths.config_dir.clone(),

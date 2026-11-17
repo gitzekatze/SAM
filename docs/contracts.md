@@ -164,7 +164,7 @@ curl downloads over HTTPS only (also after redirects) with these limits, and fet
 - **Quick check:** `program:curl`
 - **Tests:** `updates_are_downloaded_over_https_only`, `updates_download_only_changes_check_them_and_refuse_tampering` (fully)
 - **Checked first by:** `update_server.rs` (a broken contract stops these tests with its name)
-- **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--max-filesize`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`
+- **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--max-filesize`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`, `option:--disable`
 - **If it breaks:** No update is installed when curl fails; the old version stays. A changed option shows in the update server test.
 
 ## signatures-gnupg

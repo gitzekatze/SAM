@@ -151,6 +151,12 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         .entry
         .id;
     let host = HostInfo::probe();
+    // The same run on every computer: not the person's display or session bus.
+    let host = sam_runner::testenv::test_host(host);
+    // Its own session bus (no services) and SSH agent: the D-Bus and SSH
+    // sections run on every computer, never against the person's own.
+    let services = sam_runner::testenv::PrivateServices::start(root);
+    let host = services.apply_to_this_process(host);
 
     let base = || {
         let mut p = PermissionSet::strict_gui();

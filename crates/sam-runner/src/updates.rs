@@ -294,6 +294,9 @@ fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>> {
         .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     let out = Command::new(curl)
         .args([
+            // First, or curl ignores it: never the person's ~/.curlrc, which
+            // could switch off certificate checks or send the request elsewhere.
+            "--disable",
             "--silent",
             "--show-error",
             "--fail",
@@ -354,6 +357,8 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
         .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     let mut cmd = Command::new(curl);
     cmd.args([
+        // First, or curl ignores it: never the person's ~/.curlrc.
+        "--disable",
         "--silent",
         "--show-error",
         "--fail",
@@ -500,6 +505,8 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
         .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     let mut cmd = Command::new(curl);
     cmd.args([
+        // First, or curl ignores it: never the person's ~/.curlrc.
+        "--disable",
         "--silent",
         "--show-error",
         "--fail",
