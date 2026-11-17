@@ -256,6 +256,12 @@ version.
 
 ### Website
 
+- **Every report is on the website:** Trust SAM → Reports lists all of
+  them, newest first (version reports, mutation runs, real-app runs, the
+  security review), each with its own page, so a claim can be checked
+  against the report it came from; before, only the newest of each kind was
+  reachable. **Licenses** shows the libraries SAM is built from.
+- The first page of a section no longer offers the last one as "Previous".
 - The website shows the repository's documents and writes nothing of its
   own: README.md is the front page, the Use and Trust overviews are
   documents (docs/use.md, docs/trust.md), and the dashboard is built from
