@@ -68,7 +68,8 @@ When you come back after a break, in this order:
    each one means.
 2. **Update your clone:** `git switch main` and `git pull`.
 3. **Check that everything still works:** `make test`.
-4. **Read the newest entries** under *Unreleased* in [CHANGELOG.md](../../CHANGELOG.md):
-   that is what changed since the last version.
+4. **Read the newest entries:** the files in [changes/](../../changes/README.md)
+   and *Unreleased* in [CHANGELOG.md](../../CHANGELOG.md) (or *What's new* on the
+   website, which shows both): that is what changed since the last version.
 5. **Pick the next task:** from the issues, or ask Claude to read this
    handbook and the changelog and propose the next steps.

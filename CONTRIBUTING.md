@@ -124,7 +124,9 @@ reset the last one (0.1.4 → 0.2.0).
 - The `--json` output is SAM's interface (`docs/json-interface.md`): raise
   `JSON_INTERFACE` in `sam-core` for any change an older reader would
   misread.
-- Add a line to `CHANGELOG.md` under *Unreleased*.
+- Describe what changes for users in a new file in `changes/` (see
+  [changes/README.md](changes/README.md)); never edit `CHANGELOG.md` directly, so
+  two pull requests never collide there.
 
 ## Licence
 

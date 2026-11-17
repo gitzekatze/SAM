@@ -44,7 +44,9 @@ make mutants-diff                 # for security-relevant code: do the tests cat
 
 Texts people read are written as whole sentences and translated into German,
 Spanish and French, in the informal form ([translating](../translating.md)).
-Add a line to [CHANGELOG.md](../../CHANGELOG.md) under *Unreleased*.
+Describe what changes for users in a new file in [changes/](../../changes/README.md),
+one per change; the release joins them into [CHANGELOG.md](../../CHANGELOG.md).
+Two pull requests then never edit the same lines of the change list.
 
 ## 5. Commit, push, pull request
 

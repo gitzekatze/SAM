@@ -22,14 +22,17 @@ def shipped(path):
 
 
 def verdict(files):
-    """(behaviour files, changelog touched)."""
-    return [f for f in files if shipped(f)], "CHANGELOG.md" in files
+    """(behaviour files, a note written: a file in changes/ or CHANGELOG.md)."""
+    note = "CHANGELOG.md" in files or any(f.startswith("changes/") and f != "changes/README.md" for f in files)
+    return [f for f in files if shipped(f)], note
 
 
 def self_test():
     cases = [
         (["crates/sam-runner/src/launch.rs"], True),
         (["crates/sam-runner/src/launch.rs", "CHANGELOG.md"], False),
+        (["crates/sam-runner/src/launch.rs", "changes/stop-button.md"], False),
+        (["crates/sam-runner/src/launch.rs", "changes/README.md"], True),
         (["crates/sam-runner/tests/stop.rs", "docs/testing.md"], False),
         (["po/de.po"], True),
         (["scripts/site.py", ".github/workflows/ci.yml"], False),
@@ -51,11 +54,11 @@ def main():
     code, log = verdict(files)
     if code and not log:
         print(f"::warning title=No changelog line::This change touches what SAM ships ({len(code)} file(s), "
-              f"e.g. {code[0]}) but not CHANGELOG.md. If users notice it, add a line under Unreleased.")
-        summary = (f"No line in CHANGELOG.md, though {len(code)} shipped file(s) changed "
+              f"e.g. {code[0]}) but adds no note. If users notice it, describe it in a new file in changes/.")
+        summary = (f"No note in changes/, though {len(code)} shipped file(s) changed "
                    f"(e.g. `{code[0]}`). Fine for a refactor; otherwise add one.")
     else:
-        summary = "A line in CHANGELOG.md." if log else "Nothing SAM ships changed."
+        summary = "A note for the change list." if log else "Nothing SAM ships changed."
     out = os.environ.get("GITHUB_STEP_SUMMARY")
     if out:
         with open(out, "a") as f:
