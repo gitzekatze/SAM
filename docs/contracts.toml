@@ -429,7 +429,7 @@ probe = "wayland-socket"
 tests = ["only_a_real_socket_counts_as_a_desktop_service", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
 on_break = "feature"
 coverage = "partial"
-gaps = "The sandbox tests in CI run without a Wayland session; only the window tests use one."
+gaps = "Covered in CI since the sandbox tests also run in a hidden KWin session (tests/gui/desktop-sandbox.sh), where the permission matrix must find Wayland. XDG_SESSION_TYPE and an absolute WAYLAND_DISPLAY are not tested."
 playbook = "Without a socket the app gets no Wayland display (X11 only if allowed). Check how the desktop names its socket."
 
 [[contract]]
@@ -442,7 +442,7 @@ probe = "wayland-security-context"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
 on_break = "warn"
 coverage = "partial"
-gaps = "Not asserted in a test; only the quick check confirms it."
+gaps = "Asserted in CI's desktop session (tests/gui/desktop-sandbox.sh): where the compositor offers security contexts, the permission matrix requires the app's connection to carry one. A compositor without them (older KWin) is listed as not here. What the compositor withholds inside a context is not tested."
 playbook = "Without it SAM warns that the app can use every Wayland function the desktop offers. A new protocol version: update the wayland-protocols crate."
 
 [[contract]]
@@ -468,7 +468,7 @@ probe = "audio-sockets"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
 on_break = "feature"
 coverage = "partial"
-gaps = "CI has no PipeWire or PulseAudio; sound is checked only where the computer has it."
+gaps = "CI's desktop session (tests/gui/desktop-sandbox.sh) has PipeWire and PulseAudio, and the permission matrix must find both there. A PULSE_SERVER pointing elsewhere is not tested."
 playbook = "A renamed socket means no sound in apps. Add the new name in host.rs (probe_sockets)."
 
 [[contract]]

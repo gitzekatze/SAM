@@ -12,6 +12,7 @@ checks a person still does by hand.
 | Attack tests | breakout attempts, hostile AppImages and fuzzing (`breakout`, `evil`, `adversarial`, `fuzz`) | `make test` | every change, on Ubuntu and Fedora |
 | Update tests | real updates from a local HTTPS server (`update_server`) | `make test` | every change |
 | Window tests | open every page, and click through the window like a person (`tests/gui/`) | `tests/gui/smoke.sh OUTDIR`, `tests/gui/flow-atspi.sh OUTDIR` | every change |
+| Desktop sandbox tests | the sandbox tests (permission matrix, sandbox check, breakout, hostile AppImages) inside a hidden KWin with PipeWire, where they must find Wayland and sound (`tests/gui/desktop-sandbox.sh`) | `SAM_SESSION=kwin SAM_TEST_AUDIO=1 tests/gui/desktop-sandbox.sh OUTDIR` | every change |
 | Upgrade test | data from the previous version still works (`tests/upgrade/run.sh`) | `tests/upgrade/run.sh vX.Y.Z WORKDIR` | before every release |
 | Real AppImages | 120 real AppImages through SAM's whole flow (`tests/real-apps/`) | see below | before every release |
 | Mutation testing | deliberate mistakes in the code that the tests must notice | `make mutants-diff`; `scripts/mutants.sh FILE…` for whole parts (never plain `cargo mutants`: its settings miss the sandbox tests) | per change for security code; whole parts before every release |
