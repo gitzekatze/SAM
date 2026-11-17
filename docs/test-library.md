@@ -178,7 +178,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-114 tests.
+116 tests.
 
 | Promise | Test |
 |---|---|
@@ -234,9 +234,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed. | [`title_reports_and_tmux_passthrough_are_removed`](../crates/sam-runner/src/pty.rs#L794) |
 | An escape code hidden inside a removed code cannot slip through. | [`an_escape_inside_a_removed_code_starts_a_new_sequence`](../crates/sam-runner/src/pty.rs#L811) |
 | Logs get plain text without escape codes. | [`plain_text_for_the_log`](../crates/sam-runner/src/pty.rs#L820) |
-| Apps started from a terminal get SAM's terminal relay; apps without a terminal get none. | [`terminal_apps_get_sams_terminal_relay`](../crates/sam-runner/src/pty.rs#L829) |
-| A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | [`typing_and_output_pass_and_leftover_replies_are_discarded`](../crates/sam-runner/src/pty.rs#L851) |
-| An app on SAM's terminal relay cannot type into the user's real terminal. | [`the_app_cannot_reach_the_outer_terminal`](../crates/sam-runner/src/pty.rs#L933) |
+| The log's plain text survives every unfinished or odd code: one cut off at the end of the data (no read past it), a title ended by ESC \\ with text after it, a backslash inside a title, and an ESC with intermediate bytes at the very end (found by mutation testing: no test reached these edges). | [`plain_text_survives_unfinished_and_odd_codes`](../crates/sam-runner/src/pty.rs#L833) |
+| Only "tmux;" itself is tmux passthrough: a DCS that merely starts with "t" passes unchanged (found by mutation testing). | [`only_tmux_itself_counts_as_tmux_passthrough`](../crates/sam-runner/src/pty.rs#L857) |
+| Apps started from a terminal get SAM's terminal relay; apps without a terminal get none. | [`terminal_apps_get_sams_terminal_relay`](../crates/sam-runner/src/pty.rs#L869) |
+| A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | [`typing_and_output_pass_and_leftover_replies_are_discarded`](../crates/sam-runner/src/pty.rs#L891) |
+| An app on SAM's terminal relay cannot type into the user's real terminal. | [`the_app_cannot_reach_the_outer_terminal`](../crates/sam-runner/src/pty.rs#L973) |
 | Every built-in release key is a full fingerprint (40 hex characters), never a short key id that another key could share. | [`release_keys_are_full_fingerprints`](../crates/sam-runner/src/release_key.rs#L77) |
 | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L104) |
 | Without a built-in release key, SAM never updates itself, whatever the download looks like. | [`without_a_release_key_sam_never_updates_itself`](../crates/sam-runner/src/release_key.rs#L140) |
@@ -375,4 +377,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 289 automated Rust tests plus 7 scripted checks.
+Total: 291 automated Rust tests plus 7 scripted checks.

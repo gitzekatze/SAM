@@ -825,6 +825,46 @@ mod tests {
         );
     }
 
+    /// The log's plain text survives every unfinished or odd code: one cut
+    /// off at the end of the data (no read past it), a title ended by
+    /// ESC \\ with text after it, a backslash inside a title, and an ESC
+    /// with intermediate bytes at the very end (found by mutation testing:
+    /// no test reached these edges).
+    #[test]
+    fn plain_text_survives_unfinished_and_odd_codes() {
+        assert_eq!(plain_text(b"a\x1b[12"), "a", "CSI cut off at the end");
+        assert_eq!(plain_text(b"a\x1b]0;title"), "a", "OSC cut off at the end");
+        assert_eq!(plain_text(b"x\x1b("), "x", "ESC ( cut off at the end");
+        assert_eq!(
+            plain_text(b"\x1b]0;t\x1b\\after"),
+            "after",
+            "OSC ended by ESC \\"
+        );
+        assert_eq!(
+            plain_text(b"\x1b]0;a\\b\x07after"),
+            "after",
+            "a backslash inside a title"
+        );
+        assert_eq!(
+            plain_text(b"\x1b]0;a\x1bb\x07after"),
+            "after",
+            "an ESC inside a title ends nothing"
+        );
+    }
+
+    /// Only "tmux;" itself is tmux passthrough: a DCS that merely starts with
+    /// "t" passes unchanged (found by mutation testing).
+    #[test]
+    fn only_tmux_itself_counts_as_tmux_passthrough() {
+        let s = b"a\x1bPtq\x1b\\b";
+        let (out, f) = run(&[s]);
+        assert_eq!(out, s.to_vec());
+        assert!(f.blocked.is_empty());
+        let s = b"a\x1bPtmu\x1b\\b";
+        let (out, _) = run(&[s]);
+        assert_eq!(out, s.to_vec(), "four of five letters is not tmux either");
+    }
+
     /// Apps started from a terminal get SAM's terminal relay; apps without a terminal get none.
     #[test]
     fn terminal_apps_get_sams_terminal_relay() {

@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 17:32:32).
 
-**40 functions:** 18 proven by passing tests, 21 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 289 tests in all.
+**40 functions:** 18 proven by passing tests, 21 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 291 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -29,7 +29,7 @@
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 3 | ✅ |
 | 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 4 | ✅ |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 5 | ✅ 🆕 2 new tests since the report |
-| 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 12 | ✅ 🆕 1 new test since the report |
+| 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 14 | ✅ 🆕 3 new tests since the report |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 10 | ✅ |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 6 | ✅ 🆕 4 new tests since the report |
@@ -354,6 +354,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
+| [`plain_text_survives_unfinished_and_odd_codes`](../crates/sam-runner/src/pty.rs#L833) | The log's plain text survives every unfinished or odd code: one cut off at the end of the data (no read past it), a title ended by ESC \\ with text after it, a backslash inside a title, and an ESC with intermediate bytes at the very end (found by mutation testing: no test reached these edges). | 🆕 new |
+| [`only_tmux_itself_counts_as_tmux_passthrough`](../crates/sam-runner/src/pty.rs#L857) | Only "tmux;" itself is tmux passthrough: a DCS that merely starts with "t" passes unchanged (found by mutation testing). | 🆕 new |
 | [`leading_zeros_do_not_smuggle_a_code`](../crates/sam-runner/src/pty.rs#L777) | Leading zeros do not smuggle a code past the filter: terminals read "0052" as 52 and "021" as 21, and so does SAM; a number too long for any real code is removed whole (regression: an 11-digit OSC 52 was cut to 5 and passed on). | 🆕 new |
 | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](../crates/sam-sandbox/src/lib.rs#L1685) | The app gets a new terminal session, unless it runs on SAM's terminal relay. | ✅ |
 | [`ordinary_output_passes_unchanged`](../crates/sam-runner/src/pty.rs#L717) | Ordinary terminal output, colors and links pass through the relay unchanged. | ✅ |
@@ -361,9 +363,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`title_reports_and_tmux_passthrough_are_removed`](../crates/sam-runner/src/pty.rs#L794) | Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed. | ✅ |
 | [`an_escape_inside_a_removed_code_starts_a_new_sequence`](../crates/sam-runner/src/pty.rs#L811) | An escape code hidden inside a removed code cannot slip through. | ✅ |
 | [`plain_text_for_the_log`](../crates/sam-runner/src/pty.rs#L820) | Logs get plain text without escape codes. | ✅ |
-| [`terminal_apps_get_sams_terminal_relay`](../crates/sam-runner/src/pty.rs#L829) | Apps started from a terminal get SAM's terminal relay; apps without a terminal get none. | ✅ |
-| [`typing_and_output_pass_and_leftover_replies_are_discarded`](../crates/sam-runner/src/pty.rs#L851) | A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | ✅ |
-| [`the_app_cannot_reach_the_outer_terminal`](../crates/sam-runner/src/pty.rs#L933) | An app on SAM's terminal relay cannot type into the user's real terminal. | ✅ |
+| [`terminal_apps_get_sams_terminal_relay`](../crates/sam-runner/src/pty.rs#L869) | Apps started from a terminal get SAM's terminal relay; apps without a terminal get none. | ✅ |
+| [`typing_and_output_pass_and_leftover_replies_are_discarded`](../crates/sam-runner/src/pty.rs#L891) | A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | ✅ |
+| [`the_app_cannot_reach_the_outer_terminal`](../crates/sam-runner/src/pty.rs#L973) | An app on SAM's terminal relay cannot type into the user's real terminal. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L152) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
 | [`a_doubled_escape_does_not_smuggle_a_clipboard_code`](../crates/sam-runner/src/pty.rs#L729) | A doubled ESC in front of a clipboard code does not smuggle it past the filter: the terminal reads the second ESC as the start of the code, so the filter must too. | ✅ |
 
