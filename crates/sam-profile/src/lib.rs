@@ -606,7 +606,7 @@ pub fn compatibility_profile(base: &PermissionSet) -> PermissionSet {
 
 /// Translated where it is shown (`tr`).
 pub const COMPAT_WARNING: &str = sam_core::i18n::n_(
-    "This AppImage may require broader host access to function correctly. SAM can grant additional permissions, but this reduces isolation.",
+    "Compatibility mode gives broad access for apps that work no other way: full network, all of /usr and the full session bus, through which the app can start programs outside its sandbox. Use it only for apps you trust.",
 );
 
 /// The user's own presets. SAM ships none: the recommendation already

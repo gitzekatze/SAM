@@ -985,7 +985,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("display.x11", "Display", "X11 / XWayland",
             "X11 access allows the app to observe input and other windows. Wayland is safer, but some apps may require XWayland.", High),
         perm!("dbus.session.mode", "D-Bus", "Session bus",
-            "'filtered' only allows portals, notifications and the tray. 'full' lets the app talk to every desktop service, which is high risk.", High),
+            "'filtered' only allows portals, notifications and the tray. 'full' lets the app talk to every desktop service, including systemd, through which it can start programs outside its sandbox.", Dangerous),
         perm!("dbus.session.allow", "D-Bus", "Allowed session names",
             "Bus names reachable in filtered mode.", Medium, advanced),
         perm!("dbus.system.mode", "D-Bus", "System bus",

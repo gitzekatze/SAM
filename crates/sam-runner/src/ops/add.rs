@@ -125,7 +125,7 @@ impl Sam {
             root: &incoming,
             limits: self.limits(),
             allow_fallback: opts.consent_fallback && self.config.extraction.allow_fallback,
-            isolation: self.extract_isolation(),
+            isolation: self.extract_isolation()?,
         };
         pr.step(ADD_STEPS, 1, 0.0, "");
         // How much is unpacked so far. The final size is unknown until the

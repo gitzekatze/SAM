@@ -345,11 +345,13 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             "Session bus: filtered",
             RiskLevel::Low,
         ),
+        // The full bus includes org.freedesktop.systemd1, which can start
+        // programs outside the sandbox: as dangerous as allowing that name.
         DbusMode::Full => item(
             &mut items,
             "dbus.session.mode",
             "Session bus: full access",
-            RiskLevel::High,
+            RiskLevel::Dangerous,
         ),
     }
     for name in &p.dbus.session.allow {
@@ -533,6 +535,19 @@ mod tests {
         assert_eq!(RiskLevel::Dangerous.words(), "Dangerous");
         assert!(RiskLevel::High.is_named("think twice") && RiskLevel::High.is_named("high"));
         assert!(RiskLevel::Medium.is_named("harmless") && !RiskLevel::High.is_named("harmless"));
+    }
+
+    /// The full session bus reaches systemd, which can start programs
+    /// outside the sandbox, so it is rated like allowing systemd by name.
+    #[test]
+    fn the_full_session_bus_is_rated_dangerous() {
+        let mut p = PermissionSet::default();
+        p.dbus.session.mode = DbusMode::Full;
+        let full = assess(&p);
+        assert_eq!(full.level, RiskLevel::Dangerous);
+        p.dbus.session.mode = DbusMode::Filtered;
+        p.dbus.session.allow = vec!["org.freedesktop.systemd1".into()];
+        assert_eq!(assess(&p).level, full.level, "the same as systemd by name");
     }
 
     #[test]
