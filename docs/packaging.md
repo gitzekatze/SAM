@@ -22,26 +22,17 @@ Optional dependencies of `sam-jail-cli`:
 split into `sam-jail-cli` and `sam-jail`. It downloads the two release files
 from GitHub, checks them, and builds offline from the vendored crates.
 
-Release steps (one command does them all):
+Releases are made with one command, `scripts/new-version.sh X.Y.Z`. It
+runs `scripts/release.sh` (version everywhere, dated changelog, man pages,
+clippy and every test, signed tag and files in `dist/`) on a branch
+`release-X.Y.Z`, because `main` is protected and takes changes only through
+pull requests, and merges that pull request once its checks pass. The
+*Release* workflow then builds a **draft** GitHub release from the tag;
+publishing it is a person's click. [Releasing](releasing.md) has every step
+and the checks before it. For the AUR afterwards:
 
-1. Write the changes under `## Unreleased` in `CHANGELOG.md`.
-2. `RUNTIME=/path/to/runtime-x86_64 scripts/release.sh X.Y.Z`
-   - sets the version everywhere (Cargo, metainfo, Fedora spec, PKGBUILD),
-     dates the changelog section, regenerates the man pages;
-   - runs clippy (warnings are errors) and the whole test suite;
-   - commits `Release X.Y.Z` and tags `vX.Y.Z` with the release notes;
-   - builds `dist/` (source, vendored crates, `SHA256SUMS`, the AppImage)
-     and commits the PKGBUILD checksums and `.SRCINFO`.
-   Releases are signed: `SIGN_KEY=<gpg id>` is required and signs the tag,
-   the files and `SHA256SUMS` (`.asc` next to each). `UNSIGNED=1` makes an
-   unsigned test release. Nothing is pushed.
-3. `git push origin main vX.Y.Z`. The *Release* workflow builds the same
-   files from the tag and attaches them to a **draft** GitHub release; check
-   that its `SHA256SUMS` matches `dist/SHA256SUMS`, add the `.asc` files from
-   `dist/`, then publish the draft (the repository must be public for the
-   AUR).
-4. Copy `packaging/arch/PKGBUILD` and `.SRCINFO` into the AUR repository and
-   push.
+- Copy `packaging/arch/PKGBUILD` and `.SRCINFO` into the AUR repository and
+  push.
 
 Test before publishing: copy both files next to the PKGBUILD (or point
 `SRCDEST` at `dist/`) and run `makepkg -si`.
