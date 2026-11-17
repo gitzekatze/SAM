@@ -188,7 +188,7 @@ id = 20
 area = "D"
 promise = "SAM checks from inside the sandbox that every setting applies (the sandbox check)."
 code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs"]
-tests = ["folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked",
+tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked",
   "sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply",
 ]
 checks = ["tests/real-apps/run.sh"]

@@ -742,3 +742,327 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
     };
     Ok(Outcome { report, record })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// A fixed computer: a real home with Documents, Pictures and ~/.ssh in
+    /// a temporary folder, no sockets, no tools (cases add what they need).
+    fn host_in(t: &Path) -> HostInfo {
+        let mut h = sam_core::sandbox::sample_context().host;
+        h.home = t.join("home");
+        for d in ["Documents", "Pictures", ".ssh"] {
+            fs::create_dir_all(h.home.join(d)).unwrap();
+        }
+        h.xdg_dirs = [("documents", "Documents"), ("pictures", "Pictures")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), h.home.join(v)))
+            .collect();
+        h.sockets = Default::default();
+        h.tools = Default::default();
+        h.landlock_abi = None;
+        h
+    }
+
+    fn folder(plan: &ProbePlan, title: &str) -> Access {
+        match plan
+            .checks
+            .iter()
+            .find(|c| c.title == title)
+            .map(|c| &c.test)
+        {
+            Some(ProbeTest::Folder { expect, .. }) => *expect,
+            other => panic!("no folder check {title}: {other:?}"),
+        }
+    }
+
+    fn test_of<'a>(plan: &'a ProbePlan, id: &str) -> &'a ProbeTest {
+        &plan
+            .checks
+            .iter()
+            .find(|c| c.id == id)
+            .unwrap_or_else(|| panic!("no check {id}"))
+            .test
+    }
+
+    /// What the check expects of each folder: the folder's own setting, but
+    /// never less than the home shows it (a read-only home shows Documents
+    /// read-only even when Documents has no setting; a writable folder in a
+    /// read-only home stays writable); keys only with full home and their
+    /// own switch; extra folders like the home inside it.
+    #[test]
+    fn the_check_expects_each_folder_as_its_settings_show_it() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let plan_of = |f: &dyn Fn(&mut PermissionSet)| {
+            let mut p = PermissionSet::strict_gui();
+            f(&mut p);
+            plan(&p, &cfg, &h)
+        };
+        // Private home, Documents read-only.
+        let pl = plan_of(&|p| p.filesystem.documents = Perm::Ro);
+        assert_eq!(
+            folder(&pl, "Your home folder stays private"),
+            Access::Hidden
+        );
+        assert_eq!(folder(&pl, "Documents"), Access::ReadOnly);
+        assert_eq!(folder(&pl, "Pictures"), Access::Hidden);
+        // Read-only home, Documents read & write, Pictures nothing.
+        let pl = plan_of(&|p| {
+            p.filesystem.home = true;
+            p.filesystem.home_access = Perm::Ro;
+            p.filesystem.documents = Perm::Rw;
+        });
+        assert_eq!(folder(&pl, "Your home folder"), Access::ReadOnly);
+        assert_eq!(folder(&pl, "Documents"), Access::ReadWrite);
+        assert_eq!(folder(&pl, "Pictures"), Access::ReadOnly);
+        // Writable home: every folder writable; keys only with their switch.
+        let pl = plan_of(&|p| {
+            p.filesystem.home = true;
+            p.filesystem.home_access = Perm::Rw;
+        });
+        assert_eq!(folder(&pl, "Pictures"), Access::ReadWrite);
+        assert_eq!(folder(&pl, "SSH keys"), Access::Hidden);
+        let pl = plan_of(&|p| {
+            p.filesystem.home = true;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.ssh = true;
+        });
+        assert_eq!(folder(&pl, "SSH keys"), Access::ReadWrite);
+        let pl = plan_of(&|p| p.filesystem.ssh = true);
+        assert_eq!(
+            folder(&pl, "SSH keys"),
+            Access::Hidden,
+            "keys need the home too"
+        );
+        // Extra folders: inside a writable home they are writable, outside it
+        // as listed.
+        let inside = h.home.join("Documents").to_string_lossy().into_owned();
+        let outside = t.path().to_string_lossy().into_owned();
+        let pl = plan_of(&|p| {
+            p.filesystem.home = true;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.custom_read = vec![inside.clone(), outside.clone()];
+        });
+        let extra = |path: &str| {
+            folder(
+                &pl,
+                &format!("Extra folder {}", sam_core::util::tildify(Path::new(path))),
+            )
+        };
+        assert_eq!(extra(&inside), Access::ReadWrite);
+        assert_eq!(extra(&outside), Access::ReadOnly);
+        // A user folder that is the home itself (unset in user-dirs.dirs) is
+        // the home's check, not a folder check of its own.
+        let mut h2 = h.clone();
+        h2.xdg_dirs.insert("desktop".into(), h2.home.clone());
+        let pl = plan(&PermissionSet::strict_gui(), &cfg, &h2);
+        assert!(!pl.checks.iter().any(|c| c.title == "Desktop folder"));
+        let pl = plan_of(&|p| p.filesystem.custom_write = vec![inside.clone()]);
+        assert_eq!(
+            folder(
+                &pl,
+                &format!(
+                    "Extra folder {}",
+                    sam_core::util::tildify(Path::new(&inside))
+                )
+            ),
+            Access::ReadWrite
+        );
+    }
+
+    /// Network, display, sound, the session bus, the SSH agent, variables
+    /// and the security layers: the check expects each only where both the
+    /// setting and this computer provide it.
+    #[test]
+    fn the_check_expects_the_rest_where_setting_and_computer_allow_it() {
+        let t = tempfile::tempdir().unwrap();
+        let mut h = host_in(t.path());
+        let cfg = Config::default();
+        let p = PermissionSet::strict_gui();
+
+        // Network: "This computer only" plans "No internet"; full never "No network".
+        let mut q = p.clone();
+        q.network.mode = NetworkMode::Localhost;
+        assert!(plan(&q, &cfg, &h)
+            .checks
+            .iter()
+            .any(|c| c.id == "net" && c.title == "No internet"));
+        q.network.mode = NetworkMode::Full;
+        assert!(!matches!(
+            plan(&q, &cfg, &h)
+                .checks
+                .iter()
+                .find(|c| c.id == "net")
+                .map(|c| &c.test),
+            Some(ProbeTest::NoNetwork)
+        ));
+        q.network.mode = NetworkMode::None;
+        assert!(matches!(
+            test_of(&plan(&q, &cfg, &h), "net"),
+            ProbeTest::NoNetwork
+        ));
+
+        // Display and sound: only setting and socket together.
+        let mut q = p.clone();
+        q.display.wayland = true;
+        q.display.x11 = true;
+        q.audio.enabled = true;
+        let expects = |q: &PermissionSet, h: &HostInfo| {
+            let pl = plan(q, &cfg, h);
+            let w = matches!(test_of(&pl, "wayland"), ProbeTest::Wayland { expect: true });
+            let x = matches!(test_of(&pl, "x11"), ProbeTest::X11 { expect: true });
+            let a = matches!(test_of(&pl, "audio"), ProbeTest::Audio { expect: true });
+            (w, x, a)
+        };
+        assert_eq!(
+            expects(&q, &h),
+            (false, false, false),
+            "no sockets on this computer"
+        );
+        h.sockets.wayland = Some("/run/user/1000/wayland-0".into());
+        h.sockets.x11 = Some("/tmp/.X11-unix/X0".into());
+        h.sockets.pulse = Some("/run/user/1000/pulse/native".into());
+        assert_eq!(expects(&q, &h), (true, true, true));
+        let mut none = p.clone();
+        none.display.wayland = false; // a GUI profile has Wayland on
+        none.display.x11 = false;
+        none.audio.enabled = false;
+        assert_eq!(
+            expects(&none, &h),
+            (false, false, false),
+            "sockets but no setting"
+        );
+
+        // Session bus: a real socket address, and full access or the filter
+        // with its proxy installed.
+        let bus = |q: &PermissionSet, h: &HostInfo| {
+            matches!(
+                test_of(&plan(q, &cfg, h), "bus"),
+                ProbeTest::SessionBus { expect: true }
+            )
+        };
+        let mut q = p.clone();
+        q.dbus.session.mode = DbusMode::Full;
+        assert!(!bus(&q, &h), "no bus address");
+        h.sockets.dbus_session_address = Some("unix:abstract=/tmp/dbus-x".into());
+        assert!(!bus(&q, &h), "an abstract socket is not passed on");
+        h.sockets.dbus_session_address =
+            Some(format!("unix:path={}", t.path().join("no-bus").display()));
+        assert!(bus(&q, &h), "full access");
+        q.dbus.session.mode = DbusMode::Filtered;
+        assert!(!bus(&q, &h), "filter without its proxy");
+        h.tools.xdg_dbus_proxy = Some(sam_core::host::Tool {
+            path: "/usr/bin/xdg-dbus-proxy".into(),
+            version: None,
+        });
+        assert!(bus(&q, &h), "filter with its proxy");
+        q.dbus.session.mode = DbusMode::None;
+        assert!(!bus(&q, &h), "no bus");
+
+        // SSH agent: setting and agent together.
+        let agent = |q: &PermissionSet, h: &HostInfo| {
+            matches!(
+                test_of(&plan(q, &cfg, h), "ssh-agent"),
+                ProbeTest::Env {
+                    expect: Some(_),
+                    ..
+                }
+            )
+        };
+        let mut q = p.clone();
+        q.sockets.ssh_agent = true;
+        assert!(!agent(&q, &h), "no agent on this computer");
+        h.sockets.ssh_agent = Some("/run/user/1000/ssh-agent".into());
+        assert!(agent(&q, &h));
+        assert!(!agent(&p, &h));
+
+        // Variables: only valid names are checked.
+        let mut q = p.clone();
+        for n in ["_OK", "Ok1", "1BAD", "BAD-NAME", ""] {
+            q.environment.set.insert(n.to_string(), "v".into());
+        }
+        let pl = plan(&q, &cfg, &h);
+        let named: Vec<_> = pl
+            .checks
+            .iter()
+            .filter(|c| c.id == "env")
+            .map(|c| c.title.clone())
+            .collect();
+        assert_eq!(named, ["Variable Ok1", "Variable _OK"]);
+
+        // The GPU: setting and device together (whatever this computer has).
+        let gpu = |q: &PermissionSet| match test_of(&plan(q, &cfg, &h), "gpu") {
+            ProbeTest::Present { expect, .. } => *expect,
+            t => panic!("{t:?}"),
+        };
+        let mut q = p.clone();
+        q.devices.gpu = false;
+        assert!(!gpu(&q));
+        q.devices.gpu = true;
+        assert_eq!(gpu(&q), Path::new("/dev/dri").exists());
+        // The system bus, where this computer has one.
+        h.sockets.dbus_system = Some("/run/dbus/system_bus_socket".into());
+        let sysbus = |q: &PermissionSet| {
+            matches!(
+                test_of(&plan(q, &cfg, &h), "sysbus"),
+                ProbeTest::Present { expect: true, .. }
+            )
+        };
+        let mut q = p.clone();
+        q.dbus.system.mode = DbusMode::None;
+        assert!(!sysbus(&q));
+        q.dbus.system.mode = DbusMode::Full;
+        assert!(sysbus(&q));
+        // Nested sandboxes: blocked unless allowed.
+        let blocked = |q: &PermissionSet| {
+            matches!(
+                test_of(&plan(q, &cfg, &h), "userns"),
+                ProbeTest::UserNamespaces { blocked: true }
+            )
+        };
+        let mut q = p.clone();
+        q.advanced.allow_userns = false;
+        assert!(blocked(&q));
+        q.advanced.allow_userns = true;
+        assert!(!blocked(&q));
+
+        // Security layers: settings, configuration and the kernel together.
+        let layers = |q: &PermissionSet, c: &Config, h: &HostInfo| {
+            let pl = plan(q, c, h);
+            (
+                matches!(
+                    test_of(&pl, "landlock"),
+                    ProbeTest::Landlock { expect: true }
+                ),
+                matches!(
+                    test_of(&pl, "seccomp"),
+                    ProbeTest::SyscallFilter { active: true }
+                ),
+            )
+        };
+        let mut c = cfg.clone();
+        let mut q = p.clone();
+        q.advanced.landlock = Some(true);
+        assert!(!layers(&q, &c, &h).0, "no Landlock in this kernel");
+        h.landlock_abi = Some(4);
+        assert!(layers(&q, &c, &h).0);
+        q.advanced.landlock = Some(false);
+        assert!(!layers(&q, &c, &h).0, "switched off for the app");
+        c.security.baseline_seccomp = true;
+        q.advanced.seccomp_baseline = true;
+        assert!(layers(&q, &c, &h).1, "baseline filter");
+        q.advanced.seccomp_baseline = false;
+        q.advanced.seccomp_strict = true;
+        c.security.experimental_seccomp = false;
+        assert!(
+            !layers(&q, &c, &h).1,
+            "strict filter needs the experimental switch"
+        );
+        c.security.experimental_seccomp = true;
+        assert!(layers(&q, &c, &h).1, "strict filter");
+    }
+}
