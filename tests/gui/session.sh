@@ -24,7 +24,7 @@ fi
 mkdir -p "$XDG_RUNTIME_DIR" "$out/empty-services" "$out/tmp" && chmod 700 "$XDG_RUNTIME_DIR"
 cat > "$out/session.conf" <<C
 <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
-<busconfig><type>session</type><listen>unix:tmpdir=$XDG_RUNTIME_DIR</listen><servicedir>$out/empty-services</servicedir>
+<busconfig><type>session</type><listen>unix:path=$XDG_RUNTIME_DIR/bus</listen><servicedir>$out/empty-services</servicedir>
 <policy context="default"><allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/><allow own="*"/></policy></busconfig>
 C
 unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS NO_AT_BRIDGE
