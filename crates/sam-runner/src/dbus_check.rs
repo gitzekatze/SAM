@@ -86,6 +86,38 @@ pub fn name_reachable(address: &str, name: &str, timeout: Duration) -> Result<bo
     bail!("{}", sam_core::i18n::tr("no reply from the bus"))
 }
 
+/// Owns `name` on the bus at `address` for as long as the returned
+/// connection stays open. For tests: a private test bus gets the names a
+/// desktop has (portal, keyring …), so the checks that depend on them run
+/// on every computer.
+pub fn own_name(address: &str, name: &str, timeout: Duration) -> Result<UnixStream> {
+    let (mut s, mut reader) = connect(address, timeout)?;
+    // RequestName(name, flags = DO_NOT_QUEUE): signature "su".
+    let mut body = Vec::new();
+    put_str(&mut body, name);
+    pad(&mut body, 4);
+    body.extend_from_slice(&4u32.to_le_bytes());
+    s.write_all(&message(
+        2,
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "RequestName",
+        "su",
+        &body,
+    ))?;
+    for _ in 0..64 {
+        let (kind, reply_serial) = read_message(&mut reader)?;
+        if reply_serial == Some(2) {
+            if kind != 2 {
+                bail!("the bus refused the name {name}");
+            }
+            return Ok(s);
+        }
+    }
+    bail!("{}", sam_core::i18n::tr("no reply from the bus"))
+}
+
 fn pad(buf: &mut Vec<u8>, align: usize) {
     while !buf.len().is_multiple_of(align) {
         buf.push(0);
@@ -127,14 +159,35 @@ fn method_call(
     if let Some(a) = arg {
         put_str(&mut body, a);
     }
+    message(
+        serial,
+        dest,
+        path,
+        iface,
+        member,
+        if arg.is_some() { "s" } else { "" },
+        &body,
+    )
+}
+
+/// A method call with a body of signature `sig` (empty: no body).
+fn message(
+    serial: u32,
+    dest: &str,
+    path: &str,
+    iface: &str,
+    member: &str,
+    sig: &str,
+    body: &[u8],
+) -> Vec<u8> {
     // Header fields are laid out as if they started at offset 16.
     let mut fields = vec![0u8; 16];
     field(&mut fields, 1, "o", path);
     field(&mut fields, 2, "s", iface);
     field(&mut fields, 3, "s", member);
     field(&mut fields, 6, "s", dest);
-    if arg.is_some() {
-        field(&mut fields, 8, "g", "s");
+    if !sig.is_empty() {
+        field(&mut fields, 8, "g", sig);
     }
     let fields = fields.split_off(16);
     let mut msg = vec![b'l', 1, 0, 1];
@@ -143,7 +196,7 @@ fn method_call(
     msg.extend_from_slice(&(fields.len() as u32).to_le_bytes());
     msg.extend_from_slice(&fields);
     pad(&mut msg, 8);
-    msg.extend_from_slice(&body);
+    msg.extend_from_slice(body);
     msg
 }
 

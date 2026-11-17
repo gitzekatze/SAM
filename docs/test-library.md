@@ -185,7 +185,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-127 tests.
+134 tests.
 
 | Promise | Test |
 |---|---|
@@ -199,8 +199,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A failing section is named and the next still runs. | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L619) |
 | Where a run must prove everything (CI), a skip is an error; locally it is a note. | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L640) |
 | A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L652) |
-| SAM's own bus check reaches a session bus. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L222) |
-| SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L272) |
+| SAM's own bus check reaches a session bus. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L275) |
+| SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L325) |
 | An app may register a tray icon only while the tray service is allowed. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L164) |
 | The proxy counts as ready only when its socket accepts connections, not when the file merely exists (regression: the sandbox check sometimes found the session bus refused right after the start). | [`a_socket_counts_as_ready_only_when_it_accepts`](../crates/sam-runner/src/dbus_proxy.rs#L186) |
 | Failed file and socket accesses are read from a diagnostic trace. | [`failed_accesses_are_read_from_a_trace`](../crates/sam-runner/src/diagnose.rs#L491) |
@@ -268,6 +268,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L632) |
 | What the check expects of each folder: the folder's own setting, but never less than the home shows it (a read-only home shows Documents read-only even when Documents has no setting; a writable folder in a read-only home stays writable); keys only with full home and their own switch; extra folders like the home inside it. | [`the_check_expects_each_folder_as_its_settings_show_it`](../crates/sam-runner/src/verify.rs#L795) |
 | Network, display, sound, the session bus, the SSH agent, variables and the security layers: the check expects each only where both the setting and this computer provide it. | [`the_check_expects_the_rest_where_setting_and_computer_allow_it`](../crates/sam-runner/src/verify.rs#L880) |
+| What the check expects of each desktop service that exists on the computer: full access reaches all of them; the filter reaches the desktop portal and exactly the names its list allows (a whole name, or a family with `.*`); a denied name stays hidden even with full access; a service the computer does not have is not checked at all. | [`the_check_expects_each_desktop_service_as_the_filter_shows_it`](../crates/sam-runner/src/verify.rs#L1075) |
 | The block checksums are the ones zsync defines: MD4 of a block padded with zeros to the block size, and the weak sum cut to its last bytes. | [`block_checksums_match_the_zsync_definition`](../crates/sam-runner/src/zsync.rs#L353) |
 | An update is rebuilt from the old version plus the changed blocks. | [`an_update_is_rebuilt_from_the_old_version_and_changed_blocks`](../crates/sam-runner/src/zsync.rs#L405) |
 | The rolling checksum of the update transfer matches a direct computation at every offset. | [`the_rolling_checksum_matches_a_direct_computation`](../crates/sam-runner/src/zsync.rs#L459) |
@@ -310,6 +311,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A record whose id climbs out of SAM's folders cannot be loaded, so no operation can reach the folders that id would name. | [`a_record_with_a_climbing_id_reaches_nothing`](../crates/sam-runner/tests/tamper.rs#L66) |
 | ⟲ Regression (found in the test audit): "go back to the earlier version" moved the file a record named as the backup, wherever it was. | [`undoing_an_update_never_moves_files_outside_sams_backup_folder`](../crates/sam-runner/tests/tamper.rs#L89) |
 | An app whose settings were changed outside SAM does not start until the user has confirmed them; changes SAM makes itself never count as such. | [`an_app_changed_outside_sam_starts_only_after_confirmation`](../crates/sam-runner/tests/tamper.rs#L107) |
+| Typing reaches the app; its output reaches the user filtered (colours pass, a clipboard write does not); the window size is copied at the start and follows a resize; the log and the error head get the text without control codes; the user's terminal is raw while the app runs and gets its settings back afterwards. | [`the_terminal_connection_passes_typing_and_filtered_output`](../crates/sam-runner/tests/terminal_relay.rs#L166) |
+| Keys reach the app unchanged: Ctrl+C interrupts the app, not SAM. | [`ctrl_c_reaches_the_app`](../crates/sam-runner/tests/terminal_relay.rs#L234) |
+| When the user's terminal closes, SAM hangs up the app's terminal: the app ends, and the end says so. | [`closing_the_users_terminal_hangs_up_the_app`](../crates/sam-runner/tests/terminal_relay.rs#L252) |
+| The log keeps at most its limit of terminal output and says so. | [`the_log_stays_within_its_limit`](../crates/sam-runner/tests/terminal_relay.rs#L269) |
+| An app that leaves something running on its terminal (a helper in the background) does not keep SAM waiting once the app itself has ended. | [`something_left_on_the_apps_terminal_does_not_keep_sam_waiting`](../crates/sam-runner/tests/terminal_relay.rs#L293) |
+| When the user's terminal can no longer show anything (its output is gone), SAM stops writing there but keeps the log, and the app runs to its end. | [`the_output_is_still_logged_when_the_terminal_cannot_show_it`](../crates/sam-runner/tests/terminal_relay.rs#L317) |
 | Uninstalling SAM removes all of its files and restores the menu entries it had hidden. | [`uninstall_removes_everything_and_restores_menus`](../crates/sam-runner/tests/uninstall.rs#L17) |
 | Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L123) |
 | Undoing an update puts the previous version back. | [`undo_puts_the_previous_version_back`](../crates/sam-runner/tests/update.rs#L15) |
@@ -396,4 +403,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 310 automated Rust tests plus 7 scripted checks.
+Total: 317 automated Rust tests plus 7 scripted checks.

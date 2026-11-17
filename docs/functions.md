@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-17 16:10:22).
 
-**40 functions:** 38 proven by passing tests, 1 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 310 tests in all.
+**40 functions:** 37 proven by passing tests, 2 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 317 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -29,10 +29,10 @@
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 3 | ✅ |
 | 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 4 | ✅ |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 9 | ✅ |
-| 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 16 | ✅ 🆕 1 new test since the report |
+| 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 22 | ✅ 🆕 7 new tests since the report |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 10 | ✅ |
-| 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 10 | ✅ |
+| 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 11 | ✅ 🆕 1 new test since the report |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 6 | ✅ |
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 3 | ✅ |
 | 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 6 | ✅ |
@@ -363,6 +363,12 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`output_shown_in_a_terminal_is_filtered_without_the_relay`](../crates/sam-runner/src/launch.rs#L1573) | With its input redirected an app has no terminal relay; its output shown in a terminal still loses clipboard codes and title reports, even split over two pieces. | ✅ |
 | [`a_pipe_into_a_terminal_program_passes_through_unchanged`](../crates/sam-jail-cli/tests/pipes.rs#L28) | A pipe into a terminal program passes through unchanged: the tool reads the piped input, its output arrives byte for byte, and it has no terminal of its own. | 🆕 new |
 | [`plain_text_survives_unfinished_and_odd_codes`](../crates/sam-runner/src/pty.rs#L839) | The log's plain text survives every unfinished or odd code: one cut off at the end of the data (no read past it), a title ended by ESC \\ with text after it, a backslash inside a title, and an ESC with intermediate bytes at the very end (found by mutation testing: no test reached these edges). | ✅ |
+| [`the_terminal_connection_passes_typing_and_filtered_output`](../crates/sam-runner/tests/terminal_relay.rs#L166) | Typing reaches the app; its output reaches the user filtered (colours pass, a clipboard write does not); the window size is copied at the start and follows a resize; the log and the error head get the text without control codes; the user's terminal is raw while the app runs and gets its settings back afterwards. | 🆕 new |
+| [`ctrl_c_reaches_the_app`](../crates/sam-runner/tests/terminal_relay.rs#L234) | Keys reach the app unchanged: Ctrl+C interrupts the app, not SAM. | 🆕 new |
+| [`closing_the_users_terminal_hangs_up_the_app`](../crates/sam-runner/tests/terminal_relay.rs#L252) | When the user's terminal closes, SAM hangs up the app's terminal: the app ends, and the end says so. | 🆕 new |
+| [`the_log_stays_within_its_limit`](../crates/sam-runner/tests/terminal_relay.rs#L269) | The log keeps at most its limit of terminal output and says so. | 🆕 new |
+| [`something_left_on_the_apps_terminal_does_not_keep_sam_waiting`](../crates/sam-runner/tests/terminal_relay.rs#L293) | An app that leaves something running on its terminal (a helper in the background) does not keep SAM waiting once the app itself has ended. | 🆕 new |
+| [`the_output_is_still_logged_when_the_terminal_cannot_show_it`](../crates/sam-runner/tests/terminal_relay.rs#L317) | When the user's terminal can no longer show anything (its output is gone), SAM stops writing there but keeps the log, and the app runs to its end. | 🆕 new |
 | [`only_tmux_itself_counts_as_tmux_passthrough`](../crates/sam-runner/src/pty.rs#L863) | Only "tmux;" itself is tmux passthrough: a DCS that merely starts with "t" passes unchanged (found by mutation testing). | ✅ |
 | [`leading_zeros_do_not_smuggle_a_code`](../crates/sam-runner/src/pty.rs#L783) | Leading zeros do not smuggle a code past the filter: terminals read "0052" as 52 and "021" as 21, and so does SAM; a number too long for any real code is removed whole (regression: an 11-digit OSC 52 was cut to 5 and passed on). | ✅ |
 | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](../crates/sam-sandbox/src/lib.rs#L1912) | The app gets a new terminal session, unless it runs on SAM's terminal relay. | ✅ |
@@ -421,6 +427,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_check_reports_what_it_finds_not_what_it_hopes`](../crates/sam-runner/src/probe.rs#L580) | Each check reports what it finds, not what it hopes: run on facts that are the same on every computer, a check whose expectation is wrong fails, one whose expectation is right passes, and the report counts them (found by mutation testing: a check turning every failure into a pass went unnoticed). | ✅ |
 | [`a_skipped_check_is_neither_passed_nor_failed`](../crates/sam-runner/src/probe.rs#L729) | A verdict is exactly pass, fail or "could not check": a skipped check counts neither as passed nor as failed. | ✅ |
 | [`the_check_expects_each_folder_as_its_settings_show_it`](../crates/sam-runner/src/verify.rs#L795) | What the check expects of each folder: the folder's own setting, but never less than the home shows it (a read-only home shows Documents read-only even when Documents has no setting; a writable folder in a read-only home stays writable); keys only with full home and their own switch; extra folders like the home inside it. | ✅ |
+| [`the_check_expects_each_desktop_service_as_the_filter_shows_it`](../crates/sam-runner/src/verify.rs#L1075) | What the check expects of each desktop service that exists on the computer: full access reaches all of them; the filter reaches the desktop portal and exactly the names its list allows (a whole name, or a family with `.*`); a denied name stays hidden even with full access; a service the computer does not have is not checked at all. | 🆕 new |
 | [`the_check_expects_the_rest_where_setting_and_computer_allow_it`](../crates/sam-runner/src/verify.rs#L880) | Network, display, sound, the session bus, the SSH agent, variables and the security layers: the check expects each only where both the setting and this computer provide it. | ✅ |
 | [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L761) | The sandbox check tells a real folder of the user from a private stand-in. | ✅ |
 | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L22) | The sandbox check passes when the settings apply, and catches a setting that does not apply. | ✅ |
@@ -616,8 +623,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L55) | Without Bubblewrap, the message says which package to install. | ✅ |
 | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L66) | When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | ✅ |
 | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L85) | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | ✅ |
-| [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L222) | SAM's own bus check reaches a session bus. | ✅ |
-| [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L272) | SAM's own D-Bus message for the bus check has the correct wire format. | ✅ |
+| [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L275) | SAM's own bus check reaches a session bus. | ✅ |
+| [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L325) | SAM's own D-Bus message for the bus check has the correct wire format. | ✅ |
 | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L228) | Bubblewrap versions are compared correctly, including missing or malformed version text. | ✅ |
 | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L550) | The built in contract map parses. | ✅ |
 | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L556) | Every contract probe is known. | ✅ |

@@ -161,7 +161,7 @@ id = 17
 area = "C"
 promise = "The app can't type into your terminal."
 code = ["sam-runner/src/pty.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs"]
-tests = ["output_shown_in_a_terminal_is_filtered_without_the_relay", "a_pipe_into_a_terminal_program_passes_through_unchanged", "plain_text_survives_unfinished_and_odd_codes", "only_tmux_itself_counts_as_tmux_passthrough", "leading_zeros_do_not_smuggle_a_code", "a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code"]
+tests = ["output_shown_in_a_terminal_is_filtered_without_the_relay", "a_pipe_into_a_terminal_program_passes_through_unchanged", "plain_text_survives_unfinished_and_odd_codes", "the_terminal_connection_passes_typing_and_filtered_output", "ctrl_c_reaches_the_app", "closing_the_users_terminal_hangs_up_the_app", "the_log_stays_within_its_limit", "something_left_on_the_apps_terminal_does_not_keep_sam_waiting", "the_output_is_still_logged_when_the_terminal_cannot_show_it", "only_tmux_itself_counts_as_tmux_passthrough", "leading_zeros_do_not_smuggle_a_code", "a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code"]
 
 [[function]]
 id = 18
@@ -188,7 +188,7 @@ id = 20
 area = "D"
 promise = "SAM checks from inside the sandbox that every setting applies (the sandbox check)."
 code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs"]
-tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked",
+tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_each_desktop_service_as_the_filter_shows_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked",
   "sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply",
 ]
 checks = ["tests/real-apps/run.sh"]

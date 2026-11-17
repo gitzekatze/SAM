@@ -1065,4 +1065,113 @@ mod tests {
         c.security.experimental_seccomp = true;
         assert!(layers(&q, &c, &h).1, "strict filter");
     }
+
+    /// What the check expects of each desktop service that exists on the
+    /// computer: full access reaches all of them; the filter reaches the
+    /// desktop portal and exactly the names its list allows (a whole name,
+    /// or a family with `.*`); a denied name stays hidden even with full
+    /// access; a service the computer does not have is not checked at all.
+    /// A private test bus owns the names, so this runs on every computer.
+    #[test]
+    fn the_check_expects_each_desktop_service_as_the_filter_shows_it() {
+        if sam_core::util::which("dbus-daemon").is_none() {
+            crate::contracts::skip("dbus-daemon is not installed")
+                .unwrap_or_else(|e| panic!("{e}"));
+            return;
+        }
+        let t = tempfile::tempdir().unwrap();
+        let services = crate::testenv::PrivateServices::start(t.path());
+        let address = services.bus_address().expect("a private bus").to_string();
+        let mut h = host_in(t.path());
+        h.sockets.dbus_session_address = Some(address.clone());
+        h.tools.xdg_dbus_proxy = Some(sam_core::host::Tool {
+            path: "/usr/bin/xdg-dbus-proxy".into(),
+            version: None,
+        });
+        let cfg = Config::default();
+        const PORTAL: &str = "org.freedesktop.portal.Desktop";
+        const SYSTEMD: &str = "org.freedesktop.systemd1";
+        const SECRETS: &str = "org.freedesktop.secrets";
+        const KWIN: &str = "org.kde.KWin";
+        // Name → expected reachable, for every name the plan checks.
+        let names = |q: &PermissionSet| -> Vec<(String, bool)> {
+            plan(q, &cfg, &h)
+                .checks
+                .into_iter()
+                .filter_map(|c| match c.test {
+                    ProbeTest::BusName { name, expect } => Some((name, expect)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let reach = |q: &PermissionSet, n: &str| -> Option<bool> {
+            names(q).into_iter().find(|(m, _)| m == n).map(|(_, e)| e)
+        };
+
+        // No desktop service on this bus yet: none is checked.
+        let mut full = PermissionSet::strict_gui();
+        full.dbus.session.mode = DbusMode::Full;
+        assert!(names(&full).is_empty(), "{:?}", names(&full));
+
+        let _owned: Vec<_> = [PORTAL, SYSTEMD, SECRETS, KWIN]
+            .iter()
+            .map(|n| crate::dbus_check::own_name(&address, n, Duration::from_secs(2)).unwrap())
+            .collect();
+
+        // Full access: every one reachable, each checked once.
+        assert_eq!(
+            names(&full),
+            [PORTAL, SYSTEMD, SECRETS, KWIN]
+                .iter()
+                .map(|n| (n.to_string(), true))
+                .collect::<Vec<_>>()
+        );
+        // ... except what is denied.
+        let mut q = full.clone();
+        q.dbus.session.deny = vec![SECRETS.into()];
+        assert_eq!(reach(&q, SECRETS), Some(false));
+        assert_eq!(reach(&q, SYSTEMD), Some(true));
+
+        // The filter: the portal always; the rest only from the list.
+        let mut f = PermissionSet::strict_gui();
+        f.dbus.session.mode = DbusMode::Filtered;
+        f.dbus.session.allow = vec!["org.example.Other".into()];
+        assert_eq!(reach(&f, PORTAL), Some(true));
+        assert_eq!(reach(&f, SYSTEMD), Some(false));
+        assert_eq!(
+            reach(&f, SECRETS),
+            Some(false),
+            "another name allows nothing"
+        );
+        assert_eq!(reach(&f, KWIN), Some(false));
+        f.dbus.session.allow = vec![SECRETS.into()];
+        assert_eq!(reach(&f, SECRETS), Some(true), "a whole name");
+        assert_eq!(reach(&f, SYSTEMD), Some(false));
+        f.dbus.session.allow = vec!["org.freedesktop.secret".into()];
+        assert_eq!(
+            reach(&f, SECRETS),
+            Some(false),
+            "part of a name is not a family"
+        );
+        f.dbus.session.allow = vec!["org.kde.*".into()];
+        assert_eq!(reach(&f, KWIN), Some(true), "a family");
+        assert_eq!(reach(&f, SECRETS), Some(false));
+        f.dbus.session.deny = vec![KWIN.into()];
+        assert_eq!(reach(&f, KWIN), Some(false), "denied wins over a family");
+
+        // No bus for the app: nothing to check.
+        let mut none = full.clone();
+        none.dbus.session.mode = DbusMode::None;
+        assert!(names(&none).is_empty());
+        // The filter without its proxy is no bus either.
+        let mut no_proxy = h.clone();
+        no_proxy.tools.xdg_dbus_proxy = None;
+        let mut f = PermissionSet::strict_gui();
+        f.dbus.session.mode = DbusMode::Filtered;
+        assert!(!plan(&f, &cfg, &no_proxy)
+            .checks
+            .iter()
+            .any(|c| matches!(c.test, ProbeTest::BusName { .. })));
+        drop(services);
+    }
 }
