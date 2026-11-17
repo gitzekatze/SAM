@@ -371,14 +371,17 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         }
         ProbeTest::SessionBus { expect } => {
             let addr = std::env::var("DBUS_SESSION_BUS_ADDRESS").ok();
-            let tried = addr.as_deref().map(|a| {
-                crate::dbus_check::name_reachable(a, "org.freedesktop.DBus", Duration::from_secs(2))
-            });
-            let works = matches!(tried, Some(Ok(_)));
+            let tried = addr
+                .as_deref()
+                .map(|a| crate::dbus_check::bus_answers(a, Duration::from_secs(5)));
+            let works = matches!(tried, Some(Ok(true)));
             (
                 Some(works == *expect),
                 match tried {
-                    Some(Ok(_)) => sam_core::i18n::n_("connected").into(),
+                    Some(Ok(true)) => sam_core::i18n::n_("connected").into(),
+                    Some(Ok(false)) => {
+                        format!("{} (Hello refused)", sam_core::i18n::n_("no session bus"))
+                    }
                     // Why the bus did not answer, so a failed check names
                     // the part (address, refusal, time-out).
                     Some(Err(e)) => format!("{} ({e:#})", sam_core::i18n::n_("no session bus")),
