@@ -2,7 +2,7 @@
 //! generation, launch logging and crash capture.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -1112,36 +1112,27 @@ const LINE_LIMIT: u64 = 64 * 1024;
 /// Copies one output stream of the app into the launch log (and, unless
 /// quiet, to SAM's own output), keeping its first part in `head`. The log
 /// stops at `LOG_LIMIT` with a note; the output is still read to its end.
+///
+/// SAM's own output gets the app's bytes unchanged and at once, as they
+/// arrive: data in a pipe (`sam-jail run jq . < f > g`) stays exact, and a
+/// prompt without a line end ("Password: ") shows. Only the log is kept
+/// line by line (a line longer than `LINE_LIMIT` is split there).
 fn pump_output(
-    src: Box<dyn Read + Send>,
+    mut src: Box<dyn Read + Send>,
     is_err: bool,
     log: Arc<Mutex<fs::File>>,
     head: Arc<Mutex<String>>,
     quiet: bool,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
-        let mut reader = BufReader::new(src);
-        let mut line = Vec::new();
         // Shown in a terminal, the app's output goes through the same filter
         // as on SAM's terminal relay: with its input redirected (a script,
         // `< file`) the app has no relay, but could still reach the terminal
         // with escape codes (clipboard, title reports).
         let mut filter =
             (!quiet && pty::is_tty(if is_err { 2 } else { 1 })).then(pty::OutputFilter::default);
-        loop {
-            line.clear();
-            match reader
-                .by_ref()
-                .take(LINE_LIMIT)
-                .read_until(b'\n', &mut line)
-            {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
-            }
-            if line.last() == Some(&b'\n') {
-                line.pop();
-            }
-            let text = String::from_utf8_lossy(&line);
+        let keep = |line: &[u8]| {
+            let text = String::from_utf8_lossy(line);
             if let Ok(mut l) = log.lock() {
                 let size = l.metadata().map(|m| m.len()).unwrap_or(0);
                 if size < LOG_LIMIT {
@@ -1161,26 +1152,52 @@ fn pump_output(
                     h.push('\n');
                 }
             }
+        };
+        let mut buf = vec![0u8; 16 * 1024];
+        let mut line: Vec<u8> = Vec::new();
+        loop {
+            let n = match src.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => break,
+            };
+            let chunk = &buf[..n];
             if !quiet {
-                let shown = for_terminal(filter.as_mut(), &line);
+                let shown = for_terminal(filter.as_mut(), chunk);
                 if is_err {
-                    let _ = std::io::stderr().write_all(&shown);
+                    let mut o = std::io::stderr().lock();
+                    let _ = o.write_all(&shown).and_then(|()| o.flush());
                 } else {
-                    let _ = std::io::stdout().write_all(&shown);
+                    let mut o = std::io::stdout().lock();
+                    let _ = o.write_all(&shown).and_then(|()| o.flush());
                 }
             }
+            line.extend_from_slice(chunk);
+            let mut from = 0;
+            while let Some(i) = line[from..].iter().position(|b| *b == b'\n') {
+                keep(&line[from..from + i]);
+                from += i + 1;
+            }
+            line.drain(..from);
+            while line.len() >= LINE_LIMIT as usize {
+                let rest = line.split_off(LINE_LIMIT as usize);
+                keep(&line);
+                line = rest;
+            }
+        }
+        if !line.is_empty() {
+            keep(&line);
         }
     })
 }
 
-/// One line of the app's output as it reaches the person: through the
-/// escape-code filter when shown in a terminal, unchanged otherwise.
-fn for_terminal(filter: Option<&mut pty::OutputFilter>, line: &[u8]) -> Vec<u8> {
-    let mut with_end = line.to_vec();
-    with_end.push(b'\n');
+/// What SAM shows of a piece of the app's output: filtered for a
+/// terminal, otherwise unchanged.
+fn for_terminal(filter: Option<&mut pty::OutputFilter>, piece: &[u8]) -> Vec<u8> {
     match filter {
-        Some(f) => f.filter(&with_end),
-        None => with_end,
+        Some(f) => f.filter(piece),
+        None => piece.to_vec(),
     }
 }
 
@@ -1551,23 +1568,27 @@ mod tests {
 
     /// With its input redirected an app has no terminal relay; its output
     /// shown in a terminal still loses clipboard codes and title reports,
-    /// even split over two lines. Output not shown in a terminal is unchanged.
+    /// even split over two pieces. Output not shown in a terminal passes
+    /// unchanged, without a line end added.
     #[test]
     fn output_shown_in_a_terminal_is_filtered_without_the_relay() {
         let mut f = crate::pty::OutputFilter::default();
-        assert_eq!(for_terminal(Some(&mut f), b"a\x1b]52;c;aGk=\x07b"), b"ab\n");
-        assert_eq!(for_terminal(Some(&mut f), b"x\x1b[21t"), b"x\n");
+        assert_eq!(
+            for_terminal(Some(&mut f), b"a\x1b]52;c;aGk=\x07b\n"),
+            b"ab\n"
+        );
+        assert_eq!(for_terminal(Some(&mut f), b"x\x1b[21t"), b"x");
         let mut f = crate::pty::OutputFilter::default();
         let first = for_terminal(Some(&mut f), b"a\x1b]52;c;");
         let second = for_terminal(Some(&mut f), b"aGk=\x07b");
         assert_eq!(
             [first, second].concat(),
-            b"ab\n",
-            "a code split over two lines"
+            b"ab",
+            "a code split over two pieces"
         );
         assert_eq!(
             for_terminal(None, b"a\x1b]52;c;x\x07b"),
-            b"a\x1b]52;c;x\x07b\n"
+            b"a\x1b]52;c;x\x07b"
         );
     }
 

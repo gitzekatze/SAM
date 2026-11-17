@@ -440,6 +440,9 @@ pub(crate) enum DevCmd {
         /// Use this file as the AppRun script.
         #[arg(long)]
         apprun: Option<PathBuf>,
+        /// A terminal program (`Terminal=true` in its menu entry).
+        #[arg(long)]
+        terminal: bool,
     },
     /// Time the parts of SAM on a realistic test AppImage (for the version
     /// report). Uses a fresh folder under $TMPDIR and removes it.

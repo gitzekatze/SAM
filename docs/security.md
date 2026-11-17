@@ -273,9 +273,12 @@ warning.
 When the terminal window is closed (or SAM is asked to quit), SAM hangs up
 the app's terminal, so the app ends, and finishes the launch normally.
 
-An app started with its input redirected (from a script, or `< file`) gets
-no terminal of its own; its output still passes the same filter whenever it
-is shown in a terminal.
+An app started with its input from a pipe or a file (`cat data.json |
+sam-jail run jq .`, `< file`, a script) gets no terminal of its own: the
+input goes to the app, and its output comes back unchanged, byte for byte
+and as it arrives, so a command-line tool works in a pipe as it would
+without SAM. Without a terminal of its own it has none to type into; its
+output still passes the same filter whenever it is shown in a terminal.
 
 **Not covered:** output that misleads you (a fake prompt, a link whose text
 hides where it goes, a fake "sudo" password question: the app cannot run

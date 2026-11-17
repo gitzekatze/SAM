@@ -1506,10 +1506,12 @@ fn real_main(cli: Cli) -> Result<()> {
                     name,
                     categories,
                     apprun,
+                    terminal,
                 },
         } => {
             let mut spec = sam_intake::testkit::FixtureSpec::hello(&name);
             spec.categories = categories;
+            spec.terminal = terminal;
             if let Some(a) = apprun {
                 spec.apprun = std::fs::read_to_string(a)?;
             }

@@ -50,10 +50,16 @@ pub enum TerminalMode {
 impl TerminalMode {
     /// `stdin_tty`: SAM's own input is a terminal. `interactive`: the user
     /// uses the app (not a test start or a check).
+    ///
+    /// The user's start with input from a pipe or a file (`cat f | sam-jail
+    /// run jq .`, a script) gets no terminal: input and output pass through
+    /// unchanged, so the tool works as in any pipe. Output shown in a
+    /// terminal is still filtered (`launch::pump_output`), and without a
+    /// terminal of its own the app has none to type into.
     pub fn choose(terminal_program: bool, stdin_tty: bool, interactive: bool) -> TerminalMode {
         if stdin_tty && interactive {
             TerminalMode::Relay
-        } else if terminal_program {
+        } else if terminal_program && !interactive {
             TerminalMode::Headless
         } else {
             TerminalMode::None
@@ -865,7 +871,7 @@ mod tests {
         assert_eq!(out, s.to_vec(), "four of five letters is not tmux either");
     }
 
-    /// Apps started from a terminal get SAM's terminal relay; apps without a terminal get none.
+    /// Apps started from a terminal get SAM's terminal relay; with input from a pipe or a file they get none (input and output pass through), and a terminal program's test start gets a terminal of its own.
     #[test]
     fn terminal_apps_get_sams_terminal_relay() {
         assert_eq!(TerminalMode::choose(true, true, true), TerminalMode::Relay);
@@ -876,7 +882,13 @@ mod tests {
         );
         assert_eq!(
             TerminalMode::choose(true, false, true),
-            TerminalMode::Headless
+            TerminalMode::None,
+            "input from a pipe passes through to a terminal program"
+        );
+        assert_eq!(
+            TerminalMode::choose(true, false, false),
+            TerminalMode::Headless,
+            "a terminal program's test start gets a terminal of its own"
         );
         assert_eq!(
             TerminalMode::choose(true, true, false),

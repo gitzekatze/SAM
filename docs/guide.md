@@ -117,7 +117,7 @@ How much of the system is visible (*Minimal* or *All of /usr*), whether the app 
 
 ### Terminal programs
 
-Programs that run in a terminal (Helix, Neovim, command-line tools) open in your terminal from the menu, or start with `sam-jail run <app> [files or folders]`. They get a terminal of SAM's own, so they cannot type into your shell or use the clipboard through the terminal. They see their private home, the folders allowed in their settings, and the files and folders you name: `sam-jail run helix notes.txt` opens that file, `sam-jail run helix .` the folder you are in. See [Terminal programs](security.md#terminal-programs) for what this protects against and what it does not.
+Programs that run in a terminal (Helix, Neovim, command-line tools) open in your terminal from the menu, or start with `sam-jail run <app> [files or folders]`. They get a terminal of SAM's own, so they cannot type into your shell or use the clipboard through the terminal. They see their private home, the folders allowed in their settings, and the files and folders you name: `sam-jail run helix notes.txt` opens that file, `sam-jail run helix .` the folder you are in. They also work in pipes: `cat data.json | sam-jail run jq .` passes the data in and the result out unchanged. See [Terminal programs](security.md#terminal-programs) for what this protects against and what it does not.
 
 ### Launching
 
