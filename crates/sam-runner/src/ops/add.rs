@@ -1,6 +1,7 @@
 //! Creating a sandbox: unpack, detect, recommend, write the record.
 
 use super::*;
+use sam_core::error::InFunctionExt;
 
 impl Sam {
     // ------------------------------------------------------------------ add
@@ -41,41 +42,46 @@ impl Sam {
                 )
             );
         }
-        let info = inspect(&source)?;
-        if !info.is_appimage() {
-            bail!(
-                "{}",
-                sam_core::i18n::trf(
-                    "{file} is not an AppImage ({why})",
-                    &[("file", &tildify(&source)), ("why", &info.notes.join("; "))]
+        // Recognizing the file is function 2; unpacking (below) is function 3.
+        let info = (|| -> Result<_> {
+            let info = inspect(&source)?;
+            if !info.is_appimage() {
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "{file} is not an AppImage ({why})",
+                        &[("file", &tildify(&source)), ("why", &info.notes.join("; "))]
+                    )
+                );
+            }
+            if let Some(why) = sam_detect::appimage::wrong_processor(&info) {
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "{file} cannot get a sandbox: {why}",
+                        &[("file", &tildify(&source)), ("why", &why)]
+                    )
+                );
+            }
+            // A download that broke off: no sandbox for half a file, and letting
+            // it unpack itself would not help either.
+            if let Some((have, need)) = info.incomplete() {
+                return Err(sam_core::error::CodedError::new(
+                    "appimage-incomplete",
+                    sam_core::i18n::trf(
+                        "{file} is incomplete: it has {have} of the {need} its contents need, so the download probably broke off. Download it again.",
+                        &[
+                            ("file", &tildify(&source)),
+                            ("have", &crate::progress::size(have)),
+                            ("need", &crate::progress::size(need)),
+                        ],
+                    ),
                 )
-            );
-        }
-        if let Some(why) = sam_detect::appimage::wrong_processor(&info) {
-            bail!(
-                "{}",
-                sam_core::i18n::trf(
-                    "{file} cannot get a sandbox: {why}",
-                    &[("file", &tildify(&source)), ("why", &why)]
-                )
-            );
-        }
-        // A download that broke off: no sandbox for half a file, and letting
-        // it unpack itself would not help either.
-        if let Some((have, need)) = info.incomplete() {
-            return Err(sam_core::error::CodedError::new(
-                "appimage-incomplete",
-                sam_core::i18n::trf(
-                    "{file} is incomplete: it has {have} of the {need} its contents need, so the download probably broke off. Download it again.",
-                    &[
-                        ("file", &tildify(&source)),
-                        ("have", &crate::progress::size(have)),
-                        ("need", &crate::progress::size(need)),
-                    ],
-                ),
-            )
-            .into());
-        }
+                .into());
+            }
+            Ok(info)
+        })()
+        .in_function(2)?;
         let fp = fingerprint::compute(&source)?;
 
         // Same content as a registered app whose file went missing: relocate.
