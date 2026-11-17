@@ -172,7 +172,7 @@ Each sandbox has its own shared memory folder.
 
 ---
 
-## Full home access stays guarded
+## Full home access: what stays guarded, and what does not
 
 Granting the whole home, or a folder that contains it (such as `/home`),
 still keeps these protections:
@@ -197,10 +197,24 @@ run a program the next time you log in or open a file):
 | desktop scripting | KWin and Plasma scripts, file manager service menus |
 | configs that run commands | git, vim, Neovim |
 
-Missing folders from this list, and `.bashrc`, `.profile`, `.gitconfig` and
-`mimeapps.list`, are created empty first so they can be protected. Files
-whose mere presence changes behaviour (`.bash_profile`, `.zshrc`,
-`.xinitrc`, `.xprofile`, `.vimrc`) are protected only if they exist.
+Some of these are created empty first, so they are protected even before
+anything uses them: the folders for menu entries, autostart, `systemd --user`
+services, `environment.d`, `~/.local/bin`, D-Bus services and KWin scripts,
+and the files `.bashrc`, `.profile`, `.gitconfig`, `mimeapps.list` and
+`user-dirs.dirs`. The others in the table (for example the git, Neovim, fish
+and Plasma settings folders, `.bash_profile`, `.zshrc`, `.xprofile` or
+`.pam_environment`) are protected only if they already exist.
+
+**What full home access does not cover.** With read and write access to the
+home, an app can change almost any file there, and programs outside the
+sandbox read many of those files: settings of other programs, scripts in
+project folders, anything a program reads when it starts. A program you
+start later could then run what the app left behind. SAM protects the usual
+places that make a computer run something (the table above); it cannot know
+every program's settings. Key folders that are links to somewhere else (for
+example managed with `stow`) are not hidden yet. So full home access is meant
+only for apps you trust, and SAM warns when you grant it. Stronger protection
+that also covers these cases is being built.
 
 ---
 
@@ -256,6 +270,11 @@ or Flatpak to start a program outside the sandbox. So inside every sandbox:
   runs the command directly, inside the sandbox. Apps whose start script
   uses `systemd-run` (such as KeePassXC) still start normally.
 - `flatpak-spawn` refuses to run.
+
+This closes the two commands apps commonly use; it is not a wall. With full
+D-Bus access an app can still talk to systemd and other session services
+directly, which is why SAM rates full session bus access *Dangerous* and
+gives apps a filtered bus by default.
 
 ---
 
