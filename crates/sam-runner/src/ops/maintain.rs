@@ -7,7 +7,22 @@ impl Sam {
     // ------------------------------------------------------------ maintain
 
     /// Re-extract after an update or failure.
+    /// Unpacks the AppImage again ("Unpack Again"). When its content changed
+    /// and the change did not come from a SAM update, the app does not start
+    /// until the person has looked at it: another app with access to the
+    /// folder could have swapped the file, which would otherwise inherit the
+    /// old app's permissions.
     pub fn reextract(&self, query: &str, consent_fallback: bool) -> Result<AppEntry> {
+        self.reextract_as(query, consent_fallback, false)
+    }
+
+    /// [`reextract`](Self::reextract); `by_update` for SAM's own updates.
+    pub(super) fn reextract_as(
+        &self,
+        query: &str,
+        consent_fallback: bool,
+        by_update: bool,
+    ) -> Result<AppEntry> {
         let mut entry = self.resolve(query)?;
         self.ensure_not_running(&entry, &sam_core::i18n::tr("unpack it again"))?;
         if !entry.source_path.exists() {
@@ -44,6 +59,9 @@ impl Sam {
             Ok(out) => {
                 entry.appimage_type = info.kind;
                 if entry.source.sha256 != fp.sha256 {
+                    if !by_update {
+                        entry.content_changed_outside = true;
+                    }
                     let new_sig = sam_detect::signature::check(&entry.source_path);
                     entry.signing_key_changed =
                         signing_key_change(entry.signature.as_ref(), &new_sig);
@@ -697,7 +715,7 @@ impl Sam {
             }
         };
         self.relocate(&entry.id, &target)?;
-        let mut e = self.reextract(&entry.id, false)?;
+        let mut e = self.reextract_as(&entry.id, false, true)?;
         e.update_backup = Some(UpdateBackup {
             file: backup,
             original_path: old,
@@ -768,7 +786,7 @@ impl Sam {
         }
         move_file(&b.file, &b.original_path)?;
         self.relocate(&entry.id, &b.original_path)?;
-        let mut e = self.reextract(&entry.id, false)?;
+        let mut e = self.reextract_as(&entry.id, false, true)?;
         e.update_backup = Some(UpdateBackup {
             file: keep,
             original_path: current,

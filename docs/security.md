@@ -183,10 +183,11 @@ still keeps these protections:
 **Hidden unless you allow them explicitly:** `~/.ssh`, `~/.gnupg`, keyrings,
 password stores, cloud credentials and browser profiles.
 
-**Hidden whenever a grant would show them:** SAM's own folders
-(configuration, data and unpacked apps, wherever they are). They are replaced
-by an empty, throwaway folder, so an app cannot change its own permissions
-or another app's files.
+**Hidden whenever anything would show them:** SAM's own folders
+(configuration, data and unpacked apps, wherever they are), whether a
+permission, a folder you open with the app or a path on its command line
+would show them. They are replaced by an empty, throwaway folder, so an app
+cannot change its own permissions or another app's files.
 
 **Read-only, even with write access** (each of these can make your system
 run a program the next time you log in or open a file):

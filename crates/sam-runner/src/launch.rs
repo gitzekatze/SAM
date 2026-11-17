@@ -125,6 +125,12 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
             &[("app", &sam_core::util::display_safe(app.display_name(), 80)), ("id", &app.id)],
         ));
     }
+    if app.content_changed_outside {
+        errors.push(sam_core::i18n::trf(
+            "The AppImage file of {app} was replaced by something other than a SAM update since it was last unpacked, and it still has the old settings. SAM does not start it until you have looked at it: open the app in SAM and confirm, or run `sam-jail review {id}`.",
+            &[("app", &sam_core::util::display_safe(app.display_name(), 80)), ("id", &app.id)],
+        ));
+    }
     match &app.extraction {
         None => errors.push(sam_core::i18n::tr(
             "The AppImage has not been unpacked. Use Unpack Again (sam-jail reextract).",

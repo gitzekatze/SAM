@@ -117,7 +117,7 @@ id = 11
 area = "C"
 promise = "Keys, passwords and the files of your other apps stay hidden, even with full home access."
 code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs"]
-tests = ["key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "credential_files_and_folders_in_the_home_are_masked", "home_protection_is_prepared_only_for_a_writable_home", "sams_own_folders_stay_hidden_inside_a_granted_folder",
+tests = ["sams_own_folders_stay_hidden_inside_an_opened_folder", "key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "credential_files_and_folders_in_the_home_are_masked", "home_protection_is_prepared_only_for_a_writable_home", "sams_own_folders_stay_hidden_inside_a_granted_folder",
   "user_folder_locations_stay_read_only_with_a_writable_home",
 ]
 
@@ -270,7 +270,7 @@ id = 29
 area = "F"
 promise = "SAM notices AppImages that were moved or changed."
 code = ["sam-intake/src/fingerprint.rs", "sam-runner/src/ops/maintain.rs"]
-tests = ["a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
+tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
 
 [[area]]
 id = "G"

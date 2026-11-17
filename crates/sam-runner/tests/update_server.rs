@@ -219,6 +219,8 @@ fn updates_download_only_changes_check_them_and_refuse_tampering() {
     );
 
     let e = sam.update(&id, false).unwrap();
+    // SAM's own update is not taken for a file swapped outside SAM.
+    assert!(!e.content_changed_outside, "an update by SAM is not marked");
     assert_eq!(
         fs::read(&e.source_path).unwrap(),
         fs::read(&v2).unwrap(),

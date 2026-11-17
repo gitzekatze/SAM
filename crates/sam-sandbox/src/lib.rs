@@ -1242,12 +1242,34 @@ impl Section<'_> {
         }
 
         // SAM's own folders, wherever they are: an empty, throwaway folder
-        // in their place when a grant would show them.
+        // in their place whenever anything would show them: a grant, a
+        // folder opened with the app ("Open with", a path on the command
+        // line) or a bind of SAM's runner. Otherwise an app could change
+        // another app's unpacked files (regression: an opened folder on a
+        // drive that held SAM's moved unpack folder showed it, writable).
+        let opened = opened_paths(ctx);
         for d in &ctx.sam_dirs {
             // A folder inside another hidden one is hidden with it.
             let nested = ctx.sam_dirs.iter().any(|o| o != d && d.starts_with(o));
-            if !nested && d.is_dir() && visible_in_sandbox(d, ctx) {
+            if nested || !d.is_dir() {
+                continue;
+            }
+            let shown = visible_in_sandbox(d, ctx)
+                || opened.iter().any(|(o, _)| d.starts_with(o))
+                || ctx
+                    .extra_binds
+                    .iter()
+                    .any(|(h, sb, _)| h == sb && d.starts_with(h));
+            if shown {
                 a.push("--tmpfs").push(d.to_string_lossy());
+            }
+            // Where a bind shows it under another path in the sandbox.
+            for (h, sb, _) in &ctx.extra_binds {
+                if h != sb {
+                    if let Ok(rel) = d.strip_prefix(h) {
+                        a.push("--tmpfs").push(sb.join(rel).to_string_lossy());
+                    }
+                }
             }
         }
     }
@@ -2250,6 +2272,39 @@ mod guard_tests {
         assert!(
             has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]),
             "hidden inside the granted folder"
+        );
+    }
+
+    /// SAM's own folders stay hidden inside a folder opened with the app, and
+    /// inside a runner's bind, at the path the bind shows them under.
+    #[test]
+    fn sams_own_folders_stay_hidden_inside_an_opened_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let games = home.join("Games");
+        let sam = games.join("sam-apps");
+        fs::create_dir_all(&sam).unwrap();
+        let mut ctx = sample_context();
+        ctx.host.home = home.clone();
+        ctx.host.xdg_dirs.clear();
+        ctx.owd = home.clone();
+        ctx.sam_dirs = vec![sam.clone()];
+        let sam_s = sam.to_string_lossy().into_owned();
+        assert!(
+            !has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]),
+            "nothing shows it"
+        );
+        ctx.args = vec![games.to_string_lossy().into_owned()];
+        assert_eq!(opened_paths(&ctx).len(), 1, "the folder is opened");
+        assert!(
+            has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]),
+            "hidden inside the opened folder"
+        );
+        ctx.args.clear();
+        ctx.extra_binds = vec![(games.clone(), "/run/x".into(), true)];
+        assert!(
+            has_seq(&args_of(&ctx), &["--tmpfs", "/run/x/sam-apps"]),
+            "hidden where a bind shows it"
         );
     }
 

@@ -387,6 +387,13 @@ pub struct AppEntry {
     /// so something other than SAM changed it. Never saved.
     #[serde(skip)]
     pub changed_outside: bool,
+    /// The AppImage file was replaced by something other than a SAM update
+    /// (found when it was unpacked again). It keeps its settings, but does
+    /// not start until the person has looked at it (`sam-jail review`, or
+    /// confirming on its page). Not written while off, so records without it
+    /// keep their checksum.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub content_changed_outside: bool,
     /// The applied repair steps with what each changed, so each one can be
     /// switched off on its own.
     pub applied_repairs: Vec<AppliedRepair>,
@@ -496,7 +503,7 @@ impl AppEntry {
 
     /// Compute the badge shown in the UI.
     pub fn badge(&self) -> Badge {
-        if self.changed_outside {
+        if self.changed_outside || self.content_changed_outside {
             return Badge::ChangedOutside;
         }
         match self.state {
@@ -678,6 +685,30 @@ mod tests {
         a.clear_launch_failure();
         assert!(!a.last_launch.as_ref().unwrap().sandbox_failure);
         assert!(a.last_error.is_none());
+    }
+
+    /// An AppImage file swapped outside SAM shows as changed outside SAM;
+    /// while the mark is off it is not written, so every record saved before
+    /// it existed keeps its checksum (no app looks changed after an update).
+    #[test]
+    fn a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged() {
+        let mut e = AppEntry {
+            reviewed: true,
+            extraction: Some(Default::default()),
+            ..Default::default()
+        };
+        let before = serde_json::to_value(&e).unwrap();
+        assert!(
+            before.get("content_changed_outside").is_none(),
+            "not written while off"
+        );
+        assert_ne!(e.badge(), Badge::ChangedOutside);
+        e.content_changed_outside = true;
+        assert_eq!(e.badge(), Badge::ChangedOutside);
+        assert_eq!(
+            serde_json::to_value(&e).unwrap()["content_changed_outside"],
+            true
+        );
     }
 }
 
