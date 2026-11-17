@@ -308,7 +308,7 @@ fn protected_ancestors() -> Vec<String> {
 /// places. A mount cannot protect a file that does not exist yet (making
 /// the mount point would create it), nor a link the app can replace: so
 /// SAM looks again after the start ([`HomeWatch::settle`]).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct HomeWatch {
     home: PathBuf,
     /// Protected paths that did not exist.
@@ -371,6 +371,23 @@ impl HomeWatch {
         Some(w)
     }
 
+    /// The folders that hold the watched places: a change in one of them is
+    /// the moment to look again (SAM's launcher watches them while the app
+    /// runs, so a new startup file is moved aside at once, not only when the
+    /// app ends).
+    pub fn watched_dirs(&self) -> Vec<PathBuf> {
+        let mut dirs: Vec<PathBuf> = Vec::new();
+        for rel in self.absent.iter().chain(self.links.iter().map(|(r, _)| r)) {
+            if let Some(parent) = self.home.join(rel).parent() {
+                let parent = parent.to_path_buf();
+                if parent.is_dir() && !dirs.contains(&parent) {
+                    dirs.push(parent);
+                }
+            }
+        }
+        dirs
+    }
+
     /// After the start: whatever appeared in a place that was empty, and
     /// whatever replaced a link, is moved into `aside` (keeping its place
     /// in the name), and the links are put back. Returns what was moved.
@@ -378,7 +395,17 @@ impl HomeWatch {
         let mut moved = Vec::new();
         let put_aside = |rel: &str| -> Option<PathBuf> {
             let from = self.home.join(rel);
-            let to = aside.join(rel.replace('/', "__"));
+            let name = rel.replace('/', "__");
+            // The same place moved again in one start keeps both.
+            let to = (0..1000)
+                .map(|n| {
+                    aside.join(if n == 0 {
+                        name.clone()
+                    } else {
+                        format!("{name}.{n}")
+                    })
+                })
+                .find(|p| fs::symlink_metadata(p).is_err())?;
             fs::create_dir_all(aside).ok()?;
             fs::rename(&from, &to).ok()?;
             Some(to)

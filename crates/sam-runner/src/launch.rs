@@ -652,6 +652,18 @@ pub fn run(
     cmd.current_dir(&host.home);
     // Held until this launch is over: `Sam::running` sees the app as running.
     let _running = hold_lock(&prepared.context.runtime_dir.join("running.lock"))?;
+    // What the app leaves in places that make the computer run something is
+    // moved aside while it runs (Linux reports each change), and once more
+    // after it ends.
+    let aside = paths
+        .data_dir
+        .join("moved-aside")
+        .join(&app.id)
+        .join(started_at.to_string());
+    let live_watch = prepared
+        .home_watch
+        .as_ref()
+        .and_then(|w| crate::home_live::LiveWatch::start(w, aside.clone()));
     let spawned = cmd
         .spawn()
         .with_context(|| format!("starting {}", prepared.command.program.display()));
@@ -758,22 +770,16 @@ pub fn run(
         outcome.success = true;
     }
     // What the app left in places that make the computer run something:
-    // moved aside before anything can act on it.
-    let moved: Vec<String> = prepared
-        .home_watch
-        .as_ref()
-        .map(|w| {
-            let aside = paths
-                .data_dir
-                .join("moved-aside")
-                .join(&app.id)
-                .join(started_at.to_string());
-            w.settle(&aside)
-                .into_iter()
-                .map(|m| format!("~/{} → {}", m.place, sam_core::util::tildify(&m.to)))
-                .collect()
-        })
-        .unwrap_or_default();
+    // moved aside before anything can act on it. The live watch caught what
+    // appeared while it ran; one last look now catches the rest.
+    let mut found = live_watch.map(|l| l.finish()).unwrap_or_default();
+    if let Some(w) = &prepared.home_watch {
+        found.extend(w.settle(&aside));
+    }
+    let moved: Vec<String> = found
+        .into_iter()
+        .map(|m| format!("~/{} → {}", m.place, sam_core::util::tildify(&m.to)))
+        .collect();
     if let Ok(mut l) = log.lock() {
         for m in &moved {
             writeln!(l, "# moved aside (it would act outside the sandbox): {m}")?;
