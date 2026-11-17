@@ -476,7 +476,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 });
             }
             if let Some(r) = risk {
-                apps.retain(|a| a.risk.level.label().eq_ignore_ascii_case(&r));
+                apps.retain(|a| a.risk.level.is_named(&r));
             }
             if let Some(c) = category {
                 apps.retain(|a| a.category == c);
@@ -492,17 +492,17 @@ fn real_main(cli: Cli) -> Result<()> {
                     return;
                 }
                 let w = apps.iter().map(|a| a.id.len()).max().unwrap_or(10);
-                println!("{:<w$}  {:<24}  {:<12}  {:<10}  {:<12}  LAST RUN", "ID", "NAME", "CATEGORY", "RISK", "STATUS", w = w);
+                println!("{:<w$}  {:<24}  {:<12}  {:<11}  {:<12}  LAST RUN", "ID", "NAME", "CATEGORY", "RISK", "STATUS", w = w);
                 for a in &apps {
                     let last = a.last_launched.map(format_ts).unwrap_or_else(|| "never".into());
-                    let risk = format!("{:<10}", a.risk.level.label());
+                    let risk = format!("{:<11}", a.risk.level.words());
                     let badge = format!("{:<12}", a.badge.label());
                     println!(
                         "{:<w$}  {:<24}  {:<12}  {}  {}  {last}",
                         a.id,
                         truncate(&a.name, 24),
                         a.category,
-                        risk.replace(a.risk.level.label(), &risk_str(a.risk.level)),
+                        risk.replace(&a.risk.level.words(), &risk_str(a.risk.level)),
                         badge.replace(a.badge.label(), &badge_str(a.badge)),
                         w = w
                     );
@@ -737,6 +737,7 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Run { app: q, args } => {
             let mut e = app.resolve(&q)?;
             app.ensure_unpacked(&mut e)?;
+            app.check_before_start(&mut e, &app.host())?;
             let rec = run(
                 &mut e,
                 &LaunchOptions {

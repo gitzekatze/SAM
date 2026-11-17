@@ -484,6 +484,15 @@ fn classify_failure(code: Option<i32>, stderr_head: &str) -> (bool, String, bool
             ),
             false,
         ),
+        // The loader names the missing library itself: say that first.
+        Some(127) if missing_library(stderr_head).is_some() => (
+            true,
+            sam_core::i18n::trf(
+                "a library the app needs is not available inside the sandbox: {library}",
+                &[("library", &missing_library(stderr_head).unwrap_or_default())],
+            ),
+            false,
+        ),
         Some(127) => (
             true,
             sam_core::i18n::tr(
@@ -493,6 +502,17 @@ fn classify_failure(code: Option<i32>, stderr_head: &str) -> (bool, String, bool
         ),
         _ => (false, String::new(), false),
     }
+}
+
+/// The library the loader could not find (`error while loading shared
+/// libraries: libfoo.so.1: cannot open …`), if it said so.
+fn missing_library(stderr_head: &str) -> Option<String> {
+    let rest = stderr_head
+        .lines()
+        .find_map(|l| l.split_once("error while loading shared libraries: "))?
+        .1;
+    let name = rest.split(':').next()?.trim();
+    (!name.is_empty() && name.len() < 200).then(|| sam_core::util::display_safe(name, 120))
 }
 
 const STDERR_HEAD_LIMIT: usize = 16 * 1024;
@@ -994,8 +1014,17 @@ fn with_status_options(
     args
 }
 
+/// The most a launch log grows (both streams together). An app that prints
+/// without end would otherwise fill the disk; the rest of its output is
+/// still read, so the app never blocks, but no longer written.
+const LOG_LIMIT: u64 = 16 * 1024 * 1024;
+/// The longest piece read at once: a "line" without an end is split, so it
+/// cannot fill SAM's memory.
+const LINE_LIMIT: u64 = 64 * 1024;
+
 /// Copies one output stream of the app into the launch log (and, unless
-/// quiet, to SAM's own output), keeping its first part in `head`.
+/// quiet, to SAM's own output), keeping its first part in `head`. The log
+/// stops at `LOG_LIMIT` with a note; the output is still read to its end.
 fn pump_output(
     src: Box<dyn Read + Send>,
     is_err: bool,
@@ -1004,12 +1033,34 @@ fn pump_output(
     quiet: bool,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
-        let reader = BufReader::new(src);
-        for line in reader.split(b'\n') {
-            let Ok(line) = line else { break };
+        let mut reader = BufReader::new(src);
+        let mut line = Vec::new();
+        loop {
+            line.clear();
+            match reader
+                .by_ref()
+                .take(LINE_LIMIT)
+                .read_until(b'\n', &mut line)
+            {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+            if line.last() == Some(&b'\n') {
+                line.pop();
+            }
             let text = String::from_utf8_lossy(&line);
             if let Ok(mut l) = log.lock() {
-                let _ = writeln!(l, "{}{text}", if is_err { "[err] " } else { "" });
+                let size = l.metadata().map(|m| m.len()).unwrap_or(0);
+                if size < LOG_LIMIT {
+                    let _ = writeln!(l, "{}{text}", if is_err { "[err] " } else { "" });
+                    if l.metadata().map(|m| m.len()).unwrap_or(0) >= LOG_LIMIT {
+                        let _ = writeln!(
+                            l,
+                            "[sam] this log reached {} MiB; the rest of the app's output is not kept",
+                            LOG_LIMIT / 1024 / 1024
+                        );
+                    }
+                }
             }
             if let Ok(mut h) = head.lock() {
                 if h.len() < STDERR_HEAD_LIMIT {
@@ -1272,6 +1323,60 @@ pub fn tail(path: &Path, max_lines: usize) -> String {
 }
 
 #[cfg(test)]
+mod log_limit_tests {
+    use super::*;
+
+    /// An app that prints without end cannot fill the disk or SAM's memory:
+    /// the launch log stops at its limit with a note, a line without an end
+    /// is read in pieces, and the whole output is still read.
+    #[test]
+    fn a_launch_log_stops_growing_at_its_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("launch.log");
+        let log = Arc::new(Mutex::new(fs::File::create(&path).unwrap()));
+        let head = Arc::new(Mutex::new(String::new()));
+        // 24 MiB in lines, then 8 MiB without a single line break.
+        let mut data = b"0123456789abcdef\n".repeat(24 * 1024 * 1024 / 17);
+        data.extend(std::iter::repeat_n(b'x', 8 * 1024 * 1024));
+        let total = data.len();
+        let src = std::io::Cursor::new(data);
+        let counted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        struct Counting(
+            std::io::Cursor<Vec<u8>>,
+            Arc<std::sync::atomic::AtomicUsize>,
+        );
+        impl Read for Counting {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                let n = self.0.read(buf)?;
+                self.1.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+                Ok(n)
+            }
+        }
+        pump_output(
+            Box::new(Counting(src, counted.clone())),
+            false,
+            log,
+            head,
+            true,
+        )
+        .join()
+        .unwrap();
+        let size = fs::metadata(&path).unwrap().len();
+        assert!(
+            (LOG_LIMIT..LOG_LIMIT + 2 * LINE_LIMIT).contains(&size),
+            "the log stops near its limit: {size}"
+        );
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("the rest of the app's output is not kept"));
+        assert_eq!(
+            counted.load(std::sync::atomic::Ordering::Relaxed),
+            total,
+            "the whole output is still read, so the app never blocks"
+        );
+    }
+}
+
+#[cfg(test)]
 mod pasta_status_tests {
     use super::*;
 
@@ -1376,6 +1481,14 @@ mod tests {
     fn sandbox_setup_errors_are_told_apart_from_app_errors() {
         assert!(classify_failure(Some(1), "bwrap: Can't mount proc").0);
         assert!(classify_failure(Some(127), "").0);
+        let (_, summary, _) = classify_failure(
+            Some(127),
+            "./app: error while loading shared libraries: libkeybinder-3.0.so.0: cannot open shared object file: No such file or directory",
+        );
+        assert!(
+            summary.contains("libkeybinder-3.0.so.0") && !summary.contains("entry point"),
+            "a missing library is named first: {summary}"
+        );
         assert!(!classify_failure(Some(1), "app error").0);
         assert!(!classify_failure(None, "").0);
     }

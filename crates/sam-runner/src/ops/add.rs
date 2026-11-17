@@ -60,6 +60,22 @@ impl Sam {
                 )
             );
         }
+        // A download that broke off: no sandbox for half a file, and letting
+        // it unpack itself would not help either.
+        if let Some((have, need)) = info.incomplete() {
+            return Err(sam_core::error::CodedError::new(
+                "appimage-incomplete",
+                sam_core::i18n::trf(
+                    "{file} is incomplete: it has {have} of the {need} its contents need, so the download probably broke off. Download it again.",
+                    &[
+                        ("file", &tildify(&source)),
+                        ("have", &crate::progress::size(have)),
+                        ("need", &crate::progress::size(need)),
+                    ],
+                ),
+            )
+            .into());
+        }
         let fp = fingerprint::compute(&source)?;
 
         // Same content as a registered app whose file went missing: relocate.

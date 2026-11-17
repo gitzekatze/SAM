@@ -25,6 +25,26 @@ impl RiskLevel {
             RiskLevel::Dangerous => 35,
         }
     }
+    /// The words people see, in the window and on the command line alike:
+    /// three levels (low and medium are both harmless), translated.
+    pub fn words(self) -> String {
+        match self {
+            RiskLevel::Low | RiskLevel::Medium => crate::i18n::tr("Harmless"),
+            RiskLevel::High => crate::i18n::tr("Think twice"),
+            RiskLevel::Dangerous => crate::i18n::tr("Dangerous"),
+        }
+    }
+    /// Whether `name` names this level: the internal name (`low`, `high`, …)
+    /// or the words people see (`harmless`, `think-twice`, `dangerous`).
+    pub fn is_named(self, name: &str) -> bool {
+        let n = name.trim().to_lowercase().replace([' ', '_'], "-");
+        n == self.label().to_lowercase()
+            || match self {
+                RiskLevel::Low | RiskLevel::Medium => n == "harmless",
+                RiskLevel::High => n == "think-twice",
+                RiskLevel::Dangerous => false,
+            }
+    }
     pub fn label(self) -> &'static str {
         match self {
             RiskLevel::Low => "Low",
@@ -505,6 +525,18 @@ mod tests {
     use super::*;
 
     /// SAM's strictest window profile counts as low risk.
+    /// The command line and the window name risk with the same three words,
+    /// and the command line's filter understands both names.
+    #[test]
+    fn risk_has_the_same_three_words_everywhere() {
+        assert_eq!(RiskLevel::Low.words(), "Harmless");
+        assert_eq!(RiskLevel::Medium.words(), "Harmless");
+        assert_eq!(RiskLevel::High.words(), "Think twice");
+        assert_eq!(RiskLevel::Dangerous.words(), "Dangerous");
+        assert!(RiskLevel::High.is_named("think twice") && RiskLevel::High.is_named("high"));
+        assert!(RiskLevel::Medium.is_named("harmless") && !RiskLevel::High.is_named("harmless"));
+    }
+
     /// The full session bus reaches systemd, which can start programs
     /// outside the sandbox, so it is rated like allowing systemd by name.
     #[test]
