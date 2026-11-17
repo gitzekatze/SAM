@@ -115,6 +115,10 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     .unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
+    // The environment agrees with the host the sandboxes see (testenv): the
+    // sound and display checks below read it, so on a desktop they would
+    // otherwise expect the person's own sockets.
+    sam_runner::testenv::isolate_this_process(root);
     let home = root.join("home/tester");
     for d in [".ssh", ".gnupg", "Documents", "Pictures"] {
         fs::create_dir_all(home.join(d)).unwrap();
