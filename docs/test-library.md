@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-40 tests.
+41 tests.
 
 | Promise | Test |
 |---|---|
@@ -21,7 +21,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L449) |
 | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L462) |
 | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L488) |
-| The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L55) |
+| The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) |
+| An error code survives added context. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L137) |
 | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) |
 | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L182) |
 | Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L200) |
@@ -181,13 +182,13 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Without Bubblewrap, the message says which package to install. | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L55) |
 | When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L66) |
 | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L85) |
-| A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L520) |
-| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L533) |
-| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L539) |
-| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L551) |
-| A failing section is named and the next still runs. | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L602) |
-| Where a run must prove everything (CI), a skip is an error; locally it is a note. | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L621) |
-| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L631) |
+| A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L529) |
+| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L542) |
+| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L548) |
+| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L560) |
+| A failing section is named and the next still runs. | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L611) |
+| Where a run must prove everything (CI), a skip is an error; locally it is a note. | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L632) |
+| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L644) |
 | SAM's own bus check reaches the session bus on a desktop. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L199) |
 | SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L215) |
 | An app may register a tray icon only while the tray service is allowed. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L164) |
@@ -336,8 +337,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `sam-jail version` answers with the JSON interface version even when the configuration cannot be read. | [`version_reports_the_json_interface`](../crates/sam-jail-cli/tests/robustness.rs#L240) |
 | Signing a file that has no AppImage signature sections is refused with a clear message, before GnuPG is asked anything, and the file stays as it was. | [`signing_a_file_without_signature_sections_is_refused`](../crates/sam-jail-cli/tests/robustness.rs#L258) |
 | Sam jail run refuses a sandbox whose settings do not apply. | [`sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`](../crates/sam-jail-cli/tests/start_check.rs#L49) |
-| Without network the sandbox dies with its launcher. | [`without_network_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L124) |
-| With this computer only the sandbox dies with its launcher. | [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L133) |
+| Without network the sandbox dies with its launcher. | [`without_network_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L150) |
+| With this computer only the sandbox dies with its launcher. | [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L159) |
 | A menu start after free space unpacks inside a sandbox. | [`a_menu_start_after_free_space_unpacks_inside_a_sandbox`](../crates/sam-jail-cli/tests/unpack.rs#L87) |
 | Without the command line a menu start refuses to unpack. | [`without_the_command_line_a_menu_start_refuses_to_unpack`](../crates/sam-jail-cli/tests/unpack.rs#L110) |
 
@@ -372,4 +373,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 286 automated Rust tests plus 7 scripted checks.
+Total: 287 automated Rust tests plus 7 scripted checks.

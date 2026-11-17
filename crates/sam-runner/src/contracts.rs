@@ -413,13 +413,22 @@ impl Checks {
 /// protected test that silently skips would turn a run green without
 /// testing anything.
 pub fn skip(reason: &str) -> Result<(), String> {
-    if std::env::var("SAM_REQUIRE_SANDBOX").as_deref() == Ok("1") {
+    let required = std::env::var("SAM_REQUIRE_SANDBOX").as_deref() == Ok("1");
+    let verdict = judge_skip(required, reason);
+    if verdict.is_ok() {
+        eprintln!("skipped: {reason}");
+        record_skip(reason);
+    }
+    verdict
+}
+
+/// Whether a test may skip: never where a run must prove everything (CI).
+fn judge_skip(required: bool, reason: &str) -> Result<(), String> {
+    if required {
         Err(format!(
             "this run must not skip (SAM_REQUIRE_SANDBOX=1), but: {reason}"
         ))
     } else {
-        eprintln!("skipped: {reason}");
-        record_skip(reason);
         Ok(())
     }
 }
@@ -617,15 +626,19 @@ mod tests {
     }
 
     /// Where a run must prove everything (CI), a skip is an error; locally it
-    /// is a note. (The only test in this crate that touches the variable.)
+    /// is a note. Judged without touching the environment: changing
+    /// SAM_REQUIRE_SANDBOX here would switch CI's rule off for every other
+    /// test in this process, and a real skip would land in the skip log.
     #[test]
     fn a_required_run_does_not_skip() {
-        std::env::set_var("SAM_REQUIRE_SANDBOX", "1");
-        let required = skip("bubblewrap cannot run here");
-        std::env::remove_var("SAM_REQUIRE_SANDBOX");
-        let local = skip("bubblewrap cannot run here");
-        assert!(required.is_err(), "CI must not skip");
-        assert!(local.is_ok(), "locally a skip is fine");
+        assert!(
+            judge_skip(true, "bubblewrap cannot run here").is_err(),
+            "CI must not skip"
+        );
+        assert!(
+            judge_skip(false, "bubblewrap cannot run here").is_ok(),
+            "locally a skip is fine"
+        );
     }
 
     #[test]

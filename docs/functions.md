@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-15 17:32:32).
 
-**40 functions:** 20 proven by passing tests, 19 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 286 tests in all.
+**40 functions:** 20 proven by passing tests, 19 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 287 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -52,7 +52,7 @@
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 6 | ✅ 🆕 4 new tests since the report |
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 12 | ✅ |
-| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 12 | ✅ 🆕 4 new tests since the report |
+| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 13 | ✅ 🆕 5 new tests since the report |
 
 ## Components and their functions
 
@@ -425,8 +425,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L104) | A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | ✅ |
 | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L182) | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | ✅ |
 | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L200) | Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | ✅ |
-| [`without_network_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L124) | Without network the sandbox dies with its launcher. | 🆕 new |
-| [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L133) | With this computer only the sandbox dies with its launcher. | 🆕 new |
+| [`without_network_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L150) | Without network the sandbox dies with its launcher. | 🆕 new |
+| [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L159) | With this computer only the sandbox dies with its launcher. | 🆕 new |
 
 **Code:** [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-runner/src/ops/mod.rs`](../crates/sam-runner/src/ops/mod.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
@@ -600,11 +600,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L199) | SAM's own bus check reaches the session bus on a desktop. | ✅ |
 | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L215) | SAM's own D-Bus message for the bus check has the correct wire format. | ✅ |
 | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L228) | Bubblewrap versions are compared correctly, including missing or malformed version text. | ✅ |
-| [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L533) | The built in contract map parses. | 🆕 new |
-| [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L539) | Every contract probe is known. | 🆕 new |
-| [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L631) | A missing portal interface breaks the portal contract. | 🆕 new |
+| [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L542) | The built in contract map parses. | 🆕 new |
+| [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L548) | Every contract probe is known. | 🆕 new |
+| [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L644) | A missing portal interface breaks the portal contract. | 🆕 new |
 | [`the_quick_checks_notice_a_broken_or_missing_tool`](../crates/sam-jail-cli/tests/contracts.rs#L47) | The quick checks notice a broken or missing tool. | 🆕 new |
-| [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L551) | A broken contract fails a test with its name and playbook. | 🆕 new |
+| [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L560) | A broken contract fails a test with its name and playbook. | 🆕 new |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs), [`sam-runner/src/bwrap.rs`](../crates/sam-runner/src/bwrap.rs), [`sam-runner/src/dbus_check.rs`](../crates/sam-runner/src/dbus_check.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
@@ -721,11 +721,12 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_component_diagram_shows_the_real_dependencies`](../crates/sam-jail-cli/tests/architecture.rs#L105) | The component diagram in docs/architecture.md shows exactly the real dependencies between the parts: no arrow is missing and none is invented. | ✅ |
 | [`diagram_labels_are_quoted_so_github_draws_them`](../crates/sam-jail-cli/tests/architecture.rs#L155) | Every box and arrow label in the documents' diagrams is quoted, so GitHub draws them: unquoted brackets or semicolons inside a label are a parse error there (the component diagram once failed that way). | ✅ |
 | [`version_reports_the_json_interface`](../crates/sam-jail-cli/tests/robustness.rs#L240) | `sam-jail version` answers with the JSON interface version even when the configuration cannot be read. | ✅ |
-| [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L55) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | ✅ |
-| [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L621) | Where a run must prove everything (CI), a skip is an error; locally it is a note. | 🆕 new |
-| [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L602) | A failing section is named and the next still runs. | 🆕 new |
-| [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L520) | A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | 🆕 new |
+| [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L137) | An error code survives added context. | ✅ |
+| [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L632) | Where a run must prove everything (CI), a skip is an error; locally it is a note. | 🆕 new |
+| [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L611) | A failing section is named and the next still runs. | 🆕 new |
+| [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L529) | A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | 🆕 new |
 | [`tests_find_the_helper_of_their_own_build`](../crates/sam-runner/src/lib.rs#L70) | A test program inside Cargo's build folder finds the helper of its own build, so tests that need it run instead of skipping; an installed program never looks above its own folder. | 🆕 new |
+| [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | 🆕 new |
 
 **Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md)
 
