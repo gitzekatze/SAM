@@ -221,7 +221,7 @@ playbook = "Without the proxy the app gets no session bus at all. If the rule sy
 [[contract]]
 id = "unpack-tools"
 component = "squashfs-tools"
-assumes = "unsquashfs and bsdtar unpack SquashFS images with these options, without keeping owners, ACLs or extended attributes."
+assumes = "unsquashfs and bsdtar unpack SquashFS images (and bsdtar the ISO 9660 image of an old Type 1 AppImage) with these options, without keeping owners, ACLs or extended attributes."
 covers = ["program:unsquashfs", "program:bsdtar", "option:-d", "option:-f", "option:-C", "option:-o", "option:-O", "option:-i", "option:--no-same-owner", "option:--no-acls", "option:--no-xattrs"]
 functions = [3, 5]
 probe = "program:unsquashfs"
