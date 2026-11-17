@@ -26,6 +26,8 @@ windows() {
     qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript "samwin$1" >/dev/null 2>&1
 }
 img=$1; name=$(basename "$img"); out="$R/results/$name"
+appcg=""
+if [ -n "${APPS_CG:-}" ] && mkdir "$APPS_CG/app-$$" 2>/dev/null; then appcg="$APPS_CG/app-$$"; fi
 S=sam-jail
 # Memory of everything the test start runs (the sandbox and the app), in MiB.
 memory() {
@@ -33,6 +35,71 @@ memory() {
     all="$p"; new="$p"
     while [ -n "$new" ]; do new=$(for q in $new; do pgrep -P "$q"; done); all="$all $new"; done
     echo "memory $(for q in $all; do ps -o rss= -p "$q" 2>/dev/null; done | awk '{s+=$1} END {printf "%d", s/1024}')" > "$out.mem"
+}
+# Level 2: whether what SAM allowed is really used, seen from outside while
+# the first start runs (sandboxed processes are not dumpable, so nothing is
+# read from inside them). Looked at every 2 s for the whole start, so a short
+# connection or sound is not missed:
+# - GPU: contexts the NVIDIA driver lists for the app's processes (n/a
+#   without NVIDIA: other drivers show this to root only);
+# - sound: clients of the session's own sound server (only one app runs at a
+#   time, and its process numbers inside the sandbox differ from ours);
+# - network: connections of the app's own control group (one per app, see
+#   run.sh) that leave this computer, as `ss` lists them (n/a when the run's
+#   scope cannot hold control groups of its own).
+# One "key value" line each in $out.observe.
+procs() {
+    if [ -n "$appcg" ]; then cat "$appcg/cgroup.procs" 2>/dev/null; return; fi
+    p=$(pgrep -f "selftest $id" | head -1); [ -n "$p" ] || return
+    all="$p"; new="$p"
+    while [ -n "$new" ]; do new=$(for q in $new; do pgrep -P "$q"; done); all="$all $new"; done
+    echo $all
+}
+sound_client() {
+    pw-dump 2>/dev/null | python3 -I -c '
+import json, sys
+own = {"pipewire", "pipewire-pulse", "pw-dump", "wireplumber"}
+n = 0
+for o in json.load(sys.stdin):
+    if o.get("type") == "PipeWire:Interface:Client":
+        pr = (o.get("info") or {}).get("props") or {}
+        name = str(pr.get("application.name") or pr.get("application.process.binary") or "")
+        if name and name.lower() not in own:
+            n += 1
+print("yes" if n else "no")' 2>/dev/null
+}
+observe() {
+    gpu=n/a; sound=n/a; net=n/a
+    command -v nvidia-smi >/dev/null && gpu=no
+    command -v pw-dump >/dev/null && sound=no
+    rel=""
+    if [ -n "$appcg" ] && command -v ss >/dev/null; then net=0; rel=${appcg#/sys/fs/cgroup}; fi
+    t=0
+    while [ "$t" -lt 24 ]; do
+        sleep 2; t=$((t + 2))
+        if [ "$gpu" = no ]; then
+            g=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null; nvidia-smi 2>/dev/null | awk '/ G | C\+G /{print $5}')
+            for q in $(procs); do echo "$g" | grep -qx "$q" && gpu=yes; done
+        fi
+        [ "$sound" = no ] && [ "$(sound_client)" = yes ] && sound=yes
+        if [ -n "$rel" ]; then
+            # Peer addresses of established TCP and connected UDP sockets,
+            # without this computer's own (loopback).
+            n=$(ss -Htun state established cgroup "$rel" 2>/dev/null | awk '{print $5}' \
+                | grep -cvE '^(127\.|\[::1\]|\[::ffff:127\.)')
+            [ "$n" -gt "$net" ] && net=$n
+        fi
+    done
+    printf 'gpu %s\nsound %s\nnet %s\n' "$gpu" "$sound" "$net" > "$out.observe"
+}
+# The first start runs in a control group of its own, when the run has one
+# to give (APPS_CG, see run.sh): its network connections are then this app's.
+in_own_group() {
+    if [ -n "$appcg" ]; then
+        sh -c 'echo $$ > "$0/cgroup.procs" && exec "$@"' "$appcg" "$@"
+    else
+        "$@"
+    fi
 }
 start() { # round
     if [ "$1" = 0 ]; then
@@ -44,9 +111,16 @@ start() { # round
     fi
     ( sleep 20; spectacle -b -n -f -o "$out.shot$1.png" >/dev/null 2>&1; [ "$1" = 0 ] && { windows "$1"; memory; } ) &
     shot=$!
-    $S --json selftest "$id" --seconds 25 > "$out.selftest$1.json" 2>&1
+    watch=""
+    if [ "$1" = 0 ]; then observe & watch=$!; fi
+    if [ "$1" = 0 ]; then
+        in_own_group $S --json selftest "$id" --seconds 25 > "$out.selftest$1.json" 2>&1
+    else
+        $S --json selftest "$id" --seconds 25 > "$out.selftest$1.json" 2>&1
+    fi
     echo "selftest$1 exit $?"
     wait "$shot" 2>/dev/null
+    [ -n "$watch" ] && wait "$watch" 2>/dev/null
     [ "$1" = 0 ] && qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript samadd >/dev/null 2>&1
 }
 ok() { grep -q '"ok":true' "$out.selftest$1.json" && python3 -I -c "import json,sys; d=json.load(open(sys.argv[1]))['data']['results']; sys.exit(0 if d and d[0].get('status') == 'ok' else 1)" "$out.selftest$1.json"; }
@@ -123,3 +197,8 @@ ok() { grep -q '"ok":true' "$out.selftest$1.json" && python3 -I -c "import json,
 } > "$out.txt" 2>&1
 # Window titles seen after 20 s, from KWin's log.
 grep -a "SAMWIN ${id:-none} " "$R/kwin.log" 2>/dev/null | sed "s/.*SAMWIN ${id:-none} /window /" | sort -u > "$out.windows" || true
+# The app's control group is empty once it has closed; what is still in it
+# kept running after SAM closed the app.
+if [ -n "$appcg" ] && ! rmdir "$appcg" 2>/dev/null; then
+    echo "left-running $(wc -l < "$appcg/cgroup.procs")" >> "$out.checks"
+fi

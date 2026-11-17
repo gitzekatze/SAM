@@ -8,7 +8,8 @@ Columns: did the test start succeed; how many windows appeared after 20 s,
 and whether a title reads like an error dialog; whether the recommendation
 was the same twice; D-Bus calls without an answer; leftover launch folders
 after closing; and, when run with CHECKS=..., the start without network
-and sound, the second start, and the start in German.
+and sound, the second start, and the start in German. "use=" says per
+permission whether what SAM allowed was really used (GPU, sound, network).
 """
 import glob
 import json
@@ -25,6 +26,43 @@ def load(p):
         return d.get("data", d) if isinstance(d, dict) else d
     except Exception:
         return {}
+
+
+def use(base):
+    """Whether what SAM allowed is really used (level 2), from the
+    observation during the first start (every 2 s for its 25 s): per
+    permission "works" (allowed and used), "unused" (allowed, not used during
+    the start: no failure, many apps play no sound or go online only when
+    asked), "-" (not allowed), "local" (network for this computer only:
+    nothing may leave, nothing to measure) or "n/a" (not measurable here:
+    the GPU check needs NVIDIA's driver, the network check a run started
+    with Delegate=yes)."""
+    seen = {}
+    if os.path.exists(base + ".observe"):
+        for l in open(base + ".observe", errors="replace").read().splitlines():
+            k, _, v = l.partition(" ")
+            seen[k] = v.strip()
+    perms = (load(base + ".info.json").get("entry", {}).get("profile", {}) or {}).get("permissions", {}) or {}
+    allowed = {
+        "gpu": bool((perms.get("devices") or {}).get("gpu")),
+        "sound": bool((perms.get("audio") or {}).get("enabled")),
+        "net": (perms.get("network") or {}).get("mode") == "full",
+    }
+    local = (perms.get("network") or {}).get("mode") == "localhost"
+    out = []
+    for k in ("gpu", "sound", "net"):
+        v = seen.get(k)
+        if k == "net" and local:
+            out.append("net:local")
+        elif not allowed[k]:
+            out.append(f"{k}:-")
+        elif v in (None, "n/a"):
+            out.append(f"{k}:n/a")
+        elif v == "yes" or (k == "net" and v.isdigit() and int(v) > 0):
+            out.append(f"{k}:works")
+        else:
+            out.append(f"{k}:unused")
+    return ",".join(out)
 
 
 def line(base):
@@ -65,9 +103,8 @@ def line(base):
     # Timing and memory change from run to run: shown, but kept out of the
     # comparison with a baseline unless they change a lot (see main).
     extra = f"first-window={start_ms / 1000:.1f}s" if start_ms is not None else "first-window=none"
-    # (Whether the GPU is in use cannot be seen from outside: sandboxed
-    # processes are not dumpable, so their open files are hidden.)
     extra += f"  memory={mem}MiB"
+    extra += "  use=" + use(base)
     extra += f"  tray={checks.get('tray', '?')}  portals={checks.get('portals') or '-'}"
     for k in ("netoff", "second", "lang", "scale", "missing"):
         if k in checks:

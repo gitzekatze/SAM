@@ -17,6 +17,9 @@ import json
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from checks import use  # noqa: E402  (level 2: what the app really used)
+
 args = [a for a in sys.argv[1:]]
 MARKDOWN = None
 if "--markdown" in args:
@@ -60,7 +63,7 @@ for txt in sorted(glob.glob(f"{R}/results/*.txt")):
     if not e:
         add = open(base + ".add.txt").read() if os.path.exists(base + ".add.txt") else ""
         why = next((l.strip() for l in add.splitlines() if "error" in l.lower() or "failed" in l.lower()), add.strip()[-120:])
-        rows.append((name, "ADD", "-", "-", why))
+        rows.append((name, "ADD", "-", "-", why, ""))
         continue
     outcome, why, rounds = None, "", 0
     for n in range(4):
@@ -90,7 +93,7 @@ for txt in sorted(glob.glob(f"{R}/results/*.txt")):
             a = d["applied"]
             steps.append(a.get("title", str(a)) if isinstance(a, dict) else str(a))
     note = why if outcome == "FAIL" else ("repairs: " + "; ".join(steps) if steps else "")
-    rows.append((name, outcome, window, check, note))
+    rows.append((name, outcome, window, check, note, use(base)))
 
 def markdown(date):
     """The published report: totals, results per kind of app, and every app."""
@@ -117,11 +120,33 @@ def markdown(date):
         out += ["## By kind of app", "", "| Kind | Start | Of |", "|---|---|---|"]
         out += [f"| {k} | {sum(o.startswith('OK') for o in v)} | {len(v)} |" for k, v in sorted(groups.items())]
         out += [""]
+    # Level 2: of the apps allowed each, how many really used it.
+    used = {}
+    for r in rows:
+        for part in filter(None, r[5].split(",")):
+            k, _, v = part.partition(":")
+            used.setdefault(k, {}).setdefault(v, 0)
+            used[k][v] += 1
+    if any(used.values()):
+        names = {"gpu": "Graphics card", "sound": "Sound", "net": "Network (leaving this computer)"}
+        out += ["## What the apps really used", "",
+                "Seen from outside during the 25-second start, every 2 seconds. *Unused* is no failure:",
+                "many apps play no sound or go online only when asked. *Not measurable*: the graphics",
+                "check needs NVIDIA's driver; the network check needs the run's own control groups.", "",
+                "| Permission | Allowed and used | Allowed, unused | Not allowed | Not measurable |", "|---|---|---|---|---|"]
+        for k in ("gpu", "sound", "net"):
+            c = used.get(k, {})
+            out.append(f"| {names[k]} | {c.get('works', 0)} | {c.get('unused', 0)} | "
+                       f"{c.get('-', 0) + c.get('local', 0)} | {c.get('n/a', 0)} |")
+        out += [""]
     labels = {"OK": "starts", "FAIL": "does not start", "ADD": "turned away"}
-    out += ["## Every AppImage", "", "| AppImage | Result | Window | Sandbox check | Note |", "|---|---|---|---|---|"]
+    show = {"works": "used", "unused": "unused", "-": "-", "local": "local only", "n/a": "n/a"}
+    out += ["## Every AppImage", "", "| AppImage | Result | Window | Sandbox check | Uses | Note |", "|---|---|---|---|---|---|"]
     for r in rows:
         res = labels.get(r[1], f"starts after {r[1][3:]} repair step")
-        out.append(f"| {r[0]} | {res} | {r[2]} | {r[3]} | {clean(r[4])} |")
+        uses = ", ".join(f"{k} {show.get(v, v)}" for k, _, v in (p.partition(":") for p in r[5].split(",") if p)
+                         if v in ("works", "unused"))
+        out.append(f"| {r[0]} | {res} | {r[2]} | {r[3]} | {uses or '-'} | {clean(r[4])} |")
     print("\n".join(out))
 
 
@@ -130,9 +155,9 @@ if MARKDOWN:
     sys.exit(0)
 
 w = max(len(r[0]) for r in rows) if rows else 10
-print(f"{'AppImage':<{w}}  outcome  window  check  note")
+print(f"{'AppImage':<{w}}  outcome  window  check  {'uses':<34}  note")
 for r in rows:
-    print(f"{r[0]:<{w}}  {r[1]:<7}  {r[2]:<6}  {r[3]:<5}  {r[4][:110]}")
+    print(f"{r[0]:<{w}}  {r[1]:<7}  {r[2]:<6}  {r[3]:<5}  {r[5]:<34}  {r[4][:90]}")
 total = len(rows)
 count = lambda pred: sum(1 for r in rows if pred(r))
 print()

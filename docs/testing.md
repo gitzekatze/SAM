@@ -63,6 +63,21 @@ scaling 2, and (`missing`, needs strace) under strace to list files the app
 looked for in vain. Every run also notes the time until the first window,
 the memory after 20 seconds, whether a tray icon
 was registered, and which portals the app called.
+
+**Whether an app really uses what SAM allowed:** during the first start
+(every 2 seconds for its 25 seconds) the test looks from outside whether
+the app uses the graphics card (contexts NVIDIA's driver lists for its
+processes; *n/a* with other drivers, which show this to root only), plays
+through the session's own silent sound server, and has connections that
+leave this computer. For the network each app runs in a control group of its
+own, so `ss` tells its connections apart from everything else on the
+computer; start the run in a scope with `Delegate=yes`
+(`systemd-run --user --scope -p Delegate=yes …`), otherwise network use is
+*n/a*. Per permission the result is *works* (allowed and used), *unused*
+(allowed, not used during the start: no failure), *-* (not allowed) or
+*local* (this computer only). `table.py --markdown` adds a summary and a
+column to the report. A process still in the app's control group after SAM
+closed it is listed as `left-running`.
 `python3 tests/real-apps/checks.py WORK [BASELINE]` prints one line per app,
 or with a baseline only what changed. The smoke subset (one app per family,
 16 apps) passed every check on 2026-11-15.
