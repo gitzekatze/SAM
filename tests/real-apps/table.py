@@ -18,7 +18,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from checks import use  # noqa: E402  (level 2: what the app really used)
+from checks import messages, screen, use  # noqa: E402  (what the app really did)
 
 args = [a for a in sys.argv[1:]]
 MARKDOWN = None
@@ -63,7 +63,7 @@ for txt in sorted(glob.glob(f"{R}/results/*.txt")):
     if not e:
         add = open(base + ".add.txt").read() if os.path.exists(base + ".add.txt") else ""
         why = next((l.strip() for l in add.splitlines() if "error" in l.lower() or "failed" in l.lower()), add.strip()[-120:])
-        rows.append((name, "ADD", "-", "-", why, ""))
+        rows.append((name, "ADD", "-", "-", why, "", {}))
         continue
     outcome, why, rounds = None, "", 0
     for n in range(4):
@@ -93,7 +93,14 @@ for txt in sorted(glob.glob(f"{R}/results/*.txt")):
             a = d["applied"]
             steps.append(a.get("title", str(a)) if isinstance(a, dict) else str(a))
     note = why if outcome == "FAIL" else ("repairs: " + "; ".join(steps) if steps else "")
-    rows.append((name, outcome, window, check, note, use(base)))
+    checks = {}
+    if os.path.exists(base + ".checks"):
+        for l in open(base + ".checks", errors="replace").read().splitlines():
+            k, _, v = l.partition(" ")
+            checks[k] = v.strip()
+    did = {"file": checks.get("file", ""), "close": checks.get("close", ""),
+           "screen": screen(base), "messages": messages(base)}
+    rows.append((name, outcome, window, check, note, use(base), did))
 
 def markdown(date):
     """The published report: totals, results per kind of app, and every app."""
@@ -139,14 +146,54 @@ def markdown(date):
             out.append(f"| {names[k]} | {c.get('works', 0)} | {c.get('unused', 0)} | "
                        f"{c.get('-', 0) + c.get('local', 0)} | {c.get('n/a', 0)} |")
         out += [""]
+    # Used like a person would: a sample file, the close button, what the
+    # window showed, what the app printed.
+    did = [r[6] for r in rows if r[6]]
+    if did:
+        n = lambda pred: sum(1 for d in did if pred(d))
+        with_file = n(lambda d: d["file"].split(" ")[0] in ("read", "not-read"))
+        out += ["## Used like a person would", "",
+                "Each app that started was started once more: with a small sample file of a type its",
+                "menu entry says it opens, then closed with its windows' close buttons. Linux reports",
+                "from outside whether the app read the file. The window is checked in the screenshot",
+                "after 20 seconds, its text read for error messages, and the app's own messages for",
+                "crashes, missing libraries and refused access.", "",
+                "| Check | Apps |", "|---|---|",
+                f"| Read the sample file it was given | {n(lambda d: d['file'].startswith('read'))} of {with_file} |",
+                f"| Closed cleanly with its close button | {n(lambda d: d['close'].startswith('closed') and d['close'].endswith(' ok'))} |",
+                f"| Closed, but with an error code or signal | {n(lambda d: d['close'].startswith('closed') and not d['close'].endswith(' ok'))} |",
+                f"| Did not close within 10 seconds | {n(lambda d: d['close'].startswith('hung'))} |",
+                f"| Ended by itself (command-line tools) | {n(lambda d: d['close'].startswith('ended-by-itself'))} |",
+                f"| No window to close | {n(lambda d: d['close'].startswith('no-window'))} |",
+                f"| Window empty (one or two colours) | {n(lambda d: d['screen']['window'] == 'blank')} |",
+                f"| Error words on screen | {n(lambda d: bool(d['screen']['text']))} |",
+                f"| Crash messages | {n(lambda d: 'crash' in d['messages'])} |",
+                f"| Missing library messages | {n(lambda d: 'library' in d['messages'])} |",
+                f"| Refused access messages | {n(lambda d: 'denied' in d['messages'])} |", ""]
     labels = {"OK": "starts", "FAIL": "does not start", "ADD": "turned away"}
     show = {"works": "used", "unused": "unused", "-": "-", "local": "local only", "n/a": "n/a"}
-    out += ["## Every AppImage", "", "| AppImage | Result | Window | Sandbox check | Uses | Note |", "|---|---|---|---|---|---|"]
+    out += ["## Every AppImage", "", "| AppImage | Result | Window | Sandbox check | Uses | Used like a person | Note |",
+            "|---|---|---|---|---|---|---|"]
     for r in rows:
         res = labels.get(r[1], f"starts after {r[1][3:]} repair step")
         uses = ", ".join(f"{k} {show.get(v, v)}" for k, _, v in (p.partition(":") for p in r[5].split(",") if p)
                          if v in ("works", "unused"))
-        out.append(f"| {r[0]} | {res} | {r[2]} | {r[3]} | {uses or '-'} | {clean(r[4])} |")
+        d = r[6]
+        person = []
+        if d:
+            f = d["file"].split(" ")
+            if f[0] in ("read", "not-read") and len(f) > 1:
+                person.append(f"{f[1]} {'read' if f[0] == 'read' else 'not read'}")
+            if d["close"]:
+                c = d["close"].split(" ")
+                person.append(c[0].replace("-", " ") + (f" ({c[-1]})" if c[-1] not in ("ok", "?") and c[0] == "closed" else ""))
+            if d["screen"]["window"] == "blank":
+                person.append("empty window")
+            if d["screen"]["text"]:
+                person.append(f"on screen: {d['screen']['text'][:40]}")
+            for k, v in sorted(d["messages"].items()):
+                person.append(f"{k} message")
+        out.append(f"| {r[0]} | {res} | {r[2]} | {r[3]} | {uses or '-'} | {', '.join(person) or '-'} | {clean(r[4])} |")
     print("\n".join(out))
 
 

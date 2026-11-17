@@ -61,6 +61,9 @@ export TEST_ONE="$here/test-one.sh" TOOLS="$here" CHECKS="${CHECKS:-}"
 cg=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)
 if mkdir "$cg/sam-apps" 2>/dev/null; then APPS_CG="$cg/sam-apps"; else APPS_CG=""; fi
 export APPS_CG
+# Sample files the apps are started with once (test-one.sh, usecheck).
+export SAMPLES="$R/samples"
+python3 -I "$here/samples.py" make "$SAMPLES" >/dev/null 2>&1 || true
 # KWin script output (window titles) goes to kwin.log.
 export QT_FORCE_STDERR_LOGGING=1 QT_LOGGING_RULES="js.debug=true"
 # KWin splits the session command at spaces: start it through a link.
