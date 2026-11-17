@@ -214,10 +214,14 @@ How these stay protected with the home writable:
 - **Files whose mere presence changes behaviour** (`.bash_profile`, `.zshrc`,
   `.xprofile`, `.vimrc`, `.pam_environment` and the like) cannot be protected
   by a mount before they exist: making one would create the file. So SAM
-  looks after every start: whatever the app created in one of these places,
-  and whatever replaced a link to one of them, SAM moves into
-  `~/.local/share/sam/moved-aside/APP/` (with the time of the start) and puts
-  links back. The command line, the launch log and the app's page say so.
+  watches these places while the app runs: Linux reports every change in
+  the folders that hold them (inotify), and SAM looks at once. Whatever the
+  app created in one of these places, and whatever replaced a link to one of
+  them, SAM moves into `~/.local/share/sam/moved-aside/APP/` (with the time
+  of the start) within moments and puts links back; it looks once more when
+  the app ends. The command line, the launch log and the app's page say so.
+  The watch costs nothing while nothing changes: it waits for Linux to
+  report, without a timer.
   The same holds for `~/.ssh` and `~/.gnupg` when the app was not given them.
 - **Key folders that are links** (dotfiles managed with `stow`, for example)
   are hidden where they point.
@@ -227,9 +231,10 @@ home, an app can still change other files that programs outside the sandbox
 read: settings of programs not in the table above, scripts in project
 folders. SAM protects the places that make a computer run something by
 themselves; it cannot know every program's settings. And a file the app
-creates in a watched place exists until the app ends, before SAM moves it
-aside. So full home access is meant only for apps you trust, and SAM warns
-when you grant it.
+creates in a watched place exists for a moment (usually well under a second)
+before SAM moves it aside: a program outside that reads it in exactly that
+moment would see it. So full home access is meant only for apps you trust,
+and SAM warns when you grant it.
 
 ---
 

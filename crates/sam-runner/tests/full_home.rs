@@ -35,6 +35,9 @@ if rm "$H/.ssh" 2>/dev/null && mkdir "$H/.ssh" && echo planted > "$H/.ssh/author
 else
     echo LINK=refused
 fi
+# While the app still runs: the new startup file is already gone.
+sleep 1
+[ -e "$H/.bash_profile" ] && echo PROFILE_LIVE=stayed || echo PROFILE_LIVE=gone
 echo END=1
 "#;
 
@@ -122,6 +125,8 @@ fn full_home_access_cannot_leave_anything_that_runs_later() {
         !home.join(".bash_profile").exists(),
         "the new .bash_profile was moved aside"
     );
+    // ... and it is moved aside while the app runs, not only at its end.
+    assert_eq!(r["PROFILE_LIVE"], "gone");
     // 3. The key behind the link stays hidden.
     assert_eq!(r["KEY"], "hidden");
     // 4. The link is back, the folder the app put there is gone.
