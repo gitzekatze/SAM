@@ -434,15 +434,20 @@ fn render_widget(window: &gtk::Widget, widget: &gtk::Widget, file: &str) {
     // Cairo (GTK's renderer on Broadway and older systems) cannot make
     // images taller than 32767 px; very long pages are cut at 16384.
     let (w, h) = (widget.width() as f64, (widget.height() as f64).min(16384.0));
+    // Each way to save nothing says so: a smoke test must name the reason,
+    // not only "no screenshot".
     if w < 1.0 || h < 1.0 {
+        eprintln!("screenshot {file}: nothing to draw, the widget is {w}x{h} (not shown?)");
         return;
     }
     let snapshot = gtk::Snapshot::new();
     paintable.snapshot(&snapshot, w, h);
     let Some(node) = snapshot.to_node() else {
+        eprintln!("screenshot {file}: the widget drew nothing");
         return;
     };
     let Some(renderer) = window.native().and_then(|n| n.renderer()) else {
+        eprintln!("screenshot {file}: the window has no renderer (not shown?)");
         return;
     };
     let texture = renderer.render_texture(
