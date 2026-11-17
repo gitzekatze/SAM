@@ -413,13 +413,46 @@ impl Checks {
 /// protected test that silently skips would turn a run green without
 /// testing anything.
 pub fn skip(reason: &str) -> Result<(), String> {
-    if std::env::var("SAM_REQUIRE_SANDBOX").as_deref() == Ok("1") {
+    let required = std::env::var("SAM_REQUIRE_SANDBOX").as_deref() == Ok("1");
+    let verdict = judge_skip(required, reason);
+    if verdict.is_ok() {
+        eprintln!("skipped: {reason}");
+        record_skip(reason);
+    }
+    verdict
+}
+
+/// Whether a test may skip: never where a run must prove everything (CI).
+fn judge_skip(required: bool, reason: &str) -> Result<(), String> {
+    if required {
         Err(format!(
             "this run must not skip (SAM_REQUIRE_SANDBOX=1), but: {reason}"
         ))
     } else {
-        eprintln!("skipped: {reason}");
         Ok(())
+    }
+}
+
+/// Notes a skipped test in `$SAM_SKIP_LOG` (one line: the test, the
+/// reason), so a run can say how many tests did not run instead of passing
+/// them silently (`make test` prints the summary).
+fn record_skip(reason: &str) {
+    if let Some(path) = std::env::var_os("SAM_SKIP_LOG") {
+        let test = std::thread::current()
+            .name()
+            .unwrap_or("a test")
+            .to_string();
+        record_skip_to(std::path::Path::new(&path), &test, reason);
+    }
+}
+
+fn record_skip_to(path: &std::path::Path, test: &str, reason: &str) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = std::io::Write::write_all(&mut f, format!("{test}: {reason}\n").as_bytes());
     }
 }
 
@@ -489,6 +522,21 @@ mod tests {
         PROBES.iter().any(|p| {
             probe == *p || (p.ends_with(':') && probe.starts_with(p) && probe.len() > p.len())
         })
+    }
+
+    /// A skipped test is written to the skip log with its name and reason,
+    /// one line each, so a run can report it instead of passing it silently.
+    #[test]
+    fn a_skipped_test_is_recorded_with_its_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("skips.log");
+        record_skip_to(&log, "verify", "bubblewrap cannot run here");
+        record_skip_to(&log, "breakout", "python3 is missing");
+        let text = std::fs::read_to_string(&log).unwrap();
+        assert_eq!(
+            text,
+            "verify: bubblewrap cannot run here\nbreakout: python3 is missing\n"
+        );
     }
 
     #[test]
@@ -578,15 +626,19 @@ mod tests {
     }
 
     /// Where a run must prove everything (CI), a skip is an error; locally it
-    /// is a note. (The only test in this crate that touches the variable.)
+    /// is a note. Judged without touching the environment: changing
+    /// SAM_REQUIRE_SANDBOX here would switch CI's rule off for every other
+    /// test in this process, and a real skip would land in the skip log.
     #[test]
     fn a_required_run_does_not_skip() {
-        std::env::set_var("SAM_REQUIRE_SANDBOX", "1");
-        let required = skip("bubblewrap cannot run here");
-        std::env::remove_var("SAM_REQUIRE_SANDBOX");
-        let local = skip("bubblewrap cannot run here");
-        assert!(required.is_err(), "CI must not skip");
-        assert!(local.is_ok(), "locally a skip is fine");
+        assert!(
+            judge_skip(true, "bubblewrap cannot run here").is_err(),
+            "CI must not skip"
+        );
+        assert!(
+            judge_skip(false, "bubblewrap cannot run here").is_ok(),
+            "locally a skip is fine"
+        );
     }
 
     #[test]

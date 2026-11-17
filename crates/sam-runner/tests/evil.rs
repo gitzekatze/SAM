@@ -27,6 +27,12 @@ use sam_runner::launch::{run, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
 
 fn have(tool: &str) -> bool {
+    // SAM's helper is the one of this build (find_helper), as for SAM's own
+    // starts; looking only on PATH made this test fail in every run without
+    // PATH set up, which in a mutation run counts every change as caught.
+    if tool == "sam-jail-run" {
+        return sam_runner::find_helper().is_some();
+    }
     std::env::var_os("PATH")
         .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(tool).is_file()))
 }

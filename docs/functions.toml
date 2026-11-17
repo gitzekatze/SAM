@@ -369,5 +369,7 @@ internal = true
 promise = "SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones."
 code = ["sam-jail-cli/tests/architecture.rs", "docs/architecture.md"]
 tests = ["the_permission_model_depends_on_no_other_part", "the_window_reaches_sam_only_through_the_command_line", "lower_parts_never_depend_on_higher_ones", "the_sandbox_builder_depends_only_on_the_permission_model", "the_component_diagram_shows_the_real_dependencies", "diagram_labels_are_quoted_so_github_draws_them", "version_reports_the_json_interface", "an_error_code_survives_added_context", "a_required_run_does_not_skip", "a_failing_section_is_named_and_the_next_still_runs",
+  "a_skipped_test_is_recorded_with_its_reason",
+  "tests_find_the_helper_of_their_own_build",
   "an_error_names_its_sam_function_and_keeps_its_message",
 ]

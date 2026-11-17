@@ -118,6 +118,22 @@ version.
 - **A missing library is named first** when an app cannot start because
   of it, instead of a general "entry point not found".
 
+### Tests that cannot run are never silent
+
+- Tests find SAM's helper `sam-jail-run` of their own build, so the
+  breakout test, the sandbox check and the stop test no longer skip
+  themselves when `PATH` was not set by hand.
+- `make test` ends with the list of tests that did not run here and why
+  (`$SAM_SKIP_LOG`); in CI a test that cannot run still fails.
+- The hostile-AppImage test also finds the helper of its own build. Before,
+  it failed for every change in a mutation run, so every change counted as
+  caught ([report](docs/reports/mutants-2026-11-16.md), addendum).
+- `scripts/mutants.sh` runs mutation testing with the settings that make
+  its result true: whole workspace, skips refused, the whole suite first on
+  the unchanged code, a short runtime folder of its own, two changes at a
+  time. `scripts/mutants-report.py` names the SAM function of every change
+  the tests miss, and refuses a run in which a test never passed.
+
 ### Real AppImages compared by group
 
 - `tests/real-apps/compare.py` compares two real-app runs (or a run with
