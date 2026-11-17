@@ -192,6 +192,9 @@ const PROTECTED_RO: &[&str] = &[
     "bin",
     ".local/share/dbus-1",
     ".config/mimeapps.list",
+    // Where Documents, Downloads and the other user folders are: changed, it
+    // would point other apps' folder grants at any folder.
+    ".config/user-dirs.dirs",
     ".local/share/kwin",
     ".local/share/plasma",
     ".local/share/kservices5",
@@ -217,8 +220,13 @@ const PROTECTED_CREATE_DIRS: &[&str] = &[
     ".local/share/dbus-1",
     ".local/share/kwin",
 ];
-const PROTECTED_CREATE_FILES: &[&str] =
-    &[".bashrc", ".profile", ".gitconfig", ".config/mimeapps.list"];
+const PROTECTED_CREATE_FILES: &[&str] = &[
+    ".bashrc",
+    ".profile",
+    ".gitconfig",
+    ".config/mimeapps.list",
+    ".config/user-dirs.dirs",
+];
 
 /// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
 /// home before a start that can write the home (full home read/write, or a
@@ -2199,6 +2207,39 @@ mod guard_tests {
         assert!(
             has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]),
             "hidden inside the granted folder"
+        );
+    }
+
+    /// With the home writable, the file that says where the user folders
+    /// are stays read-only, so an app cannot point other apps' Documents or
+    /// Downloads grant at another folder.
+    #[test]
+    fn user_folder_locations_stay_read_only_with_a_writable_home() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path();
+        fs::create_dir_all(home.join(".config")).unwrap();
+        fs::write(
+            home.join(".config/user-dirs.dirs"),
+            "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n",
+        )
+        .unwrap();
+        let mut ctx = sample_context();
+        ctx.host.home = home.to_path_buf();
+        ctx.permissions.filesystem.home = true;
+        ctx.permissions.filesystem.home_access = Access::Rw;
+        let f = home
+            .join(".config/user-dirs.dirs")
+            .to_string_lossy()
+            .into_owned();
+        assert!(
+            has_seq(&args_of(&ctx), &["--ro-bind-try", &f, &f]),
+            "read-only"
+        );
+        let empty = tempfile::tempdir().unwrap();
+        prepare_home_protection(&ctx.permissions, empty.path());
+        assert!(
+            empty.path().join(".config/user-dirs.dirs").is_file(),
+            "created empty when missing, so an app cannot create it"
         );
     }
 

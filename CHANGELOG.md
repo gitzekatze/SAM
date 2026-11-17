@@ -79,6 +79,20 @@ version.
   cannot be checked (GnuPG missing), SAM stops and asks, as it does for a
   changed signing key. Before, such an update was installed without asking.
 
+### Risk ratings that match what a permission can do
+
+- **The full session bus is rated Dangerous**, like allowing systemd by
+  name: on the full bus an app can ask systemd to start programs outside
+  its sandbox. Its explanation and compatibility mode's warning now say so.
+- **The file that says where your user folders are**
+  (`~/.config/user-dirs.dirs`) stays read-only even with a writable home,
+  so an app cannot point other apps' Documents or Downloads grant at
+  another folder.
+- **A diagnostic run cannot be talked into a wider grant.** Its trace lies
+  in a folder the app can write, so paths with `..` are ignored and a
+  low-risk grant is always a real folder of shared system data, never a
+  parent such as `/usr`.
+
 ### Security and reliability (from an outside code audit)
 
 - **A sandbox with "This computer only" could outlive SAM.** When SAM's

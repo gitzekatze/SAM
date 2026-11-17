@@ -75,7 +75,9 @@ id = 7
 area = "B"
 promise = "SAM explains every permission in plain language and shows how risky it is."
 code = ["sam-core/src/permissions.rs", "sam-core/src/risk.rs", "sam-core/src/warnings.rs", "sam-gtk/src/all_perms.rs"]
-tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "network_and_x11_high", "each_dangerous_setting_produces_its_warning", "strict_has_no_danger", "x11_warning_can_be_disabled", "tags_and_the_risk_list_use_the_same_words", "folder_explanations_name_the_path"]
+tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "network_and_x11_high", "each_dangerous_setting_produces_its_warning", "strict_has_no_danger", "x11_warning_can_be_disabled", "tags_and_the_risk_list_use_the_same_words", "folder_explanations_name_the_path",
+  "the_full_session_bus_is_rated_dangerous",
+]
 
 [[function]]
 id = 8
@@ -90,7 +92,9 @@ id = 9
 area = "B"
 promise = "Things an app printed can never grant it access on their own; SAM always asks."
 code = ["sam-runner/src/repair.rs"]
-tests = ["app_output_cannot_buy_dangerous_grants"]
+tests = ["app_output_cannot_buy_dangerous_grants",
+  "a_forged_trace_line_cannot_widen_a_low_risk_grant",
+]
 
 [[area]]
 id = "C"
@@ -109,7 +113,9 @@ id = 11
 area = "C"
 promise = "Keys, passwords and the files of your other apps stay hidden, even with full home access."
 code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs"]
-tests = ["key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "credential_files_and_folders_in_the_home_are_masked", "home_protection_is_prepared_only_for_a_writable_home", "sams_own_folders_stay_hidden_inside_a_granted_folder"]
+tests = ["key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "credential_files_and_folders_in_the_home_are_masked", "home_protection_is_prepared_only_for_a_writable_home", "sams_own_folders_stay_hidden_inside_a_granted_folder",
+  "user_folder_locations_stay_read_only_with_a_writable_home",
+]
 
 [[function]]
 id = 12
