@@ -49,6 +49,8 @@ pub struct FixtureSpec {
     /// Update information written into the runtime's `.upd_info` section,
     /// for example `zsync|https://…/App.AppImage.zsync` (needs objcopy).
     pub update_info: Option<String>,
+    /// A terminal program (`Terminal=true` in its menu entry).
+    pub terminal: bool,
 }
 
 impl FixtureSpec {
@@ -71,6 +73,7 @@ impl FixtureSpec {
                 .map(|p| p.to_string()),
             compressor: Compressor::Zstd,
             update_info: None,
+            terminal: false,
         }
     }
 }
@@ -111,8 +114,8 @@ pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
         FilesystemCompressor::new(spec.compressor, options).map_err(|e| anyhow!("{e}"))?,
     );
     let desktop = format!(
-        "[Desktop Entry]\nType=Application\nName={}\nComment={}\nExec={} %F\nIcon={}\nCategories={}\nTerminal=false\n",
-        spec.name, spec.comment, spec.icon, spec.icon, spec.categories
+        "[Desktop Entry]\nType=Application\nName={}\nComment={}\nExec={} %F\nIcon={}\nCategories={}\nTerminal={}\n",
+        spec.name, spec.comment, spec.icon, spec.icon, spec.categories, spec.terminal
     );
     let svg = sample_svg(
         "#1d99f3",
