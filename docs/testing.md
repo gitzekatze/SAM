@@ -86,7 +86,8 @@ off is expected off). Same `PATH` requirement as above.
 By hand: `sam-jail verify <app>` on a few real apps should report every check
 as passed; `sam-jail config set security.check_before_launch true`, then a
 raw `--ro-bind` of a hidden folder in `advanced.extra_bwrap_args`, must make
-`sam-jail run` refuse to start with "sandbox check failed".
+`sam-jail run` refuse to start with "sandbox check failed". The same is
+tested automatically by `sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`.
 
 ## 0a. Robustness and removal
 
@@ -109,6 +110,19 @@ found in 0.8 s cold and 30 ms warm; with 40 sandboxes `list`, `doctor` and
 steps) on real AppImages in an invisible KWin session with a fake home;
 `python3 tests/real-apps/analyze.py "$WORK"` summarises it. The
 [version reports](reports/) record the results of each full run.
+
+To see what a change to SAM did, compare the run with the last one by
+group of apps (toolkit, packager), not app by app:
+
+```sh
+python3 -I tests/real-apps/table.py "$WORK" kinds.txt > after.txt
+python3 -I tests/real-apps/compare.py docs/reports/real-apps-2026-11-15.md after.txt kinds.txt
+```
+
+It prints each group whose results changed, for example
+`electron: 39 → 37 of 39 start`, and for the apps a group lost the reason,
+grouped: two apps lost for the same reason point at one part of SAM. The
+exit status is 1 when any group lost an app.
 
 ## 0c. What an app does, checked by hand
 

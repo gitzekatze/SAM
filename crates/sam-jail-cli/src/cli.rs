@@ -119,7 +119,7 @@ pub(crate) enum Cmd {
         /// compatibility-risk, stale, broken, unsafe, missing, protection-missing).
         #[arg(long)]
         badge: Option<String>,
-        /// Filter by risk level (low, medium, high, dangerous).
+        /// Filter by risk: harmless, think-twice or dangerous (low, medium and high also work).
         #[arg(long)]
         risk: Option<String>,
         #[arg(long)]

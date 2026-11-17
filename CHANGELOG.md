@@ -101,6 +101,30 @@ version.
   tests in docs/functions.md. Recognizing a file is function 2, unpacking
   it 3, starting 19. A check makes sure every number exists.
 
+### Smaller things that behave the same everywhere
+
+- **`sam-jail run` checks the sandbox before a start** when *Check the
+  sandbox before each start* is on, like a start from the menu. All starts
+  now share one check.
+- **Launch logs stop at 16 MiB** with a note, and an app's output is read
+  in pieces, so an app that prints without end can fill neither the disk
+  nor SAM's memory; the app never stalls on a full pipe.
+- **The command line names risk like the window**: Harmless, Think twice
+  or Dangerous. `sam-jail list --risk` accepts these words and the old
+  names.
+- **A download that broke off is recognized**: SAM says the file is
+  incomplete and should be downloaded again, instead of creating a sandbox
+  that cannot start.
+- **A missing library is named first** when an app cannot start because
+  of it, instead of a general "entry point not found".
+
+### Real AppImages compared by group
+
+- `tests/real-apps/compare.py` compares two real-app runs (or a run with
+  the last published report) by group of apps, and groups the apps a group
+  lost by their reason, so a regression points at one part of SAM instead
+  of a list of names.
+
 ### Security and reliability (from an outside code audit)
 
 - **A sandbox with "This computer only" could outlive SAM.** When SAM's

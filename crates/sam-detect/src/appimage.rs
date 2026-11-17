@@ -32,12 +32,21 @@ pub struct AppImageInfo {
     pub kind: AppImageType,
     pub payload: PayloadFormat,
     pub payload_offset: Option<u64>,
+    /// The SquashFS image's own size (`bytes_used` in its superblock).
+    pub payload_size: Option<u64>,
     pub compression: Option<String>,
     pub arch: Option<String>,
     pub notes: Vec<String>,
 }
 
 impl AppImageInfo {
+    /// `(bytes the file has, bytes its image needs)` when the file is
+    /// shorter than its SquashFS image says: a download that broke off.
+    pub fn incomplete(&self) -> Option<(u64, u64)> {
+        let need = self.payload_offset?.checked_add(self.payload_size?)?;
+        (self.size < need).then_some((self.size, need))
+    }
+
     pub fn is_appimage(&self) -> bool {
         self.kind != AppImageType::Unknown
     }
@@ -79,6 +88,7 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
         kind: AppImageType::Unknown,
         payload: PayloadFormat::Unknown,
         payload_offset: None,
+        payload_size: None,
         compression: None,
         arch: None,
         notes: vec![],
@@ -135,6 +145,7 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
     if let Some(off) = info.payload_offset {
         info.payload = PayloadFormat::Squashfs;
         info.compression = Some(squashfs_compression(&mut f, off)?);
+        info.payload_size = squashfs_bytes_used(&mut f, off);
         info.kind = AppImageType::Type2;
         if !info.magic {
             info.notes.push(sam_core::i18n::tr("The AppImage marker is missing; it is treated as Type 2 because it contains a SquashFS image"));
@@ -287,6 +298,13 @@ fn scan_for_squashfs(f: &mut File, size: u64) -> Result<Option<u64>> {
     Ok(None)
 }
 
+/// `bytes_used` from the superblock: how long the image is. `None` when the
+/// file ends before the superblock does.
+fn squashfs_bytes_used(f: &mut File, off: u64) -> Option<u64> {
+    let sb = read_at(f, off, 48).ok()?;
+    Some(u64::from_le_bytes(sb.get(40..48)?.try_into().ok()?))
+}
+
 fn squashfs_compression(f: &mut File, off: u64) -> Result<String> {
     let sb = read_at(f, off, 32)?;
     Ok(match u16::from_le_bytes([sb[20], sb[21]]) {
@@ -339,6 +357,44 @@ mod tests {
         assert_eq!(info.payload_offset, Some(end as u64));
         assert_eq!(info.compression.as_deref(), Some("zstd"));
         assert!(looks_like_appimage(t.path()));
+    }
+
+    /// A download that broke off is recognized: the file is shorter than
+    /// its SquashFS image says, and a complete one is not.
+    #[test]
+    fn an_appimage_shorter_than_its_image_is_incomplete() {
+        let elf = std::fs::read("/bin/true").unwrap();
+        let end = elf_end_offset(&elf).unwrap() as usize;
+        let mut data = elf[..end.min(elf.len())].to_vec();
+        data.resize(end, 0);
+        data[8] = b'A';
+        data[9] = b'I';
+        data[10] = 2;
+        let mut sb = vec![0u8; 96];
+        sb[0..4].copy_from_slice(b"hsqs");
+        sb[20] = 6;
+        sb[22] = 17;
+        sb[28] = 4;
+        // The image says it is 4096 bytes long; the header is its start.
+        sb[40..48].copy_from_slice(&4096u64.to_le_bytes());
+        data.extend_from_slice(&sb);
+        data.resize(end + 4096, 0);
+        let mut whole = tempfile::NamedTempFile::new().unwrap();
+        whole.write_all(&data).unwrap();
+        assert_eq!(
+            inspect(whole.path()).unwrap().incomplete(),
+            None,
+            "complete"
+        );
+        // The download broke off after 1000 bytes of the image.
+        let mut cut = tempfile::NamedTempFile::new().unwrap();
+        cut.write_all(&data[..end + 1000]).unwrap();
+        let info = inspect(cut.path()).unwrap();
+        assert_eq!(
+            info.incomplete(),
+            Some(((end + 1000) as u64, (end + 4096) as u64)),
+            "broken off"
+        );
     }
 
     /// An AppImage with a DwarFS image instead of squashfs is recognized.

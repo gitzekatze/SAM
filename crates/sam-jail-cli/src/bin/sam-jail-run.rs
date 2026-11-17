@@ -141,34 +141,21 @@ fn launch(args: Vec<String>) -> Result<i32> {
         .context(sam_core::i18n::tr("unpacking the AppImage again"))
         .in_function(3)?;
     let host = sam_core::HostInfo::probe();
-    if app.config.security.check_before_launch {
-        // Only when the settings, SAM or this computer changed since the
-        // last passing check; a failed check stops the start.
-        let key = sam_runner::verify::check_key(&entry, &app.config, &host);
-        let fresh = entry
-            .last_check
-            .as_ref()
-            .is_some_and(|c| c.key == key && c.failed.is_empty());
-        if !fresh {
-            let out = app
-                .verify(&entry.id)
-                .context(sam_core::i18n::tr("checking the sandbox before starting"))?;
-            if !out.record.failed.is_empty() {
-                let list = out.record.failed.join(", ");
-                notify(
-                    &sam_core::i18n::trf("{app} was not started", &[("app", &entry.display_name())]),
-                    &sam_core::i18n::trf(
-                        "The sandbox check found settings that do not apply: {list}.\nOpen SAM → {app} → Sandbox Check.",
-                        &[("list", &list), ("app", &entry.display_name())],
-                    ),
-                );
-                bail!(
-                    "{}",
-                    sam_core::i18n::trf("sandbox check failed: {list}", &[("list", &list)])
-                );
-            }
-            entry.last_check = Some(out.record);
+    if let Err(e) = app.check_before_start(&mut entry, &host) {
+        // Only a failed check gets the notification: it names what to look at.
+        if sam_core::error::code_of(&e) == Some("sandbox-check-failed") {
+            notify(
+                &sam_core::i18n::trf("{app} was not started", &[("app", &entry.display_name())]),
+                &sam_core::i18n::trf(
+                    "{reason}.\nOpen SAM → {app} → Test.",
+                    &[
+                        ("reason", &format!("{e:#}")),
+                        ("app", &entry.display_name()),
+                    ],
+                ),
+            );
         }
+        return Err(e);
     }
     let rec = run(
         &mut entry,
