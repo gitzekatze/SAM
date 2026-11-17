@@ -419,7 +419,31 @@ pub fn skip(reason: &str) -> Result<(), String> {
         ))
     } else {
         eprintln!("skipped: {reason}");
+        record_skip(reason);
         Ok(())
+    }
+}
+
+/// Notes a skipped test in `$SAM_SKIP_LOG` (one line: the test, the
+/// reason), so a run can say how many tests did not run instead of passing
+/// them silently (`make test` prints the summary).
+fn record_skip(reason: &str) {
+    if let Some(path) = std::env::var_os("SAM_SKIP_LOG") {
+        let test = std::thread::current()
+            .name()
+            .unwrap_or("a test")
+            .to_string();
+        record_skip_to(std::path::Path::new(&path), &test, reason);
+    }
+}
+
+fn record_skip_to(path: &std::path::Path, test: &str, reason: &str) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = std::io::Write::write_all(&mut f, format!("{test}: {reason}\n").as_bytes());
     }
 }
 
@@ -489,6 +513,21 @@ mod tests {
         PROBES.iter().any(|p| {
             probe == *p || (p.ends_with(':') && probe.starts_with(p) && probe.len() > p.len())
         })
+    }
+
+    /// A skipped test is written to the skip log with its name and reason,
+    /// one line each, so a run can report it instead of passing it silently.
+    #[test]
+    fn a_skipped_test_is_recorded_with_its_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("skips.log");
+        record_skip_to(&log, "verify", "bubblewrap cannot run here");
+        record_skip_to(&log, "breakout", "python3 is missing");
+        let text = std::fs::read_to_string(&log).unwrap();
+        assert_eq!(
+            text,
+            "verify: bubblewrap cannot run here\nbreakout: python3 is missing\n"
+        );
     }
 
     #[test]

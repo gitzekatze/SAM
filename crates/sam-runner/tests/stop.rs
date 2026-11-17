@@ -2,7 +2,7 @@
 //! handles SIGTERM quits cleanly, one that ignores it is ended by stopping its
 //! runner, and removal works afterwards. Apps are started through the real
 //! `sam-jail-run`, like menu entries and the window do. Uses a fake `$HOME`.
-//! Skipped when Bubblewrap cannot run here or sam-jail-run is not on PATH.
+//! Skipped when Bubblewrap cannot run here or SAM's helper is not found.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
