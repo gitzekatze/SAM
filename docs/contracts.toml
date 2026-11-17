@@ -442,7 +442,7 @@ probe = "wayland-security-context"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
 on_break = "warn"
 coverage = "partial"
-gaps = "Not asserted in a test; only the quick check confirms it."
+gaps = "Asserted in CI's desktop session (tests/gui/desktop-sandbox.sh): where the compositor offers security contexts, the permission matrix requires the app's connection to carry one. A compositor without them (older KWin) is listed as not here. What the compositor withholds inside a context is not tested."
 playbook = "Without it SAM warns that the app can use every Wayland function the desktop offers. A new protocol version: update the wayland-protocols crate."
 
 [[contract]]
