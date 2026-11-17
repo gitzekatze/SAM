@@ -223,6 +223,7 @@ jobs:
           python3 scripts/risk-class.py --self-test
           python3 scripts/contract-verifier.py --self-test
           python3 scripts/changelog-check.py --self-test
+          python3 scripts/changes.py --self-test
 
       - name: Risk class of this change
         if: github.event_name == 'pull_request'

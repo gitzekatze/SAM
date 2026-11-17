@@ -36,6 +36,9 @@ REPO = "https://github.com/gitzekatze/SAM"
 _spec = importlib.util.spec_from_file_location("dashboard", pathlib.Path(__file__).resolve().parent / "dashboard.py")
 dashboard_md = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(dashboard_md)
+_spec = importlib.util.spec_from_file_location("changes", pathlib.Path(__file__).resolve().parent / "changes.py")
+changes = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(changes)
 STYLE_STAMP = hashlib.sha256((ROOT / "docs/site/style.css").read_bytes()).hexdigest()[:10]
 
 # Section, page path on the site, source document, title in navigation.
@@ -553,6 +556,9 @@ def home():
 def documents():
     for section, page, source, title in PAGES + REPORT_PAGES:
         text = dashboard_md.build() if source == "DEVELOPMENT.md" else (ROOT / source).read_text()
+        if source == "CHANGELOG.md":
+            # The notes of changes not yet released (changes/) under Unreleased.
+            text = changes.merged(ROOT)
         if source == "docs/reports/README.md":
             text += reports_list()
         body, toc = render(text)

@@ -39,7 +39,9 @@ elif [ "${UNSIGNED:-}" != 1 ]; then
 fi
 [ -z "$(git status --porcelain)" ] || die "uncommitted changes; commit or stash them first"
 
-# Release notes: the Unreleased section.
+# Release notes: the Unreleased section, with the note files of changes/
+# moved into it first (one file per change, see changes/README.md).
+python3 scripts/changes.py collect
 notes=$(awk '/^## Unreleased/{f=1; next} /^## /{f=0} f' CHANGELOG.md | sed -e '/./,$!d')
 [ -n "$(echo "$notes" | tr -d '[:space:]')" ] || die "CHANGELOG.md has no notes under '## Unreleased'"
 

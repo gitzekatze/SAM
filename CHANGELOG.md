@@ -5,7 +5,9 @@ before 1.0, a minor version (0.x) may change the command line or the JSON
 output; patch versions (0.x.y) only fix bugs.
 
 `scripts/release.sh` takes the *Unreleased* section as the notes of the next
-version.
+version. Until then, each change keeps its note in a file of its own in
+[changes/](changes/); the release moves them here, and the website shows them
+under *What's new* already.
 
 ## Unreleased
 
