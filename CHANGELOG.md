@@ -35,6 +35,18 @@ version.
 - Timing guesses replaced by signals: the stop test waits for the app's
   "ready" file, unpacking progress always reports a final count.
 
+### The window is checked in every state an app can be in
+
+- The window smoke test opens an app's page in each state that shows
+  differently (needs review, compatibility mode, last start failed, repair
+  step on, changed outside SAM) and checks first that each state is really
+  there; a page that breaks in one state only is no longer missed.
+- It runs the same on every computer: its own home folder and no desktop
+  settings, so neither the Downloads folder nor the theme and fonts of the
+  person running it change the result.
+- A window screenshot that saves nothing says why (nothing shown yet, nothing
+  drawn, no renderer) instead of staying silent.
+
 ### Rules for automation
 
 - The handbook starts with **How SAM looks after itself**: the whole
