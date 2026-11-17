@@ -115,17 +115,22 @@ impl Sam {
         w
     }
 
-    /// Extraction runs inside Bubblewrap when it is usable and this process
-    /// is SAM's CLI (which provides the built-in reader as a subcommand).
-    pub(super) fn extract_isolation(&self) -> Option<sam_intake::extract::Isolation> {
-        let exe = std::env::current_exe().ok()?;
-        let is_cli = exe.file_name().is_some_and(|n| n == "sam-jail");
+    /// The sandbox an AppImage is unpacked in: Bubblewrap, running SAM's CLI
+    /// (`sam-jail`, which provides the built-in reader as a subcommand). The
+    /// CLI is this program or the `sam-jail` next to it, so a menu start
+    /// (`sam-jail-run`) that unpacks again after *Free space* is isolated too.
+    /// SAM's own programs never unpack without it (threat model: "SAM's own
+    /// unpacker … run in a sandbox"); only tests and benchmarks may.
+    pub(super) fn extract_isolation(&self) -> Result<Option<sam_intake::extract::Isolation>> {
+        let exe = std::env::current_exe()?;
         let host = self.host();
-        let bwrap = host.tools.bwrap.as_ref()?;
-        (is_cli && host.userns.usable()).then(|| sam_intake::extract::Isolation {
-            bwrap: bwrap.path.clone(),
-            self_exe: exe,
-        })
+        let bwrap = host
+            .tools
+            .bwrap
+            .as_ref()
+            .filter(|_| host.userns.usable())
+            .map(|b| b.path.clone());
+        unpack_isolation(&exe, bwrap)
     }
 
     // ---------------------------------------------------------- overview
@@ -402,5 +407,95 @@ impl Sam {
             });
         }
         Ok(out)
+    }
+}
+
+/// SAM's own programs. They unpack AppImages only inside a sandbox.
+const SAM_PROGRAMS: &[&str] = &["sam-jail", "sam-jail-run", "sam-jail-gui"];
+
+/// The unpack sandbox for the program `exe`, given the Bubblewrap that can
+/// run here (`None` when it cannot). The reader is `exe` itself when it is
+/// SAM's CLI, else the `sam-jail` next to it. Without either, SAM's own
+/// programs refuse with a coded error; other programs (tests, benchmarks)
+/// unpack in their own process, as before.
+fn unpack_isolation(
+    exe: &Path,
+    bwrap: Option<PathBuf>,
+) -> Result<Option<sam_intake::extract::Isolation>> {
+    let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    let reader = if name == "sam-jail" {
+        Some(exe.to_path_buf())
+    } else {
+        exe.parent()
+            .map(|d| d.join("sam-jail"))
+            .filter(|p| p.is_file())
+    };
+    match (bwrap, reader) {
+        (Some(bwrap), Some(self_exe)) => {
+            Ok(Some(sam_intake::extract::Isolation { bwrap, self_exe }))
+        }
+        (bwrap, _) if SAM_PROGRAMS.contains(&name) => {
+            let why = if bwrap.is_none() {
+                sam_core::i18n::tr("Bubblewrap cannot run on this computer")
+            } else {
+                sam_core::i18n::tr("SAM's command line (sam-jail) is not next to this program")
+            };
+            Err(sam_core::error::CodedError::new(
+                "unpack-needs-sandbox",
+                sam_core::i18n::trf(
+                    "SAM unpacks AppImages only inside a sandbox, and none can be built here: {reason}. Diagnostics (sam-jail doctor) says what is missing.",
+                    &[("reason", &why)],
+                ),
+            )
+            .into())
+        }
+        _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod unpack_isolation_tests {
+    use super::unpack_isolation;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let cli = dir.path().join("sam-jail");
+        fs::write(&cli, b"").unwrap();
+        let run = dir.path().join("sam-jail-run");
+        let iso = unpack_isolation(&run, Some(PathBuf::from("/usr/bin/bwrap")))
+            .unwrap()
+            .expect("sam-jail-run unpacks in a sandbox");
+        assert_eq!(iso.self_exe, cli, "the reader is the sam-jail next to it");
+    }
+
+    #[test]
+    fn sams_programs_never_unpack_without_a_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["sam-jail", "sam-jail-run", "sam-jail-gui"] {
+            let exe = dir.path().join(name);
+            let err = unpack_isolation(&exe, None).unwrap_err();
+            assert_eq!(
+                sam_core::error::code_of(&err),
+                Some("unpack-needs-sandbox"),
+                "{name} without Bubblewrap refuses: {err:#}"
+            );
+        }
+        // Bubblewrap works, but no sam-jail next to sam-jail-run.
+        let err = unpack_isolation(
+            &dir.path().join("sam-jail-run"),
+            Some(PathBuf::from("/usr/bin/bwrap")),
+        )
+        .unwrap_err();
+        assert_eq!(sam_core::error::code_of(&err), Some("unpack-needs-sandbox"));
+    }
+
+    #[test]
+    fn tests_and_benchmarks_may_unpack_in_their_own_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let test_binary = dir.path().join("sandbox-0123abcd");
+        assert!(unpack_isolation(&test_binary, None).unwrap().is_none());
     }
 }
