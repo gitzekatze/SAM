@@ -581,7 +581,11 @@ impl OutputFilter {
                     let params = &self.seq[2..self.seq.len() - 1];
                     // Window-title and icon-label reports: the terminal
                     // answers with text the app set before.
-                    if b == b't' && matches!(params, b"20" | b"21") {
+                    // By value: terminals read "021" as 21 too.
+                    let n = std::str::from_utf8(params)
+                        .ok()
+                        .and_then(|p| p.parse::<u32>().ok());
+                    if b == b't' && matches!(n, Some(20 | 21)) {
                         self.blocked.insert("title reports");
                     } else {
                         out.extend_from_slice(&self.seq);
@@ -595,6 +599,17 @@ impl OutputFilter {
             St::OscNum => {
                 if b.is_ascii_digit() && self.seq.len() < 12 {
                     self.seq.push(b);
+                    return;
+                }
+                // A number longer than any real code (leading zeros make
+                // "00000000052" read as 52 in terminals): cutting it short
+                // would pass it on as another code, so it is dropped whole.
+                if b.is_ascii_digit() {
+                    self.blocked.insert("malformed control codes");
+                    self.st = St::Osc {
+                        pass: false,
+                        esc: false,
+                    };
                     return;
                 }
                 let num = std::str::from_utf8(&self.seq[2..])
@@ -755,6 +770,26 @@ mod tests {
         assert_eq!(f.blocked.len(), 3);
     }
 
+    /// Leading zeros do not smuggle a code past the filter: terminals read
+    /// "0052" as 52 and "021" as 21, and so does SAM; a number too long for
+    /// any real code is removed whole (regression: an 11-digit OSC 52 was cut
+    /// to 5 and passed on).
+    #[test]
+    fn leading_zeros_do_not_smuggle_a_code() {
+        let (out, f) = run(&[b"a\x1b]0052;c;aGk=\x07b"]);
+        assert_eq!(out, b"ab");
+        assert!(f.blocked.contains("clipboard"));
+        let (out, f) = run(&[b"a\x1b]00000000052;c;aGk=\x07b"]);
+        assert_eq!(out, b"ab");
+        assert!(f.blocked.contains("malformed control codes"));
+        let (out, f) = run(&[b"a\x1b[021tb"]);
+        assert_eq!(out, b"ab");
+        assert!(f.blocked.contains("title reports"));
+        // An ordinary code with a leading zero still passes.
+        let (out, _) = run(&[b"a\x1b]02;title\x07b"]);
+        assert_eq!(out, b"a\x1b]02;title\x07b");
+    }
+
     /// Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed.
     #[test]
     fn title_reports_and_tmux_passthrough_are_removed() {
@@ -788,6 +823,46 @@ mod tests {
             plain_text(b"\x1b[1mbold\x1b[0m\r\n\x1b]0;t\x07x\ty\x1b(B"),
             "bold\nx\ty"
         );
+    }
+
+    /// The log's plain text survives every unfinished or odd code: one cut
+    /// off at the end of the data (no read past it), a title ended by
+    /// ESC \\ with text after it, a backslash inside a title, and an ESC
+    /// with intermediate bytes at the very end (found by mutation testing:
+    /// no test reached these edges).
+    #[test]
+    fn plain_text_survives_unfinished_and_odd_codes() {
+        assert_eq!(plain_text(b"a\x1b[12"), "a", "CSI cut off at the end");
+        assert_eq!(plain_text(b"a\x1b]0;title"), "a", "OSC cut off at the end");
+        assert_eq!(plain_text(b"x\x1b("), "x", "ESC ( cut off at the end");
+        assert_eq!(
+            plain_text(b"\x1b]0;t\x1b\\after"),
+            "after",
+            "OSC ended by ESC \\"
+        );
+        assert_eq!(
+            plain_text(b"\x1b]0;a\\b\x07after"),
+            "after",
+            "a backslash inside a title"
+        );
+        assert_eq!(
+            plain_text(b"\x1b]0;a\x1bb\x07after"),
+            "after",
+            "an ESC inside a title ends nothing"
+        );
+    }
+
+    /// Only "tmux;" itself is tmux passthrough: a DCS that merely starts with
+    /// "t" passes unchanged (found by mutation testing).
+    #[test]
+    fn only_tmux_itself_counts_as_tmux_passthrough() {
+        let s = b"a\x1bPtq\x1b\\b";
+        let (out, f) = run(&[s]);
+        assert_eq!(out, s.to_vec());
+        assert!(f.blocked.is_empty());
+        let s = b"a\x1bPtmu\x1b\\b";
+        let (out, _) = run(&[s]);
+        assert_eq!(out, s.to_vec(), "four of five letters is not tmux either");
     }
 
     /// Apps started from a terminal get SAM's terminal relay; apps without a terminal get none.

@@ -870,7 +870,20 @@ fn write_log_header(log: &mut fs::File, prepared: &Prepared) -> Result<()> {
     for w in &prepared.warnings {
         writeln!(log, "# warning [{}]: {}", w.code, w.message)?;
     }
-    writeln!(log, "# command: {}", prepared.command.display())?;
+    // Values the person gave the app (API keys, tokens) stay out of the log:
+    // bug reports quote its end, and a short run's end is this header.
+    let env = &prepared.context.permissions.environment;
+    let given: Vec<&str> = env
+        .set
+        .keys()
+        .map(String::as_str)
+        .chain(env.passthrough.iter().map(String::as_str))
+        .collect();
+    writeln!(
+        log,
+        "# command: {}",
+        prepared.command.display_hiding(&given)
+    )?;
     writeln!(log, "# ---- output ----")?;
     log.flush()?;
     Ok(())

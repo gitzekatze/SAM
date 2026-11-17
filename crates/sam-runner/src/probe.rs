@@ -563,6 +563,200 @@ pub fn listening_ports() -> Vec<u16> {
 mod tests {
     use super::*;
 
+    fn probe(id: &str, test: ProbeTest) -> ProbeCheck {
+        ProbeCheck {
+            id: id.into(),
+            group: "g".into(),
+            title: id.into(),
+            test,
+        }
+    }
+
+    /// Each check reports what it finds, not what it hopes: run on facts
+    /// that are the same on every computer, a check whose expectation is
+    /// wrong fails, one whose expectation is right passes, and the report
+    /// counts them (found by mutation testing: a check turning every failure
+    /// into a pass went unnoticed).
+    #[test]
+    fn a_check_reports_what_it_finds_not_what_it_hopes() {
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join("f");
+        std::fs::write(&file, b"x").unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        let unset = "SAM_PROBE_TEST_SURELY_UNSET_7f3a";
+        let id = identity(t.path());
+        let plan = ProbePlan {
+            checks: vec![
+                probe(
+                    "present-yes",
+                    ProbeTest::Present {
+                        path: file.clone(),
+                        expect: true,
+                    },
+                ),
+                probe(
+                    "present-no",
+                    ProbeTest::Present {
+                        path: file.clone(),
+                        expect: false,
+                    },
+                ),
+                probe(
+                    "absent-yes",
+                    ProbeTest::Present {
+                        path: t.path().join("none"),
+                        expect: false,
+                    },
+                ),
+                probe(
+                    "writable",
+                    ProbeTest::NotWritable {
+                        path: t.path().into(),
+                    },
+                ),
+                probe("readable", ProbeTest::Unreadable { path: file.clone() }),
+                probe(
+                    "env-right",
+                    ProbeTest::Env {
+                        name: "PATH".into(),
+                        expect: Some(path),
+                    },
+                ),
+                probe(
+                    "env-wrong",
+                    ProbeTest::Env {
+                        name: "PATH".into(),
+                        expect: Some("/nowhere".into()),
+                    },
+                ),
+                probe(
+                    "unset-right",
+                    ProbeTest::Env {
+                        name: unset.into(),
+                        expect: None,
+                    },
+                ),
+                probe(
+                    "unset-wrong",
+                    ProbeTest::Env {
+                        name: unset.into(),
+                        expect: Some("x".into()),
+                    },
+                ),
+                probe(
+                    "rw-right",
+                    ProbeTest::Folder {
+                        path: t.path().into(),
+                        host_id: id,
+                        expect: Access::ReadWrite,
+                    },
+                ),
+                probe(
+                    "rw-as-hidden",
+                    ProbeTest::Folder {
+                        path: t.path().into(),
+                        host_id: id,
+                        expect: Access::Hidden,
+                    },
+                ),
+                probe(
+                    "rw-as-ro",
+                    ProbeTest::Folder {
+                        path: t.path().into(),
+                        host_id: id,
+                        expect: Access::ReadOnly,
+                    },
+                ),
+                probe(
+                    "stand-in",
+                    ProbeTest::Folder {
+                        path: other.path().into(),
+                        host_id: id,
+                        expect: Access::Hidden,
+                    },
+                ),
+                probe(
+                    "missing",
+                    ProbeTest::Folder {
+                        path: t.path().join("none"),
+                        host_id: None,
+                        expect: Access::Hidden,
+                    },
+                ),
+            ],
+        };
+        let r = run(&plan, "");
+        let ok = |id: &str| r.results.iter().find(|x| x.id == id).unwrap().ok;
+        for id in [
+            "present-yes",
+            "absent-yes",
+            "env-right",
+            "unset-right",
+            "rw-right",
+            "stand-in",
+            "missing",
+        ] {
+            assert_eq!(
+                ok(id),
+                Some(true),
+                "{id} should pass: {:?}",
+                r.results.iter().find(|x| x.id == id)
+            );
+        }
+        for id in [
+            "present-no",
+            "writable",
+            "readable",
+            "env-wrong",
+            "unset-wrong",
+            "rw-as-hidden",
+            "rw-as-ro",
+        ] {
+            assert_eq!(
+                ok(id),
+                Some(false),
+                "{id} should fail: {:?}",
+                r.results.iter().find(|x| x.id == id)
+            );
+        }
+        assert_eq!(r.passed(), 7);
+        assert_eq!(r.failed().len(), 7);
+    }
+
+    /// A verdict is exactly pass, fail or "could not check": a skipped check
+    /// counts neither as passed nor as failed.
+    #[test]
+    fn a_skipped_check_is_neither_passed_nor_failed() {
+        assert_eq!(pass("a"), (Some(true), "a".to_string()));
+        assert_eq!(fail("b"), (Some(false), "b".to_string()));
+        assert_eq!(skip("c"), (None, "c".to_string()));
+        let res = |id: &str, ok| ProbeResult {
+            id: id.into(),
+            group: "g".into(),
+            title: id.into(),
+            ok,
+            observed: String::new(),
+        };
+        let r = ProbeReport {
+            results: vec![
+                res("p", Some(true)),
+                res("f", Some(false)),
+                res("s", None),
+                res("p2", Some(true)),
+                res("p3", Some(true)),
+            ],
+            enforcement: String::new(),
+        };
+        // Three passed against two that did not: counting the wrong ones
+        // would give 2.
+        assert_eq!(r.passed(), 3);
+        assert_eq!(
+            r.failed().iter().map(|x| x.id.as_str()).collect::<Vec<_>>(),
+            ["f"]
+        );
+    }
+
     /// The sandbox check tells a real folder of the user from a private stand-in.
     #[test]
     fn folder_check_tells_real_from_private() {

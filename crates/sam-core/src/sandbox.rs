@@ -120,6 +120,28 @@ impl SandboxCommand {
         parts.extend(self.args.iter().cloned());
         shell_join(parts)
     }
+
+    /// [`display`](Self::display) with the values of these environment
+    /// variables hidden: the ones a person gave the app (often API keys or
+    /// tokens) must not end up in logs, which bug reports quote.
+    pub fn display_hiding(&self, keys: &[&str]) -> String {
+        let mut parts = vec![self.program.to_string_lossy().into_owned()];
+        let mut args = self.args.iter();
+        while let Some(a) = args.next() {
+            parts.push(a.clone());
+            if a == "--setenv" {
+                if let (Some(k), Some(v)) = (args.next(), args.next()) {
+                    parts.push(k.clone());
+                    parts.push(if keys.contains(&k.as_str()) {
+                        "<hidden>".into()
+                    } else {
+                        v.clone()
+                    });
+                }
+            }
+        }
+        shell_join(parts)
+    }
 }
 
 /// Fixed, host-independent launch context for unit tests.
@@ -199,5 +221,49 @@ pub fn sample_context() -> LaunchContext {
         extra_binds: vec![],
         appdir_overlay: None,
         sam_dirs: vec![],
+    }
+}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+
+    /// Values of variables a person gave the app never reach the shown
+    /// command; the names and SAM's own variables stay.
+    #[test]
+    fn given_environment_values_are_hidden_in_the_shown_command() {
+        let c = SandboxCommand {
+            program: "bwrap".into(),
+            args: [
+                "--setenv",
+                "OPENAI_API_KEY",
+                "sk-secret",
+                "--setenv",
+                "LANG",
+                "C.UTF-8",
+                "--",
+                "app",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+            env: vec![],
+            clear_env: false,
+            keep_fds: vec![],
+            notes: vec![],
+            generated_files: vec![],
+        };
+        let shown = c.display_hiding(&["OPENAI_API_KEY"]);
+        assert!(!shown.contains("sk-secret"), "{shown}");
+        assert!(
+            shown.contains("OPENAI_API_KEY")
+                && shown.contains("<hidden>")
+                && shown.contains("C.UTF-8"),
+            "{shown}"
+        );
+        assert!(
+            c.display().contains("sk-secret"),
+            "display itself is unchanged"
+        );
     }
 }
