@@ -33,6 +33,10 @@ export XDG_RUNTIME_DIR="$run" SAM_REQUIRE_SANDBOX=1
 if command -v gpg >/dev/null && command -v gpgv >/dev/null; then export SAM_TEST_GPG=1; fi
 if [ "$1" = "--diff" ]; then
     git -C "$here" diff "${2:-origin/main}" -- 'crates/*.rs' 'crates/**/*.rs' > "$out/changes.diff"
+    if [ ! -s "$out/changes.diff" ]; then
+        echo "No Rust code changed since ${2:-origin/main}: nothing to test."
+        exit 0
+    fi
     sel="--in-diff $out/changes.diff"
 else
     sel=$(for f in "$@"; do printf -- '--file %s ' "$f"; done)
