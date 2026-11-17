@@ -22,6 +22,9 @@ version.
 - **An AppImage whose start file links to `/dev/zero` (or is huge) can no
   longer fill SAM's memory while it is added:** files inside an unpacked
   AppImage are read only when regular, and only up to a limit.
+- **A folder set to read & write stays writable when the whole home is
+  read-only.** Before, Documents (or another folder) set to read & write was
+  silently read-only in that case.
 
 ### Rules for automation
 

@@ -910,6 +910,18 @@ impl Section<'_> {
                 "--ro-bind"
             };
             a.op2(op, &home, &home);
+            // With the home read-only, a folder set to read/write must still
+            // be writable (the switch says so; regression: it stayed
+            // read-only). The later mount wins.
+            if fsp.home_access != Access::Rw {
+                for key in XDG_DIR_KEYS {
+                    if fsp.xdg_access(key) == Access::Rw {
+                        if let Some(dir) = h.xdg_dir(key) {
+                            a.op2("--bind-try", dir, dir);
+                        }
+                    }
+                }
+            }
             guard_home(a, &home, fsp, fsp.home_access == Access::Rw);
         } else {
             if p.advanced.persistent_home {
@@ -1613,6 +1625,37 @@ mod tests {
     fn has_seq(v: &[String], seq: &[&str]) -> bool {
         v.windows(seq.len())
             .any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
+    }
+
+    /// With the home read-only, a folder set to read/write stays writable;
+    /// one set to read-only adds nothing (the home shows it read-only).
+    #[test]
+    fn a_writable_folder_stays_writable_in_a_read_only_home() {
+        let mut ctx = sample_context();
+        ctx.permissions.filesystem.home = true;
+        ctx.permissions.filesystem.home_access = Access::Ro;
+        ctx.permissions.filesystem.documents = Access::Rw;
+        ctx.permissions.filesystem.pictures = Access::Ro;
+        let a = args_of(&ctx);
+        let home = a
+            .windows(3)
+            .position(|w| w == ["--ro-bind", "/home/tester", "/home/tester"])
+            .expect("home read-only");
+        let docs = a
+            .windows(3)
+            .position(|w| {
+                w == [
+                    "--bind-try",
+                    "/home/tester/Documents",
+                    "/home/tester/Documents",
+                ]
+            })
+            .expect("Documents writable");
+        assert!(docs > home, "after the home, so it wins");
+        assert!(
+            !a.iter().any(|x| x == "/home/tester/Pictures"),
+            "read-only adds nothing"
+        );
     }
 
     /// Games built with SDL get a silent sound driver when sound is off, so they start instead of failing.

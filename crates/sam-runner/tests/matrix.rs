@@ -496,6 +496,18 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let r = launch("pictures-rw", p);
         assert_eq!(r["PICS_WRITE"], "yes");
         assert!(home.join("Pictures/new.png").exists());
+        // In a read-only home, a folder set to read/write stays writable.
+        let _ = fs::remove_file(home.join("Pictures/new.png"));
+        let mut p = base();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Ro;
+        p.filesystem.pictures = Access::Rw;
+        let r = launch("home-ro-pictures-rw", p);
+        assert_eq!(
+            r["PICS_WRITE"], "yes",
+            "a writable folder in a read-only home"
+        );
+        assert!(home.join("Pictures/new.png").exists());
         let mut p = base();
         p.filesystem.custom_read.push(extra.display().to_string());
         let r = launch("custom-read", p);
