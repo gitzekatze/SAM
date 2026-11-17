@@ -66,6 +66,23 @@ version.
   test names any new one. The first, `fchroot` (Linux 7.3), was found on
   Arch and is allowed like `chroot`.
 
+### Smaller things that behave the same everywhere
+
+- **`sam-jail run` checks the sandbox before a start** when *Check the
+  sandbox before each start* is on, like a start from the menu. All starts
+  now share one check.
+- **Launch logs stop at 16 MiB** with a note, and an app's output is read
+  in pieces, so an app that prints without end can fill neither the disk
+  nor SAM's memory; the app never stalls on a full pipe.
+- **The command line names risk like the window**: Harmless, Think twice
+  or Dangerous. `sam-jail list --risk` accepts these words and the old
+  names.
+- **A download that broke off is recognized**: SAM says the file is
+  incomplete and should be downloaded again, instead of creating a sandbox
+  that cannot start.
+- **A missing library is named first** when an app cannot start because
+  of it, instead of a general "entry point not found".
+
 ### Security and reliability (from an outside code audit)
 
 - **A sandbox with "This computer only" could outlive SAM.** When SAM's

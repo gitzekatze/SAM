@@ -86,7 +86,8 @@ off is expected off). Same `PATH` requirement as above.
 By hand: `sam-jail verify <app>` on a few real apps should report every check
 as passed; `sam-jail config set security.check_before_launch true`, then a
 raw `--ro-bind` of a hidden folder in `advanced.extra_bwrap_args`, must make
-`sam-jail run` refuse to start with "sandbox check failed".
+`sam-jail run` refuse to start with "sandbox check failed". The same is
+tested automatically by `sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`.
 
 ## 0a. Robustness and removal
 

@@ -84,6 +84,38 @@ impl Sam {
         Ok(out)
     }
 
+    /// *Preferences → Check the sandbox before each start*: runs the sandbox
+    /// check when the settings, SAM or this computer changed since the last
+    /// passing check, and stops the start (code `sandbox-check-failed`)
+    /// when a setting does not apply. Every way of starting an app (menu,
+    /// window, `sam-jail run`) calls this, so none can skip it.
+    pub fn check_before_start(&self, entry: &mut AppEntry, host: &HostInfo) -> Result<()> {
+        if !self.config.security.check_before_launch {
+            return Ok(());
+        }
+        let key = crate::verify::check_key(entry, &self.config, host);
+        let fresh = entry
+            .last_check
+            .as_ref()
+            .is_some_and(|c| c.key == key && c.failed.is_empty());
+        if fresh {
+            return Ok(());
+        }
+        let out = self
+            .verify(&entry.id)
+            .context(sam_core::i18n::tr("checking the sandbox before starting"))?;
+        if !out.record.failed.is_empty() {
+            let list = out.record.failed.join(", ");
+            return Err(sam_core::error::CodedError::new(
+                "sandbox-check-failed",
+                sam_core::i18n::trf("sandbox check failed: {list}", &[("list", &list)]),
+            )
+            .into());
+        }
+        entry.last_check = Some(out.record);
+        Ok(())
+    }
+
     /// Sandbox check for an AppImage that has no sandbox yet, with the
     /// settings it would get (`perms`, or SAM's recommendation). Runs the
     /// same sandbox as a real start, but around an empty stand-in app folder
