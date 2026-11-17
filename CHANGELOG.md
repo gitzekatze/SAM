@@ -17,6 +17,11 @@ version.
   (`SAM_REQUIRE_DESKTOP`, `SAM_REQUIRE_SOUND`), so its display and sound
   checks, which bare CI machines skip, now run on every change; without
   them it fails with `CHECK FAIL matrix/display`.
+- **Found by it right away:** on Ubuntu 24.04, *Test* reported "no session
+  bus" for every app with a filtered session bus. Its older
+  xdg-dbus-proxy does not answer the question the check asked; the check
+  now asks only what every bus must answer, and says why when a bus is
+  silent.
 
 ### Tests give the same result on every computer
 
