@@ -150,6 +150,11 @@ impl PrivateServices {
         me
     }
 
+    /// The private session bus's address, if dbus-daemon is installed.
+    pub fn bus_address(&self) -> Option<&str> {
+        self.bus.as_ref().map(|(a, _)| a.as_str())
+    }
+
     /// `host` with these as its session bus and SSH agent; the process's
     /// SSH_AUTH_SOCK points at this agent (or is removed). Changes the
     /// environment: only for a test file with a single test.
