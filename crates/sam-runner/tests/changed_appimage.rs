@@ -65,3 +65,40 @@ fn a_swapped_appimage_does_not_start_until_it_is_confirmed() {
     assert!(!e.content_changed_outside);
     assert!(preflight(&e).0.is_empty(), "{:?}", preflight(&e).0);
 }
+
+/// Regression (audit U-H1, Part 5): changing any switch cleared the mark of
+/// a swapped AppImage file, so it started without the person looking at it.
+#[test]
+fn a_swapped_appimage_stays_marked_when_a_switch_changes() {
+    if sam_runner::doctor::bwrap_functional(&HostInfo::probe()).is_err() {
+        sam_runner::contracts::skip(
+            "bubblewrap is not functional here (SAM unpacks inside a sandbox)",
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let img = tmp.path().join("Tool.AppImage");
+    build(&img, &FixtureSpec::hello("Tool")).unwrap();
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = sam
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "a different file under the same name".into();
+    build(&img, &spec).unwrap();
+    assert!(sam.reextract(&id, false).unwrap().content_changed_outside);
+    let e = sam.set_permission(&id, "devices.gpu", "true").unwrap();
+    assert!(e.content_changed_outside, "a switch is no confirmation");
+    assert!(!preflight(&sam.resolve(&id).unwrap()).0.is_empty());
+    assert!(!sam.mark_reviewed(&id).unwrap().content_changed_outside);
+}

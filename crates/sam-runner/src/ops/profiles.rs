@@ -10,7 +10,9 @@ impl Sam {
         entry.profile.user_modified = entry.profile.permissions != entry.recommended;
         entry.reviewed = true;
         entry.pending_changes.clear();
-        entry.content_changed_outside = false;
+        // A changed switch is no confirmation that the person looked at a
+        // record or file changed outside SAM: only `mark_reviewed` clears
+        // those marks.
         entry.clear_launch_failure();
         self.registry().save(entry)
     }
@@ -371,6 +373,8 @@ impl Sam {
         let mut e = self.resolve(query)?;
         e.reviewed = true;
         e.pending_changes.clear();
+        // The one place that confirms changes made outside SAM.
+        e.changed_outside = false;
         e.content_changed_outside = false;
         self.registry().save(&mut e)?;
         Ok(e)

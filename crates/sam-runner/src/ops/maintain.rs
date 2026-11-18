@@ -575,7 +575,7 @@ impl Sam {
         };
         let reg = self.registry();
         let mut out = Vec::new();
-        for mut e in entries {
+        for e in entries {
             if if_due
                 && e.update
                     .as_ref()
@@ -587,8 +587,8 @@ impl Sam {
                 continue;
             }
             let status = crate::updates::check(&e.source_path);
-            e.update = Some(status.clone());
-            reg.save(&mut e)?;
+            // The check takes a while: save onto the record as it is now.
+            reg.update(&e.id, |fresh| fresh.update = Some(status.clone()))?;
             out.push((e.id.clone(), status));
         }
         Ok(out)

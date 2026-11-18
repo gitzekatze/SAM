@@ -254,7 +254,7 @@ id = 27
 area = "F"
 promise = "SAM notices app settings that something else changed and asks before starting the app."
 code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs"]
-tests = ["records_changed_outside_sam_are_recognized", "an_app_changed_outside_sam_starts_only_after_confirmation"]
+tests = ["records_changed_outside_sam_are_recognized", "an_app_changed_outside_sam_starts_only_after_confirmation", "a_changed_record_stays_blocked_until_it_is_confirmed", "a_late_save_keeps_a_change_made_meanwhile"]
 
 [[function]]
 id = 28
@@ -278,7 +278,7 @@ id = 29
 area = "F"
 promise = "SAM notices AppImages that were moved or changed."
 code = ["sam-intake/src/fingerprint.rs", "sam-runner/src/ops/maintain.rs"]
-tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
+tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
 
 [[area]]
 id = "G"
