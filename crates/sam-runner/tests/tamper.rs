@@ -190,3 +190,61 @@ fn a_changed_record_stays_blocked_until_it_is_confirmed() {
     assert!(!e.changed_outside, "confirming clears it");
     assert!(sam_runner::launch::preflight(&e).0.is_empty());
 }
+
+/// Regression (audit I-F5): an id is the app's name plus four hex digits
+/// of its file's checksum, so a crafted AppImage can get the id of a removed
+/// app whose data was kept, and it inherited that private home. Now kept
+/// data goes back only to the AppImage it belonged to; another file gets an
+/// id of its own.
+#[test]
+fn kept_data_goes_back_only_to_its_own_appimage() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = one_app(tmp.path());
+    let secret = sam.paths.app_home(&id).join("secret");
+    fs::create_dir_all(secret.parent().unwrap()).unwrap();
+    fs::write(&secret, "kept").unwrap();
+    sam.remove(&id, true).unwrap();
+
+    // The same file again: its data is back.
+    let again = sam
+        .add(
+            &tmp.path().join("Tool.AppImage"),
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry;
+    assert_eq!(again.id, id);
+    assert!(secret.exists(), "its own kept data is used again");
+
+    // Another file that gets the same id (here by planting kept data for
+    // the id it will get, as a removed app with that id would have left).
+    let other = tmp.path().join("Other.AppImage");
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "a different file".into();
+    build(&other, &spec).unwrap();
+    let sha = sam_intake::fingerprint::compute(&other).unwrap().sha256;
+    let would = sam_intake::id::generate_id("Tool", &other, &sha, |c| sam.resolve(c).is_ok());
+    let planted = sam.paths.app_home(&would).join("secret");
+    fs::create_dir_all(planted.parent().unwrap()).unwrap();
+    fs::write(&planted, "another app's data").unwrap();
+    let e = sam
+        .add(
+            &other,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry;
+    assert_ne!(
+        e.id, would,
+        "an id holding another app's kept data is not reused"
+    );
+    assert!(!sam.paths.app_home(&e.id).join("secret").exists());
+}

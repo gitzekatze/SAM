@@ -23,6 +23,43 @@ use sha1::{Digest, Sha1};
 
 /// The most read from any answer.
 const MAX_ANSWER: usize = 512 * 1024;
+/// The largest update file SAM downloads when the server names no length.
+pub const MAX_DOWNLOAD: u64 = 8 << 30;
+
+/// curl as SAM uses it for every request (one place, so the three uses
+/// cannot drift apart; audit: they had): never the person's ~/.curlrc (which
+/// could switch off certificate checks or send the request elsewhere),
+/// HTTPS only, also after redirects, a few redirects at most, no URL
+/// patterns (`--globoff`: an update address with `[1-99999999]` would
+/// otherwise make curl send that many requests), and a time limit for the
+/// whole transfer, so a server that trickles cannot keep SAM busy forever
+/// (audit U-M7).
+fn curl(max_secs: u64) -> Result<Command> {
+    let curl = sam_core::util::which("curl")
+        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
+    let mut cmd = Command::new(curl);
+    cmd.args([
+        // First, or curl ignores it.
+        "--disable",
+        "--silent",
+        "--show-error",
+        "--fail",
+        "--location",
+        "--globoff",
+        "--proto",
+        "=https",
+        "--proto-redir",
+        "=https",
+        "--max-redirs",
+        "5",
+        "--connect-timeout",
+        "15",
+        "--user-agent",
+        "SAM-AppImage-update-check",
+    ])
+    .args(["--max-time", &max_secs.to_string()]);
+    Ok(cmd)
+}
 
 /// Checks `appimage` against its published version.
 pub fn check(appimage: &Path) -> UpdateStatus {
@@ -285,57 +322,33 @@ fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetch
     }))
 }
 
-/// Bytes `start..end` of `url` (an HTTP range request).
+/// Bytes `start..end` of `url` (an HTTP range request). At most that many
+/// bytes are kept, whatever the server sends.
 fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
         bail!("{}", sam_core::i18n::tr("not HTTPS"));
     }
-    let curl = sam_core::util::which("curl")
-        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
-    let out = Command::new(curl)
-        .args([
-            // First, or curl ignores it: never the person's ~/.curlrc, which
-            // could switch off certificate checks or send the request elsewhere.
-            "--disable",
-            "--silent",
-            "--show-error",
-            "--fail",
-            "--location",
-            "--proto",
-            "=https",
-            "--proto-redir",
-            "=https",
-        ])
-        .args([
-            "--max-redirs",
-            "5",
-            "--connect-timeout",
-            "15",
-            "--speed-limit",
-            "1024",
-            "--speed-time",
-            "60",
-        ])
-        .args([
-            "--user-agent",
-            "SAM-AppImage-update-check",
-            "--range",
-            &format!("{}-{}", start, end - 1),
-            "--",
-        ])
-        .arg(url)
-        .stdin(Stdio::null())
-        .output()?;
-    if !out.status.success() {
+    let want = end.saturating_sub(start);
+    let mut cmd = curl(300)?;
+    cmd.args(["--speed-limit", "1024", "--speed-time", "60"])
+        .args(["--range", &format!("{}-{}", start, end.saturating_sub(1))])
+        .arg("--")
+        .arg(url);
+    let (st, out) = sam_core::util::output_within(
+        &mut cmd,
+        std::time::Duration::from_secs(310),
+        usize::try_from(want).unwrap_or(usize::MAX),
+    )?;
+    if !st.success() {
         bail!(
             "{}",
             sam_core::i18n::trf(
                 "downloading the changed parts failed: {reason}",
-                &[("reason", &String::from_utf8_lossy(&out.stderr).trim())]
+                &[("reason", &format!("curl {st}"))]
             )
         );
     }
-    Ok(out.stdout)
+    Ok(out)
 }
 
 pub fn download(p: &Published, dest: &Path) -> Result<()> {
@@ -353,35 +366,13 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
             sam_core::i18n::tr("the update file is not offered over HTTPS")
         );
     }
-    let curl = sam_core::util::which("curl")
-        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
-    let mut cmd = Command::new(curl);
-    cmd.args([
-        // First, or curl ignores it: never the person's ~/.curlrc.
-        "--disable",
-        "--silent",
-        "--show-error",
-        "--fail",
-        "--location",
-        "--proto",
-        "=https",
-        "--proto-redir",
-        "=https",
-    ])
-    .args([
-        "--max-redirs",
-        "5",
-        "--connect-timeout",
-        "15",
-        "--speed-limit",
-        "1024",
-        "--speed-time",
-        "60",
-    ])
-    .args(["--user-agent", "SAM-AppImage-update-check"]);
-    if let Some(len) = p.length {
-        cmd.args(["--max-filesize", &(len + 1).to_string()]);
-    }
+    // An hour for the whole file; the speed limit ends a stalled one sooner.
+    let mut cmd = curl(3600)?;
+    cmd.args(["--speed-limit", "1024", "--speed-time", "60"]);
+    // A little more than the published length (or SAM's ceiling) is the
+    // most curl writes; `saturating_add`: a Length of u64::MAX wrapped.
+    let cap = p.length.unwrap_or(MAX_DOWNLOAD).min(MAX_DOWNLOAD);
+    cmd.args(["--max-filesize", &cap.saturating_add(1).to_string()]);
     let out = cmd
         .arg("--output")
         .arg(dest)
@@ -501,35 +492,8 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
             )
         );
     }
-    let curl = sam_core::util::which("curl")
-        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
-    let mut cmd = Command::new(curl);
-    cmd.args([
-        // First, or curl ignores it: never the person's ~/.curlrc.
-        "--disable",
-        "--silent",
-        "--show-error",
-        "--fail",
-        "--location",
-        "--proto",
-        "=https",
-        "--proto-redir",
-        "=https",
-    ])
-    .args([
-        "--max-redirs",
-        "5",
-        "--connect-timeout",
-        "10",
-        "--max-time",
-        "30",
-    ])
-    .args([
-        "--user-agent",
-        "SAM-AppImage-update-check",
-        "--header",
-        "Accept: application/json, */*",
-    ]);
+    let mut cmd = curl(30)?;
+    cmd.args(["--header", "Accept: application/json, */*"]);
     if let Some(n) = limit {
         cmd.args(["--range", &format!("0-{}", n - 1)]);
     }

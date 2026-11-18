@@ -91,9 +91,13 @@ pub fn parse(s: &str) -> Option<UpdateSource> {
             url: url.to_string(),
         }),
         ["gh-releases-zsync", owner, repo, tag, pattern] => {
-            // Names only: they become parts of a GitHub API address.
+            // Names only: they become parts of a GitHub API address. "." and
+            // ".." are not names: they would climb in the address
+            // (`repos/../..`, audit I-F13).
             let safe = |p: &str| {
                 !p.is_empty()
+                    && p != "."
+                    && p != ".."
                     && p.chars()
                         .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
             };
@@ -160,6 +164,19 @@ mod tests {
             "no paths in owner"
         );
         assert_eq!(parse(""), None);
+        // "." and ".." would climb in the GitHub API address (audit I-F13).
+        for bad in [
+            "gh-releases-zsync|..|repo|latest|x.zsync",
+            "gh-releases-zsync|owner|..|latest|x.zsync",
+            "gh-releases-zsync|owner|repo|..|x.zsync",
+            "gh-releases-zsync|.|repo|latest|x.zsync",
+        ] {
+            assert_eq!(parse(bad), None, "{bad}");
+        }
+        assert!(
+            parse("gh-releases-zsync|my.org|repo.rs|v1.2|x.zsync").is_some(),
+            "dots inside names stay allowed"
+        );
     }
 
     /// Wildcards in update information match the right file name and not the build for another processor.

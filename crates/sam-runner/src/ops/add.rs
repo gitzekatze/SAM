@@ -155,7 +155,11 @@ impl Sam {
             Ok(out) => metadata::read_metadata(&out.appdir).unwrap_or_default(),
             Err(_) => AppImageMetadata::default(),
         };
-        entry.id = id::generate_id(&md.name, &source, &fp.sha256, |cand| reg.exists(cand));
+        entry.id = id::generate_id(&md.name, &source, &fp.sha256, |cand| {
+            reg.exists(cand) || self.kept_for_another(cand, &fp.sha256)
+        });
+        // Its own kept data is handed back now; the note is no longer needed.
+        let _ = fs::remove_file(self.paths.data_dir.join("kept").join(&entry.id));
         entry.name = if md.name.is_empty() {
             id::slug_from_filename(&source)
         } else {

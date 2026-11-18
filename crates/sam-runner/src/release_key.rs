@@ -94,6 +94,7 @@ mod tests {
             state,
             fingerprint: fp.map(str::to_string),
             detail: "gpgv missing".into(),
+            signed_at: None,
         }
     }
 

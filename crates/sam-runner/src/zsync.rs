@@ -40,6 +40,9 @@ impl Control {
     }
 }
 
+/// How many blocks with the same quick checksum are tried at one offset.
+const MAX_SAME_CHECKSUM: usize = 16;
+
 /// The 16+16-bit rolling checksum zsync uses (`a` = byte sum, `b` = sum of `a`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Rsum {
@@ -133,9 +136,18 @@ pub fn parse(data: &[u8]) -> Result<Control> {
             sam_core::i18n::tr("the update description (.zsync) is incomplete")
         );
     }
+    // The length comes from the server: no larger than SAM downloads at
+    // all, and every size computed from it is checked, because an overflow
+    // wraps silently in a release build (audit U-M7).
+    if c.length > crate::updates::MAX_DOWNLOAD {
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the update description (.zsync) names an impossible length")
+        );
+    }
     let per = c.rsum_bytes + c.checksum_bytes;
     let n = c.block_count();
-    if body.len() < n * per {
+    if n.checked_mul(per).is_none_or(|need| body.len() < need) {
         bail!(
             "{}",
             sam_core::i18n::tr("the update description (.zsync) is cut short")
@@ -185,8 +197,19 @@ fn pad(block: &[u8], blocksize: usize) -> std::borrow::Cow<'_, [u8]> {
 }
 
 /// Where each block of the new file can be found in `old` (`None` = must be
-/// downloaded).
+/// downloaded). Gives up after a minute: what is not found by then is
+/// downloaded (see `plan_within`).
 pub fn plan(c: &Control, old: &[u8]) -> Vec<Option<u64>> {
+    plan_within(c, old, std::time::Duration::from_secs(60))
+}
+
+/// `plan` with a time limit. The description comes from the server: one
+/// whose quick checksums match a stretch of identical bytes in the old file
+/// makes every offset need a full comparison, which on a large file takes
+/// practically forever (audit U-M7). After `limit`, the blocks not found
+/// yet are simply downloaded.
+pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<Option<u64>> {
+    let started = std::time::Instant::now();
     let bs = c.blocksize;
     let n = c.block_count();
     let mut found: Vec<Option<u64>> = vec![None; n];
@@ -211,7 +234,11 @@ pub fn plan(c: &Control, old: &[u8]) -> Vec<Option<u64>> {
     loop {
         let mut matched = false;
         if let Some(cands) = by_rsum.get(&rsum_key(r, c.rsum_bytes)) {
-            for &i in cands {
+            // A description can give thousands of blocks the same quick
+            // checksum, which would make SAM compare each one at every byte
+            // of the old file (practically endless). Beyond a few, the
+            // blocks are simply downloaded (audit U-M7).
+            for &i in cands.iter().take(MAX_SAME_CHECKSUM) {
                 if found[i].is_some() {
                     continue;
                 }
@@ -232,6 +259,10 @@ pub fn plan(c: &Control, old: &[u8]) -> Vec<Option<u64>> {
         }
         let step = if matched { bs } else { 1 };
         if off + step + bs > old.len() {
+            break;
+        }
+        // Looking at the clock every 64 KiB of offsets is enough.
+        if off % (64 << 10) == 0 && started.elapsed() > limit {
             break;
         }
         if step == 1 {
@@ -479,5 +510,61 @@ mod tests {
         )
         .is_err());
         assert!(parse(b"zsync: 0.6.2\nBlocksize: 2048\n\n").is_err());
+    }
+
+    /// A description from a hostile server cannot crash SAM or keep it busy
+    /// (audit U-M7): an absurd length is refused, a block count that would
+    /// overflow the size computation is refused instead of wrapping, and
+    /// thousands of blocks whose quick checksum matches a stretch of
+    /// identical bytes end at the time limit, with those blocks left for
+    /// downloading.
+    #[test]
+    fn a_hostile_update_description_cannot_crash_or_stall_sam() {
+        let head = |len: u64, bs: usize| {
+            format!(
+                "zsync: 0.6.2\nFilename: x\nBlocksize: {bs}\nLength: {len}\nHash-Lengths: 1,4,16\nURL: x\nSHA-1: {}\n\n",
+                "0".repeat(40)
+            )
+            .into_bytes()
+        };
+        let e = parse(&head(u64::MAX, 2048)).unwrap_err().to_string();
+        assert!(e.contains("impossible length"), "{e}");
+        let e = parse(&head(crate::updates::MAX_DOWNLOAD + 1, 2048))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("impossible length"), "{e}");
+        // Within the limit, but without the block list: refused, no panic.
+        assert!(parse(&head(crate::updates::MAX_DOWNLOAD, 2048)).is_err());
+
+        // 4 MiB of zeros in the old file; 3,000 blocks claim the zero
+        // block's quick checksum but never match fully.
+        let bs = 2048;
+        let old = vec![0u8; 4 << 20];
+        let zero = rsum_key(rsum(&old[..bs]), 4);
+        let n = 3000;
+        let c = Control {
+            filename: None,
+            url: None,
+            sha1: String::new(),
+            length: (n * bs) as u64,
+            blocksize: bs,
+            seq_matches: 1,
+            rsum_bytes: 4,
+            checksum_bytes: 16,
+            blocks: (0..n)
+                .map(|i| (zero, vec![(i % 251) as u8 + 1; 16]))
+                .collect(),
+        };
+        let t = std::time::Instant::now();
+        let p = plan_within(&c, &old, std::time::Duration::from_millis(500));
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(20),
+            "{:?}",
+            t.elapsed()
+        );
+        assert!(
+            p.iter().all(Option::is_none),
+            "nothing false is taken from the old file"
+        );
     }
 }

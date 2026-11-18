@@ -164,7 +164,7 @@ curl downloads over HTTPS only (also after redirects) with these limits, and fet
 - **Quick check:** `program:curl`
 - **Tests:** `updates_are_downloaded_over_https_only`, `updates_download_only_changes_check_them_and_refuse_tampering` (fully)
 - **Checked first by:** `update_server.rs` (a broken contract stops these tests with its name)
-- **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--max-filesize`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`, `option:--disable`
+- **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--max-filesize`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`, `option:--disable`, `option:--globoff`
 - **If it breaks:** No update is installed when curl fails; the old version stays. A changed option shows in the update server test.
 
 ## signatures-gnupg
@@ -176,7 +176,7 @@ gpg imports the keys embedded in an AppImage and lists them in --with-colons out
 - **SAM functions that rely on it:** [28](functions.md#28)
 - **Quick check:** `gnupg-signer`
 - **Tests:** `sam_updates_itself_only_with_its_release_key`, `key_changes_are_noticed`, `gnupg_names_the_real_signer`, `a_second_key_in_the_file_cannot_borrow_a_trusted_name`, `sam_refuses_a_forged_update_that_carries_its_release_key` (fully)
-- **Covers:** `program:gpg`, `program:gpgv`, `option:--batch`, `option:--no-options`, `option:--homedir`, `option:--keyring`, `option:--no-default-keyring`, `option:--with-colons`, `option:--fingerprint`, `option:--list-keys`, `option:--import`, `option:--export`, `option:--armor`, `option:--detach-sign`, `option:--local-user`, `option:--output`, `option:--yes`, `option:--status-fd`
+- **Covers:** `program:gpg`, `program:gpgv`, `option:--batch`, `option:--no-options`, `option:--homedir`, `option:--keyring`, `option:--no-default-keyring`, `option:--with-colons`, `option:--fingerprint`, `option:--list-keys`, `option:--import`, `option:--export`, `option:--armor`, `option:--detach-sign`, `option:--local-user`, `option:--output`, `option:--yes`, `option:--status-fd`, `option:--faked-system-time`
 - **If it breaks:** Without a working gpg SAM never updates itself and treats app signatures as unknown. If the probe breaks, check the --with-colons and --status-fd (VALIDSIG) formats in GnuPG's release notes; until fixed, every signature counts as not valid (fails closed).
 
 ## diagnose-strace

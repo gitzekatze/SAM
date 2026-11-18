@@ -527,6 +527,25 @@ pub(crate) fn signature_unconfirmed(
     (new.state == S::Unchecked).then(|| sig_words(old))
 }
 
+/// When the new file is signed with the same key as the installed one but
+/// earlier, it is an older version: an attacker who controls the download
+/// could otherwise hand out an old, validly signed release with known holes
+/// (audit U-M6). Returns both signing times. Unsigned or unchecked files, a
+/// changed key (asked about separately) and records from before SAM kept
+/// the time cannot be compared.
+pub(crate) fn older_signed_version(
+    old: Option<&sam_core::model::SignatureInfo>,
+    new: &sam_core::model::SignatureInfo,
+) -> Option<(i64, i64)> {
+    use sam_core::model::SignatureState as S;
+    let old = old.filter(|o| o.state == S::Valid)?;
+    if new.state != S::Valid || new.fingerprint.is_none() || new.fingerprint != old.fingerprint {
+        return None;
+    }
+    let (was, now) = (old.signed_at?, new.signed_at?);
+    (now < was).then_some((was, now))
+}
+
 #[cfg(test)]
 mod signature_tests {
     use super::signing_key_change;
@@ -537,7 +556,51 @@ mod signature_tests {
             state,
             fingerprint: fp.map(str::to_string),
             detail: String::new(),
+            signed_at: None,
         }
+    }
+
+    /// An update signed with the same key but earlier than the installed
+    /// version is an older version; later, equal, another key, unsigned or
+    /// without a time is not judged here.
+    #[test]
+    fn an_older_signed_version_is_recognized() {
+        use super::older_signed_version;
+        let at = |state: S, fp: Option<&str>, t: Option<i64>| SignatureInfo {
+            signed_at: t,
+            ..sig(state, fp)
+        };
+        let installed = at(S::Valid, Some("A"), Some(2_000));
+        assert_eq!(
+            older_signed_version(Some(&installed), &at(S::Valid, Some("A"), Some(1_000))),
+            Some((2_000, 1_000))
+        );
+        for new in [
+            at(S::Valid, Some("A"), Some(3_000)),
+            at(S::Valid, Some("A"), Some(2_000)),
+            at(S::Valid, Some("B"), Some(1_000)),
+            at(S::Valid, Some("A"), None),
+            at(S::Invalid, Some("A"), Some(1_000)),
+            at(S::Unsigned, None, None),
+        ] {
+            assert_eq!(
+                older_signed_version(Some(&installed), &new),
+                None,
+                "{new:?}"
+            );
+        }
+        assert_eq!(
+            older_signed_version(
+                Some(&at(S::Valid, Some("A"), None)),
+                &at(S::Valid, Some("A"), Some(1))
+            ),
+            None,
+            "a record from before SAM kept the time"
+        );
+        assert_eq!(
+            older_signed_version(None, &at(S::Valid, Some("A"), Some(1))),
+            None
+        );
     }
 
     /// An update signed with another key, or not signed at all, is noticed.

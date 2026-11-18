@@ -485,6 +485,11 @@ pub struct SignatureInfo {
     pub fingerprint: Option<String>,
     /// One sentence for people.
     pub detail: String,
+    /// When the signature was made (seconds since 1970), as GnuPG reports
+    /// it for a valid signature. An update signed earlier than the installed
+    /// version is an older version and is refused (audit U-M6).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_at: Option<i64>,
 }
 
 /// A foreign menu entry SAM hid, with what is needed to restore it.
