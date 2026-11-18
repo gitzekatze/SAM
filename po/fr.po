@@ -96,12 +96,11 @@ msgid ""
 "does it itself."
 msgstr ""
 "Les espaces de noms utilisateur sont désactivés sur ce système "
-"(user.max_user_namespaces = 0). Bubblewrap ne peut pas créer de bac à "
-"sable. Si tu veux des bacs à sable ici, installe Bubblewrap en setuid "
-"(Arch : le paquet bubblewrap-suid ; Debian : sudo dpkg-statoverride "
-"--update --add root root 4755 /usr/bin/bwrap) : seul Bubblewrap "
-"obtient ce droit, pas tous les programmes. Cela aussi modifie le "
-"système ; SAM ne le fait jamais lui-même."
+"(user.max_user_namespaces = 0). Bubblewrap ne peut pas créer de bac à sable. "
+"Si tu veux des bacs à sable ici, installe Bubblewrap en setuid (Arch : le "
+"paquet bubblewrap-suid ; Debian : sudo dpkg-statoverride --update --add root "
+"root 4755 /usr/bin/bwrap) : seul Bubblewrap obtient ce droit, pas tous les "
+"programmes. Cela aussi modifie le système ; SAM ne le fait jamais lui-même."
 
 #: crates/sam-core/src/host.rs:56
 msgid ""
@@ -113,12 +112,12 @@ msgid ""
 "program. This, too, changes the system; SAM never does it itself."
 msgstr ""
 "Les espaces de noms utilisateur non privilégiés sont désactivés sur ce "
-"système (kernel.unprivileged_userns_clone = 0), un durcissement voulu. "
-"Garde-le. Si tu veux des bacs à sable ici, installe plutôt Bubblewrap "
-"en setuid (Arch : le paquet bubblewrap-suid ; Debian : sudo "
-"dpkg-statoverride --update --add root root 4755 /usr/bin/bwrap) : seul "
-"Bubblewrap obtient ce droit, pas tous les programmes. Cela aussi "
-"modifie le système ; SAM ne le fait jamais lui-même."
+"système (kernel.unprivileged_userns_clone = 0), un durcissement voulu. Garde-"
+"le. Si tu veux des bacs à sable ici, installe plutôt Bubblewrap en setuid "
+"(Arch : le paquet bubblewrap-suid ; Debian : sudo dpkg-statoverride --update "
+"--add root root 4755 /usr/bin/bwrap) : seul Bubblewrap obtient ce droit, pas "
+"tous les programmes. Cela aussi modifie le système ; SAM ne le fait jamais "
+"lui-même."
 
 #: crates/sam-core/src/host.rs:58
 msgid ""
@@ -960,6 +959,11 @@ msgstr "Tout /usr"
 msgid "path has no parent"
 msgstr "le chemin n’a pas de dossier parent"
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/util.rs:221
+msgid "{program} did not finish within {seconds} seconds and was stopped"
+msgstr "{program} n'a pas fini en {seconds} secondes et a été arrêté"
+
 #: crates/sam-core/src/warnings.rs:90
 msgid "D-Bus wildcard not used"
 msgstr "Joker D-Bus non utilisé"
@@ -1558,12 +1562,21 @@ msgstr "dossier temporaire"
 msgid "GnuPG (gpg) is needed to read the signer's key"
 msgstr "GnuPG (gpg) est nécessaire pour lire la clé du signataire"
 
-#: crates/sam-detect/src/signature.rs:101
+#: crates/sam-detect/src/signature.rs:90
 msgid "signed, but the signer's key cannot be read"
 msgstr "signé, mais la clé du signataire est illisible"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/signature.rs:138
+#: crates/sam-detect/src/signature.rs:103
+msgid ""
+"the file carries {count} keys instead of its signer's one; SAM does not "
+"accept its signature"
+msgstr ""
+"le fichier contient {count} clés au lieu de la seule clé de son signataire ; "
+"SAM n'accepte pas sa signature"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-detect/src/signature.rs:130
 msgid ""
 "signed by {signer}; the key comes with the file, so this shows it is "
 "unchanged, not who made it"
@@ -1571,7 +1584,7 @@ msgstr ""
 "signé par {signer} ; la clé est fournie avec le fichier, cela montre donc "
 "qu’il n’a pas été modifié, pas qui l’a créé"
 
-#: crates/sam-detect/src/signature.rs:140
+#: crates/sam-detect/src/signature.rs:132
 msgid ""
 "signed; the key comes with the file, so this shows it is unchanged, not who "
 "made it"
@@ -1580,7 +1593,7 @@ msgstr ""
 "été modifié, pas qui l’a créé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/signature.rs:141
+#: crates/sam-detect/src/signature.rs:133
 msgid ""
 "the signature by {signer} does not match the file: it was changed after "
 "signing"
@@ -1588,26 +1601,26 @@ msgstr ""
 "la signature de {signer} ne correspond pas au fichier : il a été modifié "
 "après la signature"
 
-#: crates/sam-detect/src/signature.rs:142
+#: crates/sam-detect/src/signature.rs:134
 msgid "the signature does not match the file: it was changed after signing"
 msgstr ""
 "la signature ne correspond pas au fichier : il a été modifié après la "
 "signature"
 
-#: crates/sam-detect/src/signature.rs:231
+#: crates/sam-detect/src/signature.rs:412
 msgid "no signature sections"
 msgstr "aucune section de signature"
 
-#: crates/sam-detect/src/signature.rs:232
+#: crates/sam-detect/src/signature.rs:413
 msgid "gpg missing"
 msgstr "gpg manquant"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/signature.rs:247
+#: crates/sam-detect/src/signature.rs:433
 msgid "GnuPG has no key {key}"
 msgstr "GnuPG n’a pas de clé {key}"
 
-#: crates/sam-detect/src/signature.rs:277
+#: crates/sam-detect/src/signature.rs:463
 msgid "signature missing or too large"
 msgstr "signature manquante ou trop volumineuse"
 
