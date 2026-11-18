@@ -45,7 +45,7 @@ impl Sam {
             );
         }
         let fp = fingerprint::compute(&entry.source_path)?;
-        let root = self.extracted_root().join(&entry.id);
+        let root = self.unpack_root()?.join(&entry.id);
         let mut log = Vec::new();
         let req = ExtractRequest {
             source: &entry.source_path,
@@ -454,11 +454,18 @@ impl Sam {
             safe_to_delete(d)?;
         }
         if !keep_data {
+            // The unpack folder only when it is SAM's own; in a folder that
+            // held other things (`~/Documents`) the apps' folders were removed
+            // with each app above (audit U-L1).
+            let unpack = self.unpack_root_is_sams().then(|| self.extracted_root());
             for d in [
-                self.paths.config_dir.clone(),
-                self.paths.data_dir.clone(),
-                self.extracted_root(),
-            ] {
+                Some(self.paths.config_dir.clone()),
+                Some(self.paths.data_dir.clone()),
+                unpack,
+            ]
+            .into_iter()
+            .flatten()
+            {
                 if d.exists() && !dirs.iter().any(|o| d.starts_with(o)) {
                     safe_to_delete(&d)?;
                     dirs.push(d);
@@ -593,10 +600,24 @@ impl Sam {
         if let Ok(rd) = fs::read_dir(&root) {
             for e in rd.flatten() {
                 let name = e.file_name().to_string_lossy().into_owned();
-                if !ids.contains(&name) {
-                    fs::remove_dir_all(e.path())?;
-                    removed.push(e.path());
+                // Only folders SAM made, never a link, and a leftover only
+                // when it is an hour old: another SAM may still be unpacking
+                // into it (audit U-L1, I-F16).
+                let Ok(meta) = fs::symlink_metadata(e.path()) else {
+                    continue;
+                };
+                let recent = name.starts_with('.')
+                    && meta
+                        .modified()
+                        .ok()
+                        .and_then(|m| m.elapsed().ok())
+                        .is_some_and(|age| age.as_secs() < 3600);
+                if ids.contains(&name) || !meta.is_dir() || !sams_own_unpack_entry(&name) || recent
+                {
+                    continue;
                 }
+                remove_tree(&e.path())?;
+                removed.push(e.path());
             }
         }
         Ok(removed)
@@ -1054,6 +1075,84 @@ fn move_file(from: &Path, to: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    /// The unpack location can be any folder, for example `~/Documents`.
+    /// Cleaning up deleted every folder in it that was not an app, and
+    /// uninstalling deleted it entirely (audit U-L1). Now SAM removes only
+    /// what it put there (an unregistered app's folder, an unpacking leftover
+    /// older than an hour), and the whole folder only when SAM created it.
+    #[test]
+    fn a_shared_unpack_folder_keeps_everything_that_is_not_sams() {
+        let tmp = tempfile::tempdir().unwrap();
+        let docs = tmp.path().join("Documents");
+        fs::create_dir_all(docs.join("My Photos")).unwrap();
+        fs::write(docs.join("My Photos/pic.jpg"), "photo").unwrap();
+        fs::write(docs.join("notes.txt"), "notes").unwrap();
+        fs::create_dir_all(docs.join("Projects")).unwrap();
+        fs::create_dir_all(docs.join("appimage-orphan-1234/AppDir")).unwrap();
+        fs::create_dir_all(docs.join("appimage-installed-5678/AppDir")).unwrap();
+        fs::create_dir_all(docs.join(".unpack-999")).unwrap();
+        fs::create_dir_all(docs.join(".incoming-abc")).unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        fs::File::open(docs.join(".incoming-abc"))
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+
+        let mut sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+        sam.config.extraction.location = docs.to_string_lossy().into_owned();
+        assert_eq!(sam.unpack_root().unwrap(), docs);
+        assert!(
+            !sam.unpack_root_is_sams(),
+            "a folder with other things is not SAM's"
+        );
+        let mut installed = sam_core::model::AppEntry {
+            id: "appimage-installed-5678".into(),
+            name: "Installed".into(),
+            ..Default::default()
+        };
+        sam.registry().save(&mut installed).unwrap();
+
+        let mut removed = sam.cleanup().unwrap();
+        removed.sort();
+        assert_eq!(
+            removed,
+            vec![
+                docs.join(".incoming-abc"),
+                docs.join("appimage-orphan-1234")
+            ]
+        );
+        assert!(docs.join("My Photos/pic.jpg").is_file());
+        assert!(docs.join("notes.txt").is_file());
+        assert!(docs.join("Projects").is_dir(), "a folder with a plain name");
+        assert!(
+            docs.join("appimage-installed-5678/AppDir").is_dir(),
+            "an installed app"
+        );
+        assert!(
+            docs.join(".unpack-999").is_dir(),
+            "a recent leftover may still be in use"
+        );
+
+        sam.uninstall(false, false).unwrap();
+        assert!(
+            docs.join("My Photos/pic.jpg").is_file(),
+            "uninstalling keeps the person's folder"
+        );
+        assert!(!sam.paths.data_dir.exists(), "SAM's own data is gone");
+
+        // A folder SAM creates for itself is marked and is SAM's to remove.
+        let mut own = Sam::with_paths(Paths::rooted(&tmp.path().join("sam2"))).unwrap();
+        own.config.extraction.location = tmp.path().join("Unpacked").to_string_lossy().into_owned();
+        own.unpack_root().unwrap();
+        assert!(own.unpack_root_is_sams());
+        let u = own.uninstall(false, true).unwrap();
+        assert!(
+            u.dirs.contains(&tmp.path().join("Unpacked")),
+            "{:?}",
+            u.dirs
+        );
+    }
 
     /// Updates are downloaded into a fresh folder inside SAM's data folder
     /// that only SAM's user can enter (audit U-H4): never the AppImage's

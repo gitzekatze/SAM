@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-48 tests.
+49 tests.
 
 | Promise | Test |
 |---|---|
@@ -55,13 +55,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Full network together with X11 makes the settings think twice (high risk). | [`network_and_x11_high`](../crates/sam-core/src/risk.rs#L570) |
 | Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not. | [`key_and_system_folders_count_as_sensitive`](../crates/sam-core/src/risk.rs#L581) |
 | Values of variables a person gave the app never reach the shown command; the names and SAM's own variables stay. | [`given_environment_values_are_hidden_in_the_shown_command`](../crates/sam-core/src/sandbox.rs#L233) |
-| SAM's own files in folders an untrusted program could have touched are written without following links: a planted link is replaced, the file it pointed to stays as it was, and a link in place of a folder becomes a real folder (audit I-F2). | [`files_sam_writes_never_go_through_a_planted_link`](../crates/sam-core/src/util.rs#L389) |
-| A helper program that hangs is stopped at the time limit instead of hanging SAM (GnuPG reads keys from untrusted AppImages), and a program that prints more than SAM keeps neither blocks nor floods SAM's memory. | [`a_helper_program_is_stopped_at_its_time_limit`](../crates/sam-core/src/util.rs#L426) |
-| Times are shown without a date library: UTC dates exactly, local times in the computer's own zone and shape (chrono was dropped when it became unmaintained, RUSTSEC-2026-0543). | [`times_are_shown_without_a_date_library`](../crates/sam-core/src/util.rs#L493) |
-| A link to a device that never ends, or a file larger than the limit, cannot fill SAM's memory (regression: an AppImage whose AppRun links to /dev/zero made adding it grow without end). | [`reading_a_file_of_an_appimage_is_bounded`](../crates/sam-core/src/util.rs#L520) |
-| Names become safe identifiers made of lowercase letters, digits and dashes. | [`names_become_safe_identifiers`](../crates/sam-core/src/util.rs#L533) |
-| Shell quoting keeps spaces, quotes and empty strings intact. | [`shell_quoting_keeps_spaces_and_quotes_intact`](../crates/sam-core/src/util.rs#L540) |
-| Text from an app is shown without markup or control characters, and long text is shortened. | [`neutralizes_markup_and_controls`](../crates/sam-core/src/util.rs#L554) |
+| Reading a file from an untrusted app returns at once for anything that is not a regular file: a named pipe made SAM wait forever (audit I-F9, I-F15). | [`a_named_pipe_is_refused_without_waiting`](../crates/sam-core/src/util.rs#L395) |
+| SAM's own files in folders an untrusted program could have touched are written without following links: a planted link is replaced, the file it pointed to stays as it was, and a link in place of a folder becomes a real folder (audit I-F2). | [`files_sam_writes_never_go_through_a_planted_link`](../crates/sam-core/src/util.rs#L422) |
+| A helper program that hangs is stopped at the time limit instead of hanging SAM (GnuPG reads keys from untrusted AppImages), and a program that prints more than SAM keeps neither blocks nor floods SAM's memory. | [`a_helper_program_is_stopped_at_its_time_limit`](../crates/sam-core/src/util.rs#L459) |
+| Times are shown without a date library: UTC dates exactly, local times in the computer's own zone and shape (chrono was dropped when it became unmaintained, RUSTSEC-2026-0543). | [`times_are_shown_without_a_date_library`](../crates/sam-core/src/util.rs#L526) |
+| A link to a device that never ends, or a file larger than the limit, cannot fill SAM's memory (regression: an AppImage whose AppRun links to /dev/zero made adding it grow without end). | [`reading_a_file_of_an_appimage_is_bounded`](../crates/sam-core/src/util.rs#L553) |
+| Names become safe identifiers made of lowercase letters, digits and dashes. | [`names_become_safe_identifiers`](../crates/sam-core/src/util.rs#L566) |
+| Shell quoting keeps spaces, quotes and empty strings intact. | [`shell_quoting_keeps_spaces_and_quotes_intact`](../crates/sam-core/src/util.rs#L573) |
+| Text from an app is shown without markup or control characters, and long text is shortened. | [`neutralizes_markup_and_controls`](../crates/sam-core/src/util.rs#L587) |
 | Dangerous settings (X11, full home, system bus, network an app does not need) each produce a warning. | [`each_dangerous_setting_produces_its_warning`](../crates/sam-core/src/warnings.rs#L303) |
 | SAM's strictest window profile produces no danger warning. | [`strict_has_no_danger`](../crates/sam-core/src/warnings.rs#L325) |
 | The X11 warning disappears when the user turns it off in the preferences. | [`x11_warning_can_be_disabled`](../crates/sam-core/src/warnings.rs#L332) |
@@ -79,16 +80,16 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A file that is not an ELF program is not taken for an AppImage. | [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L422) |
 | An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L437) |
 | Bundled libraries are sorted into system, graphics, display-controlled and dangerous classes. | [`bundled_libraries_are_sorted_by_what_they_reach`](../crates/sam-detect/src/classify.rs#L262) |
-| Programs that load graphics libraries only at run time are recognized as needing the GPU. | [`programs_that_load_graphics_at_run_time`](../crates/sam-detect/src/elf.rs#L1223) |
-| A missing optional library is reported with the feature it provides, not as a broken app. | [`missing_optional_libraries_name_the_feature`](../crates/sam-detect/src/elf.rs#L1249) |
-| Programs that choose the Qt platform themselves (X11 or Wayland) are recognized. | [`programs_that_choose_the_qt_platform`](../crates/sam-detect/src/elf.rs#L1336) |
-| A bundled Qt Wayland plugin counts as usable only when its Wayland client library is present. | [`qt_wayland_plugin_needs_its_client_library`](../crates/sam-detect/src/elf.rs#L1357) |
-| Start scripts that force X11 are recognized, so SAM grants X11 to those apps. | [`start_scripts_that_force_x11`](../crates/sam-detect/src/elf.rs#L1371) |
-| When the AppImage starts through a shell script, SAM finds the program the script starts. | [`the_program_behind_a_start_script_is_found`](../crates/sam-detect/src/elf.rs#L1441) |
-| An AppImage that asks for administrator rights (pkexec) is marked as unsafe to sandbox. | [`an_appimage_asking_for_admin_rights_is_unsafe_to_sandbox`](../crates/sam-detect/src/elf.rs#L1463) |
-| Electron apps are recognized by their markers, and bundled library symlinks are followed. | [`electron_markers_and_bundled_symlinks`](../crates/sam-detect/src/elf.rs#L1471) |
-| Libraries an app finds relative to its own folder ($ORIGIN) are counted as bundled, not as missing. | [`origin_relative_needed_paths`](../crates/sam-detect/src/elf.rs#L1484) |
-| The C library version an app needs is read from its symbol versions. | [`the_c_library_version_an_app_needs_is_read`](../crates/sam-detect/src/elf.rs#L1500) |
+| Programs that load graphics libraries only at run time are recognized as needing the GPU. | [`programs_that_load_graphics_at_run_time`](../crates/sam-detect/src/elf.rs#L1221) |
+| A missing optional library is reported with the feature it provides, not as a broken app. | [`missing_optional_libraries_name_the_feature`](../crates/sam-detect/src/elf.rs#L1247) |
+| Programs that choose the Qt platform themselves (X11 or Wayland) are recognized. | [`programs_that_choose_the_qt_platform`](../crates/sam-detect/src/elf.rs#L1334) |
+| A bundled Qt Wayland plugin counts as usable only when its Wayland client library is present. | [`qt_wayland_plugin_needs_its_client_library`](../crates/sam-detect/src/elf.rs#L1355) |
+| Start scripts that force X11 are recognized, so SAM grants X11 to those apps. | [`start_scripts_that_force_x11`](../crates/sam-detect/src/elf.rs#L1369) |
+| When the AppImage starts through a shell script, SAM finds the program the script starts. | [`the_program_behind_a_start_script_is_found`](../crates/sam-detect/src/elf.rs#L1439) |
+| An AppImage that asks for administrator rights (pkexec) is marked as unsafe to sandbox. | [`an_appimage_asking_for_admin_rights_is_unsafe_to_sandbox`](../crates/sam-detect/src/elf.rs#L1461) |
+| Electron apps are recognized by their markers, and bundled library symlinks are followed. | [`electron_markers_and_bundled_symlinks`](../crates/sam-detect/src/elf.rs#L1469) |
+| Libraries an app finds relative to its own folder ($ORIGIN) are counted as bundled, not as missing. | [`origin_relative_needed_paths`](../crates/sam-detect/src/elf.rs#L1482) |
+| The C library version an app needs is read from its symbol versions. | [`the_c_library_version_an_app_needs_is_read`](../crates/sam-detect/src/elf.rs#L1498) |
 | The signer is read from gpgv's own report of the signature it checked: the primary key, or the signing key when no primary is given. | [`the_signer_is_what_gpgv_reports_and_nothing_unclear_counts`](../crates/sam-detect/src/signature.rs#L525) |
 | The signing time is the one good signature's own (seconds since 1970); nothing unclear gives a time. | [`the_signing_time_is_read_from_the_one_good_signature`](../crates/sam-detect/src/signature.rs#L568) |
 | Primary keys are counted from GnuPG's listing; subkeys are not keys of their own (a signer with a signing subkey carries one key). | [`primary_keys_are_counted_without_their_subkeys`](../crates/sam-detect/src/signature.rs#L586) |
@@ -110,9 +111,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Program paths in menu entries are quoted so spaces and dollar signs cannot change the command. | [`menu_entry_paths_are_quoted_against_spaces_and_dollar_signs`](../crates/sam-intake/src/desktop.rs#L344) |
 | SAM's menu entry starts the app through sam-jail-run, never the AppImage directly. | [`sams_menu_entry_starts_the_app_only_through_sam`](../crates/sam-intake/src/desktop.rs#L355) |
 | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | [`launcher_mime_types_drop_hijack_targets`](../crates/sam-intake/src/desktop.rs#L378) |
-| Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L814) |
-| A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L845) |
-| Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L855) |
+| Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L830) |
+| A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L861) |
+| Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L871) |
 | A changed AppImage file is noticed by its fingerprint. | [`a_changed_appimage_file_is_noticed`](../crates/sam-intake/src/fingerprint.rs#L107) |
 | A readable name is taken from an AppImage's file name, without version and architecture. | [`a_readable_name_is_taken_from_the_file_name`](../crates/sam-intake/src/id.rs#L81) |
 | App IDs are stable and unique, also when two AppImages have the same name. | [`app_ids_stay_unique_when_names_collide`](../crates/sam-intake/src/id.rs#L98) |
@@ -196,7 +197,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-146 tests.
+148 tests.
 
 | Promise | Test |
 |---|---|
@@ -241,12 +242,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A program of a Cargo build whose helper is not built gets none, even when one is on PATH (an installed SAM or another build): the test then says it cannot run, instead of checking a different version. | [`a_build_never_takes_a_helper_from_path`](../crates/sam-runner/src/lib.rs#L97) |
 | A test program inside Cargo's build folder finds the helper of its own build, so tests that need it run instead of skipping; an installed program never looks above its own folder. | [`tests_find_the_helper_of_their_own_build`](../crates/sam-runner/src/lib.rs#L121) |
 | With "this computer only", the app reaches only the ports on this computer the user lists. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L115) |
-| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1061) |
-| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1081) |
-| When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L466) |
-| An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L566) |
-| An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L607) |
-| A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L633) |
+| An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L497) |
+| The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1084) |
+| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1160) |
+| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1180) |
+| When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L502) |
+| An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L602) |
+| An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L643) |
+| A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L669) |
 | A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L462) |
 | Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L474) |
 | Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L495) |
@@ -365,7 +368,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-26 tests.
+27 tests.
 
 | Promise | Test |
 |---|---|
@@ -395,6 +398,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | With this computer only the sandbox dies with its launcher. | [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L169) |
 | A menu start after free space unpacks inside a sandbox. | [`a_menu_start_after_free_space_unpacks_inside_a_sandbox`](../crates/sam-jail-cli/tests/unpack.rs#L87) |
 | Without the command line a menu start refuses to unpack. | [`without_the_command_line_a_menu_start_refuses_to_unpack`](../crates/sam-jail-cli/tests/unpack.rs#L110) |
+| ⟲ Unpacking limits hold inside the unpack sandbox too. | [`an_unpacking_limit_inside_the_sandbox_stops_unpacking`](../crates/sam-jail-cli/tests/unpack.rs#L152) |
 
 ## sam-gtk: The window (logic that runs without a display)
 
@@ -427,4 +431,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 341 automated Rust tests plus 7 scripted checks.
+Total: 345 automated Rust tests plus 7 scripted checks.

@@ -478,8 +478,10 @@ through. SAM itself writes those files without following links.
 | paths with `..` | refused; parent folders are checked so writes cannot be redirected through links |
 | setuid, setgid, sticky, world-writable | removed; files become `0755` or `0644` |
 | links pointing outside the app | removed |
+| a start file that names a program outside the app (`Exec=/usr/bin/…`, `../`) | never used as the app's entry point |
+| named pipes and other special files | removed while unpacking; SAM's own reads refuse them without waiting |
 | device nodes, FIFOs, sockets | removed |
-| huge or endless archives | file-count, size and time limits stop the unpacking and remove partial output |
+| huge or endless archives | file-count, size and time limits stop the unpacking and remove partial output; a limit reached inside the unpack sandbox stops it too, without trying other tools or the AppImage's own unpacker |
 | reading outside the sandbox | SAM itself reads only icon and desktop files, and never follows a link out of the app |
 
 Running the AppImage's own `--appimage-extract` is a fallback that needs your

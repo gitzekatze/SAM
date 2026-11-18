@@ -1401,7 +1401,17 @@ fn real_main(cli: Cli) -> Result<()> {
                 max_bytes,
                 max_seconds,
             };
-            sam_intake::extract::builtin_squashfs_entry(&source, offset, &dest, &limits)?;
+            // Runs inside the unpack sandbox: an exceeded limit gets its own
+            // exit code, so the parent stops instead of trying other ways.
+            if let Err(e) =
+                sam_intake::extract::builtin_squashfs_entry(&source, offset, &dest, &limits)
+            {
+                if sam_core::error::code_of(&e) == Some("extraction-limit") {
+                    eprintln!("error: {}", sam_core::error::message_of(&e));
+                    std::process::exit(sam_intake::extract::EXIT_LIMIT);
+                }
+                return Err(e);
+            }
         }
         Cmd::Dev {
             cmd: DevCmd::Bench { apps },

@@ -119,7 +119,7 @@ impl Sam {
             ..Default::default()
         };
         // Extract into a temporary root; the final id depends on metadata.
-        let root_base = self.extracted_root();
+        let root_base = self.unpack_root()?;
         let incoming = root_base.join(format!(".incoming-{}", &fp.sha256[..12]));
         if incoming.exists() {
             fs::remove_dir_all(&incoming)?;
@@ -319,18 +319,7 @@ impl Sam {
             .context(sam_core::i18n::tr("the AppImage has not been unpacked yet; unpack it with Unpack Again (sam-jail reextract APP)"))?;
         if !x.appdir.join("AppRun").exists() {
             // Some AppImages ship without AppRun; fall back to the desktop Exec.
-            let exec = entry
-                .metadata
-                .exec
-                .split_whitespace()
-                .next()
-                .unwrap_or("")
-                .to_string();
-            let cand = ["usr/bin", "", "bin"]
-                .iter()
-                .map(|d| Path::new(d).join(&exec))
-                .find(|p| !exec.is_empty() && x.appdir.join(p).is_file());
-            if let Some(c) = cand {
+            if let Some(c) = entry_from_exec(&x.appdir, &entry.metadata.exec) {
                 x.entry = c.display().to_string();
                 entry.extraction = Some(x.clone());
             }
@@ -482,5 +471,59 @@ impl Sam {
             let _ = fs::write(p, data);
             let _ = logs.prune(id, kind, 5);
         }
+    }
+}
+
+/// The program to start for an app without `AppRun`: the first word of its
+/// menu entry's `Exec`, looked up in `usr/bin`, the app's top folder and
+/// `bin`, and only a file inside the app: `Exec=/usr/bin/x` or `../../x`
+/// never becomes the entry point (audit I-F9).
+fn entry_from_exec(appdir: &Path, exec: &str) -> Option<PathBuf> {
+    let exec = exec.split_whitespace().next().filter(|e| !e.is_empty())?;
+    ["usr/bin", "", "bin"]
+        .iter()
+        .map(|d| Path::new(d).join(exec))
+        .find(|p| sam_intake::normalize::safe_resolve(appdir, p).is_some_and(|r| r.is_file()))
+}
+
+#[cfg(test)]
+mod entry_tests {
+    use super::entry_from_exec;
+    use std::fs;
+    use std::path::Path;
+
+    /// An app without AppRun starts the program its menu entry names, found
+    /// inside the app; a name that points outside it is never used.
+    #[test]
+    fn the_entry_from_exec_stays_inside_the_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path().join("AppDir");
+        fs::create_dir_all(app.join("usr/bin")).unwrap();
+        fs::write(app.join("usr/bin/tool"), "#!/bin/sh\n").unwrap();
+        fs::write(app.join("top"), "#!/bin/sh\n").unwrap();
+        fs::write(tmp.path().join("outside"), "#!/bin/sh\n").unwrap();
+        assert_eq!(
+            entry_from_exec(&app, "tool %F").as_deref(),
+            Some(Path::new("usr/bin/tool"))
+        );
+        assert_eq!(
+            entry_from_exec(&app, "top").as_deref(),
+            Some(Path::new("top"))
+        );
+        for bad in [
+            "/usr/bin/sh",
+            "../outside",
+            "usr/bin/../../outside",
+            "",
+            "   ",
+        ] {
+            assert_eq!(entry_from_exec(&app, bad), None, "{bad:?}");
+        }
+        fs::create_dir(app.join("usr/bin/folder")).unwrap();
+        assert_eq!(
+            entry_from_exec(&app, "folder"),
+            None,
+            "a folder is no program"
+        );
     }
 }

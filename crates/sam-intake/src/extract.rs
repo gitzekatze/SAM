@@ -93,6 +93,13 @@ fn isolated(iso: &Isolation, source: &Path, writable: &Path, tool: &Path) -> Com
     c
 }
 
+/// Exit code of `sam-jail dev extract-squashfs` when an unpacking limit was
+/// exceeded inside the sandbox. Without it the parent saw only "failed",
+/// tried the next tool (which has only a time limit) and then offered to let
+/// the AppImage unpack itself: a crafted image escaped the limits (audit
+/// I-F3).
+pub const EXIT_LIMIT: i32 = 87;
+
 /// Entry point of `sam-jail dev extract-squashfs` (runs inside the sandbox).
 pub fn builtin_squashfs_entry(src: &Path, offset: u64, dst: &Path, limits: &Limits) -> Result<()> {
     builtin_squashfs(src, offset, dst, limits, Instant::now(), &mut io::stderr())
@@ -672,6 +679,15 @@ fn run_tool(
     f.take(16 * 1024).read_to_string(&mut err).ok();
     if !err.trim().is_empty() {
         writeln!(log, "{}", err.trim_end())?;
+    }
+    if st.code() == Some(EXIT_LIMIT) {
+        let why = err
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("an unpacking limit was exceeded")
+            .trim_start_matches("error: ");
+        return Err(limit_error(why.to_string()));
     }
     if !st.success() {
         bail!("exited with {st}");

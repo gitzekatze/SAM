@@ -196,7 +196,7 @@ Style (follow the system, light or dark), menu entries, repair options, warnings
 
 ## Diagnostics
 
-A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets), *Check all AppImages for changes*, *Remove unused unpacked copies*, the disk space of sandboxed apps, data of removed sandboxes, and a redacted bug report.
+A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets), *Check all AppImages for changes*, *Remove unused unpacked copies* (only app folders SAM made and its own unfinished leftovers; when the unpack location is a folder that also holds other things, nothing else in it is touched, and uninstalling SAM leaves that folder), the disk space of sandboxed apps, data of removed sandboxes, and a redacted bug report.
 
 **Updates:** under *Details*, **Check for Updates** asks the update source the AppImage names (GitHub or the app's own server) whether a newer version is published. If so, the page says which one and offers **Update Now**: SAM downloads it, checks it, puts it in place of the old file and unpacks it, keeping your settings. The old version is kept; **Go back to the previous version** under *Troubleshooting* restores it. (**Open Download Page** is there if you prefer to do it yourself.) *Preferences → Updates* can check every app once a day when SAM opens. When an update description is published (most do), only the changed parts are downloaded.
 
