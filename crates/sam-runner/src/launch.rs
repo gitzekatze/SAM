@@ -325,9 +325,9 @@ pub fn prepare(
     let wanted_seccomp: bool;
     {
         sam_sandbox::write_identity_files(&ctx)?;
-        sam_sandbox::prepare_home_protection(perms, &host.home);
+        sam_sandbox::prepare_home_protection(&ctx);
         // After the folders above are made, so they do not count as new.
-        home_watch = sam_sandbox::HomeWatch::before(perms, &host.home);
+        home_watch = sam_sandbox::HomeWatch::before(&ctx);
         if perms.dbus.session.mode == DbusMode::Filtered
             && host.tools.xdg_dbus_proxy.is_some()
             && host.sockets.dbus_session.is_some()
@@ -549,7 +549,7 @@ pub fn run(
     host: &HostInfo,
 ) -> Result<LaunchRecord> {
     let logs = Logs::new(paths);
-    let log_path = logs.new_log_path(
+    let (log_path, mut log) = logs.create(
         &app.id,
         if opts.tracer.is_some() {
             LogKind::Diagnose
@@ -558,8 +558,6 @@ pub fn run(
         },
     )?;
     let started_at = now();
-    let mut log =
-        fs::File::create(&log_path).with_context(|| format!("creating {}", log_path.display()))?;
     writeln!(
         log,
         "# SAM launch log\n# app: {} ({})\n# started: {}",

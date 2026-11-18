@@ -196,8 +196,14 @@ Each sandbox has its own shared memory folder.
 Granting the whole home, or a folder that contains it (such as `/home`),
 still keeps these protections:
 
-**Hidden unless you allow them explicitly:** `~/.ssh`, `~/.gnupg`, keyrings,
-password stores, cloud credentials and browser profiles.
+**Hidden unless you allow them explicitly:** `~/.ssh`, `~/.gnupg`, keyrings
+and password stores (pass, KeePassXC, Bitwarden, 1Password, KWallet), cloud
+and developer logins (AWS, Google Cloud, Azure, Kubernetes, Docker, GitHub
+and GitLab command line tools, npm, PyPI, Cargo, rclone, `~/.netrc`, Git
+credentials and others), mail and browser profiles (Thunderbird, Firefox,
+LibreWolf, Chrome, Chromium, Brave, Vivaldi, Edge, Opera and others), and
+the data of apps installed as Flatpak or Snap. The full list is in
+`crates/sam-core/src/places.rs`.
 
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are), whether a
@@ -230,6 +236,22 @@ How these stay protected with the home writable:
   above SAM's own folders, whatever grant shows them: with write access to
   `~/.local` alone, `~/.local/share` cannot be moved away to plant records
   where SAM keeps its own.
+- **Parts of the home count too.** A writable folder that holds any of
+  these places (`~/.config`, `~/.local`, a dotfiles folder that `~/.bashrc`
+  links into, a user folder) gets the same protections as the whole home:
+  the places are made first, locked, and watched while the app runs.
+- **User folders are only what they are.** `user-dirs.dirs` says where
+  Documents, Downloads and the others are. A folder set there to the home,
+  a folder above it, a system folder, a key folder, a start place or a
+  place inside SAM's folders is not shown, and the launch log says why (a
+  user folder that holds one of SAM's folders is shown, with SAM's folder
+  hidden inside it). A user folder
+  that is a link is shown where it leads, with the link where the app looks
+  for it.
+- **Files named on the command line** are checked where they really lead:
+  never a key or credential store, a start place (also through a link: a
+  dotfiles folder holding the real `.bashrc` is not shared), or anything
+  inside SAM's folders.
 - **No grant undoes these protections.** They are added after every grant,
   so an extra folder (`/home`, `~/.local`, `~/.config`) cannot show a
   hidden key or make a start file writable again. Grants are checked where
@@ -253,7 +275,8 @@ How these stay protected with the home writable:
   report, without a timer.
   The same holds for `~/.ssh` and `~/.gnupg` when the app was not given them.
 - **Key folders that are links** (dotfiles managed with `stow`, for example)
-  are hidden where they point.
+  are hidden where they point; **start files that are links** are locked
+  where they point, and a replaced link is put back.
 
 **What full home access does not cover.** With read and write access to the
 home, an app can still change other files that programs outside the sandbox
@@ -438,7 +461,10 @@ SAM keeps what it learns about you on your computer.
   the last 20 launch logs (Preferences → Diagnostics). A launch log holds
   what the app printed, which can include personal data; it never leaves your
   computer unless you send it, and older logs are deleted automatically
-  (`the_newest_log_survives_pruning_within_one_second`).
+  (`the_newest_log_survives_pruning_within_one_second`). Logs and app
+  records (which can hold values you gave an app, such as an API key) are
+  readable by you alone, not by other people on the same computer
+  (`grants_of_parts_of_the_home_never_reach_start_places_or_secrets`).
 - **Your folders:** SAM looks into the folders you add and reads nothing
   there but the AppImages it lists. It also looks at the file names in your
   Downloads folder, to offer adding it when AppImages are waiting there;

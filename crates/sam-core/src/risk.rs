@@ -484,15 +484,35 @@ pub const SENSITIVE_PATHS: &[&str] = &[
 ];
 
 pub fn is_sensitive_path(path: &str) -> bool {
-    let norm = normalize_display_path(path);
-    SENSITIVE_PATHS.iter().any(|s| {
-        let s = normalize_display_path(s);
-        norm == s || (s != "/" && s != "~" && norm.starts_with(&format!("{s}/")))
-    })
+    is_sensitive_path_in(path, &crate::util::home_dir())
 }
 
-fn normalize_display_path(p: &str) -> String {
-    let home = crate::util::home_dir();
+/// [`is_sensitive_path`] for the home folder `home`: the system folders,
+/// the home itself, its key folders and credential stores, and the places
+/// that make the computer run something (start files, menu entries, SAM's
+/// own settings; the same lists the sandbox locks, so a grant of
+/// `~/.bash_profile` is as dangerous as one of `~/.bashrc`; audit D-M3).
+/// Drives under `/run/media` are user files, not system ones.
+pub fn is_sensitive_path_in(path: &str, home: &std::path::Path) -> bool {
+    let norm = normalize_display_path(path, home);
+    if norm == "/run/media" || norm.starts_with("/run/media/") {
+        return false;
+    }
+    let home_places = crate::places::PROTECTED_RO
+        .iter()
+        .chain(crate::places::SENSITIVE_DOTFILES)
+        .map(|p| format!("~/{p}"));
+    SENSITIVE_PATHS
+        .iter()
+        .map(|s| s.to_string())
+        .chain(home_places)
+        .any(|s| {
+            let s = normalize_display_path(&s, home);
+            norm == s || (s != "/" && s != "~" && norm.starts_with(&format!("{s}/")))
+        })
+}
+
+fn normalize_display_path(p: &str, home: &std::path::Path) -> String {
     let home_s = home.to_string_lossy();
     let mut p = p.trim().trim_end_matches('/').to_string();
     if p.is_empty() {
@@ -586,5 +606,28 @@ mod tests {
         assert!(is_sensitive_path("/"));
         assert!(!is_sensitive_path("~/Projects"));
         assert!(!is_sensitive_path("/mnt/data"));
+    }
+
+    /// Every start place and credential store the sandbox locks or hides
+    /// counts as sensitive, under any home; a drive under /run/media does
+    /// not, though /run does (audit D-M2, D-M3).
+    #[test]
+    fn start_places_and_credential_stores_count_as_sensitive() {
+        let home = std::path::Path::new("/mnt/disk/home/ann");
+        let s = |p: &str| is_sensitive_path_in(p, home);
+        for p in [
+            "/mnt/disk/home/ann/.bash_profile",
+            "/mnt/disk/home/ann/.ssh/id_ed25519",
+            "/mnt/disk/home/ann/.config/vivaldi/Default",
+            "/mnt/disk/home/ann/.local/bin/ls",
+            "/mnt/disk/home/ann",
+            "~/.zshenv",
+            "/run/user/1000",
+        ] {
+            assert!(s(p), "{p}");
+        }
+        for p in ["/run/media/ann/stick/a.txt", "/mnt/disk/home/ann/Documents"] {
+            assert!(!s(p), "{p}");
+        }
     }
 }

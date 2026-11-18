@@ -144,12 +144,26 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
         std::process::id()
     ));
     {
-        let mut f =
-            fs::File::create(&tmp).with_context(|| format!("creating {}", tmp.display()))?;
+        // Readable by the user only: records hold environment values such
+        // as API keys, which other people on the computer must not read
+        // (audit U-L6). A leftover from a crash is replaced, not reused
+        // with its old mode.
+        use std::os::unix::fs::OpenOptionsExt;
+        let _ = fs::remove_file(&tmp);
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)
+            .with_context(|| format!("creating {}", tmp.display()))?;
         f.write_all(data)?;
         f.sync_all().ok();
     }
     fs::rename(&tmp, path).with_context(|| format!("renaming into {}", path.display()))?;
+    // The new name lasts a crash only once the folder is written too.
+    if let Ok(d) = fs::File::open(dir) {
+        d.sync_all().ok();
+    }
     Ok(())
 }
 

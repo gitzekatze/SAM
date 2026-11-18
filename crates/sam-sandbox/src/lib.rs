@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use sam_core::permissions::*;
+use sam_core::places::{PROTECTED_RO, SENSITIVE_DOTFILES};
 use sam_core::util::expand_home;
 use sam_core::{BubblewrapStatus, HostInfo, LaunchContext, SandboxCommand};
 
@@ -145,101 +146,6 @@ const ETC_NETWORK: &[&str] = &[
 const ETC_GPU: &[&str] = &["vulkan", "OpenCL", "nvidia"];
 const ETC_AUDIO: &[&str] = &["alsa", "asound.conf", "pulse", "pipewire"];
 
-/// Sensitive dotfiles hidden when full home access is granted with
-/// `hidden_files = false`.
-const SENSITIVE_DOTFILES: &[&str] = &[
-    ".password-store",
-    ".local/share/keyrings",
-    ".pki",
-    ".aws",
-    ".kube",
-    ".docker",
-    ".config/gcloud",
-    ".azure",
-    ".netrc",
-    ".git-credentials",
-    ".config/keepassxc",
-    ".mozilla",
-    ".config/chromium",
-    ".config/google-chrome",
-    ".config/BraveSoftware",
-    ".thunderbird",
-    ".local/share/kwalletd",
-];
-
-/// Paths kept read-only even with full home read/write: SAM's own state
-/// and common persistence vectors.
-const PROTECTED_RO: &[&str] = &[
-    ".config/sam",
-    ".local/share/sam",
-    ".local/share/applications",
-    ".config/autostart",
-    ".config/systemd",
-    ".bashrc",
-    ".bash_profile",
-    ".profile",
-    ".zshrc",
-    ".zprofile",
-    ".config/fish",
-    ".config/environment.d",
-    ".config/plasma-workspace",
-    ".xinitrc",
-    ".xprofile",
-    // Programs on $PATH, D-Bus services the session bus starts outside the
-    // sandbox, default apps for files and links, desktop scripting and
-    // service menus, and configs that can run commands (git hooks, editors).
-    ".local/bin",
-    "bin",
-    ".local/share/dbus-1",
-    ".config/mimeapps.list",
-    // Where Documents, Downloads and the other user folders are: changed, it
-    // would point other apps' folder grants at any folder.
-    ".config/user-dirs.dirs",
-    ".local/share/kwin",
-    ".local/share/plasma",
-    ".local/share/kservices5",
-    ".local/share/kio/servicemenus",
-    ".local/share/nautilus/scripts",
-    ".gitconfig",
-    ".config/git",
-    ".vimrc",
-    ".config/nvim",
-    ".pam_environment",
-    // More files that run commands at login, logout, in a shell, an X
-    // session, an editor, a terminal multiplexer or a version control tool.
-    ".bash_login",
-    ".bash_logout",
-    ".zshenv",
-    ".zlogin",
-    ".zlogout",
-    ".xsessionrc",
-    ".xsession",
-    ".gvimrc",
-    ".exrc",
-    ".tmux.conf",
-    ".config/tmux",
-    ".screenrc",
-    ".hgrc",
-    // Services, sound-server and compositor settings that start programs
-    // (audit S-F6): `systemd --user` units under ~/.local/share, PipeWire's
-    // `context.exec`, shell additions, and the start files of Wayland and X
-    // compositors and window managers.
-    ".local/share/systemd",
-    ".config/pipewire",
-    ".config/wireplumber",
-    ".bash_aliases",
-    ".bash_completion",
-    ".config/autostart-scripts",
-    ".config/sway",
-    ".config/hypr",
-    ".config/i3",
-    ".config/niri",
-    ".config/labwc",
-    ".config/river",
-    ".config/wayfire.ini",
-    ".config/openbox",
-];
-
 /// Protected paths created (empty) before a full-home read/write start when
 /// they are missing, so they can be mounted read-only: an app could create
 /// them otherwise. Only where an empty one behaves like a missing one
@@ -313,28 +219,65 @@ fn protected_places_with(
     out
 }
 
-/// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
-/// home before a start that can write the home (full home read/write, or a
-/// writable folder that contains it). Called by the launcher.
-pub fn prepare_home_protection(p: &PermissionSet, home: &Path) {
-    let fs = &p.filesystem;
-    let full_rw = fs.home && fs.home_access == Access::Rw;
-    let grant_rw = fs
-        .custom_write
+/// Whether this start shows a place that makes the computer run something
+/// (a start file, a menu entry, the folders above them, a key folder the
+/// app was not given) writable, through any grant: the whole home, a user
+/// folder, an extra folder, or a link to one of them. The one answer to
+/// "can this start write the home's start places", for creating the
+/// missing ones before the start and for looking again after it (audit
+/// D-M3: only grants of the whole home counted, so a writable `~/.config`
+/// let an app create `~/.config/autostart` and nobody looked).
+pub fn writes_start_places(ctx: &LaunchContext) -> bool {
+    let views = Views::base(ctx);
+    let home = &ctx.host.home;
+    watched_places(&ctx.permissions, home)
         .iter()
-        .any(|c| home.starts_with(expand_home(c)));
-    if !(full_rw || grant_rw) {
+        .any(|rel| shown_writable(&views, &home.join(rel)))
+}
+
+/// Whether the sandbox shows `p` writable at any place.
+fn shown_writable(views: &Views, p: &Path) -> bool {
+    views.seen_at(p).iter().any(|c| views.writable(c))
+}
+
+/// The places whose appearance makes the computer run something later:
+/// the start places, the folders above them, and the key folders the app
+/// was not given (a planted ~/.ssh/authorized_keys or
+/// ~/.gnupg/gpg-agent.conf would act later). Not the places hidden for
+/// holding secrets: a browser creating its profile is fine.
+fn watched_places(p: &PermissionSet, home: &Path) -> Vec<String> {
+    let fs = &p.filesystem;
+    let keys = [(".ssh", fs.ssh), (".gnupg", fs.gnupg)]
+        .into_iter()
+        .filter(|(_, granted)| !granted)
+        .map(|(k, _)| k.to_string());
+    protected_places(home)
+        .into_iter()
+        .chain(ancestors_of(
+            protected_places(home).iter().map(String::as_str),
+        ))
+        .chain(keys)
+        .collect()
+}
+
+/// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
+/// home that this start would show writable ([`writes_start_places`]), so
+/// they can be mounted read-only. Called by the launcher.
+pub fn prepare_home_protection(ctx: &LaunchContext) {
+    if !writes_start_places(ctx) {
         return;
     }
+    let home = &ctx.host.home;
+    let views = Views::base(ctx);
     for d in PROTECTED_CREATE_DIRS {
         let path = home.join(d);
-        if fs::symlink_metadata(&path).is_err() {
+        if fs::symlink_metadata(&path).is_err() && shown_writable(&views, &path) {
             let _ = fs::create_dir_all(&path);
         }
     }
     for f in PROTECTED_CREATE_FILES {
         let path = home.join(f);
-        if fs::symlink_metadata(&path).is_err() {
+        if fs::symlink_metadata(&path).is_err() && shown_writable(&views, &path) {
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
@@ -346,16 +289,24 @@ pub fn prepare_home_protection(p: &PermissionSet, home: &Path) {
     }
 }
 
-/// The folders between the home and each protected path (`.config`,
-/// `.local`, `.local/share`, `.local/share/kio`, …), parents first.
+/// The folders between the home and each protected path and each hidden
+/// credential store (`.config`, `.local`, `.local/share`,
+/// `.local/share/kio`, …), parents first: they are pinned so that nothing
+/// under them can be renamed away.
 fn protected_ancestors(home: &Path) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
     let places = protected_places(home);
-    for p in places
-        .iter()
-        .map(String::as_str)
-        .chain(SENSITIVE_DOTFILES.iter().copied())
-    {
+    ancestors_of(
+        places
+            .iter()
+            .map(String::as_str)
+            .chain(SENSITIVE_DOTFILES.iter().copied()),
+    )
+}
+
+/// The folders above each of `places` (relative to the home), parents first.
+fn ancestors_of<'a>(places: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for p in places {
         let parts: Vec<&str> = p.split('/').collect();
         for n in 1..parts.len() {
             let a = parts[..n].join("/");
@@ -410,35 +361,18 @@ pub enum Aside {
 }
 
 impl HomeWatch {
-    /// The snapshot before a start that can write the home (full home
-    /// read/write, or a writable folder that contains it); `None` otherwise.
-    pub fn before(p: &PermissionSet, home: &Path) -> Option<HomeWatch> {
-        let fs = &p.filesystem;
-        let full_rw = fs.home && fs.home_access == Access::Rw;
-        let grant_rw = fs
-            .custom_write
-            .iter()
-            .any(|c| home.starts_with(expand_home(c)));
-        if !(full_rw || grant_rw) {
+    /// The snapshot before a start that can write a start place
+    /// ([`writes_start_places`]); `None` otherwise.
+    pub fn before(ctx: &LaunchContext) -> Option<HomeWatch> {
+        if !writes_start_places(ctx) {
             return None;
         }
+        let home = &ctx.host.home;
         let mut w = HomeWatch {
             home: home.to_path_buf(),
             ..Default::default()
         };
-        // Places that make the computer run something, not those hidden for
-        // holding secrets (a browser creating its profile is fine), and the
-        // key folders when the app was not given them: a planted
-        // ~/.ssh/authorized_keys or ~/.gnupg/gpg-agent.conf would act later.
-        let keys = [(".ssh", fs.ssh), (".gnupg", fs.gnupg)]
-            .into_iter()
-            .filter(|(_, granted)| !granted)
-            .map(|(k, _)| k.to_string());
-        let places = protected_places(home)
-            .into_iter()
-            .chain(protected_ancestors(home))
-            .chain(keys);
-        for rel in places {
+        for rel in watched_places(&ctx.permissions, home) {
             let path = home.join(&rel);
             match fs::symlink_metadata(&path) {
                 Err(_) => w.absent.push(rel),
@@ -789,8 +723,13 @@ pub struct Views {
 impl Views {
     /// Every grant, including files opened with the app and SAM's binds.
     pub fn of(ctx: &LaunchContext) -> Views {
+        Views::with_opened(ctx, &opened_paths(ctx))
+    }
+
+    /// [`Views::of`] with the opened files already worked out.
+    fn with_opened(ctx: &LaunchContext, opened: &[(PathBuf, bool)]) -> Views {
         let mut v = Views::base(ctx);
-        v.grants.extend(opened_paths(ctx));
+        v.grants.extend(opened.iter().cloned());
         for (_, sb, rw) in &ctx.extra_binds {
             v.grants.push((sb.clone(), *rw));
         }
@@ -808,8 +747,8 @@ impl Views {
         for key in XDG_DIR_KEYS {
             let acc = fsp.xdg_access(key);
             if acc.is_granted() {
-                if let Some(d) = ctx.host.xdg_dir(key) {
-                    grants.push((d.to_path_buf(), acc == Access::Rw));
+                if let Ok(d) = user_dir(ctx, key) {
+                    grants.push((d, acc == Access::Rw));
                 }
             }
         }
@@ -838,6 +777,11 @@ impl Views {
         self.grant_of(p).is_some_and(|(_, rw)| *rw)
     }
 
+    /// Whether the sandbox shows `p`, or anything inside it.
+    fn shows_any_of(&self, p: &Path) -> bool {
+        self.visible(p) || self.grants.iter().any(|(g, _)| g.starts_with(p))
+    }
+
     /// Every place in the sandbox where host path `p` is shown: its own path
     /// and, when that differs, its resolved one.
     pub fn seen_at(&self, p: &Path) -> Vec<PathBuf> {
@@ -849,6 +793,52 @@ impl Views {
         }
         out
     }
+}
+
+/// Why a user folder (Documents, Downloads, …) is not shown.
+#[derive(Debug, PartialEq)]
+enum NotShown {
+    Missing,
+    /// It is the home, a folder above it, a system folder, a credential
+    /// store, a start place or one of SAM's folders.
+    Refused(PathBuf),
+}
+
+/// A granted user folder as it is bound: where `user-dirs.dirs` says it is,
+/// with links resolved (what the app sees, as for extra folders). Never a
+/// place that would show more than the folder: `user-dirs.dirs` is a plain
+/// text file, and a line like `XDG_DOCUMENTS_DIR="/"` or one pointing at a
+/// link to `/home` granted the whole computer or every home, without the
+/// protections inside (audit S-F11).
+fn user_dir(ctx: &LaunchContext, key: &str) -> std::result::Result<PathBuf, NotShown> {
+    let dir = ctx.host.xdg_dir(key).ok_or(NotShown::Missing)?;
+    let real = resolve(dir);
+    let home = &ctx.host.home;
+    if resolve(home).starts_with(&real) || refused_host_path(&real, home) || inside_sam(ctx, &real)
+    {
+        return Err(NotShown::Refused(dir.to_path_buf()));
+    }
+    Ok(real)
+}
+
+/// A host path SAM never shows on its own (a system folder, the home, a
+/// key or credential store, a start place): the risk words call it
+/// dangerous. Compared with the home as it is named and as it is reached
+/// (a home under a link).
+fn refused_host_path(p: &Path, home: &Path) -> bool {
+    let p = p.to_string_lossy();
+    sam_core::risk::is_sensitive_path_in(&p, home)
+        || sam_core::risk::is_sensitive_path_in(&p, &resolve(home))
+}
+
+/// Whether `real` (a resolved path) is one of SAM's folders or inside one.
+/// A folder that only holds one may be shown: SAM's folder is hidden
+/// inside it, wherever the sandbox shows it.
+fn inside_sam(ctx: &LaunchContext, real: &Path) -> bool {
+    ctx.sam_dirs
+        .iter()
+        .map(|d| resolve(d))
+        .any(|d| real.starts_with(&d))
 }
 
 /// A granted folder as it is bound: with `~` expanded and links resolved,
@@ -943,6 +933,14 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
     for prot in protected_places(home) {
         let path = home.join(&prot);
         for c in views.seen_at(&path) {
+            // A link (dotfiles kept elsewhere) cannot be mounted on: what it
+            // points to is locked (also in `seen_at`), and the link itself
+            // is put back after the start if the app replaces it
+            // (regression: with `~/.bashrc` a link and the whole home
+            // granted, Bubblewrap refused and no app started).
+            if fs::symlink_metadata(&c).is_ok_and(|m| m.file_type().is_symlink()) {
+                continue;
+            }
             if matches!(prot.as_str(), ".config/sam" | ".local/share/sam") {
                 if c.is_dir() {
                     a.push("--tmpfs").push(c.to_string_lossy());
@@ -959,11 +957,15 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
 /// document portal; `true` means writable (`filesystem.opened_files`).
 /// Relative names count from the folder the app was started in.
 ///
-/// Never granted this way: options (`-x`), sensitive paths (keys, `~/.config`,
-/// `~/.local`, system folders), files and folders that can make the desktop
-/// run something outside the sandbox (start files of shells and the session,
-/// menu entries, SAM's own settings), the root, the home folder or a folder
-/// that contains it, and folders outside the home folder and mounted drives.
+/// Never granted this way: options (`-x`), sensitive paths (keys and
+/// credential stores, `~/.config`, `~/.local`, system folders), files and
+/// folders that can make the desktop run something outside the sandbox
+/// (start files of shells and the session, menu entries), SAM's own
+/// folders wherever they are, the root, the home folder or a folder that
+/// contains it, and folders outside the home folder and mounted drives.
+/// Each is compared as named and as reached through links: with
+/// `~/.bashrc` a link into `~/dotfiles`, opening `~/dotfiles` would share
+/// the real start file (audit D-M2, S-F13).
 pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
     let rw = ctx.permissions.filesystem.opened_files == Access::Rw;
     let home = &ctx.host.home;
@@ -972,6 +974,22 @@ pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
             .iter()
             .any(|d| p.starts_with(d))
     };
+    let views = Views::base(ctx);
+    // Every place never shared, as named and where it really is. A folder
+    // holding one of SAM's folders may be opened (SAM's folder is hidden
+    // inside it); one holding a start place or a credential store not.
+    let both = |p: PathBuf| {
+        let r = resolve(&p);
+        [p, r]
+    };
+    let keep_out: Vec<PathBuf> = protected_places(home)
+        .iter()
+        .map(String::as_str)
+        .chain(SENSITIVE_DOTFILES.iter().copied())
+        .chain([".ssh", ".gnupg"])
+        .flat_map(|p| both(home.join(p)))
+        .collect();
+    let sam: Vec<PathBuf> = ctx.sam_dirs.iter().cloned().flat_map(both).collect();
     let mut out: Vec<(PathBuf, bool)> = Vec::new();
     for arg in &ctx.args {
         if arg.is_empty() || arg.starts_with('-') {
@@ -989,20 +1007,23 @@ pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
         let Ok(meta) = fs::metadata(&real) else {
             continue;
         };
-        let sensitive =
-            |p: &Path| sam_core::risk::is_sensitive_path(&p.to_string_lossy()) && !on_drive(p);
-        if sensitive(&joined) || sensitive(&real) || visible_in_sandbox(&real, ctx) {
+        if refused_host_path(&joined, home)
+            || refused_host_path(&real, home)
+            || views.visible(&real)
+        {
             continue;
         }
-        let protected = protected_places(home)
+        let kept_out = keep_out
             .iter()
-            .map(|p| home.join(p))
-            .any(|p| real.starts_with(&p) || (meta.is_dir() && p.starts_with(&real)));
-        if protected {
+            .any(|p| real.starts_with(p) || (meta.is_dir() && p.starts_with(&real)))
+            || sam.iter().any(|d| real.starts_with(d));
+        if kept_out {
             continue;
         }
         if meta.is_dir() {
-            if home.starts_with(&real) || !(real.starts_with(home) || on_drive(&real)) {
+            if resolve(home).starts_with(&real)
+                || !(real.starts_with(resolve(home)) || on_drive(&real))
+            {
                 continue;
             }
         } else if !meta.is_file() {
@@ -1014,11 +1035,6 @@ pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
         }
     }
     out
-}
-
-fn visible_in_sandbox(p: &Path, ctx: &LaunchContext) -> bool {
-    let v = Views::base(ctx);
-    v.visible(p) || v.visible(&resolve(p))
 }
 
 impl Bubblewrap {
@@ -1070,11 +1086,15 @@ impl Bubblewrap {
             .as_ref()
             .context(sam_core::i18n::tr("bubblewrap (bwrap) is not installed"))?;
         // Each step adds its part of the Bubblewrap command, in this order.
+        let opened = opened_paths(ctx);
+        let views = Views::with_opened(ctx, &opened);
         let mut s = Section {
             ctx,
             a: Args { v: Vec::new() },
             notes: Vec::new(),
             keep_fds: Vec::new(),
+            opened,
+            views,
         };
         s.namespaces();
         s.system();
@@ -1110,6 +1130,11 @@ struct Section<'c> {
     a: Args,
     notes: Vec<String>,
     keep_fds: Vec<i32>,
+    /// The files named on the command line that are granted, worked out
+    /// once per start (audit S-F13: four times before).
+    opened: Vec<(PathBuf, bool)>,
+    /// Every grant ([`Views::of`]).
+    views: Views,
 }
 
 impl Section<'_> {
@@ -1363,8 +1388,8 @@ impl Section<'_> {
             if fsp.home_access != Access::Rw {
                 for key in XDG_DIR_KEYS {
                     if fsp.xdg_access(key) == Access::Rw {
-                        if let Some(dir) = h.xdg_dir(key) {
-                            mount(dir, &|m| m.op2("--bind-try", dir, dir));
+                        if let Ok(dir) = user_dir(ctx, key) {
+                            mount(&dir, &|m| m.op2("--bind-try", &dir, &dir));
                         }
                     }
                 }
@@ -1392,18 +1417,33 @@ impl Section<'_> {
                 if !acc.is_granted() {
                     continue;
                 }
-                match h.xdg_dir(key) {
-                    Some(dir) if dir.exists() => {
+                match user_dir(ctx, key).and_then(|r| {
+                    if r.exists() {
+                        Ok(r)
+                    } else {
+                        Err(NotShown::Missing)
+                    }
+                }) {
+                    Ok(real) => {
                         let op = if acc == Access::Rw {
                             "--bind-try"
                         } else {
                             "--ro-bind-try"
                         };
-                        mount(dir, &|m| m.op2(op, dir, dir));
+                        // At its real place, and a link where the app
+                        // looks for it when that is a link on the host.
+                        mount(&real, &|m| m.op2(op, &real, &real));
+                        if let Some(dir) = h.xdg_dir(key).filter(|d| *d != real) {
+                            mount(dir, &|m| m.op2("--symlink", &real, dir));
+                        }
                     }
-                    _ => notes.push(sam_core::i18n::trf(
+                    Err(NotShown::Missing) => notes.push(sam_core::i18n::trf(
                         "{key} folder does not exist on the host; not bound",
                         &[("key", &key)],
+                    )),
+                    Err(NotShown::Refused(dir)) => notes.push(sam_core::i18n::trf(
+                        "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound",
+                        &[("key", &key), ("path", &dir.display())],
                     )),
                 }
             }
@@ -1429,7 +1469,7 @@ impl Section<'_> {
             mount(&path, &|m| m.op2("--bind-try", &path, &path));
         }
         // Files and folders named on the command line, one by one.
-        for (path, rw) in opened_paths(ctx) {
+        for (path, rw) in self.opened.clone() {
             mount(&path, &|m| {
                 m.op2(
                     if rw { "--bind-try" } else { "--ro-bind-try" },
@@ -1449,8 +1489,8 @@ impl Section<'_> {
                 )
             });
         }
-        let views = Views::of(ctx);
-        for p in pins(&home, &views, &ctx.sam_dirs) {
+        let views = &self.views;
+        for p in pins(&home, views, &ctx.sam_dirs) {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
         // Stable: at equal depth, the order above stays (a pin after the
@@ -1460,7 +1500,7 @@ impl Section<'_> {
         for (_, m) in mounts {
             a.v.extend(m.v);
         }
-        guard_home(a, &home, fsp, &views);
+        guard_home(a, &home, fsp, views);
         for (host_p, sb, rw) in &ctx.extra_binds {
             a.op2(if *rw { "--bind" } else { "--ro-bind" }, host_p, sb);
         }
@@ -1714,14 +1754,22 @@ impl Section<'_> {
         // drive that held SAM's moved unpack folder showed it, writable).
         // Every place the sandbox shows them, also through a link in a
         // granted path (audit S-F3).
-        let views = Views::of(ctx);
+        let views = &self.views;
         for d in &ctx.sam_dirs {
             // A folder inside another hidden one is hidden with it.
             let nested = ctx.sam_dirs.iter().any(|o| o != d && d.starts_with(o));
             if nested || !d.is_dir() {
                 continue;
             }
-            for c in views.seen_at(d) {
+            // Also where a grant shows only something inside it (audit
+            // S-F13: a folder granted inside SAM's moved folder was shown).
+            let mut places = views.seen_at(d);
+            for c in [d.clone(), resolve(d)] {
+                if views.shows_any_of(&c) && !places.contains(&c) {
+                    places.push(c);
+                }
+            }
+            for c in places {
                 a.push("--tmpfs").push(c.to_string_lossy());
             }
             // Where a bind shows it under another path in the sandbox.
@@ -1801,10 +1849,12 @@ impl Section<'_> {
         // The folder it was started in, if the app sees it: granted, or
         // holding a file named on the command line (`hx notes.txt`), so that
         // relative names find the file.
-        let in_owd = opened_paths(ctx)
+        let in_owd = self
+            .opened
             .iter()
             .any(|(p, _)| p.starts_with(&ctx.owd) || ctx.owd.starts_with(p));
-        let chdir = if visible_in_sandbox(&ctx.owd, ctx) || in_owd {
+        let views = &self.views;
+        let chdir = if views.visible(&ctx.owd) || views.visible(&resolve(&ctx.owd)) || in_owd {
             ctx.owd.clone()
         } else {
             home.clone()
@@ -2645,6 +2695,12 @@ mod tests {
 /// without any test noticing.
 #[cfg(test)]
 mod guard_tests {
+    /// Whether the sandbox shows `p`, as named or as reached.
+    fn visible_in_sandbox(p: &Path, ctx: &LaunchContext) -> bool {
+        let v = Views::base(ctx);
+        v.visible(p) || v.visible(&resolve(p))
+    }
+
     use super::*;
     use sam_core::sandbox::sample_context;
 
@@ -2731,10 +2787,10 @@ mod guard_tests {
         p.filesystem.home = true;
         p.filesystem.home_access = Access::Rw;
         assert!(
-            HomeWatch::before(&PermissionSet::default(), &home).is_none(),
+            HomeWatch::before(&ctx_for(&PermissionSet::default(), &home)).is_none(),
             "nothing to watch without a writable home"
         );
-        let w = HomeWatch::before(&p, &home).unwrap();
+        let w = HomeWatch::before(&ctx_for(&p, &home)).unwrap();
         // What the app does.
         fs::write(home.join(".bash_profile"), "x").unwrap();
         fs::create_dir_all(home.join(".mozilla/firefox")).unwrap();
@@ -2763,7 +2819,7 @@ mod guard_tests {
         // An app given ~/.ssh keeps what it creates there.
         fs::remove_dir_all(home.join(".ssh")).ok();
         p.filesystem.ssh = true;
-        let w = HomeWatch::before(&p, &home).unwrap();
+        let w = HomeWatch::before(&ctx_for(&p, &home)).unwrap();
         fs::create_dir_all(home.join(".ssh")).unwrap();
         assert!(w.settle(&aside).is_empty());
         assert!(home.join(".ssh").is_dir());
@@ -2804,6 +2860,15 @@ mod guard_tests {
         assert!(!has_seq(&args_of(&ctx), &["--bind", &c, &c]));
     }
 
+    /// A start of `p` with `home` as the home and no user folders.
+    fn ctx_for(p: &PermissionSet, home: impl AsRef<Path>) -> LaunchContext {
+        let mut c = sample_context();
+        c.host.home = home.as_ref().to_path_buf();
+        c.host.xdg_dirs.clear();
+        c.permissions = p.clone();
+        c
+    }
+
     fn full_rw() -> PermissionSet {
         let mut p = PermissionSet::strict_gui();
         p.filesystem.home = true;
@@ -2821,7 +2886,7 @@ mod guard_tests {
         let t = tempfile::tempdir().unwrap();
         let home = t.path().join("home");
         fs::create_dir_all(&home).unwrap();
-        let w = HomeWatch::before(&full_rw(), &home).unwrap();
+        let w = HomeWatch::before(&ctx_for(&full_rw(), &home)).unwrap();
 
         // 1001 earlier copies in SAM's folder.
         let aside = t.path().join("aside");
@@ -2852,7 +2917,7 @@ mod guard_tests {
         // Nothing works (a home folder SAM cannot change): said so.
         let locked = t.path().join("locked");
         fs::create_dir_all(&locked).unwrap();
-        let w2 = HomeWatch::before(&full_rw(), &locked).unwrap();
+        let w2 = HomeWatch::before(&ctx_for(&full_rw(), &locked)).unwrap();
         fs::write(locked.join(".zshrc"), "evil").unwrap();
         fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
         let m = w2.settle(&blocked.join("aside"));
@@ -2967,6 +3032,233 @@ mod guard_tests {
         );
     }
 
+    /// Keys, credential stores, start places (also behind a link) and SAM's
+    /// own files named on the command line are never shared, whatever the
+    /// home is called; an ordinary file is, and so is a folder that only
+    /// holds SAM's folder (SAM's folder is hidden inside it) (audit D-M2,
+    /// S-F13).
+    #[test]
+    fn keys_start_places_and_sams_files_are_never_opened() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        for d in [
+            ".ssh",
+            ".config/vivaldi/Default",
+            "dotfiles",
+            "Games/sam",
+            "work",
+        ] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        for f in [
+            ".ssh/id_ed25519",
+            ".netrc",
+            ".config/vivaldi/Default/Login Data",
+            "dotfiles/bashrc",
+            "Games/sam/record.json",
+            "work/a.txt",
+        ] {
+            fs::write(home.join(f), "x").unwrap();
+        }
+        std::os::unix::fs::symlink(home.join("dotfiles/bashrc"), home.join(".bashrc")).unwrap();
+        let mut ctx = sample_context();
+        ctx.host.home = home.clone();
+        ctx.host.xdg_dirs.clear();
+        ctx.owd = home.clone();
+        ctx.sam_dirs = vec![home.join("Games/sam")];
+        ctx.permissions.filesystem.opened_files = Access::Rw;
+        for arg in [
+            ".ssh/id_ed25519",
+            ".netrc",
+            ".config/vivaldi/Default/Login Data",
+            ".bashrc",
+            "dotfiles",
+            "dotfiles/bashrc",
+            "Games/sam/record.json",
+        ] {
+            ctx.args = vec![arg.into()];
+            assert_eq!(opened_paths(&ctx), vec![], "{arg} is not shared");
+        }
+        for arg in ["work/a.txt", "Games"] {
+            ctx.args = vec![arg.into()];
+            assert_eq!(opened_paths(&ctx).len(), 1, "{arg} is shared");
+        }
+    }
+
+    /// SAM's folder is hidden also when a grant shows only something inside
+    /// it (audit S-F13): the grant does not reach SAM's files.
+    #[test]
+    fn a_grant_inside_sams_folder_does_not_show_it() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = t.path().join("sam");
+        fs::create_dir_all(sam.join("data/apps")).unwrap();
+        let mut ctx = ctx_for(&PermissionSet::strict_gui(), t.path().join("home"));
+        ctx.sam_dirs = vec![sam.clone()];
+        let s = sam.to_string_lossy().into_owned();
+        assert!(
+            !has_seq(&args_of(&ctx), &["--tmpfs", &s]),
+            "nothing shows it"
+        );
+        ctx.permissions.filesystem.custom_read =
+            vec![sam.join("data/apps").to_string_lossy().into_owned()];
+        assert!(has_seq(&args_of(&ctx), &["--tmpfs", &s]), "hidden");
+    }
+
+    /// Files named on the command line are judged with the home as named
+    /// and as reached (a home under a link), by the name they are given
+    /// (a file reached through `~/.config` is not shared), and a file a
+    /// grant already shows is not added again.
+    #[test]
+    fn opened_files_are_judged_by_name_and_by_where_they_lead() {
+        let t = tempfile::tempdir().unwrap();
+        let real_home = t.path().join("real");
+        for d in [".config/myapp", "work", "Documents"] {
+            fs::create_dir_all(real_home.join(d)).unwrap();
+        }
+        for f in [".config/myapp/settings", "work/a.txt", "Documents/b.txt"] {
+            fs::write(real_home.join(f), "x").unwrap();
+        }
+        std::os::unix::fs::symlink(real_home.join("work/a.txt"), real_home.join(".config/lnk"))
+            .unwrap();
+        let home = t.path().join("home");
+        std::os::unix::fs::symlink(&real_home, &home).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.opened_files = Access::Rw;
+        let mut ctx = ctx_for(&p, &home);
+        ctx.owd = home.clone();
+        let opened = |ctx: &mut LaunchContext, arg: PathBuf| {
+            ctx.args = vec![arg.to_string_lossy().into_owned()];
+            opened_paths(ctx)
+        };
+        assert_eq!(
+            opened(&mut ctx, real_home.join(".config/myapp/settings")),
+            vec![],
+            "settings under the home as reached"
+        );
+        assert_eq!(
+            opened(&mut ctx, home.join(".config/lnk")),
+            vec![],
+            "named through ~/.config"
+        );
+        assert_eq!(
+            opened(&mut ctx, home.join("work/a.txt")).len(),
+            1,
+            "control"
+        );
+        ctx.permissions.filesystem.documents = Access::Rw;
+        ctx.host
+            .xdg_dirs
+            .insert("documents".into(), home.join("Documents"));
+        assert_eq!(
+            opened(&mut ctx, home.join("Documents/b.txt")),
+            vec![],
+            "already shown by the Documents grant"
+        );
+    }
+
+    /// A user folder set to the root, the folder above the home, a link to
+    /// it, a key folder or SAM's folder is never shown; a usual one is, at
+    /// its real place with a link where the app looks (audit S-F11).
+    #[test]
+    fn a_user_folder_that_shows_more_is_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home/ann");
+        for d in [".ssh", "real-docs", "sam"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(t.path().join("home"), home.join("up")).unwrap();
+        std::os::unix::fs::symlink(home.join("real-docs"), home.join("Docs")).unwrap();
+        let mut ctx = sample_context();
+        ctx.host.home = home.clone();
+        ctx.sam_dirs = vec![home.join("sam")];
+        ctx.permissions.filesystem.documents = Access::Rw;
+        let docs = |ctx: &mut LaunchContext, at: PathBuf| {
+            ctx.host.xdg_dirs.clear();
+            ctx.host.xdg_dirs.insert("documents".into(), at);
+            user_dir(ctx, "documents")
+        };
+        for bad in [
+            PathBuf::from("/"),
+            t.path().join("home"),
+            home.join("up"),
+            home.join("up/ann/.ssh"),
+            home.join(".ssh"),
+            home.join("sam"),
+            PathBuf::from("/etc"),
+        ] {
+            assert!(
+                matches!(docs(&mut ctx, bad.clone()), Err(NotShown::Refused(_))),
+                "{bad:?}"
+            );
+            let a = args_of(&ctx);
+            assert!(
+                !a.windows(2)
+                    .any(|w| w[0] == "--bind-try" && Path::new(&w[1]) == bad),
+                "{bad:?} not bound"
+            );
+        }
+        // A folder that holds SAM's folder is shown, SAM's folder hidden
+        // inside it.
+        ctx.sam_dirs = vec![home.join("real-docs/sam")];
+        fs::create_dir_all(home.join("real-docs/sam")).unwrap();
+        let real = fs::canonicalize(home.join("real-docs")).unwrap();
+        assert_eq!(docs(&mut ctx, home.join("Docs")), Ok(real.clone()));
+        let sam = real.join("sam").to_string_lossy().into_owned();
+        assert!(
+            has_seq(&args_of(&ctx), &["--tmpfs", &sam]),
+            "SAM's folder hidden"
+        );
+        let a = args_of(&ctx);
+        let r = real.to_string_lossy().into_owned();
+        let d = home.join("Docs").to_string_lossy().into_owned();
+        assert!(has_seq(&a, &["--bind-try", &r, &r]), "{a:?}");
+        assert!(has_seq(&a, &["--symlink", &r, &d]), "{a:?}");
+    }
+
+    /// Only a start that shows a start place writable is watched and
+    /// prepared: a writable `~/.config` is (audit D-M3), a writable
+    /// `~/.config/myapp` or Documents folder is not.
+    #[test]
+    fn a_writable_part_of_the_home_holding_start_places_is_watched() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        for d in [".config/myapp", "Documents"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec![home.join(".config/myapp").to_string_lossy().into()];
+        p.filesystem.documents = Access::Rw;
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host
+            .xdg_dirs
+            .insert("documents".into(), home.join("Documents"));
+        assert!(!writes_start_places(&ctx));
+        assert!(HomeWatch::before(&ctx).is_none());
+        prepare_home_protection(&ctx);
+        assert!(!home.join(".config/autostart").exists(), "left alone");
+        ctx.permissions.filesystem.custom_write =
+            vec![home.join(".config").to_string_lossy().into()];
+        assert!(writes_start_places(&ctx));
+        let w = HomeWatch::before(&ctx).expect("watched");
+        prepare_home_protection(&ctx);
+        assert!(
+            home.join(".config/autostart").is_dir(),
+            "made, so it can be locked"
+        );
+        assert!(
+            !home.join(".bashrc").exists(),
+            "only what the grant shows is made"
+        );
+        fs::create_dir_all(home.join(".config/sway")).unwrap();
+        fs::write(home.join(".config/sway/config"), "exec evil").unwrap();
+        let moved: Vec<String> = w
+            .settle(&t.path().join("aside"))
+            .into_iter()
+            .map(|m| m.place)
+            .collect();
+        assert!(moved.contains(&".config/sway".to_string()), "{moved:?}");
+    }
+
     /// SAM's own folders stay hidden inside a folder opened with the app, and
     /// inside a runner's bind, at the path the bind shows them under.
     #[test]
@@ -3026,7 +3318,7 @@ mod guard_tests {
             "read-only"
         );
         let empty = tempfile::tempdir().unwrap();
-        prepare_home_protection(&ctx.permissions, empty.path());
+        prepare_home_protection(&ctx_for(&ctx.permissions, empty.path()));
         assert!(
             empty.path().join(".config/user-dirs.dirs").is_file(),
             "created empty when missing, so an app cannot create it"
@@ -3069,13 +3361,13 @@ mod guard_tests {
         let mut p = sample_context().permissions;
         p.filesystem.home = true;
         p.filesystem.home_access = Access::Ro;
-        prepare_home_protection(&p, home);
+        prepare_home_protection(&ctx_for(&p, home));
         assert!(
             !home.join(".config/autostart").exists(),
             "a read-only home is left alone"
         );
         p.filesystem.home_access = Access::Rw;
-        prepare_home_protection(&p, home);
+        prepare_home_protection(&ctx_for(&p, home));
         assert!(home.join(".config/autostart").is_dir() && home.join(".bashrc").is_file());
     }
 

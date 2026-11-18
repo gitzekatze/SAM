@@ -95,7 +95,7 @@ lists = [
   { file = "crates/sam-runner/src/netns.rs", names = ["NEVER_FORWARD_FROM_APP"] },
   { file = "crates/sam-core/src/permissions.rs", names = ["DANGEROUS_BUS_NAMES"] },
   { file = "crates/sam-core/src/risk.rs", names = ["SENSITIVE_PATHS"] },
-  { file = "crates/sam-sandbox/src/lib.rs", names = ["PROTECTED_RO", "SENSITIVE_DOTFILES"] },
+  { file = "crates/sam-core/src/places.rs", names = ["PROTECTED_RO", "SENSITIVE_DOTFILES"] },
 ]
 
 # The contract map (scripts/contract-map.py).

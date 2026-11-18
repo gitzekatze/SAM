@@ -467,8 +467,8 @@ impl Sam {
 
     pub(super) fn write_log(&self, id: &str, kind: LogKind, data: &[u8]) {
         let logs = Logs::new(&self.paths);
-        if let Ok(p) = logs.new_log_path(id, kind) {
-            let _ = fs::write(p, data);
+        if let Ok((_, mut f)) = logs.create(id, kind) {
+            let _ = std::io::Write::write_all(&mut f, data);
             let _ = logs.prune(id, kind, 5);
         }
     }

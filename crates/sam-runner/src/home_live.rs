@@ -167,6 +167,18 @@ mod tests {
     use std::fs;
     use std::time::{Duration, Instant};
 
+    /// A start of `p` with `home` as the home and no user folders.
+    fn ctx_for(
+        p: &sam_core::permissions::PermissionSet,
+        home: &std::path::Path,
+    ) -> sam_core::LaunchContext {
+        let mut c = sam_core::sandbox::sample_context();
+        c.host.home = home.to_path_buf();
+        c.host.xdg_dirs.clear();
+        c.permissions = p.clone();
+        c
+    }
+
     /// A startup file created while the app runs is moved aside at once,
     /// not only when the app ends; a removed link is put back at once.
     #[test]
@@ -179,7 +191,7 @@ mod tests {
         let mut p = sam_core::permissions::PermissionSet::default();
         p.filesystem.home = true;
         p.filesystem.home_access = sam_core::permissions::Access::Rw;
-        let watch = HomeWatch::before(&p, &home).unwrap();
+        let watch = HomeWatch::before(&ctx_for(&p, &home)).unwrap();
         let (live, warning) = LiveWatch::start(&watch, t.path().join("aside"));
         assert_eq!(warning, None, "every folder is watched");
         let live = live.expect("watching");
@@ -226,7 +238,7 @@ mod tests {
         let mut p = sam_core::permissions::PermissionSet::strict_gui();
         p.filesystem.home = true;
         p.filesystem.home_access = sam_core::permissions::Access::Rw;
-        let watch = sam_sandbox::HomeWatch::before(&p, &home).unwrap();
+        let watch = sam_sandbox::HomeWatch::before(&ctx_for(&p, &home)).unwrap();
         std::fs::set_permissions(home.join(".config"), std::fs::Permissions::from_mode(0o000))
             .unwrap();
         let (live, warning) = LiveWatch::start(&watch, t.path().join("aside"));

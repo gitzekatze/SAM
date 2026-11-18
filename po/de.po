@@ -943,7 +943,7 @@ msgid "path has no parent"
 msgstr "Pfad hat keinen übergeordneten Ordner"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/util.rs:240
+#: crates/sam-core/src/util.rs:254
 msgid "{program} did not finish within {seconds} seconds and was stopped"
 msgstr "{program} war nach {seconds} Sekunden nicht fertig und wurde beendet"
 
@@ -1138,7 +1138,7 @@ msgstr ""
 msgid "User namespaces unavailable"
 msgstr "Benutzer-Namensräume nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:264 crates/sam-sandbox/src/lib.rs:1487
+#: crates/sam-core/src/warnings.rs:264 crates/sam-sandbox/src/lib.rs:1527
 msgid "Wayland socket not available"
 msgstr "Wayland-Socket nicht verfügbar"
 
@@ -1150,7 +1150,7 @@ msgstr ""
 "Der Wayland-Socket ist nicht verfügbar. Schalte X11 ein oder melde dich in "
 "einer Wayland-Sitzung an."
 
-#: crates/sam-core/src/warnings.rs:271 crates/sam-sandbox/src/lib.rs:1507
+#: crates/sam-core/src/warnings.rs:271 crates/sam-sandbox/src/lib.rs:1547
 msgid "X11 display not available"
 msgstr "X11-Anzeige nicht verfügbar"
 
@@ -5995,14 +5995,12 @@ msgid ""
 "start files in {folders} are not watched while the app runs (Linux refused); "
 "SAM moves them aside when it ends"
 msgstr ""
-"Startdateien in {folders} werden nicht beobachtet, solange die App "
-"läuft (Linux hat es abgelehnt); SAM schiebt sie beiseite, wenn sie "
-"endet"
+"Startdateien in {folders} werden nicht beobachtet, solange die App läuft "
+"(Linux hat es abgelehnt); SAM schiebt sie beiseite, wenn sie endet"
 
 #: crates/sam-runner/src/home_live.rs:48 crates/sam-runner/src/home_live.rs:80
 msgid "the home folder"
-msgstr ""
-"der Home-Ordner"
+msgstr "der Home-Ordner"
 
 #: crates/sam-runner/src/kernel.rs:100
 msgid "reading sandbox spec"
@@ -6210,38 +6208,36 @@ msgstr ""
 "gefunden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:677
+#: crates/sam-runner/src/launch.rs:675
 msgid "warning: {text}"
-msgstr ""
-"Warnung: {text}"
+msgstr "Warnung: {text}"
 
-#: crates/sam-runner/src/launch.rs:726
+#: crates/sam-runner/src/launch.rs:724
 msgid "no stdout pipe"
 msgstr "keine stdout-Verbindung"
 
-#: crates/sam-runner/src/launch.rs:738
+#: crates/sam-runner/src/launch.rs:736
 msgid "no stderr pipe"
 msgstr "keine stderr-Verbindung"
 
-#: crates/sam-runner/src/launch.rs:779
+#: crates/sam-runner/src/launch.rs:777
 msgid "ended when its terminal was closed"
 msgstr "beendet, als ihr Terminal geschlossen wurde"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:799
+#: crates/sam-runner/src/launch.rs:797
 msgid "~/{place} → {to} (renamed in place: SAM's folder could not take it)"
 msgstr ""
-"~/{place} → {to} (an Ort und Stelle umbenannt: SAMs Ordner konnte es "
-"nicht aufnehmen)"
+"~/{place} → {to} (an Ort und Stelle umbenannt: SAMs Ordner konnte es nicht "
+"aufnehmen)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:803
+#: crates/sam-runner/src/launch.rs:801
 msgid "~/{place}: deleted (it could not be moved)"
-msgstr ""
-"~/{place}: gelöscht (es ließ sich nicht verschieben)"
+msgstr "~/{place}: gelöscht (es ließ sich nicht verschieben)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:807
+#: crates/sam-runner/src/launch.rs:805
 msgid ""
 "~/{place}: COULD NOT BE REMOVED; it may run outside the sandbox: remove it "
 "yourself"
@@ -6250,14 +6246,14 @@ msgstr ""
 "laufen: entferne es selbst"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:891
+#: crates/sam-runner/src/launch.rs:889
 msgid "warning: this start ran without {layers}, which its settings ask for"
 msgstr ""
 "Warnung: Dieser Start lief ohne {layers}, obwohl die Einstellungen es "
 "verlangen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:900
+#: crates/sam-runner/src/launch.rs:898
 msgid ""
 "the app left something that would run outside its sandbox; SAM moved it "
 "aside: {items}"
@@ -6265,21 +6261,21 @@ msgstr ""
 "die App hat etwas hinterlassen, das außerhalb ihrer Sandbox laufen würde; "
 "SAM hat es beiseitegelegt: {items}"
 
-#: crates/sam-runner/src/launch.rs:917
+#: crates/sam-runner/src/launch.rs:915
 msgid "your home folder"
 msgstr "Deinen Persönlichen Ordner"
 
-#: crates/sam-runner/src/launch.rs:933
+#: crates/sam-runner/src/launch.rs:931
 msgid "only its private home"
 msgstr "nur ihren privaten Ordner"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:935
+#: crates/sam-runner/src/launch.rs:933
 msgid "{folders} and its private home"
 msgstr "{folders} und ihren privaten Ordner"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:942
+#: crates/sam-runner/src/launch.rs:940
 msgid ""
 "{app} runs sandboxed, in a terminal of its own. It sees {sees} (files it "
 "saves anywhere else stay there). It cannot type into this shell or use the "
@@ -6289,52 +6285,52 @@ msgstr ""
 "(Dateien, die sie anderswo speichert, bleiben dort). Sie kann nicht in diese "
 "Shell tippen und die Zwischenablage nicht über das Terminal nutzen."
 
-#: crates/sam-runner/src/launch.rs:1098
+#: crates/sam-runner/src/launch.rs:1096
 msgid "pasta command without '--'"
 msgstr "pasta-Befehl ohne „--“"
 
-#: crates/sam-runner/src/launch.rs:1099
+#: crates/sam-runner/src/launch.rs:1097
 msgid "pasta command without a program after '--'"
 msgstr "pasta-Befehl ohne Programm nach „--“"
 
-#: crates/sam-runner/src/launch.rs:1293
+#: crates/sam-runner/src/launch.rs:1291
 msgid "sandbox setup failed (Bubblewrap could not build the sandbox)"
 msgstr ""
 "Sandbox-Einrichtung fehlgeschlagen (Bubblewrap konnte die Sandbox nicht "
 "bauen)"
 
-#: crates/sam-runner/src/launch.rs:1301
+#: crates/sam-runner/src/launch.rs:1299
 msgid "closed by SAM"
 msgstr "von SAM geschlossen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1306
+#: crates/sam-runner/src/launch.rs:1304
 msgid "kept running for {seconds} s (test start, ended by SAM)"
 msgstr "lief {seconds} s weiter (Teststart, von SAM beendet)"
 
-#: crates/sam-runner/src/launch.rs:1314
+#: crates/sam-runner/src/launch.rs:1312
 msgid "exited normally"
 msgstr "normal beendet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1315
+#: crates/sam-runner/src/launch.rs:1313
 msgid "exited with code {code}"
 msgstr "mit Code {code} beendet"
 
-#: crates/sam-runner/src/launch.rs:1316
+#: crates/sam-runner/src/launch.rs:1314
 msgid "ended by signal 11 (segmentation fault)"
 msgstr "durch Signal 11 beendet (Speicherzugriffsfehler)"
 
-#: crates/sam-runner/src/launch.rs:1317
+#: crates/sam-runner/src/launch.rs:1315
 msgid "ended by signal 6 (abort)"
 msgstr "durch Signal 6 beendet (Abbruch)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1318
+#: crates/sam-runner/src/launch.rs:1316
 msgid "ended by signal {signal}"
 msgstr "durch Signal {signal} beendet"
 
-#: crates/sam-runner/src/launch.rs:1319
+#: crates/sam-runner/src/launch.rs:1317
 msgid "finished"
 msgstr "beendet"
 
@@ -7785,18 +7781,18 @@ msgstr "der Server hat {got} Bytes statt {expected} gesendet"
 msgid "the assembled file does not match the published checksum"
 msgstr "die zusammengesetzte Datei passt nicht zur veröffentlichten Prüfsumme"
 
-#: crates/sam-sandbox/src/lib.rs:1031
+#: crates/sam-sandbox/src/lib.rs:1047
 msgid "Bubblewrap is not installed. Install the 'bubblewrap' package."
 msgstr "Bubblewrap ist nicht installiert. Installiere das Paket „bubblewrap“."
 
-#: crates/sam-sandbox/src/lib.rs:1039
+#: crates/sam-sandbox/src/lib.rs:1055
 msgid "xdg-dbus-proxy not found: filtered session D-Bus will be disabled"
 msgstr ""
 "xdg-dbus-proxy nicht gefunden: Der gefilterte Sitzungs-D-Bus wird "
 "abgeschaltet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1060
+#: crates/sam-sandbox/src/lib.rs:1076
 msgid ""
 "the home folder is not set (HOME is \"{home}\"); SAM does not start apps "
 "without one"
@@ -7804,26 +7800,37 @@ msgstr ""
 "der Home-Ordner ist nicht gesetzt (HOME ist „{home}“); ohne ihn startet SAM "
 "keine Apps"
 
-#: crates/sam-sandbox/src/lib.rs:1071
+#: crates/sam-sandbox/src/lib.rs:1087
 msgid "bubblewrap (bwrap) is not installed"
 msgstr "bubblewrap (bwrap) ist nicht installiert"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1404
+#: crates/sam-sandbox/src/lib.rs:1440
 msgid "{key} folder does not exist on the host; not bound"
 msgstr "Der Ordner {key} existiert auf dem System nicht; nicht eingebunden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1441
+#: crates/sam-sandbox/src/lib.rs:1444
+msgid ""
+"{key} folder is set to {path}, which shows more than a user folder (the "
+"home, a folder above it, a system or SAM folder, or a protected place); not "
+"bound"
+msgstr ""
+"Der Ordner {key} ist auf {path} gesetzt, der mehr zeigt als einen "
+"Benutzerordner (den Persönlichen Ordner, einen Ordner darüber, einen System- "
+"oder SAM-Ordner oder einen geschützten Ort); nicht eingebunden"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-sandbox/src/lib.rs:1481
 msgid "granted access to the opened folder {path}"
 msgstr "Zugriff auf den geöffneten Ordner {path} erteilt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1446
+#: crates/sam-sandbox/src/lib.rs:1486
 msgid "granted access to the opened file {path}"
 msgstr "Zugriff auf die geöffnete Datei {path} erteilt"
 
-#: crates/sam-sandbox/src/lib.rs:1550
+#: crates/sam-sandbox/src/lib.rs:1590
 msgid ""
 "PipeWire runs without its PulseAudio service (pipewire-pulse), so the app "
 "has no sound. Install or start pipewire-pulse, or allow direct PipeWire "
@@ -7833,11 +7840,11 @@ msgstr ""
 "die App keinen Ton. Installiere oder starte pipewire-pulse oder erlaube "
 "direkten PipeWire-Zugriff."
 
-#: crates/sam-sandbox/src/lib.rs:1552
+#: crates/sam-sandbox/src/lib.rs:1592
 msgid "No sound server found. Audio may not work."
 msgstr "Kein Tonserver gefunden. Ton funktioniert eventuell nicht."
 
-#: crates/sam-sandbox/src/lib.rs:1607
+#: crates/sam-sandbox/src/lib.rs:1647
 msgid ""
 "No game controller is plugged in; controllers connected later are not seen "
 "until the app restarts"
@@ -7845,19 +7852,19 @@ msgstr ""
 "Kein Gamecontroller angeschlossen; später angeschlossene Controller sieht "
 "die App erst nach einem Neustart"
 
-#: crates/sam-sandbox/src/lib.rs:1617
+#: crates/sam-sandbox/src/lib.rs:1657
 msgid "Bluetooth needs the system D-Bus; not granted"
 msgstr "Bluetooth braucht den System-D-Bus; nicht erteilt"
 
-#: crates/sam-sandbox/src/lib.rs:1630
+#: crates/sam-sandbox/src/lib.rs:1670
 msgid "Input method needs the session D-Bus; not granted"
 msgstr "Die Eingabemethode braucht den Sitzungs-D-Bus; nicht erteilt"
 
-#: crates/sam-sandbox/src/lib.rs:1653
+#: crates/sam-sandbox/src/lib.rs:1693
 msgid "session D-Bus socket not found"
 msgstr "Socket des Sitzungs-D-Bus nicht gefunden"
 
-#: crates/sam-sandbox/src/lib.rs:1662
+#: crates/sam-sandbox/src/lib.rs:1702
 msgid ""
 "filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); "
 "session bus disabled"
@@ -7866,7 +7873,7 @@ msgstr ""
 "proxy); Sitzungsbus abgeschaltet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1702
+#: crates/sam-sandbox/src/lib.rs:1742
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} ist kein Socket; er wird nicht in die Sandbox weitergegeben"
 
