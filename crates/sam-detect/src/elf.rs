@@ -330,13 +330,11 @@ fn start_scripts_force_x11(appdir: &Path) -> bool {
         scripts.extend(rd.flatten().map(|e| e.path()));
     }
     scripts.iter().any(|f| {
-        let Ok(meta) = fs::metadata(f) else {
+        // A bounded read of a regular file: a link to /proc or a named pipe
+        // cannot make SAM read without end or hang (audit I-F9).
+        let Ok(text) = sam_core::util::read_regular(f, 256 * 1024) else {
             return false;
         };
-        if !meta.is_file() || meta.len() > 256 * 1024 {
-            return false;
-        }
-        let Ok(text) = fs::read(f) else { return false };
         if text.starts_with(b"\x7fELF") {
             return false;
         }

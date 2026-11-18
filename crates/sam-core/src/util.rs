@@ -113,7 +113,14 @@ pub fn home_dir() -> PathBuf {
 /// swap between check and read changes nothing.
 pub fn read_regular(path: &Path, limit: u64) -> std::io::Result<Vec<u8>> {
     use std::io::Read;
-    let f = std::fs::File::open(path)?;
+    use std::os::unix::fs::OpenOptionsExt;
+    // Without waiting: opening a named pipe for reading would block until
+    // someone writes to it (audit I-F9, I-F15). For a regular file the
+    // flag changes nothing; anything else is refused below.
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)?;
     let meta = f.metadata()?;
     if !meta.is_file() {
         return Err(std::io::Error::new(
@@ -381,6 +388,32 @@ pub fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Reading a file from an untrusted app returns at once for anything
+    /// that is not a regular file: a named pipe made SAM wait forever
+    /// (audit I-F9, I-F15). A regular file is read up to the limit.
+    #[test]
+    fn a_named_pipe_is_refused_without_waiting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fifo = tmp.path().join("AppRun");
+        let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        // SAFETY: `c` is a valid NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let f = fifo.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(read_regular(&f, 1024).is_err());
+        });
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(5)),
+            Ok(true),
+            "refused, and without waiting"
+        );
+        let file = tmp.path().join("plain");
+        fs::write(&file, "0123456789").unwrap();
+        assert_eq!(read_regular(&file, 4).unwrap(), b"0123");
+        assert!(read_regular(tmp.path(), 4).is_err(), "a folder is refused");
+    }
 
     /// SAM's own files in folders an untrusted program could have touched
     /// are written without following links: a planted link is replaced, the

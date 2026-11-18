@@ -202,6 +202,29 @@ impl Sam {
         }
     }
 
+    /// The unpack folder, created if missing. A folder SAM creates itself
+    /// (or finds empty) gets a marker, so it can later be removed as a whole;
+    /// a folder that already held other things never does (see
+    /// `unpack_root_is_sams`).
+    pub(super) fn unpack_root(&self) -> Result<PathBuf> {
+        let root = self.extracted_root();
+        let new = fs::read_dir(&root).map_or(true, |mut rd| rd.next().is_none());
+        fs::create_dir_all(&root)?;
+        if new {
+            sam_core::util::write_new(&root.join(UNPACK_MARKER), b"SAM unpacks AppImages here.\n")?;
+        }
+        Ok(root)
+    }
+
+    /// Whether the whole unpack folder is SAM's to delete: the default one, or
+    /// one SAM created. The location can be set to any folder, for example
+    /// `~/Documents`; cleaning up then deleted every folder in it, and
+    /// uninstalling deleted it entirely (regression, audit U-L1).
+    pub(super) fn unpack_root_is_sams(&self) -> bool {
+        let root = self.extracted_root();
+        root == self.paths.default_extracted_dir() || root.join(UNPACK_MARKER).is_file()
+    }
+
     pub fn extracted_root(&self) -> PathBuf {
         self.paths.extracted_root(&self.config.extraction.location)
     }
@@ -328,6 +351,19 @@ pub struct Uninstall {
 
 /// Refuses folders that cannot be SAM's alone: `/`, the home folder or an
 /// ancestor of it, top-level folders. Guards against odd SAM_*_DIR values.
+/// The marker file in an unpack folder SAM created itself.
+const UNPACK_MARKER: &str = ".sam-unpack-folder";
+
+/// Whether `name`, in the unpack folder, is something SAM put there: an
+/// app's folder (`appimage-…`) or a leftover of an unpacking that did not
+/// finish. Nothing else is ever deleted by cleaning up.
+fn sams_own_unpack_entry(name: &str) -> bool {
+    (name.starts_with("appimage-") && sam_storage::valid_id(name))
+        || [".incoming-", ".unpack-", ".old-", ".staging-"]
+            .iter()
+            .any(|p| name.starts_with(p))
+}
+
 fn safe_to_delete(d: &Path) -> Result<()> {
     let home = sam_core::util::home_dir();
     if d.components().count() < 3 || home.starts_with(d) {
