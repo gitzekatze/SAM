@@ -265,6 +265,8 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature",
   "an_update_writes_through_no_planted_link_and_keeps_the_sandbox",
   "going_back_with_an_unchanged_file_name_keeps_both_versions",
+  "a_download_folder_is_fresh_private_and_sams_own",
+  "a_move_across_drives_never_writes_through_a_link",
 ]
 
 [[function]]

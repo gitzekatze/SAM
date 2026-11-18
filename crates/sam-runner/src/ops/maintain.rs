@@ -1003,3 +1003,77 @@ fn move_file(from: &Path, to: &Path) -> Result<()> {
     fs::remove_file(from).with_context(|| format!("removing {}", from.display()))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    /// Updates are downloaded into a fresh folder inside SAM's data folder
+    /// that only SAM's user can enter (audit U-H4): never the AppImage's
+    /// folder, never one with leftovers.
+    #[test]
+    fn a_download_folder_is_fresh_private_and_sams_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(tmp.path())).unwrap();
+        let leftover = sam.paths.data_dir.join("downloads").join("appimage-x-1");
+        fs::create_dir_all(&leftover).unwrap();
+        fs::write(leftover.join("planted"), "x").unwrap();
+        let d = sam.download_folder("appimage-x-1").unwrap();
+        assert_eq!(d, leftover);
+        assert!(d.starts_with(&sam.paths.data_dir), "{}", d.display());
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 0, "no leftovers");
+        for f in [&d, &sam.paths.data_dir.join("downloads")] {
+            assert_eq!(fs::metadata(f).unwrap().permissions().mode() & 0o777, 0o700);
+        }
+    }
+
+    /// Across file systems (a download in SAM's folder, the AppImage on
+    /// another drive) a move is a copy: into a new file with the same
+    /// permissions, never through a link planted at the target and never
+    /// over a file that is there (audit U-H4: `fs::copy` followed links).
+    #[test]
+    fn a_move_across_drives_never_writes_through_a_link() {
+        let here = std::env::temp_dir();
+        let shm = std::path::Path::new("/dev/shm");
+        let other =
+            shm.is_dir() && fs::metadata(shm).unwrap().dev() != fs::metadata(&here).unwrap().dev();
+        if !other {
+            crate::contracts::not_here(
+                "needs /dev/shm on another file system than the temp folder",
+            );
+            return;
+        }
+        let src_dir = tempfile::tempdir_in(shm).unwrap();
+        let dst_dir = tempfile::tempdir_in(&here).unwrap();
+        let src = src_dir.path().join("new.AppImage");
+        let write_src = || {
+            fs::write(&src, "new version").unwrap();
+            fs::set_permissions(&src, fs::Permissions::from_mode(0o750)).unwrap();
+        };
+
+        write_src();
+        let to = dst_dir.path().join("Tool.AppImage");
+        move_file(&src, &to).unwrap();
+        assert_eq!(fs::read_to_string(&to).unwrap(), "new version");
+        assert_eq!(
+            fs::metadata(&to).unwrap().permissions().mode() & 0o777,
+            0o750
+        );
+        assert!(!src.exists(), "moved, not copied");
+
+        // A link planted at the target: refused, the victim is untouched.
+        write_src();
+        let victim = dst_dir.path().join("victim.txt");
+        fs::write(&victim, "the person's file").unwrap();
+        let planted = dst_dir.path().join("Planted.AppImage");
+        std::os::unix::fs::symlink(&victim, &planted).unwrap();
+        assert!(move_file(&src, &planted).is_err());
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "the person's file");
+        assert!(src.exists(), "nothing lost when the move is refused");
+
+        // A file that is already there is not overwritten.
+        assert!(move_file(&src, &to).is_err());
+        assert_eq!(fs::read_to_string(&to).unwrap(), "new version");
+    }
+}
