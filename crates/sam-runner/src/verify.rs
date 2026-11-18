@@ -939,6 +939,10 @@ mod tests {
             path: "/usr/bin/pipewire".into(),
             version: None,
         });
+        h.tools.bwrap = Some(sam_core::host::Tool {
+            path: "/usr/bin/bwrap".into(),
+            version: None,
+        });
         assert_eq!(expects(&q, &h), (true, true, true), "through the relay");
         let mut none = p.clone();
         none.display.wayland = false; // a GUI profile has Wayland on

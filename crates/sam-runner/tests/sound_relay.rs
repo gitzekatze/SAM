@@ -2,7 +2,10 @@
 //! sandbox (audit S-F1, proven on 2026-11-18: with only sound on, an app
 //! made the person's sound server load a module). Attacked from inside a
 //! real sandbox against a private PipeWire with its PulseAudio server:
-//! - through SAM's relay the app has sound, and loading a module is refused;
+//! - through SAM's relay the app has sound; loading a module is refused
+//!   (PipeWire 1.2 and newer) and the relay is held in a sandbox of its own,
+//!   so on an older PipeWire a module loads only there, where no file of
+//!   the person's is;
 //! - where the relay cannot run, the app has no sound and the start says
 //!   why;
 //! - only when the person allowed sound without the relay does the app get
@@ -60,6 +63,20 @@ fn wait_for(path: &Path) -> bool {
         std::thread::sleep(Duration::from_millis(50));
     }
     false
+}
+
+/// Whether the installed PipeWire refuses module loading when told to
+/// (1.2 and newer; "Compiled with libpipewire 1.6.11").
+fn pipewire_refuses_modules() -> bool {
+    let out = Command::new("pipewire").arg("--version").output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    let version = text
+        .split_whitespace()
+        .find(|w| w.starts_with(|c: char| c.is_ascii_digit()))
+        .unwrap_or("0");
+    let mut parts = version.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+    let (major, minor) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
+    (major, minor) >= (1, 2)
 }
 
 /// Modules named `sam_attack` loaded into the private sound server.
@@ -193,12 +210,22 @@ fn sound_never_loads_code_into_the_sound_server() {
         (r, fs::read_to_string(&log).unwrap())
     };
 
-    // Through SAM's relay: sound, and no module.
+    // Through SAM's relay: sound, and no module in the sound server.
     let (r, log) = start(false, true);
     assert_eq!(r["SOUND"], "yes", "{log}");
-    assert_eq!(r["LOAD"], "refused", "{log}");
+    if pipewire_refuses_modules() {
+        assert_eq!(r["LOAD"], "refused", "{log}");
+    }
     assert_eq!(attack_modules(&run_dir), 0, "nothing loaded");
     assert!(log.contains("# sound: through SAM's relay"), "{log}");
+    // The relay is held in its own sandbox: what it may load sees none of
+    // the home, nor SAM's folders.
+    let probed = HostInfo::probe();
+    let relay =
+        sam_runner::sound_relay::SoundRelay::start(&probed, &run_dir.join("relay-check")).unwrap();
+    assert!(relay.contained(&home), "the relay cannot see the home");
+    assert!(relay.contained(&root.join("samroot")), "nor SAM's folders");
+    drop(relay);
 
     // The relay allowed, but not running: no sound, and the start says why.
     let (r, log) = start(false, false);

@@ -199,15 +199,23 @@ fn sound_relay(host: &HostInfo) -> (State, String) {
     if let Some(id) = loaded {
         let _ = output("pactl", &["-s", &server, "unload-module", &id.to_string()]);
     }
+    let contained = relay.contained(&host.home);
     drop(relay);
     let _ = std::fs::remove_dir_all(&base);
-    match (info.contains("Server Name"), loaded) {
-        (true, None) => (
+    match (info.contains("Server Name"), loaded, contained) {
+        (_, _, false) => (
+            State::Broken,
+            "the relay is not held in its own sandbox".into(),
+        ),
+        (true, None, true) => (
             State::Holds,
             "the relay passes sound and refuses to load modules".into(),
         ),
-        (_, Some(_)) => (State::Broken, "the relay loaded a module".into()),
-        (false, None) => (
+        (true, Some(_), true) => (
+            State::Holds,
+            "the relay passes sound; this PipeWire (before 1.2) lets it load modules, but only inside the relay's own sandbox".into(),
+        ),
+        (false, _, true) => (
             State::Broken,
             format!("the relay does not answer: {}", info.trim()),
         ),

@@ -545,8 +545,7 @@ msgstr ""
 #: crates/sam-core/src/permissions.rs:982 crates/sam-core/src/risk.rs:279
 #: crates/sam-runner/src/launch.rs:1398
 msgid "Sound without SAM's relay"
-msgstr ""
-"Son sans le relais de SAM"
+msgstr "Son sans le relais de SAM"
 
 #: crates/sam-core/src/permissions.rs:982
 msgid ""
@@ -555,9 +554,9 @@ msgid ""
 "could make it load code outside the sandbox. SAM warns at every start."
 msgstr ""
 "Seulement pour les ordinateurs où le relais audio de SAM ne peut pas "
-"fonctionner (un serveur audio sans PipeWire). L'app parle alors "
-"directement à ton serveur audio et pourrait lui faire charger du code "
-"hors du bac à sable. SAM avertit à chaque lancement."
+"fonctionner (un serveur audio sans PipeWire). L'app parle alors directement "
+"à ton serveur audio et pourrait lui faire charger du code hors du bac à "
+"sable. SAM avertit à chaque lancement."
 
 #: crates/sam-core/src/permissions.rs:984 crates/sam-core/src/risk.rs:271
 #: crates/sam-runner/src/verify.rs:311
@@ -5946,17 +5945,17 @@ msgid ""
 "PipeWire runs: apps get sound through SAM's relay, which cannot load modules "
 "into the sound server"
 msgstr ""
-"PipeWire fonctionne : les apps ont le son via le relais de SAM, qui ne "
-"peut pas charger de modules dans le serveur audio"
+"PipeWire fonctionne : les apps ont le son via le relais de SAM, qui ne peut "
+"pas charger de modules dans le serveur audio"
 
 #: crates/sam-runner/src/doctor.rs:281
 msgid ""
 "PipeWire runs, but its program was not found, so SAM cannot run its sound "
 "relay and apps get no sound. Install the pipewire package"
 msgstr ""
-"PipeWire fonctionne, mais son programme est introuvable : SAM ne peut "
-"donc pas lancer son relais audio et les apps n'ont pas de son. "
-"Installe le paquet pipewire"
+"PipeWire fonctionne, mais son programme est introuvable : SAM ne peut donc "
+"pas lancer son relais audio et les apps n'ont pas de son. Installe le paquet "
+"pipewire"
 
 #: crates/sam-runner/src/doctor.rs:282
 msgid ""
@@ -5964,10 +5963,10 @@ msgid ""
 "get no sound. An app gets sound only with \"Sound without SAM's relay\", "
 "which lets it load code into the sound server outside the sandbox"
 msgstr ""
-"Le serveur audio n'est pas PipeWire : SAM ne peut donc pas lancer son "
-"relais audio et les apps n'ont pas de son. Une app n'a le son qu'avec "
-"« Son sans le relais de SAM », qui lui permet de charger du code dans "
-"le serveur audio hors du bac à sable"
+"Le serveur audio n'est pas PipeWire : SAM ne peut donc pas lancer son relais "
+"audio et les apps n'ont pas de son. Une app n'a le son qu'avec « Son sans le "
+"relais de SAM », qui lui permet de charger du code dans le serveur audio "
+"hors du bac à sable"
 
 #: crates/sam-runner/src/doctor.rs:283 crates/sam-sandbox/src/lib.rs:1600
 msgid "No sound server found. Audio may not work."
@@ -6447,14 +6446,13 @@ msgid ""
 "this app: it talks to your sound server directly and could make it load code "
 "outside the sandbox."
 msgstr ""
-"Le relais audio de SAM n'a pas pu démarrer ({why}) et le son sans lui "
-"est autorisé pour cette app : elle parle directement à ton serveur "
-"audio et pourrait lui faire charger du code hors du bac à sable."
+"Le relais audio de SAM n'a pas pu démarrer ({why}) et le son sans lui est "
+"autorisé pour cette app : elle parle directement à ton serveur audio et "
+"pourrait lui faire charger du code hors du bac à sable."
 
 #: crates/sam-runner/src/launch.rs:1407
 msgid "No sound"
-msgstr ""
-"Pas de son"
+msgstr "Pas de son"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/launch.rs:1410
@@ -6464,10 +6462,10 @@ msgid ""
 "sandbox; to allow that anyway, turn on \"Sound without SAM's relay\" for "
 "this app."
 msgstr ""
-"L'app n'a pas de son : le relais audio de SAM n'a pas pu démarrer "
-"({why}). Le son direct du serveur audio permettrait à l'app de charger "
-"du code hors du bac à sable ; si tu le veux quand même, active « Son "
-"sans le relais de SAM » pour cette app."
+"L'app n'a pas de son : le relais audio de SAM n'a pas pu démarrer ({why}). "
+"Le son direct du serveur audio permettrait à l'app de charger du code hors "
+"du bac à sable ; si tu le veux quand même, active « Son sans le relais de "
+"SAM » pour cette app."
 
 #: crates/sam-runner/src/netns.rs:29
 msgid ""
@@ -7609,33 +7607,34 @@ msgstr ""
 "Pour les applications Electron dont le bac à sable interne de Chromium "
 "échoue dans celui de SAM. Le bac à sable de SAM protège toujours ton système."
 
-#: crates/sam-runner/src/sound_relay.rs:74
+#: crates/sam-runner/src/sound_relay.rs:123
 msgid "PipeWire is not installed, so SAM cannot run its sound relay"
 msgstr ""
-"PipeWire n'est pas installé : SAM ne peut donc pas lancer son relais "
-"audio"
+"PipeWire n'est pas installé : SAM ne peut donc pas lancer son relais audio"
 
-#: crates/sam-runner/src/sound_relay.rs:77
+#: crates/sam-runner/src/sound_relay.rs:126
 msgid "PipeWire is not running, so SAM cannot run its sound relay"
 msgstr ""
-"PipeWire ne fonctionne pas : SAM ne peut donc pas lancer son relais "
+"PipeWire ne fonctionne pas : SAM ne peut donc pas lancer son relais audio"
+
+#: crates/sam-runner/src/sound_relay.rs:129
+msgid "Bubblewrap is not installed, so SAM cannot run its sound relay"
+msgstr ""
+"Bubblewrap n'est pas installé : SAM ne peut donc pas lancer son relais "
 "audio"
 
-#: crates/sam-runner/src/sound_relay.rs:110
+#: crates/sam-runner/src/sound_relay.rs:158
 msgid "starting SAM's sound relay"
-msgstr ""
-"démarrage du relais audio de SAM"
+msgstr "démarrage du relais audio de SAM"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/sound_relay.rs:116
+#: crates/sam-runner/src/sound_relay.rs:164
 msgid "SAM's sound relay ended at its start ({status})"
-msgstr ""
-"Le relais audio de SAM s'est arrêté au démarrage ({status})"
+msgstr "Le relais audio de SAM s'est arrêté au démarrage ({status})"
 
-#: crates/sam-runner/src/sound_relay.rs:127
+#: crates/sam-runner/src/sound_relay.rs:175
 msgid "SAM's sound relay did not open its socket in time"
-msgstr ""
-"Le relais audio de SAM n'a pas ouvert son socket à temps"
+msgstr "Le relais audio de SAM n'a pas ouvert son socket à temps"
 
 #: crates/sam-runner/src/updates.rs:39
 msgid ""
@@ -8009,9 +8008,9 @@ msgid ""
 "server's own connection would let it load code outside the sandbox). The "
 "start message says why."
 msgstr ""
-"Le relais audio de SAM ne fonctionne pas, donc l'app n'a pas de son "
-"(la connexion propre du serveur audio lui permettrait de charger du "
-"code hors du bac à sable). Le message de lancement dit pourquoi."
+"Le relais audio de SAM ne fonctionne pas, donc l'app n'a pas de son (la "
+"connexion propre du serveur audio lui permettrait de charger du code hors du "
+"bac à sable). Le message de lancement dit pourquoi."
 
 #: crates/sam-sandbox/src/lib.rs:1655
 msgid ""

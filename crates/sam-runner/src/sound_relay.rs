@@ -10,6 +10,13 @@
 //! with module loading off, and shows the sandbox only its socket. It is
 //! the same program the person's sound already runs through, connected to
 //! their PipeWire as one more client.
+//!
+//! PipeWire before 1.2 ignores the setting (CI's Ubuntu 24.04 has 1.0.5:
+//! the relay loaded the module). So the relay itself runs in a sandbox of
+//! its own: it sees the system's programs, the person's PipeWire socket and
+//! its own folder, nothing of the home or SAM's folders, and no network. A
+//! module it loads on an older PipeWire loads there, where it can neither
+//! read nor write the person's files.
 
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -26,9 +33,51 @@ pub struct SoundRelay {
 }
 
 /// Whether this computer can run SAM's sound relay: PipeWire is installed
-/// and running.
+/// and running, and Bubblewrap can hold the relay.
 pub fn relay_possible(host: &HostInfo) -> bool {
-    host.tools.pipewire.is_some() && host.sockets.pipewire.is_some()
+    host.tools.pipewire.is_some() && host.sockets.pipewire.is_some() && host.tools.bwrap.is_some()
+}
+
+/// The relay's own sandbox: the system's programs and libraries read-only,
+/// the person's PipeWire socket, the relay's folder (its settings and its
+/// socket), a private `/tmp`; no home, no SAM folders, no network, no
+/// devices, a cleared environment.
+fn relay_command(bwrap: &Path, program: &Path, remote: &Path, dir: &Path, conf: &Path) -> Command {
+    let mut c = Command::new(bwrap);
+    c.args([
+        "--unshare-all",
+        "--die-with-parent",
+        "--new-session",
+        "--cap-drop",
+        "ALL",
+        "--clearenv",
+    ]);
+    c.args(["--ro-bind", "/usr", "/usr"]);
+    // The top-level links or folders of the system (`/lib` → `usr/lib`).
+    for top in ["/bin", "/sbin", "/lib", "/lib32", "/lib64"] {
+        match std::fs::symlink_metadata(top) {
+            Ok(m) if m.file_type().is_symlink() => {
+                if let Ok(t) = std::fs::read_link(top) {
+                    c.arg("--symlink").arg(t).arg(top);
+                }
+            }
+            Ok(m) if m.is_dir() => {
+                c.args(["--ro-bind", top, top]);
+            }
+            _ => {}
+        }
+    }
+    for etc in ["/etc/ld.so.cache", "/etc/ld.so.conf", "/etc/ld.so.conf.d"] {
+        c.args(["--ro-bind-try", etc, etc]);
+    }
+    c.args(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]);
+    c.arg("--ro-bind").arg(program).arg(program);
+    c.arg("--ro-bind").arg(remote).arg(remote);
+    c.arg("--bind").arg(dir).arg(dir);
+    c.arg("--setenv").arg("PIPEWIRE_REMOTE").arg(remote);
+    c.args(["--setenv", "HOME", "/tmp"]);
+    c.arg("--").arg(program).arg("-c").arg(conf);
+    c
 }
 
 /// Whether an app with these settings gets sound here: through the relay,
@@ -77,6 +126,9 @@ impl SoundRelay {
         let remote = host.sockets.pipewire.as_ref().context(sam_core::i18n::tr(
             "PipeWire is not running, so SAM cannot run its sound relay",
         ))?;
+        let bwrap = host.tools.bwrap.as_ref().context(sam_core::i18n::tr(
+            "Bubblewrap is not installed, so SAM cannot run its sound relay",
+        ))?;
         let dir = runtime_dir.join("sound");
         {
             use std::os::unix::fs::DirBuilderExt;
@@ -89,12 +141,8 @@ impl SoundRelay {
         let _ = std::fs::remove_file(&socket);
         let conf = dir.join("relay.conf");
         sam_core::util::atomic_write(&conf, relay_config(&socket).as_bytes())?;
-        let mut cmd = Command::new(&tool.path);
-        cmd.arg("-c")
-            .arg(&conf)
-            .env("PIPEWIRE_REMOTE", remote)
-            .env_remove("PULSE_SERVER")
-            .stdin(Stdio::null())
+        let mut cmd = relay_command(&bwrap.path, &tool.path, remote, &dir, &conf);
+        cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         // SAFETY: the pre_exec closure runs between fork and exec and calls only prctl, which is async-signal-safe.
@@ -131,6 +179,40 @@ impl SoundRelay {
         }
         Ok(SoundRelay { child, socket })
     }
+}
+
+impl SoundRelay {
+    /// Whether the running relay is held in its own sandbox: it sees the
+    /// system's programs but not `home` (a module it loads on an older
+    /// PipeWire can reach no file of the person's). Looked at from outside,
+    /// through each of its processes' view of the file system.
+    pub fn contained(&self, home: &Path) -> bool {
+        let rel = home.strip_prefix("/").unwrap_or(home);
+        let pids = descendants(self.child.id());
+        !pids.is_empty()
+            && pids.iter().all(|p| {
+                let root = PathBuf::from(format!("/proc/{p}/root"));
+                root.join("usr").is_dir() && !root.join(rel).exists()
+            })
+    }
+}
+
+/// The processes started by `pid`, children first.
+fn descendants(pid: u32) -> Vec<u32> {
+    let mut out = Vec::new();
+    let mut todo = vec![pid];
+    while let Some(p) = todo.pop() {
+        let kids =
+            std::fs::read_to_string(format!("/proc/{p}/task/{p}/children")).unwrap_or_default();
+        for k in kids
+            .split_whitespace()
+            .filter_map(|k| k.parse::<u32>().ok())
+        {
+            out.push(k);
+            todo.push(k);
+        }
+    }
+    out
 }
 
 impl Drop for SoundRelay {
@@ -173,7 +255,11 @@ mod tests {
             path: prog,
             version: None,
         });
-        h.sockets.pipewire = Some(dir.join("pipewire-0"));
+        h.tools.bwrap = HostInfo::probe().tools.bwrap;
+        // The stand-in's PipeWire socket: any file the relay may see.
+        let remote = dir.join("pipewire-0");
+        std::fs::write(&remote, "").unwrap();
+        h.sockets.pipewire = Some(remote);
         h
     }
 
@@ -182,6 +268,10 @@ mod tests {
     /// and its socket removed, when the start ends.
     #[test]
     fn a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay() {
+        if HostInfo::probe().tools.bwrap.is_none() {
+            crate::contracts::skip("bubblewrap is not installed").unwrap_or_else(|e| panic!("{e}"));
+            return;
+        }
         let t = tempfile::tempdir().unwrap();
         let h = host_with(t.path(), "exec sleep 30");
         let begin = Instant::now();
@@ -200,6 +290,12 @@ mod tests {
         let r = SoundRelay::start(&h, &t.path().join("run2")).expect("starts");
         let socket = r.socket.clone();
         assert!(std::os::unix::net::UnixStream::connect(&socket).is_ok());
+        // Held in its own sandbox: a folder next to its own is not there.
+        std::fs::create_dir_all(t.path().join("elsewhere")).unwrap();
+        assert!(
+            r.contained(&t.path().join("elsewhere")),
+            "the relay does not see other folders"
+        );
         drop(r);
         assert!(!socket.exists(), "socket removed");
         assert!(
@@ -226,6 +322,14 @@ mod tests {
         assert!(!sound_reaches_app(&p, &h), "PipeWire's program missing");
         h.tools.pipewire = Some(sam_core::host::Tool {
             path: "/usr/bin/pipewire".into(),
+            version: None,
+        });
+        assert!(
+            !sound_reaches_app(&p, &h),
+            "no Bubblewrap to hold the relay"
+        );
+        h.tools.bwrap = Some(sam_core::host::Tool {
+            path: "/usr/bin/bwrap".into(),
             version: None,
         });
         assert!(sound_reaches_app(&p, &h));

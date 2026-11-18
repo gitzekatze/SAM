@@ -5815,24 +5815,28 @@ msgstr ""
 msgid "For Electron apps whose internal Chromium sandbox fails inside SAM's sandbox. SAM's sandbox still protects your system."
 msgstr ""
 
-#: crates/sam-runner/src/sound_relay.rs:74
+#: crates/sam-runner/src/sound_relay.rs:123
 msgid "PipeWire is not installed, so SAM cannot run its sound relay"
 msgstr ""
 
-#: crates/sam-runner/src/sound_relay.rs:77
+#: crates/sam-runner/src/sound_relay.rs:126
 msgid "PipeWire is not running, so SAM cannot run its sound relay"
 msgstr ""
 
-#: crates/sam-runner/src/sound_relay.rs:110
+#: crates/sam-runner/src/sound_relay.rs:129
+msgid "Bubblewrap is not installed, so SAM cannot run its sound relay"
+msgstr ""
+
+#: crates/sam-runner/src/sound_relay.rs:158
 msgid "starting SAM's sound relay"
 msgstr ""
 
-#: crates/sam-runner/src/sound_relay.rs:116
+#: crates/sam-runner/src/sound_relay.rs:164
 #. Keep the {placeholders}; their order may change.
 msgid "SAM's sound relay ended at its start ({status})"
 msgstr ""
 
-#: crates/sam-runner/src/sound_relay.rs:127
+#: crates/sam-runner/src/sound_relay.rs:175
 msgid "SAM's sound relay did not open its socket in time"
 msgstr ""
 

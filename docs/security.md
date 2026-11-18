@@ -153,7 +153,13 @@ switch this off only for the whole server, which SAM does not change. So for
 each start SAM runs a small second copy of PipeWire's PulseAudio server with
 module loading off, connected to your PipeWire as one more client, and shows
 the app only that one (`sound_never_loads_code_into_the_sound_server`).
-`sam-jail doctor --contracts` checks this on your computer.
+
+The relay itself runs in a sandbox of its own: it sees the system's
+programs, your PipeWire socket and its own folder, but not your home, SAM's
+folders or the network. That matters on PipeWire before 1.2 (Ubuntu 24.04
+LTS, Debian 12), which ignores the setting: there a module the app asks for
+loads, but only inside the relay's sandbox, where it can reach none of your
+files. `sam-jail doctor --contracts` checks both on your computer.
 
 Where the relay cannot run (a sound server without PipeWire), the app has
 no sound, and the start says why. An advanced switch, *Sound without SAM's
