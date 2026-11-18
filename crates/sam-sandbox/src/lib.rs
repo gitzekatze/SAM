@@ -663,23 +663,136 @@ impl Bubblewrap {
     }
 }
 
-/// Is `p` visible inside the sandbox given the granted folders?
-/// Hides credential stores and SAM's own folders in the real home, and keeps
-/// persistence paths read-only when `writable`. Used with full home access
-/// and when a granted folder contains the home.
-fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, writable: bool) {
-    if writable {
-        // First (a later mount covers an earlier one): the folders above
-        // protected places are mount points of their own:
-        // renamed away, they would take the protection with them, and a new
-        // folder of the same name could be filled freely (`mv ~/.config …`).
-        for d in protected_ancestors() {
-            let path = home.join(d);
-            if fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir()) {
-                a.op2("--bind", &path, &path);
+/// Where the sandbox shows the host's files: every grant (the home, the
+/// user folders, extra folders, opened files, SAM's own binds), as the
+/// paths they are mounted at, and whether each is writable. The checks
+/// below ask "is this host path visible, and writable?" through it,
+/// comparing resolved paths: Bubblewrap follows links, so comparing path
+/// text missed a grant of `/data` when `/home` is a link to `/data/home`
+/// (regression, audit S-F3).
+pub struct Views {
+    grants: Vec<(PathBuf, bool)>,
+}
+
+impl Views {
+    /// Every grant, including files opened with the app and SAM's binds.
+    pub fn of(ctx: &LaunchContext) -> Views {
+        let mut v = Views::base(ctx);
+        v.grants.extend(opened_paths(ctx));
+        for (_, sb, rw) in &ctx.extra_binds {
+            v.grants.push((sb.clone(), *rw));
+        }
+        v
+    }
+
+    /// The grants of the permissions alone: the home, the user folders and
+    /// extra folders (what `opened_paths` checks against).
+    pub fn base(ctx: &LaunchContext) -> Views {
+        let fsp = &ctx.permissions.filesystem;
+        let mut grants = Vec::new();
+        if fsp.home {
+            grants.push((ctx.host.home.clone(), fsp.home_access == Access::Rw));
+        }
+        for key in XDG_DIR_KEYS {
+            let acc = fsp.xdg_access(key);
+            if acc.is_granted() {
+                if let Some(d) = ctx.host.xdg_dir(key) {
+                    grants.push((d.to_path_buf(), acc == Access::Rw));
+                }
             }
         }
+        for c in &fsp.custom_read {
+            grants.push((grant_path(c), false));
+        }
+        for c in &fsp.custom_write {
+            grants.push((grant_path(c), true));
+        }
+        Views { grants }
     }
+
+    /// The deepest grant that shows `p`, if any (a later, deeper mount wins).
+    fn grant_of(&self, p: &Path) -> Option<&(PathBuf, bool)> {
+        self.grants
+            .iter()
+            .filter(|(g, _)| p.starts_with(g))
+            .max_by_key(|(g, _)| g.components().count())
+    }
+
+    pub fn visible(&self, p: &Path) -> bool {
+        self.grant_of(p).is_some()
+    }
+
+    pub fn writable(&self, p: &Path) -> bool {
+        self.grant_of(p).is_some_and(|(_, rw)| *rw)
+    }
+
+    /// Every place in the sandbox where host path `p` is shown: its own path
+    /// and, when that differs, its resolved one.
+    pub fn seen_at(&self, p: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for c in [p.to_path_buf(), resolve(p)] {
+            if self.visible(&c) && !out.contains(&c) {
+                out.push(c);
+            }
+        }
+        out
+    }
+}
+
+/// A granted folder as it is bound: with `~` expanded and links resolved,
+/// so the checks see what the app sees.
+fn grant_path(c: &str) -> PathBuf {
+    resolve(&expand_home(c))
+}
+
+/// `p` with links resolved as far as it exists (the rest appended).
+fn resolve(p: &Path) -> PathBuf {
+    if let Ok(r) = fs::canonicalize(p) {
+        return r;
+    }
+    match (p.parent(), p.file_name()) {
+        (Some(parent), Some(name)) if parent != p => resolve(parent).join(name),
+        _ => p.to_path_buf(),
+    }
+}
+
+/// Step 1 of the protections inside the shown parts of the real home: the
+/// folders above protected places and above SAM's own folders that the
+/// sandbox shows writable. Each becomes a mount point of its own (bound onto
+/// itself, in the depth order of the other mounts), so it cannot be renamed
+/// away together with the protection (`mv ~/.local/share ~/.local/s2` moved
+/// SAM's records; regression, audit S-F4).
+fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf]) -> Vec<PathBuf> {
+    let mut pins: Vec<PathBuf> = Vec::new();
+    let mut pin = |p: &Path| {
+        for c in views.seen_at(p) {
+            // Never `/` or one folder below it: those are not renamed.
+            if views.writable(&c)
+                && c.components().count() > 2
+                && fs::metadata(&c).is_ok_and(|m| m.is_dir())
+                && !pins.contains(&c)
+            {
+                pins.push(c);
+            }
+        }
+    };
+    for d in protected_ancestors() {
+        pin(&home.join(d));
+    }
+    for d in sam_dirs {
+        for anc in d.ancestors().skip(1) {
+            pin(anc);
+        }
+    }
+    pins
+}
+
+/// Step 2 of the protections, after every mount (a later mount covers an
+/// earlier one: a grant of `/home` or `~/.local` after them showed `~/.ssh`
+/// and made autostart writable again; regression, audit S-F2): credential
+/// stores hidden, start files and menu entries read-only, SAM's own folders
+/// replaced by an empty folder, at every place the sandbox shows them.
+fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
     let mut masks: Vec<&str> = Vec::new();
     if !fsp.ssh {
         masks.push(".ssh");
@@ -692,31 +805,39 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, writable: bool) 
     }
     for m in masks {
         let path = home.join(m);
-        match fs::symlink_metadata(&path) {
-            Ok(md) if md.is_dir() => {
-                a.push("--tmpfs").push(path.to_string_lossy());
+        let Ok(md) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        // A link (dotfiles kept elsewhere, `stow`): hidden where it points,
+        // which the app could reach through the link otherwise.
+        let places = if md.file_type().is_symlink() {
+            if !views.visible(&path) {
+                continue;
             }
-            Ok(md) if md.is_file() => a.op2("--ro-bind", "/dev/null", &path),
-            // A link (dotfiles kept elsewhere, `stow`): hidden where it
-            // points, which the app could reach through the link otherwise.
-            Ok(md) if md.file_type().is_symlink() => match fs::canonicalize(&path) {
+            fs::canonicalize(&path).into_iter().collect()
+        } else {
+            views.seen_at(&path)
+        };
+        for c in places {
+            match fs::metadata(&c) {
                 Ok(t) if t.is_dir() => {
-                    a.push("--tmpfs").push(t.to_string_lossy());
+                    a.push("--tmpfs").push(c.to_string_lossy());
                 }
-                Ok(t) if t.is_file() => a.op2("--ro-bind", "/dev/null", &t),
+                Ok(t) if t.is_file() => a.op2("--ro-bind", "/dev/null", &c),
                 _ => {}
-            },
-            _ => {}
+            }
         }
     }
     for prot in PROTECTED_RO {
         let path = home.join(prot);
-        if matches!(*prot, ".config/sam" | ".local/share/sam") {
-            if path.is_dir() {
-                a.push("--tmpfs").push(path.to_string_lossy());
+        for c in views.seen_at(&path) {
+            if matches!(*prot, ".config/sam" | ".local/share/sam") {
+                if c.is_dir() {
+                    a.push("--tmpfs").push(c.to_string_lossy());
+                }
+            } else if views.writable(&c) && c.exists() {
+                a.ro(&c);
             }
-        } else if writable && path.exists() {
-            a.ro(&path);
         }
     }
 }
@@ -784,23 +905,8 @@ pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
 }
 
 fn visible_in_sandbox(p: &Path, ctx: &LaunchContext) -> bool {
-    let fs = &ctx.permissions.filesystem;
-    if fs.home && p.starts_with(&ctx.host.home) {
-        return true;
-    }
-    for key in XDG_DIR_KEYS {
-        if fs.xdg_access(key).is_granted() {
-            if let Some(d) = ctx.host.xdg_dir(key) {
-                if p.starts_with(d) {
-                    return true;
-                }
-            }
-        }
-    }
-    fs.custom_read
-        .iter()
-        .chain(fs.custom_write.iter())
-        .any(|c| p.starts_with(expand_home(c)))
+    let v = Views::base(ctx);
+    v.visible(p) || v.visible(&resolve(p))
 }
 
 impl Bubblewrap {
@@ -833,6 +939,18 @@ impl Bubblewrap {
 
     /// The bwrap command line for this launch.
     pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
+        // Without a real home folder, "the home" is `/` or a relative path:
+        // full home access would then bind the whole computer (audit S-F12).
+        let home = &ctx.host.home;
+        if !home.is_absolute() || home.components().count() < 2 {
+            anyhow::bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the home folder is not set (HOME is \"{home}\"); SAM does not start apps without one",
+                    &[("home", &home.display())]
+                )
+            );
+        }
         let bwrap = ctx
             .host
             .tools
@@ -1099,41 +1217,63 @@ impl Section<'_> {
     }
 
     /// The private home, granted folders and files, and the protections inside.
+    ///
+    /// The mounts are sorted by depth: a mount covers whatever was mounted
+    /// at or below its place before it, so a shallow mount after a deep one
+    /// would undo the deep one. The protections come after every grant
+    /// (`guard_home`); SAM's own binds come last.
     fn home(&mut self) {
         let ctx = self.ctx;
         let p = &ctx.permissions;
         let h = &ctx.host;
         let home = h.home.clone();
-        let a = &mut self.a;
         let notes = &mut self.notes;
-        // Home.
         let fsp = &p.filesystem;
+        let mut mounts: Vec<(usize, Args)> = Vec::new();
+        let mut mount = |at: &Path, f: &dyn Fn(&mut Args)| {
+            let mut m = Args { v: Vec::new() };
+            f(&mut m);
+            if !m.v.is_empty() {
+                mounts.push((at.components().count(), m));
+            }
+        };
+        // Home.
         if fsp.home {
             let op = if fsp.home_access == Access::Rw {
                 "--bind"
             } else {
                 "--ro-bind"
             };
-            a.op2(op, &home, &home);
+            mount(&home, &|m| m.op2(op, &home, &home));
             // With the home read-only, a folder set to read/write must still
             // be writable (the switch says so; regression: it stayed
-            // read-only). The later mount wins.
+            // read-only).
             if fsp.home_access != Access::Rw {
                 for key in XDG_DIR_KEYS {
                     if fsp.xdg_access(key) == Access::Rw {
                         if let Some(dir) = h.xdg_dir(key) {
-                            a.op2("--bind-try", dir, dir);
+                            mount(dir, &|m| m.op2("--bind-try", dir, dir));
                         }
                     }
                 }
             }
-            guard_home(a, &home, fsp, fsp.home_access == Access::Rw);
         } else {
             if p.advanced.persistent_home {
                 // The launch pipeline creates the directory; build() has no side effects.
-                a.op2("--bind", &ctx.private_home, &home);
+                mount(&home, &|m| m.op2("--bind", &ctx.private_home, &home));
             } else {
-                a.push("--tmpfs").push(home.to_string_lossy());
+                mount(&home, &|m| {
+                    m.push("--tmpfs").push(home.to_string_lossy());
+                });
+            }
+            // The folders every home has: some apps create theirs with a
+            // plain mkdir and fail without the parent (night run 2026-11-18:
+            // Widelands could not create ~/.local/share/widelands).
+            for d in [".config", ".local/share", ".local/state", ".cache"] {
+                let dir = home.join(d);
+                mount(&dir, &|m| {
+                    m.push("--dir").push(dir.to_string_lossy());
+                });
             }
             for key in XDG_DIR_KEYS {
                 let acc = fsp.xdg_access(key);
@@ -1147,7 +1287,7 @@ impl Section<'_> {
                         } else {
                             "--ro-bind-try"
                         };
-                        a.op2(op, dir, dir);
+                        mount(dir, &|m| m.op2(op, dir, dir));
                     }
                     _ => notes.push(sam_core::i18n::trf(
                         "{key} folder does not exist on the host; not bound",
@@ -1158,37 +1298,33 @@ impl Section<'_> {
         }
         // Safe read-only user resources.
         for r in [".local/share/fonts", ".fonts", ".config/fontconfig"] {
-            a.ro(home.join(r));
+            let at = home.join(r);
+            mount(&at, &|m| m.ro(&at));
         }
         if p.advanced.host_themes && !fsp.home {
             for t in THEME_FILES {
-                a.ro(home.join(t));
+                let at = home.join(t);
+                mount(&at, &|m| m.ro(&at));
             }
         }
+        // Extra folders, at their resolved place: what the app sees there.
         for c in &fsp.custom_read {
-            let path = expand_home(c);
-            a.op2("--ro-bind-try", &path, &path);
+            let path = grant_path(c);
+            mount(&path, &|m| m.op2("--ro-bind-try", &path, &path));
         }
         for c in &fsp.custom_write {
-            let path = expand_home(c);
-            a.op2("--bind-try", &path, &path);
-        }
-        // A granted folder that contains the real home (e.g. /home) shows it
-        // as well: the same masks and protections as full home access.
-        if !fsp.home {
-            let covers = |c: &String| home.starts_with(expand_home(c));
-            let rw = fsp.custom_write.iter().any(covers);
-            if rw || fsp.custom_read.iter().any(covers) {
-                guard_home(a, &home, fsp, rw);
-            }
+            let path = grant_path(c);
+            mount(&path, &|m| m.op2("--bind-try", &path, &path));
         }
         // Files and folders named on the command line, one by one.
         for (path, rw) in opened_paths(ctx) {
-            a.op2(
-                if rw { "--bind-try" } else { "--ro-bind-try" },
-                &path,
-                &path,
-            );
+            mount(&path, &|m| {
+                m.op2(
+                    if rw { "--bind-try" } else { "--ro-bind-try" },
+                    &path,
+                    &path,
+                )
+            });
             notes.push(if path.is_dir() {
                 sam_core::i18n::trf(
                     "granted access to the opened folder {path}",
@@ -1201,6 +1337,18 @@ impl Section<'_> {
                 )
             });
         }
+        let views = Views::of(ctx);
+        for p in pins(&home, &views, &ctx.sam_dirs) {
+            mount(&p, &|m| m.op2("--bind", &p, &p));
+        }
+        // Stable: at equal depth, the order above stays (a pin after the
+        // grant it is in).
+        mounts.sort_by_key(|(d, _)| *d);
+        let a = &mut self.a;
+        for (_, m) in mounts {
+            a.v.extend(m.v);
+        }
+        guard_home(a, &home, fsp, &views);
         for (host_p, sb, rw) in &ctx.extra_binds {
             a.op2(if *rw { "--bind" } else { "--ro-bind" }, host_p, sb);
         }
@@ -1452,21 +1600,17 @@ impl Section<'_> {
         // line) or a bind of SAM's runner. Otherwise an app could change
         // another app's unpacked files (regression: an opened folder on a
         // drive that held SAM's moved unpack folder showed it, writable).
-        let opened = opened_paths(ctx);
+        // Every place the sandbox shows them, also through a link in a
+        // granted path (audit S-F3).
+        let views = Views::of(ctx);
         for d in &ctx.sam_dirs {
             // A folder inside another hidden one is hidden with it.
             let nested = ctx.sam_dirs.iter().any(|o| o != d && d.starts_with(o));
             if nested || !d.is_dir() {
                 continue;
             }
-            let shown = visible_in_sandbox(d, ctx)
-                || opened.iter().any(|(o, _)| d.starts_with(o))
-                || ctx
-                    .extra_binds
-                    .iter()
-                    .any(|(h, sb, _)| h == sb && d.starts_with(h));
-            if shown {
-                a.push("--tmpfs").push(d.to_string_lossy());
+            for c in views.seen_at(d) {
+                a.push("--tmpfs").push(c.to_string_lossy());
             }
             // Where a bind shows it under another path in the sandbox.
             for (h, sb, _) in &ctx.extra_binds {

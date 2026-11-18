@@ -222,7 +222,16 @@ How these stay protected with the home writable:
   `.bashrc`, `.profile`, `.gitconfig`, `mimeapps.list` and `user-dirs.dirs`.
 - **The folders above them cannot be renamed** (`.config`, `.local`,
   `.local/share` and so on are mount points of their own), so an app cannot
-  move `.config` away and fill a new one.
+  move `.config` away and fill a new one. The same holds for the folders
+  above SAM's own folders, whatever grant shows them: with write access to
+  `~/.local` alone, `~/.local/share` cannot be moved away to plant records
+  where SAM keeps its own.
+- **No grant undoes these protections.** They are added after every grant,
+  so an extra folder (`/home`, `~/.local`, `~/.config`) cannot show a
+  hidden key or make a start file writable again. Grants are checked where
+  they really lead: a granted link (or a home folder that is itself a link)
+  is followed, and the protections apply wherever the app sees these
+  places.
 - **Files whose mere presence changes behaviour** (`.bash_profile`, `.zshrc`,
   `.xprofile`, `.vimrc`, `.pam_environment` and the like) cannot be protected
   by a mount before they exist: making one would create the file. So SAM
