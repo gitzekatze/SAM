@@ -496,10 +496,35 @@ impl Logs {
         }
     }
 
+    /// A new log for this app ([`Logs::new_log_path`]), created readable by
+    /// the user only.
+    pub fn create(&self, id: &str, kind: LogKind) -> Result<(PathBuf, fs::File)> {
+        use std::os::unix::fs::OpenOptionsExt;
+        let path = self.new_log_path(id, kind)?;
+        let f = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+            .with_context(|| format!("creating {}", path.display()))?;
+        Ok((path, f))
+    }
+
     /// A new timestamped log path for this app.
     pub fn new_log_path(&self, id: &str, kind: LogKind) -> Result<PathBuf> {
         let dir = self.paths.app_logs_dir(id);
-        fs::create_dir_all(&dir)?;
+        // Logs hold what apps printed: for the user only (audit A2), also
+        // when the folders were made by an older SAM.
+        {
+            use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(&dir)?;
+            for d in [self.paths.logs_dir(), dir.clone()] {
+                let _ = fs::set_permissions(&d, fs::Permissions::from_mode(0o700));
+            }
+        }
         let ts = chrono_stamp();
         // Logs from the same second get a number above every existing one.
         // Reusing a free lower name (after older logs of that second were
