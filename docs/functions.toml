@@ -161,7 +161,7 @@ id = 16
 area = "C"
 promise = "The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries)."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/kernel.rs"]
-tests = ["full_home_access_cannot_leave_anything_that_runs_later", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "protected_parents_are_locked_and_linked_keys_hidden", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter"]
+tests = ["full_home_access_cannot_leave_anything_that_runs_later", "the_home_protections_hold_whatever_else_is_granted", "paths_are_resolved_through_links_also_where_they_do_not_exist_yet", "a_path_through_a_link_into_a_grant_is_visible", "a_missing_home_folder_stops_the_start", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "protected_parents_are_locked_and_linked_keys_hidden", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter"]
 
 [[function]]
 id = 17
