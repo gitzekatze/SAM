@@ -2884,6 +2884,14 @@ mod guard_tests {
         let plain =
             protected_places_with(home, Some(home.join(".config")), Some("/elsewhere".into()));
         assert_eq!(plain.len(), PROTECTED_RO.len());
+        // A config folder that is the home itself adds nothing either.
+        let same = protected_places_with(home, Some(home.to_path_buf()), None);
+        assert_eq!(
+            same.len(),
+            PROTECTED_RO.len(),
+            "{:?}",
+            &same[PROTECTED_RO.len()..]
+        );
     }
 
     /// Paths are resolved through links also where they do not exist yet,
