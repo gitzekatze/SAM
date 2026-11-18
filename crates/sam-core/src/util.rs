@@ -176,6 +176,65 @@ pub fn is_executable(p: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Runs `cmd` (stdin closed, stderr dropped) and returns its exit status and
+/// at most `max_out` bytes of its standard output. A program that is still
+/// running after `limit` is killed and an error is returned: SAM hands
+/// untrusted input to helper programs (GnuPG reads keys and signatures that
+/// came with an AppImage) and must not hang with them. The rest of a longer
+/// output is read and dropped, so the program never blocks on a full pipe.
+pub fn output_within(
+    cmd: &mut std::process::Command,
+    limit: std::time::Duration,
+    max_out: usize,
+) -> Result<(std::process::ExitStatus, Vec<u8>)> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let mut out = child.stdout.take().context("stdout")?;
+    let reader = std::thread::spawn(move || {
+        let mut kept = Vec::new();
+        let mut buf = [0u8; 8192];
+        while let Ok(n) = out.read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+            let room = max_out.saturating_sub(kept.len());
+            kept.extend_from_slice(buf.get(..n.min(room)).unwrap_or_default());
+        }
+        kept
+    });
+    let started = std::time::Instant::now();
+    let status = loop {
+        if let Some(st) = child.try_wait()? {
+            break st;
+        }
+        if started.elapsed() > limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = reader.join();
+            anyhow::bail!(
+                "{}",
+                crate::i18n::trf(
+                    "{program} did not finish within {seconds} seconds and was stopped",
+                    &[
+                        ("program", &cmd.get_program().to_string_lossy()),
+                        ("seconds", &limit.as_secs())
+                    ]
+                )
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let kept = reader
+        .join()
+        .map_err(|_| anyhow::anyhow!("output reader failed"))?;
+    Ok((status, kept))
+}
+
 /// Quote a single argument for display as a POSIX shell word.
 pub fn shell_quote(s: &str) -> String {
     if !s.is_empty()
@@ -262,6 +321,45 @@ pub fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A helper program that hangs is stopped at the time limit instead of
+    /// hanging SAM (GnuPG reads keys from untrusted AppImages), and a
+    /// program that prints more than SAM keeps neither blocks nor floods
+    /// SAM's memory.
+    #[test]
+    fn a_helper_program_is_stopped_at_its_time_limit() {
+        use std::process::Command;
+        use std::time::{Duration, Instant};
+        let t = Instant::now();
+        let e = output_within(
+            Command::new("sh").args(["-c", "sleep 30"]),
+            Duration::from_millis(300),
+            100,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("did not finish"), "{e}");
+        assert!(t.elapsed() < Duration::from_secs(10), "{:?}", t.elapsed());
+
+        // 1 MiB of output, 10 bytes kept; the program still ends normally.
+        let (st, out) = output_within(
+            Command::new("sh").args(["-c", "head -c 1048576 /dev/zero; exit 3"]),
+            Duration::from_secs(20),
+            10,
+        )
+        .unwrap();
+        assert_eq!(st.code(), Some(3));
+        assert_eq!(out, vec![0u8; 10]);
+
+        let (st, out) = output_within(
+            Command::new("printf").arg("hello"),
+            Duration::from_secs(20),
+            100,
+        )
+        .unwrap();
+        assert!(st.success());
+        assert_eq!(out, b"hello");
+    }
 
     /// Times are shown without a date library: UTC dates exactly, local
     /// times in the computer's own zone and shape (chrono was dropped when

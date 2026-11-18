@@ -422,6 +422,14 @@ is unchanged since signing, not who made it. What it adds is continuity:
 SAM remembers the key, and when an updated AppImage is signed with another
 key, or no longer signed, the app page shows a warning.
 
+The signer is the key that `gpgv` itself reports for the signature it
+checked (its `VALIDSIG` status line), never simply a key found in the file.
+A file that carries more than one key is refused: `gpgv` accepts a signature
+by any key it is given, so a second key could otherwise borrow the name of a
+trusted one, for example SAM's public release key. Every GnuPG step has a
+time limit of 20 seconds, and `sam-jail doctor` checks that the installed
+GnuPG still names the real signer.
+
 ---
 
 ## Safe unpacking
