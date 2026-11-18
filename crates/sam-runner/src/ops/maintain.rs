@@ -1088,7 +1088,9 @@ mod tests {
         fs::create_dir_all(docs.join("My Photos")).unwrap();
         fs::write(docs.join("My Photos/pic.jpg"), "photo").unwrap();
         fs::write(docs.join("notes.txt"), "notes").unwrap();
+        fs::create_dir_all(docs.join("Projects")).unwrap();
         fs::create_dir_all(docs.join("appimage-orphan-1234/AppDir")).unwrap();
+        fs::create_dir_all(docs.join("appimage-installed-5678/AppDir")).unwrap();
         fs::create_dir_all(docs.join(".unpack-999")).unwrap();
         fs::create_dir_all(docs.join(".incoming-abc")).unwrap();
         let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
@@ -1104,6 +1106,12 @@ mod tests {
             !sam.unpack_root_is_sams(),
             "a folder with other things is not SAM's"
         );
+        let mut installed = sam_core::model::AppEntry {
+            id: "appimage-installed-5678".into(),
+            name: "Installed".into(),
+            ..Default::default()
+        };
+        sam.registry().save(&mut installed).unwrap();
 
         let mut removed = sam.cleanup().unwrap();
         removed.sort();
@@ -1116,6 +1124,11 @@ mod tests {
         );
         assert!(docs.join("My Photos/pic.jpg").is_file());
         assert!(docs.join("notes.txt").is_file());
+        assert!(docs.join("Projects").is_dir(), "a folder with a plain name");
+        assert!(
+            docs.join("appimage-installed-5678/AppDir").is_dir(),
+            "an installed app"
+        );
         assert!(
             docs.join(".unpack-999").is_dir(),
             "a recent leftover may still be in use"

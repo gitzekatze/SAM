@@ -210,4 +210,11 @@ fn an_unpacking_limit_inside_the_sandbox_stops_unpacking() {
     );
     let app = &json(&sam(root, "sam-jail", &["--json", "list"]))["data"][0];
     assert_ne!(app["state"].as_str(), Some("ready"), "{app}");
+    // The reason given is the limit's own message from inside the sandbox.
+    let id = app["id"].as_str().unwrap();
+    let info = json(&sam(root, "sam-jail", &["--json", "info", id]));
+    assert!(
+        info.to_string().contains("more than 2 files"),
+        "the reason is shown: {info}"
+    );
 }
