@@ -161,7 +161,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-sandbox: Building the Bubblewrap command from the permissions
 
-29 tests.
+32 tests.
 
 | Promise | Test |
 |---|---|
@@ -188,12 +188,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The app's own folder stays read-only unless "writable app folder" is granted, even when SAM has an overlay for it prepared. | [`the_app_folder_stays_read_only_unless_writable_is_granted`](../crates/sam-sandbox/src/lib.rs#L2587) |
 | After a start with a writable home, only what could make the computer run something is moved aside: a new startup file, a replaced link to a protected folder, a key folder the app was not given. | [`only_what_would_run_later_is_moved_aside`](../crates/sam-sandbox/src/lib.rs#L2611) |
 | With a writable home, the folders above protected places are mount points of their own (so they cannot be renamed away), and a key folder that is a link is hidden where it points. | [`protected_parents_are_locked_and_linked_keys_hidden`](../crates/sam-sandbox/src/lib.rs#L2663) |
-| SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | [`sams_own_folders_stay_hidden_inside_a_granted_folder`](../crates/sam-sandbox/src/lib.rs#L2697) |
-| SAM's own folders stay hidden inside a folder opened with the app, and inside a runner's bind, at the path the bind shows them under. | [`sams_own_folders_stay_hidden_inside_an_opened_folder`](../crates/sam-sandbox/src/lib.rs#L2718) |
-| With the home writable, the file that says where the user folders are stays read-only, so an app cannot point other apps' Documents or Downloads grant at another folder. | [`user_folder_locations_stay_read_only_with_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L2752) |
-| With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | [`credential_files_and_folders_in_the_home_are_masked`](../crates/sam-sandbox/src/lib.rs#L2784) |
-| Protected folders are created in the real home only before a start that can write the home, never otherwise. | [`home_protection_is_prepared_only_for_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L2811) |
-| Only proper variable names are set inside the sandbox, and no value with a NUL byte. | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L2830) |
+| Paths are resolved through links also where they do not exist yet, the way Bubblewrap and the app see them (audit S-F3). | [`paths_are_resolved_through_links_also_where_they_do_not_exist_yet`](../crates/sam-sandbox/src/lib.rs#L2697) |
+| A path that leads into a granted folder through a link counts as visible, and one outside every grant does not (audit S-F3). | [`a_path_through_a_link_into_a_grant_is_visible`](../crates/sam-sandbox/src/lib.rs#L2712) |
+| Without a real home folder nothing starts: full home access would otherwise bind the whole computer (audit S-F12). | [`a_missing_home_folder_stops_the_start`](../crates/sam-sandbox/src/lib.rs#L2728) |
+| SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | [`sams_own_folders_stay_hidden_inside_a_granted_folder`](../crates/sam-sandbox/src/lib.rs#L2749) |
+| SAM's own folders stay hidden inside a folder opened with the app, and inside a runner's bind, at the path the bind shows them under. | [`sams_own_folders_stay_hidden_inside_an_opened_folder`](../crates/sam-sandbox/src/lib.rs#L2770) |
+| With the home writable, the file that says where the user folders are stays read-only, so an app cannot point other apps' Documents or Downloads grant at another folder. | [`user_folder_locations_stay_read_only_with_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L2804) |
+| With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | [`credential_files_and_folders_in_the_home_are_masked`](../crates/sam-sandbox/src/lib.rs#L2836) |
+| Protected folders are created in the real home only before a start that can write the home, never otherwise. | [`home_protection_is_prepared_only_for_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L2863) |
+| Only proper variable names are set inside the sandbox, and no value with a NUL byte. | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L2882) |
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
@@ -432,4 +435,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 346 automated Rust tests plus 7 scripted checks.
+Total: 349 automated Rust tests plus 7 scripted checks.

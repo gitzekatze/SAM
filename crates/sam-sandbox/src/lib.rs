@@ -2692,6 +2692,58 @@ mod guard_tests {
         assert!(!has_seq(&args_of(&ctx), &["--bind", &c, &c]));
     }
 
+    /// Paths are resolved through links also where they do not exist yet,
+    /// the way Bubblewrap and the app see them (audit S-F3).
+    #[test]
+    fn paths_are_resolved_through_links_also_where_they_do_not_exist_yet() {
+        let t = tempfile::tempdir().unwrap();
+        fs::create_dir(t.path().join("real")).unwrap();
+        std::os::unix::fs::symlink(t.path().join("real"), t.path().join("link")).unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        assert_eq!(
+            resolve(&t.path().join("link/missing/deeper")),
+            base.join("real/missing/deeper")
+        );
+        assert_eq!(resolve(Path::new("/")), PathBuf::from("/"));
+    }
+
+    /// A path that leads into a granted folder through a link counts as
+    /// visible, and one outside every grant does not (audit S-F3).
+    #[test]
+    fn a_path_through_a_link_into_a_grant_is_visible() {
+        let t = tempfile::tempdir().unwrap();
+        let real = t.path().join("real");
+        fs::create_dir(&real).unwrap();
+        fs::write(real.join("file"), "x").unwrap();
+        std::os::unix::fs::symlink(&real, t.path().join("link")).unwrap();
+        let mut ctx = sample_context();
+        ctx.permissions.filesystem.custom_read = vec![real.to_string_lossy().into_owned()];
+        assert!(visible_in_sandbox(&t.path().join("link/file"), &ctx));
+        assert!(visible_in_sandbox(&real.join("file"), &ctx));
+        assert!(!visible_in_sandbox(&t.path().join("other"), &ctx));
+    }
+
+    /// Without a real home folder nothing starts: full home access would
+    /// otherwise bind the whole computer (audit S-F12).
+    #[test]
+    fn a_missing_home_folder_stops_the_start() {
+        for bad in ["/", "relative/home", ""] {
+            let mut ctx = sample_context();
+            ctx.host.home = PathBuf::from(bad);
+            let e = Bubblewrap
+                .build(&ctx)
+                .map(|c| c.args)
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains("home folder is not set"), "{bad:?}: {e}");
+        }
+        assert!(Bubblewrap.build(&sample_context()).is_ok());
+        // The root user's home is one folder below `/`: that is a home.
+        let mut ctx = sample_context();
+        ctx.host.home = PathBuf::from("/root");
+        assert!(Bubblewrap.build(&ctx).is_ok());
+    }
+
     /// SAM's own folders stay hidden when a granted folder contains them,
     /// and nothing extra is added when no grant shows them.
     #[test]

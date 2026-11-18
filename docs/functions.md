@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-17 16:10:22).
 
-**40 functions:** 32 proven by passing tests, 7 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 346 tests in all.
+**40 functions:** 32 proven by passing tests, 7 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 349 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -28,7 +28,7 @@
 | 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 15 | ✅ |
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 3 | ✅ |
 | 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 4 | ✅ |
-| 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 10 | ✅ 🆕 1 new test since the report |
+| 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 13 | ✅ 🆕 4 new tests since the report |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 22 | ✅ 🆕 7 new tests since the report |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 10 | ✅ |
@@ -265,7 +265,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`each_permission_adds_exactly_its_part_to_the_command`](../crates/sam-sandbox/src/lib.rs#L2268) | Each granted permission adds exactly its part to the Bubblewrap command. | ✅ |
 | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L63) | Inside a real sandbox, each profile shows exactly the files and services it allows. | ✅ |
 | [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L101) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
-| [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L2830) | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | ✅ |
+| [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L2882) | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | ✅ |
 | [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L691) | The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs)
@@ -275,14 +275,14 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`sams_own_folders_stay_hidden_inside_an_opened_folder`](../crates/sam-sandbox/src/lib.rs#L2718) | SAM's own folders stay hidden inside a folder opened with the app, and inside a runner's bind, at the path the bind shows them under. | ✅ |
+| [`sams_own_folders_stay_hidden_inside_an_opened_folder`](../crates/sam-sandbox/src/lib.rs#L2770) | SAM's own folders stay hidden inside a folder opened with the app, and inside a runner's bind, at the path the bind shows them under. | ✅ |
 | [`key_and_system_folders_count_as_sensitive`](../crates/sam-core/src/risk.rs#L581) | Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not. | ✅ |
 | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) | Every security promise holds inside a real sandbox: each breakout attempt fails. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L158) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
-| [`credential_files_and_folders_in_the_home_are_masked`](../crates/sam-sandbox/src/lib.rs#L2784) | With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | ✅ |
-| [`home_protection_is_prepared_only_for_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L2811) | Protected folders are created in the real home only before a start that can write the home, never otherwise. | ✅ |
-| [`sams_own_folders_stay_hidden_inside_a_granted_folder`](../crates/sam-sandbox/src/lib.rs#L2697) | SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | ✅ |
-| [`user_folder_locations_stay_read_only_with_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L2752) | With the home writable, the file that says where the user folders are stays read-only, so an app cannot point other apps' Documents or Downloads grant at another folder. | ✅ |
+| [`credential_files_and_folders_in_the_home_are_masked`](../crates/sam-sandbox/src/lib.rs#L2836) | With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | ✅ |
+| [`home_protection_is_prepared_only_for_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L2863) | Protected folders are created in the real home only before a start that can write the home, never otherwise. | ✅ |
+| [`sams_own_folders_stay_hidden_inside_a_granted_folder`](../crates/sam-sandbox/src/lib.rs#L2749) | SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | ✅ |
+| [`user_folder_locations_stay_read_only_with_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L2804) | With the home writable, the file that says where the user folders are stays read-only, so an app cannot point other apps' Documents or Downloads grant at another folder. | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-core/src/risk.rs`](../crates/sam-core/src/risk.rs)
 
@@ -352,6 +352,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`full_home_access_cannot_leave_anything_that_runs_later`](../crates/sam-runner/tests/full_home.rs#L53) | Full home access cannot leave anything that runs later. | ✅ |
 | [`the_home_protections_hold_whatever_else_is_granted`](../crates/sam-runner/tests/home_guards.rs#L45) | The home protections hold whatever else is granted. | 🆕 new |
+| [`paths_are_resolved_through_links_also_where_they_do_not_exist_yet`](../crates/sam-sandbox/src/lib.rs#L2697) | Paths are resolved through links also where they do not exist yet, the way Bubblewrap and the app see them (audit S-F3). | 🆕 new |
+| [`a_path_through_a_link_into_a_grant_is_visible`](../crates/sam-sandbox/src/lib.rs#L2712) | A path that leads into a granted folder through a link counts as visible, and one outside every grant does not (audit S-F3). | 🆕 new |
+| [`a_missing_home_folder_stops_the_start`](../crates/sam-sandbox/src/lib.rs#L2728) | Without a real home folder nothing starts: full home access would otherwise bind the whole computer (audit S-F12). | 🆕 new |
 | [`only_what_would_run_later_is_moved_aside`](../crates/sam-sandbox/src/lib.rs#L2611) | After a start with a writable home, only what could make the computer run something is moved aside: a new startup file, a replaced link to a protected folder, a key folder the app was not given. | ✅ |
 | [`a_new_startup_file_is_moved_aside_while_the_app_runs`](../crates/sam-runner/src/home_live.rs#L149) | A startup file created while the app runs is moved aside at once, not only when the app ends; a removed link is put back at once. | ✅ |
 | [`protected_parents_are_locked_and_linked_keys_hidden`](../crates/sam-sandbox/src/lib.rs#L2663) | With a writable home, the folders above protected places are mount points of their own (so they cannot be renamed away), and a key folder that is a link is hidden where it points. | ✅ |
