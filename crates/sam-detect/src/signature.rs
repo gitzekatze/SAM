@@ -261,7 +261,7 @@ pub fn signer_from_status(status: &str) -> Option<String> {
 /// still name B.
 const CONTRACT_KEY_A: &str = include_str!("../contract/a.asc");
 const CONTRACT_KEY_B: &str = include_str!("../contract/b.asc");
-const CONTRACT_MSG: &str = include_str!("../contract/msg");
+pub const CONTRACT_MSG: &str = include_str!("../contract/msg");
 const CONTRACT_SIG: &str = include_str!("../contract/msg.sig");
 /// Key B's fingerprint.
 pub const CONTRACT_SIGNER: &str = "1B861E7D695D2668FD5DA11DE9F8CB684282E921";
@@ -270,8 +270,10 @@ pub const CONTRACT_SIGNER: &str = "1B861E7D695D2668FD5DA11DE9F8CB684282E921";
 /// signature by any key in its keyring (the reason SAM refuses files with
 /// more than one key), and its status output names the key that really
 /// signed. Used by `sam-jail doctor` and the tests. The error says what
-/// differs.
-pub fn gnupg_contract() -> std::result::Result<(), String> {
+/// differs. `msg` and `expected` are the contract material's message and
+/// signer (`CONTRACT_MSG`, `CONTRACT_SIGNER`); the tests pass others to
+/// show that the check notices a bad signature and a wrong signer.
+pub fn gnupg_contract(msg: &str, expected: &str) -> std::result::Result<(), String> {
     let run = || -> Result<std::result::Result<(), String>> {
         let gpg = sam_core::util::which("gpg").context("gpg is not installed")?;
         let gpgv = sam_core::util::which("gpgv").context("gpgv is not installed")?;
@@ -281,7 +283,7 @@ pub fn gnupg_contract() -> std::result::Result<(), String> {
             home.join("keys.asc"),
             format!("{CONTRACT_KEY_A}{CONTRACT_KEY_B}"),
         )?;
-        std::fs::write(home.join("msg"), CONTRACT_MSG)?;
+        std::fs::write(home.join("msg"), msg)?;
         std::fs::write(home.join("msg.sig"), CONTRACT_SIG)?;
         let keyring = home.join("keyring.gpg");
         let Some(listing) = import_keys(&gpg, home, &keyring, &home.join("keys.asc"))? else {
@@ -300,10 +302,8 @@ pub fn gnupg_contract() -> std::result::Result<(), String> {
                 &home.join("msg.sig"),
                 &home.join("msg"),
             )? {
-                Some(s) if s == CONTRACT_SIGNER => Ok(()),
-                Some(s) => Err(format!(
-                    "gpgv names {s} as the signer, not {CONTRACT_SIGNER}"
-                )),
+                Some(s) if s == expected => Ok(()),
+                Some(s) => Err(format!("gpgv names {s} as the signer, not {expected}")),
                 None => Err("gpgv no longer reports one VALIDSIG line for a good signature".into()),
             },
         )

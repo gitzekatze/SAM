@@ -283,7 +283,10 @@ fn probe(name: &str, host: &HostInfo) -> (State, String) {
             if which("gpg").is_none() || which("gpgv").is_none() {
                 return (State::Absent, "GnuPG (gpg, gpgv) is not installed".into());
             }
-            match sam_detect::signature::gnupg_contract() {
+            match sam_detect::signature::gnupg_contract(
+                sam_detect::signature::CONTRACT_MSG,
+                sam_detect::signature::CONTRACT_SIGNER,
+            ) {
                 Ok(()) => holds("gpgv names the key that really signed"),
                 Err(e) => broken(e),
             }

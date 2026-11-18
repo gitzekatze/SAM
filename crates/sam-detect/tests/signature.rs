@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use sam_core::model::SignatureState;
-use sam_detect::signature::{check, gnupg_contract, sign_for_test, sign_with_key_block_for_test};
+use sam_detect::signature::{
+    check, gnupg_contract, sign_for_test, sign_with_key_block_for_test, CONTRACT_MSG,
+    CONTRACT_SIGNER,
+};
 
 /// A throwaway GnuPG folder and a work folder; the agent is stopped at the end.
 struct Kit {
@@ -235,7 +238,15 @@ fn a_signature_by_a_subkey_names_its_primary_key() {
 #[test]
 fn gnupg_names_the_real_signer() {
     let Some(_k) = kit() else { return };
-    if let Err(e) = gnupg_contract() {
+    if let Err(e) = gnupg_contract(CONTRACT_MSG, CONTRACT_SIGNER) {
         panic!("the GnuPG contract is broken here: {e}");
     }
+    // The check can also fail: it notices when gpgv names another signer
+    // than the one expected, and when the signature does not match.
+    let a = "50383F6AEEDD9F43E1DB6CEF5BF470364B01B57E";
+    let msg = "SAM contract probe: gpgv must name the real signer\n";
+    let e = gnupg_contract(msg, a).unwrap_err();
+    assert!(e.contains(CONTRACT_SIGNER) && e.contains(a), "{e}");
+    let e = gnupg_contract("a changed message\n", CONTRACT_SIGNER).unwrap_err();
+    assert!(e.contains("VALIDSIG"), "{e}");
 }
