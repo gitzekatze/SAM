@@ -95,9 +95,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Both forms of update information (a direct zsync address and GitHub releases) are understood. | [`both_forms_of_update_information_are_understood`](../crates/sam-detect/src/update_info.rs#L143) |
 | Wildcards in update information match the right file name and not the build for another processor. | [`update_wildcards_match_only_the_right_build`](../crates/sam-detect/src/update_info.rs#L183) |
 | The signature of a signed AppImage is checked with GnuPG: unsigned, valid with the signer's fingerprint and name, invalid after one changed byte. | [`signed_appimage_is_checked`](../crates/sam-detect/tests/signature.rs#L138) |
-| The attack of audit finding C1: a file carries a trusted key (here it stands for SAM's release key, which is public) first and the attacker's key second, and is signed with the attacker's key. | [`a_second_key_in_the_file_cannot_borrow_a_trusted_name`](../crates/sam-detect/tests/signature.rs#L172) |
-| A key whose signatures come from a signing subkey: SAM names the primary key (the fingerprint people publish and SAM compares), not the subkey. | [`a_signature_by_a_subkey_names_its_primary_key`](../crates/sam-detect/tests/signature.rs#L215) |
-| The contract with GnuPG (docs/contracts.toml, `signatures-gnupg`) holds with the GnuPG installed here: gpgv accepts a signature by any key in its keyring, and its status output names the key that really signed. | [`gnupg_names_the_real_signer`](../crates/sam-detect/tests/signature.rs#L238) |
+| The attack of audit finding C1: a file carries a trusted key (here it stands for SAM's release key, which is public) first and the attacker's key second, and is signed with the attacker's key. | [`a_second_key_in_the_file_cannot_borrow_a_trusted_name`](../crates/sam-detect/tests/signature.rs#L173) |
+| A key whose signatures come from a signing subkey: SAM names the primary key (the fingerprint people publish and SAM compares), not the subkey. | [`a_signature_by_a_subkey_names_its_primary_key`](../crates/sam-detect/tests/signature.rs#L216) |
+| The contract with GnuPG (docs/contracts.toml, `signatures-gnupg`) holds with the GnuPG installed here: gpgv accepts a signature by any key in its keyring, and its status output names the key that really signed. | [`gnupg_names_the_real_signer`](../crates/sam-detect/tests/signature.rs#L239) |
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 

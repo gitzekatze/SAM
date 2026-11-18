@@ -200,6 +200,13 @@ fn a_changed_record_stays_blocked_until_it_is_confirmed() {
 fn kept_data_goes_back_only_to_its_own_appimage() {
     let tmp = tempfile::tempdir().unwrap();
     let (sam, id) = one_app(tmp.path());
+    // An app with no kept data anywhere gets its normal, short id.
+    let img = tmp.path().join("Tool.AppImage");
+    let sha = sam_intake::fingerprint::compute(&img).unwrap().sha256;
+    assert_eq!(
+        id,
+        sam_intake::id::generate_id("Tool", &img, &sha, |_| false)
+    );
     let secret = sam.paths.app_home(&id).join("secret");
     fs::create_dir_all(secret.parent().unwrap()).unwrap();
     fs::write(&secret, "kept").unwrap();

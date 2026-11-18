@@ -147,6 +147,7 @@ fn signed_appimage_is_checked() {
         "{}",
         unsigned.detail
     );
+    assert!(!unsigned.detail.is_empty(), "the result is explained");
 
     sign_for_test(&img, &k.home, "test@example.invalid").unwrap();
     let ok = check(&img);
