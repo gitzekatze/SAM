@@ -376,12 +376,20 @@ downloaded or installed.
 **Updating** (*Update Now*, `sam-jail update`) is the one time SAM
 downloads a file, and only when you ask:
 - The new AppImage comes from the address its update description names,
-  over HTTPS. It is written next to the old file as a hidden
-  `.….sam-download` file.
+  over HTTPS. It is downloaded and checked in SAM's own data folder, which
+  no app can reach, never in the AppImage's folder, where another app could
+  plant a link under the download's name or swap the file between the check
+  and the move.
 - It must match the published SHA-1 and be an AppImage.
 - It must be signed like the installed version. A new or missing key stops
   the update unless you accept it.
-- The old file moves into SAM's data folder, so you can go back.
+- The old file moves into SAM's data folder, so you can go back; going back
+  keeps the newer version, also when both have the same file name.
+- The new file is put in place by renaming, or, across drives, by copying
+  into a new file; SAM never writes through a link it finds there.
+- The app keeps its sandbox. When the new version asks for more (another
+  category, the network, a folder), the app page shows it, and nothing
+  changes until you switch it on yourself.
 - Downloading only the changed parts (zsync) reuses blocks of the old file
   and fetches the rest by HTTP range requests; the assembled file must still
   match the published SHA-1, or it is discarded and the whole file is

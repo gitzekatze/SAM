@@ -446,9 +446,16 @@ impl Sam {
         entry.category = rec.category.as_str().into();
         entry.recommendation_notes = rec.notes.clone();
         entry.recommended = rec.permissions.clone();
-        if entry.profile.user_modified {
+        // The recommendation becomes the profile only when the app is added.
+        // Afterwards (an update, Unpack Again) it is read from a file that
+        // may have been replaced, so what it asks for more is only shown as
+        // pending, never applied: an update keeps the sandbox it had
+        // (regression, audit U-H3: v2 of a calculator could declare
+        // Categories=Network and got the network without a question).
+        if self.registry().exists(&entry.id) {
             entry.pending_changes =
                 new_requirements(&old_rec, &rec.permissions, &entry.profile.permissions);
+            entry.profile.user_modified = entry.profile.permissions != entry.recommended;
         } else {
             entry.profile.permissions = rec.permissions.clone();
             entry.pending_changes.clear();

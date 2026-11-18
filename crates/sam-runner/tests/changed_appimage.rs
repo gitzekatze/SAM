@@ -102,3 +102,56 @@ fn a_swapped_appimage_stays_marked_when_a_switch_changes() {
     assert!(!preflight(&sam.resolve(&id).unwrap()).0.is_empty());
     assert!(!sam.mark_reviewed(&id).unwrap().content_changed_outside);
 }
+
+/// Regression (audit U-H2): "Check all AppImages for changes" (or moving
+/// the file with relocate) recorded the swapped file's checksum, so the
+/// following "Unpack Again" compared the file with itself: the swapped
+/// content ran with the old app's permissions, unmarked, and its signature
+/// was not checked again. The comparison is now with what was unpacked.
+#[test]
+fn a_swapped_appimage_is_marked_also_after_the_change_check() {
+    if sam_runner::doctor::bwrap_functional(&HostInfo::probe()).is_err() {
+        sam_runner::contracts::skip(
+            "bubblewrap is not functional here (SAM unpacks inside a sandbox)",
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let img = tmp.path().join("Tool.AppImage");
+    build(&img, &FixtureSpec::hello("Tool")).unwrap();
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = sam
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "a different file under the same name".into();
+    build(&img, &spec).unwrap();
+    // The change check first, as the window's "Check all AppImages" does.
+    sam.refresh(Some(&id), true).unwrap();
+    let e = sam.reextract(&id, false).unwrap();
+    assert!(
+        e.content_changed_outside,
+        "still marked after the change check"
+    );
+    assert!(!preflight(&e).0.is_empty());
+
+    // The same through relocate: the app pointed at another, different file.
+    sam.mark_reviewed(&id).unwrap();
+    let other = tmp.path().join("Other.AppImage");
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "yet another file".into();
+    build(&other, &spec).unwrap();
+    sam.relocate(&id, &other).unwrap();
+    let e = sam.reextract(&id, false).unwrap();
+    assert!(e.content_changed_outside, "marked after relocate too");
+}
