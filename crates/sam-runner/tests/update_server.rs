@@ -57,6 +57,10 @@ print(srv.server_address[1], flush=True)
 srv.serve_forever()
 "#;
 
+/// The server's certificate is trusted through process-wide variables
+/// (CURL_CA_BUNDLE), so the tests of this file run one at a time.
+static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 struct Server {
     child: Child,
     port: u16,
@@ -169,6 +173,7 @@ fn publish(server: &Server, file: &Path, name: &str) {
 
 #[test]
 fn updates_download_only_changes_check_them_and_refuse_tampering() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     if !["python3", "openssl", "objcopy", "curl"]
         .iter()
         .all(|t| have(t))
@@ -297,4 +302,181 @@ fn updates_download_only_changes_check_them_and_refuse_tampering() {
         "{}",
         status.detail
     );
+}
+
+/// Starts the server and returns it with the update URL, or `None` where
+/// the tools are missing (a skip that fails under SAM_REQUIRE_SANDBOX).
+fn server_or_skip(tmp: &Path) -> Option<(Server, String)> {
+    if !["python3", "openssl", "objcopy", "curl"]
+        .iter()
+        .all(|t| have(t))
+    {
+        sam_runner::contracts::skip("needs python3, openssl, objcopy and curl")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return None;
+    }
+    let server = start_server(tmp);
+    let url = format!(
+        "https://127.0.0.1:{}/Tool-x86_64.AppImage.zsync",
+        server.port
+    );
+    Some((server, url))
+}
+
+/// Regressions (audit U-H4, U-H3): updates were downloaded next to the
+/// AppImage under a guessable name (`.<name>.sam-download`) with tools that
+/// follow links, so an app with write access to that folder (often
+/// Downloads) could plant a link there and SAM wrote the update through it
+/// into any file of the person. And an update silently took the new
+/// version's recommendation: a version that declares itself a network app
+/// got the network without a question. Now the download happens in SAM's
+/// own folder, nothing is written through a link, and an update keeps the
+/// sandbox it had; what the new version asks for more is only shown.
+#[test]
+fn an_update_writes_through_no_planted_link_and_keeps_the_sandbox() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Downloads");
+    fs::create_dir_all(&apps).unwrap();
+    let v1 = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&v1, &url, "1.0");
+    // Version 2 declares itself a network app.
+    let v2 = tmp.path().join("v2.AppImage");
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "Tool, version 2.0".into();
+    spec.categories = "Network;Chat;".into();
+    spec.files.push(FixtureFile {
+        path: "usr/share/tool/data.bin".into(),
+        data: vec![7u8; 300_000],
+        mode: 0o644,
+    });
+    spec.update_info = Some(format!("zsync|{url}"));
+    build(&v2, &spec).unwrap();
+    publish(&server, &v2, "Tool-2.0-x86_64.AppImage");
+
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = sam
+        .add(
+            &v1,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let before = sam.resolve(&id).unwrap().profile.permissions;
+    assert_ne!(
+        before.network.mode,
+        sam_core::permissions::NetworkMode::Full,
+        "version 1 starts without the network"
+    );
+
+    // Another app with access to Downloads plants links under every name
+    // the old code downloaded to.
+    let victim = tmp.path().join("victim.txt");
+    fs::write(&victim, "the person's file").unwrap();
+    for n in [
+        ".Tool-2.0-x86_64.AppImage.sam-download",
+        ".Tool-1.0-x86_64.AppImage.sam-download",
+    ] {
+        std::os::unix::fs::symlink(&victim, apps.join(n)).unwrap();
+    }
+
+    let e = sam.update(&id, false).unwrap();
+    assert_eq!(
+        fs::read_to_string(&victim).unwrap(),
+        "the person's file",
+        "nothing was written through a planted link"
+    );
+    assert!(
+        fs::symlink_metadata(&e.source_path)
+            .unwrap()
+            .file_type()
+            .is_file(),
+        "the new version is a plain file"
+    );
+    assert_eq!(fs::read(&e.source_path).unwrap(), fs::read(&v2).unwrap());
+    assert_eq!(
+        e.profile.permissions, before,
+        "the update kept the sandbox it had"
+    );
+    assert!(
+        e.pending_changes.iter().any(|c| c == "network"),
+        "what the new version asks for more is shown: {:?}",
+        e.pending_changes
+    );
+    assert!(
+        !tmp.path()
+            .join("sam")
+            .join("data")
+            .join("downloads")
+            .join(&id)
+            .exists(),
+        "the download folder is cleaned up"
+    );
+}
+
+/// Regression (audit U-H5): when the new version had the same file name as
+/// the old one, going back moved the current file onto the kept old version
+/// (destroying it), then "restored" the new file and reported that the app
+/// was back. Now going back puts the old version back and keeps the newer
+/// one, and going back again returns to the newer one.
+#[test]
+fn going_back_with_an_unchanged_file_name_keeps_both_versions() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    // The same name for both versions, as many projects publish.
+    let installed = apps.join("Tool-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let v1 = fs::read(&installed).unwrap();
+    let v2_file = tmp.path().join("v2.AppImage");
+    appimage(&v2_file, &url, "2.0");
+    publish(&server, &v2_file, "Tool-x86_64.AppImage");
+    let v2 = fs::read(&v2_file).unwrap();
+
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = sam
+        .add(
+            &installed,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let e = sam.update(&id, false).unwrap();
+    assert_eq!(e.source_path, installed);
+    assert_eq!(fs::read(&installed).unwrap(), v2, "updated");
+
+    let e = sam.undo_update(&id).unwrap();
+    assert_eq!(
+        fs::read(&e.source_path).unwrap(),
+        v1,
+        "the old version is back"
+    );
+    let kept = e.update_backup.as_ref().expect("the newer one is kept");
+    assert_eq!(
+        fs::read(&kept.file).unwrap(),
+        v2,
+        "the newer version is kept"
+    );
+
+    let e = sam.undo_update(&id).unwrap();
+    assert_eq!(fs::read(&e.source_path).unwrap(), v2, "and back again");
+    let kept = e.update_backup.as_ref().unwrap();
+    assert_eq!(fs::read(&kept.file).unwrap(), v1);
 }

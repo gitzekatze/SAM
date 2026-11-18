@@ -238,6 +238,10 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     let e = app.reextract(&id, false).unwrap();
     assert!(e.profile.user_modified);
     assert_eq!(e.state, AppState::Ready);
+    // The file was changed outside SAM: marked until confirmed, also after
+    // the change check (audit U-H2).
+    assert!(e.content_changed_outside);
+    app.mark_reviewed(&id).unwrap();
 
     // Missing source.
     fs::remove_file(&img).unwrap();

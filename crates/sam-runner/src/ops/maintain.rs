@@ -58,7 +58,15 @@ impl Sam {
         match extract(&req, &mut log) {
             Ok(out) => {
                 entry.appimage_type = info.kind;
-                if entry.source.sha256 != fp.sha256 {
+                // Compared with what was unpacked last, not with the file's
+                // last seen checksum: the change check and relocate update
+                // that one, so a swapped file looked known (regression,
+                // audit U-H2).
+                let unpacked = entry
+                    .extraction
+                    .as_ref()
+                    .map_or(&entry.source.sha256, |x| &x.source.sha256);
+                if *unpacked != fp.sha256 {
                     if !by_update {
                         entry.content_changed_outside = true;
                     }
@@ -296,6 +304,22 @@ impl Sam {
             }
         }
         Ok(runners.len())
+    }
+
+    /// A fresh folder for one download, `<data>/downloads/<name>`, that only
+    /// SAM's user can enter. Apps never see SAM's data folder.
+    fn download_folder(&self, name: &str) -> Result<PathBuf> {
+        use std::os::unix::fs::PermissionsExt;
+        let base = self.paths.data_dir.join("downloads");
+        let d = base.join(name);
+        if d.exists() {
+            remove_tree(&d)?;
+        }
+        fs::create_dir_all(&d)?;
+        for f in [&base, &d] {
+            fs::set_permissions(f, fs::Permissions::from_mode(0o700))?;
+        }
+        Ok(d)
     }
 
     pub(super) fn ensure_not_running(&self, entry: &AppEntry, what: &str) -> Result<()> {
@@ -645,7 +669,11 @@ impl Sam {
             .filter(|n| *n == old_name || !dir.join(n).exists())
             .unwrap_or(old_name.clone());
         let target = dir.join(&name);
-        let tmp = dir.join(format!(".{name}.sam-download"));
+        // Downloaded and checked in SAM's own folder, which no app can
+        // reach: in the AppImage's folder (often Downloads) another app
+        // could plant a link under the download's name, or swap the file
+        // between the check and the move (regression, audit U-H4).
+        let tmp = self.download_folder(&entry.id)?.join(&name);
         let fetched = crate::updates::download_update(&p, &old, &tmp)?;
         // From here on, any error removes the download again.
         let placed = (|| -> Result<PathBuf> {
@@ -700,27 +728,28 @@ impl Sam {
             fs::create_dir_all(&backup_dir)?;
             let backup = backup_dir.join(&old_name);
             move_file(&old, &backup)?;
-            if let Err(e) = fs::rename(&tmp, &target) {
+            if let Err(e) = move_file(&tmp, &target) {
                 let _ = move_file(&backup, &old);
-                return Err(anyhow::Error::new(e)
-                    .context(sam_core::i18n::tr("putting the new version in place")));
+                return Err(e.context(sam_core::i18n::tr("putting the new version in place")));
             }
             Ok(backup)
         })();
-        let backup = match placed {
-            Ok(b) => b,
-            Err(e) => {
-                let _ = fs::remove_file(&tmp);
-                return Err(e);
-            }
-        };
+        if let Some(d) = tmp.parent() {
+            let _ = remove_tree(d);
+        }
+        let backup = placed?;
         self.relocate(&entry.id, &target)?;
-        let mut e = self.reextract_as(&entry.id, false, true)?;
-        e.update_backup = Some(UpdateBackup {
+        // The way back is recorded before unpacking: if unpacking the new
+        // version fails, the old one can still be put back (audit U-L2).
+        let way_back = UpdateBackup {
             file: backup,
             original_path: old,
             replaced_at: now(),
-        });
+        };
+        self.registry()
+            .update(&entry.id, |f| f.update_backup = Some(way_back.clone()))?;
+        let mut e = self.reextract_as(&entry.id, false, true)?;
+        e.update_backup = Some(way_back);
         e.update = Some(UpdateStatus {
             state: sam_core::model::UpdateState::Current,
             latest: p.filename.or(p.release),
@@ -781,10 +810,23 @@ impl Sam {
         let keep = b
             .file
             .with_file_name(current.file_name().context(sam_core::i18n::tr("no name"))?);
+        // The earlier version first steps aside inside the backup folder:
+        // when both versions have the same name, `keep` is its own path,
+        // and moving the current file there destroyed it while reporting
+        // success (regression, audit U-H5).
+        let earlier = b.file.with_file_name(".going-back");
+        move_file(&b.file, &earlier)?;
         if current.exists() {
-            move_file(&current, &keep)?;
+            if let Err(e) = move_file(&current, &keep) {
+                let _ = move_file(&earlier, &b.file);
+                return Err(e);
+            }
         }
-        move_file(&b.file, &b.original_path)?;
+        if let Err(e) = move_file(&earlier, &b.original_path) {
+            let _ = move_file(&keep, &current);
+            let _ = move_file(&earlier, &b.file);
+            return Err(e);
+        }
         self.relocate(&entry.id, &b.original_path)?;
         let mut e = self.reextract_as(&entry.id, false, true)?;
         e.update_backup = Some(UpdateBackup {
@@ -877,7 +919,7 @@ impl Sam {
             .filter(|n| *n == old_name || !dir.join(n).exists())
             .unwrap_or(old_name.clone());
         let target = dir.join(&name);
-        let tmp = dir.join(format!(".{name}.sam-download"));
+        let tmp = self.download_folder("sam")?.join(&name);
         let fetched = crate::updates::download_update(&p, appimage, &tmp)?;
         let placed = (|| -> Result<()> {
             if !inspect(&tmp)?.is_appimage() {
@@ -898,17 +940,16 @@ impl Sam {
             // A running AppImage can be moved: the old SAM keeps running
             // from its mounted image until it exits.
             move_file(appimage, &backup_dir.join(&old_name))?;
-            if let Err(e) = fs::rename(&tmp, &target) {
+            if let Err(e) = move_file(&tmp, &target) {
                 let _ = move_file(&backup_dir.join(&old_name), appimage);
-                return Err(anyhow::Error::new(e)
-                    .context(sam_core::i18n::tr("putting the new version in place")));
+                return Err(e.context(sam_core::i18n::tr("putting the new version in place")));
             }
             Ok(())
         })();
-        if let Err(e) = placed {
-            let _ = fs::remove_file(&tmp);
-            return Err(e);
+        if let Some(d) = tmp.parent() {
+            let _ = remove_tree(d);
         }
+        placed?;
         let how = match fetched {
             crate::updates::Fetched::Delta { bytes, total } => sam_core::i18n::trf(
                 "only the changed parts were downloaded ({part} of {whole} MB)",
@@ -935,12 +976,104 @@ impl Sam {
 }
 
 /// Rename, or copy and delete across file systems.
+/// Moves a file. Within one file system a rename, which replaces whatever
+/// is at `to` (also a link) and never writes through it. Across file
+/// systems a copy into a new file that must not exist yet and is never
+/// opened through a link (regression, audit U-H4: `fs::copy` follows a
+/// link planted at `to`), then the original is removed.
 fn move_file(from: &Path, to: &Path) -> Result<()> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     if fs::rename(from, to).is_ok() {
         return Ok(());
     }
-    fs::copy(from, to)
-        .with_context(|| format!("copying {} to {}", from.display(), to.display()))?;
+    let copy = || -> Result<()> {
+        let mut src = fs::File::open(from)?;
+        let mode = src.metadata()?.permissions().mode() & 0o777;
+        let mut dst = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .mode(mode)
+            .open(to)?;
+        std::io::copy(&mut src, &mut dst)?;
+        dst.sync_all()?;
+        Ok(())
+    };
+    copy().with_context(|| format!("copying {} to {}", from.display(), to.display()))?;
     fs::remove_file(from).with_context(|| format!("removing {}", from.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    /// Updates are downloaded into a fresh folder inside SAM's data folder
+    /// that only SAM's user can enter (audit U-H4): never the AppImage's
+    /// folder, never one with leftovers.
+    #[test]
+    fn a_download_folder_is_fresh_private_and_sams_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(tmp.path())).unwrap();
+        let leftover = sam.paths.data_dir.join("downloads").join("appimage-x-1");
+        fs::create_dir_all(&leftover).unwrap();
+        fs::write(leftover.join("planted"), "x").unwrap();
+        let d = sam.download_folder("appimage-x-1").unwrap();
+        assert_eq!(d, leftover);
+        assert!(d.starts_with(&sam.paths.data_dir), "{}", d.display());
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 0, "no leftovers");
+        for f in [&d, &sam.paths.data_dir.join("downloads")] {
+            assert_eq!(fs::metadata(f).unwrap().permissions().mode() & 0o777, 0o700);
+        }
+    }
+
+    /// Across file systems (a download in SAM's folder, the AppImage on
+    /// another drive) a move is a copy: into a new file with the same
+    /// permissions, never through a link planted at the target and never
+    /// over a file that is there (audit U-H4: `fs::copy` followed links).
+    #[test]
+    fn a_move_across_drives_never_writes_through_a_link() {
+        let here = std::env::temp_dir();
+        let shm = std::path::Path::new("/dev/shm");
+        let other =
+            shm.is_dir() && fs::metadata(shm).unwrap().dev() != fs::metadata(&here).unwrap().dev();
+        if !other {
+            crate::contracts::not_here(
+                "needs /dev/shm on another file system than the temp folder",
+            );
+            return;
+        }
+        let src_dir = tempfile::tempdir_in(shm).unwrap();
+        let dst_dir = tempfile::tempdir_in(&here).unwrap();
+        let src = src_dir.path().join("new.AppImage");
+        let write_src = || {
+            fs::write(&src, "new version").unwrap();
+            fs::set_permissions(&src, fs::Permissions::from_mode(0o750)).unwrap();
+        };
+
+        write_src();
+        let to = dst_dir.path().join("Tool.AppImage");
+        move_file(&src, &to).unwrap();
+        assert_eq!(fs::read_to_string(&to).unwrap(), "new version");
+        assert_eq!(
+            fs::metadata(&to).unwrap().permissions().mode() & 0o777,
+            0o750
+        );
+        assert!(!src.exists(), "moved, not copied");
+
+        // A link planted at the target: refused, the victim is untouched.
+        write_src();
+        let victim = dst_dir.path().join("victim.txt");
+        fs::write(&victim, "the person's file").unwrap();
+        let planted = dst_dir.path().join("Planted.AppImage");
+        std::os::unix::fs::symlink(&victim, &planted).unwrap();
+        assert!(move_file(&src, &planted).is_err());
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "the person's file");
+        assert!(src.exists(), "nothing lost when the move is refused");
+
+        // A file that is already there is not overwritten.
+        assert!(move_file(&src, &to).is_err());
+        assert_eq!(fs::read_to_string(&to).unwrap(), "new version");
+    }
 }

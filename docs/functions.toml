@@ -271,6 +271,10 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "primary_keys_are_counted_without_their_subkeys",
   "the_contract_material_names_key_b",
   "a_helper_program_is_stopped_at_its_time_limit",
+  "an_update_writes_through_no_planted_link_and_keeps_the_sandbox",
+  "going_back_with_an_unchanged_file_name_keeps_both_versions",
+  "a_download_folder_is_fresh_private_and_sams_own",
+  "a_move_across_drives_never_writes_through_a_link",
 ]
 
 [[function]]
@@ -278,7 +282,7 @@ id = 29
 area = "F"
 promise = "SAM notices AppImages that were moved or changed."
 code = ["sam-intake/src/fingerprint.rs", "sam-runner/src/ops/maintain.rs"]
-tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
+tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
 
 [[area]]
 id = "G"
