@@ -116,6 +116,7 @@ pub const PROBES: &[&str] = &[
     "fs-layout",
     "name-resolution",
     "dbus-services-dir",
+    "gnupg-signer",
 ];
 
 /// Runs `program args`, returning its output (stdout and stderr) when it ran.
@@ -276,6 +277,18 @@ fn probe(name: &str, host: &HostInfo) -> (State, String) {
                 broken(
                     "no /usr/share/dbus-1/services: on-demand services cannot be recognized".into(),
                 )
+            }
+        }
+        "gnupg-signer" => {
+            if which("gpg").is_none() || which("gpgv").is_none() {
+                return (State::Absent, "GnuPG (gpg, gpgv) is not installed".into());
+            }
+            match sam_detect::signature::gnupg_contract(
+                sam_detect::signature::CONTRACT_MSG,
+                sam_detect::signature::CONTRACT_SIGNER,
+            ) {
+                Ok(()) => holds("gpgv names the key that really signed"),
+                Err(e) => broken(e),
             }
         }
         other => broken(format!("unknown quick check {other}")),
