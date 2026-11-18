@@ -249,7 +249,10 @@ pub fn cache_icon(
     }
     let dest = icons_dir.join(format!("sam-{id}.{}", fmt.ext()));
     fs::copy(&src, &dest)?;
-    let _ = fs::copy(&src, extraction_root.join(format!("icon.{}", fmt.ext())));
+    if let Ok(data) = fs::read(&src) {
+        let _ =
+            sam_core::util::write_new(&extraction_root.join(format!("icon.{}", fmt.ext())), &data);
+    }
     Ok(Some(dest))
 }
 

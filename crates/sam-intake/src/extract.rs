@@ -189,10 +189,21 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     fs::create_dir_all(req.root)?;
     let source_size = fs::metadata(req.source).map(|m| m.len()).unwrap_or(0);
     check_space(req.root, source_size, &req.limits, free_bytes(req.root))?;
-    let staging = req.root.join(format!(".staging-{}", std::process::id()));
-    if staging.exists() {
-        fs::remove_dir_all(&staging)?;
-    }
+    // Each attempt unpacks into `staging` inside a fresh, empty box; only the
+    // box is writable for the unpacking tool. The rest of the app's folder
+    // (where SAM writes its records, the menu entry and the icon afterwards)
+    // stays out of its reach: a tool tricked by a crafted image could
+    // otherwise plant links there that SAM would then write through,
+    // outside any sandbox (regression, audit I-F2).
+    let unpack_box = req.root.join(format!(".unpack-{}", std::process::id()));
+    let staging = unpack_box.join("out");
+    let fresh_box = || -> Result<()> {
+        if fs::symlink_metadata(&unpack_box).is_ok() {
+            fs::remove_dir_all(&unpack_box)?;
+        }
+        fs::create_dir(&unpack_box)?;
+        Ok(())
+    };
     let started = Instant::now();
     let mut attempts = Vec::new();
 
@@ -215,7 +226,8 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                         fs::create_dir_all(dst)?;
                         let mut c = match &req.isolation {
                             Some(iso) => {
-                                let mut c = isolated(iso, req.source, req.root, &d);
+                                let mut c =
+                                    isolated(iso, req.source, dst.parent().unwrap_or(dst), &d);
                                 c.arg(&d);
                                 c
                             }
@@ -248,7 +260,12 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                 Box::new(
                     move |dst: &Path, log: &mut dyn Write| match &req.isolation {
                         Some(iso) => {
-                            let mut c = isolated(iso, req.source, req.root, &iso.self_exe);
+                            let mut c = isolated(
+                                iso,
+                                req.source,
+                                dst.parent().unwrap_or(dst),
+                                &iso.self_exe,
+                            );
                             c.arg(&iso.self_exe)
                                 .args(["dev", "extract-squashfs"])
                                 .arg(req.source)
@@ -287,7 +304,8 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                     Box::new(move |dst: &Path, log: &mut dyn Write| {
                         let mut c = match &req.isolation {
                             Some(iso) => {
-                                let mut c = isolated(iso, req.source, req.root, &u);
+                                let mut c =
+                                    isolated(iso, req.source, dst.parent().unwrap_or(dst), &u);
                                 c.arg(&u);
                                 c
                             }
@@ -316,7 +334,8 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                         fs::create_dir_all(dst)?;
                         let mut c = match &req.isolation {
                             Some(iso) => {
-                                let mut c = isolated(iso, req.source, req.root, &b);
+                                let mut c =
+                                    isolated(iso, req.source, dst.parent().unwrap_or(dst), &b);
                                 c.arg(&b);
                                 c
                             }
@@ -361,9 +380,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     let mut method_used = None;
     for (name, f) in &methods {
         writeln!(log, "[extract] trying {name}")?;
-        if staging.exists() {
-            fs::remove_dir_all(&staging)?;
-        }
+        fresh_box()?;
         match f(&staging, log) {
             Ok(()) => {
                 method_used = Some(name.to_string());
@@ -372,13 +389,13 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             Err(e) => {
                 writeln!(log, "[extract] {name} failed: {e:#}")?;
                 if is_limit_error(&e) {
-                    let _ = fs::remove_dir_all(&staging);
+                    let _ = fs::remove_dir_all(&unpack_box);
                     return Err(explain_limit(e));
                 }
                 // A full disk: remove what was unpacked so far and say so;
                 // the next method would fail the same way.
                 if is_disk_full(&e) {
-                    let _ = fs::remove_dir_all(&staging);
+                    let _ = fs::remove_dir_all(&unpack_box);
                     bail!(
                         "{}",
                         sam_core::i18n::trf(
@@ -394,20 +411,18 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
 
     if method_used.is_none() {
         if !req.allow_fallback {
-            let _ = fs::remove_dir_all(&staging);
+            let _ = fs::remove_dir_all(&unpack_box);
             return Err(anyhow!(NeedsFallbackConsent { attempts }));
         }
         writeln!(
             log,
             "[extract] trying sandboxed --appimage-extract (user consented)"
         )?;
-        if staging.exists() {
-            fs::remove_dir_all(&staging)?;
-        }
+        fresh_box()?;
         match self_extract_sandboxed(req.source, &staging, &req.limits, started, log) {
             Ok(()) => method_used = Some("appimage-extract (sandboxed)".into()),
             Err(e) => {
-                let _ = fs::remove_dir_all(&staging);
+                let _ = fs::remove_dir_all(&unpack_box);
                 attempts.push(format!("appimage-extract: {e:#}"));
                 bail!(
                     "{}",
@@ -420,10 +435,18 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         }
     }
 
+    // What the tool left must be a real folder, not a link to elsewhere.
+    if !fs::symlink_metadata(&staging).is_ok_and(|m| m.is_dir()) {
+        let _ = fs::remove_dir_all(&unpack_box);
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the unpacked app is not a plain folder; it was removed")
+        );
+    }
     let report = match normalize(&staging, &req.limits, started) {
         Ok(r) => r,
         Err(e) => {
-            let _ = fs::remove_dir_all(&staging);
+            let _ = fs::remove_dir_all(&unpack_box);
             return Err(if is_limit_error(&e) {
                 explain_limit(e)
             } else {
@@ -448,6 +471,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         fs::rename(&appdir, &old)?;
     }
     fs::rename(&staging, &appdir)?;
+    let _ = fs::remove_dir_all(&unpack_box);
     if old.exists() {
         let _ = fs::remove_dir_all(&old);
     }

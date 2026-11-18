@@ -466,8 +466,12 @@ SAM unpacks AppImages with its own reader and does not run them to do so.
 Only when its reader fails and you agree does the AppImage unpack itself
 (see the end of this section).
 Unpacking happens inside a minimal Bubblewrap sandbox (the AppImage
-read-only, only the target writable, no network, no privileges) whenever
-Bubblewrap works; the unpacking log says whether it was isolated.
+read-only, no network, no privileges) whenever Bubblewrap works; the
+unpacking log says whether it was isolated. The only writable place in it
+is a fresh, empty folder for the unpacked files, never the app's folder
+where SAM keeps its notes, the menu entry and the icon: an unpacking tool
+tricked by a crafted image cannot leave links there for SAM to write
+through. SAM itself writes those files without following links.
 
 | Risk | What SAM does |
 |---|---|
