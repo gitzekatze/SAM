@@ -665,10 +665,19 @@ pub fn run(
         .join("moved-aside")
         .join(&app.id)
         .join(started_at.to_string());
-    let live_watch = prepared
-        .home_watch
-        .as_ref()
-        .and_then(|w| crate::home_live::LiveWatch::start(w, aside.clone()));
+    let (live_watch, watch_warning) = match prepared.home_watch.as_ref() {
+        Some(w) => crate::home_live::LiveWatch::start(w, aside.clone()),
+        None => (None, None),
+    };
+    if let Some(warn) = &watch_warning {
+        let _ = writeln!(log, "# warning: {warn}");
+        if !opts.quiet {
+            eprintln!(
+                "sam-jail: {}",
+                sam_core::i18n::trf("warning: {text}", &[("text", warn)])
+            );
+        }
+    }
     let spawned = cmd
         .spawn()
         .with_context(|| format!("starting {}", prepared.command.program.display()));
@@ -783,11 +792,31 @@ pub fn run(
     }
     let moved: Vec<String> = found
         .into_iter()
-        .map(|m| format!("~/{} → {}", m.place, sam_core::util::tildify(&m.to)))
+        .map(|m| {
+            let to = sam_core::util::tildify(&m.to);
+            match m.how {
+                sam_sandbox::Aside::Moved => format!("~/{} → {to}", m.place),
+                sam_sandbox::Aside::Renamed => sam_core::i18n::trf(
+                    "~/{place} → {to} (renamed in place: SAM's folder could not take it)",
+                    &[("place", &m.place), ("to", &to)],
+                ),
+                sam_sandbox::Aside::Deleted => sam_core::i18n::trf(
+                    "~/{place}: deleted (it could not be moved)",
+                    &[("place", &m.place)],
+                ),
+                sam_sandbox::Aside::Failed => sam_core::i18n::trf(
+                    "~/{place}: COULD NOT BE REMOVED; it may run outside the sandbox: remove it yourself",
+                    &[("place", &m.place)],
+                ),
+            }
+        })
         .collect();
+    // Best effort: a full disk (which the app may have caused on purpose)
+    // must not stop the record below, with what the start was missing and
+    // what was moved aside, from being saved (regression, audit L-F5).
     if let Ok(mut l) = log.lock() {
         for m in &moved {
-            writeln!(l, "# moved aside (it would act outside the sandbox): {m}")?;
+            writeln!(l, "# moved aside (it would act outside the sandbox): {m}").ok();
         }
         if mode != TerminalMode::None {
             let what = if mode == TerminalMode::Relay {
@@ -795,7 +824,7 @@ pub fn run(
             } else {
                 "80x24, no input (test start)"
             };
-            writeln!(l, "\n# terminal: a terminal of its own, {what}")?;
+            writeln!(l, "\n# terminal: a terminal of its own, {what}").ok();
         }
         if let Some(b) = relay_end
             .as_ref()
@@ -806,19 +835,21 @@ pub fn run(
                 l,
                 "# terminal: blocked escape codes for {}",
                 b.iter().copied().collect::<Vec<_>>().join(", ")
-            )?;
+            )
+            .ok();
         }
         if let Some(e) = &enforcement {
-            writeln!(l, "# enforced: {e}")?;
+            writeln!(l, "# enforced: {e}").ok();
         } else if prepared.landlock || prepared.seccomp {
-            writeln!(l, "# enforced: unknown (no status from SAM's helper)")?;
+            writeln!(l, "# enforced: unknown (no status from SAM's helper)").ok();
         }
         writeln!(
             l,
             "# ---- end ----\n# finished: {}\n# result: {}",
             format_ts(now()),
             outcome.summary
-        )?;
+        )
+        .ok();
     }
 
     let rec = LaunchRecord {
