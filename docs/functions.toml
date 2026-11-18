@@ -42,6 +42,9 @@ tests = ["unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_du
   "a_menu_start_after_free_space_unpacks_inside_a_sandbox",
   "without_the_command_line_a_menu_start_refuses_to_unpack",
   "sams_programs_never_unpack_without_a_sandbox",
+  "a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder",
+  "files_sam_writes_never_go_through_a_planted_link",
+  "the_icon_is_cached_and_never_written_through_a_link",
   "a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it",
   "tests_and_benchmarks_may_unpack_in_their_own_process",
 ]

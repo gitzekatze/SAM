@@ -261,6 +261,40 @@ pub fn output_within(
     }
 }
 
+/// Writes `data` as a new file at `path`, never through a link: whatever is
+/// at `path` (a file or a link, never a folder) is removed first, and the
+/// file is created exclusively without following links. For files SAM
+/// writes into folders an untrusted program could have touched (audit I-F2:
+/// a planted `metadata.json` link made SAM write into `~/.bashrc`).
+pub fn write_new(path: &Path, data: &[u8]) -> Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    match fs::symlink_metadata(path) {
+        Ok(m) if m.is_dir() => anyhow::bail!("{} is a folder", path.display()),
+        Ok(_) => fs::remove_file(path)?,
+        Err(_) => {}
+    }
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .mode(0o644)
+        .open(path)
+        .with_context(|| format!("creating {}", path.display()))?;
+    f.write_all(data)?;
+    Ok(())
+}
+
+/// Makes sure `dir` is a real folder: a link in its place is removed (never
+/// followed), a missing folder is created.
+pub fn real_dir(dir: &Path) -> Result<()> {
+    match fs::symlink_metadata(dir) {
+        Ok(m) if m.is_dir() => return Ok(()),
+        Ok(_) => fs::remove_file(dir)?,
+        Err(_) => {}
+    }
+    fs::create_dir(dir).with_context(|| format!("creating {}", dir.display()))
+}
+
 /// Quote a single argument for display as a POSIX shell word.
 pub fn shell_quote(s: &str) -> String {
     if !s.is_empty()
@@ -347,6 +381,43 @@ pub fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// SAM's own files in folders an untrusted program could have touched
+    /// are written without following links: a planted link is replaced, the
+    /// file it pointed to stays as it was, and a link in place of a folder
+    /// becomes a real folder (audit I-F2).
+    #[test]
+    fn files_sam_writes_never_go_through_a_planted_link() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        let victim = d.join("bashrc");
+        fs::write(&victim, "the person's file").unwrap();
+        let planted = d.join("metadata.json");
+        std::os::unix::fs::symlink(&victim, &planted).unwrap();
+        write_new(&planted, b"{}").unwrap();
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "the person's file");
+        assert!(fs::symlink_metadata(&planted).unwrap().is_file());
+        assert_eq!(fs::read(&planted).unwrap(), b"{}");
+        write_new(&planted, b"again").unwrap();
+        assert_eq!(
+            fs::read(&planted).unwrap(),
+            b"again",
+            "an old file is replaced"
+        );
+        assert!(write_new(d, b"x").is_err(), "a folder is not replaced");
+
+        let elsewhere = d.join("autostart");
+        fs::create_dir(&elsewhere).unwrap();
+        let desktop = d.join("desktop");
+        std::os::unix::fs::symlink(&elsewhere, &desktop).unwrap();
+        real_dir(&desktop).unwrap();
+        assert!(fs::symlink_metadata(&desktop).unwrap().is_dir());
+        write_new(&desktop.join("app.desktop"), b"[Desktop Entry]").unwrap();
+        assert!(fs::read_dir(&elsewhere).unwrap().next().is_none());
+        real_dir(&desktop).unwrap();
+        real_dir(&d.join("new")).unwrap();
+        assert!(d.join("new").is_dir());
+    }
 
     /// A helper program that hangs is stopped at the time limit instead of
     /// hanging SAM (GnuPG reads keys from untrusted AppImages), and a

@@ -4846,12 +4846,12 @@ msgstr ""
 "extraction.max_size_mb et extraction.max_seconds), puis recrée le bac à "
 "sable."
 
-#: crates/sam-intake/src/extract.rs:208 crates/sam-intake/src/extract.rs:243
+#: crates/sam-intake/src/extract.rs:219 crates/sam-intake/src/extract.rs:255
 #: crates/sam-intake/src/peek.rs:56
 msgid "the app image inside the AppImage was not found"
 msgstr "l’image de l’application dans l’AppImage est introuvable"
 
-#: crates/sam-intake/src/extract.rs:239
+#: crates/sam-intake/src/extract.rs:251
 msgid ""
 "this AppImage uses a DwarFS image; install the dwarfs tools (dwarfsextract) "
 "to unpack it without running it"
@@ -4859,22 +4859,22 @@ msgstr ""
 "cet AppImage utilise une image DwarFS ; installe les outils dwarfs "
 "(dwarfsextract) pour le décompresser sans l’exécuter"
 
-#: crates/sam-intake/src/extract.rs:276
+#: crates/sam-intake/src/extract.rs:293
 msgid "the AppImage's SquashFS image is damaged (the reader stopped)"
 msgstr ""
 "l’image SquashFS de l’AppImage est endommagée (le lecteur s’est arrêté)"
 
-#: crates/sam-intake/src/extract.rs:338
+#: crates/sam-intake/src/extract.rs:357
 msgid "bsdtar (libarchive) is not installed"
 msgstr "bsdtar (libarchive) n’est pas installé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:343
+#: crates/sam-intake/src/extract.rs:362
 msgid "{file} is not a recognized AppImage"
 msgstr "{file} n’est pas un AppImage reconnu"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:384
+#: crates/sam-intake/src/extract.rs:401
 msgid ""
 "The disk became full while unpacking this AppImage into {folder}. SAM "
 "removed the part that was already unpacked. Free some space, or choose "
@@ -4886,7 +4886,7 @@ msgstr ""
 "Préférences → Décompression → Emplacement."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:414
+#: crates/sam-intake/src/extract.rs:429
 msgid ""
 "all ways of unpacking failed:\n"
 "  {attempts}"
@@ -4894,60 +4894,66 @@ msgstr ""
 "toutes les méthodes de décompression ont échoué :\n"
 "  {attempts}"
 
+#: crates/sam-intake/src/extract.rs:443
+msgid "the unpacked app is not a plain folder; it was removed"
+msgstr ""
+"l'application décompressée n'est pas un dossier ordinaire ; elle a été "
+"supprimée"
+
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:481
+#: crates/sam-intake/src/extract.rs:505
 msgid "a link at {path} points outside the app"
 msgstr "un lien en {path} pointe hors de l’application"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:489
+#: crates/sam-intake/src/extract.rs:513
 msgid "{path} is not a folder"
 msgstr "{path} n’est pas un dossier"
 
-#: crates/sam-intake/src/extract.rs:509
+#: crates/sam-intake/src/extract.rs:533
 msgid "unpacking limit exceeded: the app is too large"
 msgstr "limite de décompression dépassée : l’application est trop volumineuse"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:535 crates/sam-intake/src/normalize.rs:95
+#: crates/sam-intake/src/extract.rs:559 crates/sam-intake/src/normalize.rs:95
 msgid "unpacking limit exceeded: more than {count} files"
 msgstr "limite de décompression dépassée : plus de {count} fichiers"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:541 crates/sam-intake/src/extract.rs:621
+#: crates/sam-intake/src/extract.rs:565 crates/sam-intake/src/extract.rs:645
 #: crates/sam-intake/src/normalize.rs:101
 msgid "unpacking limit exceeded: it took longer than {seconds} seconds"
 msgstr ""
 "limite de décompression dépassée : cela a pris plus de {seconds} secondes"
 
-#: crates/sam-intake/src/extract.rs:565
+#: crates/sam-intake/src/extract.rs:589
 msgid "entry without name"
 msgstr "entrée sans nom"
 
-#: crates/sam-intake/src/extract.rs:642
+#: crates/sam-intake/src/extract.rs:666
 msgid "starting the unpacking tool"
 msgstr "lancement de l’outil de décompression"
 
-#: crates/sam-intake/src/extract.rs:682
+#: crates/sam-intake/src/extract.rs:706
 msgid "Bubblewrap is needed to let the AppImage unpack itself in a sandbox"
 msgstr ""
 "Bubblewrap est nécessaire pour que l’AppImage se décompresse lui-même dans "
 "un bac à sable"
 
-#: crates/sam-intake/src/extract.rs:702
+#: crates/sam-intake/src/extract.rs:726
 msgid "copying the AppImage so it can unpack itself"
 msgstr "copie de l’AppImage pour qu’il puisse se décompresser lui-même"
 
-#: crates/sam-intake/src/extract.rs:706
+#: crates/sam-intake/src/extract.rs:730
 msgid "making the copy executable"
 msgstr "la copie est rendue exécutable"
 
-#: crates/sam-intake/src/extract.rs:770
+#: crates/sam-intake/src/extract.rs:794
 msgid "--appimage-extract produced no squashfs-root"
 msgstr "--appimage-extract n’a produit aucun squashfs-root"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:774
+#: crates/sam-intake/src/extract.rs:798
 msgid "moving the unpacked app to {folder}"
 msgstr "déplacement de l’application décompressée vers {folder}"
 
@@ -6436,7 +6442,7 @@ msgstr "L’AppImage s’est décompressé lui-même"
 msgid "The AppImage unpacked itself inside a restricted sandbox."
 msgstr "L’AppImage s’est décompressé lui-même dans un bac à sable restreint."
 
-#: crates/sam-runner/src/ops/add.rs:319 crates/sam-runner/src/ops/add.rs:377
+#: crates/sam-runner/src/ops/add.rs:319 crates/sam-runner/src/ops/add.rs:381
 msgid ""
 "the AppImage has not been unpacked yet; unpack it with Unpack Again (sam-"
 "jail reextract APP)"
@@ -6444,19 +6450,19 @@ msgstr ""
 "l’AppImage n’a pas encore été décompressé ; décompresse-le avec "
 "« Décompresser à nouveau » (sam-jail reextract APP)"
 
-#: crates/sam-runner/src/ops/add.rs:388
+#: crates/sam-runner/src/ops/add.rs:392
 msgid "Looking for the app's programs and libraries"
 msgstr "Recherche des programmes et bibliothèques de l’application"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:395
+#: crates/sam-runner/src/ops/add.rs:399
 msgid "{done} of {n} program file read"
 msgid_plural "{done} of {n} program files read"
 msgstr[0] "{done} fichier de programme lu sur {n}"
 msgstr[1] "{done} fichiers de programme lus sur {n}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:406
+#: crates/sam-runner/src/ops/add.rs:410
 msgid "dependency detection failed: {error}"
 msgstr "échec de la détection des dépendances : {error}"
 
@@ -6666,11 +6672,11 @@ msgid ""
 "was deleted and nothing changed. To go back to an earlier version on "
 "purpose, use Undo after an update."
 msgstr ""
-"Le téléchargement a été signé le {now}, avant la version installée "
-"({was}) : c'est une version plus ancienne, qui peut avoir des failles "
-"de sécurité corrigées depuis. Il a été supprimé et rien n'a changé. "
-"Pour revenir volontairement à une version antérieure, utilise Annuler "
-"après une mise à jour."
+"Le téléchargement a été signé le {now}, avant la version installée ({was}) : "
+"c'est une version plus ancienne, qui peut avoir des failles de sécurité "
+"corrigées depuis. Il a été supprimé et rien n'a changé. Pour revenir "
+"volontairement à une version antérieure, utilise Annuler après une mise à "
+"jour."
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/ops/mod.rs:336
@@ -7810,8 +7816,7 @@ msgstr "la description de mise à jour (.zsync) est incomplète"
 
 #: crates/sam-runner/src/zsync.rs:145
 msgid "the update description (.zsync) names an impossible length"
-msgstr ""
-"la description de mise à jour (.zsync) indique une longueur impossible"
+msgstr "la description de mise à jour (.zsync) indique une longueur impossible"
 
 #: crates/sam-runner/src/zsync.rs:153
 msgid "the update description (.zsync) is cut short"

@@ -349,21 +349,25 @@ impl Sam {
         {
             entry.name = entry.metadata.name.clone();
         }
-        let _ = fs::write(
-            x.root.join("metadata.json"),
-            serde_json::to_vec_pretty(&entry.metadata)?,
+        // Written outside any sandbox, so never through a link that might
+        // be there (audit I-F2).
+        let _ = sam_core::util::write_new(
+            &x.root.join("metadata.json"),
+            &serde_json::to_vec_pretty(&entry.metadata)?,
         );
-        let _ = fs::write(x.root.join("extraction.log"), extract_log);
+        let _ = sam_core::util::write_new(&x.root.join("extraction.log"), extract_log);
         self.write_log(&entry.id, LogKind::Extract, extract_log);
         if let Some(df) = &entry.metadata.desktop_file {
             if let Some(src) = sam_intake::normalize::safe_resolve(&x.appdir, Path::new(df)) {
-                let _ = fs::create_dir_all(x.root.join("desktop"));
-                let _ = fs::copy(
-                    src,
-                    x.root
-                        .join("desktop")
-                        .join(Path::new(df).file_name().unwrap_or_default()),
-                );
+                let desktop = x.root.join("desktop");
+                if sam_core::util::real_dir(&desktop).is_ok() {
+                    if let Ok(data) = fs::read(&src) {
+                        let _ = sam_core::util::write_new(
+                            &desktop.join(Path::new(df).file_name().unwrap_or_default()),
+                            &data,
+                        );
+                    }
+                }
             }
         }
         self.detect(entry, pr)?;
