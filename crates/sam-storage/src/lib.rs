@@ -101,11 +101,19 @@ impl Registry {
             );
         }
         sam_core::format::backup_before_migration(p, found);
-        // Changed by something other than SAM? Only records that carry a
-        // checksum can tell; older ones get one at their next save.
-        if let Some(stored) = e.integrity.clone() {
-            e.changed_outside = found == sam_core::format::CURRENT && integrity_of(&e)? != stored;
-        }
+        // Changed by something other than SAM? Every record SAM writes carries
+        // its checksum, so a missing one counts as a change too (regression:
+        // deleting the checksum, or the checksum and the format number, hid
+        // any change). Records from SAM versions before the checksum are
+        // marked once and confirmed once. A checksum is compared only in the
+        // current format: a record migrated from an older one is
+        // re-serialized differently. A mark found earlier stays until it is
+        // confirmed.
+        let mismatch = match e.integrity.clone() {
+            Some(stored) => found == sam_core::format::CURRENT && integrity_of(&e)? != stored,
+            None => true,
+        };
+        e.changed_outside = e.changed_outside || mismatch;
         e.format = sam_core::format::CURRENT;
         Ok(e)
     }
@@ -180,9 +188,23 @@ impl Registry {
         entry.updated_at = now();
         entry.format = sam_core::format::CURRENT;
         entry.integrity = Some(integrity_of(entry)?);
-        entry.changed_outside = false;
         let s = serde_json::to_string_pretty(entry)?;
         atomic_write(&self.paths.app_file(&entry.id), s.as_bytes())
+    }
+
+    /// Changes the record of `id` as it is on disk now: reads it again,
+    /// applies `change` and saves it. For work that takes a while (an update
+    /// check, a start): saving the copy read at the beginning would undo a
+    /// change made meanwhile, for example a switch turned off in the window
+    /// (regression: the update check turned it on again). `None` when the
+    /// record is gone.
+    pub fn update(&self, id: &str, change: impl FnOnce(&mut AppEntry)) -> Result<Option<AppEntry>> {
+        let Some(mut fresh) = self.get(id)? else {
+            return Ok(None);
+        };
+        change(&mut fresh);
+        self.save(&mut fresh)?;
+        Ok(Some(fresh))
     }
 
     pub fn remove(&self, id: &str) -> Result<bool> {
@@ -611,9 +633,10 @@ mod tests {
     }
 
     /// A record SAM saved loads as unchanged; a record changed afterwards
-    /// by something else is recognized as changed outside SAM; a record
-    /// from before the checksum existed still loads as unchanged; and
-    /// saving it again through SAM makes it unchanged again.
+    /// by something else is recognized as changed outside SAM, and stays
+    /// marked through SAM's own saves until it is confirmed; a record
+    /// without SAM's checksum (removed, or from before the checksum) is
+    /// marked too.
     #[test]
     fn records_changed_outside_sam_are_recognized() {
         let tmp = tempfile::tempdir().unwrap();
@@ -637,17 +660,80 @@ mod tests {
             "a change made outside SAM is noticed"
         );
         assert_eq!(changed.badge(), sam_core::Badge::ChangedOutside);
+        // Regression (audit U-H1): a save by SAM confirmed the change.
         reg.save(&mut changed).unwrap();
-        assert!(
-            !reg.get("appimage-x-1").unwrap().unwrap().changed_outside,
-            "saving through SAM confirms it"
+        let again = reg.get("appimage-x-1").unwrap().unwrap();
+        assert!(again.changed_outside, "a save by SAM is no confirmation");
+        assert_eq!(
+            again.profile.permissions.network.mode,
+            changed.profile.permissions.network.mode
         );
-        v.as_object_mut().unwrap().remove("integrity");
-        fs::write(&file, v.to_string()).unwrap();
-        assert!(
-            !reg.get("appimage-x-1").unwrap().unwrap().changed_outside,
-            "records from before the check still work"
+        reg.update("appimage-x-1", |e| e.name = "Y".into()).unwrap();
+        assert!(reg.get("appimage-x-1").unwrap().unwrap().changed_outside);
+        // Only confirming clears it (`Sam::mark_reviewed` does this).
+        let mut confirmed = reg.get("appimage-x-1").unwrap().unwrap();
+        confirmed.changed_outside = false;
+        reg.save(&mut confirmed).unwrap();
+        assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside);
+
+        // Regression (audit U-L3): removing the checksum, or the checksum and
+        // the format number, hid every change.
+        for drop in [&["integrity"][..], &["integrity", "format"][..]] {
+            let mut v: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+            v["profile"]["permissions"]["network"]["mode"] = "full".into();
+            for k in drop {
+                v.as_object_mut().unwrap().remove(*k);
+            }
+            fs::write(&file, v.to_string()).unwrap();
+            assert!(
+                reg.get("appimage-x-1").unwrap().unwrap().changed_outside,
+                "without {drop:?}"
+            );
+            let mut ok = reg.get("appimage-x-1").unwrap().unwrap();
+            ok.changed_outside = false;
+            reg.save(&mut ok).unwrap();
+        }
+    }
+
+    /// `update` changes the record as it is on disk now, so work that took a
+    /// while does not undo a change made meanwhile (audit U-M8: the update
+    /// check turned a switch back on).
+    #[test]
+    fn a_late_save_keeps_a_change_made_meanwhile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let reg = Registry::new(&paths);
+        let mut e = AppEntry {
+            id: "appimage-x-2".into(),
+            name: "X".into(),
+            ..Default::default()
+        };
+        e.profile.permissions.network.mode = sam_core::permissions::NetworkMode::Full;
+        reg.save(&mut e).unwrap();
+        // A long task reads the record ...
+        let stale = reg.get("appimage-x-2").unwrap().unwrap();
+        // ... the person turns the network off meanwhile ...
+        let mut now = reg.get("appimage-x-2").unwrap().unwrap();
+        now.profile.permissions.network.mode = sam_core::permissions::NetworkMode::None;
+        reg.save(&mut now).unwrap();
+        // ... and the task stores its result.
+        let saved = reg
+            .update(&stale.id, |f| f.last_error = Some("checked".into()))
+            .unwrap()
+            .unwrap();
+        let back = reg.get("appimage-x-2").unwrap().unwrap();
+        assert_eq!(
+            back.profile.permissions.network.mode,
+            sam_core::permissions::NetworkMode::None
         );
+        assert_eq!(back.last_error.as_deref(), Some("checked"));
+        assert_eq!(
+            saved.profile.permissions.network.mode,
+            back.profile.permissions.network.mode
+        );
+        assert!(!back.changed_outside);
+        assert!(reg.update("appimage-gone", |_| {}).unwrap().is_none());
     }
 
     /// A preset is always stored inside the presets folder, whatever its name:

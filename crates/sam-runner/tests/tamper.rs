@@ -136,3 +136,57 @@ fn an_app_changed_outside_sam_starts_only_after_confirmation() {
         "after confirming, it starts again"
     );
 }
+
+/// Regression (audit U-H1): the mark "changed outside SAM" was erased by the
+/// next save of the record. The refused start saves its failure, so the
+/// second start ran with the changed settings, never confirmed; changing
+/// another switch, setting start arguments or the change check erased it
+/// too. This goes through SAM's real start (`launch::run`), not only the
+/// check before it.
+#[test]
+fn a_changed_record_stays_blocked_until_it_is_confirmed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = one_app(tmp.path());
+    let file = sam.paths.app_file(&id);
+    let mut rec: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    rec["profile"]["permissions"]["filesystem"]["home"] = true.into();
+    fs::write(&file, rec.to_string()).unwrap();
+
+    let opts = sam_runner::launch::LaunchOptions {
+        quiet: true,
+        timeout_secs: Some(5),
+        ..Default::default()
+    };
+    let refused = |what: &str| {
+        let mut e = sam.resolve(&id).unwrap();
+        assert!(e.changed_outside, "{what}: the mark is gone");
+        let err = sam_runner::launch::run(&mut e, &opts, &sam.config, &sam.paths, &sam.host())
+            .map(|r| r.summary)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("changed outside SAM"), "{what}: {err}");
+    };
+    refused("first start");
+    refused("second start, after the refused one was saved");
+    sam.set_permission(&id, "devices.gpu", "true").unwrap();
+    refused("after another switch was changed");
+    sam.set_args(&id, vec!["--hello".into()]).unwrap();
+    refused("after start arguments were set");
+    sam.refresh(Some(&id), false).unwrap();
+    refused("after the change check");
+    assert!(
+        sam.resolve(&id)
+            .unwrap()
+            .profile
+            .permissions
+            .filesystem
+            .home,
+        "the changed value is still there for the person to see"
+    );
+
+    sam.mark_reviewed(&id).unwrap();
+    let e = sam.resolve(&id).unwrap();
+    assert!(!e.changed_outside, "confirming clears it");
+    assert!(sam_runner::launch::preflight(&e).0.is_empty());
+}

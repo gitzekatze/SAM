@@ -583,7 +583,12 @@ pub fn run(
             };
             app.last_launch = Some(rec.clone());
             app.last_error = Some(rec.summary.clone());
-            Registry::new(paths).save(app)?;
+            // Onto the record as it is on disk, which also keeps any mark
+            // that stopped this start.
+            Registry::new(paths).update(&app.id, |fresh| {
+                fresh.last_launch = Some(rec.clone());
+                fresh.last_error = Some(rec.summary.clone());
+            })?;
             return Err(e);
         }
     };
@@ -1308,14 +1313,12 @@ fn save_launch(app: &mut AppEntry, rec: &LaunchRecord, paths: &Paths) -> Result<
         app.state = AppState::Ready;
         app.last_error = None;
     }
-    let reg = Registry::new(paths);
-    if let Some(mut fresh) = reg.get(&app.id)? {
+    Registry::new(paths).update(&app.id, |fresh| {
         fresh.last_launched = app.last_launched;
         fresh.last_launch = app.last_launch.clone();
         fresh.last_error = app.last_error.clone();
         fresh.state = app.state;
-        reg.save(&mut fresh)?;
-    }
+    })?;
     Ok(())
 }
 

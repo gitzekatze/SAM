@@ -388,9 +388,15 @@ pub struct AppEntry {
     /// sam_storage::integrity_of). Records without one predate the check.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub integrity: Option<String>,
-    /// Set when loading: the record does not match the checksum SAM wrote,
-    /// so something other than SAM changed it. Never saved.
-    #[serde(skip)]
+    /// Something other than SAM changed this record: found when loading (it
+    /// does not match the checksum SAM wrote, or the checksum is missing).
+    /// Saved with the record and kept through every save, so the next start,
+    /// a changed switch or a check SAM runs cannot confirm it by accident
+    /// (regression: every save cleared it, and the refused start itself
+    /// saved). Only confirming clears it (`sam-jail review`, or the button
+    /// on the app's page). Not written while off, so records without it
+    /// keep their checksum.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub changed_outside: bool,
     /// The AppImage file was replaced by something other than a SAM update
     /// (found when it was unpacked again). It keeps its settings, but does
