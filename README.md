@@ -350,6 +350,7 @@ GPL-3.0-or-later. SAM's programs contain libraries by other people under their
 own licenses (mostly MIT and Apache-2.0); [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)
 lists them with their license texts and is installed with every package.
 
-The app icon (`data/io.github.gitzekatze.SAM.svg`) is based on the seal icon
-from [Arcticons](https://github.com/Arcticons-Team/Arcticons), licensed under
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+The app icon (`data/io.github.gitzekatze.SAM.svg`) is based on the seal from
+[Fluent Emoji](https://github.com/microsoft/fluentui-emoji) (flat style) by
+Microsoft, found through [Iconify](https://icon-sets.iconify.design/), licensed
+under MIT; its notice is in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
