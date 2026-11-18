@@ -180,22 +180,41 @@ pub fn is_executable(p: &Path) -> bool {
 /// at most `max_out` bytes of its standard output. A program that is still
 /// running after `limit` is killed and an error is returned: SAM hands
 /// untrusted input to helper programs (GnuPG reads keys and signatures that
-/// came with an AppImage) and must not hang with them. The rest of a longer
-/// output is read and dropped, so the program never blocks on a full pipe.
+/// came with an AppImage) and must not hang with them. The program runs in a
+/// process group of its own, and at the limit the whole group is killed, so
+/// a program it started cannot keep SAM waiting either (regression: under
+/// dash, `sh -c 'sleep 30'` kept the output open for 30 s after the shell
+/// was killed). The rest of a longer output is read and dropped, so the
+/// program never blocks on a full pipe.
 pub fn output_within(
     cmd: &mut std::process::Command,
     limit: std::time::Duration,
     max_out: usize,
 ) -> Result<(std::process::ExitStatus, Vec<u8>)> {
     use std::io::Read;
+    use std::os::unix::process::CommandExt;
     use std::process::Stdio;
+    use std::time::{Duration, Instant};
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
+        .process_group(0)
         .spawn()?;
+    let group = child.id();
+    let kill_group = || {
+        if let Ok(g) = i32::try_from(group) {
+            // SAFETY: kill(2) with a negative pid signals the process group
+            // the child leads (it was started with process_group(0)); no
+            // memory is involved.
+            unsafe {
+                libc::kill(-g, libc::SIGKILL);
+            }
+        }
+    };
     let mut out = child.stdout.take().context("stdout")?;
-    let reader = std::thread::spawn(move || {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
         let mut kept = Vec::new();
         let mut buf = [0u8; 8192];
         while let Ok(n) = out.read(&mut buf) {
@@ -205,34 +224,41 @@ pub fn output_within(
             let room = max_out.saturating_sub(kept.len());
             kept.extend_from_slice(buf.get(..n.min(room)).unwrap_or_default());
         }
-        kept
+        let _ = tx.send(kept);
     });
-    let started = std::time::Instant::now();
+    let started = Instant::now();
+    let stopped = || {
+        anyhow::anyhow!(
+            "{}",
+            crate::i18n::trf(
+                "{program} did not finish within {seconds} seconds and was stopped",
+                &[
+                    ("program", &cmd.get_program().to_string_lossy()),
+                    ("seconds", &limit.as_secs())
+                ]
+            )
+        )
+    };
     let status = loop {
         if let Some(st) = child.try_wait()? {
             break st;
         }
         if started.elapsed() > limit {
-            let _ = child.kill();
+            kill_group();
             let _ = child.wait();
-            let _ = reader.join();
-            anyhow::bail!(
-                "{}",
-                crate::i18n::trf(
-                    "{program} did not finish within {seconds} seconds and was stopped",
-                    &[
-                        ("program", &cmd.get_program().to_string_lossy()),
-                        ("seconds", &limit.as_secs())
-                    ]
-                )
-            );
+            return Err(stopped());
         }
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::thread::sleep(Duration::from_millis(20));
     };
-    let kept = reader
-        .join()
-        .map_err(|_| anyhow::anyhow!("output reader failed"))?;
-    Ok((status, kept))
+    // The program ended; something it started may still hold its output.
+    let left = limit.saturating_sub(started.elapsed());
+    match rx.recv_timeout(left) {
+        Ok(kept) => Ok((status, kept)),
+        Err(_) => {
+            kill_group();
+            Err(stopped())
+        }
+    }
 }
 
 /// Quote a single argument for display as a POSIX shell word.
@@ -330,16 +356,45 @@ mod tests {
     fn a_helper_program_is_stopped_at_its_time_limit() {
         use std::process::Command;
         use std::time::{Duration, Instant};
+        // A hanging program, also one that hangs in a program it started
+        // (`; true` makes every shell start `sleep` as a child of its own).
+        for script in ["sleep 30", "sleep 30; true"] {
+            let t = Instant::now();
+            let e = output_within(
+                Command::new("sh").args(["-c", script]),
+                Duration::from_millis(300),
+                100,
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(e.contains("did not finish"), "{script}: {e}");
+            assert!(
+                t.elapsed() < Duration::from_secs(10),
+                "{script}: {:?}",
+                t.elapsed()
+            );
+        }
+        // A program that ends but leaves a program behind that holds its
+        // output: SAM still returns at the limit, and the leftover is ended.
         let t = Instant::now();
+        // A sleep with a time no other program uses, to find it afterwards
+        // (portable: dash, Ubuntu's sh, has no `exec -a`).
+        let marker = format!("sleep 29.{}", std::process::id());
         let e = output_within(
-            Command::new("sh").args(["-c", "sleep 30"]),
-            Duration::from_millis(300),
+            Command::new("sh").args(["-c", &format!("({marker}) & echo started")]),
+            Duration::from_millis(500),
             100,
         )
         .unwrap_err()
         .to_string();
         assert!(e.contains("did not finish"), "{e}");
         assert!(t.elapsed() < Duration::from_secs(10), "{:?}", t.elapsed());
+        std::thread::sleep(Duration::from_millis(200));
+        let left = Command::new("pgrep")
+            .args(["-f", &marker])
+            .output()
+            .unwrap();
+        assert!(left.stdout.is_empty(), "the leftover still runs");
 
         // 1 MiB of output, 10 bytes kept; the program still ends normally.
         let (st, out) = output_within(
