@@ -262,7 +262,7 @@ pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<O
             break;
         }
         // Looking at the clock every 64 KiB of offsets is enough.
-        if off % (64 << 10) == 0 && started.elapsed() > limit {
+        if off.is_multiple_of(64 << 10) && started.elapsed() > limit {
             break;
         }
         if step == 1 {
