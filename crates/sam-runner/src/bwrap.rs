@@ -62,7 +62,10 @@ mod tests {
 
     /// When the system forbids user namespaces, the message explains that and
     /// never claims Bubblewrap is missing: the user already has it, and an
-    /// "install bubblewrap" hint would send them the wrong way.
+    /// "install bubblewrap" hint would send them the wrong way. It never
+    /// advises switching user namespaces on for every program (that would make
+    /// the computer less safe than without SAM), but a setuid Bubblewrap,
+    /// which gives the right to Bubblewrap only.
     #[test]
     fn disabled_user_namespaces_are_explained_not_called_missing() {
         let mut host = sample_context().host;
@@ -75,9 +78,17 @@ mod tests {
         host.userns.unprivileged_clone = Some(false);
         let msg = check(&host).unwrap_err().to_string();
         assert!(
-            msg.contains("sysctl kernel.unprivileged_userns_clone=1"),
-            "the message says how to enable them: {msg}"
+            !msg.contains("sysctl kernel.unprivileged_userns_clone=1"),
+            "never: switch user namespaces on for every program: {msg}"
         );
+        assert!(
+            msg.contains("bubblewrap-suid") && msg.contains("only Bubblewrap"),
+            "the narrower way, for Bubblewrap only: {msg}"
+        );
+        host.userns.unprivileged_clone = None;
+        host.userns.max_user_namespaces = Some(0);
+        let msg = check(&host).unwrap_err().to_string();
+        assert!(msg.contains("bubblewrap-suid"), "{msg}");
     }
 
     /// A setuid Bubblewrap works without unprivileged user namespaces, so

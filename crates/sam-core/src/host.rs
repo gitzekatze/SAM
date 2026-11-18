@@ -49,9 +49,11 @@ impl UsernsStatus {
 
     pub fn explain(&self) -> String {
         if self.max_user_namespaces == Some(0) {
-            crate::i18n::tr("User namespaces are disabled on this system (user.max_user_namespaces = 0). Bubblewrap cannot create a sandbox.")
+            crate::i18n::tr("User namespaces are disabled on this system (user.max_user_namespaces = 0). Bubblewrap cannot create a sandbox. If you want sandboxes here, install Bubblewrap setuid (Arch: the bubblewrap-suid package; Debian: sudo dpkg-statoverride --update --add root root 4755 /usr/bin/bwrap): only Bubblewrap gets this right, not every program. This, too, changes the system; SAM never does it itself.")
         } else if self.unprivileged_clone == Some(false) {
-            crate::i18n::tr("Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone = 0). Enable them with: sudo sysctl kernel.unprivileged_userns_clone=1")
+            // Not "switch the setting on": that would open user namespaces to
+            // every program and make the computer less safe than without SAM.
+            crate::i18n::tr("Unprivileged user namespaces are disabled on this system (kernel.unprivileged_userns_clone = 0), a deliberate hardening. Keep it. If you want sandboxes here, install Bubblewrap setuid instead (Arch: the bubblewrap-suid package; Debian: sudo dpkg-statoverride --update --add root root 4755 /usr/bin/bwrap): only Bubblewrap gets this right, not every program. This, too, changes the system; SAM never does it itself.")
         } else if self.apparmor_restricted == Some(true) {
             crate::i18n::tr("AppArmor restricts unprivileged user namespaces. Bubblewrap may need an AppArmor profile (Ubuntu 24.04+).")
         } else {
