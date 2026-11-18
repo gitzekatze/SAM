@@ -689,6 +689,50 @@ pub const OPEN_SHIM_NAMES: &[&str] = &[
     "www-browser",
 ];
 
+/// The system every sandbox SAM builds rests on, after `/usr`: the
+/// top-level links and folders (`/lib` → `usr/lib` …), the library folders
+/// the system's loader searches outside /usr, and the basic files of /etc.
+/// Shared by the apps' sandbox and the helpers SAM holds in a sandbox of
+/// their own (the sound relay), so both see the same system on every
+/// distribution.
+fn common_system(a: &mut Args, host: &HostInfo) {
+    for d in ["/bin", "/sbin", "/lib", "/lib64", "/lib32"] {
+        mirror(a, d);
+    }
+    // Library folders the system's loader searches outside /usr (CUDA in
+    // /opt/cuda/lib64, /usr/local/lib): /etc/ld.so.cache points there,
+    // and SAM's analysis counts libraries found there as present.
+    for d in &host.extra_lib_dirs {
+        a.ro(d);
+    }
+    for e in ETC_BASE {
+        ro_follow(a, &Path::new("/etc").join(e));
+    }
+    // openSUSE (and others following the "hermetic /usr" idea) keep the
+    // vendor defaults of these files in /usr/etc and leave /etc for the
+    // administrator's changes; glibc reads them from there. Only these
+    // files, never all of /usr/etc (contract etc-identity-and-names).
+    for e in [
+        "nsswitch.conf",
+        "services",
+        "protocols",
+        "gai.conf",
+        "host.conf",
+    ] {
+        ro_follow(a, &Path::new("/usr/etc").join(e));
+    }
+}
+
+/// The system part of a sandbox for one of SAM's own helpers (the sound
+/// relay): `/usr` read-only and [`common_system`]. Nothing of the home, of
+/// SAM's folders or of the devices; the caller adds what the helper needs.
+pub fn helper_system_args(host: &HostInfo) -> Vec<String> {
+    let mut a = Args { v: Vec::new() };
+    a.op2("--ro-bind", "/usr", "/usr");
+    common_system(&mut a, host);
+    a.v
+}
+
 /// Replicate a top-level path from the host: symlink stays a symlink,
 /// a real directory is bound read-only.
 fn mirror(a: &mut Args, path: &str) {
@@ -1226,15 +1270,7 @@ impl Section<'_> {
                 }
             }
         }
-        for d in ["/bin", "/sbin", "/lib", "/lib64", "/lib32"] {
-            mirror(a, d);
-        }
-        // Library folders the system's loader searches outside /usr (CUDA in
-        // /opt/cuda/lib64, /usr/local/lib): /etc/ld.so.cache points there,
-        // and SAM's analysis counts libraries found there as present.
-        for d in &ctx.host.extra_lib_dirs {
-            a.ro(d);
-        }
+        common_system(a, &ctx.host);
         // Tools that ask a service outside the sandbox to start a program
         // (systemd, Flatpak). They would run it unsandboxed if the service
         // is reachable, and otherwise fail: some AppRun scripts use
@@ -1249,8 +1285,8 @@ impl Section<'_> {
             }
         }
 
-        // /etc
-        let mut etc: Vec<&str> = ETC_BASE.to_vec();
+        // /etc, beyond the basic files of `common_system`.
+        let mut etc: Vec<&str> = Vec::new();
         if p.network.mode == NetworkMode::Full {
             etc.extend(ETC_NETWORK);
             a.ro("/run/systemd/resolve");
@@ -1268,19 +1304,6 @@ impl Section<'_> {
         }
         for e in etc {
             ro_follow(a, &Path::new("/etc").join(e));
-        }
-        // openSUSE (and others following the "hermetic /usr" idea) keep the
-        // vendor defaults of these files in /usr/etc and leave /etc for the
-        // administrator's changes; glibc reads them from there. Only these
-        // files, never all of /usr/etc (contract etc-identity-and-names).
-        for e in [
-            "nsswitch.conf",
-            "services",
-            "protocols",
-            "gai.conf",
-            "host.conf",
-        ] {
-            ro_follow(a, &Path::new("/usr/etc").join(e));
         }
         // The system's font cache: only names, paths and properties of the
         // fonts above. Without it every app builds its own on its first
@@ -2199,6 +2222,54 @@ mod tests {
             !a.iter().any(|x| x == "/home/tester/Pictures"),
             "read-only adds nothing"
         );
+    }
+
+    /// A helper's sandbox (the sound relay) shows the same system as an
+    /// app's (with the whole /usr), and nothing outside the system's own
+    /// folders: no home, no runtime folder, no devices.
+    #[test]
+    fn a_helper_sees_the_apps_system_and_nothing_else() {
+        let mut ctx = sample_context();
+        ctx.host.extra_lib_dirs = vec!["/opt/cuda/lib64".into()];
+        ctx.permissions.advanced.host_runtime = HostRuntime::Full;
+        let helper = helper_system_args(&ctx.host);
+        let app = args_of(&ctx);
+        assert!(has_seq(&helper, &["--ro-bind", "/usr", "/usr"]));
+        let mut i = 0;
+        while i < helper.len() {
+            let op = helper[i].as_str();
+            let n = if op == "--symlink" || op.starts_with("--ro-bind") {
+                3
+            } else {
+                1
+            };
+            let part: Vec<&str> = helper[i..i + n].iter().map(String::as_str).collect();
+            assert!(
+                matches!(op, "--ro-bind" | "--ro-bind-try" | "--symlink"),
+                "only read-only views and links: {part:?}"
+            );
+            let at = Path::new(part[n - 1]);
+            assert!(
+                [
+                    "/usr",
+                    "/etc",
+                    "/bin",
+                    "/sbin",
+                    "/lib",
+                    "/lib32",
+                    "/lib64",
+                    "/opt/cuda"
+                ]
+                .iter()
+                .any(|r| at.starts_with(r)),
+                "a system folder: {part:?}"
+            );
+            assert!(
+                has_seq(&app, &part),
+                "the app's sandbox has it too: {part:?}"
+            );
+            i += n;
+        }
     }
 
     /// Games built with SDL get a silent sound driver when they have no

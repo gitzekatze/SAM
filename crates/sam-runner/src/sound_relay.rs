@@ -38,11 +38,19 @@ pub fn relay_possible(host: &HostInfo) -> bool {
     host.tools.pipewire.is_some() && host.sockets.pipewire.is_some() && host.tools.bwrap.is_some()
 }
 
-/// The relay's own sandbox: the system's programs and libraries read-only,
-/// the person's PipeWire socket, the relay's folder (its settings and its
-/// socket), a private `/tmp`; no home, no SAM folders, no network, no
-/// devices, a cleared environment.
-fn relay_command(bwrap: &Path, program: &Path, remote: &Path, dir: &Path, conf: &Path) -> Command {
+/// The relay's own sandbox: the system every SAM sandbox rests on
+/// ([`sam_sandbox::helper_system_args`], the same view the apps get on every
+/// distribution), the person's PipeWire socket, the relay's folder (its
+/// settings and its socket), a private `/tmp`; no home, no SAM folders, no
+/// network, no devices, a cleared environment.
+fn relay_command(
+    host: &HostInfo,
+    bwrap: &Path,
+    program: &Path,
+    remote: &Path,
+    dir: &Path,
+    conf: &Path,
+) -> Command {
     let mut c = Command::new(bwrap);
     c.args([
         "--unshare-all",
@@ -52,24 +60,7 @@ fn relay_command(bwrap: &Path, program: &Path, remote: &Path, dir: &Path, conf: 
         "ALL",
         "--clearenv",
     ]);
-    c.args(["--ro-bind", "/usr", "/usr"]);
-    // The top-level links or folders of the system (`/lib` → `usr/lib`).
-    for top in ["/bin", "/sbin", "/lib", "/lib32", "/lib64"] {
-        match std::fs::symlink_metadata(top) {
-            Ok(m) if m.file_type().is_symlink() => {
-                if let Ok(t) = std::fs::read_link(top) {
-                    c.arg("--symlink").arg(t).arg(top);
-                }
-            }
-            Ok(m) if m.is_dir() => {
-                c.args(["--ro-bind", top, top]);
-            }
-            _ => {}
-        }
-    }
-    for etc in ["/etc/ld.so.cache", "/etc/ld.so.conf", "/etc/ld.so.conf.d"] {
-        c.args(["--ro-bind-try", etc, etc]);
-    }
+    c.args(sam_sandbox::helper_system_args(host));
     c.args(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]);
     c.arg("--ro-bind").arg(program).arg(program);
     c.arg("--ro-bind").arg(remote).arg(remote);
@@ -141,7 +132,7 @@ impl SoundRelay {
         let _ = std::fs::remove_file(&socket);
         let conf = dir.join("relay.conf");
         sam_core::util::atomic_write(&conf, relay_config(&socket).as_bytes())?;
-        let mut cmd = relay_command(&bwrap.path, &tool.path, remote, &dir, &conf);
+        let mut cmd = relay_command(host, &bwrap.path, &tool.path, remote, &dir, &conf);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
