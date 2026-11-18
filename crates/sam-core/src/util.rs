@@ -176,6 +176,91 @@ pub fn is_executable(p: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Runs `cmd` (stdin closed, stderr dropped) and returns its exit status and
+/// at most `max_out` bytes of its standard output. A program that is still
+/// running after `limit` is killed and an error is returned: SAM hands
+/// untrusted input to helper programs (GnuPG reads keys and signatures that
+/// came with an AppImage) and must not hang with them. The program runs in a
+/// process group of its own, and at the limit the whole group is killed, so
+/// a program it started cannot keep SAM waiting either (regression: under
+/// dash, `sh -c 'sleep 30'` kept the output open for 30 s after the shell
+/// was killed). The rest of a longer output is read and dropped, so the
+/// program never blocks on a full pipe.
+pub fn output_within(
+    cmd: &mut std::process::Command,
+    limit: std::time::Duration,
+    max_out: usize,
+) -> Result<(std::process::ExitStatus, Vec<u8>)> {
+    use std::io::Read;
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()?;
+    let group = child.id();
+    let kill_group = || {
+        if let Ok(g) = i32::try_from(group) {
+            // SAFETY: kill(2) with a negative pid signals the process group
+            // the child leads (it was started with process_group(0)); no
+            // memory is involved.
+            unsafe {
+                libc::kill(-g, libc::SIGKILL);
+            }
+        }
+    };
+    let mut out = child.stdout.take().context("stdout")?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut kept = Vec::new();
+        let mut buf = [0u8; 8192];
+        while let Ok(n) = out.read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+            let room = max_out.saturating_sub(kept.len());
+            kept.extend_from_slice(buf.get(..n.min(room)).unwrap_or_default());
+        }
+        let _ = tx.send(kept);
+    });
+    let started = Instant::now();
+    let stopped = || {
+        anyhow::anyhow!(
+            "{}",
+            crate::i18n::trf(
+                "{program} did not finish within {seconds} seconds and was stopped",
+                &[
+                    ("program", &cmd.get_program().to_string_lossy()),
+                    ("seconds", &limit.as_secs())
+                ]
+            )
+        )
+    };
+    let status = loop {
+        if let Some(st) = child.try_wait()? {
+            break st;
+        }
+        if started.elapsed() > limit {
+            kill_group();
+            let _ = child.wait();
+            return Err(stopped());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    // The program ended; something it started may still hold its output.
+    let left = limit.saturating_sub(started.elapsed());
+    match rx.recv_timeout(left) {
+        Ok(kept) => Ok((status, kept)),
+        Err(_) => {
+            kill_group();
+            Err(stopped())
+        }
+    }
+}
+
 /// Quote a single argument for display as a POSIX shell word.
 pub fn shell_quote(s: &str) -> String {
     if !s.is_empty()
@@ -262,6 +347,74 @@ pub fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A helper program that hangs is stopped at the time limit instead of
+    /// hanging SAM (GnuPG reads keys from untrusted AppImages), and a
+    /// program that prints more than SAM keeps neither blocks nor floods
+    /// SAM's memory.
+    #[test]
+    fn a_helper_program_is_stopped_at_its_time_limit() {
+        use std::process::Command;
+        use std::time::{Duration, Instant};
+        // A hanging program, also one that hangs in a program it started
+        // (`; true` makes every shell start `sleep` as a child of its own).
+        for script in ["sleep 30", "sleep 30; true"] {
+            let t = Instant::now();
+            let e = output_within(
+                Command::new("sh").args(["-c", script]),
+                Duration::from_millis(300),
+                100,
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(e.contains("did not finish"), "{script}: {e}");
+            assert!(
+                t.elapsed() < Duration::from_secs(10),
+                "{script}: {:?}",
+                t.elapsed()
+            );
+        }
+        // A program that ends but leaves a program behind that holds its
+        // output: SAM still returns at the limit, and the leftover is ended.
+        let t = Instant::now();
+        // A sleep with a time no other program uses, to find it afterwards
+        // (portable: dash, Ubuntu's sh, has no `exec -a`).
+        let marker = format!("sleep 29.{}", std::process::id());
+        let e = output_within(
+            Command::new("sh").args(["-c", &format!("({marker}) & echo started")]),
+            Duration::from_millis(500),
+            100,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("did not finish"), "{e}");
+        assert!(t.elapsed() < Duration::from_secs(10), "{:?}", t.elapsed());
+        std::thread::sleep(Duration::from_millis(200));
+        let left = Command::new("pgrep")
+            .args(["-f", &marker])
+            .output()
+            .unwrap();
+        assert!(left.stdout.is_empty(), "the leftover still runs");
+
+        // 1 MiB of output, 10 bytes kept; the program still ends normally.
+        let (st, out) = output_within(
+            Command::new("sh").args(["-c", "head -c 1048576 /dev/zero; exit 3"]),
+            Duration::from_secs(20),
+            10,
+        )
+        .unwrap();
+        assert_eq!(st.code(), Some(3));
+        assert_eq!(out, vec![0u8; 10]);
+
+        let (st, out) = output_within(
+            Command::new("printf").arg("hello"),
+            Duration::from_secs(20),
+            100,
+        )
+        .unwrap();
+        assert!(st.success());
+        assert_eq!(out, b"hello");
+    }
 
     /// Times are shown without a date library: UTC dates exactly, local
     /// times in the computer's own zone and shape (chrono was dropped when

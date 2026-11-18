@@ -169,15 +169,15 @@ curl downloads over HTTPS only (also after redirects) with these limits, and fet
 
 ## signatures-gnupg
 
-gpg and gpgv check the signature embedded in an AppImage against a keyring, with these options, and report the signer's fingerprint in --with-colons output.
+gpg imports the keys embedded in an AppImage and lists them in --with-colons output (one pub/fpr pair per primary key); gpgv accepts a signature by ANY key in its keyring and names the key that really signed in its --status-fd VALIDSIG line (primary-key fingerprint last). SAM therefore refuses files that carry more than one key and takes the signer only from VALIDSIG.
 
 - **Component:** GnuPG ([releases](https://gnupg.org/download/release_notes.html))
 - **When it breaks:** SAM does not start the sandbox and says why.
 - **SAM functions that rely on it:** [28](functions.md#28)
-- **Quick check:** `program:gpgv`
-- **Tests:** `sam_updates_itself_only_with_its_release_key`, `key_changes_are_noticed` (fully)
-- **Covers:** `program:gpg`, `program:gpgv`, `option:--batch`, `option:--no-options`, `option:--homedir`, `option:--keyring`, `option:--no-default-keyring`, `option:--with-colons`, `option:--fingerprint`, `option:--list-keys`, `option:--import`, `option:--export`, `option:--armor`, `option:--detach-sign`, `option:--local-user`, `option:--output`, `option:--yes`
-- **If it breaks:** Without a working gpg SAM never updates itself and treats app signatures as unknown. Check the --with-colons format in GnuPG's release notes.
+- **Quick check:** `gnupg-signer`
+- **Tests:** `sam_updates_itself_only_with_its_release_key`, `key_changes_are_noticed`, `gnupg_names_the_real_signer`, `a_second_key_in_the_file_cannot_borrow_a_trusted_name`, `sam_refuses_a_forged_update_that_carries_its_release_key` (fully)
+- **Covers:** `program:gpg`, `program:gpgv`, `option:--batch`, `option:--no-options`, `option:--homedir`, `option:--keyring`, `option:--no-default-keyring`, `option:--with-colons`, `option:--fingerprint`, `option:--list-keys`, `option:--import`, `option:--export`, `option:--armor`, `option:--detach-sign`, `option:--local-user`, `option:--output`, `option:--yes`, `option:--status-fd`
+- **If it breaks:** Without a working gpg SAM never updates itself and treats app signatures as unknown. If the probe breaks, check the --with-colons and --status-fd (VALIDSIG) formats in GnuPG's release notes; until fixed, every signature counts as not valid (fails closed).
 
 ## diagnose-strace
 
