@@ -102,7 +102,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 
-29 tests.
+30 tests.
 
 | Promise | Test |
 |---|---|
@@ -121,6 +121,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | An unsandboxed menu entry in a system folder is hidden through an entry in the user's folder, without touching the system file. | [`system_entry_gets_override`](../crates/sam-intake/src/menu.rs#L353) |
 | The desktop file inside an AppImage is read with name, translations, categories and file types. | [`the_desktop_file_inside_an_appimage_is_read`](../crates/sam-intake/src/metadata.rs#L264) |
 | Name, icon and categories are read from the unpacked app. | [`reads_metadata_and_icon`](../crates/sam-intake/src/metadata.rs#L277) |
+| The app's icon is copied for SAM's menu entry and next to the unpacked app, replacing an older icon of another format, and never written through a link planted in the app's folder (audit I-F2). | [`the_icon_is_cached_and_never_written_through_a_link`](../crates/sam-intake/src/metadata.rs#L298) |
 | Unpacking stops with a clear error when it takes longer than the time limit, so a huge or hostile AppImage cannot keep SAM busy forever. | [`unpacking_stops_at_the_time_limit`](../crates/sam-intake/src/normalize.rs#L215) |
 | A symlink that points outside the unpacked app is recognized. | [`symlinks_pointing_outside_the_app_are_recognized`](../crates/sam-intake/src/normalize.rs#L229) |
 | Paths from the AppImage image are made relative, and paths that climb out with .. | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L242) |
@@ -426,4 +427,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 340 automated Rust tests plus 7 scripted checks.
+Total: 341 automated Rust tests plus 7 scripted checks.

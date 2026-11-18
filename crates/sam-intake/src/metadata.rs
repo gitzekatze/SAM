@@ -290,4 +290,44 @@ mod tests {
         assert_eq!(fmt, IconFormat::Png);
         assert!(p.ends_with("hello.png"));
     }
+
+    /// The app's icon is copied for SAM's menu entry and next to the unpacked
+    /// app, replacing an older icon of another format, and never written
+    /// through a link planted in the app's folder (audit I-F2). Without an
+    /// icon nothing is copied.
+    #[test]
+    fn the_icon_is_cached_and_never_written_through_a_link() {
+        let d = tempfile::tempdir().unwrap();
+        let appdir = d.path().join("AppDir");
+        let icons = d.path().join("icons");
+        let root = d.path().join("root");
+        fs::create_dir_all(&appdir).unwrap();
+        fs::create_dir_all(&icons).unwrap();
+        fs::create_dir_all(&root).unwrap();
+        fs::write(appdir.join("hello.png"), crate::testkit::TINY_PNG).unwrap();
+        fs::write(icons.join("sam-app-1.svg"), "<svg/>").unwrap();
+        let victim = d.path().join("victim");
+        fs::write(&victim, "the person's file").unwrap();
+        std::os::unix::fs::symlink(&victim, root.join("icon.png")).unwrap();
+
+        let cached = cache_icon(&appdir, "hello", "app-1", &icons, &root)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached, icons.join("sam-app-1.png"));
+        assert_eq!(fs::read(&cached).unwrap(), crate::testkit::TINY_PNG);
+        assert!(
+            !icons.join("sam-app-1.svg").exists(),
+            "the old icon is gone"
+        );
+        assert_eq!(
+            fs::read(root.join("icon.png")).unwrap(),
+            crate::testkit::TINY_PNG
+        );
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "the person's file");
+
+        assert_eq!(
+            cache_icon(&appdir, "missing", "app-2", &icons, &root).unwrap(),
+            None
+        );
+    }
 }
