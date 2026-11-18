@@ -275,6 +275,14 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             RiskLevel::High,
         );
     }
+    if p.audio.direct {
+        item(
+            &mut items,
+            "audio.direct",
+            "Sound without SAM's relay",
+            RiskLevel::Dangerous,
+        );
+    }
     if p.audio.alsa_raw {
         item(
             &mut items,

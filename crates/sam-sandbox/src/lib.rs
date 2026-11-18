@@ -1577,17 +1577,25 @@ impl Section<'_> {
         let a = &mut self.a;
         let notes = &mut self.notes;
         // Audio.
-        // Sound goes through the PulseAudio socket only. The raw PipeWire
-        // socket reaches cameras and other apps' screen-cast streams (PipeWire
-        // restricts only Flatpak apps), so it needs its own permission.
-        // Webcam and screen sharing work without it: their portals hand the
-        // app a PipeWire connection limited to what the user picked.
+        // Sound goes through SAM's sound relay: a PulseAudio socket that
+        // plays and records but cannot make the sound server load modules
+        // (the sound server's own socket can: audit S-F1). Only when the
+        // person allowed it, and the relay cannot run, the sound server's
+        // own socket. The raw PipeWire socket reaches cameras and other
+        // apps' screen-cast streams (PipeWire restricts only Flatpak apps),
+        // so it needs its own permission. Webcam and screen sharing work
+        // without it: their portals hand the app a PipeWire connection
+        // limited to what the user picked.
         if p.audio.enabled {
-            if let Some(pulse) = &h.sockets.pulse {
+            let pulse =
+                ctx.sound_socket
+                    .as_ref()
+                    .or(h.sockets.pulse.as_ref().filter(|_| p.audio.direct));
+            if let Some(pulse) = pulse {
                 a.op2("--ro-bind", pulse, format!("{run}/pulse/native"));
                 a.setenv("PULSE_SERVER", format!("unix:{run}/pulse/native"));
-            } else if h.sockets.pipewire.is_some() {
-                notes.push(sam_core::i18n::tr("PipeWire runs without its PulseAudio service (pipewire-pulse), so the app has no sound. Install or start pipewire-pulse, or allow direct PipeWire access."));
+            } else if h.sockets.pulse.is_some() || h.sockets.pipewire.is_some() {
+                notes.push(sam_core::i18n::tr("SAM's sound relay is not running, so the app has no sound (the sound server's own connection would let it load code outside the sandbox). The start message says why."));
             } else {
                 notes.push(sam_core::i18n::tr(
                     "No sound server found. Audio may not work.",
@@ -1805,7 +1813,9 @@ impl Section<'_> {
         }
         a.setenv("XDG_RUNTIME_DIR", &run);
         a.setenv("SAM_SANDBOX", "bubblewrap");
-        if !p.audio.enabled && !p.audio.alsa_raw {
+        let sound = p.audio.enabled
+            && (ctx.sound_socket.is_some() || (p.audio.direct && h.sockets.pulse.is_some()));
+        if !sound && !p.audio.alsa_raw {
             // Without sound access, SDL (games, emulators) finds no audio
             // output and refuses to start; its silent driver lets it run.
             // Before the settings below, which may choose otherwise.
@@ -2191,16 +2201,55 @@ mod tests {
         );
     }
 
-    /// Games built with SDL get a silent sound driver when sound is off, so they start instead of failing.
+    /// Games built with SDL get a silent sound driver when they have no
+    /// sound, so they start instead of failing: sound off, or on but with
+    /// SAM's relay not running (audit S-F1); not when sound reaches them.
     #[test]
     fn sdl_gets_its_silent_driver_without_sound_access() {
         let mut ctx = sample_context();
-        assert!(has_seq(
-            &args_of(&ctx),
-            &["--setenv", "SDL_AUDIODRIVER", "dummy"]
-        ));
+        let silent =
+            |ctx: &LaunchContext| has_seq(&args_of(ctx), &["--setenv", "SDL_AUDIODRIVER", "dummy"]);
+        assert!(silent(&ctx), "sound off");
         ctx.permissions.audio.enabled = true;
+        assert!(silent(&ctx), "sound on, but no relay");
+        ctx.sound_socket = Some("/run/user/1000/sam/x/sound/native".into());
         assert!(!args_of(&ctx).iter().any(|x| x == "SDL_AUDIODRIVER"));
+        ctx.sound_socket = None;
+        ctx.permissions.audio.direct = true;
+        assert!(!silent(&ctx), "sound without the relay, allowed");
+    }
+
+    /// Sound comes from SAM's relay, never from the sound server's own
+    /// socket; that one only when the person allowed sound without the
+    /// relay (audit S-F1).
+    #[test]
+    fn sound_comes_from_the_relay_or_only_when_allowed_from_the_server() {
+        let mut ctx = sample_context();
+        ctx.permissions.audio.enabled = true;
+        let host_pulse = "/run/user/1000/pulse/native";
+        let shown = |ctx: &LaunchContext, from: &str| {
+            has_seq(&args_of(ctx), &["--ro-bind", from, host_pulse])
+        };
+        assert!(!shown(&ctx, host_pulse), "no relay: no sound");
+        ctx.sound_socket = Some("/run/user/1000/sam/x/sound/native".into());
+        assert!(shown(&ctx, "/run/user/1000/sam/x/sound/native"));
+        assert!(!shown(&ctx, host_pulse));
+        ctx.permissions.audio.direct = true;
+        assert!(
+            shown(&ctx, "/run/user/1000/sam/x/sound/native"),
+            "the relay wins when it runs"
+        );
+        ctx.sound_socket = None;
+        assert!(shown(&ctx, host_pulse), "allowed without the relay");
+        ctx.permissions.audio.enabled = false;
+        assert!(!shown(&ctx, host_pulse), "sound off");
+        // Without the relay the start says why there is no sound, also
+        // where only PipeWire runs.
+        ctx.permissions.audio.enabled = true;
+        ctx.permissions.audio.direct = false;
+        ctx.host.sockets.pulse = None;
+        let notes = Bubblewrap.build(&ctx).unwrap().notes;
+        assert!(notes.iter().any(|n| n.contains("relay")), "{notes:?}");
     }
 
     /// Extra library folders of the system loader (for example CUDA) are visible to the app read-only.
@@ -2437,6 +2486,7 @@ mod tests {
         p.display.x11 = true;
         p.filesystem.documents = Access::Ro;
         p.dbus.session.mode = DbusMode::Full;
+        ctx.sound_socket = Some("/run/user/1000/sam/x/sound/native".into());
         let a = args_of(&ctx);
         assert!(!a.contains(&"--unshare-net".to_string()));
         assert!(has_seq(&a, &["--dev-bind-try", "/dev/dri", "/dev/dri"]));
@@ -2444,7 +2494,7 @@ mod tests {
             &a,
             &[
                 "--ro-bind",
-                "/run/user/1000/pulse/native",
+                "/run/user/1000/sam/x/sound/native",
                 "/run/user/1000/pulse/native"
             ]
         ));

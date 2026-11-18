@@ -91,7 +91,7 @@ On desktops that support it, SAM tells the compositor that the app is sandboxed,
 
 ### Sound and devices
 
-**Sound** (through PipeWire's PulseAudio service), **GPU acceleration**, **Webcam**, **Game controllers** (only gamepads; keyboards and mice stay hidden), **All input devices** (only for tools that remap input), **Raw USB**, **Bluetooth**, **Direct PipeWire access** (only for apps that support nothing else: it also reaches cameras and other apps' screen streams) and **Raw ALSA devices**.
+**Sound** (through SAM's sound relay, which plays and records but cannot load code into your sound server), **Sound without SAM's relay** (only where the relay cannot run: then the app could load code into the sound server, and SAM warns at every start), **GPU acceleration**, **Webcam**, **Game controllers** (only gamepads; keyboards and mice stay hidden), **All input devices** (only for tools that remap input), **Raw USB**, **Bluetooth**, **Direct PipeWire access** (only for apps that support nothing else: it also reaches cameras and other apps' screen streams) and **Raw ALSA devices**.
 
 ### Files
 

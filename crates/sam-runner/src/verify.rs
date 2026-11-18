@@ -303,7 +303,7 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
         "Sound and devices",
         "Sound",
         ProbeTest::Audio {
-            expect: p.audio.enabled && s.pulse.is_some(),
+            expect: crate::sound_relay::sound_reaches_app(&p.audio, host),
         },
     ));
     if s.pipewire.is_some() {
@@ -926,7 +926,20 @@ mod tests {
         h.sockets.wayland = Some("/run/user/1000/wayland-0".into());
         h.sockets.x11 = Some("/tmp/.X11-unix/X0".into());
         h.sockets.pulse = Some("/run/user/1000/pulse/native".into());
-        assert_eq!(expects(&q, &h), (true, true, true));
+        assert_eq!(
+            expects(&q, &h),
+            (true, true, false),
+            "PulseAudio without PipeWire: no relay, so no sound (audit S-F1)"
+        );
+        q.audio.direct = true;
+        assert_eq!(expects(&q, &h), (true, true, true), "allowed without relay");
+        q.audio.direct = false;
+        h.sockets.pipewire = Some("/run/user/1000/pipewire-0".into());
+        h.tools.pipewire = Some(sam_core::host::Tool {
+            path: "/usr/bin/pipewire".into(),
+            version: None,
+        });
+        assert_eq!(expects(&q, &h), (true, true, true), "through the relay");
         let mut none = p.clone();
         none.display.wayland = false; // a GUI profile has Wayland on
         none.display.x11 = false;

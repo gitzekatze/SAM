@@ -249,6 +249,8 @@ pub struct Tools {
     pub unsquashfs: Option<Tool>,
     pub bsdtar: Option<Tool>,
     pub strace: Option<Tool>,
+    /// PipeWire's program, which also runs SAM's sound relay.
+    pub pipewire: Option<Tool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -341,6 +343,7 @@ impl HostInfo {
             unsquashfs: tool("unsquashfs", &["-version"]),
             bsdtar: tool("bsdtar", &["--version"]),
             strace: tool("strace", &["-V"]),
+            pipewire: tool("pipewire", &["--version"]),
         };
 
         let bwrap_setuid = tools

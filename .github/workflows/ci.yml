@@ -101,7 +101,8 @@ jobs:
             libgtk-4-dev libadwaita-1-dev pkg-config \
             bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3 \
             desktop-file-utils appstream gettext libgtk-4-bin dbus \
-            python3-gi libglib2.0-bin
+            python3-gi libglib2.0-bin \
+            pipewire pipewire-pulse pulseaudio-utils
 
       # Ubuntu restricts unprivileged user namespaces through AppArmor, so
       # Bubblewrap cannot run and the end-to-end sandbox tests would skip.
@@ -290,7 +291,7 @@ jobs:
             libgtk-4-dev libadwaita-1-dev pkg-config \
             bubblewrap xdg-dbus-proxy passt squashfs-tools python3 gettext dbus \
             kwin-wayland at-spi2-core python3-gi gir1.2-atspi-2.0 locales adwaita-icon-theme \
-            pipewire pipewire-pulse libglib2.0-bin
+            pipewire pipewire-pulse pulseaudio-utils libglib2.0-bin
           # Older Ubuntu packages put KWin's virtual backend in its own package.
           sudo apt-get install -y -q --no-install-recommends kwin-wayland-backend-virtual 2>/dev/null || true
           sudo locale-gen en_US.UTF-8

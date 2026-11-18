@@ -56,6 +56,10 @@ pub struct LaunchContext {
     pub app_env: Vec<(String, String)>,
     /// Host path of a filtered D-Bus session proxy socket, if one is running.
     pub dbus_proxy_socket: Option<PathBuf>,
+    /// Host path of SAM's sound relay for this app, if one is running: a
+    /// PulseAudio socket that plays and records but cannot load modules
+    /// into the sound server (audit S-F1).
+    pub sound_socket: Option<PathBuf>,
     /// Host path of a Wayland socket with a security context for this app
     /// (privileged protocols hidden); `None` = the compositor's own socket.
     pub wayland_socket: Option<PathBuf>,
@@ -212,6 +216,7 @@ pub fn sample_context() -> LaunchContext {
         runtime_dir: "/run/user/1000/sam/appimage-hello-1234".into(),
         app_env: vec![("APPDIR".into(), "@APPDIR@".into())],
         dbus_proxy_socket: None,
+        sound_socket: None,
         wayland_socket: None,
         helper: None,
         seccomp_fd: None,
