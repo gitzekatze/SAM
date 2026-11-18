@@ -111,6 +111,18 @@ User namespaces inside the sandbox add kernel attack surface. Only apps whose
 engine builds its own sandbox get them: Electron, CEF, Qt WebEngine and
 WebKitGTK, as found by the dependency analysis.
 
+### Systems that switch user namespaces off
+
+Some systems switch unprivileged user namespaces off on purpose (Debian's
+`kernel.unprivileged_userns_clone = 0`, `linux-hardened`, or
+`user.max_user_namespaces = 0`). Bubblewrap cannot build a sandbox there.
+SAM never advises switching that setting back on: it would open user
+namespaces to every program, and the computer would be less safe than
+without SAM. It names the narrower way instead, a setuid Bubblewrap
+(Arch: `bubblewrap-suid`; Debian: `dpkg-statoverride … 4755 /usr/bin/bwrap`),
+which gives the right to Bubblewrap only, and says that this, too, changes
+the system. SAM never changes it itself.
+
 ### Wayland security context
 
 Every app gets its own Wayland socket, created through the compositor's

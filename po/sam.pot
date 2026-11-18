@@ -66,18 +66,18 @@ msgid "{file} was written by a newer SAM (format {found}, this SAM knows up to {
 msgstr ""
 
 #: crates/sam-core/src/host.rs:52
-msgid "User namespaces are disabled on this system (user.max_user_namespaces = 0). Bubblewrap cannot create a sandbox."
-msgstr ""
-
-#: crates/sam-core/src/host.rs:54
-msgid "Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone = 0). Enable them with: sudo sysctl kernel.unprivileged_userns_clone=1"
+msgid "User namespaces are disabled on this system (user.max_user_namespaces = 0). Bubblewrap cannot create a sandbox. If you want sandboxes here, install Bubblewrap setuid (Arch: the bubblewrap-suid package; Debian: sudo dpkg-statoverride --update --add root root 4755 /usr/bin/bwrap): only Bubblewrap gets this right, not every program. This, too, changes the system; SAM never does it itself."
 msgstr ""
 
 #: crates/sam-core/src/host.rs:56
-msgid "AppArmor restricts unprivileged user namespaces. Bubblewrap may need an AppArmor profile (Ubuntu 24.04+)."
+msgid "Unprivileged user namespaces are disabled on this system (kernel.unprivileged_userns_clone = 0), a deliberate hardening. Keep it. If you want sandboxes here, install Bubblewrap setuid instead (Arch: the bubblewrap-suid package; Debian: sudo dpkg-statoverride --update --add root root 4755 /usr/bin/bwrap): only Bubblewrap gets this right, not every program. This, too, changes the system; SAM never does it itself."
 msgstr ""
 
 #: crates/sam-core/src/host.rs:58
+msgid "AppArmor restricts unprivileged user namespaces. Bubblewrap may need an AppArmor profile (Ubuntu 24.04+)."
+msgstr ""
+
+#: crates/sam-core/src/host.rs:60
 msgid "User namespaces are available."
 msgstr ""
 
@@ -1093,38 +1093,38 @@ msgstr ""
 msgid "the file carries {count} keys instead of its signer's one; SAM does not accept its signature"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:122
+#: crates/sam-detect/src/signature.rs:130
 #. Keep the {placeholders}; their order may change.
 msgid "signed by {signer}; the key comes with the file, so this shows it is unchanged, not who made it"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:124
+#: crates/sam-detect/src/signature.rs:132
 msgid "signed; the key comes with the file, so this shows it is unchanged, not who made it"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:125
+#: crates/sam-detect/src/signature.rs:133
 #. Keep the {placeholders}; their order may change.
 msgid "the signature by {signer} does not match the file: it was changed after signing"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:126
+#: crates/sam-detect/src/signature.rs:134
 msgid "the signature does not match the file: it was changed after signing"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:388
+#: crates/sam-detect/src/signature.rs:412
 msgid "no signature sections"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:389
+#: crates/sam-detect/src/signature.rs:413
 msgid "gpg missing"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:409
+#: crates/sam-detect/src/signature.rs:433
 #. Keep the {placeholders}; their order may change.
 msgid "GnuPG has no key {key}"
 msgstr ""
 
-#: crates/sam-detect/src/signature.rs:439
+#: crates/sam-detect/src/signature.rs:463
 msgid "signature missing or too large"
 msgstr ""
 

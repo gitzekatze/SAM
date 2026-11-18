@@ -88,21 +88,38 @@ msgstr ""
 #: crates/sam-core/src/host.rs:52
 msgid ""
 "User namespaces are disabled on this system (user.max_user_namespaces = 0). "
-"Bubblewrap cannot create a sandbox."
+"Bubblewrap cannot create a sandbox. If you want sandboxes here, install "
+"Bubblewrap setuid (Arch: the bubblewrap-suid package; Debian: sudo dpkg-"
+"statoverride --update --add root root 4755 /usr/bin/bwrap): only Bubblewrap "
+"gets this right, not every program. This, too, changes the system; SAM never "
+"does it itself."
 msgstr ""
 "Los espacios de nombres de usuario están desactivados en este sistema "
-"(user.max_user_namespaces = 0). Bubblewrap no puede crear un entorno aislado."
-
-#: crates/sam-core/src/host.rs:54
-msgid ""
-"Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone "
-"= 0). Enable them with: sudo sysctl kernel.unprivileged_userns_clone=1"
-msgstr ""
-"Los espacios de nombres de usuario sin privilegios están desactivados "
-"(kernel.unprivileged_userns_clone = 0). Actívelos con: sudo sysctl "
-"kernel.unprivileged_userns_clone=1"
+"(user.max_user_namespaces = 0). Bubblewrap no puede crear un entorno "
+"aislado. Si quieres entornos aislados aquí, instala Bubblewrap con setuid "
+"(Arch: el paquete bubblewrap-suid; Debian: sudo dpkg-statoverride --update --"
+"add root root 4755 /usr/bin/bwrap): solo Bubblewrap obtiene este derecho, no "
+"todos los programas. Esto también cambia el sistema; SAM nunca lo hace por "
+"sí mismo."
 
 #: crates/sam-core/src/host.rs:56
+msgid ""
+"Unprivileged user namespaces are disabled on this system "
+"(kernel.unprivileged_userns_clone = 0), a deliberate hardening. Keep it. If "
+"you want sandboxes here, install Bubblewrap setuid instead (Arch: the "
+"bubblewrap-suid package; Debian: sudo dpkg-statoverride --update --add root "
+"root 4755 /usr/bin/bwrap): only Bubblewrap gets this right, not every "
+"program. This, too, changes the system; SAM never does it itself."
+msgstr ""
+"Los espacios de nombres de usuario sin privilegios están desactivados en "
+"este sistema (kernel.unprivileged_userns_clone = 0), un refuerzo deliberado. "
+"Mantenlo así. Si quieres entornos aislados aquí, instala en su lugar "
+"Bubblewrap con setuid (Arch: el paquete bubblewrap-suid; Debian: sudo dpkg-"
+"statoverride --update --add root root 4755 /usr/bin/bwrap): solo Bubblewrap "
+"obtiene este derecho, no todos los programas. Esto también cambia el "
+"sistema; SAM nunca lo hace por sí mismo."
+
+#: crates/sam-core/src/host.rs:58
 msgid ""
 "AppArmor restricts unprivileged user namespaces. Bubblewrap may need an "
 "AppArmor profile (Ubuntu 24.04+)."
@@ -110,7 +127,7 @@ msgstr ""
 "AppArmor restringe los espacios de nombres de usuario sin privilegios. Puede "
 "que Bubblewrap necesite un perfil de AppArmor (Ubuntu 24.04 o posterior)."
 
-#: crates/sam-core/src/host.rs:58
+#: crates/sam-core/src/host.rs:60
 msgid "User namespaces are available."
 msgstr "Los espacios de nombres de usuario están disponibles."
 
@@ -934,8 +951,7 @@ msgstr "la ruta no tiene carpeta superior"
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-core/src/util.rs:221
 msgid "{program} did not finish within {seconds} seconds and was stopped"
-msgstr ""
-"{program} no terminó en {seconds} segundos y se detuvo"
+msgstr "{program} no terminó en {seconds} segundos y se detuvo"
 
 #: crates/sam-core/src/warnings.rs:90
 msgid "D-Bus wildcard not used"
@@ -1541,11 +1557,11 @@ msgid ""
 "the file carries {count} keys instead of its signer's one; SAM does not "
 "accept its signature"
 msgstr ""
-"el archivo contiene {count} claves en lugar de solo la de quien lo "
-"firmó; SAM no acepta su firma"
+"el archivo contiene {count} claves en lugar de solo la de quien lo firmó; "
+"SAM no acepta su firma"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/signature.rs:122
+#: crates/sam-detect/src/signature.rs:130
 msgid ""
 "signed by {signer}; the key comes with the file, so this shows it is "
 "unchanged, not who made it"
@@ -1553,7 +1569,7 @@ msgstr ""
 "firmado por {signer}; la clave viene con el archivo, así que esto muestra "
 "que no se modificó, no quién lo hizo"
 
-#: crates/sam-detect/src/signature.rs:124
+#: crates/sam-detect/src/signature.rs:132
 msgid ""
 "signed; the key comes with the file, so this shows it is unchanged, not who "
 "made it"
@@ -1562,7 +1578,7 @@ msgstr ""
 "modificó, no quién lo hizo"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/signature.rs:125
+#: crates/sam-detect/src/signature.rs:133
 msgid ""
 "the signature by {signer} does not match the file: it was changed after "
 "signing"
@@ -1570,24 +1586,24 @@ msgstr ""
 "la firma de {signer} no coincide con el archivo: se modificó después de "
 "firmarlo"
 
-#: crates/sam-detect/src/signature.rs:126
+#: crates/sam-detect/src/signature.rs:134
 msgid "the signature does not match the file: it was changed after signing"
 msgstr "la firma no coincide con el archivo: se modificó después de firmarlo"
 
-#: crates/sam-detect/src/signature.rs:388
+#: crates/sam-detect/src/signature.rs:412
 msgid "no signature sections"
 msgstr "sin secciones de firma"
 
-#: crates/sam-detect/src/signature.rs:389
+#: crates/sam-detect/src/signature.rs:413
 msgid "gpg missing"
 msgstr "falta gpg"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/signature.rs:409
+#: crates/sam-detect/src/signature.rs:433
 msgid "GnuPG has no key {key}"
 msgstr "GnuPG no tiene la clave {key}"
 
-#: crates/sam-detect/src/signature.rs:439
+#: crates/sam-detect/src/signature.rs:463
 msgid "signature missing or too large"
 msgstr "falta la firma o es demasiado grande"
 
@@ -7856,6 +7872,23 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:420
 msgid "unknown flat preset key '{other}'"
 msgstr "clave «{other}» desconocida en la plantilla plana"
+
+#~ msgid ""
+#~ "User namespaces are disabled on this system (user.max_user_namespaces = "
+#~ "0). Bubblewrap cannot create a sandbox."
+#~ msgstr ""
+#~ "Los espacios de nombres de usuario están desactivados en este sistema "
+#~ "(user.max_user_namespaces = 0). Bubblewrap no puede crear un entorno "
+#~ "aislado."
+
+#~ msgid ""
+#~ "Unprivileged user namespaces are disabled "
+#~ "(kernel.unprivileged_userns_clone = 0). Enable them with: sudo sysctl "
+#~ "kernel.unprivileged_userns_clone=1"
+#~ msgstr ""
+#~ "Los espacios de nombres de usuario sin privilegios están desactivados "
+#~ "(kernel.unprivileged_userns_clone = 0). Actívelos con: sudo sysctl "
+#~ "kernel.unprivileged_userns_clone=1"
 
 #~ msgid ""
 #~ "Allows the app to read and write all files in your home folder. This is "
