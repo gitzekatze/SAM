@@ -220,6 +220,24 @@ const PROTECTED_RO: &[&str] = &[
     ".config/tmux",
     ".screenrc",
     ".hgrc",
+    // Services, sound-server and compositor settings that start programs
+    // (audit S-F6): `systemd --user` units under ~/.local/share, PipeWire's
+    // `context.exec`, shell additions, and the start files of Wayland and X
+    // compositors and window managers.
+    ".local/share/systemd",
+    ".config/pipewire",
+    ".config/wireplumber",
+    ".bash_aliases",
+    ".bash_completion",
+    ".config/autostart-scripts",
+    ".config/sway",
+    ".config/hypr",
+    ".config/i3",
+    ".config/niri",
+    ".config/labwc",
+    ".config/river",
+    ".config/wayfire.ini",
+    ".config/openbox",
 ];
 
 /// Protected paths created (empty) before a full-home read/write start when
@@ -250,8 +268,50 @@ const PROTECTED_CREATE_FILES: &[&str] = &[
     ".profile",
     ".gitconfig",
     ".config/mimeapps.list",
+    // An empty one behaves like a missing one (`xdg-user-dir` answers the
+    // home folder for both), and an app cannot create its own (checked for
+    // audit S-F16, which assumed otherwise).
     ".config/user-dirs.dirs",
 ];
+
+/// The protected places relative to the home: `PROTECTED_RO`, and the same
+/// places under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` when those point to
+/// other folders inside the home (desktops and programs follow them, so
+/// `~/cfg/autostart` starts programs as `~/.config/autostart` does; audit
+/// S-F6).
+fn protected_places(home: &Path) -> Vec<String> {
+    let var = |v: &str| std::env::var_os(v).map(PathBuf::from);
+    protected_places_with(home, var("XDG_CONFIG_HOME"), var("XDG_DATA_HOME"))
+}
+
+fn protected_places_with(
+    home: &Path,
+    config: Option<PathBuf>,
+    data: Option<PathBuf>,
+) -> Vec<String> {
+    let mut out: Vec<String> = PROTECTED_RO.iter().map(|p| p.to_string()).collect();
+    for (dir, default) in [(config, ".config/"), (data, ".local/share/")] {
+        let Some(dir) = dir else {
+            continue;
+        };
+        let Ok(rel) = dir.strip_prefix(home) else {
+            continue;
+        };
+        let rel = rel.to_string_lossy().trim_end_matches('/').to_string();
+        if rel.is_empty() || format!("{rel}/") == default {
+            continue;
+        }
+        for p in PROTECTED_RO {
+            if let Some(rest) = p.strip_prefix(default) {
+                let alt = format!("{rel}/{rest}");
+                if !out.contains(&alt) {
+                    out.push(alt);
+                }
+            }
+        }
+    }
+    out
+}
 
 /// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
 /// home before a start that can write the home (full home read/write, or a
@@ -288,9 +348,14 @@ pub fn prepare_home_protection(p: &PermissionSet, home: &Path) {
 
 /// The folders between the home and each protected path (`.config`,
 /// `.local`, `.local/share`, `.local/share/kio`, …), parents first.
-fn protected_ancestors() -> Vec<String> {
+fn protected_ancestors(home: &Path) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for p in PROTECTED_RO.iter().chain(SENSITIVE_DOTFILES) {
+    let places = protected_places(home);
+    for p in places
+        .iter()
+        .map(String::as_str)
+        .chain(SENSITIVE_DOTFILES.iter().copied())
+    {
         let parts: Vec<&str> = p.split('/').collect();
         for n in 1..parts.len() {
             let a = parts[..n].join("/");
@@ -324,6 +389,24 @@ pub struct MovedAside {
     pub place: String,
     /// Where it is now.
     pub to: PathBuf,
+    /// How, when it could not go into SAM's folder: renamed in place,
+    /// deleted, or (it must be said loudly) still there.
+    pub how: Aside,
+}
+
+/// How something an app left in a protected place was taken out of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Aside {
+    /// Moved into SAM's moved-aside folder.
+    Moved,
+    /// SAM's folder could not take it (another drive, a full disk): renamed
+    /// next to where it was, to a name nothing reads.
+    Renamed,
+    /// Neither worked: deleted.
+    Deleted,
+    /// Nothing worked: it is still in its place and may act outside the
+    /// sandbox.
+    Failed,
 }
 
 impl HomeWatch {
@@ -351,10 +434,9 @@ impl HomeWatch {
             .into_iter()
             .filter(|(_, granted)| !granted)
             .map(|(k, _)| k.to_string());
-        let places = PROTECTED_RO
-            .iter()
-            .map(|p| p.to_string())
-            .chain(protected_ancestors())
+        let places = protected_places(home)
+            .into_iter()
+            .chain(protected_ancestors(home))
             .chain(keys);
         for rel in places {
             let path = home.join(&rel);
@@ -393,22 +475,50 @@ impl HomeWatch {
     /// in the name), and the links are put back. Returns what was moved.
     pub fn settle(&self, aside: &Path) -> Vec<MovedAside> {
         let mut moved = Vec::new();
-        let put_aside = |rel: &str| -> Option<PathBuf> {
+        // Never gives up silently (regression, audit L-F2: after 1000 names
+        // per place, with SAM's folder on another drive or a full disk, the
+        // file simply stayed, and nothing said so).
+        let put_aside = |rel: &str| -> Option<(PathBuf, Aside)> {
             let from = self.home.join(rel);
             let name = rel.replace('/', "__");
-            // The same place moved again in one start keeps both.
-            let to = (0..1000)
-                .map(|n| {
-                    aside.join(if n == 0 {
-                        name.clone()
-                    } else {
-                        format!("{name}.{n}")
+            // A free name in `dir`; the same place moved again keeps both.
+            let free = |dir: &Path, base: &str| {
+                (0u64..)
+                    .map(|n| {
+                        dir.join(if n == 0 {
+                            base.to_string()
+                        } else {
+                            format!("{base}.{n}")
+                        })
                     })
-                })
-                .find(|p| fs::symlink_metadata(p).is_err())?;
-            fs::create_dir_all(aside).ok()?;
-            fs::rename(&from, &to).ok()?;
-            Some(to)
+                    .find(|p| fs::symlink_metadata(p).is_err())
+            };
+            if fs::create_dir_all(aside).is_ok() {
+                if let Some(to) = free(aside, &name) {
+                    if fs::rename(&from, &to).is_ok() {
+                        return Some((to, Aside::Moved));
+                    }
+                }
+            }
+            // SAM's folder cannot take it: a name nothing reads, next to it.
+            if let (Some(dir), Some(base)) = (from.parent(), from.file_name()) {
+                let base = format!("{}.sam-moved-aside", base.to_string_lossy());
+                if let Some(to) = free(dir, &base) {
+                    if fs::rename(&from, &to).is_ok() {
+                        return Some((to, Aside::Renamed));
+                    }
+                }
+            }
+            let gone = match fs::symlink_metadata(&from) {
+                Ok(m) if m.is_dir() => fs::remove_dir_all(&from).is_ok(),
+                Ok(_) => fs::remove_file(&from).is_ok(),
+                Err(_) => true,
+            };
+            Some(if gone {
+                (from, Aside::Deleted)
+            } else {
+                (from, Aside::Failed)
+            })
         };
         for rel in &self.absent {
             // Inside a link's target or a moved folder only once.
@@ -418,10 +528,11 @@ impl HomeWatch {
                     .iter()
                     .any(|o| o != rel && rel.starts_with(&format!("{o}/")))
             {
-                if let Some(to) = put_aside(rel) {
+                if let Some((to, how)) = put_aside(rel) {
                     moved.push(MovedAside {
                         place: rel.clone(),
                         to,
+                        how,
                     });
                 }
             }
@@ -431,10 +542,11 @@ impl HomeWatch {
             let same = fs::read_link(&path).is_ok_and(|t| &t == target);
             if !same {
                 if fs::symlink_metadata(&path).is_ok() {
-                    if let Some(to) = put_aside(rel) {
+                    if let Some((to, how)) = put_aside(rel) {
                         moved.push(MovedAside {
                             place: rel.clone(),
                             to,
+                            how,
                         });
                     }
                 }
@@ -776,7 +888,7 @@ fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf]) -> Vec<PathBuf> {
             }
         }
     };
-    for d in protected_ancestors() {
+    for d in protected_ancestors(home) {
         pin(&home.join(d));
     }
     for d in sam_dirs {
@@ -828,10 +940,10 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
             }
         }
     }
-    for prot in PROTECTED_RO {
-        let path = home.join(prot);
+    for prot in protected_places(home) {
+        let path = home.join(&prot);
         for c in views.seen_at(&path) {
-            if matches!(*prot, ".config/sam" | ".local/share/sam") {
+            if matches!(prot.as_str(), ".config/sam" | ".local/share/sam") {
                 if c.is_dir() {
                     a.push("--tmpfs").push(c.to_string_lossy());
                 }
@@ -882,7 +994,7 @@ pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
         if sensitive(&joined) || sensitive(&real) || visible_in_sandbox(&real, ctx) {
             continue;
         }
-        let protected = PROTECTED_RO
+        let protected = protected_places(home)
             .iter()
             .map(|p| home.join(p))
             .any(|p| real.starts_with(&p) || (meta.is_dir() && p.starts_with(&real)));
@@ -2690,6 +2802,96 @@ mod guard_tests {
         ctx.permissions.filesystem.home_access = Access::Ro;
         let c = home.join(".config").to_string_lossy().into_owned();
         assert!(!has_seq(&args_of(&ctx), &["--bind", &c, &c]));
+    }
+
+    fn full_rw() -> PermissionSet {
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        p
+    }
+
+    /// A new start file is taken out of its place whatever happens, and
+    /// never silently (audit L-F2): past 1000 earlier copies, into SAM's
+    /// folder; when SAM's folder cannot take it, renamed in place to a name
+    /// nothing reads; when nothing works, reported as still there.
+    #[test]
+    fn a_new_start_file_never_stays_silently() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let w = HomeWatch::before(&full_rw(), &home).unwrap();
+
+        // 1001 earlier copies in SAM's folder.
+        let aside = t.path().join("aside");
+        fs::create_dir_all(&aside).unwrap();
+        fs::write(aside.join(".bash_profile"), "old").unwrap();
+        for n in 1..=1000 {
+            fs::write(aside.join(format!(".bash_profile.{n}")), "old").unwrap();
+        }
+        fs::write(home.join(".bash_profile"), "evil").unwrap();
+        let m = w.settle(&aside);
+        let it = m.iter().find(|m| m.place == ".bash_profile").unwrap();
+        assert_eq!(
+            (it.how, it.to.clone()),
+            (Aside::Moved, aside.join(".bash_profile.1001"))
+        );
+        assert!(!home.join(".bash_profile").exists());
+
+        // SAM's folder cannot take it (here: its place is a file).
+        let blocked = t.path().join("blocked");
+        fs::write(&blocked, "").unwrap();
+        fs::write(home.join(".bash_profile"), "evil").unwrap();
+        let m = w.settle(&blocked.join("aside"));
+        let it = m.iter().find(|m| m.place == ".bash_profile").unwrap();
+        assert_eq!(it.how, Aside::Renamed);
+        assert_eq!(it.to, home.join(".bash_profile.sam-moved-aside"));
+        assert!(!home.join(".bash_profile").exists());
+
+        // Nothing works (a home folder SAM cannot change): said so.
+        let locked = t.path().join("locked");
+        fs::create_dir_all(&locked).unwrap();
+        let w2 = HomeWatch::before(&full_rw(), &locked).unwrap();
+        fs::write(locked.join(".zshrc"), "evil").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        let m = w2.settle(&blocked.join("aside"));
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        let it = m.iter().find(|m| m.place == ".zshrc").unwrap();
+        assert_eq!(it.how, Aside::Failed, "{m:?}");
+    }
+
+    /// Start folders under another config or data folder in the home
+    /// (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`) are protected like the usual
+    /// ones, and the new places are on the list (audit S-F6).
+    #[test]
+    fn start_places_follow_other_config_and_data_folders() {
+        let home = Path::new("/home/u");
+        let p = protected_places_with(home, Some(home.join("cfg")), Some(home.join("data/")));
+        for want in [
+            "cfg/autostart",
+            "cfg/systemd",
+            "data/applications",
+            "data/systemd",
+            ".config/autostart",
+            ".local/share/systemd",
+            ".config/pipewire",
+            ".config/sway",
+        ] {
+            assert!(p.iter().any(|x| x == want), "{want} missing");
+        }
+        // The usual folders, or ones outside the home, add nothing.
+        let plain =
+            protected_places_with(home, Some(home.join(".config")), Some("/elsewhere".into()));
+        assert_eq!(plain.len(), PROTECTED_RO.len());
+        // A config folder that is the home itself adds nothing either.
+        let same = protected_places_with(home, Some(home.to_path_buf()), None);
+        assert_eq!(
+            same.len(),
+            PROTECTED_RO.len(),
+            "{:?}",
+            &same[PROTECTED_RO.len()..]
+        );
     }
 
     /// Paths are resolved through links also where they do not exist yet,

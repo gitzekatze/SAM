@@ -26,28 +26,45 @@ pub struct LiveWatch {
 
 impl LiveWatch {
     /// Starts watching the folders of `watch`; what is found goes to
-    /// `aside`. `None` when there is nothing to watch or Linux refuses.
-    pub fn start(watch: &HomeWatch, aside: PathBuf) -> Option<LiveWatch> {
+    /// `aside`. The watch is `None` when there is nothing to watch or Linux
+    /// refuses; the text says what is not watched while the app runs, so
+    /// that is never silent (regression, audit L-F4: another app can use up
+    /// the inotify instances, and one watched folder out of many counted as
+    /// watching). What is not watched is still moved aside when the app ends.
+    pub fn start(watch: &HomeWatch, aside: PathBuf) -> (Option<LiveWatch>, Option<String>) {
         let dirs = watch.watched_dirs();
         if dirs.is_empty() {
-            return None;
+            return (None, None);
         }
+        let not_watched = |what: String| {
+            Some(sam_core::i18n::trf(
+                "start files in {folders} are not watched while the app runs (Linux refused); SAM moves them aside when it ends",
+                &[("folders", &what)],
+            ))
+        };
         // SAFETY: inotify_init1 takes flags only and returns a new descriptor or -1.
         let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
         if fd < 0 {
-            return None;
+            return (None, not_watched(sam_core::i18n::tr("the home folder")));
         }
         let mask = libc::IN_CREATE | libc::IN_MOVED_TO | libc::IN_MOVED_FROM | libc::IN_DELETE;
         let mut watching = false;
+        let mut missed = Vec::new();
         for d in dirs {
             let Ok(path) = CString::new(d.as_os_str().as_bytes()) else {
+                missed.push(sam_core::util::tildify(&d));
                 continue;
             };
             // SAFETY: `fd` is the inotify descriptor above, `path` a valid C string for the call.
             if unsafe { libc::inotify_add_watch(fd, path.as_ptr(), mask) } >= 0 {
                 watching = true;
+            } else {
+                missed.push(sam_core::util::tildify(&d));
             }
         }
+        let warning = (!missed.is_empty())
+            .then(|| missed.join(", "))
+            .and_then(not_watched);
         // SAFETY: eventfd takes an initial value and flags, returns a new descriptor or -1.
         let wake = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
         if !watching || wake < 0 {
@@ -58,7 +75,10 @@ impl LiveWatch {
                     libc::close(wake);
                 }
             }
-            return None;
+            return (
+                None,
+                warning.or_else(|| not_watched(sam_core::i18n::tr("the home folder"))),
+            );
         }
         let w = watch.clone();
         let thread = std::thread::spawn(move || {
@@ -100,10 +120,13 @@ impl LiveWatch {
             unsafe { libc::close(fd) };
             moved
         });
-        Some(LiveWatch {
-            wake,
-            thread: Some(thread),
-        })
+        (
+            Some(LiveWatch {
+                wake,
+                thread: Some(thread),
+            }),
+            warning,
+        )
     }
 
     /// Ends the watcher; returns what it moved aside while the app ran.
@@ -157,7 +180,9 @@ mod tests {
         p.filesystem.home = true;
         p.filesystem.home_access = sam_core::permissions::Access::Rw;
         let watch = HomeWatch::before(&p, &home).unwrap();
-        let live = LiveWatch::start(&watch, t.path().join("aside")).expect("watching");
+        let (live, warning) = LiveWatch::start(&watch, t.path().join("aside"));
+        assert_eq!(warning, None, "every folder is watched");
+        let live = live.expect("watching");
         let gone = |path: &std::path::Path| {
             let end = Instant::now() + Duration::from_secs(5);
             while Instant::now() < end {
@@ -188,5 +213,29 @@ mod tests {
             moved.iter().any(|m| m.place == ".bash_profile"),
             "{moved:?}"
         );
+    }
+
+    /// A folder Linux will not watch is said, not skipped silently (audit
+    /// L-F4); what is in it is still moved aside when the app ends.
+    #[test]
+    fn a_folder_that_cannot_be_watched_is_reported() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        let mut p = sam_core::permissions::PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = sam_core::permissions::Access::Rw;
+        let watch = sam_sandbox::HomeWatch::before(&p, &home).unwrap();
+        std::fs::set_permissions(home.join(".config"), std::fs::Permissions::from_mode(0o000))
+            .unwrap();
+        let (live, warning) = LiveWatch::start(&watch, t.path().join("aside"));
+        std::fs::set_permissions(home.join(".config"), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        let warning = warning.expect("a warning");
+        assert!(warning.contains(".config"), "{warning}");
+        if let Some(l) = live {
+            l.finish();
+        }
     }
 }

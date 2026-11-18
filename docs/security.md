@@ -73,6 +73,10 @@ the sandbox, just before the app starts.
   intended, the kernel still blocks the write.
 - Read-only folders inside the home (such as a read-only *Documents*) are
   protected by their read-only mount, which the app cannot change.
+- With the whole home writable, Landlock allows writing all of it: the
+  start files and other protected places inside are then guarded by their
+  read-only mounts and by moving new ones aside (see *Full home access*),
+  not by Landlock.
 - If Landlock (or the syscall filter) cannot be applied at a start, for
   example because SAM's helper `sam-jail-run` is missing, the app still
   starts in its Bubblewrap sandbox, but never silently: the command line
@@ -240,7 +244,11 @@ How these stay protected with the home writable:
   app created in one of these places, and whatever replaced a link to one of
   them, SAM moves into `~/.local/share/sam/moved-aside/APP/` (with the time
   of the start) within moments and puts links back; it looks once more when
-  the app ends. The command line, the launch log and the app's page say so.
+  the app ends. If SAM's folder cannot take it (another drive, a full disk),
+  it is renamed in place to a name nothing reads, or deleted; if even that
+  fails, the command line and the launch log say so in capitals. When Linux
+  refuses to watch a folder while the app runs, that is said too, and the
+  folder is still checked when the app ends. The command line, the launch log and the app's page say so.
   The watch costs nothing while nothing changes: it waits for Linux to
   report, without a timer.
   The same holds for `~/.ssh` and `~/.gnupg` when the app was not given them.
