@@ -37,6 +37,7 @@ pub fn check(path: &Path) -> SignatureInfo {
             state: SignatureState::Unchecked,
             fingerprint: None,
             detail: format!("{e:#}"),
+            signed_at: None,
         },
     }
 }
@@ -63,6 +64,7 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
             state: SignatureState::Invalid,
             fingerprint: None,
             detail: sam_core::i18n::tr("signed, but the signer's key is missing"),
+            signed_at: None,
         });
     }
     let Some(gpgv) = sam_core::util::which("gpgv") else {
@@ -70,6 +72,7 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
             state: SignatureState::Unchecked,
             fingerprint: None,
             detail: sam_core::i18n::tr("signed; install GnuPG (gpgv) to check the signature"),
+            signed_at: None,
         });
     };
     let digest = digest_without(path, &[sig_range, key_range])?;
@@ -88,6 +91,7 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
             state: SignatureState::Invalid,
             fingerprint: None,
             detail: sam_core::i18n::tr("signed, but the signer's key cannot be read"),
+            signed_at: None,
         });
     };
     // gpgv accepts a signature by ANY key in its keyring, so a file that
@@ -104,6 +108,7 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
                 "the file carries {count} keys instead of its signer's one; SAM does not accept its signature",
                 &[("count", &primaries.len())],
             ),
+            signed_at: None,
         });
     }
     let uid = listing
@@ -112,17 +117,20 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
         .and_then(|l| l.split(':').nth(9))
         .map(|u| sam_core::util::display_safe(u, 80));
     // The signer is what gpgv itself reports for the signature it checked.
-    let signer = verify(
+    let signed = verify(
         &gpgv,
         home,
         &keyring,
         &home.join("digest.sig"),
         &home.join("digest"),
     )?;
-    let ok = signer
-        .as_deref()
-        .is_some_and(|s| primaries.iter().any(|p| p == s));
-    let fingerprint = if ok { signer } else { None };
+    let ok = signed
+        .as_ref()
+        .is_some_and(|(s, _)| primaries.iter().any(|p| p == s));
+    let (fingerprint, signed_at) = match signed {
+        Some((s, at)) if ok => (Some(s), at),
+        _ => (None, None),
+    };
     // Whole sentences with and without the signer's name: a name glued on
     // with an English " by" would not translate.
     let detail = match (ok, &uid) {
@@ -141,6 +149,7 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
         },
         fingerprint,
         detail,
+        signed_at,
     })
 }
 
@@ -198,15 +207,15 @@ fn primary_fingerprints(listing: &str) -> Vec<String> {
 }
 
 /// Runs gpgv on `sig` over `data` with `keyring` and returns the primary
-/// fingerprint of the key that made the signature, as gpgv reports it, or
-/// `None` when the signature is not good.
+/// fingerprint of the key that made the signature and when it was made, as
+/// gpgv reports them, or `None` when the signature is not good.
 fn verify(
     gpgv: &Path,
     home: &Path,
     keyring: &Path,
     sig: &Path,
     data: &Path,
-) -> Result<Option<String>> {
+) -> Result<Option<(String, Option<i64>)>> {
     let (st, out) = sam_core::util::output_within(
         Command::new(gpgv)
             .arg("--homedir")
@@ -219,11 +228,24 @@ fn verify(
         GPG_LIMIT,
         GPG_OUTPUT,
     )?;
-    Ok(if st.success() {
-        signer_from_status(&String::from_utf8_lossy(&out))
-    } else {
-        None
-    })
+    if !st.success() {
+        return Ok(None);
+    }
+    let status = String::from_utf8_lossy(&out);
+    Ok(signer_from_status(&status).map(|s| (s, signed_at_from_status(&status))))
+}
+
+/// When the one good signature in gpgv's status lines was made: the
+/// `VALIDSIG` line's signature time, in seconds since 1970.
+pub fn signed_at_from_status(status: &str) -> Option<i64> {
+    let mut valid = status
+        .lines()
+        .filter_map(|l| l.strip_prefix("[GNUPG:] VALIDSIG "));
+    let line = valid.next()?;
+    if valid.next().is_some() {
+        return None;
+    }
+    line.split_whitespace().nth(2)?.parse().ok()
 }
 
 /// The signer in gpgv's machine-readable status lines: the primary-key
@@ -302,8 +324,8 @@ pub fn gnupg_contract(msg: &str, expected: &str) -> std::result::Result<(), Stri
                 &home.join("msg.sig"),
                 &home.join("msg"),
             )? {
-                Some(s) if s == expected => Ok(()),
-                Some(s) => Err(format!("gpgv names {s} as the signer, not {expected}")),
+                Some((s, _)) if s == expected => Ok(()),
+                Some((s, _)) => Err(format!("gpgv names {s} as the signer, not {expected}")),
                 None => Err("gpgv no longer reports one VALIDSIG line for a good signature".into()),
             },
         )
@@ -342,6 +364,7 @@ fn unsigned(detail: &str) -> SignatureInfo {
         state: SignatureState::Unsigned,
         fingerprint: None,
         detail: sam_core::i18n::tr(detail),
+        signed_at: None,
     }
 }
 
@@ -388,7 +411,7 @@ pub fn sign_with_key_block_for_test(
     key_id: &str,
     key_block: &[u8],
 ) -> Result<()> {
-    sign_inner(path, Some(gpg_home), key_id, Some(key_block))
+    sign_inner(path, Some(gpg_home), key_id, Some(key_block), &[])
 }
 
 /// Signs an AppImage the way AppImage tools check it: the SHA-256 of the
@@ -397,7 +420,22 @@ pub fn sign_with_key_block_for_test(
 /// asks for the passphrase itself. `gpg_home` is GnuPG's own folder when
 /// not given.
 pub fn sign_embedded(path: &Path, gpg_home: Option<&Path>, key_id: &str) -> Result<()> {
-    sign_inner(path, gpg_home, key_id, None)
+    sign_inner(path, gpg_home, key_id, None, &[])
+}
+
+/// Like `sign_for_test`, but the signature says it was made at `when`
+/// (GnuPG's `--faked-system-time`, e.g. "20200101T000000"); for the tests of
+/// updates that are older versions.
+#[doc(hidden)]
+pub fn sign_at_for_test(path: &Path, gpg_home: &Path, key_id: &str, when: &str) -> Result<()> {
+    let faked = format!("{when}!");
+    sign_inner(
+        path,
+        Some(gpg_home),
+        key_id,
+        None,
+        &["--faked-system-time", &faked],
+    )
 }
 
 fn sign_inner(
@@ -405,6 +443,7 @@ fn sign_inner(
     gpg_home: Option<&Path>,
     key_id: &str,
     key_block: Option<&[u8]>,
+    extra: &[&str],
 ) -> Result<()> {
     let mut data = Vec::new();
     File::open(path)?.read_to_end(&mut data)?;
@@ -438,6 +477,7 @@ fn sign_inner(
     zeroed[key_range.clone()].fill(0);
     let digest = sam_core::util::hex(&Sha256::digest(&zeroed));
     let mut child = gpg_cmd()
+        .args(extra)
         .args([
             "--batch",
             "--yes",
@@ -521,6 +561,24 @@ mod tests {
         assert_eq!(signer_from_status(&format!("note: VALIDSIG {B}\n")), None);
         assert_eq!(signer_from_status(&validsig(B, "1234")), None);
         assert_eq!(signer_from_status(&validsig(B, &"Z".repeat(40))), None);
+    }
+
+    /// The signing time is the one good signature's own (seconds since
+    /// 1970); nothing unclear gives a time.
+    #[test]
+    fn the_signing_time_is_read_from_the_one_good_signature() {
+        assert_eq!(signed_at_from_status(&validsig(B, B)), Some(1_795_019_682));
+        assert_eq!(signed_at_from_status("[GNUPG:] NEWSIG\n"), None);
+        assert_eq!(
+            signed_at_from_status(&format!("{}{}", validsig(A, A), validsig(B, B))),
+            None
+        );
+        assert_eq!(
+            signed_at_from_status(&format!(
+                "[GNUPG:] VALIDSIG {B} 2026-11-18 soon 0 4 0 22 10 00 {B}\n"
+            )),
+            None
+        );
     }
 
     /// Primary keys are counted from GnuPG's listing; subkeys are not keys

@@ -51,6 +51,10 @@ pub struct FixtureSpec {
     pub update_info: Option<String>,
     /// A terminal program (`Terminal=true` in its menu entry).
     pub terminal: bool,
+    /// Empty signature sections (`.sha256_sig`, `.sig_key`) in the runtime,
+    /// as appimagetool leaves them, so the file can be signed
+    /// (`sam_detect::signature::sign_for_test`; needs objcopy).
+    pub signature_sections: bool,
 }
 
 impl FixtureSpec {
@@ -74,6 +78,7 @@ impl FixtureSpec {
             compressor: Compressor::Zstd,
             update_info: None,
             terminal: false,
+            signature_sections: false,
         }
     }
 }
@@ -90,10 +95,18 @@ pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
         .context(sam_core::i18n::tr(
             "no host ELF available for the runtime stub",
         ))?;
-    let elf = match &spec.update_info {
-        None => std::fs::read(elf_src)?,
-        // A runtime with an (empty) .upd_info section, as real ones have.
-        Some(_) => with_update_section(Path::new(elf_src))?,
+    // A runtime with the (empty) sections real ones have, when asked for.
+    let mut sections = Vec::new();
+    if spec.update_info.is_some() {
+        sections.push((".upd_info", 1024));
+    }
+    if spec.signature_sections {
+        sections.extend([(".sha256_sig", 1024), (".sig_key", 8192)]);
+    }
+    let elf = if sections.is_empty() {
+        std::fs::read(elf_src)?
+    } else {
+        with_sections(Path::new(elf_src), &sections)?
     };
     let end = sam_detect::appimage::elf_end_offset(&elf)
         .context(sam_core::i18n::tr("cannot parse host ELF"))? as usize;
@@ -198,7 +211,8 @@ pub fn build(dest: &Path, spec: &FixtureSpec) -> Result<()> {
 }
 
 /// A copy of `elf` with an empty 1 KiB `.upd_info` section, made by objcopy.
-fn with_update_section(elf: &Path) -> Result<Vec<u8>> {
+/// `elf` with empty sections of the given names and sizes (objcopy).
+fn with_sections(elf: &Path, sections: &[(&str, usize)]) -> Result<Vec<u8>> {
     let dir = std::env::temp_dir().join(format!(
         "sam-testkit-{}-{}",
         std::process::id(),
@@ -208,16 +222,19 @@ fn with_update_section(elf: &Path) -> Result<Vec<u8>> {
             .unwrap_or(0)
     ));
     std::fs::create_dir_all(&dir)?;
-    let zeros = dir.join("upd_info");
-    std::fs::write(&zeros, vec![0u8; 1024])?;
+    let mut cmd = std::process::Command::new("objcopy");
+    for (name, size) in sections {
+        let zeros = dir.join(name.trim_start_matches('.'));
+        std::fs::write(&zeros, vec![0u8; *size])?;
+        cmd.arg(format!("--add-section={name}={}", zeros.display()))
+            .arg(format!("--set-section-flags={name}=noload,readonly"));
+    }
     let out = dir.join("runtime");
-    let st = std::process::Command::new("objcopy")
-        .arg(format!("--add-section=.upd_info={}", zeros.display()))
-        .arg("--set-section-flags=.upd_info=noload,readonly")
+    let st = cmd
         .arg(elf)
         .arg(&out)
         .status()
-        .context("objcopy is needed for update information in test AppImages");
+        .context("objcopy is needed for update information or signatures in test AppImages");
     let result = st.and_then(|st| {
         anyhow::ensure!(st.success(), "objcopy failed");
         Ok(std::fs::read(&out)?)

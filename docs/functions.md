@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-17 16:10:22).
 
-**40 functions:** 34 proven by passing tests, 5 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 333 tests in all.
+**40 functions:** 34 proven by passing tests, 5 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 338 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -40,7 +40,7 @@
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 9 | ✅ |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 2 | ✅ |
 | 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | sam-runner, sam-storage | 4 | ✅ 🆕 2 new tests since the report |
-| 28 | [Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 33 | ✅ 🆕 12 new tests since the report |
+| 28 | [Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 38 | ✅ 🆕 17 new tests since the report |
 | 29 | [SAM notices AppImages that were moved or changed.](#29) | sam-runner, sam-intake | 6 | ✅ 🆕 2 new tests since the report |
 | 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 6 | ✅ |
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 1 | ✅ |
@@ -95,7 +95,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L401) | An AppImage with a DwarFS image instead of squashfs is recognized. | ✅ |
 | [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L422) | A file that is not an ELF program is not taken for an AppImage. | ✅ |
 | [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L437) | An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | ✅ |
-| [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L240) | Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | ✅ |
+| [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L257) | Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | ✅ |
 | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L14) | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | ✅ |
 | [`an_appimage_shorter_than_its_image_is_incomplete`](../crates/sam-detect/src/appimage.rs#L364) | A download that broke off is recognized: the file is shorter than its SquashFS image says, and a complete one is not. | ✅ |
 | [`a_download_that_broke_off_is_refused_and_nothing_is_kept`](../crates/sam-runner/tests/incomplete.rs#L9) | A download that broke off is refused and nothing is kept. | ✅ |
@@ -116,8 +116,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L242) | Paths from the AppImage image are made relative, and paths that climb out with .. | ✅ |
 | [`unpacking_removes_setuid_bits`](../crates/sam-intake/src/normalize.rs#L253) | Unpacking removes setuid bits and makes files read-only for others. | ✅ |
 | [`unpacking_stops_at_the_file_limit`](../crates/sam-intake/src/normalize.rs#L310) | Unpacking stops when the AppImage contains more files than the limit. | ✅ |
-| [`a_built_appimage_is_detected_and_unpacked_safely`](../crates/sam-intake/src/testkit.rs#L271) | A built AppImage is recognized and unpacked, with setuid bits removed. | ✅ |
-| [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L330) | Unpacking stops at the size limit and leaves no partial files behind. | ✅ |
+| [`a_built_appimage_is_detected_and_unpacked_safely`](../crates/sam-intake/src/testkit.rs#L288) | A built AppImage is recognized and unpacked, with setuid bits removed. | ✅ |
+| [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L347) | Unpacking stops at the size limit and leaves no partial files behind. | ✅ |
 | [`fractions_follow_the_step_weights`](../crates/sam-runner/src/progress.rs#L152) | The progress bar follows the weights of the steps of creating a sandbox. | ✅ |
 | [`bytes_written_are_counted`](../crates/sam-runner/src/progress.rs#L177) | Unpacking progress counts the bytes written. | ✅ |
 | [`unpacking_stops_exactly_at_its_limits`](../crates/sam-intake/tests/limits.rs#L45) | The file-count and size limits let an app through that reaches them exactly and stop one entry or one byte more; a time limit of zero stops at once. | ✅ |
@@ -433,7 +433,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L22) | The sandbox check passes when the settings apply, and catches a setting that does not apply. | ✅ |
 | [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L1508) | A wanted layer that was not applied is reported missing. | ✅ |
 | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) | A start without the helper reports its missing layers. | ✅ |
-| [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L769) | A start without a wanted protection layer is marked. | ✅ |
+| [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L774) | A start without a wanted protection layer is marked. | ✅ |
 | [`sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`](../crates/sam-jail-cli/tests/start_check.rs#L49) | Sam jail run refuses a sandbox whose settings do not apply. | ✅ |
 
 **Code:** [`sam-runner/src/verify.rs`](../crates/sam-runner/src/verify.rs), [`sam-runner/src/probe.rs`](../crates/sam-runner/src/probe.rs)
@@ -546,39 +546,44 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`both_forms_of_update_information_are_understood`](../crates/sam-detect/src/update_info.rs#L139) | Both forms of update information (a direct zsync address and GitHub releases) are understood. | ✅ |
-| [`update_wildcards_match_only_the_right_build`](../crates/sam-detect/src/update_info.rs#L166) | Wildcards in update information match the right file name and not the build for another processor. | ✅ |
+| [`both_forms_of_update_information_are_understood`](../crates/sam-detect/src/update_info.rs#L143) | Both forms of update information (a direct zsync address and GitHub releases) are understood. | ✅ |
+| [`update_wildcards_match_only_the_right_build`](../crates/sam-detect/src/update_info.rs#L183) | Wildcards in update information match the right file name and not the build for another processor. | ✅ |
 | [`signed_appimage_is_checked`](../crates/sam-detect/tests/signature.rs#L138) | The signature of a signed AppImage is checked with GnuPG: unsigned, valid with the signer's fingerprint and name, invalid after one changed byte. | ✅ |
-| [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L544) | An update signed with another key, or not signed at all, is noticed. | ✅ |
-| [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L104) | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | ✅ |
+| [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L607) | An update signed with another key, or not signed at all, is noticed. | ✅ |
+| [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L105) | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | ✅ |
 | [`release_keys_are_full_fingerprints`](../crates/sam-runner/src/release_key.rs#L77) | Every built-in release key is a full fingerprint (40 hex characters), never a short key id that another key could share. | ✅ |
 | [`signing_a_file_without_signature_sections_is_refused`](../crates/sam-jail-cli/tests/robustness.rs#L258) | Signing a file that has no AppImage signature sections is refused with a clear message, before GnuPG is asked anything, and the file stays as it was. | ✅ |
-| [`without_a_release_key_sam_never_updates_itself`](../crates/sam-runner/src/release_key.rs#L140) | Without a built-in release key, SAM never updates itself, whatever the download looks like. | ✅ |
-| [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L591) | The header of a zsync file is read (file name, size, checksum). | ✅ |
-| [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L615) | Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | ✅ |
-| [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L632) | Update downloads use HTTPS only; HTTP and file addresses are refused. | ✅ |
-| [`an_update_is_rebuilt_from_the_old_version_and_changed_blocks`](../crates/sam-runner/src/zsync.rs#L405) | An update is rebuilt from the old version plus the changed blocks. | ✅ |
-| [`the_rolling_checksum_matches_a_direct_computation`](../crates/sam-runner/src/zsync.rs#L459) | The rolling checksum of the update transfer matches a direct computation at every offset. | ✅ |
-| [`refuses_compressed_and_broken_files`](../crates/sam-runner/src/zsync.rs#L475) | Compressed or incomplete zsync files are refused. | ✅ |
+| [`without_a_release_key_sam_never_updates_itself`](../crates/sam-runner/src/release_key.rs#L141) | Without a built-in release key, SAM never updates itself, whatever the download looks like. | ✅ |
+| [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L555) | The header of a zsync file is read (file name, size, checksum). | ✅ |
+| [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L579) | Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | ✅ |
+| [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L596) | Update downloads use HTTPS only; HTTP and file addresses are refused. | ✅ |
+| [`an_update_is_rebuilt_from_the_old_version_and_changed_blocks`](../crates/sam-runner/src/zsync.rs#L436) | An update is rebuilt from the old version plus the changed blocks. | ✅ |
+| [`the_rolling_checksum_matches_a_direct_computation`](../crates/sam-runner/src/zsync.rs#L490) | The rolling checksum of the update transfer matches a direct computation at every offset. | ✅ |
+| [`refuses_compressed_and_broken_files`](../crates/sam-runner/src/zsync.rs#L506) | Compressed or incomplete zsync files are refused. | ✅ |
 | [`undo_puts_the_previous_version_back`](../crates/sam-runner/tests/update.rs#L15) | Undoing an update puts the previous version back. | ✅ |
 | [`undoing_an_update_never_moves_files_outside_sams_backup_folder`](../crates/sam-runner/tests/tamper.rs#L89) ⟲ | Regression (found in the test audit): "go back to the earlier version" moved the file a record named as the backup, wherever it was. | ✅ |
-| [`block_checksums_match_the_zsync_definition`](../crates/sam-runner/src/zsync.rs#L353) | The block checksums are the ones zsync defines: MD4 of a block padded with zeros to the block size, and the weak sum cut to its last bytes. | ✅ |
-| [`the_download_checksum_is_sha1_of_the_whole_file`](../crates/sam-runner/src/updates.rs#L571) | The checksum of a downloaded update is SHA-1 of the whole file, read in pieces; a file larger than one piece gives the same result. | ✅ |
+| [`block_checksums_match_the_zsync_definition`](../crates/sam-runner/src/zsync.rs#L384) | The block checksums are the ones zsync defines: MD4 of a block padded with zeros to the block size, and the weak sum cut to its last bytes. | ✅ |
+| [`the_download_checksum_is_sha1_of_the_whole_file`](../crates/sam-runner/src/updates.rs#L535) | The checksum of a downloaded update is SHA-1 of the whole file, read in pieces; a file larger than one piece gives the same result. | ✅ |
 | [`updates_download_only_changes_check_them_and_refuse_tampering`](../crates/sam-runner/tests/update_server.rs#L174) | Updates download only changes check them and refuse tampering. | ✅ |
 | [`the_weak_hashes_stay_in_the_zsync_update_code`](../crates/sam-jail-cli/tests/architecture.rs#L206) | SHA-1 and MD4 are broken as protection against tampering. | ✅ |
-| [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L570) | A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | ✅ |
-| [`a_second_key_in_the_file_cannot_borrow_a_trusted_name`](../crates/sam-detect/tests/signature.rs#L172) | The attack of audit finding C1: a file carries a trusted key (here it stands for SAM's release key, which is public) first and the attacker's key second, and is signed with the attacker's key. | 🆕 new |
-| [`a_signature_by_a_subkey_names_its_primary_key`](../crates/sam-detect/tests/signature.rs#L215) | A key whose signatures come from a signing subkey: SAM names the primary key (the fingerprint people publish and SAM compares), not the subkey. | 🆕 new |
-| [`gnupg_names_the_real_signer`](../crates/sam-detect/tests/signature.rs#L238) | The contract with GnuPG (docs/contracts.toml, `signatures-gnupg`) holds with the GnuPG installed here: gpgv accepts a signature by any key in its keyring, and its status output names the key that really signed. | 🆕 new |
+| [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L633) | A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | ✅ |
+| [`a_second_key_in_the_file_cannot_borrow_a_trusted_name`](../crates/sam-detect/tests/signature.rs#L173) | The attack of audit finding C1: a file carries a trusted key (here it stands for SAM's release key, which is public) first and the attacker's key second, and is signed with the attacker's key. | 🆕 new |
+| [`a_signature_by_a_subkey_names_its_primary_key`](../crates/sam-detect/tests/signature.rs#L216) | A key whose signatures come from a signing subkey: SAM names the primary key (the fingerprint people publish and SAM compares), not the subkey. | 🆕 new |
+| [`gnupg_names_the_real_signer`](../crates/sam-detect/tests/signature.rs#L239) | The contract with GnuPG (docs/contracts.toml, `signatures-gnupg`) holds with the GnuPG installed here: gpgv accepts a signature by any key in its keyring, and its status output names the key that really signed. | 🆕 new |
 | [`sam_refuses_a_forged_update_that_carries_its_release_key`](../crates/sam-runner/tests/self_update_signature.rs#L77) | SAM installs an update of itself only when it was really signed with its release key. | 🆕 new |
-| [`the_signer_is_what_gpgv_reports_and_nothing_unclear_counts`](../crates/sam-detect/src/signature.rs#L485) | The signer is read from gpgv's own report of the signature it checked: the primary key, or the signing key when no primary is given. | 🆕 new |
-| [`primary_keys_are_counted_without_their_subkeys`](../crates/sam-detect/src/signature.rs#L528) | Primary keys are counted from GnuPG's listing; subkeys are not keys of their own (a signer with a signing subkey carries one key). | 🆕 new |
-| [`the_contract_material_names_key_b`](../crates/sam-detect/src/signature.rs#L544) | The fixed test material of the GnuPG contract is what its comments say: key B's fingerprint is the one recorded. | 🆕 new |
+| [`the_signer_is_what_gpgv_reports_and_nothing_unclear_counts`](../crates/sam-detect/src/signature.rs#L525) | The signer is read from gpgv's own report of the signature it checked: the primary key, or the signing key when no primary is given. | 🆕 new |
+| [`primary_keys_are_counted_without_their_subkeys`](../crates/sam-detect/src/signature.rs#L586) | Primary keys are counted from GnuPG's listing; subkeys are not keys of their own (a signer with a signing subkey carries one key). | 🆕 new |
+| [`the_contract_material_names_key_b`](../crates/sam-detect/src/signature.rs#L602) | The fixed test material of the GnuPG contract is what its comments say: key B's fingerprint is the one recorded. | 🆕 new |
 | [`a_helper_program_is_stopped_at_its_time_limit`](../crates/sam-core/src/util.rs#L355) | A helper program that hangs is stopped at the time limit instead of hanging SAM (GnuPG reads keys from untrusted AppImages), and a program that prints more than SAM keeps neither blocks nor floods SAM's memory. | 🆕 new |
 | [`an_update_writes_through_no_planted_link_and_keeps_the_sandbox`](../crates/sam-runner/tests/update_server.rs#L335) ⟲ | Regressions (audit U-H4, U-H3): updates were downloaded next to the AppImage under a guessable name (`.<name>.sam-download`) with tools that follow links, so an app with write access to that folder (often Downloads) could plant a link there and SAM wrote the update through it into any file of the person. | 🆕 new |
 | [`going_back_with_an_unchanged_file_name_keeps_both_versions`](../crates/sam-runner/tests/update_server.rs#L430) ⟲ | Regression (audit U-H5): when the new version had the same file name as the old one, going back moved the current file onto the kept old version (destroying it), then "restored" the new file and reported that the app was back. | 🆕 new |
-| [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1015) | Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | 🆕 new |
-| [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1035) | Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | 🆕 new |
+| [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1061) | Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | 🆕 new |
+| [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1081) | Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | 🆕 new |
+| [`an_older_signed_version_is_not_installed_as_an_update`](../crates/sam-runner/tests/update_server.rs#L489) ⟲ | Regression (audit U-M6): whoever controls the download could hand out an older, validly signed release (with holes fixed since) as the update: any file other than the installed one counted as newer. | 🆕 new |
+| [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L566) | An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | 🆕 new |
+| [`the_signing_time_is_read_from_the_one_good_signature`](../crates/sam-detect/src/signature.rs#L568) | The signing time is the one good signature's own (seconds since 1970); nothing unclear gives a time. | 🆕 new |
+| [`a_hostile_update_description_cannot_crash_or_stall_sam`](../crates/sam-runner/src/zsync.rs#L521) | A description from a hostile server cannot crash SAM or keep it busy (audit U-M7): an absurd length is refused, a block count that would overflow the size computation is refused instead of wrapping, and thousands of blocks whose quick checksum matches a stretch of identical bytes end at the time limit, with those blocks left for downloading. | 🆕 new |
+| [`kept_data_goes_back_only_to_its_own_appimage`](../crates/sam-runner/tests/tamper.rs#L199) ⟲ | Regression (audit I-F5): an id is the app's name plus four hex digits of its file's checksum, so a crafted AppImage can get the id of a removed app whose data was kept, and it inherited that private home. | 🆕 new |
 
 **Code:** [`sam-runner/src/updates.rs`](../crates/sam-runner/src/updates.rs), [`sam-runner/src/zsync.rs`](../crates/sam-runner/src/zsync.rs), [`sam-runner/src/release_key.rs`](../crates/sam-runner/src/release_key.rs), [`sam-detect/src/update_info.rs`](../crates/sam-detect/src/update_info.rs), [`sam-detect/src/signature.rs`](../crates/sam-detect/src/signature.rs)
 
@@ -590,7 +595,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_swapped_appimage_does_not_start_until_it_is_confirmed`](../crates/sam-runner/tests/changed_appimage.rs#L13) | A swapped appimage does not start until it is confirmed. | ✅ |
 | [`a_swapped_appimage_stays_marked_when_a_switch_changes`](../crates/sam-runner/tests/changed_appimage.rs#L71) ⟲ | Regression (audit U-H1, Part 5): changing any switch cleared the mark of a swapped AppImage file, so it started without the person looking at it. | 🆕 new |
 | [`a_swapped_appimage_is_marked_also_after_the_change_check`](../crates/sam-runner/tests/changed_appimage.rs#L111) ⟲ | Regression (audit U-H2): "Check all AppImages for changes" (or moving the file with relocate) recorded the swapped file's checksum, so the following "Unpack Again" compared the file with itself: the swapped content ran with the old app's permissions, unmarked, and its signature was not checked again. | 🆕 new |
-| [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L704) | An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | ✅ |
+| [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L709) | An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | ✅ |
 | [`a_changed_appimage_file_is_noticed`](../crates/sam-intake/src/fingerprint.rs#L107) | A changed AppImage file is noticed by its fingerprint. | ✅ |
 | [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L144) | When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | ✅ |
 
@@ -671,8 +676,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L686) | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | ✅ |
-| [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L731) | An app with compatibility risk carries a warning badge until it has started successfully once. | ✅ |
+| [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L691) | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | ✅ |
+| [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L736) | An app with compatibility risk carries a warning badge until it has started successfully once. | ✅ |
 | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L824) | Apps are found by name or ID, and an ambiguous name is refused. | ✅ |
 | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L351) | The user guide keeps the text of a list item that has a nested list below it. | ✅ |
 | [`links_to_other_pages_open_on_github`](../crates/sam-gtk/src/guide.rs#L375) | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | ✅ |

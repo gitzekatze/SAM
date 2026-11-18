@@ -382,7 +382,15 @@ downloads a file, and only when you ask:
   and the move.
 - It must match the published SHA-1 and be an AppImage.
 - It must be signed like the installed version. A new or missing key stops
-  the update unless you accept it.
+  the update unless you accept it. A signed update that was signed earlier
+  than the installed version is an older version and is refused: whoever
+  controls the download cannot hand out an old release with holes fixed
+  since. For unsigned apps SAM cannot tell versions apart this way.
+- A server cannot keep SAM busy or crash it: every request has a time
+  limit, a download at most the published length (8 GiB without one),
+  update addresses are never expanded as patterns, and working out which
+  parts of the old file can be reused stops after a minute (the rest is
+  downloaded).
 - The old file moves into SAM's data folder, so you can go back; going back
   keeps the newer version, also when both have the same file name.
 - The new file is put in place by renaming, or, across drives, by copying

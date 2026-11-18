@@ -306,6 +306,20 @@ impl Sam {
         Ok(runners.len())
     }
 
+    /// Whether `id` still holds data kept from a removed sandbox of another
+    /// AppImage than the one with `sha256`. An id is a name plus four hex
+    /// digits of the file's checksum, so a crafted file can get the id of a
+    /// removed app in about 65,000 tries; it must not inherit that app's
+    /// kept private home (audit I-F5). Data kept before SAM recorded the
+    /// owner counts as another's.
+    pub(super) fn kept_for_another(&self, id: &str, sha256: &str) -> bool {
+        let has_data = self.paths.app_home(id).exists()
+            || self.paths.data_dir.join("overlays").join(id).exists();
+        has_data
+            && fs::read_to_string(self.paths.data_dir.join("kept").join(id))
+                .map_or(true, |owner| owner.trim() != sha256)
+    }
+
     /// A fresh folder for one download, `<data>/downloads/<name>`, that only
     /// SAM's user can enter. Apps never see SAM's data folder.
     fn download_folder(&self, name: &str) -> Result<PathBuf> {
@@ -372,7 +386,13 @@ impl Sam {
             );
         }
         let _ = fs::remove_dir_all(self.paths.runtime_dir(&entry.id));
-        if !keep_data {
+        if keep_data {
+            // Which file the kept data belongs to: only that AppImage gets it
+            // back when it is added again (see `kept_for_another`).
+            let kept = self.paths.data_dir.join("kept");
+            fs::create_dir_all(&kept)?;
+            fs::write(kept.join(&entry.id), &entry.source.sha256)?;
+        } else {
             let home = self.paths.app_home(&entry.id);
             if home.exists() {
                 fs::remove_dir_all(&home)?;
@@ -696,6 +716,9 @@ impl Sam {
                     .into());
                 }
             }
+            if let Some((was, now)) = older_signed_version(entry.signature.as_ref(), &new_sig) {
+                return Err(older_version_error(was, now).into());
+            }
             // Signed and checked before, but the new file cannot be checked
             // (GnuPG missing): SAM cannot tell whether the key changed, so it
             // asks like for a changed key (threat model: a key change is
@@ -928,8 +951,14 @@ impl Sam {
                     sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted")
                 );
             }
-            // Only SAM's makers may replace SAM (see release_key).
-            crate::release_key::check(&sam_detect::signature::check(&tmp), keys)?;
+            // Only SAM's makers may replace SAM (see release_key), and never
+            // with an older release than the one running.
+            let new_sig = sam_detect::signature::check(&tmp);
+            crate::release_key::check(&new_sig, keys)?;
+            let running = sam_detect::signature::check(appimage);
+            if let Some((was, now)) = older_signed_version(Some(&running), &new_sig) {
+                return Err(older_version_error(was, now).into());
+            }
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))?;
             let backup_dir = self.paths.data_dir.join("update-backups").join("sam");
@@ -976,6 +1005,23 @@ impl Sam {
 }
 
 /// Rename, or copy and delete across file systems.
+/// The refusal of an update that is an older signed version.
+fn older_version_error(was: i64, now: i64) -> sam_core::error::CodedError {
+    let day = |t: i64| {
+        sam_core::util::format_utc_date(t)
+            .chars()
+            .take(16)
+            .collect::<String>()
+    };
+    sam_core::error::CodedError::new(
+        "older-version",
+        sam_core::i18n::trf(
+            "The download was signed on {now}, before the installed version ({was}): it is an older version, which may have security holes that were fixed since. It was deleted and nothing changed. To go back to an earlier version on purpose, use Undo after an update.",
+            &[("now", &day(now)), ("was", &day(was))],
+        ),
+    )
+}
+
 /// Moves a file. Within one file system a rename, which replaces whatever
 /// is at `to` (also a link) and never writes through it. Across file
 /// systems a copy into a new file that must not exist yet and is never

@@ -480,3 +480,87 @@ fn going_back_with_an_unchanged_file_name_keeps_both_versions() {
     let kept = e.update_backup.as_ref().unwrap();
     assert_eq!(fs::read(&kept.file).unwrap(), v1);
 }
+
+/// Regression (audit U-M6): whoever controls the download could hand out an
+/// older, validly signed release (with holes fixed since) as the update:
+/// any file other than the installed one counted as newer. A signed update
+/// signed earlier than the installed version is now refused, and nothing
+/// changes. With the real GnuPG (SAM_TEST_GPG=1).
+#[test]
+fn an_older_signed_version_is_not_installed_as_an_update() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
+        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg and gpgv installed)");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let home = tmp.path().join("gnupg");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    let st = Command::new("gpg")
+        .arg("--homedir")
+        .arg(&home)
+        .args([
+            "--batch",
+            "--quiet",
+            "--passphrase",
+            "",
+            "--pinentry-mode",
+            "loopback",
+        ])
+        .args(["--faked-system-time", "20200101T000000!"])
+        .args([
+            "--quick-gen-key",
+            "Tool Maker <maker@example.invalid>",
+            "ed25519",
+            "sign",
+            "never",
+        ])
+        .status()
+        .unwrap();
+    assert!(st.success());
+
+    // The installed version was signed in 2026, the "update" in 2023.
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-x86_64.AppImage");
+    let signed = |path: &Path, version: &str, when: &str| {
+        let mut spec = FixtureSpec::hello("Tool");
+        spec.comment = format!("Tool, version {version}");
+        spec.update_info = Some(format!("zsync|{url}"));
+        spec.signature_sections = true;
+        build(path, &spec).unwrap();
+        sam_detect::signature::sign_at_for_test(path, &home, "maker@example.invalid", when)
+            .unwrap();
+    };
+    signed(&installed, "2.0", "20260601T000000");
+    let old_release = tmp.path().join("old.AppImage");
+    signed(&old_release, "1.0", "20230101T000000");
+    publish(&server, &old_release, "Tool-x86_64.AppImage");
+    let before = fs::read(&installed).unwrap();
+
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = sam
+        .add(
+            &installed,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let e = sam.update(&id, false).unwrap_err().to_string();
+    assert!(e.contains("older version"), "{e}");
+    assert_eq!(fs::read(&installed).unwrap(), before, "nothing changed");
+    let _ = Command::new("gpgconf")
+        .arg("--homedir")
+        .arg(&home)
+        .args(["--kill", "all"])
+        .status();
+}
