@@ -44,9 +44,17 @@ All of them run in CI and block a merge when they fail:
   (breakout, hostile AppImages, the permission matrix, the sandbox check,
   the syscall review, teardown, missing layers, contracts, architecture,
   fuzzing, tampering, updates, damaged files) may be extended, never
-  deleted, reduced or skipped.
-- **New dependencies:** a crate new in `Cargo.lock` needs a review of its
-  purpose, maintenance and license.
+  deleted, reduced or skipped. Added lines count too when they can switch a
+  test off: `cfg(`, `#[ignore]` or `should_panic` anywhere, and an early
+  `return`, `if false` or `exit(` in a test or helper that was there before.
+  New tests may contain anything.
+- **Dependencies:** a crate new in `Cargo.lock`, an older version of one,
+  or the same version from another source or with another checksum needs a
+  review. A newer version passes; `cargo deny` checks it for known holes.
+- **The check itself:** any change to the checker, its settings
+  (`keeper.toml`), `scripts/risk-class.py` or the approval workflow needs
+  the owner. CI runs the checker and its settings as the base branch has
+  them, never the pull request's copy.
 - **Workflow safety** (`scripts/workflow-check.py`): no workflow runs a
   pull request's code with the repository's secrets, and no text from
   issues or pull requests goes straight into a shell command.
@@ -62,8 +70,16 @@ Every pull request shows this as its own check, **"Needs your approval"**:
 green when nothing needs the owner, waiting with a plain list of what to
 look at when something does. To approve: open the pull request, click
 **Labels** in the right sidebar, choose **owner-approved**; the check runs
-again by itself. Claude never sets this label, although a local session
-could: the label is the owner's decision.
+again by itself. The label counts for what you saw: a later push takes it
+off, and the check ignores it on that push. Claude never sets this label,
+although a local session could: the label is the owner's decision.
+
+One way around the check is still open: a pull request that rewrites the
+approval workflow itself runs its own version of it. Such a change is
+marked as needing the owner, but it is the rewritten workflow that says
+so. Closing this needs the workflow to run from the base branch
+(`pull_request_target`), which the owner switches on together with the
+required-check setting.
 
 ## Where the rules live
 

@@ -90,6 +90,14 @@ protected_tests = [
   "crates/sam-jail-cli/tests/architecture.rs",
   "crates/sam-intake/tests/damaged.rs",
 ]
+# The files that make up the approval check: CI runs the checker from the
+# base branch; any change to them needs the owner.
+gate = [
+  "scripts/contract-verifier.py",
+  "scripts/risk-class.py",
+  "keeper.toml",
+  ".github/workflows/approval.yml",
+]
 # Safety lists in the code: removing an entry is a weakening.
 lists = [
   { file = "crates/sam-runner/src/netns.rs", names = ["NEVER_FORWARD_FROM_APP"] },
