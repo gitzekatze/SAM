@@ -15,6 +15,7 @@ pub mod permissions;
 pub mod places;
 pub mod risk;
 pub mod sandbox;
+pub mod terminal;
 pub mod util;
 pub mod warnings;
 

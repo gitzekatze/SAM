@@ -184,7 +184,24 @@ id = 17
 area = "C"
 promise = "The app can't type into your terminal."
 code = ["sam-runner/src/pty.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs"]
-tests = ["output_shown_in_a_terminal_is_filtered_without_the_relay", "a_pipe_into_a_terminal_program_passes_through_unchanged", "plain_text_survives_unfinished_and_odd_codes", "the_terminal_connection_passes_typing_and_filtered_output", "ctrl_c_reaches_the_app", "closing_the_users_terminal_hangs_up_the_app", "the_log_stays_within_its_limit", "something_left_on_the_apps_terminal_does_not_keep_sam_waiting", "the_output_is_still_logged_when_the_terminal_cannot_show_it", "only_tmux_itself_counts_as_tmux_passthrough", "leading_zeros_do_not_smuggle_a_code", "a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code"]
+tests = ["output_shown_in_a_terminal_is_filtered_without_the_relay", "a_pipe_into_a_terminal_program_passes_through_unchanged", "plain_text_survives_unfinished_and_odd_codes", "the_terminal_connection_passes_typing_and_filtered_output", "ctrl_c_reaches_the_app", "closing_the_users_terminal_hangs_up_the_app", "the_log_stays_within_its_limit", "something_left_on_the_apps_terminal_does_not_keep_sam_waiting", "the_output_is_still_logged_when_the_terminal_cannot_show_it", "leading_zeros_do_not_smuggle_a_code", "a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code",
+  "only_tmux_itself_counts_as_tmux_passthrough",
+  "a_slow_terminals_late_replies_do_not_reach_the_shell",
+  "limits_hold_at_their_edge",
+  "malformed_pieces_are_recognized",
+  "the_allowed_kinds_pass_unchanged",
+  "unfinished_pieces_are_named_at_the_end",
+  "a_sandboxed_terminal_app_cannot_reach_past_the_terminal",
+  "modes_left_on_are_switched_off_at_the_end",
+  "nothing_past_the_filter_reaches_past_the_terminal",
+  "only_known_device_strings_pass",
+  "ordinary_output_passes_unchanged_at_every_split",
+  "requests_pass_only_on_the_relay",
+  "the_known_ways_past_the_old_filter_are_closed",
+  "the_log_keeps_only_text_across_reads",
+  "the_model_recognizes_the_known_attacks",
+  "what_reaches_past_the_terminal_is_removed",
+]
 
 [[function]]
 id = 18
