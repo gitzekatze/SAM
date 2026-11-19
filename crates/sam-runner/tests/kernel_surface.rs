@@ -70,7 +70,11 @@ fn sandbox_works() -> bool {
 }
 
 /// The filter's answers, compared with the computer's own.
-fn assert_shut(inside: &HashMap<String, String>, what: &str) {
+fn assert_shut(text: &str, what: &str) {
+    let inside = &parse(text);
+    if inside.is_empty() {
+        panic!("{what}: the probe said nothing: {text}");
+    }
     let host = on_this_computer();
     assert_eq!(
         inside.get("INET").map(String::as_str),
@@ -143,7 +147,7 @@ fn an_app_cannot_open_the_kernels_rarely_used_doors() {
     let log = fs::read_to_string(rec.log_file.unwrap()).unwrap();
     let r = parse(&log);
     assert_eq!(r.get("END").map(String::as_str), Some("1"), "{log}");
-    assert_shut(&r, "app");
+    assert_shut(&log, "app");
 }
 
 #[test]
@@ -157,17 +161,17 @@ fn an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors() {
     // unpacks, then unpacks a minimal app.
     let bin = d.join("bin");
     fs::create_dir(&bin).unwrap();
-    let probe = bin.join("probe.py");
-    fs::write(&probe, PROBE).unwrap();
+    // The probe is part of the tool: a file of its own in the test's
+    // temporary folder would be hidden where that folder is /tmp (the
+    // sandbox has a fresh /tmp).
     let tool = bin.join("dwarfsextract");
     fs::write(
         &tool,
         format!(
             "#!/bin/sh\n\
              while [ $# -gt 0 ]; do [ \"$1\" = -o ] && dst=$2; shift; done\n\
-             mkdir -p \"$dst\" && python3 {probe} > \"$dst/doors.txt\" 2>&1\n\
-             printf '#!/bin/sh\\n' > \"$dst/AppRun\" && chmod 755 \"$dst/AppRun\"\n",
-            probe = probe.display()
+             mkdir -p \"$dst\" && python3 - > \"$dst/doors.txt\" 2>&1 <<'EOF'\n{PROBE}\nEOF\n\
+             printf '#!/bin/sh\\n' > \"$dst/AppRun\" && chmod 755 \"$dst/AppRun\"\n"
         ),
     )
     .unwrap();
@@ -188,21 +192,12 @@ fn an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors() {
         notes: vec![],
     };
     // SAM's unpack sandbox as the runner builds it: the shared system view
-    // and the baseline filter; the probe is shown read-only like a tool
-    // installed outside /usr.
+    // and the baseline filter.
     let host = HostInfo::probe();
     let iso = Isolation {
         bwrap: host.tools.bwrap.as_ref().unwrap().path.clone(),
         self_exe: PathBuf::from("/usr/bin/true"),
-        system: [
-            sam_sandbox::helper_system_args(&host),
-            vec![
-                "--ro-bind".into(),
-                probe.display().to_string(),
-                probe.display().to_string(),
-            ],
-        ]
-        .concat(),
+        system: sam_sandbox::helper_system_args(&host),
         filter: Some(sam_runner::kernel::filter_bytes(&Default::default()).unwrap()),
     };
     let path = std::env::var("PATH").unwrap_or_default();
@@ -222,7 +217,7 @@ fn an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors() {
     )
     .unwrap_or_else(|e| panic!("{e:#}\n{}", String::from_utf8_lossy(&log)));
     let text = fs::read_to_string(out.appdir.join("doors.txt")).unwrap();
-    assert_shut(&parse(&text), "unpacking");
+    assert_shut(&text, "unpacking");
 }
 
 /// The AppImage's own extractor runs code from the AppImage: here a
@@ -286,5 +281,5 @@ fn an_appimages_own_extractor_cannot_open_the_kernels_rarely_used_doors() {
     let log = String::from_utf8_lossy(&log);
     assert!(log.contains("appimage-extract"), "the fallback ran: {log}");
     let text = fs::read_to_string(out.appdir.join("doors.txt")).unwrap();
-    assert_shut(&parse(&text), "the AppImage's own extractor");
+    assert_shut(&text, "the AppImage's own extractor");
 }
