@@ -287,7 +287,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L63) | Inside a real sandbox, each profile shows exactly the files and services it allows. | ✅ |
 | [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L102) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L3734) | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | ✅ |
-| [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L756) | The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | ✅ |
+| [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L754) | The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs)
 
@@ -351,7 +351,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`an_app_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L104) | An app cannot open the kernels rarely used doors. | 🆕 new |
 | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1228) | Own names that are refused. | ✅ |
 | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1275) | A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | ✅ |
-| [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L799) | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | ✅ |
+| [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L797) | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | ✅ |
 | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L1146) | The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | ✅ |
 | [`filtered_dbus_uses_proxy`](../crates/sam-sandbox/src/lib.rs#L2729) | The filtered desktop bus reaches the app only through SAM's proxy. | ✅ |
 | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](../crates/sam-sandbox/src/lib.rs#L2813) | The app runs as the user and host tools are replaced by stand ins. | ✅ |
@@ -362,8 +362,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) | Every security promise holds inside a real sandbox: each breakout attempt fails. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L159) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
 | [`a_socket_counts_as_ready_only_when_it_accepts`](../crates/sam-runner/src/dbus_proxy.rs#L269) | The proxy counts as ready only when its socket accepts connections, not when the file merely exists (regression: the sandbox check sometimes found the session bus refused right after the start). | ✅ |
-| [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L769) | Only a real socket counts as a desktop service. | ✅ |
-| [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L741) | Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | ✅ |
+| [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L767) | Only a real socket counts as a desktop service. | ✅ |
+| [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L739) | Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | ✅ |
 | [`stand_ins_cover_the_real_tool_also_behind_a_link`](../crates/sam-sandbox/src/lib.rs#L2249) | The stand-in for a tool that would start programs outside the sandbox covers the real file, also where the tool is a link (audit S-F14); a tool that is not installed needs none. | 🆕 new |
 
 **Code:** [`sam-runner/src/dbus_proxy.rs`](../crates/sam-runner/src/dbus_proxy.rs), [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-core/src/permissions.rs`](../crates/sam-core/src/permissions.rs), [`sam-runner/src/kernel.rs`](../crates/sam-runner/src/kernel.rs)
@@ -375,7 +375,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`wayland_security_context_socket_is_used`](../crates/sam-sandbox/src/lib.rs#L2651) | With a Wayland security context, the app sees only that socket, not the desktop's own. | ✅ |
 | [`xauthority_gets_the_sandbox_display_number`](../crates/sam-sandbox/src/lib.rs#L2621) | The X11 login cookie is rewritten for the display number inside the sandbox. | ✅ |
-| [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L790) | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | ✅ |
+| [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L788) | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | ✅ |
 | [`the_x11_key_copy_is_private_and_follows_no_link`](../crates/sam-sandbox/src/lib.rs#L2755) | The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | 🆕 new |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/wayland_ctx.rs`](../crates/sam-runner/src/wayland_ctx.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
@@ -769,8 +769,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L697) | A broken contract fails a test with its name and playbook. | ✅ |
 | [`a_broken_contract_ends_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L239) | A broken contract (here a Bubblewrap that cannot build a sandbox) ends `doctor --contracts` with 3. | 🆕 new |
 | [`doctor_ends_with_what_it_reports`](../crates/sam-jail-cli/tests/exit_codes.rs#L134) | `doctor` and `doctor --contracts` end with 3 exactly when they report a failed check or a broken contract, and with 0 otherwise. | 🆕 new |
-| [`the_install_hint_fits_the_distribution`](../crates/sam-core/src/host.rs#L832) | The install hint names this distribution's package manager, also on derivatives (by `ID_LIKE`), and none where SAM does not know it (audit T2). | 🆕 new |
-| [`the_apparmor_advice_keeps_the_restriction_for_other_programs`](../crates/sam-core/src/host.rs#L817) | Where AppArmor restricts user namespaces, the advice names the restricted profile for Bubblewrap alone and what it costs, and warns against the ways that lift the restriction for every program (audit A3). | 🆕 new |
+| [`the_install_hint_fits_the_distribution`](../crates/sam-core/src/host.rs#L830) | The install hint names this distribution's package manager, also on derivatives (by `ID_LIKE`), and none where SAM does not know it (audit T2). | 🆕 new |
+| [`the_apparmor_advice_keeps_the_restriction_for_other_programs`](../crates/sam-core/src/host.rs#L815) | Where AppArmor restricts user namespaces, the advice names the restricted profile for Bubblewrap alone and what it costs, and warns against the ways that lift the restriction for every program (audit A3). | 🆕 new |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs), [`sam-runner/src/bwrap.rs`](../crates/sam-runner/src/bwrap.rs), [`sam-runner/src/dbus_check.rs`](../crates/sam-runner/src/dbus_check.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
