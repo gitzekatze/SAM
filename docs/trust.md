@@ -33,10 +33,11 @@ results.
 ## How to check SAM yourself
 
 - **Read the promises and their attacks.** The [threat model](threat-model.md)
-  lists each threat with what stops it and the test that proves it. Every
-  promise on the [security page](security.md) is attacked by a breakout test
-  from inside a real sandbox, and the [test library](test-library.md) links
-  each test to its code.
+  lists each threat with what stops it and the test that proves it. The
+  promises on the [security page](security.md) are attacked by tests, most
+  of them from inside a real sandbox; the [test library](test-library.md)
+  links each test to its code, so you can see which test checks what and
+  how.
 - **Watch the tests run.** The tests run on every change on GitHub, on Ubuntu
   and Fedora, and the results are public in the repository's
   [Actions](https://github.com/gitzekatze/SAM/actions) tab.

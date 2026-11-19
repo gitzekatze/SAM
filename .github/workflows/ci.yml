@@ -38,7 +38,8 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           docs='^(docs/|[^/]+\.md$|scripts/site\.py$|\.github/ISSUE_TEMPLATE/)'
-          code_docs='^docs/((guide|architecture)\.md|syscalls-reviewed\.txt)$'
+          # Documents SAM builds in or its checks read: they count as code.
+          code_docs='^docs/((guide|architecture)\.md|syscalls-reviewed\.txt|contracts\.toml|functions\.toml)$'
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             code=true    # run by hand, or no earlier commit to compare with
           elif git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Ev "$docs" | grep -q . \

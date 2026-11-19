@@ -46,10 +46,14 @@ else
     # The matrix fails instead of skipping its display and sound checks.
     export SAM_REQUIRE_DESKTOP=1
     [ "${SAM_TEST_AUDIO:-}" = 1 ] && export SAM_REQUIRE_SOUND=1
+    # cargo's own exit status decides: a build error prints no "FAILED"
+    # and passed before (audit D-M11).
+    st=0
     SAM_REQUIRE_SANDBOX=1 cargo test -q --no-fail-fast -p sam-runner \
-        --test matrix --test verify --test sandbox --test breakout --test evil 2>&1 \
-        | tee "$out/tests.log" | grep -E '^test result|panicked|CHECK FAIL' || true
-    grep -q 'test result: FAILED\|panicked' "$out/tests.log" && rc=1
+        --test matrix --test verify --test sandbox --test breakout --test evil \
+        > "$out/tests.log" 2>&1 || st=$?
+    grep -E '^test result|panicked|CHECK FAIL|^error' "$out/tests.log" || true
+    [ "$st" = 0 ] || rc=1
 fi
 for p in $pids; do kill "$p" 2>/dev/null || true; done
 echo "RESULT $([ $rc = 0 ] && echo pass || echo fail)"

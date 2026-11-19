@@ -14,6 +14,9 @@
 #   /out/tests.log       the output of the tests
 # The workflow (.github/workflows/canary.yml) turns these into issues.
 set -u
+# A test that cannot build its sandbox fails instead of skipping: a broken
+# Bubblewrap on a distribution is what this run is for (audit D-M11).
+export SAM_REQUIRE_SANDBOX=1
 . /etc/os-release
 echo "== $PRETTY_NAME"
 mkdir -p /out

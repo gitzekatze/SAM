@@ -16,6 +16,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # An approval is for what the owner saw: a new push takes the label off
+  # (audit P3), and the check below ignores it on that push.
+  forget-approval:
+    if: github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'owner-approved')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Take the approval off
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: gh pr edit "$PR" --repo "$REPO" --remove-label owner-approved
+
   owner-approval:
     name: Needs your approval
     runs-on: ubuntu-24.04
@@ -27,20 +43,30 @@ jobs:
       - name: What in this change needs the owner
         env:
           BASE: ${{ github.base_ref }}
+          ACTION: ${{ github.event.action }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           git fetch -q origin "$BASE"
+          # The checker and its settings as the base branch has them, never
+          # the pull request's own copy: a change could otherwise rewrite
+          # the check that judges it (audit P2). Changing them needs the
+          # owner (keeper.toml verifier.gate).
+          mkdir -p .gate/scripts
+          git show "origin/$BASE:scripts/contract-verifier.py" > .gate/scripts/contract-verifier.py
+          git show "origin/$BASE:keeper.toml" > .gate/keeper.toml
           approved=
-          case ",$LABELS," in *,owner-approved,*) approved=--approved ;; esac
+          if [ "$ACTION" != synchronize ]; then
+            case ",$LABELS," in *,owner-approved,*) approved=--approved ;; esac
+          fi
           set +e
-          python3 scripts/contract-verifier.py "origin/$BASE" $approved > verdict.md
+          python3 .gate/scripts/contract-verifier.py "origin/$BASE" --head HEAD $approved > verdict.md
           rc=$?
           set -e
           {
             if [ $rc -eq 1 ]; then
               echo "## This change needs your decision"
               echo
-              echo "Read the list below. If it is what you want, open the pull request, click **Labels** in the right sidebar and choose **owner-approved**. Only this check runs again (a few seconds) and turns green."
+              echo "Read the list below. If it is what you want, open the pull request, click **Labels** in the right sidebar and choose **owner-approved**. Only this check runs again (a few seconds) and turns green. A later push takes the label off again."
               echo
             elif [ $rc -eq 0 ] && [ -n "$approved" ]; then
               echo "## Approved by you (label owner-approved)"
