@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-57 tests.
+59 tests.
 
 | Promise | Test |
 |---|---|
@@ -40,16 +40,18 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L795) |
 | Rooted paths (tests) keep their runtime folders apart from SAM's real one and from every other root, and short enough for SAM's sockets. | [`rooted_paths_have_a_runtime_folder_of_their_own`](../crates/sam-core/src/paths.rs#L172) |
 | ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L209) |
-| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`bus_names_follow_the_rules_of_the_bus`](../crates/sam-core/src/permissions.rs#L1088) |
-| Media controls let the app talk to the screen saver and power services; they no longer ask for the media-player wildcard, which was always refused (audit L-Q1): the app's own player name is learned instead. | [`media_controls_talk_but_ask_for_no_wildcard_name`](../crates/sam-core/src/permissions.rs#L1111) |
-| Own names that are refused. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1132) |
-| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1147) |
-| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L1160) |
-| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1179) |
-| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1197) |
-| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1212) |
-| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1225) |
-| Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1234) |
+| The catalogue is the one list of permissions: it names every setting an app's permissions have, and every name in it can be read. | [`the_catalogue_names_every_setting`](../crates/sam-core/src/permissions.rs#L1108) |
+| The permissions page of the documentation names every permission. | [`the_documentation_names_every_permission`](../crates/sam-core/src/permissions.rs#L1151) |
+| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`bus_names_follow_the_rules_of_the_bus`](../crates/sam-core/src/permissions.rs#L1184) |
+| Media controls let the app talk to the screen saver and power services; they no longer ask for the media-player wildcard, which was always refused (audit L-Q1): the app's own player name is learned instead. | [`media_controls_talk_but_ask_for_no_wildcard_name`](../crates/sam-core/src/permissions.rs#L1207) |
+| Own names that are refused. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1228) |
+| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1243) |
+| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L1256) |
+| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1275) |
+| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1293) |
+| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1308) |
+| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1321) |
+| Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1330) |
 | Every switch says the same risk word in the window (its catalogue entry) as in the risk assessment that decides the badges and which changes ask first (audit D-M12: raw ALSA was "Think twice" in one and "Dangerous" in the other, so the window did not ask). | [`every_switch_has_one_risk_word`](../crates/sam-core/src/risk.rs#L700) |
 | Single functions and signals of a service count in the risk word: a function of a service that can act outside the sandbox is Dangerous, any other function Think twice, a signal Harmless (audit D-H2: they counted for nothing). | [`function_and_signal_rules_count_in_the_risk_word`](../crates/sam-core/src/risk.rs#L738) |
 | The command line and the window name risk with the same three words, and the command line's filter understands both names. | [`risk_has_the_same_three_words_everywhere`](../crates/sam-core/src/risk.rs#L764) |
@@ -150,22 +152,23 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-profile: Recommendations, the user's presets, change checks, permission tags
 
-16 tests.
+17 tests.
 
 | Promise | Test |
 |---|---|
-| Terminal programs get no display, GPU or desktop bus access. | [`terminal_programs_get_no_display`](../crates/sam-profile/src/lib.rs#L731) |
-| An app that calls itself a development tool gets Documents, but no writable project folder: the category is the AppImage's own claim, and a project folder lets an app plant code that runs outside the sandbox (git hooks, .envrc). | [`a_development_tool_gets_no_project_folder_on_its_own_word`](../crates/sam-profile/src/lib.rs#L758) |
-| The category of an app is recognized from its desktop categories. | [`the_app_category_is_recognized_from_its_desktop_categories`](../crates/sam-profile/src/lib.rs#L788) |
-| Recommended permissions fit the category: a browser gets the network and Downloads, an editor no network. | [`recommendations_fit_the_category`](../crates/sam-profile/src/lib.rs#L853) |
-| What SAM finds in the app (GPU, X11-only toolkit) adjusts the recommendation. | [`what_sam_finds_in_the_app_adjusts_the_recommendation`](../crates/sam-profile/src/lib.rs#L868) |
-| The syscall filter is switched off only for an app whose start program is 32-bit itself: 32-bit files next to a script that starts a 64-bit program do not switch it off (audit M5/I-F4). | [`only_a_32_bit_start_program_switches_the_filter_off`](../crates/sam-profile/src/lib.rs#L888) |
-| The change check names what an app would lose that it needs, and the dangerous access it would gain. | [`change_check_flags_removals_and_additions`](../crates/sam-profile/src/lib.rs#L914) |
-| A preset (or any change) that adds a function of a service asks first, as one that adds the X11 display does (audit D-H2: a preset with "may call systemd" applied without a question). | [`a_change_that_adds_a_service_function_asks_first`](../crates/sam-profile/src/lib.rs#L952) |
-| A hidden folder is not a reason to warn that an app stops working: it is listed apart (regression for the group warning, which only interrupts for breakage). | [`folders_are_not_breakage_but_lost_local_network_and_bus_are`](../crates/sam-profile/src/lib.rs#L978) |
-| An app that needs sound is warned about in the switch's word. | [`lost_sound_is_named_sound`](../crates/sam-profile/src/lib.rs#L1008) |
-| A new preset starts without home, network or system bus access. | [`preset_template_is_strict`](../crates/sam-profile/src/lib.rs#L1026) |
-| The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L1049) |
+| A change made on an old copy applies only what it changed: another setting changed meanwhile stays; the same setting changed elsewhere to another value is named, not overwritten (audit G-F4). | [`a_change_from_an_old_copy_keeps_what_changed_meanwhile`](../crates/sam-profile/src/lib.rs#L790) |
+| Terminal programs get no display, GPU or desktop bus access. | [`terminal_programs_get_no_display`](../crates/sam-profile/src/lib.rs#L828) |
+| An app that calls itself a development tool gets Documents, but no writable project folder: the category is the AppImage's own claim, and a project folder lets an app plant code that runs outside the sandbox (git hooks, .envrc). | [`a_development_tool_gets_no_project_folder_on_its_own_word`](../crates/sam-profile/src/lib.rs#L855) |
+| The category of an app is recognized from its desktop categories. | [`the_app_category_is_recognized_from_its_desktop_categories`](../crates/sam-profile/src/lib.rs#L885) |
+| Recommended permissions fit the category: a browser gets the network and Downloads, an editor no network. | [`recommendations_fit_the_category`](../crates/sam-profile/src/lib.rs#L950) |
+| What SAM finds in the app (GPU, X11-only toolkit) adjusts the recommendation. | [`what_sam_finds_in_the_app_adjusts_the_recommendation`](../crates/sam-profile/src/lib.rs#L965) |
+| The syscall filter is switched off only for an app whose start program is 32-bit itself: 32-bit files next to a script that starts a 64-bit program do not switch it off (audit M5/I-F4). | [`only_a_32_bit_start_program_switches_the_filter_off`](../crates/sam-profile/src/lib.rs#L985) |
+| The change check names what an app would lose that it needs, and the dangerous access it would gain. | [`change_check_flags_removals_and_additions`](../crates/sam-profile/src/lib.rs#L1011) |
+| A preset (or any change) that adds a function of a service asks first, as one that adds the X11 display does (audit D-H2: a preset with "may call systemd" applied without a question). | [`a_change_that_adds_a_service_function_asks_first`](../crates/sam-profile/src/lib.rs#L1049) |
+| A hidden folder is not a reason to warn that an app stops working: it is listed apart (regression for the group warning, which only interrupts for breakage). | [`folders_are_not_breakage_but_lost_local_network_and_bus_are`](../crates/sam-profile/src/lib.rs#L1075) |
+| An app that needs sound is warned about in the switch's word. | [`lost_sound_is_named_sound`](../crates/sam-profile/src/lib.rs#L1105) |
+| A new preset starts without home, network or system bus access. | [`preset_template_is_strict`](../crates/sam-profile/src/lib.rs#L1123) |
+| The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L1146) |
 | An app with SAM's strictest window profile shows no tags, because it has nothing beyond the basics. | [`a_strict_window_app_has_no_tags`](../crates/sam-profile/src/tags.rs#L163) |
 | Tags appear in the family order Network, Files, Devices, Desktop, and read-only access is marked. | [`tags_follow_the_family_order_and_mark_read_only`](../crates/sam-profile/src/tags.rs#L173) |
 | Dangerous access gets red tags, and the filtered desktop bus, which every app has, gets none. | [`dangerous_access_is_red_and_filtered_bus_has_no_tag`](../crates/sam-profile/src/tags.rs#L209) |
@@ -223,7 +226,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-173 tests.
+174 tests.
 
 | Promise | Test |
 |---|---|
@@ -281,10 +284,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1084) |
 | Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1160) |
 | Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1180) |
-| When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L502) |
-| An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L602) |
-| An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L643) |
-| A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L669) |
+| When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L514) |
+| An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L614) |
+| An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L655) |
+| A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L681) |
 | A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L475) |
 | Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L503) |
 | Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L525) |
@@ -310,15 +313,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Every built-in release key is a full fingerprint (40 hex characters), never a short key id that another key could share. | [`release_keys_are_full_fingerprints`](../crates/sam-runner/src/release_key.rs#L77) |
 | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L105) |
 | Without a built-in release key, SAM never updates itself, whatever the download looks like. | [`without_a_release_key_sam_never_updates_itself`](../crates/sam-runner/src/release_key.rs#L141) |
-| Compatibility mode lists only what it actually changes, in the words of the switches. | [`compatibility_mode_names_only_what_it_changes`](../crates/sam-runner/src/repair.rs#L839) |
-| A repair step says in a sentence what it turns on or off, with the switch's own explanation of what that allows. | [`a_repair_step_says_what_it_changes_and_costs`](../crates/sam-runner/src/repair.rs#L857) |
-| What the app prints never gets it a bus name, whatever name it claims it needs (a terminal's name runs host commands; audit D-M6): names come only from the D-Bus filter's record (`own_names`). | [`the_apps_own_words_never_give_it_a_bus_name`](../crates/sam-runner/src/repair.rs#L898) |
-| Analyzer maps errors to fixes. | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L917) |
-| The repair ladder leaves out steps already applied and steps that would change nothing. | [`ladder_skips_applied_and_noop_steps`](../crates/sam-runner/src/repair.rs#L1025) |
-| A step on trial is kept when the next start works and undone when it fails: exactly what it changed is put back, it is remembered as tried and not offered again; a step from before (not on trial) is never touched (owner decision of 2026-11-18; night run N3). | [`a_repair_step_that_did_not_help_is_undone`](../crates/sam-runner/src/repair.rs#L1059) |
-| Steps that add a list entry or an argument are undone by removing exactly that, and a tried step is not offered again as a first-run hint either. | [`steps_that_add_are_undone_and_tried_steps_are_no_hints`](../crates/sam-runner/src/repair.rs#L1116) |
-| Starting without Chromium's own sandbox is offered only where this computer blocks it (audit A1), compatibility mode is Dangerous and says it is a way out (D-H5), and "never offer compatibility mode" keeps it out (U-M9). | [`the_ladder_offers_only_what_can_help_and_says_what_it_costs`](../crates/sam-runner/src/repair.rs#L1172) |
-| The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L1220) |
+| Compatibility mode lists only what it actually changes, in the words of the switches. | [`compatibility_mode_names_only_what_it_changes`](../crates/sam-runner/src/repair.rs#L845) |
+| A repair step says in a sentence what it turns on or off, with the switch's own explanation of what that allows. | [`a_repair_step_says_what_it_changes_and_costs`](../crates/sam-runner/src/repair.rs#L863) |
+| What the app prints never gets it a bus name, whatever name it claims it needs (a terminal's name runs host commands; audit D-M6): names come only from the D-Bus filter's record (`own_names`). | [`the_apps_own_words_never_give_it_a_bus_name`](../crates/sam-runner/src/repair.rs#L904) |
+| Analyzer maps errors to fixes. | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L923) |
+| The repair ladder leaves out steps already applied and steps that would change nothing. | [`ladder_skips_applied_and_noop_steps`](../crates/sam-runner/src/repair.rs#L1031) |
+| A step on trial is kept when the next start works and undone when it fails: exactly what it changed is put back, it is remembered as tried and not offered again; a step from before (not on trial) is never touched (owner decision of 2026-11-18; night run N3). | [`a_repair_step_that_did_not_help_is_undone`](../crates/sam-runner/src/repair.rs#L1065) |
+| Steps that add a list entry or an argument are undone by removing exactly that, and a tried step is not offered again as a first-run hint either. | [`steps_that_add_are_undone_and_tried_steps_are_no_hints`](../crates/sam-runner/src/repair.rs#L1122) |
+| Starting without Chromium's own sandbox is offered only where this computer blocks it (audit A1), compatibility mode is Dangerous and says it is a way out (D-H5), and "never offer compatibility mode" keeps it out (U-M9). | [`the_ladder_offers_only_what_can_help_and_says_what_it_costs`](../crates/sam-runner/src/repair.rs#L1178) |
+| The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L1226) |
 | The relay's settings switch module loading off, listen only on SAM's socket, take no D-Bus name and load no modules at start; a path cannot break out of its quotes. | [`the_relay_cannot_load_modules_and_listens_only_on_its_socket`](../crates/sam-runner/src/sound_relay.rs#L224) |
 | A relay that never opens its socket stops the start's sound within moments instead of holding the start; one that does is stopped, and its socket removed, when the start ends. | [`a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay`](../crates/sam-runner/src/sound_relay.rs#L260) |
 | Sound reaches the app through the relay where PipeWire runs; without PipeWire only when the person allowed sound without the relay. | [`sound_reaches_the_app_through_the_relay_or_only_when_allowed`](../crates/sam-runner/src/sound_relay.rs#L300) |
@@ -350,10 +353,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Changed ELF programs inside an unpacked app are analyzed or skipped without a panic. | [`changed_programs_never_crash_the_analysis`](../crates/sam-runner/tests/fuzz.rs#L255) |
 | A dry run of a group change saves nothing and names what each app would lose. | [`a_dry_run_changes_nothing_and_names_what_would_stop_working`](../crates/sam-runner/tests/groups.rs#L56) |
 | A group change saves only the apps whose value changes, and one undo restores all of them. | [`only_changed_apps_are_saved_and_one_undo_restores_all_of_them`](../crates/sam-runner/tests/groups.rs#L82) |
-| A group change with an invalid value or an unknown app changes no app. | [`an_invalid_value_or_unknown_app_changes_no_app`](../crates/sam-runner/tests/groups.rs#L113) |
-| The Permissions overview lists every sandboxed app with its tags and states. | [`the_overview_lists_every_sandboxed_app_with_tags_and_states`](../crates/sam-runner/tests/groups.rs#L134) |
-| SAM ships no presets; old built-in names are free for the user, and applying a preset asks before it removes something an app needs. | [`sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user`](../crates/sam-runner/tests/groups.rs#L152) |
-| Saving an app's settings as a preset keeps them exactly. | [`saving_an_apps_settings_as_a_preset_keeps_them_exactly`](../crates/sam-runner/tests/groups.rs#L188) |
+| A group change with an invalid value or an unknown app changes no app. | [`an_invalid_value_or_unknown_app_changes_no_app`](../crates/sam-runner/tests/groups.rs#L118) |
+| The Permissions overview lists every sandboxed app with its tags and states. | [`the_overview_lists_every_sandboxed_app_with_tags_and_states`](../crates/sam-runner/tests/groups.rs#L139) |
+| SAM ships no presets; old built-in names are free for the user, and applying a preset asks before it removes something an app needs. | [`sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user`](../crates/sam-runner/tests/groups.rs#L157) |
+| Saving an app's settings as a preset keeps them exactly. | [`saving_an_apps_settings_as_a_preset_keeps_them_exactly`](../crates/sam-runner/tests/groups.rs#L193) |
 | Grants of parts of the home never reach start places or secrets. | [`grants_of_parts_of_the_home_never_reach_start_places_or_secrets`](../crates/sam-runner/tests/home_grants.rs#L62) |
 | The home protections hold whatever else is granted. | [`the_home_protections_hold_whatever_else_is_granted`](../crates/sam-runner/tests/home_guards.rs#L45) |
 | A download that broke off is refused and nothing is kept. | [`a_download_that_broke_off_is_refused_and_nothing_is_kept`](../crates/sam-runner/tests/incomplete.rs#L9) |
@@ -369,11 +372,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | SAM installs an update of itself only when it was really signed with its release key. | [`sam_refuses_a_forged_update_that_carries_its_release_key`](../crates/sam-runner/tests/self_update_signature.rs#L77) |
 | Turning compatibility mode off restores exactly the settings the user had before. | [`turning_compatibility_mode_off_restores_exactly_the_settings_from_before`](../crates/sam-runner/tests/settings.rs#L42) |
 | Undoing repair steps restores the settings from before the first step. | [`undoing_repair_steps_restores_the_settings_from_before_the_first_step`](../crates/sam-runner/tests/settings.rs#L59) |
-| "Reset to recommendation" brings back SAM's recommended settings and turns compatibility mode off. | [`reset_to_recommendation_brings_back_the_recommended_settings`](../crates/sam-runner/tests/settings.rs#L83) |
-| A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L104) |
-| Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted. | [`removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it`](../crates/sam-runner/tests/settings.rs#L125) |
-| When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L144) |
-| A repair step can be switched off on its own: exactly what that step changed goes back, and the other applied steps stay. | [`switching_off_one_repair_step_keeps_the_others`](../crates/sam-runner/tests/settings.rs#L165) |
+| Undoing repair steps takes back only what the steps changed: a setting the person changed afterwards stays as they set it, also the one a step had changed (audit G-F4: the whole profile from before the first step came back). | [`undoing_repair_steps_keeps_what_the_person_changed_since`](../crates/sam-runner/tests/settings.rs#L86) |
+| "Reset to recommendation" brings back SAM's recommended settings and turns compatibility mode off. | [`reset_to_recommendation_brings_back_the_recommended_settings`](../crates/sam-runner/tests/settings.rs#L147) |
+| A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L168) |
+| Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted. | [`removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it`](../crates/sam-runner/tests/settings.rs#L189) |
+| When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L208) |
+| A repair step can be switched off on its own: exactly what that step changed goes back, and the other applied steps stay. | [`switching_off_one_repair_step_keeps_the_others`](../crates/sam-runner/tests/settings.rs#L229) |
 | Sound never loads code into the sound server. | [`sound_never_loads_code_into_the_sound_server`](../crates/sam-runner/tests/sound_relay.rs#L98) |
 | Freeing space deletes the unpacked copy, and unpacking again brings the app back. | [`freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it`](../crates/sam-runner/tests/space.rs#L13) |
 | Closing an app ends all of its running starts. | [`stop_closes_running_apps`](../crates/sam-runner/tests/stop.rs#L68) |
@@ -419,12 +423,13 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-30 tests.
+39 tests.
 
 | Promise | Test |
 |---|---|
-| Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1613) |
-| A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1625) |
+| Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1686) |
+| A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1698) |
+| `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L308) |
 | The permission model is the base: it depends on no other SAM part, so every other part can use it without creating a cycle. | [`the_permission_model_depends_on_no_other_part`](../crates/sam-jail-cli/tests/architecture.rs#L59) |
 | The window contains no sandbox logic: it depends only on the permission model and reaches everything else through `sam-jail --json`, so the window and the command line always behave the same. | [`the_window_reaches_sam_only_through_the_command_line`](../crates/sam-jail-cli/tests/architecture.rs#L67) |
 | The parts that handle untrusted AppImage content or build the sandbox depend only on the parts below them, never on the operations layer, the command line or the window. | [`lower_parts_never_depend_on_higher_ones`](../crates/sam-jail-cli/tests/architecture.rs#L75) |
@@ -433,10 +438,18 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Every box and arrow label in the documents' diagrams is quoted, so GitHub draws them: unquoted brackets or semicolons inside a label are a parse error there (the component diagram once failed that way). | [`diagram_labels_are_quoted_so_github_draws_them`](../crates/sam-jail-cli/tests/architecture.rs#L155) |
 | SHA-1 and MD4 are broken as protection against tampering. | [`the_weak_hashes_stay_in_the_zsync_update_code`](../crates/sam-jail-cli/tests/architecture.rs#L206) |
 | The quick checks notice a broken or missing tool. | [`the_quick_checks_notice_a_broken_or_missing_tool`](../crates/sam-jail-cli/tests/contracts.rs#L47) |
+| `compat` takes on and off in any case and refuses anything else. | [`compat_takes_on_and_off_in_any_case_and_nothing_else`](../crates/sam-jail-cli/tests/exit_codes.rs#L97) |
+| `doctor` and `doctor --contracts` end with 3 exactly when they report a failed check or a broken contract, and with 0 otherwise. | [`doctor_ends_with_what_it_reports`](../crates/sam-jail-cli/tests/exit_codes.rs#L131) |
+| `sam-jail info` shows every permission with its value, each group of permissions under one heading (audit G-F14). | [`info_on_the_terminal_shows_every_permission_once`](../crates/sam-jail-cli/tests/exit_codes.rs#L164) |
+| A preset that is not applied (it needs a confirmation) ends with 3 and still says what it would change; applied, it ends with 0. | [`a_preset_not_applied_ends_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L207) |
+| A broken contract (here a Bubblewrap that cannot build a sandbox) ends `doctor --contracts` with 3. | [`a_broken_contract_ends_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L236) |
+| In a real sandbox: `run --json` passes on the app's exit code, a `selftest` with a failing app ends with 3, and `verify` with a failed check ends with 3, so `sam-jail verify APP && sam-jail run APP` gates. | [`checks_that_do_not_pass_end_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L266) |
 | The JSON interface lists apps with their tags, changes a permission for several apps, and restores them with the returned "previous" object. | [`group_list_set_and_restore_round_trip`](../crates/sam-jail-cli/tests/interface.rs#L79) |
-| A group change with an invalid value, an unknown key or no app is refused, and no app changes. | [`group_set_refuses_bad_input_without_changing_anything`](../crates/sam-jail-cli/tests/interface.rs#L154) |
-| The command line lists only the user's own presets; the template is strict, and saved presets carry no built-in flag. | [`presets_are_the_users_own_only`](../crates/sam-jail-cli/tests/interface.rs#L177) |
-| ⟲ Regression (found by the fuzzer): one damaged AppImage in a searched folder made `sam-jail discover` crash, so the window's list stayed empty. | [`one_damaged_appimage_does_not_stop_the_list`](../crates/sam-jail-cli/tests/interface.rs#L207) |
+| Undo takes back only its own change: a change made to an app since stays, and a later change to the same setting refuses the whole undo instead of being overwritten (audit G-F4: the whole sets from before were written back). | [`undo_takes_back_only_its_own_change`](../crates/sam-jail-cli/tests/interface.rs#L158) |
+| `profile change` applies only what differs between "from" and "to", as the window sends it: a change made elsewhere since the window loaded the settings stays (audit G-F4). | [`a_change_from_the_window_keeps_changes_made_elsewhere`](../crates/sam-jail-cli/tests/interface.rs#L208) |
+| A group change with an invalid value, an unknown key or no app is refused, and no app changes. | [`group_set_refuses_bad_input_without_changing_anything`](../crates/sam-jail-cli/tests/interface.rs#L236) |
+| The command line lists only the user's own presets; the template is strict, and saved presets carry no built-in flag. | [`presets_are_the_users_own_only`](../crates/sam-jail-cli/tests/interface.rs#L259) |
+| ⟲ Regression (found by the fuzzer): one damaged AppImage in a searched folder made `sam-jail discover` crash, so the window's list stayed empty. | [`one_damaged_appimage_does_not_stop_the_list`](../crates/sam-jail-cli/tests/interface.rs#L289) |
 | The command line speaks german when asked. | [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L18) |
 | A start without the helper reports its missing layers. | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) |
 | A pipe into a terminal program passes through unchanged: the tool reads the piped input, its output arrives byte for byte, and it has no terminal of its own. | [`a_pipe_into_a_terminal_program_passes_through_unchanged`](../crates/sam-jail-cli/tests/pipes.rs#L28) |
@@ -456,21 +469,22 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-gtk: The window (logic that runs without a display)
 
-12 tests.
+13 tests.
 
 | Promise | Test |
 |---|---|
-| The group switches offer only permissions and values SAM accepts (`sam-jail group set` would refuse anything else), and each value of a permission appears once. | [`group_switches_offer_only_valid_values`](../crates/sam-gtk/src/all_perms.rs#L1369) |
-| Shift-click selects every app between the app clicked before and the app clicked now, in either direction; without an earlier click, only the app clicked now. | [`shift_click_selects_the_apps_between_two_clicks`](../crates/sam-gtk/src/all_perms.rs#L1402) |
-| A tag filter cycles through three states with each click: only apps with the permission, only apps without it, and off. | [`a_tag_filter_cycles_through_has_has_not_and_off`](../crates/sam-gtk/src/all_perms.rs#L1417) |
-| The list shows an app only when it passes every filter at once: the search text, each state filter, and each tag filter in its state. | [`the_list_shows_only_apps_that_pass_every_filter`](../crates/sam-gtk/src/all_perms.rs#L1426) |
-| Personal folders explain where they are; other permissions keep their description unchanged. | [`folder_explanations_name_the_path`](../crates/sam-gtk/src/all_perms.rs#L1475) |
+| The group switches offer only permissions and values SAM accepts (`sam-jail group set` would refuse anything else), and each value of a permission appears once. | [`group_switches_offer_only_valid_values`](../crates/sam-gtk/src/all_perms.rs#L1388) |
+| Shift-click selects every app between the app clicked before and the app clicked now, in either direction; without an earlier click, only the app clicked now. | [`shift_click_selects_the_apps_between_two_clicks`](../crates/sam-gtk/src/all_perms.rs#L1421) |
+| A tag filter cycles through three states with each click: only apps with the permission, only apps without it, and off. | [`a_tag_filter_cycles_through_has_has_not_and_off`](../crates/sam-gtk/src/all_perms.rs#L1436) |
+| The list shows an app only when it passes every filter at once: the search text, each state filter, and each tag filter in its state. | [`the_list_shows_only_apps_that_pass_every_filter`](../crates/sam-gtk/src/all_perms.rs#L1445) |
+| Personal folders explain where they are; other permissions keep their description unchanged. | [`folder_explanations_name_the_path`](../crates/sam-gtk/src/all_perms.rs#L1494) |
 | The user guide keeps the text of a list item that has a nested list below it. | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L351) |
 | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | [`links_to_other_pages_open_on_github`](../crates/sam-gtk/src/guide.rs#L375) |
 | Choosing a language sets it for the window and remembers the system's; going back to the system restores exactly what it had, also after several restarts. | [`the_chosen_language_and_the_systems_are_kept_apart`](../crates/sam-gtk/src/i18n.rs#L90) |
 | A new icon is noticed by the desktop's icon caches: the folders from the icon up to the theme are marked as changed, also when an earlier version had replaced the icon in place; once they are newer than the icon, nothing is touched again (regression: the taskbar kept SAM's old icon). | [`a_new_icon_marks_its_folders_as_changed`](../crates/sam-gtk/src/main.rs#L548) |
 | ⟲ Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | [`the_style_sheet_handler_is_connected_before_register`](../crates/sam-gtk/src/main.rs#L600) |
 | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L614) |
+| The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1276) |
 | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1865) |
 
 ## The window and real AppImages
@@ -485,4 +499,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 399 automated Rust tests plus 7 scripted checks.
+Total: 413 automated Rust tests plus 7 scripted checks.

@@ -16,8 +16,20 @@ A command prints exactly one JSON object on the last line of stdout:
 {"ok": false, "error": "…", "code": "signing-key-changed", "function": 28}
 ```
 
-The exit status is 0 for `ok: true` and 1 otherwise. Text on stderr is for
-people, not for parsing.
+The exit status says how it went, the same with and without `--json`:
+
+| Status | Meaning |
+|---|---|
+| 0 | done, and every check passed |
+| 1 | an error (`ok: false`) |
+| 2 | a wrong command line (an unknown option, a missing argument) |
+| 3 | it ran, but a check did not pass or it did not do what was asked: `verify` with a failed check, `selftest` with an app that failed, `doctor` with a failed check or `doctor --contracts` with a broken contract, `preset apply` not applied (it needs `--yes`). The reply is `ok: true` and says what failed. |
+
+`run` ends with the app's own exit code when the app ended with one, and
+with at least 1 when the start failed. So `sam-jail verify APP && sam-jail
+run APP` starts the app only when the sandbox check passed.
+
+Text on stderr is for people, not for parsing.
 
 `error` is translated into the user's language, so a program must never
 decide anything by its wording. Errors a program may need to recognize carry
@@ -58,7 +70,7 @@ the real figure. Other stderr lines are messages, not progress.
 
 ```sh
 sam-jail --json version
-{"ok": true, "data": {"version": "0.1.0", "interface": 1}}
+{"ok": true, "data": {"version": "0.1.0", "interface": 2}}
 ```
 
 - `interface` is the level of this interface (`sam_core::JSON_INTERFACE`).
@@ -124,9 +136,10 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `command APP` | the generated Bubblewrap command (preview) |
 | `set APP KEY VALUE [--yes]` | `{key, value, risk, warnings}`; a change that adds anything rated *Think twice* or *Dangerous* is refused with the code `change-needs-yes` unless `--yes` is given |
 | `get APP [KEY]` | the value, or the whole profile |
+| `profile change APP [--yes]` | reads `{"from": permissions, "to": permissions}` on stdin and applies only what differs between the two to what the app has now, so changes made elsewhere in the meantime stay; a setting changed elsewhere to another value is refused with the code `changed-meanwhile` and nothing changes; `--yes` as for `set` |
 | `profile get/set/reset APP` | profile; `set` reads it on stdin and, like `set`, needs `--yes` for a change that adds anything rated *Think twice* or *Dangerous* (code `change-needs-yes`) |
 | `evaluate APP` | risk and warnings for a profile on stdin |
-| `compat APP on --yes / off` | app summary; `on` without `--yes` is refused with the code `compat-needs-yes` (the whole session bus is a way out) |
+| `compat APP on --yes / off` | app summary (`on`/`off` in any case; another word is refused); `on` without `--yes` is refused with the code `compat-needs-yes` (the whole session bus is a way out) |
 | `args APP --stdin` | the launch arguments (JSON array on stdin) |
 | `review APP` | app summary |
 | `verify APP` or `verify PATH --permissions-stdin` | `{report, record}`: every check with expected and observed result |
@@ -145,8 +158,8 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `info APP` | the app's record; its `last_launch` has `missing_layers` (protection layers the last start lacked, for example `["Landlock"]`) and `moved_aside` (what the app left in places that would run something later, and where SAM moved it); also `repair_effects` (step id → what the step changes and costs) and `compat_changes` (the switches compatibility mode turns on, or turned on) |
 | `repair APP [--apply ID / --next / --undo / --undo-step ID] [--yes]` | `--undo-step` switches off one applied step and keeps the others; a step suggested by what the app printed is refused with the code `repair-needs-yes` unless `--yes` is given |
 | `group list` | every sandboxed app: the app summary plus `permissions`, `tags: [{key, label, family, level, read_only}]`, `running`, `needs_review`, `may_not_start` |
-| `group set KEY VALUE APP… [--dry-run] [--yes]` | `{key, value, applied, apps: [{id, name, check, running, changed}], previous: {id: permissions}}`; without `--yes` a change that adds anything rated *Think twice* or *Dangerous* to any of the apps is refused with the code `change-needs-yes` (`check.adds_dangerous` of a dry run lists it) |
-| `group restore` | reads `previous` on stdin → `{restored}` |
+| `group set KEY VALUE APP… [--dry-run] [--yes]` | `{key, value, applied, apps: [{id, name, check, running, changed}], previous: {id: permissions}, undo: {id: {from, to}}}`; without `--yes` a change that adds anything rated *Think twice* or *Dangerous* to any of the apps is refused with the code `change-needs-yes` (`check.adds_dangerous` of a dry run lists it) |
+| `group restore [--yes]` | reads `undo` on stdin and takes back only that change → `{restored}`; a later change to the same setting refuses the whole undo (code `changed-meanwhile`); an undo that adds something rated *Think twice* or *Dangerous* back needs `--yes` (code `change-needs-yes`) |
 | `config show/get/set/put/path` | configuration; `put` reads it on stdin |
 | `permissions` | the catalogue: every key with title, explanation, risk |
 | `updates [APP] [--if-due]` | `{apps: [{id, update: {state, latest, download_page, detail, checked_at}}]}`; `state` is `available`, `current`, `failed` or `unsupported` |

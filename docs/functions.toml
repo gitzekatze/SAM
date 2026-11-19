@@ -92,6 +92,11 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "every_switch_has_one_risk_word",
   "switching_a_protection_off_counts",
   "reading_and_sending_together_is_dangerous",
+  "the_catalogue_names_every_setting",
+  "the_documentation_names_every_permission",
+  "the_editor_shows_every_permission",
+  "info_shows_every_permission_with_its_value",
+  "info_on_the_terminal_shows_every_permission_once",
 ]
 
 [[function]]
@@ -101,6 +106,10 @@ promise = "You can change permissions per app, for several apps at once, or thro
 code = ["sam-core/src/permissions.rs", "sam-profile/src/lib.rs", "sam-runner/src/ops/profiles.rs", "sam-storage/src/lib.rs"]
 tests = ["set_and_get_keys", "change_check_flags_removals_and_additions", "folders_are_not_breakage_but_lost_local_network_and_bus_are", "lost_sound_is_named_sound", "preset_template_is_strict", "user_changes_survive_better_recommendation", "a_dry_run_changes_nothing_and_names_what_would_stop_working", "only_changed_apps_are_saved_and_one_undo_restores_all_of_them", "an_invalid_value_or_unknown_app_changes_no_app", "sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user", "saving_an_apps_settings_as_a_preset_keeps_them_exactly", "reset_to_recommendation_brings_back_the_recommended_settings", "preset_names_cannot_place_files_outside_the_presets_folder", "a_saved_preset_loads_back_unchanged", "group_list_set_and_restore_round_trip", "group_set_refuses_bad_input_without_changing_anything", "presets_are_the_users_own_only", "each_permission_adds_exactly_its_part_to_the_command",
   "only_new_or_higher_serious_risks_ask",
+  "a_change_from_an_old_copy_keeps_what_changed_meanwhile",
+  "a_change_from_the_window_keeps_changes_made_elsewhere",
+  "undo_takes_back_only_its_own_change",
+  "a_preset_not_applied_ends_with_not_passed",
 ]
 checks = ["tests/gui/permissions-atspi.sh"]
 
@@ -205,6 +214,7 @@ code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs"]
 tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_each_desktop_service_as_the_filter_shows_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked",
   "sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply",
   "the_wanted_layers_follow_the_apps_switches",
+  "checks_that_do_not_pass_end_with_not_passed",
 ]
 checks = ["tests/real-apps/run.sh"]
 
@@ -243,7 +253,9 @@ id = 24
 area = "E"
 promise = "Repair steps go from mild to strong, and each one can be undone."
 code = ["sam-runner/src/repair.rs", "sam-sandbox/src/lib.rs"]
-tests = ["steps_that_add_are_undone_and_tried_steps_are_no_hints", "only_an_ordinary_start_judges_repair_steps", "a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not", "a_repair_step_that_did_not_help_is_undone", "the_ladder_offers_only_what_can_help_and_says_what_it_costs", "compatibility_mode_needs_yes_and_says_why", "a_repair_step_says_what_it_changes_and_costs", "ladder_skips_applied_and_noop_steps", "a_writable_app_folder_is_offered_only_where_it_can_work", "undoing_repair_steps_restores_the_settings_from_before_the_first_step", "switching_off_one_repair_step_keeps_the_others", "only_plain_library_names_are_accepted", "system_copies_replace_only_bundled_libraries_by_plain_name"]
+tests = ["steps_that_add_are_undone_and_tried_steps_are_no_hints", "only_an_ordinary_start_judges_repair_steps", "a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not", "a_repair_step_that_did_not_help_is_undone", "the_ladder_offers_only_what_can_help_and_says_what_it_costs", "compatibility_mode_needs_yes_and_says_why", "a_repair_step_says_what_it_changes_and_costs", "ladder_skips_applied_and_noop_steps", "a_writable_app_folder_is_offered_only_where_it_can_work", "undoing_repair_steps_restores_the_settings_from_before_the_first_step", "switching_off_one_repair_step_keeps_the_others", "only_plain_library_names_are_accepted", "system_copies_replace_only_bundled_libraries_by_plain_name",
+  "undoing_repair_steps_keeps_what_the_person_changed_since",
+]
 
 [[function]]
 id = 25
@@ -257,7 +269,9 @@ id = 26
 area = "E"
 promise = "Compatibility mode as a last resort, with its cost explained, and it can be undone."
 code = ["sam-runner/src/repair.rs", "sam-runner/src/ops/profiles.rs"]
-tests = ["compatibility_mode_names_only_what_it_changes", "turning_compatibility_mode_off_restores_exactly_the_settings_from_before"]
+tests = ["compatibility_mode_names_only_what_it_changes", "turning_compatibility_mode_off_restores_exactly_the_settings_from_before",
+  "compat_takes_on_and_off_in_any_case_and_nothing_else",
+]
 
 [[area]]
 id = "F"
@@ -335,7 +349,10 @@ id = 33
 area = "G"
 promise = "The doctor check finds problems with the system or an app."
 code = ["sam-runner/src/doctor.rs", "sam-runner/src/bwrap.rs", "sam-runner/src/dbus_check.rs", "sam-core/src/host.rs"]
-tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook"]
+tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
+  "a_broken_contract_ends_with_not_passed",
+  "doctor_ends_with_what_it_reports",
+]
 
 [[function]]
 id = 34

@@ -22,7 +22,7 @@ pub mod warnings;
 /// on. Raise it whenever a command's JSON output or input changes in a way
 /// an older or newer counterpart would misread. `sam-jail version` reports
 /// it, and the window refuses to trust a command line tool with another one.
-pub const JSON_INTERFACE: u32 = 1;
+pub const JSON_INTERFACE: u32 = 2;
 
 pub use config::Config;
 pub use host::HostInfo;

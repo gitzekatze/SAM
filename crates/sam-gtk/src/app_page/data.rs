@@ -15,6 +15,9 @@ impl AppPage {
                 match app.backend.call(&["info", &me.app_id], None).await {
                     Ok(i) => {
                         let perms = util::get(&i, "entry.profile.permissions").cloned();
+                        if !me.saving.get() {
+                            *me.saved.borrow_mut() = perms.clone();
+                        }
                         *me.info.borrow_mut() = Some(i);
                         me.render();
                         if let Some(p) = perms {
@@ -178,15 +181,32 @@ impl AppPage {
                 let next = me.queued.borrow_mut().take();
                 let Some(p) = next else { break };
                 if me.sandboxed() {
-                    if let Err(e) = app
+                    // Only what this edit changed, on top of what the app
+                    // has now (audit G-F4).
+                    let from = me.saved.borrow().clone().or_else(|| {
+                        me.info
+                            .borrow()
+                            .as_ref()
+                            .and_then(|i| util::get(i, "entry.profile.permissions").cloned())
+                    });
+                    let Some(from) = from else { break };
+                    let change = serde_json::json!({"from": from, "to": p});
+                    match app
                         .backend
                         .call(
-                            &["profile", "set", &me.app_id, "--yes"],
-                            Some(p.to_string()),
+                            &["profile", "change", &me.app_id, "--yes"],
+                            Some(change.to_string()),
                         )
                         .await
                     {
-                        app.report_error(&e);
+                        Ok(_) => *me.saved.borrow_mut() = Some(p),
+                        Err(e) => {
+                            // Changed elsewhere meanwhile, or refused: the
+                            // page shows the settings as they are now.
+                            app.report_error(&e);
+                            me.queued.borrow_mut().take();
+                            *me.saved.borrow_mut() = None;
+                        }
                     }
                     saved = true;
                 } else {

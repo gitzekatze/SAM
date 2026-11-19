@@ -93,6 +93,41 @@ fn main() {
         }
         std::process::exit(1);
     }
+    let code = EXIT.load(std::sync::atomic::Ordering::Relaxed);
+    if code != 0 {
+        use std::io::Write;
+        std::io::stdout().flush().ok();
+        std::process::exit(code);
+    }
+}
+
+/// Exit code of a command that ran but whose check did not pass, or that
+/// did not do what was asked: `verify` with a failed check, `selftest`
+/// with a failed app, `doctor` with a failed check or a broken contract,
+/// `preset apply` not applied. 1 is an error, 2 a wrong command line
+/// (clap's). So `sam-jail verify APP && sam-jail run APP` gates (audit
+/// G-F9: these ended with 0).
+pub(crate) const EXIT_NOT_PASSED: i32 = 3;
+
+static EXIT: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+/// The exit code once the output is written (the output comes first, so a
+/// script still reads what failed).
+pub(crate) fn exit_with(code: i32) {
+    EXIT.store(code, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// `on` or `off` for a switch given in words; anything else is refused
+/// (audit G-F9: `ON` meant off).
+fn on_off(state: &str) -> Result<bool> {
+    match state.to_ascii_lowercase().as_str() {
+        "on" | "true" | "1" | "yes" => Ok(true),
+        "off" | "false" | "0" | "no" => Ok(false),
+        _ => bail!(trf(
+            "“{state}” is neither on nor off.",
+            &[("state", &state)]
+        )),
+    }
 }
 
 /// The SAM function (docs/functions.md) each command carries out, so an
@@ -373,6 +408,9 @@ fn real_main(cli: Cli) -> Result<()> {
                         Err(err) => ("fail", format!("{err:#}"), vec![]),
                     };
                 results.push(json!({"id": e.id, "name": e.display_name(), "status": status, "detail": detail, "findings": findings}));
+            }
+            if results.iter().any(|r| r["status"] != "ok") {
+                exit_with(EXIT_NOT_PASSED);
             }
             out.emit(&json!({"results": results}), || {
                 for r in &results {
@@ -822,9 +860,10 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
             // The app's own exit code (a terminal program's error code counts
-            // as a successful start, but scripts still see it).
-            if !out.json && (!rec.success || rec.exit_code.is_some_and(|c| c != 0)) {
-                std::process::exit(rec.exit_code.unwrap_or(1).max(1));
+            // as a successful start, but scripts still see it), with --json
+            // too (audit G-F9: a sandbox failure ended with 0 there).
+            if !rec.success || rec.exit_code.is_some_and(|c| c != 0) {
+                exit_with(rec.exit_code.unwrap_or(1).max(1));
             }
         }
         Cmd::Command { app: q, args } => {
@@ -860,6 +899,13 @@ fn real_main(cli: Cli) -> Result<()> {
         } => {
             let host = HostInfo::probe_full();
             let report = sam_runner::contracts::check_all(&host);
+            if report
+                .contracts
+                .iter()
+                .any(|c| c.state == sam_runner::contracts::State::Broken)
+            {
+                exit_with(EXIT_NOT_PASSED);
+            }
             out.emit(&report, || {
                 use sam_runner::contracts::State;
                 for c in &report.contracts {
@@ -888,6 +934,9 @@ fn real_main(cli: Cli) -> Result<()> {
                 Some(q) => sam_runner::doctor::app_report(&app, &app.resolve(q)?, &host),
                 None => sam_runner::doctor::system_report(&app, &host),
             };
+            if report.checks.iter().any(|c| c.status == CheckStatus::Fail) {
+                exit_with(EXIT_NOT_PASSED);
+            }
             out.emit(&report, || {
                 for c in &report.checks {
                     let st = match c.status {
@@ -1031,6 +1080,27 @@ fn real_main(cli: Cli) -> Result<()> {
                     )
                 });
             }
+            ProfileCmd::Change { app: q, yes } => {
+                let change: sam_runner::ops::PermissionChange =
+                    serde_json::from_str(&read_stdin()?).context(tr(
+                        "expected {\"from\": …, \"to\": …} with two PermissionSets as JSON on stdin",
+                    ))?;
+                let (cur, merged) = app.plan_change(&q, &change)?;
+                confirm_risks(
+                    &sam_core::risk::new_risks(&cur.profile.permissions, &merged),
+                    yes,
+                )?;
+                let e = app.set_permissions(&cur.id, merged)?;
+                out.emit(&AppSummary::from_entry(&e), || {
+                    println!(
+                        "{}",
+                        trf(
+                            "Updated permissions for {app}.",
+                            &[("app", &e.display_name())]
+                        )
+                    )
+                });
+            }
             ProfileCmd::Reset { app: q } => {
                 let e = app.reset_profile(&q)?;
                 out.emit(&AppSummary::from_entry(&e), || {
@@ -1056,7 +1126,7 @@ fn real_main(cli: Cli) -> Result<()> {
             });
         }
         Cmd::Compat { app: q, state, yes } => {
-            let on = matches!(state.as_str(), "on" | "true" | "1" | "yes");
+            let on = on_off(&state)?;
             // The full session bus in it is a way out (audit D-H5): turning
             // it on is said and confirmed, as in the window.
             compat_allowed(on, yes)?;
@@ -1106,6 +1176,9 @@ fn real_main(cli: Cli) -> Result<()> {
                 Err(e) => return Err(e),
             };
             let r = &out_v.report;
+            if !out_v.record.failed.is_empty() {
+                exit_with(EXIT_NOT_PASSED);
+            }
             out.emit(&json!({"report": r, "record": out_v.record}), || {
                 let mut group = String::new();
                 for res in &r.results {

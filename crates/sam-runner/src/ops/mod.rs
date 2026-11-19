@@ -159,8 +159,20 @@ pub struct GroupChange {
     pub value: String,
     pub applied: bool,
     pub apps: Vec<GroupApp>,
-    /// The settings of the changed apps from before the change, for Undo.
+    /// The settings of the changed apps from before the change.
     pub previous: BTreeMap<String, PermissionSet>,
+    /// For Undo (`group restore`): per app, the change back from the new
+    /// settings to the old ones. Undo takes back only this change, so a
+    /// change made to the apps since stays (audit G-F4).
+    pub undo: BTreeMap<String, PermissionChange>,
+}
+
+/// A change of an app's permissions from `from` to `to`, applied to what
+/// the app has when it is applied (see `sam_profile::apply_change`).
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct PermissionChange {
+    pub from: PermissionSet,
+    pub to: PermissionSet,
 }
 
 #[derive(Debug, Clone, Serialize)]

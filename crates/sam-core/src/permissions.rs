@@ -855,12 +855,20 @@ impl PermissionSet {
         let v = serde_json::to_value(self)?;
         let mut cur = &v;
         for part in key.split('.') {
-            cur = cur.get(part).ok_or_else(|| {
-                anyhow!(
-                    "{}",
-                    crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
-                )
-            })?;
+            match cur.get(part) {
+                Some(next) => cur = next,
+                // Left out of the saved settings while empty (so older
+                // records keep their checksum), but a setting all the same.
+                None => {
+                    if let Some((_, empty)) = LEFT_OUT_WHEN_EMPTY.iter().find(|(k, _)| *k == key) {
+                        return Ok(serde_json::from_str(empty)?);
+                    }
+                    bail!(
+                        "{}",
+                        crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
+                    );
+                }
+            }
         }
         Ok(cur.clone())
     }
@@ -937,6 +945,15 @@ pub struct PermissionInfo {
     /// Only shown in advanced mode.
     pub advanced: bool,
 }
+
+/// Settings the saved permissions leave out while they are empty, with
+/// their empty value. The catalogue test reads every permission by name, so
+/// a new one of this kind cannot be forgotten here.
+const LEFT_OUT_WHEN_EMPTY: &[(&str, &str)] = &[
+    ("dbus.session.calls", "[]"),
+    ("dbus.session.broadcasts", "[]"),
+    ("advanced.landlock", "null"),
+];
 
 macro_rules! perm {
     ($key:expr, $cat:expr, $title:expr, $desc:expr, $risk:ident) => {
@@ -1055,6 +1072,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Bus names that stay blocked even when a preset or another setting allows them.", Low, advanced),
         perm!("environment.passthrough", "Environment", "Passed-through variables",
             "Host environment variables made visible to the app.", Medium, advanced),
+        perm!("environment.set", "Environment", "Environment variables",
+            "Variables set inside the sandbox, as NAME=value, for example QT_SCALE_FACTOR=1.5. They override variables passed through.", Medium, advanced),
         perm!("advanced.host_runtime", "Advanced", "Host runtime exposure",
             "'minimal' exposes system libraries and a whitelist of shared data. 'full' exposes all of /usr read-only (compatibility).", Medium, advanced),
         perm!("advanced.persistent_home", "Advanced", "Persistent private home",
@@ -1081,6 +1100,83 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The catalogue is the one list of permissions: it names every setting
+    /// an app's permissions have, and every name in it can be read. The
+    /// window, the Permission Manager, `sam-jail info` and the documentation
+    /// follow it (audit G-F14: four lists drifted; `info` left out 31).
+    #[test]
+    fn the_catalogue_names_every_setting() {
+        fn leaves(v: &serde_json::Value, path: &str, out: &mut Vec<String>) {
+            match v {
+                // A nested group of settings; a map of values (variables
+                // to set) is one setting.
+                serde_json::Value::Object(m) if path != "environment.set" => {
+                    for (k, sub) in m {
+                        let p = if path.is_empty() {
+                            k.clone()
+                        } else {
+                            format!("{path}.{k}")
+                        };
+                        leaves(sub, &p, out);
+                    }
+                }
+                _ => out.push(path.to_string()),
+            }
+        }
+        let mut settings = Vec::new();
+        leaves(
+            &serde_json::to_value(PermissionSet::default()).unwrap(),
+            "",
+            &mut settings,
+        );
+        let catalog: Vec<&str> = permission_catalog().iter().map(|i| i.key).collect();
+        let missing: Vec<&String> = settings
+            .iter()
+            .filter(|k| !catalog.contains(&k.as_str()))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "settings without a catalogue entry: {missing:?}"
+        );
+        for k in &catalog {
+            assert!(
+                PermissionSet::default().get_key(k).is_ok(),
+                "{k} cannot be read"
+            );
+        }
+    }
+
+    /// The permissions page of the documentation names every permission.
+    #[test]
+    fn the_documentation_names_every_permission() {
+        let page = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/permissions.md"),
+        )
+        .unwrap();
+        let table: String = page
+            .lines()
+            .filter(|l| l.starts_with("| `"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let missing: Vec<&str> = permission_catalog()
+            .iter()
+            .map(|i| i.key)
+            .filter(|k| {
+                let (group, name) = k.rsplit_once('.').unwrap_or(("", k));
+                // Written out, or as a further name of a row that starts
+                // with another key of its group (`a.b`, `c`, `d`).
+                !table.contains(&format!("`{k}`"))
+                    && !table.lines().any(|l| {
+                        l.contains(&format!("`{group}.")) && l.contains(&format!("`{name}`"))
+                    })
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "not in docs/permissions.md: {missing:?}"
+        );
+    }
 
     /// An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed.
     /// Bus names follow the bus's own rules: letters, digits, `_` and

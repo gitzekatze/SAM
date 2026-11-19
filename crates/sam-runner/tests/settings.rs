@@ -79,6 +79,70 @@ fn undoing_repair_steps_restores_the_settings_from_before_the_first_step() {
     assert!(back.repairs_applied.is_empty());
 }
 
+/// Undoing repair steps takes back only what the steps changed: a setting
+/// the person changed afterwards stays as they set it, also the one a step
+/// had changed (audit G-F4: the whole profile from before the first step
+/// came back).
+#[test]
+fn undoing_repair_steps_keeps_what_the_person_changed_since() {
+    use sam_core::model::FixAction;
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = named_app(tmp.path(), "Later");
+    let e = sam.resolve(&id).unwrap();
+    let steps = sam_runner::repair::ladder(&e, &sam.config, &sam.paths);
+    let (step, key) = steps
+        .iter()
+        .find_map(|st| {
+            let s = sam.find_suggestion(&e, &st.id)?;
+            match &s.action {
+                FixAction::Set { key, .. } if key != "filesystem.music" => {
+                    Some((s.clone(), key.clone()))
+                }
+                _ => None,
+            }
+        })
+        .expect("the ladder has a step that sets one permission");
+    let before = e.profile.permissions.get_key(&key).unwrap();
+    sam.apply_suggestion(&id, &step, true).unwrap();
+    // Afterwards the person changes another setting.
+    sam.set_permission(&id, "filesystem.music", "ro").unwrap();
+    let back = sam.undo_repairs(&id).unwrap();
+    assert_eq!(
+        back.profile.permissions.get_key(&key).unwrap(),
+        before,
+        "the step is undone"
+    );
+    assert_eq!(
+        back.profile.permissions.filesystem.music,
+        Access::Ro,
+        "the later change stays"
+    );
+    assert!(back.applied_repairs.is_empty() && back.repair_backup.is_none());
+
+    // The person changes the very setting a step changed, to a value of
+    // their own: undoing the step leaves it.
+    let network = sam_core::model::Suggestion {
+        id: "network".into(),
+        title: "Network".into(),
+        explanation: String::new(),
+        action: FixAction::Set {
+            key: "network.mode".into(),
+            value: "full".into(),
+        },
+        risk: sam_core::risk::RiskLevel::High,
+        from_app_output: false,
+    };
+    sam.apply_suggestion(&id, &network, true).unwrap();
+    sam.set_permission(&id, "network.mode", "localhost")
+        .unwrap();
+    let back = sam.undo_repairs(&id).unwrap();
+    assert_eq!(
+        back.profile.permissions.network.mode,
+        NetworkMode::Localhost,
+        "the person's own value stays"
+    );
+}
+
 /// "Reset to recommendation" brings back SAM's recommended settings and turns compatibility mode off.
 #[test]
 fn reset_to_recommendation_brings_back_the_recommended_settings() {

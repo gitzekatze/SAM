@@ -724,8 +724,105 @@ fn needs_x11_only(app: &AppEntry) -> bool {
         .is_some_and(|d| d.requirements.x11 && !d.requirements.wayland)
 }
 
+/// A change made from a copy that may be old: `from` is what the change
+/// was made on, `to` what it should become. Only the settings that differ
+/// between the two are applied to `current`, so a change made elsewhere in
+/// the meantime (in the other view of the window, on the command line, by
+/// a repair step) stays (audit G-F4: whole sets were written back). A
+/// setting that was changed both here and elsewhere, to different values,
+/// is not decided silently: the result lists those settings.
+pub fn apply_change(
+    current: &PermissionSet,
+    from: &PermissionSet,
+    to: &PermissionSet,
+) -> Result<std::result::Result<PermissionSet, Vec<String>>> {
+    let mut cur = serde_json::to_value(current)?;
+    let (f, t) = (serde_json::to_value(from)?, serde_json::to_value(to)?);
+    let mut clashes = Vec::new();
+    merge_into(&mut cur, &f, &t, "", &mut clashes);
+    if !clashes.is_empty() {
+        return Ok(Err(clashes));
+    }
+    Ok(Ok(serde_json::from_value(cur)?))
+}
+
+/// Settings are compared one by one: a nested object goes one level
+/// deeper, anything else (a value, a list) is one setting.
+fn merge_into(
+    cur: &mut serde_json::Value,
+    from: &serde_json::Value,
+    to: &serde_json::Value,
+    path: &str,
+    clashes: &mut Vec<String>,
+) {
+    use serde_json::Value;
+    if from == to {
+        return;
+    }
+    if let (Value::Object(f), Value::Object(t), Value::Object(c)) = (from, to, &mut *cur) {
+        let keys: std::collections::BTreeSet<&String> = f.keys().chain(t.keys()).collect();
+        for k in keys {
+            let null = Value::Null;
+            let (fv, tv) = (f.get(k).unwrap_or(&null), t.get(k).unwrap_or(&null));
+            let sub = if path.is_empty() {
+                k.clone()
+            } else {
+                format!("{path}.{k}")
+            };
+            let cv = c.entry(k.clone()).or_insert(Value::Null);
+            merge_into(cv, fv, tv, &sub, clashes);
+        }
+        return;
+    }
+    if *cur == *from || *cur == *to {
+        *cur = to.clone();
+    } else {
+        clashes.push(path.to_string());
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// A change made on an old copy applies only what it changed: another
+    /// setting changed meanwhile stays; the same setting changed elsewhere
+    /// to another value is named, not overwritten (audit G-F4).
+    #[test]
+    fn a_change_from_an_old_copy_keeps_what_changed_meanwhile() {
+        let from = PermissionSet::strict_gui();
+        let mut current = from.clone();
+        current.devices.webcam = true; // changed elsewhere meanwhile
+        let mut to = from.clone();
+        to.network.mode = NetworkMode::Full; // the change made here
+        let merged = apply_change(&current, &from, &to).unwrap().unwrap();
+        assert!(merged.devices.webcam, "the other change stays");
+        assert_eq!(
+            merged.network.mode,
+            NetworkMode::Full,
+            "this change is made"
+        );
+        // Undo is a change too: back from `to` to `from` on what is there now.
+        let undone = apply_change(&merged, &to, &from).unwrap().unwrap();
+        assert!(undone.devices.webcam, "undo keeps the other change");
+        assert_eq!(undone.network.mode, from.network.mode);
+        // The same setting changed elsewhere to a third value: named.
+        let mut other = current.clone();
+        other.network.mode = NetworkMode::Localhost;
+        let clash = apply_change(&other, &from, &to).unwrap().unwrap_err();
+        assert_eq!(clash, vec!["network.mode".to_string()]);
+        // Changed elsewhere to the same value: nothing to decide.
+        let mut same = from.clone();
+        same.network.mode = NetworkMode::Full;
+        assert_eq!(apply_change(&same, &from, &to).unwrap().unwrap(), same);
+        // A list counts as one setting.
+        let mut with_folder = from.clone();
+        with_folder.filesystem.custom_read.push("~/Music".into());
+        let merged = apply_change(&current, &from, &with_folder)
+            .unwrap()
+            .unwrap();
+        assert_eq!(merged.filesystem.custom_read, vec!["~/Music".to_string()]);
+        assert!(merged.devices.webcam);
+    }
 
     /// Terminal programs get no display, GPU or desktop bus access.
     #[test]
