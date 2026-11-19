@@ -55,7 +55,7 @@ impl UsernsStatus {
             // every program and make the computer less safe than without SAM.
             crate::i18n::tr("Unprivileged user namespaces are disabled on this system (kernel.unprivileged_userns_clone = 0), a deliberate hardening. Keep it. If you want sandboxes here, install Bubblewrap setuid instead (Arch: the bubblewrap-suid package; Debian: sudo dpkg-statoverride --update --add root root 4755 /usr/bin/bwrap): only Bubblewrap gets this right, not every program. This, too, changes the system; SAM never does it itself.")
         } else if self.apparmor_restricted == Some(true) {
-            crate::i18n::tr("AppArmor restricts unprivileged user namespaces. Bubblewrap may need an AppArmor profile (Ubuntu 24.04+).")
+            crate::i18n::tr("AppArmor restricts unprivileged user namespaces (Ubuntu 24.04 and later), a deliberate hardening. Keep it. Give Bubblewrap alone the right with the restricted profile that comes with AppArmor: sudo cp /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/ and sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict. Its cost: apps in the sandbox cannot start sandboxes of their own, which SAM does not allow by default anyway. Never use an unconfined profile for bwrap or switch the restriction off: that lifts it for every program.")
         } else {
             crate::i18n::tr("User namespaces are available.")
         }
@@ -412,6 +412,55 @@ fn tool_version(path: &Path, args: &[&str]) -> Option<String> {
         .map(|l| l.trim().to_string())
 }
 
+/// How to install `package` here: the command of this distribution's
+/// package manager, found by the `ID` and `ID_LIKE` lines of
+/// `/etc/os-release` (audit T2: every system was told `sudo pacman -S`).
+pub fn install_hint(package: &str) -> String {
+    let os = fs::read_to_string("/etc/os-release").unwrap_or_default();
+    match install_command(&os, package) {
+        Some(cmd) => crate::i18n::trf("Install it: {command}", &[("command", &cmd)]),
+        None => crate::i18n::trf(
+            "Install the package \"{package}\" with your distribution's package manager.",
+            &[("package", &package)],
+        ),
+    }
+}
+
+/// The install command for `package` on the system `os_release` describes.
+fn install_command(os_release: &str, package: &str) -> Option<String> {
+    let field = |key: &str| {
+        os_release
+            .lines()
+            .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
+            .map(|v| v.trim().trim_matches('"').to_ascii_lowercase())
+            .unwrap_or_default()
+    };
+    let (id, like) = (field("ID"), field("ID_LIKE"));
+    let ids: Vec<&str> = std::iter::once(id.as_str())
+        .chain(like.split_whitespace())
+        .collect();
+    let is = |names: &[&str]| {
+        ids.iter()
+            .any(|i| names.contains(i) || names.iter().any(|n| i.starts_with(n)))
+    };
+    let manager = if is(&["arch"]) {
+        "sudo pacman -S"
+    } else if is(&["debian", "ubuntu"]) {
+        "sudo apt install"
+    } else if is(&["fedora", "rhel", "centos"]) {
+        "sudo dnf install"
+    } else if is(&["opensuse", "suse", "sles"]) {
+        "sudo zypper install"
+    } else if is(&["alpine"]) {
+        "sudo apk add"
+    } else if is(&["void"]) {
+        "sudo xbps-install"
+    } else {
+        return None;
+    };
+    Some(format!("{manager} {package}"))
+}
+
 fn os_release_name() -> String {
     let s = fs::read_to_string("/etc/os-release").unwrap_or_default();
     s.lines()
@@ -754,5 +803,68 @@ mod tests {
             Some(PathBuf::from("/run/user/1000/bus"))
         );
         assert_eq!(dbus_unix_path("unix:abstract=/tmp/dbus-x"), None);
+    }
+}
+
+#[cfg(test)]
+mod install_hint_tests {
+    use super::install_command;
+
+    /// Where AppArmor restricts user namespaces, the advice names the
+    /// restricted profile for Bubblewrap alone and what it costs, and warns
+    /// against the ways that lift the restriction for every program (audit
+    /// A3).
+    #[test]
+    fn the_apparmor_advice_keeps_the_restriction_for_other_programs() {
+        let s = super::UsernsStatus {
+            apparmor_restricted: Some(true),
+            ..Default::default()
+        };
+        let text = s.explain();
+        assert!(text.contains("bwrap-userns-restrict"), "{text}");
+        assert!(text.contains("Its cost"), "{text}");
+        assert!(text.contains("Never use an unconfined profile"), "{text}");
+    }
+
+    /// The install hint names this distribution's package manager, also on
+    /// derivatives (by `ID_LIKE`), and none where SAM does not know it
+    /// (audit T2).
+    #[test]
+    fn the_install_hint_fits_the_distribution() {
+        let c = |os: &str| install_command(os, "bubblewrap");
+        assert_eq!(c("ID=arch\n").as_deref(), Some("sudo pacman -S bubblewrap"));
+        assert_eq!(
+            c("ID=cachyos\nID_LIKE=arch\n").as_deref(),
+            Some("sudo pacman -S bubblewrap")
+        );
+        assert_eq!(
+            c("ID=ubuntu\nID_LIKE=debian\n").as_deref(),
+            Some("sudo apt install bubblewrap")
+        );
+        assert_eq!(
+            c("ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n").as_deref(),
+            Some("sudo apt install bubblewrap")
+        );
+        assert_eq!(
+            c("ID=fedora\n").as_deref(),
+            Some("sudo dnf install bubblewrap")
+        );
+        assert_eq!(
+            c("ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n").as_deref(),
+            Some("sudo dnf install bubblewrap")
+        );
+        assert_eq!(
+            c("ID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\n").as_deref(),
+            Some("sudo zypper install bubblewrap")
+        );
+        assert_eq!(c("ID=alpine\n").as_deref(), Some("sudo apk add bubblewrap"));
+        assert_eq!(
+            c("ID=void\n").as_deref(),
+            Some("sudo xbps-install bubblewrap")
+        );
+        assert_eq!(c("ID=nixos\n"), None);
+        assert_eq!(c(""), None);
+        // A key that only starts like ID is not ID.
+        assert_eq!(c("IDX=arch\nVERSION_ID=1\n"), None);
     }
 }

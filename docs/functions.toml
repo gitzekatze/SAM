@@ -110,6 +110,7 @@ tests = ["set_and_get_keys", "change_check_flags_removals_and_additions", "folde
   "a_change_from_the_window_keeps_changes_made_elsewhere",
   "undo_takes_back_only_its_own_change",
   "a_preset_not_applied_ends_with_not_passed",
+  "presets_keep_their_own_files_and_any_name",
 ]
 checks = ["tests/gui/permissions-atspi.sh"]
 
@@ -163,7 +164,7 @@ id = 14
 area = "C"
 promise = "Display: Wayland with a security context; X11 only when allowed, with its cost explained."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/wayland_ctx.rs", "sam-core/src/host.rs"]
-tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox_display_number", "the_x11_display_number_is_read_from_every_display_form"]
+tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox_display_number", "the_x11_display_number_is_read_from_every_display_form", "the_x11_key_copy_is_private_and_follows_no_link"]
 
 [[function]]
 id = 15
@@ -227,7 +228,7 @@ id = 19
 area = "D"
 promise = "Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox."
 code = ["sam-intake/src/desktop.rs", "sam-intake/src/menu.rs", "sam-runner/src/launch.rs", "sam-core/src/paths.rs"]
-tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it"]
+tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign"]
 checks = ["tests/gui/flow-atspi.sh", "tests/gui/taskbar-kwin.sh"]
 
 [[function]]
@@ -376,6 +377,8 @@ code = ["sam-runner/src/doctor.rs", "sam-runner/src/bwrap.rs", "sam-runner/src/d
 tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
   "a_broken_contract_ends_with_not_passed",
   "doctor_ends_with_what_it_reports",
+  "the_install_hint_fits_the_distribution",
+  "the_apparmor_advice_keeps_the_restriction_for_other_programs",
 ]
 
 [[function]]
@@ -432,7 +435,7 @@ id = 38
 area = "I"
 promise = "SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM."
 code = ["sam-core/src/format.rs", "sam-core/src/config.rs", "sam-core/src/permissions.rs", "sam-storage/src/lib.rs"]
-tests = ["a_complete_configuration_file_loads_every_setting", "settings_change_by_key_and_old_theme_names_are_migrated", "files_from_a_newer_sam_are_never_overwritten", "access_from_bool_and_str", "old_profiles_with_removed_options_still_load", "permissions_saved_as_toml_load_back_unchanged", "old_extra_backend_args_still_load", "presets_in_the_older_flat_format_still_load", "old_formats_are_migrated_and_kept", "newer_formats_are_left_untouched", "damaged_files_are_moved_aside_and_reported", "mangled_files_never_crash"]
+tests = ["a_complete_configuration_file_loads_every_setting", "settings_change_by_key_and_old_theme_names_are_migrated", "files_from_a_newer_sam_are_never_overwritten", "access_from_bool_and_str", "old_profiles_with_removed_options_still_load", "permissions_saved_as_toml_load_back_unchanged", "old_extra_backend_args_still_load", "presets_in_the_older_flat_format_still_load", "old_formats_are_migrated_and_kept", "newer_formats_are_left_untouched", "damaged_files_are_moved_aside_and_reported", "mangled_files_never_crash", "empty_or_relative_folder_settings_are_ignored"]
 checks = ["tests/upgrade/run.sh"]
 
 [[function]]
@@ -447,4 +450,6 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
   "a_build_never_takes_a_helper_from_path",
   "rooted_paths_have_a_runtime_folder_of_their_own",
   "an_error_names_its_sam_function_and_keeps_its_message",
+  "json_run_keeps_its_reply_alone_on_standard_output",
+  "preset_names_are_never_read_as_options",
 ]

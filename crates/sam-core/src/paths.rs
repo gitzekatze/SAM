@@ -24,35 +24,32 @@ pub struct Paths {
     pub runtime_root: Option<PathBuf>,
 }
 
+/// A folder named in the environment variable `var`, if it is set to an
+/// absolute path. Empty or relative, it is ignored, as the XDG rules say:
+/// "" or "data" would put SAM's files into whatever folder SAM was started
+/// in (audit G-F20).
+fn folder_from(var: &str) -> Option<PathBuf> {
+    std::env::var_os(var)
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+}
+
 impl Paths {
     pub fn from_env() -> Self {
         let home = home_dir();
-        let xdg_config = std::env::var_os("XDG_CONFIG_HOME")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".config"));
-        let xdg_data = std::env::var_os("XDG_DATA_HOME")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".local/share"));
-        let config_dir = std::env::var_os("SAM_CONFIG_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| xdg_config.join("sam"));
-        let data_dir = std::env::var_os("SAM_DATA_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| xdg_data.join("sam"));
-        let applications_dir = std::env::var_os("SAM_APPLICATIONS_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| xdg_data.join("applications"));
+        let xdg_config = folder_from("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config"));
+        let xdg_data = folder_from("XDG_DATA_HOME").unwrap_or_else(|| home.join(".local/share"));
+        let config_dir = folder_from("SAM_CONFIG_DIR").unwrap_or_else(|| xdg_config.join("sam"));
+        let data_dir = folder_from("SAM_DATA_DIR").unwrap_or_else(|| xdg_data.join("sam"));
+        let applications_dir =
+            folder_from("SAM_APPLICATIONS_DIR").unwrap_or_else(|| xdg_data.join("applications"));
         Paths {
             config_dir,
             data_dir,
             applications_dir,
             // SAM_RUNTIME_DIR moves the per-launch runtime folders, like the
             // three above (tests that start SAM's programs use it).
-            runtime_root: std::env::var_os("SAM_RUNTIME_DIR")
-                .filter(|v| !v.is_empty())
-                .map(PathBuf::from),
+            runtime_root: folder_from("SAM_RUNTIME_DIR"),
         }
     }
 

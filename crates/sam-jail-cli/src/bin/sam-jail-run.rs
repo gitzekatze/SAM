@@ -81,9 +81,33 @@ fn notify(title: &str, body: &str) {
     }
 }
 
+/// The arguments as text, or the first one that is not (shown with its
+/// odd bytes replaced).
+fn text_args(args: impl Iterator<Item = std::ffi::OsString>) -> Result<Vec<String>, String> {
+    args.map(|a| {
+        a.into_string()
+            .map_err(|a| a.to_string_lossy().into_owned())
+    })
+    .collect()
+}
+
 fn main() {
     sam_core::i18n::init(true);
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // A file name that is not valid text (Linux allows any bytes) ends the
+    // start with a message: std::env::args() would panic on it, and a
+    // replaced character would name another file (audit S-F15).
+    let args = match text_args(std::env::args_os().skip(1)) {
+        Ok(a) => a,
+        Err(name) => {
+            let message = sam_core::i18n::trf(
+                "SAM cannot pass on {path}: its name is not valid text. Rename it, then start the app again.",
+                &[("path", &name)],
+            );
+            errln!("sam-jail-run: {message}");
+            notify(&sam_core::i18n::tr("SAM could not start the app"), &message);
+            std::process::exit(1);
+        }
+    };
     if args.first().map(String::as_str) == Some("--sandbox-exec") {
         let spec = args.get(1).map(PathBuf::from).unwrap_or_else(|| usage());
         let rest: Vec<String> = match args.iter().position(|a| a == "--") {
@@ -227,4 +251,28 @@ fn launch(args: Vec<String>) -> Result<i32> {
         );
     }
     Ok(rec.exit_code.unwrap_or(if rec.success { 0 } else { 1 }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::ffi::OsStringExt;
+
+    /// A file name with bytes that are not text is named in the message,
+    /// never passed on changed and never a crash (audit S-F15).
+    #[test]
+    fn a_file_name_that_is_not_text_is_refused_by_name() {
+        let ok = vec!["--app-id".into(), "x".into(), "/home/a b.txt".into()];
+        assert_eq!(
+            text_args(ok.clone().into_iter()),
+            Ok(vec![
+                "--app-id".to_string(),
+                "x".into(),
+                "/home/a b.txt".into()
+            ])
+        );
+        let odd = std::ffi::OsString::from_vec(b"/home/j\xffo.txt".to_vec());
+        let e = text_args(vec!["--app-id".into(), "x".into(), odd].into_iter()).unwrap_err();
+        assert_eq!(e, "/home/j\u{FFFD}o.txt");
+    }
 }

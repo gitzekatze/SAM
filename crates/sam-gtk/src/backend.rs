@@ -272,6 +272,21 @@ impl Backend {
     }
 }
 
+/// The arguments for `sam-jail preset SUB`: options first, then `--`, then
+/// the names and files. A preset called `-x` is then a name, never an
+/// option (audit G-F20).
+pub(crate) fn preset_args<'a>(
+    sub: &'a str,
+    options: &[&'a str],
+    operands: &[&'a str],
+) -> Vec<&'a str> {
+    let mut v = vec!["preset", sub];
+    v.extend_from_slice(options);
+    v.push("--");
+    v.extend_from_slice(operands);
+    v
+}
+
 /// Where the window finds SAM's command line tools: an environment
 /// override, next to this program, then on `$PATH` where the user cannot
 /// change it ([`sam_core::util::which`]). Only a developer build also
@@ -339,9 +354,23 @@ fn envelope(out: &str) -> Option<Reply> {
 }
 
 #[cfg(test)]
-mod find_tool_tests {
+mod tests {
     use super::*;
     use std::fs;
+
+    /// Preset names reach SAM after `--`, so one that starts with `-` is
+    /// not read as an option (audit G-F20).
+    #[test]
+    fn preset_names_are_never_read_as_options() {
+        assert_eq!(
+            preset_args("apply", &["--yes"], &["-x", "appimage-a-1"]),
+            ["preset", "apply", "--yes", "--", "-x", "appimage-a-1"]
+        );
+        assert_eq!(
+            preset_args("delete", &[], &["-x"]),
+            ["preset", "delete", "--", "-x"]
+        );
+    }
 
     /// An installed (release) window runs only the command line tool next
     /// to it, never one in a neighbouring `debug` or `release` folder that

@@ -101,6 +101,22 @@ impl LaunchContext {
     }
 }
 
+/// Names SAM itself uses in `/run/sam` inside the sandbox.
+const RUN_SAM_OWN: &[&str] = &["bin", "sam-jail-run", "sandbox.json", "app"];
+
+/// Where the AppImage file `name` is shown inside the sandbox (`$APPIMAGE`):
+/// `/run/sam/<name>`, or `/run/sam/app/<name>` for a name SAM uses there
+/// itself (an AppImage called `bin` covered SAM's tools and never started;
+/// audit S-F17).
+pub fn appimage_inside(name: &std::ffi::OsStr) -> PathBuf {
+    let base = PathBuf::from("/run/sam");
+    if RUN_SAM_OWN.iter().any(|n| std::ffi::OsStr::new(n) == name) {
+        base.join("app").join(name)
+    } else {
+        base.join(name)
+    }
+}
+
 /// A fully built command line, ready to spawn.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SandboxCommand {
@@ -270,5 +286,28 @@ mod display_tests {
             c.display().contains("sk-secret"),
             "display itself is unchanged"
         );
+    }
+}
+
+#[cfg(test)]
+mod appimage_place_tests {
+    use super::appimage_inside;
+    use std::ffi::OsStr;
+    use std::path::Path;
+
+    /// An AppImage file named like one of SAM's own files in the sandbox
+    /// gets a folder of its own instead of covering SAM's (audit S-F17).
+    #[test]
+    fn an_appimage_never_covers_sams_own_files() {
+        assert_eq!(
+            appimage_inside(OsStr::new("Krita.AppImage")),
+            Path::new("/run/sam/Krita.AppImage")
+        );
+        for own in ["bin", "sam-jail-run", "sandbox.json", "app"] {
+            assert_eq!(
+                appimage_inside(OsStr::new(own)),
+                Path::new("/run/sam/app").join(own)
+            );
+        }
     }
 }

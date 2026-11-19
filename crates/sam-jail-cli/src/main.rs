@@ -837,6 +837,8 @@ fn real_main(cli: Cli) -> Result<()> {
                 &mut e,
                 &LaunchOptions {
                     args,
+                    // With --json, standard output is SAM's reply alone.
+                    app_output_to_stderr: cli.json,
                     ..Default::default()
                 },
                 &app.config,

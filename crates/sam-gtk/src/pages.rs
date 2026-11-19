@@ -456,7 +456,10 @@ pub fn presets(app: &Rc<App>) -> (adw::NavigationPage, Rc<dyn std::any::Any>) {
                 if let Some(p) = f.path() {
                     match app
                         .backend
-                        .call(&["preset", "import", &p.to_string_lossy()], None)
+                        .call(
+                            &crate::backend::preset_args("import", &[], &[&p.to_string_lossy()]),
+                            None,
+                        )
                         .await
                     {
                         Ok(r) => app.toast(&crate::i18n::trf(
@@ -629,7 +632,10 @@ impl Presets {
         glib::spawn_future_local(async move {
             match app
                 .backend
-                .call(&["preset", "duplicate", &base, &name], None)
+                .call(
+                    &crate::backend::preset_args("duplicate", &[], &[&base, &name]),
+                    None,
+                )
                 .await
             {
                 Ok(_) => app.toast(&crate::i18n::trf("Created “{name}”", &[("name", &name)])),
@@ -653,7 +659,14 @@ impl Presets {
                 if let Some(p) = f.path() {
                     match app
                         .backend
-                        .call(&["preset", "export", &name, &p.to_string_lossy()], None)
+                        .call(
+                            &crate::backend::preset_args(
+                                "export",
+                                &[],
+                                &[&name, &p.to_string_lossy()],
+                            ),
+                            None,
+                        )
                         .await
                     {
                         Ok(_) => app.toast(&tr("Exported")),
@@ -680,7 +693,11 @@ impl Presets {
             )
             .await
             {
-                if let Err(e) = app.backend.call(&["preset", "delete", &name], None).await {
+                if let Err(e) = app
+                    .backend
+                    .call(&crate::backend::preset_args("delete", &[], &[&name]), None)
+                    .await
+                {
                     app.report_error(&e);
                 }
                 me.reload();

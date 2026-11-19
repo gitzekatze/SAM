@@ -1416,7 +1416,10 @@ impl App {
     pub async fn apply_preset(self: &Rc<Self>, name: &str, app_id: &str) -> bool {
         let r = match self
             .backend
-            .call(&["preset", "apply", name, app_id], None)
+            .call(
+                &crate::backend::preset_args("apply", &[], &[name, app_id]),
+                None,
+            )
             .await
         {
             Ok(r) => r,
@@ -1436,7 +1439,10 @@ impl App {
         }
         match self
             .backend
-            .call(&["preset", "apply", name, app_id, "--yes"], None)
+            .call(
+                &crate::backend::preset_args("apply", &["--yes"], &[name, app_id]),
+                None,
+            )
             .await
         {
             Ok(_) => self.toast(&crate::i18n::trf("Applied “{name}”", &[("name", &name)])),
