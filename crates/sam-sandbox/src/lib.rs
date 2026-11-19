@@ -625,11 +625,7 @@ fn ro_follow(a: &mut Args, path: &Path) {
         }
     }
     for t in targets {
-        // /usr/lib and /usr/bin are bound already; skip anything else outside
-        // the shared-data and configuration trees.
-        let interesting =
-            (t.starts_with("/usr/share") || t.starts_with("/etc") || t.starts_with("/run"))
-                && t.exists();
+        let interesting = fs::metadata(&t).is_ok_and(|m| may_follow(&t, m.file_type()));
         if interesting
             && !a
                 .v
@@ -639,6 +635,20 @@ fn ro_follow(a: &mut Args, path: &Path) {
             a.ro(&t);
         }
     }
+}
+
+/// Whether the target `t` of a link found in /etc may be shown as well:
+/// only shared data and settings (/usr/lib and /usr/bin are shown
+/// already), and only plain files and folders. In /run only plain files
+/// (`resolv.conf` → /run/NetworkManager/resolv.conf). Never a socket or a
+/// device: Debian's `/etc/alternatives/php-fpm.sock` points to the PHP
+/// server's socket in /run/php, and every app's sandbox showed it (found
+/// by a test on CI, 2026-11-19).
+fn may_follow(t: &Path, kind: fs::FileType) -> bool {
+    if t.starts_with("/run") {
+        return kind.is_file();
+    }
+    (t.starts_with("/usr/share") || t.starts_with("/etc")) && (kind.is_file() || kind.is_dir())
 }
 
 /// Small helper scripts placed at `/run/sam/bin` (first on `$PATH`):
@@ -2224,6 +2234,37 @@ mod tests {
         );
     }
 
+    /// A link in /etc never brings a socket or a device into the sandbox,
+    /// wherever it points; plain files and folders of the system's data and
+    /// settings do, and in /run only plain files (regression: Debian's
+    /// `/etc/alternatives/php-fpm.sock` showed the PHP server's socket).
+    #[test]
+    fn links_in_etc_never_bring_sockets_or_devices() {
+        let t = tempfile::tempdir().unwrap();
+        let sock = t.path().join("s.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let socket = fs::metadata(&sock).unwrap().file_type();
+        fs::write(t.path().join("f"), "x").unwrap();
+        let file = fs::metadata(t.path().join("f")).unwrap().file_type();
+        let dir = fs::metadata(t.path()).unwrap().file_type();
+        let null = fs::metadata("/dev/null").unwrap().file_type();
+        let p = Path::new;
+        assert!(!may_follow(p("/run/php/php8.3-fpm.sock"), socket));
+        assert!(!may_follow(p("/etc/x.sock"), socket));
+        assert!(!may_follow(p("/usr/share/x"), null), "a device");
+        assert!(may_follow(p("/run/NetworkManager/resolv.conf"), file));
+        assert!(
+            !may_follow(p("/run/user/1000"), dir),
+            "a folder in /run may hold sockets"
+        );
+        assert!(may_follow(p("/usr/share/zoneinfo"), dir));
+        assert!(may_follow(p("/etc/ssl/cert.pem"), file));
+        assert!(
+            !may_follow(p("/home/ann/x"), file),
+            "outside the system's data"
+        );
+    }
+
     /// A helper's sandbox (the sound relay) shows the same system as an
     /// app's (with the whole /usr), and nothing outside the system's own
     /// folders: no home, no runtime folder, no devices.
@@ -2261,8 +2302,9 @@ mod tests {
                     "/opt/cuda"
                 ]
                 .iter()
-                .any(|r| at.starts_with(r)),
-                "a system folder: {part:?}"
+                .any(|r| at.starts_with(r))
+                    || (at.starts_with("/run") && at.is_file()),
+                "a system folder (or a plain file a system link leads to): {part:?}"
             );
             assert!(
                 has_seq(&app, &part),

@@ -14,3 +14,8 @@
 - `sam-jail doctor` says whether apps get sound through the relay, and
   `sam-jail doctor --contracts` checks that the relay refuses modules on
   your computer.
+- Found while testing: a link in `/etc` pointing to a socket (Debian's
+  `/etc/alternatives/php-fpm.sock` → the PHP server's socket in `/run/php`)
+  brought that socket into every app's sandbox. Links in `/etc` now bring
+  only plain files and folders of the system's data and settings, and in
+  `/run` only plain files.
