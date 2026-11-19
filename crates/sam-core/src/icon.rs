@@ -94,6 +94,10 @@ mod tests {
             None,
             "too big a file"
         );
+        // Up to the limit itself, a large icon is fine.
+        let at_limit = png(1024, 1024, MAX_ICON_BYTES - png(1, 1, 0).len());
+        assert_eq!(at_limit.len(), MAX_ICON_BYTES);
+        assert_eq!(safe_icon(&at_limit), Some(IconFormat::Png));
         let mut no_ihdr = png(16, 16, 0);
         no_ihdr[12..16].copy_from_slice(b"IDAT");
         assert_eq!(safe_icon(&no_ihdr), None);
@@ -103,6 +107,12 @@ mod tests {
         let mut big = svg.clone();
         big.resize(600 * 1024, b' ');
         assert_eq!(safe_icon(&big), None);
+        big.truncate(400 * 1024);
+        assert_eq!(
+            safe_icon(&big),
+            Some(IconFormat::Svg),
+            "a detailed SVG is fine"
+        );
         assert_eq!(safe_icon(b"/* XPM */\nstatic char *x[] = {};"), None);
         assert_eq!(safe_icon(b""), None);
     }

@@ -1908,6 +1908,23 @@ mod tests {
         std::fs::write(&ok, "<svg xmlns='http://www.w3.org/2000/svg'/>").unwrap();
         assert!(super::icon_may_be_shown(ok.to_str().unwrap()));
         assert!(!super::icon_may_be_shown(fifo.to_str().unwrap()));
+        // An icon file larger than allowed is not read in part and shown.
+        let mut big = d.clone();
+        big.truncate(16);
+        big.extend([0, 0, 0, 16, 0, 0, 0, 16, 8, 6, 0, 0, 0]);
+        let at_limit = tmp.path().join("limit.png");
+        let mut exact = big.clone();
+        exact.resize(sam_core::icon::MAX_ICON_BYTES, 0);
+        std::fs::write(&at_limit, &exact).unwrap();
+        assert!(super::icon_may_be_shown(at_limit.to_str().unwrap()));
+        let over = tmp.path().join("over.png");
+        big.resize(sam_core::icon::MAX_ICON_BYTES + 1, 0);
+        std::fs::write(&over, &big).unwrap();
+        assert!(!super::icon_may_be_shown(over.to_str().unwrap()));
+        // A real AppImage's first bytes are recognized.
+        let app = tmp.path().join("app");
+        std::fs::write(&app, b"\x7fELF\x02\x01\x01\0AI\x02rest").unwrap();
+        assert!(super::is_appimage(&app));
     }
 
     /// The folder watcher reacts to AppImages and ignores hidden files and downloads in progress.

@@ -62,10 +62,19 @@ fn a_reader_gone_wrong_comes_to_nothing() {
     let image = d.join("Some.AppImage");
     fs::write(&image, b"not really").unwrap();
 
-    // A well-behaved stand-in: its answer comes back.
-    let fine = reader(d, "fine", ANSWER);
+    // A well-behaved stand-in: its answer comes back, a long description
+    // too.
+    let long = "x".repeat(3000);
+    let fine = reader(
+        d,
+        "fine",
+        &format!(
+            r#"printf '{{"metadata":{{"name":"Answered","comment":"{long}"}},"icon":null}}' > "$out/peek.json""#
+        ),
+    );
     let p = peek_isolated(&sandbox(bwrap.clone(), &fine), &image).unwrap();
     assert_eq!(p.metadata.name, "Answered");
+    assert_eq!(p.metadata.comment.len(), 3000);
 
     // It needs 1.5 GiB before it answers: more than the sandbox may use.
     let greedy = reader(

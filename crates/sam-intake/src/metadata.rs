@@ -206,11 +206,10 @@ pub fn find_icon(appdir: &Path, icon_name: &str) -> Option<(PathBuf, IconFormat)
         let Some(p) = safe_resolve(appdir, &rel) else {
             continue;
         };
-        let Ok(meta) = fs::metadata(&p) else { continue };
-        if !meta.is_file() || meta.len() == 0 || meta.len() > MAX_ICON_BYTES as u64 {
+        // One byte more than an icon may have: safe_icon refuses it then.
+        let Ok(data) = sam_core::util::read_regular(&p, MAX_ICON_BYTES as u64 + 1) else {
             continue;
-        }
-        let Ok(data) = fs::read(&p) else { continue };
+        };
         if let Some(fmt) = safe_icon(&data) {
             return Some((p, fmt));
         }
