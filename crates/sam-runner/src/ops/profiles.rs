@@ -233,6 +233,7 @@ impl Sam {
         }
         let mut undo = sam_core::model::AppliedRepair {
             step: Some(sug.clone()),
+            on_trial: as_repair,
             ..Default::default()
         };
         match &sug.action {
@@ -305,47 +306,7 @@ impl Sam {
                 )
             })?;
         let r = e.applied_repairs.remove(i);
-        let step = r
-            .step
-            .clone()
-            .context(sam_core::i18n::tr("damaged repair record"))?;
-        match &step.action {
-            FixAction::Set { .. } => {
-                for (key, old) in &r.before {
-                    e.profile
-                        .permissions
-                        .set_key(key, &serde_json::to_string(old)?)?;
-                }
-            }
-            FixAction::Add { key, .. } => {
-                if let Some(v) = &r.added {
-                    let mut list: Vec<String> =
-                        serde_json::from_value(e.profile.permissions.get_key(key)?)?;
-                    list.retain(|x| x != v);
-                    e.profile
-                        .permissions
-                        .set_key(key, &serde_json::to_string(&list)?)?;
-                }
-            }
-            FixAction::Compat => {
-                e.profile.permissions = e
-                    .profile
-                    .before_compat
-                    .take()
-                    .unwrap_or_else(|| e.recommended.clone());
-                e.profile.compatibility_mode = false;
-            }
-            FixAction::AddArg { .. } => {
-                if let Some(v) = &r.added {
-                    e.profile.args.retain(|x| x != v);
-                }
-            }
-            FixAction::None => {}
-        }
-        e.repairs_applied.retain(|id| id != step_id);
-        if e.applied_repairs.is_empty() {
-            e.repair_backup = None;
-        }
+        crate::repair::revert_step(&mut e, &r)?;
         self.save_profile(&mut e)?;
         Ok(e)
     }
@@ -365,6 +326,7 @@ impl Sam {
         e.profile = backup;
         e.repairs_applied.clear();
         e.applied_repairs.clear();
+        e.tried_repairs.clear();
         self.save_profile(&mut e)?;
         Ok(e)
     }

@@ -816,7 +816,7 @@ fn real_main(cli: Cli) -> Result<()> {
                             .unwrap_or_default()
                     );
                     eprintln!(
-                        "  try: sam-jail doctor {} / sam-jail diagnose {} / sam-jail compat {} on",
+                        "  try: sam-jail doctor {} / sam-jail diagnose {} / sam-jail repair {}",
                         e.id, e.id, e.id
                     );
                 }
@@ -1044,8 +1044,11 @@ fn real_main(cli: Cli) -> Result<()> {
                 print_warnings(&ev.warnings);
             });
         }
-        Cmd::Compat { app: q, state } => {
+        Cmd::Compat { app: q, state, yes } => {
             let on = matches!(state.as_str(), "on" | "true" | "1" | "yes");
+            // The full session bus in it is a way out (audit D-H5): turning
+            // it on is said and confirmed, as in the window.
+            compat_allowed(on, yes)?;
             let e = app.set_compat(&q, on)?;
             out.emit(&AppSummary::from_entry(&e), || {
                 if on {
@@ -1539,6 +1542,19 @@ fn real_main(cli: Cli) -> Result<()> {
     Ok(())
 }
 
+/// Compatibility mode is turned on only with `--yes`: the whole session bus
+/// in it is a way out (audit D-H5), as the window says before it asks.
+fn compat_allowed(on: bool, yes: bool) -> anyhow::Result<()> {
+    if on && !yes {
+        return Err(sam_core::error::CodedError::new(
+            "compat-needs-yes",
+            sam_core::i18n::tr("Compatibility mode gives the app the network, all of /usr, X11, the GPU, sound and the whole session bus. Through the whole session bus it can ask desktop services to run programs outside its sandbox, so this is a way out. Turn it on only for apps you trust: add --yes."),
+        )
+        .into());
+    }
+    Ok(())
+}
+
 /// A repair step suggested by what the app printed is applied only with
 /// `--yes`: the app controls that text, and could ask for the keyring or a
 /// service this way (audit U-M2; the window asks, and so must this).
@@ -1558,7 +1574,18 @@ fn may_apply(sug: &sam_core::model::Suggestion, yes: bool) -> anyhow::Result<()>
 
 #[cfg(test)]
 mod repair_tests {
-    use super::may_apply;
+    use super::{compat_allowed, may_apply};
+
+    /// Compatibility mode goes on only with --yes, and the refusal says why
+    /// (audit D-H5); turning it off needs nothing.
+    #[test]
+    fn compatibility_mode_needs_yes_and_says_why() {
+        let err = compat_allowed(true, false).unwrap_err();
+        assert_eq!(sam_core::error::code_of(&err), Some("compat-needs-yes"));
+        assert!(format!("{err:#}").contains("way out"));
+        assert!(compat_allowed(true, true).is_ok());
+        assert!(compat_allowed(false, false).is_ok());
+    }
     use sam_core::model::{FixAction, Suggestion};
 
     /// A step from the app's own output needs --yes; SAM's own steps do

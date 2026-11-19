@@ -605,7 +605,7 @@ impl AppPage {
             if on && !window::confirm(
                 &app.window,
                 &crate::i18n::tr("Turn On Compatibility Mode?"),
-                &crate::i18n::tr("The app gets broad access: the network, the whole session bus, all of /usr, X11, the GPU and sound. Use it when nothing else helps.\n\nYour current settings are remembered and come back when you turn it off."),
+                &crate::i18n::tr("The app gets broad access: the network, all of /usr, X11, the GPU, sound and the whole session bus. Through the whole session bus it can ask desktop services to run programs outside its sandbox, so this is a way out. Use it only when nothing else helps, and only for apps you trust.\n\nYour current settings are remembered and come back when you turn it off."),
                 &crate::i18n::tr("Turn On"),
                 true,
             ).await {

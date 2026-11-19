@@ -1,13 +1,16 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-compat 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-compat 1 2026-11-19 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-compat \- Turn compatibility mode on or off. Off restores the settings from before it was turned on
 .SH SYNOPSIS
-\fBsam\-jail compat\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> <\fISTATE\fR> 
+\fBsam\-jail compat\fR [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> <\fISTATE\fR> 
 .SH DESCRIPTION
 Turn compatibility mode on or off. Off restores the settings from before it was turned on
 .SH OPTIONS
+.TP
+\fB\-\-yes\fR
+Confirm turning it on: the whole session bus in it is a way out of the sandbox
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

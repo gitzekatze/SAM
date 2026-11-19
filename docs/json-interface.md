@@ -126,7 +126,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `get APP [KEY]` | the value, or the whole profile |
 | `profile get/set/reset APP` | profile; `set` reads it on stdin |
 | `evaluate APP` | risk and warnings for a profile on stdin |
-| `compat APP on/off` | app summary |
+| `compat APP on --yes / off` | app summary; `on` without `--yes` is refused with the code `compat-needs-yes` (the whole session bus is a way out) |
 | `args APP --stdin` | the launch arguments (JSON array on stdin) |
 | `review APP` | app summary |
 | `verify APP` or `verify PATH --permissions-stdin` | `{report, record}`: every check with expected and observed result |

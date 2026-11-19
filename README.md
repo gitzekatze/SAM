@@ -81,7 +81,7 @@ repository.
   and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-15<!-- /fact -->](docs/reports/real-apps-2026-11-15.md)).
-- **<!-- fact:tests -->385<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
+- **<!-- fact:tests -->392<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
 - **Every security promise is attacked from inside a real sandbox.**
@@ -156,10 +156,12 @@ warning before they apply.
   sandbox.
 - **Log analysis:** common error messages turn into one-click fixes.
 - **Repair steps:** switches that appear after a failed start, one step at a
-  time; each says what protection it costs, and *Switch off all repair
-  steps* undoes them.
-- **Compatibility mode:** broader access for stubborn apps. Turning it off
-  restores your previous settings.
+  time; each says what protection it costs. A step the next start shows did
+  not help is undone by itself, and *Switch off all repair steps* undoes
+  the rest.
+- **Compatibility mode:** broader access for stubborn apps, including the
+  whole session bus, which is a way out of the sandbox: only for apps you
+  trust. Turning it off restores your previous settings.
 - **Built in:** links open in your normal browser; DNS works with the usual
   setups (a plain `resolv.conf`, systemd-resolved, NetworkManager); AppImages
   started from inside a sandbox work without FUSE; AppImages for another
@@ -244,7 +246,7 @@ sam-jail hints krita            # first-run check, with fixes
 sam-jail repair krita           # what went wrong last time
 sam-jail repair krita --next    # apply the next repair step
 sam-jail repair krita --undo    # undo all repair steps
-sam-jail compat krita on        # compatibility mode (off restores your settings)
+sam-jail compat krita on --yes  # compatibility mode, a way out (off restores your settings)
 sam-jail logs krita --list      # every log of this app
 sam-jail stop krita             # close a running app, also one in the tray
 sam-jail doctor                 # check this computer
