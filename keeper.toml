@@ -89,6 +89,36 @@ protected_tests = [
   "crates/sam-jail-cli/tests/contracts.rs",
   "crates/sam-jail-cli/tests/architecture.rs",
   "crates/sam-intake/tests/damaged.rs",
+  # Real proofs added since: sandbox, terminal, network, signature and
+  # unpacking attacks (verification audit 2026-11-19: most proofs sat in
+  # files anyone could weaken without the owner).
+  "crates/sam-runner/tests/full_home.rs",
+  "crates/sam-runner/tests/home_guards.rs",
+  "crates/sam-runner/tests/home_grants.rs",
+  "crates/sam-runner/tests/kernel_surface.rs",
+  "crates/sam-runner/tests/sound_relay.rs",
+  "crates/sam-runner/tests/self_update_signature.rs",
+  "crates/sam-runner/tests/own_names.rs",
+  "crates/sam-runner/tests/overlay_fallback.rs",
+  "crates/sam-runner/tests/terminal_relay.rs",
+  "crates/sam-runner/tests/fuzz_targets.rs",
+  "crates/sam-runner/tests/adversarial.rs",
+  "crates/sam-runner/tests/changed_appimage.rs",
+  "crates/sam-runner/tests/stop.rs",
+  "crates/sam-jail-cli/tests/terminal.rs",
+  "crates/sam-jail-cli/tests/unpack.rs",
+  "crates/sam-jail-cli/tests/interface.rs",
+  "crates/sam-jail-cli/tests/start_check.rs",
+  "crates/sam-jail-cli/tests/trusted_helpers.rs",
+  "crates/sam-jail-cli/tests/local_network.rs",
+  "crates/sam-jail-cli/tests/odd_names.rs",
+  "crates/sam-jail-cli/tests/pipes.rs",
+  "crates/sam-jail-cli/tests/exit_codes.rs",
+  "crates/sam-intake/tests/hostile_extractor.rs",
+  "crates/sam-intake/tests/preview_sandbox.rs",
+  "crates/sam-intake/tests/limits.rs",
+  "crates/sam-detect/tests/signature.rs",
+  "crates/sam-core/tests/terminal_fuzz.rs",
 ]
 # The files that make up the approval check: CI runs the checker from the
 # base branch; any change to them needs the owner.
@@ -97,6 +127,14 @@ gate = [
   "scripts/risk-class.py",
   "keeper.toml",
   ".github/workflows/approval.yml",
+  # The test machinery: what runs the tests in CI, decides when a test may
+  # skip, and builds the hostile inputs. Changing any of it could empty the
+  # proofs while every check stays green (verification audit 2026-11-19).
+  ".github/workflows/ci.yml",
+  "scripts/flaky-check.py",
+  "crates/sam-intake/src/testkit.rs",
+  "crates/sam-runner/src/testenv.rs",
+  "crates/sam-runner/src/contracts.rs",
 ]
 # Safety lists in the code: removing an entry is a weakening.
 lists = [

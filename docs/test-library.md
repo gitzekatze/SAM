@@ -498,7 +498,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (found by the fuzzer): one damaged AppImage in a searched folder made `sam-jail discover` crash, so the window's list stayed empty. | [`one_damaged_appimage_does_not_stop_the_list`](../crates/sam-jail-cli/tests/interface.rs#L289) |
 | The command line speaks german when asked. | [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L18) |
 | A start without the helper reports its missing layers. | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) |
-| The apps ports are offered on this computer only. | [`the_apps_ports_are_offered_on_this_computer_only`](../crates/sam-jail-cli/tests/local_network.rs#L91) |
+| The apps ports are offered on this computer only. | [`the_apps_ports_are_offered_on_this_computer_only`](../crates/sam-jail-cli/tests/local_network.rs#L106) |
 | An AppImage file called like one of SAM's own files in the sandbox (`bin`) starts, and finds itself at `$APPIMAGE`. | [`an_appimage_called_bin_starts_and_finds_itself`](../crates/sam-jail-cli/tests/odd_names.rs#L84) |
 | With `--json`, SAM's standard output is its reply and nothing else: an app that prints a line looking like the reply cannot be read as SAM's. | [`json_run_keeps_its_reply_alone_on_standard_output`](../crates/sam-jail-cli/tests/odd_names.rs#L112) |
 | Two presets whose names share a file ("My Preset" and "my-preset") never overwrite each other without a word (audit G-F19), and a preset called `-x` is a name like any other when it comes after `--`, as the window passes it (G-F20). | [`presets_keep_their_own_files_and_any_name`](../crates/sam-jail-cli/tests/odd_names.rs#L173) |
