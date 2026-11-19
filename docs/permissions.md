@@ -23,6 +23,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `filesystem.home_access` | `ro` / `rw` |
 | `filesystem.documents` … `downloads`, `music`, `pictures`, `videos`, `desktop` | `none` / `ro` / `rw` |
 | `filesystem.ssh`, `filesystem.gnupg`, `filesystem.hidden_files` | `true` / `false` (only apply with full home) |
+| `filesystem.opened_files` | `none` / `ro` / `rw`: files you open with the app ("Open with") |
 | `filesystem.custom_read`, `filesystem.custom_write` | list, e.g. `"~/Projects, /mnt/data"` |
 | `network.mode` | `none` / `localhost` (no internet; loopback ports forwarded by pasta, Bubblewrap only) / `full` (a `filtered` value from old profiles loads as `none`) |
 | `devices.gpu`, `devices.webcam`, `devices.gamepads`, `devices.input`, `devices.usb`, `devices.bluetooth` | `true` / `false` |
@@ -42,6 +43,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `advanced.host_runtime` | `minimal` / `full` |
 | `advanced.persistent_home`, `advanced.seccomp_strict`, `advanced.allow_userns`, `advanced.host_themes` | `true` / `false` |
 | `advanced.landlock` | `true` / `false` (unset = follow the global setting) |
+| `network.app_ports` | list of the app's own ports reachable from this computer with `localhost` (empty: SAM detects them) |
 | `network.host_ports` | list of host ports reachable with `localhost`, e.g. `"11434"` |
 | `integrations.screen_sharing` | `true` / `false`: screen sharing through the portal (asks each time) |
 | `advanced.seccomp_baseline` | `true` / `false`: baseline syscall filter for this app |
@@ -50,6 +52,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `integrations.media_controls` | `true` / `false`: MPRIS media keys, screen-saver inhibit |
 | `integrations.input_method` | `true` / `false` (default `true`): Fcitx5 and IBus through their sandbox frontends |
 | `integrations.file_manager` | `true` / `false`: "Open the file manager" (shows a saved file in its folder) |
+| `advanced.system_libraries` | list of bundled library file names replaced by the system's copies, read-only, e.g. `"libstdc++.so.6"` |
 | `advanced.extra_bwrap_args` | list of raw backend arguments |
 
 `sam-jail permissions` prints the same list with plain-language explanations and risk levels.

@@ -102,6 +102,10 @@ pub struct AppPage {
     /// Saves run one after another; only the newest pending one is sent.
     saving: Cell<bool>,
     queued: RefCell<Option<Value>>,
+    /// The settings as last loaded or saved: each change is sent as the
+    /// difference from these, so a change made elsewhere meanwhile stays
+    /// (audit G-F4).
+    saved: RefCell<Option<Value>>,
     dynamic_rows: RefCell<Vec<(adw::PreferencesGroup, gtk::Widget)>>,
     updating: Cell<bool>,
 }
@@ -479,6 +483,7 @@ impl AppPage {
             log_files: RefCell::new(Vec::new()),
             saving: Cell::new(false),
             queued: RefCell::new(None),
+            saved: RefCell::new(None),
             dynamic_rows: RefCell::new(Vec::new()),
             updating: Cell::new(false),
         });

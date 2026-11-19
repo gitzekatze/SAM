@@ -86,6 +86,17 @@ if cam:
         cancel.get_action_iface().do_action(0)
     time.sleep(1.5)
     check("…and after Cancel the app has no webcam", info()["devices"]["webcam"] is False)
+# A change made elsewhere while the page is open stays when a switch on
+# the page is changed: the page sends only its own change (audit G-F4: it
+# wrote back the whole set it had loaded).
+subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "set", os.environ["SAM_TEST_APP"], "filesystem.music", "ro"],
+               capture_output=True, check=True)
+pads = find(app, lambda s: s == "Game controllers", "switch")
+check("the game controllers switch is on the page", pads is not None)
+if pads:
+    pads.get_action_iface().do_action(0)
+    check("…and the page saves it", wait(lambda: info()["devices"]["gamepads"] is True) is True)
+    check("…and the change made elsewhere stays", info()["filesystem"]["music"] == "ro")
 # Compatibility mode: the switch asks first, and after "Turn On" the app
 # really has it (regression: the window called the command line without
 # --yes, so turning it on failed after the person had confirmed).

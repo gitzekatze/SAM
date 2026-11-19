@@ -131,6 +131,9 @@ pub struct PermsPage {
     single_icon: RefCell<Option<gtk::Image>>,
     editor: Rc<Editor>,
     editor_app: RefCell<String>,
+    /// The one app's settings as last loaded or saved; each edit is sent as
+    /// the difference from these (audit G-F4).
+    editor_saved: RefCell<Option<Value>>,
     // Several apps selected.
     many_page: adw::PreferencesPage,
     many_groups: RefCell<Vec<adw::PreferencesGroup>>,
@@ -394,6 +397,7 @@ impl PermsPage {
             single_icon: RefCell::default(),
             editor,
             editor_app: RefCell::default(),
+            editor_saved: RefCell::default(),
             many_page,
             many_groups: RefCell::default(),
             unfolded: RefCell::default(),
@@ -894,6 +898,7 @@ impl PermsPage {
                     return;
                 }
                 let perms = util::get(&i, "entry.profile.permissions").cloned();
+                *me.editor_saved.borrow_mut() = perms.clone();
                 me.editor.set_data(
                     perms.clone(),
                     util::get(&i, "entry.recommended").cloned(),
@@ -916,14 +921,25 @@ impl PermsPage {
     fn save_single(self: &Rc<Self>, p: Value) {
         let Some(app) = self.app() else { return };
         let id = self.editor_app.borrow().clone();
+        // Only what this edit changed, on top of what the app has now
+        // (audit G-F4); the next edit builds on this one.
+        let Some(from) = self.editor_saved.replace(Some(p.clone())) else {
+            return;
+        };
+        let change = serde_json::json!({"from": from, "to": p});
         let me = self.clone();
         glib::spawn_future_local(async move {
             if let Err(e) = app
                 .backend
-                .call(&["profile", "set", &id, "--yes"], Some(p.to_string()))
+                .call(
+                    &["profile", "change", &id, "--yes"],
+                    Some(change.to_string()),
+                )
                 .await
             {
                 app.report_error(&e);
+                // Load the settings as they are now.
+                *me.editor_app.borrow_mut() = String::new();
             }
             if let Ok(ev) = app
                 .backend
@@ -1298,7 +1314,8 @@ impl PermsPage {
             args.push("--yes");
             match app.backend.call(&args, None).await {
                 Ok(r) => {
-                    let previous = r.get("previous").cloned().unwrap_or_default();
+                    // Undo takes back only this change (audit G-F4).
+                    let previous = r.get("undo").cloned().unwrap_or_default();
                     let n = previous.as_object().map(|o| o.len()).unwrap_or(0);
                     if n > 0 {
                         let title = app
@@ -1346,7 +1363,9 @@ impl PermsPage {
             glib::spawn_future_local(async move {
                 match app
                     .backend
-                    .call(&["group", "restore"], Some(previous.to_string()))
+                    // The person had these settings a moment ago; Undo is
+                    // the confirmation.
+                    .call(&["group", "restore", "--yes"], Some(previous.to_string()))
                     .await
                 {
                     Ok(_) => app.toast(&tr("Change undone")),

@@ -33,6 +33,33 @@ impl Sam {
         Ok(e)
     }
 
+    /// The app's settings with `change` applied to what it has now: only
+    /// what the change changes (audit G-F4: the window wrote back the whole
+    /// set it had loaded, undoing changes made since). A setting changed
+    /// elsewhere meanwhile to another value is refused with the code
+    /// `changed-meanwhile`. Not saved: the caller checks the risk first.
+    pub fn plan_change(
+        &self,
+        query: &str,
+        change: &PermissionChange,
+    ) -> Result<(AppEntry, PermissionSet)> {
+        let e = self.resolve(query)?;
+        match sam_profile::apply_change(&e.profile.permissions, &change.from, &change.to)? {
+            Ok(merged) => Ok((e, merged)),
+            Err(settings) => Err(sam_core::error::CodedError::new(
+                "changed-meanwhile",
+                sam_core::i18n::trf(
+                    "{settings} of {app} changed elsewhere in the meantime. Nothing was changed: look at the settings as they are now and make the change again.",
+                    &[
+                        ("settings", &settings.join(", ")),
+                        ("app", &e.display_name()),
+                    ],
+                ),
+            )
+            .into()),
+        }
+    }
+
     pub fn reset_profile(&self, query: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         e.profile.permissions = e.recommended.clone();
@@ -311,10 +338,20 @@ impl Sam {
         Ok(e)
     }
 
-    /// Restore the profile from before the first repair step.
+    /// Undo every repair step, newest first, each taking back only what it
+    /// changed: a change the person made since stays (audit G-F4: the whole
+    /// profile from before the first step was put back). Older records
+    /// without the steps' own records fall back to that copy.
     pub fn undo_repairs(&self, query: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
-        let Some(backup) = e.repair_backup.take() else {
+        if !e.applied_repairs.is_empty() {
+            for r in e.applied_repairs.clone().iter().rev() {
+                crate::repair::revert_step(&mut e, r)?;
+            }
+            e.repair_backup = None;
+        } else if let Some(backup) = e.repair_backup.take() {
+            e.profile = backup;
+        } else {
             bail!(
                 "{}",
                 sam_core::i18n::trf(
@@ -322,8 +359,7 @@ impl Sam {
                     &[("app", &e.display_name())]
                 )
             )
-        };
-        e.profile = backup;
+        }
         e.repairs_applied.clear();
         e.applied_repairs.clear();
         e.tried_repairs.clear();
@@ -431,6 +467,7 @@ impl Sam {
             applied: !dry_run,
             apps: Vec::new(),
             previous: Default::default(),
+            undo: Default::default(),
         };
         let mut entries = Vec::new();
         for id in ids {
@@ -449,6 +486,13 @@ impl Sam {
                 changed,
             });
             if changed && !dry_run {
+                out.undo.insert(
+                    e.id.clone(),
+                    PermissionChange {
+                        from: new.clone(),
+                        to: e.profile.permissions.clone(),
+                    },
+                );
                 out.previous.insert(
                     e.id.clone(),
                     std::mem::replace(&mut e.profile.permissions, new),
@@ -460,10 +504,31 @@ impl Sam {
         Ok(out)
     }
 
-    /// Puts back the settings a group change returned in `previous`.
-    pub fn group_restore(&self, previous: BTreeMap<String, PermissionSet>) -> Result<usize> {
-        let n = previous.len();
-        for (id, perms) in previous {
+    /// Takes back a group change (its `undo`): only the setting it
+    /// changed, so later changes to the apps stay (audit G-F4: the whole
+    /// sets from before were written back). `confirm` sees what the undo
+    /// adds that is rated Think twice or Dangerous (the one rule for
+    /// asking, which the old whole-set restore passed by). All apps or
+    /// none: a setting changed meanwhile refuses the whole undo.
+    pub fn group_restore(
+        &self,
+        undo: BTreeMap<String, PermissionChange>,
+        confirm: impl FnOnce(&[sam_core::risk::RiskItem]) -> Result<()>,
+    ) -> Result<usize> {
+        let mut planned = Vec::new();
+        let mut added: Vec<sam_core::risk::RiskItem> = Vec::new();
+        for (id, change) in &undo {
+            let (e, merged) = self.plan_change(id, change)?;
+            for i in sam_core::risk::new_risks(&e.profile.permissions, &merged) {
+                if !added.iter().any(|x| x.title == i.title) {
+                    added.push(i);
+                }
+            }
+            planned.push((e.id.clone(), merged));
+        }
+        confirm(&added)?;
+        let n = planned.len();
+        for (id, perms) in planned {
             self.set_permissions(&id, perms)?;
         }
         Ok(n)

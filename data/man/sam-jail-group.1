@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-group 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-group 1 2026-11-19 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-group \- Change permissions of several sandboxed apps at once
 .SH SYNOPSIS
@@ -20,7 +20,7 @@ sam\-jail\-group\-set(1)
 Set one permission to the same value for several apps. Prints the settings from before as "previous", for `group restore`
 .TP
 sam\-jail\-group\-restore(1)
-Put back the settings that `group set` printed as "previous" (JSON on stdin)
+Undo a `group set`: reads the "undo" object it printed (JSON on stdin) and takes back only that change
 .TP
 sam\-jail\-group\-help(1)
 Print this message or the help of the given subcommand(s)

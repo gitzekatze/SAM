@@ -661,11 +661,17 @@ pub fn revert_step(e: &mut AppEntry, r: &sam_core::model::AppliedRepair) -> anyh
         .clone()
         .context(sam_core::i18n::tr("damaged repair record"))?;
     match &step.action {
-        FixAction::Set { .. } => {
+        FixAction::Set { key: set, value } => {
+            // Only a setting that still has the value the step gave it: one
+            // changed since by the person stays as they set it (audit G-F4).
+            let mut by_step = e.profile.permissions.clone();
+            by_step.set_key(set, value)?;
             for (key, old) in &r.before {
-                e.profile
-                    .permissions
-                    .set_key(key, &serde_json::to_string(old)?)?;
+                if e.profile.permissions.get_key(key)? == by_step.get_key(key)? {
+                    e.profile
+                        .permissions
+                        .set_key(key, &serde_json::to_string(old)?)?;
+                }
             }
         }
         FixAction::Add { key, .. } => {

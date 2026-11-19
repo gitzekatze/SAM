@@ -371,9 +371,14 @@ pub(crate) enum GroupCmd {
         #[arg(long)]
         yes: bool,
     },
-    /// Put back the settings that `group set` printed as "previous"
-    /// (JSON on stdin).
-    Restore,
+    /// Undo a `group set`: reads the "undo" object it printed (JSON on
+    /// stdin) and takes back only that change.
+    Restore {
+        /// Confirm an undo that adds something rated Think twice or
+        /// Dangerous back.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -424,6 +429,18 @@ pub(crate) enum ProfileCmd {
     },
     /// Replace permissions from JSON (a PermissionSet) on stdin.
     Set {
+        app: String,
+        /// Confirm a change that adds something rated Think twice or
+        /// Dangerous.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Change permissions: reads {"from": …, "to": …} (two
+    /// PermissionSets) on stdin and applies only what differs between
+    /// them, so changes made elsewhere in the meantime stay. A setting
+    /// changed elsewhere to another value is refused (code
+    /// changed-meanwhile).
+    Change {
         app: String,
         /// Confirm a change that adds something rated Think twice or
         /// Dangerous.

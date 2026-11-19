@@ -120,15 +120,16 @@ fn group_list_set_and_restore_round_trip() {
         None,
     );
     assert_eq!(set["applied"], true);
-    let previous = set["previous"].clone();
-    assert_eq!(previous.as_object().unwrap().len(), 2);
+    assert_eq!(set["previous"].as_object().unwrap().len(), 2);
+    let undo = set["undo"].clone();
+    assert_eq!(undo.as_object().unwrap().len(), 2);
     let tagged = e.json(&["group", "list"], None);
     assert!(tagged.as_array().unwrap().iter().all(|x| x["tags"]
         .as_array()
         .unwrap()
         .iter()
         .any(|t| t["key"] == "devices.webcam")));
-    let r = e.json(&["group", "restore"], Some(&previous.to_string()));
+    let r = e.json(&["group", "restore"], Some(&undo.to_string()));
     assert_eq!(r["restored"], 2);
     let back = e.json(&["group", "list"], None);
     assert!(back
@@ -148,6 +149,87 @@ fn group_list_set_and_restore_round_trip() {
     assert!(!refused.status.success());
     assert!(err.contains("Full network"), "{err}");
     assert!(err.contains("Can send what it reads"), "{err}");
+}
+
+/// Undo takes back only its own change: a change made to an app since
+/// stays, and a later change to the same setting refuses the whole undo
+/// instead of being overwritten (audit G-F4: the whole sets from before
+/// were written back).
+#[test]
+fn undo_takes_back_only_its_own_change() {
+    let e = Env::new();
+    let a = e.add("One");
+    let b = e.add("Two");
+    let set = e.json(
+        &["group", "set", "devices.webcam", "true", &a, &b, "--yes"],
+        None,
+    );
+    // Afterwards, something else is changed for one app.
+    e.json(&["set", &a, "devices.gamepads", "true"], None);
+    let r = e.json(&["group", "restore"], Some(&set["undo"].to_string()));
+    assert_eq!(r["restored"], 2);
+    let one = e.json(&["get", &a], None);
+    assert_eq!(one["devices"]["webcam"], false, "the change is undone");
+    assert_eq!(one["devices"]["gamepads"], true, "the later change stays");
+
+    // The same setting changed again in between: the undo is refused for
+    // both apps and nothing changes.
+    let set = e.json(&["group", "set", "network.mode", "localhost", &a, &b], None);
+    e.json(&["set", &a, "network.mode", "full", "--yes"], None);
+    let refused = e.run(
+        &["--json", "group", "restore"],
+        Some(&set["undo"].to_string()),
+    );
+    assert!(!refused.status.success());
+    let v: Value = serde_json::from_slice(&refused.stdout).unwrap();
+    assert_eq!(v["code"], "changed-meanwhile", "{v}");
+    assert_eq!(e.json(&["get", &a, "network.mode"], None), "full");
+    assert_eq!(e.json(&["get", &b, "network.mode"], None), "localhost");
+
+    // An undo that adds a risk back asks like any other change, naming it
+    // once for both apps.
+    e.json(&["set", &b, "network.mode", "full", "--yes"], None);
+    let set = e.json(&["group", "set", "network.mode", "none", &a, &b], None);
+    let refused = e.run(&["group", "restore"], Some(&set["undo"].to_string()));
+    assert!(!refused.status.success());
+    let err = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(err.matches("Full network").count(), 1, "{err}");
+    e.json(
+        &["group", "restore", "--yes"],
+        Some(&set["undo"].to_string()),
+    );
+    assert_eq!(e.json(&["get", &a, "network.mode"], None), "full");
+    assert_eq!(e.json(&["get", &b, "network.mode"], None), "full");
+}
+
+/// `profile change` applies only what differs between "from" and "to",
+/// as the window sends it: a change made elsewhere since the window loaded
+/// the settings stays (audit G-F4).
+#[test]
+fn a_change_from_the_window_keeps_changes_made_elsewhere() {
+    let e = Env::new();
+    let a = e.add("One");
+    let loaded = e.json(&["get", &a], None);
+    // Meanwhile, on the command line.
+    e.json(&["set", &a, "devices.gamepads", "true"], None);
+    // The window changes the network on the copy it loaded before.
+    let mut edited = loaded.clone();
+    edited["network"]["mode"] = "localhost".into();
+    let change = serde_json::json!({"from": loaded, "to": edited});
+    e.json(&["profile", "change", &a], Some(&change.to_string()));
+    let now = e.json(&["get", &a], None);
+    assert_eq!(now["network"]["mode"], "localhost");
+    assert_eq!(now["devices"]["gamepads"], true, "the other change stays");
+    // A change that adds a risk asks, as `set` does.
+    let mut cam = now.clone();
+    cam["devices"]["webcam"] = true.into();
+    let change = serde_json::json!({"from": now, "to": cam});
+    let refused = e.run(
+        &["--json", "profile", "change", &a],
+        Some(&change.to_string()),
+    );
+    let v: Value = serde_json::from_slice(&refused.stdout).unwrap();
+    assert_eq!(v["code"], "change-needs-yes", "{v}");
 }
 
 /// A group change with an invalid value, an unknown key or no app is refused, and no app changes.

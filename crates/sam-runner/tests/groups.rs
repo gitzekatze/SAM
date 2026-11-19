@@ -98,7 +98,12 @@ fn only_changed_apps_are_saved_and_one_undo_restores_all_of_them() {
             "only apps whose value changed can be undone"
         );
     }
-    let n = sam.group_restore(r.previous.clone()).unwrap();
+    assert_eq!(
+        r.undo.len(),
+        r.previous.len(),
+        "an undo for each changed app"
+    );
+    let n = sam.group_restore(r.undo.clone(), |_| Ok(())).unwrap();
     assert_eq!(n, r.previous.len());
     for id in &ids {
         assert_eq!(

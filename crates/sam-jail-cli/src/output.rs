@@ -176,59 +176,15 @@ pub(crate) fn print_info(
             .unwrap_or_else(|| "never".into())
     );
 
-    let p = &e.profile.permissions;
     println!("\n{}", paint("Permissions", "1"));
-    let fs = &p.filesystem;
-    let mut dirs: Vec<String> = XDG_DIR_KEYS
-        .iter()
-        .filter(|k| fs.xdg_access(k).is_granted())
-        .map(|k| format!("{k} ({})", fs.xdg_access(k).as_str()))
-        .collect();
-    dirs.extend(fs.custom_read.iter().map(|c| format!("{c} (ro)")));
-    dirs.extend(fs.custom_write.iter().map(|c| format!("{c} (rw)")));
-    println!(
-        "  filesystem:  {}",
-        if fs.home {
-            format!("FULL HOME ({})", fs.home_access.as_str())
-        } else if dirs.is_empty() {
-            sam_core::i18n::tr("private home only")
-        } else {
-            dirs.join(", ")
+    let mut category = "";
+    for (cat, title, value) in permission_lines(&e.profile.permissions) {
+        if cat != category {
+            println!("  {}", paint(&sam_core::i18n::tr(cat), "1"));
+            category = cat;
         }
-    );
-    println!("  network:     {}", p.network.mode.as_str());
-    println!(
-        "  display:     wayland={} x11={}",
-        p.display.wayland, p.display.x11
-    );
-    println!(
-        "  audio:       {}{}{}{}",
-        p.audio.enabled,
-        if p.audio.direct {
-            " + without SAM's relay"
-        } else {
-            ""
-        },
-        if p.audio.pipewire {
-            " + direct PipeWire"
-        } else {
-            ""
-        },
-        if p.audio.alsa_raw { " + raw ALSA" } else { "" }
-    );
-    println!(
-        "  devices:     gpu={} webcam={} gamepads={} input={} usb={}",
-        p.devices.gpu, p.devices.webcam, p.devices.gamepads, p.devices.input, p.devices.usb
-    );
-    println!(
-        "  desktop:     input_method={} keyring={} media_controls={} screen_sharing={} file_manager={}",
-        p.integrations.input_method, p.integrations.keyring, p.integrations.media_controls, p.integrations.screen_sharing, p.integrations.file_manager
-    );
-    println!(
-        "  d-bus:       session={} system={}",
-        p.dbus.session.mode.as_str(),
-        p.dbus.system.mode.as_str()
-    );
+        println!("    {title:<40} {value}");
+    }
     if let Some(d) = &e.detection {
         println!("\n{}", paint("Dependencies", "1"));
         print_detection(d);
@@ -243,6 +199,53 @@ pub(crate) fn print_info(
         println!("\n{}", paint("Warnings", "1"));
         print_warnings(warnings);
     }
+}
+
+/// Every permission of the catalogue with its value, in the catalogue's
+/// order: the one list of permissions, so `info` leaves nothing out (audit
+/// G-F14: it left out Bluetooth, the SSH agent, the key folders, bus names,
+/// variables and all advanced settings).
+pub(crate) fn permission_lines(
+    p: &sam_core::permissions::PermissionSet,
+) -> Vec<(&'static str, String, String)> {
+    use serde_json::Value;
+    fn show(v: &Value) -> String {
+        match v {
+            Value::Bool(true) => "on".into(),
+            Value::Bool(false) => "off".into(),
+            // Unset: the global setting decides (Landlock).
+            Value::Null => "global setting".into(),
+            Value::String(s) => s.clone(),
+            Value::Array(a) if a.is_empty() => "–".into(),
+            Value::Array(a) => a.iter().map(show).collect::<Vec<_>>().join(", "),
+            Value::Object(m) if m.is_empty() => "–".into(),
+            Value::Object(m) => m
+                .iter()
+                .map(|(k, v)| format!("{k}={}", show(v)))
+                .collect::<Vec<_>>()
+                .join(", "),
+            other => other.to_string(),
+        }
+    }
+    let mut catalog = sam_core::permissions::permission_catalog();
+    // One heading per group, in the order the groups first appear.
+    let order: Vec<&str> = catalog.iter().fold(Vec::new(), |mut o, i| {
+        if !o.contains(&i.category) {
+            o.push(i.category);
+        }
+        o
+    });
+    catalog.sort_by_key(|i| order.iter().position(|c| *c == i.category));
+    catalog
+        .into_iter()
+        .map(|i| {
+            let value = p
+                .get_key(i.key)
+                .map(|v| sam_core::util::display_safe(&show(&v), 200))
+                .unwrap_or_else(|_| "?".into());
+            (i.category, i.title, value)
+        })
+        .collect()
 }
 
 pub(crate) fn print_detection(d: &DependencyReport) {
@@ -293,5 +296,53 @@ pub(crate) fn risk_line(r: &sam_core::risk::RiskAssessment) -> String {
         risk_str(r.level)
     } else {
         format!("{} ({})", risk_str(r.level), names.join(", "))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `info` shows every permission of the catalogue with its value, also
+    /// the ones it left out before (audit G-F14).
+    #[test]
+    fn info_shows_every_permission_with_its_value() {
+        let mut p = sam_core::permissions::PermissionSet::strict_gui();
+        p.devices.bluetooth = true;
+        p.sockets.ssh_agent = true;
+        p.environment.passthrough = vec!["LANG".into()];
+        p.advanced.seccomp_baseline = false;
+        let lines = permission_lines(&p);
+        assert_eq!(
+            lines.len(),
+            sam_core::permissions::permission_catalog().len()
+        );
+        let value = |title: &str| {
+            lines
+                .iter()
+                .find(|(_, t, _)| t == title)
+                .map(|(_, _, v)| v.clone())
+                .unwrap_or_else(|| panic!("{title} is missing"))
+        };
+        assert_eq!(value("Bluetooth"), "on");
+        assert_eq!(value("SSH agent"), "on");
+        assert_eq!(value("Passed-through variables"), "LANG");
+        assert_eq!(value("Baseline syscall filter"), "off");
+        assert_eq!(value("Webcam"), "off");
+        assert_eq!(
+            value("Single functions of services"),
+            "–",
+            "left out while empty"
+        );
+        assert_eq!(value("Landlock enforcement"), "global setting");
+        assert_eq!(value("Environment variables"), "–", "none set");
+        // Each group once, all its permissions together.
+        let mut seen: Vec<&str> = Vec::new();
+        for (cat, _, _) in &lines {
+            if seen.last() != Some(cat) {
+                assert!(!seen.contains(cat), "{cat} appears twice");
+                seen.push(cat);
+            }
+        }
     }
 }

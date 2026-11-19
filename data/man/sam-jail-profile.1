@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-profile 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-profile 1 2026-11-19 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-profile \- Read or replace the full profile (JSON on stdin for `set`)
 .SH SYNOPSIS
@@ -17,6 +17,9 @@ sam\-jail\-profile\-get(1)
 .TP
 sam\-jail\-profile\-set(1)
 Replace permissions from JSON (a PermissionSet) on stdin
+.TP
+sam\-jail\-profile\-change(1)
+Change permissions: reads {"from": …, "to": …} (two PermissionSets) on stdin and applies only what differs between them, so changes made elsewhere in the meantime stay. A setting changed elsewhere to another value is refused (code changed\-meanwhile)
 .TP
 sam\-jail\-profile\-reset(1)
 Reset to the recommended profile

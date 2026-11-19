@@ -186,15 +186,6 @@ impl Editor {
             .unwrap_or(Value::Null)
     }
     fn info(&self, key: &str) -> Info {
-        if key == "environment.set" {
-            return Info {
-                title: crate::i18n::tr("Environment variables"),
-                description: crate::i18n::tr(
-                    "Variables set inside the sandbox, as NAME=value, for example QT_SCALE_FACTOR=1.5. They override variables passed through.",
-                ),
-                risk: "medium".into(),
-            };
-        }
         self.catalog.get(key).cloned().unwrap_or(Info {
             title: key.into(),
             ..Default::default()
@@ -859,6 +850,13 @@ impl Editor {
             false,
             Always,
         );
+        self.list(
+            &g,
+            "advanced.system_libraries",
+            &crate::i18n::tr("Library file name, e.g. libstdc++.so.6"),
+            false,
+            Always,
+        );
 
         // The security engine's extra layers, apart from the other expert
         // settings and with an explanation: turning one off weakens the
@@ -1268,4 +1266,21 @@ impl Editor {
 fn set_usable(row: &gtk::Widget, on: bool) {
     row.set_sensitive(on);
     row.set_can_focus(on);
+}
+
+#[cfg(test)]
+mod tests {
+    /// The editor (the app's page and the Permission Manager for one app)
+    /// shows every permission in the catalogue, the one list of permissions
+    /// (audit G-F14: the lists drifted; a setting was missing here).
+    #[test]
+    fn the_editor_shows_every_permission() {
+        let src = include_str!("perms.rs");
+        let missing: Vec<&str> = sam_core::permissions::permission_catalog()
+            .iter()
+            .map(|i| i.key)
+            .filter(|k| !src.contains(&format!("\"{k}\"")))
+            .collect();
+        assert!(missing.is_empty(), "not in the editor: {missing:?}");
+    }
 }

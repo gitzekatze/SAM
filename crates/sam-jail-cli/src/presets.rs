@@ -23,6 +23,9 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
         }
         PresetCmd::Apply { name, app: q, yes } => {
             let r = app.apply_preset(&q, &name, yes)?;
+            if !r.applied {
+                crate::exit_with(crate::EXIT_NOT_PASSED);
+            }
             out.emit(&r, || {
                 let c = &r.check;
                 for s in &c.removes_needed {
@@ -258,11 +261,11 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
                 }
             });
         }
-        GroupCmd::Restore => {
-            let previous = serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr(
-                "expected the \"previous\" object of `group set` as JSON on stdin",
+        GroupCmd::Restore { yes } => {
+            let undo = serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr(
+                "expected the \"undo\" object of `group set` as JSON on stdin",
             ))?;
-            let n = app.group_restore(previous)?;
+            let n = app.group_restore(undo, |added| crate::confirm_risks(added, yes))?;
             out.emit(&json!({"restored": n}), || {
                 println!(
                     "{}",
