@@ -72,23 +72,39 @@ fn split_list(v: Option<&String>) -> Vec<String> {
     .unwrap_or_default()
 }
 
-/// Locate the desktop file: AppDir root first, then usr/share/applications.
+/// Which desktop file of an app counts, by its paths inside the app:
+/// the top folder first, then `usr/share/applications`, each sorted by
+/// name, and the first that `resolves` to a file. The preview (from the
+/// AppImage) and the unpacked app use this one rule, so the preview never
+/// shows one desktop file while the unpack applies another (audit I-F8).
+pub fn choose_desktop_file(
+    paths: impl IntoIterator<Item = PathBuf>,
+    resolves: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let dirs = [Path::new(""), Path::new("usr/share/applications")];
+    let mut c: Vec<(usize, PathBuf)> = paths
+        .into_iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "desktop"))
+        .filter_map(|p| {
+            let d = dirs.iter().position(|d| p.parent() == Some(*d))?;
+            Some((d, p))
+        })
+        .collect();
+    c.sort();
+    c.into_iter().map(|(_, p)| p).find(|p| resolves(p))
+}
+
+/// Locate the desktop file of an unpacked app ([`choose_desktop_file`]).
 pub fn find_desktop_file(appdir: &Path) -> Option<PathBuf> {
-    let mut candidates = Vec::new();
+    let mut names = Vec::new();
     for dir in [Path::new(""), Path::new("usr/share/applications")] {
         if let Ok(rd) = fs::read_dir(appdir.join(dir)) {
-            let mut v: Vec<PathBuf> = rd
-                .flatten()
-                .map(|e| dir.join(e.file_name()))
-                .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("desktop"))
-                .collect();
-            v.sort();
-            candidates.extend(v);
+            names.extend(rd.flatten().map(|e| dir.join(e.file_name())));
         }
     }
-    candidates
-        .into_iter()
-        .find(|rel| safe_resolve(appdir, rel).is_some_and(|p| p.is_file()))
+    choose_desktop_file(names, |rel| {
+        safe_resolve(appdir, rel).is_some_and(|p| p.is_file())
+    })
 }
 
 pub fn read_metadata(appdir: &Path) -> Result<AppImageMetadata> {
@@ -152,36 +168,7 @@ pub fn metadata_from_desktop(text: &str, rel: &str) -> AppImageMetadata {
     md
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IconFormat {
-    Png,
-    Svg,
-    Xpm,
-}
-
-impl IconFormat {
-    pub fn ext(self) -> &'static str {
-        match self {
-            IconFormat::Png => "png",
-            IconFormat::Svg => "svg",
-            IconFormat::Xpm => "xpm",
-        }
-    }
-}
-
-pub fn sniff_icon(data: &[u8]) -> Option<IconFormat> {
-    if data.starts_with(b"\x89PNG\r\n\x1a\n") {
-        return Some(IconFormat::Png);
-    }
-    let head = String::from_utf8_lossy(&data[..data.len().min(2048)]).to_lowercase();
-    if head.contains("<svg") {
-        return Some(IconFormat::Svg);
-    }
-    if head.contains("/* xpm */") {
-        return Some(IconFormat::Xpm);
-    }
-    None
-}
+pub use sam_core::icon::{safe_icon, sniff_icon, IconFormat, MAX_ICON_BYTES};
 
 /// Where an AppDir may keep the icon named in its desktop file, best first.
 pub fn icon_candidates(icon_name: &str) -> Vec<PathBuf> {
@@ -220,11 +207,11 @@ pub fn find_icon(appdir: &Path, icon_name: &str) -> Option<(PathBuf, IconFormat)
             continue;
         };
         let Ok(meta) = fs::metadata(&p) else { continue };
-        if !meta.is_file() || meta.len() == 0 || meta.len() > 10 * 1024 * 1024 {
+        if !meta.is_file() || meta.len() == 0 || meta.len() > MAX_ICON_BYTES as u64 {
             continue;
         }
         let Ok(data) = fs::read(&p) else { continue };
-        if let Some(fmt) = sniff_icon(&data) {
+        if let Some(fmt) = safe_icon(&data) {
             return Some((p, fmt));
         }
     }
@@ -259,6 +246,35 @@ pub fn cache_icon(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The preview and the unpacked app take the same desktop file: the
+    /// top folder before `usr/share/applications`, each by name, and the
+    /// first that leads to a file (audit I-F8: the preview gave up at a
+    /// broken first one, the unpack took the next).
+    #[test]
+    fn preview_and_unpack_take_the_same_desktop_file() {
+        let p = |s: &str| PathBuf::from(s);
+        let names = vec![
+            p("usr/share/applications/a.desktop"),
+            p("z.desktop"),
+            p("b.desktop"),
+            p("deep/c.desktop"),
+            p("AppRun"),
+        ];
+        assert_eq!(
+            choose_desktop_file(names.clone(), |_| true),
+            Some(p("b.desktop"))
+        );
+        assert_eq!(
+            choose_desktop_file(names.clone(), |r| r != Path::new("b.desktop")),
+            Some(p("z.desktop"))
+        );
+        assert_eq!(
+            choose_desktop_file(names.clone(), |r| r.starts_with("usr")),
+            Some(p("usr/share/applications/a.desktop"))
+        );
+        assert_eq!(choose_desktop_file(names, |r| r.starts_with("deep")), None);
+    }
 
     /// The desktop file inside an AppImage is read with name, translations, categories and file types.
     #[test]

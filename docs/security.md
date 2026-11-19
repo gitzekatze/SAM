@@ -641,6 +641,20 @@ through. SAM itself writes those files without following links.
 Running the AppImage's own `--appimage-extract` is a fallback that needs your
 consent, and also runs in a sandbox.
 
+**Before you agree to anything.** The overview shows the name and icon of
+every AppImage in the folders SAM searches, so it reads them before anyone
+chose to trust them. That reading happens in the same kind of sandbox,
+with at most 15 seconds and 1 GiB of memory: an image crafted to make the
+reader hang, run out of memory or crash ends only that sandbox
+(`a_reader_gone_wrong_comes_to_nothing`,
+`the_overview_reads_names_inside_a_sandbox`). Where no sandbox can be
+built, SAM shows only the file name. Icons are taken only as PNG of at most
+1024×1024 pixels (read from the header, before anything decodes them) or
+small SVG, at most 1 MiB; XPM is not taken. The window checks this again
+before it shows an icon (`only_icons_that_are_safe_to_decode_are_taken`).
+The preview and the unpacked app use the same desktop file
+(`preview_and_unpack_take_the_same_desktop_file`).
+
 ---
 
 ## Risk levels

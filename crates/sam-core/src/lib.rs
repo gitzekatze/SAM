@@ -9,6 +9,7 @@ pub mod error;
 pub mod format;
 pub mod host;
 pub mod i18n;
+pub mod icon;
 pub mod model;
 pub mod paths;
 pub mod permissions;

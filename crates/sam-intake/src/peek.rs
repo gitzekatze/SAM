@@ -16,10 +16,16 @@ use sam_core::model::AppImageMetadata;
 use sam_core::AppImageType;
 use sam_detect::appimage::inspect;
 
-use crate::metadata::{icon_candidates, metadata_from_desktop, sniff_icon, IconFormat};
+use crate::metadata::{
+    choose_desktop_file, icon_candidates, metadata_from_desktop, safe_icon, IconFormat,
+    MAX_ICON_BYTES,
+};
 
 const MAX_DESKTOP: u64 = 256 * 1024;
-const MAX_ICON: u64 = 10 * 1024 * 1024;
+/// How long reading one AppImage's name and icon may take in its sandbox.
+const PEEK_SECONDS: u64 = 15;
+/// How much memory the sandbox that reads it may use.
+const PEEK_MEMORY: u64 = 1024 * 1024 * 1024;
 
 pub struct Peek {
     pub metadata: AppImageMetadata,
@@ -102,15 +108,10 @@ fn peek_unguarded(path: &Path) -> Result<Peek> {
         (buf.len() as u64 <= max).then_some(buf)
     };
 
-    let mut desktops: Vec<&PathBuf> = index
-        .keys()
-        .filter(|p| p.components().count() == 1 && p.extension().is_some_and(|e| e == "desktop"))
-        .collect();
-    desktops.sort();
-    let metadata = desktops
-        .first()
-        .and_then(|rel| Some((rel, resolve(rel)?)))
-        .and_then(|(rel, i)| {
+    // The same desktop file the unpacked app will use (audit I-F8).
+    let metadata = choose_desktop_file(index.keys().cloned(), |rel| resolve(rel).is_some())
+        .and_then(|rel| Some((resolve(&rel)?, rel)))
+        .and_then(|(i, rel)| {
             Some(metadata_from_desktop(
                 &String::from_utf8_lossy(&read(i, MAX_DESKTOP)?),
                 &rel.display().to_string(),
@@ -121,9 +122,111 @@ fn peek_unguarded(path: &Path) -> Result<Peek> {
     let icon = icon_candidates(&metadata.icon_name)
         .iter()
         .filter_map(|rel| resolve(rel))
-        .filter_map(|i| read(i, MAX_ICON))
-        .find_map(|data| sniff_icon(&data).map(|fmt| (data, fmt)));
+        .filter_map(|i| read(i, MAX_ICON_BYTES as u64))
+        .find_map(|data| safe_icon(&data).map(|fmt| (data, fmt)));
     Ok(Peek { metadata, icon })
+}
+
+/// What the sandboxed reader hands back, next to the icon file.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PeekFile {
+    metadata: AppImageMetadata,
+    icon: Option<String>,
+}
+
+/// Entry point of `sam-jail dev peek FILE OUT` (runs inside the sandbox):
+/// reads `file` and writes `peek.json` and the icon into `out`.
+pub fn peek_entry(file: &Path, out: &Path) -> Result<()> {
+    let p = peek(file)?;
+    let icon = p.icon.map(|(data, fmt)| {
+        let _ = std::fs::write(out.join("icon"), data);
+        fmt.ext().to_string()
+    });
+    std::fs::write(
+        out.join("peek.json"),
+        serde_json::to_vec(&PeekFile {
+            metadata: p.metadata,
+            icon,
+        })?,
+    )?;
+    Ok(())
+}
+
+/// Reads an AppImage's name and icon like [`peek`], but inside the sandbox
+/// SAM unpacks in: no network, nothing of the home, the baseline syscall
+/// filter, at most [`PEEK_SECONDS`] and [`PEEK_MEMORY`]. The overview reads
+/// every AppImage in the scanned folders before anyone agreed to anything;
+/// a crafted image that makes the reader run out of memory, hang or crash
+/// then ends only that sandbox, not SAM (audit I-F7). What comes back is
+/// checked again here.
+pub fn peek_isolated(iso: &crate::extract::Isolation, file: &Path) -> Result<Peek> {
+    use std::os::unix::process::CommandExt;
+    let out = scratch_dir()?;
+    let result = (|| {
+        let mut c = crate::extract::isolated(iso, file, &out, &iso.self_exe)?;
+        c.arg(&iso.self_exe)
+            .args(["dev", "peek"])
+            .arg(file)
+            .arg(&out)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        // SAFETY: runs between fork and exec and calls only setrlimit, which
+        // is async-signal-safe.
+        unsafe {
+            c.pre_exec(|| {
+                let lim = libc::rlimit {
+                    rlim_cur: PEEK_MEMORY,
+                    rlim_max: PEEK_MEMORY,
+                };
+                if libc::setrlimit(libc::RLIMIT_AS, &lim) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let limits = crate::normalize::Limits {
+            max_seconds: PEEK_SECONDS,
+            ..Default::default()
+        };
+        let st = crate::extract::wait_with_timeout(c.spawn()?, &limits, std::time::Instant::now())?;
+        if !st.success() {
+            return Err(anyhow!(
+                "{}",
+                sam_core::i18n::tr("SAM could not read the AppImage's name and icon")
+            ));
+        }
+        let reply: PeekFile = serde_json::from_slice(&sam_core::util::read_regular(
+            &out.join("peek.json"),
+            64 * 1024,
+        )?)?;
+        let icon = reply
+            .icon
+            .and_then(|_| {
+                sam_core::util::read_regular(&out.join("icon"), MAX_ICON_BYTES as u64).ok()
+            })
+            .and_then(|data| safe_icon(&data).map(|fmt| (data, fmt)));
+        Ok(Peek {
+            metadata: reply.metadata,
+            icon,
+        })
+    })();
+    let _ = std::fs::remove_dir_all(&out);
+    result
+}
+
+/// A new, empty folder of SAM's own for one read.
+fn scratch_dir() -> Result<PathBuf> {
+    use std::os::unix::fs::DirBuilderExt;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let d = std::env::temp_dir().join(format!(
+        "sam-peek-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::DirBuilder::new().mode(0o700).create(&d)?;
+    Ok(d)
 }
 
 fn relative(p: &Path) -> Option<PathBuf> {

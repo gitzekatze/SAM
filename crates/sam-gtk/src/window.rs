@@ -1797,20 +1797,32 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
 
 /// True for an AppImage: an ELF program carrying the AppImage marker
 /// ("AI" and type 1 or 2 at offset 8), whatever its file name.
+/// Whether `p` is an AppImage, by its first bytes. Only a regular file is
+/// opened, without waiting: a dropped named pipe would otherwise block the
+/// window until something writes to it (audit G-F16).
 pub fn is_appimage(p: &std::path::Path) -> bool {
-    use std::io::Read;
-    let mut head = [0u8; 11];
-    std::fs::File::open(p)
-        .and_then(|mut f| f.read_exact(&mut head))
-        .is_ok()
+    let head = sam_core::util::read_regular(p, 11).unwrap_or_default();
+    head.len() == 11
         && head[..4] == *b"\x7fELF"
         && head[8..10] == *b"AI"
         && (head[10] == 1 || head[10] == 2)
 }
 
+/// Whether the icon file at `path` passes SAM's check before GTK decodes
+/// it: icons cached by older versions of SAM were never checked (audit
+/// G-F8).
+pub fn icon_may_be_shown(path: &str) -> bool {
+    !path.is_empty()
+        && sam_core::util::read_regular(
+            std::path::Path::new(path),
+            sam_core::icon::MAX_ICON_BYTES as u64 + 1,
+        )
+        .is_ok_and(|data| sam_core::icon::safe_icon(&data).is_some())
+}
+
 /// An app icon from SAM's icon cache, or a generic one.
 pub fn app_icon(path: &str, size: i32) -> gtk::Image {
-    let img = if !path.is_empty() && std::path::Path::new(path).is_file() {
+    let img = if icon_may_be_shown(path) {
         gtk::Image::from_file(path)
     } else {
         gtk::Image::from_icon_name("application-x-executable")
@@ -1868,6 +1880,36 @@ fn watched_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// A named pipe dropped on the window is no AppImage, and checking it
+    /// does not block the window until something writes to it (audit
+    /// G-F16). An icon whose header announces a huge picture is not handed
+    /// to GTK (G-F8).
+    #[test]
+    fn dropped_pipes_and_icon_bombs_never_reach_gtk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fifo = tmp.path().join("pipe");
+        let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        // SAFETY: `c` is a valid path; mkfifo only reads it.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let f = fifo.clone();
+        std::thread::spawn(move || tx.send(super::is_appimage(&f)).ok());
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(5)),
+            Ok(false),
+            "the check blocked on a named pipe"
+        );
+        let bomb = tmp.path().join("bomb.png");
+        let mut d = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        d.extend([0, 0, 255, 255, 0, 0, 255, 255, 8, 6, 0, 0, 0]);
+        std::fs::write(&bomb, &d).unwrap();
+        assert!(!super::icon_may_be_shown(bomb.to_str().unwrap()));
+        let ok = tmp.path().join("ok.svg");
+        std::fs::write(&ok, "<svg xmlns='http://www.w3.org/2000/svg'/>").unwrap();
+        assert!(super::icon_may_be_shown(ok.to_str().unwrap()));
+        assert!(!super::icon_may_be_shown(fifo.to_str().unwrap()));
+    }
+
     /// The folder watcher reacts to AppImages and ignores hidden files and downloads in progress.
     #[test]
     fn the_folder_watcher_ignores_hidden_files_and_unfinished_downloads() {

@@ -133,6 +133,18 @@ impl Sam {
         unpack_isolation(&exe, bwrap, &host)
     }
 
+    /// An AppImage's name and icon, read in the preview sandbox (audit
+    /// I-F7). Where SAM can build no sandbox, nothing is read: the file
+    /// name has to do. Only a program that is not SAM's (a test) reads in
+    /// its own process.
+    pub(crate) fn peek_file(&self, path: &Path) -> Option<peek::Peek> {
+        match self.extract_isolation() {
+            Ok(Some(iso)) => peek::peek_isolated(&iso, path).ok(),
+            Ok(None) => peek::peek(path).ok(),
+            Err(_) => None,
+        }
+    }
+
     // ---------------------------------------------------------- overview
 
     /// Folders the overview searches: configured ones, plus Downloads when
@@ -259,7 +271,7 @@ impl Sam {
             key,
             ..Default::default()
         };
-        if let Ok(pk) = peek::peek(path) {
+        if let Some(pk) = self.peek_file(path) {
             p.name = pk.metadata.name;
             p.comment = pk.metadata.comment;
             p.version = pk.metadata.version;
@@ -287,7 +299,10 @@ impl Sam {
         let path = fs::canonicalize(path).with_context(|| {
             sam_core::i18n::trf("{file} does not exist", &[("file", &path.display())])
         })?;
-        let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
+        let md = self
+            .peek_file(&path)
+            .map(|p| p.metadata)
+            .unwrap_or_default();
         let file_name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())

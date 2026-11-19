@@ -245,3 +245,82 @@ fn empty_or_relative_folder_settings_are_ignored() {
     );
     assert!(home.join(".config/sam").is_dir());
 }
+
+/// The overview reads an AppImage's name inside the preview sandbox, not
+/// in SAM's own process (audit I-F7): a recording stand-in in front of the
+/// real Bubblewrap sees the reader start, and the name still arrives.
+#[test]
+fn the_overview_reads_names_inside_a_sandbox() {
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    for d in ["config", "home", "images", "tools"] {
+        fs::create_dir_all(root.join(d)).unwrap();
+    }
+    let real = sam_core::util::which("bwrap").unwrap();
+    let log = root.join("bwrap.log");
+    let stand_in = root.join("tools/bwrap");
+    fs::write(
+        &stand_in,
+        format!(
+            "#!/bin/sh\necho \"$*\" >> {}\nexec {} \"$@\"\n",
+            log.display(),
+            real.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&stand_in, fs::Permissions::from_mode(0o755)).unwrap();
+    // Its menu name differs from its file name, so only reading it shows it.
+    let img = root.join("images/file-1.0-x86_64.AppImage");
+    let made = sam(
+        root,
+        &[
+            "dev",
+            "make-fixture",
+            "--name",
+            "Shown Name",
+            img.to_str().unwrap(),
+        ],
+    );
+    assert!(made.status.success());
+    let dirs = format!("[\"{}\"]", root.join("images").display());
+    let set = sam(root, &["config", "set", "general.scan_directories", &dirs]);
+    assert!(
+        set.status.success(),
+        "{}",
+        String::from_utf8_lossy(&set.stderr)
+    );
+
+    let mut c = Command::new(env!("CARGO_BIN_EXE_sam-jail"));
+    c.args(["--json", "discover"])
+        .env("SAM_CONFIG_DIR", root.join("config"))
+        .env("SAM_DATA_DIR", root.join("data"))
+        .env("SAM_APPLICATIONS_DIR", root.join("applications"))
+        .env("HOME", root.join("home"))
+        .env(
+            "PATH",
+            format!("{}:/usr/bin:/bin", root.join("tools").display()),
+        )
+        .env("SAM_TRUST_TOOLS_IN", root.join("tools"))
+        .env("LC_ALL", "C")
+        .stdin(Stdio::null());
+    sam_runner::testenv::isolate_command(&mut c, &root.join("sam"));
+    let o = c.output().unwrap();
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.contains("Shown Name"),
+        "{out}\n{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let seen = fs::read_to_string(&log).unwrap_or_default();
+    assert!(
+        seen.lines()
+            .any(|l| l.contains("dev peek") && l.contains("file-1.0")),
+        "the name was not read in the sandbox: {seen}"
+    );
+}

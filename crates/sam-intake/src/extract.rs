@@ -89,7 +89,12 @@ fn with_filter(c: &mut Command, filter: &[u8]) -> Result<()> {
 /// `bwrap … --` prefix for running an extractor on untrusted input.
 /// `tool` is the program that will run; one installed outside `/usr` (for
 /// example in `~/.local/bin`) is added read-only so it exists inside.
-fn isolated(iso: &Isolation, source: &Path, writable: &Path, tool: &Path) -> Result<Command> {
+pub(crate) fn isolated(
+    iso: &Isolation,
+    source: &Path,
+    writable: &Path,
+    tool: &Path,
+) -> Result<Command> {
     let mut c = Command::new(&iso.bwrap);
     c.args([
         "--die-with-parent",
@@ -674,7 +679,7 @@ fn builtin_squashfs(
     Ok(())
 }
 
-fn wait_with_timeout(
+pub(crate) fn wait_with_timeout(
     mut child: std::process::Child,
     limits: &Limits,
     started: Instant,
