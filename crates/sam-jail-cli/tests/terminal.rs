@@ -356,7 +356,7 @@ fn what_sam_prints_about_an_app_cannot_reach_past_the_terminal() {
     assert!(info.contains("Evil"), "info names the file: {info:?}");
     let (st, run) = step(&["run", &id]);
     assert!(!st.success(), "the app fails: {run:?}");
-    let (_, logs) = step(&["logs", &id]);
+    let (_, logs) = step(&["logs", &id, "--kind", "launch"]);
     assert!(
         logs.contains("bwrap: "),
         "the log holds the app's line: {logs:?}"
