@@ -80,6 +80,8 @@ fn a_start_without_the_helper_reports_its_missing_layers() {
         .as_str()
         .unwrap()
         .to_string();
+    // Settings nobody has confirmed do not start (audit U-M11).
+    assert!(sam(&["review", &id]).status.success());
     let run = sam(&["run", &id]);
     let err = String::from_utf8_lossy(&run.stderr);
     assert!(

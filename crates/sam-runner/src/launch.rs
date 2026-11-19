@@ -122,6 +122,27 @@ impl Prepared {
     }
 }
 
+/// The protection layers SAM's helper applies for this start: Landlock
+/// where the app's switch (or the global default) wants it and the kernel
+/// has it; the syscall filter where the baseline is on in both the
+/// configuration and the app, or the app's own strict switch is on. The
+/// strict switch decides by itself (audit D-M13: it did nothing unless a
+/// second, global setting was on).
+fn wanted_layers(
+    perms: &sam_core::permissions::PermissionSet,
+    cfg: &Config,
+    host: &sam_core::host::HostInfo,
+) -> (bool, bool) {
+    let landlock = perms
+        .advanced
+        .landlock
+        .unwrap_or(cfg.security.experimental_landlock)
+        && host.landlock_abi.is_some();
+    let seccomp = (cfg.security.baseline_seccomp && perms.advanced.seccomp_baseline)
+        || perms.advanced.seccomp_strict;
+    (landlock, seccomp)
+}
+
 /// Environment checks before launching. Returns blocking errors
 /// and non-blocking warnings.
 pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
@@ -130,6 +151,16 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
     if app.changed_outside {
         errors.push(sam_core::i18n::trf(
             "The settings of {app} were changed outside SAM (by a script, another program or a damaged file). SAM does not start the app until you have looked at them: open the app in SAM and confirm its settings, or run `sam-jail review {id}`.",
+            &[("app", &sam_core::util::display_safe(app.display_name(), 80)), ("id", &app.id)],
+        ));
+    }
+    // Settings nobody has looked at yet (added on the command line without
+    // --accept): what the app says about itself chose them (its name and
+    // description decide category and network), so the app does not start
+    // until a person has confirmed them (audit U-M11).
+    if !app.reviewed {
+        errors.push(sam_core::i18n::trf(
+            "The settings of {app} have not been confirmed yet: SAM chose them partly from what the app says about itself. SAM does not start the app until you have looked at them: open the app in SAM and confirm its settings, or run `sam-jail review {id}`.",
             &[("app", &sam_core::util::display_safe(app.display_name(), 80)), ("id", &app.id)],
         ));
     }
@@ -427,21 +458,8 @@ pub fn prepare(
             }
         }
         // Landlock and seccomp are applied by SAM's helper inside the sandbox.
-        let want_landlock = perms
-            .advanced
-            .landlock
-            .unwrap_or(cfg.security.experimental_landlock)
-            && host.landlock_abi.is_some();
-        let strict = perms.advanced.seccomp_strict && cfg.security.experimental_seccomp;
-        if perms.advanced.seccomp_strict && !cfg.security.experimental_seccomp {
-            warnings.push(Warning::info(
-                "seccomp-disabled",
-                "Seccomp strict mode ignored",
-                "Enable experimental seccomp in Settings -> Security to use the strict filter.",
-            ));
-        }
-        let want_seccomp =
-            (cfg.security.baseline_seccomp && perms.advanced.seccomp_baseline) || strict;
+        let (want_landlock, want_seccomp) = wanted_layers(perms, cfg, host);
+        let strict = perms.advanced.seccomp_strict;
         wanted_landlock = want_landlock;
         wanted_seccomp = want_seccomp;
         if want_landlock || want_seccomp || opts.probe.is_some() {
@@ -1866,6 +1884,44 @@ mod tests {
         );
     }
 
+    /// Landlock is wanted only where the app's switch wants it and the
+    /// kernel has it; the app's strict filter switch works by itself,
+    /// without a global setting (audit D-M13).
+    #[test]
+    fn the_wanted_layers_follow_the_apps_switches() {
+        let mut host = sam_core::sandbox::sample_context().host;
+        let mut cfg = Config::default();
+        let mut p = sam_core::permissions::PermissionSet::strict_gui();
+        host.landlock_abi = Some(3);
+        p.advanced.landlock = Some(true);
+        assert!(wanted_layers(&p, &cfg, &host).0, "switch on, kernel has it");
+        p.advanced.landlock = Some(false);
+        assert!(
+            !wanted_layers(&p, &cfg, &host).0,
+            "switched off for this app"
+        );
+        p.advanced.landlock = Some(true);
+        host.landlock_abi = None;
+        assert!(
+            !wanted_layers(&p, &cfg, &host).0,
+            "the kernel has no Landlock"
+        );
+        cfg.security.baseline_seccomp = false;
+        p.advanced.seccomp_strict = false;
+        assert!(!wanted_layers(&p, &cfg, &host).1, "no filter wanted");
+        p.advanced.seccomp_strict = true;
+        assert!(wanted_layers(&p, &cfg, &host).1, "the strict switch alone");
+        p.advanced.seccomp_strict = false;
+        cfg.security.baseline_seccomp = true;
+        p.advanced.seccomp_baseline = true;
+        assert!(wanted_layers(&p, &cfg, &host).1, "the baseline in both");
+        p.advanced.seccomp_baseline = false;
+        assert!(
+            !wanted_layers(&p, &cfg, &host).1,
+            "the baseline off for this app"
+        );
+    }
+
     /// Without Bubblewrap, starting an app stops while it is being prepared,
     /// before any process is started, and the error says what to install.
     #[test]
@@ -1882,6 +1938,8 @@ mod tests {
                 entry: "AppRun".into(),
                 ..Default::default()
             }),
+            // Confirmed settings: only the missing Bubblewrap stops it.
+            reviewed: true,
             ..Default::default()
         };
         let mut host = sam_core::sandbox::sample_context().host;

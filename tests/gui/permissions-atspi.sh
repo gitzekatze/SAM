@@ -2,7 +2,8 @@
 # The Permissions page through the accessibility interface (AT-SPI), in an
 # invisible KWin session: four test apps, three of them selected; the script
 # checks the names of the controls, the warning before an app loses sound it
-# needs, the group change, Undo, and the tag filter. Prints one line per
+# needs, the group change, Undo, the question before a risky permission
+# goes to several apps, and the tag filter. Prints one line per
 # check and "RESULT pass" or "RESULT fail".
 #
 #   tests/gui/permissions-atspi.sh OUTDIR

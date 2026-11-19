@@ -40,6 +40,8 @@ fn start(app: &Sam, root: &std::path::Path, name: &str, apprun: &str) -> (String
         .unwrap()
         .entry
         .id;
+    // Settings nobody has confirmed do not start (audit U-M11).
+    app.mark_reviewed(&id).unwrap();
     let mut cmd = Command::new(sam_runner::find_helper().unwrap());
     cmd.args(["--app-id", &id])
         .env("SAM_CONFIG_DIR", &app.paths.config_dir)

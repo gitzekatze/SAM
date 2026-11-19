@@ -180,7 +180,10 @@ impl AppPage {
                 if me.sandboxed() {
                     if let Err(e) = app
                         .backend
-                        .call(&["profile", "set", &me.app_id], Some(p.to_string()))
+                        .call(
+                            &["profile", "set", &me.app_id, "--yes"],
+                            Some(p.to_string()),
+                        )
                         .await
                     {
                         app.report_error(&e);

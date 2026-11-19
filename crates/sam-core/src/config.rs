@@ -90,6 +90,8 @@ pub struct Security {
     pub warn_x11: bool,
     pub warn_full_home: bool,
     pub experimental_landlock: bool,
+    /// No longer used: each app's own "Strict syscall filter" switch
+    /// decides (audit D-M13). Read from older files and ignored.
     pub experimental_seccomp: bool,
     /// Baseline syscall filter for every Bubblewrap sandbox (like Flatpak's).
     pub baseline_seccomp: bool,

@@ -963,7 +963,16 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         Cmd::Preset { cmd } => preset_cmd(&app, &out, cmd)?,
         Cmd::Group { cmd } => group_cmd(&app, &out, cmd)?,
-        Cmd::Set { app: q, key, value } => {
+        Cmd::Set {
+            app: q,
+            key,
+            value,
+            yes,
+        } => {
+            let cur = app.resolve(&q)?.profile.permissions;
+            let mut new = cur.clone();
+            new.set_key(&key, &value)?;
+            confirm_risks(&sam_core::risk::new_risks(&cur, &new), yes)?;
             let e = app.set_permission(&q, &key, &value)?;
             let v = e.profile.permissions.get_key(&key)?;
             let eval = app.evaluate(&e.profile.permissions, Some(&e), &app.host());
@@ -1006,9 +1015,11 @@ fn real_main(cli: Cli) -> Result<()> {
                     )
                 });
             }
-            ProfileCmd::Set { app: q } => {
+            ProfileCmd::Set { app: q, yes } => {
                 let perms: PermissionSet = serde_json::from_str(&read_stdin()?)
                     .context(tr("expected a PermissionSet as JSON on stdin"))?;
+                let cur = app.resolve(&q)?.profile.permissions;
+                confirm_risks(&sam_core::risk::new_risks(&cur, &perms), yes)?;
                 let e = app.set_permissions(&q, perms)?;
                 out.emit(&AppSummary::from_entry(&e), || {
                     println!(
@@ -1540,6 +1551,27 @@ fn real_main(cli: Cli) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// A change that adds something rated Think twice or Dangerous is made
+/// only with `--yes`, as the window asks before it (audit D-M9, G-F2,
+/// G-F11: `set` applied raw Bubblewrap arguments silently).
+pub(crate) fn confirm_risks(added: &[sam_core::risk::RiskItem], yes: bool) -> anyhow::Result<()> {
+    if added.is_empty() || yes {
+        return Ok(());
+    }
+    let list: Vec<String> = added
+        .iter()
+        .map(|i| format!("{} ({})", i.title, i.level.words()))
+        .collect();
+    Err(sam_core::error::CodedError::new(
+        "change-needs-yes",
+        sam_core::i18n::trf(
+            "This change adds {items}. Look at it, then repeat it with --yes, or make it in SAM's window, which asks.",
+            &[("items", &list.join(", "))],
+        ),
+    )
+    .into())
 }
 
 /// Compatibility mode is turned on only with `--yes`: the whole session bus

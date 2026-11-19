@@ -85,7 +85,19 @@ fn sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply() {
     // Documents is "No access", but a raw Bubblewrap argument mounts it.
     let docs = root.join("home/Documents").display().to_string();
     let leak = serde_json::json!(["--ro-bind", docs, docs]).to_string();
-    let set = sam(root, &["set", &id, "advanced.extra_bwrap_args", &leak]);
+    // Raw arguments are Dangerous: refused without --yes, saying what it
+    // adds (audit D-M9: applied silently).
+    let refused = sam(root, &["set", &id, "advanced.extra_bwrap_args", &leak]);
+    assert!(!refused.status.success());
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("--yes"),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    let set = sam(
+        root,
+        &["set", &id, "advanced.extra_bwrap_args", &leak, "--yes"],
+    );
     assert!(
         set.status.success(),
         "{}",
@@ -96,4 +108,51 @@ fn sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply() {
     assert!(!run.status.success(), "the start stops: {err}");
     assert!(err.contains("sandbox check failed"), "and says why: {err}");
     assert!(err.contains("Documents"), "naming the setting: {err}");
+}
+
+/// An app added on the command line without `--accept` has settings nobody
+/// has confirmed: SAM chose them partly from what the app says about itself
+/// (its name and description pick its category, and with it the network).
+/// `sam-jail run` refuses it until `review` (audit U-M11). The refusal
+/// comes before any sandbox is built, so it needs no Bubblewrap.
+#[test]
+fn an_app_nobody_has_confirmed_does_not_start() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    for d in ["bin", "run", "config", "home"] {
+        fs::create_dir_all(root.join(d)).unwrap();
+    }
+    fs::copy(env!("CARGO_BIN_EXE_sam-jail"), root.join("bin/sam-jail")).unwrap();
+    fs::copy(
+        env!("CARGO_BIN_EXE_sam-jail-run"),
+        root.join("bin/sam-jail-run"),
+    )
+    .unwrap();
+    let img = root.join("Quick-1.0-x86_64.AppImage");
+    let img_s = img.to_str().unwrap();
+    assert!(
+        sam(root, &["dev", "make-fixture", "--name", "Quick", img_s])
+            .status
+            .success()
+    );
+    assert!(sam(root, &["add", img_s, "--no-launcher"]).status.success());
+    let id = json(&sam(root, &["--json", "list"]))["data"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let run = sam(root, &["run", &id]);
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert!(!run.status.success(), "the start stops: {err}");
+    assert!(
+        err.contains("have not been confirmed"),
+        "and says why: {err}"
+    );
+    assert!(err.contains("sam-jail review"), "and what to do: {err}");
+    assert!(sam(root, &["review", &id]).status.success());
+    let again = sam(root, &["run", &id]);
+    let err = String::from_utf8_lossy(&again.stderr);
+    assert!(
+        !err.contains("have not been confirmed"),
+        "confirmed once, it is no longer refused for this: {err}"
+    );
 }

@@ -158,14 +158,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
             CheckStatus::Info
         },
         if host.seccomp {
-            format!(
-                "available; strict mode {}",
-                if cfg.security.experimental_seccomp {
-                    "enabled"
-                } else {
-                    "disabled (experimental)"
-                }
-            )
+            "available; the strict filter is switched on per app".to_string()
         } else {
             "not detected".into()
         },

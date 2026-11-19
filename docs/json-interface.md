@@ -120,11 +120,11 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `add PATH [--permissions-stdin] [--progress] […]` | `{app, entry, relocated, needs_fallback_consent, warnings}` |
 | `remove APP [--keep-data] [--stop]` | `{removed, warnings}` |
 | `stop APP` | `{stopped}` (number of processes) |
-| `run APP [ARGS]` | the launch record |
+| `run APP [ARGS]` | the launch record; an app whose settings nobody has confirmed yet (added without `--accept`) is refused until `review APP` |
 | `command APP` | the generated Bubblewrap command (preview) |
-| `set APP KEY VALUE` | `{key, value, risk, warnings}` |
+| `set APP KEY VALUE [--yes]` | `{key, value, risk, warnings}`; a change that adds anything rated *Think twice* or *Dangerous* is refused with the code `change-needs-yes` unless `--yes` is given |
 | `get APP [KEY]` | the value, or the whole profile |
-| `profile get/set/reset APP` | profile; `set` reads it on stdin |
+| `profile get/set/reset APP` | profile; `set` reads it on stdin and, like `set`, needs `--yes` for a change that adds anything rated *Think twice* or *Dangerous* (code `change-needs-yes`) |
 | `evaluate APP` | risk and warnings for a profile on stdin |
 | `compat APP on --yes / off` | app summary; `on` without `--yes` is refused with the code `compat-needs-yes` (the whole session bus is a way out) |
 | `args APP --stdin` | the launch arguments (JSON array on stdin) |
@@ -145,7 +145,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `info APP` | the app's record; its `last_launch` has `missing_layers` (protection layers the last start lacked, for example `["Landlock"]`) and `moved_aside` (what the app left in places that would run something later, and where SAM moved it); also `repair_effects` (step id → what the step changes and costs) and `compat_changes` (the switches compatibility mode turns on, or turned on) |
 | `repair APP [--apply ID / --next / --undo / --undo-step ID] [--yes]` | `--undo-step` switches off one applied step and keeps the others; a step suggested by what the app printed is refused with the code `repair-needs-yes` unless `--yes` is given |
 | `group list` | every sandboxed app: the app summary plus `permissions`, `tags: [{key, label, family, level, read_only}]`, `running`, `needs_review`, `may_not_start` |
-| `group set KEY VALUE APP… [--dry-run]` | `{key, value, applied, apps: [{id, name, check, running, changed}], previous: {id: permissions}}` |
+| `group set KEY VALUE APP… [--dry-run] [--yes]` | `{key, value, applied, apps: [{id, name, check, running, changed}], previous: {id: permissions}}`; without `--yes` a change that adds anything rated *Think twice* or *Dangerous* to any of the apps is refused with the code `change-needs-yes` (`check.adds_dangerous` of a dry run lists it) |
 | `group restore` | reads `previous` on stdin → `{restored}` |
 | `config show/get/set/put/path` | configuration; `put` reads it on stdin |
 | `permissions` | the catalogue: every key with title, explanation, risk |

@@ -920,7 +920,7 @@ impl PermsPage {
         glib::spawn_future_local(async move {
             if let Err(e) = app
                 .backend
-                .call(&["profile", "set", &id], Some(p.to_string()))
+                .call(&["profile", "set", &id, "--yes"], Some(p.to_string()))
                 .await
             {
                 app.report_error(&e);
@@ -1194,6 +1194,50 @@ impl PermsPage {
                         && !util::list_of(a, "check.removes_needed").is_empty()
                 })
                 .collect();
+            // What the change adds to any of the apps, rated Think twice or
+            // Dangerous: asked first (audit G-F2: the full session bus and
+            // X11 went to many apps at once without the question one app
+            // gets). The dry run reports it per app.
+            let added: BTreeSet<String> = entries
+                .iter()
+                .filter(|a| util::bool_of(a, "changed"))
+                .flat_map(|a| util::list_of(a, "check.adds_dangerous"))
+                .collect();
+            if !added.is_empty() {
+                let n = entries
+                    .iter()
+                    .filter(|a| {
+                        util::bool_of(a, "changed")
+                            && !util::list_of(a, "check.adds_dangerous").is_empty()
+                    })
+                    .count();
+                let d = adw::AlertDialog::new(
+                    Some(&crate::i18n::trn(
+                        "Allow This for {n} App?",
+                        "Allow This for {n} Apps?",
+                        n as u64,
+                        &[],
+                    )),
+                    Some(&format!(
+                        "{}\n{}",
+                        tr("This adds:"),
+                        added
+                            .iter()
+                            .map(|t| format!("• {t}"))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    )),
+                );
+                d.add_response("cancel", &tr("Cancel"));
+                d.add_response("allow", &tr("Allow"));
+                d.set_response_appearance("allow", adw::ResponseAppearance::Destructive);
+                d.set_default_response(Some("cancel"));
+                d.set_close_response("cancel");
+                if d.choose_future(Some(&app.window)).await.as_str() != "allow" {
+                    me.render_side();
+                    return;
+                }
+            }
             let mut chosen = ids.clone();
             if !at_risk.is_empty() {
                 let lines: Vec<String> = at_risk
@@ -1250,6 +1294,8 @@ impl PermsPage {
             }
             let mut args = vec!["group", "set", key, tok];
             args.extend(chosen.iter().map(String::as_str));
+            // Asked above where needed; the command line wants --yes.
+            args.push("--yes");
             match app.backend.call(&args, None).await {
                 Ok(r) => {
                     let previous = r.get("previous").cloned().unwrap_or_default();

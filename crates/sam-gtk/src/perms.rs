@@ -1137,16 +1137,6 @@ impl Editor {
 
     // ------------------------------------------------------------ changes
 
-    fn is_enabling(&self, key: &str, v: &Value) -> bool {
-        let cur = self.value(key);
-        match key {
-            "dbus.session.mode" => *v == json!("full") && cur != json!("full"),
-            "dbus.system.mode" => *v != json!("none") && cur == json!("none"),
-            "filesystem.home_access" => *v == json!("rw") && cur != json!("rw"),
-            _ => *v == json!(true) && cur != json!(true),
-        }
-    }
-
     /// Applies a change, asking first for high-risk grants. A refused or
     /// pending change leaves the controls showing the saved value.
     fn request(self: &Rc<Self>, key: &'static str, v: Value) {
@@ -1217,26 +1207,38 @@ impl Editor {
                 ));
             }
         }
-        let info = self.info(key);
-        if ask.is_none()
-            && self.is_enabling(key, &v)
-            && (info.risk == "dangerous"
-                || key == "dbus.session.mode"
-                || key == "integrations.keyring")
-        {
-            ask = Some((
-                crate::i18n::trf("Grant “{permission}”?", &[("permission", &info.title)]),
-                format!(
-                    "{}\n\n{}",
-                    info.description,
-                    crate::i18n::tr(
-                        "This is a high-risk permission. Only grant it to apps you trust."
-                    )
-                ),
-                crate::i18n::tr("Grant"),
-            ));
-        }
+        let before = p.clone();
         util::set(&mut p, key, v);
+        // The one rule (as the command line and presets): a change that adds
+        // something rated Think twice or Dangerous asks first. Worked out
+        // from the settings themselves, so it asks also when the permission
+        // list did not load (audit G-F11: X11, webcam, the SSH agent, the
+        // filter off and more did not ask).
+        if ask.is_none() {
+            let as_perms = |v: &Value| {
+                serde_json::from_value::<sam_core::permissions::PermissionSet>(v.clone()).ok()
+            };
+            if let (Some(b), Some(a)) = (as_perms(&before), as_perms(&p)) {
+                let added = sam_core::risk::new_risks(&b, &a);
+                if !added.is_empty() {
+                    let info = self.info(key);
+                    let lines: Vec<String> = added
+                        .iter()
+                        .map(|i| format!("• {} ({})", i.title, i.level.words()))
+                        .collect();
+                    ask = Some((
+                        crate::i18n::trf("Grant “{permission}”?", &[("permission", &info.title)]),
+                        format!(
+                            "{}\n\n{}\n{}",
+                            info.description,
+                            crate::i18n::tr("This adds:"),
+                            lines.join("\n")
+                        ),
+                        crate::i18n::tr("Grant"),
+                    ));
+                }
+            }
+        }
         let me = self.clone();
         match ask {
             None => me.emit(p),

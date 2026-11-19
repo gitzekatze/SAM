@@ -712,16 +712,8 @@ pub fn check_change(app: &AppEntry, new: &PermissionSet) -> ChangeCheck {
         }
     }
 
-    let before = assess(cur);
-    for item in assess(new).items {
-        if item.level >= RiskLevel::High
-            && !before
-                .items
-                .iter()
-                .any(|b| b.key == item.key && b.level >= item.level)
-        {
-            c.adds_dangerous.push(item.title);
-        }
+    for item in sam_core::risk::new_risks(cur, new) {
+        c.adds_dangerous.push(item.title);
     }
     c
 }

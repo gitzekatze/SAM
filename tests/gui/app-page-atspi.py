@@ -67,6 +67,25 @@ check("there is no separate Check button", find(app, lambda s: s == "Check", "bu
 check("the test state is shown", wait(lambda: find(app, lambda s: s == "Not tested yet")) is not None)
 check("advice is in one group", find(app, lambda s: s == "Advice") is not None and find(app, lambda s: s == "Worth Checking") is None)
 check("Files This App Saved is visible on the page", find(app, lambda s: s == "Files This App Saved") is not None)
+# A switch rated Think twice asks before it is granted, like every
+# change that adds such a risk (audit G-F2: the webcam, X11 and the SSH
+# agent did not ask); Cancel leaves the app without it.
+def info():
+    out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "info", os.environ["SAM_TEST_APP"]],
+                         capture_output=True, text=True).stdout
+    d = json.loads(out)
+    return d.get("data", d)["entry"]["profile"]["permissions"]
+cam = find(app, lambda s: s == "Webcam", "switch")
+check("the webcam switch is on the page", cam is not None)
+if cam:
+    cam.get_action_iface().do_action(0)
+    grant = wait(lambda: find(app, lambda s: s == "Grant", "button"))
+    check("turning the webcam on asks first", grant is not None and find(app, lambda s: s == "Grant “Webcam”?") is not None)
+    cancel = find(app, lambda s: s == "Cancel", "button")
+    if cancel:
+        cancel.get_action_iface().do_action(0)
+    time.sleep(1.5)
+    check("…and after Cancel the app has no webcam", info()["devices"]["webcam"] is False)
 # Compatibility mode: the switch asks first, and after "Turn On" the app
 # really has it (regression: the window called the command line without
 # --yes, so turning it on failed after the person had confirmed).

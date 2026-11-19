@@ -21,7 +21,7 @@ id=$("$bin/sam-jail" --json add "$out/data-set/apps-folder/Tool.AppImage" --no-l
 "${ATSPI_LAUNCHER:-/usr/lib/at-spi-bus-launcher}" --launch-immediately >/dev/null 2>&1 & launcher=$!
 sleep 1
 "${ATSPI_REGISTRY:-/usr/lib/at-spi2-registryd}" >/dev/null 2>&1 & registry=$!
-"$bin/sam-jail-gui" --screenshot "$out/app-page.png" --size 1180x800 --delay 20000 --page app --app "$id" > "$out/gui.log" 2>&1 & gui=$!
+"$bin/sam-jail-gui" --screenshot "$out/app-page.png" --size 1180x800 --delay 30000 --page app --app "$id" > "$out/gui.log" 2>&1 & gui=$!
 rc=0; SAM_TEST_BIN="$bin" SAM_TEST_APP="$id" python3 -I "$here/tests/gui/app-page-atspi.py" || rc=$?
 wait $gui || true
 kill $registry $launcher 2>/dev/null || true

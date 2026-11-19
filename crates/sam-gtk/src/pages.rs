@@ -228,14 +228,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
         .build();
     switch(&g, "security.experimental_landlock", &crate::i18n::tr("Landlock write protection"), &crate::i18n::tr("Kernel-enforced write restrictions inside the sandbox. Also blocks connections to abstract sockets outside the sandbox (such as XWayland's). Skipped on kernels without Landlock."));
     switch(&g, "security.baseline_seccomp", &crate::i18n::tr("Baseline syscall filter"), &crate::i18n::tr("Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Individual apps can turn it off in their repair steps."));
-    switch(
-        &g,
-        "security.experimental_seccomp",
-        &crate::i18n::tr("Allow strict syscall filters (experimental)"),
-        &crate::i18n::tr(
-            "Lets apps use the strict syscall filter from their Advanced settings. Can break apps.",
-        ),
-    );
+
     pref.add(&g);
 
     let g = adw::PreferencesGroup::builder()

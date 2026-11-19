@@ -82,11 +82,12 @@ fn old_formats_are_migrated_and_kept() {
             .status
             .success()
     );
-    assert!(
-        sam(&e, &["set", "appimage-demo-1234", "network.mode", "full"])
-            .status
-            .success()
-    );
+    assert!(sam(
+        &e,
+        &["set", "appimage-demo-1234", "network.mode", "full", "--yes"]
+    )
+    .status
+    .success());
     let cfg = fs::read_to_string(e.config.join("config.toml")).unwrap();
     assert!(
         cfg.contains("format = 1") && cfg.contains("theme = \"dark\""),

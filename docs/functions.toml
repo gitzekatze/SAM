@@ -88,6 +88,9 @@ code = ["sam-core/src/permissions.rs", "sam-core/src/risk.rs", "sam-core/src/war
 tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "network_and_x11_high", "each_dangerous_setting_produces_its_warning", "strict_has_no_danger", "x11_warning_can_be_disabled", "tags_and_the_risk_list_use_the_same_words", "folder_explanations_name_the_path",
   "risk_has_the_same_three_words_everywhere",
   "the_full_session_bus_is_rated_dangerous",
+  "every_switch_has_one_risk_word",
+  "switching_a_protection_off_counts",
+  "reading_and_sending_together_is_dangerous",
 ]
 
 [[function]]
@@ -95,7 +98,9 @@ id = 8
 area = "B"
 promise = "You can change permissions per app, for several apps at once, or through your own presets."
 code = ["sam-core/src/permissions.rs", "sam-profile/src/lib.rs", "sam-runner/src/ops/profiles.rs", "sam-storage/src/lib.rs"]
-tests = ["set_and_get_keys", "change_check_flags_removals_and_additions", "folders_are_not_breakage_but_lost_local_network_and_bus_are", "lost_sound_is_named_sound", "preset_template_is_strict", "user_changes_survive_better_recommendation", "a_dry_run_changes_nothing_and_names_what_would_stop_working", "only_changed_apps_are_saved_and_one_undo_restores_all_of_them", "an_invalid_value_or_unknown_app_changes_no_app", "sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user", "saving_an_apps_settings_as_a_preset_keeps_them_exactly", "reset_to_recommendation_brings_back_the_recommended_settings", "preset_names_cannot_place_files_outside_the_presets_folder", "a_saved_preset_loads_back_unchanged", "group_list_set_and_restore_round_trip", "group_set_refuses_bad_input_without_changing_anything", "presets_are_the_users_own_only", "each_permission_adds_exactly_its_part_to_the_command"]
+tests = ["set_and_get_keys", "change_check_flags_removals_and_additions", "folders_are_not_breakage_but_lost_local_network_and_bus_are", "lost_sound_is_named_sound", "preset_template_is_strict", "user_changes_survive_better_recommendation", "a_dry_run_changes_nothing_and_names_what_would_stop_working", "only_changed_apps_are_saved_and_one_undo_restores_all_of_them", "an_invalid_value_or_unknown_app_changes_no_app", "sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user", "saving_an_apps_settings_as_a_preset_keeps_them_exactly", "reset_to_recommendation_brings_back_the_recommended_settings", "preset_names_cannot_place_files_outside_the_presets_folder", "a_saved_preset_loads_back_unchanged", "group_list_set_and_restore_round_trip", "group_set_refuses_bad_input_without_changing_anything", "presets_are_the_users_own_only", "each_permission_adds_exactly_its_part_to_the_command",
+  "only_new_or_higher_serious_risks_ask",
+]
 checks = ["tests/gui/permissions-atspi.sh"]
 
 [[function]]
@@ -105,6 +110,7 @@ promise = "Things an app printed can never grant it access on their own; SAM alw
 code = ["sam-runner/src/repair.rs"]
 tests = ["app_output_cannot_buy_dangerous_grants",
   "a_forged_trace_line_cannot_widen_a_low_risk_grant",
+  "an_app_nobody_has_confirmed_does_not_start",
 ]
 
 [[area]]
@@ -197,6 +203,7 @@ promise = "SAM checks from inside the sandbox that every setting applies (the sa
 code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs"]
 tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_each_desktop_service_as_the_filter_shows_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked",
   "sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply",
+  "the_wanted_layers_follow_the_apps_switches",
 ]
 checks = ["tests/real-apps/run.sh"]
 
