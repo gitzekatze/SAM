@@ -282,13 +282,12 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
         libc::SYS_io_uring_enter,
         libc::SYS_io_uring_register,
     ];
+    // On every processor (it sat with the x86-only calls, so ARM did not
+    // block it; found by the review list test on ARM).
+    v.extend(calls![libc::SYS_kexec_file_load]);
+    // Calls only x86-64 has.
     #[cfg(target_arch = "x86_64")]
-    v.extend(calls![
-        libc::SYS_kexec_file_load,
-        libc::SYS_iopl,
-        libc::SYS_ioperm,
-        libc::SYS_uselib,
-    ]);
+    v.extend(calls![libc::SYS_iopl, libc::SYS_ioperm, libc::SYS_uselib]);
     if !allow_userns {
         // Without nested sandboxes nothing inside needs namespaces or mounts.
         v.extend(calls![
@@ -350,8 +349,16 @@ pub fn review_statuses() -> BTreeMap<&'static str, &'static str> {
     }
     out.insert("ioctl", "limited");
     out.insert("socket", "limited");
+    // Calls only x86-64 has: blocked there; elsewhere there is no such
+    // call. The review list, shared by every processor, says "blocked".
+    for n in X86_ONLY {
+        out.entry(n).or_insert("blocked");
+    }
     out
 }
+
+/// Calls only x86-64 has; the filter blocks them there.
+const X86_ONLY: [&str; 3] = ["iopl", "ioperm", "uselib"];
 
 /// Socket families every app may open: local sockets, the internet (the
 /// network namespace decides whether it leads anywhere) and netlink (the
