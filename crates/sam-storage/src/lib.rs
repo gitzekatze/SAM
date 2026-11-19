@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use sam_core::util::{atomic_write, now, slugify};
-use sam_core::{AppEntry, Paths, PermissionSet, Preset};
+use sam_core::{errln, AppEntry, Paths, PermissionSet, Preset};
 use serde::{Deserialize, Serialize};
 
 /// The app registry.
@@ -23,7 +23,7 @@ fn migrate_app(v: serde_json::Value, _from: u32) -> serde_json::Value {
 /// A record that cannot be read: moved aside, reported once.
 fn damaged_record(p: &Path, err: &anyhow::Error) {
     match sam_core::format::quarantine(p) {
-        Some(to) => eprintln!(
+        Some(to) => errln!(
             "sam-jail: {}",
             sam_core::i18n::trf(
                 "the app record {file} could not be read ({error}); it was moved to {moved}",
@@ -34,7 +34,7 @@ fn damaged_record(p: &Path, err: &anyhow::Error) {
                 ]
             )
         ),
-        None => eprintln!(
+        None => errln!(
             "sam-jail: {}",
             sam_core::i18n::trf(
                 "the app record {file} could not be read: {error}",
@@ -71,7 +71,7 @@ impl Registry {
                     damaged_record(&p, &err)
                 }
                 // From a newer SAM, or not readable right now: left alone.
-                Err(err) => eprintln!("sam-jail: {err:#}"),
+                Err(err) => errln!("sam-jail: {err:#}"),
             }
         }
         out.sort_by_key(|a| a.display_name().to_lowercase());
@@ -304,19 +304,19 @@ impl PresetStore {
                 // Not readable as a preset: moved aside, so it is reported
                 // once (sam-jail doctor lists it) instead of on every start.
                 Err(err) if err.chain().any(|c| c.downcast_ref::<toml::de::Error>().is_some()) => match sam_core::format::quarantine(&p) {
-                    Some(to) => eprintln!(
+                    Some(to) => errln!(
                         "sam-jail: {}",
                         sam_core::i18n::trf(
                             "the preset {file} could not be read ({error}); it was moved to {moved}",
                             &[("file", &p.display()), ("error", &format!("{err:#}")), ("moved", &to.display())]
                         )
                     ),
-                    None => eprintln!(
+                    None => errln!(
                         "sam-jail: {}",
                         sam_core::i18n::trf("skipping the damaged preset {file}: {error}", &[("file", &p.display()), ("error", &format!("{err:#}"))])
                     ),
                 },
-                Err(err) => eprintln!("sam-jail: skipping preset {}: {err:#}", p.display()),
+                Err(err) => errln!("sam-jail: skipping preset {}: {err:#}", p.display()),
             }
         }
         out.sort_by_key(|a| a.name.to_lowercase());

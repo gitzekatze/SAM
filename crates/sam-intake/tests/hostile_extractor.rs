@@ -8,6 +8,7 @@
 //! Needs a working Bubblewrap; with SAM_REQUIRE_SANDBOX=1 (CI) a missing one
 //! fails the test instead of skipping it.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -527,6 +527,7 @@ pub fn redact(s: &str, host: &HostInfo) -> String {
 
 fn redact_with(s: &str, home: &str, user: &str, hostname: &str) -> String {
     let mut out = redact_links(s);
+    out = redact_secrets(&out);
     out = redact_emails(&out);
     if home.len() > 1 {
         out = out.replace(home, "~");
@@ -588,8 +589,9 @@ fn redact_user_folders(s: &str, root: &str) -> String {
     out
 }
 
-/// In links: a login (`user:password@`) and the query string, which often
-/// carries tokens.
+/// In links: a login (`user:password@`), the query string and the part
+/// after `#` (sign-in pages put tokens there), and path parts that look
+/// like a key (`/hooks/T0123/B0456/x9Yk2mQ...`).
 fn redact_links(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
@@ -604,13 +606,142 @@ fn redact_links(s: &str) -> String {
         if let Some(at) = link[..path_start].rfind('@') {
             link.replace_range(..at, "<login>");
         }
-        if let Some(q) = link.find('?') {
-            link.replace_range(q.., "?<hidden>");
+        if let Some(q) = link.find(['?', '#']) {
+            let mark = if link[q..].starts_with('?') { "?" } else { "#" };
+            link.replace_range(q.., &format!("{mark}<hidden>"));
         }
+        let path_start = link.find('/').unwrap_or(link.len());
+        let path = link[path_start..]
+            .split('/')
+            .map(|part| {
+                if looks_like_a_key(part) {
+                    "<hidden>"
+                } else {
+                    part
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+        link.replace_range(path_start.., &path);
         out.push_str(&link);
         rest = &rest[end..];
     }
     out.push_str(rest);
+    out
+}
+
+/// The shape of a token or key: 20 or more letters, digits, `-` and `_`
+/// mixing digits with upper and lower case letters, or 32 or more with
+/// digits (hex keys). File names (they have dots), versions and dates
+/// rarely look like that.
+fn looks_like_a_key(w: &str) -> bool {
+    let w = w.trim_end_matches('=');
+    let has = |f: fn(&char) -> bool| w.chars().any(|c| f(&c));
+    w.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && has(char::is_ascii_digit)
+        && (w.len() >= 32
+            || (w.len() >= 20 && has(char::is_ascii_uppercase) && has(char::is_ascii_lowercase)))
+}
+
+/// Names of values that give access: `Authorization: Bearer x`,
+/// `token=x`, `"api_key": "x"`, `PASSWORD=x`.
+const SECRET_NAMES: &[&str] = &[
+    "authorization",
+    "cookie",
+    "token",
+    "secret",
+    "password",
+    "passwd",
+    "apikey",
+    "api_key",
+    "api-key",
+    "access_key",
+    "private_key",
+    "credential",
+    "session_id",
+    "sessionid",
+    "session_key",
+];
+
+/// Hides the value after a name from [`SECRET_NAMES`] (as part of a longer
+/// name too: `X-Auth-Token`, `GITHUB_TOKEN`), and after an authorization
+/// scheme (`Bearer x`, `Basic x`).
+fn redact_secrets(s: &str) -> String {
+    let lower = s.to_ascii_lowercase();
+    let b = s.as_bytes();
+    let name_char = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'-';
+    let mut hide: Vec<(usize, usize)> = Vec::new();
+    // The value after `name =`, `name:` or `"name": "`.
+    let mut from = 0;
+    while let Some(i) = SECRET_NAMES
+        .iter()
+        .filter_map(|n| lower[from..].find(n).map(|i| (from + i, n.len())))
+        .min()
+        .map(|(i, len)| (i, i + len))
+    {
+        let (_, mut j) = i;
+        from = j;
+        while j < b.len() && name_char(b[j]) {
+            j += 1;
+        }
+        j += usize::from(j < b.len() && b[j] == b'"');
+        while j < b.len() && b[j] == b' ' {
+            j += 1;
+        }
+        if j >= b.len() || !(b[j] == b'=' || b[j] == b':') {
+            continue;
+        }
+        j += 1;
+        while j < b.len() && (b[j] == b' ' || b[j] == b'"' || b[j] == b'\'') {
+            j += 1;
+        }
+        let end = |k: usize| {
+            (k..b.len())
+                .find(|&k| b[k].is_ascii_whitespace() || b"\"'&;,".contains(&b[k]))
+                .unwrap_or(b.len())
+        };
+        let mut e = end(j);
+        // `Bearer x`: the scheme stays readable, the credential is hidden.
+        let word = lower[j..e].to_string();
+        if ["bearer", "basic", "token", "digest", "negotiate"].contains(&word.as_str())
+            && e < b.len()
+            && b[e] == b' '
+        {
+            j = e + 1;
+            e = end(j);
+        }
+        if e > j {
+            hide.push((j, e));
+        }
+        from = from.max(e);
+    }
+    // `Bearer x` anywhere else.
+    for scheme in ["bearer "] {
+        let mut k = 0;
+        while let Some(i) = lower[k..].find(scheme) {
+            let j = k + i + scheme.len();
+            let e = (j..b.len())
+                .find(|&k| b[k].is_ascii_whitespace() || b"\"'&;,".contains(&b[k]))
+                .unwrap_or(b.len());
+            if e > j {
+                hide.push((j, e));
+            }
+            k = j;
+        }
+    }
+    hide.sort_unstable();
+    let mut out = String::with_capacity(s.len());
+    let mut last = 0;
+    for (j, e) in hide {
+        if j < last {
+            continue;
+        }
+        out.push_str(&s[last..j]);
+        out.push_str("<hidden>");
+        last = e;
+    }
+    out.push_str(&s[last..]);
     out
 }
 
@@ -753,17 +884,29 @@ pub fn bug_report(app: &Sam, e: Option<&AppEntry>, host: &HostInfo) -> String {
         for ch in app_report(app, e, host).checks {
             s += &format!("- [{:?}] {}: {}\n", ch.status, ch.label, ch.detail);
         }
-        s += "\n#### Permissions\n\n```toml\n";
-        s += &permissions_for_report(&e.profile.permissions);
-        s += "```\n";
+        s += "\n#### Permissions\n\n";
+        s += &fenced("json", &permissions_for_report(&e.profile.permissions));
         let logs = Logs::new(&app.paths);
         if let Ok(Some(l)) = logs.latest(&e.id, Some(LogKind::Launch)) {
-            s += "\n#### Last launch log (tail)\n\n```\n";
-            s += &crate::launch::tail(&l.path, 60);
-            s += "\n```\n";
+            s += "\n#### Last launch log (tail)\n\n";
+            s += &fenced("", &crate::launch::tail(&l.path, 60));
         }
     }
     redact(&s, host)
+}
+
+/// `body` as a Markdown code block whose fence is longer than any run of
+/// backticks in it: an app's log line cannot end the block and add its own
+/// text to the report.
+fn fenced(lang: &str, body: &str) -> String {
+    let mut longest = 0;
+    let mut run = 0;
+    for c in body.chars() {
+        run = if c == '`' { run + 1 } else { 0 };
+        longest = longest.max(run);
+    }
+    let fence = "`".repeat(longest.max(2) + 1);
+    format!("{fence}{lang}\n{}\n{fence}\n", body.trim_end_matches('\n'))
 }
 
 /// An app's permissions for a bug report: values given to the app as
@@ -903,5 +1046,93 @@ mod tests {
             text.contains("OPENAI_API_KEY") && !text.contains("sk-very-secret"),
             "{text}"
         );
+    }
+
+    /// Bug reports also hide what gives access in other shapes (audit
+    /// U-L5): a token after `#` or inside a link's path, `Authorization`
+    /// and cookie lines, and named secrets in settings and logs. The names
+    /// stay, so the report still says what was there.
+    #[test]
+    fn bug_reports_hide_tokens_in_every_shape() {
+        let r = |s: &str| redact_with(s, "/home/jo", "jo", "box");
+        assert_eq!(
+            r("https://example.org/cb#access_token=abc123&state=1 ok"),
+            "https://example.org/cb#<hidden> ok"
+        );
+        assert_eq!(
+            r("POST https://hooks.example.com/services/T0123/B0456/x9Yk2mQpL7rT4vW8zA1b failed"),
+            "POST https://hooks.example.com/services/T0123/B0456/<hidden> failed"
+        );
+        assert_eq!(
+            r("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.e30.x"),
+            "Authorization: Bearer <hidden>"
+        );
+        assert_eq!(
+            r("authorization: Basic dXNlcjpwYXNz"),
+            "authorization: Basic <hidden>"
+        );
+        assert_eq!(
+            r("curl -H 'X-Auth-Token: s3cr3t' url"),
+            "curl -H 'X-Auth-Token: <hidden>' url"
+        );
+        assert_eq!(
+            r("Cookie: sid=abc; theme=dark"),
+            "Cookie: <hidden>; theme=dark"
+        );
+        assert_eq!(
+            r("GITHUB_TOKEN=ghp_abcdef123 make"),
+            "GITHUB_TOKEN=<hidden> make"
+        );
+        assert_eq!(
+            r("{\"api_key\": \"k-123\", \"n\": 1}"),
+            "{\"api_key\": \"<hidden>\", \"n\": 1}"
+        );
+        assert_eq!(r("password = hunter2"), "password = <hidden>");
+        assert_eq!(r("sent with bearer abc.def"), "sent with bearer <hidden>");
+        // Words, versions and settings without a value stay.
+        for same in [
+            "the token was refused",
+            "Session: wayland",
+            "libsecret 0.21.4 loaded",
+            "https://example.org/releases/v1.2.3/App-1.2.3-x86_64.AppImage",
+            "https://example.org/a/2026-11-19/b",
+            "https://example.org/build_2026_release_candidate/x",
+        ] {
+            assert_eq!(r(same), same);
+        }
+        for key in [
+            "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b",
+            "aGVsbG8gd29ybGQgdGhpcyBpcw==",
+        ] {
+            assert_eq!(
+                r(&format!("https://x.org/k/{key}")),
+                "https://x.org/k/<hidden>"
+            );
+        }
+        // A key may have `-` in it; a file name with dots is not one.
+        assert_eq!(
+            r("https://x.org/k/x9Yk2mQp-L7rT4vW8zA1b"),
+            "https://x.org/k/<hidden>"
+        );
+        let file = "https://x.org/k/Report2026.Final.Version.pdf";
+        assert_eq!(r(file), file);
+        // Letters only: a word, not a key.
+        let word = "https://x.org/k/abcdefghijklmnopqrstuvwxyz";
+        assert_eq!(r(word), word);
+    }
+
+    /// An app's log cannot end the report's code block and add text of its
+    /// own after it: the fence is always longer than any run of backticks
+    /// inside.
+    #[test]
+    fn a_log_cannot_break_out_of_its_code_block() {
+        let body = "line\n```\n## Fake heading\n````more";
+        let block = fenced("", body);
+        assert!(
+            block.starts_with("`````\n") && block.ends_with("\n`````\n"),
+            "{block}"
+        );
+        assert!(block.contains(body));
+        assert_eq!(fenced("json", "{}"), "```json\n{}\n```\n");
     }
 }

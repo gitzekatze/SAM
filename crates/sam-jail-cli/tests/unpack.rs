@@ -4,6 +4,7 @@
 //! to `sam-jail-run`, the start refuses instead of unpacking unprotected.
 //! Skipped when Bubblewrap cannot run here.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::fs;
 use std::path::Path;

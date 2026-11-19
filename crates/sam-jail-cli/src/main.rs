@@ -47,7 +47,7 @@ fn progress_lines() -> sam_runner::progress::ProgressSink {
             return;
         }
         *l = (p.step, std::time::Instant::now());
-        eprintln!("{}", json!({ "progress": p }));
+        errln!("{}", json!({ "progress": p }));
     })
 }
 
@@ -80,15 +80,15 @@ fn main() {
             if let Some(id) = function {
                 v["function"] = json!(id);
             }
-            println!("{v}");
+            sam_core::terminal::print_json(&v.to_string());
         } else {
             match function {
-                Some(id) => eprintln!(
+                Some(id) => errln!(
                     "{} {message} ({})",
                     paint("error:", "1;31"),
                     sam_core::i18n::trf("SAM function {id}", &[("id", &id)])
                 ),
-                None => eprintln!("{} {message}", paint("error:", "1;31")),
+                None => errln!("{} {message}", paint("error:", "1;31")),
             }
         }
         std::process::exit(1);
@@ -174,7 +174,7 @@ fn real_main(cli: Cli) -> Result<()> {
     if let Cmd::Version = cli.cmd {
         let (version, interface) = (env!("CARGO_PKG_VERSION"), sam_core::JSON_INTERFACE);
         out.emit(&json!({"version": version, "interface": interface}), || {
-            println!("sam-jail {version} (JSON interface {interface})")
+            outln!("sam-jail {version} (JSON interface {interface})")
         });
         return Ok(());
     }
@@ -195,7 +195,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             out.emit(&json!({"found": items, "added": added}), || {
                 if items.is_empty() {
-                    println!(
+                    outln!(
                         "{}",
                         trf(
                             "No AppImages found in: {folders}",
@@ -212,12 +212,12 @@ fn real_main(cli: Cli) -> Result<()> {
                         ),
                         _ => paint("new", "36"),
                     };
-                    println!("{}  {}  ({})", tildify(&it.path), st, human_size(it.size));
+                    outln!("{}  {}  ({})", tildify(&it.path), st, human_size(it.size));
                 }
                 for a in &added {
                     match a.get("error") {
-                        Some(e) => println!("  failed {}: {}", a["path"], e),
-                        None => println!("  added {}", a["id"].as_str().unwrap_or_default()),
+                        Some(e) => outln!("  failed {}: {}", a["path"], e),
+                        None => outln!("  added {}", a["id"].as_str().unwrap_or_default()),
                     }
                 }
             });
@@ -226,7 +226,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let found = app.discover()?;
             out.emit(&json!({"apps": found}), || {
                 if found.is_empty() {
-                    println!(
+                    outln!(
                         "{}",
                         trf(
                             "No AppImages found in: {folders}",
@@ -250,7 +250,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         ),
                         _ => paint("not sandboxed", "36"),
                     };
-                    println!(
+                    outln!(
                         "{:<28} {:<14} {}  {}",
                         d.name,
                         d.category_label,
@@ -258,7 +258,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         tildify(&d.path)
                     );
                     for m in &d.menu_entries {
-                        println!("    unsandboxed menu entry: {}", tildify(&m.file));
+                        outln!("    unsandboxed menu entry: {}", tildify(&m.file));
                     }
                 }
             });
@@ -278,13 +278,13 @@ fn real_main(cli: Cli) -> Result<()> {
             let hints = sam_runner::repair::first_run_hints(&e);
             out.emit(&json!({"hints": hints}), || {
                 if hints.is_empty() {
-                    println!(
+                    outln!(
                         "{}",
                         trf("Nothing to check for {app}.", &[("app", &e.display_name())])
                     );
                 }
                 for h in &hints {
-                    println!(
+                    outln!(
                         "{}  {}\n    {}\n    fix: sam-jail hints {} --apply {}",
                         paint(&h.id, "1"),
                         h.title,
@@ -341,19 +341,19 @@ fn real_main(cli: Cli) -> Result<()> {
                 &json!({"applied": applied, "findings": findings, "steps": steps, "applied_steps": e.repairs_applied, "can_undo": e.repair_backup.is_some()}),
                 || {
                     if let Some(a) = &applied {
-                        println!("{}", trf("Applied: {step}. Start the app again to test it.", &[("step", &a)]));
+                        outln!("{}", trf("Applied: {step}. Start the app again to test it.", &[("step", &a)]));
                     }
                     for f in &findings {
-                        println!("{} {}: {}", paint("found", "33"), f.title, f.explanation);
+                        outln!("{} {}: {}", paint("found", "33"), f.title, f.explanation);
                     }
                     for (i, st) in steps.iter().enumerate() {
-                        println!("{}. {} ({})\n   {}", i + 1, st.title, st.id, st.explanation);
+                        outln!("{}. {} ({})\n   {}", i + 1, st.title, st.id, st.explanation);
                     }
                     if steps.is_empty() {
-                        println!("{}", trf("No more repair steps. Check the logs (sam-jail logs {id}).", &[("id", &e.id)]));
+                        outln!("{}", trf("No more repair steps. Check the logs (sam-jail logs {id}).", &[("id", &e.id)]));
                     }
                     if e.repair_backup.is_some() {
-                        println!("{}", sam_core::i18n::trf("Undo all repairs: sam-jail repair {id} --undo", &[("id", &e.id)]));
+                        outln!("{}", sam_core::i18n::trf("Undo all repairs: sam-jail repair {id} --undo", &[("id", &e.id)]));
                     }
                 },
             );
@@ -367,7 +367,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let mut results = Vec::new();
             for mut e in list {
                 if !out.json {
-                    eprintln!(
+                    errln!(
                         "{}",
                         sam_core::i18n::trf(
                             "Testing {name} for {seconds} s…",
@@ -415,7 +415,7 @@ fn real_main(cli: Cli) -> Result<()> {
             out.emit(&json!({"results": results}), || {
                 for r in &results {
                     let ok = r["status"] == "ok";
-                    println!(
+                    outln!(
                         "{} {:<28} {}",
                         if ok {
                             paint("✓", "32")
@@ -426,7 +426,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         r["detail"].as_str().unwrap_or_default()
                     );
                     for f in r["findings"].as_array().into_iter().flatten() {
-                        println!("    likely: {}", f["title"].as_str().unwrap_or_default());
+                        outln!("    likely: {}", f["title"].as_str().unwrap_or_default());
                     }
                 }
             });
@@ -446,13 +446,13 @@ fn real_main(cli: Cli) -> Result<()> {
                 &json!({"visible": dups, "hidden": e.hidden_entries}),
                 || {
                     for d in &dups {
-                        println!("visible  {}", d["file"].as_str().unwrap_or_default());
+                        outln!("visible  {}", d["file"].as_str().unwrap_or_default());
                     }
                     for h in &e.hidden_entries {
-                        println!("hidden   {}", tildify(&h.original));
+                        outln!("hidden   {}", tildify(&h.original));
                     }
                     if dups.is_empty() && e.hidden_entries.is_empty() {
-                        println!(
+                        outln!(
                             "{}",
                             trf(
                                 "No other menu entries start {app}.",
@@ -477,7 +477,7 @@ fn real_main(cli: Cli) -> Result<()> {
             };
             let v = app.preview(&path, perms)?;
             out.emit(&v, || {
-                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default())
+                outln!("{}", serde_json::to_string_pretty(&v).unwrap_or_default())
             });
         }
         Cmd::Add {
@@ -518,26 +518,26 @@ fn real_main(cli: Cli) -> Result<()> {
             let summary = AppSummary::from_entry(&o.entry);
             out.emit(&json!({"app": summary, "entry": o.entry, "relocated": o.relocated, "needs_fallback_consent": o.needs_fallback_consent, "warnings": o.warnings}), || {
                 if o.relocated {
-                    println!("{}", trf("{app} was already registered; its location was updated.", &[("app", &o.entry.display_name())]));
+                    outln!("{}", trf("{app} was already registered; its location was updated.", &[("app", &o.entry.display_name())]));
                     return;
                 }
-                println!("Sandboxed {} as {} [{}]", o.entry.display_name(), o.entry.id, badge_str(summary.badge));
+                outln!("Sandboxed {} as {} [{}]", o.entry.display_name(), o.entry.id, badge_str(summary.badge));
                 for h in &o.entry.hidden_entries {
-                    println!("  hid unsandboxed menu entry {}", tildify(&h.original));
+                    outln!("  hid unsandboxed menu entry {}", tildify(&h.original));
                 }
                 if let Some(x) = &o.entry.extraction {
-                    println!("  extracted {} files ({}) via {}", x.file_count, human_size(x.total_size), x.method);
+                    outln!("  extracted {} files ({}) via {}", x.file_count, human_size(x.total_size), x.method);
                 }
-                println!("  category: {}   risk: {}", o.entry.category, risk_line(&summary.risk));
+                outln!("  category: {}   risk: {}", o.entry.category, risk_line(&summary.risk));
                 for n in &o.entry.recommendation_notes {
-                    println!("  - {n}");
+                    outln!("  - {n}");
                 }
                 if o.needs_fallback_consent {
-                    println!("{}", paint("  Static extraction failed. Retry with --allow-fallback to let the AppImage extract itself inside a restricted sandbox.", "33"));
+                    outln!("{}", paint("  Static extraction failed. Retry with --allow-fallback to let the AppImage extract itself inside a restricted sandbox.", "33"));
                 }
                 print_warnings(&o.warnings);
                 if !o.entry.reviewed {
-                    println!("{}", trf("Review the permissions with `sam-jail info {id}` or in the SAM app, then `sam-jail review {id}`.", &[("id", &o.entry.id)]));
+                    outln!("{}", trf("Review the permissions with `sam-jail info {id}` or in the SAM app, then `sam-jail review {id}`.", &[("id", &o.entry.id)]));
                 }
             });
         }
@@ -583,16 +583,16 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             out.emit(&apps, || {
                 if apps.is_empty() {
-                    println!("{}", sam_core::i18n::tr("No apps are registered. Add one with `sam-jail add <file.AppImage>` or `sam-jail scan --add`."));
+                    outln!("{}", sam_core::i18n::tr("No apps are registered. Add one with `sam-jail add <file.AppImage>` or `sam-jail scan --add`."));
                     return;
                 }
                 let w = apps.iter().map(|a| a.id.len()).max().unwrap_or(10);
-                println!("{:<w$}  {:<24}  {:<12}  {:<11}  {:<12}  LAST RUN", "ID", "NAME", "CATEGORY", "RISK", "STATUS", w = w);
+                outln!("{:<w$}  {:<24}  {:<12}  {:<11}  {:<12}  LAST RUN", "ID", "NAME", "CATEGORY", "RISK", "STATUS", w = w);
                 for a in &apps {
                     let last = a.last_launched.map(format_ts).unwrap_or_else(|| "never".into());
                     let risk = format!("{:<11}", a.risk.level.words());
                     let badge = format!("{:<12}", a.badge.label());
-                    println!(
+                    outln!(
                         "{:<w$}  {:<24}  {:<12}  {}  {}  {last}",
                         a.id,
                         truncate(&a.name, 24),
@@ -643,7 +643,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let (e, problems) = app.remove(&q, keep_data)?;
             out.emit(&json!({"removed": e.id, "warnings": problems}), || {
                 if keep_data {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trf(
                             "Removed {name} ({id}); its private data was kept",
@@ -651,7 +651,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         )
                     );
                 } else {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trf(
                             "Removed {name} ({id})",
@@ -660,7 +660,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     );
                 };
                 for p in &problems {
-                    eprintln!("{} {p}", paint("warning:", "33"));
+                    errln!("{} {p}", paint("warning:", "33"));
                 }
             });
         }
@@ -673,7 +673,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 .collect();
             out.emit(&json!({"apps": list}), || {
                 if results.is_empty() && if_due {
-                    println!("{}", tr("Nothing is due: updates.check_on_start is off, or every app was checked today."));
+                    outln!("{}", tr("Nothing is due: updates.check_on_start is off, or every app was checked today."));
                 }
                 for (id, s) in &results {
                     let state = match s.state {
@@ -682,9 +682,9 @@ fn real_main(cli: Cli) -> Result<()> {
                         sam_core::model::UpdateState::Failed => paint("check failed", "31"),
                         sam_core::model::UpdateState::Unsupported => tr("no update source"),
                     };
-                    println!("{id:<32} {state}  {}", s.detail);
+                    outln!("{id:<32} {state}  {}", s.detail);
                     if let Some(p) = s.download_page.as_deref().filter(|_| s.state == sam_core::model::UpdateState::Available) {
-                        println!("{:<32} {p}", "");
+                        outln!("{:<32} {p}", "");
                     }
                 }
             });
@@ -701,7 +701,7 @@ fn real_main(cli: Cli) -> Result<()> {
             };
             out.emit(&AppSummary::from_entry(&e), || {
                 if undo {
-                    println!(
+                    outln!(
                         "{}",
                         trf(
                             "{app} is back to {file}.",
@@ -712,9 +712,9 @@ fn real_main(cli: Cli) -> Result<()> {
                         )
                     );
                 } else {
-                    println!("{} updated: {}", e.display_name(), tildify(&e.source_path));
+                    outln!("{} updated: {}", e.display_name(), tildify(&e.source_path));
                     if let Some(b) = &e.update_backup {
-                        println!(
+                        outln!(
                             "  previous version kept: {} (sam-jail update {} --undo)",
                             tildify(&b.file),
                             e.id
@@ -729,9 +729,9 @@ fn real_main(cli: Cli) -> Result<()> {
                 .unwrap_or_default();
             let r = app.self_update(&appimage, check)?;
             out.emit(&r, || {
-                println!("{}", r.detail);
+                outln!("{}", r.detail);
                 if r.state == "updated" {
-                    println!("  new file: {}", tildify(&r.path));
+                    outln!("  new file: {}", tildify(&r.path));
                 }
             });
         }
@@ -745,7 +745,7 @@ fn real_main(cli: Cli) -> Result<()> {
             out.emit(&json!({"apps": usage, "total": total}), || {
                 let mb = |b: u64| format!("{:.1} MB", b as f64 / 1e6);
                 for u in &usage {
-                    println!(
+                    outln!(
                         "{:<28} {:>10}  (unpacked {}, home {}, app folder {}, logs {})",
                         u.name,
                         mb(u.total),
@@ -755,13 +755,13 @@ fn real_main(cli: Cli) -> Result<()> {
                         mb(u.logs)
                     );
                 }
-                println!("{:<28} {:>10}", "total", mb(total));
+                outln!("{:<28} {:>10}", "total", mb(total));
             });
         }
         Cmd::FreeSpace { app: q } => {
             let freed = app.free_space(&q)?;
             out.emit(&json!({"freed": freed}), || {
-                println!(
+                outln!(
                     "{}",
                     trf(
                         "Freed {size}; the next start unpacks the AppImage again.",
@@ -773,7 +773,7 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Man { dir } => {
             write_man_pages(&dir)?;
             out.emit(&json!({"dir": dir}), || {
-                println!(
+                outln!(
                     "{}",
                     trf(
                         "Man pages written to {folder}.",
@@ -785,7 +785,7 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Uninstall { keep_data, yes } => {
             let u = app.uninstall(keep_data, !yes)?;
             out.emit(&json!({"done": yes, "apps": u.apps, "files": u.files, "dirs": u.dirs, "problems": u.problems}), || {
-                println!(
+                outln!(
                     "{}",
                     match (yes, keep_data) {
                         (true, false) => tr("Removed from SAM:"),
@@ -794,20 +794,20 @@ fn real_main(cli: Cli) -> Result<()> {
                         (false, true) => tr("This would remove from SAM (keeping settings and app data):"),
                     }
                 );
-                println!("  sandboxes: {}", if u.apps.is_empty() { "none".into() } else { u.apps.join(", ") });
+                outln!("  sandboxes: {}", if u.apps.is_empty() { "none".into() } else { u.apps.join(", ") });
                 for f in &u.files {
-                    println!("  {}", tildify(f));
+                    outln!("  {}", tildify(f));
                 }
                 for d in &u.dirs {
-                    println!("  {}/", tildify(d));
+                    outln!("  {}/", tildify(d));
                 }
                 for p in &u.problems {
-                    eprintln!("{} {p}", paint("warning:", "33"));
+                    errln!("{} {p}", paint("warning:", "33"));
                 }
                 if !yes {
-                    println!("{}", sam_core::i18n::tr("Your AppImage files stay. Run again with --yes to remove SAM."));
+                    outln!("{}", sam_core::i18n::tr("Your AppImage files stay. Run again with --yes to remove SAM."));
                 } else {
-                    println!("{}", tr("Your AppImage files were not touched. Remove the SAM package or AppImage to finish."));
+                    outln!("{}", tr("Your AppImage files were not touched. Remove the SAM package or AppImage to finish."));
                 }
             });
         }
@@ -815,9 +815,9 @@ fn real_main(cli: Cli) -> Result<()> {
             let n = app.stop(&q)?;
             out.emit(&json!({"stopped": n}), || {
                 if n == 0 {
-                    println!("{}", sam_core::i18n::tr("Not running"));
+                    outln!("{}", sam_core::i18n::tr("Not running"));
                 } else {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trn(
                             "Closed {n} running launch",
@@ -845,17 +845,19 @@ fn real_main(cli: Cli) -> Result<()> {
             )?;
             out.emit(&rec, || {
                 if rec.sandbox_failure {
-                    eprintln!("{} {}", paint("sam-jail:", "1;31"), rec.summary);
-                    eprintln!(
+                    errln!("{} {}", paint("sam-jail:", "1;31"), rec.summary);
+                    errln!(
                         "  log: {}",
                         rec.log_file
                             .as_ref()
                             .map(|p| tildify(p))
                             .unwrap_or_default()
                     );
-                    eprintln!(
+                    errln!(
                         "  try: sam-jail doctor {} / sam-jail diagnose {} / sam-jail repair {}",
-                        e.id, e.id, e.id
+                        e.id,
+                        e.id,
+                        e.id
                     );
                 }
             });
@@ -880,18 +882,18 @@ fn real_main(cli: Cli) -> Result<()> {
             )?;
             let pv = p.preview();
             out.emit(&pv, || {
-                println!("# sandbox: {} ({})", pv.backend, pv.reason);
-                println!("# landlock: {}  seccomp: {}", pv.landlock, pv.seccomp);
+                outln!("# sandbox: {} ({})", pv.backend, pv.reason);
+                outln!("# landlock: {}  seccomp: {}", pv.landlock, pv.seccomp);
                 if let Some(d) = &pv.dbus_proxy {
-                    println!(
+                    outln!(
                         "# dbus proxy: xdg-dbus-proxy {}",
                         sam_core::util::shell_join(d)
                     );
                 }
                 for n in &pv.notes {
-                    println!("# note: {n}");
+                    outln!("# note: {n}");
                 }
-                println!("{}", pretty_command(&pv.argv));
+                outln!("{}", pretty_command(&pv.argv));
             });
         }
         Cmd::Doctor {
@@ -915,15 +917,15 @@ fn real_main(cli: Cli) -> Result<()> {
                         State::Absent => paint(" absent", "33"),
                         State::NotHere => paint("   -   ", "2"),
                     };
-                    println!("{st}  {:<26} {}", c.id, c.detail);
+                    outln!("{st}  {:<26} {}", c.id, c.detail);
                     if c.state == State::Broken {
-                        println!("         {:<26} → {}", "", c.playbook);
+                        outln!("         {:<26} → {}", "", c.playbook);
                     }
                 }
-                println!();
+                outln!();
                 for v in &report.components {
                     if let Some(ver) = &v.version {
-                        println!("  {:<40} {ver}", v.name);
+                        outln!("  {:<40} {ver}", v.name);
                     }
                 }
             });
@@ -945,9 +947,9 @@ fn real_main(cli: Cli) -> Result<()> {
                         CheckStatus::Warn => paint(" warn", "33"),
                         CheckStatus::Fail => paint(" FAIL", "1;31"),
                     };
-                    println!("{st}  {:<26} {}", c.label, c.detail);
+                    outln!("{st}  {:<26} {}", c.label, c.detail);
                     if let Some(h) = &c.hint {
-                        println!("       {:<26} → {h}", "");
+                        outln!("       {:<26} → {h}", "");
                     }
                 }
             });
@@ -972,7 +974,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 let files = logs.list(&e.id, kind)?;
                 out.emit(&files, || {
                     for f in &files {
-                        println!(
+                        outln!(
                             "{}  {:<8}  {:>9}  {}",
                             format_ts(f.modified),
                             f.kind.prefix(),
@@ -992,8 +994,8 @@ fn real_main(cli: Cli) -> Result<()> {
                 out.emit(
                     &json!({"file": known.path, "kind": known.kind, "text": text}),
                     || {
-                        println!("==> {} <==", tildify(&known.path));
-                        println!("{text}");
+                        outln!("==> {} <==", tildify(&known.path));
+                        outln!("{text}");
                     },
                 );
             } else {
@@ -1004,8 +1006,8 @@ fn real_main(cli: Cli) -> Result<()> {
                 out.emit(
                     &json!({"file": latest.path, "kind": latest.kind, "text": text}),
                     || {
-                        println!("==> {} <==", tildify(&latest.path));
-                        println!("{text}");
+                        outln!("==> {} <==", tildify(&latest.path));
+                        outln!("{text}");
                     },
                 );
             }
@@ -1028,7 +1030,7 @@ fn real_main(cli: Cli) -> Result<()> {
             out.emit(
                 &json!({"key": key, "value": v, "risk": eval.risk, "warnings": eval.warnings}),
                 || {
-                    println!("{key} = {v}   (risk now {})", risk_line(&eval.risk));
+                    outln!("{key} = {v}   (risk now {})", risk_line(&eval.risk));
                     print_warnings(
                         &eval
                             .warnings
@@ -1047,8 +1049,8 @@ fn real_main(cli: Cli) -> Result<()> {
                 None => serde_json::to_value(&e.profile.permissions)?,
             };
             out.emit(&v, || match &key {
-                Some(_) => println!("{v}"),
-                None => print!(
+                Some(_) => outln!("{v}"),
+                None => out!(
                     "{}",
                     toml::to_string_pretty(&e.profile.permissions).unwrap_or_default()
                 ),
@@ -1058,7 +1060,7 @@ fn real_main(cli: Cli) -> Result<()> {
             ProfileCmd::Get { app: q } => {
                 let e = app.resolve(&q)?;
                 out.emit(&e.profile, || {
-                    println!(
+                    outln!(
                         "{}",
                         serde_json::to_string_pretty(&e.profile).unwrap_or_default()
                     )
@@ -1071,7 +1073,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 confirm_risks(&sam_core::risk::new_risks(&cur, &perms), yes)?;
                 let e = app.set_permissions(&q, perms)?;
                 out.emit(&AppSummary::from_entry(&e), || {
-                    println!(
+                    outln!(
                         "{}",
                         trf(
                             "Updated permissions for {app}.",
@@ -1092,7 +1094,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 )?;
                 let e = app.set_permissions(&cur.id, merged)?;
                 out.emit(&AppSummary::from_entry(&e), || {
-                    println!(
+                    outln!(
                         "{}",
                         trf(
                             "Updated permissions for {app}.",
@@ -1104,7 +1106,7 @@ fn real_main(cli: Cli) -> Result<()> {
             ProfileCmd::Reset { app: q } => {
                 let e = app.reset_profile(&q)?;
                 out.emit(&AppSummary::from_entry(&e), || {
-                    println!(
+                    outln!(
                         "{}",
                         trf(
                             "{app} is back to the recommended settings.",
@@ -1121,7 +1123,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let host = app.host();
             let ev = app.evaluate(&perms, e.as_ref(), &host);
             out.emit(&ev, || {
-                println!("risk: {}", risk_line(&ev.risk));
+                outln!("risk: {}", risk_line(&ev.risk));
                 print_warnings(&ev.warnings);
             });
         }
@@ -1133,7 +1135,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let e = app.set_compat(&q, on)?;
             out.emit(&AppSummary::from_entry(&e), || {
                 if on {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trf(
                             "Compatibility mode turned on for {name}",
@@ -1141,7 +1143,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         )
                     );
                 } else {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trf(
                             "Compatibility mode turned off for {name}",
@@ -1150,7 +1152,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     );
                 };
                 if on {
-                    println!("{}", paint(&tr(sam_profile::COMPAT_WARNING), "33"));
+                    outln!("{}", paint(&tr(sam_profile::COMPAT_WARNING), "33"));
                 }
             });
         }
@@ -1184,16 +1186,16 @@ fn real_main(cli: Cli) -> Result<()> {
                 for res in &r.results {
                     if res.group != group {
                         group = res.group.clone();
-                        println!("\n{group}");
+                        outln!("\n{group}");
                     }
                     let mark = match res.ok {
                         Some(true) => paint("✓", "32"),
                         Some(false) => paint("✗", "31"),
                         None => paint("–", "90"),
                     };
-                    println!("  {mark} {:<46} {}", res.title, res.observed);
+                    outln!("  {mark} {:<46} {}", res.title, res.observed);
                 }
-                println!(
+                outln!(
                     "\n{} passed, {} failed, {} not applicable",
                     out_v.record.passed,
                     out_v.record.failed.len(),
@@ -1211,7 +1213,7 @@ fn real_main(cli: Cli) -> Result<()> {
             };
             out.emit(&e.profile.args, || {
                 if e.profile.args.is_empty() {
-                    println!(
+                    outln!(
                         "{}",
                         trf(
                             "No extra arguments for {app}.",
@@ -1219,14 +1221,14 @@ fn real_main(cli: Cli) -> Result<()> {
                         )
                     );
                 } else {
-                    println!("{}", e.profile.args.join(" "));
+                    outln!("{}", e.profile.args.join(" "));
                 }
             });
         }
         Cmd::Review { app: q } => {
             let e = app.mark_reviewed(&q)?;
             out.emit(&AppSummary::from_entry(&e), || {
-                println!(
+                outln!(
                     "{}",
                     trf(
                         "{app} marked as reviewed [{state}]",
@@ -1241,9 +1243,9 @@ fn real_main(cli: Cli) -> Result<()> {
         } => {
             let e = app.reextract(&q, allow_fallback)?;
             out.emit(&json!({"app": AppSummary::from_entry(&e), "pending_changes": e.pending_changes}), || {
-                println!("Re-extracted {} [{}]", e.display_name(), badge_str(e.badge()));
+                outln!("Re-extracted {} [{}]", e.display_name(), badge_str(e.badge()));
                 if !e.pending_changes.is_empty() {
-                    println!(
+                    outln!(
                         "{}",
                         paint(&format!("  The update likely needs new permissions: {}. Your customized profile was kept.", e.pending_changes.join(", ")), "33")
                     );
@@ -1255,7 +1257,7 @@ fn real_main(cli: Cli) -> Result<()> {
             out.emit(
                 &json!({"app": AppSummary::from_entry(&e), "detection": e.detection}),
                 || {
-                    println!(
+                    outln!(
                         "{}",
                         trf(
                             "Dependency detection finished for {app}.",
@@ -1278,14 +1280,14 @@ fn real_main(cli: Cli) -> Result<()> {
                         "stale" => paint("STALE", "33"),
                         _ => paint("MISSING", "31"),
                     };
-                    println!("{:<32} {st} {}", i.name, i.reasons.join("; "));
+                    outln!("{:<32} {st} {}", i.name, i.reasons.join("; "));
                 }
             });
         }
         Cmd::Relocate { app: q, path } => {
             let e = app.relocate(&q, &path)?;
             out.emit(&AppSummary::from_entry(&e), || {
-                println!(
+                outln!(
                     "{}",
                     trf(
                         "{app} now points to {file} [{state}]",
@@ -1301,7 +1303,7 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Desktop { app: q, action } if q == "all" && action == "refresh" => {
             let n = sam_intake::desktop::refresh_launchers(&app.paths, &app.registry().list()?);
             out.emit(&json!({"refreshed": n}), || {
-                println!("{n} launcher(s) updated")
+                outln!("{n} launcher(s) updated")
             });
         }
         Cmd::Desktop { app: q, action } => {
@@ -1319,11 +1321,11 @@ fn real_main(cli: Cli) -> Result<()> {
             app.registry().save(&mut e)?;
             out.emit(&json!({"desktop_entry": e.desktop_entry}), || {
                 match &e.desktop_entry {
-                    Some(p) => println!(
+                    Some(p) => outln!(
                         "{}",
                         sam_core::i18n::trf("Launcher installed: {path}", &[("path", &tildify(p))])
                     ),
-                    None => println!("{}", sam_core::i18n::tr("Launcher removed")),
+                    None => outln!("{}", sam_core::i18n::tr("Launcher removed")),
                 }
             });
         }
@@ -1334,7 +1336,7 @@ fn real_main(cli: Cli) -> Result<()> {
         } => {
             let mut e = app.resolve(&q)?;
             if !out.json {
-                eprintln!(
+                errln!(
                     "{}",
                     trf(
                         "Starting {app} in diagnostic mode for up to {seconds} s. Use the app normally, then close it.",
@@ -1344,7 +1346,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             let r = sam_runner::diagnose::diagnose(&app, &mut e, timeout, apply)?;
             out.emit(&r, || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trf(
                         "Diagnostic run: {summary}",
@@ -1352,7 +1354,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     )
                 );
                 if r.findings.is_empty() {
-                    println!("{}", tr("No missing resources were detected."));
+                    outln!("{}", tr("No missing resources were detected."));
                 }
                 for f in &r.findings {
                     let fix = f
@@ -1365,7 +1367,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     } else {
                         fix
                     };
-                    println!(
+                    outln!(
                         "  [{}] {} ({}){}{}",
                         risk_str(f.risk),
                         f.suggestion,
@@ -1378,17 +1380,17 @@ fn real_main(cli: Cli) -> Result<()> {
                         if f.applied { String::new() } else { fix }
                     );
                     if f.already_granted {
-                        println!("      {}", f.trace_line);
+                        outln!("      {}", f.trace_line);
                     }
                 }
                 if let Some(t) = &r.trace_file {
-                    println!(
+                    outln!(
                         "{}",
                         trf("The full trace is in {file}.", &[("file", &tildify(t))])
                     );
                 }
                 if r.applied > 0 {
-                    println!("{} low-risk fix(es) applied automatically.", r.applied);
+                    outln!("{} low-risk fix(es) applied automatically.", r.applied);
                 }
             });
         }
@@ -1396,7 +1398,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let host = HostInfo::probe_full();
             let e = q.map(|q| app.resolve(&q)).transpose()?;
             let text = sam_runner::doctor::bug_report(&app, e.as_ref(), &host);
-            out.emit(&json!({"report": text}), || println!("{text}"));
+            out.emit(&json!({"report": text}), || outln!("{text}"));
         }
         Cmd::Config { cmd } => config_cmd(&app, &out, cmd)?,
         Cmd::Permissions => {
@@ -1405,11 +1407,11 @@ fn real_main(cli: Cli) -> Result<()> {
                 let mut last = "";
                 for p in &cat {
                     if p.category != last {
-                        println!("\n{}", paint(p.category, "1"));
+                        outln!("\n{}", paint(p.category, "1"));
                         last = p.category;
                     }
-                    println!("  {:<30} {:<10} {}", p.key, risk_str(p.risk), p.title);
-                    println!("  {:<30} {:<10} {}", "", "", p.description);
+                    outln!("  {:<30} {:<10} {}", p.key, risk_str(p.risk), p.title);
+                    outln!("  {:<30} {:<10} {}", "", "", p.description);
                 }
             });
         }
@@ -1425,9 +1427,9 @@ fn real_main(cli: Cli) -> Result<()> {
                     &json!({"apps": items, "total": total, "removed": !list}),
                     || {
                         for d in &items {
-                            println!("{:<40} {:>10}", d.id, human_size(d.size));
+                            outln!("{:<40} {:>10}", d.id, human_size(d.size));
                         }
-                        println!(
+                        outln!(
                             "{}",
                             if list {
                                 trn(
@@ -1450,7 +1452,7 @@ fn real_main(cli: Cli) -> Result<()> {
             } else {
                 let removed = if list { vec![] } else { app.cleanup()? };
                 out.emit(&removed, || {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trn(
                             "Removed {n} unused unpacked copy",
@@ -1471,7 +1473,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             let done = marker.exists();
             out.emit(&json!({"done": done}), || {
-                println!("onboarding {}", if done { "completed" } else { "pending" })
+                outln!("onboarding {}", if done { "completed" } else { "pending" })
             });
         }
         Cmd::Dev {
@@ -1496,7 +1498,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 sam_intake::extract::builtin_squashfs_entry(&source, offset, &dest, &limits)
             {
                 if sam_core::error::code_of(&e) == Some("extraction-limit") {
-                    eprintln!("error: {}", sam_core::error::message_of(&e));
+                    errln!("error: {}", sam_core::error::message_of(&e));
                     std::process::exit(sam_intake::extract::EXIT_LIMIT);
                 }
                 return Err(e);
@@ -1513,13 +1515,13 @@ fn real_main(cli: Cli) -> Result<()> {
                         .and_then(|v| v["best_ms"].as_f64());
                     let v = serde_json::to_value(m).unwrap_or_default();
                     match ms {
-                        Some(ms) => println!(
+                        Some(ms) => outln!(
                             "{:<16} {:>10.3} ms  {}",
                             v["key"].as_str().unwrap_or(""),
                             ms,
                             v["what"].as_str().unwrap_or("")
                         ),
-                        None => println!(
+                        None => outln!(
                             "{:<16} {:>13}  {}",
                             v["key"].as_str().unwrap_or(""),
                             "not here",
@@ -1534,7 +1536,7 @@ fn real_main(cli: Cli) -> Result<()> {
         } => {
             sam_detect::update_info::write(&runtime, &info)?;
             out.emit(&json!({"runtime": runtime, "info": info}), || {
-                println!(
+                outln!(
                     "{}",
                     trf(
                         "Update information written to {file}.",
@@ -1566,7 +1568,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let dest = dest.unwrap_or_else(|| file.with_file_name(format!("{name}.zsync")));
             std::fs::write(&dest, data)?;
             out.emit(&json!({"zsync": dest}), || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trf("Wrote {path}", &[("path", &dest.display())])
                 )
@@ -1589,7 +1591,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 );
             }
             out.emit(&json!({"path": file, "fingerprint": fp}), || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trf(
                         "Signed {path} with {key}",
@@ -1616,7 +1618,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             sam_intake::testkit::build(&path, &spec)?;
             out.emit(&json!({"path": path}), || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trf("Wrote {path}", &[("path", &path.display())])
                 )

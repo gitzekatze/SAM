@@ -262,14 +262,7 @@ impl Sam {
             libc::kill(pid as libc::pid_t, sig);
         };
         for &r in &runners {
-            for pid in descendants(r) {
-                let comm = fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
-                // Not Bubblewrap itself (that would kill the app at once) and
-                // not the D-Bus proxy the app may still need while quitting.
-                if !matches!(comm.trim(), "bwrap" | "xdg-dbus-proxy") {
-                    signal(pid, libc::SIGTERM);
-                }
-            }
+            super::ask_to_quit(r);
         }
         let wait = |secs: u64| {
             let end = std::time::Instant::now() + std::time::Duration::from_secs(secs);

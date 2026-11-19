@@ -244,3 +244,157 @@ fn a_sandboxed_terminal_app_cannot_reach_past_the_terminal() {
     let its = line.split("its terminal: ").nth(1).unwrap().trim();
     assert_ne!(its, outer_name, "the app had the person's terminal");
 }
+
+/// Runs `sam-jail` with its output on a terminal (no input) and returns
+/// everything that terminal received.
+fn on_terminal(root: &Path, args: &[&str]) -> (std::process::ExitStatus, Vec<u8>) {
+    let (leader, follower) = terminal();
+    let mut c = cmd(root, args);
+    let fd = follower.as_raw_fd();
+    // SAFETY: dup returns new descriptors for the open follower.
+    let (o, e) = unsafe { (libc::dup(fd), libc::dup(fd)) };
+    // SAFETY: each is a fresh descriptor nothing else owns.
+    unsafe {
+        c.stdin(Stdio::null())
+            .stdout(Stdio::from(OwnedFd::from_raw_fd(o)))
+            .stderr(Stdio::from(OwnedFd::from_raw_fd(e)));
+    }
+    let mut child = c.spawn().unwrap();
+    drop(c);
+    drop(follower);
+    let mut seen = Vec::new();
+    let end = Instant::now() + Duration::from_secs(60);
+    let mut buf = [0u8; 4096];
+    loop {
+        let mut p = libc::pollfd {
+            fd: leader.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: one valid pollfd.
+        if unsafe { libc::poll(&mut p, 1, 200) } > 0 {
+            // SAFETY: `buf` is writable for its length.
+            let n = unsafe { libc::read(leader.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
+            if n > 0 {
+                seen.extend_from_slice(&buf[..n as usize]);
+                continue;
+            }
+            break;
+        }
+        if child.try_wait().unwrap().is_some() || Instant::now() > end {
+            break;
+        }
+    }
+    (child.wait().unwrap(), seen)
+}
+
+/// What SAM itself prints about an app (G-F5, L-F3, I-F11, I-F12): the
+/// name of its file, the failure summary taken from its error output, its
+/// log. All of it is the app's text, and none of it may bring a clipboard
+/// code, a title or a direction override to the person's terminal. The
+/// app's own output is filtered too; it sends nothing the filter lets
+/// through, so whatever arrives came from SAM's lines.
+#[test]
+fn what_sam_prints_about_an_app_cannot_reach_past_the_terminal() {
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    for d in ["config", "home", "downloads"] {
+        fs::create_dir_all(root.join(d)).unwrap();
+    }
+    let evil = "\x1b]52;c;ZGF0YQ==\x07\x1b]2;owned\x07\u{202E}";
+    // The app fails with an error line that looks like Bubblewrap's.
+    let script = root.join("apprun");
+    fs::write(
+        &script,
+        "#!/bin/sh\nprintf 'bwrap: \\033]52;c;ZGF0YQ==\\007 no\\n' >&2\nexit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    let img = root.join(format!("downloads/Evil{evil}-1.0-x86_64.AppImage"));
+    let (img_s, script_s) = (img.to_str().unwrap(), script.to_str().unwrap());
+    assert!(sam(
+        root,
+        &[
+            "dev",
+            "make-fixture",
+            "--name",
+            "Evil",
+            "--apprun",
+            script_s,
+            img_s
+        ]
+    )
+    .status
+    .success());
+    let downloads = root.join("downloads");
+    let mut seen = Vec::new();
+    let mut step = |args: &[&str]| {
+        let (status, out) = on_terminal(root, args);
+        seen.extend_from_slice(&out);
+        (status, String::from_utf8_lossy(&out).into_owned())
+    };
+    let (_, scan) = step(&["scan", downloads.to_str().unwrap()]);
+    assert!(scan.contains("Evil"), "the scan names the file: {scan:?}");
+    let (st, add) = step(&["add", img_s, "--no-launcher", "--accept"]);
+    assert!(st.success(), "{add:?}");
+    let list = sam(root, &["--json", "list"]);
+    let v: serde_json::Value = serde_json::from_slice(
+        list.stdout
+            .split(|b| *b == b'\n')
+            .rfind(|l| !l.is_empty())
+            .unwrap(),
+    )
+    .unwrap();
+    let id = v["data"][0]["id"].as_str().unwrap().to_string();
+    let (_, info) = step(&["info", &id]);
+    assert!(info.contains("Evil"), "info names the file: {info:?}");
+    let (st, run) = step(&["run", &id]);
+    assert!(!st.success(), "the app fails: {run:?}");
+    let (_, logs) = step(&["logs", &id, "--kind", "launch"]);
+    assert!(
+        logs.contains("bwrap: "),
+        "the log holds the app's line: {logs:?}"
+    );
+
+    let text = String::from_utf8_lossy(&seen).into_owned();
+    for (bad, what) in [
+        (&b"\x1b]52"[..], "a clipboard code"),
+        (b"\x1b]2;", "a window title"),
+        (b"\x07", "a bell (the end of a string sequence)"),
+        ("\u{202E}".as_bytes(), "a direction override"),
+    ] {
+        assert!(!has(&seen, bad), "{what} reached the terminal: {text:?}");
+    }
+
+    // The log on disk and its JSON hold only the text.
+    let logs = sam(root, &["--json", "logs", &id]);
+    assert!(
+        !has(&logs.stdout, b"\x1b"),
+        "{:?}",
+        String::from_utf8_lossy(&logs.stdout)
+    );
+    let dir = root.join("data/logs");
+    for f in walk(&dir) {
+        let data = fs::read(&f).unwrap();
+        assert!(!has(&data, b"\x1b"), "{} keeps an escape code", f.display());
+    }
+}
+
+fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            out.extend(walk(&p));
+        } else {
+            out.push(p);
+        }
+    }
+    out
+}

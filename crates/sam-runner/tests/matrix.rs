@@ -4,6 +4,7 @@
 //! only assert when the host has them. Uses a fake `$HOME`. Skipped when
 //! bubblewrap cannot run here.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::collections::HashMap;
 use std::fs;

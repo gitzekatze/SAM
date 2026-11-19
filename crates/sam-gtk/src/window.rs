@@ -15,6 +15,7 @@ use crate::app_page::AppPage;
 use crate::backend::Backend;
 use crate::perms::{self, Catalog};
 use crate::util::{self, esc};
+use sam_core::errln;
 
 /// Startup options from the command line.
 #[derive(Default, Clone)]
@@ -177,7 +178,7 @@ impl App {
     }
 
     pub fn report_error(&self, e: &str) {
-        eprintln!("sam-jail: {e}");
+        errln!("sam-jail: {e}");
         let t = adw::Toast::builder().title(esc(e)).timeout(8).build();
         self.toasts.add_toast(t);
     }

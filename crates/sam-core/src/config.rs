@@ -225,7 +225,7 @@ impl Config {
         };
         // A single invalid value is reset, not the whole file.
         if let Err(e) = c.validate() {
-            eprintln!(
+            crate::errln!(
                 "sam-jail: {}",
                 crate::i18n::trf(
                     "{file}: {error}; that setting was reset",
@@ -258,14 +258,14 @@ impl Config {
 
     fn damaged(file: &std::path::Path) -> Config {
         match crate::format::quarantine(file) {
-            Some(to) => eprintln!(
+            Some(to) => crate::errln!(
                 "sam-jail: {}",
                 crate::i18n::trf(
                     "{file} could not be read; it was moved to {moved} and the default settings are used",
                     &[("file", &file.display()), ("moved", &to.display())]
                 )
             ),
-            None => eprintln!("sam-jail: {}", crate::i18n::trf("{file} could not be read; the default settings are used", &[("file", &file.display())])),
+            None => crate::errln!("sam-jail: {}", crate::i18n::trf("{file} could not be read; the default settings are used", &[("file", &file.display())])),
         }
         Config::default()
     }

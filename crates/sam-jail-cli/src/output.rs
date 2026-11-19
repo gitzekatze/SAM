@@ -10,7 +10,7 @@ pub(crate) struct Out {
 impl Out {
     pub(crate) fn emit<T: Serialize>(&self, data: &T, human: impl FnOnce()) {
         if self.json {
-            println!("{}", json!({"ok": true, "data": data}));
+            sam_core::terminal::print_json(&json!({"ok": true, "data": data}).to_string());
         } else {
             human();
         }
@@ -21,8 +21,10 @@ pub(crate) fn color() -> bool {
     std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
 }
 
+/// `s` in a colour; only [`sam_core::terminal::SCREEN_COLOURS`] reach the
+/// terminal, so any other code is left out.
 pub(crate) fn paint(s: &str, code: &str) -> String {
-    if color() {
+    if color() && sam_core::terminal::SCREEN_COLOURS.contains(&code) {
         format!("\x1b[{code}m{s}\x1b[0m")
     } else {
         s.to_string()
@@ -63,7 +65,7 @@ pub(crate) fn sev_str(s: Severity) -> String {
 
 pub(crate) fn print_warnings(ws: &[Warning]) {
     for w in ws {
-        println!("  [{}] {}: {}", sev_str(w.severity), w.title, w.message);
+        outln!("  [{}] {}: {}", sev_str(w.severity), w.title, w.message);
     }
 }
 
@@ -121,12 +123,12 @@ pub(crate) fn print_info(
     warnings: &[Warning],
     sel: Option<&sam_runner::bwrap::SandboxInfo>,
 ) {
-    println!("{}  [{}]", paint(e.display_name(), "1"), badge_str(s.badge));
+    outln!("{}  [{}]", paint(e.display_name(), "1"), badge_str(s.badge));
     if !e.metadata.comment.is_empty() {
-        println!("  {}", e.metadata.comment);
+        outln!("  {}", e.metadata.comment);
     }
-    println!("  id:          {}", e.id);
-    println!(
+    outln!("  id:          {}", e.id);
+    outln!(
         "  source:      {}{}",
         tildify(&e.source_path),
         if e.source_path.exists() {
@@ -135,23 +137,23 @@ pub(crate) fn print_info(
             "  (missing)"
         }
     );
-    println!("  sha256:      {}", e.source.sha256);
-    println!("  type:        {}", e.appimage_type.label());
+    outln!("  sha256:      {}", e.source.sha256);
+    outln!("  type:        {}", e.appimage_type.label());
     if let Some(sig) = &e.signature {
-        println!("  signature:   {}", sig.detail);
+        outln!("  signature:   {}", sig.detail);
     }
-    println!("  category:    {}", e.category);
-    println!("  state:       {:?}", e.state);
+    outln!("  category:    {}", e.category);
+    outln!("  state:       {:?}", e.state);
     match sel {
-        Some(sel) => println!("  sandbox:     Bubblewrap ({})", sel.reason),
-        None => println!("  sandbox:     not available (see sam-jail doctor)"),
+        Some(sel) => outln!("  sandbox:     Bubblewrap ({})", sel.reason),
+        None => outln!("  sandbox:     not available (see sam-jail doctor)"),
     }
-    println!("  risk:        {}", risk_line(&s.risk));
+    outln!("  risk:        {}", risk_line(&s.risk));
     if let Some(p) = &e.profile.preset {
-        println!("  preset:      {p}");
+        outln!("  preset:      {p}");
     }
     if let Some(x) = &e.extraction {
-        println!(
+        outln!(
             "  extraction:  {} files, {} via {} ({})",
             x.file_count,
             human_size(x.total_size),
@@ -159,16 +161,16 @@ pub(crate) fn print_info(
             x.compression
         );
     } else {
-        println!("  extraction:  {}", paint("not extracted", "31"));
+        outln!("  extraction:  {}", paint("not extracted", "31"));
     }
-    println!(
+    outln!(
         "  launcher:    {}",
         e.desktop_entry
             .as_ref()
             .map(|p| tildify(p))
             .unwrap_or_else(|| "none".into())
     );
-    println!(
+    outln!(
         "  last run:    {}",
         e.last_launch
             .as_ref()
@@ -176,27 +178,27 @@ pub(crate) fn print_info(
             .unwrap_or_else(|| "never".into())
     );
 
-    println!("\n{}", paint("Permissions", "1"));
+    outln!("\n{}", paint("Permissions", "1"));
     let mut category = "";
     for (cat, title, value) in permission_lines(&e.profile.permissions) {
         if cat != category {
-            println!("  {}", paint(&sam_core::i18n::tr(cat), "1"));
+            outln!("  {}", paint(&sam_core::i18n::tr(cat), "1"));
             category = cat;
         }
-        println!("    {title:<40} {value}");
+        outln!("    {title:<40} {value}");
     }
     if let Some(d) = &e.detection {
-        println!("\n{}", paint("Dependencies", "1"));
+        outln!("\n{}", paint("Dependencies", "1"));
         print_detection(d);
     }
     if !e.recommendation_notes.is_empty() {
-        println!("\n{}", paint(&sam_core::i18n::tr("Why this profile"), "1"));
+        outln!("\n{}", paint(&sam_core::i18n::tr("Why this profile"), "1"));
         for n in &e.recommendation_notes {
-            println!("  - {n}");
+            outln!("  - {n}");
         }
     }
     if !warnings.is_empty() {
-        println!("\n{}", paint("Warnings", "1"));
+        outln!("\n{}", paint("Warnings", "1"));
         print_warnings(warnings);
     }
 }
@@ -249,11 +251,14 @@ pub(crate) fn permission_lines(
 }
 
 pub(crate) fn print_detection(d: &DependencyReport) {
-    println!(
+    outln!(
         "  toolkit: {}   arch: {}   ELF files: {}   bundled libs: {}",
-        d.requirements.toolkit, d.arch, d.elf_count, d.bundled_libraries
+        d.requirements.toolkit,
+        d.arch,
+        d.elf_count,
+        d.bundled_libraries
     );
-    println!(
+    outln!(
         "  compatibility: {:?}{}",
         d.compatibility,
         d.verdict
@@ -267,14 +272,14 @@ pub(crate) fn print_detection(d: &DependencyReport) {
         .map(|m| m.name.as_str())
         .collect();
     if !host_libs.is_empty() {
-        println!("  host system libraries: {}", host_libs.join(", "));
+        outln!("  host system libraries: {}", host_libs.join(", "));
     }
     for m in d
         .missing
         .iter()
         .filter(|m| m.class != ResourceClass::System)
     {
-        println!(
+        outln!(
             "  host library {} [{:?}]{}",
             m.name,
             m.class,
@@ -282,10 +287,10 @@ pub(crate) fn print_detection(d: &DependencyReport) {
         );
     }
     for r in d.resources.iter().filter(|r| !r.auto) {
-        println!("  needs {} ({})", r.resource, r.reason);
+        outln!("  needs {} ({})", r.resource, r.reason);
     }
     for n in &d.notes {
-        println!("  note: {n}");
+        outln!("  note: {n}");
     }
 }
 

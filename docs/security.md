@@ -383,7 +383,11 @@ shows one line with what it can see, and the app's page shows the same
 warning.
 
 When the terminal window is closed (or SAM is asked to quit), SAM hangs up
-the app's terminal, so the app ends, and finishes the launch normally.
+the app's terminal, so the app ends, and finishes the launch normally. An
+app started from the menu is asked to quit when you log out (SAM passes the
+request on, as `sam-jail stop` does) and has 10 seconds to save before its
+sandbox is ended; the start is recorded as closed and leaves nothing behind
+(`logging_out_closes_a_menu_started_app_properly`).
 
 An app started with its input from a pipe or a file (`cat data.json |
 sam-jail run jq .`, `< file`, a script), or with its output going to a
@@ -395,6 +399,19 @@ input from the terminal (give it with `<` or a pipe). Without a terminal of
 its own it has none to type into; its output still passes the same filter
 whenever it is shown in a terminal, and there requests the terminal would
 answer are removed too, since the answer would reach your shell.
+
+**What SAM itself prints** carries an app's text too: the name of its
+file, its menu name, the lines of its log, the error line a failed start is
+explained with, preset and release names. Every line SAM prints passes one
+filter that keeps only text, line breaks, tabs and SAM's own colours, and
+removes direction overrides and invisible characters, so a file named to
+look like another cannot fool you
+(`what_sam_prints_about_an_app_cannot_reach_past_the_terminal`). The code
+check refuses any other way of printing
+(`every_printed_line_goes_through_the_screen_filter`). Logs keep only the
+text of what an app wrote, so `cat` on a log file is safe as well. In
+`--json` output, these characters are written as `\u` escapes: the same
+data, nothing a terminal acts on.
 
 **Not covered:** output that misleads you (a fake prompt, a link whose text
 hides where it goes, a fake "sudo" password question: the app cannot run
@@ -537,9 +554,14 @@ SAM keeps what it learns about you on your computer.
   `sam-jail report`) are made to be shared, so SAM removes what identifies
   you or gives access before you see the text: your home folder and other
   users' folders, your user name and the computer's name, email addresses,
-  logins and query strings in links (they often carry tokens), IP addresses,
-  and the values of environment variables you gave an app
-  (`bug_reports_hide_names_addresses_and_secrets`). Read it once before you
+  logins, query strings and the part after `#` in links, parts of a link
+  that look like a key, `Authorization` and cookie lines and other named
+  secrets (`token=`, `password:`, `"api_key":`), IP addresses, and the
+  values of environment variables you gave an app
+  (`bug_reports_hide_names_addresses_and_secrets`,
+  `bug_reports_hide_tokens_in_every_shape`). An app's log stays inside its
+  code block: its own text cannot end the block and add to the report
+  (`a_log_cannot_break_out_of_its_code_block`). Read it once before you
   paste it anywhere: an app can print personal data SAM cannot recognize.
 
 ---

@@ -651,19 +651,133 @@ impl PlainText {
 fn text_of(pieces: Vec<Piece>) -> String {
     let mut s = String::new();
     for p in pieces {
-        match p {
-            Piece::Text(t) => s.push_str(&t),
-            Piece::Control(b'\n') => s.push('\n'),
-            Piece::Control(b'\t') => s.push('\t'),
-            _ => {}
-        }
+        push_text(&mut s, &p);
     }
     s
 }
 
-/// [`PlainText`] for a whole piece of output at once.
+/// The text of one piece: printable characters without the hidden ones
+/// ([`crate::util::is_hidden`]), line breaks and tabs.
+fn push_text(s: &mut String, p: &Piece) {
+    match p {
+        Piece::Text(t) => s.extend(t.chars().filter(|c| !crate::util::is_hidden(*c))),
+        Piece::Control(b'\n') => s.push('\n'),
+        Piece::Control(b'\t') => s.push('\t'),
+        _ => {}
+    }
+}
+
+/// [`PlainText`] for a whole piece of output at once: the text of anything
+/// an app wrote or named (its output, a log, a file name), safe to show.
 pub fn plain_text(data: &[u8]) -> String {
     PlainText::default().feed(data)
+}
+
+/// The colours SAM's own terminal output uses (SGR parameters): normal,
+/// bold, dim, red, green, yellow, cyan, grey, bold red.
+pub const SCREEN_COLOURS: &[&str] = &["0", "1", "2", "31", "32", "33", "36", "90", "1;31"];
+
+/// A text SAM is about to print on the terminal, made safe: its pieces
+/// that came from an app or a file (a name, a log line, an error) may carry
+/// escape codes and hidden characters, so everything except text, line
+/// breaks, tabs and [`SCREEN_COLOURS`] is removed. Every line SAM prints
+/// goes through here (see `outln!`); at worst an app's text appears in one
+/// of SAM's colours.
+pub fn for_screen(s: &str) -> String {
+    let mut pieces = Vec::new();
+    let mut parser = Parser::default();
+    parser.feed(s.as_bytes(), &mut pieces);
+    let mut out = String::with_capacity(s.len());
+    for p in &pieces {
+        match p {
+            Piece::Csi {
+                params,
+                inter,
+                fin: b'm',
+            } if inter.is_empty()
+                && SCREEN_COLOURS
+                    .iter()
+                    .any(|c| c.as_bytes() == params.as_slice()) =>
+            {
+                out.push_str(&String::from_utf8_lossy(&p.bytes()));
+            }
+            p => push_text(&mut out, p),
+        }
+    }
+    out
+}
+
+/// JSON text safe to show on a terminal and still the same data: every
+/// hidden character ([`crate::util::is_hidden`]) is written as a `\u`
+/// escape. JSON writers escape only the controls below U+0020, so DEL, the
+/// 8-bit control codes and direction overrides would reach the terminal.
+/// Outside strings JSON text is plain ASCII, so only string contents change.
+pub fn json_for_screen(json: &str) -> String {
+    let mut out = String::with_capacity(json.len());
+    for c in json.chars() {
+        if crate::util::is_hidden(c) {
+            let mut units = [0u16; 2];
+            for u in c.encode_utf16(&mut units) {
+                out.push_str(&format!("\\u{:04x}", u));
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Prints JSON text through [`json_for_screen`].
+#[allow(clippy::disallowed_macros)]
+pub fn print_json(json: &str) {
+    println!("{}", json_for_screen(json));
+}
+
+/// Prints one line on standard output through [`for_screen`].
+#[allow(clippy::disallowed_macros)]
+pub fn print_out(s: &str) {
+    println!("{}", for_screen(s));
+}
+
+/// Prints one line on standard error through [`for_screen`].
+#[allow(clippy::disallowed_macros)]
+pub fn print_err(s: &str) {
+    eprintln!("{}", for_screen(s));
+}
+
+/// Prints text without a line break added on standard output through
+/// [`for_screen`].
+#[allow(clippy::disallowed_macros)]
+pub fn print_out_raw_end(s: &str) {
+    print!("{}", for_screen(s));
+}
+
+/// Prints text without a line break added on standard error through
+/// [`for_screen`].
+#[allow(clippy::disallowed_macros)]
+pub fn print_err_raw_end(s: &str) {
+    eprint!("{}", for_screen(s));
+}
+
+/// Like `println!`, but the line goes through [`for_screen`] first: every
+/// line SAM shows on the terminal can carry an app's or a file's text.
+#[macro_export]
+macro_rules! outln {
+    () => { $crate::terminal::print_out("") };
+    ($($t:tt)*) => { $crate::terminal::print_out(&format!($($t)*)) };
+}
+
+/// Like `eprintln!`, through [`for_screen`].
+#[macro_export]
+macro_rules! errln {
+    () => { $crate::terminal::print_err("") };
+    ($($t:tt)*) => { $crate::terminal::print_err(&format!($($t)*)) };
+}
+
+/// Like `print!`, through [`for_screen`].
+#[macro_export]
+macro_rules! out {
+    ($($t:tt)*) => { $crate::terminal::print_out_raw_end(&format!($($t)*)) };
 }
 
 #[cfg(test)]
@@ -966,5 +1080,63 @@ mod tests {
         assert!(
             f.blocked.contains("unknown control codes") && !f.blocked.contains("kitty graphics")
         );
+    }
+
+    /// What SAM prints keeps its own colours and loses everything else an
+    /// app's text could bring: string sequences (clipboard, title), other
+    /// control sequences (title reports, hidden text), the 8-bit forms,
+    /// carriage returns that overwrite a line, and direction overrides.
+    #[test]
+    fn the_screen_keeps_only_text_and_sams_colours() {
+        assert_eq!(
+            for_screen("\x1b[1;31merror:\x1b[0m a\tb\nc"),
+            "\x1b[1;31merror:\x1b[0m a\tb\nc"
+        );
+        for c in SCREEN_COLOURS {
+            let s = format!("\x1b[{c}mx");
+            assert_eq!(for_screen(&s), s);
+        }
+        assert_eq!(
+            for_screen("a\x1b]52;c;ZGF0YQ==\x07b\x1b]2;t\x1b\\c\x1bP1$qm\x1b\\d"),
+            "abcd"
+        );
+        assert_eq!(
+            for_screen("a\x1b[21tb\x1b[8mc\x1b[38;5;1md\x1b[31;8me"),
+            "abcde"
+        );
+        assert_eq!(for_screen("a\u{9b}21tb\u{9d}52;c;x\u{9c}"), "a21tb52;c;x");
+        assert_eq!(for_screen("ok\rFAIL\x08\x7f"), "okFAIL");
+        assert_eq!(for_screen("invoice\u{202E}fdp.exe"), "invoicefdp.exe");
+        // An unfinished sequence at the end is dropped, not printed.
+        assert_eq!(for_screen("a\x1b]52;c;ZGF0"), "a");
+    }
+
+    /// The log and the screen drop the same hidden characters as names do.
+    #[test]
+    fn plain_text_has_no_hidden_characters() {
+        assert_eq!(
+            plain_text("a\u{202E}b\u{200B}c\u{2066}d\u{FEFF}e\n".as_bytes()),
+            "abcde\n"
+        );
+        assert_eq!(plain_text("x\x1b]52;c;eA==\x07y".as_bytes()), "xy");
+    }
+
+    /// JSON for the terminal is the same data: hidden characters are
+    /// written as escapes, which every JSON reader turns back into them.
+    #[test]
+    fn json_for_the_screen_is_the_same_data() {
+        let v = serde_json::json!({
+            "name": "a\u{202E}b\u{7f}c\u{9b}d\u{E0041}e\u{200D}f",
+            "plain": "x\ny"
+        });
+        let text = json_for_screen(&v.to_string());
+        assert!(text.chars().all(|c| !crate::util::is_hidden(c)), "{text:?}");
+        assert!(
+            text.contains("\\u202e") && text.contains("\\udb40\\udc41"),
+            "{text}"
+        );
+        assert!(text.contains('\u{200D}'), "joiners stay: {text}");
+        let back: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, v);
     }
 }

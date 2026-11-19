@@ -339,16 +339,39 @@ where
         .join(" ")
 }
 
-/// Lowercase ASCII slug: `Krita 5.2 (x86_64)` -> `krita-5-2-x86-64`.
+/// Characters that show nothing themselves but change what is around them:
+/// control characters (also the 8-bit ones, U+0080 to U+009F), the marks
+/// and overrides that turn the reading direction (`invoice\u{202E}fdp.exe`
+/// shows as `invoiceexe.pdf`), and invisible ones (zero-width space, word
+/// joiner, byte order mark, tag characters) that make two names look the
+/// same. Zero-width joiner and non-joiner stay: some scripts and emoji
+/// need them.
+pub fn is_hidden(c: char) -> bool {
+    c.is_control()
+        || matches!(c,
+            '\u{00AD}'                    // soft hyphen
+            | '\u{061C}'                  // Arabic letter mark
+            | '\u{115F}' | '\u{1160}'     // Hangul fillers
+            | '\u{180E}'                  // Mongolian vowel separator
+            | '\u{200B}'                  // zero-width space
+            | '\u{200E}' | '\u{200F}'     // left-to-right, right-to-left mark
+            | '\u{202A}'..='\u{202E}'     // embeddings and overrides
+            | '\u{2060}'..='\u{206F}'     // word joiner, isolates, invisible operators
+            | '\u{3164}' | '\u{FFA0}'     // Hangul fillers
+            | '\u{FEFF}'                  // byte order mark
+            | '\u{FFF9}'..='\u{FFFB}'     // interlinear annotation
+            | '\u{E0000}'..='\u{E007F}') // tag characters
+}
+
 /// Text from an untrusted source (an AppImage's desktop file, an app's
-/// output, a file name) made safe to show: control characters removed,
-/// length capped, and `<`/`>` replaced by look-alikes so no UI toolkit can
-/// mistake it for markup (some render HTML automatically, including remote
-/// images).
+/// output, a file name) made safe to show: hidden characters
+/// ([`is_hidden`]) removed, length capped, and `<`/`>` replaced by
+/// look-alikes so no UI toolkit can mistake it for markup (some render HTML
+/// automatically, including remote images).
 pub fn display_safe(s: &str, max_chars: usize) -> String {
     let mut out: String = s
         .chars()
-        .filter(|c| !c.is_control())
+        .filter(|c| !is_hidden(*c))
         .map(|c| match c {
             '<' => '‹',
             '>' => '›',
@@ -356,12 +379,13 @@ pub fn display_safe(s: &str, max_chars: usize) -> String {
         })
         .take(max_chars)
         .collect();
-    if s.chars().filter(|c| !c.is_control()).count() > max_chars {
+    if s.chars().filter(|c| !is_hidden(*c)).count() > max_chars {
         out.push('…');
     }
     out
 }
 
+/// Lowercase ASCII slug: `Krita 5.2 (x86_64)` -> `krita-5-2-x86-64`.
 pub fn slugify(s: &str) -> String {
     let mut out = String::new();
     let mut dash = false;
@@ -602,5 +626,46 @@ mod display_safe_tests {
     fn neutralizes_markup_and_controls() {
         assert_eq!(display_safe("<b>X</b>\u{7}", 100), "‹b›X‹/b›");
         assert_eq!(display_safe("abcdef", 3), "abc…");
+    }
+
+    /// Names that would show other than they are lose the characters that
+    /// do it (audit I-F12): a direction override (`invoice\u{202E}fdp.exe` shows
+    /// as `invoiceexe.pdf`), invisible spaces and joiners between letters,
+    /// tag characters, 8-bit control codes. Joiners that scripts and emoji
+    /// need stay.
+    #[test]
+    fn names_lose_direction_overrides_and_invisible_characters() {
+        assert_eq!(
+            display_safe("invoice\u{202E}fdp.exe", 100),
+            "invoicefdp.exe"
+        );
+        for c in [
+            '\u{200B}',
+            '\u{200E}',
+            '\u{200F}',
+            '\u{202A}',
+            '\u{2066}',
+            '\u{2069}',
+            '\u{2060}',
+            '\u{FEFF}',
+            '\u{00AD}',
+            '\u{061C}',
+            '\u{180E}',
+            '\u{E0001}',
+            '\u{E007F}',
+            '\u{9B}',
+            '\u{3164}',
+            '\u{FFF9}',
+        ] {
+            assert_eq!(
+                display_safe(&format!("pay{c}pal"), 100),
+                "paypal",
+                "{:04X}",
+                c as u32
+            );
+        }
+        let kept = "👩\u{200D}💻 می\u{200C}خواهم ❤\u{FE0F}";
+        assert_eq!(display_safe(kept, 100), kept);
+        assert_eq!(display_safe("a\u{202E}\u{202E}bc", 2), "ab…");
     }
 }

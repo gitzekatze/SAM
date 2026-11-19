@@ -23,6 +23,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use sam_core::permissions::*;
 use sam_core::util::expand_home;
 use sam_core::HostInfo;
+use sam_core::{errln, outln};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -110,7 +111,7 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
         match apply_landlock(ll) {
             Ok(status) => report.push(format!("landlock: {status}")),
             Err(e) => {
-                eprintln!("sam-jail: landlock not applied: {e:#}");
+                errln!("sam-jail: landlock not applied: {e:#}");
                 report.push(format!("landlock: NOT applied ({e})"));
             }
         }
@@ -129,7 +130,7 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
     if let Some(plan) = &spec.probe {
         // Every layer is in place: check what the app would get, report, stop.
         let r = crate::probe::run(plan, &report.join("; "));
-        println!(
+        outln!(
             "{}{}",
             crate::probe::REPORT_MARKER,
             serde_json::to_string(&r)?

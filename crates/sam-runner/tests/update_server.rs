@@ -6,6 +6,7 @@
 //!
 //! Needs python3, openssl, objcopy and curl; skipped without them.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::fs;
 use std::io::{BufRead, BufReader};

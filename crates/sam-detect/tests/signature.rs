@@ -6,6 +6,7 @@
 //! tests instead of skipping them): signing starts a gpg-agent, which puts
 //! its sockets under /run/user/<uid>/gnupg. Needs gpg, gpgv and objcopy.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

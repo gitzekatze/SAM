@@ -402,6 +402,23 @@ fn holds_open(pid: u32, file: &Path) -> bool {
         .any(|fd| fs::read_link(fd.path()).is_ok_and(|t| t == want))
 }
 
+/// Asks an app to quit the way logging out does: SIGTERM to every process
+/// below its launcher `runner`, so it can save and close. Not Bubblewrap
+/// itself (that would kill the app at once) and not the D-Bus proxy the app
+/// may still need while quitting.
+pub(crate) fn ask_to_quit(runner: u32) {
+    for pid in descendants(runner) {
+        let comm = fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+        if !matches!(comm.trim(), "bwrap" | "xdg-dbus-proxy") {
+            if let Ok(pid) = libc::pid_t::try_from(pid) {
+                // SAFETY: kill takes plain integers; a process that is
+                // already gone only makes it fail.
+                unsafe { libc::kill(pid, libc::SIGTERM) };
+            }
+        }
+    }
+}
+
 /// All processes below `root`, children before grandchildren.
 fn descendants(root: u32) -> Vec<u32> {
     let mut parent_of = Vec::new();

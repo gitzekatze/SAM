@@ -246,3 +246,51 @@ fn the_weak_hashes_stay_in_the_zsync_update_code() {
         "SHA-1 or MD4 used outside the zsync update code: {offenders:?}"
     );
 }
+
+fn rust_files(dir: &std::path::Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.is_dir() && !p.ends_with("target") {
+            out.extend(rust_files(&p));
+        } else if p.extension().is_some_and(|x| x == "rs") {
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// Everything SAM prints goes through one place that removes escape codes
+/// and hidden characters from it (`sam_core::terminal::for_screen`, audit
+/// G-F5): the plain print macros are refused by the code check
+/// (clippy.toml), and in SAM's program code only that one file may allow
+/// them. Tests (`tests/` folders) may: their notes go to the developer.
+#[test]
+fn every_printed_line_goes_through_the_screen_filter() {
+    let conf = fs::read_to_string(root().join("clippy.toml")).unwrap();
+    for m in [
+        "std::println",
+        "std::eprintln",
+        "std::print\"",
+        "std::eprint\"",
+    ] {
+        assert!(conf.contains(m), "clippy.toml no longer refuses {m}");
+    }
+    let allowed = root().join("crates/sam-core/src/terminal.rs");
+    // In two halves, so this file does not name it.
+    let lint = ["clippy::disallowed", "_macros"].concat();
+    let mut bypass = Vec::new();
+    for f in rust_files(&root().join("crates")) {
+        if f.components().any(|c| c.as_os_str() == "tests") {
+            continue;
+        }
+        let text = fs::read_to_string(&f).unwrap();
+        if f != allowed && text.contains(&lint) {
+            bypass.push(f.display().to_string());
+        }
+    }
+    assert!(
+        bypass.is_empty(),
+        "printing past the screen filter: {bypass:?}"
+    );
+}

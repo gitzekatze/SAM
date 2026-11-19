@@ -9,6 +9,7 @@
 //! What the app leaves behind is moved aside after the start, and links are
 //! put back. In its own file because it sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::collections::HashMap;
 use std::fs;

@@ -3,6 +3,7 @@
 //! `$HOME`. Skipped when Bubblewrap cannot run here or SAM's helper
 //! (sam-jail-run) is not on PATH.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::fs;
 
