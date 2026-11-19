@@ -65,7 +65,7 @@ Bubblewrap builds the sandbox with these options and behaves as documented: sepa
 - **SAM functions that rely on it:** [10](functions.md#10), [11](functions.md#11), [19](functions.md#19), [20](functions.md#20)
 - **Quick check:** `bwrap-runs`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (fully)
-- **Checked first by:** `breakout.rs`, `evil.rs`, `exit_codes.rs`, `full_home.rs`, `layers.rs`, `matrix.rs`, `overlay_fallback.rs`, `pipes.rs`, `sandbox.rs`, `start_check.rs`, `stop.rs`, `teardown.rs`, `terminal.rs`, `unpack.rs`, `verify.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `exit_codes.rs`, `full_home.rs`, `layers.rs`, `local_network.rs`, `matrix.rs`, `overlay_fallback.rs`, `pipes.rs`, `sandbox.rs`, `start_check.rs`, `stop.rs`, `teardown.rs`, `terminal.rs`, `unpack.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:bwrap`, `path:/usr/bin/bwrap`, `option:--unshare-user`, `option:--unshare-pid`, `option:--unshare-uts`, `option:--unshare-ipc`, `option:--unshare-cgroup-try`, `option:--unshare-net`, `option:--unshare-all`, `option:--uid`, `option:--gid`, `option:--die-with-parent`, `option:--new-session`, `option:--cap-drop`, `option:--clearenv`, `option:--setenv`, `option:--chdir`, `option:--proc`, `option:--dev`, `option:--tmpfs`, `option:--dir`, `option:--perms`, `option:--symlink`, `option:--bind`, `option:--bind-try`, `option:--ro-bind`, `option:--ro-bind-try`, `option:--dev-bind`, `option:--dev-bind-try`, `option:--remount-ro`, `option:--hostname`, `option:--json-status-fd`, `option:--seccomp`, `option:--version`, `option:-V`
 - **If it breaks:** Read the Bubblewrap release notes for the options above. A renamed option: build the old or new form from the version `bwrap --version` reports (sam-sandbox). A changed behavior: the breakout and matrix tests name the permission; fix the command in sam-sandbox/src/lib.rs.
 
@@ -102,8 +102,8 @@ pasta --splice-only creates a network namespace with only loopback, forwards onl
 - **When it breaks:** SAM falls back to less access.
 - **SAM functions that rely on it:** [12](functions.md#12)
 - **Quick check:** `pasta-splice-only`
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `with_this_computer_only_the_sandbox_dies_with_its_launcher` (fully)
-- **Checked first by:** `matrix.rs` (a broken contract stops these tests with its name)
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `with_this_computer_only_the_sandbox_dies_with_its_launcher`, `the_apps_ports_are_offered_on_this_computer_only` (fully)
+- **Checked first by:** `local_network.rs`, `matrix.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:pasta`, `option:--splice-only`, `option:-t`, `option:-T`, `option:-u`, `option:-U`, `option:--quiet`
 - **If it breaks:** A pasta without --splice-only is never used: the app starts with no network at all and a warning says why (tested in the matrix). If options change, adapt netns.rs and check that an unlisted host port stays unreachable.
 

@@ -149,7 +149,7 @@ id = 12
 area = "C"
 promise = "Network: none, \"This computer only\" (selected ports), or full."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/netns.rs"]
-tests = ["localhost_network_leaves_netns_to_pasta", "only_listed_host_ports", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "a_pasta_command_ending_in_the_separator_is_refused_not_a_panic", "the_status_shell_goes_between_the_separator_and_the_program"]
+tests = ["localhost_network_leaves_netns_to_pasta", "only_listed_host_ports", "the_apps_ports_listen_on_loopback_only", "well_known_local_services_are_never_taken_over", "the_apps_ports_are_offered_on_this_computer_only", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "a_pasta_command_ending_in_the_separator_is_refused_not_a_panic", "the_status_shell_goes_between_the_separator_and_the_program"]
 
 [[function]]
 id = 13

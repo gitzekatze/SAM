@@ -241,6 +241,18 @@ The app has no internet and no DNS. It can reach only the host ports listed
 in `network.host_ports`. It needs `pasta` with `--splice-only`; an older
 `pasta` is not used, and the app then gets no network at all, never more.
 
+The app's own ports (its web page, for example) are offered on this
+computer's loopback addresses only, 127.0.0.1 and ::1: other computers on
+the network cannot reach them, and a scan of your computer does not show
+them. Ports of well-known local services are never taken over
+automatically, so their clients cannot end up talking to the app: besides
+databases, caches and local AI servers, also browser and Node.js debugging
+(9222, 9229), X11 and PulseAudio over the network, VNC, Remote Desktop,
+Docker and Kubernetes, Tor and other proxies, KDE Connect, Syncthing,
+Steam and Discord (`NEVER_FORWARD_FROM_APP` in `netns.rs`;
+`the_apps_ports_are_offered_on_this_computer_only`). An app that needs one
+of them gets it only when you list it in `network.app_ports`.
+
 ### Private `/dev/shm`
 
 Each sandbox has its own shared memory folder.
@@ -669,7 +681,9 @@ was easily misread.
   visible to it, because the portal hands over the host path. Grant the
   folder, or open the file with the app (which grants that one file).
 - **This computer only** forwards the app's own ports to this computer
-  automatically, except privileged ports and well-known local services. List
+  (127.0.0.1 and ::1 only) automatically, except privileged ports and
+  well-known local services. Another local service that is not on SAM's
+  list and starts after the app can find its port taken. List
   `network.app_ports` to restrict it further.
 - **Hostname:** the sandbox keeps the computer's hostname, because changing
   it is blocked on some hardened systems.
