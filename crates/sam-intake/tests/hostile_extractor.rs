@@ -71,6 +71,8 @@ fn a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder() {
     fs::set_permissions(&tool, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let path = std::env::var("PATH").unwrap_or_default();
     std::env::set_var("PATH", format!("{}:{path}", bin.display()));
+    // The stand-in belongs to the user: SAM runs it only from this folder.
+    std::env::set_var("SAM_TRUST_TOOLS_IN", &bin);
 
     let source = d.join("App.AppImage");
     fs::write(&source, vec![0u8; 4096]).unwrap();

@@ -23,6 +23,7 @@ fn states(bin: &Path, root: &Path) -> BTreeMap<String, String> {
     let out = Command::new(env!("CARGO_BIN_EXE_sam-jail"))
         .args(["--json", "doctor", "--contracts"])
         .env("PATH", bin)
+        .env("SAM_TRUST_TOOLS_IN", bin)
         .env("SAM_CONFIG_DIR", root.join("config"))
         .env("SAM_DATA_DIR", root.join("data"))
         .env("SAM_APPLICATIONS_DIR", root.join("applications"))

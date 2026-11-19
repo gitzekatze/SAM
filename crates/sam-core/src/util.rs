@@ -178,16 +178,105 @@ pub fn own_appimage() -> Option<PathBuf> {
     (exe.starts_with(&appdir) && appimage.is_file()).then_some(appimage)
 }
 
-/// Find an executable in `$PATH`.
+/// Finds a program SAM may run: the first one on `$PATH` that the user
+/// cannot change. Every program SAM starts
+/// runs outside the sandbox, and an app with write access to the home could
+/// put its own `bwrap` or `pasta` into `~/.cargo/bin`, `~/go/bin` or
+/// `~/.nix-profile/bin`, which are often on `$PATH` (audit L-F12): such a
+/// copy is skipped ([`may_run`]).
+///
+/// The path returned has its folders resolved but keeps the program's own
+/// name: some programs act by the name they are started under (`pasta` is
+/// a link to `passt`, which without that name sets up a virtual machine's
+/// network instead).
 pub fn which(name: &str) -> Option<PathBuf> {
+    candidates(name)
+        .into_iter()
+        .find(|p| may_run(p))
+        .and_then(|p| {
+            let dir = fs::canonicalize(p.parent()?).ok()?;
+            Some(dir.join(p.file_name()?))
+        })
+}
+
+/// The first copy of `name` that [`which`] skipped because the user can
+/// change it, to name it in a message.
+pub fn skipped_copy(name: &str) -> Option<PathBuf> {
+    which(name)
+        .is_none()
+        .then(|| candidates(name).into_iter().find(|p| !may_run(p)))
+        .flatten()
+}
+
+fn candidates(name: &str) -> Vec<PathBuf> {
     if name.contains('/') {
         let p = PathBuf::from(name);
-        return is_executable(&p).then_some(p);
+        return if is_executable(&p) { vec![p] } else { vec![] };
     }
     let path = std::env::var_os("PATH").unwrap_or_else(|| "/usr/local/bin:/usr/bin:/bin".into());
     std::env::split_paths(&path)
+        .filter(|d| d.is_absolute())
         .map(|d| d.join(name))
-        .find(|p| is_executable(p))
+        .filter(|p| is_executable(p))
+        .collect()
+}
+
+/// Whether SAM may run the program at `p`: the user (and so every app,
+/// which runs as the user) can change neither the file nor any folder on
+/// its way, through links too. Not owned by the user (an owner can always
+/// make it writable) and not writable for the user by group or others.
+/// Run as root, the system's own files are root's: then no one else may
+/// write them.
+///
+/// Tests name a folder of stand-in tools in `SAM_TRUST_TOOLS_IN`; its
+/// programs may run although the user owns them. Whoever sets SAM's
+/// environment can make it run anything anyway (`PATH` itself, for one),
+/// and apps cannot set it.
+pub fn may_run(p: &Path) -> bool {
+    let Ok(real) = fs::canonicalize(p) else {
+        return false;
+    };
+    // The folder holding a link, too: whoever can write there can point the
+    // link elsewhere.
+    let Some(folder) = p.parent().and_then(|d| fs::canonicalize(d).ok()) else {
+        return false;
+    };
+    if let Some(dir) = std::env::var_os("SAM_TRUST_TOOLS_IN").filter(|d| !d.is_empty()) {
+        if fs::canonicalize(dir).is_ok_and(|d| d == folder) {
+            return true;
+        }
+    }
+    unchanged_by_user(&real) && unchanged_by_user(&folder)
+}
+
+/// Whether the user can change neither `real` (links resolved) nor any
+/// folder above it; see [`may_run`].
+fn unchanged_by_user(real: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    // SAFETY: getuid has no preconditions and cannot fail.
+    let me = unsafe { libc::getuid() };
+    real.ancestors().all(|a| {
+        let Ok(m) = fs::metadata(a) else {
+            return false;
+        };
+        if me == 0 {
+            return only_root_can_change(m.uid(), m.gid(), m.mode());
+        }
+        let Ok(c) = std::ffi::CString::new(a.as_os_str().as_encoded_bytes()) else {
+            return false;
+        };
+        // SAFETY: `c` is a valid NUL-terminated path; access only reads it.
+        let writable = unsafe { libc::access(c.as_ptr(), libc::W_OK) } == 0;
+        m.uid() != me && !writable
+    })
+}
+
+/// For SAM run as root: a file or folder only root can change, owned by
+/// root and writable by no one else (a group other than root's counts as
+/// someone else).
+fn only_root_can_change(uid: u32, gid: u32, mode: u32) -> bool {
+    let others_write = mode & 0o002 != 0 || (mode & 0o020 != 0 && gid != 0);
+    uid == 0 && !others_write
 }
 
 pub fn is_executable(p: &Path) -> bool {
@@ -614,6 +703,74 @@ mod tests {
         assert_eq!(shell_quote("a b"), "'a b'");
         assert_eq!(shell_quote("it's"), "'it'\\''s'");
         assert_eq!(shell_quote(""), "''");
+    }
+}
+
+#[cfg(test)]
+mod may_run_tests {
+    use super::*;
+
+    /// Run as root, SAM takes a program only where root alone can change
+    /// it: owned by root, not writable for others, and writable for a group
+    /// only when that group is root's.
+    #[test]
+    fn as_root_only_what_no_one_else_can_change_may_run() {
+        assert!(only_root_can_change(0, 0, 0o755));
+        assert!(only_root_can_change(0, 0, 0o775));
+        assert!(only_root_can_change(0, 50, 0o755));
+        assert!(!only_root_can_change(0, 50, 0o775), "group staff may write");
+        assert!(!only_root_can_change(0, 0, 0o757), "everyone may write");
+        assert!(!only_root_can_change(0, 0, 0o777));
+        assert!(!only_root_can_change(1000, 0, 0o755), "owned by a user");
+        assert!(!only_root_can_change(1000, 1000, 0o555));
+    }
+
+    /// SAM runs only programs the user cannot change: one in a folder the
+    /// user owns is refused, also behind a link, and a link there that
+    /// leads to a system program is followed to it (audit L-F12).
+    #[test]
+    fn only_programs_the_user_cannot_change_may_run() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let own = tmp.path().join("bwrap");
+        fs::write(&own, "#!/bin/sh\n").unwrap();
+        fs::set_permissions(&own, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!may_run(&own));
+        let sh = fs::canonicalize("/bin/sh").unwrap();
+        assert!(may_run(&sh), "{}", sh.display());
+        // A link in a folder of the user's could be pointed elsewhere after
+        // the check, even where it now leads to a system program.
+        let link = tmp.path().join("sh");
+        std::os::unix::fs::symlink(&sh, &link).unwrap();
+        assert!(!may_run(&link));
+        let to_own = tmp.path().join("to-own");
+        std::os::unix::fs::symlink(&own, &to_own).unwrap();
+        assert!(!may_run(&to_own));
+        assert!(!may_run(&tmp.path().join("missing")));
+        // A program the user owns, even where nobody may write it now: the
+        // owner can make it writable again.
+        let locked = tmp.path().join("locked");
+        fs::create_dir(&locked).unwrap();
+        let prog = locked.join("bwrap");
+        fs::write(&prog, "#!/bin/sh\n").unwrap();
+        fs::set_permissions(&prog, fs::Permissions::from_mode(0o555)).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        // SAFETY: getuid has no preconditions.
+        if unsafe { libc::getuid() } != 0 {
+            assert!(!may_run(&prog));
+        }
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        // A system link keeps the name it was found under: some programs
+        // act by it (pasta is a link to passt).
+        if let Some(found) = which("sh") {
+            assert_eq!(found.file_name().unwrap(), "sh", "{}", found.display());
+        }
+        // A folder the user can write, even owned by someone else: a
+        // world-writable one like /tmp.
+        let shared = Path::new("/tmp");
+        if fs::metadata(shared).is_ok_and(|m| m.permissions().mode() & 0o002 != 0) {
+            assert!(!may_run(shared));
+        }
     }
 }
 

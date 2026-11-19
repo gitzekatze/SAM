@@ -43,6 +43,9 @@ fn sam_with_path(root: &Path, path: &str, args: &[&str]) -> Output {
         .env("XDG_CONFIG_HOME", root.join("home/.config"))
         .env("XDG_DATA_HOME", root.join("home/.local/share"))
         .env("PATH", path)
+        // Stand-in tools of a test belong to the user: SAM runs them only
+        // from the folder named here.
+        .env("SAM_TRUST_TOOLS_IN", path)
         .stdin(Stdio::null());
     // The same run on every computer: no desktop session of the person
     // (its Wayland socket would look broken from the test's runtime folder).
