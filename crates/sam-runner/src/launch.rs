@@ -946,6 +946,7 @@ fn run_once(
     let rec = LaunchRecord {
         learned_names,
         refused_names,
+        undone_repairs: vec![],
         started_at,
         finished_at: now(),
         exit_code: status.code(),
@@ -970,9 +971,12 @@ fn run_once(
                 &app.profile.permissions,
                 status.signal(),
             );
-            // Suggested only where it can work (see overlay_works_in).
+            // Suggested only where it can work (see overlay_works_in), and
+            // not a step already tried that did not help.
             f.retain(|s| {
-                s.id != "writable-appdir" || sam_core::host::overlay_works_in(&paths.overlays_dir())
+                (s.id != "writable-appdir"
+                    || sam_core::host::overlay_works_in(&paths.overlays_dir()))
+                    && !app.tried_repairs.contains(&s.id)
             });
             f
         },
@@ -996,7 +1000,21 @@ fn run_once(
             )
         );
     }
-    save_launch(app, &rec, paths)?;
+    // Repair steps on trial: this start decides. Not a diagnostic run, and
+    // not a start that failed for a bus name SAM just allowed (its restart
+    // decides).
+    let judge = judges_trials(opts, &rec);
+    let mut rec = rec;
+    rec.undone_repairs = save_launch(app, &rec, paths, judge)?;
+    if !rec.undone_repairs.is_empty() && !opts.quiet {
+        eprintln!(
+            "sam-jail: {}",
+            sam_core::i18n::trf(
+                "the repair step did not help, so SAM undid it: {steps}",
+                &[("steps", &rec.undone_repairs.join(", "))]
+            )
+        );
+    }
     let _ = logs.prune(&app.id, LogKind::Launch, cfg.diagnostics.keep_logs);
     Ok(rec)
 }
@@ -1460,7 +1478,22 @@ fn ran_to_its_end(o: &Outcome, status: std::process::ExitStatus) -> bool {
 
 /// Stores the launch in the app's entry. Saves against the latest on-disk
 /// entry so concurrent GUI edits survive.
-fn save_launch(app: &mut AppEntry, rec: &LaunchRecord, paths: &Paths) -> Result<()> {
+/// Whether a start decides the repair steps on trial: not a diagnostic run
+/// (traced, or the sandbox check), and not a start that failed for a bus
+/// name SAM just allowed (its restart decides).
+fn judges_trials(opts: &LaunchOptions, rec: &LaunchRecord) -> bool {
+    opts.tracer.is_none() && opts.probe.is_none() && rec.learned_names.is_empty()
+}
+
+/// Saves the start onto the record as it is on disk and, with `judge`,
+/// decides the repair steps on trial there (kept when the start worked,
+/// undone when it failed). Returns the titles of the undone steps.
+fn save_launch(
+    app: &mut AppEntry,
+    rec: &LaunchRecord,
+    paths: &Paths,
+    judge: bool,
+) -> Result<Vec<String>> {
     app.last_launched = Some(rec.started_at);
     app.last_launch = Some(rec.clone());
     if rec.sandbox_failure {
@@ -1474,9 +1507,9 @@ fn save_launch(app: &mut AppEntry, rec: &LaunchRecord, paths: &Paths) -> Result<
             app.profile.permissions.dbus.session.own.push(n.clone());
         }
     }
-    Registry::new(paths).update(&app.id, |fresh| {
+    let mut undone = Vec::new();
+    let fresh = Registry::new(paths).update(&app.id, |fresh| {
         fresh.last_launched = app.last_launched;
-        fresh.last_launch = app.last_launch.clone();
         fresh.last_error = app.last_error.clone();
         fresh.state = app.state;
         for n in &rec.learned_names {
@@ -1485,8 +1518,23 @@ fn save_launch(app: &mut AppEntry, rec: &LaunchRecord, paths: &Paths) -> Result<
                 own.push(n.clone());
             }
         }
+        if judge {
+            undone = crate::repair::judge_trials(fresh, rec.success);
+        }
+        let mut last = rec.clone();
+        last.undone_repairs = undone.clone();
+        fresh.last_launch = Some(last);
     })?;
-    Ok(())
+    // The copy in hand follows what was saved.
+    if let Some(f) = fresh {
+        app.profile = f.profile;
+        app.applied_repairs = f.applied_repairs;
+        app.repairs_applied = f.repairs_applied;
+        app.tried_repairs = f.tried_repairs;
+        app.repair_backup = f.repair_backup;
+        app.last_launch = f.last_launch;
+    }
+    Ok(undone)
 }
 
 /// A pipe whose write end is inherited by child processes.
@@ -1764,6 +1812,32 @@ mod pasta_status_tests {
 
 #[cfg(test)]
 mod tests {
+
+    /// Only an ordinary start decides the repair steps on trial: not a
+    /// traced or checking run, and not a start that failed for a bus name
+    /// SAM just allowed.
+    #[test]
+    fn only_an_ordinary_start_judges_repair_steps() {
+        let opts = LaunchOptions::default();
+        let rec = LaunchRecord::default();
+        assert!(judges_trials(&opts, &rec));
+        let traced = LaunchOptions {
+            tracer: Some(vec!["strace".into()]),
+            ..Default::default()
+        };
+        assert!(!judges_trials(&traced, &rec));
+        let checking = LaunchOptions {
+            probe: Some(Default::default()),
+            ..Default::default()
+        };
+        assert!(!judges_trials(&checking, &rec));
+        let named = LaunchRecord {
+            learned_names: vec!["org.example.App".into()],
+            ..Default::default()
+        };
+        assert!(!judges_trials(&opts, &named));
+    }
+
     use super::*;
 
     /// With its input redirected an app has no terminal relay; its output

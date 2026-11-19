@@ -597,6 +597,52 @@ impl AppPage {
                 .iter()
                 .map(|f| util::str_of(f, "id").to_string())
                 .collect();
+            // Night run N3: what the steps cost together, and the steps the
+            // last start showed did not help, which SAM switched off.
+            let costs: Vec<String> = applied
+                .iter()
+                .filter_map(|a| a.get("step").filter(|s| !s.is_null()))
+                .map(|st| {
+                    let effect = util::str_of(&effects, util::str_of(st, "id"));
+                    if effect.is_empty() {
+                        util::str_of(st, "title").to_string()
+                    } else {
+                        effect.to_string()
+                    }
+                })
+                .collect();
+            if costs.len() > 1 {
+                let row = adw::ActionRow::builder()
+                    .title(crate::i18n::tr("What the repair steps cost together"))
+                    .subtitle(esc(&costs.join("; ")))
+                    .build();
+                row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
+                self.add_dynamic(&self.hints, &row);
+                advice += 1;
+            }
+            let undone: Vec<String> = e
+                .get("last_launch")
+                .and_then(|l| l.get("undone_repairs"))
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default();
+            if !undone.is_empty() {
+                let row = adw::ActionRow::builder()
+                    .title(crate::i18n::tr("Repair steps that did not help were switched off"))
+                    .subtitle(crate::i18n::trf(
+                        "The last start failed with them too, so SAM put back what they changed and does not offer them again: {steps}",
+                        &[("steps", &esc(&undone.join(", ")))],
+                    ))
+                    .build();
+                row.add_prefix(&status_icon("edit-undo-symbolic", "accent"));
+                self.add_dynamic(&self.hints, &row);
+                advice += 1;
+            }
             for a in &applied {
                 if let Some(step) = a.get("step").filter(|s| !s.is_null()) {
                     let row = self.repair_switch(

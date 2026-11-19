@@ -113,33 +113,55 @@ pub fn first_run_hints(e: &AppEntry) -> Vec<Suggestion> {
         out.push(s("gpu", "Graphics may not work", "SAM found no graphics libraries in this app, which usually means it loads them at start (common for Rust and game engines). If it fails to start or draw, turn on GPU acceleration.", set("devices.gpu", "true"), RiskLevel::Medium));
     }
     if req.electron
-        && apparmor_restricts_userns()
+        && chromium_sandbox_blocked()
         && !e.profile.args.iter().any(|a| a == "--no-sandbox")
     {
-        out.push(no_sandbox("This system (AppArmor) does not let apps inside a sandbox create their own sandbox, so Electron apps usually fail to start. Starting it without Chromium's internal sandbox fixes that; SAM's sandbox still protects your system."));
+        out.push(no_sandbox());
     }
     let signs_in = matches!(e.category.as_str(), "communication" | "browser") || req.electron;
     if signs_in && !p.integrations.keyring && p.dbus.session.mode != DbusMode::None {
         out.push(s("keyring", "Logins may not be remembered", "Apps that sign in usually store the login in your keyring or KWallet, which is blocked. Allowing it lets the app read every password stored there.", set("integrations.keyring", "true"), RiskLevel::High));
     }
+    // A step tried at a start that did not help is not offered again,
+    // here either (only the ladder knew, so it came back as a hint).
+    out.retain(|st| !e.tried_repairs.contains(&st.id));
     out
 }
 
-/// Ubuntu 23.10+ style restriction of unprivileged user namespaces.
-fn apparmor_restricts_userns() -> bool {
-    std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
-        .is_ok_and(|s| s.trim() == "1")
+/// Whether this computer keeps a program inside a sandbox from creating
+/// its own, so Chromium's sandbox cannot start in SAM's: user namespaces
+/// switched off, unprivileged ones forbidden, or Ubuntu's AppArmor
+/// restriction. Read from the kernel's settings, nothing else.
+pub fn chromium_sandbox_blocked() -> bool {
+    let read = |p: &str| {
+        std::fs::read_to_string(p)
+            .ok()
+            .map(|s| s.trim().to_string())
+    };
+    blocked_by(
+        read("/proc/sys/user/max_user_namespaces").as_deref(),
+        read("/proc/sys/kernel/unprivileged_userns_clone").as_deref(),
+        read("/proc/sys/kernel/apparmor_restrict_unprivileged_userns").as_deref(),
+    )
 }
 
-fn no_sandbox(why: &str) -> Suggestion {
+/// [`chromium_sandbox_blocked`] from the three settings' values.
+fn blocked_by(max: Option<&str>, clone: Option<&str>, apparmor: Option<&str>) -> bool {
+    max == Some("0") || clone == Some("0") || apparmor == Some("1")
+}
+
+/// Starting without Chromium's own sandbox: only offered where this
+/// computer blocks it (audit A1: offered to every Electron app, it took a
+/// working layer away), saying what is lost.
+fn no_sandbox() -> Suggestion {
     s(
         "chromium-no-sandbox",
         "Start without Chromium's own sandbox",
-        why,
+        "This computer does not let a program inside a sandbox make its own (AppArmor, or user namespaces switched off), so Chromium's sandbox cannot start in SAM's. Without it, the web pages the app shows are no longer kept apart from the rest of the app (your logins in it, its other windows); SAM's sandbox still keeps the app away from your files and your computer.",
         FixAction::AddArg {
             value: "--no-sandbox".into(),
         },
-        RiskLevel::Medium,
+        RiskLevel::High,
     )
 }
 
@@ -147,6 +169,16 @@ fn no_sandbox(why: &str) -> Suggestion {
 
 /// Turn an app's error output into likely causes with fixes.
 pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Suggestion> {
+    analyze_with(output, p, signal, chromium_sandbox_blocked())
+}
+
+/// [`analyze`] with whether this computer blocks Chromium's own sandbox.
+fn analyze_with(
+    output: &str,
+    p: &PermissionSet,
+    signal: Option<i32>,
+    chromium_blocked: bool,
+) -> Vec<Suggestion> {
     let low = output.to_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| low.contains(&n.to_lowercase()));
     let mut out: Vec<Suggestion> = Vec::new();
@@ -238,8 +270,8 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
                 set("advanced.seccomp_strict", "false"),
                 RiskLevel::Low,
             ));
-        } else {
-            push(no_sandbox("Chromium's internal sandbox could not start inside SAM's sandbox (common on systems that restrict user namespaces). Starting without it fixes that; SAM's sandbox still protects your system."));
+        } else if chromium_blocked {
+            push(no_sandbox());
         }
     }
     if p.network.mode != NetworkMode::Full
@@ -608,7 +640,114 @@ fn words_plain(key: &str) -> String {
         .unwrap_or_else(|| key.to_string())
 }
 
-pub fn ladder(e: &AppEntry, _cfg: &Config, paths: &sam_core::Paths) -> Vec<Suggestion> {
+/// Compatibility mode: the full session bus in it is a way out of the
+/// sandbox, so it is Dangerous and says so (audit D-H5: "broad access").
+pub fn compat_step() -> Suggestion {
+    s(
+        "compat",
+        "Compatibility mode",
+        "Grants broad access: the network, all of /usr, X11, GPU, sound and the full session bus. Through the full session bus the app can ask desktop services to run programs outside its sandbox, so this is a way out. Only when nothing else helps, and only for apps you trust.",
+        FixAction::Compat,
+        RiskLevel::Dangerous,
+    )
+}
+
+/// Puts back exactly what the applied repair step `r` changed (already
+/// taken out of `e.applied_repairs`), keeping the other steps.
+pub fn revert_step(e: &mut AppEntry, r: &sam_core::model::AppliedRepair) -> anyhow::Result<()> {
+    use anyhow::Context;
+    let step = r
+        .step
+        .clone()
+        .context(sam_core::i18n::tr("damaged repair record"))?;
+    match &step.action {
+        FixAction::Set { .. } => {
+            for (key, old) in &r.before {
+                e.profile
+                    .permissions
+                    .set_key(key, &serde_json::to_string(old)?)?;
+            }
+        }
+        FixAction::Add { key, .. } => {
+            if let Some(v) = &r.added {
+                let mut list: Vec<String> =
+                    serde_json::from_value(e.profile.permissions.get_key(key)?)?;
+                list.retain(|x| x != v);
+                e.profile
+                    .permissions
+                    .set_key(key, &serde_json::to_string(&list)?)?;
+            }
+        }
+        FixAction::Compat => {
+            e.profile.permissions = e
+                .profile
+                .before_compat
+                .take()
+                .unwrap_or_else(|| e.recommended.clone());
+            e.profile.compatibility_mode = false;
+        }
+        FixAction::AddArg { .. } => {
+            if let Some(v) = &r.added {
+                e.profile.args.retain(|x| x != v);
+            }
+        }
+        FixAction::None => {}
+    }
+    e.repairs_applied.retain(|id| *id != step.id);
+    if e.applied_repairs.is_empty() {
+        e.repair_backup = None;
+    }
+    Ok(())
+}
+
+/// After a start: repair steps on trial that the start proved are kept
+/// (`worked`), or undone and remembered as tried when it failed (owner
+/// decision of 2026-11-18; night run N3). Newest first, so each step finds
+/// the settings it changed. Returns the titles of the undone steps.
+pub fn judge_trials(e: &mut AppEntry, worked: bool) -> Vec<String> {
+    let mut undone = Vec::new();
+    let mut i = e.applied_repairs.len();
+    while i > 0 {
+        i -= 1;
+        if !e.applied_repairs[i].on_trial {
+            continue;
+        }
+        if worked {
+            e.applied_repairs[i].on_trial = false;
+            continue;
+        }
+        let r = e.applied_repairs.remove(i);
+        let (id, title) = r
+            .step
+            .as_ref()
+            .map(|s| (s.id.clone(), s.title.clone()))
+            .unwrap_or_default();
+        if revert_step(e, &r).is_ok() {
+            if !e.tried_repairs.contains(&id) {
+                e.tried_repairs.push(id);
+            }
+            undone.push(title);
+        } else {
+            // Could not be undone (damaged record): keep it, judged.
+            let mut r = r;
+            r.on_trial = false;
+            e.applied_repairs.insert(i, r);
+        }
+    }
+    undone
+}
+
+pub fn ladder(e: &AppEntry, cfg: &Config, paths: &sam_core::Paths) -> Vec<Suggestion> {
+    ladder_for(e, cfg, paths, chromium_sandbox_blocked())
+}
+
+/// [`ladder`] with whether this computer blocks Chromium's own sandbox.
+fn ladder_for(
+    e: &AppEntry,
+    cfg: &Config,
+    paths: &sam_core::Paths,
+    chromium_blocked: bool,
+) -> Vec<Suggestion> {
     let p = &e.profile.permissions;
     let mut steps: Vec<Suggestion> = e
         .last_launch
@@ -623,8 +762,20 @@ pub fn ladder(e: &AppEntry, _cfg: &Config, paths: &sam_core::Paths) -> Vec<Sugge
             set("advanced.host_runtime", "full"),
             RiskLevel::Medium,
         ),
-        s("x11", "Turn on X11", "For apps without Wayland support, or whose window does not appear.", set("display.x11", "true"), RiskLevel::High),
-        s("gpu", "Turn on GPU acceleration", "Some apps refuse to start without hardware graphics.", set("devices.gpu", "true"), RiskLevel::Medium),
+        s(
+            "x11",
+            "Turn on X11",
+            "For apps without Wayland support, or whose window does not appear.",
+            set("display.x11", "true"),
+            RiskLevel::High,
+        ),
+        s(
+            "gpu",
+            "Turn on GPU acceleration",
+            "Some apps refuse to start without hardware graphics.",
+            set("devices.gpu", "true"),
+            RiskLevel::Medium,
+        ),
         s(
             "userns",
             "Allow nested namespaces",
@@ -639,28 +790,32 @@ pub fn ladder(e: &AppEntry, _cfg: &Config, paths: &sam_core::Paths) -> Vec<Sugge
             set("advanced.seccomp_baseline", "false"),
             RiskLevel::Medium,
         ),
-        s("writable-appdir", "Writable app folder", "For apps that save next to themselves.", set("advanced.writable_appdir", "true"), RiskLevel::Low),
         s(
-            "compat",
-            "Compatibility mode",
-            "Grants broad access (network, full session bus, all of /usr, X11, GPU, sound). Use when nothing else helps.",
-            FixAction::Compat,
-            RiskLevel::High,
+            "writable-appdir",
+            "Writable app folder",
+            "For apps that save next to themselves.",
+            set("advanced.writable_appdir", "true"),
+            RiskLevel::Low,
         ),
+        compat_step(),
     ]);
-    if e.detection
-        .as_ref()
-        .is_some_and(|d| d.requirements.electron)
+    if chromium_blocked
+        && e.detection
+            .as_ref()
+            .is_some_and(|d| d.requirements.electron)
     {
-        steps.insert(
-            steps.len().saturating_sub(1),
-            no_sandbox("For Electron apps whose internal Chromium sandbox fails inside SAM's sandbox. SAM's sandbox still protects your system."),
-        );
+        steps.insert(steps.len().saturating_sub(1), no_sandbox());
+    }
+    // "Never offer compatibility mode" (Preferences): never (audit U-M9).
+    if cfg.compatibility.behavior == sam_core::config::CompatBehavior::Never {
+        steps.retain(|st| !matches!(st.action, FixAction::Compat));
     }
     let mut seen = Vec::new();
     steps.retain(|st| {
         let keep = !seen.contains(&st.id)
             && !e.repairs_applied.contains(&st.id)
+            // Tried, did not help, undone: not again.
+            && !e.tried_repairs.contains(&st.id)
             && !matches!(st.action, FixAction::None)
             // A terminal program has no window: display steps cannot help.
             && !(e.metadata.terminal && matches!(st.id.as_str(), "x11" | "gpu"))
@@ -851,17 +1006,19 @@ mod tests {
         assert!(ids("all good").is_empty());
         assert_eq!(analyze("", &p, Some(11))[0].id, "crash");
         // Nested namespaces are off by default: allowing them comes first;
-        // when they are on already, starting without Chromium's sandbox.
-        let zygote = |p: &PermissionSet| {
-            analyze("Zygote process exited prematurely", p, None)
+        // when they are on already, starting without Chromium's sandbox, but
+        // only where this computer blocks it (audit A1).
+        let zygote = |p: &PermissionSet, blocked: bool| {
+            analyze_with("Zygote process exited prematurely", p, None, blocked)
                 .into_iter()
                 .map(|s| s.id)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(zygote(&p), vec!["userns"]);
+        assert_eq!(zygote(&p, true), vec!["userns"]);
         let mut nested = p.clone();
         nested.advanced.allow_userns = true;
-        assert_eq!(zygote(&nested), vec!["chromium-no-sandbox"]);
+        assert_eq!(zygote(&nested, true), vec!["chromium-no-sandbox"]);
+        assert!(zygote(&nested, false).is_empty(), "not where it works");
     }
 
     /// The repair ladder leaves out steps already applied and steps that would change nothing.
@@ -893,6 +1050,167 @@ mod tests {
             ladder(&e, &cfg, &Paths::rooted(tmp.path()))[0].id,
             "full-usr"
         );
+    }
+
+    /// A step on trial is kept when the next start works and undone when it
+    /// fails: exactly what it changed is put back, it is remembered as
+    /// tried and not offered again; a step from before (not on trial) is
+    /// never touched (owner decision of 2026-11-18; night run N3).
+    #[test]
+    fn a_repair_step_that_did_not_help_is_undone() {
+        let mut e = AppEntry::default();
+        e.profile.permissions = PermissionSet::strict_gui();
+        let step = |id: &str, key: &str, value: &str, on_trial: bool, e: &AppEntry| {
+            sam_core::model::AppliedRepair {
+                step: Some(s(id, id, "", set(key, value), RiskLevel::Medium)),
+                before: vec![(key.to_string(), e.profile.permissions.get_key(key).unwrap())],
+                added: None,
+                on_trial,
+            }
+        };
+        // An older step that worked before, and two new ones on trial.
+        let old = step("gpu", "devices.gpu", "true", false, &e);
+        e.profile.permissions.devices.gpu = true;
+        let x11 = step("x11", "display.x11", "true", true, &e);
+        e.profile.permissions.display.x11 = true;
+        let usr = step("full-usr", "advanced.host_runtime", "full", true, &e);
+        e.profile.permissions.advanced.host_runtime = HostRuntime::Full;
+        e.applied_repairs = vec![old, x11, usr];
+        e.repairs_applied = vec!["gpu".into(), "x11".into(), "full-usr".into()];
+        e.repair_backup = Some(Default::default());
+
+        let mut worked = e.clone();
+        assert!(judge_trials(&mut worked, true).is_empty());
+        assert!(
+            worked.applied_repairs.iter().all(|r| !r.on_trial),
+            "kept, judged"
+        );
+        assert!(worked.profile.permissions.display.x11);
+
+        let undone = judge_trials(&mut e, false);
+        assert_eq!(undone, ["full-usr", "x11"]);
+        let p = &e.profile.permissions;
+        assert!(!p.display.x11 && p.advanced.host_runtime == HostRuntime::Minimal);
+        assert!(p.devices.gpu, "the older step stays");
+        assert_eq!(e.repairs_applied, ["gpu"]);
+        assert_eq!(e.tried_repairs, ["full-usr", "x11"]);
+        let tmp = tempfile::tempdir().unwrap();
+        let ids: Vec<String> =
+            ladder_for(&e, &Config::default(), &Paths::rooted(tmp.path()), false)
+                .into_iter()
+                .map(|s| s.id)
+                .collect();
+        assert!(
+            !ids.contains(&"x11".to_string()) && !ids.contains(&"full-usr".to_string()),
+            "{ids:?}"
+        );
+        assert!(
+            judge_trials(&mut e, false).is_empty(),
+            "nothing left on trial"
+        );
+    }
+
+    /// Steps that add a list entry or an argument are undone by removing
+    /// exactly that, and a tried step is not offered again as a first-run
+    /// hint either.
+    #[test]
+    fn steps_that_add_are_undone_and_tried_steps_are_no_hints() {
+        let mut e = AppEntry::default();
+        e.profile.permissions = PermissionSet::strict_gui();
+        e.profile.permissions.filesystem.custom_read = vec!["/data/keep".into()];
+        e.profile
+            .permissions
+            .filesystem
+            .custom_read
+            .push("/data/added".into());
+        e.profile.args = vec!["--keep".into(), "--no-sandbox".into()];
+        e.applied_repairs = vec![
+            sam_core::model::AppliedRepair {
+                step: Some(s(
+                    "dir",
+                    "dir",
+                    "",
+                    FixAction::Add {
+                        key: "filesystem.custom_read".into(),
+                        value: "/data/added".into(),
+                    },
+                    RiskLevel::Medium,
+                )),
+                added: Some("/data/added".into()),
+                on_trial: true,
+                ..Default::default()
+            },
+            sam_core::model::AppliedRepair {
+                step: Some(no_sandbox()),
+                added: Some("--no-sandbox".into()),
+                on_trial: true,
+                ..Default::default()
+            },
+        ];
+        assert_eq!(judge_trials(&mut e, false).len(), 2);
+        assert_eq!(e.profile.permissions.filesystem.custom_read, ["/data/keep"]);
+        assert_eq!(e.profile.args, ["--keep"]);
+
+        // The gpu hint: offered for an app with programs but no graphics
+        // libraries, not once tried.
+        let mut h = AppEntry::default();
+        h.profile.permissions = PermissionSet::strict_gui();
+        h.detection = Some(sam_core::DependencyReport {
+            elf_count: 1,
+            ..Default::default()
+        });
+        let hint = |h: &AppEntry| first_run_hints(h).iter().any(|s| s.id == "gpu");
+        assert!(hint(&h), "{:?}", first_run_hints(&h));
+        h.tried_repairs.push("gpu".into());
+        assert!(!hint(&h));
+    }
+
+    /// Starting without Chromium's own sandbox is offered only where this
+    /// computer blocks it (audit A1), compatibility mode is Dangerous and
+    /// says it is a way out (D-H5), and "never offer compatibility mode"
+    /// keeps it out (U-M9).
+    #[test]
+    fn the_ladder_offers_only_what_can_help_and_says_what_it_costs() {
+        let mut e = AppEntry::default();
+        e.profile.permissions = PermissionSet::strict_gui();
+        e.detection = Some(sam_core::DependencyReport {
+            requirements: sam_core::model::Requirements {
+                electron: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let ids = |cfg: &Config, blocked: bool| -> Vec<String> {
+            ladder_for(&e, cfg, &paths, blocked)
+                .into_iter()
+                .map(|s| s.id)
+                .collect()
+        };
+        let cfg = Config::default();
+        assert!(!ids(&cfg, false).contains(&"chromium-no-sandbox".to_string()));
+        assert!(ids(&cfg, true).contains(&"chromium-no-sandbox".to_string()));
+        let compat = ladder_for(&e, &cfg, &paths, false)
+            .into_iter()
+            .find(|s| s.id == "compat")
+            .expect("offered");
+        assert_eq!(compat.risk, RiskLevel::Dangerous);
+        assert!(
+            compat.explanation.contains("way out"),
+            "{}",
+            compat.explanation
+        );
+        let mut never = Config::default();
+        never.compatibility.behavior = sam_core::config::CompatBehavior::Never;
+        assert!(!ids(&never, false).contains(&"compat".to_string()));
+        assert!(no_sandbox().explanation.contains("kept apart"));
+        // The three settings that block Chromium's own sandbox.
+        assert!(blocked_by(Some("0"), None, None));
+        assert!(blocked_by(None, Some("0"), None));
+        assert!(blocked_by(None, None, Some("1")));
+        assert!(!blocked_by(Some("63000"), Some("1"), Some("0")));
+        assert!(!blocked_by(None, None, None));
     }
 
     /// The repair steps offer a writable app folder only where an overlay

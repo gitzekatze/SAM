@@ -270,7 +270,14 @@ pub(crate) enum Cmd {
     },
     /// Turn compatibility mode on or off. Off restores the settings from
     /// before it was turned on.
-    Compat { app: String, state: String },
+    Compat {
+        app: String,
+        state: String,
+        /// Confirm turning it on: the whole session bus in it is a way out
+        /// of the sandbox.
+        #[arg(long)]
+        yes: bool,
+    },
     /// Show the extra arguments always passed to the app, or replace them
     /// with a JSON list on stdin (`--stdin`).
     Args {

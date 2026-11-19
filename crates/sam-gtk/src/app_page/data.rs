@@ -509,8 +509,11 @@ impl AppPage {
                 }
             }
             let id = util::str_of(&sug, "id").to_string();
+            // The window has asked above where a step needs it, so it
+            // confirms for the command line (which refuses a step from the
+            // app's own output without --yes; regression from #69).
             let args = if as_repair {
-                vec!["repair", &me.app_id, "--apply", &id]
+                vec!["repair", &me.app_id, "--apply", &id, "--yes"]
             } else {
                 vec!["hints", &me.app_id, "--apply", &id]
             };

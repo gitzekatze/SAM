@@ -487,7 +487,12 @@ pub fn recommend(
             p.advanced.allow_userns = true;
             notes.push(sam_core::i18n::tr("Nested namespaces allowed: the app's web engine (Chromium or WebKit) starts its own sandbox"));
         }
-        if r.arch == "i686" {
+        // Only when the program the app starts is 32-bit itself: the
+        // architecture of an app started by a script is that of most of its
+        // files, so 32-bit decoys next to a 64-bit program switched the
+        // filter off (audit M5/I-F4). Otherwise the filter stays on, and a
+        // real 32-bit app that fails gets the step in its repair ladder.
+        if r.arch == "i686" && !r.entry_is_script && r.entry_binary.is_some() {
             // The syscall filter is built for 64-bit programs; a 32-bit one
             // is stopped by its architecture check at the first call.
             p.advanced.seccomp_baseline = false;
@@ -883,6 +888,34 @@ mod tests {
         assert!(r.permissions.devices.gpu);
         assert!(r.permissions.display.x11, "X11-only app gets XWayland");
         assert_eq!(r.permissions.network.mode, NetworkMode::None);
+    }
+
+    /// The syscall filter is switched off only for an app whose start
+    /// program is 32-bit itself: 32-bit files next to a script that starts
+    /// a 64-bit program do not switch it off (audit M5/I-F4).
+    #[test]
+    fn only_a_32_bit_start_program_switches_the_filter_off() {
+        let report = |script: bool, entry: Option<&str>| DependencyReport {
+            arch: "i686".into(),
+            entry_is_script: script,
+            entry_binary: entry.map(String::from),
+            ..Default::default()
+        };
+        let filter = |r: DependencyReport| {
+            recommend(&md("Game", &["Game"]), "", Some(&r))
+                .permissions
+                .advanced
+                .seccomp_baseline
+        };
+        assert!(
+            !filter(report(false, Some("usr/bin/game32"))),
+            "a 32-bit program"
+        );
+        assert!(
+            filter(report(true, Some("AppRun"))),
+            "a script, mostly 32-bit files"
+        );
+        assert!(filter(report(false, None)), "no start program known");
     }
 
     /// The change check names what an app would lose that it needs, and the dangerous access it would gain.

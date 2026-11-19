@@ -301,6 +301,13 @@ pub struct AppliedRepair {
     pub before: Vec<(String, serde_json::Value)>,
     /// The step added this list entry or argument (so undo removes it).
     pub added: Option<String>,
+    /// Applied as a repair and not yet judged: the next start decides. It
+    /// worked → kept; it failed → SAM undoes the step (owner decision of
+    /// 2026-11-18; night run N3: steps that did not help stayed, and an app
+    /// gave up X11, all of /usr and nested namespaces for nothing). Not
+    /// written while off, so older records keep their checksum.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub on_trial: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -350,6 +357,9 @@ pub struct LaunchRecord {
     /// Bus names the app asked to own that SAM did not allow: "name: why".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub refused_names: Vec<String>,
+    /// Repair steps this start proved did not help, which SAM undid.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub undone_repairs: Vec<String>,
     pub log_file: Option<PathBuf>,
     pub summary: String,
     /// What the app's output suggests went wrong, with fixes.
@@ -415,6 +425,10 @@ pub struct AppEntry {
     /// The applied repair steps with what each changed, so each one can be
     /// switched off on its own.
     pub applied_repairs: Vec<AppliedRepair>,
+    /// Repair steps tried that did not help, so SAM undid them; the ladder
+    /// does not offer them again (until "Undo repairs").
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tried_repairs: Vec<String>,
     /// Unsandboxed menu entries for this AppImage (made by AppImageLauncher,
     /// Gear Lever, ...) that SAM hid when the sandbox was created.
     pub hidden_entries: Vec<HiddenEntry>,

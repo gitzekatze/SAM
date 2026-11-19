@@ -166,8 +166,8 @@ Does the sandbox really give the app exactly what its settings say, and does the
 ## When an app does not work
 
 - **Advice** is the one place for help: what went wrong last time (read from the app's own error messages, with *fix and start*), the repair steps, common reasons apps misbehave in a sandbox, and a warning when another menu entry still starts the AppImage without a sandbox (**Hide It** fixes that). Suggestions based on what the app printed always ask first, because an app could print misleading messages.
-- **Repair steps** are switches and appear after a start failed. Each says what it turns on or off and what protection that costs. Switching a step off undoes exactly that step; *Switch off all repair steps* under Troubleshooting undoes them all.
-- **Compatibility mode** (under Launching) names exactly which switches it turns on.
+- **Repair steps** are switches and appear after a start failed. Each says what it turns on or off and what protection that costs. A step you turn on is tried at the next start: if the app still fails, SAM switches the step off again by itself and does not offer it again (*Switch off all repair steps* offers everything again). Switching a step off undoes exactly that step; *Switch off all repair steps* under Troubleshooting undoes them all.
+- **Compatibility mode** (under Launching) names exactly which switches it turns on. It includes the whole session bus, through which the app can ask desktop services to run programs outside its sandbox: a way out, only for apps you trust. *Never offer compatibility mode* in Preferences keeps it out of the repair steps.
 - **Troubleshooting** has *Re-run detection*, a diagnostic run (needs `strace`), the setup check and a redacted bug report.
 - **Extra Protection Layers** (the syscall filters and Landlock) are a group of their own at the end of the settings. Turn one off only when an app's log shows it fails because of it.
 - **Logs** shows every log: starts, unpacking, detection and diagnostic runs.
