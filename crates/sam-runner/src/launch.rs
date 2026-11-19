@@ -38,6 +38,9 @@ pub struct LaunchOptions {
     pub quiet: bool,
     /// Sandbox check: the helper runs these checks instead of the app.
     pub probe: Option<crate::probe::ProbePlan>,
+    /// This is SAM's one automatic restart after the app was refused a
+    /// bus name it may now own; never restart again.
+    pub name_retry: bool,
 }
 
 /// Everything needed to start a sandbox, plus the explanation for the user.
@@ -202,10 +205,12 @@ pub fn prepare(
 
     // One runtime directory per launch (two instances of an app never share
     // proxy sockets or spec files); removed when `Prepared` is dropped.
-    let runtime_dir =
-        paths
-            .runtime_dir(&app.id)
-            .join(format!("launch-{}-{}", std::process::id(), now()));
+    let runtime_dir = paths.runtime_dir(&app.id).join(format!(
+        "launch-{}-{}{}",
+        std::process::id(),
+        now(),
+        if opts.name_retry { "-again" } else { "" }
+    ));
     fs::create_dir_all(&runtime_dir)?;
     let runtime_guard = RuntimeDir(runtime_dir.clone());
     {
@@ -336,7 +341,31 @@ pub fn prepare(
             && host.tools.xdg_dbus_proxy.is_some()
             && host.sockets.dbus_session.is_some()
         {
-            let bus = perms.effective_session_bus();
+            let mut bus = perms.effective_session_bus();
+            // Every name the app may own, checked again at every start: a
+            // name an app installed since then, another SAM app or a
+            // desktop service has is left out (audit D-M6, L-F13).
+            let check = crate::own_names::NameCheck::for_app(app, host, paths);
+            let tray = bus.tray_own_names();
+            bus.own.retain(|name| {
+                if tray.contains(name) {
+                    return true;
+                }
+                match check.refused(name) {
+                    None => true,
+                    Some(why) => {
+                        warnings.push(Warning::warn(
+                            "dbus-own-refused",
+                            "D-Bus name not allowed",
+                            sam_core::i18n::trf(
+                                "The app may not own {name}: {why}.",
+                                &[("name", name), ("why", &why)],
+                            ),
+                        ));
+                        false
+                    }
+                }
+            });
             match DbusProxy::start(host, &bus, &runtime_dir, &app.id) {
                 Ok(p) => {
                     ctx.dbus_proxy_socket = Some(p.socket.clone());
@@ -562,6 +591,37 @@ pub fn run(
     paths: &Paths,
     host: &HostInfo,
 ) -> Result<LaunchRecord> {
+    let rec = run_once(app, opts, cfg, paths, host)?;
+    // Refused a name it may now own and did not run: one restart, at once,
+    // so the person does not have to start it again (option D). After the
+    // first start has ended and given back its folder and lock.
+    if !rec.success && !rec.learned_names.is_empty() && !opts.name_retry {
+        if !opts.quiet {
+            eprintln!(
+                "sam-jail: {}",
+                sam_core::i18n::trf(
+                    "the app needed its own bus name {names}; SAM allowed it and starts the app again",
+                    &[("names", &rec.learned_names.join(", "))]
+                )
+            );
+        }
+        let again = LaunchOptions {
+            name_retry: true,
+            ..opts.clone()
+        };
+        return run_once(app, &again, cfg, paths, host);
+    }
+    Ok(rec)
+}
+
+/// One start of the app: prepare, run, judge, record.
+fn run_once(
+    app: &mut AppEntry,
+    opts: &LaunchOptions,
+    cfg: &Config,
+    paths: &Paths,
+    host: &HostInfo,
+) -> Result<LaunchRecord> {
     let logs = Logs::new(paths);
     let (log_path, mut log) = logs.create(
         &app.id,
@@ -763,6 +823,11 @@ pub fn run(
         let _ = t.join();
     }
     let relay_end = relay.map(pty::Relay::finish);
+    let wanted = prepared
+        .proxy
+        .as_ref()
+        .map(DbusProxy::wanted_names)
+        .unwrap_or_default();
     drop(prepared.proxy);
     drop(prepared.sound);
     drop(prepared.wayland);
@@ -865,7 +930,22 @@ pub fn run(
         .ok();
     }
 
+    let (learned_names, refused_names) = learn_names(app, &wanted, host, paths);
+    if let Ok(mut l) = log.lock() {
+        for n in &learned_names {
+            writeln!(
+                l,
+                "# learned bus name: {n} (nobody on this computer uses it)"
+            )
+            .ok();
+        }
+        for n in &refused_names {
+            writeln!(l, "# bus name not allowed: {n}").ok();
+        }
+    }
     let rec = LaunchRecord {
+        learned_names,
+        refused_names,
         started_at,
         finished_at: now(),
         exit_code: status.code(),
@@ -919,6 +999,31 @@ pub fn run(
     save_launch(app, &rec, paths)?;
     let _ = logs.prune(&app.id, LogKind::Launch, cfg.diagnostics.keep_logs);
     Ok(rec)
+}
+
+/// The bus names the app asked for (from the D-Bus filter's record) that
+/// it may own from now on, and those it may not ("name: why"). A name it
+/// may own already is not asked about again.
+fn learn_names(
+    app: &AppEntry,
+    wanted: &[String],
+    host: &HostInfo,
+    paths: &Paths,
+) -> (Vec<String>, Vec<String>) {
+    let own = &app.profile.permissions.dbus.session.own;
+    let wanted: Vec<&String> = wanted.iter().filter(|n| !own.contains(n)).collect();
+    if wanted.is_empty() {
+        return (vec![], vec![]);
+    }
+    let check = crate::own_names::NameCheck::for_app(app, host, paths);
+    let (mut learned, mut refused) = (Vec::new(), Vec::new());
+    for name in wanted {
+        match check.not_learned(name) {
+            None => learned.push(name.clone()),
+            Some(why) => refused.push(format!("{name}: {why}")),
+        }
+    }
+    (learned, refused)
 }
 
 /// The line a terminal program's start shows first: what it can reach.
@@ -1364,11 +1469,22 @@ fn save_launch(app: &mut AppEntry, rec: &LaunchRecord, paths: &Paths) -> Result<
         app.state = AppState::Ready;
         app.last_error = None;
     }
+    for n in &rec.learned_names {
+        if !app.profile.permissions.dbus.session.own.contains(n) {
+            app.profile.permissions.dbus.session.own.push(n.clone());
+        }
+    }
     Registry::new(paths).update(&app.id, |fresh| {
         fresh.last_launched = app.last_launched;
         fresh.last_launch = app.last_launch.clone();
         fresh.last_error = app.last_error.clone();
         fresh.state = app.state;
+        for n in &rec.learned_names {
+            let own = &mut fresh.profile.permissions.dbus.session.own;
+            if !own.contains(n) {
+                own.push(n.clone());
+            }
+        }
     })?;
     Ok(())
 }

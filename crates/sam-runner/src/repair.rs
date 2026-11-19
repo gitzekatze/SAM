@@ -422,48 +422,11 @@ pub fn analyze(output: &str, p: &PermissionSet, signal: Option<i32>) -> Vec<Sugg
             ));
         }
     }
-    // The app could not register a D-Bus name of its own (single-instance
-    // handling, its own service). Owning a name of an app's own namespace is
-    // harmless; desktop services and dangerous names are never offered.
-    for marker in [
-        "Failed to register name '",
-        "failed to acquire bus name '",
-        "Could not register D-Bus service '",
-        "Unable to register service '",
-    ] {
-        let Some(rest) = after(output, marker) else {
-            continue;
-        };
-        let name = display_safe(rest.split('\'').next().unwrap_or(""), 200);
-        // KDE's per-instance name "org.kde.kdenlive-3": the base name covers
-        // it (SAM allows the numbered variants with it).
-        let name = match name.rsplit_once('-') {
-            Some((base, n)) if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) => {
-                base.to_string()
-            }
-            _ => name,
-        };
-        let valid = name.split('.').count() >= 2
-            && name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c));
-        if valid
-            && sam_core::permissions::refuse_own_name(&name, &Default::default()).is_none()
-            && !p.dbus.session.own.contains(&name)
-        {
-            push(s(
-                "dbus-own",
-                "The app wants its own D-Bus name",
-                sam_core::i18n::trf(
-                    "The app tried to register {name} (usually so that a second start hands over to the first). Allow it to own just this name.",
-                    &[("name", &name)],
-                ),
-                FixAction::Add { key: "dbus.session.own".into(), value: name },
-                RiskLevel::Low,
-            ));
-        }
-        break;
-    }
+    // A bus name of its own is never suggested from what the app printed:
+    // SAM learns the name the app really asked for from the D-Bus filter's
+    // record and allows it when nobody on this computer uses it
+    // (`own_names`, option D of 2026-11-18). The app's own words named
+    // anything it liked, a terminal's name too (audit D-M6).
     if !p.audio.enabled
         && has(&[
             "pa_context_connect",
@@ -774,39 +737,28 @@ mod tests {
         assert!(effect(&compat, &p).contains("Full network"));
     }
 
-    /// An app that fails to register its bus name gets a repair step that allows exactly that name.
+    /// What the app prints never gets it a bus name, whatever name it
+    /// claims it needs (a terminal's name runs host commands; audit D-M6):
+    /// names come only from the D-Bus filter's record (`own_names`).
     #[test]
-    fn own_name_requests_become_a_repair() {
+    fn the_apps_own_words_never_give_it_a_bus_name() {
         let p = PermissionSet::default();
-        let log = "kf.dbusaddons: Failed to register name 'com.nextcloud.desktopclient.nextcloud' with DBUS - does this process have permission";
-        let sug = analyze(log, &p, None);
-        let own = sug.iter().find(|x| x.id == "dbus-own").expect("suggested");
-        assert!(
-            matches!(&own.action, FixAction::Add { key, value } if key == "dbus.session.own" && value == "com.nextcloud.desktopclient.nextcloud")
-        );
-        let bad = analyze(
-            "Failed to register name 'org.freedesktop.Notifications' with DBUS",
-            &p,
-            None,
-        );
-        assert!(
-            !bad.iter().any(|x| x.id == "dbus-own"),
-            "desktop services are never offered"
-        );
-        let kde = analyze(
-            "kf.dbusaddons: Failed to register name 'org.kde.kdenlive-3' with DBUS",
-            &p,
-            None,
-        );
-        assert!(
-            kde.iter().any(
-                |x| matches!(&x.action, FixAction::Add { value, .. } if value == "org.kde.kdenlive")
-            ),
-            "the base name, not this instance's number"
-        );
+        for log in [
+            "kf.dbusaddons: Failed to register name 'com.nextcloud.desktopclient.nextcloud' with DBUS",
+            "Failed to register name 'org.gnome.Terminal' with DBUS",
+            "failed to acquire bus name 'org.kde.konsole'",
+            "Could not register D-Bus service 'org.example.App'",
+            "Unable to register service 'org.example.App'",
+        ] {
+            assert!(
+                !analyze(log, &p, None)
+                    .iter()
+                    .any(|s| matches!(&s.action, FixAction::Add { key, .. } if key == "dbus.session.own")),
+                "{log}"
+            );
+        }
     }
 
-    /// Error messages in an app's output are mapped to the repair step that fixes them.
     #[test]
     fn analyzer_maps_errors_to_fixes() {
         let p = PermissionSet::strict_gui();

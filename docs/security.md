@@ -188,15 +188,25 @@ you picked. The sandbox check confirms that the socket is absent.
 
 - **D-Bus** goes through `xdg-dbus-proxy`. The app sees only the names it is
   allowed to talk to.
-- **Its own name:** an app may own the D-Bus name of its ID (its menu
-  entry's file name, or its window class, which GTK and Flutter apps use as
-  their ID) when that is a reverse-DNS name, plus KDE's numbered variants
-  (`org.kde.kdenlive-3`). Never: names of the D-Bus protocols
-  (`org.freedesktop.*`, `org.gtk.*`, …), desktop services SAM treats as
-  dangerous (KWin, Plasma, KRunner, GNOME Shell, …), and any service this
-  computer starts on demand (its `dbus-1/services` files, e.g. KWallet).
-  Taking such a name would let the app receive what is meant for the
-  service. This is checked at every start, also for names you add.
+- **Its own name:** an app may own the D-Bus name it really asks for. SAM
+  learns it from the D-Bus filter's own record of what it refused (never
+  from what the app prints) and allows it when nobody on this computer uses
+  it: no program holds it right now, no installed app has that menu ID or
+  one under it (a terminal's `org.gnome.Terminal`, say), it is no D-Bus
+  protocol name (`org.freedesktop.*`, `org.gtk.*`, …), no desktop service
+  SAM treats as dangerous (KWin, Plasma, KRunner, GNOME Shell, …), no
+  service this computer starts on demand (its `dbus-1/services` files, e.g.
+  KWallet, also through a wildcard) and no other SAM app's. If the app did
+  not start without it, SAM starts it once more at once; the app's page
+  shows the name, and names SAM did not allow with the reason
+  (`an_app_gets_the_name_it_asks_for_only_when_nobody_uses_it`). A media
+  player gets its own player's name (`org.mpris.MediaPlayer2.<player>`)
+  the same way, with the media controls switch. SAM also allows the name
+  of the app's ID from the start (its menu entry's file name, or its window
+  class) and KDE's numbered variants (`org.kde.kdenlive-3`). Every name the
+  app may own, also one you add, is checked again at every start; one an
+  app installed since then or another SAM app has is left out, with a
+  warning.
 - **Blocked names always win.** The proxy cannot make exceptions, so a
   wildcard allow entry that would also reach a blocked name is not used; the
   app page warns about it.

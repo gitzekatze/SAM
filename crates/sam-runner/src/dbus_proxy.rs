@@ -15,6 +15,33 @@ pub struct DbusProxy {
     pub args: Vec<String>,
     /// Names the settings allow but SAM refused (name, why).
     pub refused: Vec<(String, String)>,
+    /// Names the app asked to own and the proxy refused, as the proxy's
+    /// own record says (not what the app printed).
+    wanted: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+/// At most this many names are learned per start: an app asking for
+/// hundreds is not looking for its own name.
+pub const MAX_WANTED_NAMES: usize = 8;
+
+/// Keeps `name` among the wanted names: once, and at most
+/// [`MAX_WANTED_NAMES`].
+fn remember(wanted: &mut Vec<String>, name: String) {
+    if !wanted.contains(&name) && wanted.len() < MAX_WANTED_NAMES {
+        wanted.push(name);
+    }
+}
+
+/// The name the app asked to own, from one line of the proxy's record:
+/// `Filtering message due to arg0 NAME, policy: P (required 3)` (3 is
+/// "own"). Only well-formed bus names count.
+pub fn wanted_name(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("Filtering message due to arg0 ")?;
+    let (name, tail) = rest.split_once(", policy: ")?;
+    if !tail.trim_end().ends_with("(required 3)") {
+        return None;
+    }
+    sam_core::permissions::is_bus_name(name).then(|| name.to_string())
 }
 
 impl DbusProxy {
@@ -91,20 +118,16 @@ impl DbusProxy {
                 .open(p)
                 .ok()
         });
-        if log.is_some() {
-            args.push("--log".into());
-        }
+        // The proxy's record tells which names the app asked to own and
+        // was refused (option D of 2026-11-18: SAM learns the name from the
+        // proxy, never from the app's own output).
+        args.push("--log".into());
         let (program, argv) = (tool.path.clone(), args.clone());
         let mut cmd = Command::new(&program);
         cmd.args(&argv)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        if let Some(f) = log {
-            if let Ok(f2) = f.try_clone() {
-                cmd.stdout(f).stderr(f2);
-            }
-        }
         // SAFETY: the pre_exec closure runs between fork and exec and calls only prctl, which is async-signal-safe.
         unsafe {
             cmd.pre_exec(|| {
@@ -116,6 +139,27 @@ impl DbusProxy {
         let mut child = cmd
             .spawn()
             .context(sam_core::i18n::tr("starting xdg-dbus-proxy"))?;
+        // Read the record as it comes (a full pipe would stall the proxy),
+        // keep only refused own-name requests, and copy everything to
+        // SAM_DBUS_LOG when that is set.
+        let wanted = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        if let Some(out) = child.stdout.take() {
+            let wanted = wanted.clone();
+            let mut log = log;
+            std::thread::spawn(move || {
+                use std::io::{BufRead, Write};
+                for line in std::io::BufReader::new(out).lines().map_while(|l| l.ok()) {
+                    if let Some(f) = log.as_mut() {
+                        let _ = writeln!(f, "{line}");
+                    }
+                    if let Some(name) = wanted_name(&line) {
+                        if let Ok(mut w) = wanted.lock() {
+                            remember(&mut w, name);
+                        }
+                    }
+                }
+            });
+        }
         let deadline = Instant::now() + Duration::from_secs(3);
         // The socket file appears before the proxy listens on it; an app
         // that connected in between was refused (seen in CI). Wait until a
@@ -144,7 +188,13 @@ impl DbusProxy {
             socket,
             args,
             refused,
+            wanted,
         })
+    }
+
+    /// The names the app asked to own and was refused, so far.
+    pub fn wanted_names(&self) -> Vec<String> {
+        self.wanted.lock().map(|w| w.clone()).unwrap_or_default()
     }
 }
 
@@ -159,6 +209,39 @@ impl Drop for DbusProxy {
 #[cfg(test)]
 mod tests {
     use sam_core::permissions::DbusPerms;
+
+    /// Only the proxy's "wants to own" lines name a name to learn, and
+    /// only a well-formed one (what the app printed never reaches this).
+    #[test]
+    fn the_proxy_record_names_what_the_app_wanted_to_own() {
+        use super::wanted_name;
+        let own = "Filtering message due to arg0 org.example.Wanted, policy: 0 (required 3)";
+        assert_eq!(wanted_name(own).as_deref(), Some("org.example.Wanted"));
+        for no in [
+            "Filtering message due to arg0 org.example.Talk, policy: 0 (required 2)",
+            "Filtering message due to arg0 :1.42, policy: 0 (required 3)",
+            "Filtering message due to arg0 x, policy: 0 (required 3)",
+            "C2: -> org.freedesktop.DBus call org.freedesktop.DBus.RequestName",
+            "app said: Filtering message due to arg0 org.gnome.Terminal, policy: 0 (required 3)",
+        ] {
+            assert_eq!(wanted_name(no), None, "{no}");
+        }
+    }
+
+    /// A name is kept once, and no more than eight in all.
+    #[test]
+    fn wanted_names_are_kept_once_and_at_most_eight() {
+        let mut w = Vec::new();
+        super::remember(&mut w, "org.example.A".into());
+        super::remember(&mut w, "org.example.A".into());
+        assert_eq!(w, ["org.example.A"]);
+        for i in 0..20 {
+            super::remember(&mut w, format!("org.example.N{i}"));
+        }
+        assert_eq!(w.len(), super::MAX_WANTED_NAMES);
+        assert!(w.contains(&"org.example.N6".to_string()));
+        assert!(!w.contains(&"org.example.N7".to_string()));
+    }
 
     /// An app may register a tray icon only while the tray service is allowed.
     #[test]
