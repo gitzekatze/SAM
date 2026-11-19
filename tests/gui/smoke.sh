@@ -63,6 +63,12 @@ shot() {
     name=$1; shift
     "$bin/sam-jail-gui" --screenshot "$out/$name.png" --size 1180x800 --delay "${DELAY:-2500}" "$@" > "$out/$name.log" 2>&1 || {
         echo "FAIL $name: exited with $?"; tail -n 30 "$out/$name.log"; fail=1; return; }
+    # The first window on a fresh runner (fonts, icons, GTK's caches) can take
+    # longer than the delay: one more try with twice the time before it counts.
+    if [ ! -s "$out/$name.png" ]; then
+        echo "note $name: no screenshot after ${DELAY:-2500} ms, trying once more"
+        "$bin/sam-jail-gui" --screenshot "$out/$name.png" --size 1180x800 --delay "$((${DELAY:-2500} * 2))" "$@" > "$out/$name.log" 2>&1 || true
+    fi
     if [ ! -s "$out/$name.png" ]; then
         echo "FAIL $name: no screenshot"; fail=1
     fi
