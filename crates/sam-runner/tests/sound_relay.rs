@@ -215,6 +215,10 @@ fn sound_never_loads_code_into_the_sound_server() {
     assert_eq!(r["SOUND"], "yes", "{log}");
     if pipewire_refuses_modules() {
         assert_eq!(r["LOAD"], "refused", "{log}");
+    } else {
+        sam_runner::contracts::not_here(
+            "PipeWire older than 1.2 cannot refuse module loading; only the relay's own sandbox was checked",
+        );
     }
     assert_eq!(attack_modules(&run_dir), 0, "nothing loaded");
     assert!(log.contains("# sound: through SAM's relay"), "{log}");

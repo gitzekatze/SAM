@@ -1,8 +1,9 @@
 # Weekly upkeep: the two checks too slow for every change.
 #   - Mutation testing of last week's Rust code (scripts/mutants.sh): every
 #     change no test notices is named with its SAM function.
-#   - A long fuzz run of the parsers of untrusted data, with this week's seed,
-#     so every week tries new inputs.
+#   - A long fuzz run of the parsers of untrusted data, with a random seed
+#     drawn when the run starts (named in its report, so a failure can be
+#     repeated), so every week tries inputs nobody knew in advance.
 #   - Whether the generated pages still match the code.
 # Everything goes into one issue, "Weekly summary" (scripts/weekly-summary.py,
 # the automation plan's section 8), updated every week instead of a new one;
@@ -22,6 +23,9 @@ on:
         description: "Fuzz rounds per parser"
         required: false
         default: "100000"
+      fuzz_seed:
+        description: "Fuzz seed, to repeat a run (default: a new random one)"
+        required: false
 
 permissions:
   contents: read
@@ -105,9 +109,15 @@ jobs:
       - name: Long fuzz run
         env:
           ROUNDS: ${{ inputs.fuzz_rounds || '100000' }}
+          SEED: ${{ inputs.fuzz_seed }}
         run: |
           mkdir -p "$RUNNER_TEMP/results/fuzz"
-          seed=$(date -u +%G%V)
+          # Random, never in the repository: a change cannot be shaped to
+          # pass the inputs it will meet (the week's number was known ahead).
+          case "$SEED" in
+            ''|*[!0-9]*) seed=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ') ;;
+            *) seed=$SEED ;;
+          esac
           echo "Seed $seed, $ROUNDS rounds per parser" | tee "$RUNNER_TEMP/results/fuzz/report.txt"
           set +e
           SAM_REQUIRE_SANDBOX=1 SAM_FUZZ_SEED=$seed SAM_FUZZ_ITERS=$ROUNDS \

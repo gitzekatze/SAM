@@ -184,7 +184,16 @@ jobs:
         if: env.CODE == 'true'
         # SAM_REQUIRE_SANDBOX: a sandbox test that cannot run here fails
         # instead of skipping, so a green run always tested the sandbox.
-        run: SAM_REQUIRE_SANDBOX=1 SAM_TEST_GPG=1 PATH="$PWD/target/debug:$PATH" python3 scripts/flaky-check.py --runs 2
+        # SAM_SKIP_LOG: every test that says "not here" is written down.
+        run: SAM_REQUIRE_SANDBOX=1 SAM_TEST_GPG=1 SAM_SKIP_LOG="$PWD/target/test-skips.log" PATH="$PWD/target/debug:$PATH" python3 scripts/flaky-check.py --runs 2
+
+      # A test that does not apply to this machine passes without checking
+      # anything. The summary names each one, and the job fails when one is
+      # not on the agreed list for it (tests/expected-not-here.toml), so a
+      # proof cannot stop running here unnoticed.
+      - name: Tests that did not run here
+        if: always() && env.CODE == 'true'
+        run: python3 scripts/skips.py "$PWD/target/test-skips.log" --job "test-$RUNNER_ARCH" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # On the run page: which of SAM's functions the change touches, and
       # how their tests did (docs/functions.toml).
@@ -247,6 +256,7 @@ jobs:
           python3 scripts/upstream-watch.py --self-test
           python3 scripts/contract-verifier.py --self-test
           python3 scripts/flaky-check.py --self-test
+          python3 scripts/skips.py --self-test
           python3 scripts/changelog-check.py --self-test
           python3 scripts/changes.py --self-test
 
@@ -358,7 +368,11 @@ jobs:
       # so the display and sound checks that bare CI machines skip run on
       # every change.
       - name: Sandbox tests in a desktop session (Wayland, sound)
-        run: SAM_SESSION=kwin SAM_TEST_AUDIO=1 sh tests/gui/desktop-sandbox.sh "$RUNNER_TEMP/gui-desktop"
+        run: SAM_SESSION=kwin SAM_TEST_AUDIO=1 SAM_SKIP_LOG="$RUNNER_TEMP/desktop-skips.log" sh tests/gui/desktop-sandbox.sh "$RUNNER_TEMP/gui-desktop"
+
+      - name: Tests that did not run in the desktop session
+        if: always()
+        run: python3 scripts/skips.py "$RUNNER_TEMP/desktop-skips.log" --job desktop | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Window test logs
         if: failure()
@@ -466,14 +480,20 @@ jobs:
               rust cargo gcc pkgconf-pkg-config \
               bubblewrap xdg-dbus-proxy passt bsdtar squashfs-tools \
               python3 python3-gobject glib2 dbus-daemon \
+              pipewire pipewire-pulseaudio pulseaudio-utils \
               util-linux shadow-utils
             useradd -m tester
             chown -R tester /src
             su tester -c "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all true"
             su tester -c "cd /src && cargo build --locked -p sam-jail-cli"
-            su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 PATH=/src/target/debug:\$PATH cargo test --locked -p sam-runner --test breakout --test evil --test matrix --test sandbox --test overlay_fallback --test fuzz"
-            # The command-line sandbox tests too: the launcher-kill test with
-            # "This computer only" needs a pasta with --splice-only, which
-            # the Ubuntu runner lacks (there it is listed as not here).
-            su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 cargo test --locked -p sam-jail-cli --test teardown --test layers --test start_check"
+            # Also what Ubuntu 24.04 cannot prove: "This computer only" needs a
+            # pasta with --splice-only (local_network, the launcher-kill test
+            # in teardown, part of verify), and only PipeWire 1.2 and newer
+            # refuses module loading (sound_relay). There they are listed as
+            # not here (tests/expected-not-here.toml); here every one runs.
+            su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 SAM_SKIP_LOG=/src/target/fedora-skips.log PATH=/src/target/debug:\$PATH cargo test --locked -p sam-runner --test breakout --test evil --test matrix --test sandbox --test overlay_fallback --test fuzz --test verify --test sound_relay"
+            su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 SAM_SKIP_LOG=/src/target/fedora-skips.log cargo test --locked -p sam-jail-cli --test teardown --test layers --test start_check --test local_network"
           '
+      - name: Tests that did not run on Fedora
+        if: always()
+        run: python3 scripts/skips.py "$PWD/target/fedora-skips.log" --job fedora | tee -a "$GITHUB_STEP_SUMMARY"

@@ -135,6 +135,8 @@ gate = [
   "crates/sam-intake/src/testkit.rs",
   "crates/sam-runner/src/testenv.rs",
   "crates/sam-runner/src/contracts.rs",
+  "tests/expected-not-here.toml",
+  "scripts/skips.py",
 ]
 # Safety lists in the code: removing an entry is a weakening.
 lists = [
