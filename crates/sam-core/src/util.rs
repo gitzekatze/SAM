@@ -767,9 +767,9 @@ mod may_run_tests {
         }
         // A folder the user can write, even owned by someone else: a
         // world-writable one like /tmp.
-        let in_tmp = std::env::temp_dir();
-        if fs::metadata(&in_tmp).is_ok_and(|m| m.permissions().mode() & 0o002 != 0) {
-            assert!(!may_run(&in_tmp));
+        let shared = Path::new("/tmp");
+        if fs::metadata(shared).is_ok_and(|m| m.permissions().mode() & 0o002 != 0) {
+            assert!(!may_run(shared));
         }
     }
 }
