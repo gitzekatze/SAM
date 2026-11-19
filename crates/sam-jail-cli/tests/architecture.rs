@@ -263,7 +263,8 @@ fn rust_files(dir: &std::path::Path) -> Vec<PathBuf> {
 /// Everything SAM prints goes through one place that removes escape codes
 /// and hidden characters from it (`sam_core::terminal::for_screen`, audit
 /// G-F5): the plain print macros are refused by the code check
-/// (clippy.toml), and only that one file may allow them.
+/// (clippy.toml), and in SAM's program code only that one file may allow
+/// them. Tests (`tests/` folders) may: their notes go to the developer.
 #[test]
 fn every_printed_line_goes_through_the_screen_filter() {
     let conf = fs::read_to_string(root().join("clippy.toml")).unwrap();
@@ -280,6 +281,9 @@ fn every_printed_line_goes_through_the_screen_filter() {
     let lint = ["clippy::disallowed", "_macros"].concat();
     let mut bypass = Vec::new();
     for f in rust_files(&root().join("crates")) {
+        if f.components().any(|c| c.as_os_str() == "tests") {
+            continue;
+        }
         let text = fs::read_to_string(&f).unwrap();
         if f != allowed && text.contains(&lint) {
             bypass.push(f.display().to_string());

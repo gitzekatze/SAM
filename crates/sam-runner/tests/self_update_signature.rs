@@ -7,6 +7,7 @@
 //! Runs only with SAM_TEST_GPG=1 (CI sets it; then missing tools fail the
 //! test instead of skipping it). Needs gpg, gpgv and objcopy.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -77,7 +78,7 @@ fn download(dir: &Path, name: &str) -> PathBuf {
 #[test]
 fn sam_refuses_a_forged_update_that_carries_its_release_key() {
     if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
-        sam_core::errln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
+        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
         return;
     }
     assert!(

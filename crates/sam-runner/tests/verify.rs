@@ -3,6 +3,7 @@
 //! `$HOME`. Skipped when Bubblewrap cannot run here or SAM's helper
 //! (sam-jail-run) is not on PATH.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::fs;
 
@@ -74,7 +75,7 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
         .iter()
         .map(|r| format!("{}={:?} ({})", r.title, r.ok, r.observed))
         .collect();
-    sam_core::errln!("sandbox check results: {shown:?}");
+    eprintln!("sandbox check results: {shown:?}");
     assert!(failed.is_empty(), "unexpected failures: {failed:?}");
     assert!(out
         .report

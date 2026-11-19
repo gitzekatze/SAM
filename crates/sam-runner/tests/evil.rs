@@ -12,6 +12,7 @@
 //! Uses a fake $HOME; skipped when Bubblewrap, sam-jail-run, python3 with
 //! GObject (gi), gdbus or dbus-daemon is missing.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::collections::HashMap;
 use std::fs;
@@ -287,7 +288,7 @@ fn every_hostile_appimage_fails_to_escape() {
             .next_back()
             .unwrap_or("no result")
             .to_string();
-        sam_core::errln!("evil: {:<18} {:>4.1} s  {r}", app.name, took);
+        eprintln!("evil: {:<18} {:>4.1} s  {r}", app.name, took);
         results.insert(app.name, r);
     }
     drop(bus);

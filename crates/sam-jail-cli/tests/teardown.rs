@@ -5,6 +5,7 @@
 //! pasta sits between SAM and Bubblewrap. Skipped when Bubblewrap cannot
 //! run here.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::fs;
 use std::path::Path;
@@ -47,7 +48,7 @@ fn with_marker(marker: &str) -> Vec<u32> {
         .collect()
 }
 
-fn wait_for(mut what: impl FnMut() -> bool, secs: u64) -> bool {
+fn wait_for(what: impl Fn() -> bool, secs: u64) -> bool {
     let end = Instant::now() + Duration::from_secs(secs);
     while Instant::now() < end {
         if what() {
@@ -179,7 +180,7 @@ fn with_this_computer_only_the_sandbox_dies_with_its_launcher() {
         sam_runner::contracts::not_here(
             "no pasta with --splice-only, so SAM never starts \"This computer only\" here",
         );
-        sam_core::errln!("skipped: no pasta with --splice-only here");
+        eprintln!("skipped: no pasta with --splice-only here");
         return;
     }
     killing_the_launcher_ends_the_sandbox("localhost");
@@ -247,7 +248,11 @@ fn logging_out_closes_a_menu_started_app_properly() {
     );
     // SAFETY: kill takes plain integers; the launcher is our own child.
     unsafe { libc::kill(launcher.id() as libc::pid_t, libc::SIGTERM) };
-    let ended = wait_for(|| launcher.try_wait().unwrap().is_some(), 20);
+    let end = Instant::now() + Duration::from_secs(20);
+    while launcher.try_wait().unwrap().is_none() && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let ended = launcher.try_wait().unwrap().is_some();
     if !ended {
         launcher.kill().unwrap();
     }

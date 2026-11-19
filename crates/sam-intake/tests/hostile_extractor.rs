@@ -8,6 +8,7 @@
 //! Needs a working Bubblewrap; with SAM_REQUIRE_SANDBOX=1 (CI) a missing one
 //! fails the test instead of skipping it.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,7 +36,7 @@ fn a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder() {
             std::env::var("SAM_REQUIRE_SANDBOX").as_deref() != Ok("1"),
             "SAM_REQUIRE_SANDBOX=1, but Bubblewrap does not work here"
         );
-        sam_core::errln!("skipped: Bubblewrap does not work here");
+        eprintln!("skipped: Bubblewrap does not work here");
         return;
     };
     let tmp = tempfile::tempdir().unwrap();

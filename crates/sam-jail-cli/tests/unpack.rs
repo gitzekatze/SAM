@@ -4,6 +4,7 @@
 //! to `sam-jail-run`, the start refuses instead of unpacking unprotected.
 //! Skipped when Bubblewrap cannot run here.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::fs;
 use std::path::Path;
@@ -172,7 +173,7 @@ fn an_unpacking_limit_inside_the_sandbox_stops_unpacking() {
             std::env::var("SAM_REQUIRE_SANDBOX").as_deref() != Ok("1"),
             "SAM_REQUIRE_SANDBOX=1, but Bubblewrap does not work here"
         );
-        sam_core::errln!("skipped: Bubblewrap does not work here");
+        eprintln!("skipped: Bubblewrap does not work here");
         return;
     }
     let tmp = tempfile::tempdir().unwrap();

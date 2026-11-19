@@ -4,6 +4,7 @@
 //! only assert when the host has them. Uses a fake `$HOME`. Skipped when
 //! bubblewrap cannot run here.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::collections::HashMap;
 use std::fs;
@@ -206,7 +207,7 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
             );
         }
         if std::env::var_os("SAM_MATRIX_DEBUG").is_some() {
-            sam_core::errln!(
+            eprintln!(
                 "=== {name}\n{}",
                 fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap()
             );

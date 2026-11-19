@@ -6,6 +6,7 @@
 //! tests instead of skipping them): signing starts a gpg-agent, which puts
 //! its sockets under /run/user/<uid>/gnupg. Needs gpg, gpgv and objcopy.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+#![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -37,7 +38,7 @@ impl Drop for Kit {
 /// tools must be there.
 fn kit() -> Option<Kit> {
     if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
-        sam_core::errln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
+        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
         return None;
     }
     let tools = ["gpg", "gpgv", "objcopy"]

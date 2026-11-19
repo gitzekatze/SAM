@@ -1109,9 +1109,9 @@ mod tests {
                 "https://x.org/k/<hidden>"
             );
         }
-        for same in ["https://x.org/k/abcdefghijklmnopqrstuvwxyz"] {
-            assert_eq!(r(same), same);
-        }
+        // Letters only: a word, not a key.
+        let word = "https://x.org/k/abcdefghijklmnopqrstuvwxyz";
+        assert_eq!(r(word), word);
     }
 
     /// An app's log cannot end the report's code block and add text of its
