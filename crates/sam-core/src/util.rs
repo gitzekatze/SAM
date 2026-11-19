@@ -260,8 +260,7 @@ fn unchanged_by_user(real: &Path) -> bool {
             return false;
         };
         if me == 0 {
-            let others_write = m.mode() & 0o002 != 0 || (m.mode() & 0o020 != 0 && m.gid() != 0);
-            return m.uid() == 0 && !others_write;
+            return only_root_can_change(m.uid(), m.gid(), m.mode());
         }
         let Ok(c) = std::ffi::CString::new(a.as_os_str().as_encoded_bytes()) else {
             return false;
@@ -270,6 +269,14 @@ fn unchanged_by_user(real: &Path) -> bool {
         let writable = unsafe { libc::access(c.as_ptr(), libc::W_OK) } == 0;
         m.uid() != me && !writable
     })
+}
+
+/// For SAM run as root: a file or folder only root can change, owned by
+/// root and writable by no one else (a group other than root's counts as
+/// someone else).
+fn only_root_can_change(uid: u32, gid: u32, mode: u32) -> bool {
+    let others_write = mode & 0o002 != 0 || (mode & 0o020 != 0 && gid != 0);
+    uid == 0 && !others_write
 }
 
 pub fn is_executable(p: &Path) -> bool {
@@ -703,6 +710,21 @@ mod tests {
 mod may_run_tests {
     use super::*;
 
+    /// Run as root, SAM takes a program only where root alone can change
+    /// it: owned by root, not writable for others, and writable for a group
+    /// only when that group is root's.
+    #[test]
+    fn as_root_only_what_no_one_else_can_change_may_run() {
+        assert!(only_root_can_change(0, 0, 0o755));
+        assert!(only_root_can_change(0, 0, 0o775));
+        assert!(only_root_can_change(0, 50, 0o755));
+        assert!(!only_root_can_change(0, 50, 0o775), "group staff may write");
+        assert!(!only_root_can_change(0, 0, 0o757), "everyone may write");
+        assert!(!only_root_can_change(0, 0, 0o777));
+        assert!(!only_root_can_change(1000, 0, 0o755), "owned by a user");
+        assert!(!only_root_can_change(1000, 1000, 0o555));
+    }
+
     /// SAM runs only programs the user cannot change: one in a folder the
     /// user owns is refused, also behind a link, and a link there that
     /// leads to a system program is followed to it (audit L-F12).
@@ -725,6 +747,19 @@ mod may_run_tests {
         std::os::unix::fs::symlink(&own, &to_own).unwrap();
         assert!(!may_run(&to_own));
         assert!(!may_run(&tmp.path().join("missing")));
+        // A program the user owns, even where nobody may write it now: the
+        // owner can make it writable again.
+        let locked = tmp.path().join("locked");
+        fs::create_dir(&locked).unwrap();
+        let prog = locked.join("bwrap");
+        fs::write(&prog, "#!/bin/sh\n").unwrap();
+        fs::set_permissions(&prog, fs::Permissions::from_mode(0o555)).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        // SAFETY: getuid has no preconditions.
+        if unsafe { libc::getuid() } != 0 {
+            assert!(!may_run(&prog));
+        }
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
         // A system link keeps the name it was found under: some programs
         // act by it (pasta is a link to passt).
         if let Some(found) = which("sh") {
