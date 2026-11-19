@@ -420,7 +420,7 @@ pub fn prepare(
                 Some(helper) => {
                     let spec = kernel::SandboxSpec {
                         landlock: want_landlock.then(|| kernel::landlock_spec(perms, host, &format!("/run/user/{}", host.uid), &launch_writable_paths(&ctx))),
-                        seccomp: want_seccomp.then_some(kernel::SeccompSpec { strict, allow_userns: perms.advanced.allow_userns }),
+                        seccomp: want_seccomp.then_some(kernel::SeccompSpec { strict, allow_userns: perms.advanced.allow_userns, bluetooth: perms.devices.bluetooth }),
                         probe: opts.probe.clone(),
                     };
                     let spec_path = runtime_dir.join("sandbox.json");

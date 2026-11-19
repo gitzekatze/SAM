@@ -90,6 +90,8 @@ fn a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder() {
     let iso = Isolation {
         bwrap,
         self_exe: PathBuf::from("/usr/bin/true"),
+        system: sam_sandbox::helper_system_args(&sam_core::HostInfo::probe()),
+        filter: None,
     };
     let mut log = Vec::new();
     let out = extract(

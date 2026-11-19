@@ -8,7 +8,7 @@
 //! where no kernel headers are installed.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -81,31 +81,41 @@ fn every_known_syscall_has_been_reviewed() {
     );
 }
 
-/// The review list says which syscalls the filter blocks; it must match the
-/// filter itself, or the review would describe a filter that does not exist.
+/// The review list says what the filter does with each syscall; it must
+/// say exactly that, or the review describes a filter that does not exist.
+/// Every status is compared with the filter's own lists, not only the
+/// names (audit S-F10: the list said "blocked" for calls only the strict
+/// filter blocks, and for the mount family that nested sandboxes keep).
 #[test]
 fn the_review_list_matches_the_filter() {
     let text = fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/syscalls-reviewed.txt"),
     )
     .unwrap();
-    let listed: BTreeSet<&str> = text
+    let listed: BTreeMap<&str, &str> = text
         .lines()
-        .filter(|l| l.ends_with("\tblocked"))
-        .filter_map(|l| l.split('\t').next())
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .filter_map(|l| l.split_once('\t'))
         .collect();
-    let code =
-        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/kernel.rs")).unwrap();
-    let in_filter: BTreeSet<&str> = code
-        .split("libc::SYS_")
-        .skip(1)
-        .filter_map(|s| {
-            s.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
-                .next()
-        })
-        .collect();
+    let filter = sam_runner::kernel::review_statuses();
+    for (name, status) in &filter {
+        assert_eq!(
+            listed.get(name),
+            Some(status),
+            "docs/syscalls-reviewed.txt must say {name}\t{status}"
+        );
+    }
+    for (name, status) in &listed {
+        if !filter.contains_key(name) {
+            assert_eq!(
+                *status, "allowed",
+                "{name}: the filter does not name it, so it is allowed"
+            );
+        }
+    }
+    assert_eq!(filter.get("ptrace"), Some(&"blocked by the strict filter"));
     assert_eq!(
-        listed, in_filter,
-        "docs/syscalls-reviewed.txt and kernel.rs disagree"
+        filter.get("mount"),
+        Some(&"blocked unless nested sandboxes")
     );
 }

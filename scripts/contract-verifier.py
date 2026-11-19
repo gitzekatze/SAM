@@ -14,7 +14,8 @@ Weakening means:
                    (refuse, safer, warn, feature, none); `coverage` from
                    full to partial; a test removed; a quick check removed
   functions.toml   a function removed; its promise changed; a test removed
-  syscalls         a syscall no longer `blocked`
+  syscalls         a syscall refused less than before (blocked > blocked unless
+                   nested sandboxes > limited > blocked by the strict filter > allowed)
   threat model     a row of a table removed or changed
   code lists       an entry removed from NEVER_FORWARD_FROM_APP,
                    DANGEROUS_BUS_NAMES, SENSITIVE_PATHS, PROTECTED_RO or
@@ -81,10 +82,27 @@ def functions(old, new):
     return out
 
 
+# How strongly the filter refuses a call, by the review list's status: a
+# step down (or a call that disappears) weakens the filter.
+SYSCALL_STRENGTH = {
+    "blocked": 4,
+    "blocked unless nested sandboxes": 3,
+    "limited": 2,
+    "blocked by the strict filter": 1,
+    "allowed": 0,
+}
+
+
 def syscalls(old, new):
-    def blocked(t):
-        return {l.split("\t")[0] for l in t.splitlines() if l.endswith("\tblocked")}
-    return [f"syscall {s} no longer blocked" for s in sorted(blocked(old) - blocked(new))]
+    def statuses(t):
+        return dict(l.split("\t", 1) for l in t.splitlines() if "\t" in l and not l.startswith("#"))
+    o, n = statuses(old), statuses(new)
+    out = []
+    for name in sorted(o):
+        before, after = o[name], n.get(name, "allowed")
+        if SYSCALL_STRENGTH.get(after, 0) < SYSCALL_STRENGTH.get(before, 0):
+            out.append(f"syscall {name}: {before} -> {after}")
+    return out
 
 
 def threat_model(old, new):
@@ -194,6 +212,10 @@ def self_test():
         ("docs/functions.toml", '[[function]]\nid = 1\npromise = "p"\ntests = ["a"]\n', '[[function]]\nid = 1\npromise = "p"\ntests = []\n', 1),
         ("docs/syscalls-reviewed.txt", "mount\tblocked\nread\tallowed\n", "mount\tallowed\nread\tallowed\n", 1),
         ("docs/syscalls-reviewed.txt", "read\tallowed\n", "read\tblocked\n", 0),
+        ("docs/syscalls-reviewed.txt", "mount\tblocked unless nested sandboxes\n", "mount\tallowed\n", 1),
+        ("docs/syscalls-reviewed.txt", "ptrace\tblocked\n", "ptrace\tblocked by the strict filter\n", 1),
+        ("docs/syscalls-reviewed.txt", "ioctl\tlimited\n", "ioctl\tblocked\n", 0),
+        ("docs/syscalls-reviewed.txt", "mount\tblocked\n", "", 1),
         ("docs/threat-model.md", "| A | B |\n|---|---|\n| x | `t` |\n", "| A | B |\n|---|---|\n", 1),
         ("crates/sam-runner/src/netns.rs", 'const NEVER_FORWARD_FROM_APP: &[&str] = &[\n    "~1-1023", "~11434",\n];', 'const NEVER_FORWARD_FROM_APP: &[&str] = &[\n    "~1-1023",\n];', 1),
         ("crates/sam-runner/src/netns.rs", 'const NEVER_FORWARD_FROM_APP: &[&str] = &["~1"];', 'const NEVER_FORWARD_FROM_APP: &[&str] = &["~1", "~2"];', 0),

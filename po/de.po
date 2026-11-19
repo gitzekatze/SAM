@@ -492,13 +492,15 @@ msgstr "Alle Eingabegeräte"
 
 #: crates/sam-core/src/permissions.rs:974
 msgid ""
-"Raw access to every keyboard, mouse and controller in /dev/input. Can be "
-"used to read keystrokes. Only for tools that remap or configure input "
-"devices."
+"Raw access to every keyboard, mouse and controller in /dev/input, and a "
+"virtual input device (/dev/uinput): the app can read every keystroke and "
+"type or move the mouse as if it were you. Only for tools that remap or "
+"configure input devices."
 msgstr ""
-"Direkter Zugriff auf jede Tastatur, Maus und jeden Controller in /dev/input. "
-"Damit lassen sich Tastendrücke mitlesen. Nur für Werkzeuge, die "
-"Eingabegeräte umbelegen oder einrichten."
+"Direkter Zugriff auf jede Tastatur, jede Maus und jeden Controller in /dev/"
+"input sowie ein virtuelles Eingabegerät (/dev/uinput): Die App kann jeden "
+"Tastendruck lesen und tippen oder die Maus bewegen, als wärst du es. Nur für "
+"Programme, die Eingabegeräte umbelegen oder einrichten."
 
 #: crates/sam-core/src/permissions.rs:976 crates/sam-core/src/risk.rs:249
 #: crates/sam-runner/src/verify.rs:388
@@ -519,8 +521,13 @@ msgid "Bluetooth"
 msgstr "Bluetooth"
 
 #: crates/sam-core/src/permissions.rs:978
-msgid "Bluetooth needs the system D-Bus and cannot be isolated well."
-msgstr "Bluetooth braucht den System-D-Bus und lässt sich schlecht abschotten."
+msgid ""
+"Lets the app open Bluetooth connections to nearby devices; other apps "
+"cannot. Pairing and the Bluetooth service itself also need the system D-Bus."
+msgstr ""
+"Erlaubt der App Bluetooth-Verbindungen zu Geräten in der Nähe; andere Apps "
+"können das nicht. Koppeln und der Bluetooth-Dienst selbst brauchen "
+"zusätzlich den System-D-Bus."
 
 #: crates/sam-core/src/permissions.rs:980 crates/sam-core/src/risk.rs:260
 #: crates/sam-runner/src/verify.rs:301
@@ -1987,14 +1994,16 @@ msgid ""
 "{why}\n"
 "\n"
 "Instead, the AppImage can unpack itself. That runs code from the AppImage, "
-"inside a sandbox with no network and no access to your files. Only continue "
-"if you trust where this file came from."
+"inside a sandbox with no network, no access to your files and the same "
+"limits on kernel calls as an app. Only continue if you trust where this file "
+"came from."
 msgstr ""
 "{why}\n"
 "\n"
 "Stattdessen kann sich das AppImage selbst entpacken. Dabei läuft Code aus "
-"dem AppImage, in einer Sandbox ohne Netzwerk und ohne Zugriff auf deine "
-"Dateien. Fahre nur fort, wenn du der Herkunft dieser Datei vertraust."
+"dem AppImage, in einer Sandbox ohne Netzwerk, ohne Zugriff auf deine Dateien "
+"und mit denselben Grenzen für Kernel-Aufrufe wie eine App. Fahre nur fort, "
+"wenn du der Herkunft dieser Datei vertraust."
 
 #: crates/sam-gtk/src/app_page/data.rs:278
 msgid "Let the AppImage Unpack Itself?"
@@ -4770,7 +4779,7 @@ msgid "runner {runner} does not exist"
 msgstr "das Startprogramm {runner} existiert nicht"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:166
+#: crates/sam-intake/src/extract.rs:196
 msgid ""
 "There is not enough free space to unpack this AppImage: it needs about "
 "{needed}, but the folder {folder} has only {free} free. Free some space, or "
@@ -4783,7 +4792,7 @@ msgstr ""
 "entpackte Apps."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:179
+#: crates/sam-intake/src/extract.rs:209
 msgid ""
 "SAM stopped unpacking this AppImage: {reason}. The limits protect your "
 "computer from AppImages built to fill the disk or keep SAM busy. If you "
@@ -4798,12 +4807,12 @@ msgstr ""
 "extraction.max_files 400000` (auch extraction.max_size_mb und "
 "extraction.max_seconds), und erstelle die Sandbox erneut."
 
-#: crates/sam-intake/src/extract.rs:226 crates/sam-intake/src/extract.rs:262
+#: crates/sam-intake/src/extract.rs:256 crates/sam-intake/src/extract.rs:292
 #: crates/sam-intake/src/peek.rs:56
 msgid "the app image inside the AppImage was not found"
 msgstr "das App-Abbild im AppImage wurde nicht gefunden"
 
-#: crates/sam-intake/src/extract.rs:258
+#: crates/sam-intake/src/extract.rs:288
 msgid ""
 "this AppImage uses a DwarFS image; install the dwarfs tools (dwarfsextract) "
 "to unpack it without running it"
@@ -4811,22 +4820,22 @@ msgstr ""
 "dieses AppImage nutzt ein DwarFS-Abbild; installiere die dwarfs-Werkzeuge "
 "(dwarfsextract), um es zu entpacken, ohne es auszuführen"
 
-#: crates/sam-intake/src/extract.rs:300
+#: crates/sam-intake/src/extract.rs:330
 msgid "the AppImage's SquashFS image is damaged (the reader stopped)"
 msgstr ""
 "das SquashFS-Abbild des AppImages ist beschädigt (das Leseprogramm hielt an)"
 
-#: crates/sam-intake/src/extract.rs:364
+#: crates/sam-intake/src/extract.rs:394
 msgid "bsdtar (libarchive) is not installed"
 msgstr "bsdtar (libarchive) ist nicht installiert"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:369
+#: crates/sam-intake/src/extract.rs:399
 msgid "{file} is not a recognized AppImage"
 msgstr "{file} ist kein erkanntes AppImage"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:408
+#: crates/sam-intake/src/extract.rs:438
 msgid ""
 "The disk became full while unpacking this AppImage into {folder}. SAM "
 "removed the part that was already unpacked. Free some space, or choose "
@@ -4837,7 +4846,7 @@ msgstr ""
 "Einstellungen → Entpacken → Ort einen anderen Ordner für entpackte Apps."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:436
+#: crates/sam-intake/src/extract.rs:473
 msgid ""
 "all ways of unpacking failed:\n"
 "  {attempts}"
@@ -4845,63 +4854,63 @@ msgstr ""
 "alle Wege zum Entpacken sind gescheitert:\n"
 "  {attempts}"
 
-#: crates/sam-intake/src/extract.rs:450
+#: crates/sam-intake/src/extract.rs:487
 msgid "the unpacked app is not a plain folder; it was removed"
 msgstr "die entpackte App ist kein gewöhnlicher Ordner; sie wurde entfernt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:512
+#: crates/sam-intake/src/extract.rs:549
 msgid "a link at {path} points outside the app"
 msgstr "eine Verknüpfung bei {path} zeigt aus der App heraus"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:520
+#: crates/sam-intake/src/extract.rs:557
 msgid "{path} is not a folder"
 msgstr "{path} ist kein Ordner"
 
-#: crates/sam-intake/src/extract.rs:540
+#: crates/sam-intake/src/extract.rs:577
 msgid "unpacking limit exceeded: the app is too large"
 msgstr "Entpack-Grenze überschritten: Die App ist zu groß"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:566 crates/sam-intake/src/normalize.rs:95
+#: crates/sam-intake/src/extract.rs:603 crates/sam-intake/src/normalize.rs:95
 msgid "unpacking limit exceeded: more than {count} files"
 msgstr "Entpack-Grenze überschritten: mehr als {count} Dateien"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:572 crates/sam-intake/src/extract.rs:652
+#: crates/sam-intake/src/extract.rs:609 crates/sam-intake/src/extract.rs:689
 #: crates/sam-intake/src/normalize.rs:101
 msgid "unpacking limit exceeded: it took longer than {seconds} seconds"
 msgstr "Entpack-Grenze überschritten: Es dauerte länger als {seconds} Sekunden"
 
-#: crates/sam-intake/src/extract.rs:596
+#: crates/sam-intake/src/extract.rs:633
 msgid "entry without name"
 msgstr "Eintrag ohne Namen"
 
-#: crates/sam-intake/src/extract.rs:673
+#: crates/sam-intake/src/extract.rs:710
 msgid "starting the unpacking tool"
 msgstr "das Entpackwerkzeug wird gestartet"
 
-#: crates/sam-intake/src/extract.rs:722
+#: crates/sam-intake/src/extract.rs:761
 msgid "Bubblewrap is needed to let the AppImage unpack itself in a sandbox"
 msgstr ""
 "Bubblewrap wird gebraucht, damit sich das AppImage in einer Sandbox selbst "
 "entpacken kann"
 
-#: crates/sam-intake/src/extract.rs:742
+#: crates/sam-intake/src/extract.rs:781
 msgid "copying the AppImage so it can unpack itself"
 msgstr "das AppImage wird kopiert, damit es sich selbst entpacken kann"
 
-#: crates/sam-intake/src/extract.rs:746
+#: crates/sam-intake/src/extract.rs:785
 msgid "making the copy executable"
 msgstr "die Kopie wird ausführbar gemacht"
 
-#: crates/sam-intake/src/extract.rs:810
+#: crates/sam-intake/src/extract.rs:837
 msgid "--appimage-extract produced no squashfs-root"
 msgstr "--appimage-extract hat kein squashfs-root erzeugt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:814
+#: crates/sam-intake/src/extract.rs:841
 msgid "moving the unpacked app to {folder}"
 msgstr "die entpackte App wird nach {folder} verschoben"
 
@@ -6030,19 +6039,19 @@ msgstr ""
 msgid "the home folder"
 msgstr "der Home-Ordner"
 
-#: crates/sam-runner/src/kernel.rs:100
+#: crates/sam-runner/src/kernel.rs:103
 msgid "reading sandbox spec"
 msgstr "die Sandbox-Beschreibung wird gelesen"
 
-#: crates/sam-runner/src/kernel.rs:104
+#: crates/sam-runner/src/kernel.rs:107
 msgid "no command given"
 msgstr "kein Befehl angegeben"
 
-#: crates/sam-runner/src/kernel.rs:118
+#: crates/sam-runner/src/kernel.rs:121
 msgid "loading the seccomp filter"
 msgstr "der seccomp-Filter wird geladen"
 
-#: crates/sam-runner/src/kernel.rs:314
+#: crates/sam-runner/src/kernel.rs:446
 msgid "seccomp filters are not supported on this architecture"
 msgstr "seccomp-Filter werden auf dieser Architektur nicht unterstützt"
 
@@ -6771,16 +6780,16 @@ msgstr "Signatur stimmt nicht"
 msgid "could not hide the menu entry {file}: {error}"
 msgstr "der Menüeintrag {file} ließ sich nicht ausblenden: {error}"
 
-#: crates/sam-runner/src/ops/overview.rs:439
+#: crates/sam-runner/src/ops/overview.rs:452
 msgid "Bubblewrap cannot run on this computer"
 msgstr "Bubblewrap kann auf diesem Computer nicht laufen"
 
-#: crates/sam-runner/src/ops/overview.rs:441
+#: crates/sam-runner/src/ops/overview.rs:454
 msgid "SAM's command line (sam-jail) is not next to this program"
 msgstr "SAMs Kommandozeile (sam-jail) liegt nicht neben diesem Programm"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/overview.rs:445
+#: crates/sam-runner/src/ops/overview.rs:458
 msgid ""
 "SAM unpacks AppImages only inside a sandbox, and none can be built here: "
 "{reason}. Diagnostics (sam-jail doctor) says what is missing."
@@ -8019,6 +8028,32 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:442
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
+
+#~ msgid ""
+#~ "Raw access to every keyboard, mouse and controller in /dev/input. Can be "
+#~ "used to read keystrokes. Only for tools that remap or configure input "
+#~ "devices."
+#~ msgstr ""
+#~ "Direkter Zugriff auf jede Tastatur, Maus und jeden Controller in /dev/"
+#~ "input. Damit lassen sich Tastendrücke mitlesen. Nur für Werkzeuge, die "
+#~ "Eingabegeräte umbelegen oder einrichten."
+
+#~ msgid "Bluetooth needs the system D-Bus and cannot be isolated well."
+#~ msgstr ""
+#~ "Bluetooth braucht den System-D-Bus und lässt sich schlecht abschotten."
+
+#~ msgid ""
+#~ "{why}\n"
+#~ "\n"
+#~ "Instead, the AppImage can unpack itself. That runs code from the "
+#~ "AppImage, inside a sandbox with no network and no access to your files. "
+#~ "Only continue if you trust where this file came from."
+#~ msgstr ""
+#~ "{why}\n"
+#~ "\n"
+#~ "Stattdessen kann sich das AppImage selbst entpacken. Dabei läuft Code aus "
+#~ "dem AppImage, in einer Sandbox ohne Netzwerk und ohne Zugriff auf deine "
+#~ "Dateien. Fahre nur fort, wenn du der Herkunft dieser Datei vertraust."
 
 #~ msgid "PipeWire and PulseAudio sockets found"
 #~ msgstr "PipeWire- und PulseAudio-Sockets gefunden"

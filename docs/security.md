@@ -100,11 +100,22 @@ blocks:
 - `io_uring`, a frequent source of kernel exploits (programs fall back to
   ordinary I/O);
 - terminal injection (`TIOCSTI`, `TIOCLINUX`);
-- namespaces and mounts, unless the app needs nested sandboxes.
+- namespaces and mounts, unless the app needs nested sandboxes;
+- every socket type except local, internet and netlink (the kernel's status
+  channel): no virtual-machine (`AF_VSOCK`, which no network setting
+  stops), raw-packet or kernel-crypto sockets. Bluetooth sockets only with
+  the *Bluetooth* switch. As in Flatpak, a refused type answers "not
+  supported", so programs fall back;
+- every call through the x32 ABI (a niche x86-64 mode with its own call
+  numbers, which no AppImage uses).
 
-It covers the x32 ABI as well. 32-bit system calls (`int 0x80`) end the
-process, so 32-bit AppImages get the filter turned off in their
-recommendation, and SAM says so.
+32-bit system calls (`int 0x80`) end the process, so 32-bit AppImages get
+the filter turned off in their recommendation, and SAM says so.
+
+The same filter applies while SAM unpacks an AppImage, to its own reader
+and to the AppImage's own extractor (`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`).
+`docs/syscalls-reviewed.txt` lists every kernel call with what the filter
+does with it, and a test compares each line with the filter.
 
 The **strict filter** (experimental, opt-in) also blocks `ptrace`, access to
 other processes' memory, `personality` and NUMA memory calls.

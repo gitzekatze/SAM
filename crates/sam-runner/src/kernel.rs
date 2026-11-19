@@ -42,6 +42,9 @@ pub struct SeccompSpec {
     /// Nested sandboxes allowed (Chromium, Electron, WebKit's bwrap):
     /// keep unshare/setns and the mount family.
     pub allow_userns: bool,
+    /// Bluetooth sockets allowed (the Bluetooth switch).
+    #[serde(default)]
+    pub bluetooth: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -226,11 +229,26 @@ fn apply_landlock(spec: &LandlockSpec) -> Result<String> {
     .into())
 }
 
+/// Calls with their names: `calls![libc::SYS_mount, …]` gives
+/// `("mount", number)` on this architecture. The review list
+/// (docs/syscalls-reviewed.txt) is compared with these names.
+macro_rules! calls {
+    ($($p:path),* $(,)?) => {
+        vec![$((
+            {
+                let s = stringify!($p);
+                &s[s.rfind("SYS_").map_or(0, |i| i + 4)..]
+            },
+            $p as i64,
+        )),*]
+    };
+}
+
 /// Syscalls blocked (EPERM) by the baseline filter, on by default. Kernel
 /// interfaces no desktop app needs and that have a history of exploits:
 /// modules, kexec, BPF, perf, keyrings, userfaultfd, handle-based opens, io_uring.
-fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
-    let mut v: Vec<i64> = vec![
+fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
+    let mut v = calls![
         libc::SYS_kexec_load,
         libc::SYS_init_module,
         libc::SYS_finit_module,
@@ -242,7 +260,11 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
         libc::SYS_settimeofday,
         libc::SYS_clock_settime,
         libc::SYS_adjtimex,
+        // The same as adjtimex and quotactl through another door (audit
+        // S-F10: the siblings were blocked, these were not).
+        libc::SYS_clock_adjtime,
         libc::SYS_quotactl,
+        libc::SYS_quotactl_fd,
         libc::SYS_bpf,
         libc::SYS_perf_event_open,
         libc::SYS_userfaultfd,
@@ -261,7 +283,7 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
         libc::SYS_io_uring_register,
     ];
     #[cfg(target_arch = "x86_64")]
-    v.extend([
+    v.extend(calls![
         libc::SYS_kexec_file_load,
         libc::SYS_iopl,
         libc::SYS_ioperm,
@@ -269,7 +291,7 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
     ]);
     if !allow_userns {
         // Without nested sandboxes nothing inside needs namespaces or mounts.
-        v.extend([
+        v.extend(calls![
             libc::SYS_unshare,
             libc::SYS_setns,
             libc::SYS_mount,
@@ -280,14 +302,16 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<i64> {
             libc::SYS_fsopen,
             libc::SYS_fsmount,
             libc::SYS_fsconfig,
+            libc::SYS_fspick,
+            libc::SYS_mount_setattr,
         ]);
     }
     v
 }
 
 /// Additionally blocked by the strict filter.
-fn strict_extra_syscalls() -> Vec<i64> {
-    vec![
+fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
+    calls![
         libc::SYS_ptrace,
         libc::SYS_process_vm_writev,
         libc::SYS_process_vm_readv,
@@ -298,8 +322,116 @@ fn strict_extra_syscalls() -> Vec<i64> {
     ]
 }
 
-/// The compiled BPF program for a filter spec.
+/// What the filter does with each call it names, as the review list says
+/// it: "blocked" (always), "blocked unless nested sandboxes" (nested
+/// sandboxes need namespaces and mounts), "blocked by the strict filter"
+/// (only with the strict filter on) or "limited" (only some uses refused:
+/// `ioctl` typing into the terminal, `socket` the families outside
+/// [`SOCKET_FAMILIES`]). Every other call is allowed (audit S-F10: the list
+/// said "blocked" for calls the default filter allows).
+pub fn review_statuses() -> BTreeMap<&'static str, &'static str> {
+    let always: Vec<&str> = baseline_syscalls(true)
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
+    let mut out = BTreeMap::new();
+    for (n, _) in baseline_syscalls(false) {
+        out.insert(
+            n,
+            if always.contains(&n) {
+                "blocked"
+            } else {
+                "blocked unless nested sandboxes"
+            },
+        );
+    }
+    for (n, _) in strict_extra_syscalls() {
+        out.insert(n, "blocked by the strict filter");
+    }
+    out.insert("ioctl", "limited");
+    out.insert("socket", "limited");
+    out
+}
+
+/// Socket families every app may open: local sockets, the internet (the
+/// network namespace decides whether it leads anywhere) and netlink (the
+/// kernel's status channel: network interfaces, device events; glib, udev
+/// and Chromium need it). Everything else answers "family not supported",
+/// as in Flatpak: virtual-machine sockets (`AF_VSOCK`, not tied to the
+/// network namespace), raw packets, kernel crypto (`AF_ALG`) and the other
+/// rarely used families with a history of kernel bugs (audit S-F7).
+/// Bluetooth only with the Bluetooth switch.
+pub const SOCKET_FAMILIES: &[i32] = &[
+    libc::AF_UNIX,
+    libc::AF_INET,
+    libc::AF_INET6,
+    libc::AF_NETLINK,
+];
+
+/// The part of the filter seccompiler cannot say, put in front of it:
+/// - every call through the x32 ABI is refused. x32 programs share the
+///   architecture of x86-64 programs but number some calls on their own
+///   (x32 `ptrace` is 521, not 101), so blocking each call by its number
+///   missed those (audit S-F9). No AppImage is an x32 program.
+/// - `socket` opens only the families in [`SOCKET_FAMILIES`].
+///
+/// These only refuse; whatever passes goes on to seccompiler's filter,
+/// which checks the architecture first and ends 32-bit callers.
+fn front_filter(spec: &SeccompSpec) -> seccompiler::BpfProgram {
+    use seccompiler::sock_filter;
+    const LD_W_ABS: u16 = 0x20; // BPF_LD | BPF_W | BPF_ABS
+    const JEQ_K: u16 = 0x15; // BPF_JMP | BPF_JEQ | BPF_K
+    const JSET_K: u16 = 0x45; // BPF_JMP | BPF_JSET | BPF_K
+    const RET_K: u16 = 0x06; // BPF_RET | BPF_K
+    const RET_ERRNO: u32 = 0x0005_0000; // SECCOMP_RET_ERRNO
+    const NR: u32 = 0; // seccomp_data.nr
+    const ARG0: u32 = 16; // seccomp_data.args[0], low half (little endian)
+    const X32: u32 = 0x4000_0000;
+    let op = |code, k, jt, jf| sock_filter { code, jt, jf, k };
+    let mut families: Vec<u32> = SOCKET_FAMILIES.iter().map(|f| *f as u32).collect();
+    if spec.bluetooth {
+        families.push(libc::AF_BLUETOOTH as u32);
+    }
+    let n = families.len() as u8;
+    let mut f = vec![
+        op(LD_W_ABS, NR, 0, 0),
+        op(JSET_K, X32, 0, 1),
+        op(RET_K, RET_ERRNO | libc::EPERM as u32, 0, 0),
+        // Not `socket`: skip the family check (n compares, 1 load, 1 return).
+        op(JEQ_K, libc::SYS_socket as u32, 0, n + 2),
+        op(LD_W_ABS, ARG0, 0, 0),
+    ];
+    for (i, fam) in families.iter().enumerate() {
+        // A listed family jumps past the remaining compares and the return.
+        f.push(op(JEQ_K, *fam, n - i as u8, 0));
+    }
+    f.push(op(RET_K, RET_ERRNO | libc::EAFNOSUPPORT as u32, 0, 0));
+    f
+}
+
+/// The compiled BPF program for a filter spec: [`front_filter`], then the
+/// list of blocked calls.
 pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
+    let mut program = front_filter(spec);
+    program.extend(listed_calls(spec)?);
+    Ok(program)
+}
+
+/// The filter as `bwrap --seccomp` reads it: the program's instructions,
+/// eight bytes each in the machine's byte order.
+pub fn filter_bytes(spec: &SeccompSpec) -> Result<Vec<u8>> {
+    let mut out = Vec::new();
+    for i in seccomp_program(spec)? {
+        out.extend(i.code.to_ne_bytes());
+        out.push(i.jt);
+        out.push(i.jf);
+        out.extend(i.k.to_ne_bytes());
+    }
+    Ok(out)
+}
+
+/// The calls the filter blocks by number, compiled by seccompiler.
+fn listed_calls(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
     use seccompiler::{
         SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
         SeccompRule, TargetArch,
@@ -314,20 +446,15 @@ pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
             sam_core::i18n::tr("seccomp filters are not supported on this architecture")
         );
     };
-    let mut list = baseline_syscalls(spec.allow_userns);
+    let mut list: Vec<i64> = baseline_syscalls(spec.allow_userns)
+        .into_iter()
+        .map(|(_, n)| n)
+        .collect();
     if spec.strict {
-        list.extend(strict_extra_syscalls());
+        list.extend(strict_extra_syscalls().into_iter().map(|(_, n)| n));
     }
-    // x86-64 kernels may accept the x32 ABI: the same architecture, syscall
-    // numbers with bit 30 set. Block those numbers too, or a blocked call
-    // could be made through x32 where the kernel allows it. (32-bit calls
-    // through int 0x80 fail the architecture check and end the process.)
-    const X32: i64 = 0x4000_0000;
-    let x86 = matches!(arch, TargetArch::x86_64);
-    if x86 {
-        let x32: Vec<i64> = list.iter().map(|n| n | X32).collect();
-        list.extend(x32);
-    }
+    // x32 calls never get here (`front_filter`); 32-bit calls through
+    // int 0x80 fail the architecture check and end the process.
     let mut rules: BTreeMap<i64, Vec<SeccompRule>> =
         list.into_iter().map(|s| (s, vec![])).collect();
     // Terminal input injection into the parent's tty (TIOCSTI, TIOCLINUX).
@@ -340,13 +467,6 @@ pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
         libc::SYS_ioctl,
         vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?],
     );
-    if x86 {
-        // x32's ioctl is the compat entry 514.
-        rules.insert(
-            514 | X32,
-            vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?],
-        );
-    }
     let filter = SeccompFilter::new(
         rules,
         SeccompAction::Allow,
@@ -397,24 +517,181 @@ mod tests {
         );
     }
 
+    /// What each of `calls` answers in a child process: 0 for success,
+    /// else its errno. Under the filter of `spec`, or without one (the
+    /// control) when `spec` is `None`.
+    fn errnos(spec: Option<&SeccompSpec>, calls: &[fn() -> libc::c_long]) -> Vec<i32> {
+        let prog = spec.map(|s| seccomp_program(s).unwrap());
+        let fprog = prog.as_ref().map(|p| libc::sock_fprog {
+            len: p.len() as u16,
+            filter: p.as_ptr() as *mut libc::sock_filter,
+        });
+        let mut fds = [0; 2];
+        // SAFETY: pipe fills the two descriptors of a valid array.
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        // SAFETY: the child calls only async-signal-safe functions (prctl,
+        // the probed syscalls, write, _exit) and touches no allocation.
+        let pid = unsafe { libc::fork() };
+        if pid == 0 {
+            // SAFETY: as above; `fprog` points to a program that outlives the child.
+            unsafe {
+                if let Some(f) = &fprog {
+                    libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+                    if libc::prctl(libc::PR_SET_SECCOMP, libc::SECCOMP_MODE_FILTER, f) != 0 {
+                        libc::_exit(2);
+                    }
+                }
+                for c in calls {
+                    let e: i32 = if c() < 0 {
+                        *libc::__errno_location()
+                    } else {
+                        0
+                    };
+                    libc::write(fds[1], (&raw const e).cast(), 4);
+                }
+                libc::_exit(0);
+            }
+        }
+        // SAFETY: closing the write end the parent no longer needs.
+        unsafe { libc::close(fds[1]) };
+        let mut buf = vec![0u8; calls.len() * 4];
+        let mut got = 0;
+        while got < buf.len() {
+            // SAFETY: reads into the unread rest of `buf`.
+            let n = unsafe { libc::read(fds[0], buf[got..].as_mut_ptr().cast(), buf.len() - got) };
+            if n <= 0 {
+                break;
+            }
+            got += n as usize;
+        }
+        let mut status = 0;
+        // SAFETY: waits for the child forked above.
+        unsafe {
+            libc::close(fds[0]);
+            libc::waitpid(pid, &mut status, 0);
+        }
+        assert_eq!(status, 0, "the child ran every call");
+        buf.chunks(4)
+            .map(|c| i32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()
+    }
+
+    /// A raw call with plain integer arguments.
+    fn raw(nr: libc::c_long, a: libc::c_long, b: libc::c_long) -> libc::c_long {
+        // SAFETY: the probed calls take plain integers or a null pointer.
+        unsafe { libc::syscall(nr, a, b, 0, 0, 0) }
+    }
+
+    /// `clock_adjtime` reading the clock (no change requested).
+    fn read_clock() -> libc::c_long {
+        // SAFETY: `t` is a zeroed `timex` the call may fill.
+        unsafe {
+            let mut t: libc::timex = std::mem::zeroed();
+            libc::syscall(libc::SYS_clock_adjtime, libc::CLOCK_REALTIME, &mut t)
+        }
+    }
+
+    fn sock(family: i32, kind: i32, proto: i32) -> libc::c_long {
+        // SAFETY: socket takes plain integers.
+        unsafe { libc::socket(family, kind, proto) as libc::c_long }
+    }
+
+    /// The filter, applied by the real kernel in a child process: every
+    /// call through the x32 ABI is refused (audit S-F9; x32 `ptrace` has its
+    /// own number), the siblings of blocked calls are blocked too (S-F10),
+    /// and a socket opens only as local, internet or netlink, Bluetooth
+    /// only with its switch (S-F7). The control without the filter shows
+    /// each refusal is the filter's.
+    #[test]
+    fn the_filter_refuses_x32_odd_sockets_and_the_siblings() {
+        const X32: libc::c_long = 0x4000_0000;
+        let calls: Vec<fn() -> libc::c_long> = vec![
+            || sock(libc::AF_UNIX, libc::SOCK_STREAM, 0),
+            || sock(libc::AF_INET, libc::SOCK_DGRAM, 0),
+            || sock(libc::AF_INET6, libc::SOCK_DGRAM, 0),
+            || sock(libc::AF_NETLINK, libc::SOCK_RAW, libc::NETLINK_ROUTE),
+            || sock(libc::AF_ALG, libc::SOCK_SEQPACKET, 0),
+            || sock(libc::AF_VSOCK, libc::SOCK_STREAM, 0),
+            || sock(libc::AF_PACKET, libc::SOCK_RAW, 0),
+            || sock(libc::AF_BLUETOOTH, libc::SOCK_STREAM, 0),
+            || raw(libc::SYS_getpid | X32, 0, 0),
+            || raw(521 | X32, 0, 0), // x32 ptrace
+            read_clock,
+            || raw(libc::SYS_quotactl_fd, -1, 0),
+            || raw(libc::SYS_fspick, -1, 0),
+            || raw(libc::SYS_mount_setattr, -1, 0),
+        ];
+        let spec = SeccompSpec::default();
+        let filtered = errnos(Some(&spec), &calls);
+        let control = errnos(None, &calls);
+        let (eperm, eaf) = (libc::EPERM, libc::EAFNOSUPPORT);
+        assert_eq!(
+            &filtered[..4],
+            &control[..4],
+            "local, internet, netlink as without the filter"
+        );
+        assert_eq!(
+            &filtered[4..8],
+            &[eaf; 4],
+            "crypto, VM, packet, Bluetooth sockets"
+        );
+        assert_eq!(&filtered[8..], &[eperm; 6], "x32 calls and the siblings");
+        assert!(
+            control[8] != eperm && control[9] != eperm,
+            "x32: the kernel's answer, not the filter's"
+        );
+        assert_eq!(
+            control[10], 0,
+            "clock_adjtime reads the clock without the filter"
+        );
+        // quotactl_fd and mount_setattr answer "bad descriptor" or
+        // "invalid" without the filter; fspick needs administrator rights,
+        // so the kernel refuses it either way.
+        assert!(control[11] != eperm && control[13] != eperm, "{control:?}");
+        // With the Bluetooth switch, Bluetooth sockets as without the filter.
+        let bt = SeccompSpec {
+            bluetooth: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(errnos(Some(&bt), &calls[7..8]), control[7..8]);
+        // Nested sandboxes keep fspick and mount_setattr.
+        let nested = SeccompSpec {
+            allow_userns: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(errnos(Some(&nested), &calls[12..]), control[12..]);
+    }
+
+    /// Bubblewrap reads the filter as eight bytes per instruction.
+    #[test]
+    fn the_filter_reaches_bubblewrap_as_whole_instructions() {
+        let spec = SeccompSpec::default();
+        let p = seccomp_program(&spec).unwrap();
+        let b = filter_bytes(&spec).unwrap();
+        assert_eq!(b.len(), p.len() * 8);
+        assert_eq!(&b[..2], &p[0].code.to_ne_bytes());
+        assert_eq!(&b[4..8], &p[0].k.to_ne_bytes());
+    }
+
     /// The syscall filter compiles in every variant and always blocks mount and io_uring.
     #[test]
     fn the_syscall_filter_compiles_and_blocks_mount_and_io_uring() {
         for (strict, allow_userns) in [(false, true), (false, false), (true, true)] {
             assert!(!seccomp_program(&SeccompSpec {
                 strict,
-                allow_userns
+                allow_userns,
+                bluetooth: false,
             })
             .unwrap()
             .is_empty());
         }
-        assert!(baseline_syscalls(false).contains(&libc::SYS_mount));
+        assert!(baseline_syscalls(false).contains(&("mount", libc::SYS_mount)));
         assert!(
-            baseline_syscalls(true).contains(&libc::SYS_io_uring_setup),
+            baseline_syscalls(true).contains(&("io_uring_setup", libc::SYS_io_uring_setup)),
             "io_uring is blocked even with nested sandboxes"
         );
         assert!(
-            !baseline_syscalls(true).contains(&libc::SYS_mount),
+            !baseline_syscalls(true).contains(&("mount", libc::SYS_mount)),
             "nested sandboxes need mount"
         );
     }

@@ -42,12 +42,54 @@ pub struct ExtractRequest<'a> {
 pub struct Isolation {
     pub bwrap: PathBuf,
     pub self_exe: PathBuf,
+    /// The system the sandbox shows, as Bubblewrap arguments: the view
+    /// every sandbox SAM builds rests on (`sam_sandbox::helper_system_args`),
+    /// so unpacking sees the same system as the apps on every distribution.
+    pub system: Vec<String>,
+    /// SAM's baseline syscall filter as raw BPF (what `bwrap --seccomp`
+    /// reads): unpacking untrusted input, by SAM's reader or by the
+    /// AppImage's own extractor, meets the same kernel limits as an app
+    /// (audit I-F17: the self-unpack sandbox had no filter).
+    pub filter: Option<Vec<u8>>,
+}
+
+/// Hands `filter` to Bubblewrap as `--seccomp N`: a memory file holding the
+/// program, kept open across `exec` in the child only (N is its number).
+fn with_filter(c: &mut Command, filter: &[u8]) -> Result<()> {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::unix::process::CommandExt;
+    // SAFETY: memfd_create takes a NUL-terminated name and flags; it returns a new descriptor or -1.
+    let raw = unsafe { libc::memfd_create(c"sam-filter".as_ptr(), libc::MFD_CLOEXEC) };
+    if raw < 0 {
+        bail!("memfd_create: {}", io::Error::last_os_error());
+    }
+    // SAFETY: `raw` is a descriptor memfd_create just returned and nothing else owns.
+    let fd = unsafe { OwnedFd::from_raw_fd(raw) };
+    let mut file = fs::File::from(fd);
+    file.write_all(filter)?;
+    use std::io::Seek;
+    file.seek(io::SeekFrom::Start(0))?;
+    let n = file.as_raw_fd();
+    c.arg("--seccomp").arg(n.to_string());
+    // SAFETY: the closure runs between fork and exec and calls only fcntl, which is async-signal-safe.
+    unsafe {
+        c.pre_exec(move || {
+            // Owned here, so the file lives as long as the command.
+            let n = file.as_raw_fd();
+            let flags = libc::fcntl(n, libc::F_GETFD);
+            if flags < 0 || libc::fcntl(n, libc::F_SETFD, flags & !libc::FD_CLOEXEC) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    Ok(())
 }
 
 /// `bwrap … --` prefix for running an extractor on untrusted input.
 /// `tool` is the program that will run; one installed outside `/usr` (for
 /// example in `~/.local/bin`) is added read-only so it exists inside.
-fn isolated(iso: &Isolation, source: &Path, writable: &Path, tool: &Path) -> Command {
+fn isolated(iso: &Isolation, source: &Path, writable: &Path, tool: &Path) -> Result<Command> {
     let mut c = Command::new(&iso.bwrap);
     c.args([
         "--die-with-parent",
@@ -58,24 +100,12 @@ fn isolated(iso: &Isolation, source: &Path, writable: &Path, tool: &Path) -> Com
         "--clearenv",
         "--tmpfs",
         "/",
-        "--ro-bind",
-        "/usr",
-        "/usr",
     ]);
-    for d in ["/lib", "/lib64", "/bin", "/sbin"] {
-        c.args(["--ro-bind-try", d, d]);
+    c.args(&iso.system);
+    if let Some(f) = &iso.filter {
+        with_filter(&mut c, f)?;
     }
-    c.args([
-        "--ro-bind-try",
-        "/etc/ld.so.cache",
-        "/etc/ld.so.cache",
-        "--dev",
-        "/dev",
-        "--proc",
-        "/proc",
-        "--tmpfs",
-        "/tmp",
-    ]);
+    c.args(["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]);
     c.arg("--ro-bind").arg(source).arg(source);
     c.arg("--bind").arg(writable).arg(writable);
     c.arg("--ro-bind").arg(&iso.self_exe).arg(&iso.self_exe);
@@ -90,7 +120,7 @@ fn isolated(iso: &Isolation, source: &Path, writable: &Path, tool: &Path) -> Com
         "/",
         "--",
     ]);
-    c
+    Ok(c)
 }
 
 /// Exit code of `sam-jail dev extract-squashfs` when an unpacking limit was
@@ -123,7 +153,7 @@ impl std::fmt::Display for NeedsFallbackConsent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "SAM could not unpack it by itself ({}). The AppImage can unpack itself instead, which runs code from it inside a sandbox with no network and no access to your files: allow that in SAM's window, or with `sam-jail reextract APP --allow-fallback`.",
+            "SAM could not unpack it by itself ({}). The AppImage can unpack itself instead, which runs code from it inside a sandbox with no network, no access to your files and the same limits on kernel calls as an app: allow that in SAM's window, or with `sam-jail reextract APP --allow-fallback`.",
             self.attempts.join("; ")
         )
     }
@@ -234,7 +264,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                         let mut c = match &req.isolation {
                             Some(iso) => {
                                 let mut c =
-                                    isolated(iso, req.source, dst.parent().unwrap_or(dst), &d);
+                                    isolated(iso, req.source, dst.parent().unwrap_or(dst), &d)?;
                                 c.arg(&d);
                                 c
                             }
@@ -272,7 +302,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                                 req.source,
                                 dst.parent().unwrap_or(dst),
                                 &iso.self_exe,
-                            );
+                            )?;
                             c.arg(&iso.self_exe)
                                 .args(["dev", "extract-squashfs"])
                                 .arg(req.source)
@@ -312,7 +342,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                         let mut c = match &req.isolation {
                             Some(iso) => {
                                 let mut c =
-                                    isolated(iso, req.source, dst.parent().unwrap_or(dst), &u);
+                                    isolated(iso, req.source, dst.parent().unwrap_or(dst), &u)?;
                                 c.arg(&u);
                                 c
                             }
@@ -342,7 +372,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                         let mut c = match &req.isolation {
                             Some(iso) => {
                                 let mut c =
-                                    isolated(iso, req.source, dst.parent().unwrap_or(dst), &b);
+                                    isolated(iso, req.source, dst.parent().unwrap_or(dst), &b)?;
                                 c.arg(&b);
                                 c
                             }
@@ -426,7 +456,14 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             "[extract] trying sandboxed --appimage-extract (user consented)"
         )?;
         fresh_box()?;
-        match self_extract_sandboxed(req.source, &staging, &req.limits, started, log) {
+        match self_extract_sandboxed(
+            req.isolation.as_ref(),
+            req.source,
+            &staging,
+            &req.limits,
+            started,
+            log,
+        ) {
             Ok(()) => method_used = Some("appimage-extract (sandboxed)".into()),
             Err(e) => {
                 let _ = fs::remove_dir_all(&unpack_box);
@@ -710,16 +747,18 @@ fn tempfile_in_tmp() -> Result<File> {
     Ok(f)
 }
 
-/// Run `<appimage> --appimage-extract` inside a minimal bubblewrap sandbox:
-/// no network, no home, read-only system, only the staging dir writable.
+/// Run `<appimage> --appimage-extract` inside a minimal Bubblewrap sandbox:
+/// no network, no home, the shared read-only system view, only the work
+/// folder writable, and SAM's baseline syscall filter.
 fn self_extract_sandboxed(
+    iso: Option<&Isolation>,
     src: &Path,
     staging: &Path,
     limits: &Limits,
     started: Instant,
     log: &mut dyn Write,
 ) -> Result<()> {
-    let bwrap = which("bwrap").context(sam_core::i18n::tr(
+    let iso = iso.context(sam_core::i18n::tr(
         "Bubblewrap is needed to let the AppImage unpack itself in a sandbox",
     ))?;
     let work = staging.with_extension("work");
@@ -748,7 +787,7 @@ fn self_extract_sandboxed(
         }
     };
     let src = src.as_path();
-    let mut cmd = Command::new(bwrap);
+    let mut cmd = Command::new(&iso.bwrap);
     cmd.args([
         "--unshare-all",
         "--die-with-parent",
@@ -756,41 +795,29 @@ fn self_extract_sandboxed(
         "--cap-drop",
         "ALL",
     ])
-    .args(["--ro-bind", "/usr", "/usr"])
-    .args([
-        "--symlink",
-        "usr/lib",
-        "/lib",
-        "--symlink",
-        "usr/lib64",
-        "/lib64",
-        "--symlink",
-        "usr/bin",
-        "/bin",
-        "--symlink",
-        "usr/sbin",
-        "/sbin",
-    ])
-    .args(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
-    .args(["--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache"])
-    .arg("--ro-bind")
-    .arg(src)
-    .arg("/in/app.AppImage")
-    .arg("--bind")
-    .arg(&work)
-    .arg("/out")
-    .args([
-        "--chdir",
-        "/out",
-        "--clearenv",
-        "--setenv",
-        "PATH",
-        "/usr/bin",
-        "--setenv",
-        "HOME",
-        "/out",
-    ])
-    .args(["--", "/in/app.AppImage", "--appimage-extract"]);
+    .args(&iso.system);
+    if let Some(f) = &iso.filter {
+        with_filter(&mut cmd, f)?;
+    }
+    cmd.args(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
+        .arg("--ro-bind")
+        .arg(src)
+        .arg("/in/app.AppImage")
+        .arg("--bind")
+        .arg(&work)
+        .arg("/out")
+        .args([
+            "--chdir",
+            "/out",
+            "--clearenv",
+            "--setenv",
+            "PATH",
+            "/usr/bin",
+            "--setenv",
+            "HOME",
+            "/out",
+        ])
+        .args(["--", "/in/app.AppImage", "--appimage-extract"]);
     let ran = run_tool(&mut cmd, limits, started, log);
     let _ = fs::remove_file(&exe_copy);
     ran?;
@@ -822,6 +849,26 @@ fn self_extract_sandboxed(
 
 #[cfg(test)]
 mod space_tests {
+    /// The question before the AppImage unpacks itself says what the
+    /// sandbox holds back, including the kernel limits (audit I-F17: it
+    /// named only the network and the files), and why SAM could not.
+    #[test]
+    fn the_self_unpack_question_names_the_sandbox_and_the_reason() {
+        let text = NeedsFallbackConsent {
+            attempts: vec!["builtin-squashfs: damaged image".into()],
+        }
+        .to_string();
+        for part in [
+            "builtin-squashfs: damaged image",
+            "no network",
+            "no access to your files",
+            "limits on kernel calls",
+            "--allow-fallback",
+        ] {
+            assert!(text.contains(part), "{part}: {text}");
+        }
+    }
+
     use super::*;
 
     /// Unpacking does not start when the folder clearly has too little room;
