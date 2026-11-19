@@ -522,6 +522,19 @@ gaps = "Only the input method integration is asserted; notifications, tray, medi
 playbook = "A renamed service only loses that integration. Update bus_names in sam-core permissions.rs."
 
 [[contract]]
+id = "portal-openuri-ask"
+component = "portal"
+assumes = "The link portal (org.freedesktop.portal.OpenURI, interface version 3 or newer) shows its app chooser when a link is opened with the option ask = true, instead of starting the program that handles the link."
+covers = ["dbus:org.freedesktop.portal.OpenURI.xml"]
+functions = [13]
+probe = "portal-openuri-ask"
+tests = ["links_to_other_programs_ask_first", "the_link_portal_check_finds_the_ask_option"]
+on_break = "warn"
+coverage = "partial"
+gaps = "The check reads the portal's own description; that the chooser really appears is not tested on CI, which has no desktop portal running for the test apps."
+playbook = "Without the option, links to other programs (steam://, vscode://) open the handling program without asking. `sam-jail doctor --contracts` reports it; the security page says what that means."
+
+[[contract]]
 id = "portal-interfaces"
 component = "portal"
 assumes = "xdg-desktop-portal offers the interfaces SAM allows (file chooser, open URI, input methods, screen sharing and the rest) under org.freedesktop.portal.Desktop, and asks the user itself."

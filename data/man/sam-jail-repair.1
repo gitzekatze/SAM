@@ -1,10 +1,10 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-repair 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-repair 1 2026-11-19 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-repair \- Repair an app that does not start or misbehaves: list steps, apply one, or undo
 .SH SYNOPSIS
-\fBsam\-jail repair\fR [\fB\-\-apply\fR] [\fB\-\-next\fR] [\fB\-\-undo\fR] [\fB\-\-undo\-step\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
+\fBsam\-jail repair\fR [\fB\-\-apply\fR] [\fB\-\-next\fR] [\fB\-\-undo\fR] [\fB\-\-undo\-step\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
 .SH DESCRIPTION
 Repair an app that does not start or misbehaves: list steps, apply one, or undo
 .SH OPTIONS
@@ -20,6 +20,9 @@ Restore the profile from before the first repair step
 .TP
 \fB\-\-undo\-step\fR \fI<UNDO_STEP>\fR
 Switch off one applied repair step (by id), keeping the others
+.TP
+\fB\-\-yes\fR
+Also apply a step suggested by what the app printed (the app controls that text); without it such a step is only shown
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

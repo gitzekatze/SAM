@@ -32,6 +32,8 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `dbus.system.mode` | `none` / `full` (the system bus cannot be filtered; a `filtered` value from old profiles loads as `none`) |
 | `dbus.session.allow` | bus names the app may talk to (wildcards allowed) |
 | `dbus.session.own` | extra bus names the app may own (filtered bus) |
+| `dbus.session.calls` | single functions of a service, `NAME=[FUNCTION][@PATH]` (rated: a dangerous service makes it Dangerous) |
+| `dbus.session.broadcasts` | signals of a service, `NAME=[SIGNAL][@PATH]` |
 | `sockets.ssh_agent`, `sockets.cups` | `true` / `false` |
 | `sockets.custom` | paths of extra service sockets; only real socket files are passed in |
 | `environment.passthrough` | list of variable names |

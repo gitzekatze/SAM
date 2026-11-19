@@ -266,6 +266,7 @@ fn real_main(cli: Cli) -> Result<()> {
             next,
             undo,
             undo_step,
+            yes,
         } => {
             let e = app.resolve(&query)?;
             let applied = if undo {
@@ -288,6 +289,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         &[("id", &id), ("app", &e.display_name())],
                     )
                 })?;
+                may_apply(&sug, yes)?;
                 app.apply_suggestion(&query, &sug, true)?;
                 Some(sug.title)
             } else {
@@ -1535,4 +1537,50 @@ fn real_main(cli: Cli) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// A repair step suggested by what the app printed is applied only with
+/// `--yes`: the app controls that text, and could ask for the keyring or a
+/// service this way (audit U-M2; the window asks, and so must this).
+fn may_apply(sug: &sam_core::model::Suggestion, yes: bool) -> anyhow::Result<()> {
+    if sug.from_app_output && !yes {
+        return Err(sam_core::error::CodedError::new(
+            "repair-needs-yes",
+            sam_core::i18n::trf(
+                "\"{title}\" comes from what the app printed, which the app controls: {explanation} Look at it, then apply it with --yes, or in SAM's window.",
+                &[("title", &sug.title), ("explanation", &sug.explanation)],
+            ),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod repair_tests {
+    use super::may_apply;
+    use sam_core::model::{FixAction, Suggestion};
+
+    /// A step from the app's own output needs --yes; SAM's own steps do
+    /// not (audit U-M2).
+    #[test]
+    fn a_step_from_the_apps_output_needs_yes() {
+        let mut sug = Suggestion {
+            id: "keyring".into(),
+            title: "The app wants the keyring".into(),
+            explanation: "It printed that the keyring is missing.".into(),
+            action: FixAction::Add {
+                key: "integrations.keyring".into(),
+                value: "true".into(),
+            },
+            risk: sam_core::risk::RiskLevel::High,
+            from_app_output: true,
+        };
+        let err = may_apply(&sug, false).unwrap_err();
+        assert_eq!(sam_core::error::code_of(&err), Some("repair-needs-yes"));
+        assert!(format!("{err:#}").contains("--yes"));
+        assert!(may_apply(&sug, true).is_ok());
+        sug.from_app_output = false;
+        assert!(may_apply(&sug, false).is_ok());
+    }
 }

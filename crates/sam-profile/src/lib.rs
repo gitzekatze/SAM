@@ -921,6 +921,32 @@ mod tests {
         assert!(!c2.adds_dangerous.is_empty(), "{:?}", c2.adds_dangerous);
     }
 
+    /// A preset (or any change) that adds a function of a service asks
+    /// first, as one that adds the X11 display does (audit D-H2: a preset
+    /// with "may call systemd" applied without a question).
+    #[test]
+    fn a_change_that_adds_a_service_function_asks_first() {
+        let mut cur = PermissionSet::strict_gui();
+        cur.dbus.session.mode = DbusMode::Filtered;
+        let app = AppEntry {
+            recommended: cur.clone(),
+            profile: sam_core::SandboxProfile {
+                permissions: cur.clone(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut new = cur.clone();
+        new.dbus.session.calls = vec!["org.freedesktop.systemd1=*".into()];
+        let c = check_change(&app, &new);
+        assert!(c.needs_confirmation(), "{c:?}");
+        assert!(
+            c.adds_dangerous.iter().any(|t| t.contains("systemd1")),
+            "{:?}",
+            c.adds_dangerous
+        );
+    }
+
     /// A hidden folder is not a reason to warn that an app stops working:
     /// it is listed apart (regression for the group warning, which only
     /// interrupts for breakage).

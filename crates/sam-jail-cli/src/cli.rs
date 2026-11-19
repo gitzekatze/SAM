@@ -95,6 +95,10 @@ pub(crate) enum Cmd {
         /// Switch off one applied repair step (by id), keeping the others.
         #[arg(long, conflicts_with_all = ["apply", "next", "undo"])]
         undo_step: Option<String>,
+        /// Also apply a step suggested by what the app printed (the app
+        /// controls that text); without it such a step is only shown.
+        #[arg(long)]
+        yes: bool,
     },
     /// Start sandboxed apps briefly and report which ones keep running.
     /// Opens their windows for a few seconds.

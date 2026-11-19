@@ -47,13 +47,14 @@ where to look.
 | [dbus-buses](#dbus-buses) | D-Bus and desktop services | Loses a feature | partly |
 | [dbus-dangerous-names](#dbus-dangerous-names) | D-Bus and desktop services | Nothing breaks | fully |
 | [dbus-integrations](#dbus-integrations) | D-Bus and desktop services | Loses a feature | partly |
+| [portal-openuri-ask](#portal-openuri-ask) | xdg-desktop-portal | Warns | partly |
 | [portal-interfaces](#portal-interfaces) | xdg-desktop-portal | Loses a feature | partly |
 | [dbus-activatable](#dbus-activatable) | D-Bus and desktop services | Falls back to less | fully |
 | [host-escape-tools](#host-escape-tools) | D-Bus and desktop services | Nothing breaks | fully |
 | [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 | [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 
-16 of 34 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
+16 of 35 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
 
 ## bwrap-core
 
@@ -410,6 +411,18 @@ Notifications, tray icons (StatusNotifier), media keys (MPRIS), screen saver and
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Only the input method integration is asserted; notifications, tray, media keys and the file manager are not.)
 - **Covers:** `dbus:org.freedesktop.Notifications`, `dbus:org.freedesktop.StatusNotifierItem`, `dbus:org.kde.StatusNotifierItem`, `dbus:org.kde.StatusNotifierWatcher`, `dbus:org.mpris.MediaPlayer2.[*]`, `dbus:org.freedesktop.ScreenSaver`, `dbus:org.freedesktop.PowerManagement`, `dbus:org.freedesktop.FileManager1`
 - **If it breaks:** A renamed service only loses that integration. Update bus_names in sam-core permissions.rs.
+
+## portal-openuri-ask
+
+The link portal (org.freedesktop.portal.OpenURI, interface version 3 or newer) shows its app chooser when a link is opened with the option ask = true, instead of starting the program that handles the link.
+
+- **Component:** xdg-desktop-portal ([releases](https://github.com/flatpak/xdg-desktop-portal/releases))
+- **When it breaks:** the start goes ahead with a visible warning.
+- **SAM functions that rely on it:** [13](functions.md#13)
+- **Quick check:** `portal-openuri-ask`
+- **Tests:** `links_to_other_programs_ask_first`, `the_link_portal_check_finds_the_ask_option` (partly: The check reads the portal's own description; that the chooser really appears is not tested on CI, which has no desktop portal running for the test apps.)
+- **Covers:** `dbus:org.freedesktop.portal.OpenURI.xml`
+- **If it breaks:** Without the option, links to other programs (steam://, vscode://) open the handling program without asking. `sam-jail doctor --contracts` reports it; the security page says what that means.
 
 ## portal-interfaces
 

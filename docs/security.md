@@ -210,10 +210,25 @@ you picked. The sandbox check confirms that the socket is absent.
 - **Blocked names always win.** The proxy cannot make exceptions, so a
   wildcard allow entry that would also reach a blocked name is not used; the
   app page warns about it.
-- **Portals** are reachable only for harmless functions: opening links,
-  notifications, appearance settings, file dialogs, printing, email, inhibit
-  and system monitors. Camera needs the webcam permission, screen sharing its
-  own permission.
+- **Portals** are reachable only for functions that need you or show what
+  happens: opening links, notifications, appearance settings, file dialogs,
+  printing, email, inhibit and system monitors. Camera needs the webcam
+  permission, screen sharing its own permission.
+- **Links leave the sandbox, and can carry data.** A web link the app opens
+  goes to your browser, which loads it with your network, even when the app
+  itself has none: an app could put what it read into a link
+  (`https://example.org/?data`). Mail links go to your mail program. Any
+  other kind of link (`steam://`, `vscode://`, a program's own scheme)
+  would start the program that handles it, so SAM's link helper has the
+  portal ask first, with its app chooser
+  (`links_to_other_programs_ask_first`; `sam-jail doctor --contracts`
+  checks that the portal can). An app that calls the portal itself instead
+  of the helper can still open such a link without the question: the D-Bus
+  filter can allow or refuse the function, not look at its arguments.
+- **Single functions and signals of services** (`dbus.session.calls`,
+  `dbus.session.broadcasts`) count in the risk word: a function of a
+  service that can act outside the sandbox (systemd, the desktop shell)
+  makes it *Dangerous*, and a preset that adds one asks first.
 - **Blocked portals:** Screenshot, Background (autostart), DynamicLauncher,
   Trash, Wallpaper, RemoteDesktop, InputCapture, GlobalShortcuts, Location,
   Usb, Clipboard and Secret.

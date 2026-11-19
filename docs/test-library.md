@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-52 tests.
+53 tests.
 
 | Promise | Test |
 |---|---|
@@ -40,23 +40,24 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L781) |
 | Rooted paths (tests) keep their runtime folders apart from SAM's real one and from every other root, and short enough for SAM's sockets. | [`rooted_paths_have_a_runtime_folder_of_their_own`](../crates/sam-core/src/paths.rs#L172) |
 | ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L209) |
-| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`bus_names_follow_the_rules_of_the_bus`](../crates/sam-core/src/permissions.rs#L1084) |
-| Media controls let the app talk to the screen saver and power services; they no longer ask for the media-player wildcard, which was always refused (audit L-Q1): the app's own player name is learned instead. | [`media_controls_talk_but_ask_for_no_wildcard_name`](../crates/sam-core/src/permissions.rs#L1107) |
-| Own names that are refused. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1128) |
-| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1143) |
-| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L1156) |
-| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1175) |
-| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1193) |
-| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1208) |
-| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1221) |
-| Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1230) |
-| SAM's strictest window profile counts as low risk. | [`risk_has_the_same_three_words_everywhere`](../crates/sam-core/src/risk.rs#L558) |
-| The full session bus reaches systemd, which can start programs outside the sandbox, so it is rated like allowing systemd by name. | [`the_full_session_bus_is_rated_dangerous`](../crates/sam-core/src/risk.rs#L570) |
-| The strictest window profile is low risk. | [`the_strictest_window_profile_is_low_risk`](../crates/sam-core/src/risk.rs#L581) |
-| Full home access counts as dangerous, and as think twice when it is read-only. | [`full_home_is_dangerous`](../crates/sam-core/src/risk.rs#L588) |
-| Full network together with X11 makes the settings think twice (high risk). | [`network_and_x11_high`](../crates/sam-core/src/risk.rs#L598) |
-| Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not. | [`key_and_system_folders_count_as_sensitive`](../crates/sam-core/src/risk.rs#L609) |
-| Every start place and credential store the sandbox locks or hides counts as sensitive, under any home; a drive under /run/media does not, though /run does (audit D-M2, D-M3). | [`start_places_and_credential_stores_count_as_sensitive`](../crates/sam-core/src/risk.rs#L622) |
+| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`bus_names_follow_the_rules_of_the_bus`](../crates/sam-core/src/permissions.rs#L1088) |
+| Media controls let the app talk to the screen saver and power services; they no longer ask for the media-player wildcard, which was always refused (audit L-Q1): the app's own player name is learned instead. | [`media_controls_talk_but_ask_for_no_wildcard_name`](../crates/sam-core/src/permissions.rs#L1111) |
+| Own names that are refused. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1132) |
+| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1147) |
+| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L1160) |
+| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1179) |
+| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1197) |
+| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1212) |
+| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1225) |
+| Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1234) |
+| SAM's strictest window profile counts as low risk. | [`function_and_signal_rules_count_in_the_risk_word`](../crates/sam-core/src/risk.rs#L591) |
+| and the command line's filter understands both names. | [`risk_has_the_same_three_words_everywhere`](../crates/sam-core/src/risk.rs#L616) |
+| The full session bus reaches systemd, which can start programs outside the sandbox, so it is rated like allowing systemd by name. | [`the_full_session_bus_is_rated_dangerous`](../crates/sam-core/src/risk.rs#L628) |
+| The strictest window profile is low risk. | [`the_strictest_window_profile_is_low_risk`](../crates/sam-core/src/risk.rs#L639) |
+| Full home access counts as dangerous, and as think twice when it is read-only. | [`full_home_is_dangerous`](../crates/sam-core/src/risk.rs#L646) |
+| Full network together with X11 makes the settings think twice (high risk). | [`network_and_x11_high`](../crates/sam-core/src/risk.rs#L656) |
+| Paths that hold keys or the whole system (~/.ssh, /etc, /) are recognized as sensitive; ordinary folders are not. | [`key_and_system_folders_count_as_sensitive`](../crates/sam-core/src/risk.rs#L667) |
+| Every start place and credential store the sandbox locks or hides counts as sensitive, under any home; a drive under /run/media does not, though /run does (audit D-M2, D-M3). | [`start_places_and_credential_stores_count_as_sensitive`](../crates/sam-core/src/risk.rs#L680) |
 | Values of variables a person gave the app never reach the shown command; the names and SAM's own variables stay. | [`given_environment_values_are_hidden_in_the_shown_command`](../crates/sam-core/src/sandbox.rs#L238) |
 | Reading a file from an untrusted app returns at once for anything that is not a regular file: a named pipe made SAM wait forever (audit I-F9, I-F15). | [`a_named_pipe_is_refused_without_waiting`](../crates/sam-core/src/util.rs#L409) |
 | SAM's own files in folders an untrusted program could have touched are written without following links: a planted link is replaced, the file it pointed to stays as it was, and a link in place of a folder becomes a real folder (audit I-F2). | [`files_sam_writes_never_go_through_a_planted_link`](../crates/sam-core/src/util.rs#L436) |
@@ -144,7 +145,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-profile: Recommendations, the user's presets, change checks, permission tags
 
-14 tests.
+15 tests.
 
 | Promise | Test |
 |---|---|
@@ -154,10 +155,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Recommended permissions fit the category: a browser gets the network and Downloads, an editor no network. | [`recommendations_fit_the_category`](../crates/sam-profile/src/lib.rs#L856) |
 | What SAM finds in the app (GPU, X11-only toolkit) adjusts the recommendation. | [`what_sam_finds_in_the_app_adjusts_the_recommendation`](../crates/sam-profile/src/lib.rs#L871) |
 | The change check names what an app would lose that it needs, and the dangerous access it would gain. | [`change_check_flags_removals_and_additions`](../crates/sam-profile/src/lib.rs#L889) |
-| A hidden folder is not a reason to warn that an app stops working: it is listed apart (regression for the group warning, which only interrupts for breakage). | [`folders_are_not_breakage_but_lost_local_network_and_bus_are`](../crates/sam-profile/src/lib.rs#L927) |
-| An app that needs sound is warned about in the switch's word. | [`lost_sound_is_named_sound`](../crates/sam-profile/src/lib.rs#L957) |
-| A new preset starts without home, network or system bus access. | [`preset_template_is_strict`](../crates/sam-profile/src/lib.rs#L975) |
-| The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L998) |
+| A preset (or any change) that adds a function of a service asks first, as one that adds the X11 display does (audit D-H2: a preset with "may call systemd" applied without a question). | [`a_change_that_adds_a_service_function_asks_first`](../crates/sam-profile/src/lib.rs#L927) |
+| A hidden folder is not a reason to warn that an app stops working: it is listed apart (regression for the group warning, which only interrupts for breakage). | [`folders_are_not_breakage_but_lost_local_network_and_bus_are`](../crates/sam-profile/src/lib.rs#L953) |
+| An app that needs sound is warned about in the switch's word. | [`lost_sound_is_named_sound`](../crates/sam-profile/src/lib.rs#L983) |
+| A new preset starts without home, network or system bus access. | [`preset_template_is_strict`](../crates/sam-profile/src/lib.rs#L1001) |
+| The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L1024) |
 | An app with SAM's strictest window profile shows no tags, because it has nothing beyond the basics. | [`a_strict_window_app_has_no_tags`](../crates/sam-profile/src/tags.rs#L163) |
 | Tags appear in the family order Network, Files, Devices, Desktop, and read-only access is marked. | [`tags_follow_the_family_order_and_mark_read_only`](../crates/sam-profile/src/tags.rs#L173) |
 | Dangerous access gets red tags, and the filtered desktop bus, which every app has, gets none. | [`dangerous_access_is_red_and_filtered_bus_has_no_tag`](../crates/sam-profile/src/tags.rs#L209) |
@@ -165,70 +167,72 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-sandbox: Building the Bubblewrap command from the permissions
 
-42 tests.
+43 tests.
 
 | Promise | Test |
 |---|---|
-| With the home read-only, a folder set to read/write stays writable; one set to read-only adds nothing (the home shows it read-only). | [`a_writable_folder_stays_writable_in_a_read_only_home`](../crates/sam-sandbox/src/lib.rs#L2208) |
-| A link in /etc never brings a socket or a device into the sandbox, wherever it points; plain files and folders of the system's data and settings do, and in /run only plain files (regression: Debian's `/etc/alternatives/php-fpm.sock` showed the PHP server's socket). | [`links_in_etc_never_bring_sockets_or_devices`](../crates/sam-sandbox/src/lib.rs#L2241) |
-| A helper's sandbox (the sound relay) shows the same system as an app's (with the whole /usr), and nothing outside the system's own folders: no home, no runtime folder, no devices. | [`a_helper_sees_the_apps_system_and_nothing_else`](../crates/sam-sandbox/src/lib.rs#L2271) |
-| Games built with SDL get a silent sound driver when they have no sound, so they start instead of failing: sound off, or on but with SAM's relay not running (audit S-F1); not when sound reaches them. | [`sdl_gets_its_silent_driver_without_sound_access`](../crates/sam-sandbox/src/lib.rs#L2320) |
-| Sound comes from SAM's relay, never from the sound server's own socket; that one only when the person allowed sound without the relay (audit S-F1). | [`sound_comes_from_the_relay_or_only_when_allowed_from_the_server`](../crates/sam-sandbox/src/lib.rs#L2338) |
-| Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | [`the_loaders_extra_library_folders_are_shown_read_only`](../crates/sam-sandbox/src/lib.rs#L2369) |
-| The app gets a new terminal session, unless it runs on SAM's terminal relay. | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](../crates/sam-sandbox/src/lib.rs#L2380) |
-| The machine ID identifies this computer; an app sees it only with D-Bus, which needs it, never without. | [`the_machine_id_reaches_only_apps_with_dbus`](../crates/sam-sandbox/src/lib.rs#L2390) |
-| Files and folders named when starting an app are passed in, but never sensitive folders like autostart. | [`files_and_folders_named_on_the_command_line`](../crates/sam-sandbox/src/lib.rs#L2409) |
-| The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only. | [`the_strictest_profile_shares_nothing_and_keeps_the_app_read_only`](../crates/sam-sandbox/src/lib.rs#L2485) |
-| The X11 login cookie is rewritten for the display number inside the sandbox. | [`xauthority_gets_the_sandbox_display_number`](../crates/sam-sandbox/src/lib.rs#L2535) |
-| With a Wayland security context, the app sees only that socket, not the desktop's own. | [`wayland_security_context_socket_is_used`](../crates/sam-sandbox/src/lib.rs#L2565) |
-| Each granted permission adds exactly its part to the Bubblewrap command. | [`each_permission_adds_exactly_its_part_to_the_command`](../crates/sam-sandbox/src/lib.rs#L2592) |
-| The filtered desktop bus reaches the app only through SAM's proxy. | [`filtered_dbus_uses_proxy`](../crates/sam-sandbox/src/lib.rs#L2643) |
-| The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](../crates/sam-sandbox/src/lib.rs#L2666) |
-| With "this computer only", the network namespace is left to pasta. | [`localhost_network_leaves_netns_to_pasta`](../crates/sam-sandbox/src/lib.rs#L2711) |
-| A writable app folder uses an overlay; the unpacked app itself stays unchanged. | [`writable_appdir_uses_overlay`](../crates/sam-sandbox/src/lib.rs#L2724) |
-| Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | [`without_nested_namespaces_user_namespaces_are_disabled`](../crates/sam-sandbox/src/lib.rs#L2744) |
-| "Game controllers" exposes only joysticks, never keyboards or mice. | [`gamepads_only_exposes_joysticks`](../crates/sam-sandbox/src/lib.rs#L2768) |
-| With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](../crates/sam-sandbox/src/lib.rs#L2786) |
-| Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](../crates/sam-sandbox/src/lib.rs#L2800) |
-| A bundled library listed in advanced.system_libraries is replaced by the system's copy at its place in the app folder; names with folders or `..`, libraries the app does not bundle and libraries the system does not have are ignored. | [`system_copies_replace_only_bundled_libraries_by_plain_name`](../crates/sam-sandbox/src/lib.rs#L2827) |
-| An app started from SAM's window keeps the system's language, even when the window itself shows another one. | [`apps_keep_the_system_language_whatever_sams_window_shows`](../crates/sam-sandbox/src/lib.rs#L2872) |
-| The app's own folder stays read-only unless "writable app folder" is granted, even when SAM has an overlay for it prepared. | [`the_app_folder_stays_read_only_unless_writable_is_granted`](../crates/sam-sandbox/src/lib.rs#L2918) |
-| After a start with a writable home, only what could make the computer run something is moved aside: a new startup file, a replaced link to a protected folder, a key folder the app was not given. | [`only_what_would_run_later_is_moved_aside`](../crates/sam-sandbox/src/lib.rs#L2942) |
-| With a writable home, the folders above protected places are mount points of their own (so they cannot be renamed away), and a key folder that is a link is hidden where it points. | [`protected_parents_are_locked_and_linked_keys_hidden`](../crates/sam-sandbox/src/lib.rs#L2994) |
-| A new start file is taken out of its place whatever happens, and never silently (audit L-F2): past 1000 earlier copies, into SAM's folder; when SAM's folder cannot take it, renamed in place to a name nothing reads; when nothing works, reported as still there. | [`a_new_start_file_never_stays_silently`](../crates/sam-sandbox/src/lib.rs#L3046) |
-| Start folders under another config or data folder in the home (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`) are protected like the usual ones, and the new places are on the list (audit S-F6). | [`start_places_follow_other_config_and_data_folders`](../crates/sam-sandbox/src/lib.rs#L3095) |
-| Paths are resolved through links also where they do not exist yet, the way Bubblewrap and the app see them (audit S-F3). | [`paths_are_resolved_through_links_also_where_they_do_not_exist_yet`](../crates/sam-sandbox/src/lib.rs#L3127) |
-| A path that leads into a granted folder through a link counts as visible, and one outside every grant does not (audit S-F3). | [`a_path_through_a_link_into_a_grant_is_visible`](../crates/sam-sandbox/src/lib.rs#L3142) |
-| Without a real home folder nothing starts: full home access would otherwise bind the whole computer (audit S-F12). | [`a_missing_home_folder_stops_the_start`](../crates/sam-sandbox/src/lib.rs#L3158) |
-| SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | [`sams_own_folders_stay_hidden_inside_a_granted_folder`](../crates/sam-sandbox/src/lib.rs#L3179) |
-| Keys, credential stores, start places (also behind a link) and SAM's own files named on the command line are never shared, whatever the home is called; an ordinary file is, and so is a folder that only holds SAM's folder (SAM's folder is hidden inside it) (audit D-M2, S-F13). | [`keys_start_places_and_sams_files_are_never_opened`](../crates/sam-sandbox/src/lib.rs#L3203) |
-| SAM's folder is hidden also when a grant shows only something inside it (audit S-F13): the grant does not reach SAM's files. | [`a_grant_inside_sams_folder_does_not_show_it`](../crates/sam-sandbox/src/lib.rs#L3253) |
-| Files named on the command line are judged with the home as named and as reached (a home under a link), by the name they are given (a file reached through `~/.config` is not shared), and a file a grant already shows is not added again. | [`opened_files_are_judged_by_name_and_by_where_they_lead`](../crates/sam-sandbox/src/lib.rs#L3274) |
-| A user folder set to the root, the folder above the home, a link to it, a key folder or SAM's folder is never shown; a usual one is, at its real place with a link where the app looks (audit S-F11). | [`a_user_folder_that_shows_more_is_not_shown`](../crates/sam-sandbox/src/lib.rs#L3325) |
-| Only a start that shows a start place writable is watched and prepared: a writable `~/.config` is (audit D-M3), a writable `~/.config/myapp` or Documents folder is not. | [`a_writable_part_of_the_home_holding_start_places_is_watched`](../crates/sam-sandbox/src/lib.rs#L3384) |
-| SAM's own folders stay hidden inside a folder opened with the app, and inside a runner's bind, at the path the bind shows them under. | [`sams_own_folders_stay_hidden_inside_an_opened_folder`](../crates/sam-sandbox/src/lib.rs#L3427) |
-| With the home writable, the file that says where the user folders are stays read-only, so an app cannot point other apps' Documents or Downloads grant at another folder. | [`user_folder_locations_stay_read_only_with_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L3461) |
-| With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | [`credential_files_and_folders_in_the_home_are_masked`](../crates/sam-sandbox/src/lib.rs#L3493) |
-| Protected folders are created in the real home only before a start that can write the home, never otherwise. | [`home_protection_is_prepared_only_for_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L3520) |
-| Only proper variable names are set inside the sandbox, and no value with a NUL byte. | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L3539) |
+| With the home read-only, a folder set to read/write stays writable; one set to read-only adds nothing (the home shows it read-only). | [`a_writable_folder_stays_writable_in_a_read_only_home`](../crates/sam-sandbox/src/lib.rs#L2216) |
+| A link in /etc never brings a socket or a device into the sandbox, wherever it points; plain files and folders of the system's data and settings do, and in /run only plain files (regression: Debian's `/etc/alternatives/php-fpm.sock` showed the PHP server's socket). | [`links_in_etc_never_bring_sockets_or_devices`](../crates/sam-sandbox/src/lib.rs#L2249) |
+| A helper's sandbox (the sound relay) shows the same system as an app's (with the whole /usr), and nothing outside the system's own folders: no home, no runtime folder, no devices. | [`a_helper_sees_the_apps_system_and_nothing_else`](../crates/sam-sandbox/src/lib.rs#L2279) |
+| Games built with SDL get a silent sound driver when they have no sound, so they start instead of failing: sound off, or on but with SAM's relay not running (audit S-F1); not when sound reaches them. | [`sdl_gets_its_silent_driver_without_sound_access`](../crates/sam-sandbox/src/lib.rs#L2328) |
+| Sound comes from SAM's relay, never from the sound server's own socket; that one only when the person allowed sound without the relay (audit S-F1). | [`sound_comes_from_the_relay_or_only_when_allowed_from_the_server`](../crates/sam-sandbox/src/lib.rs#L2346) |
+| Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | [`the_loaders_extra_library_folders_are_shown_read_only`](../crates/sam-sandbox/src/lib.rs#L2377) |
+| The app gets a new terminal session, unless it runs on SAM's terminal relay. | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](../crates/sam-sandbox/src/lib.rs#L2388) |
+| The machine ID identifies this computer; an app sees it only with D-Bus, which needs it, never without. | [`the_machine_id_reaches_only_apps_with_dbus`](../crates/sam-sandbox/src/lib.rs#L2398) |
+| Files and folders named when starting an app are passed in, but never sensitive folders like autostart. | [`files_and_folders_named_on_the_command_line`](../crates/sam-sandbox/src/lib.rs#L2417) |
+| The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only. | [`the_strictest_profile_shares_nothing_and_keeps_the_app_read_only`](../crates/sam-sandbox/src/lib.rs#L2493) |
+| The X11 login cookie is rewritten for the display number inside the sandbox. | [`xauthority_gets_the_sandbox_display_number`](../crates/sam-sandbox/src/lib.rs#L2543) |
+| With a Wayland security context, the app sees only that socket, not the desktop's own. | [`wayland_security_context_socket_is_used`](../crates/sam-sandbox/src/lib.rs#L2573) |
+| Each granted permission adds exactly its part to the Bubblewrap command. | [`each_permission_adds_exactly_its_part_to_the_command`](../crates/sam-sandbox/src/lib.rs#L2600) |
+| The filtered desktop bus reaches the app only through SAM's proxy. | [`filtered_dbus_uses_proxy`](../crates/sam-sandbox/src/lib.rs#L2651) |
+| The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | [`the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins`](../crates/sam-sandbox/src/lib.rs#L2674) |
+| With "this computer only", the network namespace is left to pasta. | [`localhost_network_leaves_netns_to_pasta`](../crates/sam-sandbox/src/lib.rs#L2719) |
+| A writable app folder uses an overlay; the unpacked app itself stays unchanged. | [`writable_appdir_uses_overlay`](../crates/sam-sandbox/src/lib.rs#L2732) |
+| Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | [`without_nested_namespaces_user_namespaces_are_disabled`](../crates/sam-sandbox/src/lib.rs#L2752) |
+| "Game controllers" exposes only joysticks, never keyboards or mice. | [`gamepads_only_exposes_joysticks`](../crates/sam-sandbox/src/lib.rs#L2776) |
+| With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | [`nvidia_modules_are_exposed_with_the_gpu`](../crates/sam-sandbox/src/lib.rs#L2794) |
+| Extra sockets are passed in only when they really are sockets. | [`extra_sockets_must_be_sockets`](../crates/sam-sandbox/src/lib.rs#L2808) |
+| A bundled library listed in advanced.system_libraries is replaced by the system's copy at its place in the app folder; names with folders or `..`, libraries the app does not bundle and libraries the system does not have are ignored. | [`system_copies_replace_only_bundled_libraries_by_plain_name`](../crates/sam-sandbox/src/lib.rs#L2835) |
+| An app started from SAM's window keeps the system's language, even when the window itself shows another one. | [`apps_keep_the_system_language_whatever_sams_window_shows`](../crates/sam-sandbox/src/lib.rs#L2880) |
+| The app's own folder stays read-only unless "writable app folder" is granted, even when SAM has an overlay for it prepared. | [`the_app_folder_stays_read_only_unless_writable_is_granted`](../crates/sam-sandbox/src/lib.rs#L2926) |
+| After a start with a writable home, only what could make the computer run something is moved aside: a new startup file, a replaced link to a protected folder, a key folder the app was not given. | [`only_what_would_run_later_is_moved_aside`](../crates/sam-sandbox/src/lib.rs#L2950) |
+| With a writable home, the folders above protected places are mount points of their own (so they cannot be renamed away), and a key folder that is a link is hidden where it points. | [`protected_parents_are_locked_and_linked_keys_hidden`](../crates/sam-sandbox/src/lib.rs#L3002) |
+| A new start file is taken out of its place whatever happens, and never silently (audit L-F2): past 1000 earlier copies, into SAM's folder; when SAM's folder cannot take it, renamed in place to a name nothing reads; when nothing works, reported as still there. | [`a_new_start_file_never_stays_silently`](../crates/sam-sandbox/src/lib.rs#L3054) |
+| Start folders under another config or data folder in the home (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`) are protected like the usual ones, and the new places are on the list (audit S-F6). | [`start_places_follow_other_config_and_data_folders`](../crates/sam-sandbox/src/lib.rs#L3103) |
+| Paths are resolved through links also where they do not exist yet, the way Bubblewrap and the app see them (audit S-F3). | [`paths_are_resolved_through_links_also_where_they_do_not_exist_yet`](../crates/sam-sandbox/src/lib.rs#L3135) |
+| A path that leads into a granted folder through a link counts as visible, and one outside every grant does not (audit S-F3). | [`a_path_through_a_link_into_a_grant_is_visible`](../crates/sam-sandbox/src/lib.rs#L3150) |
+| Without a real home folder nothing starts: full home access would otherwise bind the whole computer (audit S-F12). | [`a_missing_home_folder_stops_the_start`](../crates/sam-sandbox/src/lib.rs#L3166) |
+| SAM's own folders stay hidden when a granted folder contains them, and nothing extra is added when no grant shows them. | [`sams_own_folders_stay_hidden_inside_a_granted_folder`](../crates/sam-sandbox/src/lib.rs#L3187) |
+| Links leave the sandbox through the portal: web and mail links go to the person's browser or mail program as asked; any other kind (`steam://`, `vscode://`, a program's own scheme) makes the portal ask first with its app chooser, so an app cannot start another program by a link (audit L-F14). | [`links_to_other_programs_ask_first`](../crates/sam-sandbox/src/lib.rs#L3212) |
+| Keys, credential stores, start places (also behind a link) and SAM's own files named on the command line are never shared, whatever the home is called; an ordinary file is, and so is a folder that only holds SAM's folder (SAM's folder is hidden inside it) (audit D-M2, S-F13). | [`keys_start_places_and_sams_files_are_never_opened`](../crates/sam-sandbox/src/lib.rs#L3259) |
+| SAM's folder is hidden also when a grant shows only something inside it (audit S-F13): the grant does not reach SAM's files. | [`a_grant_inside_sams_folder_does_not_show_it`](../crates/sam-sandbox/src/lib.rs#L3309) |
+| Files named on the command line are judged with the home as named and as reached (a home under a link), by the name they are given (a file reached through `~/.config` is not shared), and a file a grant already shows is not added again. | [`opened_files_are_judged_by_name_and_by_where_they_lead`](../crates/sam-sandbox/src/lib.rs#L3330) |
+| A user folder set to the root, the folder above the home, a link to it, a key folder or SAM's folder is never shown; a usual one is, at its real place with a link where the app looks (audit S-F11). | [`a_user_folder_that_shows_more_is_not_shown`](../crates/sam-sandbox/src/lib.rs#L3381) |
+| Only a start that shows a start place writable is watched and prepared: a writable `~/.config` is (audit D-M3), a writable `~/.config/myapp` or Documents folder is not. | [`a_writable_part_of_the_home_holding_start_places_is_watched`](../crates/sam-sandbox/src/lib.rs#L3440) |
+| SAM's own folders stay hidden inside a folder opened with the app, and inside a runner's bind, at the path the bind shows them under. | [`sams_own_folders_stay_hidden_inside_an_opened_folder`](../crates/sam-sandbox/src/lib.rs#L3483) |
+| With the home writable, the file that says where the user folders are stays read-only, so an app cannot point other apps' Documents or Downloads grant at another folder. | [`user_folder_locations_stay_read_only_with_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L3517) |
+| With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | [`credential_files_and_folders_in_the_home_are_masked`](../crates/sam-sandbox/src/lib.rs#L3549) |
+| Protected folders are created in the real home only before a start that can write the home, never otherwise. | [`home_protection_is_prepared_only_for_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L3576) |
+| Only proper variable names are set inside the sandbox, and no value with a NUL byte. | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L3595) |
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-166 tests.
+167 tests.
 
 | Promise | Test |
 |---|---|
 | Without Bubblewrap, the message says which package to install. | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L55) |
 | When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L69) |
 | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L96) |
-| A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L617) |
-| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L630) |
-| The relay's quick check says "not here" on a computer without PipeWire, instead of reporting the contract broken. | [`the_sound_relay_check_needs_pipewire`](../crates/sam-runner/src/contracts.rs#L638) |
-| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L644) |
-| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L656) |
-| A failing section is named and the next still runs. | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L707) |
-| Where a run must prove everything (CI), a skip is an error; locally it is a note. | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L728) |
-| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L740) |
+| A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L639) |
+| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L652) |
+| The relay's quick check says "not here" on a computer without PipeWire, instead of reporting the contract broken. | [`the_sound_relay_check_needs_pipewire`](../crates/sam-runner/src/contracts.rs#L660) |
+| The link portal's ask option is found in its description, and its absence is reported (stand-in descriptions; the real one is checked by `sam-jail doctor --contracts` and on CI). | [`the_link_portal_check_finds_the_ask_option`](../crates/sam-runner/src/contracts.rs#L669) |
+| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L684) |
+| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L696) |
+| A failing section is named and the next still runs. | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L747) |
+| Where a run must prove everything (CI), a skip is an error; locally it is a note. | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L768) |
+| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L780) |
 | SAM's own bus check reaches a session bus. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L275) |
 | SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L325) |
 | Only the proxy's "wants to own" lines name a name to learn, and only a well-formed one (what the app printed never reaches this). | [`the_proxy_record_names_what_the_app_wanted_to_own`](../crates/sam-runner/src/dbus_proxy.rs#L215) |
@@ -403,10 +407,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-27 tests.
+28 tests.
 
 | Promise | Test |
 |---|---|
+| A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1566) |
 | The permission model is the base: it depends on no other SAM part, so every other part can use it without creating a cycle. | [`the_permission_model_depends_on_no_other_part`](../crates/sam-jail-cli/tests/architecture.rs#L59) |
 | The window contains no sandbox logic: it depends only on the permission model and reaches everything else through `sam-jail --json`, so the window and the command line always behave the same. | [`the_window_reaches_sam_only_through_the_command_line`](../crates/sam-jail-cli/tests/architecture.rs#L67) |
 | The parts that handle untrusted AppImage content or build the sandbox depend only on the parts below them, never on the operations layer, the command line or the window. | [`lower_parts_never_depend_on_higher_ones`](../crates/sam-jail-cli/tests/architecture.rs#L75) |
@@ -466,4 +471,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 380 automated Rust tests plus 7 scripted checks.
+Total: 385 automated Rust tests plus 7 scripted checks.

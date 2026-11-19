@@ -769,6 +769,20 @@ impl Editor {
         );
         self.list(
             &g,
+            "dbus.session.calls",
+            &crate::i18n::tr("Rule, e.g. org.example.Service=org.example.Iface.Method"),
+            false,
+            FilteredBus,
+        );
+        self.list(
+            &g,
+            "dbus.session.broadcasts",
+            &crate::i18n::tr("Rule, e.g. org.example.Service=org.example.Iface.Signal"),
+            false,
+            FilteredBus,
+        );
+        self.list(
+            &g,
             "dbus.session.deny",
             &crate::i18n::tr("Bus name, e.g. org.freedesktop.secrets"),
             false,
@@ -1162,7 +1176,13 @@ impl Editor {
                 ));
             }
         }
-        if key == "dbus.session.own" || key == "sockets.custom" {
+        if matches!(
+            key,
+            "dbus.session.own"
+                | "sockets.custom"
+                | "dbus.session.calls"
+                | "dbus.session.broadcasts"
+        ) {
             let before: Vec<String> = util::list_of(&p, key);
             let added: Vec<String> = v
                 .as_array()
@@ -1179,7 +1199,9 @@ impl Editor {
                     if key == "sockets.custom" {
                         sam_core::permissions::dangerous_socket(n)
                     } else {
-                        sam_core::permissions::dangerous_bus_name(n)
+                        // A rule names its service before "=" (calls, signals).
+                        let service = n.split(['=', '@']).next().unwrap_or("");
+                        sam_core::permissions::dangerous_bus_name(service)
                     }
                 })
                 .collect();
