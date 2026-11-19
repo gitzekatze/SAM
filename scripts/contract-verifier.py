@@ -158,7 +158,14 @@ def functions_in(text):
 
 # Added lines that can switch a test off without removing anything:
 # anywhere in the file, and inside a function that was there before.
-OFF_ANYWHERE = re.compile(r"cfg\(|#\[\s*ignore|should_panic")
+# `cfg(` and `cfg_attr` can leave a test out or mark it ignored;
+# `macro_rules!` or `use … as assert` can make every check a no-op
+# (`macro_rules! assert { … => {} }`): both shown to work, add-only, in the
+# verification audit of 2026-11-19.
+OFF_ANYWHERE = re.compile(
+    r"cfg\(|cfg_attr|#\[\s*ignore|should_panic|macro_rules!"
+    r"|\bas\s+(assert|assert_eq|assert_ne|debug_assert|panic|unreachable)\b"
+)
 OFF_INSIDE = re.compile(r"\breturn\b|\bif\s+false\b|\bexit\(|catch_unwind|\bloop\s*\{")
 
 
@@ -330,6 +337,10 @@ def self_test():
         ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() {\n    assert!(x);\n}", "#[test]\nfn a() {\n    assert!(x);\n}\n#[test]\nfn b() {\n    if !ok() {\n        return;\n    }\n    assert!(y);\n}", 0),
         ("crates/sam-runner/tests/breakout.rs", "fn helper(c: &mut C) {\n    c.env(\"A\", 1);\n}", "fn helper(c: &mut C) {\n    c.env(\"A\", 1);\n    c.env(\"B\", 2);\n}", 0),
         ("crates/sam-runner/tests/breakout.rs", "fn a() {\n    x();\n}", "fn a() {\n    // hidden files are ignored here\n    x();\n}", 0),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() {\n    assert!(x);\n}", "#[test]\n#[cfg_attr(all(), ignore)]\nfn a() {\n    assert!(x);\n}", 1),
+        ("crates/sam-runner/tests/breakout.rs", "#[test]\nfn a() {\n    assert!(x);\n}", "macro_rules! assert { ($($t:tt)*) => {}; }\n#[test]\nfn a() {\n    assert!(x);\n}", 1),
+        ("crates/sam-runner/tests/breakout.rs", "use std::fs;\n#[test]\nfn a() {\n    assert!(x);\n}", "use std::fs;\nuse crate::noop as assert;\n#[test]\nfn a() {\n    assert!(x);\n}", 1),
+        ("crates/sam-runner/tests/breakout.rs", "#![allow(clippy::unwrap_used)]\n#[test]\nfn a() {\n    assert!(x);\n}", "#![allow(clippy::unwrap_used)]\n#![allow(clippy::disallowed_macros)]\n#[test]\nfn a() {\n    assert!(x);\n}", 0),
         ("Cargo.lock", 'name = "serde"\n', 'name = "serde"\nname = "evil-crate"\n', 1),
         ("Cargo.lock", '[[package]]\nname = "a"\nversion = "1.2.0"\nsource = "s"\nchecksum = "c1"\n', '[[package]]\nname = "a"\nversion = "1.1.0"\nsource = "s"\nchecksum = "c0"\n', 1),
         ("Cargo.lock", '[[package]]\nname = "a"\nversion = "1.2.0"\nsource = "s"\nchecksum = "c1"\n', '[[package]]\nname = "a"\nversion = "1.2.0"\nsource = "s"\nchecksum = "c9"\n', 1),

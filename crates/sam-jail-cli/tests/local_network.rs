@@ -80,6 +80,21 @@ fn listening() -> BTreeSet<(String, u16)> {
     out
 }
 
+/// A port between 20000 and the start of this computer's ephemeral range
+/// that nothing on this computer listens on.
+fn free_port_below_ephemeral() -> u16 {
+    let first_ephemeral: u16 = fs::read_to_string("/proc/sys/net/ipv4/ip_local_port_range")
+        .ok()
+        .and_then(|r| r.split_whitespace().next()?.parse().ok())
+        .unwrap_or(32768);
+    let span = first_ephemeral.saturating_sub(20000).max(1);
+    let start = (std::process::id() % u32::from(span)) as u16;
+    (0..span)
+        .map(|i| 20000 + (start + i) % span)
+        .find(|p| std::net::TcpListener::bind(("127.0.0.1", *p)).is_ok())
+        .expect("a free port below the ephemeral range")
+}
+
 /// 127.0.0.1 and ::1 as /proc/net/tcp(6) write them (in the byte order of
 /// this computer).
 fn is_loopback(addr: &str) -> bool {
@@ -107,7 +122,10 @@ fn the_apps_ports_are_offered_on_this_computer_only() {
     for d in ["config", "home"] {
         fs::create_dir_all(root.join(d)).unwrap();
     }
-    let own = 20000 + (std::process::id() % 20000) as u16;
+    // A free port below the "ephemeral" range (from 32768 up, used for
+    // outgoing connections), which pasta never forwards: a port picked
+    // from 20000-39999 landed there in about a third of all runs.
+    let own = free_port_below_ephemeral();
     // Its own port, Chrome's remote debugging port and Ollama's, each on
     // every address inside the sandbox (IPv4 and IPv6 in one socket).
     let script = root.join("apprun");

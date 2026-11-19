@@ -332,7 +332,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L184) | With "this computer only", the app reaches only the ports on this computer the user lists. | ✅ |
 | [`the_apps_ports_listen_on_loopback_only`](../crates/sam-runner/src/netns.rs#L204) | The app's ports are offered on this computer's loopback addresses only, for IPv4 and IPv6 alike, never on every address (audit L-F7). | 🆕 new |
 | [`well_known_local_services_are_never_taken_over`](../crates/sam-runner/src/netns.rs#L232) | Local services whose clients would hand an app control or secrets are never taken over automatically. | 🆕 new |
-| [`the_apps_ports_are_offered_on_this_computer_only`](../crates/sam-jail-cli/tests/local_network.rs#L91) | The apps ports are offered on this computer only. | 🆕 new |
+| [`the_apps_ports_are_offered_on_this_computer_only`](../crates/sam-jail-cli/tests/local_network.rs#L106) | The apps ports are offered on this computer only. | 🆕 new |
 | [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L102) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 | [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L1885) | A pasta command ending in the separator is refused not a panic. | ✅ |
 | [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L1892) | The status shell goes between the separator and the program. | ✅ |

@@ -43,11 +43,14 @@ All of them run in CI and block a merge when they fail:
 - **Protected tests:** the tests that prove the security promises
   (breakout, hostile AppImages, the permission matrix, the sandbox check,
   the syscall review, teardown, missing layers, contracts, architecture,
-  fuzzing, tampering, updates, damaged files) may be extended, never
-  deleted, reduced or skipped. Added lines count too when they can switch a
-  test off: `cfg(`, `#[ignore]` or `should_panic` anywhere, and an early
-  `return`, `if false` or `exit(` in a test or helper that was there before.
-  New tests may contain anything.
+  fuzzing, tampering, updates, damaged files, and the real attacks on the
+  sandbox, the terminal, the network, signatures and unpacking) may be
+  extended, never deleted, reduced or skipped. Added lines count too when
+  they can switch a test off: `cfg(`, `cfg_attr`, `#[ignore]`,
+  `should_panic` or `macro_rules!` anywhere (a home-made `assert!` that
+  checks nothing), `use … as assert`, and an early `return`, `if false` or
+  `exit(` in a test or helper that was there before. New tests may contain
+  anything.
 - **Dependencies:** a crate new in `Cargo.lock`, an older version of one,
   or the same version from another source or with another checksum needs a
   review. A newer version passes; `cargo deny` checks it for known holes.
@@ -55,6 +58,11 @@ All of them run in CI and block a merge when they fail:
   (`keeper.toml`), `scripts/risk-class.py` or the approval workflow needs
   the owner. CI runs the checker and its settings as the base branch has
   them, never the pull request's copy.
+- **The test machinery:** the CI workflow, the script that runs the tests
+  there (`scripts/flaky-check.py`), the rule for when a sandbox test may
+  skip (`crates/sam-runner/src/contracts.rs`), the test environment and
+  the builder of hostile test AppImages need the owner too: a change there
+  could empty every proof while all checks stay green.
 - **Workflow safety** (`scripts/workflow-check.py`): no workflow runs a
   pull request's code with the repository's secrets, and no text from
   issues or pull requests goes straight into a shell command.
@@ -70,8 +78,9 @@ Every pull request shows this as its own check, **"Needs your approval"**:
 green when nothing needs the owner, waiting with a plain list of what to
 look at when something does. To approve: open the pull request, click
 **Labels** in the right sidebar, choose **owner-approved**; the check runs
-again by itself. The label counts for what you saw: a later push takes it
-off, and the check ignores it on that push. Claude never sets this label,
+again by itself. The label counts for what you saw: it counts only right
+after it is set, and a later push or reopening the pull request takes it
+off. Claude never sets this label,
 although a local session could: the label is the owner's decision.
 
 One way around the check is still open: a pull request that rewrites the

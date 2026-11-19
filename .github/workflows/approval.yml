@@ -17,9 +17,12 @@ concurrency:
 
 jobs:
   # An approval is for what the owner saw: a new push takes the label off
-  # (audit P3), and the check below ignores it on that push.
+  # (audit P3), and the check below ignores it on that push. The same on
+  # reopening: a push to a closed pull request sends no "synchronize", so
+  # the label could otherwise outlive code the owner never saw
+  # (verification audit 2026-11-19).
   forget-approval:
-    if: github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'owner-approved')
+    if: (github.event.action == 'synchronize' || github.event.action == 'reopened') && contains(github.event.pull_request.labels.*.name, 'owner-approved')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -55,10 +58,14 @@ jobs:
           mkdir -p .gate/scripts
           git show "origin/$BASE:scripts/contract-verifier.py" > .gate/scripts/contract-verifier.py
           git show "origin/$BASE:keeper.toml" > .gate/keeper.toml
+          # The label counts only when a label was just set or taken off,
+          # i.e. by someone looking at this very version; never on a push
+          # or a reopening (see forget-approval above).
           approved=
-          if [ "$ACTION" != synchronize ]; then
-            case ",$LABELS," in *,owner-approved,*) approved=--approved ;; esac
-          fi
+          case "$ACTION" in
+            labeled|unlabeled)
+              case ",$LABELS," in *,owner-approved,*) approved=--approved ;; esac ;;
+          esac
           set +e
           python3 .gate/scripts/contract-verifier.py "origin/$BASE" --head HEAD $approved > verdict.md
           rc=$?
