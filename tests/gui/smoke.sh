@@ -40,7 +40,7 @@ add() { # name [failing] -> the app's id
 sandboxed=$(add Sandboxed)
 review=$(add Review)
 compat=$(add Compat)
-"$bin/sam-jail" compat "$compat" on >/dev/null
+"$bin/sam-jail" compat "$compat" on --yes >/dev/null
 broken=$(add Broken failing)
 "$bin/sam-jail" run "$broken" >/dev/null 2>&1 || true
 repaired=$(add Repaired failing)

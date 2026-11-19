@@ -1,8 +1,9 @@
 #!/usr/bin/python3 -I
 """The app page through AT-SPI: the Test button and its state, the advice
-group, the visible "Files This App Saved" row, and the remove dialog with
-three choices of which none is preselected. Prints one line per check."""
-import sys, time
+group, the visible "Files This App Saved" row, compatibility mode turned on
+through its dialog, and the remove dialog with three choices of which none
+is preselected. Prints one line per check."""
+import json, os, subprocess, sys, time
 import gi
 gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi
@@ -66,6 +67,28 @@ check("there is no separate Check button", find(app, lambda s: s == "Check", "bu
 check("the test state is shown", wait(lambda: find(app, lambda s: s == "Not tested yet")) is not None)
 check("advice is in one group", find(app, lambda s: s == "Advice") is not None and find(app, lambda s: s == "Worth Checking") is None)
 check("Files This App Saved is visible on the page", find(app, lambda s: s == "Files This App Saved") is not None)
+# Compatibility mode: the switch asks first, and after "Turn On" the app
+# really has it (regression: the window called the command line without
+# --yes, so turning it on failed after the person had confirmed).
+def compat_on():
+    out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "info", os.environ["SAM_TEST_APP"]],
+                         capture_output=True, text=True).stdout
+    try:
+        d = json.loads(out)
+        d = d.get("data", d)
+        return d["entry"]["profile"]["compatibility_mode"] is True
+    except Exception:
+        return False
+sw = find(app, lambda s: s == "Compatibility mode", "switch")
+check("the compatibility mode switch is on the page", sw is not None)
+if sw:
+    sw.get_action_iface().do_action(0)
+    turn_on = wait(lambda: find(app, lambda s: s == "Turn On", "button"))
+    check("turning compatibility mode on asks first", turn_on is not None)
+    check("…and says it is a way out", wait(lambda: find(app, lambda s: "way out" in s)) is not None)
+    if turn_on:
+        turn_on.get_action_iface().do_action(0)
+        check("…and after Turn On the app has it", wait(compat_on) is True)
 trash = find(app, lambda s: s.startswith("Remove the sandbox"), "button")
 check("the trash button is named by its explanation", trash is not None)
 launch = find(app, lambda s: s == "Launch", "button")

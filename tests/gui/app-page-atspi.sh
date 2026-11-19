@@ -1,7 +1,8 @@
 #!/bin/sh
 # The app page through the accessibility interface (AT-SPI), in an
 # invisible KWin session: one sandboxed test app; checks the Test button and
-# its state, the advice group, "Files This App Saved", and the remove dialog.
+# its state, the advice group, "Files This App Saved", turning on
+# compatibility mode through its dialog, and the remove dialog.
 # Prints one line per check and "RESULT pass" or "RESULT fail".
 #
 #   tests/gui/app-page-atspi.sh OUTDIR
@@ -21,7 +22,7 @@ id=$("$bin/sam-jail" --json add "$out/data-set/apps-folder/Tool.AppImage" --no-l
 sleep 1
 "${ATSPI_REGISTRY:-/usr/lib/at-spi2-registryd}" >/dev/null 2>&1 & registry=$!
 "$bin/sam-jail-gui" --screenshot "$out/app-page.png" --size 1180x800 --delay 20000 --page app --app "$id" > "$out/gui.log" 2>&1 & gui=$!
-rc=0; python3 -I "$here/tests/gui/app-page-atspi.py" || rc=$?
+rc=0; SAM_TEST_BIN="$bin" SAM_TEST_APP="$id" python3 -I "$here/tests/gui/app-page-atspi.py" || rc=$?
 wait $gui || true
 kill $registry $launcher 2>/dev/null || true
 if grep -E 'CRITICAL|panicked' "$out/gui.log"; then rc=1; fi

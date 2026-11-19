@@ -613,7 +613,15 @@ impl AppPage {
             }
             match app
                 .backend
-                .call(&["compat", &me.app_id, if on { "on" } else { "off" }], None)
+                // Confirmed in the dialog above; the command line needs --yes.
+                .call(
+                    &if on {
+                        vec!["compat", &me.app_id, "on", "--yes"]
+                    } else {
+                        vec!["compat", &me.app_id, "off"]
+                    },
+                    None,
+                )
                 .await
             {
                 Ok(_) => app.toast(&if on {
