@@ -658,6 +658,7 @@ impl Editor {
         self.switch(&g, "devices.input", Always);
         self.switch(&g, "devices.usb", Always);
         self.switch(&g, "devices.bluetooth", Always);
+        self.switch(&g, "audio.direct", Always);
         self.switch(&g, "audio.pipewire", Always);
         self.switch(&g, "audio.alsa_raw", Always);
 

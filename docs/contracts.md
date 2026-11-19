@@ -42,6 +42,7 @@ where to look.
 | [wayland-socket](#wayland-socket) | Wayland compositor | Loses a feature | partly |
 | [wayland-security-context](#wayland-security-context) | Wayland compositor | Warns | partly |
 | [x11](#x11) | X11 / XWayland | Loses a feature | partly |
+| [sound-relay](#sound-relay) | PipeWire and PulseAudio | Warns | fully |
 | [audio-sockets](#audio-sockets) | PipeWire and PulseAudio | Loses a feature | partly |
 | [dbus-buses](#dbus-buses) | D-Bus and desktop services | Loses a feature | partly |
 | [dbus-dangerous-names](#dbus-dangerous-names) | D-Bus and desktop services | Nothing breaks | fully |
@@ -52,7 +53,7 @@ where to look.
 | [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 | [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 
-15 of 33 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
+16 of 34 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
 
 ## bwrap-core
 
@@ -274,7 +275,7 @@ Shared read-only data (fonts, icons, themes, locales, certificates, graphics dri
 - **SAM functions that rely on it:** [10](functions.md#10), [15](functions.md#15)
 - **Quick check:** none (only the tests below)
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Fonts and certificates are asserted (matrix test); icons, themes, locales and graphics data are not.)
-- **Covers:** `path:/usr/share`, `path:/usr/share/`, `path:/usr/share/*`, `path:/usr/lib/dri`, `path:/etc/fonts`, `path:/etc/ld.so.cache`, `path:/etc/ld.so.conf.d`, `path:/etc/ssl/certs`, `path:/etc/vulkan`, `path:/etc/os-release`, `path:/var/cache/fontconfig`
+- **Covers:** `path:/usr/share`, `path:/usr/share/`, `path:/usr/share/*`, `path:/usr/lib/dri`, `path:/etc/fonts`, `path:/etc/ld.so.cache`, `path:/etc/ld.so.conf`, `path:/etc/ld.so.conf.d`, `path:/etc/ssl/certs`, `path:/etc/vulkan`, `path:/etc/os-release`, `path:/var/cache/fontconfig`
 - **If it breaks:** A moved folder shows as missing fonts, icons or certificates inside apps. Add the new path next to the old one in sam-sandbox (both with -try).
 
 ## etc-identity-and-names
@@ -349,6 +350,18 @@ X11 displays are reached through /tmp/.X11-unix/X<n> for DISPLAY=:<n>, with the 
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: CI has no X11 display; the X11 check asserts only where one exists.)
 - **Covers:** `env:DISPLAY`, `env:XAUTHORITY`, `path:/tmp/.X11-unix`, `path:/tmp/.X11-unix/*`
 - **If it breaks:** X11 is optional; without the socket the app has Wayland only.
+
+## sound-relay
+
+PipeWire's PulseAudio server, started by SAM as `pipewire -c` with its own settings (pulse.allow-module-loading = false, its own socket, no D-Bus name) inside a Bubblewrap sandbox of its own (no home, no SAM folders, no network), passes its clients' sound on to the person's PipeWire. PipeWire 1.2 and newer refuse every module load; older ones ignore the setting, so a module loads only inside the relay's sandbox.
+
+- **Component:** PipeWire and PulseAudio ([releases](https://gitlab.freedesktop.org/pipewire/pipewire/-/releases))
+- **When it breaks:** the start goes ahead with a visible warning.
+- **SAM functions that rely on it:** [15](functions.md#15)
+- **Quick check:** `sound-relay`
+- **Tests:** `the_relay_cannot_load_modules_and_listens_only_on_its_socket`, `sound_never_loads_code_into_the_sound_server` (fully)
+- **Covers:** `program:pactl`, `option:-s`
+- **If it breaks:** The quick check starts a relay, reads sound information, tries a module load and looks from outside at what the running relay can see. If the relay is not held in its sandbox or does not answer, `sam-jail doctor --contracts` reports the contract broken and the attack test fails on CI. Until fixed, turn sound off for apps you do not trust: through the sound server's own connection an app can make it load code outside the sandbox (audit S-F1).
 
 ## audio-sockets
 

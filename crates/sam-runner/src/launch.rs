@@ -58,6 +58,8 @@ pub struct Prepared {
     /// How the app's terminal is handled (see `pty`).
     pub terminal: TerminalMode,
     proxy: Option<DbusProxy>,
+    /// SAM's sound relay for this start, if the app has sound.
+    sound: Option<crate::sound_relay::SoundRelay>,
     /// Whether the app's Wayland socket carries a security context.
     pub wayland_context: bool,
     /// The compositor offers security contexts, but making one failed: the
@@ -268,6 +270,7 @@ pub fn prepare(
         runtime_dir: runtime_dir.clone(),
         app_env,
         dbus_proxy_socket: None,
+        sound_socket: None,
         wayland_socket: None,
         helper: None,
         seccomp_fd: None,
@@ -316,6 +319,7 @@ pub fn prepare(
     }
 
     let mut proxy = None;
+    let mut sound = None;
     let mut wayland = None;
     let mut wayland_context_failed = false;
     let home_watch;
@@ -356,6 +360,15 @@ pub fn prepare(
                         &[("error", &format!("{e:#}"))],
                     ),
                 )),
+            }
+        }
+        if perms.audio.enabled {
+            match crate::sound_relay::SoundRelay::start(host, &runtime_dir) {
+                Ok(r) => {
+                    ctx.sound_socket = Some(r.socket.clone());
+                    sound = Some(r);
+                }
+                Err(e) => warnings.push(sound_without_relay(&perms.audio, host, &format!("{e:#}"))),
             }
         }
         if perms.display.wayland && !perms.display.wayland_privileged {
@@ -453,6 +466,7 @@ pub fn prepare(
         wanted_seccomp,
         terminal,
         proxy,
+        sound,
         wayland_context,
         wayland_context_failed,
         home_watch,
@@ -750,6 +764,7 @@ pub fn run(
     }
     let relay_end = relay.map(pty::Relay::finish);
     drop(prepared.proxy);
+    drop(prepared.sound);
     drop(prepared.wayland);
 
     // Judge the outcome.
@@ -953,6 +968,13 @@ fn write_log_header(log: &mut fs::File, prepared: &Prepared) -> Result<()> {
         "# landlock: {}  seccomp: {}  wayland security context: {}",
         prepared.landlock, prepared.seccomp, prepared.wayland_context
     )?;
+    if let Some(r) = &prepared.sound {
+        writeln!(
+            log,
+            "# sound: through SAM's relay ({}), which cannot load modules",
+            r.socket.display()
+        )?;
+    }
     if let Some(p) = &prepared.proxy {
         writeln!(log, "# dbus proxy: xdg-dbus-proxy {}", shell_join(&p.args))?;
     }
@@ -1361,6 +1383,36 @@ fn status_pipe() -> Result<(i32, i32)> {
     // SAFETY: fds[1] is the pipe end pipe2 just created; F_SETFD only changes its flags.
     unsafe { libc::fcntl(fds[1], libc::F_SETFD, 0) };
     Ok((fds[0], fds[1]))
+}
+
+/// What the start says when SAM's sound relay cannot run (`why`): the app
+/// has no sound, or, when the person allowed sound without the relay, it
+/// gets the sound server's own connection, with a warning every time
+/// (audit S-F1; the person's decision of 2026-11-18).
+fn sound_without_relay(
+    p: &sam_core::permissions::AudioPerms,
+    host: &HostInfo,
+    why: &str,
+) -> Warning {
+    if p.direct && host.sockets.pulse.is_some() {
+        Warning::danger(
+            "sound-without-relay",
+            "Sound without SAM's relay",
+            sam_core::i18n::trf(
+                "SAM's sound relay could not run ({why}), and sound without it is allowed for this app: it talks to your sound server directly and could make it load code outside the sandbox.",
+                &[("why", &why)],
+            ),
+        )
+    } else {
+        Warning::warn(
+            "sound-off",
+            "No sound",
+            sam_core::i18n::trf(
+                "The app has no sound: SAM's sound relay could not run ({why}). Sound straight from the sound server would let the app load code outside the sandbox; to allow that anyway, turn on \"Sound without SAM's relay\" for this app.",
+                &[("why", &why)],
+            ),
+        )
+    }
 }
 
 /// Creates `path` and holds an exclusive lock on it while the file is open.

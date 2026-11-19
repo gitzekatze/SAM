@@ -276,13 +276,11 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         ),
         (None, None) => check("x11", "X11 display", CheckStatus::Info, "no X11 display"),
     });
-    c.push(match (&s.pipewire, &s.pulse) {
-        (Some(_), Some(_)) => check("audio", "Audio", CheckStatus::Ok, "PipeWire and PulseAudio sockets found"),
-        (Some(_), None) => {
-            check("audio", "Audio", CheckStatus::Warn, "PipeWire found, but not its PulseAudio service (pipewire-pulse), which sandboxed apps use for sound")
-        }
-        (None, Some(_)) => check("audio", "Audio", CheckStatus::Ok, "PulseAudio socket found"),
-        (None, None) => check("audio", "Audio", CheckStatus::Warn, "PipeWire socket not found. Audio may not work."),
+    c.push(match (crate::sound_relay::relay_possible(host), &s.pipewire, &s.pulse) {
+        (true, _, _) => check("audio", "Audio", CheckStatus::Ok, "PipeWire runs: apps get sound through SAM's relay, which cannot load modules into the sound server"),
+        (false, Some(_), _) => check("audio", "Audio", CheckStatus::Warn, "PipeWire runs, but its program was not found, so SAM cannot run its sound relay and apps get no sound. Install the pipewire package"),
+        (false, None, Some(_)) => check("audio", "Audio", CheckStatus::Warn, "The sound server is not PipeWire, so SAM cannot run its sound relay and apps get no sound. An app gets sound only with \"Sound without SAM's relay\", which lets it load code into the sound server outside the sandbox"),
+        (false, None, None) => check("audio", "Audio", CheckStatus::Warn, "No sound server found. Audio may not work."),
     });
     c.push(match &s.dbus_session {
         Some(_) => check("dbus", "Session D-Bus", CheckStatus::Ok, "available"),

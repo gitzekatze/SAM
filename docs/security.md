@@ -140,11 +140,31 @@ launch log and `sam-jail doctor` say whether the desktop supports it.
 own socket instead, for clipboard managers and screenshot tools. Desktops
 without the protocol give every app all their functions; SAM says so.
 
-### Sound without cameras
+### Sound without cameras, and without loading code
 
-*Audio* gives the app only the PulseAudio socket (PipeWire's
-`pipewire-pulse` on current systems). It can play and record sound, but it
-cannot see cameras or screen-cast streams.
+*Audio* gives the app a PulseAudio connection to **SAM's sound relay**, not
+to your sound server. It can play and record sound, but it cannot see
+cameras or screen-cast streams, and it cannot load modules.
+
+Your sound server's own PulseAudio connection lets every program load
+modules into it, and the sound server runs outside the sandbox: an app with
+only sound on made it load one (audit S-F1, proven 2026-11-18). PipeWire can
+switch this off only for the whole server, which SAM does not change. So for
+each start SAM runs a small second copy of PipeWire's PulseAudio server with
+module loading off, connected to your PipeWire as one more client, and shows
+the app only that one (`sound_never_loads_code_into_the_sound_server`).
+
+The relay itself runs in a sandbox of its own: it sees the system's
+programs, your PipeWire socket and its own folder, but not your home, SAM's
+folders or the network. That matters on PipeWire before 1.2 (Ubuntu 24.04
+LTS, Debian 12), which ignores the setting: there a module the app asks for
+loads, but only inside the relay's sandbox, where it can reach none of your
+files. `sam-jail doctor --contracts` checks both on your computer.
+
+Where the relay cannot run (a sound server without PipeWire), the app has
+no sound, and the start says why. An advanced switch, *Sound without SAM's
+relay* (Dangerous), gives it the sound server's own connection anyway; SAM
+then warns at every start.
 
 The raw PipeWire socket would reach those as well, because PipeWire limits
 only Flatpak apps and treats every other program as trusted. So it is a

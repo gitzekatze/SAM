@@ -224,6 +224,11 @@ pub struct AudioPerms {
     pub pipewire: bool,
     /// Raw ALSA devices (`/dev/snd`). Off unless required.
     pub alsa_raw: bool,
+    /// Sound straight from the sound server, without SAM's relay: only
+    /// used where the relay cannot run (no PipeWire). The app could then
+    /// make the sound server load code outside the sandbox (audit S-F1),
+    /// so it is off unless the person turns it on, and every start warns.
+    pub direct: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -974,6 +979,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Bluetooth needs the system D-Bus and cannot be isolated well.", Dangerous, advanced),
         perm!("audio.enabled", "Audio", "Sound",
             "Play and record audio (through PipeWire's PulseAudio service). Recording is possible once this is on.", Medium),
+        perm!("audio.direct", "Audio", "Sound without SAM's relay",
+            "Only for computers where SAM's sound relay cannot run (a sound server without PipeWire). The app then talks to your sound server directly and could make it load code outside the sandbox. SAM warns at every start.", Dangerous, advanced),
         perm!("audio.pipewire", "Audio", "Direct PipeWire access",
             "The full PipeWire connection. Besides sound it reaches cameras and screen-cast streams of other apps, bypassing the webcam and screen sharing settings. Only for apps that support nothing else.", High, advanced),
         perm!("audio.alsa_raw", "Audio", "Raw ALSA devices",

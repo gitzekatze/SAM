@@ -625,11 +625,7 @@ fn ro_follow(a: &mut Args, path: &Path) {
         }
     }
     for t in targets {
-        // /usr/lib and /usr/bin are bound already; skip anything else outside
-        // the shared-data and configuration trees.
-        let interesting =
-            (t.starts_with("/usr/share") || t.starts_with("/etc") || t.starts_with("/run"))
-                && t.exists();
+        let interesting = fs::metadata(&t).is_ok_and(|m| may_follow(&t, m.file_type()));
         if interesting
             && !a
                 .v
@@ -639,6 +635,20 @@ fn ro_follow(a: &mut Args, path: &Path) {
             a.ro(&t);
         }
     }
+}
+
+/// Whether the target `t` of a link found in /etc may be shown as well:
+/// only shared data and settings (/usr/lib and /usr/bin are shown
+/// already), and only plain files and folders. In /run only plain files
+/// (`resolv.conf` → /run/NetworkManager/resolv.conf). Never a socket or a
+/// device: Debian's `/etc/alternatives/php-fpm.sock` points to the PHP
+/// server's socket in /run/php, and every app's sandbox showed it (found
+/// by a test on CI, 2026-11-19).
+fn may_follow(t: &Path, kind: fs::FileType) -> bool {
+    if t.starts_with("/run") {
+        return kind.is_file();
+    }
+    (t.starts_with("/usr/share") || t.starts_with("/etc")) && (kind.is_file() || kind.is_dir())
 }
 
 /// Small helper scripts placed at `/run/sam/bin` (first on `$PATH`):
@@ -688,6 +698,50 @@ pub const OPEN_SHIM_NAMES: &[&str] = &[
     "x-www-browser",
     "www-browser",
 ];
+
+/// The system every sandbox SAM builds rests on, after `/usr`: the
+/// top-level links and folders (`/lib` → `usr/lib` …), the library folders
+/// the system's loader searches outside /usr, and the basic files of /etc.
+/// Shared by the apps' sandbox and the helpers SAM holds in a sandbox of
+/// their own (the sound relay), so both see the same system on every
+/// distribution.
+fn common_system(a: &mut Args, host: &HostInfo) {
+    for d in ["/bin", "/sbin", "/lib", "/lib64", "/lib32"] {
+        mirror(a, d);
+    }
+    // Library folders the system's loader searches outside /usr (CUDA in
+    // /opt/cuda/lib64, /usr/local/lib): /etc/ld.so.cache points there,
+    // and SAM's analysis counts libraries found there as present.
+    for d in &host.extra_lib_dirs {
+        a.ro(d);
+    }
+    for e in ETC_BASE {
+        ro_follow(a, &Path::new("/etc").join(e));
+    }
+    // openSUSE (and others following the "hermetic /usr" idea) keep the
+    // vendor defaults of these files in /usr/etc and leave /etc for the
+    // administrator's changes; glibc reads them from there. Only these
+    // files, never all of /usr/etc (contract etc-identity-and-names).
+    for e in [
+        "nsswitch.conf",
+        "services",
+        "protocols",
+        "gai.conf",
+        "host.conf",
+    ] {
+        ro_follow(a, &Path::new("/usr/etc").join(e));
+    }
+}
+
+/// The system part of a sandbox for one of SAM's own helpers (the sound
+/// relay): `/usr` read-only and [`common_system`]. Nothing of the home, of
+/// SAM's folders or of the devices; the caller adds what the helper needs.
+pub fn helper_system_args(host: &HostInfo) -> Vec<String> {
+    let mut a = Args { v: Vec::new() };
+    a.op2("--ro-bind", "/usr", "/usr");
+    common_system(&mut a, host);
+    a.v
+}
 
 /// Replicate a top-level path from the host: symlink stays a symlink,
 /// a real directory is bound read-only.
@@ -1226,15 +1280,7 @@ impl Section<'_> {
                 }
             }
         }
-        for d in ["/bin", "/sbin", "/lib", "/lib64", "/lib32"] {
-            mirror(a, d);
-        }
-        // Library folders the system's loader searches outside /usr (CUDA in
-        // /opt/cuda/lib64, /usr/local/lib): /etc/ld.so.cache points there,
-        // and SAM's analysis counts libraries found there as present.
-        for d in &ctx.host.extra_lib_dirs {
-            a.ro(d);
-        }
+        common_system(a, &ctx.host);
         // Tools that ask a service outside the sandbox to start a program
         // (systemd, Flatpak). They would run it unsandboxed if the service
         // is reachable, and otherwise fail: some AppRun scripts use
@@ -1249,8 +1295,8 @@ impl Section<'_> {
             }
         }
 
-        // /etc
-        let mut etc: Vec<&str> = ETC_BASE.to_vec();
+        // /etc, beyond the basic files of `common_system`.
+        let mut etc: Vec<&str> = Vec::new();
         if p.network.mode == NetworkMode::Full {
             etc.extend(ETC_NETWORK);
             a.ro("/run/systemd/resolve");
@@ -1268,19 +1314,6 @@ impl Section<'_> {
         }
         for e in etc {
             ro_follow(a, &Path::new("/etc").join(e));
-        }
-        // openSUSE (and others following the "hermetic /usr" idea) keep the
-        // vendor defaults of these files in /usr/etc and leave /etc for the
-        // administrator's changes; glibc reads them from there. Only these
-        // files, never all of /usr/etc (contract etc-identity-and-names).
-        for e in [
-            "nsswitch.conf",
-            "services",
-            "protocols",
-            "gai.conf",
-            "host.conf",
-        ] {
-            ro_follow(a, &Path::new("/usr/etc").join(e));
         }
         // The system's font cache: only names, paths and properties of the
         // fonts above. Without it every app builds its own on its first
@@ -1577,17 +1610,25 @@ impl Section<'_> {
         let a = &mut self.a;
         let notes = &mut self.notes;
         // Audio.
-        // Sound goes through the PulseAudio socket only. The raw PipeWire
-        // socket reaches cameras and other apps' screen-cast streams (PipeWire
-        // restricts only Flatpak apps), so it needs its own permission.
-        // Webcam and screen sharing work without it: their portals hand the
-        // app a PipeWire connection limited to what the user picked.
+        // Sound goes through SAM's sound relay: a PulseAudio socket that
+        // plays and records but cannot make the sound server load modules
+        // (the sound server's own socket can: audit S-F1). Only when the
+        // person allowed it, and the relay cannot run, the sound server's
+        // own socket. The raw PipeWire socket reaches cameras and other
+        // apps' screen-cast streams (PipeWire restricts only Flatpak apps),
+        // so it needs its own permission. Webcam and screen sharing work
+        // without it: their portals hand the app a PipeWire connection
+        // limited to what the user picked.
         if p.audio.enabled {
-            if let Some(pulse) = &h.sockets.pulse {
+            let pulse =
+                ctx.sound_socket
+                    .as_ref()
+                    .or(h.sockets.pulse.as_ref().filter(|_| p.audio.direct));
+            if let Some(pulse) = pulse {
                 a.op2("--ro-bind", pulse, format!("{run}/pulse/native"));
                 a.setenv("PULSE_SERVER", format!("unix:{run}/pulse/native"));
-            } else if h.sockets.pipewire.is_some() {
-                notes.push(sam_core::i18n::tr("PipeWire runs without its PulseAudio service (pipewire-pulse), so the app has no sound. Install or start pipewire-pulse, or allow direct PipeWire access."));
+            } else if h.sockets.pulse.is_some() || h.sockets.pipewire.is_some() {
+                notes.push(sam_core::i18n::tr("SAM's sound relay is not running, so the app has no sound (the sound server's own connection would let it load code outside the sandbox). The start message says why."));
             } else {
                 notes.push(sam_core::i18n::tr(
                     "No sound server found. Audio may not work.",
@@ -1805,7 +1846,9 @@ impl Section<'_> {
         }
         a.setenv("XDG_RUNTIME_DIR", &run);
         a.setenv("SAM_SANDBOX", "bubblewrap");
-        if !p.audio.enabled && !p.audio.alsa_raw {
+        let sound = p.audio.enabled
+            && (ctx.sound_socket.is_some() || (p.audio.direct && h.sockets.pulse.is_some()));
+        if !sound && !p.audio.alsa_raw {
             // Without sound access, SDL (games, emulators) finds no audio
             // output and refuses to start; its silent driver lets it run.
             // Before the settings below, which may choose otherwise.
@@ -2191,16 +2234,135 @@ mod tests {
         );
     }
 
-    /// Games built with SDL get a silent sound driver when sound is off, so they start instead of failing.
+    /// A link in /etc never brings a socket or a device into the sandbox,
+    /// wherever it points; plain files and folders of the system's data and
+    /// settings do, and in /run only plain files (regression: Debian's
+    /// `/etc/alternatives/php-fpm.sock` showed the PHP server's socket).
+    #[test]
+    fn links_in_etc_never_bring_sockets_or_devices() {
+        let t = tempfile::tempdir().unwrap();
+        let sock = t.path().join("s.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let socket = fs::metadata(&sock).unwrap().file_type();
+        fs::write(t.path().join("f"), "x").unwrap();
+        let file = fs::metadata(t.path().join("f")).unwrap().file_type();
+        let dir = fs::metadata(t.path()).unwrap().file_type();
+        let null = fs::metadata("/dev/null").unwrap().file_type();
+        let p = Path::new;
+        assert!(!may_follow(p("/run/php/php8.3-fpm.sock"), socket));
+        assert!(!may_follow(p("/etc/x.sock"), socket));
+        assert!(!may_follow(p("/usr/share/x"), null), "a device");
+        assert!(may_follow(p("/run/NetworkManager/resolv.conf"), file));
+        assert!(
+            !may_follow(p("/run/user/1000"), dir),
+            "a folder in /run may hold sockets"
+        );
+        assert!(may_follow(p("/usr/share/zoneinfo"), dir));
+        assert!(may_follow(p("/etc/ssl/cert.pem"), file));
+        assert!(
+            !may_follow(p("/home/ann/x"), file),
+            "outside the system's data"
+        );
+    }
+
+    /// A helper's sandbox (the sound relay) shows the same system as an
+    /// app's (with the whole /usr), and nothing outside the system's own
+    /// folders: no home, no runtime folder, no devices.
+    #[test]
+    fn a_helper_sees_the_apps_system_and_nothing_else() {
+        let mut ctx = sample_context();
+        ctx.host.extra_lib_dirs = vec!["/opt/cuda/lib64".into()];
+        ctx.permissions.advanced.host_runtime = HostRuntime::Full;
+        let helper = helper_system_args(&ctx.host);
+        let app = args_of(&ctx);
+        assert!(has_seq(&helper, &["--ro-bind", "/usr", "/usr"]));
+        let mut i = 0;
+        while i < helper.len() {
+            let op = helper[i].as_str();
+            let n = if op == "--symlink" || op.starts_with("--ro-bind") {
+                3
+            } else {
+                1
+            };
+            let part: Vec<&str> = helper[i..i + n].iter().map(String::as_str).collect();
+            assert!(
+                matches!(op, "--ro-bind" | "--ro-bind-try" | "--symlink"),
+                "only read-only views and links: {part:?}"
+            );
+            let at = Path::new(part[n - 1]);
+            assert!(
+                [
+                    "/usr",
+                    "/etc",
+                    "/bin",
+                    "/sbin",
+                    "/lib",
+                    "/lib32",
+                    "/lib64",
+                    "/opt/cuda"
+                ]
+                .iter()
+                .any(|r| at.starts_with(r))
+                    || (at.starts_with("/run") && at.is_file()),
+                "a system folder (or a plain file a system link leads to): {part:?}"
+            );
+            assert!(
+                has_seq(&app, &part),
+                "the app's sandbox has it too: {part:?}"
+            );
+            i += n;
+        }
+    }
+
+    /// Games built with SDL get a silent sound driver when they have no
+    /// sound, so they start instead of failing: sound off, or on but with
+    /// SAM's relay not running (audit S-F1); not when sound reaches them.
     #[test]
     fn sdl_gets_its_silent_driver_without_sound_access() {
         let mut ctx = sample_context();
-        assert!(has_seq(
-            &args_of(&ctx),
-            &["--setenv", "SDL_AUDIODRIVER", "dummy"]
-        ));
+        let silent =
+            |ctx: &LaunchContext| has_seq(&args_of(ctx), &["--setenv", "SDL_AUDIODRIVER", "dummy"]);
+        assert!(silent(&ctx), "sound off");
         ctx.permissions.audio.enabled = true;
+        assert!(silent(&ctx), "sound on, but no relay");
+        ctx.sound_socket = Some("/run/user/1000/sam/x/sound/native".into());
         assert!(!args_of(&ctx).iter().any(|x| x == "SDL_AUDIODRIVER"));
+        ctx.sound_socket = None;
+        ctx.permissions.audio.direct = true;
+        assert!(!silent(&ctx), "sound without the relay, allowed");
+    }
+
+    /// Sound comes from SAM's relay, never from the sound server's own
+    /// socket; that one only when the person allowed sound without the
+    /// relay (audit S-F1).
+    #[test]
+    fn sound_comes_from_the_relay_or_only_when_allowed_from_the_server() {
+        let mut ctx = sample_context();
+        ctx.permissions.audio.enabled = true;
+        let host_pulse = "/run/user/1000/pulse/native";
+        let shown = |ctx: &LaunchContext, from: &str| {
+            has_seq(&args_of(ctx), &["--ro-bind", from, host_pulse])
+        };
+        assert!(!shown(&ctx, host_pulse), "no relay: no sound");
+        ctx.sound_socket = Some("/run/user/1000/sam/x/sound/native".into());
+        assert!(shown(&ctx, "/run/user/1000/sam/x/sound/native"));
+        assert!(!shown(&ctx, host_pulse));
+        ctx.permissions.audio.direct = true;
+        assert!(
+            shown(&ctx, "/run/user/1000/sam/x/sound/native"),
+            "the relay wins when it runs"
+        );
+        ctx.sound_socket = None;
+        assert!(shown(&ctx, host_pulse), "allowed without the relay");
+        ctx.permissions.audio.enabled = false;
+        assert!(!shown(&ctx, host_pulse), "sound off");
+        // Without the relay the start says why there is no sound, also
+        // where only PipeWire runs.
+        ctx.permissions.audio.enabled = true;
+        ctx.permissions.audio.direct = false;
+        ctx.host.sockets.pulse = None;
+        let notes = Bubblewrap.build(&ctx).unwrap().notes;
+        assert!(notes.iter().any(|n| n.contains("relay")), "{notes:?}");
     }
 
     /// Extra library folders of the system loader (for example CUDA) are visible to the app read-only.
@@ -2437,6 +2599,7 @@ mod tests {
         p.display.x11 = true;
         p.filesystem.documents = Access::Ro;
         p.dbus.session.mode = DbusMode::Full;
+        ctx.sound_socket = Some("/run/user/1000/sam/x/sound/native".into());
         let a = args_of(&ctx);
         assert!(!a.contains(&"--unshare-net".to_string()));
         assert!(has_seq(&a, &["--dev-bind-try", "/dev/dri", "/dev/dri"]));
@@ -2444,7 +2607,7 @@ mod tests {
             &a,
             &[
                 "--ro-bind",
-                "/run/user/1000/pulse/native",
+                "/run/user/1000/sam/x/sound/native",
                 "/run/user/1000/pulse/native"
             ]
         ));

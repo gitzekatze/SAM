@@ -26,7 +26,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `filesystem.custom_read`, `filesystem.custom_write` | list, e.g. `"~/Projects, /mnt/data"` |
 | `network.mode` | `none` / `localhost` (no internet; loopback ports forwarded by pasta, Bubblewrap only) / `full` (a `filtered` value from old profiles loads as `none`) |
 | `devices.gpu`, `devices.webcam`, `devices.gamepads`, `devices.input`, `devices.usb`, `devices.bluetooth` | `true` / `false` |
-| `audio.enabled`, `audio.pipewire`, `audio.alsa_raw` | `true` / `false` |
+| `audio.enabled`, `audio.direct`, `audio.pipewire`, `audio.alsa_raw` | `true` / `false` |
 | `display.wayland`, `display.x11`, `display.wayland_privileged` | `true` / `false` |
 | `dbus.session.mode` | `none` / `filtered` / `full` |
 | `dbus.system.mode` | `none` / `full` (the system bus cannot be filtered; a `filtered` value from old profiles loads as `none`) |

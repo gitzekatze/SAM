@@ -202,8 +202,13 @@ pub(crate) fn print_info(
         p.display.wayland, p.display.x11
     );
     println!(
-        "  audio:       {}{}{}",
+        "  audio:       {}{}{}{}",
         p.audio.enabled,
+        if p.audio.direct {
+            " + without SAM's relay"
+        } else {
+            ""
+        },
         if p.audio.pipewire {
             " + direct PipeWire"
         } else {

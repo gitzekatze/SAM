@@ -31,18 +31,34 @@ fn json(out: &Output) -> serde_json::Value {
 }
 
 /// Runs one of SAM's programs from `bin` with its own folders under `root`.
+///
+/// The programs were just copied there. A process another test starts at
+/// that moment inherits the copy's open file for an instant, and Linux
+/// then refuses to run it ("Text file busy"); so a busy start is tried
+/// again, for at most two seconds (seen in a full run on 2026-11-19).
 fn sam(root: &Path, program: &str, args: &[&str]) -> Output {
-    Command::new(root.join("bin").join(program))
-        .args(args)
-        .env("SAM_CONFIG_DIR", root.join("config"))
-        .env("SAM_DATA_DIR", root.join("data"))
-        .env("SAM_APPLICATIONS_DIR", root.join("applications"))
-        .env("XDG_RUNTIME_DIR", root.join("run"))
-        .env("LC_ALL", "C")
-        .env_remove("LANGUAGE")
-        .env("PATH", "/usr/bin:/bin")
-        .output()
-        .unwrap()
+    let start = std::time::Instant::now();
+    loop {
+        let out = Command::new(root.join("bin").join(program))
+            .args(args)
+            .env("SAM_CONFIG_DIR", root.join("config"))
+            .env("SAM_DATA_DIR", root.join("data"))
+            .env("SAM_APPLICATIONS_DIR", root.join("applications"))
+            .env("XDG_RUNTIME_DIR", root.join("run"))
+            .env("LC_ALL", "C")
+            .env_remove("LANGUAGE")
+            .env("PATH", "/usr/bin:/bin")
+            .output();
+        match out {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && start.elapsed() < std::time::Duration::from_secs(2) =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            out => return out.unwrap(),
+        }
+    }
 }
 
 /// A sandboxed fixture app whose unpacked copy was freed; returns its id.

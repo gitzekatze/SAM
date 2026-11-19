@@ -372,7 +372,7 @@ playbook = "A new layout shows as apps that cannot find their libraries inside t
 id = "system-data"
 component = "distribution"
 assumes = "Shared read-only data (fonts, icons, themes, locales, certificates, graphics drivers' data, time zones, the library cache) lives at these paths; SAM binds them with -try, so a missing one is skipped."
-covers = ["path:/usr/share", "path:/usr/share/", "path:/usr/share/*", "path:/usr/lib/dri", "path:/etc/fonts", "path:/etc/ld.so.cache", "path:/etc/ld.so.conf.d", "path:/etc/ssl/certs", "path:/etc/vulkan", "path:/etc/os-release", "path:/var/cache/fontconfig"]
+covers = ["path:/usr/share", "path:/usr/share/", "path:/usr/share/*", "path:/usr/lib/dri", "path:/etc/fonts", "path:/etc/ld.so.cache", "path:/etc/ld.so.conf", "path:/etc/ld.so.conf.d", "path:/etc/ssl/certs", "path:/etc/vulkan", "path:/etc/os-release", "path:/var/cache/fontconfig"]
 functions = [10, 15]
 probe = "none"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox"]
@@ -457,6 +457,18 @@ on_break = "feature"
 coverage = "partial"
 gaps = "CI has no X11 display; the X11 check asserts only where one exists."
 playbook = "X11 is optional; without the socket the app has Wayland only."
+
+[[contract]]
+id = "sound-relay"
+component = "audio"
+assumes = "PipeWire's PulseAudio server, started by SAM as `pipewire -c` with its own settings (pulse.allow-module-loading = false, its own socket, no D-Bus name) inside a Bubblewrap sandbox of its own (no home, no SAM folders, no network), passes its clients' sound on to the person's PipeWire. PipeWire 1.2 and newer refuse every module load; older ones ignore the setting, so a module loads only inside the relay's sandbox."
+covers = ["program:pactl", "option:-s"]
+functions = [15]
+probe = "sound-relay"
+tests = ["the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_never_loads_code_into_the_sound_server"]
+on_break = "warn"
+coverage = "full"
+playbook = "The quick check starts a relay, reads sound information, tries a module load and looks from outside at what the running relay can see. If the relay is not held in its sandbox or does not answer, `sam-jail doctor --contracts` reports the contract broken and the attack test fails on CI. Until fixed, turn sound off for apps you do not trust: through the sound server's own connection an app can make it load code outside the sandbox (audit S-F1)."
 
 [[contract]]
 id = "audio-sockets"

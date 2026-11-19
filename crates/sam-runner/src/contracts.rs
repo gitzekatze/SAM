@@ -110,6 +110,7 @@ pub const PROBES: &[&str] = &[
     "wayland-socket",
     "wayland-security-context",
     "audio-sockets",
+    "sound-relay",
     "dbus-buses",
     "portal-interfaces",
     "x11-socket",
@@ -154,6 +155,71 @@ fn version_of(program: &str) -> Option<String> {
                 .take(40)
                 .collect()
         })
+}
+
+/// SAM's sound relay against this computer's PipeWire: sound information
+/// comes through, and loading a module is refused (audit S-F1). A module
+/// that loads anyway is unloaded at once.
+fn sound_relay(host: &HostInfo) -> (State, String) {
+    if !crate::sound_relay::relay_possible(host) {
+        return (
+            State::Absent,
+            "PipeWire is not running or not installed".into(),
+        );
+    }
+    if which("pactl").is_none() {
+        return (
+            State::Absent,
+            "pactl is not installed (needed to check the relay)".into(),
+        );
+    }
+    let base = host
+        .runtime_dir
+        .clone()
+        .unwrap_or_else(std::env::temp_dir)
+        .join(format!("sam-contract-{}", std::process::id()));
+    let relay = match crate::sound_relay::SoundRelay::start(host, &base) {
+        Ok(r) => r,
+        Err(e) => return (State::Broken, format!("{e:#}")),
+    };
+    let server = format!("unix:{}", relay.socket.display());
+    let info = output("pactl", &["-s", &server, "info"]).unwrap_or_default();
+    let load = output(
+        "pactl",
+        &[
+            "-s",
+            &server,
+            "load-module",
+            "module-null-sink",
+            "sink_name=sam_contract_probe",
+        ],
+    )
+    .unwrap_or_default();
+    let loaded = load.trim().parse::<u32>().ok();
+    if let Some(id) = loaded {
+        let _ = output("pactl", &["-s", &server, "unload-module", &id.to_string()]);
+    }
+    let contained = relay.contained(&host.home);
+    drop(relay);
+    let _ = std::fs::remove_dir_all(&base);
+    match (info.contains("Server Name"), loaded, contained) {
+        (_, _, false) => (
+            State::Broken,
+            "the relay is not held in its own sandbox".into(),
+        ),
+        (true, None, true) => (
+            State::Holds,
+            "the relay passes sound and refuses to load modules".into(),
+        ),
+        (true, Some(_), true) => (
+            State::Holds,
+            "the relay passes sound; this PipeWire (before 1.2) lets it load modules, but only inside the relay's own sandbox".into(),
+        ),
+        (false, _, true) => (
+            State::Broken,
+            format!("the relay does not answer: {}", info.trim()),
+        ),
+    }
 }
 
 fn probe(name: &str, host: &HostInfo) -> (State, String) {
@@ -238,6 +304,7 @@ fn probe(name: &str, host: &HostInfo) -> (State, String) {
                 (State::Absent, "no PipeWire or PulseAudio socket".into())
             }
         }
+        "sound-relay" => sound_relay(host),
         "dbus-buses" => match (&host.sockets.dbus_session, &host.sockets.dbus_system) {
             (Some(_), Some(_)) => holds("session and system bus"),
             (Some(_), None) => holds("session bus (no system bus)"),
@@ -564,6 +631,14 @@ mod tests {
     fn the_built_in_contract_map_parses() {
         let m: Map = toml::from_str(MAP).unwrap();
         assert!(m.contract.len() > 20, "the map lists the contracts");
+    }
+
+    /// The relay's quick check says "not here" on a computer without
+    /// PipeWire, instead of reporting the contract broken.
+    #[test]
+    fn the_sound_relay_check_needs_pipewire() {
+        let (state, why) = probe("sound-relay", &HostInfo::default());
+        assert!(matches!(state, State::Absent), "{why}");
     }
 
     #[test]
