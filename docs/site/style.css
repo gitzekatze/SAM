@@ -125,8 +125,20 @@ html, body { overflow-x: hidden; }
 .pager a.next { justify-content: flex-end; text-align: right; }
 .pager small { display: block; color: var(--muted); font-size: 0.8rem; }
 .pager .icon.small { color: var(--accent); }
-.doc p.back { margin-top: 1.2rem; }
-.doc p.back a { display: inline-flex; align-items: center; gap: 0.35rem; text-decoration: none; font-weight: 600; }
+/* Back one level, at the top beside the breadcrumbs and again at the bottom */
+.topnav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.2rem; margin-bottom: 1.8rem; }
+.topnav .crumbs { margin: 0; }
+a.back, a.to-top { display: inline-flex; align-items: center; gap: 0.35rem; text-decoration: none; font-weight: 650; font-size: 0.92rem;
+  padding: 0.38rem 0.85rem 0.38rem 0.6rem; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--accent); }
+a.to-top { padding: 0.38rem 0.6rem 0.38rem 0.85rem; color: var(--muted); }
+a.back:hover, a.to-top:hover { border-color: var(--green); color: var(--accent); }
+.back-bottom { display: flex; justify-content: space-between; gap: 1rem; margin-top: 1.4rem; }
+/* The page's icon beside its title, as on the card that leads here */
+.doc h1.titled { display: flex; align-items: center; gap: 0.9rem; }
+.icon.title { display: inline-grid; place-items: center; width: 3.1rem; height: 3.1rem; flex: none; border-radius: 14px;
+  color: var(--accent); background: color-mix(in srgb, var(--green) 13%, transparent); }
+.icon.title svg { width: 1.7rem; height: 1.7rem; }
+@media (max-width: 560px) { .doc h1.titled { font-size: 1.8rem; } .icon.title { width: 2.6rem; height: 2.6rem; } }
 @media (max-width: 560px) { .pager { grid-template-columns: 1fr; } .pager a.next { justify-content: space-between; } }
 
 /* Home */
@@ -163,11 +175,15 @@ section.band h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); margin: 0 0 0.5rem; let
 section.band p.sub { color: var(--muted); max-width: 42rem; margin: 0 0 2.2rem; }
 
 /* Why AppImages need a sandbox: three steps with arrows between */
-.flow { list-style: none; margin: 2rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3rem; }
+/* The arrow is a centred chevron (its own drawing is centred in its box),
+   placed in the exact middle of the gap: half the gap plus half its size. */
+.flow { --gap: 3.75rem; --arrow: 1.5rem; list-style: none; margin: 2rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); }
 .flow .step { position: relative; padding: 1.5rem 1.4rem; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
 .flow .step:not(:last-child)::after {
-  content: ""; position: absolute; top: 50%; right: -2.15rem; width: 1.3rem; height: 1.3rem;
-  border-top: 2.5px solid var(--muted); border-right: 2.5px solid var(--muted); transform: translateY(-50%) rotate(45deg); opacity: 0.55;
+  content: ""; position: absolute; top: 50%; right: calc((var(--gap) + var(--arrow)) / -2); width: var(--arrow); height: var(--arrow);
+  transform: translateY(-50%); background: var(--muted); opacity: 0.6;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4l8 8-8 8'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4l8 8-8 8'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .flow h3 { margin: 0.9rem 0 0.35rem; font-size: 1.2rem; }
 .flow p { margin: 0; color: var(--muted); }
@@ -234,8 +250,8 @@ a.row:hover .more { transform: translateX(3px); }
 @media (max-width: 860px) {
   .hero { padding-top: 2.5rem; }
   .split { grid-template-columns: minmax(0, 1fr); gap: 2.2rem; }
-  .flow { grid-template-columns: minmax(0, 1fr); gap: 2.4rem; }
-  .flow .step:not(:last-child)::after { top: auto; bottom: -1.75rem; right: auto; left: 50%; transform: translateX(-50%) rotate(135deg); }
+  .flow { --gap: 3rem; grid-template-columns: minmax(0, 1fr); }
+  .flow .step:not(:last-child)::after { top: auto; bottom: calc((var(--gap) + var(--arrow)) / -2); right: auto; left: calc(50% - var(--arrow) / 2); transform: rotate(90deg); }
   .promise { grid-template-columns: 2.2rem minmax(0, 1fr); }
   .promise p { grid-column: 2; }
 }
@@ -307,3 +323,33 @@ footer a { color: var(--muted); }
 /* Diagrams keep a readable size on phones and scroll sideways, like tables. */
 .doc .mermaid { overflow-x: auto; }
 .doc .mermaid svg { min-width: 640px; }
+
+/* Features: each group is a panel; the sandbox's layers are drawn as a stack */
+.features { display: grid; gap: 1.4rem; margin-top: 1.8rem; }
+.feature { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 1.5rem 1.6rem 1.3rem; box-shadow: var(--shadow); }
+.feature > h3 { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.9rem; font-size: 1.3rem; letter-spacing: -0.01em; }
+.feature > h3::before { content: ""; width: 0.55rem; height: 1.3rem; border-radius: 3px; background: linear-gradient(180deg, var(--green-light), var(--green-dark)); }
+.feature > p { color: var(--muted); max-width: 46rem; margin: 0 0 0.6rem; }
+.feature .rows { margin-bottom: 0; border-top: 0; }
+.feature .row:last-child, .feature .rows .row:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
+.stack { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.45rem; counter-reset: layer; }
+.stack li { counter-increment: layer; position: relative; display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 1.2rem; align-items: baseline;
+  margin-left: calc(var(--i) * 1.1rem); padding: 0.8rem 1rem 0.8rem 1.1rem; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--green) calc(55% - var(--i) * 8%), var(--line));
+  background: color-mix(in srgb, var(--green) calc(14% - var(--i) * 2.5%), var(--card)); }
+.stack b { display: flex; align-items: baseline; gap: 0.55rem; color: var(--accent); }
+.stack b::before { content: counter(layer); font-size: 0.75rem; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stack p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+.prose-band ul.checklist { list-style: none; padding: 0; margin: 0.3rem 0 0; max-width: none; }
+.prose-band ul.checklist li { position: relative; padding-left: 2rem; margin: 0.6rem 0; }
+.prose-band ul.checklist li::before { content: ""; position: absolute; left: 0; top: 0.2rem; width: 1.3rem; height: 1.3rem; border-radius: 50%;
+  background: color-mix(in srgb, var(--green) 16%, transparent); }
+.prose-band ul.checklist li::after { content: ""; position: absolute; left: 0.42rem; top: 0.42rem; width: 0.4rem; height: 0.7rem;
+  border: solid var(--accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+@media (max-width: 640px) {
+  .feature { padding: 1.2rem 1.1rem 1rem; }
+  .stack li { grid-template-columns: minmax(0, 1fr); gap: 0.2rem; margin-left: calc(var(--i) * 0.45rem); }
+}
+
+/* Four cards sit two by two instead of three and one left alone */
+@media (min-width: 560px) { .grid:has(> :nth-child(4):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
