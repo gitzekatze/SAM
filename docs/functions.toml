@@ -20,7 +20,7 @@ id = 1
 area = "A"
 promise = "SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything."
 code = ["sam-intake/src/peek.rs", "sam-intake/src/menu.rs", "sam-intake/src/id.rs", "sam-runner/src/ops/overview.rs", "sam-gtk/src/window.rs"]
-tests = ["peeks_name_and_icon_without_extracting", "the_appimage_behind_a_foreign_menu_entry_is_found", "app_ids_stay_unique_when_names_collide", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "the_folder_watcher_ignores_hidden_files_and_unfinished_downloads"]
+tests = ["peeks_name_and_icon_without_extracting", "the_appimage_behind_a_foreign_menu_entry_is_found", "app_ids_stay_unique_when_names_collide", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "the_folder_watcher_ignores_hidden_files_and_unfinished_downloads", "a_reader_gone_wrong_comes_to_nothing", "the_overview_reads_names_inside_a_sandbox", "dropped_pipes_and_icon_bombs_never_reach_gtk"]
 
 [[function]]
 id = 2
@@ -59,7 +59,7 @@ id = 4
 area = "A"
 promise = "SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them."
 code = ["sam-intake/src/metadata.rs", "sam-intake/src/peek.rs", "sam-intake/src/id.rs", "sam-core/src/util.rs"]
-tests = ["the_desktop_file_inside_an_appimage_is_read", "reads_metadata_and_icon", "a_readable_name_is_taken_from_the_file_name", "icon_paths_cannot_climb_out_of_the_app", "neutralizes_markup_and_controls", "markup_in_metadata_is_neutralized"]
+tests = ["the_desktop_file_inside_an_appimage_is_read", "reads_metadata_and_icon", "a_readable_name_is_taken_from_the_file_name", "icon_paths_cannot_climb_out_of_the_app", "neutralizes_markup_and_controls", "markup_in_metadata_is_neutralized", "only_icons_that_are_safe_to_decode_are_taken", "preview_and_unpack_take_the_same_desktop_file"]
 
 [[function]]
 id = 5
@@ -228,7 +228,7 @@ id = 19
 area = "D"
 promise = "Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox."
 code = ["sam-intake/src/desktop.rs", "sam-intake/src/menu.rs", "sam-runner/src/launch.rs", "sam-core/src/paths.rs"]
-tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign"]
+tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign", "blocked_file_types_hold_in_any_case_and_old_names"]
 checks = ["tests/gui/flow-atspi.sh", "tests/gui/taskbar-kwin.sh"]
 
 [[function]]

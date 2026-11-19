@@ -165,7 +165,10 @@ impl Sam {
                 sam_core::i18n::trf("{file} is not a file", &[("file", &path.display())])
             );
         }
-        let md = peek::peek(&path).map(|p| p.metadata).unwrap_or_default();
+        let md = self
+            .peek_file(&path)
+            .map(|p| p.metadata)
+            .unwrap_or_default();
         let file_name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())

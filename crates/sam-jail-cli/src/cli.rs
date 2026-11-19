@@ -511,6 +511,9 @@ pub(crate) enum DevCmd {
         #[arg(long)]
         key: String,
     },
+    /// Reads an AppImage's name and icon into OUT; run by SAM inside a
+    /// sandbox for the overview.
+    Peek { file: PathBuf, out: PathBuf },
     /// Built-in SquashFS reader, run by SAM inside a sandbox during extraction.
     ExtractSquashfs {
         source: PathBuf,

@@ -138,13 +138,17 @@ pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
 /// must not make itself the handler for web links or the file manager, or
 /// receive the user's files by declaring broad types.
 pub fn launcher_mime_types(declared: &[String]) -> Vec<String> {
-    const BLOCKED_PREFIX: &[&str] = &["x-scheme-handler/", "inode/", "x-content/"];
+    // `x-directory/normal` is an old name of `inode/directory`.
+    const BLOCKED_PREFIX: &[&str] = &["x-scheme-handler/", "inode/", "x-content/", "x-directory/"];
     const BLOCKED: &[&str] = &[
         "application/x-desktop",
         "application/x-executable",
+        "application/x-pie-executable",
         "application/x-sharedlib",
         "application/x-shellscript",
         "application/x-sh",
+        "text/x-sh",
+        "text/x-shellscript",
         "application/vnd.appimage",
         "application/x-iso9660-appimage",
         "application/octet-stream",
@@ -152,15 +156,17 @@ pub fn launcher_mime_types(declared: &[String]) -> Vec<String> {
         "text/html",
         "application/xhtml+xml",
     ];
+    // File types are case-insensitive: `X-Scheme-Handler/https` and
+    // `Text/HTML` are the same as the blocked ones (audit I-F10).
     declared
         .iter()
+        .map(|t| t.to_ascii_lowercase())
         .filter(|t| {
             !BLOCKED_PREFIX.iter().any(|p| t.starts_with(p))
                 && !BLOCKED.contains(&t.as_str())
                 && !t.contains('*')
         })
         .take(64)
-        .cloned()
         .collect()
 }
 
@@ -431,6 +437,27 @@ mod tests {
     }
 
     /// SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them.
+    /// The blocked file types hold in any letter case and under their old
+    /// names, so an app cannot claim web links, folders or programs by
+    /// writing `X-Scheme-Handler/https`, `Text/HTML` or
+    /// `x-directory/normal` (audit I-F10).
+    #[test]
+    fn blocked_file_types_hold_in_any_case_and_old_names() {
+        let declared: Vec<String> = [
+            "X-Scheme-Handler/https",
+            "Text/HTML",
+            "x-directory/normal",
+            "INODE/directory",
+            "application/x-pie-executable",
+            "text/x-sh",
+            "Image/PNG",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(launcher_mime_types(&declared), vec!["image/png"]);
+    }
+
     #[test]
     fn launcher_mime_types_drop_hijack_targets() {
         let d: Vec<String> = [

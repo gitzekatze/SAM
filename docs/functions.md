@@ -9,14 +9,14 @@
 >
 > Test results are from the newest version report (2026-11-17 16:10:22).
 
-**40 functions:** 14 proven by passing tests, 25 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 460 tests in all.
+**40 functions:** 12 proven by passing tests, 27 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 466 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
-| 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 5 | ✅ |
+| 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 8 | ✅ 🆕 3 new tests since the report |
 | 2 | [SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image; the old, rare type 1 is unpacked with bsdtar but not tested) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 9 | ✅ |
 | 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 30 | ✅ 🆕 11 new tests since the report |
-| 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 6 | ✅ |
+| 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 8 | ✅ 🆕 2 new tests since the report |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 7 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 16 | ✅ |
 | 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 18 | ✅ 🆕 8 new tests since the report |
@@ -31,7 +31,7 @@
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 18 | ✅ 🆕 9 new tests since the report |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ 🆕 29 new tests since the report |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
-| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 20 | ✅ 🆕 10 new tests since the report |
+| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 21 | ✅ 🆕 11 new tests since the report |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 13 | ✅ 🆕 3 new tests since the report |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 8 | ✅ 🆕 2 new tests since the report |
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 3 | ✅ |
@@ -77,11 +77,14 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`peeks_name_and_icon_without_extracting`](../crates/sam-intake/src/peek.rs#L157) | The name and icon of an AppImage are read without unpacking or running it. | ✅ |
+| [`peeks_name_and_icon_without_extracting`](../crates/sam-intake/src/peek.rs#L260) | The name and icon of an AppImage are read without unpacking or running it. | ✅ |
 | [`the_appimage_behind_a_foreign_menu_entry_is_found`](../crates/sam-intake/src/menu.rs#L295) | The AppImage a foreign menu entry starts is found in its Exec line, also behind env and with quotes. | ✅ |
 | [`app_ids_stay_unique_when_names_collide`](../crates/sam-intake/src/id.rs#L98) | App IDs are stable and unique, also when two AppImages have the same name. | ✅ |
 | [`found_appimages_get_a_menu_entry_only_with_a_sandbox`](../crates/sam-runner/tests/overview.rs#L13) | AppImages are listed before they have a sandbox; only creating the sandbox adds SAM's menu entry and hides unsandboxed ones, and removing it puts them back. | ✅ |
-| [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1872) | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | ✅ |
+| [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1931) | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | ✅ |
+| [`a_reader_gone_wrong_comes_to_nothing`](../crates/sam-intake/tests/preview_sandbox.rs#L50) | A reader gone wrong comes to nothing. | 🆕 new |
+| [`the_overview_reads_names_inside_a_sandbox`](../crates/sam-jail-cli/tests/odd_names.rs#L252) | The overview reads an AppImage's name inside the preview sandbox, not in SAM's own process (audit I-F7): a recording stand-in in front of the real Bubblewrap sees the reader start, and the name still arrives. | 🆕 new |
+| [`dropped_pipes_and_icon_bombs_never_reach_gtk`](../crates/sam-gtk/src/window.rs#L1887) | A named pipe dropped on the window is no AppImage, and checking it does not block the window until something writes to it (audit G-F16). | 🆕 new |
 
 **Code:** [`sam-intake/src/peek.rs`](../crates/sam-intake/src/peek.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-intake/src/id.rs`](../crates/sam-intake/src/id.rs), [`sam-runner/src/ops/overview.rs`](../crates/sam-runner/src/ops/overview.rs), [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs)
 
@@ -110,10 +113,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Test | Promise | Result |
 |---|---|---|
 | [`an_appimages_own_extractor_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L228) | The AppImage's own extractor runs code from the AppImage: here a "runtime" that probes the doors when asked to unpack itself, after SAM's own reader failed on it and the person allowed the fallback. | 🆕 new |
-| [`the_self_unpack_question_names_the_sandbox_and_the_reason`](../crates/sam-intake/src/extract.rs#L862) | The question before the AppImage unpacks itself says what the sandbox holds back, including the kernel limits (audit I-F17: it named only the network and the files), and why SAM could not. | 🆕 new |
+| [`the_self_unpack_question_names_the_sandbox_and_the_reason`](../crates/sam-intake/src/extract.rs#L867) | The question before the AppImage unpacks itself says what the sandbox holds back, including the kernel limits (audit I-F17: it named only the network and the files), and why SAM could not. | 🆕 new |
 | [`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L153) | An unpacking tool cannot open the kernels rarely used doors. | 🆕 new |
-| [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L904) | Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | ✅ |
-| [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L935) | A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | ✅ |
+| [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L909) | Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | ✅ |
+| [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L940) | A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | ✅ |
 | [`unpacking_stops_at_the_time_limit`](../crates/sam-intake/src/normalize.rs#L215) | Unpacking stops with a clear error when it takes longer than the time limit, so a huge or hostile AppImage cannot keep SAM busy forever. | ✅ |
 | [`symlinks_pointing_outside_the_app_are_recognized`](../crates/sam-intake/src/normalize.rs#L229) | A symlink that points outside the unpacked app is recognized. | ✅ |
 | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L242) | Paths from the AppImage image are made relative, and paths that climb out with .. | ✅ |
@@ -124,21 +127,21 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`fractions_follow_the_step_weights`](../crates/sam-runner/src/progress.rs#L152) | The progress bar follows the weights of the steps of creating a sandbox. | ✅ |
 | [`bytes_written_are_counted`](../crates/sam-runner/src/progress.rs#L177) | Unpacking progress counts the bytes written. | ✅ |
 | [`unpacking_stops_exactly_at_its_limits`](../crates/sam-intake/tests/limits.rs#L45) | The file-count and size limits let an app through that reaches them exactly and stop one entry or one byte more; a time limit of zero stops at once. | ✅ |
-| [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L945) | Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | ✅ |
+| [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L950) | Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | ✅ |
 | [`without_consent_the_appimages_own_unpacker_never_runs`](../crates/sam-intake/tests/damaged.rs#L25) | When SAM's own readers cannot unpack an AppImage, its own unpacker (code from the AppImage) runs only after the user agreed: without consent the unpacking stops and asks, and nothing of the AppImage runs. | ✅ |
 | [`a_menu_start_after_free_space_unpacks_inside_a_sandbox`](../crates/sam-jail-cli/tests/unpack.rs#L104) | A menu start after free space unpacks inside a sandbox. | ✅ |
 | [`without_the_command_line_a_menu_start_refuses_to_unpack`](../crates/sam-jail-cli/tests/unpack.rs#L127) | Without the command line a menu start refuses to unpack. | ✅ |
-| [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L503) | Sams programs never unpack without a sandbox. | ✅ |
+| [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L518) | Sams programs never unpack without a sandbox. | ✅ |
 | [`a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder`](../crates/sam-intake/tests/hostile_extractor.rs#L32) | A hostile unpacking tool cannot plant links in sams app folder. | 🆕 new |
 | [`files_sam_writes_never_go_through_a_planted_link`](../crates/sam-core/src/util.rs#L552) | SAM's own files in folders an untrusted program could have touched are written without following links: a planted link is replaced, the file it pointed to stays as it was, and a link in place of a folder becomes a real folder (audit I-F2). | 🆕 new |
-| [`the_icon_is_cached_and_never_written_through_a_link`](../crates/sam-intake/src/metadata.rs#L298) | The app's icon is copied for SAM's menu entry and next to the unpacked app, replacing an older icon of another format, and never written through a link planted in the app's folder (audit I-F2). | 🆕 new |
+| [`the_icon_is_cached_and_never_written_through_a_link`](../crates/sam-intake/src/metadata.rs#L313) | The app's icon is copied for SAM's menu entry and next to the unpacked app, replacing an older icon of another format, and never written through a link planted in the app's folder (audit I-F2). | 🆕 new |
 | [`an_unpacking_limit_inside_the_sandbox_stops_unpacking`](../crates/sam-jail-cli/tests/unpack.rs#L169) ⟲ | Unpacking limits hold inside the unpack sandbox too. | 🆕 new |
 | [`a_named_pipe_is_refused_without_waiting`](../crates/sam-core/src/util.rs#L525) | Reading a file from an untrusted app returns at once for anything that is not a regular file: a named pipe made SAM wait forever (audit I-F9, I-F15). | 🆕 new |
-| [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L504) | An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | 🆕 new |
+| [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L505) | An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | 🆕 new |
 | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1077) | The unpack location can be any folder, for example `~/Documents`. | 🆕 new |
-| [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L475) | A menu start unpacks in a sandbox with the cli next to it. | ✅ |
-| [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L525) | Tests and benchmarks may unpack in their own process. | ✅ |
-| [`two_unpacks_at_once_get_their_own_error_files`](../crates/sam-intake/src/extract.rs#L884) | Error files opened at the same moment in one process are separate files: an unpack running beside another no longer fails with "File exists" (it did on CI when two tests unpacked at once). | 🆕 new |
+| [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L490) | A menu start unpacks in a sandbox with the cli next to it. | ✅ |
+| [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L540) | Tests and benchmarks may unpack in their own process. | ✅ |
+| [`two_unpacks_at_once_get_their_own_error_files`](../crates/sam-intake/src/extract.rs#L889) | Error files opened at the same moment in one process are separate files: an unpack running beside another no longer fails with "File exists" (it did on CI when two tests unpacked at once). | 🆕 new |
 
 **Code:** [`sam-intake/src/extract.rs`](../crates/sam-intake/src/extract.rs), [`sam-intake/src/normalize.rs`](../crates/sam-intake/src/normalize.rs), [`sam-runner/src/progress.rs`](../crates/sam-runner/src/progress.rs)
 
@@ -147,12 +150,14 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`the_desktop_file_inside_an_appimage_is_read`](../crates/sam-intake/src/metadata.rs#L264) | The desktop file inside an AppImage is read with name, translations, categories and file types. | ✅ |
-| [`reads_metadata_and_icon`](../crates/sam-intake/src/metadata.rs#L277) | Name, icon and categories are read from the unpacked app. | ✅ |
+| [`the_desktop_file_inside_an_appimage_is_read`](../crates/sam-intake/src/metadata.rs#L279) | The desktop file inside an AppImage is read with name, translations, categories and file types. | ✅ |
+| [`reads_metadata_and_icon`](../crates/sam-intake/src/metadata.rs#L292) | Name, icon and categories are read from the unpacked app. | ✅ |
 | [`a_readable_name_is_taken_from_the_file_name`](../crates/sam-intake/src/id.rs#L81) | A readable name is taken from an AppImage's file name, without version and architecture. | ✅ |
-| [`icon_paths_cannot_climb_out_of_the_app`](../crates/sam-intake/src/peek.rs#L171) | Icon paths from the AppImage cannot climb out of the unpacked app. | ✅ |
+| [`icon_paths_cannot_climb_out_of_the_app`](../crates/sam-intake/src/peek.rs#L274) | Icon paths from the AppImage cannot climb out of the unpacked app. | ✅ |
 | [`neutralizes_markup_and_controls`](../crates/sam-core/src/util.rs#L785) | Text from an app is shown without markup or control characters, and long text is shortened. | ✅ |
 | [`markup_in_metadata_is_neutralized`](../crates/sam-runner/tests/adversarial.rs#L95) | H3: markup in an AppImage's name or comment is neutralized before it is stored or shown. | ✅ |
+| [`only_icons_that_are_safe_to_decode_are_taken`](../crates/sam-core/src/icon.rs#L85) | Only icons that are safe to decode reach the desktop's image code: a PNG whose header announces more than 1024×1024 pixels (a decode bomb: a small file that asks for gigabytes) is refused before anything decodes it, and so are oversized files, large SVGs and XPM (audit G-F8, I-F18). | 🆕 new |
+| [`preview_and_unpack_take_the_same_desktop_file`](../crates/sam-intake/src/metadata.rs#L253) | The preview and the unpacked app take the same desktop file: the top folder before `usr/share/applications`, each by name, and the first that leads to a file (audit I-F8: the preview gave up at a broken first one, the unpack took the next). | 🆕 new |
 
 **Code:** [`sam-intake/src/metadata.rs`](../crates/sam-intake/src/metadata.rs), [`sam-intake/src/peek.rs`](../crates/sam-intake/src/peek.rs), [`sam-intake/src/id.rs`](../crates/sam-intake/src/id.rs), [`sam-core/src/util.rs`](../crates/sam-core/src/util.rs)
 
@@ -496,10 +501,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`sams_menu_entry_starts_the_app_only_through_sam`](../crates/sam-intake/src/desktop.rs#L411) | SAM's menu entry starts the app through sam-jail-run, never the AppImage directly. | ✅ |
-| [`app_metadata_cannot_add_lines_to_sams_menu_entry`](../crates/sam-intake/src/desktop.rs#L313) | SAM's menu entry starts the app only through SAM's sandbox: no value taken from the app (name, comment, categories, file types, window class) can add a line such as a second "Exec=" to it, even from a record changed outside SAM. | ✅ |
-| [`menu_entry_paths_are_quoted_against_spaces_and_dollar_signs`](../crates/sam-intake/src/desktop.rs#L348) | Program paths in menu entries are quoted so spaces and dollar signs cannot change the command. | ✅ |
-| [`launcher_mime_types_drop_hijack_targets`](../crates/sam-intake/src/desktop.rs#L434) | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | ✅ |
+| [`sams_menu_entry_starts_the_app_only_through_sam`](../crates/sam-intake/src/desktop.rs#L417) | SAM's menu entry starts the app through sam-jail-run, never the AppImage directly. | ✅ |
+| [`app_metadata_cannot_add_lines_to_sams_menu_entry`](../crates/sam-intake/src/desktop.rs#L319) | SAM's menu entry starts the app only through SAM's sandbox: no value taken from the app (name, comment, categories, file types, window class) can add a line such as a second "Exec=" to it, even from a record changed outside SAM. | ✅ |
+| [`menu_entry_paths_are_quoted_against_spaces_and_dollar_signs`](../crates/sam-intake/src/desktop.rs#L354) | Program paths in menu entries are quoted so spaces and dollar signs cannot change the command. | ✅ |
+| [`launcher_mime_types_drop_hijack_targets`](../crates/sam-intake/src/desktop.rs#L461) | Launcher mime types drop hijack targets. | ✅ |
 | [`launcher_drops_hijack_mime_types`](../crates/sam-runner/tests/adversarial.rs#L114) | M1: a launcher never registers URL schemes, directories or executables. | ✅ |
 | [`hide_and_restore_user_entry`](../crates/sam-intake/src/menu.rs#L309) | An unsandboxed menu entry in the user's folder is hidden on request and restored exactly as it was. | ✅ |
 | [`system_entry_gets_override`](../crates/sam-intake/src/menu.rs#L353) | An unsandboxed menu entry in a system folder is hidden through an entry in the user's folder, without touching the system file. | ✅ |
@@ -509,13 +514,14 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`sam_never_runs_a_helper_the_user_can_change`](../crates/sam-jail-cli/tests/trusted_helpers.rs#L61) | Sam never runs a helper the user can change. | 🆕 new |
 | [`only_programs_the_user_cannot_change_may_run`](../crates/sam-core/src/util.rs#L734) | SAM runs only programs the user cannot change: one in a folder the user owns is refused, also behind a link, and a link there that leads to a system program is followed to it (audit L-F12). | 🆕 new |
 | [`as_root_only_what_no_one_else_can_change_may_run`](../crates/sam-core/src/util.rs#L719) | Run as root, SAM takes a program only where root alone can change it: owned by root, not writable for others, and writable for a group only when that group is root's. | 🆕 new |
-| [`menu_entries_name_sams_launcher_by_its_whole_path`](../crates/sam-intake/src/desktop.rs#L362) | A menu entry names SAM's launcher by its whole path, so the desktop never looks it up on a `$PATH` an app may have put a copy into (audit G-F10); an older entry that names it alone is reported, and the window rewrites it at its next start. | 🆕 new |
+| [`menu_entries_name_sams_launcher_by_its_whole_path`](../crates/sam-intake/src/desktop.rs#L368) | A menu entry names SAM's launcher by its whole path, so the desktop never looks it up on a `$PATH` an app may have put a copy into (audit G-F10); an older entry that names it alone is reported, and the window rewrites it at its next start. | 🆕 new |
 | [`an_installed_window_runs_only_the_tool_next_to_it`](../crates/sam-gtk/src/backend.rs#L379) | An installed (release) window runs only the command line tool next to it, never one in a neighbouring `debug` or `release` folder that an app with write access to the home could create (audit G-F10). | 🆕 new |
 | [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L263) | A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | 🆕 new |
 | [`a_folder_name_that_is_not_text_stops_the_start`](../crates/sam-sandbox/src/lib.rs#L2795) | A folder whose name is not valid text (Linux allows any bytes) is never passed on with a replaced character, which would name another folder (audit S-F15): the start is refused with the folder named. | 🆕 new |
 | [`an_appimage_never_covers_sams_own_files`](../crates/sam-core/src/sandbox.rs#L300) | An AppImage file named like one of SAM's own files in the sandbox gets a folder of its own instead of covering SAM's (audit S-F17). | 🆕 new |
 | [`an_appimage_called_bin_starts_and_finds_itself`](../crates/sam-jail-cli/tests/odd_names.rs#L84) | An AppImage file called like one of SAM's own files in the sandbox (`bin`) starts, and finds itself at `$APPIMAGE`. | 🆕 new |
-| [`a_percent_sign_in_sams_path_stays_a_percent_sign`](../crates/sam-intake/src/desktop.rs#L398) | A `%` in SAM's own path is written `%%` in the menu entry, where a single one would start a field code like `%F` (audit G-F17). | 🆕 new |
+| [`a_percent_sign_in_sams_path_stays_a_percent_sign`](../crates/sam-intake/src/desktop.rs#L404) | A `%` in SAM's own path is written `%%` in the menu entry, where a single one would start a field code like `%F` (audit G-F17). | 🆕 new |
+| [`blocked_file_types_hold_in_any_case_and_old_names`](../crates/sam-intake/src/desktop.rs#L444) | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | 🆕 new |
 
 **Code:** [`sam-intake/src/desktop.rs`](../crates/sam-intake/src/desktop.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-core/src/paths.rs`](../crates/sam-core/src/paths.rs)
 
@@ -580,7 +586,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1702) | A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | 🆕 new |
+| [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1710) | A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | 🆕 new |
 | [`the_apps_own_words_never_give_it_a_bus_name`](../crates/sam-runner/src/repair.rs#L904) | What the app prints never gets it a bus name, whatever name it claims it needs (a terminal's name runs host commands; audit D-M6): names come only from the D-Bus filter's record (`own_names`). | 🆕 new |
 | [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L2004) | Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | ✅ |
 | [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L2043) | Bubblewrap setup errors are told apart from errors of the app itself. | ✅ |
@@ -602,7 +608,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not`](../crates/sam-runner/tests/repair_trial.rs#L30) | A repair step is kept when it helps and undone when it does not. | 🆕 new |
 | [`a_repair_step_that_did_not_help_is_undone`](../crates/sam-runner/src/repair.rs#L1065) | A step on trial is kept when the next start works and undone when it fails: exactly what it changed is put back, it is remembered as tried and not offered again; a step from before (not on trial) is never touched (owner decision of 2026-11-18; night run N3). | 🆕 new |
 | [`the_ladder_offers_only_what_can_help_and_says_what_it_costs`](../crates/sam-runner/src/repair.rs#L1178) | Starting without Chromium's own sandbox is offered only where this computer blocks it (audit A1), compatibility mode is Dangerous and says it is a way out (D-H5), and "never offer compatibility mode" keeps it out (U-M9). | 🆕 new |
-| [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1690) | Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | 🆕 new |
+| [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1698) | Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | 🆕 new |
 | [`a_repair_step_says_what_it_changes_and_costs`](../crates/sam-runner/src/repair.rs#L863) | A repair step says in a sentence what it turns on or off, with the switch's own explanation of what that allows. | ✅ |
 | [`ladder_skips_applied_and_noop_steps`](../crates/sam-runner/src/repair.rs#L1031) | The repair ladder leaves out steps already applied and steps that would change nothing. | ✅ |
 | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L1226) | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | ✅ |

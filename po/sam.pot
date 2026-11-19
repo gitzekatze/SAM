@@ -1430,7 +1430,7 @@ msgstr[1] ""
 msgid "This adds:"
 msgstr ""
 
-#: crates/sam-gtk/src/all_perms.rs:1247 crates/sam-gtk/src/all_perms.rs:1283 crates/sam-gtk/src/app_page/data.rs:360 crates/sam-gtk/src/window.rs:1842
+#: crates/sam-gtk/src/all_perms.rs:1247 crates/sam-gtk/src/all_perms.rs:1283 crates/sam-gtk/src/app_page/data.rs:360 crates/sam-gtk/src/window.rs:1854
 msgid "Cancel"
 msgstr ""
 
@@ -3735,117 +3735,117 @@ msgstr ""
 msgid "Runs in its sandbox"
 msgstr ""
 
-#: crates/sam-intake/src/desktop.rs:246
+#: crates/sam-intake/src/desktop.rs:252
 msgid "the menu entry file is missing"
 msgstr ""
 
-#: crates/sam-intake/src/desktop.rs:256
+#: crates/sam-intake/src/desktop.rs:262
 msgid "the menu entry does not start the app through sam-jail-run"
 msgstr ""
 
-#: crates/sam-intake/src/desktop.rs:259
+#: crates/sam-intake/src/desktop.rs:265
 msgid "the menu entry has no Exec line"
 msgstr ""
 
-#: crates/sam-intake/src/desktop.rs:268
+#: crates/sam-intake/src/desktop.rs:274
 #. Keep the {placeholders}; their order may change.
 msgid "runner {runner} does not exist"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:196
+#: crates/sam-intake/src/extract.rs:201
 #. Keep the {placeholders}; their order may change.
 msgid "There is not enough free space to unpack this AppImage: it needs about {needed}, but the folder {folder} has only {free} free. Free some space, or choose another folder for unpacked apps under Preferences → Unpacking → Location."
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:209
+#: crates/sam-intake/src/extract.rs:214
 #. Keep the {placeholders}; their order may change.
 msgid "SAM stopped unpacking this AppImage: {reason}. The limits protect your computer from AppImages built to fill the disk or keep SAM busy. If you trust this AppImage, raise the limit, for example with `sam-jail config set extraction.max_files 400000` (also extraction.max_size_mb and extraction.max_seconds), then create the sandbox again."
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:256 crates/sam-intake/src/extract.rs:292 crates/sam-intake/src/peek.rs:56
+#: crates/sam-intake/src/extract.rs:261 crates/sam-intake/src/extract.rs:297 crates/sam-intake/src/peek.rs:62
 msgid "the app image inside the AppImage was not found"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:288
+#: crates/sam-intake/src/extract.rs:293
 msgid "this AppImage uses a DwarFS image; install the dwarfs tools (dwarfsextract) to unpack it without running it"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:330
+#: crates/sam-intake/src/extract.rs:335
 msgid "the AppImage's SquashFS image is damaged (the reader stopped)"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:394
+#: crates/sam-intake/src/extract.rs:399
 msgid "bsdtar (libarchive) is not installed"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:399
+#: crates/sam-intake/src/extract.rs:404
 #. Keep the {placeholders}; their order may change.
 msgid "{file} is not a recognized AppImage"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:438
+#: crates/sam-intake/src/extract.rs:443
 #. Keep the {placeholders}; their order may change.
 msgid "The disk became full while unpacking this AppImage into {folder}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Unpacking → Location."
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:473
+#: crates/sam-intake/src/extract.rs:478
 #. Keep the {placeholders}; their order may change.
 msgid "all ways of unpacking failed:\n  {attempts}"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:487
+#: crates/sam-intake/src/extract.rs:492
 msgid "the unpacked app is not a plain folder; it was removed"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:549
+#: crates/sam-intake/src/extract.rs:554
 #. Keep the {placeholders}; their order may change.
 msgid "a link at {path} points outside the app"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:557
+#: crates/sam-intake/src/extract.rs:562
 #. Keep the {placeholders}; their order may change.
 msgid "{path} is not a folder"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:577
+#: crates/sam-intake/src/extract.rs:582
 msgid "unpacking limit exceeded: the app is too large"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:603 crates/sam-intake/src/normalize.rs:95
+#: crates/sam-intake/src/extract.rs:608 crates/sam-intake/src/normalize.rs:95
 #. Keep the {placeholders}; their order may change.
 msgid "unpacking limit exceeded: more than {count} files"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:609 crates/sam-intake/src/extract.rs:689 crates/sam-intake/src/normalize.rs:101
+#: crates/sam-intake/src/extract.rs:614 crates/sam-intake/src/extract.rs:694 crates/sam-intake/src/normalize.rs:101
 #. Keep the {placeholders}; their order may change.
 msgid "unpacking limit exceeded: it took longer than {seconds} seconds"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:633
+#: crates/sam-intake/src/extract.rs:638
 msgid "entry without name"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:710
+#: crates/sam-intake/src/extract.rs:715
 msgid "starting the unpacking tool"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:768
+#: crates/sam-intake/src/extract.rs:773
 msgid "Bubblewrap is needed to let the AppImage unpack itself in a sandbox"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:788
+#: crates/sam-intake/src/extract.rs:793
 msgid "copying the AppImage so it can unpack itself"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:792
+#: crates/sam-intake/src/extract.rs:797
 msgid "making the copy executable"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:844
+#: crates/sam-intake/src/extract.rs:849
 msgid "--appimage-extract produced no squashfs-root"
 msgstr ""
 
-#: crates/sam-intake/src/extract.rs:848
+#: crates/sam-intake/src/extract.rs:853
 #. Keep the {placeholders}; their order may change.
 msgid "moving the unpacked app to {folder}"
 msgstr ""
@@ -3892,8 +3892,12 @@ msgstr ""
 msgid "unpacking limit exceeded: more than {size} unpacked"
 msgstr ""
 
-#: crates/sam-intake/src/peek.rs:37
+#: crates/sam-intake/src/peek.rs:43
 msgid "the AppImage's SquashFS image is damaged, so SAM cannot read its name and icon"
+msgstr ""
+
+#: crates/sam-intake/src/peek.rs:196
+msgid "SAM could not read the AppImage's name and icon"
 msgstr ""
 
 #: crates/sam-intake/src/testkit.rs:95
@@ -4241,40 +4245,40 @@ msgid_plural "Removed the data of {n} apps: {size}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/sam-jail-cli/src/main.rs:1543
+#: crates/sam-jail-cli/src/main.rs:1551
 #. Keep the {placeholders}; their order may change.
 msgid "Update information written to {file}."
 msgstr ""
 
-#: crates/sam-jail-cli/src/main.rs:1561
+#: crates/sam-jail-cli/src/main.rs:1569
 msgid "no file name"
 msgstr ""
 
-#: crates/sam-jail-cli/src/main.rs:1575 crates/sam-jail-cli/src/main.rs:1625
+#: crates/sam-jail-cli/src/main.rs:1583 crates/sam-jail-cli/src/main.rs:1633
 #. Keep the {placeholders}; their order may change.
 msgid "Wrote {path}"
 msgstr ""
 
-#: crates/sam-jail-cli/src/main.rs:1589
+#: crates/sam-jail-cli/src/main.rs:1597
 #. Keep the {placeholders}; their order may change.
 msgid "the signature in {file} does not check out: {detail}"
 msgstr ""
 
-#: crates/sam-jail-cli/src/main.rs:1598
+#: crates/sam-jail-cli/src/main.rs:1606
 #. Keep the {placeholders}; their order may change.
 msgid "Signed {path} with {key}"
 msgstr ""
 
-#: crates/sam-jail-cli/src/main.rs:1646
+#: crates/sam-jail-cli/src/main.rs:1654
 #. Keep the {placeholders}; their order may change.
 msgid "This change adds {items}. Look at it, then repeat it with --yes, or make it in SAM's window, which asks."
 msgstr ""
 
-#: crates/sam-jail-cli/src/main.rs:1660
+#: crates/sam-jail-cli/src/main.rs:1668
 msgid "Compatibility mode gives the app the network, all of /usr, X11, the GPU, sound and the whole session bus. Through the whole session bus it can ask desktop services to run programs outside its sandbox, so this is a way out. Turn it on only for apps you trust: add --yes."
 msgstr ""
 
-#: crates/sam-jail-cli/src/main.rs:1674
+#: crates/sam-jail-cli/src/main.rs:1682
 #. Keep the {placeholders}; their order may change.
 msgid "\"{title}\" comes from what the app printed, which the app controls: {explanation} Look at it, then apply it with --yes, or in SAM's window."
 msgstr ""
@@ -5094,7 +5098,7 @@ msgstr ""
 msgid "\"This computer only\" needs pasta (package \"passt\"), which is not installed"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:11 crates/sam-runner/src/ops/overview.rs:288 crates/sam-runner/src/ops/profiles.rs:160
+#: crates/sam-runner/src/ops/add.rs:11 crates/sam-runner/src/ops/overview.rs:300 crates/sam-runner/src/ops/profiles.rs:160
 #. Keep the {placeholders}; their order may change.
 msgid "{file} does not exist"
 msgstr ""
@@ -5129,41 +5133,41 @@ msgstr ""
 msgid "{file} is incomplete: it has {have} of the {need} its contents need, so the download probably broke off. Download it again."
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:260
+#: crates/sam-runner/src/ops/add.rs:261
 msgid "Unusual files in the AppImage"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:263
+#: crates/sam-runner/src/ops/add.rs:264
 #. Keep the {placeholders}; their order may change.
 msgid "{n} item was made safe while unpacking: {items}"
 msgid_plural "{n} items were made safe while unpacking: {items}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/sam-runner/src/ops/add.rs:280
+#: crates/sam-runner/src/ops/add.rs:281
 msgid "The AppImage unpacked itself"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:280
+#: crates/sam-runner/src/ops/add.rs:281
 msgid "The AppImage unpacked itself inside a restricted sandbox."
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:319 crates/sam-runner/src/ops/add.rs:373
+#: crates/sam-runner/src/ops/add.rs:320 crates/sam-runner/src/ops/add.rs:374
 msgid "the AppImage has not been unpacked yet; unpack it with Unpack Again (sam-jail reextract APP)"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:384
+#: crates/sam-runner/src/ops/add.rs:385
 msgid "Looking for the app's programs and libraries"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:391
+#: crates/sam-runner/src/ops/add.rs:392
 #. Keep the {placeholders}; their order may change.
 msgid "{done} of {n} program file read"
 msgid_plural "{done} of {n} program files read"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/sam-runner/src/ops/add.rs:402
+#: crates/sam-runner/src/ops/add.rs:403
 #. Keep the {placeholders}; their order may change.
 msgid "dependency detection failed: {error}"
 msgstr ""
@@ -5367,20 +5371,20 @@ msgstr ""
 msgid "Signature does not match"
 msgstr ""
 
-#: crates/sam-runner/src/ops/overview.rs:329
+#: crates/sam-runner/src/ops/overview.rs:344
 #. Keep the {placeholders}; their order may change.
 msgid "could not hide the menu entry {file}: {error}"
 msgstr ""
 
-#: crates/sam-runner/src/ops/overview.rs:452
+#: crates/sam-runner/src/ops/overview.rs:467
 msgid "Bubblewrap cannot run on this computer"
 msgstr ""
 
-#: crates/sam-runner/src/ops/overview.rs:454
+#: crates/sam-runner/src/ops/overview.rs:469
 msgid "SAM's command line (sam-jail) is not next to this program"
 msgstr ""
 
-#: crates/sam-runner/src/ops/overview.rs:458
+#: crates/sam-runner/src/ops/overview.rs:473
 #. Keep the {placeholders}; their order may change.
 msgid "SAM unpacks AppImages only inside a sandbox, and none can be built here: {reason}. Diagnostics (sam-jail doctor) says what is missing."
 msgstr ""
@@ -5403,17 +5407,17 @@ msgstr ""
 msgid "sandbox check failed: {list}"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:276
+#: crates/sam-runner/src/ops/profiles.rs:279
 #. Keep the {placeholders}; their order may change.
 msgid "{key} is not a list"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:330
+#: crates/sam-runner/src/ops/profiles.rs:333
 #. Keep the {placeholders}; their order may change.
 msgid "the repair step '{step_id}' is not applied"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:357
+#: crates/sam-runner/src/ops/profiles.rs:360
 #. Keep the {placeholders}; their order may change.
 msgid "no repair steps to undo for {app}"
 msgstr ""

@@ -1797,20 +1797,32 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
 
 /// True for an AppImage: an ELF program carrying the AppImage marker
 /// ("AI" and type 1 or 2 at offset 8), whatever its file name.
+/// Whether `p` is an AppImage, by its first bytes. Only a regular file is
+/// opened, without waiting: a dropped named pipe would otherwise block the
+/// window until something writes to it (audit G-F16).
 pub fn is_appimage(p: &std::path::Path) -> bool {
-    use std::io::Read;
-    let mut head = [0u8; 11];
-    std::fs::File::open(p)
-        .and_then(|mut f| f.read_exact(&mut head))
-        .is_ok()
+    let head = sam_core::util::read_regular(p, 11).unwrap_or_default();
+    head.len() == 11
         && head[..4] == *b"\x7fELF"
         && head[8..10] == *b"AI"
         && (head[10] == 1 || head[10] == 2)
 }
 
+/// Whether the icon file at `path` passes SAM's check before GTK decodes
+/// it: icons cached by older versions of SAM were never checked (audit
+/// G-F8).
+pub fn icon_may_be_shown(path: &str) -> bool {
+    !path.is_empty()
+        && sam_core::util::read_regular(
+            std::path::Path::new(path),
+            sam_core::icon::MAX_ICON_BYTES as u64 + 1,
+        )
+        .is_ok_and(|data| sam_core::icon::safe_icon(&data).is_some())
+}
+
 /// An app icon from SAM's icon cache, or a generic one.
 pub fn app_icon(path: &str, size: i32) -> gtk::Image {
-    let img = if !path.is_empty() && std::path::Path::new(path).is_file() {
+    let img = if icon_may_be_shown(path) {
         gtk::Image::from_file(path)
     } else {
         gtk::Image::from_icon_name("application-x-executable")
@@ -1868,6 +1880,53 @@ fn watched_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// A named pipe dropped on the window is no AppImage, and checking it
+    /// does not block the window until something writes to it (audit
+    /// G-F16). An icon whose header announces a huge picture is not handed
+    /// to GTK (G-F8).
+    #[test]
+    fn dropped_pipes_and_icon_bombs_never_reach_gtk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fifo = tmp.path().join("pipe");
+        let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        // SAFETY: `c` is a valid path; mkfifo only reads it.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let f = fifo.clone();
+        std::thread::spawn(move || tx.send(super::is_appimage(&f)).ok());
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(5)),
+            Ok(false),
+            "the check blocked on a named pipe"
+        );
+        let bomb = tmp.path().join("bomb.png");
+        let mut d = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        d.extend([0, 0, 255, 255, 0, 0, 255, 255, 8, 6, 0, 0, 0]);
+        std::fs::write(&bomb, &d).unwrap();
+        assert!(!super::icon_may_be_shown(bomb.to_str().unwrap()));
+        let ok = tmp.path().join("ok.svg");
+        std::fs::write(&ok, "<svg xmlns='http://www.w3.org/2000/svg'/>").unwrap();
+        assert!(super::icon_may_be_shown(ok.to_str().unwrap()));
+        assert!(!super::icon_may_be_shown(fifo.to_str().unwrap()));
+        // An icon file larger than allowed is not read in part and shown.
+        let mut big = d.clone();
+        big.truncate(16);
+        big.extend([0, 0, 0, 16, 0, 0, 0, 16, 8, 6, 0, 0, 0]);
+        let at_limit = tmp.path().join("limit.png");
+        let mut exact = big.clone();
+        exact.resize(sam_core::icon::MAX_ICON_BYTES, 0);
+        std::fs::write(&at_limit, &exact).unwrap();
+        assert!(super::icon_may_be_shown(at_limit.to_str().unwrap()));
+        let over = tmp.path().join("over.png");
+        big.resize(sam_core::icon::MAX_ICON_BYTES + 1, 0);
+        std::fs::write(&over, &big).unwrap();
+        assert!(!super::icon_may_be_shown(over.to_str().unwrap()));
+        // A real AppImage's first bytes are recognized.
+        let app = tmp.path().join("app");
+        std::fs::write(&app, b"\x7fELF\x02\x01\x01\0AI\x02rest").unwrap();
+        assert!(super::is_appimage(&app));
+    }
+
     /// The folder watcher reacts to AppImages and ignores hidden files and downloads in progress.
     #[test]
     fn the_folder_watcher_ignores_hidden_files_and_unfinished_downloads() {

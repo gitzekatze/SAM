@@ -204,7 +204,8 @@ impl Sam {
             // app links (GPU, audio, X11, …). Keep every change the user made
             // and take the full recommendation for everything else.
             let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-            let md = peek::peek(&canonical)
+            let md = self
+                .peek_file(&canonical)
                 .map(|p| p.metadata)
                 .unwrap_or_default();
             let file_name = canonical

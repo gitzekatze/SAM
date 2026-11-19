@@ -1479,6 +1479,14 @@ fn real_main(cli: Cli) -> Result<()> {
             });
         }
         Cmd::Dev {
+            cmd: DevCmd::Peek { file, out: dir },
+        } => {
+            // Runs inside the preview sandbox; the parent reads `dir`.
+            if sam_intake::peek::peek_entry(&file, &dir).is_err() {
+                std::process::exit(1);
+            }
+        }
+        Cmd::Dev {
             cmd:
                 DevCmd::ExtractSquashfs {
                     source,
