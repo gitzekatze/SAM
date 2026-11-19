@@ -115,6 +115,22 @@ if on:
         time.sleep(2)
         restored = perms()
         check("Undo restores every app", all(restored[k]["permissions"] == before[k]["permissions"] for k in before))
+# Turning on a permission rated Think twice for several apps asks first,
+# as it does for one app (audit G-F2); Cancel changes nothing.
+cam = [n for n in nodes(app) if (n.get_name() or "").startswith("Webcam for") and role_is(n, "switch")]
+check("big switch for the webcam", bool(cam), [(n.get_name(), n.get_role_name()) for n in nodes(app) if (n.get_name() or "").startswith("Webcam")])
+if cam:
+    before_cam = perms()
+    press(cam[0])
+    allow = wait(lambda: by_name(app, lambda s: s == "Allow", "button"))
+    asks = by_name(app, lambda s: s.startswith("Allow This for "))
+    names = by_name(app, lambda s: "This adds:" in s and "Webcam" in s)
+    check("the webcam for several apps asks first and names it", allow is not None and asks is not None and names is not None)
+    cancel = by_name(app, lambda s: s == "Cancel", "button")
+    if cancel:
+        press(cancel)
+    time.sleep(2)
+    check("Cancel gives no app the webcam", all(perms()[k]["permissions"] == before_cam[k]["permissions"] for k in before_cam))
 # Tag filter: click the first tag filter button and check the list shrinks or stays.
 f = by_name(app, lambda s: s.startswith("Filter: click to show only"), "button")
 check("tag filter buttons have names", f is not None)

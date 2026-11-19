@@ -218,8 +218,7 @@ Electron app, Qt app, GTK app):
 ## 4. Kernel features
 
 - [ ] Logs show `landlock: true` (`sam-jail logs <id>`).
-- [ ] With `sam-jail config set security.experimental_seccomp true` and
-      `sam-jail set <id> advanced.seccomp_strict true`, a non-Electron app
+- [ ] With `sam-jail set <id> advanced.seccomp_strict true`, a non-Electron app
       still starts.
 
 ## 5. Desktop integration

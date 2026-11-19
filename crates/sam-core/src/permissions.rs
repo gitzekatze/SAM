@@ -994,7 +994,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("network.mode", "Network", "Network access",
             "'Full network' shares your internet connection with the app. 'This computer only' blocks the internet and the local network, but keeps the services on this computer that you list reachable (for example a local AI model), and the app's own web page opens in your browser. 'No network' gives the app no connection at all.", High),
         perm!("network.host_ports", "Network", "Local services the app may reach",
-            "With 'This computer only': ports on this computer the app may connect to, for example 11434 for Ollama or 1234 for LM Studio. Nothing else on your computer is reachable.", Medium),
+            "With 'This computer only': ports on this computer the app may connect to, for example 11434 for Ollama or 1234 for LM Studio. Nothing else on your computer is reachable.", High),
         perm!("network.app_ports", "Network", "The app's own ports",
             "With 'This computer only': ports of the app (for example its web page) reachable from this computer. When empty, SAM detects them, except privileged ports and well-known local services.", Low, advanced),
         perm!("devices.gpu", "Devices", "GPU acceleration",
@@ -1066,7 +1066,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("advanced.seccomp_baseline", "Advanced", "Baseline syscall filter",
             "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Turn off only if an app fails because of it.", Low, advanced),
         perm!("advanced.allow_userns", "Advanced", "Nested namespaces",
-            "Lets Chromium/Electron apps start their own internal sandbox.", Low, advanced),
+            "Lets Chromium/Electron apps start their own internal sandbox.", Medium, advanced),
         perm!("advanced.host_themes", "Advanced", "Host theme settings",
             "Read-only access to GTK/Qt/KDE theme configuration so apps match your desktop.", Low, advanced),
         perm!("advanced.writable_appdir", "Advanced", "Writable app folder",
@@ -1074,7 +1074,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("advanced.system_libraries", "Advanced", "System copies of libraries",
             "Replaces these bundled libraries with your system's copies, read-only. For apps that bundle a library too old for your system.", Low, advanced),
         perm!("advanced.extra_bwrap_args", "Advanced", "Raw Bubblewrap arguments",
-            "Arguments passed verbatim to Bubblewrap. Can weaken the sandbox.", High, advanced),
+            "Arguments passed verbatim to Bubblewrap. Can weaken the sandbox.", Dangerous, advanced),
     ]
 }
 

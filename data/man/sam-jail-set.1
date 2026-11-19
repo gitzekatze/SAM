@@ -1,13 +1,16 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-set 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-set 1 2026-11-19 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-set \- Set one permission, e.g. `sam\-jail set krita network.mode none`
 .SH SYNOPSIS
-\fBsam\-jail set\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> <\fIKEY\fR> <\fIVALUE\fR> 
+\fBsam\-jail set\fR [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> <\fIKEY\fR> <\fIVALUE\fR> 
 .SH DESCRIPTION
 Set one permission, e.g. `sam\-jail set krita network.mode none`
 .SH OPTIONS
+.TP
+\fB\-\-yes\fR
+Confirm a change that adds something rated Think twice or Dangerous (it is refused without, and says what)
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

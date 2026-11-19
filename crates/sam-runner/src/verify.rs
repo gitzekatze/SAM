@@ -556,7 +556,7 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
         .landlock
         .unwrap_or(cfg.security.experimental_landlock)
         && host.landlock_abi.is_some();
-    let strict = p.advanced.seccomp_strict && cfg.security.experimental_seccomp;
+    let strict = p.advanced.seccomp_strict;
     let filter = (cfg.security.baseline_seccomp && p.advanced.seccomp_baseline) || strict;
     v.push(c(
         "landlock",
@@ -1076,11 +1076,9 @@ mod tests {
         q.advanced.seccomp_strict = true;
         c.security.experimental_seccomp = false;
         assert!(
-            !layers(&q, &c, &h).1,
-            "strict filter needs the experimental switch"
+            layers(&q, &c, &h).1,
+            "the app's strict filter switch works on its own (audit D-M13)"
         );
-        c.security.experimental_seccomp = true;
-        assert!(layers(&q, &c, &h).1, "strict filter");
     }
 
     /// What the check expects of each desktop service that exists on the

@@ -110,7 +110,15 @@ fn group_list_set_and_restore_round_trip() {
         None,
     );
     assert_eq!(dry["applied"], false);
-    let set = e.json(&["group", "set", "devices.webcam", "true", &a, &b], None);
+    // The webcam is rated Think twice: refused without --yes (audit G-F2).
+    assert!(!e
+        .run(&["group", "set", "devices.webcam", "true", &a, &b], None)
+        .status
+        .success());
+    let set = e.json(
+        &["group", "set", "devices.webcam", "true", &a, &b, "--yes"],
+        None,
+    );
     assert_eq!(set["applied"], true);
     let previous = set["previous"].clone();
     assert_eq!(previous.as_object().unwrap().len(), 2);
@@ -128,6 +136,18 @@ fn group_list_set_and_restore_round_trip() {
         .unwrap()
         .iter()
         .all(|x| x["permissions"]["devices"]["webcam"] == false));
+    // The refusal names what the change adds, each item once even when
+    // several apps get it, and with the combination it makes.
+    let refused = e.run(&["group", "set", "devices.webcam", "true", &a, &b], None);
+    let err = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(err.matches("Webcam").count(), 1, "{err}");
+    assert!(err.contains("--yes"), "{err}");
+    e.json(&["set", &a, "filesystem.ssh", "true", "--yes"], None);
+    let refused = e.run(&["group", "set", "network.mode", "full", &a, &b], None);
+    let err = String::from_utf8_lossy(&refused.stderr);
+    assert!(!refused.status.success());
+    assert!(err.contains("Full network"), "{err}");
+    assert!(err.contains("Can send what it reads"), "{err}");
 }
 
 /// A group change with an invalid value, an unknown key or no app is refused, and no app changes.

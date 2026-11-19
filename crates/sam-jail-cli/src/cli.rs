@@ -244,6 +244,10 @@ pub(crate) enum Cmd {
         app: String,
         key: String,
         value: String,
+        /// Confirm a change that adds something rated Think twice or
+        /// Dangerous (it is refused without, and says what).
+        #[arg(long)]
+        yes: bool,
     },
     /// Read permissions (all, or one key).
     Get { app: String, key: Option<String> },
@@ -362,6 +366,10 @@ pub(crate) enum GroupCmd {
         /// Only report what each app would lose; change nothing.
         #[arg(long)]
         dry_run: bool,
+        /// Confirm a change that adds something rated Think twice or
+        /// Dangerous to any of the apps.
+        #[arg(long)]
+        yes: bool,
     },
     /// Put back the settings that `group set` printed as "previous"
     /// (JSON on stdin).
@@ -417,6 +425,10 @@ pub(crate) enum ProfileCmd {
     /// Replace permissions from JSON (a PermissionSet) on stdin.
     Set {
         app: String,
+        /// Confirm a change that adds something rated Think twice or
+        /// Dangerous.
+        #[arg(long)]
+        yes: bool,
     },
     /// Reset to the recommended profile.
     Reset {

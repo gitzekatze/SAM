@@ -196,7 +196,25 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
             value,
             apps,
             dry_run,
+            yes,
         } => {
+            if !dry_run {
+                // What the change adds to any of the apps, asked before
+                // anything is changed.
+                let preview = app.group_change(&key, &value, &apps, true)?;
+                let mut added: Vec<sam_core::risk::RiskItem> = Vec::new();
+                for a in preview.apps.iter().filter(|a| a.changed) {
+                    let e = app.resolve(&a.id)?;
+                    let mut new = e.profile.permissions.clone();
+                    new.set_key(&key, &value)?;
+                    for i in sam_core::risk::new_risks(&e.profile.permissions, &new) {
+                        if !added.iter().any(|x| x.title == i.title) {
+                            added.push(i);
+                        }
+                    }
+                }
+                crate::confirm_risks(&added, yes)?;
+            }
             let r = app.group_change(&key, &value, &apps, dry_run)?;
             out.emit(&r, || {
                 for a in &r.apps {

@@ -590,16 +590,31 @@ consent, and also runs in a sandbox.
 
 ## Risk levels
 
-| Level | Permissions |
-|---|---|
-| **Low** | fonts, icons, locales, time zone (read-only), Wayland, filtered D-Bus |
-| **Medium** | GPU, audio, folder access, all of `/usr` |
-| **High** | network, X11, whole home read-only, full session D-Bus, webcam, SSH agent |
-| **Dangerous** | whole home read/write, system D-Bus, raw devices (input, USB, ALSA), exposed keys |
+| Level | Words | Permissions |
+|---|---|---|
+| **Low** | Harmless | fonts, icons, locales, time zone (read-only), Wayland, filtered D-Bus, "This computer only", the app's own ports |
+| **Medium** | Harmless | GPU, sound, folder access, all of `/usr`, nested namespaces, names the app may own, passed-through variables |
+| **High** | Think twice | network, X11, whole home read-only, webcam, SSH agent, keyring, direct PipeWire, raw sound devices (ALSA), local services the app may reach, a passed-through variable that holds a secret, the syscall filter or Landlock switched off, single functions of a service |
+| **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, sound without SAM's relay, a function of a service that can act outside the sandbox, and the network together with your home, keys or passwords (it can send what it reads) |
 
 An app's risk is the level of its riskiest permission. SAM shows the level
 with the permission that sets it, for example *High risk · Network +1*. The
-*Overview* group lists every permission above *Low*.
+*Overview* group lists every permission above *Low*. The window shows each
+switch with the same word the assessment uses (a test compares them,
+`every_switch_has_one_risk_word`).
+
+**One rule for asking.** A change that adds anything rated *Think twice* or
+*Dangerous* asks first, wherever it is made: a switch in the window, the
+Permission Manager for several apps at once, a preset, or the command line
+(`sam-jail set`, `profile set`, `group set` refuse it without `--yes`). The
+rule is worked out from the settings themselves, so it holds even when the
+window's list of permissions fails to load.
+
+**Settings nobody has confirmed** do not start. SAM's recommendation is
+partly chosen from what the app says about itself (its name and
+description decide its category, and with that for example the network),
+so an app added on the command line without `--accept` starts only after
+`sam-jail review APP` or confirming its settings in the window.
 
 For scripts, the JSON output still has a weighted score (`risk.score`, at
 most 100). The window does not show it, because a number next to the level

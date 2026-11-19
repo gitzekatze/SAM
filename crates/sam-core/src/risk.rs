@@ -110,6 +110,47 @@ fn item(items: &mut Vec<RiskItem>, key: &str, title: &str, level: RiskLevel) {
     });
 }
 
+/// What `after` adds that is rated Think twice or Dangerous and `before`
+/// did not have (at that level): the one rule for when a change asks first,
+/// in the window, the Permission Manager, the command line and presets
+/// (audit G-F2, G-F11, D-M9: each decided differently, and the window did
+/// not ask at all when its permission list failed to load).
+pub fn new_risks(before: &PermissionSet, after: &PermissionSet) -> Vec<RiskItem> {
+    let had = assess(before).items;
+    assess(after)
+        .items
+        .into_iter()
+        .filter(|i| {
+            i.level >= RiskLevel::High
+                && !had
+                    .iter()
+                    .any(|b| b.key == i.key && b.title == i.title && b.level >= i.level)
+        })
+        .collect()
+}
+
+/// Whether a passed-through variable usually holds a secret or a way in
+/// (a token, a key, a password, an agent or bus address).
+fn secret_variable(name: &str) -> bool {
+    let n = name.to_ascii_uppercase();
+    [
+        "TOKEN",
+        "KEY",
+        "SECRET",
+        "PASS",
+        "AUTH",
+        "CREDENTIAL",
+        "COOKIE",
+        "SESSION",
+        "SSH_",
+        "GPG",
+        "DBUS",
+        "XAUTHORITY",
+    ]
+    .iter()
+    .any(|w| n.contains(w))
+}
+
 /// Score a permission set.
 pub fn assess(p: &PermissionSet) -> RiskAssessment {
     let mut items = Vec::new();
@@ -288,7 +329,7 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             &mut items,
             "audio.alsa_raw",
             "Raw ALSA devices",
-            RiskLevel::Dangerous,
+            RiskLevel::High,
         );
     }
     if p.display.wayland {
@@ -407,7 +448,7 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             let level = if crate::permissions::dangerous_bus_name(name).is_some() {
                 RiskLevel::Dangerous
             } else {
-                RiskLevel::Low
+                RiskLevel::Medium
             };
             item(
                 &mut items,
@@ -454,12 +495,82 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             RiskLevel::Medium,
         );
     }
+    // Raw arguments can undo any part of the sandbox (`--bind / /`,
+    // `--share-net`): audit D-M9.
     if !p.advanced.extra_bwrap_args.is_empty() {
         item(
             &mut items,
             "advanced.extra_bwrap_args",
             "Raw Bubblewrap arguments",
+            RiskLevel::Dangerous,
+        );
+    }
+    // Settings that take a protection away count too (audit D-H4, U-M10:
+    // an app with the syscall filter off still read "Harmless").
+    if !p.advanced.seccomp_baseline {
+        item(
+            &mut items,
+            "advanced.seccomp_baseline",
+            "Syscall filter off",
             RiskLevel::High,
+        );
+    }
+    if p.advanced.landlock == Some(false) {
+        item(
+            &mut items,
+            "advanced.landlock",
+            "Landlock off",
+            RiskLevel::High,
+        );
+    }
+    if p.advanced.allow_userns {
+        item(
+            &mut items,
+            "advanced.allow_userns",
+            "Nested namespaces (more of the kernel within reach)",
+            RiskLevel::Medium,
+        );
+    }
+    for v in &p.environment.passthrough {
+        let level = if secret_variable(v) {
+            RiskLevel::High
+        } else {
+            RiskLevel::Medium
+        };
+        item(
+            &mut items,
+            "environment.passthrough",
+            &format!("Passes on {v}"),
+            level,
+        );
+    }
+    for port in &p.network.host_ports {
+        item(
+            &mut items,
+            "network.host_ports",
+            &format!("Reaches port {port} on this computer"),
+            RiskLevel::High,
+        );
+    }
+    for port in &p.network.app_ports {
+        item(
+            &mut items,
+            "network.app_ports",
+            &format!("Its port {port}, open to this computer"),
+            RiskLevel::Low,
+        );
+    }
+    // Together worse than apart: what the app can read, it can send with
+    // the network (audit U-M10: full home and full network read the same as
+    // the network alone).
+    let reads_secrets =
+        fs.home || fs.ssh || fs.gnupg || p.sockets.ssh_agent || p.integrations.keyring;
+    if p.network.mode == NetworkMode::Full && reads_secrets {
+        item(
+            &mut items,
+            "combination.read_and_send",
+            "Can send what it reads: your home, keys or passwords, with the network",
+            RiskLevel::Dangerous,
         );
     }
 
@@ -582,8 +693,44 @@ fn path_risk(path: &str, write: bool) -> RiskLevel {
 mod tests {
     use super::*;
 
-    /// SAM's strictest window profile counts as low risk.
-    /// The command line and the window name risk with the same three words,
+    /// Every switch says the same risk word in the window (its catalogue
+    /// entry) as in the risk assessment that decides the badges and which
+    /// changes ask first (audit D-M12: raw ALSA was "Think twice" in one and
+    /// "Dangerous" in the other, so the window did not ask).
+    #[test]
+    fn every_switch_has_one_risk_word() {
+        use crate::permissions::{permission_catalog, PermissionSet};
+        let mut differ = Vec::new();
+        for i in permission_catalog() {
+            let mut p = PermissionSet::strict_gui();
+            p.dbus.session.mode = DbusMode::Filtered;
+            let had: Vec<String> = assess(&p)
+                .items
+                .iter()
+                .filter(|x| x.key == i.key)
+                .map(|x| x.title.clone())
+                .collect();
+            if p.set_key(i.key, "true").is_err() {
+                continue;
+            }
+            let got = assess(&p)
+                .items
+                .into_iter()
+                .filter(|x| x.key == i.key && !had.contains(&x.title))
+                .map(|x| x.level)
+                .max();
+            if let Some(level) = got {
+                if level != i.risk {
+                    differ.push(format!(
+                        "{}: window {:?}, assessment {level:?}",
+                        i.key, i.risk
+                    ));
+                }
+            }
+        }
+        assert!(differ.is_empty(), "{differ:#?}");
+    }
+
     /// Single functions and signals of a service count in the risk word: a
     /// function of a service that can act outside the sandbox is
     /// Dangerous, any other function Think twice, a signal Harmless
@@ -612,6 +759,7 @@ mod tests {
         assert!(assess(&p).level <= RiskLevel::Medium.max(base));
     }
 
+    /// The command line and the window name risk with the same three words,
     /// and the command line's filter understands both names.
     #[test]
     fn risk_has_the_same_three_words_everywhere() {
@@ -621,6 +769,141 @@ mod tests {
         assert_eq!(RiskLevel::Dangerous.words(), "Dangerous");
         assert!(RiskLevel::High.is_named("think twice") && RiskLevel::High.is_named("high"));
         assert!(RiskLevel::Medium.is_named("harmless") && !RiskLevel::High.is_named("harmless"));
+    }
+
+    /// The one ask rule: a change asks when it adds something rated Think
+    /// twice or Dangerous that was not there, or raises it; taking a risk
+    /// away, keeping it, or adding something harmless does not ask
+    /// (audit G-F2).
+    #[test]
+    fn only_new_or_higher_serious_risks_ask() {
+        let mut before = PermissionSet::strict_gui();
+        before.dbus.session.mode = DbusMode::Filtered;
+        assert!(
+            new_risks(&before, &before).is_empty(),
+            "no change asks nothing"
+        );
+        let mut after = before.clone();
+        after.devices.webcam = true;
+        let added = new_risks(&before, &after);
+        assert_eq!(added.len(), 1, "{added:#?}");
+        assert_eq!(added[0].level, RiskLevel::High);
+        assert!(
+            new_risks(&after, &before).is_empty(),
+            "taking it away does not ask"
+        );
+        assert!(
+            new_risks(&after, &after).is_empty(),
+            "keeping it does not ask"
+        );
+        let mut gpu = before.clone();
+        gpu.devices.gpu = true;
+        assert!(
+            new_risks(&before, &gpu).is_empty(),
+            "a harmless change does not ask"
+        );
+        // Raising the same switch asks again: read-only home to writable.
+        let mut ro = before.clone();
+        ro.filesystem.home = true;
+        ro.filesystem.home_access = Access::Ro;
+        let mut rw = ro.clone();
+        rw.filesystem.home_access = Access::Rw;
+        assert!(new_risks(&ro, &rw)
+            .iter()
+            .any(|i| i.level == RiskLevel::Dangerous));
+        // A new item of a switch that already had one asks too: a second
+        // secret passed through is a new secret.
+        let mut one = before.clone();
+        one.environment.passthrough = vec!["GITHUB_TOKEN".into()];
+        let mut two = one.clone();
+        two.environment
+            .passthrough
+            .push("AWS_SECRET_ACCESS_KEY".into());
+        let added = new_risks(&one, &two);
+        assert_eq!(added.len(), 1, "{added:#?}");
+        assert!(added[0].title.contains("AWS_SECRET_ACCESS_KEY"));
+    }
+
+    /// Settings that take a protection away count in the risk word, and a
+    /// secret passed through counts more than an ordinary variable (audit
+    /// D-H4).
+    #[test]
+    fn switching_a_protection_off_counts() {
+        let mut base = PermissionSet::strict_gui();
+        base.dbus.session.mode = DbusMode::Filtered;
+        let level_of = |p: &PermissionSet, key: &str| {
+            assess(p)
+                .items
+                .into_iter()
+                .filter(|i| i.key == key)
+                .map(|i| i.level)
+                .max()
+        };
+        let mut p = base.clone();
+        p.advanced.seccomp_baseline = false;
+        assert_eq!(
+            level_of(&p, "advanced.seccomp_baseline"),
+            Some(RiskLevel::High)
+        );
+        let mut p = base.clone();
+        p.advanced.landlock = Some(false);
+        assert_eq!(level_of(&p, "advanced.landlock"), Some(RiskLevel::High));
+        let mut p = base.clone();
+        p.advanced.extra_bwrap_args = vec!["--bind".into(), "/".into(), "/".into()];
+        assert_eq!(
+            level_of(&p, "advanced.extra_bwrap_args"),
+            Some(RiskLevel::Dangerous)
+        );
+        let mut p = base.clone();
+        p.environment.passthrough = vec!["LANG".into()];
+        assert_eq!(
+            level_of(&p, "environment.passthrough"),
+            Some(RiskLevel::Medium)
+        );
+        p.environment.passthrough = vec!["GITHUB_TOKEN".into()];
+        assert_eq!(
+            level_of(&p, "environment.passthrough"),
+            Some(RiskLevel::High)
+        );
+        let mut p = base.clone();
+        p.network.host_ports = vec!["5432".into()];
+        assert_eq!(level_of(&p, "network.host_ports"), Some(RiskLevel::High));
+    }
+
+    /// The network together with your home, keys or passwords is Dangerous:
+    /// each alone is Think twice, but together the app can send what it
+    /// reads (audit U-M10).
+    #[test]
+    fn reading_and_sending_together_is_dangerous() {
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Filtered;
+        p.network.mode = NetworkMode::Full;
+        let combo = |p: &PermissionSet| {
+            assess(p)
+                .items
+                .iter()
+                .any(|i| i.key == "combination.read_and_send" && i.level == RiskLevel::Dangerous)
+        };
+        assert!(!combo(&p), "the network alone");
+        let mut home = p.clone();
+        home.filesystem.home = true;
+        home.filesystem.home_access = Access::Ro;
+        assert!(combo(&home), "network and the home, even read-only");
+        let mut keys = p.clone();
+        keys.filesystem.ssh = true;
+        assert!(combo(&keys), "network and SSH keys");
+        let mut gpg = p.clone();
+        gpg.filesystem.gnupg = true;
+        assert!(combo(&gpg), "network and GnuPG keys");
+        let mut agent = p.clone();
+        agent.sockets.ssh_agent = true;
+        assert!(combo(&agent), "network and the SSH agent");
+        let mut keyring = p.clone();
+        keyring.integrations.keyring = true;
+        assert!(combo(&keyring), "network and the keyring");
+        let mut offline = home.clone();
+        offline.network.mode = NetworkMode::None;
+        assert!(!combo(&offline), "the home without the network");
     }
 
     /// The full session bus reaches systemd, which can start programs
@@ -636,6 +919,7 @@ mod tests {
         assert_eq!(assess(&p).level, full.level, "the same as systemd by name");
     }
 
+    /// SAM's strictest window profile counts as low risk.
     #[test]
     fn the_strictest_window_profile_is_low_risk() {
         let a = assess(&PermissionSet::strict_gui());

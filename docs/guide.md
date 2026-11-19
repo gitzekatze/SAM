@@ -75,7 +75,7 @@ Every setting has a short explanation under its name. When a setting carries a r
 
 ### Overview
 
-The **risk** of the current settings: *low*, *medium*, *high* or *dangerous*. It is the level of the riskiest permission, not a count, so one webcam permission makes an app *high risk* however little else it may do. The label names that permission, for example **High risk · Network +1** (network and one more high-risk permission). *What raises the risk* lists every permission above *low*, and hovering over the label shows the same. Below that come things worth watching out for, such as X11 access.
+The **risk** of the current settings: *low*, *medium*, *high* or *dangerous*. It is the level of the riskiest permission, not a count, so one webcam permission makes an app *high risk* however little else it may do. The label names that permission, for example **High risk · Network +1** (network and one more high-risk permission). *What raises the risk* lists every permission above *low*, and hovering over the label shows the same. Settings that take a protection away count too (the syscall filter or Landlock switched off, a passed-through variable that holds a secret), and so do combinations: the network together with your home, keys or passwords is *dangerous*, because the app can send what it reads. Below that come things worth watching out for, such as X11 access.
 
 ### Network
 
@@ -233,7 +233,7 @@ Keep in mind:
 
 - A sandbox limits what an app can reach; it does not make a malicious app harmless if you give it broad access such as full home, X11, the full session bus or the keyring.
 - Prefer **Wayland** over X11, **Filtered** D-Bus over full access, and single folders over full home.
-- Only allow risky settings for apps you trust. SAM asks before granting the dangerous ones.
+- Only allow risky settings for apps you trust. SAM asks before any change rated *Think twice* or *Dangerous*.
 
 ---
 
