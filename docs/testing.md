@@ -9,7 +9,7 @@ checks a person still does by hand.
 |---|---|---|---|
 | Logic tests | every rule with known inputs and the exact expected result | `make test` | every change on GitHub, twice |
 | Real sandbox tests | start real Bubblewrap sandboxes and check from inside what an app can see, reach and change (`matrix`, `sandbox`, `verify`) | `make test` | every change, on Ubuntu and Fedora |
-| Attack tests | breakout attempts, hostile AppImages and fuzzing (`breakout`, `evil`, `adversarial`, `fuzz`) | `make test` | every change, on Ubuntu and Fedora |
+| Attack tests | breakout attempts, hostile AppImages and fuzzing (`breakout`, `evil`, `adversarial`, `fuzz`, `fuzz_targets`, `terminal_fuzz`) | `make test` | every change, on Ubuntu and Fedora |
 | Update tests | real updates from a local HTTPS server (`update_server`) | `make test` | every change |
 | Window tests | open every page, and click through the window like a person (`tests/gui/`) | `tests/gui/smoke.sh OUTDIR`, `tests/gui/flow-atspi.sh OUTDIR` | every change |
 | Desktop sandbox tests | the sandbox tests (permission matrix, sandbox check, breakout, hostile AppImages) inside a hidden KWin with PipeWire, where they must find Wayland and sound (`tests/gui/desktop-sandbox.sh`) | `SAM_SESSION=kwin SAM_TEST_AUDIO=1 tests/gui/desktop-sandbox.sh OUTDIR` | every change |
@@ -165,6 +165,15 @@ found in 0.8 s cold and 30 ms warm; with 40 sandboxes `list`, `doctor` and
 steps) on real AppImages in an invisible KWin session with a fake home;
 `python3 tests/real-apps/analyze.py "$WORK"` summarises it. The
 [version reports](reports/) record the results of each full run.
+
+The test desktop is a real one in what apps look for at start: a sound
+server with a silent output (a "null sink": it takes sound and drops it,
+so nothing plays out loud) and a session manager that watches no real
+device, and a stand-in notification service that writes each notification
+to `notifications.log`. Without them, apps that open sound or send a
+notification first waited for ever and looked broken (the night run of
+2026-11-18: six games and players, Chatterino, Plover). Tests on a desktop
+stay hints: every fix SAM makes for an app gets a unit or sandbox test.
 
 To see what a change to SAM did, compare the run with the last one by
 group of apps (toolkit, packager), not app by app:

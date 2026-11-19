@@ -116,14 +116,18 @@ pub fn inspect(path: &Path) -> Result<AppImageInfo> {
 
     // Type 2: SquashFS appended after the ELF.
     if let Some(off) = elf_end_offset(&head) {
-        if off + 96 <= size && read_at(&mut f, off, 4)? == SQUASHFS_MAGIC {
+        if off.checked_add(96).is_some_and(|end| end <= size)
+            && read_at(&mut f, off, 4)? == SQUASHFS_MAGIC
+        {
             info.payload_offset = Some(off);
         }
     }
     // Type 2 with a DwarFS image (uruntime): appended after the ELF too.
     if info.payload_offset.is_none() {
         if let Some(off) = elf_end_offset(&head) {
-            if off + 8 <= size && read_at(&mut f, off, 6)? == DWARFS_MAGIC {
+            if off.checked_add(8).is_some_and(|end| end <= size)
+                && read_at(&mut f, off, 6)? == DWARFS_MAGIC
+            {
                 info.payload = PayloadFormat::Dwarfs;
                 info.payload_offset = Some(off);
                 info.compression = Some("dwarfs".into());
@@ -172,8 +176,11 @@ fn has_iso_signature(f: &mut File) -> Result<bool> {
     }
 }
 
+/// Whether the ELF header says little endian; a header too short to say
+/// counts as little endian (and then fails at the next read), never as a
+/// panic (audit I-F14).
 fn le_or_be(head: &[u8]) -> bool {
-    head[5] != 2
+    head.get(5) != Some(&2)
 }
 
 fn u16_at(head: &[u8], off: usize, le: bool) -> Option<u64> {
@@ -209,13 +216,15 @@ pub fn elf_end_offset(head: &[u8]) -> Option<u64> {
             let shoff = u64_at(head, 0x28, le)?;
             let shentsize = u16_at(head, 0x3A, le)?;
             let shnum = u16_at(head, 0x3C, le)?;
-            Some(shoff + shentsize * shnum)
+            // Header values come from the file: an impossible end is no
+            // end, never an overflow (audit I-F14; found again by fuzzing).
+            shoff.checked_add(shentsize.checked_mul(shnum)?)
         }
         1 => {
             let shoff = u32_at(head, 0x20, le)?;
             let shentsize = u16_at(head, 0x2E, le)?;
             let shnum = u16_at(head, 0x30, le)?;
-            Some(shoff + shentsize * shnum)
+            shoff.checked_add(shentsize.checked_mul(shnum)?)
         }
         _ => None,
     }
@@ -323,6 +332,64 @@ fn squashfs_compression(f: &mut File, off: u64) -> Result<String> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    /// Header values that point past the end of every file give no ELF
+    /// end, never an overflow: with overflow checks in release builds
+    /// (audit P16) that would end SAM (audit I-F14, found again by
+    /// fuzzing).
+    #[test]
+    fn impossible_header_values_give_no_elf_end() {
+        let mut h = vec![0u8; 64];
+        h[..4].copy_from_slice(b"\x7fELF");
+        h[4] = 2;
+        h[5] = 1;
+        h[0x28..0x30].copy_from_slice(&u64::MAX.to_le_bytes());
+        h[0x3A..0x3C].copy_from_slice(&64u16.to_le_bytes());
+        h[0x3C..0x3E].copy_from_slice(&2u16.to_le_bytes());
+        assert_eq!(elf_end_offset(&h), None);
+        h[0x28..0x30].copy_from_slice(&1000u64.to_le_bytes());
+        assert_eq!(elf_end_offset(&h), Some(1128));
+        let mut h32 = vec![0u8; 52];
+        h32[..4].copy_from_slice(b"\x7fELF");
+        h32[4] = 1;
+        h32[5] = 1;
+        h32[0x20..0x24].copy_from_slice(&u32::MAX.to_le_bytes());
+        h32[0x2E..0x30].copy_from_slice(&40u16.to_le_bytes());
+        h32[0x30..0x32].copy_from_slice(&3u16.to_le_bytes());
+        assert_eq!(elf_end_offset(&h32), Some(u64::from(u32::MAX) + 120));
+        assert_eq!(elf_end_offset(&h[..5]), None);
+        // Big endian (byte 5 = 2): the same fields, read the other way.
+        let mut be = vec![0u8; 64];
+        be[..4].copy_from_slice(b"\x7fELF");
+        be[4] = 2;
+        be[5] = 2;
+        be[0x28..0x30].copy_from_slice(&1000u64.to_be_bytes());
+        be[0x3A..0x3C].copy_from_slice(&64u16.to_be_bytes());
+        be[0x3C..0x3E].copy_from_slice(&2u16.to_be_bytes());
+        assert_eq!(elf_end_offset(&be), Some(1128));
+    }
+
+    /// A DwarFS image right after the ELF part is taken as DwarFS, not as
+    /// SquashFS: the SquashFS check looks for its own magic there.
+    #[test]
+    fn a_dwarfs_image_after_the_elf_part_is_dwarfs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut d = vec![0u8; 64];
+        d[..4].copy_from_slice(b"\x7fELF");
+        d[4] = 2;
+        d[5] = 1;
+        d[8..11].copy_from_slice(b"AI\x02");
+        // Section headers end at 64 + 0 * 64 = 64, right after the header.
+        d[0x28..0x30].copy_from_slice(&64u64.to_le_bytes());
+        d[0x3A..0x3C].copy_from_slice(&64u16.to_le_bytes());
+        d.extend_from_slice(b"DWARFS\x02\x05");
+        d.resize(4096, 0);
+        let f = tmp.path().join("d.AppImage");
+        std::fs::write(&f, &d).unwrap();
+        let info = inspect(&f).unwrap();
+        assert_eq!(info.payload, PayloadFormat::Dwarfs, "{info:?}");
+        assert_eq!(info.payload_offset, Some(64));
+    }
 
     /// An ordinary program file is not taken for an AppImage.
     #[test]

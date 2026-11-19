@@ -59,14 +59,14 @@ id = 4
 area = "A"
 promise = "SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them."
 code = ["sam-intake/src/metadata.rs", "sam-intake/src/peek.rs", "sam-intake/src/id.rs", "sam-core/src/util.rs"]
-tests = ["the_desktop_file_inside_an_appimage_is_read", "reads_metadata_and_icon", "a_readable_name_is_taken_from_the_file_name", "icon_paths_cannot_climb_out_of_the_app", "neutralizes_markup_and_controls", "markup_in_metadata_is_neutralized", "only_icons_that_are_safe_to_decode_are_taken", "preview_and_unpack_take_the_same_desktop_file"]
+tests = ["the_desktop_file_inside_an_appimage_is_read", "reads_metadata_and_icon", "a_readable_name_is_taken_from_the_file_name", "icon_paths_cannot_climb_out_of_the_app", "neutralizes_markup_and_controls", "markup_in_metadata_is_neutralized", "only_icons_that_are_safe_to_decode_are_taken", "preview_and_unpack_take_the_same_desktop_file", "changed_desktop_files_never_crash_the_reader", "a_byte_order_mark_does_not_hide_the_desktop_entry"]
 
 [[function]]
 id = 5
 area = "A"
 promise = "A damaged or hostile AppImage can't crash SAM or stop the list."
 code = ["sam-intake/src/peek.rs", "sam-intake/src/extract.rs", "sam-detect/src/elf.rs"]
-tests = ["reading_a_file_of_an_appimage_is_bounded", "a_damaged_squashfs_image_gives_an_error_instead_of_a_crash", "parsers_survive_garbage", "changed_appimages_never_crash_or_escape_the_unpacker", "changed_text_inputs_never_crash_the_parsers", "changed_programs_never_crash_the_analysis", "one_damaged_appimage_does_not_stop_the_list"]
+tests = ["reading_a_file_of_an_appimage_is_bounded", "a_damaged_squashfs_image_gives_an_error_instead_of_a_crash", "parsers_survive_garbage", "changed_appimages_never_crash_or_escape_the_unpacker", "changed_text_inputs_never_crash_the_parsers", "changed_programs_never_crash_the_analysis", "one_damaged_appimage_does_not_stop_the_list", "changed_signature_and_update_sections_never_crash_the_readers", "the_preview_reader_panics_only_inside_the_squashfs_library", "impossible_header_values_give_no_elf_end", "a_dwarfs_image_after_the_elf_part_is_dwarfs"]
 
 [[area]]
 id = "B"
@@ -334,6 +334,7 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "the_signing_time_is_read_from_the_one_good_signature",
   "a_hostile_update_description_cannot_crash_or_stall_sam",
   "kept_data_goes_back_only_to_its_own_appimage",
+  "changed_zsync_controls_never_crash_planning_or_assembly",
 ]
 
 [[function]]
