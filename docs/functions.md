@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-17 16:10:22).
 
-**40 functions:** 21 proven by passing tests, 18 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 413 tests in all.
+**40 functions:** 21 proven by passing tests, 18 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 428 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -29,7 +29,7 @@
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 3 | ✅ |
 | 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 11 | ✅ 🆕 7 new tests since the report |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 18 | ✅ 🆕 9 new tests since the report |
-| 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 22 | ✅ 🆕 7 new tests since the report |
+| 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 37 | ✅ 🆕 22 new tests since the report |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 10 | ✅ |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 13 | ✅ 🆕 3 new tests since the report |
@@ -319,8 +319,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`localhost_network_leaves_netns_to_pasta`](../crates/sam-sandbox/src/lib.rs#L2719) | With "this computer only", the network namespace is left to pasta. | ✅ |
 | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L115) | With "this computer only", the app reaches only the ports on this computer the user lists. | ✅ |
 | [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L101) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
-| [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L1808) | A pasta command ending in the separator is refused not a panic. | ✅ |
-| [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L1815) | The status shell goes between the separator and the program. | ✅ |
+| [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L1825) | A pasta command ending in the separator is refused not a panic. | ✅ |
+| [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L1832) | The status shell goes between the separator and the program. | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/netns.rs`](../crates/sam-runner/src/netns.rs)
 
@@ -424,28 +424,43 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`output_shown_in_a_terminal_is_filtered_without_the_relay`](../crates/sam-runner/src/launch.rs#L1865) | With its input redirected an app has no terminal relay; its output shown in a terminal still loses clipboard codes and title reports, even split over two pieces. | ✅ |
+| [`output_shown_in_a_terminal_is_filtered_without_the_relay`](../crates/sam-runner/src/launch.rs#L1882) | With its input redirected an app has no terminal relay; its output shown in a terminal still loses clipboard codes and title reports, even split over two pieces. | ✅ |
 | [`a_pipe_into_a_terminal_program_passes_through_unchanged`](../crates/sam-jail-cli/tests/pipes.rs#L28) | A pipe into a terminal program passes through unchanged: the tool reads the piped input, its output arrives byte for byte, and it has no terminal of its own. | 🆕 new |
-| [`plain_text_survives_unfinished_and_odd_codes`](../crates/sam-runner/src/pty.rs#L839) | The log's plain text survives every unfinished or odd code: one cut off at the end of the data (no read past it), a title ended by ESC \\ with text after it, a backslash inside a title, and an ESC with intermediate bytes at the very end (found by mutation testing: no test reached these edges). | ✅ |
+| [`plain_text_survives_unfinished_and_odd_codes`](../crates/sam-runner/src/pty.rs#L642) | The log's plain text survives every unfinished or odd code: one cut off at the end of the data (no read past it), a title ended by ESC \\ with text after it, a backslash inside a title, and an ESC with intermediate bytes at the very end (found by mutation testing: no test reached these edges). | ✅ |
 | [`the_terminal_connection_passes_typing_and_filtered_output`](../crates/sam-runner/tests/terminal_relay.rs#L166) | Typing reaches the app; its output reaches the user filtered (colours pass, a clipboard write does not); the window size is copied at the start and follows a resize; the log and the error head get the text without control codes; the user's terminal is raw while the app runs and gets its settings back afterwards. | 🆕 new |
 | [`ctrl_c_reaches_the_app`](../crates/sam-runner/tests/terminal_relay.rs#L234) | Keys reach the app unchanged: Ctrl+C interrupts the app, not SAM. | 🆕 new |
 | [`closing_the_users_terminal_hangs_up_the_app`](../crates/sam-runner/tests/terminal_relay.rs#L252) | When the user's terminal closes, SAM hangs up the app's terminal: the app ends, and the end says so. | 🆕 new |
 | [`the_log_stays_within_its_limit`](../crates/sam-runner/tests/terminal_relay.rs#L269) | The log keeps at most its limit of terminal output and says so. | 🆕 new |
 | [`something_left_on_the_apps_terminal_does_not_keep_sam_waiting`](../crates/sam-runner/tests/terminal_relay.rs#L293) | An app that leaves something running on its terminal (a helper in the background) does not keep SAM waiting once the app itself has ended. | 🆕 new |
 | [`the_output_is_still_logged_when_the_terminal_cannot_show_it`](../crates/sam-runner/tests/terminal_relay.rs#L317) | When the user's terminal can no longer show anything (its output is gone), SAM stops writing there but keeps the log, and the app runs to its end. | 🆕 new |
-| [`only_tmux_itself_counts_as_tmux_passthrough`](../crates/sam-runner/src/pty.rs#L863) | Only "tmux;" itself is tmux passthrough: a DCS that merely starts with "t" passes unchanged (found by mutation testing). | ✅ |
-| [`leading_zeros_do_not_smuggle_a_code`](../crates/sam-runner/src/pty.rs#L783) | Leading zeros do not smuggle a code past the filter: terminals read "0052" as 52 and "021" as 21, and so does SAM; a number too long for any real code is removed whole (regression: an 11-digit OSC 52 was cut to 5 and passed on). | ✅ |
+| [`leading_zeros_do_not_smuggle_a_code`](../crates/sam-runner/src/pty.rs#L579) | Leading zeros do not smuggle a code past the filter: terminals read "0052" as 52 and "021" as 21, and so does SAM; a number too long for any real code is removed whole (regression: an 11-digit OSC 52 was cut to 5 and passed on). | ✅ |
 | [`a_new_session_unless_the_app_is_on_sams_own_terminal`](../crates/sam-sandbox/src/lib.rs#L2388) | The app gets a new terminal session, unless it runs on SAM's terminal relay. | ✅ |
-| [`ordinary_output_passes_unchanged`](../crates/sam-runner/src/pty.rs#L723) | Ordinary terminal output, colors and links pass through the relay unchanged. | ✅ |
-| [`clipboard_codes_are_removed`](../crates/sam-runner/src/pty.rs#L761) | Escape codes that read or write the clipboard are removed from an app's terminal output. | ✅ |
-| [`title_reports_and_tmux_passthrough_are_removed`](../crates/sam-runner/src/pty.rs#L800) | Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed. | ✅ |
-| [`an_escape_inside_a_removed_code_starts_a_new_sequence`](../crates/sam-runner/src/pty.rs#L817) | An escape code hidden inside a removed code cannot slip through. | ✅ |
-| [`plain_text_for_the_log`](../crates/sam-runner/src/pty.rs#L826) | Logs get plain text without escape codes. | ✅ |
-| [`terminal_apps_get_sams_terminal_relay`](../crates/sam-runner/src/pty.rs#L875) | Apps started from a terminal get SAM's terminal relay; with input from a pipe or a file they get none (input and output pass through), and a terminal program's test start gets a terminal of its own. | ✅ |
-| [`typing_and_output_pass_and_leftover_replies_are_discarded`](../crates/sam-runner/src/pty.rs#L903) | A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | ✅ |
-| [`the_app_cannot_reach_the_outer_terminal`](../crates/sam-runner/src/pty.rs#L985) | An app on SAM's terminal relay cannot type into the user's real terminal. | ✅ |
+| [`ordinary_output_passes_unchanged`](../crates/sam-runner/src/pty.rs#L519) | Ordinary terminal output, colors and links pass through the relay unchanged. | ✅ |
+| [`clipboard_codes_are_removed`](../crates/sam-runner/src/pty.rs#L557) | Escape codes that read or write the clipboard are removed from an app's terminal output. | ✅ |
+| [`title_reports_and_tmux_passthrough_are_removed`](../crates/sam-runner/src/pty.rs#L603) | Escape codes that report the window title or pass through tmux are removed; setting the title stays allowed. | ✅ |
+| [`an_escape_inside_a_removed_code_starts_a_new_sequence`](../crates/sam-runner/src/pty.rs#L620) | An escape code hidden inside a removed code cannot slip through. | ✅ |
+| [`plain_text_for_the_log`](../crates/sam-runner/src/pty.rs#L629) | Logs get plain text without escape codes. | ✅ |
+| [`terminal_apps_get_sams_terminal_relay`](../crates/sam-runner/src/pty.rs#L705) | Apps started from a terminal get SAM's terminal relay; with input from a pipe or a file they get none (input and output pass through), and a terminal program's test start gets a terminal of its own. | ✅ |
+| [`typing_and_output_pass_and_leftover_replies_are_discarded`](../crates/sam-runner/src/pty.rs#L744) | A second pseudo-terminal stands in for the user's terminal: SAM's side of it is `Outer`, the test plays the terminal program. | ✅ |
+| [`the_app_cannot_reach_the_outer_terminal`](../crates/sam-runner/src/pty.rs#L826) | An app on SAM's terminal relay cannot type into the user's real terminal. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L158) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
-| [`a_doubled_escape_does_not_smuggle_a_clipboard_code`](../crates/sam-runner/src/pty.rs#L735) | A doubled ESC in front of a clipboard code does not smuggle it past the filter: the terminal reads the second ESC as the start of the code, so the filter must too. | ✅ |
+| [`a_doubled_escape_does_not_smuggle_a_clipboard_code`](../crates/sam-runner/src/pty.rs#L531) | A doubled ESC in front of a clipboard code does not smuggle it past the filter: the terminal reads the second ESC as the start of the code, so the filter must too. | ✅ |
+| [`only_tmux_itself_counts_as_tmux_passthrough`](../crates/sam-runner/src/pty.rs#L667) | Only "tmux;" itself is tmux passthrough: a device control string that merely starts with "t" is not named as one (it is removed as unknown; found by mutation testing). | ✅ |
+| [`a_slow_terminals_late_replies_do_not_reach_the_shell`](../crates/sam-runner/src/pty.rs#L868) | A slow terminal that answers requests in a trickle after the app has ended: nothing of it reaches the shell (audit L-F10: one fixed wait of 60 ms let later replies through). | 🆕 new |
+| [`limits_hold_at_their_edge`](../crates/sam-core/src/terminal.rs#L911) | The limits hold exactly: a sequence at the limit is read, one byte more makes it malformed; numbers go up to 65535. | 🆕 new |
+| [`malformed_pieces_are_recognized`](../crates/sam-core/src/terminal.rs#L940) | Malformed strings and sequences: a parameter after an intermediate; BEL ends only title-type strings; control characters, 8-bit controls and invalid UTF-8 inside a string; an ESC inside a string starts a new code that is judged on its own. | 🆕 new |
+| [`the_allowed_kinds_pass_unchanged`](../crates/sam-core/src/terminal.rs#L859) | Every kind of harmless sequence on the allow-list passes unchanged, also without the relay. | 🆕 new |
+| [`unfinished_pieces_are_named_at_the_end`](../crates/sam-core/src/terminal.rs#L845) | A piece still unfinished when the output ends is removed and named. | 🆕 new |
+| [`a_sandboxed_terminal_app_cannot_reach_past_the_terminal`](../crates/sam-jail-cli/tests/terminal.rs#L92) | A sandboxed terminal app cannot reach past the terminal. | 🆕 new |
+| [`modes_left_on_are_switched_off_at_the_end`](../crates/sam-core/src/terminal.rs#L803) | Modes the app switched on that would stay on for the shell are switched off at the end (audit L-F11: mouse reporting and bracketed paste stayed on); nothing is added for an app that set none. | 🆕 new |
+| [`nothing_past_the_filter_reaches_past_the_terminal`](../crates/sam-core/tests/terminal_fuzz.rs#L440) | Nothing past the filter reaches past the terminal. | 🆕 new |
+| [`only_known_device_strings_pass`](../crates/sam-runner/src/pty.rs#L682) | Of the device control strings only the two that ask for the terminal's capabilities and settings pass; tmux passthrough, programmable keys and anything unknown are removed, the text around them stays. | 🆕 new |
+| [`ordinary_output_passes_unchanged_at_every_split`](../crates/sam-core/src/terminal.rs#L729) | Ordinary output passes unchanged, also split at every point. | 🆕 new |
+| [`requests_pass_only_on_the_relay`](../crates/sam-core/src/terminal.rs#L744) | Requests the terminal answers pass only on SAM's relay, where the answer goes to the app; without it the answer would land in the shell. | 🆕 new |
+| [`the_known_ways_past_the_old_filter_are_closed`](../crates/sam-core/src/terminal.rs#L686) | Each way past the old filter that the audit found (L-F1 a–h): none of them brings a clipboard code or a title report to the terminal. | 🆕 new |
+| [`the_log_keeps_only_text_across_reads`](../crates/sam-core/src/terminal.rs#L825) | The log keeps only the text, also when a sequence is split across reads (the old one was cut per read and could keep half a code). | 🆕 new |
+| [`the_model_recognizes_the_known_attacks`](../crates/sam-core/tests/terminal_fuzz.rs#L514) | The model itself finds what it should: each known way past a filter, read without SAM's filter, counts as dangerous (so a passing fuzz run means something). | 🆕 new |
+| [`what_reaches_past_the_terminal_is_removed`](../crates/sam-core/src/terminal.rs#L770) | What reaches past the terminal or changes it for good is removed; unknown codes are removed too (an allow-list). | 🆕 new |
 
 **Code:** [`sam-runner/src/pty.rs`](../crates/sam-runner/src/pty.rs), [`sam-runner/src/kernel.rs`](../crates/sam-runner/src/kernel.rs), [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs)
 
@@ -495,11 +510,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_check_expects_the_rest_where_setting_and_computer_allow_it`](../crates/sam-runner/src/verify.rs#L880) | Network, display, sound, the session bus, the SSH agent, variables and the security layers: the check expects each only where both the setting and this computer provide it. | ✅ |
 | [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L761) | The sandbox check tells a real folder of the user from a private stand-in. | ✅ |
 | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L22) | The sandbox check passes when the settings apply, and catches a setting that does not apply. | ✅ |
-| [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L1771) | A wanted layer that was not applied is reported missing. | ✅ |
+| [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L1788) | A wanted layer that was not applied is reported missing. | ✅ |
 | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) | A start without the helper reports its missing layers. | ✅ |
 | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L795) | A start without a wanted protection layer is marked. | ✅ |
 | [`sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`](../crates/sam-jail-cli/tests/start_check.rs#L49) | Sam jail run refuses a sandbox whose settings do not apply. | ✅ |
-| [`the_wanted_layers_follow_the_apps_switches`](../crates/sam-runner/src/launch.rs#L1890) | Landlock is wanted only where the app's switch wants it and the kernel has it; the app's strict filter switch works by itself, without a global setting (audit D-M13). | 🆕 new |
+| [`the_wanted_layers_follow_the_apps_switches`](../crates/sam-runner/src/launch.rs#L1907) | Landlock is wanted only where the app's switch wants it and the kernel has it; the app's strict filter switch works by itself, without a global setting (audit D-M13). | 🆕 new |
 | [`checks_that_do_not_pass_end_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L266) | In a real sandbox: `run --json` passes on the app's exit code, a `selftest` with a failing app ends with 3, and `verify` with a failed check ends with 3, so `sam-jail verify APP && sam-jail run APP` gates. | 🆕 new |
 
 **Code:** [`sam-runner/src/verify.rs`](../crates/sam-runner/src/verify.rs), [`sam-runner/src/probe.rs`](../crates/sam-runner/src/probe.rs)
@@ -529,7 +544,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`the_newest_log_survives_pruning_within_one_second`](../crates/sam-storage/src/lib.rs#L644) | With more launches in one second than logs are kept, the newest log survives the pruning after its launch (regression: on a fast machine a pruned name was reused, sorted as the oldest and deleted at once). | ✅ |
 | [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L826) | The newest log is found even when two logs start within the same second. | ✅ |
-| [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L1720) | An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | ✅ |
+| [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L1737) | An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | ✅ |
 
 **Code:** [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs)
 
@@ -542,9 +557,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1698) | A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | 🆕 new |
 | [`the_apps_own_words_never_give_it_a_bus_name`](../crates/sam-runner/src/repair.rs#L904) | What the app prints never gets it a bus name, whatever name it claims it needs (a terminal's name runs host commands; audit D-M6): names come only from the D-Bus filter's record (`own_names`). | 🆕 new |
-| [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L1927) | Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | ✅ |
-| [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L1966) | Bubblewrap setup errors are told apart from errors of the app itself. | ✅ |
-| [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L1987) | A start is judged by whether Bubblewrap announced the app, not by what the app printed. | ✅ |
+| [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L1944) | Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | ✅ |
+| [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L1983) | Bubblewrap setup errors are told apart from errors of the app itself. | ✅ |
+| [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L2004) | A start is judged by whether Bubblewrap announced the app, not by what the app printed. | ✅ |
 | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L923) | Analyzer maps errors to fixes. | ✅ |
 | [`fake_bwrap_error_is_not_a_sandbox_failure`](../crates/sam-runner/tests/adversarial.rs#L21) | H1: an app printing a fake Bubblewrap error is not a sandbox failure. | ✅ |
 
@@ -558,7 +573,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Test | Promise | Result |
 |---|---|---|
 | [`steps_that_add_are_undone_and_tried_steps_are_no_hints`](../crates/sam-runner/src/repair.rs#L1122) | Steps that add a list entry or an argument are undone by removing exactly that, and a tried step is not offered again as a first-run hint either. | 🆕 new |
-| [`only_an_ordinary_start_judges_repair_steps`](../crates/sam-runner/src/launch.rs#L1837) | Only an ordinary start decides the repair steps on trial: not a traced or checking run, and not a start that failed for a bus name SAM just allowed. | 🆕 new |
+| [`only_an_ordinary_start_judges_repair_steps`](../crates/sam-runner/src/launch.rs#L1854) | Only an ordinary start decides the repair steps on trial: not a traced or checking run, and not a start that failed for a bus name SAM just allowed. | 🆕 new |
 | [`a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not`](../crates/sam-runner/tests/repair_trial.rs#L30) | A repair step is kept when it helps and undone when it does not. | 🆕 new |
 | [`a_repair_step_that_did_not_help_is_undone`](../crates/sam-runner/src/repair.rs#L1065) | A step on trial is kept when the next start works and undone when it fails: exactly what it changed is put back, it is remembered as tried and not offered again; a step from before (not on trial) is never touched (owner decision of 2026-11-18; night run N3). | 🆕 new |
 | [`the_ladder_offers_only_what_can_help_and_says_what_it_costs`](../crates/sam-runner/src/repair.rs#L1178) | Starting without Chromium's own sandbox is offered only where this computer blocks it (audit A1), compatibility mode is Dangerous and says it is a way out (D-H5), and "never offer compatibility mode" keeps it out (U-M9). | 🆕 new |

@@ -14,7 +14,8 @@
 //!
 //! So SAM puts the app on a pseudo-terminal of its own and passes the bytes
 //! on: the user's typing to the app, the app's output through
-//! [`OutputFilter`] to the user's terminal. Whatever the app does to its
+//! [`OutputFilter`] (an allow-list, `sam_core::terminal`) to the user's
+//! terminal. Whatever the app does to its
 //! terminal stays on that pseudo-terminal. When the app ends, replies the
 //! terminal still had queued are discarded, so they cannot reach the shell.
 //! The syscall filter blocks `TIOCSTI` and `TIOCLINUX` as well; this does
@@ -48,16 +49,27 @@ pub enum TerminalMode {
 }
 
 impl TerminalMode {
-    /// `stdin_tty`: SAM's own input is a terminal. `interactive`: the user
-    /// uses the app (not a test start or a check).
+    /// `stdin_tty`, `stdout_tty`: SAM's own input and output are a
+    /// terminal. `interactive`: the user uses the app (not a test start or
+    /// a check).
     ///
     /// The user's start with input from a pipe or a file (`cat f | sam-jail
     /// run jq .`, a script) gets no terminal: input and output pass through
     /// unchanged, so the tool works as in any pipe. Output shown in a
     /// terminal is still filtered (`launch::pump_output`), and without a
     /// terminal of its own the app has none to type into.
-    pub fn choose(terminal_program: bool, stdin_tty: bool, interactive: bool) -> TerminalMode {
-        if stdin_tty && interactive {
+    ///
+    /// The same with the output going to a file or a pipe (`sam-jail run
+    /// jq . f > out.json`): a terminal of its own would turn its line ends
+    /// into CR LF and mix its errors into the output (audit L-F6). It then
+    /// gets no input from the terminal.
+    pub fn choose(
+        terminal_program: bool,
+        stdin_tty: bool,
+        stdout_tty: bool,
+        interactive: bool,
+    ) -> TerminalMode {
+        if stdin_tty && stdout_tty && interactive {
             TerminalMode::Relay
         } else if terminal_program && !interactive {
             TerminalMode::Headless
@@ -310,7 +322,10 @@ fn relay(
         }
         RawMode::enter(o.input)
     });
-    let mut filter = OutputFilter::default();
+    // On the relay, the terminal's answers to the app's requests go to
+    // the app.
+    let mut filter = OutputFilter::for_relay();
+    let mut plain = sam_core::terminal::PlainText::default();
     let mut to_app: Vec<u8> = Vec::new();
     let mut stdout_ok = outer.is_some();
     let mut logged = 0usize;
@@ -387,7 +402,7 @@ fn relay(
                 if stdout_ok && outer.is_some_and(|o| write_all(o.output, &shown).is_err()) {
                     stdout_ok = false;
                 }
-                let text = plain_text(chunk);
+                let text = plain.feed(chunk);
                 if let Ok(mut h) = out.head.lock() {
                     if h.len() < out.head_limit {
                         h.push_str(&text);
@@ -415,20 +430,54 @@ fn relay(
             }
         }
     }
-    drop(raw);
-    if let Some(o) = outer {
-        // Replies the terminal still sends to queries the app made just
-        // before it ended would land in the shell: let them arrive, then
-        // discard everything queued on the user's terminal.
-        std::thread::sleep(std::time::Duration::from_millis(60));
-        // SAFETY: tcflush takes the outer terminal's open descriptor and a plain flag.
-        unsafe { libc::tcflush(o.input, libc::TCIFLUSH) };
+    // An unfinished last sequence is dropped; modes the app left on that
+    // would change the shell's terminal are switched off (audit L-F11).
+    let tail = filter.finish();
+    if stdout_ok {
+        if let Some(o) = outer {
+            let _ = write_all(o.output, &tail);
+        }
     }
+    // Still in raw mode: a reply without a line end can be read and
+    // discarded only there.
+    if let Some(o) = outer {
+        discard_replies(o.input);
+    }
+    drop(raw);
     drop(leader);
     RelayEnd {
         blocked: filter.blocked,
         hung_up,
     }
+}
+
+/// Replies the terminal still sends to requests the app made just before it
+/// ended would land in the shell: they are read and discarded until the
+/// terminal has been quiet for 150 ms (at most one second), then whatever
+/// is still queued is dropped (audit L-F10: one fixed wait of 60 ms let a
+/// slow reply through).
+fn discard_replies(input: RawFd) {
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    let mut buf = [0u8; 4096];
+    while std::time::Instant::now() < end {
+        let mut fds = [libc::pollfd {
+            fd: input,
+            events: libc::POLLIN,
+            revents: 0,
+        }];
+        // SAFETY: `fds` is a valid array of one pollfd.
+        let n = unsafe { libc::poll(fds.as_mut_ptr(), 1, 150) };
+        if n <= 0 {
+            break;
+        }
+        // SAFETY: `buf` is a valid, writable buffer and `input` is open.
+        let r = unsafe { libc::read(input, buf.as_mut_ptr().cast(), buf.len()) };
+        if r <= 0 {
+            break;
+        }
+    }
+    // SAFETY: tcflush takes the outer terminal's open descriptor and a plain flag.
+    unsafe { libc::tcflush(input, libc::TCIFLUSH) };
 }
 
 fn write_all(fd: RawFd, mut data: &[u8]) -> std::io::Result<()> {
@@ -447,271 +496,18 @@ fn write_all(fd: RawFd, mut data: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Terminal output as plain text for the log: escape sequences and control
-/// characters removed (line breaks and tabs kept).
-pub fn plain_text(data: &[u8]) -> String {
-    let mut out = Vec::with_capacity(data.len());
-    let mut i = 0;
-    while i < data.len() {
-        let b = data[i];
-        if b == 0x1b {
-            i += 1;
-            match data.get(i) {
-                Some(b'[') => {
-                    i += 1;
-                    while i < data.len() && !(0x40..=0x7e).contains(&data[i]) {
-                        i += 1;
-                    }
-                }
-                Some(b']') | Some(b'P') | Some(b'_') | Some(b'^') => {
-                    while i < data.len()
-                        && data[i] != 0x07
-                        && !(data[i] == 0x1b && data.get(i + 1) == Some(&b'\\'))
-                    {
-                        i += 1;
-                    }
-                    if data.get(i) == Some(&0x1b) {
-                        i += 1;
-                    }
-                }
-                _ => {
-                    // ESC, intermediate bytes, final byte (e.g. ESC ( B).
-                    while i < data.len() && (0x20..=0x2f).contains(&data[i]) {
-                        i += 1;
-                    }
-                }
-            }
-            i += 1;
-            continue;
-        }
-        if b == b'\n' || b == b'\t' || b >= 0x20 && b != 0x7f {
-            out.push(b);
-        }
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// Escape codes that reach past the terminal, by what they do.
-fn blocked_osc(num: u32) -> Option<&'static str> {
-    match num {
-        52 | 5522 => Some("clipboard"),
-        1337 => Some("terminal extensions (iTerm2/WezTerm: clipboard, files)"),
-        9 | 99 | 777 => Some("desktop notifications"),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-enum St {
-    #[default]
-    Ground,
-    Esc,
-    /// After ESC [ (kept in `seq` until the final byte).
-    Csi,
-    /// After ESC ] while the number is read (kept in `seq`).
-    OscNum,
-    Osc {
-        pass: bool,
-        esc: bool,
-    },
-    /// After ESC P while the start is read (kept in `seq`).
-    DcsHead,
-    Dcs {
-        pass: bool,
-        esc: bool,
-    },
-}
-
-/// Removes the escape codes listed in the module documentation from a
-/// stream of terminal output; everything else passes unchanged. Sequences
-/// may be split across calls.
-///
-/// 8-bit control codes (C1) pass: in UTF-8 they are parts of characters,
-/// and terminals in UTF-8 mode do not treat them as escape codes.
-#[derive(Debug, Default)]
-pub struct OutputFilter {
-    st: St,
-    seq: Vec<u8>,
-    /// What was blocked, for the launch log.
-    pub blocked: BTreeSet<&'static str>,
-}
-
-impl OutputFilter {
-    pub fn filter(&mut self, data: &[u8]) -> Vec<u8> {
-        let mut out = Vec::with_capacity(data.len());
-        for &b in data {
-            self.byte(b, &mut out);
-        }
-        out
-    }
-
-    fn byte(&mut self, b: u8, out: &mut Vec<u8>) {
-        const ESC: u8 = 0x1b;
-        const BEL: u8 = 0x07;
-        const CAN: u8 = 0x18;
-        const SUB: u8 = 0x1a;
-        match self.st {
-            St::Ground => {
-                if b == ESC {
-                    self.st = St::Esc;
-                } else {
-                    out.push(b);
-                }
-            }
-            St::Esc => match b {
-                b'[' => {
-                    self.seq.clear();
-                    self.seq.extend_from_slice(b"\x1b[");
-                    self.st = St::Csi;
-                }
-                b']' => {
-                    self.seq.clear();
-                    self.seq.extend_from_slice(b"\x1b]");
-                    self.st = St::OscNum;
-                }
-                b'P' => {
-                    self.seq.clear();
-                    self.seq.extend_from_slice(b"\x1bP");
-                    self.st = St::DcsHead;
-                }
-                ESC => out.push(ESC),
-                _ => {
-                    out.extend_from_slice(&[ESC, b]);
-                    self.st = St::Ground;
-                }
-            },
-            St::Csi => {
-                self.seq.push(b);
-                if (0x40..=0x7e).contains(&b) {
-                    let params = &self.seq[2..self.seq.len() - 1];
-                    // Window-title and icon-label reports: the terminal
-                    // answers with text the app set before.
-                    // By value: terminals read "021" as 21 too.
-                    let n = std::str::from_utf8(params)
-                        .ok()
-                        .and_then(|p| p.parse::<u32>().ok());
-                    if b == b't' && matches!(n, Some(20 | 21)) {
-                        self.blocked.insert("title reports");
-                    } else {
-                        out.extend_from_slice(&self.seq);
-                    }
-                    self.st = St::Ground;
-                } else if b == CAN || b == SUB || self.seq.len() > 256 {
-                    out.extend_from_slice(&self.seq);
-                    self.st = St::Ground;
-                }
-            }
-            St::OscNum => {
-                if b.is_ascii_digit() && self.seq.len() < 12 {
-                    self.seq.push(b);
-                    return;
-                }
-                // A number longer than any real code (leading zeros make
-                // "00000000052" read as 52 in terminals): cutting it short
-                // would pass it on as another code, so it is dropped whole.
-                if b.is_ascii_digit() {
-                    self.blocked.insert("malformed control codes");
-                    self.st = St::Osc {
-                        pass: false,
-                        esc: false,
-                    };
-                    return;
-                }
-                let num = std::str::from_utf8(&self.seq[2..])
-                    .ok()
-                    .and_then(|s| s.parse::<u32>().ok());
-                match num.and_then(blocked_osc) {
-                    Some(what) => {
-                        self.blocked.insert(what);
-                        self.st = St::Osc {
-                            pass: false,
-                            esc: false,
-                        };
-                    }
-                    None => {
-                        out.extend_from_slice(&self.seq);
-                        self.st = St::Osc {
-                            pass: true,
-                            esc: false,
-                        };
-                    }
-                }
-                self.byte(b, out);
-            }
-            St::Osc { pass, esc } | St::Dcs { pass, esc } => {
-                let osc = matches!(self.st, St::Osc { .. });
-                let back = |esc| {
-                    if osc {
-                        St::Osc { pass, esc }
-                    } else {
-                        St::Dcs { pass, esc }
-                    }
-                };
-                if esc {
-                    if b == b'\\' {
-                        if pass {
-                            out.extend_from_slice(&[ESC, b'\\']);
-                        }
-                        self.st = St::Ground;
-                    } else if b == ESC {
-                        // A doubled ESC is content (how tmux passthrough
-                        // carries escape codes).
-                        if pass {
-                            out.extend_from_slice(&[ESC, ESC]);
-                        }
-                        self.st = back(false);
-                    } else {
-                        // ESC ended the sequence and starts a new one.
-                        if pass {
-                            out.push(ESC);
-                        }
-                        self.st = St::Esc;
-                        self.byte(b, out);
-                    }
-                } else if b == ESC {
-                    self.st = back(true);
-                } else if (osc && b == BEL) || b == CAN || b == SUB {
-                    if pass {
-                        out.push(b);
-                    }
-                    self.st = St::Ground;
-                } else if pass {
-                    out.push(b);
-                }
-            }
-            St::DcsHead => {
-                const TMUX: &[u8] = b"tmux;";
-                let got = self.seq.len() - 2;
-                if b == TMUX[got] {
-                    self.seq.push(b);
-                    if self.seq.len() - 2 == TMUX.len() {
-                        // tmux passes this on to the terminal outside tmux.
-                        self.blocked.insert("tmux passthrough");
-                        self.st = St::Dcs {
-                            pass: false,
-                            esc: false,
-                        };
-                    }
-                } else {
-                    out.extend_from_slice(&self.seq);
-                    self.st = St::Dcs {
-                        pass: true,
-                        esc: false,
-                    };
-                    self.byte(b, out);
-                }
-            }
-        }
-    }
-}
+/// The one filter for terminal output (see `sam_core::terminal`): only
+/// known, harmless pieces pass.
+pub type OutputFilter = sam_core::terminal::Filter;
+pub use sam_core::terminal::plain_text;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// The filter as on SAM's terminal relay.
     fn run(chunks: &[&[u8]]) -> (Vec<u8>, OutputFilter) {
-        let mut f = OutputFilter::default();
+        let mut f = OutputFilter::for_relay();
         let mut out = Vec::new();
         for c in chunks {
             out.extend(f.filter(c));
@@ -787,7 +583,14 @@ mod tests {
         assert!(f.blocked.contains("clipboard"));
         let (out, f) = run(&[b"a\x1b]00000000052;c;aGk=\x07b"]);
         assert_eq!(out, b"ab");
-        assert!(f.blocked.contains("malformed control codes"));
+        assert!(f.blocked.contains("clipboard"));
+        let (out, f) = run(&[b"a\x1b]00000000520000;c;aGk=\x07b"]);
+        assert_eq!(out, b"ab");
+        assert!(
+            f.blocked.contains("malformed control codes"),
+            "{:?}",
+            f.blocked
+        );
         let (out, f) = run(&[b"a\x1b[021tb"]);
         assert_eq!(out, b"ab");
         assert!(f.blocked.contains("title reports"));
@@ -808,9 +611,9 @@ mod tests {
         let (out, f) = run(&[b"a\x1bPtmux;\x1b\x1b]52;c;eA==\x07\x1b\\b"]);
         assert_eq!(out, b"ab");
         assert!(f.blocked.contains("tmux passthrough"));
-        // Other DCS sequences pass (e.g. sixel images, DECRQSS).
+        // Images (sixel) are not on the allow-list: removed.
         let (out, _) = run(&[b"\x1bPq#0;2;0;0;0\x1b\\"]);
-        assert_eq!(out, b"\x1bPq#0;2;0;0;0\x1b\\");
+        assert_eq!(out, b"");
     }
 
     /// An escape code hidden inside a removed code cannot slip through.
@@ -858,44 +661,82 @@ mod tests {
         );
     }
 
-    /// Only "tmux;" itself is tmux passthrough: a DCS that merely starts with
-    /// "t" passes unchanged (found by mutation testing).
+    /// Only "tmux;" itself is tmux passthrough: a device control string
+    /// that merely starts with "t" is not named as one (it is removed as
+    /// unknown; found by mutation testing).
     #[test]
     fn only_tmux_itself_counts_as_tmux_passthrough() {
-        let s = b"a\x1bPtq\x1b\\b";
+        for s in [&b"a\x1bPtq\x1b\\b"[..], b"a\x1bPtmu\x1b\\b"] {
+            let (out, f) = run(&[s]);
+            assert_eq!(out, b"ab");
+            assert!(!f.blocked.contains("tmux passthrough"), "{s:?}");
+        }
+        let (_, f) = run(&[b"\x1bPtmux;x\x1b\\"]);
+        assert!(f.blocked.contains("tmux passthrough"));
+    }
+
+    /// Of the device control strings only the two that ask for the
+    /// terminal's capabilities and settings pass; tmux passthrough,
+    /// programmable keys and anything unknown are removed, the text around
+    /// them stays.
+    #[test]
+    fn only_known_device_strings_pass() {
+        let s = b"a\x1bP+q544e\x1b\\\x1bP$qm\x1b\\b";
         let (out, f) = run(&[s]);
         assert_eq!(out, s.to_vec());
         assert!(f.blocked.is_empty());
-        let s = b"a\x1bPtmu\x1b\\b";
-        let (out, _) = run(&[s]);
-        assert_eq!(out, s.to_vec(), "four of five letters is not tmux either");
+        let (out, f) = run(&[b"a\x1bPtq\x1b\\b"]);
+        assert_eq!(out, b"ab");
+        assert!(
+            !f.blocked.contains("tmux passthrough"),
+            "only tmux itself is tmux"
+        );
+        let (out, f) = run(&[b"a\x1bPtmux;\x1b\x1b]52;c;x\x07\x1b\\b"]);
+        assert_eq!(out, b"ab");
+        assert!(f.blocked.contains("tmux passthrough"));
+        // Programmable function keys (DECUDK): a key the person presses
+        // later in the shell would type what the app chose.
+        let (out, f) = run(&[b"a\x1bP0;1|17/726d202d7266\x1b\\b"]);
+        assert_eq!(out, b"ab");
+        assert!(!f.blocked.is_empty());
     }
 
     /// Apps started from a terminal get SAM's terminal relay; with input from a pipe or a file they get none (input and output pass through), and a terminal program's test start gets a terminal of its own.
     #[test]
     fn terminal_apps_get_sams_terminal_relay() {
-        assert_eq!(TerminalMode::choose(true, true, true), TerminalMode::Relay);
         assert_eq!(
-            TerminalMode::choose(false, true, true),
+            TerminalMode::choose(true, true, true, true),
+            TerminalMode::Relay
+        );
+        assert_eq!(
+            TerminalMode::choose(false, true, true, true),
             TerminalMode::Relay,
             "GUI apps started from a terminal too"
         );
         assert_eq!(
-            TerminalMode::choose(true, false, true),
+            TerminalMode::choose(true, false, true, true),
             TerminalMode::None,
             "input from a pipe passes through to a terminal program"
         );
         assert_eq!(
-            TerminalMode::choose(true, false, false),
+            TerminalMode::choose(true, false, true, false),
             TerminalMode::Headless,
             "a terminal program's test start gets a terminal of its own"
         );
         assert_eq!(
-            TerminalMode::choose(true, true, false),
+            TerminalMode::choose(true, true, true, false),
             TerminalMode::Headless,
             "a test start does not take over the user's terminal"
         );
-        assert_eq!(TerminalMode::choose(false, false, true), TerminalMode::None);
+        assert_eq!(
+            TerminalMode::choose(false, false, true, true),
+            TerminalMode::None
+        );
+        assert_eq!(
+            TerminalMode::choose(true, true, false, true),
+            TerminalMode::None,
+            "output to a file stays exact (audit L-F6)"
+        );
     }
 
     /// A second pseudo-terminal stands in for the user's terminal: SAM's
@@ -1018,5 +859,95 @@ mod tests {
             "the app's terminal is a pseudo-terminal: {text:?}"
         );
         assert!(blocked.contains("clipboard"));
+    }
+
+    /// A slow terminal that answers requests in a trickle after the app has
+    /// ended: nothing of it reaches the shell (audit L-F10: one fixed wait
+    /// of 60 ms let later replies through). And a terminal that never stops
+    /// sending does not keep SAM waiting: at most about a second.
+    #[test]
+    fn a_slow_terminals_late_replies_do_not_reach_the_shell() {
+        use std::sync::atomic::AtomicBool;
+        for (gap_ms, count, must_be_clean) in [(30u64, 10u32, true), (30, 200, false)] {
+            let (mut user, mut outer_fd) = (-1, -1);
+            // SAFETY: valid ints to fill; the optional arguments are null.
+            let opened = unsafe {
+                libc::openpty(
+                    &mut user,
+                    &mut outer_fd,
+                    std::ptr::null_mut(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                )
+            };
+            assert_eq!(opened, 0);
+            // SAFETY: openpty returned two new descriptors that nothing else owns.
+            let (user, outer_fd) =
+                unsafe { (OwnedFd::from_raw_fd(user), OwnedFd::from_raw_fd(outer_fd)) };
+            let outer = Outer {
+                input: outer_fd.as_raw_fd(),
+                output: outer_fd.as_raw_fd(),
+            };
+            let pty = Pty::open(Some(outer)).unwrap();
+            let mut cmd = std::process::Command::new("/bin/sh");
+            cmd.args(["-c", "printf 'x\\033[6n'"]);
+            cmd.stdin(pty.stdio().unwrap())
+                .stdout(pty.stdio().unwrap())
+                .stderr(pty.stdio().unwrap());
+            // SAFETY: become_controlling_terminal uses only async-signal-safe calls.
+            unsafe {
+                use std::os::unix::process::CommandExt;
+                cmd.pre_exec(Pty::become_controlling_terminal);
+            }
+            let mut child = cmd.spawn().unwrap();
+            drop(cmd);
+            let d = tempfile::tempdir().unwrap();
+            let relay = pty.start(OutputSink {
+                head: Arc::new(Mutex::new(String::new())),
+                head_limit: 4096,
+                log: Arc::new(Mutex::new(fs::File::create(d.path().join("log")).unwrap())),
+                log_limit: 4096,
+            });
+            assert!(child.wait().unwrap().success());
+            // The terminal answers late, a little at a time.
+            let stop = Arc::new(AtomicBool::new(false));
+            let (fd, stop2) = (user.as_raw_fd(), stop.clone());
+            let writer = std::thread::spawn(move || {
+                for _ in 0..count {
+                    if stop2.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let _ = write_all(fd, b"\x1b[12;1R");
+                    std::thread::sleep(std::time::Duration::from_millis(gap_ms));
+                }
+            });
+            let started = std::time::Instant::now();
+            relay.finish();
+            let took = started.elapsed();
+            // The trickle runs to its end; the endless one is stopped.
+            if !must_be_clean {
+                stop.store(true, Ordering::SeqCst);
+            }
+            writer.join().unwrap();
+            assert!(
+                took < std::time::Duration::from_secs(2),
+                "SAM waited {took:?}"
+            );
+            if must_be_clean {
+                // As the shell reads it at its prompt: in raw mode, where a
+                // reply without a line end is there to read.
+                // SAFETY: `t` is a valid termios to fill and `outer_fd` an open terminal.
+                unsafe {
+                    let mut t: libc::termios = std::mem::zeroed();
+                    libc::tcgetattr(outer_fd.as_raw_fd(), &mut t);
+                    libc::cfmakeraw(&mut t);
+                    libc::tcsetattr(outer_fd.as_raw_fd(), libc::TCSANOW, &t);
+                }
+                let mut queued: libc::c_int = 0;
+                // SAFETY: `queued` is a valid, writable int and `outer_fd` is open.
+                unsafe { libc::ioctl(outer_fd.as_raw_fd(), libc::FIONREAD, &mut queued) };
+                assert_eq!(queued, 0, "late replies stayed queued for the shell");
+            }
+        }
     }
 }

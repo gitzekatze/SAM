@@ -232,7 +232,12 @@ pub fn prepare(
     // A terminal of its own for a user's start from a terminal, and for a
     // terminal program's test start (see `pty`).
     let interactive = opts.timeout_secs.is_none() && opts.probe.is_none();
-    let terminal = TerminalMode::choose(app.metadata.terminal, pty::is_tty(0), interactive);
+    let terminal = TerminalMode::choose(
+        app.metadata.terminal,
+        pty::is_tty(0),
+        pty::is_tty(1),
+        interactive,
+    );
 
     // One runtime directory per launch (two instances of an app never share
     // proxy sockets or spec files); removed when `Prepared` is dropped.
@@ -1326,8 +1331,10 @@ fn pump_output(
         // as on SAM's terminal relay: with its input redirected (a script,
         // `< file`) the app has no relay, but could still reach the terminal
         // with escape codes (clipboard, title reports).
+        // Without the relay, the terminal's answers to requests would land
+        // in the shell: the filter removes requests too.
         let mut filter =
-            (!quiet && pty::is_tty(if is_err { 2 } else { 1 })).then(pty::OutputFilter::default);
+            (!quiet && pty::is_tty(if is_err { 2 } else { 1 })).then(pty::OutputFilter::for_pipe);
         let keep = |line: &[u8]| {
             let text = String::from_utf8_lossy(line);
             if let Ok(mut l) = log.lock() {
@@ -1385,6 +1392,16 @@ fn pump_output(
         }
         if !line.is_empty() {
             keep(&line);
+        }
+        // An unfinished last sequence is dropped; modes the app left on are
+        // switched off again.
+        if let Some(f) = filter.as_mut() {
+            let tail = f.finish();
+            if is_err {
+                let _ = std::io::stderr().lock().write_all(&tail);
+            } else {
+                let _ = std::io::stdout().lock().write_all(&tail);
+            }
         }
     })
 }
@@ -1864,13 +1881,13 @@ mod tests {
     /// unchanged, without a line end added.
     #[test]
     fn output_shown_in_a_terminal_is_filtered_without_the_relay() {
-        let mut f = crate::pty::OutputFilter::default();
+        let mut f = crate::pty::OutputFilter::for_pipe();
         assert_eq!(
             for_terminal(Some(&mut f), b"a\x1b]52;c;aGk=\x07b\n"),
             b"ab\n"
         );
         assert_eq!(for_terminal(Some(&mut f), b"x\x1b[21t"), b"x");
-        let mut f = crate::pty::OutputFilter::default();
+        let mut f = crate::pty::OutputFilter::for_pipe();
         let first = for_terminal(Some(&mut f), b"a\x1b]52;c;");
         let second = for_terminal(Some(&mut f), b"aGk=\x07b");
         assert_eq!(

@@ -364,7 +364,11 @@ that reach past the terminal. So SAM puts every app started from a terminal
 | Desktop notifications (OSC 9, 99, 777) | Removed. |
 | Reach the terminal outside tmux (tmux passthrough) | Removed. |
 | Set the window title, then ask for it back (`CSI 21 t`), so the terminal "types" text the app chose | The report request is removed; the title itself may be set. |
-| Leave a query unanswered until it has ended, so the reply lands in your shell | Replies still queued when it ends are discarded. |
+| Program a function key (DECUDK) that types the app's text when you press it later in the shell | Removed. |
+| Make the terminal read a file of yours (kitty's graphics, its file transfer), change its font or the folder it opens new tabs in | Removed. |
+| Hide a code from the filter: a doubled escape, an escape inside another code, extra parameters, huge numbers, 8-bit control codes, a code split across reads or across its two output streams | The filter works from an allow-list: it reads the output as a terminal does and passes on only whole, known, harmless pieces (text, colours, cursor movement, screen modes, the title, links). Everything else is removed, including what is malformed or unknown. A test checks this against a model of a terminal written apart from the filter, with many thousands of random inputs (`nothing_past_the_filter_reaches_past_the_terminal`), and another starts a real terminal app in its real sandbox from a terminal and reads what arrives (`a_sandboxed_terminal_app_cannot_reach_past_the_terminal`). |
+| Leave a query unanswered until it has ended, so the reply lands in your shell | SAM discards what the terminal still sends until it has been quiet for a moment (at most a second). |
+| Leave mouse reporting, bracketed paste or the alternate screen switched on | Switched off again when the app ends. |
 
 Inside, the app has no display, GPU or desktop services. It sees its private
 home, the folders its settings allow (text editors get Documents by
@@ -382,17 +386,21 @@ When the terminal window is closed (or SAM is asked to quit), SAM hangs up
 the app's terminal, so the app ends, and finishes the launch normally.
 
 An app started with its input from a pipe or a file (`cat data.json |
-sam-jail run jq .`, `< file`, a script) gets no terminal of its own: the
-input goes to the app, and its output comes back unchanged, byte for byte
-and as it arrives, so a command-line tool works in a pipe as it would
-without SAM. Without a terminal of its own it has none to type into; its
-output still passes the same filter whenever it is shown in a terminal.
+sam-jail run jq .`, `< file`, a script), or with its output going to a
+file or a pipe (`sam-jail run jq . data.json > out.json`), gets no terminal
+of its own: the input goes to the app, and its output comes back
+unchanged, byte for byte and as it arrives, so a command-line tool works in
+a pipe as it would without SAM. With only the output redirected, it gets no
+input from the terminal (give it with `<` or a pipe). Without a terminal of
+its own it has none to type into; its output still passes the same filter
+whenever it is shown in a terminal, and there requests the terminal would
+answer are removed too, since the answer would reach your shell.
 
 **Not covered:** output that misleads you (a fake prompt, a link whose text
 hides where it goes, a fake "sudo" password question: the app cannot run
 `sudo`, but it can ask for your password), and security bugs in your
-terminal program itself. 8-bit control codes are passed on unchanged, as
-terminals in UTF-8 mode do not treat them as escape codes.
+terminal program itself. Images in the terminal (sixel, kitty's graphics)
+are not shown for apps in SAM's sandbox.
 
 ---
 
