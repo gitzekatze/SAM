@@ -99,6 +99,30 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
             .hint(sam_core::i18n::tr("Install it: sudo pacman -S bubblewrap")),
         ),
     }
+    // A helper installed only in the home is skipped on purpose (an app
+    // with write access to the home could replace it): say so, instead of
+    // only "not installed".
+    let skipped: Vec<String> = HELPERS
+        .iter()
+        .filter_map(|n| sam_core::util::skipped_copy(n))
+        .map(|p| sam_core::util::tildify(&p))
+        .collect();
+    if !skipped.is_empty() {
+        c.push(
+            check(
+                "home-programs",
+                "Programs in your home",
+                CheckStatus::Warn,
+                sam_core::i18n::trf(
+                    "SAM does not use {programs}: an app with access to your home could replace them.",
+                    &[("programs", &skipped.join(", "))],
+                ),
+            )
+            .hint(sam_core::i18n::tr(
+                "Install these programs for the whole system, with your distribution's package manager.",
+            )),
+        );
+    }
     c.push(if host.userns.usable() {
         check(
             "userns",
@@ -510,6 +534,21 @@ pub fn app_report(_app: &Sam, e: &AppEntry, host: &HostInfo) -> DiagnosticReport
         checks: c,
     }
 }
+
+/// The programs SAM runs outside the sandbox, by name.
+const HELPERS: &[&str] = &[
+    "bwrap",
+    "pasta",
+    "xdg-dbus-proxy",
+    "unsquashfs",
+    "bsdtar",
+    "dwarfsextract",
+    "gpg",
+    "gpgv",
+    "curl",
+    "strace",
+    "sam-jail-run",
+];
 
 /// Replace identifying information before a report leaves the machine: the
 /// home folder, other users' folders, the user and computer names, email

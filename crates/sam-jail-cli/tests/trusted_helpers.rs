@@ -149,6 +149,23 @@ fn sam_never_runs_a_helper_the_user_can_change() {
     sam(root, &path, &["--json", "doctor", "--contracts"]);
     sam(root, &path, &["--json", "verify", &id]);
 
+    // With only the planted copies, SAM says why it does not use them
+    // instead of only "not installed", and still runs none of them.
+    let doctor = sam(root, planted.to_str().unwrap(), &["--json", "doctor"]);
+    let v: serde_json::Value = serde_json::from_slice(
+        doctor
+            .stdout
+            .split(|b| *b == b'\n')
+            .rfind(|l| !l.is_empty())
+            .unwrap(),
+    )
+    .unwrap();
+    let text = v.to_string();
+    assert!(
+        text.contains("home-programs") && text.contains(".cargo/bin/bwrap"),
+        "{text}"
+    );
+
     let ran: Vec<String> = fs::read_dir(&marks)
         .unwrap()
         .flatten()

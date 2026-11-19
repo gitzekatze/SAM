@@ -770,13 +770,13 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Test | Promise | Result |
 |---|---|---|
 | [`given_environment_values_are_hidden_in_the_shown_command`](../crates/sam-core/src/sandbox.rs#L238) | Values of variables a person gave the app never reach the shown command; the names and SAM's own variables stay. | ✅ |
-| [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L937) | A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | ✅ |
-| [`bug_reports_hide_names_addresses_and_secrets`](../crates/sam-runner/src/doctor.rs#L979) | Bug reports hide everything that identifies the user or gives access: a home folder with spaces, other users' folders, short user names, the computer's name, email addresses, logins and tokens in links, IP addresses, and the values of environment variables given to the app. | ✅ |
-| [`a_bug_report_is_complete_and_redacted`](../crates/sam-runner/src/doctor.rs#L955) | A whole bug report (the system part) is produced and redacted: it names SAM's version and never the home folder or user name. | ✅ |
+| [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L976) | A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | ✅ |
+| [`bug_reports_hide_names_addresses_and_secrets`](../crates/sam-runner/src/doctor.rs#L1018) | Bug reports hide everything that identifies the user or gives access: a home folder with spaces, other users' folders, short user names, the computer's name, email addresses, logins and tokens in links, IP addresses, and the values of environment variables given to the app. | ✅ |
+| [`a_bug_report_is_complete_and_redacted`](../crates/sam-runner/src/doctor.rs#L994) | A whole bug report (the system part) is produced and redacted: it names SAM's version and never the home folder or user name. | ✅ |
 | [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L451) | SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | ✅ |
 | [`the_machine_id_reaches_only_apps_with_dbus`](../crates/sam-sandbox/src/lib.rs#L2448) | The machine ID identifies this computer; an app sees it only with D-Bus, which needs it, never without. | ✅ |
-| [`bug_reports_hide_tokens_in_every_shape`](../crates/sam-runner/src/doctor.rs#L1055) | Bug reports also hide what gives access in other shapes (audit U-L5): a token after `#` or inside a link's path, `Authorization` and cookie lines, and named secrets in settings and logs. | 🆕 new |
-| [`a_log_cannot_break_out_of_its_code_block`](../crates/sam-runner/src/doctor.rs#L1127) | An app's log cannot end the report's code block and add text of its own after it: the fence is always longer than any run of backticks inside. | 🆕 new |
+| [`bug_reports_hide_tokens_in_every_shape`](../crates/sam-runner/src/doctor.rs#L1094) | Bug reports also hide what gives access in other shapes (audit U-L5): a token after `#` or inside a link's path, `Authorization` and cookie lines, and named secrets in settings and logs. | 🆕 new |
+| [`a_log_cannot_break_out_of_its_code_block`](../crates/sam-runner/src/doctor.rs#L1166) | An app's log cannot end the report's code block and add text of its own after it: the fence is always longer than any run of backticks inside. | 🆕 new |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs)
 
