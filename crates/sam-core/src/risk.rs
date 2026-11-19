@@ -373,6 +373,36 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
         }
     }
     if p.dbus.session.mode == DbusMode::Filtered {
+        // Method and signal rules (`NAME=[METHOD][@PATH]`) reach a service
+        // the app may not talk to otherwise: a call to systemd's is a way
+        // out (audit D-H2: they counted for nothing).
+        let service = |rule: &str| rule.split(['=', '@']).next().unwrap_or("").to_string();
+        for rule in &p.dbus.session.calls {
+            let level = if crate::permissions::dangerous_bus_name(&service(rule)).is_some() {
+                RiskLevel::Dangerous
+            } else {
+                RiskLevel::High
+            };
+            item(
+                &mut items,
+                "dbus.session.calls",
+                &format!("Calls {rule}"),
+                level,
+            );
+        }
+        for rule in &p.dbus.session.broadcasts {
+            let level = if crate::permissions::dangerous_bus_name(&service(rule)).is_some() {
+                RiskLevel::High
+            } else {
+                RiskLevel::Medium
+            };
+            item(
+                &mut items,
+                "dbus.session.broadcasts",
+                &format!("Hears {rule}"),
+                level,
+            );
+        }
         for name in &p.dbus.session.own {
             let level = if crate::permissions::dangerous_bus_name(name).is_some() {
                 RiskLevel::Dangerous
@@ -554,6 +584,34 @@ mod tests {
 
     /// SAM's strictest window profile counts as low risk.
     /// The command line and the window name risk with the same three words,
+    /// Single functions and signals of a service count in the risk word: a
+    /// function of a service that can act outside the sandbox is
+    /// Dangerous, any other function Think twice, a signal Harmless
+    /// (audit D-H2: they counted for nothing).
+    #[test]
+    fn function_and_signal_rules_count_in_the_risk_word() {
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Filtered;
+        let base = assess(&p).level;
+        p.dbus.session.calls = vec![
+            "org.freedesktop.systemd1=org.freedesktop.systemd1.Manager.StartTransientUnit".into(),
+        ];
+        assert_eq!(assess(&p).level, RiskLevel::Dangerous);
+        p.dbus.session.calls = vec!["org.example.Service=org.example.Iface.Method".into()];
+        assert_eq!(assess(&p).level.max(base), RiskLevel::High.max(base));
+        assert!(assess(&p)
+            .items
+            .iter()
+            .any(|i| i.key == "dbus.session.calls"));
+        p.dbus.session.calls.clear();
+        p.dbus.session.broadcasts = vec!["org.example.Service=org.example.Iface.Changed".into()];
+        assert!(assess(&p)
+            .items
+            .iter()
+            .any(|i| i.key == "dbus.session.broadcasts"));
+        assert!(assess(&p).level <= RiskLevel::Medium.max(base));
+    }
+
     /// and the command line's filter understands both names.
     #[test]
     fn risk_has_the_same_three_words_everywhere() {

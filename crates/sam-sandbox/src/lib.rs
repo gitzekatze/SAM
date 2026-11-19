@@ -679,11 +679,19 @@ PY
   echo "sam: cannot open $target outside the sandbox (needs python3-gobject in the host system)" >&2
   exit 3
 fi
+# Web and mail links open in the person's browser or mail program; any
+# other kind (steam://, vscode://, a program's own scheme) starts whatever
+# program handles it, so the portal asks first, with its app chooser.
+case "$target" in
+  http://*|https://*|mailto:*) gopts="@a{sv} {}"; bopts="0" ;;
+  *) gopts="{'ask': <true>}"; bopts="1 ask b true" ;;
+esac
 if command -v gdbus >/dev/null 2>&1 && gdbus call --session --dest org.freedesktop.portal.Desktop \
      --object-path /org/freedesktop/portal/desktop --method org.freedesktop.portal.OpenURI.OpenURI \
-     "" "$target" "@a{sv} {}" >/dev/null 2>&1; then exit 0; fi
+     "" "$target" "$gopts" >/dev/null 2>&1; then exit 0; fi
+# shellcheck disable=SC2086
 if command -v busctl >/dev/null 2>&1 && busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop \
-     org.freedesktop.portal.OpenURI OpenURI 'ssa{sv}' "" "$target" 0 >/dev/null 2>&1; then exit 0; fi
+     org.freedesktop.portal.OpenURI OpenURI 'ssa{sv}' "" "$target" $bopts >/dev/null 2>&1; then exit 0; fi
 echo "sam: could not open $target: the desktop portal is not reachable (session D-Bus off?)" >&2
 exit 3
 "#;
@@ -3193,6 +3201,54 @@ mod guard_tests {
             has_seq(&args_of(&ctx), &["--tmpfs", &sam_s]),
             "hidden inside the granted folder"
         );
+    }
+
+    /// Links leave the sandbox through the portal: web and mail links go to
+    /// the person's browser or mail program as asked; any other kind
+    /// (`steam://`, `vscode://`, a program's own scheme) makes the portal
+    /// ask first with its app chooser, so an app cannot start another
+    /// program by a link (audit L-F14). The real script, with a stand-in
+    /// for gdbus that records what it was asked to send.
+    #[test]
+    fn links_to_other_programs_ask_first() {
+        let t = tempfile::tempdir().unwrap();
+        let shim = t.path().join("xdg-open");
+        fs::write(&shim, OPEN_SHIM).unwrap();
+        let rec = t.path().join("sent");
+        let gdbus = t.path().join("gdbus");
+        fs::write(
+            &gdbus,
+            format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\n", rec.display()),
+        )
+        .unwrap();
+        fs::set_permissions(&gdbus, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let sent = |url: &str| {
+            let ok = std::process::Command::new("sh")
+                .arg(&shim)
+                .arg(url)
+                .env("PATH", format!("{}:/usr/bin:/bin", t.path().display()))
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "{url}");
+            fs::read_to_string(&rec).unwrap()
+        };
+        for plain in [
+            "https://example.org/?q=1",
+            "http://example.org",
+            "mailto:a@example.org",
+        ] {
+            let s = sent(plain);
+            assert!(
+                s.contains("@a{sv} {}") && !s.contains("ask"),
+                "{plain}: {s}"
+            );
+            assert!(s.lines().any(|l| l == plain), "{s}");
+        }
+        for other in ["steam://run/1", "vscode://file/x", "x-custom:anything"] {
+            let s = sent(other);
+            assert!(s.contains("{'ask': <true>}"), "{other}: {s}");
+        }
     }
 
     /// Keys, credential stores, start places (also behind a link) and SAM's

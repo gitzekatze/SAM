@@ -110,6 +110,7 @@ pub const PROBES: &[&str] = &[
     "wayland-socket",
     "wayland-security-context",
     "audio-sockets",
+    "portal-openuri-ask",
     "sound-relay",
     "dbus-buses",
     "portal-interfaces",
@@ -311,6 +312,7 @@ fn probe(name: &str, host: &HostInfo) -> (State, String) {
             (None, _) => (State::Absent, "no session bus".into()),
         },
         "portal-interfaces" => portal_interfaces(Path::new("/usr/share/dbus-1/interfaces")),
+        "portal-openuri-ask" => portal_openuri_ask(Path::new("/usr/share/dbus-1/interfaces")),
         "x11-socket" => match (&host.sockets.x11_display, &host.sockets.x11) {
             (Some(_), Some(_)) => holds("the X11 socket is there"),
             (Some(d), None) => broken(format!("DISPLAY={d}, but no socket in /tmp/.X11-unix")),
@@ -384,6 +386,26 @@ pub fn portal_interfaces(dir: &Path) -> (State, String) {
         (
             State::Broken,
             format!("not described: {}", missing.join(", ")),
+        )
+    }
+}
+
+/// The link portal knows the `ask` option, which makes it show its app
+/// chooser: SAM's link helper uses it for every link that is not a web or
+/// mail link (audit L-F14). Read from the portal's own description.
+pub fn portal_openuri_ask(dir: &Path) -> (State, String) {
+    let Ok(text) = std::fs::read_to_string(dir.join("org.freedesktop.portal.OpenURI.xml")) else {
+        return (State::Absent, "the link portal is not installed".into());
+    };
+    if text.contains("``ask``") {
+        (
+            State::Holds,
+            "the link portal can ask with its app chooser".into(),
+        )
+    } else {
+        (
+            State::Broken,
+            "the link portal has no ask option: links to other programs open without asking".into(),
         )
     }
 }
@@ -639,6 +661,24 @@ mod tests {
     fn the_sound_relay_check_needs_pipewire() {
         let (state, why) = probe("sound-relay", &HostInfo::default());
         assert!(matches!(state, State::Absent), "{why}");
+    }
+
+    /// The link portal's ask option is found in its description, and its
+    /// absence is reported (stand-in descriptions; the real one is checked
+    /// by `sam-jail doctor --contracts` and on CI).
+    #[test]
+    fn the_link_portal_check_finds_the_ask_option() {
+        let t = tempfile::tempdir().unwrap();
+        assert!(matches!(portal_openuri_ask(t.path()).0, State::Absent));
+        let f = t.path().join("org.freedesktop.portal.OpenURI.xml");
+        std::fs::write(&f, "<method name=\"OpenURI\"> * ``ask`` (``b``) </method>").unwrap();
+        assert!(matches!(portal_openuri_ask(t.path()).0, State::Holds));
+        std::fs::write(
+            &f,
+            "<method name=\"OpenURI\"> * ``writable`` (``b``) </method>",
+        )
+        .unwrap();
+        assert!(matches!(portal_openuri_ask(t.path()).0, State::Broken));
     }
 
     #[test]
