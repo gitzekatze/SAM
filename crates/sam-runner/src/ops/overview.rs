@@ -324,7 +324,7 @@ impl Sam {
         for f in self.menu_duplicates(entry) {
             match menu::hide(&f.file, &self.paths.applications_dir, &entry.id) {
                 Ok(h) => entry.hidden_entries.push(h),
-                Err(e) => eprintln!(
+                Err(e) => errln!(
                     "sam-jail: {}",
                     sam_core::i18n::trf(
                         "could not hide the menu entry {file}: {error}",

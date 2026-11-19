@@ -7,19 +7,19 @@ pub(crate) fn config_cmd(app: &Sam, out: &Out, cmd: ConfigCmd) -> Result<()> {
         ConfigCmd::Show => {
             let c = &app.config;
             out.emit(c, || {
-                print!("{}", toml::to_string_pretty(c).unwrap_or_default())
+                out!("{}", toml::to_string_pretty(c).unwrap_or_default())
             });
         }
         ConfigCmd::Get { key } => {
             let v = app.config.get_key(&key)?;
-            out.emit(&v, || println!("{v}"));
+            out.emit(&v, || outln!("{v}"));
         }
         ConfigCmd::Set { key, value } => {
             let mut c = app.config.clone();
             c.set_key(&key, &value)?;
             c.save(&app.paths)?;
             let v = c.get_key(&key)?;
-            out.emit(&json!({"key": key, "value": v}), || println!("{key} = {v}"));
+            out.emit(&json!({"key": key, "value": v}), || outln!("{key} = {v}"));
         }
         ConfigCmd::Put => {
             let c: Config = serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr(
@@ -28,7 +28,7 @@ pub(crate) fn config_cmd(app: &Sam, out: &Out, cmd: ConfigCmd) -> Result<()> {
             c.validate()?;
             c.save(&app.paths)?;
             out.emit(&c, || {
-                println!("{}", sam_core::i18n::tr("Configuration saved"))
+                outln!("{}", sam_core::i18n::tr("Configuration saved"))
             });
         }
         ConfigCmd::Path => {
@@ -42,7 +42,7 @@ pub(crate) fn config_cmd(app: &Sam, out: &Out, cmd: ConfigCmd) -> Result<()> {
             });
             out.emit(&v, || {
                 for (k, val) in v.as_object().into_iter().flatten() {
-                    println!("{k:<14} {}", val.as_str().unwrap_or_default());
+                    outln!("{k:<14} {}", val.as_str().unwrap_or_default());
                 }
             });
         }

@@ -24,6 +24,7 @@ use crate::bwrap::SandboxInfo;
 use crate::dbus_proxy::DbusProxy;
 use crate::kernel;
 use crate::pty::{self, Pty, TerminalMode};
+use sam_core::errln;
 
 #[derive(Debug, Clone, Default)]
 pub struct LaunchOptions {
@@ -620,7 +621,7 @@ pub fn run(
     // first start has ended and given back its folder and lock.
     if !rec.success && !rec.learned_names.is_empty() && !opts.name_retry {
         if !opts.quiet {
-            eprintln!(
+            errln!(
                 "sam-jail: {}",
                 sam_core::i18n::trf(
                     "the app needed its own bus name {names}; SAM allowed it and starts the app again",
@@ -691,7 +692,7 @@ fn run_once(
     for w in &prepared.warnings {
         // A terminal program's start shows its own line (`terminal_banner`).
         if !opts.quiet && w.severity != sam_core::Severity::Info && w.code != "terminal-program" {
-            eprintln!("sam-jail: warning: {}", w.message);
+            errln!("sam-jail: warning: {}", w.message);
         }
     }
 
@@ -720,9 +721,14 @@ fn run_once(
     // The app never gets the user's terminal itself (see `pty`).
     let mode = prepared.terminal;
     let pty = match mode {
-        TerminalMode::None => None,
+        TerminalMode::None => {
+            // At logout the launcher, started from the menu, gets SIGTERM
+            // (audit L-F9).
+            pty::end_cleanly_on_signal();
+            None
+        }
         TerminalMode::Relay => {
-            pty::end_with_the_terminal();
+            pty::end_cleanly_on_signal();
             Some(Pty::open(Some(pty::Outer::STDIO))?)
         }
         TerminalMode::Headless => Some(Pty::open(None)?),
@@ -732,7 +738,7 @@ fn run_once(
         // SAFETY: only async-signal-safe calls (setsid, ioctl).
         unsafe { cmd.pre_exec(Pty::become_controlling_terminal) };
         if mode == TerminalMode::Relay && app.metadata.terminal && !opts.quiet {
-            eprintln!("{}", terminal_banner(app, &prepared));
+            errln!("{}", terminal_banner(app, &prepared));
         }
     } else {
         cmd.stdin(if pty::is_tty(0) {
@@ -767,7 +773,7 @@ fn run_once(
     if let Some(warn) = &watch_warning {
         let _ = writeln!(log, "# warning: {warn}");
         if !opts.quiet {
-            eprintln!(
+            errln!(
                 "sam-jail: {}",
                 sam_core::i18n::trf("warning: {text}", &[("text", warn)])
             );
@@ -840,7 +846,11 @@ fn run_once(
             None
         }
     };
-    let (status, timed_out) = wait_until(&mut child, opts.timeout_secs)?;
+    let (status, timed_out) = wait_until(
+        &mut child,
+        opts.timeout_secs,
+        (mode == TerminalMode::None).then_some(prepared.context.runtime_dir.as_path()),
+    )?;
     child_done.store(true, std::sync::atomic::Ordering::SeqCst);
     for t in pumps {
         let _ = t.join();
@@ -1006,7 +1016,7 @@ fn run_once(
         summary: outcome.summary,
     };
     if !rec.missing_layers.is_empty() && !opts.quiet {
-        eprintln!(
+        errln!(
             "sam-jail: {}",
             sam_core::i18n::trf(
                 "warning: this start ran without {layers}, which its settings ask for",
@@ -1015,7 +1025,7 @@ fn run_once(
         );
     }
     if !rec.moved_aside.is_empty() && !opts.quiet {
-        eprintln!(
+        errln!(
             "sam-jail: {}",
             sam_core::i18n::trf(
                 "the app left something that would run outside its sandbox; SAM moved it aside: {items}",
@@ -1030,7 +1040,7 @@ fn run_once(
     let mut rec = rec;
     rec.undone_repairs = save_launch(app, &rec, paths, judge)?;
     if !rec.undone_repairs.is_empty() && !opts.quiet {
-        eprintln!(
+        errln!(
             "sam-jail: {}",
             sam_core::i18n::trf(
                 "the repair step did not help, so SAM undid it: {steps}",
@@ -1336,7 +1346,8 @@ fn pump_output(
         let mut filter =
             (!quiet && pty::is_tty(if is_err { 2 } else { 1 })).then(pty::OutputFilter::for_pipe);
         let keep = |line: &[u8]| {
-            let text = String::from_utf8_lossy(line);
+            // Only the text goes into the log (audit L-F3).
+            let text = sam_core::terminal::plain_text(line);
             if let Ok(mut l) = log.lock() {
                 let size = l.metadata().map(|m| m.len()).unwrap_or(0);
                 if size < LOG_LIMIT {
@@ -1417,23 +1428,42 @@ fn for_terminal(filter: Option<&mut pty::OutputFilter>, piece: &[u8]) -> Vec<u8>
 
 /// Waits for the child; with a time limit, ends it when the time is up
 /// (a test start or diagnostic run). Returns whether SAM ended it.
+/// How long an app asked to quit (SIGTERM) may take before its sandbox is
+/// ended.
+const QUIT_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Waits for the sandbox to end. After `timeout_secs` it is ended and
+/// reported as timed out. With `runtime_dir` (a launch without SAM's
+/// terminal relay), SIGTERM or SIGHUP to SAM asks the app to quit, marks the
+/// launch as closed and ends the sandbox after [`QUIT_GRACE`].
 fn wait_until(
     child: &mut std::process::Child,
     timeout_secs: Option<u64>,
+    runtime_dir: Option<&Path>,
 ) -> Result<(std::process::ExitStatus, bool)> {
-    let Some(secs) = timeout_secs else {
-        return Ok((child.wait()?, false));
-    };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    let start = std::time::Instant::now();
+    let deadline = timeout_secs.map(|s| start + std::time::Duration::from_secs(s));
+    let mut asked: Option<std::time::Instant> = None;
     loop {
         if let Some(st) = child.try_wait()? {
             return Ok((st, false));
         }
-        if std::time::Instant::now() > deadline {
+        if let (Some(dir), None) = (runtime_dir, asked) {
+            if pty::end_requested() {
+                let _ = fs::write(dir.join(STOP_MARKER), b"");
+                crate::ops::ask_to_quit(std::process::id());
+                asked = Some(std::time::Instant::now());
+            }
+        }
+        if asked.is_some_and(|t| t.elapsed() > QUIT_GRACE) {
+            let _ = child.kill();
+            return Ok((child.wait()?, false));
+        }
+        if deadline.is_some_and(|d| std::time::Instant::now() > d) {
             let _ = child.kill();
             return Ok((child.wait()?, true));
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 }
 
@@ -1719,10 +1749,14 @@ fn read_fd_in_thread(
 }
 
 /// Last lines of a log file (for reports and the GUI).
+/// The last `max_lines` lines of a log, as text: escape codes and hidden
+/// characters an app wrote are removed, also from logs written before SAM
+/// kept only the text (audit L-F3).
 pub fn tail(path: &Path, max_lines: usize) -> String {
-    let Ok(text) = fs::read_to_string(path) else {
+    let Ok(data) = fs::read(path) else {
         return String::new();
     };
+    let text = sam_core::terminal::plain_text(&data);
     let lines: Vec<&str> = text.lines().collect();
     lines[lines.len().saturating_sub(max_lines)..].join("\n")
 }
@@ -1730,6 +1764,22 @@ pub fn tail(path: &Path, max_lines: usize) -> String {
 #[cfg(test)]
 mod log_limit_tests {
     use super::*;
+
+    /// A log written before SAM kept only the text, or edited by hand,
+    /// still shows only text (audit L-F3): `sam-jail logs` and bug reports
+    /// read it through `tail`.
+    #[test]
+    fn an_old_log_shows_only_its_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("launch.log");
+        fs::write(
+            &path,
+            b"# SAM launch log\n[err] a\x1b]52;c;ZGF0YQ==\x07b\xe2\x80\xaec\r\nlast \xff\x1b[21t line\n",
+        )
+        .unwrap();
+        assert_eq!(tail(&path, 10), "# SAM launch log\n[err] abc\nlast  line");
+        assert_eq!(tail(&path, 1), "last  line");
+    }
 
     /// An app that prints without end cannot fill the disk or SAM's memory:
     /// the launch log stops at its limit with a note, a line without an end

@@ -206,7 +206,7 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
             );
         }
         if std::env::var_os("SAM_MATRIX_DEBUG").is_some() {
-            eprintln!(
+            sam_core::errln!(
                 "=== {name}\n{}",
                 fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap()
             );

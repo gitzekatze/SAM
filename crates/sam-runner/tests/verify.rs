@@ -74,7 +74,7 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
         .iter()
         .map(|r| format!("{}={:?} ({})", r.title, r.ok, r.observed))
         .collect();
-    eprintln!("sandbox check results: {shown:?}");
+    sam_core::errln!("sandbox check results: {shown:?}");
     assert!(failed.is_empty(), "unexpected failures: {failed:?}");
     assert!(out
         .report

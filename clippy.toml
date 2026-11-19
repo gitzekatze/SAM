@@ -1,3 +1,13 @@
 # Tests may unwrap and panic: a panic there is a failed test, which is what it should be.
 allow-unwrap-in-tests = true
 allow-panic-in-tests = true
+
+# Everything SAM prints can carry an app's or a file's text (a name, a log
+# line, an error), and with it escape codes for the user's terminal. Lines
+# go through sam_core::terminal::for_screen instead: outln!, errln!, out!.
+disallowed-macros = [
+    { path = "std::println", reason = "use sam_core::outln!: it removes escape codes from app text" },
+    { path = "std::eprintln", reason = "use sam_core::errln!: it removes escape codes from app text" },
+    { path = "std::print", reason = "use sam_core::out!: it removes escape codes from app text" },
+    { path = "std::eprint", reason = "use sam_core::errln!: it removes escape codes from app text" },
+]

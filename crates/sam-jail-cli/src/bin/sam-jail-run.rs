@@ -6,13 +6,14 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
+use sam_core::errln;
 use sam_core::error::InFunctionExt;
 use sam_core::util::which;
 use sam_runner::launch::{run, LaunchOptions};
 use sam_runner::ops::Sam;
 
 fn usage() -> ! {
-    eprintln!("usage: sam-jail-run --app-id <id> [files...]\n       sam-jail-run <id> [args...]");
+    errln!("usage: sam-jail-run --app-id <id> [files...]\n       sam-jail-run <id> [args...]");
     std::process::exit(2);
 }
 
@@ -90,7 +91,7 @@ fn main() {
             None => usage(),
         };
         if let Err(e) = sam_runner::kernel::sandbox_exec(&spec, &rest) {
-            eprintln!("sam-jail-run: {e:#}");
+            errln!("sam-jail-run: {e:#}");
             std::process::exit(127);
         }
         return;
@@ -103,7 +104,7 @@ fn main() {
             let message = sam_core::error::message_of(&e);
             let function = sam_core::error::function_of(&e).unwrap_or(19);
             let part = sam_core::i18n::trf("SAM function {id}", &[("id", &function)]);
-            eprintln!("sam-jail-run: {message} ({part})");
+            errln!("sam-jail-run: {message} ({part})");
             notify(
                 &sam_core::i18n::tr("SAM could not start the app"),
                 &sam_core::i18n::trf(
@@ -171,7 +172,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
     // failure would flash by unread.
     if entry.metadata.terminal && rec.exit_code != Some(0) && sam_runner::pty::is_tty(0) {
         if rec.success {
-            eprintln!(
+            errln!(
                 "\n{}",
                 sam_core::i18n::trf(
                     "{app} ended: {summary}",
@@ -179,7 +180,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
                 )
             );
         } else {
-            eprintln!(
+            errln!(
                 "\n{}",
                 sam_core::i18n::trf(
                     "{app} did not run: {summary}",
@@ -187,7 +188,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
                 )
             );
             if let Some(f) = rec.findings.first() {
-                eprintln!(
+                errln!(
                     "{}",
                     sam_core::i18n::trf(
                         "SAM found a likely fix: {fix}. Open SAM to apply it.",
@@ -196,10 +197,9 @@ fn launch(args: Vec<String>) -> Result<i32> {
                 );
             }
         }
-        eprint!(
-            "{}",
-            sam_core::i18n::tr("Press Enter to close this window.")
-        );
+        sam_core::terminal::print_err_raw_end(&sam_core::i18n::tr(
+            "Press Enter to close this window.",
+        ));
         let _ = std::io::stdin().read_line(&mut String::new());
     }
     if rec.sandbox_failure {

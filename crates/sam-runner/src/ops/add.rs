@@ -344,8 +344,11 @@ impl Sam {
             &x.root.join("metadata.json"),
             &serde_json::to_vec_pretty(&entry.metadata)?,
         );
-        let _ = sam_core::util::write_new(&x.root.join("extraction.log"), extract_log);
-        self.write_log(&entry.id, LogKind::Extract, extract_log);
+        // The unpack tools' messages name files from the AppImage: only
+        // their text is kept (audit I-F11).
+        let extract_log = sam_core::terminal::plain_text(extract_log);
+        let _ = sam_core::util::write_new(&x.root.join("extraction.log"), extract_log.as_bytes());
+        self.write_log(&entry.id, LogKind::Extract, extract_log.as_bytes());
         if let Some(df) = &entry.metadata.desktop_file {
             if let Some(src) = sam_intake::normalize::safe_resolve(&x.appdir, Path::new(df)) {
                 let desktop = x.root.join("desktop");
@@ -465,10 +468,14 @@ impl Sam {
         Ok(())
     }
 
+    /// Logs hold text from the app and its files: only that text is
+    /// written, never escape codes for a terminal that shows the log
+    /// (audit I-F11, L-F3).
     pub(super) fn write_log(&self, id: &str, kind: LogKind, data: &[u8]) {
         let logs = Logs::new(&self.paths);
         if let Ok((_, mut f)) = logs.create(id, kind) {
-            let _ = std::io::Write::write_all(&mut f, data);
+            let _ =
+                std::io::Write::write_all(&mut f, sam_core::terminal::plain_text(data).as_bytes());
             let _ = logs.prune(id, kind, 5);
         }
     }

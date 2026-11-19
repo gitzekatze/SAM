@@ -287,7 +287,7 @@ fn every_hostile_appimage_fails_to_escape() {
             .next_back()
             .unwrap_or("no result")
             .to_string();
-        eprintln!("evil: {:<18} {:>4.1} s  {r}", app.name, took);
+        sam_core::errln!("evil: {:<18} {:>4.1} s  {r}", app.name, took);
         results.insert(app.name, r);
     }
     drop(bus);

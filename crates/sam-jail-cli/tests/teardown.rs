@@ -47,7 +47,7 @@ fn with_marker(marker: &str) -> Vec<u32> {
         .collect()
 }
 
-fn wait_for(what: impl Fn() -> bool, secs: u64) -> bool {
+fn wait_for(mut what: impl FnMut() -> bool, secs: u64) -> bool {
     let end = Instant::now() + Duration::from_secs(secs);
     while Instant::now() < end {
         if what() {
@@ -179,8 +179,103 @@ fn with_this_computer_only_the_sandbox_dies_with_its_launcher() {
         sam_runner::contracts::not_here(
             "no pasta with --splice-only, so SAM never starts \"This computer only\" here",
         );
-        eprintln!("skipped: no pasta with --splice-only here");
+        sam_core::errln!("skipped: no pasta with --splice-only here");
         return;
     }
     killing_the_launcher_ends_the_sandbox("localhost");
+}
+
+/// Logging out sends SIGTERM to the launcher of an app started from the
+/// menu (audit L-F9). The launcher no longer dies on the spot (which left
+/// the app to be killed hard, saved no record and left its runtime folder
+/// behind): it passes the request on, the app closes itself, and the
+/// launch ends as "closed by SAM" with everything cleaned up.
+#[test]
+fn logging_out_closes_a_menu_started_app_properly() {
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let marker = format!("sam-logout-{}", std::process::id());
+    // The app saves and quits on SIGTERM, like a real one at logout.
+    let apprun = root.join("AppRun");
+    fs::write(
+        &apprun,
+        format!(
+            "#!/bin/sh\nexec sh -c 'trap \"echo saved > \\\"$HOME/quit-seen\\\"; exit 0\" TERM; \
+             while :; do sleep 0.1; done' {marker}\n"
+        ),
+    )
+    .unwrap();
+    let img = root.join("Saver-1.0-x86_64.AppImage");
+    let ok = |c: &mut Command| {
+        let o = c.output().unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    };
+    ok(sam(root)
+        .args(["dev", "make-fixture", "--name", "Saver", "--apprun"])
+        .arg(&apprun)
+        .arg(&img));
+    ok(sam(root)
+        .arg("add")
+        .arg(&img)
+        .args(["--no-launcher", "--accept"]));
+    let list = ok(sam(root).args(["--json", "list"]));
+    let id = list
+        .lines()
+        .last()
+        .and_then(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .and_then(|v| v["data"][0]["id"].as_str().map(String::from))
+        .unwrap();
+
+    // Started the way the menu starts it: no terminal anywhere.
+    let mut launcher = sam(root)
+        .args(["run", &id])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(
+        wait_for(|| !with_marker(&marker).is_empty(), 30),
+        "the app did not start"
+    );
+    // SAFETY: kill takes plain integers; the launcher is our own child.
+    unsafe { libc::kill(launcher.id() as libc::pid_t, libc::SIGTERM) };
+    let ended = wait_for(|| launcher.try_wait().unwrap().is_some(), 20);
+    if !ended {
+        launcher.kill().unwrap();
+    }
+    launcher.wait().unwrap();
+    assert!(ended, "the launcher did not end after SIGTERM");
+    assert!(
+        wait_for(|| with_marker(&marker).is_empty(), 10),
+        "the app outlived its launcher"
+    );
+    let home = root.join("data/homes").join(&id);
+    assert!(
+        home.join("quit-seen").exists(),
+        "the app was killed instead of asked to quit"
+    );
+    let info = ok(sam(root).args(["--json", "info", &id]));
+    let v: serde_json::Value = serde_json::from_str(info.lines().last().unwrap()).unwrap();
+    let last = &v["data"]["entry"]["last_launch"];
+    assert_eq!(last["summary"], "closed by SAM", "{v}");
+    assert_eq!(v["data"]["running"].as_u64(), Some(0), "{v}");
+    let runtime = sam_core::Paths::rooted(root).runtime_dir(&id);
+    let left: Vec<_> = fs::read_dir(&runtime)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name())
+        .collect();
+    assert!(
+        left.is_empty(),
+        "the launch left {left:?} in its runtime folder"
+    );
 }

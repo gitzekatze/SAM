@@ -35,7 +35,7 @@ fn a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder() {
             std::env::var("SAM_REQUIRE_SANDBOX").as_deref() != Ok("1"),
             "SAM_REQUIRE_SANDBOX=1, but Bubblewrap does not work here"
         );
-        eprintln!("skipped: Bubblewrap does not work here");
+        sam_core::errln!("skipped: Bubblewrap does not work here");
         return;
     };
     let tmp = tempfile::tempdir().unwrap();

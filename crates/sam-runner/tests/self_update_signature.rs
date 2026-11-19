@@ -77,7 +77,7 @@ fn download(dir: &Path, name: &str) -> PathBuf {
 #[test]
 fn sam_refuses_a_forged_update_that_carries_its_release_key() {
     if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
-        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
+        sam_core::errln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
         return;
     }
     assert!(

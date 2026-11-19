@@ -252,11 +252,13 @@ extern "C" fn on_end(_: libc::c_int) {
 }
 
 /// When the user's terminal closes (SIGHUP) or SAM is asked to quit
-/// (SIGTERM), the relay hangs up the app's terminal, so the app ends, and
-/// SAM finishes the launch properly (log, runtime folder, D-Bus filter)
-/// instead of dying first. A handler, not "ignore": handlers are reset when
-/// a program starts, so the app gets the hang-up as usual.
-pub fn end_with_the_terminal() {
+/// (SIGTERM, also at logout), SAM ends the app and then finishes the launch
+/// properly (record, log, runtime folder, D-Bus filter) instead of dying
+/// first and leaving the app to be killed hard: on a terminal the relay
+/// hangs up the app's terminal; otherwise the launch asks the app to quit
+/// ([`end_requested`]). A handler, not "ignore": handlers are reset when a
+/// program starts, so the app gets the signal as usual.
+pub fn end_cleanly_on_signal() {
     // SAFETY: `sa` is a zeroed sigaction whose handler is a valid extern C function; sigaction only reads it.
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
@@ -264,6 +266,11 @@ pub fn end_with_the_terminal() {
         libc::sigaction(libc::SIGHUP, &sa, std::ptr::null_mut());
         libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
     }
+}
+
+/// Whether SIGHUP or SIGTERM arrived since [`end_cleanly_on_signal`].
+pub fn end_requested() -> bool {
+    ENDING.load(Ordering::SeqCst)
 }
 
 static WINCH: AtomicBool = AtomicBool::new(false);

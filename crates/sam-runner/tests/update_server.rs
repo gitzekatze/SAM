@@ -490,7 +490,7 @@ fn going_back_with_an_unchanged_file_name_keeps_both_versions() {
 fn an_older_signed_version_is_not_installed_as_an_update() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
-        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg and gpgv installed)");
+        sam_core::errln!("skipping: set SAM_TEST_GPG=1 (with gpg and gpgv installed)");
         return;
     }
     let tmp = tempfile::tempdir().unwrap();

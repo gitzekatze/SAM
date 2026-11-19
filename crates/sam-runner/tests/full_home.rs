@@ -110,7 +110,7 @@ fn full_home_access_cannot_leave_anything_that_runs_later() {
     )
     .unwrap();
     let r = parse(rec.log_file.as_ref().unwrap());
-    eprintln!("ATTACK RESULTS: {r:?} MOVED: {:?}", rec.moved_aside);
+    sam_core::errln!("ATTACK RESULTS: {r:?} MOVED: {:?}", rec.moved_aside);
     assert_eq!(
         r.get("END").map(String::as_str),
         Some("1"),

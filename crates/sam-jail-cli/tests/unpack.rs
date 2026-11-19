@@ -172,7 +172,7 @@ fn an_unpacking_limit_inside_the_sandbox_stops_unpacking() {
             std::env::var("SAM_REQUIRE_SANDBOX").as_deref() != Ok("1"),
             "SAM_REQUIRE_SANDBOX=1, but Bubblewrap does not work here"
         );
-        eprintln!("skipped: Bubblewrap does not work here");
+        sam_core::errln!("skipped: Bubblewrap does not work here");
         return;
     }
     let tmp = tempfile::tempdir().unwrap();

@@ -9,17 +9,17 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             let all = sam_profile::all_presets(&app.paths)?;
             out.emit(&all, || {
                 if all.is_empty() {
-                    println!("{}", sam_core::i18n::tr("You have no presets yet. Save an app's settings with `sam-jail preset save APP NAME`."));
+                    outln!("{}", sam_core::i18n::tr("You have no presets yet. Save an app's settings with `sam-jail preset save APP NAME`."));
                 }
                 for p in &all {
-                    println!("{:<26} {:<10} {}", p.name, risk_str(p.risk), p.description);
+                    outln!("{:<26} {:<10} {}", p.name, risk_str(p.risk), p.description);
                 }
             });
         }
         PresetCmd::Show { name } => {
             let p = sam_profile::find_preset(&app.paths, &name)?
                 .with_context(|| format!("unknown preset '{name}'"))?;
-            out.emit(&p, || print!("{}", preset_to_toml(&p).unwrap_or_default()));
+            out.emit(&p, || out!("{}", preset_to_toml(&p).unwrap_or_default()));
         }
         PresetCmd::Apply { name, app: q, yes } => {
             let r = app.apply_preset(&q, &name, yes)?;
@@ -29,19 +29,19 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             out.emit(&r, || {
                 let c = &r.check;
                 for s in &c.removes_needed {
-                    println!(
+                    outln!(
                         "  {} removes {s}, which the app likely needs",
                         paint("warning:", "33")
                     );
                 }
                 for s in &c.adds_dangerous {
-                    println!(
+                    outln!(
                         "  {} adds high-risk permission: {s}",
                         paint("warning:", "31")
                     );
                 }
                 if r.applied {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trf(
                             "Applied “{preset}” (risk {before} → {after})",
@@ -53,7 +53,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                         )
                     );
                 } else {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::tr("Not applied. Run again with --yes to confirm.")
                     );
@@ -62,7 +62,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
         }
         PresetCmd::Template => {
             let p = sam_profile::preset_template();
-            out.emit(&p, || print!("{}", preset_to_toml(&p).unwrap_or_default()));
+            out.emit(&p, || out!("{}", preset_to_toml(&p).unwrap_or_default()));
         }
         PresetCmd::Save {
             app: q,
@@ -71,7 +71,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
         } => {
             let p = app.save_preset_from_app(&q, &name, &description)?;
             out.emit(&p, || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trf(
                         "Saved the preset “{name}” ({risk})",
@@ -89,7 +89,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                 );
             }
             out.emit(&json!({"deleted": name}), || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trf("Deleted the preset “{name}”", &[("name", &name)])
                 )
@@ -111,7 +111,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             p.created_at = 0;
             store.save(&mut p)?;
             out.emit(&p, || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trf("Created the preset “{name}”", &[("name", &p.name)])
                 )
@@ -121,7 +121,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             let mut p = read_preset_file(&file)?;
             let path = store.save(&mut p)?;
             out.emit(&p, || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trf(
                         "Imported “{name}” → {path}",
@@ -136,12 +136,12 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             let text = preset_to_toml(&p)?;
             match &file {
                 Some(f) => std::fs::write(f, &text)?,
-                None if !out.json => print!("{text}"),
+                None if !out.json => out!("{text}"),
                 None => {}
             }
             out.emit(&json!({"toml": text, "file": file}), || {
                 if let Some(f) = &file {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trf(
                             "Exported “{name}” → {path}",
@@ -164,7 +164,7 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
             }
             store.save(&mut p)?;
             out.emit(&p, || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trf("Saved the preset “{name}”", &[("name", &p.name)])
                 )
@@ -182,7 +182,7 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
             out.emit(&apps, || {
                 for a in &apps {
                     let tags: Vec<&str> = a.tags.iter().map(|t| t.label.as_str()).collect();
-                    println!(
+                    outln!(
                         "{:<28} {}",
                         truncate(&a.summary.name, 28),
                         if tags.is_empty() {
@@ -222,7 +222,7 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
             out.emit(&r, || {
                 for a in &r.apps {
                     for s in &a.check.removes_needed {
-                        println!(
+                        outln!(
                             "  {} {} loses {s}, which it likely needs",
                             paint("warning:", "33"),
                             a.name
@@ -231,7 +231,7 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
                 }
                 let n = r.apps.iter().filter(|a| a.changed).count();
                 if dry_run {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trn(
                             "Would change {key} to {value} for {n} app",
@@ -241,7 +241,7 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
                         )
                     );
                 } else {
-                    println!(
+                    outln!(
                         "{}",
                         sam_core::i18n::trn(
                             "Changed {key} to {value} for {n} app",
@@ -251,7 +251,7 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
                         )
                     );
                     if r.apps.iter().any(|a| a.changed && a.running) {
-                        println!(
+                        outln!(
                             "{}",
                             sam_core::i18n::tr(
                                 "Running apps use the new settings the next time they start."
@@ -267,7 +267,7 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
             ))?;
             let n = app.group_restore(undo, |added| crate::confirm_risks(added, yes))?;
             out.emit(&json!({"restored": n}), || {
-                println!(
+                outln!(
                     "{}",
                     sam_core::i18n::trn(
                         "Restored the settings of {n} app.",

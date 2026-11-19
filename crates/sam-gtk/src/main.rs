@@ -22,6 +22,7 @@ mod window;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
+use sam_core::{errln, outln};
 
 const APP_ID: &str = "io.github.gitzekatze.SAM";
 
@@ -140,11 +141,11 @@ fn parse_args() -> Options {
             "--delay" => o.delay = args.next().and_then(|s| s.parse().ok()).unwrap_or(3000),
             "--focus-walk" => o.focus_walk = true,
             "-h" | "--help" => {
-                println!("Usage: sam-jail-gui [--page app|file|permissions|presets|preferences|diagnostics|language] [--app ID] [FILES…]");
+                outln!("Usage: sam-jail-gui [--page app|file|permissions|presets|preferences|diagnostics|language] [--app ID] [FILES…]");
                 std::process::exit(0);
             }
             "--version" => {
-                println!("sam-jail-gui {}", env!("CARGO_PKG_VERSION"));
+                outln!("sam-jail-gui {}", env!("CARGO_PKG_VERSION"));
                 std::process::exit(0);
             }
             f => o.startup.files.push(
@@ -291,7 +292,7 @@ fn main() -> glib::ExitCode {
             let err = std::process::Command::new(exe)
                 .args(std::env::args_os().skip(1))
                 .exec();
-            eprintln!("sam-jail-gui: {err}");
+            errln!("sam-jail-gui: {err}");
         }
     }
     code
@@ -437,17 +438,17 @@ fn render_widget(window: &gtk::Widget, widget: &gtk::Widget, file: &str) {
     // Each way to save nothing says so: a smoke test must name the reason,
     // not only "no screenshot".
     if w < 1.0 || h < 1.0 {
-        eprintln!("screenshot {file}: nothing to draw, the widget is {w}x{h} (not shown?)");
+        errln!("screenshot {file}: nothing to draw, the widget is {w}x{h} (not shown?)");
         return;
     }
     let snapshot = gtk::Snapshot::new();
     paintable.snapshot(&snapshot, w, h);
     let Some(node) = snapshot.to_node() else {
-        eprintln!("screenshot {file}: the widget drew nothing");
+        errln!("screenshot {file}: the widget drew nothing");
         return;
     };
     let Some(renderer) = window.native().and_then(|n| n.renderer()) else {
-        eprintln!("screenshot {file}: the window has no renderer (not shown?)");
+        errln!("screenshot {file}: the window has no renderer (not shown?)");
         return;
     };
     let texture = renderer.render_texture(
@@ -455,7 +456,7 @@ fn render_widget(window: &gtk::Widget, widget: &gtk::Widget, file: &str) {
         Some(&gtk::graphene::Rect::new(0.0, 0.0, w as f32, h as f32)),
     );
     if let Err(e) = texture.save_to_png(file) {
-        eprintln!("screenshot: {e}");
+        errln!("screenshot: {e}");
     }
 }
 
@@ -511,7 +512,7 @@ fn walk_focus(window: &adw::ApplicationWindow, app: adw::Application) {
             .map(|f| format!("{:p}", f.as_ptr()))
             .unwrap_or_default();
         if !moved || focus.is_none() || n >= 300 || seen.borrow().contains(&id) {
-            println!(
+            outln!(
                 "FOCUS stopped after {n} steps (moved={moved}, now at {})",
                 focus.as_ref().map(name).unwrap_or_default()
             );
@@ -525,14 +526,14 @@ fn walk_focus(window: &adw::ApplicationWindow, app: adw::Application) {
                         break;
                     }
                 }
-                println!("FOCUS chain: {}", chain.join(" < "));
+                outln!("FOCUS chain: {}", chain.join(" < "));
             }
             app.quit();
             return glib::ControlFlow::Break;
         }
         seen.borrow_mut().push(id);
         if let Some(f) = focus {
-            println!("FOCUS {n:3} {}", name(&f));
+            outln!("FOCUS {n:3} {}", name(&f));
         }
         glib::ControlFlow::Continue
     });

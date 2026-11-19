@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use sam_core::util::which;
 use sam_core::HostInfo;
+use sam_core::{errln, outln};
 
 /// The contract map, built into SAM so the checks and the map cannot differ.
 const MAP: &str = include_str!("../../../docs/contracts.toml");
@@ -477,7 +478,7 @@ impl Checks {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         match result {
             Ok(()) => {
-                println!("CHECK ok   {}/{name}", self.test);
+                outln!("CHECK ok   {}/{name}", self.test);
                 self.passed.push(name.into());
             }
             Err(e) => {
@@ -486,7 +487,7 @@ impl Checks {
                     .cloned()
                     .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
                     .unwrap_or_default();
-                println!("CHECK FAIL {}/{name}: {msg}", self.test);
+                outln!("CHECK FAIL {}/{name}: {msg}", self.test);
                 self.failed.push(format!("{name}: {msg}"));
             }
         }
@@ -512,7 +513,7 @@ impl Checks {
 /// a component version SAM itself refuses to use): never a failure, not even
 /// in CI, but recorded like a skip, so a run still says it did not run here.
 pub fn not_here(reason: &str) {
-    eprintln!("not here: {reason}");
+    errln!("not here: {reason}");
     record_skip(&format!("not here: {reason}"));
 }
 
@@ -526,7 +527,7 @@ pub fn skip(reason: &str) -> Result<(), String> {
     let required = std::env::var("SAM_REQUIRE_SANDBOX").as_deref() == Ok("1");
     let verdict = judge_skip(required, reason);
     if verdict.is_ok() {
-        eprintln!("skipped: {reason}");
+        errln!("skipped: {reason}");
         record_skip(reason);
     }
     verdict
@@ -584,7 +585,7 @@ pub fn guard_with(report: &ContractReport, ids: &[&str]) -> Result<Guard, String
     for id in ids {
         match report.contracts.iter().find(|c| c.id == *id) {
             None => return Err(format!("no contract {id} in docs/contracts.toml")),
-            Some(c) if c.state == State::Broken && c.on_break != "refuse" => eprintln!(
+            Some(c) if c.state == State::Broken && c.on_break != "refuse" => errln!(
                 "note: contract {} does not hold here ({}); SAM falls back ({}), which this test checks",
                 c.id, c.detail, c.on_break
             ),
@@ -616,7 +617,7 @@ pub struct Guard {
 impl Drop for Guard {
     fn drop(&mut self) {
         if std::thread::panicking() {
-            eprintln!(
+            errln!(
                 "SAM ERROR: the contracts this test relies on hold ({}); the failure is in SAM's own code, not in the outside world.",
                 self.ids.join(", ")
             );

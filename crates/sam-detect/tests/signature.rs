@@ -37,7 +37,7 @@ impl Drop for Kit {
 /// tools must be there.
 fn kit() -> Option<Kit> {
     if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
-        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
+        sam_core::errln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
         return None;
     }
     let tools = ["gpg", "gpgv", "objcopy"]
