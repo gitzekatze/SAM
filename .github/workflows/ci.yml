@@ -93,11 +93,8 @@ jobs:
         if: env.CODE == 'true'
         timeout-minutes: 10
         run: |
-          # Ubuntu's own archive: GitHub's Azure mirror of it was unreachable
-          # for hours on 2026-11-11.
-          sudo sed -i -e 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|g' -e 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update -q -o Acquire::Retries=3 -o Acquire::http::Timeout=30
-          sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+          # Mirror choice and time limits: see the script.
+          scripts/ci-packages.sh \
             libgtk-4-dev libadwaita-1-dev pkg-config \
             bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3 \
             desktop-file-utils appstream gettext libgtk-4-bin dbus \
@@ -285,9 +282,8 @@ jobs:
       - name: System packages
         timeout-minutes: 10
         run: |
-          sudo sed -i -e 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|g' -e 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update -q -o Acquire::Retries=3 -o Acquire::http::Timeout=30
-          sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+          # Mirror choice and time limits: see the script.
+          scripts/ci-packages.sh \
             libgtk-4-dev libadwaita-1-dev pkg-config \
             bubblewrap xdg-dbus-proxy passt squashfs-tools python3 gettext dbus \
             kwin-wayland at-spi2-core python3-gi gir1.2-atspi-2.0 locales adwaita-icon-theme \
@@ -360,9 +356,8 @@ jobs:
       - name: System packages
         timeout-minutes: 10
         run: |
-          sudo sed -i -e 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|g' -e 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update -q -o Acquire::Retries=3 -o Acquire::http::Timeout=30
-          sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+          # Mirror choice and time limits: see the script.
+          scripts/ci-packages.sh \
             libgtk-4-dev libadwaita-1-dev pkg-config \
             bubblewrap xdg-dbus-proxy passt squashfs-tools python3 gettext dbus \
             mutter gsettings-desktop-schemas at-spi2-core python3-gi gir1.2-atspi-2.0 locales adwaita-icon-theme
