@@ -439,10 +439,8 @@ fn install_command(os_release: &str, package: &str) -> Option<String> {
     let ids: Vec<&str> = std::iter::once(id.as_str())
         .chain(like.split_whitespace())
         .collect();
-    let is = |names: &[&str]| {
-        ids.iter()
-            .any(|i| names.contains(i) || names.iter().any(|n| i.starts_with(n)))
-    };
+    // By the start of the name too: "opensuse-leap", "rhel-like" builds.
+    let is = |names: &[&str]| ids.iter().any(|i| names.iter().any(|n| i.starts_with(n)));
     let manager = if is(&["arch"]) {
         "sudo pacman -S"
     } else if is(&["debian", "ubuntu"]) {
@@ -862,7 +860,17 @@ mod install_hint_tests {
             c("ID=void\n").as_deref(),
             Some("sudo xbps-install bubblewrap")
         );
+        assert_eq!(
+            c("ID=\"opensuse-leap\"\n").as_deref(),
+            Some("sudo zypper install bubblewrap")
+        );
         assert_eq!(c("ID=nixos\n"), None);
+        // On this computer: a whole sentence that names the package.
+        let here = super::install_hint("bubblewrap");
+        assert!(
+            here.contains("bubblewrap") && here.len() > "bubblewrap".len() + 10,
+            "{here}"
+        );
         assert_eq!(c(""), None);
         // A key that only starts like ID is not ID.
         assert_eq!(c("IDX=arch\nVERSION_ID=1\n"), None);
