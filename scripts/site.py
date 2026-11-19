@@ -227,6 +227,15 @@ def shell(page, title, body, section=None, toc=None, source=None):
                   f'<span>›</span><a href="{rel(page, overview)}">{SECTION_NAMES[section]}</a>'
                   + (f'<span>›</span><a href="{rel(page, PARENT[page][0])}">{html.escape(PARENT[page][1])}</a>' if page in PARENT else "")
                   + (f'<span>›</span><span aria-current="page">{html.escape(title)}</span>' if page != overview else "") + "</nav>")
+        # Back: one level up (a report to Reports, a page to its section,
+        # a section's overview to Home), the same link at the top and bottom.
+        if page == overview:
+            back, back_t = "index.html", "Home"
+        else:
+            back, back_t = PARENT.get(page, (overview, SECTION_NAMES[section]))
+        back_link = (f'<a class="back" href="{rel(page, back)}">{icon("left", "small")}'
+                     f'Back to {html.escape(back_t)}</a>')
+        crumbs = f'<div class="topnav">{back_link}{crumbs}</div>'
         ids = [p for p, _ in order]
         if page in ids:
             # The first page has no previous one, the last no next one.
@@ -235,11 +244,12 @@ def shell(page, title, body, section=None, toc=None, source=None):
                          f'<span><small>Previous</small>{html.escape(order[idx - 1][1])}</span></a>' if idx > 0 else "<span></span>")
             next_link = (f'<a class="next" href="{rel(page, order[idx + 1][0])}"><span><small>Next</small>'
                          f'{html.escape(order[idx + 1][1])}</span>{icon("right", "small")}</a>' if idx + 1 < len(order) else "")
-            pager = (f'<nav class="pager" aria-label="More pages">{prev_link}{next_link}</nav>'
-                     + (f'<p class="back"><a href="{rel(page, overview)}">{icon("left", "small")}Back to {SECTION_NAMES[section]}</a></p>' if page != overview else ""))
-        else:
-            back, back_t = PARENT.get(page, (overview, SECTION_NAMES[section]))
-            pager = f'<p class="back"><a href="{rel(page, back)}">{icon("left", "small")}Back to {html.escape(back_t)}</a></p>'
+            pager = f'<nav class="pager" aria-label="More pages">{prev_link}{next_link}</nav>'
+        pager += f'<p class="back-bottom">{back_link}<a class="to-top" href="#">Top{icon("up", "small")}</a></p>'
+        # The page's own icon beside its title: the same one as on the card
+        # or row that leads here, so the reader sees where they arrived.
+        if page in PAGE_ICONS:
+            body = re.sub(r"<h1([^>]*)>", lambda m: f'<h1 class="titled"{m.group(1)}>{page_icon(page, "title")}', body, count=1)
     edit = (f'<p class="edit">This page is made from <a href="{REPO}/blob/main/{source}">{source}</a>.</p>'
             if source else "")
     content = (f'<div class="wrap"><div class="page{" with-toc" if side else ""}"><article class="doc">{crumbs}{body}{pager}{edit}</article>{side}</div></div>'
@@ -338,6 +348,24 @@ ICONS = {
     "home": "M4 11l8-7 8 7M6 9.5V20h12V9.5",
     "left": "M15 6l-6 6 6 6",
     "right": "M9 6l6 6-6 6",
+    "up": "M6 15l6-6 6 6",
+    # Features on the home page
+    "files": "M8 3h7l4 4v11H8zM15 3v4h4M5 7v14h10",
+    "wifi": "M2 9a15 15 0 0120 0M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0M12 19.5h.01",
+    "monitor": "M3 4h18v12H3zM8 20h8M12 16v4",
+    "puzzle": "M4 8h4a2 2 0 114 0h4v4a2 2 0 110 4v4h-4a2 2 0 10-4 0H4v-4a2 2 0 100-4z",
+    "gear": "M12 9a3 3 0 100 6 3 3 0 000-6zM12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1",
+    "sparkle": "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z",
+    "scroll": "M6 3h11a2 2 0 012 2v13a3 3 0 01-3 3H7a3 3 0 01-3-3v-2h11v2a3 3 0 003 3M9 8h6M9 12h6",
+    "steps": "M3 20h5v-5h5v-5h5V5h3",
+    "plug": "M9 2v5M15 2v5M6 7h12v4a6 6 0 01-12 0zM12 17v5",
+    "star": "M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z",
+    "columns": "M3 4h18v16H3zM10 4v16",
+    "list": "M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01",
+    "bulb": "M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0012 3z",
+    "table": "M3 4h18v16H3zM3 10h18M3 15h18M9 10v10",
+    "dots": "M5 12h.01M12 12h.01M19 12h.01",
+    "hand": "M8 13V5a1.5 1.5 0 013 0v6M11 11V3.5a1.5 1.5 0 013 0V11M14 11V5a1.5 1.5 0 013 0v7c0 5-3 9-7 9-3 0-4.5-2-6-4.5L2.6 13.8a1.5 1.5 0 012.6-1.5L8 16",
 }
 
 
@@ -384,6 +412,12 @@ POINT_ICONS = {
     "check a download": "key", "see how sam keeps up with linux": "link", "report a way out": "mail",
     # Dashboard: the evidence
     "real appimages": "boxes", "mutation testing": "microscope", "breakout and hostile-appimage tests": "zap",
+    # README: features
+    "files": "files", "network": "wifi", "display and devices": "monitor", "desktop integration": "puzzle",
+    "advanced": "gear", "first-run check": "sparkle", "log analysis": "scroll", "repair steps": "steps",
+    "compatibility mode": "plug", "built in": "star", "two columns, like flatseal": "columns",
+    "nothing hidden": "list", "before a sandbox exists,": "bulb", "all apps at a glance": "table",
+    "everything else": "dots", "handy": "hand",
 }
 # Points that state the same thing in two documents share one meaning, so they share an icon.
 SAME_POINT = {"real appimages": "# of # real appimages start in their sandbox",
@@ -526,6 +560,21 @@ def history_chart(body):
     return re.sub(r"<table>.*?</table>", chart, body, flags=re.S)
 
 
+def features(section):
+    """The Features band: the sandbox's layers drawn as a stack, outermost
+    first, and plain bullet lists as checklists."""
+    def stack(m):
+        rows = re.findall(r"<tr>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*</tr>", m.group(1), re.S)
+        if not rows:
+            return m.group(0)
+        items = "".join(f'<li style="--i:{i}"><b>{name}</b><p>{text}</p></li>' for i, (name, text) in enumerate(rows))
+        return f'<ol class="stack" aria-label="Layers, outermost first">{items}</ol>'
+    section = re.sub(r"<table>\s*<thead>\s*<tr>\s*<th>Layer</th>.*?<tbody>(.*?)</tbody>\s*</table>", stack, section, flags=re.S)
+    section = section.replace("<ul>", '<ul class="checklist">')
+    parts = re.split(r"(?=<h3 id=)", section)  # group headings only, not the rows' own
+    return parts[0] + '<div class="features">' + "".join(f'<div class="feature">{p}</div>' for p in parts[1:]) + "</div>"
+
+
 def home():
     """The front page: README.md, with its first part as the opening and each
     section as a band of its own."""
@@ -548,6 +597,7 @@ def home():
 <p class="lead">{lead}</p>
 <div class="buttons"><a class="btn primary" href="use/install.html">Get SAM</a><a class="btn ghost" href="trust/index.html">See the evidence</a></div>
 </div></section>"""
+    sections = [features(s) if s.startswith('<h2 id="features"') else s for s in sections]
     bands = "".join(f'<section class="band{" soft" if i % 2 else ""}"><div class="wrap prose-band">{s}</div></section>'
                     for i, s in enumerate(sections))
     write(page, shell(page, subtitle or name, hero + bands))
