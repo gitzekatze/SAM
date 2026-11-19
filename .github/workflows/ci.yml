@@ -87,11 +87,13 @@ jobs:
           # The whole history: the summary compares with the commit before the push.
           fetch-depth: 0
 
-      # A stuck package mirror fails the step after 10 minutes instead of
-      # holding the whole job for 45.
+      # A stuck package server fails within apt's own limits (30 s per
+      # connection, 3 tries; see scripts/ci-packages.sh). The step limit
+      # only ends a download that keeps crawling: 10 minutes were too short
+      # for a mirror at 150 KB/s (2026-11-19).
       - name: System packages
         if: env.CODE == 'true'
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           # Mirror choice and time limits: see the script.
           scripts/ci-packages.sh \
@@ -280,7 +282,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: System packages
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           # Mirror choice and time limits: see the script.
           scripts/ci-packages.sh \
@@ -354,7 +356,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: System packages
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           # Mirror choice and time limits: see the script.
           scripts/ci-packages.sh \
