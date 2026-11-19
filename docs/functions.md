@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-17 16:10:22).
 
-**40 functions:** 11 proven by passing tests, 28 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 472 tests in all.
+**40 functions:** 11 proven by passing tests, 28 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 473 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -17,7 +17,7 @@
 | 2 | [SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image; the old, rare type 1 is unpacked with bsdtar but not tested) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 9 | ✅ |
 | 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 30 | ✅ 🆕 11 new tests since the report |
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 10 | ✅ 🆕 4 new tests since the report |
-| 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 10 | ✅ 🆕 3 new tests since the report |
+| 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 11 | ✅ 🆕 4 new tests since the report |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 16 | ✅ |
 | 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 18 | ✅ 🆕 8 new tests since the report |
 | 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 24 | ✅ 🆕 6 new tests since the report |
@@ -93,14 +93,14 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L364) | An ordinary program file is not taken for an AppImage. | ✅ |
-| [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L372) | A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | ✅ |
-| [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L437) | An AppImage with a DwarFS image instead of squashfs is recognized. | ✅ |
-| [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L458) | A file that is not an ELF program is not taken for an AppImage. | ✅ |
-| [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L473) | An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | ✅ |
+| [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L395) | An ordinary program file is not taken for an AppImage. | ✅ |
+| [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L403) | A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | ✅ |
+| [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L468) | An AppImage with a DwarFS image instead of squashfs is recognized. | ✅ |
+| [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L489) | A file that is not an ELF program is not taken for an AppImage. | ✅ |
+| [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L504) | An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | ✅ |
 | [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L257) | Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | ✅ |
 | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L14) | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | ✅ |
-| [`an_appimage_shorter_than_its_image_is_incomplete`](../crates/sam-detect/src/appimage.rs#L400) | A download that broke off is recognized: the file is shorter than its SquashFS image says, and a complete one is not. | ✅ |
+| [`an_appimage_shorter_than_its_image_is_incomplete`](../crates/sam-detect/src/appimage.rs#L431) | A download that broke off is recognized: the file is shorter than its SquashFS image says, and a complete one is not. | ✅ |
 | [`a_download_that_broke_off_is_refused_and_nothing_is_kept`](../crates/sam-runner/tests/incomplete.rs#L9) | A download that broke off is refused and nothing is kept. | ✅ |
 
 **Code:** [`sam-detect/src/appimage.rs`](../crates/sam-detect/src/appimage.rs), [`sam-intake/src/extract.rs`](../crates/sam-intake/src/extract.rs), [`sam-runner/src/ops/add.rs`](../crates/sam-runner/src/ops/add.rs)
@@ -178,6 +178,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`changed_signature_and_update_sections_never_crash_the_readers`](../crates/sam-runner/tests/fuzz_targets.rs#L117) | Changed ELF section tables and signature, key and update sections are read or refused without a panic: inspect, the signature check and the update information. | 🆕 new |
 | [`the_preview_reader_panics_only_inside_the_squashfs_library`](../crates/sam-runner/tests/fuzz_targets.rs#L391) | The preview reader without its guard: a changed image must not make SAM's own code panic. | 🆕 new |
 | [`impossible_header_values_give_no_elf_end`](../crates/sam-detect/src/appimage.rs#L340) | Header values that point past the end of every file give no ELF end, never an overflow: with overflow checks in release builds (audit P16) that would end SAM (audit I-F14, found again by fuzzing). | 🆕 new |
+| [`a_dwarfs_image_after_the_elf_part_is_dwarfs`](../crates/sam-detect/src/appimage.rs#L374) | A DwarFS image right after the ELF part is taken as DwarFS, not as SquashFS: the SquashFS check looks for its own magic there. | 🆕 new |
 
 **Code:** [`sam-intake/src/peek.rs`](../crates/sam-intake/src/peek.rs), [`sam-intake/src/extract.rs`](../crates/sam-intake/src/extract.rs), [`sam-detect/src/elf.rs`](../crates/sam-detect/src/elf.rs)
 

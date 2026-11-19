@@ -358,6 +358,37 @@ mod tests {
         h32[0x30..0x32].copy_from_slice(&3u16.to_le_bytes());
         assert_eq!(elf_end_offset(&h32), Some(u64::from(u32::MAX) + 120));
         assert_eq!(elf_end_offset(&h[..5]), None);
+        // Big endian (byte 5 = 2): the same fields, read the other way.
+        let mut be = vec![0u8; 64];
+        be[..4].copy_from_slice(b"\x7fELF");
+        be[4] = 2;
+        be[5] = 2;
+        be[0x28..0x30].copy_from_slice(&1000u64.to_be_bytes());
+        be[0x3A..0x3C].copy_from_slice(&64u16.to_be_bytes());
+        be[0x3C..0x3E].copy_from_slice(&2u16.to_be_bytes());
+        assert_eq!(elf_end_offset(&be), Some(1128));
+    }
+
+    /// A DwarFS image right after the ELF part is taken as DwarFS, not as
+    /// SquashFS: the SquashFS check looks for its own magic there.
+    #[test]
+    fn a_dwarfs_image_after_the_elf_part_is_dwarfs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut d = vec![0u8; 64];
+        d[..4].copy_from_slice(b"\x7fELF");
+        d[4] = 2;
+        d[5] = 1;
+        d[8..11].copy_from_slice(b"AI\x02");
+        // Section headers end at 64 + 0 * 64 = 64, right after the header.
+        d[0x28..0x30].copy_from_slice(&64u64.to_le_bytes());
+        d[0x3A..0x3C].copy_from_slice(&64u16.to_le_bytes());
+        d.extend_from_slice(b"DWARFS\x02\x05");
+        d.resize(4096, 0);
+        let f = tmp.path().join("d.AppImage");
+        std::fs::write(&f, &d).unwrap();
+        let info = inspect(&f).unwrap();
+        assert_eq!(info.payload, PayloadFormat::Dwarfs, "{info:?}");
+        assert_eq!(info.payload_offset, Some(64));
     }
 
     /// An ordinary program file is not taken for an AppImage.

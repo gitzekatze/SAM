@@ -66,7 +66,7 @@ id = 5
 area = "A"
 promise = "A damaged or hostile AppImage can't crash SAM or stop the list."
 code = ["sam-intake/src/peek.rs", "sam-intake/src/extract.rs", "sam-detect/src/elf.rs"]
-tests = ["reading_a_file_of_an_appimage_is_bounded", "a_damaged_squashfs_image_gives_an_error_instead_of_a_crash", "parsers_survive_garbage", "changed_appimages_never_crash_or_escape_the_unpacker", "changed_text_inputs_never_crash_the_parsers", "changed_programs_never_crash_the_analysis", "one_damaged_appimage_does_not_stop_the_list", "changed_signature_and_update_sections_never_crash_the_readers", "the_preview_reader_panics_only_inside_the_squashfs_library", "impossible_header_values_give_no_elf_end"]
+tests = ["reading_a_file_of_an_appimage_is_bounded", "a_damaged_squashfs_image_gives_an_error_instead_of_a_crash", "parsers_survive_garbage", "changed_appimages_never_crash_or_escape_the_unpacker", "changed_text_inputs_never_crash_the_parsers", "changed_programs_never_crash_the_analysis", "one_damaged_appimage_does_not_stop_the_list", "changed_signature_and_update_sections_never_crash_the_readers", "the_preview_reader_panics_only_inside_the_squashfs_library", "impossible_header_values_give_no_elf_end", "a_dwarfs_image_after_the_elf_part_is_dwarfs"]
 
 [[area]]
 id = "B"
