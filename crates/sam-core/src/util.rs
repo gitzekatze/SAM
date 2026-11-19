@@ -185,14 +185,18 @@ pub fn own_appimage() -> Option<PathBuf> {
 /// `~/.nix-profile/bin`, which are often on `$PATH` (audit L-F12): such a
 /// copy is skipped ([`may_run`]).
 ///
-/// The path returned is the program itself, links resolved: a link in a
-/// folder the user can change could be pointed elsewhere between this
-/// check and the start.
+/// The path returned has its folders resolved but keeps the program's own
+/// name: some programs act by the name they are started under (`pasta` is
+/// a link to `passt`, which without that name sets up a virtual machine's
+/// network instead).
 pub fn which(name: &str) -> Option<PathBuf> {
     candidates(name)
         .into_iter()
         .find(|p| may_run(p))
-        .and_then(|p| fs::canonicalize(p).ok())
+        .and_then(|p| {
+            let dir = fs::canonicalize(p.parent()?).ok()?;
+            Some(dir.join(p.file_name()?))
+        })
 }
 
 /// The first copy of `name` that [`which`] skipped because the user can
@@ -229,15 +233,26 @@ fn candidates(name: &str) -> Vec<PathBuf> {
 /// environment can make it run anything anyway (`PATH` itself, for one),
 /// and apps cannot set it.
 pub fn may_run(p: &Path) -> bool {
-    use std::os::unix::fs::MetadataExt;
     let Ok(real) = fs::canonicalize(p) else {
         return false;
     };
+    // The folder holding a link, too: whoever can write there can point the
+    // link elsewhere.
+    let Some(folder) = p.parent().and_then(|d| fs::canonicalize(d).ok()) else {
+        return false;
+    };
     if let Some(dir) = std::env::var_os("SAM_TRUST_TOOLS_IN").filter(|d| !d.is_empty()) {
-        if fs::canonicalize(dir).is_ok_and(|d| real.parent() == Some(d.as_path())) {
+        if fs::canonicalize(dir).is_ok_and(|d| d == folder) {
             return true;
         }
     }
+    unchanged_by_user(&real) && unchanged_by_user(&folder)
+}
+
+/// Whether the user can change neither `real` (links resolved) nor any
+/// folder above it; see [`may_run`].
+fn unchanged_by_user(real: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
     // SAFETY: getuid has no preconditions and cannot fail.
     let me = unsafe { libc::getuid() };
     real.ancestors().all(|a| {
@@ -701,13 +716,20 @@ mod may_run_tests {
         assert!(!may_run(&own));
         let sh = fs::canonicalize("/bin/sh").unwrap();
         assert!(may_run(&sh), "{}", sh.display());
+        // A link in a folder of the user's could be pointed elsewhere after
+        // the check, even where it now leads to a system program.
         let link = tmp.path().join("sh");
         std::os::unix::fs::symlink(&sh, &link).unwrap();
-        assert!(may_run(&link), "a link to a system program leads to it");
+        assert!(!may_run(&link));
         let to_own = tmp.path().join("to-own");
         std::os::unix::fs::symlink(&own, &to_own).unwrap();
         assert!(!may_run(&to_own));
         assert!(!may_run(&tmp.path().join("missing")));
+        // A system link keeps the name it was found under: some programs
+        // act by it (pasta is a link to passt).
+        if let Some(found) = which("sh") {
+            assert_eq!(found.file_name().unwrap(), "sh", "{}", found.display());
+        }
         // A folder the user can write, even owned by someone else: a
         // world-writable one like /tmp.
         let in_tmp = std::env::temp_dir();
