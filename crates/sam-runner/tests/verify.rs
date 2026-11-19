@@ -126,6 +126,10 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
             .map(|r| format!("{}: {}", r.title, r.observed))
             .collect();
         assert!(failed.is_empty(), "this computer only: {failed:?}");
+    } else {
+        sam_runner::contracts::not_here(
+            "no usable pasta, so the check of \"This computer only\" did not run",
+        );
     }
 
     // 3. Expectations follow the settings: without the syscall filter the

@@ -60,8 +60,10 @@ All of them run in CI and block a merge when they fail:
   them, never the pull request's copy.
 - **The test machinery:** the CI workflow, the script that runs the tests
   there (`scripts/flaky-check.py`), the rule for when a sandbox test may
-  skip (`crates/sam-runner/src/contracts.rs`), the test environment and
-  the builder of hostile test AppImages need the owner too: a change there
+  skip (`crates/sam-runner/src/contracts.rs`), the list of tests that may
+  say "not here" on a CI machine (`tests/expected-not-here.toml`) and its
+  check, the test environment and the builder of hostile test AppImages
+  need the owner too: a change there
   could empty every proof while all checks stay green.
 - **Workflow safety** (`scripts/workflow-check.py`): no workflow runs a
   pull request's code with the repository's secrets, and no text from

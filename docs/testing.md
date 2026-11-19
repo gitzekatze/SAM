@@ -19,7 +19,7 @@ checks a person still does by hand.
 | Install tests | the finished AppImage on fresh distributions | `make test-shipped APPIMAGE=…` | every release build |
 | Contract checks | SAM's assumptions about the outside world hold here (`sam-jail doctor --contracts`), and the code uses nothing no contract covers (`scripts/contract-map.py`) | see [contracts](contracts.md) | every change |
 | Early warning | the contracts and sandbox tests on tomorrow's distributions (`tests/canary/`) | Actions → Early warning | every night |
-| Weekly upkeep | mutation testing of last week's code, and a long fuzz run with the week's seed (`.github/workflows/upkeep.yml`) | Actions → Weekly upkeep | every week, in the issue **Weekly summary** |
+| Weekly upkeep | mutation testing of last week's code, and a long fuzz run with a random seed drawn at the start and named in the report (`.github/workflows/upkeep.yml`) | Actions → Weekly upkeep | every week, in the issue **Weekly summary** |
 | Manual checks | what needs a real desktop or a person (this page, below) | by hand | before a release |
 
 The complete list of automated tests, each with the promise it keeps, is the
@@ -32,6 +32,20 @@ version (tests, line coverage, timings, dependencies) is in the
 Bubblewrap, no kernel headers) skips on your computer with a note, but CI
 sets `SAM_REQUIRE_SANDBOX=1`, which turns such a skip into a failure: a
 green run always tested the sandbox.
+
+**"Not here" is listed, never hidden:** a test that does not apply to a
+machine at all (another processor; a component SAM itself would not use,
+such as Ubuntu 24.04's pasta without `--splice-only`) passes there without
+checking anything. CI writes each one into the job's summary ("Tests that
+did not run here") and fails when one is not on the agreed list for that
+job, `tests/expected-not-here.toml`, which needs the owner to change. The
+Fedora job runs what Ubuntu cannot ("This computer only", PipeWire refusing
+to load modules), so every listed test is proven in another job.
+
+**Not proven on CI machines:** granting real devices (the graphics card,
+a webcam, game controllers, input devices, raw sound devices). The runners have none,
+so the permission matrix proves that each stays out when off, but "on" is
+only a manual check (section 9).
 
 **Stand-in tools:** SAM runs a helper program only where the user cannot
 change it, so a test's own stand-ins (a broken `bwrap`, a hostile unpack
@@ -280,6 +294,7 @@ Electron app, Qt app, GTK app):
       (e.g. ~/.ssh without full home) are greyed out, never hidden.
 - [ ] Preferences → Style (Follow system, Light, Dark) applies instantly.
 - [ ] Turning on full home, the system bus or raw devices asks for confirmation.
+- [ ] With a game controller and a webcam plugged in: an app gets the controller only with **Game controllers** (or **All input devices**), the webcam only with **Webcam**, and the graphics card only with **GPU acceleration** (CI machines have no devices, so only "off" is proven there).
 - [ ] Applying a preset without network access to a browser warns that it removes network access.
 - [ ] **Test** runs the settings check and a short start; the header shows *Tested* with the date, *Test out of date* after a change.
 - [ ] After a failed start, repair steps appear as switches under **Advice**; switching one off undoes only that step.
