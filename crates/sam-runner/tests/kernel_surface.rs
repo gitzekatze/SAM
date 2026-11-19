@@ -202,6 +202,8 @@ fn an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors() {
     };
     let path = std::env::var("PATH").unwrap_or_default();
     std::env::set_var("PATH", format!("{}:{path}", bin.display()));
+    // The stand-in belongs to the user: SAM runs it only from this folder.
+    std::env::set_var("SAM_TRUST_TOOLS_IN", &bin);
     let root = d.join("extracted").join("appimage-app-1234");
     let mut log = Vec::new();
     let out = extract(

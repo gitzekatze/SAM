@@ -30,6 +30,18 @@ pub struct Bubblewrap;
 /// replaced by a stand-in from `TOOL_SHIMS` (see the /usr binding).
 const HIDDEN_HOST_TOOLS: &[&str] = &["/usr/bin/systemd-run", "/usr/bin/flatpak-spawn"];
 
+/// For each host tool that exists: its name and the file to cover with
+/// the stand-in, which is the file a link (or a chain of links) leads to.
+fn hidden_tool_targets(tools: &[&str]) -> Vec<(std::ffi::OsString, PathBuf)> {
+    tools
+        .iter()
+        .filter_map(|t| {
+            let real = fs::canonicalize(t).ok().filter(|r| r.is_file())?;
+            Some((Path::new(t).file_name()?.to_os_string(), real))
+        })
+        .collect()
+}
+
 /// Stand-ins, written by `write_identity_files` into `<runtime>/tools`.
 /// `systemd-run [options] CMD...` runs CMD directly, so it stays in the
 /// sandbox; some AppRun scripts use systemd-run whenever it exists (e.g.
@@ -1294,13 +1306,15 @@ impl Section<'_> {
         // is reachable, and otherwise fail: some AppRun scripts use
         // systemd-run whenever it exists, so hiding it lets them start
         // normally. Hidden as an empty, non-executable file.
-        // Links (run0 -> systemd-run) lead to a replaced file anyway, and
-        // Bubblewrap cannot mount over a link.
-        for t in HIDDEN_HOST_TOOLS {
-            if fs::symlink_metadata(t).is_ok_and(|m| m.file_type().is_file()) {
-                let name = Path::new(t).file_name().unwrap_or_default();
-                a.op2("--ro-bind", ctx.runtime_dir.join("tools").join(name), *t);
-            }
+        // Bubblewrap cannot mount over a link, so the stand-in goes over the
+        // file a link leads to (audit S-F14: a systemd-run that was a link
+        // stayed the real one).
+        for (name, target) in hidden_tool_targets(HIDDEN_HOST_TOOLS) {
+            a.op2(
+                "--ro-bind",
+                ctx.runtime_dir.join("tools").join(name),
+                target,
+            );
         }
 
         // /etc, beyond the basic files of `common_system`.
@@ -2200,6 +2214,42 @@ fn libc_minor(dev: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The stand-in for a tool that would start programs outside the
+    /// sandbox covers the real file, also where the tool is a link (audit
+    /// S-F14); a tool that is not installed needs none.
+    #[test]
+    fn stand_ins_cover_the_real_tool_also_behind_a_link() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("usr/bin");
+        let lib = tmp.path().join("usr/lib/systemd");
+        fs::create_dir_all(&bin).unwrap();
+        fs::create_dir_all(&lib).unwrap();
+        fs::write(lib.join("systemd-run"), "real").unwrap();
+        std::os::unix::fs::symlink("../lib/systemd/systemd-run", bin.join("systemd-run")).unwrap();
+        fs::write(bin.join("flatpak-spawn"), "real").unwrap();
+        let (a, b, c) = (
+            bin.join("systemd-run"),
+            bin.join("flatpak-spawn"),
+            bin.join("missing"),
+        );
+        let tools = [
+            a.to_str().unwrap(),
+            b.to_str().unwrap(),
+            c.to_str().unwrap(),
+        ];
+        let got = hidden_tool_targets(&tools);
+        assert_eq!(
+            got,
+            vec![
+                (
+                    "systemd-run".into(),
+                    lib.join("systemd-run").canonicalize().unwrap()
+                ),
+                ("flatpak-spawn".into(), b.canonicalize().unwrap()),
+            ]
+        );
+    }
     use sam_core::sandbox::sample_context;
 
     fn args_of(ctx: &LaunchContext) -> Vec<String> {

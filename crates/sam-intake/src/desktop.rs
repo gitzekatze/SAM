@@ -10,29 +10,29 @@ use anyhow::Result;
 use sam_core::util::{atomic_write, which};
 use sam_core::{AppEntry, Paths};
 
-/// Command used in `Exec=` lines: SAM's own AppImage file when SAM runs
-/// from one (it hands `--app-id` on to sam-jail-run), else `sam-jail-run` if
-/// it is on `$PATH` (packaged install), otherwise the absolute path next to
-/// the current binary.
+/// Command used in `Exec=` lines, always a whole path: SAM's own AppImage
+/// file when SAM runs from one (it hands `--app-id` on to sam-jail-run),
+/// else the `sam-jail-run` next to this program, else the one on `$PATH`
+/// that the user cannot change. A bare name would be looked up by the
+/// desktop on its own `$PATH`, where a copy an app put into
+/// `~/.cargo/bin` could come first and run unsandboxed (audit G-F10).
 pub fn runner_command() -> String {
     if let Some(a) = sam_core::util::own_appimage() {
         return a.display().to_string();
     }
+    let here = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join("sam-jail-run")));
+    if let Some(h) = here.as_ref().filter(|h| h.exists()) {
+        return h.display().to_string();
+    }
     if let Some(p) = which("sam-jail-run") {
-        if p.starts_with("/usr") {
-            return "sam-jail-run".into();
-        }
         return p.display().to_string();
     }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let cand = dir.join("sam-jail-run");
-            if cand.exists() {
-                return cand.display().to_string();
-            }
-        }
-    }
-    "sam-jail-run".into()
+    // None installed: the place it belongs, so the check below names it.
+    here.unwrap_or_else(|| PathBuf::from("/nonexistent").join("sam-jail-run"))
+        .display()
+        .to_string()
 }
 
 /// Quote an argument for the desktop-entry `Exec` key.
@@ -245,9 +245,11 @@ pub fn validate_launcher(path: &Path, id: &str) -> Vec<String> {
     };
     let m = crate::metadata::parse_desktop(&text);
     match m.get("Exec") {
+        // Only SAM's own launcher, by its whole path: an entry that names
+        // `sam-jail-run` alone (written by older versions) is rewritten when
+        // the window starts.
         Some(exec)
-            if (exec.contains("sam-jail-run")
-                || exec.starts_with(&exec_quote(&runner_command())))
+            if exec.starts_with(&exec_quote(&runner_command()))
                 && exec.contains(&format!("--app-id {id}")) => {}
         Some(_) => problems.push(sam_core::i18n::tr(
             "the menu entry does not start the app through sam-jail-run",
@@ -349,6 +351,44 @@ mod tests {
             "\"/opt/My Apps/sam-jail-run\""
         );
         assert_eq!(exec_quote("a$b"), "\"a\\\\$b\"");
+    }
+
+    /// A menu entry names SAM's launcher by its whole path, so the desktop
+    /// never looks it up on a `$PATH` an app may have put a copy into
+    /// (audit G-F10); an older entry that names it alone is reported, and
+    /// the window rewrites it at its next start.
+    #[test]
+    fn menu_entries_name_sams_launcher_by_its_whole_path() {
+        assert!(runner_command().starts_with('/'), "{}", runner_command());
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let mut e = AppEntry {
+            id: "appimage-hello-1234".into(),
+            ..Default::default()
+        };
+        e.metadata.name = "Hello".into();
+        let p = install_launcher(&paths, &e).unwrap();
+        let text = fs::read_to_string(&p).unwrap();
+        assert!(
+            text.contains(&format!("Exec={} --app-id", exec_quote(&runner_command()))),
+            "{text}"
+        );
+        fs::write(
+            &p,
+            text.replace(&exec_quote(&runner_command()), "sam-jail-run"),
+        )
+        .unwrap();
+        assert!(
+            validate_launcher(&p, &e.id)
+                .iter()
+                .any(|m| m.contains("through sam-jail-run")),
+            "{:?}",
+            validate_launcher(&p, &e.id)
+        );
+        assert_eq!(refresh_launchers(&paths, std::slice::from_ref(&e)), 1);
+        assert!(!validate_launcher(&p, &e.id)
+            .iter()
+            .any(|m| m.contains("through sam-jail-run")));
     }
 
     /// SAM's menu entry starts the app through sam-jail-run, never the AppImage directly.

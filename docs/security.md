@@ -440,7 +440,9 @@ or Flatpak to start a program outside the sandbox. So inside every sandbox:
 
 - `systemd-run` (and `run0`, a link to it) is replaced by a stand-in that
   runs the command directly, inside the sandbox. Apps whose start script
-  uses `systemd-run` (such as KeePassXC) still start normally.
+  uses `systemd-run` (such as KeePassXC) still start normally. Where
+  `systemd-run` is itself a link, the stand-in covers the file it leads to
+  (`stand_ins_cover_the_real_tool_also_behind_a_link`).
 - `flatpak-spawn` refuses to run.
 
 This closes the two commands apps commonly use; it is not a wall. With full
@@ -491,6 +493,17 @@ metadata. SAM treats both as untrusted.
 - **What was enforced** (Landlock, seccomp) is reported by SAM's runner over
   a private channel that closes before the app starts. It appears in the
   launch log and on the app page.
+- **Programs in your home.** The programs SAM itself runs (Bubblewrap,
+  pasta, the D-Bus proxy, the unpack tools, GnuPG, its own launcher) run
+  outside the sandbox. SAM takes each from `$PATH`, but only a copy that
+  you cannot change: neither the file nor any folder on its way may belong
+  to you or be writable for you. A copy in `~/.cargo/bin`, `~/go/bin` or
+  `~/.nix-profile/bin`, where an app with write access to your home could
+  have put it, is skipped (`sam_never_runs_a_helper_the_user_can_change`).
+  For the same reason the window runs only the `sam-jail` next to itself,
+  and menu entries name SAM's launcher by its whole path, so the desktop
+  never looks it up on `$PATH`. A newer helper you installed in your home
+  yourself is not used; install it for the whole system instead.
 
 ---
 

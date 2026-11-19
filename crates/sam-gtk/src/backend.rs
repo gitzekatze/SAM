@@ -272,8 +272,13 @@ impl Backend {
     }
 }
 
-/// Lookup order: an environment override, next to this binary, the newest
-/// build of a source checkout (`target/release` or `target/debug`), $PATH.
+/// Where the window finds SAM's command line tools: an environment
+/// override, next to this program, then on `$PATH` where the user cannot
+/// change it ([`sam_core::util::which`]). Only a developer build also
+/// takes the newest build of its source checkout (`target/release` or
+/// `target/debug`): a release build that looked there would run
+/// `~/.local/debug/sam-jail`, which an app with write access to the home
+/// can create, when SAM is installed in `~/.local/bin` (audit G-F10).
 pub(crate) fn find_tool(name: &str, env: &str) -> PathBuf {
     if let Some(p) = std::env::var_os(env).filter(|v| !v.is_empty()) {
         return PathBuf::from(p);
@@ -281,9 +286,19 @@ pub(crate) fn find_tool(name: &str, env: &str) -> PathBuf {
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf));
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(d) = &exe_dir {
-        candidates.push(d.join(name));
+    tool_from(exe_dir.as_deref(), name, cfg!(debug_assertions))
+        .or_else(|| sam_core::util::which(name))
+        // Not found: a path that starts nothing, never a bare name that
+        // the system would look up on `$PATH` without SAM's check.
+        .unwrap_or_else(|| PathBuf::from("/nonexistent").join(name))
+}
+
+/// find_tool's rule for the program folder `exe_dir`: next to it, and in a
+/// developer build also the newest sibling build folder.
+fn tool_from(exe_dir: Option<&Path>, name: &str, developer_build: bool) -> Option<PathBuf> {
+    let d = exe_dir?;
+    let mut candidates = vec![d.join(name)];
+    if developer_build {
         for profile in ["release", "debug"] {
             candidates.push(d.join("..").join(profile).join(name));
         }
@@ -295,19 +310,8 @@ pub(crate) fn find_tool(name: &str, env: &str) -> PathBuf {
             p.metadata()
                 .and_then(|m| m.modified())
                 .unwrap_or(SystemTime::UNIX_EPOCH)
-        });
-    if let Some(p) = newest {
-        return p.canonicalize().unwrap_or(p);
-    }
-    if let Some(path) = std::env::var_os("PATH") {
-        for d in std::env::split_paths(&path) {
-            let c = d.join(name);
-            if c.is_file() {
-                return c;
-            }
-        }
-    }
-    PathBuf::from(name)
+        })?;
+    Some(newest.canonicalize().unwrap_or(newest))
 }
 
 /// The reply in `sam-jail --json` output: the last JSON object line on
@@ -332,4 +336,35 @@ fn envelope(out: &str) -> Option<Reply> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod find_tool_tests {
+    use super::*;
+    use std::fs;
+
+    /// An installed (release) window runs only the command line tool next
+    /// to it, never one in a neighbouring `debug` or `release` folder that
+    /// an app with write access to the home could create (audit G-F10). A
+    /// developer build takes the newest of its checkout's builds.
+    #[test]
+    fn an_installed_window_runs_only_the_tool_next_to_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("bin");
+        let debug = tmp.path().join("debug");
+        fs::create_dir_all(&bin).unwrap();
+        fs::create_dir_all(&debug).unwrap();
+        fs::write(debug.join("sam-jail"), "planted").unwrap();
+        assert_eq!(tool_from(Some(&bin), "sam-jail", false), None);
+        assert_eq!(
+            tool_from(Some(&bin), "sam-jail", true),
+            Some(debug.join("sam-jail").canonicalize().unwrap())
+        );
+        fs::write(bin.join("sam-jail"), "installed").unwrap();
+        assert_eq!(
+            tool_from(Some(&bin), "sam-jail", false),
+            Some(bin.join("sam-jail").canonicalize().unwrap())
+        );
+        assert_eq!(tool_from(None, "sam-jail", true), None);
+    }
 }

@@ -33,6 +33,11 @@ Bubblewrap, no kernel headers) skips on your computer with a note, but CI
 sets `SAM_REQUIRE_SANDBOX=1`, which turns such a skip into a failure: a
 green run always tested the sandbox.
 
+**Stand-in tools:** SAM runs a helper program only where the user cannot
+change it, so a test's own stand-ins (a broken `bwrap`, a hostile unpack
+tool) in a temporary folder would be skipped. Such a test names that folder
+in `SAM_TRUST_TOOLS_IN`.
+
 **The same result on every computer:** a test never uses anything of the
 person running it. Tests that start sandboxes get their own runtime folder
 (`Paths::rooted`, `SAM_RUNTIME_DIR`) and see the computer without its
