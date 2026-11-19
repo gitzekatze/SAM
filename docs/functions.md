@@ -9,13 +9,13 @@
 >
 > Test results are from the newest version report (2026-11-17 16:10:22).
 
-**40 functions:** 29 proven by passing tests, 10 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 367 tests in all.
+**40 functions:** 28 proven by passing tests, 11 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 373 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
 | 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 5 | ✅ |
 | 2 | [SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image; the old, rare type 1 is unpacked with bsdtar but not tested) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 9 | ✅ |
-| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 26 | ✅ 🆕 7 new tests since the report |
+| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 29 | ✅ 🆕 10 new tests since the report |
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 6 | ✅ |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 7 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 16 | ✅ |
@@ -25,7 +25,7 @@
 | 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox | 11 | ✅ 🆕 2 new tests since the report |
 | 11 | [Keys, passwords and the files of your other apps stay hidden, even with full home access.](#11) | sam-sandbox, sam-core | 13 | ✅ 🆕 5 new tests since the report |
 | 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | sam-runner, sam-sandbox | 5 | ✅ |
-| 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 15 | ✅ |
+| 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 18 | ✅ 🆕 3 new tests since the report |
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 3 | ✅ |
 | 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 11 | ✅ 🆕 7 new tests since the report |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 18 | ✅ 🆕 9 new tests since the report |
@@ -109,8 +109,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L830) | Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | ✅ |
-| [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L861) | A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | ✅ |
+| [`an_appimages_own_extractor_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L226) | The AppImage's own extractor runs code from the AppImage: here a "runtime" that probes the doors when asked to unpack itself, after SAM's own reader failed on it and the person allowed the fallback. | 🆕 new |
+| [`the_self_unpack_question_names_the_sandbox_and_the_reason`](../crates/sam-intake/src/extract.rs#L855) | The question before the AppImage unpacks itself says what the sandbox holds back, including the kernel limits (audit I-F17: it named only the network and the files), and why SAM could not. | 🆕 new |
+| [`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L153) | An unpacking tool cannot open the kernels rarely used doors. | 🆕 new |
+| [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L877) | Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | ✅ |
+| [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L908) | A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | ✅ |
 | [`unpacking_stops_at_the_time_limit`](../crates/sam-intake/src/normalize.rs#L215) | Unpacking stops with a clear error when it takes longer than the time limit, so a huge or hostile AppImage cannot keep SAM busy forever. | ✅ |
 | [`symlinks_pointing_outside_the_app_are_recognized`](../crates/sam-intake/src/normalize.rs#L229) | A symlink that points outside the unpacked app is recognized. | ✅ |
 | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L242) | Paths from the AppImage image are made relative, and paths that climb out with .. | ✅ |
@@ -121,11 +124,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`fractions_follow_the_step_weights`](../crates/sam-runner/src/progress.rs#L152) | The progress bar follows the weights of the steps of creating a sandbox. | ✅ |
 | [`bytes_written_are_counted`](../crates/sam-runner/src/progress.rs#L177) | Unpacking progress counts the bytes written. | ✅ |
 | [`unpacking_stops_exactly_at_its_limits`](../crates/sam-intake/tests/limits.rs#L45) | The file-count and size limits let an app through that reaches them exactly and stop one entry or one byte more; a time limit of zero stops at once. | ✅ |
-| [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L871) | Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | ✅ |
+| [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L918) | Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | ✅ |
 | [`without_consent_the_appimages_own_unpacker_never_runs`](../crates/sam-intake/tests/damaged.rs#L25) | When SAM's own readers cannot unpack an AppImage, its own unpacker (code from the AppImage) runs only after the user agreed: without consent the unpacking stops and asks, and nothing of the AppImage runs. | ✅ |
 | [`a_menu_start_after_free_space_unpacks_inside_a_sandbox`](../crates/sam-jail-cli/tests/unpack.rs#L103) | A menu start after free space unpacks inside a sandbox. | ✅ |
 | [`without_the_command_line_a_menu_start_refuses_to_unpack`](../crates/sam-jail-cli/tests/unpack.rs#L126) | Without the command line a menu start refuses to unpack. | ✅ |
-| [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L474) | Sams programs never unpack without a sandbox. | ✅ |
+| [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L503) | Sams programs never unpack without a sandbox. | ✅ |
 | [`a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder`](../crates/sam-intake/tests/hostile_extractor.rs#L31) | A hostile unpacking tool cannot plant links in sams app folder. | 🆕 new |
 | [`files_sam_writes_never_go_through_a_planted_link`](../crates/sam-core/src/util.rs#L436) | SAM's own files in folders an untrusted program could have touched are written without following links: a planted link is replaced, the file it pointed to stays as it was, and a link in place of a folder becomes a real folder (audit I-F2). | 🆕 new |
 | [`the_icon_is_cached_and_never_written_through_a_link`](../crates/sam-intake/src/metadata.rs#L298) | The app's icon is copied for SAM's menu entry and next to the unpacked app, replacing an older icon of another format, and never written through a link planted in the app's folder (audit I-F2). | 🆕 new |
@@ -133,8 +136,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_named_pipe_is_refused_without_waiting`](../crates/sam-core/src/util.rs#L409) | Reading a file from an untrusted app returns at once for anything that is not a regular file: a named pipe made SAM wait forever (audit I-F9, I-F15). | 🆕 new |
 | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L497) | An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | 🆕 new |
 | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1084) | The unpack location can be any folder, for example `~/Documents`. | 🆕 new |
-| [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L462) | A menu start unpacks in a sandbox with the cli next to it. | ✅ |
-| [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L495) | Tests and benchmarks may unpack in their own process. | ✅ |
+| [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L475) | A menu start unpacks in a sandbox with the cli next to it. | ✅ |
+| [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L525) | Tests and benchmarks may unpack in their own process. | ✅ |
 
 **Code:** [`sam-intake/src/extract.rs`](../crates/sam-intake/src/extract.rs), [`sam-intake/src/normalize.rs`](../crates/sam-intake/src/normalize.rs), [`sam-runner/src/progress.rs`](../crates/sam-runner/src/progress.rs)
 
@@ -311,6 +314,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
+| [`the_filter_refuses_x32_odd_sockets_and_the_siblings`](../crates/sam-runner/src/kernel.rs#L612) | The filter, applied by the real kernel in a child process: every call through the x32 ABI is refused (audit S-F9; x32 `ptrace` has its own number), the siblings of blocked calls are blocked too (S-F10), and a socket opens only as local, internet or netlink, Bluetooth only with its switch (S-F7). | 🆕 new |
+| [`the_filter_reaches_bubblewrap_as_whole_instructions`](../crates/sam-runner/src/kernel.rs#L673) | Bubblewrap reads the filter as eight bytes per instruction. | 🆕 new |
+| [`an_app_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L104) | An app cannot open the kernels rarely used doors. | 🆕 new |
 | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1050) | An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | ✅ |
 | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1097) | A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | ✅ |
 | [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L737) | Only real socket paths are taken from a D-Bus address; abstract sockets are not. | ✅ |
@@ -320,7 +326,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`without_nested_namespaces_user_namespaces_are_disabled`](../crates/sam-sandbox/src/lib.rs#L2744) | Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | ✅ |
 | [`extra_sockets_must_be_sockets`](../crates/sam-sandbox/src/lib.rs#L2800) | Extra sockets are passed in only when they really are sockets. | ✅ |
 | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L164) | An app may register a tray icon only while the tray service is allowed. | ✅ |
-| [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L401) | The syscall filter compiles in every variant and always blocks mount and io_uring. | ✅ |
+| [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L684) | The syscall filter compiles in every variant and always blocks mount and io_uring. | ✅ |
 | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) | Every security promise holds inside a real sandbox: each breakout attempt fails. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L158) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
 | [`a_socket_counts_as_ready_only_when_it_accepts`](../crates/sam-runner/src/dbus_proxy.rs#L186) | The proxy counts as ready only when its socket accepts connections, not when the file merely exists (regression: the sandbox check sometimes found the session bus refused right after the start). | ✅ |
@@ -377,11 +383,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`only_what_would_run_later_is_moved_aside`](../crates/sam-sandbox/src/lib.rs#L2942) | After a start with a writable home, only what could make the computer run something is moved aside: a new startup file, a replaced link to a protected folder, a key folder the app was not given. | ✅ |
 | [`a_new_startup_file_is_moved_aside_while_the_app_runs`](../crates/sam-runner/src/home_live.rs#L184) | A startup file created while the app runs is moved aside at once, not only when the app ends; a removed link is put back at once. | ✅ |
 | [`protected_parents_are_locked_and_linked_keys_hidden`](../crates/sam-sandbox/src/lib.rs#L2994) | With a writable home, the folders above protected places are mount points of their own (so they cannot be renamed away), and a key folder that is a link is hidden where it points. | ✅ |
-| [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L378) | The Landlock rules allow writing exactly in the folders the permissions grant. | ✅ |
+| [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L505) | The Landlock rules allow writing exactly in the folders the permissions grant. | ✅ |
 | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) | Every security promise holds inside a real sandbox: each breakout attempt fails. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L158) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
 | [`every_known_syscall_has_been_reviewed`](../crates/sam-runner/tests/syscalls.rs#L67) | Every known syscall has been reviewed. | ✅ |
-| [`the_review_list_matches_the_filter`](../crates/sam-runner/tests/syscalls.rs#L86) | The review list says which syscalls the filter blocks; it must match the filter itself, or the review would describe a filter that does not exist. | ✅ |
+| [`the_review_list_matches_the_filter`](../crates/sam-runner/tests/syscalls.rs#L89) | The review list says what the filter does with each syscall; it must say exactly that, or the review describes a filter that does not exist. | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/kernel.rs`](../crates/sam-runner/src/kernel.rs)
 

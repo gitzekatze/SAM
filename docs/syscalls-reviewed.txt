@@ -3,11 +3,27 @@
 # until it is reviewed. The test every_known_syscall_has_been_reviewed
 # fails when the kernel headers name a syscall missing here, so a new one
 # is looked at: block it in crates/sam-runner/src/kernel.rs if it can harm
-# the host or reach outside the sandbox, then add it below.
+# the host or reach outside the sandbox, then add it below. The test
+# the_review_list_matches_the_filter checks every status against
+# the filter itself.
 #
-# name<TAB>blocked or allowed (as of the review)
+# name<TAB>status, one of:
+#   allowed                          the filter lets it through
+#   blocked                          always refused (EPERM)
+#   blocked unless nested sandboxes  refused unless the app may run nested
+#                                    sandboxes (Chromium, Electron, WebKit),
+#                                    which need namespaces and mounts
+#   blocked by the strict filter     refused only with the strict filter on
+#                                    (off by default)
+#   limited                          some uses refused: ioctl typing into the
+#                                    terminal (TIOCSTI, TIOCLINUX); socket
+#                                    families other than local, internet and
+#                                    netlink (Bluetooth with its switch)
+# Apart from this list, every call through the x32 ABI is refused.
 # Reviewed 2026-11-16 against the headers of Linux 6.x (x86_64 and the
-# generic table aarch64 uses).
+# generic table aarch64 uses); statuses made exact 2026-11-19 (audit
+# S-F10), with clock_adjtime, quotactl_fd, fspick and mount_setattr now
+# blocked like their siblings.
 _sysctl	allowed
 accept	allowed
 accept4	allowed
@@ -28,7 +44,7 @@ chdir	allowed
 chmod	allowed
 chown	allowed
 chroot	allowed
-clock_adjtime	allowed
+clock_adjtime	blocked
 clock_adjtime64	allowed
 clock_getres	allowed
 clock_getres_time64	allowed
@@ -88,11 +104,11 @@ flistxattr	allowed
 flock	allowed
 fork	allowed
 fremovexattr	allowed
-fsconfig	blocked
+fsconfig	blocked unless nested sandboxes
 fsetxattr	allowed
-fsmount	blocked
-fsopen	blocked
-fspick	allowed
+fsmount	blocked unless nested sandboxes
+fsopen	blocked unless nested sandboxes
+fspick	blocked unless nested sandboxes
 fstat	allowed
 fstat64	allowed
 fstatat	allowed
@@ -157,7 +173,7 @@ io_submit	allowed
 io_uring_enter	blocked
 io_uring_register	blocked
 io_uring_setup	blocked
-ioctl	blocked
+ioctl	limited
 ioperm	blocked
 iopl	blocked
 ioprio_get	allowed
@@ -192,11 +208,11 @@ lstat	allowed
 lstat64	allowed
 madvise	allowed
 map_shadow_stack	allowed
-mbind	blocked
+mbind	blocked by the strict filter
 membarrier	allowed
 memfd_create	allowed
 memfd_secret	allowed
-migrate_pages	blocked
+migrate_pages	blocked by the strict filter
 mincore	allowed
 mkdir	allowed
 mkdirat	allowed
@@ -208,10 +224,10 @@ mlockall	allowed
 mmap	allowed
 mmap2	allowed
 modify_ldt	allowed
-mount	blocked
-mount_setattr	allowed
-move_mount	blocked
-move_pages	blocked
+mount	blocked unless nested sandboxes
+mount_setattr	blocked unless nested sandboxes
+move_mount	blocked unless nested sandboxes
+move_pages	blocked by the strict filter
 mprotect	allowed
 mq_getsetattr	allowed
 mq_notify	allowed
@@ -237,19 +253,19 @@ newfstatat	allowed
 nfsservctl	allowed
 open	allowed
 open_by_handle_at	blocked
-open_tree	blocked
+open_tree	blocked unless nested sandboxes
 open_tree_attr	allowed
 openat	allowed
 openat2	allowed
 pause	allowed
 perf_event_open	blocked
-personality	blocked
+personality	blocked by the strict filter
 pidfd_getfd	allowed
 pidfd_open	allowed
 pidfd_send_signal	allowed
 pipe	allowed
 pipe2	allowed
-pivot_root	blocked
+pivot_root	blocked unless nested sandboxes
 pkey_alloc	allowed
 pkey_free	allowed
 pkey_mprotect	allowed
@@ -263,18 +279,18 @@ preadv2	allowed
 prlimit64	allowed
 process_madvise	allowed
 process_mrelease	allowed
-process_vm_readv	blocked
-process_vm_writev	blocked
+process_vm_readv	blocked by the strict filter
+process_vm_writev	blocked by the strict filter
 pselect6	allowed
 pselect6_time64	allowed
-ptrace	blocked
+ptrace	blocked by the strict filter
 putpmsg	allowed
 pwrite64	allowed
 pwritev	allowed
 pwritev2	allowed
 query_module	allowed
 quotactl	blocked
-quotactl_fd	allowed
+quotactl_fd	blocked
 read	allowed
 readahead	allowed
 readlink	allowed
@@ -343,7 +359,7 @@ setgid	allowed
 setgroups	allowed
 sethostname	allowed
 setitimer	allowed
-setns	blocked
+setns	blocked unless nested sandboxes
 setpgid	allowed
 setpriority	allowed
 setregid	allowed
@@ -365,7 +381,7 @@ shutdown	allowed
 sigaltstack	allowed
 signalfd	allowed
 signalfd4	allowed
-socket	allowed
+socket	limited
 socketpair	allowed
 splice	allowed
 stat	allowed
@@ -406,11 +422,11 @@ truncate	allowed
 truncate64	allowed
 tuxcall	allowed
 umask	allowed
-umount2	blocked
+umount2	blocked unless nested sandboxes
 uname	allowed
 unlink	allowed
 unlinkat	allowed
-unshare	blocked
+unshare	blocked unless nested sandboxes
 uprobe	allowed
 uretprobe	allowed
 uselib	blocked
@@ -428,15 +444,4 @@ wait4	allowed
 waitid	allowed
 write	allowed
 writev	allowed
-#
-# Reviewed after the first list, when an upcoming distribution's headers
-# named them (nightly early warning):
-#
-# fchroot (Linux 7.3), 2026-11-16: the file-descriptor form of chroot with
-# the same rule: a directory needs CAP_SYS_CHROOT, which the sandbox drops
-# (--cap-drop ALL, no new privileges). Its one unprivileged use,
-# FD_FAILFS_ROOT, moves the caller into an empty kernel file system, which
-# only narrows its own view. Allowed, like chroot. Based on the patch
-# series and LTP tests; recheck against the fchroot(2) man page once it is
-# published.
 fchroot	allowed

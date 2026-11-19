@@ -272,7 +272,7 @@ impl AppPage {
                                 &[("app", &util::plain(&name))],
                             )
                         };
-                        let body = crate::i18n::trf("{why}\n\nInstead, the AppImage can unpack itself. That runs code from the AppImage, inside a sandbox with no network and no access to your files. Only continue if you trust where this file came from.", &[("why", &why)]);
+                        let body = crate::i18n::trf("{why}\n\nInstead, the AppImage can unpack itself. That runs code from the AppImage, inside a sandbox with no network, no access to your files and the same limits on kernel calls as an app. Only continue if you trust where this file came from.", &[("why", &why)]);
                         if window::confirm(
                             &app.window,
                             &tr("Let the AppImage Unpack Itself?"),

@@ -130,7 +130,7 @@ impl Sam {
             .as_ref()
             .filter(|_| host.userns.usable())
             .map(|b| b.path.clone());
-        unpack_isolation(&exe, bwrap)
+        unpack_isolation(&exe, bwrap, &host)
     }
 
     // ---------------------------------------------------------- overview
@@ -421,6 +421,7 @@ const SAM_PROGRAMS: &[&str] = &["sam-jail", "sam-jail-run", "sam-jail-gui"];
 fn unpack_isolation(
     exe: &Path,
     bwrap: Option<PathBuf>,
+    host: &sam_core::HostInfo,
 ) -> Result<Option<sam_intake::extract::Isolation>> {
     let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let reader = if name == "sam-jail" {
@@ -432,7 +433,19 @@ fn unpack_isolation(
     };
     match (bwrap, reader) {
         (Some(bwrap), Some(self_exe)) => {
-            Ok(Some(sam_intake::extract::Isolation { bwrap, self_exe }))
+            // The same system and the same baseline filter as an app; no
+            // nested sandboxes, no Bluetooth (audit I-F17).
+            let filter = crate::kernel::filter_bytes(&crate::kernel::SeccompSpec {
+                strict: false,
+                allow_userns: false,
+                bluetooth: false,
+            })?;
+            Ok(Some(sam_intake::extract::Isolation {
+                bwrap,
+                self_exe,
+                system: sam_sandbox::helper_system_args(host),
+                filter: Some(filter),
+            }))
         }
         (bwrap, _) if SAM_PROGRAMS.contains(&name) => {
             let why = if bwrap.is_none() {
@@ -465,10 +478,26 @@ mod unpack_isolation_tests {
         let cli = dir.path().join("sam-jail");
         fs::write(&cli, b"").unwrap();
         let run = dir.path().join("sam-jail-run");
-        let iso = unpack_isolation(&run, Some(PathBuf::from("/usr/bin/bwrap")))
-            .unwrap()
-            .expect("sam-jail-run unpacks in a sandbox");
+        let iso = unpack_isolation(
+            &run,
+            Some(PathBuf::from("/usr/bin/bwrap")),
+            &sam_core::HostInfo::default(),
+        )
+        .unwrap()
+        .expect("sam-jail-run unpacks in a sandbox");
         assert_eq!(iso.self_exe, cli, "the reader is the sam-jail next to it");
+        // The same system view and baseline filter as an app (audit I-F17).
+        assert!(iso
+            .system
+            .windows(3)
+            .any(|w| w == ["--ro-bind", "/usr", "/usr"]));
+        let filter = iso
+            .filter
+            .expect("the unpack sandbox has the syscall filter");
+        assert_eq!(
+            filter,
+            crate::kernel::filter_bytes(&crate::kernel::SeccompSpec::default()).unwrap()
+        );
     }
 
     #[test]
@@ -476,7 +505,7 @@ mod unpack_isolation_tests {
         let dir = tempfile::tempdir().unwrap();
         for name in ["sam-jail", "sam-jail-run", "sam-jail-gui"] {
             let exe = dir.path().join(name);
-            let err = unpack_isolation(&exe, None).unwrap_err();
+            let err = unpack_isolation(&exe, None, &sam_core::HostInfo::default()).unwrap_err();
             assert_eq!(
                 sam_core::error::code_of(&err),
                 Some("unpack-needs-sandbox"),
@@ -487,6 +516,7 @@ mod unpack_isolation_tests {
         let err = unpack_isolation(
             &dir.path().join("sam-jail-run"),
             Some(PathBuf::from("/usr/bin/bwrap")),
+            &sam_core::HostInfo::default(),
         )
         .unwrap_err();
         assert_eq!(sam_core::error::code_of(&err), Some("unpack-needs-sandbox"));
@@ -496,6 +526,10 @@ mod unpack_isolation_tests {
     fn tests_and_benchmarks_may_unpack_in_their_own_process() {
         let dir = tempfile::tempdir().unwrap();
         let test_binary = dir.path().join("sandbox-0123abcd");
-        assert!(unpack_isolation(&test_binary, None).unwrap().is_none());
+        assert!(
+            unpack_isolation(&test_binary, None, &sam_core::HostInfo::default())
+                .unwrap()
+                .is_none()
+        );
     }
 }

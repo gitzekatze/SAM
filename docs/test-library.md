@@ -104,7 +104,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 
-30 tests.
+31 tests.
 
 | Promise | Test |
 |---|---|
@@ -112,9 +112,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Program paths in menu entries are quoted so spaces and dollar signs cannot change the command. | [`menu_entry_paths_are_quoted_against_spaces_and_dollar_signs`](../crates/sam-intake/src/desktop.rs#L344) |
 | SAM's menu entry starts the app through sam-jail-run, never the AppImage directly. | [`sams_menu_entry_starts_the_app_only_through_sam`](../crates/sam-intake/src/desktop.rs#L355) |
 | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | [`launcher_mime_types_drop_hijack_targets`](../crates/sam-intake/src/desktop.rs#L378) |
-| Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L830) |
-| A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L861) |
-| Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L871) |
+| The question before the AppImage unpacks itself says what the sandbox holds back, including the kernel limits (audit I-F17: it named only the network and the files), and why SAM could not. | [`the_self_unpack_question_names_the_sandbox_and_the_reason`](../crates/sam-intake/src/extract.rs#L855) |
+| Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L877) |
+| A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L908) |
+| Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L918) |
 | A changed AppImage file is noticed by its fingerprint. | [`a_changed_appimage_file_is_noticed`](../crates/sam-intake/src/fingerprint.rs#L107) |
 | A readable name is taken from an AppImage's file name, without version and architecture. | [`a_readable_name_is_taken_from_the_file_name`](../crates/sam-intake/src/id.rs#L81) |
 | App IDs are stable and unique, also when two AppImages have the same name. | [`app_ids_stay_unique_when_names_collide`](../crates/sam-intake/src/id.rs#L98) |
@@ -211,7 +212,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-156 tests.
+161 tests.
 
 | Promise | Test |
 |---|---|
@@ -245,8 +246,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Bug reports hide everything that identifies the user or gives access: a home folder with spaces, other users' folders, short user names, the computer's name, email addresses, logins and tokens in links, IP addresses, and the values of environment variables given to the app. | [`bug_reports_hide_names_addresses_and_secrets`](../crates/sam-runner/src/doctor.rs#L843) |
 | A startup file created while the app runs is moved aside at once, not only when the app ends; a removed link is put back at once. | [`a_new_startup_file_is_moved_aside_while_the_app_runs`](../crates/sam-runner/src/home_live.rs#L184) |
 | A folder Linux will not watch is said, not skipped silently (audit L-F4); what is in it is still moved aside when the app ends. | [`a_folder_that_cannot_be_watched_is_reported`](../crates/sam-runner/src/home_live.rs#L232) |
-| The Landlock rules allow writing exactly in the folders the permissions grant. | [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L378) |
-| The syscall filter compiles in every variant and always blocks mount and io_uring. | [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L401) |
+| The Landlock rules allow writing exactly in the folders the permissions grant. | [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L505) |
+| The filter, applied by the real kernel in a child process: every call through the x32 ABI is refused (audit S-F9; x32 `ptrace` has its own number), the siblings of blocked calls are blocked too (S-F10), and a socket opens only as local, internet or netlink, Bluetooth only with its switch (S-F7). | [`the_filter_refuses_x32_odd_sockets_and_the_siblings`](../crates/sam-runner/src/kernel.rs#L612) |
+| Bubblewrap reads the filter as eight bytes per instruction. | [`the_filter_reaches_bubblewrap_as_whole_instructions`](../crates/sam-runner/src/kernel.rs#L673) |
+| The syscall filter compiles in every variant and always blocks mount and io_uring. | [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L684) |
 | An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L1538) |
 | A wanted layer that was not applied is reported missing. | [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L1589) |
 | A pasta command ending in the separator is refused not a panic. | [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L1626) |
@@ -266,9 +269,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L602) |
 | An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L643) |
 | A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L669) |
-| A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L462) |
-| Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L474) |
-| Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L495) |
+| A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L475) |
+| Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L503) |
+| Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L525) |
 | Each check reports what it finds, not what it hopes: run on facts that are the same on every computer, a check whose expectation is wrong fails, one whose expectation is right passes, and the report counts them (found by mutation testing: a check turning every failure into a pass went unnoticed). | [`a_check_reports_what_it_finds_not_what_it_hopes`](../crates/sam-runner/src/probe.rs#L580) |
 | A verdict is exactly pass, fail or "could not check": a skipped check counts neither as passed nor as failed. | [`a_skipped_check_is_neither_passed_nor_failed`](../crates/sam-runner/src/probe.rs#L729) |
 | The sandbox check tells a real folder of the user from a private stand-in. | [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L761) |
@@ -333,6 +336,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Grants of parts of the home never reach start places or secrets. | [`grants_of_parts_of_the_home_never_reach_start_places_or_secrets`](../crates/sam-runner/tests/home_grants.rs#L62) |
 | The home protections hold whatever else is granted. | [`the_home_protections_hold_whatever_else_is_granted`](../crates/sam-runner/tests/home_guards.rs#L45) |
 | A download that broke off is refused and nothing is kept. | [`a_download_that_broke_off_is_refused_and_nothing_is_kept`](../crates/sam-runner/tests/incomplete.rs#L9) |
+| An app cannot open the kernels rarely used doors. | [`an_app_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L104) |
+| An unpacking tool cannot open the kernels rarely used doors. | [`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L153) |
+| The AppImage's own extractor runs code from the AppImage: here a "runtime" that probes the doors when asked to unpack itself, after SAM's own reader failed on it and the person allowed the fallback. | [`an_appimages_own_extractor_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L226) |
 | Inside a real sandbox, each permission grants exactly its access and nothing more. | [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L101) |
 | When the folder for the writable app folder's changes cannot hold an overlay, the app still starts, with a read-only app folder and a warning that says why (regression: on Fedora in a container, SAM's data folder was on an overlay, and the app failed with a raw Bubblewrap error). | [`an_app_starts_read_only_when_its_writable_app_folder_cannot_work`](../crates/sam-runner/tests/overlay_fallback.rs#L37) |
 | AppImages are listed before they have a sandbox; only creating the sandbox adds SAM's menu entry and hides unsandboxed ones, and removing it puts them back. | [`found_appimages_get_a_menu_entry_only_with_a_sandbox`](../crates/sam-runner/tests/overview.rs#L13) |
@@ -349,7 +355,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Freeing space deletes the unpacked copy, and unpacking again brings the app back. | [`freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it`](../crates/sam-runner/tests/space.rs#L13) |
 | Closing an app ends all of its running starts. | [`stop_closes_running_apps`](../crates/sam-runner/tests/stop.rs#L66) |
 | Every known syscall has been reviewed. | [`every_known_syscall_has_been_reviewed`](../crates/sam-runner/tests/syscalls.rs#L67) |
-| The review list says which syscalls the filter blocks; it must match the filter itself, or the review would describe a filter that does not exist. | [`the_review_list_matches_the_filter`](../crates/sam-runner/tests/syscalls.rs#L86) |
+| The review list says what the filter does with each syscall; it must say exactly that, or the review describes a filter that does not exist. | [`the_review_list_matches_the_filter`](../crates/sam-runner/tests/syscalls.rs#L89) |
 | ⟲ Regression: the unpack folder in a record was only checked with Path::starts_with, which does not resolve "..": "extracted/../../victim" passed, and removing the sandbox deleted the victim folder. | [`removing_a_sandbox_never_deletes_outside_sams_unpack_folder`](../crates/sam-runner/tests/tamper.rs#L34) |
 | A record whose id climbs out of SAM's folders cannot be loaded, so no operation can reach the folders that id would name. | [`a_record_with_a_climbing_id_reaches_nothing`](../crates/sam-runner/tests/tamper.rs#L66) |
 | ⟲ Regression (found in the test audit): "go back to the earlier version" moved the file a record named as the backup, wherever it was. | [`undoing_an_update_never_moves_files_outside_sams_backup_folder`](../crates/sam-runner/tests/tamper.rs#L89) |
@@ -453,4 +459,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 367 automated Rust tests plus 7 scripted checks.
+Total: 373 automated Rust tests plus 7 scripted checks.
