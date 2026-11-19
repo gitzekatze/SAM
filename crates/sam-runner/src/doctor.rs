@@ -1109,6 +1109,13 @@ mod tests {
                 "https://x.org/k/<hidden>"
             );
         }
+        // A key may have `-` in it; a file name with dots is not one.
+        assert_eq!(
+            r("https://x.org/k/x9Yk2mQp-L7rT4vW8zA1b"),
+            "https://x.org/k/<hidden>"
+        );
+        let file = "https://x.org/k/Report2026.Final.Version.pdf";
+        assert_eq!(r(file), file);
         // Letters only: a word, not a key.
         let word = "https://x.org/k/abcdefghijklmnopqrstuvwxyz";
         assert_eq!(r(word), word);

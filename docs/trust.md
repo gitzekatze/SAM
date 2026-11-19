@@ -13,7 +13,7 @@ results.
   clearly, what it does not.
 - **[Functions and their tests](functions.md):** all <!-- fact:functions -->40<!-- /fact -->
   functions SAM promises, each with the tests that prove it.
-- **[Test library](test-library.md):** every one of the <!-- fact:tests -->438<!-- /fact -->
+- **[Test library](test-library.md):** every one of the <!-- fact:tests -->439<!-- /fact -->
   tests and the promise it keeps.
 - **[Real AppImages](reports/real-apps-2026-11-15.md):** how each of the <!-- fact:apps_total -->120<!-- /fact --> test AppImages did in its sandbox.
 - **[Mutation testing](reports/mutants-2026-11-16.md):** <!-- fact:mutants_tested -->3,011<!-- /fact -->

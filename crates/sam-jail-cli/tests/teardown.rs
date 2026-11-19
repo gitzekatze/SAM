@@ -284,3 +284,88 @@ fn logging_out_closes_a_menu_started_app_properly() {
         "the launch left {left:?} in its runtime folder"
     );
 }
+
+/// An app that ignores the request to quit at logout does not keep the
+/// launcher waiting: after the grace time (10 s) its sandbox is ended, and
+/// the start is still recorded as closed.
+#[test]
+fn an_app_that_ignores_logout_is_ended_after_the_grace_time() {
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let marker = format!("sam-stubborn-{}", std::process::id());
+    let apprun = root.join("AppRun");
+    fs::write(
+        &apprun,
+        format!("#!/bin/sh\nexec sh -c 'trap \"\" TERM; while :; do sleep 0.1; done' {marker}\n"),
+    )
+    .unwrap();
+    let img = root.join("Stubborn-1.0-x86_64.AppImage");
+    let ok = |c: &mut Command| {
+        let o = c.output().unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    };
+    ok(sam(root)
+        .args(["dev", "make-fixture", "--name", "Stubborn", "--apprun"])
+        .arg(&apprun)
+        .arg(&img));
+    ok(sam(root)
+        .arg("add")
+        .arg(&img)
+        .args(["--no-launcher", "--accept"]));
+    let list = ok(sam(root).args(["--json", "list"]));
+    let id = list
+        .lines()
+        .last()
+        .and_then(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .and_then(|v| v["data"][0]["id"].as_str().map(String::from))
+        .unwrap();
+    let mut launcher = sam(root)
+        .args(["run", &id])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(
+        wait_for(|| !with_marker(&marker).is_empty(), 30),
+        "the app did not start"
+    );
+    let asked = Instant::now();
+    // SAFETY: kill takes plain integers; the launcher is our own child.
+    unsafe { libc::kill(launcher.id() as libc::pid_t, libc::SIGTERM) };
+    let end = Instant::now() + Duration::from_secs(30);
+    while launcher.try_wait().unwrap().is_none() && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let ended = launcher.try_wait().unwrap().is_some();
+    if !ended {
+        launcher.kill().unwrap();
+    }
+    launcher.wait().unwrap();
+    let took = asked.elapsed();
+    assert!(
+        ended,
+        "the launcher waited forever for an app that ignores logout"
+    );
+    assert!(
+        took >= Duration::from_secs(9),
+        "the app got no time to save: ended after {took:?}"
+    );
+    assert!(
+        wait_for(|| with_marker(&marker).is_empty(), 10),
+        "the app outlived its launcher"
+    );
+    let info = ok(sam(root).args(["--json", "info", &id]));
+    let v: serde_json::Value = serde_json::from_str(info.lines().last().unwrap()).unwrap();
+    assert_eq!(
+        v["data"]["entry"]["last_launch"]["summary"], "closed by SAM",
+        "{v}"
+    );
+}
