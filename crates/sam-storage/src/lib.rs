@@ -340,6 +340,20 @@ impl PresetStore {
         preset.modified_at = t;
         preset.risk = sam_core::risk::assess(&preset.permissions).level;
         let path = self.file_for(&preset.name);
+        // "My Preset" and "my-preset" share a file: saving one must not
+        // overwrite the other without a word (audit G-F19). The same name
+        // in other letter case is the same preset.
+        if let Ok(old) = read_preset_file(&path) {
+            if !old.name.eq_ignore_ascii_case(&preset.name) {
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "the preset “{other}” already uses the file for this name; choose another name",
+                        &[("other", &old.name)]
+                    )
+                );
+            }
+        }
         atomic_write(&path, preset_to_toml(preset)?.as_bytes())?;
         Ok(path)
     }

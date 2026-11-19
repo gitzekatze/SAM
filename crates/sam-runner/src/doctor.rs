@@ -84,7 +84,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
                         format!("bubblewrap failed: {e}"),
                     )
                     .hint(sam_core::i18n::tr(
-                        "Check that user namespaces are enabled, or that AppArmor allows bwrap.",
+                        "See the check \"User namespaces\": it says what keeps Bubblewrap from working here and how to fix it without making the system less safe.",
                     )),
                 ),
             }
@@ -96,7 +96,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
                 CheckStatus::Fail,
                 "Bubblewrap is not installed.",
             )
-            .hint(sam_core::i18n::tr("Install it: sudo pacman -S bubblewrap")),
+            .hint(sam_core::host::install_hint("bubblewrap")),
         ),
     }
     // A helper installed only in the home is skipped on purpose (an app

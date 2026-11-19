@@ -576,8 +576,13 @@ const ENV_FORWARD: &[&str] = &[
     "QT_IM_MODULE",
 ];
 
+#[derive(Default)]
 struct Args {
     v: Vec<String>,
+    /// Paths of required mounts that are not valid UTF-8: Bubblewrap's
+    /// arguments are text here, and a replaced character would name another
+    /// file (audit S-F15), so the start is refused instead.
+    bad: Vec<PathBuf>,
 }
 
 impl Args {
@@ -594,9 +599,22 @@ impl Args {
                 return;
             }
         }
+        let (Some(sa), Some(sb)) = (a.as_ref().to_str(), b.as_ref().to_str()) else {
+            // An optional mount is left out, so the app sees nothing there;
+            // a required one stops the start.
+            if !op.ends_with("-try") {
+                let odd = if a.as_ref().to_str().is_none() {
+                    a.as_ref()
+                } else {
+                    b.as_ref()
+                };
+                self.bad.push(odd.to_path_buf());
+            }
+            return;
+        };
         self.v.push(op.into());
-        self.v.push(a.as_ref().to_string_lossy().into_owned());
-        self.v.push(b.as_ref().to_string_lossy().into_owned());
+        self.v.push(sa.to_string());
+        self.v.push(sb.to_string());
     }
     fn ro(&mut self, p: impl AsRef<Path>) {
         let p = p.as_ref();
@@ -757,7 +775,7 @@ fn common_system(a: &mut Args, host: &HostInfo) {
 /// relay): `/usr` read-only and [`common_system`]. Nothing of the home, of
 /// SAM's folders or of the devices; the caller adds what the helper needs.
 pub fn helper_system_args(host: &HostInfo) -> Vec<String> {
-    let mut a = Args { v: Vec::new() };
+    let mut a = Args::default();
     a.op2("--ro-bind", "/usr", "/usr");
     common_system(&mut a, host);
     a.v
@@ -1164,7 +1182,7 @@ impl Bubblewrap {
         let views = Views::with_opened(ctx, &opened);
         let mut s = Section {
             ctx,
-            a: Args { v: Vec::new() },
+            a: Args::default(),
             notes: Vec::new(),
             keep_fds: Vec::new(),
             opened,
@@ -1181,6 +1199,15 @@ impl Bubblewrap {
         s.sockets();
         s.environment();
         s.finish_command();
+        if let Some(odd) = s.a.bad.first() {
+            anyhow::bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "SAM cannot pass on {path}: its name is not valid text. Rename it, then start the app again.",
+                    &[("path", &odd.display())]
+                )
+            );
+        }
         let generated_files = vec![
             ctx.runtime_dir.join("passwd"),
             ctx.runtime_dir.join("group"),
@@ -1381,7 +1408,11 @@ impl Section<'_> {
         }
         if let Some(img) = &ctx.appimage_path {
             if let Some(name) = img.file_name() {
-                a.op2("--ro-bind-try", img, Path::new("/run/sam").join(name));
+                a.op2(
+                    "--ro-bind-try",
+                    img,
+                    sam_core::sandbox::appimage_inside(name),
+                );
             }
         }
 
@@ -1423,9 +1454,9 @@ impl Section<'_> {
         let fsp = &p.filesystem;
         let mut mounts: Vec<(usize, Args)> = Vec::new();
         let mut mount = |at: &Path, f: &dyn Fn(&mut Args)| {
-            let mut m = Args { v: Vec::new() };
+            let mut m = Args::default();
             f(&mut m);
-            if !m.v.is_empty() {
+            if !m.v.is_empty() || !m.bad.is_empty() {
                 mounts.push((at.components().count(), m));
             }
         };
@@ -1554,6 +1585,7 @@ impl Section<'_> {
         let a = &mut self.a;
         for (_, m) in mounts {
             a.v.extend(m.v);
+            a.bad.extend(m.bad);
         }
         guard_home(a, &home, fsp, views);
         for (host_p, sb, rw) in &ctx.extra_binds {
@@ -2048,13 +2080,9 @@ fn write_xauthority(ctx: &LaunchContext) -> Result<()> {
         return Ok(());
     };
     let out = rewrite_xauthority(&data, &host_num, &sandbox_x11_display(s).to_string());
-    let dest = ctx.runtime_dir.join("Xauthority");
-    fs::write(&dest, out)?;
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&dest, fs::Permissions::from_mode(0o600))?;
-    }
-    Ok(())
+    // Readable by the user alone from the moment it exists, and a link
+    // left at its place is replaced, not followed (audit S-F18).
+    sam_core::util::atomic_write(&ctx.runtime_dir.join("Xauthority"), &out)
 }
 
 /// Xauthority records are: family (u16), then address, number, name and
@@ -2721,6 +2749,67 @@ mod tests {
     }
 
     /// The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins.
+    /// The copy of the X11 key for the sandbox is the user's alone from the
+    /// start, and a link put at its place does not carry the key elsewhere
+    /// (audit S-F18).
+    #[test]
+    fn the_x11_key_copy_is_private_and_follows_no_link() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ctx = sample_context();
+        ctx.runtime_dir = tmp.path().join("run");
+        fs::create_dir_all(&ctx.runtime_dir).unwrap();
+        // One record for display 0: family, address, number, name, data.
+        let mut rec = vec![1, 0];
+        for part in [
+            &b"host"[..],
+            b"0",
+            b"MIT-MAGIC-COOKIE-1",
+            b"secretsecret0000",
+        ] {
+            rec.extend((part.len() as u16).to_be_bytes());
+            rec.extend_from_slice(part);
+        }
+        let src = tmp.path().join("Xauthority.host");
+        fs::write(&src, &rec).unwrap();
+        ctx.host.sockets.xauthority = Some(src);
+        ctx.host.sockets.x11_display = Some(":0".into());
+        let victim = tmp.path().join("victim");
+        fs::write(&victim, "mine").unwrap();
+        std::os::unix::fs::symlink(&victim, ctx.runtime_dir.join("Xauthority")).unwrap();
+        write_xauthority(&ctx).unwrap();
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "mine");
+        let dest = ctx.runtime_dir.join("Xauthority");
+        let m = fs::symlink_metadata(&dest).unwrap();
+        assert!(m.file_type().is_file());
+        assert_eq!(m.permissions().mode() & 0o777, 0o600);
+        assert!(fs::read(&dest)
+            .unwrap()
+            .windows(12)
+            .any(|w| w == b"secretsecret"));
+    }
+
+    /// A folder whose name is not valid text (Linux allows any bytes) is
+    /// never passed on with a replaced character, which would name another
+    /// folder (audit S-F15): the start is refused with the folder named.
+    #[test]
+    fn a_folder_name_that_is_not_text_stops_the_start() {
+        use std::os::unix::ffi::OsStrExt;
+        let mut ctx = sample_context();
+        ctx.private_home = PathBuf::from(std::ffi::OsStr::from_bytes(b"/tmp/sam-home-\xff"));
+        let e = Bubblewrap.build(&ctx).unwrap_err().to_string();
+        assert!(
+            e.contains("not valid text") && e.contains("sam-home-"),
+            "{e}"
+        );
+        let mut a = Args::default();
+        a.op2("--ro-bind-try", ctx.private_home.as_path(), "/x");
+        assert!(
+            a.v.is_empty() && a.bad.is_empty(),
+            "an optional mount is left out"
+        );
+    }
+
     #[test]
     fn the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins() {
         let ctx = sample_context();

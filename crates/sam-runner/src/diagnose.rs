@@ -353,7 +353,13 @@ pub fn diagnose(
     let host = HostInfo::probe();
     let strace = host.tools.strace.clone();
     let Some(strace) = strace else {
-        bail!("{}", sam_core::i18n::tr("strace is not installed; install it to use dynamic diagnosis (sudo pacman -S strace)"))
+        bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "strace is not installed; it is needed for the diagnose run. {hint}",
+                &[("hint", &sam_core::host::install_hint("strace"))]
+            )
+        )
     };
     if entry.profile.permissions.filesystem.home {
         bail!(

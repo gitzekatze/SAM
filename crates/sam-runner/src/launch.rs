@@ -37,6 +37,10 @@ pub struct LaunchOptions {
     pub timeout_secs: Option<u64>,
     /// Don't echo the app's output to our stdout/stderr.
     pub quiet: bool,
+    /// Echo the app's standard output on SAM's standard error, so SAM's
+    /// own standard output holds only its JSON reply (`--json run`; audit
+    /// G-F18).
+    pub app_output_to_stderr: bool,
     /// Sandbox check: the helper runs these checks instead of the app.
     pub probe: Option<crate::probe::ProbePlan>,
     /// This is SAM's one automatic restart after the app was refused a
@@ -261,9 +265,11 @@ pub fn prepare(
         .unwrap_or_else(|| host.home.clone());
     let source_exists = app.source_path.exists();
     let appimage_env = if source_exists {
-        app.source_path
-            .file_name()
-            .map(|n| format!("/run/sam/{}", n.to_string_lossy()))
+        app.source_path.file_name().map(|n| {
+            sam_core::sandbox::appimage_inside(n)
+                .to_string_lossy()
+                .into_owned()
+        })
     } else {
         None
     };
@@ -830,6 +836,7 @@ fn run_once(
                 log.clone(),
                 out_head.clone(),
                 opts.quiet,
+                opts.app_output_to_stderr,
             ));
             pumps.push(pump_output(
                 Box::new(
@@ -842,6 +849,7 @@ fn run_once(
                 log.clone(),
                 err_head.clone(),
                 opts.quiet,
+                true,
             ));
             None
         }
@@ -1335,6 +1343,7 @@ fn pump_output(
     log: Arc<Mutex<fs::File>>,
     head: Arc<Mutex<String>>,
     quiet: bool,
+    on_stderr: bool,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         // Shown in a terminal, the app's output goes through the same filter
@@ -1343,8 +1352,8 @@ fn pump_output(
         // with escape codes (clipboard, title reports).
         // Without the relay, the terminal's answers to requests would land
         // in the shell: the filter removes requests too.
-        let mut filter =
-            (!quiet && pty::is_tty(if is_err { 2 } else { 1 })).then(pty::OutputFilter::for_pipe);
+        let mut filter = (!quiet && pty::is_tty(if on_stderr { 2 } else { 1 }))
+            .then(pty::OutputFilter::for_pipe);
         let keep = |line: &[u8]| {
             // Only the text goes into the log (audit L-F3).
             let text = sam_core::terminal::plain_text(line);
@@ -1380,7 +1389,7 @@ fn pump_output(
             let chunk = &buf[..n];
             if !quiet {
                 let shown = for_terminal(filter.as_mut(), chunk);
-                if is_err {
+                if on_stderr {
                     let mut o = std::io::stderr().lock();
                     let _ = o.write_all(&shown).and_then(|()| o.flush());
                 } else {
@@ -1408,7 +1417,7 @@ fn pump_output(
         // switched off again.
         if let Some(f) = filter.as_mut() {
             let tail = f.finish();
-            if is_err {
+            if on_stderr {
                 let _ = std::io::stderr().lock().write_all(&tail);
             } else {
                 let _ = std::io::stdout().lock().write_all(&tail);
@@ -1813,6 +1822,7 @@ mod log_limit_tests {
             log,
             head,
             true,
+            false,
         )
         .join()
         .unwrap();

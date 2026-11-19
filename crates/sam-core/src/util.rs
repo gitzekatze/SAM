@@ -157,7 +157,10 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
             .open(&tmp)
             .with_context(|| format!("creating {}", tmp.display()))?;
         f.write_all(data)?;
-        f.sync_all().ok();
+        // Some disks report a failed write only here; a file that never
+        // reached the disk must not replace the old one (audit S-F18).
+        f.sync_all()
+            .with_context(|| format!("writing {}", tmp.display()))?;
     }
     fs::rename(&tmp, path).with_context(|| format!("renaming into {}", path.display()))?;
     // The new name lasts a crash only once the folder is written too.

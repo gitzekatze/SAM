@@ -51,8 +51,10 @@ pub fn exec_quote(arg: &str) -> String {
     } else {
         arg.to_string()
     };
-    // Backslashes are additionally escaped at the string-value level.
-    s.replace('\\', "\\\\")
+    // Backslashes are additionally escaped at the string-value level, and
+    // a `%` would start a field code (`%F`): a literal one is `%%` (audit
+    // G-F17: `%` in SAM's own path broke every menu entry).
+    s.replace('\\', "\\\\").replace('%', "%%")
 }
 
 /// A category or file type ("Graphics", "image/png"): letters, digits and
@@ -389,6 +391,20 @@ mod tests {
         assert!(!validate_launcher(&p, &e.id)
             .iter()
             .any(|m| m.contains("through sam-jail-run")));
+    }
+
+    /// A `%` in SAM's own path is written `%%` in the menu entry, where a
+    /// single one would start a field code like `%F` (audit G-F17).
+    #[test]
+    fn a_percent_sign_in_sams_path_stays_a_percent_sign() {
+        assert_eq!(
+            exec_quote("/opt/100%sam/sam-jail-run"),
+            "/opt/100%%sam/sam-jail-run"
+        );
+        assert_eq!(
+            exec_quote("/home/a b/50% off/sam-jail-run"),
+            "\"/home/a b/50%% off/sam-jail-run\""
+        );
     }
 
     /// SAM's menu entry starts the app through sam-jail-run, never the AppImage directly.

@@ -132,7 +132,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `add PATH [--permissions-stdin] [--progress] […]` | `{app, entry, relocated, needs_fallback_consent, warnings}` |
 | `remove APP [--keep-data] [--stop]` | `{removed, warnings}` |
 | `stop APP` | `{stopped}` (number of processes) |
-| `run APP [ARGS]` | the launch record; an app whose settings nobody has confirmed yet (added without `--accept`) is refused until `review APP` |
+| `run APP [ARGS]` | the launch record; an app whose settings nobody has confirmed yet (added without `--accept`) is refused until `review APP`. The app's own output goes to stderr, so stdout holds the envelope alone |
 | `command APP` | the generated Bubblewrap command (preview) |
 | `set APP KEY VALUE [--yes]` | `{key, value, risk, warnings}`; a change that adds anything rated *Think twice* or *Dangerous* is refused with the code `change-needs-yes` unless `--yes` is given |
 | `get APP [KEY]` | the value, or the whole profile |

@@ -149,13 +149,31 @@ def literal(arg):
     return lit[0] if lit and lit[1] == len(a) else None
 
 
+def without_tests(src):
+    """`src` without its test sections: each `#[cfg(test)]` up to the next
+    line that is a lone `}` (where rustfmt ends a top-level item), with
+    their lines kept as empty lines so line numbers stay right. Before,
+    everything after the first test section was dropped, so texts below a
+    test module in the middle of a file were never offered for translation.
+    """
+    out, i = [], 0
+    while True:
+        j = src.find("#[cfg(test)]", i)
+        if j < 0:
+            out.append(src[i:])
+            return "".join(out)
+        out.append(src[i:j])
+        end = src.find("\n}\n", j)
+        end = len(src) if end < 0 else end + 3
+        out.append("\n" * src.count("\n", j, end))
+        i = end
+
+
 def messages():
     """[(msgid, plural or None, "file:line")] in source order."""
     found = []
     for f in sorted((ROOT / "crates").rglob("*.rs")):
-        src = f.read_text()
-        cut = src.find("#[cfg(test)]")
-        body = src if cut < 0 else src[:cut]
+        body = without_tests(f.read_text())
         rel = f.relative_to(ROOT).as_posix()
         for m in CALL.finditer(body):
             positions, only_in = CALLS[m.group(1)]
