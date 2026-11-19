@@ -32,7 +32,11 @@ the steps; the list says what it does and what stays a person's job.
    updates the dashboard and the function map's results.
 7. **The changelog** has every user-visible change under *Unreleased*, in
    whole sentences.
-8. **The release key** is on this computer. Its fingerprint,
+8. **The Rust version for release builds** is still the one you want:
+   `RUST_VERSION` in `.github/workflows/release.yml` (fixed, so the same
+   tag gives the same files; CI tests with the newest stable Rust). Raise it
+   on purpose, after CI has been green with that version.
+9. **The release key** is on this computer. Its fingerprint,
    `AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6`, is built into SAM
    (`RELEASE_KEYS` in `crates/sam-runner/src/release_key.rs`): SAM updates
    itself only to AppImages signed with it. The key expires on 2029-11-14;
@@ -91,9 +95,11 @@ Merge the pull request once its checks pass, with **Create a merge commit**
 
 The *Release* workflow builds the AppImages for x86_64 and aarch64 from the
 tag, tests them on fresh Ubuntu, Debian, Fedora, Arch and openSUSE
-containers, adds build provenance for the source files (once the repository
-is public) and makes a **draft** release with the files and the changelog as
-notes.
+containers, and makes a **draft** release with the files and the changelog as
+notes. The build jobs themselves add build provenance for every file they
+made, the unsigned AppImages included: GitHub's signed statement that this
+workflow built them from this tag. The SBOM is made in a job of its own that
+can change nothing; only the job that makes the draft may write.
 
 1. **Sign the AppImages** on this computer, so the key never goes to GitHub:
 
@@ -101,8 +107,12 @@ notes.
    SIGN_KEY=AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 scripts/sign-release.sh vX.Y.Z
    ```
 
-   It downloads the draft's files, writes the signature into each AppImage
-   and checks it, writes the `.zsync` and `.sha256` files again (they
+   It downloads the draft's files and first checks them: every AppImage
+   must be the file the build job made (`gh attestation verify`; a draft
+   can be edited, and the release key must never sign anything else), and
+   the source tarballs must have the checksums `scripts/release.sh` wrote
+   into the PKGBUILD. Then it writes the signature into each AppImage and
+   checks it, writes the `.zsync` and `.sha256` files again (they
    depend on the signed file), adds a detached `.asc` signature to every
    file and uploads them to the draft.
 2. Check the draft: every file is there (AppImages with `.zsync`, `.sha256`

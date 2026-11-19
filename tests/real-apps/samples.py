@@ -70,7 +70,7 @@ def image(path, fmt):
         ImageDraw.Draw(im).rectangle((40, 40, 280, 160), fill=(240, 200, 60))
         im.save(path, fmt)
         return True
-    except Exception:
+    except Exception:  # noqa: S110 -- no image library: the plain sample below is used
         pass
     if shutil.which("magick"):
         return subprocess.run(["magick", "-size", "320x200", "gradient:blue-yellow", path],

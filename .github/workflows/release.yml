@@ -11,8 +11,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Read-only unless a job says otherwise: building and testing run code from
+# many crates' build scripts and from container images (audit P7).
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   appimage:
@@ -28,20 +30,33 @@ jobs:
             runtime_sha256: 9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47900
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    # Build provenance is made here, by the job that built the files: the
+    # maintainer's signing script accepts only AppImages it vouches for
+    # (audit P1).
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: System packages
         run: |
           # Mirror choice and time limits: see the script.
           scripts/ci-packages.sh libgtk-4-dev libadwaita-1-dev pkg-config squashfs-tools xz-utils gettext
 
+      # One fixed Rust for release builds, so the same tag gives the same
+      # files (audit P16). Raise it on purpose (docs/releasing.md); CI
+      # itself keeps the newest stable Rust to see new warnings early.
       - name: Rust
+        env:
+          RUST_VERSION: "1.100.0"
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
 
       # The source and vendored-crate tarballs are the same on every
       # architecture; they come from the x86_64 job only.
@@ -55,7 +70,18 @@ jobs:
           RUNTIME="$RUNNER_TEMP/runtime" RUNTIME_SHA256="${{ matrix.runtime_sha256 }}" make appimage
           cat dist/*.AppImage.sha256
 
-      - uses: actions/upload-artifact@v7
+      # Build provenance: a signed statement from GitHub that these files
+      # were built by this job from this tag. Anyone can check a file with
+      # `gh attestation verify FILE --repo gitzekatze/SAM`; the signing
+      # script checks every AppImage this way before the release key signs
+      # it. GitHub offers it for public repositories only.
+      - name: Build provenance
+        if: ${{ startsWith(github.ref, 'refs/tags/') && !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: dist/*
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dist-${{ matrix.arch }}
           path: dist/*
@@ -89,9 +115,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: dist-${{ matrix.arch }}
           path: dist
@@ -104,59 +132,59 @@ jobs:
       - name: Test the AppImage on every system
         run: sh scripts/test-shipped.sh dist/SAM-*-${{ matrix.arch }}.AppImage ${{ matrix.systems }}
 
-  draft:
-    needs: [appimage, test-shipped]
+  # The software bill of materials (SBOM): every component built into SAM,
+  # with its version and license, in the SPDX format that tools for
+  # checking known vulnerabilities read. Made from Cargo.lock by a
+  # third-party action, so in a job of its own that can change nothing and
+  # never sees the AppImages (audit P1).
+  sbom:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
-    # Build provenance needs a token from GitHub's identity service.
+    timeout-minutes: 15
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@v8
-        with:
-          path: dist
-          merge-multiple: true
-
-      # The software bill of materials (SBOM): every component built into
-      # SAM, with its version and license, in the SPDX format that tools for
-      # checking known vulnerabilities read. Made from Cargo.lock.
+          persist-credentials: false
       - name: SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: spdx-json
-          output-file: dist/sam-${{ github.ref_name }}.spdx.json
+          output-file: sam-${{ github.ref_name }}.spdx.json
           upload-artifact: false
           upload-release-assets: false
-
-      # Build provenance: a signed statement from GitHub that these files
-      # were built by this workflow from this tag. Anyone can check a file
-      # with `gh attestation verify FILE --repo gitzekatze/SAM`. GitHub
-      # offers it for public repositories only. The AppImages are left out:
-      # scripts/sign-release.sh writes the release key's signature into them
-      # afterwards, which changes the files; that signature vouches for them.
-      - name: Build provenance
-        if: ${{ !github.event.repository.private }}
-        uses: actions/attest-build-provenance@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          subject-path: |
-            dist/*.tar.gz
-            dist/*.tar.xz
-            dist/*.spdx.json
-            dist/SHA256SUMS
+          name: sbom
+          path: sam-*.spdx.json
+
+  # The only job that may write: it makes the draft release from the files
+  # the build jobs made and attested, and the SBOM.
+  draft:
+    needs: [appimage, test-shipped, sbom]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          git fetch --tags --force
+          git fetch --tags --force "https://github.com/${GITHUB_REPOSITORY}.git"
           notes="$(git tag -l --format='%(contents:body)' "$TAG")"
           ls -l dist
-          gh release create "$TAG" --draft --title "SAM ${TAG#v}" --notes "$notes" dist/*
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "SAM ${TAG#v}" --notes "$notes" dist/*

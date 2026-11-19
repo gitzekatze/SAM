@@ -56,7 +56,7 @@ def by_name(app, pred, role=None):
             nm = n.get_name() or ""
             if pred(nm) and (role is None or role_is(n, role)):
                 return n
-        except Exception:
+        except Exception:  # noqa: S110 -- an element that vanished while walking; one not found fails the check
             pass
     return None
 
@@ -80,7 +80,7 @@ if not app:
 wait(lambda: by_name(app, lambda s: s.startswith("Select Browser")), 20)
 before = perms()
 for name in ["Browser", "Player", "Editor"]:
-    cb = wait(lambda: by_name(app, lambda s, n=name: s == f"Select {n}"))
+    cb = wait(lambda n=name: by_name(app, lambda s: s == f"Select {n}"))
     check(f"check box 'Select {name}' has a name", cb is not None)
     if cb:
         check(f"'Select {name}' is ticked", cb.get_state_set().contains(Atspi.StateType.CHECKED))

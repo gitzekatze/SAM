@@ -36,7 +36,8 @@ export XDG_RUNTIME_DIR="$run"
 export SAM_CONFIG_DIR="$R/sam/config" SAM_DATA_DIR="$R/sam/data" SAM_APPLICATIONS_DIR="$R/sam/apps" TMPDIR="$R/tmp"
 export PATH="$here/../../target/debug:$PATH"
 unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS XAUTHORITY
-mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
 for f in "$@"; do (cd "$(dirname "$f")" && printf '%s\n' "$(pwd)/$(basename "$f")"); done > "$R/queue.txt"
 cat > "$run/queue" <<'Q'
 #!/bin/sh

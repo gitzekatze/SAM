@@ -1,0 +1,11 @@
+# The Python scripts and test helpers (CI: "Scripts and workflows pass their
+# linters"). Mistakes that are real bugs or hide a failed check: unused
+# results (F), syntax (E9), loop variables (B007, B023), and `except: pass`
+# without a reason (S110: a silent one can turn a failed check green).
+[lint]
+select = ["F", "E9", "B007", "B023", "S110"]
+
+[lint.per-file-ignores]
+# entries() is called at once, in the same pass of the loop. The file is
+# part of the approval check, so a note here instead of in it.
+"scripts/contract-verifier.py" = ["B023"]

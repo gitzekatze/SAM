@@ -17,7 +17,8 @@ out=$(mkdir -p "${1:?usage: session.sh OUTDIR CMD…}" && cd "$1" && pwd); shift
 # Its own runtime folder, never the real one; below /run/user when that
 # exists (short socket paths), else in OUTDIR (CI runners may have none).
 if [ -d "/run/user/$(id -u)" ] && [ -w "/run/user/$(id -u)" ]; then
-    export XDG_RUNTIME_DIR="/run/user/$(id -u)/samtest-gui-$$"
+    XDG_RUNTIME_DIR="/run/user/$(id -u)/samtest-gui-$$"
+    export XDG_RUNTIME_DIR
 else
     export XDG_RUNTIME_DIR="$out/run-$$"
 fi
@@ -46,7 +47,8 @@ export LANG=C.UTF-8
 export SAM_TEST_SESSION=1
 unset LC_ALL LC_MESSAGES LANGUAGE
 bus=$(dbus-daemon --config-file="$out/session.conf" --fork --print-address=1 --print-pid=1)
-export DBUS_SESSION_BUS_ADDRESS=$(echo "$bus" | sed -n 1p); buspid=$(echo "$bus" | sed -n 2p)
+DBUS_SESSION_BUS_ADDRESS="$(echo "$bus" | sed -n 1p)"; buspid=$(echo "$bus" | sed -n 2p)
+export DBUS_SESSION_BUS_ADDRESS
 if [ "${SAM_SESSION:-broadway}" = kwin ]; then
     kwin_wayland --virtual --no-lockscreen --no-global-shortcuts --socket samtest-wl --width 1180 --height 800 >"$out/kwin.log" 2>&1 & disp=$!
     # GL instead of Vulkan: Vulkan layers installed by the user print warnings.
@@ -77,7 +79,9 @@ atspi() {
     done
     echo "/usr/lib/$1"
 }
-export ATSPI_LAUNCHER=$(atspi at-spi-bus-launcher) ATSPI_REGISTRY=$(atspi at-spi2-registryd)
+ATSPI_LAUNCHER="$(atspi at-spi-bus-launcher)"
+ATSPI_REGISTRY="$(atspi at-spi2-registryd)"
+export ATSPI_LAUNCHER ATSPI_REGISTRY
 rc=0; "$@" || rc=$?
 kill "$disp" "$buspid" 2>/dev/null || true
 rm -rf "$XDG_RUNTIME_DIR"

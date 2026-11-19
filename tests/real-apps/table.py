@@ -191,7 +191,7 @@ def markdown(date):
                 person.append("empty window")
             if d["screen"]["text"]:
                 person.append(f"on screen: {d['screen']['text'][:40]}")
-            for k, v in sorted(d["messages"].items()):
+            for k in sorted(d["messages"]):
                 person.append(f"{k} message")
         out.append(f"| {r[0]} | {res} | {r[2]} | {r[3]} | {uses or '-'} | {', '.join(person) or '-'} | {clean(r[4])} |")
     print("\n".join(out))

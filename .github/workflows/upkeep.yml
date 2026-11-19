@@ -33,8 +33,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 340
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - &packages
         name: System packages
@@ -55,7 +56,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
       - &cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
@@ -79,7 +80,7 @@ jobs:
           JOBS=2 scripts/mutants.sh -o "$RUNNER_TEMP/mutants" --diff "$base" 2>&1 | tee "$RUNNER_TEMP/results/mutants/report.txt"
           echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/results/mutants/exit"
           { echo '### Mutation testing'; echo '```'; tail -n 60 "$RUNNER_TEMP/results/mutants/report.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: upkeep-mutants
@@ -94,7 +95,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 340
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - *packages
       - *userns
       - *rust
@@ -111,7 +114,7 @@ jobs:
             cargo test --locked -p sam-runner --test fuzz -- --nocapture 2>&1 | tee -a "$RUNNER_TEMP/results/fuzz/report.txt"
           echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/results/fuzz/exit"
           { echo '### Long fuzz run'; echo '```'; tail -n 30 "$RUNNER_TEMP/results/fuzz/report.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: upkeep-fuzz
@@ -130,11 +133,12 @@ jobs:
       issues: write
       pull-requests: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           # A week of history, for the reverts of the week.
           fetch-depth: 0
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: upkeep-*
           path: artifacts

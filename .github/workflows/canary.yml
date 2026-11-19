@@ -22,7 +22,9 @@ jobs:
     outputs:
       matrix: ${{ steps.read.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - id: read
         run: |
           python3 -c 'import json, tomllib; d = tomllib.load(open("keeper.toml", "rb"))["canary"]["distributions"]; print("matrix=" + json.dumps({"include": [{"name": x["name"], "image": x["image"]} for x in d]}))' >> "$GITHUB_OUTPUT"
@@ -35,7 +37,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # Bubblewrap inside the container needs user namespaces, which
       # Ubuntu's AppArmor restricts on the runner itself.
@@ -51,12 +55,17 @@ jobs:
           done
 
       - name: Check the contracts on ${{ matrix.name }}
+        # Values from the matrix reach the shell as variables, never as
+        # text written into the command (audit P10).
+        env:
+          NAME: ${{ matrix.name }}
+          IMAGE: ${{ matrix.image }}
         run: |
-          mkdir -p "$RUNNER_TEMP/out-${{ matrix.name }}"
-          docker run --rm --privileged -v "$PWD:/src:ro" -v "$RUNNER_TEMP/out-${{ matrix.name }}:/out" \
-            "${{ matrix.image }}" sh /src/tests/canary/in-container.sh
+          mkdir -p "$RUNNER_TEMP/out-$NAME"
+          docker run --rm --privileged -v "$PWD:/src:ro" -v "$RUNNER_TEMP/out-$NAME:/out" \
+            "$IMAGE" sh /src/tests/canary/in-container.sh
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: canary-${{ matrix.name }}
@@ -72,9 +81,11 @@ jobs:
       issues: write
       actions: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: canary-*
           path: results

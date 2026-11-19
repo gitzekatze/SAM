@@ -279,7 +279,6 @@ def languages():
 def check():
     problems = []
     found = messages()
-    expected = write_pot(found)
     if not POT.exists() or {k for k in read_po(POT)} != {(m, p) for m, p, _ in found}:
         problems.append("po/sam.pot is out of date: run scripts/i18n.py extract")
     wanted = {(m, p) for m, p, _ in found}
