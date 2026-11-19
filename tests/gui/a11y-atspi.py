@@ -80,7 +80,7 @@ def reachable(node):
                         if focusable(c):
                             return True
                         nxt.append(c)
-            except Exception:
+            except Exception:  # noqa: S110 -- an element that vanished while walking; one not found fails the check
                 pass
         stack = nxt
     parent = node
@@ -107,13 +107,13 @@ def labelled(node):
             text = parent.get_text_iface() if hasattr(parent, "get_text_iface") else None
             if (parent.get_name() or "").strip() or (text and text.get_character_count() > 0):
                 return True
-    except Exception:
+    except Exception:  # noqa: S110 -- unreadable: not labelled, which the check reports
         pass
     try:
         for rel in node.get_relation_set():
             if rel.get_relation_type() == Atspi.RelationType.LABELLED_BY and rel.get_n_targets() > 0:
                 return True
-    except Exception:
+    except Exception:  # noqa: S110 -- unreadable: not labelled, which the check reports
         pass
     return False
 

@@ -61,6 +61,9 @@ opt-level = 2
 lto = "thin"
 codegen-units = 4
 strip = true
+# Arithmetic on numbers read from an AppImage stops with an error instead of
+# wrapping around silently (audit P16), as in development builds.
+overflow-checks = true
 
 # Lints for every part of SAM (each crate has `[lints] workspace = true`).
 [workspace.lints.clippy]

@@ -26,7 +26,7 @@ for i, line in enumerate(lines):
         if m:
             blocked[f"{m.group(1)} {m.group(2)}"] += 1
 print(f"The app made {len(calls)} calls; {len(unanswered)} got no answer.")
-for c, d in unanswered[:20]:
+for _, d in unanswered[:20]:
     print(f"  no answer: {d[:160]}")
 print(f"The proxy blocked {sum(blocked.values())} calls:")
 for k, n in blocked.most_common(20):

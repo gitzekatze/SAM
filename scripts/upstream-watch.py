@@ -60,6 +60,30 @@ def release_notes(upstream):
     return r.get("tag_name"), r.get("body") or ""
 
 
+def quoted(text, limit=300):
+    """Text from another project (a line of its release notes, its tag) as
+    inline code, cut to `limit`: GitHub turns nothing in it into a mention
+    of a person, a link or formatting (audit P15)."""
+    flat = " ".join(str(text).split()).replace("`", "'")
+    if len(flat) > limit:
+        flat = flat[:limit] + "…"
+    return f"`{flat}`" if flat else "``"
+
+
+def self_test():
+    cases = [
+        ("@alice fixed --splice-only", "`@alice fixed --splice-only`"),
+        ("see [here](https://evil.example) `x`", "`see [here](https://evil.example) 'x'`"),
+        ("a\n\tb", "`a b`"),
+        ("x" * 400, "`" + "x" * 300 + "…`"),
+    ]
+    wrong = [(i, quoted(i), o) for i, o in cases if quoted(i) != o]
+    for i, got, want in wrong:
+        print(f"FAIL {i[:30]!r}: {got!r} != {want!r}")
+    print(f"upstream-watch self-test: {len(cases) - len(wrong)} of {len(cases)} right")
+    sys.exit(1 if wrong else 0)
+
+
 def gh(*args, dry):
     if dry:
         print("  gh", " ".join(a if len(a) < 70 else a[:67] + "..." for a in args))
@@ -68,6 +92,8 @@ def gh(*args, dry):
 
 
 def main():
+    if "--self-test" in sys.argv:
+        self_test()
     dry = "--dry-run" in sys.argv
     m = tomllib.loads((ROOT / "docs" / "contracts.toml").read_text())
     gh("label", "create", LABEL, "--color", "FBCA04", "--force",
@@ -87,15 +113,15 @@ def main():
         for line in notes.splitlines():
             if any(re.search(rf"(?<![\w-]){re.escape(o)}(?![\w-])", line) for o in options) or WORDS.search(line):
                 hits.append(line.strip())
-        label = tag or version or "?"
+        label = (tag or version or "?")[:60]
         print(f"{comp['name']}: newest {version or 'unknown'}" + (f", release {tag}" if tag else "")
               + (f", {len(hits)} line(s) worth a look" if hits else ""))
         title = f"Upstream: {comp['name']} {label}"
         if not hits or title in seen:
             continue
-        body = (f"The release notes of **{comp['name']} {label}** mention something SAM relies on "
+        body = (f"The release notes of **{comp['name']}** {quoted(label, 60)} mention something SAM relies on "
                 f"or a removal. Check the lines below against the contracts.\n\n"
-                + "\n".join(f"> {h}" for h in hits[:30]) + "\n\n"
+                + "\n".join(f"- {quoted(h)}" for h in hits[:30]) + "\n\n"
                 + "**Contracts with this component:** " + ", ".join(f"`{c['id']}`" for c in contracts) + "\n\n"
                 + f"**Release notes:** {comp.get('upstream')}\n\n"
                 + "**Next step:** run the early-warning workflow (Actions → Early warning → Run workflow) "

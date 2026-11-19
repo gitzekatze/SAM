@@ -212,7 +212,6 @@ def main():
     m = load()
     inv = inventory()
     if "--inventory" in args:
-        patterns = [p for c in m["contract"] for p in c.get("covers", [])]
         own = [p for o in m.get("own", []) for p in o["covers"]]
         for item, where in sorted(inv.items()):
             who = next((c["id"] for c in m["contract"] if covered(item, c.get("covers", []))), "own" if covered(item, own) else "UNCOVERED")

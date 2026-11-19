@@ -131,7 +131,7 @@ def screen(base):
         try:
             early = Image.open(base + ".shotA0.png").convert("RGB").crop(box)
             out["changed"] = "yes" if ImageChops.difference(early, shot).getbbox() else "no"
-        except Exception:
+        except Exception:  # noqa: S110 -- no early screenshot to compare: "changed" stays unknown
             pass
     if shutil.which("tesseract") and out["window"] == "content":
         crop = base + ".window.png"

@@ -38,7 +38,7 @@ def find(app, pred, role=None):
         try:
             if pred(n.get_name() or "") and (role is None or role_is(n, role)):
                 return n
-        except Exception:
+        except Exception:  # noqa: S110 -- an element that vanished while walking; one not found fails the check
             pass
 
 def wait(f, t=20):

@@ -4,7 +4,7 @@ def load(p):
     try:
         d = json.load(open(p))
         return d.get("data", d) if isinstance(d, dict) else d
-    except Exception as e:
+    except Exception:
         return {"_error": open(p).read()[-400:] if os.path.exists(p) else "missing"}
 for txt in sorted(glob.glob(f"{R}/results/*.txt")):
     if txt.endswith(".add.txt") or txt.endswith("session.txt"): continue

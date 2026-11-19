@@ -8,16 +8,19 @@
 # 2. Sets the version everywhere (Cargo.toml/Cargo.lock, metainfo, Fedora
 #    spec, PKGBUILD), dates the changelog section, regenerates man pages.
 # 3. Runs clippy (warnings are errors) and the whole test suite.
-# 4. Commits "Release X.Y.Z" and tags vX.Y.Z (annotated, with the notes).
+# 4. Commits "Release X.Y.Z".
 # 5. Builds the release files (make dist) and, with RUNTIME set, the
 #    AppImage; puts the checksums into the PKGBUILD and .SRCINFO and commits.
+# 6. Tags the release commit vX.Y.Z (annotated, with the notes), only after
+#    everything was built: a failed build leaves no tag behind (audit P14).
 #
 # Nothing is pushed or uploaded; the script prints what to do next.
 #
+# Required:
+#   SIGN_KEY=<gpg key id>             sign the tag and the release files
+#                                     (UNSIGNED=1 for an unsigned test release)
 # Optional:
 #   RUNTIME=/path/to/runtime-ARCH     also build the AppImage (this computer's architecture)
-#   SIGN_KEY=<gpg key id>             sign the tag and the release files
-#                                     (required; UNSIGNED=1 for a test release)
 #   SKIP_TESTS=1                      skip clippy and tests (not recommended)
 set -eu
 
@@ -71,16 +74,14 @@ if [ "${SKIP_TESTS:-}" != 1 ]; then
     PATH="$root/target/debug:$PATH" cargo test --workspace --locked -q
 fi
 
-# 4. Commit and tag.
+# 4. Commit. The tag comes last, after the build (step 6).
 git add -A
 git commit -q -m "Release $new" -m "$notes"
-if [ -n "${SIGN_KEY:-}" ]; then
-    git tag -s -u "$SIGN_KEY" "v$new" -m "SAM $new" -m "$notes"
-else
-    git tag -a "v$new" -m "SAM $new" -m "$notes"
-fi
+release_commit=$(git rev-parse HEAD)
+trap 'echo "release: stopped before the tag; start again with: git reset --hard $release_commit~1" >&2' EXIT
 
-# 5. Release files, AppImage, PKGBUILD checksums.
+# 5. Release files, AppImage, PKGBUILD checksums (built from the release
+# commit; make-release.sh notes that there is no tag yet).
 echo "== release files"
 make dist >/dev/null
 if [ -n "${RUNTIME:-}" ]; then
@@ -97,6 +98,14 @@ mv packaging/arch/PKGBUILD.new packaging/arch/PKGBUILD
 (cd packaging/arch && makepkg --printsrcinfo > .SRCINFO)
 git add packaging/arch/PKGBUILD packaging/arch/.SRCINFO
 git commit -q -m "PKGBUILD: checksums for the $new release files"
+
+# 6. Tag the release commit.
+if [ -n "${SIGN_KEY:-}" ]; then
+    git tag -s -u "$SIGN_KEY" "v$new" -m "SAM $new" -m "$notes" "$release_commit"
+else
+    git tag -a "v$new" -m "SAM $new" -m "$notes" "$release_commit"
+fi
+trap - EXIT
 if [ -n "${SIGN_KEY:-}" ]; then
     for f in dist/sam-$new.tar.gz dist/sam-$new-vendor.tar.xz dist/SAM-$new-*.AppImage dist/SHA256SUMS; do
         [ -f "$f" ] && gpg --batch --yes -u "$SIGN_KEY" --armor --detach-sign "$f"
@@ -107,5 +116,5 @@ echo
 echo "SAM $new is ready (not pushed). Next:"
 echo "  git push -u origin $(git branch --show-current) v$new, then a pull request into main, merged with a merge commit"
 echo "  GitHub release v$new with the files in dist/ (the CI draft has them; add the .asc signatures):"
-ls dist | grep -F "$new" | sed 's/^/    /'
+for f in dist/*"$new"*; do [ -e "$f" ] && echo "    ${f#dist/}"; done
 echo "  AUR: copy packaging/arch/PKGBUILD and .SRCINFO into the AUR repository and push"

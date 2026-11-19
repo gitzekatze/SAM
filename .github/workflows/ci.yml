@@ -30,8 +30,9 @@ jobs:
     outputs:
       code: ${{ steps.check.outputs.code }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - id: check
         env:
@@ -51,6 +52,24 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
           [ "$code" = true ] && echo "Code changed: every job runs." || echo "Only documents changed: the code jobs are skipped."
 
+  # The scripts and workflows through their linters (audit P10, P11):
+  # shellcheck for shell scripts, ruff for the Python ones (ruff.toml), and
+  # zizmor for what a workflow can be made to do (untrusted text in a shell
+  # command, broad tokens, checkouts that keep their token). Pinned versions.
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Shell scripts
+        run: shellcheck -S warning scripts/*.sh tests/*/*.sh
+      - name: Python scripts
+        run: pipx run ruff==0.17.5 check scripts tests
+      - name: Workflows
+        run: pipx run zizmor==1.31.1 --offline --min-severity medium .github/workflows
+
   # Dependencies: security advisories, licences, banned crates, sources
   # (deny.toml).
   deny:
@@ -60,8 +79,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2
         with:
           command: check
           arguments: --locked
@@ -83,8 +104,9 @@ jobs:
     env:
       CODE: ${{ needs.changes.outputs.code != 'false' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           # The whole history: the summary compares with the commit before the push.
           fetch-depth: 0
 
@@ -118,7 +140,7 @@ jobs:
           rustup default stable
           rustc --version
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         if: env.CODE == 'true'
         with:
           path: |
@@ -139,7 +161,7 @@ jobs:
         if: env.CODE == 'true'
         run: target/debug/sam-jail --json doctor --contracts | tail -n 1 > "$RUNNER_TEMP/contracts.json"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always() && env.CODE == 'true'
         with:
           name: contracts-${{ runner.arch }}
@@ -187,7 +209,7 @@ jobs:
 
       - name: Window screenshots
         if: always() && env.CODE == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: window-screenshots-${{ runner.arch }}
           path: |
@@ -201,7 +223,7 @@ jobs:
           python3 scripts/site.py "$RUNNER_TEMP/site"
 
       - name: Shell scripts parse
-        run: for f in scripts/*.sh tests/real-apps/*.sh tests/gui/*.sh tests/upgrade/*.sh; do sh -n "$f" || exit 1; done
+        run: for f in scripts/*.sh tests/*/*.sh; do sh -n "$f" || exit 1; done
 
       - name: Test library is up to date
         run: python3 scripts/test-library.py --check
@@ -217,11 +239,12 @@ jobs:
 
       # AUTOMATION.md: no workflow hands an attacker the repository, and
       # every pull request shows its risk class.
-      - name: Workflows are safe, and the automation rules work
+      - name: Two workflow patterns, and the automation rules work
         run: |
           python3 scripts/workflow-check.py
           python3 scripts/workflow-check.py --self-test
           python3 scripts/risk-class.py --self-test
+          python3 scripts/upstream-watch.py --self-test
           python3 scripts/contract-verifier.py --self-test
           python3 scripts/changelog-check.py --self-test
           python3 scripts/changes.py --self-test
@@ -280,7 +303,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: System packages
         timeout-minutes: 20
@@ -303,7 +328,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
@@ -336,7 +361,7 @@ jobs:
 
       - name: Window test logs
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: window-flows
           path: |
@@ -354,7 +379,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: System packages
         timeout-minutes: 20
@@ -374,7 +401,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
@@ -399,7 +426,7 @@ jobs:
 
       - name: Window test logs
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: window-flows-gnome
           path: |
@@ -414,7 +441,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # The runner's kernel is Ubuntu's, which restricts user namespaces
       # for ordinary users through AppArmor. Inside a container this
