@@ -51,6 +51,7 @@ tests = ["an_appimages_own_extractor_cannot_open_the_kernels_rarely_used_doors",
   "a_shared_unpack_folder_keeps_everything_that_is_not_sams",
   "a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it",
   "tests_and_benchmarks_may_unpack_in_their_own_process",
+  "two_unpacks_at_once_get_their_own_error_files",
 ]
 
 [[function]]

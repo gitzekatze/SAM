@@ -732,11 +732,18 @@ fn run_tool(
     Ok(())
 }
 
+/// A fresh, already deleted file for a tool's error output. Its name holds
+/// a counter: two unpacks in one process within the same second (the
+/// window adding several apps, tests running side by side) got the same
+/// name, and the second failed with "File exists".
 fn tempfile_in_tmp() -> Result<File> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
     let p = std::env::temp_dir().join(format!(
-        "sam-extract-{}-{}",
+        "sam-extract-{}-{}-{}",
         std::process::id(),
-        sam_core::util::now()
+        sam_core::util::now(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     let f = fs::OpenOptions::new()
         .read(true)
@@ -870,6 +877,26 @@ mod space_tests {
     }
 
     use super::*;
+
+    /// Error files opened at the same moment in one process are separate
+    /// files: an unpack running beside another no longer fails with "File
+    /// exists" (it did on CI when two tests unpacked at once).
+    #[test]
+    fn two_unpacks_at_once_get_their_own_error_files() {
+        let threads = 8;
+        let start = std::sync::Arc::new(std::sync::Barrier::new(threads));
+        let handles: Vec<_> = (0..threads)
+            .map(|_| {
+                let start = start.clone();
+                std::thread::spawn(move || {
+                    start.wait();
+                    (0..300).filter(|_| tempfile_in_tmp().is_err()).count()
+                })
+            })
+            .collect();
+        let failed: usize = handles.into_iter().map(|h| h.join().unwrap()).sum();
+        assert_eq!(failed, 0, "error files that could not be created");
+    }
 
     /// Unpacking does not start when the folder clearly has too little room;
     /// the message names the folder, both sizes, and where to choose another
