@@ -343,6 +343,13 @@ pub struct LaunchRecord {
     /// moved them aside after the start. "place → where it is now".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub moved_aside: Vec<String>,
+    /// Bus names the app asked to own, learned from the D-Bus filter's
+    /// record and allowed from now on (nobody on this computer uses them).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub learned_names: Vec<String>,
+    /// Bus names the app asked to own that SAM did not allow: "name: why".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refused_names: Vec<String>,
     pub log_file: Option<PathBuf>,
     pub summary: String,
     /// What the app's output suggests went wrong, with fixes.

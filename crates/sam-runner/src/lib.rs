@@ -20,6 +20,7 @@ pub mod kernel;
 pub mod launch;
 pub mod netns;
 pub mod ops;
+pub mod own_names;
 pub mod probe;
 pub mod progress;
 pub mod pty;

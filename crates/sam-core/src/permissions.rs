@@ -403,6 +403,28 @@ pub fn blocked_wildcards(b: &DbusBusPerms) -> Vec<String> {
 /// dangerous, or one a service on this computer starts on demand
 /// (`activatable`, see `host::activatable_bus_names`). Checked at every
 /// start, also for names the user added.
+/// Whether `name` is a well-known D-Bus name: at least two elements of
+/// letters, digits, `_` and `-`, none starting with a digit, at most 255
+/// characters (the bus's own rules; a unique name `:1.42` is not one).
+pub fn is_bus_name(name: &str) -> bool {
+    name.len() <= 255
+        && name.split('.').count() >= 2
+        && name.split('.').all(|e| {
+            !e.is_empty()
+                && !e.starts_with(|c: char| c.is_ascii_digit())
+                && e.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+}
+
+/// The name of a media player (`org.mpris.MediaPlayer2.<player>`, with
+/// at least one element after it): the only desktop protocol name an app
+/// may own, its own player's, with the media controls switch (audit L-Q1).
+pub fn is_media_player_name(name: &str) -> bool {
+    name.strip_prefix("org.mpris.MediaPlayer2.")
+        .is_some_and(|p| !p.is_empty() && !p.contains('*'))
+}
+
 pub fn refuse_own_name(
     name: &str,
     activatable: &std::collections::BTreeSet<String>,
@@ -415,7 +437,7 @@ pub fn refuse_own_name(
         "org.a11y.",
         "io.github.gitzekatze.SAM",
     ];
-    if PROTOCOL.iter().any(|p| name.starts_with(p)) {
+    if PROTOCOL.iter().any(|p| name.starts_with(p)) && !is_media_player_name(name) {
         return Some(crate::i18n::trf(
             "{name} belongs to the desktop's own protocols",
             &[("name", &name)],
@@ -424,8 +446,14 @@ pub fn refuse_own_name(
     if let Some(why) = dangerous_bus_name(name) {
         return Some(why);
     }
+    // A wildcard covers every on-demand service under it (audit L-F13).
+    let covers = |a: &String| match name.strip_suffix(".*").or_else(|| name.strip_suffix('*')) {
+        Some(prefix) => a.starts_with(prefix),
+        None => a == name,
+    };
     activatable
-        .contains(name)
+        .iter()
+        .any(covers)
         .then(|| crate::i18n::trf("{name} is a service on this computer that starts on demand; owning it would intercept its requests", &[("name", &name)]))
 }
 
@@ -534,8 +562,10 @@ impl DbusBusPerms {
             "org.kde.StatusNotifierItem",
             "org.freedesktop.StatusNotifierItem",
         ] {
+            // `-N-0` as well: some toolkits count items from 0 (night run
+            // 2026-11-18: SyncClipboard's tray icon).
             for pid in 2..=12 {
-                for n in 1..=2 {
+                for n in 0..=2 {
                     names.push(format!("{prefix}-{pid}-{n}"));
                 }
             }
@@ -696,7 +726,7 @@ impl Default for IntegrationPerms {
 impl IntegrationPerms {
     /// Bus names to talk to and to own for the enabled integrations.
     pub fn bus_names(&self) -> (Vec<&'static str>, Vec<&'static str>) {
-        let (mut talk, mut own) = (Vec::new(), Vec::new());
+        let (mut talk, own) = (Vec::new(), Vec::new());
         if self.keyring {
             talk.extend([
                 "org.freedesktop.secrets",
@@ -709,7 +739,9 @@ impl IntegrationPerms {
                 "org.freedesktop.ScreenSaver",
                 "org.freedesktop.PowerManagement",
             ]);
-            own.push("org.mpris.MediaPlayer2.*");
+            // Its own player's name (org.mpris.MediaPlayer2.<player>) is
+            // learned at the first start and allowed when nobody else uses
+            // it; the wildcard was always refused (audit L-Q1).
         }
         if self.file_manager {
             talk.push("org.freedesktop.FileManager1");
@@ -1047,6 +1079,52 @@ mod tests {
     use super::*;
 
     /// An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed.
+    /// Bus names follow the bus's own rules: letters, digits, `_` and
+    /// `-`, at least two elements, none starting with a digit.
+    #[test]
+    fn bus_names_follow_the_rules_of_the_bus() {
+        for ok in ["org.example.App", "org.example.my_app-2", "a.b"] {
+            assert!(is_bus_name(ok), "{ok}");
+        }
+        for bad in [
+            "org",
+            "org..x",
+            "org.9x",
+            "org.ex!ample",
+            ":1.42",
+            "org.example.*",
+            "",
+        ] {
+            assert!(!is_bus_name(bad), "{bad}");
+        }
+        assert!(!is_bus_name(&format!("org.{}", "a".repeat(260))));
+    }
+
+    /// Media controls let the app talk to the screen saver and power
+    /// services; they no longer ask for the media-player wildcard, which
+    /// was always refused (audit L-Q1): the app's own player name is
+    /// learned instead.
+    #[test]
+    fn media_controls_talk_but_ask_for_no_wildcard_name() {
+        let mut p = PermissionSet::strict_gui();
+        p.integrations.media_controls = true;
+        let (talk, own) = p.integrations.bus_names();
+        assert!(talk.contains(&"org.freedesktop.ScreenSaver"), "{talk:?}");
+        assert!(own.is_empty(), "{own:?}");
+        let bus = p.effective_session_bus();
+        assert!(
+            !bus.own.iter().any(|n| n.starts_with("org.mpris.")),
+            "{:?}",
+            bus.own
+        );
+        p.integrations.keyring = true;
+        assert!(p
+            .integrations
+            .bus_names()
+            .0
+            .contains(&"org.freedesktop.secrets"));
+    }
+
     #[test]
     fn own_names_that_are_refused() {
         let activatable: std::collections::BTreeSet<String> =

@@ -509,6 +509,19 @@ pub fn activatable_bus_names(home: &Path) -> std::collections::BTreeSet<String> 
         PathBuf::from("/usr/local/share/dbus-1/services"),
         PathBuf::from("/usr/share/dbus-1/services"),
     ];
+    // The user's data folder where it is set elsewhere, and the runtime
+    // folder's services (audit L-F13).
+    for (var, sub) in [
+        ("XDG_DATA_HOME", "dbus-1/services"),
+        ("XDG_RUNTIME_DIR", "dbus-1/services"),
+    ] {
+        if let Some(d) = std::env::var_os(var)
+            .map(PathBuf::from)
+            .filter(|d| d.is_absolute())
+        {
+            dirs.push(d.join(sub));
+        }
+    }
     if let Ok(x) = std::env::var("XDG_DATA_DIRS") {
         dirs.extend(
             x.split(':')

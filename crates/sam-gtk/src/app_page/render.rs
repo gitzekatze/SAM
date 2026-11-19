@@ -351,6 +351,43 @@ impl AppPage {
             row.add_prefix(&status_icon("dialog-warning-symbolic", "error"));
             self.add_dynamic(&self.notices, &row);
         }
+        // Bus names the app asked for at the last start: allowed because
+        // nobody on this computer uses them, or not allowed and why
+        // (option D of 2026-11-18).
+        let names = |key: &str| -> Vec<String> {
+            entry
+                .as_ref()
+                .and_then(|e| util::get(e, key))
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let learned = names("last_launch.learned_names");
+        if !learned.is_empty() {
+            let row = adw::ActionRow::builder()
+                .title(tr("The app got its own bus name"))
+                .subtitle(crate::i18n::trf(
+                    "It asked for {names} at the last start. Nobody else on this computer uses it, so SAM allowed it (Permissions → D-Bus).",
+                    &[("names", &esc(&learned.join(", ")))],
+                ))
+                .build();
+            row.add_prefix(&status_icon("object-select-symbolic", "success"));
+            self.add_dynamic(&self.notices, &row);
+        }
+        let refused = names("last_launch.refused_names");
+        if !refused.is_empty() {
+            let row = adw::ActionRow::builder()
+                .title(tr("The app asked for a bus name SAM did not allow"))
+                .subtitle(esc(&refused.join("\n")))
+                .build();
+            row.add_prefix(&status_icon("dialog-information-symbolic", "accent"));
+            self.add_dynamic(&self.notices, &row);
+        }
         // A newer version is published (last update check).
         if let Some(e) = entry
             .as_ref()
