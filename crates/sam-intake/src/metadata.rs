@@ -14,6 +14,9 @@ use crate::normalize::safe_resolve;
 pub fn parse_desktop(text: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
     let mut in_entry = false;
+    // A byte order mark (some editors write one) hid the first line, the
+    // `[Desktop Entry]` header, and with it every key (found by fuzzing).
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -245,6 +248,15 @@ pub fn cache_icon(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A desktop file that starts with a byte order mark keeps its keys
+    /// (found by fuzzing: the mark hid the `[Desktop Entry]` line).
+    #[test]
+    fn a_byte_order_mark_does_not_hide_the_desktop_entry() {
+        let m = parse_desktop("\u{feff}[Desktop Entry]\r\nName=App\r\nIcon=app\r\n");
+        assert_eq!(m.get("Name").map(String::as_str), Some("App"));
+        assert_eq!(m.get("Icon").map(String::as_str), Some("app"));
+    }
 
     /// The preview and the unpacked app take the same desktop file: the
     /// top folder before `usr/share/applications`, each by name, and the

@@ -101,16 +101,17 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-detect: Recognizing AppImages and what they need (ELF, toolkits, signatures)
 
-27 tests.
+28 tests.
 
 | Promise | Test |
 |---|---|
-| An ordinary program file is not taken for an AppImage. | [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L328) |
-| A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L336) |
-| A download that broke off is recognized: the file is shorter than its SquashFS image says, and a complete one is not. | [`an_appimage_shorter_than_its_image_is_incomplete`](../crates/sam-detect/src/appimage.rs#L364) |
-| An AppImage with a DwarFS image instead of squashfs is recognized. | [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L401) |
-| A file that is not an ELF program is not taken for an AppImage. | [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L422) |
-| An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L437) |
+| Header values that point past the end of every file give no ELF end, never an overflow: with overflow checks in release builds (audit P16) that would end SAM (audit I-F14, found again by fuzzing). | [`impossible_header_values_give_no_elf_end`](../crates/sam-detect/src/appimage.rs#L340) |
+| An ordinary program file is not taken for an AppImage. | [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L364) |
+| A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L372) |
+| A download that broke off is recognized: the file is shorter than its SquashFS image says, and a complete one is not. | [`an_appimage_shorter_than_its_image_is_incomplete`](../crates/sam-detect/src/appimage.rs#L400) |
+| An AppImage with a DwarFS image instead of squashfs is recognized. | [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L437) |
+| A file that is not an ELF program is not taken for an AppImage. | [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L458) |
+| An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L473) |
 | Bundled libraries are sorted into system, graphics, display-controlled and dangerous classes. | [`bundled_libraries_are_sorted_by_what_they_reach`](../crates/sam-detect/src/classify.rs#L262) |
 | Programs that load graphics libraries only at run time are recognized as needing the GPU. | [`programs_that_load_graphics_at_run_time`](../crates/sam-detect/src/elf.rs#L1221) |
 | A missing optional library is reported with the feature it provides, not as a broken app. | [`missing_optional_libraries_name_the_feature`](../crates/sam-detect/src/elf.rs#L1247) |
@@ -135,7 +136,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 
-37 tests.
+38 tests.
 
 | Promise | Test |
 |---|---|
@@ -157,17 +158,18 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The AppImage a foreign menu entry starts is found in its Exec line, also behind env and with quotes. | [`the_appimage_behind_a_foreign_menu_entry_is_found`](../crates/sam-intake/src/menu.rs#L295) |
 | An unsandboxed menu entry in the user's folder is hidden on request and restored exactly as it was. | [`hide_and_restore_user_entry`](../crates/sam-intake/src/menu.rs#L309) |
 | An unsandboxed menu entry in a system folder is hidden through an entry in the user's folder, without touching the system file. | [`system_entry_gets_override`](../crates/sam-intake/src/menu.rs#L353) |
-| The preview and the unpacked app take the same desktop file: the top folder before `usr/share/applications`, each by name, and the first that leads to a file (audit I-F8: the preview gave up at a broken first one, the unpack took the next). | [`preview_and_unpack_take_the_same_desktop_file`](../crates/sam-intake/src/metadata.rs#L253) |
-| The desktop file inside an AppImage is read with name, translations, categories and file types. | [`the_desktop_file_inside_an_appimage_is_read`](../crates/sam-intake/src/metadata.rs#L279) |
-| Name, icon and categories are read from the unpacked app. | [`reads_metadata_and_icon`](../crates/sam-intake/src/metadata.rs#L292) |
-| The app's icon is copied for SAM's menu entry and next to the unpacked app, replacing an older icon of another format, and never written through a link planted in the app's folder (audit I-F2). | [`the_icon_is_cached_and_never_written_through_a_link`](../crates/sam-intake/src/metadata.rs#L313) |
+| A desktop file that starts with a byte order mark keeps its keys (found by fuzzing: the mark hid the `[Desktop Entry]` line). | [`a_byte_order_mark_does_not_hide_the_desktop_entry`](../crates/sam-intake/src/metadata.rs#L254) |
+| The preview and the unpacked app take the same desktop file: the top folder before `usr/share/applications`, each by name, and the first that leads to a file (audit I-F8: the preview gave up at a broken first one, the unpack took the next). | [`preview_and_unpack_take_the_same_desktop_file`](../crates/sam-intake/src/metadata.rs#L265) |
+| The desktop file inside an AppImage is read with name, translations, categories and file types. | [`the_desktop_file_inside_an_appimage_is_read`](../crates/sam-intake/src/metadata.rs#L291) |
+| Name, icon and categories are read from the unpacked app. | [`reads_metadata_and_icon`](../crates/sam-intake/src/metadata.rs#L304) |
+| The app's icon is copied for SAM's menu entry and next to the unpacked app, replacing an older icon of another format, and never written through a link planted in the app's folder (audit I-F2). | [`the_icon_is_cached_and_never_written_through_a_link`](../crates/sam-intake/src/metadata.rs#L325) |
 | Unpacking stops with a clear error when it takes longer than the time limit, so a huge or hostile AppImage cannot keep SAM busy forever. | [`unpacking_stops_at_the_time_limit`](../crates/sam-intake/src/normalize.rs#L215) |
 | A symlink that points outside the unpacked app is recognized. | [`symlinks_pointing_outside_the_app_are_recognized`](../crates/sam-intake/src/normalize.rs#L229) |
 | Paths from the AppImage image are made relative, and paths that climb out with .. | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L242) |
 | Unpacking removes setuid bits and makes files read-only for others. | [`unpacking_removes_setuid_bits`](../crates/sam-intake/src/normalize.rs#L253) |
 | Unpacking stops when the AppImage contains more files than the limit. | [`unpacking_stops_at_the_file_limit`](../crates/sam-intake/src/normalize.rs#L310) |
-| The name and icon of an AppImage are read without unpacking or running it. | [`peeks_name_and_icon_without_extracting`](../crates/sam-intake/src/peek.rs#L260) |
-| Icon paths from the AppImage cannot climb out of the unpacked app. | [`icon_paths_cannot_climb_out_of_the_app`](../crates/sam-intake/src/peek.rs#L274) |
+| The name and icon of an AppImage are read without unpacking or running it. | [`peeks_name_and_icon_without_extracting`](../crates/sam-intake/src/peek.rs#L264) |
+| Icon paths from the AppImage cannot climb out of the unpacked app. | [`icon_paths_cannot_climb_out_of_the_app`](../crates/sam-intake/src/peek.rs#L278) |
 | Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L257) |
 | A built AppImage is recognized and unpacked, with setuid bits removed. | [`a_built_appimage_is_detected_and_unpacked_safely`](../crates/sam-intake/src/testkit.rs#L288) |
 | Unpacking stops at the size limit and leaves no partial files behind. | [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L347) |
@@ -256,7 +258,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-181 tests.
+185 tests.
 
 | Promise | Test |
 |---|---|
@@ -388,6 +390,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Changed AppImages are recognized or refused, and unpacked or refused, without a panic; unpacking writes only inside its own folder and keeps its time limit. | [`changed_appimages_never_crash_or_escape_the_unpacker`](../crates/sam-runner/tests/fuzz.rs#L141) |
 | Changed desktop files, zsync files and update information are parsed or refused without a panic. | [`changed_text_inputs_never_crash_the_parsers`](../crates/sam-runner/tests/fuzz.rs#L223) |
 | Changed ELF programs inside an unpacked app are analyzed or skipped without a panic. | [`changed_programs_never_crash_the_analysis`](../crates/sam-runner/tests/fuzz.rs#L255) |
+| Changed ELF section tables and signature, key and update sections are read or refused without a panic: inspect, the signature check and the update information. | [`changed_signature_and_update_sections_never_crash_the_readers`](../crates/sam-runner/tests/fuzz_targets.rs#L117) |
+| Changed zsync control files are refused, or planned and assembled within their limits, without a panic: the parser, the block plan, the missing ranges and the assembly all see them. | [`changed_zsync_controls_never_crash_planning_or_assembly`](../crates/sam-runner/tests/fuzz_targets.rs#L224) |
+| Desktop files with a byte order mark, Windows line ends, odd sections and broken text are read without a panic, and the byte order mark and line ends do not hide the name. | [`changed_desktop_files_never_crash_the_reader`](../crates/sam-runner/tests/fuzz_targets.rs#L335) |
+| The preview reader without its guard: a changed image must not make SAM's own code panic. | [`the_preview_reader_panics_only_inside_the_squashfs_library`](../crates/sam-runner/tests/fuzz_targets.rs#L391) |
 | A dry run of a group change saves nothing and names what each app would lose. | [`a_dry_run_changes_nothing_and_names_what_would_stop_working`](../crates/sam-runner/tests/groups.rs#L56) |
 | A group change saves only the apps whose value changes, and one undo restores all of them. | [`only_changed_apps_are_saved_and_one_undo_restores_all_of_them`](../crates/sam-runner/tests/groups.rs#L82) |
 | A group change with an invalid value or an unknown app changes no app. | [`an_invalid_value_or_unknown_app_changes_no_app`](../crates/sam-runner/tests/groups.rs#L118) |
@@ -552,4 +558,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 466 automated Rust tests plus 7 scripted checks.
+Total: 472 automated Rust tests plus 7 scripted checks.

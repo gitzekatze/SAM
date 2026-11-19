@@ -47,7 +47,11 @@ pub fn peek(path: &Path) -> Result<Peek> {
     })
 }
 
-fn peek_unguarded(path: &Path) -> Result<Peek> {
+/// [`peek`] without its guard against panics of the SquashFS reader: for the
+/// fuzz tests, which must see every panic to tell SAM's own from the
+/// reader's (audit: the guard hid them from the tests).
+#[doc(hidden)]
+pub fn peek_unguarded(path: &Path) -> Result<Peek> {
     let info = inspect(path)?;
     // Names and icons are read from SquashFS only; DwarFS images show their
     // file name until they are unpacked.

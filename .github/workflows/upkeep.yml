@@ -112,7 +112,17 @@ jobs:
           set +e
           SAM_REQUIRE_SANDBOX=1 SAM_FUZZ_SEED=$seed SAM_FUZZ_ITERS=$ROUNDS \
             cargo test --locked -p sam-runner --test fuzz -- --nocapture 2>&1 | tee -a "$RUNNER_TEMP/results/fuzz/report.txt"
-          echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/results/fuzz/exit"
+          rc=${PIPESTATUS[0]}
+          # The targeted fuzzers (sections, zsync, desktop files, the
+          # unguarded preview) and the terminal filter's model; a tenth of
+          # the rounds, as zsync planning may take up to two seconds a round.
+          SAM_FUZZ_SEED=$seed SAM_FUZZ_ITERS=$((ROUNDS / 10)) \
+            cargo test --locked -p sam-runner --test fuzz_targets -- --nocapture 2>&1 | tee -a "$RUNNER_TEMP/results/fuzz/report.txt"
+          [ "${PIPESTATUS[0]}" = 0 ] || rc=1
+          SAM_FUZZ_SEED=$seed SAM_FUZZ_ITERS=$ROUNDS \
+            cargo test --locked -p sam-core --test terminal_fuzz -- --nocapture 2>&1 | tee -a "$RUNNER_TEMP/results/fuzz/report.txt"
+          [ "${PIPESTATUS[0]}" = 0 ] || rc=1
+          echo "$rc" > "$RUNNER_TEMP/results/fuzz/exit"
           { echo '### Long fuzz run'; echo '```'; tail -n 30 "$RUNNER_TEMP/results/fuzz/report.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()

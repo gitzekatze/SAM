@@ -39,19 +39,49 @@ unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS XAUTHORITY
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 for f in "$@"; do (cd "$(dirname "$f")" && printf '%s\n' "$(pwd)/$(basename "$f")"); done > "$R/queue.txt"
+# The sound server's own settings, in the fake home: a silent output (a
+# "null sink" that takes sound and drops it) and a session manager that
+# links apps to it but watches no real device, so nothing plays out loud.
+# Without a session manager and an output, apps that open sound first
+# waited for ever and showed no window (night run N4; audit P13).
+mkdir -p "$R/home/.config/pipewire/pipewire.conf.d" "$R/home/.config/wireplumber/wireplumber.conf.d"
+cat > "$R/home/.config/pipewire/pipewire.conf.d/sam-test-null-sink.conf" <<'PW'
+context.objects = [
+    { factory = adapter
+      args = { factory.name = support.null-audio-sink node.name = "sam-test-silent"
+               node.description = "SAM test: silent output" media.class = "Audio/Sink"
+               audio.position = [ FL FR ] } }
+]
+PW
+cat > "$R/home/.config/wireplumber/wireplumber.conf.d/sam-test-no-devices.conf" <<'WP'
+wireplumber.profiles = {
+  main = {
+    monitor.alsa = disabled
+    monitor.alsa-midi = disabled
+    monitor.bluez = disabled
+    monitor.bluez-midi = disabled
+    monitor.v4l2 = disabled
+    monitor.libcamera = disabled
+  }
+}
+WP
 cat > "$run/queue" <<'Q'
 #!/bin/sh
-# A sound server of the session's own, without a session manager: apps can
-# connect (the evidence that sound works), but no real device is opened, so
-# nothing plays out loud.
+# The session's own sound server (see the settings above) and a stand-in
+# notification service; both write logs into the run folder.
 if command -v pipewire >/dev/null && command -v pipewire-pulse >/dev/null; then
     pipewire > "$R/pipewire.log" 2>&1 & pw=$!
     sleep 1
+    if command -v wireplumber >/dev/null; then
+        wireplumber > "$R/wireplumber.log" 2>&1 & wp=$!
+        sleep 1
+    fi
     pipewire-pulse > "$R/pipewire-pulse.log" 2>&1 & pwp=$!
     sleep 1
 fi
+python3 -I "$TOOLS/notifications.py" "$R/notifications.log" > "$R/notifications.err" 2>&1 & nt=$!
 while IFS= read -r img; do [ -n "$img" ] && "$TEST_ONE" "$img" < /dev/null; done < "$R/queue.txt"
-[ -n "${pwp:-}" ] && kill "$pwp" "$pw" 2>/dev/null
+kill "$nt" ${pwp:-} ${wp:-} ${pw:-} 2>/dev/null || true
 Q
 chmod +x "$run/queue"
 export TEST_ONE="$here/test-one.sh" TOOLS="$here" CHECKS="${CHECKS:-}"
