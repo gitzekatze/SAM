@@ -156,3 +156,51 @@ fn parsers_survive_garbage() {
         let _ = sam_detect::inspect(&path);
     }
 }
+
+/// B27: a hostile AppImage cannot add lines to the menu entry SAM writes
+/// for it. Its desktop file names itself with escaped line breaks
+/// (`\n`, which the desktop-file format turns into real ones), followed by
+/// an `Exec=` of its own and `Terminal=true`. SAM's entry still starts
+/// only SAM's launcher (verification audit 2026-11-19: only a unit test of
+/// the text writer showed this). Two layers keep it so: reading the
+/// AppImage drops control characters from its texts (`display_safe`), and
+/// writing the entry escapes line breaks again; this test passes while
+/// either one holds.
+#[test]
+fn a_hostile_name_adds_no_line_to_sams_menu_entry() {
+    let tmp = tempfile::tempdir().unwrap();
+    let img = tmp.path().join("Menu.AppImage");
+    let mut spec = FixtureSpec::hello("Menu");
+    let evil = r"\nExec=/tmp/evil %F\nTerminal=true\nX-Evil=1";
+    spec.name = format!("Menu{evil}");
+    spec.comment = format!("A menu entry{evil}");
+    build(&img, &spec).unwrap();
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let added = sam
+        .add(
+            &img,
+            &AddOptions {
+                launcher: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let entry = added.entry.desktop_entry.as_ref().expect("a menu entry");
+    let text = fs::read_to_string(entry).unwrap();
+    let exec: Vec<&str> = text.lines().filter(|l| l.starts_with("Exec=")).collect();
+    assert_eq!(exec.len(), 1, "{text}");
+    assert!(
+        exec[0].contains(&format!("--app-id {}", added.entry.id)),
+        "the one Exec line starts SAM's launcher: {text}"
+    );
+    assert!(
+        !text.contains("/tmp/evil\n") && !text.lines().any(|l| l.starts_with("X-Evil")),
+        "{text}"
+    );
+    assert_eq!(
+        text.lines().filter(|l| l.starts_with("Terminal=")).count(),
+        1,
+        "{text}"
+    );
+    assert!(text.lines().any(|l| l == "Terminal=false"), "{text}");
+}

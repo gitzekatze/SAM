@@ -9,13 +9,13 @@
 >
 > Test results are from the newest version report (2026-11-17 16:10:22).
 
-**40 functions:** 11 proven by passing tests, 28 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 477 tests in all.
+**40 functions:** 11 proven by passing tests, 28 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 480 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
 | 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 8 | ✅ 🆕 3 new tests since the report |
 | 2 | [SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image; the old, rare type 1 is unpacked with bsdtar but not tested) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 9 | ✅ |
-| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 30 | ✅ 🆕 11 new tests since the report |
+| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 31 | ✅ 🆕 12 new tests since the report |
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 10 | ✅ 🆕 4 new tests since the report |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 11 | ✅ 🆕 4 new tests since the report |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 16 | ✅ |
@@ -31,7 +31,7 @@
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 18 | ✅ 🆕 9 new tests since the report |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ 🆕 29 new tests since the report |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
-| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 21 | ✅ 🆕 11 new tests since the report |
+| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 22 | ✅ 🆕 12 new tests since the report |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 14 | ✅ 🆕 4 new tests since the report |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 8 | ✅ 🆕 2 new tests since the report |
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 3 | ✅ |
@@ -40,7 +40,7 @@
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 9 | ✅ |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 3 | ✅ 🆕 1 new test since the report |
 | 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | sam-runner, sam-storage | 4 | ✅ 🆕 2 new tests since the report |
-| 28 | [Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 41 | ✅ 🆕 20 new tests since the report |
+| 28 | [Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 42 | ✅ 🆕 21 new tests since the report |
 | 29 | [SAM notices AppImages that were moved or changed.](#29) | sam-runner, sam-intake | 6 | ✅ 🆕 2 new tests since the report |
 | 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 6 | ✅ |
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 1 | ✅ |
@@ -120,6 +120,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`unpacking_stops_at_the_time_limit`](../crates/sam-intake/src/normalize.rs#L215) | Unpacking stops with a clear error when it takes longer than the time limit, so a huge or hostile AppImage cannot keep SAM busy forever. | ✅ |
 | [`symlinks_pointing_outside_the_app_are_recognized`](../crates/sam-intake/src/normalize.rs#L229) | A symlink that points outside the unpacked app is recognized. | ✅ |
 | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L242) | Paths from the AppImage image are made relative, and paths that climb out with .. | ✅ |
+| [`an_entry_named_dot_dot_writes_nothing_outside_the_app`](../crates/sam-intake/tests/climbing_paths.rs#L82) | An entry named dot dot writes nothing outside the app. | 🆕 new |
 | [`unpacking_removes_setuid_bits`](../crates/sam-intake/src/normalize.rs#L253) | Unpacking removes setuid bits and makes files read-only for others. | ✅ |
 | [`unpacking_stops_at_the_file_limit`](../crates/sam-intake/src/normalize.rs#L310) | Unpacking stops when the AppImage contains more files than the limit. | ✅ |
 | [`a_built_appimage_is_detected_and_unpacked_safely`](../crates/sam-intake/src/testkit.rs#L288) | A built AppImage is recognized and unpacked, with setuid bits removed. | ✅ |
@@ -418,7 +419,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`grants_of_parts_of_the_home_never_reach_start_places_or_secrets`](../crates/sam-runner/tests/home_grants.rs#L62) | Grants of parts of the home never reach start places or secrets. | 🆕 new |
 | [`a_writable_part_of_the_home_holding_start_places_is_watched`](../crates/sam-sandbox/src/lib.rs#L3579) | Only a start that shows a start place writable is watched and prepared: a writable `~/.config` is (audit D-M3), a writable `~/.config/myapp` or Documents folder is not. | 🆕 new |
 | [`full_home_access_cannot_leave_anything_that_runs_later`](../crates/sam-runner/tests/full_home.rs#L54) | Full home access cannot leave anything that runs later. | ✅ |
-| [`the_home_protections_hold_whatever_else_is_granted`](../crates/sam-runner/tests/home_guards.rs#L45) | The home protections hold whatever else is granted. | 🆕 new |
+| [`the_home_protections_hold_whatever_else_is_granted`](../crates/sam-runner/tests/home_guards.rs#L51) | The home protections hold whatever else is granted. | 🆕 new |
 | [`a_new_start_file_never_stays_silently`](../crates/sam-sandbox/src/lib.rs#L3193) | A new start file is taken out of its place whatever happens, and never silently (audit L-F2): past 1000 earlier copies, into SAM's folder; when SAM's folder cannot take it, renamed in place to a name nothing reads; when nothing works, reported as still there. | 🆕 new |
 | [`start_places_follow_other_config_and_data_folders`](../crates/sam-sandbox/src/lib.rs#L3242) | Start folders under another config or data folder in the home (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`) are protected like the usual ones, and the new places are on the list (audit S-F6). | 🆕 new |
 | [`a_folder_that_cannot_be_watched_is_reported`](../crates/sam-runner/src/home_live.rs#L232) | A folder Linux will not watch is said, not skipped silently (audit L-F4); what is in it is still moved aside when the app ends. | 🆕 new |
@@ -509,6 +510,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`sams_menu_entry_starts_the_app_only_through_sam`](../crates/sam-intake/src/desktop.rs#L417) | SAM's menu entry starts the app through sam-jail-run, never the AppImage directly. | ✅ |
 | [`app_metadata_cannot_add_lines_to_sams_menu_entry`](../crates/sam-intake/src/desktop.rs#L319) | SAM's menu entry starts the app only through SAM's sandbox: no value taken from the app (name, comment, categories, file types, window class) can add a line such as a second "Exec=" to it, even from a record changed outside SAM. | ✅ |
+| [`a_hostile_name_adds_no_line_to_sams_menu_entry`](../crates/sam-runner/tests/adversarial.rs#L169) | B27: a hostile AppImage cannot add lines to the menu entry SAM writes for it. | 🆕 new |
 | [`menu_entry_paths_are_quoted_against_spaces_and_dollar_signs`](../crates/sam-intake/src/desktop.rs#L354) | Program paths in menu entries are quoted so spaces and dollar signs cannot change the command. | ✅ |
 | [`launcher_mime_types_drop_hijack_targets`](../crates/sam-intake/src/desktop.rs#L461) | Launcher mime types drop hijack targets. | ✅ |
 | [`launcher_drops_hijack_mime_types`](../crates/sam-runner/tests/adversarial.rs#L114) | M1: a launcher never registers URL schemes, directories or executables. | ✅ |
@@ -678,6 +680,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`update_wildcards_match_only_the_right_build`](../crates/sam-detect/src/update_info.rs#L183) | Wildcards in update information match the right file name and not the build for another processor. | ✅ |
 | [`signed_appimage_is_checked`](../crates/sam-detect/tests/signature.rs#L139) | The signature of a signed AppImage is checked with GnuPG: unsigned, valid with the signer's fingerprint and name, invalid after one changed byte. | ✅ |
 | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L672) | An update signed with another key, or not signed at all, is noticed. | ✅ |
+| [`an_update_signed_with_another_key_waits_for_consent`](../crates/sam-runner/tests/update_server.rs#L682) | A new signing key: refused until the person accepts it (audit B24; verification audit 2026-11-19: only a unit test of the comparison showed this). | 🆕 new |
 | [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L105) | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | ✅ |
 | [`release_keys_are_full_fingerprints`](../crates/sam-runner/src/release_key.rs#L77) | Every built-in release key is a full fingerprint (40 hex characters), never a short key id that another key could share. | ✅ |
 | [`signing_a_file_without_signature_sections_is_refused`](../crates/sam-jail-cli/tests/robustness.rs#L259) | Signing a file that has no AppImage signature sections is refused with a clear message, before GnuPG is asked anything, and the file stays as it was. | ✅ |

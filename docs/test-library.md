@@ -137,7 +137,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 
-38 tests.
+39 tests.
 
 | Promise | Test |
 |---|---|
@@ -174,6 +174,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L257) |
 | A built AppImage is recognized and unpacked, with setuid bits removed. | [`a_built_appimage_is_detected_and_unpacked_safely`](../crates/sam-intake/src/testkit.rs#L288) |
 | Unpacking stops at the size limit and leaves no partial files behind. | [`size_limit_aborts_and_cleans_up`](../crates/sam-intake/src/testkit.rs#L347) |
+| An entry named dot dot writes nothing outside the app. | [`an_entry_named_dot_dot_writes_nothing_outside_the_app`](../crates/sam-intake/tests/climbing_paths.rs#L82) |
 | ⟲ Regression: reading the name and icon of an AppImage whose SquashFS image makes the reader panic gives an error instead of crashing SAM. | [`a_damaged_squashfs_image_gives_an_error_instead_of_a_crash`](../crates/sam-intake/tests/damaged.rs#L15) |
 | When SAM's own readers cannot unpack an AppImage, its own unpacker (code from the AppImage) runs only after the user agreed: without consent the unpacking stops and asks, and nothing of the AppImage runs. | [`without_consent_the_appimages_own_unpacker_never_runs`](../crates/sam-intake/tests/damaged.rs#L25) |
 | A hostile unpacking tool cannot plant links in sams app folder. | [`a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder`](../crates/sam-intake/tests/hostile_extractor.rs#L32) |
@@ -259,7 +260,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-188 tests.
+190 tests.
 
 | Promise | Test |
 |---|---|
@@ -384,6 +385,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | H3: markup in an AppImage's name or comment is neutralized before it is stored or shown. | [`markup_in_metadata_is_neutralized`](../crates/sam-runner/tests/adversarial.rs#L95) |
 | M1: a launcher never registers URL schemes, directories or executables. | [`launcher_drops_hijack_mime_types`](../crates/sam-runner/tests/adversarial.rs#L114) |
 | Robustness: malformed desktop files and files that only look like AppImages must not crash the parsers (simple deterministic fuzzing). | [`parsers_survive_garbage`](../crates/sam-runner/tests/adversarial.rs#L132) |
+| B27: a hostile AppImage cannot add lines to the menu entry SAM writes for it. | [`a_hostile_name_adds_no_line_to_sams_menu_entry`](../crates/sam-runner/tests/adversarial.rs#L169) |
 | Every security promise holds inside a real sandbox: each breakout attempt fails. | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) |
 | A swapped appimage does not start until it is confirmed. | [`a_swapped_appimage_does_not_start_until_it_is_confirmed`](../crates/sam-runner/tests/changed_appimage.rs#L13) |
 | ⟲ Regression (audit U-H1, Part 5): changing any switch cleared the mark of a swapped AppImage file, so it started without the person looking at it. | [`a_swapped_appimage_stays_marked_when_a_switch_changes`](../crates/sam-runner/tests/changed_appimage.rs#L71) |
@@ -404,7 +406,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | SAM ships no presets; old built-in names are free for the user, and applying a preset asks before it removes something an app needs. | [`sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user`](../crates/sam-runner/tests/groups.rs#L157) |
 | Saving an app's settings as a preset keeps them exactly. | [`saving_an_apps_settings_as_a_preset_keeps_them_exactly`](../crates/sam-runner/tests/groups.rs#L193) |
 | Grants of parts of the home never reach start places or secrets. | [`grants_of_parts_of_the_home_never_reach_start_places_or_secrets`](../crates/sam-runner/tests/home_grants.rs#L62) |
-| The home protections hold whatever else is granted. | [`the_home_protections_hold_whatever_else_is_granted`](../crates/sam-runner/tests/home_guards.rs#L45) |
+| The home protections hold whatever else is granted. | [`the_home_protections_hold_whatever_else_is_granted`](../crates/sam-runner/tests/home_guards.rs#L51) |
 | A download that broke off is refused and nothing is kept. | [`a_download_that_broke_off_is_refused_and_nothing_is_kept`](../crates/sam-runner/tests/incomplete.rs#L9) |
 | An app cannot open the kernels rarely used doors. | [`an_app_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L104) |
 | An unpacking tool cannot open the kernels rarely used doors. | [`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L153) |
@@ -449,6 +451,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (audit U-H5): when the new version had the same file name as the old one, going back moved the current file onto the kept old version (destroying it), then "restored" the new file and reported that the app was back. | [`going_back_with_an_unchanged_file_name_keeps_both_versions`](../crates/sam-runner/tests/update_server.rs#L451) |
 | ⟲ Regression (audit U-M6): whoever controls the download could hand out an older, validly signed release (with holes fixed since) as the update: any file other than the installed one counted as newer. | [`an_older_signed_version_is_not_installed_as_an_update`](../crates/sam-runner/tests/update_server.rs#L510) |
 | Updates come over HTTPS only, wherever the address comes from (audit B22, verification audit 2026-11-19: no test noticed the download's own check gone, and none tried a redirect). | [`an_update_never_comes_over_plain_http`](../crates/sam-runner/tests/update_server.rs#L594) |
+| A new signing key: refused until the person accepts it (audit B24; verification audit 2026-11-19: only a unit test of the comparison showed this). | [`an_update_signed_with_another_key_waits_for_consent`](../crates/sam-runner/tests/update_server.rs#L682) |
 | The sandbox check passes when the settings apply, and catches a setting that does not apply. | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L23) |
 | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L14) |
 
@@ -563,4 +566,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 477 automated Rust tests plus 7 scripted checks.
+Total: 480 automated Rust tests plus 7 scripted checks.

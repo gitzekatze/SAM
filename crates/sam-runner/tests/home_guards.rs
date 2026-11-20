@@ -5,7 +5,11 @@
 //! - write access to `~/.local`: `~/.local/share` cannot be renamed away to
 //!   plant records where SAM keeps its own;
 //! - a granted link to `~/.local`: SAM's folders stay hidden through it;
-//! - a private home has the folders every home has.
+//! - a private home has the folders every home has;
+//! - with the whole home writable, the file that says where Documents and
+//!   the other user folders are (`~/.config/user-dirs.dirs`) stays
+//!   read-only: rewritten, it could point the person's file dialogs at a
+//!   folder the app chose (threat model row 44).
 //!
 //! In its own file because it sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -25,6 +29,8 @@ H="$HOME"
 S="$H/.local/share/samroot"
 cat "$H/.ssh/id_ed25519" 2>/dev/null | grep -q SECRET && echo KEY=read || echo KEY=hidden
 echo x > "$H/.config/autostart/evil.desktop" 2>/dev/null && echo AUTOSTART=written || echo AUTOSTART=refused
+echo 'XDG_DOCUMENTS_DIR="$HOME/.local/share/evil"' >> "$H/.config/user-dirs.dirs" 2>/dev/null && echo USERDIRS=written || echo USERDIRS=refused
+mv "$H/.config/user-dirs.dirs" "$H/.config/user-dirs.old" 2>/dev/null && echo USERDIRS_MOVE=done || echo USERDIRS_MOVE=refused
 if mv "$H/.local/share" "$H/.local/s2" 2>/dev/null; then echo RENAME=done; else echo RENAME=refused; fi
 for base in "$H/.local/share/samroot" "$H/link/share/samroot"; do
   mkdir -p "$base/data/apps" 2>/dev/null && echo planted > "$base/data/apps/PLANTED" 2>/dev/null
@@ -57,6 +63,8 @@ fn the_home_protections_hold_whatever_else_is_granted() {
     fs::create_dir_all(home.join(".config/autostart")).unwrap();
     fs::create_dir_all(home.join(".ssh")).unwrap();
     fs::write(home.join(".ssh/id_ed25519"), "SECRET KEY").unwrap();
+    let user_dirs = "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n";
+    fs::write(home.join(".config/user-dirs.dirs"), user_dirs).unwrap();
     // A link to ~/.local under another name (S-F3).
     fs::create_dir_all(home.join(".local/share")).unwrap();
     std::os::unix::fs::symlink(home.join(".local"), home.join("link")).unwrap();
@@ -116,6 +124,14 @@ fn the_home_protections_hold_whatever_else_is_granted() {
     assert_eq!(r["KEY"], "hidden", "{r:?}");
     assert_eq!(r["AUTOSTART"], "refused", "{r:?}");
     assert!(!home.join(".config/autostart/evil.desktop").exists());
+    // Row 44: the user folders' locations stay as they were (verification
+    // audit 2026-11-19: only the argument list showed this).
+    assert_eq!(r["USERDIRS"], "refused", "{r:?}");
+    assert_eq!(r["USERDIRS_MOVE"], "refused", "{r:?}");
+    assert_eq!(
+        fs::read_to_string(home.join(".config/user-dirs.dirs")).unwrap(),
+        user_dirs
+    );
     assert!(!planted(&sam_root), "SAM's records stayed out of reach");
 
     // S-F4: ~/.local read/write in a private home.

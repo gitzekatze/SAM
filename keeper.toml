@@ -117,6 +117,7 @@ protected_tests = [
   "crates/sam-intake/tests/hostile_extractor.rs",
   "crates/sam-intake/tests/preview_sandbox.rs",
   "crates/sam-intake/tests/limits.rs",
+  "crates/sam-intake/tests/climbing_paths.rs",
   "crates/sam-detect/tests/signature.rs",
   "crates/sam-core/tests/terminal_fuzz.rs",
 ]
