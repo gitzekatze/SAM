@@ -166,6 +166,46 @@ fn an_app_gets_the_name_it_asks_for_only_when_nobody_uses_it() {
         assert_eq!(logs(), before + 1, "no restart");
     }
 
+    // A desktop protocol name and a name that would intercept the desktop
+    // (the shell): refused even though nobody holds them on this private
+    // bus, never learned, no restart (verification audit 2026-11-19: only
+    // unit tests showed these refusals).
+    for name in ["org.freedesktop.Notifications", "org.gnome.Shell"] {
+        let before = logs();
+        let (rec, log) = start(&[name]);
+        assert!(!rec.success, "{log}");
+        assert!(log.contains(&format!("OWN {name}=no")), "{log}");
+        assert!(!own().contains(&name.to_string()), "{name} was learned");
+        assert_eq!(logs(), before + 1, "no restart for {name}");
+    }
+    // Written into the settings by hand, they are still not handed to the
+    // app: the D-Bus filter leaves them out.
+    let mut p = app
+        .registry()
+        .get(&id)
+        .unwrap()
+        .unwrap()
+        .profile
+        .permissions;
+    p.dbus.session.own = vec![
+        "org.freedesktop.Notifications".into(),
+        "org.gnome.Shell".into(),
+    ];
+    app.set_permissions(&id, p).unwrap();
+    for name in ["org.freedesktop.Notifications", "org.gnome.Shell"] {
+        let (_, log) = start(&[name]);
+        assert!(log.contains(&format!("OWN {name}=no")), "{log}");
+    }
+    let mut p = app
+        .registry()
+        .get(&id)
+        .unwrap()
+        .unwrap()
+        .profile
+        .permissions;
+    p.dbus.session.own.clear();
+    app.set_permissions(&id, p).unwrap();
+
     // An app that runs on without its name gets it for the next start and
     // is not started again (night run: 21 apps ran without theirs).
     let before = logs();

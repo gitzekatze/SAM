@@ -672,3 +672,124 @@ fn an_update_never_comes_over_plain_http() {
         "the installed version is untouched"
     );
 }
+
+/// A new signing key: refused until the person accepts it (audit B24;
+/// verification audit 2026-11-19: only a unit test of the comparison
+/// showed this). Version 1 is signed with one key and installed; version 2
+/// is published, signed with another. The update is refused and the
+/// download deleted; accepting the change lets it through. Runs with
+/// SAM_TEST_GPG=1 (CI), where missing GnuPG tools fail it.
+#[test]
+fn an_update_signed_with_another_key_waits_for_consent() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
+        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
+        return;
+    }
+    assert!(
+        ["gpg", "gpgv", "objcopy"].iter().all(|t| have(t)),
+        "SAM_TEST_GPG=1, but gpg, gpgv or objcopy is not installed"
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let gpg_home = tmp.path().join("gnupg");
+    fs::create_dir(&gpg_home).unwrap();
+    fs::set_permissions(
+        &gpg_home,
+        std::os::unix::fs::PermissionsExt::from_mode(0o700),
+    )
+    .unwrap();
+    let gpg = |args: &[&str]| {
+        let out = Command::new("gpg")
+            .arg("--homedir")
+            .arg(&gpg_home)
+            .args([
+                "--batch",
+                "--quiet",
+                "--passphrase",
+                "",
+                "--pinentry-mode",
+                "loopback",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "gpg {args:?}");
+        String::from_utf8(out.stdout).unwrap()
+    };
+    for uid in [
+        "First Key <first@example.invalid>",
+        "Second Key <second@example.invalid>",
+    ] {
+        gpg(&["--quick-gen-key", uid, "ed25519", "sign", "never"]);
+    }
+    let signed = |path: &Path, version: &str, key: &str| {
+        let mut spec = FixtureSpec::hello("Tool");
+        spec.comment = format!("Tool, version {version}");
+        spec.files.push(FixtureFile {
+            path: "usr/share/tool/data.bin".into(),
+            data: vec![7u8; 300_000],
+            mode: 0o644,
+        });
+        spec.update_info = Some(format!("zsync|{url}"));
+        spec.signature_sections = true;
+        build(path, &spec).unwrap();
+        sam_detect::signature::sign_for_test(path, &gpg_home, key).unwrap();
+    };
+
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let v1 = apps.join("Tool-1.0-x86_64.AppImage");
+    signed(&v1, "1.0", "first@example.invalid");
+    let v2 = tmp.path().join("v2.AppImage");
+    signed(&v2, "2.0", "second@example.invalid");
+    publish(&server, &v2, "Tool-2.0-x86_64.AppImage");
+
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = sam
+        .add(
+            &v1,
+            &AddOptions {
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let sig = sam.resolve(&id).unwrap().signature.unwrap();
+    assert_eq!(sig.state, sam_core::model::SignatureState::Valid, "{sig:?}");
+    let before = fs::read(&v1).unwrap();
+
+    let err = sam.update(&id, false).unwrap_err();
+    assert!(
+        format!("{err:#}").contains("signing key changed"),
+        "refused for the new key: {err:#}"
+    );
+    assert_eq!(
+        fs::read(&v1).unwrap(),
+        before,
+        "the installed version is untouched"
+    );
+    let leftovers: Vec<_> = fs::read_dir(&apps)
+        .unwrap()
+        .flatten()
+        .filter(|f| f.path() != v1)
+        .map(|f| f.file_name())
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "the download was deleted: {leftovers:?}"
+    );
+
+    // Accepted: the update goes through.
+    let e = sam.update(&id, true).unwrap();
+    assert_eq!(fs::read(&e.source_path).unwrap(), fs::read(&v2).unwrap());
+    let _ = Command::new("gpgconf")
+        .arg("--homedir")
+        .arg(&gpg_home)
+        .args(["--kill", "all"])
+        .status();
+}

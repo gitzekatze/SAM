@@ -119,7 +119,7 @@ except FileNotFoundError:
 st = open("/proc/self/status").read()
 for line in st.splitlines():
     k, _, v = line.partition(":")
-    if k in ("CapEff", "NoNewPrivs", "Seccomp"):
+    if k in ("CapEff", "NoNewPrivs", "Seccomp", "CapPrm", "CapBnd", "CapAmb"):
         print(f"{k.upper()}={v.strip()}")
 print("END=1")
 "#;
@@ -328,6 +328,11 @@ fn every_breakout_attempt_from_a_real_sandbox_fails() {
         assert_eq!(r["SECCOMP"], "2", "seccomp filter mode");
         assert_eq!(r["NONEWPRIVS"], "1");
         assert_eq!(r["CAPEFF"], "0000000000000000");
+        // No capability can come back either: none permitted, none in the
+        // bounding set a program started later could gain, none ambient.
+        for k in ["CAPPRM", "CAPBND", "CAPAMB"] {
+            assert_eq!(r[k], "0000000000000000", "{k}");
+        }
     });
     c.section("landlock", || {
         // Landlock: the raw --bind made the folder writable as a mount, but the

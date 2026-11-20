@@ -628,6 +628,19 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let r = launch("userns", p);
         assert_eq!(r["USERNS"], "yes", "nested namespaces allowed");
 
+        // Without nested sandboxes, Bubblewrap itself refuses them
+        // (--disable-userns), not only the syscall filter: with the filter
+        // off, nesting stays refused (verification audit 2026-11-19: the
+        // filter blocked unshare first, so no real test saw this layer).
+        let mut p = base();
+        p.advanced.allow_userns = false;
+        p.advanced.seccomp_baseline = false;
+        let r = launch("no-userns-without-filter", p);
+        assert_eq!(
+            r["USERNS"], "no",
+            "nested namespaces refused without the filter too"
+        );
+
         let mut p = base();
         p.advanced.seccomp_strict = true;
         p.advanced.landlock = Some(true);
