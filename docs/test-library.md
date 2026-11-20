@@ -259,22 +259,23 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-185 tests.
+188 tests.
 
 | Promise | Test |
 |---|---|
 | Without Bubblewrap, the message says which package to install. | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L55) |
 | When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L69) |
 | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L96) |
-| A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L640) |
-| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L653) |
-| The relay's quick check says "not here" on a computer without PipeWire, instead of reporting the contract broken. | [`the_sound_relay_check_needs_pipewire`](../crates/sam-runner/src/contracts.rs#L661) |
-| The link portal's ask option is found in its description, and its absence is reported (stand-in descriptions; the real one is checked by `sam-jail doctor --contracts` and on CI). | [`the_link_portal_check_finds_the_ask_option`](../crates/sam-runner/src/contracts.rs#L670) |
-| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L685) |
-| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L697) |
-| A failing section is named and the next still runs. | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L748) |
-| Where a run must prove everything (CI), a skip is an error; locally it is a note. | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L769) |
-| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L781) |
+| The quick check for login and admin files holds where /etc/shadow is, names what it found, and breaks where it is not (then the sandbox tests would look for the secrets in the wrong place). | [`the_login_files_check_looks_for_shadow`](../crates/sam-runner/src/contracts.rs#L683) |
+| A skipped test is written to the skip log with its name and reason, one line each, so a run can report it instead of passing it silently. | [`a_skipped_test_is_recorded_with_its_reason`](../crates/sam-runner/src/contracts.rs#L704) |
+| The built in contract map parses. | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L717) |
+| The relay's quick check says "not here" on a computer without PipeWire, instead of reporting the contract broken. | [`the_sound_relay_check_needs_pipewire`](../crates/sam-runner/src/contracts.rs#L725) |
+| The link portal's ask option is found in its description, and its absence is reported (stand-in descriptions; the real one is checked by `sam-jail doctor --contracts` and on CI). | [`the_link_portal_check_finds_the_ask_option`](../crates/sam-runner/src/contracts.rs#L734) |
+| Every contract probe is known. | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L749) |
+| A broken contract fails a test with its name and playbook. | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L761) |
+| A failing section is named and the next still runs. | [`a_failing_section_is_named_and_the_next_still_runs`](../crates/sam-runner/src/contracts.rs#L812) |
+| Where a run must prove everything (CI), a skip is an error; locally it is a note. | [`a_required_run_does_not_skip`](../crates/sam-runner/src/contracts.rs#L833) |
+| A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L845) |
 | SAM's own bus check reaches a session bus. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L275) |
 | SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L325) |
 | Only the proxy's "wants to own" lines name a name to learn, and only a well-formed one (what the app printed never reaches this). | [`the_proxy_record_names_what_the_app_wanted_to_own`](../crates/sam-runner/src/dbus_proxy.rs#L215) |
@@ -365,10 +366,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The relay's settings switch module loading off, listen only on SAM's socket, take no D-Bus name and load no modules at start; a path cannot break out of its quotes. | [`the_relay_cannot_load_modules_and_listens_only_on_its_socket`](../crates/sam-runner/src/sound_relay.rs#L224) |
 | A relay that never opens its socket stops the start's sound within moments instead of holding the start; one that does is stopped, and its socket removed, when the start ends. | [`a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay`](../crates/sam-runner/src/sound_relay.rs#L260) |
 | Sound reaches the app through the relay where PipeWire runs; without PipeWire only when the person allowed sound without the relay. | [`sound_reaches_the_app_through_the_relay_or_only_when_allowed`](../crates/sam-runner/src/sound_relay.rs#L300) |
-| The checksum of a downloaded update is SHA-1 of the whole file, read in pieces; a file larger than one piece gives the same result. | [`the_download_checksum_is_sha1_of_the_whole_file`](../crates/sam-runner/src/updates.rs#L535) |
-| The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L555) |
-| Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L579) |
-| Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L596) |
+| The download itself refuses an address that is not HTTPS, before curl runs: the check of the update description is one layer, this is the second (verification audit 2026-11-19: no test noticed it gone, as curl then failed with a different error). | [`a_download_from_plain_http_is_refused_before_curl_runs`](../crates/sam-runner/src/updates.rs#L537) |
+| The checksum of a downloaded update is SHA-1 of the whole file, read in pieces; a file larger than one piece gives the same result. | [`the_download_checksum_is_sha1_of_the_whole_file`](../crates/sam-runner/src/updates.rs#L567) |
+| The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L587) |
+| Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L611) |
+| Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L628) |
 | What the check expects of each folder: the folder's own setting, but never less than the home shows it (a read-only home shows Documents read-only even when Documents has no setting; a writable folder in a read-only home stays writable); keys only with full home and their own switch; extra folders like the home inside it. | [`the_check_expects_each_folder_as_its_settings_show_it`](../crates/sam-runner/src/verify.rs#L795) |
 | Network, display, sound, the session bus, the SSH agent, variables and the security layers: the check expects each only where both the setting and this computer provide it. | [`the_check_expects_the_rest_where_setting_and_computer_allow_it`](../crates/sam-runner/src/verify.rs#L880) |
 | What the check expects of each desktop service that exists on the computer: full access reaches all of them; the filter reaches the desktop portal and exactly the names its list allows (a whole name, or a family with `.*`); a denied name stays hidden even with full access; a service the computer does not have is not checked at all. | [`the_check_expects_each_desktop_service_as_the_filter_shows_it`](../crates/sam-runner/src/verify.rs#L1090) |
@@ -412,7 +414,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | AppImages are listed before they have a sandbox; only creating the sandbox adds SAM's menu entry and hides unsandboxed ones, and removing it puts them back. | [`found_appimages_get_a_menu_entry_only_with_a_sandbox`](../crates/sam-runner/tests/overview.rs#L13) |
 | An app gets the name it asks for only when nobody uses it. | [`an_app_gets_the_name_it_asks_for_only_when_nobody_uses_it`](../crates/sam-runner/tests/own_names.rs#L46) |
 | A repair step is kept when it helps and undone when it does not. | [`a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not`](../crates/sam-runner/tests/repair_trial.rs#L30) |
-| Inside a real sandbox, each profile shows exactly the files and services it allows. | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L63) |
+| Inside a real sandbox, each profile shows exactly the files and services it allows. | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L64) |
 | SAM installs an update of itself only when it was really signed with its release key. | [`sam_refuses_a_forged_update_that_carries_its_release_key`](../crates/sam-runner/tests/self_update_signature.rs#L78) |
 | Turning compatibility mode off restores exactly the settings the user had before. | [`turning_compatibility_mode_off_restores_exactly_the_settings_from_before`](../crates/sam-runner/tests/settings.rs#L42) |
 | Undoing repair steps restores the settings from before the first step. | [`undoing_repair_steps_restores_the_settings_from_before_the_first_step`](../crates/sam-runner/tests/settings.rs#L59) |
@@ -442,10 +444,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Uninstalling SAM removes all of its files and restores the menu entries it had hidden. | [`uninstall_removes_everything_and_restores_menus`](../crates/sam-runner/tests/uninstall.rs#L17) |
 | Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L123) |
 | Undoing an update puts the previous version back. | [`undo_puts_the_previous_version_back`](../crates/sam-runner/tests/update.rs#L15) |
-| Updates download only changes check them and refuse tampering. | [`updates_download_only_changes_check_them_and_refuse_tampering`](../crates/sam-runner/tests/update_server.rs#L175) |
-| ⟲ Regressions (audit U-H4, U-H3): updates were downloaded next to the AppImage under a guessable name (`.<name>.sam-download`) with tools that follow links, so an app with write access to that folder (often Downloads) could plant a link there and SAM wrote the update through it into any file of the person. | [`an_update_writes_through_no_planted_link_and_keeps_the_sandbox`](../crates/sam-runner/tests/update_server.rs#L336) |
-| ⟲ Regression (audit U-H5): when the new version had the same file name as the old one, going back moved the current file onto the kept old version (destroying it), then "restored" the new file and reported that the app was back. | [`going_back_with_an_unchanged_file_name_keeps_both_versions`](../crates/sam-runner/tests/update_server.rs#L431) |
-| ⟲ Regression (audit U-M6): whoever controls the download could hand out an older, validly signed release (with holes fixed since) as the update: any file other than the installed one counted as newer. | [`an_older_signed_version_is_not_installed_as_an_update`](../crates/sam-runner/tests/update_server.rs#L490) |
+| Updates download only changes check them and refuse tampering. | [`updates_download_only_changes_check_them_and_refuse_tampering`](../crates/sam-runner/tests/update_server.rs#L195) |
+| ⟲ Regressions (audit U-H4, U-H3): updates were downloaded next to the AppImage under a guessable name (`.<name>.sam-download`) with tools that follow links, so an app with write access to that folder (often Downloads) could plant a link there and SAM wrote the update through it into any file of the person. | [`an_update_writes_through_no_planted_link_and_keeps_the_sandbox`](../crates/sam-runner/tests/update_server.rs#L356) |
+| ⟲ Regression (audit U-H5): when the new version had the same file name as the old one, going back moved the current file onto the kept old version (destroying it), then "restored" the new file and reported that the app was back. | [`going_back_with_an_unchanged_file_name_keeps_both_versions`](../crates/sam-runner/tests/update_server.rs#L451) |
+| ⟲ Regression (audit U-M6): whoever controls the download could hand out an older, validly signed release (with holes fixed since) as the update: any file other than the installed one counted as newer. | [`an_older_signed_version_is_not_installed_as_an_update`](../crates/sam-runner/tests/update_server.rs#L510) |
+| Updates come over HTTPS only, wherever the address comes from (audit B22, verification audit 2026-11-19: no test noticed the download's own check gone, and none tried a redirect). | [`an_update_never_comes_over_plain_http`](../crates/sam-runner/tests/update_server.rs#L594) |
 | The sandbox check passes when the settings apply, and catches a setting that does not apply. | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L23) |
 | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L14) |
 
@@ -467,7 +470,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-52 tests.
+53 tests.
 
 | Promise | Test |
 |---|---|
@@ -498,6 +501,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (found by the fuzzer): one damaged AppImage in a searched folder made `sam-jail discover` crash, so the window's list stayed empty. | [`one_damaged_appimage_does_not_stop_the_list`](../crates/sam-jail-cli/tests/interface.rs#L289) |
 | The command line speaks german when asked. | [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L18) |
 | A start without the helper reports its missing layers. | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) |
+| Threat model row 52: "a syscall filter that fails to load stops the start". | [`a_syscall_filter_that_fails_to_load_stops_the_start`](../crates/sam-jail-cli/tests/layers.rs#L128) |
 | The apps ports are offered on this computer only. | [`the_apps_ports_are_offered_on_this_computer_only`](../crates/sam-jail-cli/tests/local_network.rs#L106) |
 | An AppImage file called like one of SAM's own files in the sandbox (`bin`) starts, and finds itself at `$APPIMAGE`. | [`an_appimage_called_bin_starts_and_finds_itself`](../crates/sam-jail-cli/tests/odd_names.rs#L84) |
 | With `--json`, SAM's standard output is its reply and nothing else: an app that prints a line looking like the reply cannot be read as SAM's. | [`json_run_keeps_its_reply_alone_on_standard_output`](../crates/sam-jail-cli/tests/odd_names.rs#L112) |
@@ -559,4 +563,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 473 automated Rust tests plus 7 scripted checks.
+Total: 477 automated Rust tests plus 7 scripted checks.

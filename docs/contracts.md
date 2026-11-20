@@ -299,8 +299,9 @@ System secrets live in files like /etc/shadow, gshadow, sudoers, pam.d, polkit-1
 - **Component:** The distribution's file system layout ([releases](https://uapi-group.org/specifications/))
 - **When it breaks:** nothing breaks: the assumption only ever narrows access.
 - **SAM functions that rely on it:** [11](functions.md#11)
-- **Quick check:** none (only the tests below)
-- **Tests:** `files_and_folders_named_on_the_command_line`, `every_breakout_attempt_from_a_real_sandbox_fails` (fully)
+- **Quick check:** `system-secrets`
+- **Tests:** `files_and_folders_named_on_the_command_line`, `every_breakout_attempt_from_a_real_sandbox_fails`, `a_real_sandbox_shows_exactly_what_each_profile_allows` (fully)
+- **Checked first by:** `sandbox.rs` (a broken contract stops these tests with its name)
 - **Covers:** `path:/etc/shadow`, `path:/etc/gshadow`, `path:/etc/sudoers`, `path:/etc/pam.d`, `path:/etc/polkit-1`, `path:/etc/security`, `path:/etc/ssh`
 - **If it breaks:** Nothing to fix when a new secret location appears: it is not on the allow list. Add it to SENSITIVE_PATHS (sam-core risk.rs) so a grant of it is also marked dangerous.
 

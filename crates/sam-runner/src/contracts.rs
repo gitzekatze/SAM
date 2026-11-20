@@ -120,7 +120,49 @@ pub const PROBES: &[&str] = &[
     "name-resolution",
     "dbus-services-dir",
     "gnupg-signer",
+    "system-secrets",
 ];
+
+/// Names in /etc that hold the system's secrets or its login and
+/// administration rules (contract sensitive-system-files). SAM's allow
+/// list for /etc names none of them.
+pub const LOGIN_AND_ADMIN_FILES: &[&str] = &[
+    "shadow",
+    "gshadow",
+    "sudoers",
+    "sudoers.d",
+    "pam.d",
+    "polkit-1",
+    "security",
+    "ssh",
+];
+
+/// The quick check of the contract sensitive-system-files, for `etc`.
+fn login_and_admin_files_in(etc: &Path) -> (State, String) {
+    let there: Vec<&str> = LOGIN_AND_ADMIN_FILES
+        .iter()
+        .copied()
+        .filter(|f| etc.join(f).exists())
+        .collect();
+    if there.contains(&"shadow") {
+        (
+            State::Holds,
+            format!(
+                "system secrets are in {} ({})",
+                etc.display(),
+                there.join(", ")
+            ),
+        )
+    } else {
+        (
+            State::Broken,
+            format!(
+                "no {}/shadow: the system's secrets live somewhere else now",
+                etc.display()
+            ),
+        )
+    }
+}
 
 /// Runs `program args`, returning its output (stdout and stderr) when it ran.
 fn output(program: &str, args: &[&str]) -> Option<String> {
@@ -339,6 +381,12 @@ fn probe(name: &str, host: &HostInfo) -> (State, String) {
                 (true, Some(n)) => holds(&format!("/etc/hosts and {n} are there")),
                 _ => broken("/etc/hosts, or nsswitch.conf in /etc or /usr/etc, is missing".into()),
             }
+        }
+        "system-secrets" => {
+            // Where the sandbox tests look for them: the files must be there
+            // on this computer, or a test that finds them missing inside a
+            // sandbox proves nothing.
+            login_and_admin_files_in(Path::new("/etc"))
         }
         "dbus-services-dir" => {
             if Path::new("/usr/share/dbus-1/services").is_dir() {
@@ -628,6 +676,22 @@ impl Drop for Guard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The quick check for login and admin files holds where /etc/shadow is, names
+    /// what it found, and breaks where it is not (then the sandbox tests
+    /// would look for the secrets in the wrong place).
+    #[test]
+    fn the_login_files_check_looks_for_shadow() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::create_dir(t.path().join("pam.d")).unwrap();
+        let (state, text) = login_and_admin_files_in(t.path());
+        assert_eq!(state, State::Broken, "{text}");
+        assert!(text.contains("shadow"), "{text}");
+        std::fs::write(t.path().join("shadow"), "").unwrap();
+        let (state, text) = login_and_admin_files_in(t.path());
+        assert_eq!(state, State::Holds, "{text}");
+        assert!(text.ends_with("(shadow, pam.d)"), "{text}");
+    }
 
     fn known(probe: &str) -> bool {
         PROBES.iter().any(|p| {
