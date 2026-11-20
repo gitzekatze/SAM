@@ -126,7 +126,7 @@ pub const PROBES: &[&str] = &[
 /// Names in /etc that hold the system's secrets or its login and
 /// administration rules (contract sensitive-system-files). SAM's allow
 /// list for /etc names none of them.
-pub const SYSTEM_SECRETS: &[&str] = &[
+pub const LOGIN_AND_ADMIN_FILES: &[&str] = &[
     "shadow",
     "gshadow",
     "sudoers",
@@ -138,8 +138,8 @@ pub const SYSTEM_SECRETS: &[&str] = &[
 ];
 
 /// The quick check of the contract sensitive-system-files, for `etc`.
-fn system_secrets_in(etc: &Path) -> (State, String) {
-    let there: Vec<&str> = SYSTEM_SECRETS
+fn login_and_admin_files_in(etc: &Path) -> (State, String) {
+    let there: Vec<&str> = LOGIN_AND_ADMIN_FILES
         .iter()
         .copied()
         .filter(|f| etc.join(f).exists())
@@ -386,7 +386,7 @@ fn probe(name: &str, host: &HostInfo) -> (State, String) {
             // Where the sandbox tests look for them: the files must be there
             // on this computer, or a test that finds them missing inside a
             // sandbox proves nothing.
-            system_secrets_in(Path::new("/etc"))
+            login_and_admin_files_in(Path::new("/etc"))
         }
         "dbus-services-dir" => {
             if Path::new("/usr/share/dbus-1/services").is_dir() {
@@ -677,18 +677,18 @@ impl Drop for Guard {
 mod tests {
     use super::*;
 
-    /// The quick check for system secrets holds where /etc/shadow is, names
+    /// The quick check for login and admin files holds where /etc/shadow is, names
     /// what it found, and breaks where it is not (then the sandbox tests
     /// would look for the secrets in the wrong place).
     #[test]
-    fn the_system_secrets_check_looks_for_shadow() {
+    fn the_login_files_check_looks_for_shadow() {
         let t = tempfile::tempdir().unwrap();
         std::fs::create_dir(t.path().join("pam.d")).unwrap();
-        let (state, text) = system_secrets_in(t.path());
+        let (state, text) = login_and_admin_files_in(t.path());
         assert_eq!(state, State::Broken, "{text}");
         assert!(text.contains("shadow"), "{text}");
         std::fs::write(t.path().join("shadow"), "").unwrap();
-        let (state, text) = system_secrets_in(t.path());
+        let (state, text) = login_and_admin_files_in(t.path());
         assert_eq!(state, State::Holds, "{text}");
         assert!(text.ends_with("(shadow, pam.d)"), "{text}");
     }

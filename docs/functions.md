@@ -780,7 +780,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L230) | Bubblewrap versions are compared correctly, including missing or malformed version text. | ✅ |
 | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L717) | The built in contract map parses. | ✅ |
 | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L749) | Every contract probe is known. | ✅ |
-| [`the_system_secrets_check_looks_for_shadow`](../crates/sam-runner/src/contracts.rs#L683) | The quick check for system secrets holds where /etc/shadow is, names what it found, and breaks where it is not (then the sandbox tests would look for the secrets in the wrong place). | 🆕 new |
+| [`the_login_files_check_looks_for_shadow`](../crates/sam-runner/src/contracts.rs#L683) | The quick check for login and admin files holds where /etc/shadow is, names what it found, and breaks where it is not (then the sandbox tests would look for the secrets in the wrong place). | 🆕 new |
 | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L845) | A missing portal interface breaks the portal contract. | ✅ |
 | [`the_quick_checks_notice_a_broken_or_missing_tool`](../crates/sam-jail-cli/tests/contracts.rs#L48) | The quick checks notice a broken or missing tool. | ✅ |
 | [`a_broken_contract_fails_a_test_with_its_name_and_playbook`](../crates/sam-runner/src/contracts.rs#L761) | A broken contract fails a test with its name and playbook. | ✅ |

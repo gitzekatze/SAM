@@ -33,7 +33,7 @@ echo "PIDS=$(ls /proc | grep -c '^[0-9]')"
 echo "SUID=$(stat -c %a "$APPDIR/usr/bin/suid-tool")"
 [ -S /run/dbus/system_bus_socket ] && echo "SYSBUS=yes" || echo "SYSBUS=no"
 [ -r /etc/shadow ] && echo "SHADOW=readable" || echo "SHADOW=no"
-echo "ETC_SECRETS=$(for f in shadow gshadow sudoers sudoers.d pam.d polkit-1 security ssh; do [ -e /etc/$f ] && printf '%s,' $f; done)"
+echo "ETC_ADMIN=$(for f in shadow gshadow sudoers sudoers.d pam.d polkit-1 security ssh; do [ -e /etc/$f ] && printf '%s,' $f; done)"
 ( touch "$HOME/persist" ) 2>/dev/null && echo "HOME_WRITE=yes" || echo "HOME_WRITE=no"
 [ -e /dev/dri ] && echo "GPU=yes" || echo "GPU=no"
 [ -d /tmp/.X11-unix ] && [ -n "$(ls /tmp/.X11-unix 2>/dev/null)" ] && echo "X11=yes" || echo "X11=no"
@@ -178,7 +178,7 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     // above proves little (verification audit 2026-11-19). The system's
     // secrets and login rules are not even there inside the sandbox, while
     // on this computer they are, and some of them are readable by anyone.
-    let on_host: Vec<&str> = sam_runner::contracts::SYSTEM_SECRETS
+    let on_host: Vec<&str> = sam_runner::contracts::LOGIN_AND_ADMIN_FILES
         .iter()
         .copied()
         .filter(|f| Path::new("/etc").join(f).exists())
@@ -192,7 +192,7 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
         "one of {on_host:?} is readable here, so hiding it is something the sandbox does"
     );
     assert_eq!(
-        r["ETC_SECRETS"], "",
+        r["ETC_ADMIN"], "",
         "inside the sandbox none of {on_host:?} exists"
     );
     assert_eq!(r["HOME_WRITE"], "yes", "private home is writable");
