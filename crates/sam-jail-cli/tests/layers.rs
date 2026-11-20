@@ -100,3 +100,87 @@ fn a_start_without_the_helper_reports_its_missing_layers() {
     let list = json(&sam(&["--json", "list"]));
     assert_eq!(list["data"][0]["badge"], "protection-missing", "{list}");
 }
+
+/// A tiny syscall filter of the test's own: loading another filter
+/// (`seccomp()`, or `prctl(PR_SET_SECCOMP)`) fails with EPERM, everything
+/// else is allowed. Under it, SAM's helper cannot load its filter.
+fn no_more_filters() -> Vec<libc::sock_filter> {
+    let op = |code: u16, jt: u8, jf: u8, k: u32| libc::sock_filter { code, jt, jf, k };
+    const LD: u16 = 0x20; // BPF_LD | BPF_W | BPF_ABS
+    const JEQ: u16 = 0x15; // BPF_JMP | BPF_JEQ | BPF_K
+    const RET: u16 = 0x06; // BPF_RET | BPF_K
+    vec![
+        op(LD, 0, 0, 0),                            // the call's number
+        op(JEQ, 4, 0, libc::SYS_seccomp as u32),    // seccomp() → refuse
+        op(JEQ, 0, 2, libc::SYS_prctl as u32),      // prctl() → look closer
+        op(LD, 0, 0, 16),                           // its first argument
+        op(JEQ, 1, 0, libc::PR_SET_SECCOMP as u32), // PR_SET_SECCOMP → refuse
+        op(RET, 0, 0, libc::SECCOMP_RET_ALLOW),     // anything else
+        op(RET, 0, 0, libc::SECCOMP_RET_ERRNO | libc::EPERM as u32),
+    ]
+}
+
+/// Threat model row 52: "a syscall filter that fails to load stops the
+/// start". SAM's real helper is started as in a sandbox, asked for its
+/// filter, while the kernel refuses every new filter: the app must not run
+/// (verification audit 2026-11-19: no test showed it). The same start
+/// without the refusal runs the app, so the refusal is what stops it.
+#[test]
+fn a_syscall_filter_that_fails_to_load_stops_the_start() {
+    use std::os::unix::process::CommandExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let spec = tmp.path().join("spec.json");
+    fs::write(
+        &spec,
+        r#"{"landlock": null, "seccomp": {"strict": false, "allow_userns": false}}"#,
+    )
+    .unwrap();
+    let marker = tmp.path().join("the-app-ran");
+    let start = |refuse_filters: bool| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_sam-jail-run"));
+        c.arg("--sandbox-exec")
+            .arg(&spec)
+            .args(["--", "/bin/sh", "-c", "echo yes > \"$0\""])
+            .arg(&marker)
+            .stdin(Stdio::null());
+        if refuse_filters {
+            let prog = no_more_filters();
+            // SAFETY: between fork and exec the closure only calls prctl,
+            // which is async-signal-safe, on a program that lives as long
+            // as the closure (moved into it).
+            unsafe {
+                c.pre_exec(move || {
+                    let f = libc::sock_fprog {
+                        len: prog.len() as u16,
+                        filter: prog.as_ptr().cast_mut(),
+                    };
+                    if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0
+                        || libc::prctl(
+                            libc::PR_SET_SECCOMP,
+                            libc::SECCOMP_MODE_FILTER,
+                            &raw const f,
+                        ) != 0
+                    {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+        }
+        c.output().unwrap()
+    };
+
+    let out = start(false);
+    assert!(
+        out.status.success() && marker.exists(),
+        "with the filter loaded, the app runs: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    fs::remove_file(&marker).unwrap();
+
+    let out = start(true);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "the start fails: {err}");
+    assert!(!marker.exists(), "the app never ran without its filter");
+    assert!(err.contains("seccomp"), "the error names the filter: {err}");
+}

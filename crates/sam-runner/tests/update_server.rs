@@ -2,7 +2,8 @@
 //! certificate: SAM finds the newer version, downloads only the changed
 //! parts (HTTP range requests), checks the result and swaps the file while
 //! keeping the old one; a download that does not match the published
-//! checksum is refused and leaves nothing behind; plain HTTP is refused.
+//! checksum is refused and leaves nothing behind; plain HTTP is refused,
+//! also as the file's address and after a redirect from HTTPS.
 //!
 //! Needs python3, openssl, objcopy and curl; skipped without them.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -19,15 +20,23 @@ use sam_intake::testkit::{build, FixtureFile, FixtureSpec};
 use sam_runner::ops::{AddOptions, Sam};
 
 const SERVER: &str = r#"
-import http.server, ssl, sys, os
+import http.server, ssl, sys, os, threading
 root, cert, key, log = sys.argv[1:5]
 class Handler(http.server.SimpleHTTPRequestHandler):
+    tag = ""
     def __init__(self, *a, **k):
         super().__init__(*a, directory=root, **k)
     def do_GET(self):
         rng = self.headers.get("Range")
         with open(log, "a") as f:
-            f.write(f"{self.path} {rng}\n")
+            f.write(f"{self.tag}{self.path} {rng}\n")
+        # /redirect/NAME sends the client to NAME on the plain HTTP server.
+        if self.path.startswith("/redirect/"):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{plain.server_address[1]}/{self.path[10:]}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         path = self.translate_path(self.path)
         if not os.path.isfile(path):
             self.send_error(404)
@@ -50,11 +59,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(data)
     def log_message(self, *a):
         pass
+class Plain(Handler):
+    tag = "plain "
+# The same files over plain HTTP, which SAM must never use.
+plain = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Plain)
+threading.Thread(target=plain.serve_forever, daemon=True).start()
 srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 ctx.load_cert_chain(cert, key)
 srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
-print(srv.server_address[1], flush=True)
+print(srv.server_address[1], plain.server_address[1], flush=True)
 srv.serve_forever()
 "#;
 
@@ -65,6 +79,8 @@ static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
 struct Server {
     child: Child,
     port: u16,
+    /// The same files over plain HTTP.
+    plain_port: u16,
     root: PathBuf,
     log: PathBuf,
 }
@@ -121,7 +137,10 @@ fn start_server(tmp: &Path) -> Server {
     BufReader::new(child.stdout.take().unwrap())
         .read_line(&mut line)
         .unwrap();
-    let port = line.trim().parse().expect("the server prints its port");
+    let mut ports = line
+        .split_whitespace()
+        .map(|p| p.parse().expect("the server prints its ports"));
+    let (port, plain_port) = (ports.next().unwrap(), ports.next().unwrap());
     // curl (which SAM uses for downloads) trusts the test certificate.
     std::env::set_var("CURL_CA_BUNDLE", &cert);
     // The same result behind any proxy of the person running it.
@@ -140,6 +159,7 @@ fn start_server(tmp: &Path) -> Server {
     Server {
         child,
         port,
+        plain_port,
         root,
         log,
     }
@@ -564,4 +584,91 @@ fn an_older_signed_version_is_not_installed_as_an_update() {
         .arg(&home)
         .args(["--kill", "all"])
         .status();
+}
+
+/// Updates come over HTTPS only, wherever the address comes from (audit
+/// B22, verification audit 2026-11-19: no test noticed the download's own
+/// check gone, and none tried a redirect). The same newer version is
+/// published on a plain HTTP server too, so an update that took HTTP would
+/// succeed and the test would see it.
+#[test]
+fn an_update_never_comes_over_plain_http() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let _contracts =
+        sam_runner::contracts::guard(&["updates-curl"]).unwrap_or_else(|e| panic!("{e}"));
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let v1 = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&v1, &url, "1.0");
+    let v2 = tmp.path().join("v2.AppImage");
+    appimage(&v2, &url, "2.0");
+    let name = "Tool-2.0-x86_64.AppImage";
+    fs::copy(&v2, server.root.join(name)).unwrap();
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = sam
+        .add(
+            &v1,
+            &AddOptions {
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let before = fs::read(&v1).unwrap();
+    let describe = |file_url: &str| {
+        let z = sam_runner::zsync::make(&v2, name, file_url, "Tue, 10 Nov 2026 10:00:00 +0000")
+            .unwrap();
+        fs::write(server.root.join("Tool-x86_64.AppImage.zsync"), z).unwrap();
+    };
+
+    // 1. The update description names the file at a plain HTTP address.
+    describe(&format!("http://127.0.0.1:{}/{name}", server.plain_port));
+    let checks = sam.check_updates(Some(&id), false).unwrap();
+    assert_ne!(
+        checks[0].1.state,
+        UpdateState::Available,
+        "{}",
+        checks[0].1.detail
+    );
+    assert!(
+        checks[0].1.detail.contains("HTTPS"),
+        "{}",
+        checks[0].1.detail
+    );
+    assert!(
+        sam.update(&id, false).is_err(),
+        "no update from an http:// file"
+    );
+
+    // 2. An HTTPS address that redirects to plain HTTP.
+    describe(&format!("redirect/{name}"));
+    let checks = sam.check_updates(Some(&id), false).unwrap();
+    assert_eq!(
+        checks[0].1.state,
+        UpdateState::Available,
+        "the description itself is fine: {}",
+        checks[0].1.detail
+    );
+    let err = sam.update(&id, false).unwrap_err();
+    let log = fs::read_to_string(&server.log).unwrap();
+    assert!(
+        log.lines().any(|l| l.starts_with("/redirect/")),
+        "SAM asked the HTTPS address, which redirected:\n{log}"
+    );
+    assert!(
+        !log.lines().any(|l| l.starts_with("plain ")),
+        "SAM never followed the redirect to plain HTTP ({err:#}):\n{log}"
+    );
+
+    assert_eq!(
+        fs::read(&v1).unwrap(),
+        before,
+        "the installed version is untouched"
+    );
 }

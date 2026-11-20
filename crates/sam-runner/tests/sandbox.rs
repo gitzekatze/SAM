@@ -33,6 +33,7 @@ echo "PIDS=$(ls /proc | grep -c '^[0-9]')"
 echo "SUID=$(stat -c %a "$APPDIR/usr/bin/suid-tool")"
 [ -S /run/dbus/system_bus_socket ] && echo "SYSBUS=yes" || echo "SYSBUS=no"
 [ -r /etc/shadow ] && echo "SHADOW=readable" || echo "SHADOW=no"
+echo "ETC_SECRETS=$(for f in shadow gshadow sudoers sudoers.d pam.d polkit-1 security ssh; do [ -e /etc/$f ] && printf '%s,' $f; done)"
 ( touch "$HOME/persist" ) 2>/dev/null && echo "HOME_WRITE=yes" || echo "HOME_WRITE=no"
 [ -e /dev/dri ] && echo "GPU=yes" || echo "GPU=no"
 [ -d /tmp/.X11-unix ] && [ -n "$(ls /tmp/.X11-unix 2>/dev/null)" ] && echo "X11=yes" || echo "X11=no"
@@ -68,9 +69,13 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
         return;
     }
     // The outside world this test relies on (docs/contracts.md).
-    let _contracts =
-        sam_runner::contracts::guard(&["bwrap-core", "fs-layout", "etc-identity-and-names"])
-            .unwrap_or_else(|e| panic!("{e}"));
+    let _contracts = sam_runner::contracts::guard(&[
+        "bwrap-core",
+        "fs-layout",
+        "etc-identity-and-names",
+        "sensitive-system-files",
+    ])
+    .unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let home = root.join("home/tester");
@@ -169,6 +174,27 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     assert_eq!(r["SUID"], "755", "setuid stripped");
     assert_eq!(r["SYSBUS"], "no", "system D-Bus denied by default");
     assert_eq!(r["SHADOW"], "no");
+    // /etc/shadow is unreadable for any user, sandbox or not, so the line
+    // above proves little (verification audit 2026-11-19). The system's
+    // secrets and login rules are not even there inside the sandbox, while
+    // on this computer they are, and some of them are readable by anyone.
+    let on_host: Vec<&str> = sam_runner::contracts::SYSTEM_SECRETS
+        .iter()
+        .copied()
+        .filter(|f| Path::new("/etc").join(f).exists())
+        .collect();
+    assert!(on_host.contains(&"shadow"), "this computer has /etc/shadow");
+    assert!(
+        on_host
+            .iter()
+            .any(|f| fs::read_dir(Path::new("/etc").join(f)).is_ok()
+                || fs::File::open(Path::new("/etc").join(f)).is_ok()),
+        "one of {on_host:?} is readable here, so hiding it is something the sandbox does"
+    );
+    assert_eq!(
+        r["ETC_SECRETS"], "",
+        "inside the sandbox none of {on_host:?} exists"
+    );
     assert_eq!(r["HOME_WRITE"], "yes", "private home is writable");
     assert_eq!(r["GPU"], "no");
     assert_eq!(r["X11"], "no");

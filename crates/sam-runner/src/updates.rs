@@ -530,6 +530,38 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
+    /// The download itself refuses an address that is not HTTPS, before
+    /// curl runs: the check of the update description is one layer, this
+    /// is the second (verification audit 2026-11-19: no test noticed it
+    /// gone, as curl then failed with a different error).
+    #[test]
+    fn a_download_from_plain_http_is_refused_before_curl_runs() {
+        let t = tempfile::tempdir().unwrap();
+        let dest = t.path().join("new.AppImage");
+        for url in [
+            "http://127.0.0.1:9/App.AppImage",
+            "ftp://127.0.0.1:9/App.AppImage",
+            "file:///etc/passwd",
+        ] {
+            let p = Published {
+                file_url: url.into(),
+                sha1: "0".repeat(40),
+                filename: None,
+                length: None,
+                release: None,
+                page: None,
+                zsync_url: "https://127.0.0.1:9/App.AppImage.zsync".into(),
+            };
+            let err = download_inner(&p, &dest).unwrap_err().to_string();
+            assert_eq!(
+                err,
+                sam_core::i18n::tr("the update file is not offered over HTTPS"),
+                "{url}"
+            );
+            assert!(!dest.exists(), "nothing was written for {url}");
+        }
+    }
+
     /// The checksum of a downloaded update is SHA-1 of the whole file, read
     /// in pieces; a file larger than one piece gives the same result.
     #[test]
