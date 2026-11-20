@@ -716,14 +716,14 @@ fn an_update_signed_with_another_key_waits_for_consent() {
             .args(args)
             .output()
             .unwrap();
-        assert!(out.status.success(), "gpg {args:?}");
+        assert!(out.status.success(), "gpg {} failed", args[0]);
         String::from_utf8(out.stdout).unwrap()
     };
-    for uid in [
+    for signer in [
         "First Key <first@example.invalid>",
         "Second Key <second@example.invalid>",
     ] {
-        gpg(&["--quick-gen-key", uid, "ed25519", "sign", "never"]);
+        gpg(&["--quick-gen-key", signer, "ed25519", "sign", "never"]);
     }
     let signed = |path: &Path, version: &str, key: &str| {
         let mut spec = FixtureSpec::hello("Tool");
