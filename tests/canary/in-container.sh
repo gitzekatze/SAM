@@ -41,10 +41,15 @@ setup() {
                 bubblewrap xdg-dbus-proxy passt libarchive squashfs-tools gnupg strace \
                 python python-gobject glib2 dbus util-linux shadow ;;
         opensuse-tumbleweed)
+            # dbus-daemon is a package of its own there (dbus-1-daemon), and
+            # GObject's typelibs may come separately: asked for by what they
+            # provide, so a renamed package still comes (issue #86: without
+            # them the hostile-AppImage test could not run).
             zypper -q -n install --no-recommends \
                 gcc pkgconf curl ca-certificates linux-glibc-devel \
                 bubblewrap xdg-dbus-proxy passt bsdtar squashfs gpg2 strace \
-                python3 python3-gobject glib2-tools dbus-1 util-linux shadow ;;
+                python3 python3-gobject 'typelib(Gio)' glib2-tools dbus-1 /usr/bin/dbus-daemon \
+                util-linux shadow ;;
         *) echo "unknown distribution $ID"; return 1 ;;
     esac
 }
