@@ -230,68 +230,6 @@ fn apply_landlock(spec: &LandlockSpec) -> Result<String> {
     .into())
 }
 
-/// Entry point for `sam-jail-run --room-exec <spec> -- <cmd...>` inside a
-/// room (see `room_service`): SAM's layers first (Landlock, then SAM's
-/// syscall filter), then the program's own filters, then the program with
-/// exactly its environment. Nothing the request chose runs before SAM's
-/// layers are in place. A layer that does not load ends the room; only a
-/// kernel without Landlock at all leaves it out, as it does for the app.
-pub fn room_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
-    let spec: crate::room_service::RoomSpec = serde_json::from_slice(
-        &std::fs::read(spec_path).context(sam_core::i18n::tr("reading the room's rules"))?,
-    )?;
-    let (prog, rest) = argv
-        .split_first()
-        .context(sam_core::i18n::tr("no command given"))?;
-    apply_landlock(&spec.landlock).context("Landlock for the room")?;
-    apply_seccomp(&spec.seccomp).context(sam_core::i18n::tr("loading the seccomp filter"))?;
-    for fd in &spec.filters {
-        load_program_filter(*fd)
-            .with_context(|| format!("the program's own filter (connection {fd})"))?;
-    }
-    let mut cmd = Command::new(prog);
-    cmd.args(rest).env_clear().envs(&spec.env);
-    use std::os::unix::process::CommandExt;
-    let e = cmd.exec();
-    Err(anyhow!("{prog}: {e}"))
-}
-
-/// Loads a classic BPF syscall filter from a passed connection (as
-/// Bubblewrap's `--seccomp`), then closes the connection.
-fn load_program_filter(fd: i32) -> Result<()> {
-    use std::io::Read;
-    use std::os::fd::FromRawFd;
-    // SAFETY: the connection was passed to the room for exactly this; it is
-    // owned (and closed) here.
-    let mut f = unsafe { std::fs::File::from_raw_fd(fd) };
-    let mut prog = Vec::new();
-    f.by_ref().take(64 * 1024).read_to_end(&mut prog)?;
-    drop(f);
-    if prog.is_empty() || prog.len() % 8 != 0 || prog.len() / 8 > 4096 {
-        bail!("not a syscall filter");
-    }
-    #[repr(C)]
-    struct SockFprog {
-        len: u16,
-        filter: *const u8,
-    }
-    let p = SockFprog {
-        len: (prog.len() / 8) as u16,
-        filter: prog.as_ptr(),
-    };
-    // SAFETY: prctl and seccomp with a filter program that lives until the
-    // call returns.
-    unsafe {
-        if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
-            bail!("{}", std::io::Error::last_os_error());
-        }
-        if libc::syscall(libc::SYS_seccomp, 1u32, 0u32, &p as *const SockFprog) != 0 {
-            bail!("{}", std::io::Error::last_os_error());
-        }
-    }
-    Ok(())
-}
-
 /// Calls with their names: `calls![libc::SYS_mount, …]` gives
 /// `("mount", number)` on this architecture. The review list
 /// (docs/syscalls-reviewed.txt) is compared with these names.

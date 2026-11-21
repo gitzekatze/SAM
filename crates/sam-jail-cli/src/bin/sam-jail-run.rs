@@ -96,6 +96,23 @@ fn main() {
     // A file name that is not valid text (Linux allows any bytes) ends the
     // start with a message: std::env::args() would panic on it, and a
     // replaced character would name another file (audit S-F15).
+    // Inside an app's sandbox in place of `bwrap` (Room service's stand-in),
+    // before anything else: its arguments are a program's, not file names
+    // given to SAM (one that is not text is refused like any bad option).
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|a| a == "--room-standin")
+    {
+        let args: Vec<String> = std::env::args_os()
+            .skip(2)
+            .map(|a| a.into_string().unwrap_or_else(|_| "--not-text".into()))
+            .collect();
+        let version = args.first().cloned().unwrap_or_default();
+        std::process::exit(sam_runner::room_service::standin(
+            &version,
+            &args[1.min(args.len())..],
+        ));
+    }
     let args = match text_args(std::env::args_os().skip(1)) {
         Ok(a) => a,
         Err(name) => {
@@ -108,27 +125,6 @@ fn main() {
             std::process::exit(1);
         }
     };
-    // Inside a room: SAM's layers, then the program (Room service).
-    if args.first().map(String::as_str) == Some("--room-exec") {
-        let spec = args.get(1).map(PathBuf::from).unwrap_or_else(|| usage());
-        let rest: Vec<String> = match args.iter().position(|a| a == "--") {
-            Some(i) => args[i + 1..].to_vec(),
-            None => usage(),
-        };
-        if let Err(e) = sam_runner::kernel::room_exec(&spec, &rest) {
-            errln!("sam-jail-run: {e:#}");
-            std::process::exit(127);
-        }
-        return;
-    }
-    // Inside an app's sandbox in place of `bwrap` (Room service's stand-in).
-    if args.first().map(String::as_str) == Some("--room-standin") {
-        let version = args.get(1).cloned().unwrap_or_default();
-        std::process::exit(sam_runner::room_service::standin(
-            &version,
-            &args[2.min(args.len())..],
-        ));
-    }
     if args.first().map(String::as_str) == Some("--sandbox-exec") {
         let spec = args.get(1).map(PathBuf::from).unwrap_or_else(|| usage());
         let rest: Vec<String> = match args.iter().position(|a| a == "--") {

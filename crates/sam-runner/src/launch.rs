@@ -518,11 +518,12 @@ pub fn prepare(
     }
 
     // Room service: its socket exists before the sandbox is built (the
-    // sandbox shows it), its rules come from the sandbox once built.
+    // sandbox shows it), its rules come from the sandbox once built. It
+    // needs SAM's helper in the app's sandbox (the stand-in for bwrap).
     let mut rooms = None;
-    if let (true, Some(helper), Some(bwrap)) = (
+    if let (true, true, Some(bwrap)) = (
         perms.advanced.room_service && opts.probe.is_none(),
-        ctx.helper.as_ref().map(|h| h.binary.clone()),
+        ctx.helper.is_some(),
         host.tools.bwrap.as_ref().map(|t| t.path.clone()),
     ) {
         match crate::room_service::RoomService::open(&runtime_dir)
@@ -530,7 +531,7 @@ pub fn prepare(
         {
             Ok(r) => {
                 ctx.room_socket = Some(r.socket.clone());
-                rooms = Some((r, helper, bwrap));
+                rooms = Some((r, bwrap));
             }
             Err(e) => warnings.push(Warning::warn(
                 "room-service-failed",
@@ -543,47 +544,43 @@ pub fn prepare(
         }
     }
     let mut command = sam_sandbox::Bubblewrap.build(&ctx)?;
-    let rooms = match rooms {
-        Some((mut service, helper, bwrap)) => {
-            match crate::room_rules::FloorPlan::from_bwrap_args(&command.args) {
-                Ok(plan) => {
-                    service.serve(crate::room_service::RoomContext {
-                        plan,
-                        facts: crate::room_rules::AppFacts {
-                            full_network: perms.network.mode
-                                == sam_core::permissions::NetworkMode::Full,
-                        },
-                        bwrap,
-                        helper,
-                        landlock: kernel::landlock_spec(
-                            perms,
-                            host,
-                            &format!("/run/user/{}", host.uid),
-                            &launch_writable_paths(&ctx),
-                        ),
-                        seccomp: kernel::SeccompSpec {
-                            strict: perms.advanced.seccomp_strict,
-                            allow_userns: false,
-                            bluetooth: perms.devices.bluetooth,
-                        },
-                    });
-                    Some(service)
-                }
-                Err(e) => {
-                    warnings.push(Warning::warn(
-                        "room-service-failed",
-                        "Room service unavailable",
-                        sam_core::i18n::trf(
-                            "{error}; programs in this app that build a sandbox of their own fail this time",
-                            &[("error", &e)],
-                        ),
-                    ));
-                    None
-                }
+    let rooms = rooms.map(|(mut service, bwrap)| {
+        let plan = crate::room_rules::FloorPlan::from_bwrap_args(&command.args);
+        let room_ctx = crate::room_service::RoomContext {
+            plan: plan.clone().unwrap_or_default(),
+            facts: crate::room_rules::AppFacts {
+                full_network: perms.network.mode == sam_core::permissions::NetworkMode::Full,
+            },
+            bwrap,
+            landlock: kernel::landlock_spec(
+                perms,
+                host,
+                &format!("/run/user/{}", host.uid),
+                &launch_writable_paths(&ctx),
+            ),
+            seccomp: kernel::SeccompSpec {
+                strict: perms.advanced.seccomp_strict,
+                allow_userns: false,
+                bluetooth: perms.devices.bluetooth,
+            },
+        };
+        match plan {
+            Ok(_) => service.serve(room_ctx),
+            Err(e) => {
+                warnings.push(Warning::warn(
+                    "room-service-failed",
+                    "Room service unavailable",
+                    sam_core::i18n::trf(
+                        "{error}; programs in this app that build a sandbox of their own fail this time",
+                        &[("error", &e)],
+                    ),
+                ));
+                // The sandbox shows the socket: it stays, and refuses.
+                service.serve_refusing(room_ctx, e);
             }
         }
-        None => None,
-    };
+        service
+    });
     if perms.network.mode == sam_core::permissions::NetworkMode::Localhost {
         if let Err(e) = crate::netns::wrap_localhost(
             &mut command,

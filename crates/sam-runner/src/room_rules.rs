@@ -7,8 +7,13 @@
 //! The rule: **no more than the app, no less than asked.**
 //! - A room shows only places of the app's floor plan, each at the same
 //!   place as in the app, from the same source on the computer, writable
-//!   only where the app's is. A path is opened beneath the floor-plan
-//!   folder that holds it, so no link leads out.
+//!   only where the app's is, rebuilt as it is stacked in the app (the last
+//!   mount over a place counts; SAM's hiding mounts come along). Sources
+//!   are named by their floor-plan entry, never by a path at room time; a
+//!   path the request names below one is opened without following links.
+//! - The room's own new places (folders, links, file systems) only in its
+//!   own space, never inside a place shown from the app; SAM's own mounts
+//!   come first, at a place no request may touch.
 //! - Every restriction the request asks for is kept. An option the rules do
 //!   not know is refused, never guessed.
 //! - The network only when the app has the full network (and the request
@@ -160,6 +165,23 @@ pub fn read_bwrap_args(argv: &[String]) -> Result<Asked, String> {
     Ok(Asked::Room { ops, command })
 }
 
+/// The first option in `argv` a room never gets or that the rules do not
+/// know (the stand-in passes it on, so the refusal is in the start record).
+pub fn first_unusable_option(argv: &[String]) -> Option<String> {
+    let mut i = 0;
+    while i < argv.len() {
+        let a = &argv[i];
+        if a == "--" || !a.starts_with("--") {
+            return None;
+        }
+        match option(a) {
+            None | Some((Kind::Refused, _)) => return Some(a.clone()),
+            Some((_, n)) => i += 1 + n,
+        }
+    }
+    None
+}
+
 /// The request as the service reads it from a message: within the limits,
 /// the right version, text only, absolute paths without `..`.
 pub fn read_request(body: &[u8]) -> Result<Request, String> {
@@ -233,30 +255,57 @@ pub enum Entry {
     Link { target: String, at: PathBuf },
     /// Bubblewrap's minimal /dev.
     DevFs { at: PathBuf },
-    /// A place that lives only inside the app's sandbox (its /tmp, its
-    /// /proc, a folder SAM made there): a room cannot share it.
-    Private { at: PathBuf },
+    /// A file system that lives only in the app's sandbox (`--tmpfs`,
+    /// `--proc`): it hides what lies below it. SAM hides `~/.ssh`, its own
+    /// folders and more this way; a room gets the same hiding.
+    Mask { at: PathBuf },
+    /// A folder SAM made (`--dir`): mounts nothing.
+    Dir { at: PathBuf },
 }
 
 impl Entry {
-    fn at(&self) -> &Path {
+    pub fn at(&self) -> &Path {
         match self {
             Entry::Ro { dst, .. } | Entry::Rw { dst, .. } | Entry::Dev { dst, .. } => dst,
-            Entry::Link { at, .. } | Entry::DevFs { at } | Entry::Private { at } => at,
+            Entry::Link { at, .. }
+            | Entry::DevFs { at }
+            | Entry::Mask { at }
+            | Entry::Dir { at } => at,
         }
+    }
+
+    /// The folder or file of the computer it shows, if any.
+    pub fn source(&self) -> Option<&Path> {
+        match self {
+            Entry::Ro { src, .. } | Entry::Rw { src, .. } => Some(src),
+            _ => None,
+        }
+    }
+
+    /// Whether it is a mount (covers what lies at and below its place).
+    fn is_mount(&self) -> bool {
+        !matches!(self, Entry::Link { .. } | Entry::Dir { .. })
     }
 }
 
 /// The app's floor plan: the places of its sandbox, in the order SAM made
-/// them (a later place covers an earlier one).
+/// them (a later mount covers an earlier one), and what it gives up.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FloorPlan {
     pub entries: Vec<Entry>,
+    /// The app's own sandbox has no network of the computer (SAM's setting
+    /// or the person's own Bubblewrap arguments).
+    pub no_network: bool,
 }
 
 /// Places of the app a room never gets: Room service's own socket (no room
 /// asks for rooms).
 pub const NOT_FOR_ROOMS: &[&str] = &["/run/sam/rooms"];
+
+/// Where SAM puts its own things in a room (its helper and the room's
+/// rules), mounted before anything the request asks for. No request may
+/// name this place or anything in it.
+pub const RESERVED: &str = "/.sam-room";
 
 impl FloorPlan {
     /// Reads SAM's own Bubblewrap arguments for the app (up to `--`). An
@@ -265,6 +314,9 @@ impl FloorPlan {
         let mut entries = Vec::new();
         let mut i = 0;
         let mut overlay_src: Option<PathBuf> = None;
+        // Bubblewrap shares the network unless told otherwise.
+        let mut network = true;
+        let mut read_only: Vec<(usize, PathBuf)> = Vec::new();
         let at = |i: usize| -> Result<&String, String> {
             args.get(i)
                 .ok_or_else(|| "SAM's own sandbox command ends early".to_string())
@@ -308,8 +360,12 @@ impl FloorPlan {
                     entries.push(Entry::DevFs { at: p(1)? });
                     2
                 }
-                "--tmpfs" | "--dir" | "--proc" => {
-                    entries.push(Entry::Private { at: p(1)? });
+                "--tmpfs" | "--proc" | "--mqueue" => {
+                    entries.push(Entry::Mask { at: p(1)? });
+                    2
+                }
+                "--dir" => {
+                    entries.push(Entry::Dir { at: p(1)? });
                     2
                 }
                 "--overlay-src" => {
@@ -325,10 +381,23 @@ impl FloorPlan {
                     entries.push(Entry::Ro { src, dst: p(3)? });
                     4
                 }
+                "--remount-ro" => {
+                    // Everything mounted so far at or below it is read-only.
+                    read_only.push((entries.len(), p(1)?));
+                    2
+                }
+                "--unshare-net" | "--unshare-all" => {
+                    network = false;
+                    1
+                }
+                "--share-net" => {
+                    network = true;
+                    1
+                }
                 "--setenv" | "--chmod" => 3,
                 "--perms" | "--uid" | "--gid" | "--chdir" | "--unsetenv" | "--seccomp"
-                | "--json-status-fd" | "--remount-ro" | "--cap-drop" | "--size" | "--hostname" => 2,
-                _ if option(o).is_some_and(|(_, n)| n == 0) => 1,
+                | "--json-status-fd" | "--cap-drop" | "--size" | "--hostname" => 2,
+                _ if option(o).is_some_and(|(k, n)| n == 0 && k != Kind::Refused) => 1,
                 _ => {
                     return Err(format!(
                         "SAM's own sandbox command has {o}, unknown to Room service"
@@ -336,33 +405,73 @@ impl FloorPlan {
                 }
             };
         }
+        // A --remount-ro makes the mounts made before it read-only at and
+        // below its place (SAM's own final `--remount-ro /` only concerns
+        // the sandbox's root, which holds nothing of the computer).
+        for (before, at) in read_only {
+            if at == Path::new("/") {
+                continue;
+            }
+            for e in entries.iter_mut().take(before) {
+                if let Entry::Rw { src, dst } = e {
+                    if dst.starts_with(&at) {
+                        *e = Entry::Ro {
+                            src: src.clone(),
+                            dst: dst.clone(),
+                        };
+                    }
+                }
+            }
+        }
         entries.retain(|e| !NOT_FOR_ROOMS.iter().any(|n| e.at() == Path::new(n)));
-        Ok(FloorPlan { entries })
+        Ok(FloorPlan {
+            entries,
+            no_network: !network,
+        })
     }
 }
 
-/// Where a room's place comes from on the computer.
+/// Where a room's place comes from on the computer: `rel` below the source
+/// of floor-plan entry `entry` (opened by Room service when the app
+/// started; `rel` is opened without following any link).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Source {
-    /// `rel` beneath the floor-plan folder `top` (opened without any link
-    /// leading out of `top`; `rel` empty: `top` itself).
-    Beneath { top: PathBuf, rel: PathBuf },
+pub struct Source {
+    pub entry: usize,
+    pub rel: PathBuf,
+}
+
+/// How a device place is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceAccess {
+    /// The devices work (`--dev-bind`), as the request asked.
+    Devices,
+    /// Visible and writable, but the devices do not work (`--bind`).
+    NoDevices,
+    /// Visible, read-only, the devices do not work (`--ro-bind`).
+    ReadOnly,
 }
 
 /// One step of a room, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step {
-    /// Show `source` at `dst`, read-only or writable.
-    /// `optional`: skipped when it does not exist (asked with `-try`, or a
-    /// place inside the one asked for).
+    /// Show `source` at `dst`, read-only or writable; `optional`: skipped
+    /// when it does not exist (asked with `-try`, or a place inside the one
+    /// asked for).
     Show {
         source: Source,
         dst: PathBuf,
         writable: bool,
         optional: bool,
     },
-    /// Show a device of the app's at the same place.
-    Device { src: PathBuf, dst: PathBuf },
+    /// Show a device place of the app's (a system path under /dev) at the
+    /// same place.
+    Device {
+        src: PathBuf,
+        dst: PathBuf,
+        access: DeviceAccess,
+    },
+    /// Hide what lies at `at` (SAM's hiding in the app): an empty tmpfs.
+    Mask(PathBuf),
     /// Bubblewrap arguments for the room's own things, as they are.
     Args(Vec<String>),
 }
@@ -387,7 +496,7 @@ pub struct RoomPlan {
 /// What the rules need to know about the app besides its floor plan.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AppFacts {
-    /// The app has the full network (it shares the computer's).
+    /// The app has the full network setting (it shares the computer's).
     pub full_network: bool,
 }
 
@@ -399,6 +508,12 @@ fn under(p: &Path, top: &Path) -> bool {
     p.starts_with(top)
 }
 
+/// A path of the request at or below RESERVED (or RESERVED below it, as a
+/// folder that would hold it).
+fn reserved(p: &Path) -> bool {
+    p.starts_with(RESERVED)
+}
+
 /// The room for `req`, or why there is none.
 pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<RoomPlan, String> {
     let mut room = RoomPlan {
@@ -406,10 +521,15 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         command: req.command.clone(),
         ..Default::default()
     };
-    let mut share = false;
-    let mut unshare = false;
+    // Bubblewrap's order: the last of --share-net / --unshare-net /
+    // --unshare-all decides (the room's base gives up everything first).
+    let mut want_net = false;
     let mut chdir: Option<PathBuf> = None;
+    // Places shown from the app (their place in the room), and the room's
+    // own links: the room's own new things never go inside the first, and
+    // nothing is shown through the second.
     let mut shown: Vec<PathBuf> = Vec::new();
+    let mut own_links: Vec<PathBuf> = Vec::new();
     // Flags of the older form first, then the options in order.
     let ops: Vec<Vec<String>> = req
         .flags
@@ -417,12 +537,34 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         .map(|f| vec![f.clone()])
         .chain(req.ops.iter().cloned())
         .collect();
+    // A path the room makes something new at: never in SAM's reserved
+    // place, never inside a place shown from the app (Bubblewrap would make
+    // it on the computer, through any link the app left there), never
+    // through one of the room's own links.
+    let own_place = |at: &Path, shown: &[PathBuf], own_links: &[PathBuf]| -> Result<(), String> {
+        if reserved(at) {
+            return Err(format!("{} is SAM's own place in a room", at.display()));
+        }
+        if shown.iter().any(|s| under(at, s)) {
+            return Err(format!(
+                "{} is inside a place shown from the app: a room makes new things only in its own space",
+                at.display()
+            ));
+        }
+        if own_links.iter().any(|l| under(at, l) && at != l) {
+            return Err(format!("{} lies behind a link of the room", at.display()));
+        }
+        Ok(())
+    };
     let mut k = 0;
     while k < ops.len() {
         let op = &ops[k];
         let name = op.first().ok_or("an empty option")?.as_str();
         let (kind, n) =
             option(name).ok_or_else(|| format!("option {name} is not supported in a room"))?;
+        if kind == Kind::Refused {
+            return Err(format!("option {name} is not allowed in a room"));
+        }
         if op.len() != n + 1 {
             return Err(format!("{name} needs {n} values"));
         }
@@ -430,10 +572,13 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         match kind {
             Kind::Refused => return Err(format!("option {name} is not allowed in a room")),
             Kind::Restriction => match name {
-                "--unshare-net" | "--unshare-all" => unshare = true,
+                "--unshare-net" | "--unshare-all" => want_net = false,
                 "--clearenv" => room.env.clear(),
                 "--remount-ro" => {
                     let at = clean(&op[1])?;
+                    if reserved(&at) {
+                        return Err(format!("{} is SAM's own place in a room", at.display()));
+                    }
                     room.steps
                         .push(Step::Args(vec![name.into(), path_arg(&at)]));
                 }
@@ -443,7 +588,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 // with its starter), or only changes how errors look.
                 _ => {}
             },
-            Kind::ShareNet => share = true,
+            Kind::ShareNet => want_net = true,
             Kind::Filter => {
                 let fd: i32 = op[1]
                     .parse()
@@ -462,19 +607,10 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 }
                 "--chdir" => chdir = Some(clean(&op[1])?),
                 "--hostname" => room.steps.push(Step::Args(op.clone())),
-                "--proc" | "--dev" | "--tmpfs" | "--mqueue" => {
+                "--proc" | "--dev" | "--tmpfs" | "--mqueue" | "--dir" => {
                     let at = clean(&op[1])?;
-                    if name == "--tmpfs" {
-                        room.own.push(at.clone());
-                    }
-                    room.steps
-                        .push(Step::Args(vec![name.into(), path_arg(&at)]));
-                }
-                "--dir" => {
-                    let at = clean(&op[1])?;
-                    // A folder made inside a place of the app is the app's
-                    // (where it may write anyway); elsewhere it is the room's.
-                    if !shown.iter().any(|s| under(&at, s)) {
+                    own_place(&at, &shown, &own_links)?;
+                    if matches!(name, "--tmpfs" | "--dir") {
                         room.own.push(at.clone());
                     }
                     room.steps
@@ -482,6 +618,8 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 }
                 "--symlink" => {
                     let at = clean(&op[2])?;
+                    own_place(&at, &shown, &own_links)?;
+                    own_links.push(at.clone());
                     room.steps
                         .push(Step::Args(vec![name.into(), op[1].clone(), path_arg(&at)]));
                 }
@@ -506,6 +644,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 }
                 "--chmod" => {
                     let at = clean(&op[2])?;
+                    own_place(&at, &shown, &own_links)?;
                     if !room.own.iter().any(|o| under(&at, o)) {
                         return Err("--chmod only on the room's own new places".into());
                     }
@@ -526,20 +665,38 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                         dst.display()
                     ));
                 }
+                if reserved(&src) {
+                    return Err(format!("{} is SAM's own place in a room", src.display()));
+                }
+                if own_links.iter().any(|l| under(&src, l)) {
+                    return Err(format!("{} lies behind a link of the room", src.display()));
+                }
                 let optional = name.ends_with("-try");
-                let writable = !name.starts_with("--ro-bind");
-                let found = place(plan, &src, writable, optional, &mut room)?;
-                if found {
-                    shown.push(src);
-                } else if !optional {
+                let asked = if name.starts_with("--ro-bind") {
+                    DeviceAccess::ReadOnly
+                } else if name.starts_with("--dev-bind") {
+                    DeviceAccess::Devices
+                } else {
+                    DeviceAccess::NoDevices
+                };
+                let before = room.steps.len();
+                let found = place(plan, &src, asked, optional, &mut room)?;
+                // What is now mounted from the app (not the asked path: for
+                // `/` that is the app's places inside it, not the root).
+                for step in &room.steps[before..] {
+                    if let Step::Show { dst, .. } | Step::Device { dst, .. } = step {
+                        shown.push(dst.clone());
+                    }
+                }
+                if !found && !optional {
                     return Err(format!("{} is not in the app's view", src.display()));
                 }
             }
         }
         k += 1;
     }
-    if share && !unshare {
-        if facts.full_network {
+    if want_net {
+        if facts.full_network && !plan.no_network {
             room.share_net = true;
         } else {
             room.capped
@@ -573,94 +730,123 @@ fn path_arg(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
 
-/// Shows the app's view of `src` (at the same place): the floor-plan place
-/// that holds it, and every place deeper inside, in the floor plan's
-/// order. False when the app sees nothing there a room can share.
+/// Shows the app's view of `src` (at the same place), rebuilt as it is
+/// stacked in the app: the mount that is visible at `src` (the last one at
+/// or above it), then every later mount below `src` in the floor plan's
+/// order, SAM's hiding mounts and links included. False when the app sees
+/// nothing there a room can share.
 fn place(
     plan: &FloorPlan,
     src: &Path,
-    want_write: bool,
+    asked: DeviceAccess,
     optional: bool,
     room: &mut RoomPlan,
 ) -> Result<bool, String> {
+    let want_write = asked != DeviceAccess::ReadOnly;
+    // The mount visible at src: the last one at or above it.
     let holder = plan
         .entries
         .iter()
         .enumerate()
-        .filter(|(_, e)| !matches!(e, Entry::Link { .. }) && under(src, e.at()))
-        .max_by_key(|(i, e)| (e.at().components().count(), *i));
-    let mut todo: Vec<(usize, &Entry)> = plan
-        .entries
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| under(e.at(), src) && e.at() != src)
-        .collect();
-    if let Some((i, e)) = holder {
-        todo.push((i, e));
-    }
-    todo.sort_by_key(|(i, _)| *i);
-    let holder_index = holder.map(|(i, _)| i);
+        .filter(|(_, e)| e.is_mount() && under(src, e.at()))
+        .max_by_key(|(i, _)| *i);
+    let after = holder.map_or(0, |(i, _)| i + 1);
     let mut shown = false;
-    for (i, e) in todo {
-        let is_holder = Some(i) == holder_index;
-        // The part of the request below the holder's place.
-        let rest: PathBuf = if is_holder {
-            src.strip_prefix(e.at())
-                .map(Path::to_path_buf)
-                .unwrap_or_default()
-        } else {
-            PathBuf::new()
-        };
+    if let Some((i, e)) = holder {
+        let rest = src
+            .strip_prefix(e.at())
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
         match e {
-            Entry::Ro { src: top, dst } | Entry::Rw { src: top, dst } => {
+            Entry::Ro { .. } | Entry::Rw { .. } => {
                 let writable = want_write && matches!(e, Entry::Rw { .. });
-                if want_write && !writable && is_holder {
+                if want_write && !writable {
                     room.capped.push(format!(
                         "{}: read-only for the app, so read-only here",
                         src.display()
                     ));
                 }
-                let (source, at) = if is_holder {
-                    (
-                        Source::Beneath {
-                            top: top.clone(),
-                            rel: rest,
-                        },
-                        src.to_path_buf(),
-                    )
-                } else {
-                    (beneath_holder(holder.map(|(_, h)| h), top), dst.clone())
-                };
                 room.steps.push(Step::Show {
-                    source,
-                    dst: at,
+                    source: Source {
+                        entry: i,
+                        rel: rest,
+                    },
+                    dst: src.to_path_buf(),
                     writable,
-                    optional: !is_holder || optional,
+                    optional,
                 });
                 shown = true;
             }
-            Entry::Dev { src: top, dst } => {
-                let (from, at) = if is_holder {
-                    (top.join(&rest), src.to_path_buf())
-                } else {
-                    (top.clone(), dst.clone())
-                };
-                room.steps.push(Step::Device { src: from, dst: at });
+            Entry::Dev { src: top, .. } => {
+                room.steps.push(Step::Device {
+                    src: top.join(&rest),
+                    dst: src.to_path_buf(),
+                    access: asked,
+                });
                 shown = true;
             }
-            Entry::DevFs { at } => {
+            Entry::DevFs { .. } => {
                 if rest.as_os_str().is_empty() {
                     room.steps
-                        .push(Step::Args(vec!["--dev".into(), path_arg(at)]));
+                        .push(Step::Args(vec!["--dev".into(), path_arg(src)]));
                     shown = true;
                 } else if let Some(node) = rest.to_str().filter(|n| DEVFS_NODES.contains(n)) {
                     room.steps.push(Step::Device {
                         src: Path::new("/dev").join(node),
                         dst: src.to_path_buf(),
+                        access: asked,
                     });
                     shown = true;
                 }
             }
+            // Lives only in the app's sandbox: nothing to share here; later
+            // mounts below are shown on their own.
+            Entry::Mask { .. } => {}
+            Entry::Link { .. } | Entry::Dir { .. } => {}
+        }
+    }
+    // Later mounts and links below src, in the floor plan's order (earlier
+    // ones below src are covered by the holder, in the app as here).
+    // A mount the app covers again later (at or above its place) is not
+    // visible in the app: it is not opened for the room either.
+    let covered_later = |i: usize, at: &Path| {
+        plan.entries
+            .iter()
+            .skip(i + 1)
+            .any(|l| l.is_mount() && under(at, l.at()))
+    };
+    for (i, e) in plan.entries.iter().enumerate().skip(after) {
+        if !under(e.at(), src) || e.at() == src || covered_later(i, e.at()) {
+            continue;
+        }
+        match e {
+            Entry::Ro { dst, .. } | Entry::Rw { dst, .. } => {
+                room.steps.push(Step::Show {
+                    source: Source {
+                        entry: i,
+                        rel: PathBuf::new(),
+                    },
+                    dst: dst.clone(),
+                    writable: want_write && matches!(e, Entry::Rw { .. }),
+                    optional: true,
+                });
+                shown = true;
+            }
+            Entry::Dev { src: from, dst } => {
+                room.steps.push(Step::Device {
+                    src: from.clone(),
+                    dst: dst.clone(),
+                    access: asked,
+                });
+                shown = true;
+            }
+            Entry::DevFs { at } => {
+                room.steps
+                    .push(Step::Args(vec!["--dev".into(), path_arg(at)]));
+                shown = true;
+            }
+            // SAM's hiding: the same in the room, always.
+            Entry::Mask { at } => room.steps.push(Step::Mask(at.clone())),
             Entry::Link { target, at } => {
                 room.steps.push(Step::Args(vec![
                     "--symlink".into(),
@@ -668,30 +854,10 @@ fn place(
                     path_arg(at),
                 ]));
             }
-            // Lives only in the app's sandbox: nothing to share; places
-            // deeper inside it are shown on their own.
-            Entry::Private { .. } => {}
+            Entry::Dir { .. } => {}
         }
     }
     Ok(shown)
-}
-
-/// A deeper place's source: beneath the holder's folder when it lies within
-/// it on the computer (so no link the app made leads out), else the folder
-/// SAM chose for it, on its own.
-fn beneath_holder(holder: Option<&Entry>, src: &Path) -> Source {
-    if let Some(Entry::Ro { src: top, .. } | Entry::Rw { src: top, .. }) = holder {
-        if let Ok(rel) = src.strip_prefix(top) {
-            return Source::Beneath {
-                top: top.clone(),
-                rel: rel.to_path_buf(),
-            };
-        }
-    }
-    Source::Beneath {
-        top: src.to_path_buf(),
-        rel: PathBuf::new(),
-    }
 }
 
 #[cfg(test)]
@@ -714,8 +880,10 @@ mod tests {
         }
     }
 
-    /// A floor plan like SAM's: /usr in pieces, a private home, /tmp of its
-    /// own, a protected place in the home, Bubblewrap's /dev with the GPU.
+    /// A floor plan like SAM's: /usr in pieces, a private home with a
+    /// protected place and a hidden ~/.ssh, a grant inside SAM's folder
+    /// hidden by a later tmpfs over it, /tmp of its own, Bubblewrap's /dev
+    /// with the GPU.
     fn plan() -> FloorPlan {
         FloorPlan::from_bwrap_args(&s(&[
             "--die-with-parent",
@@ -735,19 +903,28 @@ mod tests {
             "--symlink",
             "lib",
             "/usr/lib64",
+            "--ro-bind",
+            "/data/sam/apps",
+            "/data/sam/apps",
             "--bind",
             "/data/homes/app",
             "/home/me",
             "--ro-bind",
             "/data/homes/app/.config/autostart",
             "/home/me/.config/autostart",
+            "--tmpfs",
+            "/home/me/.ssh",
+            "--dir",
+            "/home/me/.cache",
+            "--tmpfs",
+            "/data/sam",
             "--dev-bind-try",
             "/dev/dri",
             "/dev/dri",
             "--setenv",
             "A",
             "b",
-            "--ro-bind",
+            "--bind",
             "/rt/l1/rooms",
             "/run/sam/rooms",
             "--remount-ro",
@@ -756,6 +933,22 @@ mod tests {
             "/run/sam/sam-jail-run",
         ]))
         .unwrap()
+    }
+
+    fn index_of(at: &str) -> usize {
+        plan()
+            .entries
+            .iter()
+            .position(|e| e.at() == Path::new(at))
+            .unwrap()
+    }
+
+    fn ok(ops: &[&[&str]]) -> RoomPlan {
+        plan_room(&plan(), &req(ops, &["x"]), AppFacts::default()).unwrap()
+    }
+
+    fn refused(ops: &[&[&str]]) -> bool {
+        plan_room(&plan(), &req(ops, &["x"]), AppFacts::default()).is_err()
     }
 
     #[test]
@@ -804,11 +997,7 @@ mod tests {
             let mut argv = s(o);
             argv.push("/usr/bin/true".into());
             assert!(read_bwrap_args(&argv).is_err(), "{o:?} was accepted");
-            let r = req(&[o], &["/usr/bin/true"]);
-            assert!(
-                plan_room(&plan(), &r, AppFacts::default()).is_err(),
-                "{o:?} was planned"
-            );
+            assert!(refused(&[o]), "{o:?} was planned");
         }
     }
 
@@ -864,30 +1053,24 @@ mod tests {
             "/usr/",
         ] {
             assert!(!is_clean_absolute(p), "{p}");
-            let r = req(&[&["--ro-bind", p, p]], &["x"]);
-            assert!(plan_room(&plan(), &r, AppFacts::default()).is_err(), "{p}");
+            assert!(refused(&[&["--ro-bind", p, p]]), "{p}");
         }
         assert!(is_clean_absolute("/usr/lib"));
     }
 
     #[test]
     fn a_place_is_shown_only_at_the_same_place() {
-        let r = req(&[&["--ro-bind", "/usr/lib", "/elsewhere"]], &["x"]);
-        assert!(plan_room(&plan(), &r, AppFacts::default()).is_err());
+        assert!(refused(&[&["--ro-bind", "/usr/lib", "/elsewhere"]]));
     }
 
     #[test]
-    fn a_place_comes_from_the_floor_plan_beneath_its_folder() {
-        let r = req(
-            &[&["--ro-bind", "/usr/lib/x86_64", "/usr/lib/x86_64"]],
-            &["x"],
-        );
-        let room = plan_room(&plan(), &r, AppFacts::default()).unwrap();
+    fn a_place_comes_from_its_floor_plan_entry_not_a_name() {
+        let room = ok(&[&["--ro-bind", "/usr/lib/x86_64", "/usr/lib/x86_64"]]);
         assert_eq!(
             room.steps,
             vec![Step::Show {
-                source: Source::Beneath {
-                    top: "/usr/lib".into(),
+                source: Source {
+                    entry: index_of("/usr/lib"),
                     rel: "x86_64".into()
                 },
                 dst: "/usr/lib/x86_64".into(),
@@ -901,14 +1084,13 @@ mod tests {
     /// and SAM's links, in the floor plan's order.
     #[test]
     fn asking_for_a_parent_shows_the_apps_places_inside_it() {
-        let r = req(&[&["--ro-bind", "/usr", "/usr"]], &["x"]);
-        let room = plan_room(&plan(), &r, AppFacts::default()).unwrap();
+        let room = ok(&[&["--ro-bind", "/usr", "/usr"]]);
         assert_eq!(
             room.steps,
             vec![
                 Step::Show {
-                    source: Source::Beneath {
-                        top: "/usr/lib".into(),
+                    source: Source {
+                        entry: index_of("/usr/lib"),
                         rel: "".into()
                     },
                     dst: "/usr/lib".into(),
@@ -916,8 +1098,8 @@ mod tests {
                     optional: true
                 },
                 Step::Show {
-                    source: Source::Beneath {
-                        top: "/usr/bin".into(),
+                    source: Source {
+                        entry: index_of("/usr/bin"),
                         rel: "".into()
                     },
                     dst: "/usr/bin".into(),
@@ -931,8 +1113,7 @@ mod tests {
 
     #[test]
     fn writable_only_where_the_app_writes() {
-        let r = req(&[&["--bind", "/usr/lib", "/usr/lib"]], &["x"]);
-        let room = plan_room(&plan(), &r, AppFacts::default()).unwrap();
+        let room = ok(&[&["--bind", "/usr/lib", "/usr/lib"]]);
         assert!(matches!(
             room.steps[0],
             Step::Show {
@@ -941,35 +1122,63 @@ mod tests {
             }
         ));
         assert!(!room.capped.is_empty());
-        let r = req(&[&["--bind", "/home/me", "/home/me"]], &["x"]);
-        let room = plan_room(&plan(), &r, AppFacts::default()).unwrap();
+        let room = ok(&[&["--bind", "/home/me", "/home/me"]]);
         assert!(matches!(room.steps[0], Step::Show { writable: true, .. }));
     }
 
-    /// The home shown writable keeps its protected place read-only, mounted
-    /// after it, from beneath the home's own folder.
+    /// The home shown writable keeps its protected place read-only and its
+    /// hidden ~/.ssh hidden, mounted after it, in the app's order.
     #[test]
-    fn protected_places_inside_a_shown_folder_stay_protected() {
-        let r = req(&[&["--bind", "/home/me", "/home/me"]], &["x"]);
-        let room = plan_room(&plan(), &r, AppFacts::default()).unwrap();
+    fn protected_and_hidden_places_inside_a_shown_folder_stay_so() {
+        let room = ok(&[&["--bind", "/home/me", "/home/me"]]);
         assert_eq!(
-            room.steps[1],
-            Step::Show {
-                source: Source::Beneath {
-                    top: "/data/homes/app".into(),
-                    rel: ".config/autostart".into()
+            room.steps[1..],
+            [
+                Step::Show {
+                    source: Source {
+                        entry: index_of("/home/me/.config/autostart"),
+                        rel: "".into()
+                    },
+                    dst: "/home/me/.config/autostart".into(),
+                    writable: false,
+                    optional: true
                 },
-                dst: "/home/me/.config/autostart".into(),
-                writable: false,
-                optional: true
-            }
+                Step::Mask("/home/me/.ssh".into()),
+            ]
+        );
+        // Asking for the hidden place itself shows nothing of it.
+        assert!(refused(&[&["--ro-bind", "/home/me/.ssh", "/home/me/.ssh"]]));
+    }
+
+    /// A grant inside SAM's folder that a later tmpfs hides in the app
+    /// (audit S-F13) stays hidden: the last mount over a place counts, not
+    /// the deepest.
+    #[test]
+    fn a_place_the_app_has_hidden_by_a_later_mount_stays_hidden() {
+        assert!(refused(&[&[
+            "--ro-bind",
+            "/data/sam/apps",
+            "/data/sam/apps"
+        ]]));
+        assert!(refused(&[&[
+            "--ro-bind",
+            "/data/sam/apps/x",
+            "/data/sam/apps/x"
+        ]]));
+        let room = ok(&[&["--ro-bind-try", "/data", "/data"]]);
+        assert!(
+            !room
+                .steps
+                .iter()
+                .any(|s| matches!(s, Step::Show { dst, .. } if dst.starts_with("/data/sam"))),
+            "{:?}",
+            room.steps
         );
     }
 
     #[test]
     fn everything_asked_is_the_apps_view_without_its_private_places() {
-        let r = req(&[&["--bind", "/", "/"]], &["x"]);
-        let room = plan_room(&plan(), &r, AppFacts::default()).unwrap();
+        let room = ok(&[&["--bind", "/", "/"]]);
         let shown: Vec<PathBuf> = room
             .steps
             .iter()
@@ -986,80 +1195,125 @@ mod tests {
             !shown.contains(&"/run/sam/rooms".into()),
             "a room got Room service's socket"
         );
+        assert!(
+            !shown.iter().any(|p| p.starts_with("/data/sam")),
+            "{shown:?}"
+        );
+        assert!(room.steps.contains(&Step::Mask("/home/me/.ssh".into())));
     }
 
     #[test]
     fn what_the_app_cannot_see_is_refused_or_skipped() {
-        let r = req(&[&["--ro-bind", "/secret", "/secret"]], &["x"]);
-        assert!(plan_room(&plan(), &r, AppFacts::default()).is_err());
-        let r = req(&[&["--ro-bind-try", "/secret", "/secret"]], &["x"]);
-        assert!(plan_room(&plan(), &r, AppFacts::default())
-            .unwrap()
+        assert!(refused(&[&["--ro-bind", "/secret", "/secret"]]));
+        assert!(ok(&[&["--ro-bind-try", "/secret", "/secret"]])
             .steps
             .is_empty());
         // The app's own /tmp lives only in its sandbox.
-        let r = req(&[&["--bind", "/tmp", "/tmp"]], &["x"]);
-        assert!(plan_room(&plan(), &r, AppFacts::default()).is_err());
+        assert!(refused(&[&["--bind", "/tmp", "/tmp"]]));
     }
 
+    /// Devices only the app's, and only working where the request asked for
+    /// working devices.
     #[test]
-    fn devices_only_the_apps() {
-        let r = req(&[&["--dev-bind", "/dev", "/dev"]], &["x"]);
-        let room = plan_room(&plan(), &r, AppFacts::default()).unwrap();
+    fn devices_only_the_apps_and_only_as_asked() {
+        let room = ok(&[&["--dev-bind", "/dev", "/dev"]]);
         assert_eq!(
             room.steps,
             vec![
                 Step::Args(s(&["--dev", "/dev"])),
                 Step::Device {
                     src: "/dev/dri".into(),
-                    dst: "/dev/dri".into()
+                    dst: "/dev/dri".into(),
+                    access: DeviceAccess::Devices
                 },
             ]
         );
-        let r = req(&[&["--dev-bind", "/dev/input", "/dev/input"]], &["x"]);
-        assert!(plan_room(&plan(), &r, AppFacts::default()).is_err());
-        let r = req(&[&["--dev-bind", "/dev/null", "/dev/null"]], &["x"]);
-        let room = plan_room(&plan(), &r, AppFacts::default()).unwrap();
+        assert!(refused(&[&["--dev-bind", "/dev/input", "/dev/input"]]));
+        let room = ok(&[&["--dev-bind", "/dev/null", "/dev/null"]]);
         assert_eq!(
             room.steps,
             vec![Step::Device {
                 src: "/dev/null".into(),
-                dst: "/dev/null".into()
+                dst: "/dev/null".into(),
+                access: DeviceAccess::Devices
             }]
         );
+        let room = ok(&[&["--ro-bind", "/dev/dri", "/dev/dri"]]);
+        assert!(matches!(
+            room.steps[0],
+            Step::Device {
+                access: DeviceAccess::ReadOnly,
+                ..
+            }
+        ));
+        let room = ok(&[&["--bind", "/dev/dri", "/dev/dri"]]);
+        assert!(matches!(
+            room.steps[0],
+            Step::Device {
+                access: DeviceAccess::NoDevices,
+                ..
+            }
+        ));
     }
 
     #[test]
     fn the_network_only_with_the_apps_full_network_and_never_when_given_up() {
-        let r = req(&[&["--share-net"]], &["x"]);
-        assert!(
-            !plan_room(
-                &plan(),
-                &r,
-                AppFacts {
-                    full_network: false
-                }
-            )
-            .unwrap()
-            .share_net
-        );
-        assert!(
-            plan_room(&plan(), &r, AppFacts { full_network: true })
+        let facts = |full| AppFacts { full_network: full };
+        let open = FloorPlan {
+            no_network: false,
+            ..plan()
+        };
+        let net = |p: &FloorPlan, ops: &[&[&str]], full| {
+            plan_room(p, &req(ops, &["x"]), facts(full))
                 .unwrap()
                 .share_net
-        );
-        let r = req(&[&["--share-net"], &["--unshare-net"]], &["x"]);
-        assert!(
-            !plan_room(&plan(), &r, AppFacts { full_network: true })
-                .unwrap()
-                .share_net
-        );
-        let r = req(&[&["--unshare-all"], &["--share-net"]], &["x"]);
-        assert!(
-            !plan_room(&plan(), &r, AppFacts { full_network: true })
-                .unwrap()
-                .share_net
-        );
+        };
+        assert!(!net(&open, &[&["--share-net"]], false));
+        assert!(net(&open, &[&["--share-net"]], true));
+        assert!(!net(&open, &[&["--share-net"], &["--unshare-net"]], true));
+        // Bubblewrap's usual way: give up everything, then ask for the network.
+        assert!(net(&open, &[&["--unshare-all"], &["--share-net"]], true));
+        assert!(!net(&open, &[&["--share-net"], &["--unshare-all"]], true));
+        // The app's own sandbox has no network (its own arguments say so).
+        assert!(!net(&plan(), &[&["--share-net"]], true));
+    }
+
+    #[test]
+    fn the_apps_own_restrictions_in_its_arguments_count() {
+        let p = FloorPlan::from_bwrap_args(&s(&[
+            "--bind",
+            "/h",
+            "/h",
+            "--bind",
+            "/h/docs",
+            "/h/docs",
+            "--remount-ro",
+            "/h/docs",
+            "--share-net",
+            "--unshare-all",
+        ]))
+        .unwrap();
+        assert!(p.no_network);
+        let room = plan_room(
+            &p,
+            &req(&[&["--bind", "/h/docs", "/h/docs"]], &["x"]),
+            AppFacts::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            room.steps[0],
+            Step::Show {
+                writable: false,
+                ..
+            }
+        ));
+        let room = plan_room(
+            &p,
+            &req(&[&["--bind", "/h", "/h"]], &["x"]),
+            AppFacts::default(),
+        )
+        .unwrap();
+        assert!(matches!(room.steps[0], Step::Show { writable: true, .. }));
     }
 
     #[test]
@@ -1095,28 +1349,75 @@ mod tests {
 
     #[test]
     fn permissions_only_on_the_rooms_own_new_places() {
-        let ok = req(
-            &[
-                &["--perms", "0700"],
-                &["--tmpfs", "/scratch"],
-                &["--chmod", "0755", "/scratch"],
-            ],
-            &["x"],
-        );
-        assert!(plan_room(&plan(), &ok, AppFacts::default()).is_ok());
-        let on_home = req(
-            &[
-                &["--bind", "/home/me", "/home/me"],
-                &["--chmod", "0777", "/home/me"],
-            ],
-            &["x"],
-        );
-        assert!(plan_room(&plan(), &on_home, AppFacts::default()).is_err());
-        let loose = req(
-            &[&["--perms", "0777"], &["--bind", "/home/me", "/home/me"]],
-            &["x"],
-        );
-        assert!(plan_room(&plan(), &loose, AppFacts::default()).is_err());
+        assert!(!refused(&[
+            &["--perms", "0700"],
+            &["--tmpfs", "/scratch"],
+            &["--chmod", "0755", "/scratch"]
+        ]));
+        assert!(refused(&[
+            &["--bind", "/home/me", "/home/me"],
+            &["--chmod", "0777", "/home/me"]
+        ]));
+        assert!(refused(&[
+            &["--perms", "0777"],
+            &["--bind", "/home/me", "/home/me"]
+        ]));
+        // An own place with a shown place below it: chmod would reach it.
+        assert!(refused(&[
+            &["--tmpfs", "/home"],
+            &["--bind", "/home/me", "/home/me"],
+            &["--chmod", "0777", "/home/me"]
+        ]));
+    }
+
+    /// Bubblewrap makes folders and links on the computer when it is told to
+    /// make them inside a shown folder, following any link the app left
+    /// there: the room's own new things only in its own space.
+    #[test]
+    fn new_things_never_inside_a_place_shown_from_the_app() {
+        for op in [
+            &["--symlink", "/x", "/home/me/x/evil.desktop"][..],
+            &["--dir", "/home/me/x/evil"],
+            &["--tmpfs", "/home/me/x"],
+            &["--proc", "/home/me/x"],
+            &["--dev", "/home/me/x"],
+            &["--mqueue", "/home/me/x"],
+        ] {
+            assert!(
+                refused(&[&["--bind", "/home/me", "/home/me"], op]),
+                "{op:?}"
+            );
+        }
+        // In the room's own space they are fine.
+        assert!(!refused(&[
+            &["--tmpfs", "/tmp-home"],
+            &["--dir", "/tmp-home/x"],
+            &["--symlink", "/usr/lib", "/lib64"]
+        ]));
+        // Nothing is shown through the room's own links.
+        assert!(refused(&[
+            &["--symlink", "/home/me", "/h"],
+            &["--ro-bind", "/h/x", "/h/x"]
+        ]));
+        assert!(refused(&[
+            &["--symlink", "/home/me", "/h"],
+            &["--dir", "/h/x"]
+        ]));
+    }
+
+    /// SAM's own place in a room (its helper and the room's rules): no
+    /// request may name it, cover it with a link, or make things in it.
+    #[test]
+    fn sams_own_place_in_a_room_is_out_of_reach() {
+        for op in [
+            &["--symlink", "/home/me/x", RESERVED][..],
+            &["--tmpfs", RESERVED],
+            &["--dir", "/.sam-room/x"],
+            &["--ro-bind-try", RESERVED, RESERVED],
+            &["--remount-ro", RESERVED],
+        ] {
+            assert!(refused(&[op]), "{op:?}");
+        }
     }
 
     #[test]
@@ -1137,5 +1438,6 @@ mod tests {
     #[test]
     fn a_floor_plan_with_an_unknown_option_gives_no_rooms() {
         assert!(FloorPlan::from_bwrap_args(&s(&["--made-up", "/x"])).is_err());
+        assert!(FloorPlan::from_bwrap_args(&s(&["--cap-add", "ALL"])).is_err());
     }
 }

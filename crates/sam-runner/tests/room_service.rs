@@ -85,6 +85,20 @@ say link_to_app "$(rv room --bind "$HOME/to-app" "$HOME/to-app" -- $P write "$HO
 ln -sfn /run/sam "$HOME/to-sam"
 say link_to_sam "$(rv room --bind "$HOME/to-sam" "$HOME/to-sam" -- $P write "$HOME/to-sam" evil-via-link)"
 say unknown_option "$(rv room --cap-add ALL -- /usr/bin/echo ok)"
+# While Bubblewrap builds a room, the computer's root is at /oldroot: a link
+# the app plants in its own folder must not lead Bubblewrap to make files
+# there.
+ln -sfn "/oldroot$HOME/.config/autostart" "$HOME/planted"
+printf '[Desktop Entry]\nExec=evil\n' > "$HOME/payload.desktop"
+say planted_symlink "$(rv room --bind "$HOME" "$HOME" --symlink "$HOME/payload.desktop" "$HOME/planted/evil-link.desktop" -- /usr/bin/echo ok)"
+say planted_dir "$(rv room --bind "$HOME" "$HOME" --dir "$HOME/planted/evil-dir" -- /usr/bin/echo ok)"
+# The room's layout must not decide what runs before SAM's layers: with
+# the system's library folders pointing into the app's own folder, SAM's
+# room helper still starts and confirms its layers (the program itself,
+# which does not exist, then fails).
+mkdir -p "$HOME/fakelib"
+bwrap --ro-bind /usr /usr --bind "$HOME" "$HOME" --symlink "$HOME/fakelib" /lib64 --symlink "$HOME/fakelib" /lib -- /usr/bin/loader-layout-check >/dev/null 2>&1
+say loader_layout done
 say moved_folder "$(rv room --ro-bind /usr /elsewhere -- /usr/bin/echo ok)"
 exec 7<"$HOME"
 say folder_by_handle "$(rv room --bind-fd 7 "$HOME" -- /usr/bin/echo ok)"
@@ -155,6 +169,32 @@ say bashrc_app "$( (echo app-evil >> "$HOME/.bashrc") 2>/dev/null && echo allowe
 say bashrc_room "$(rv room --dev /dev --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'echo room-evil >> "$HOME/.bashrc" 2>/dev/null && echo allowed || echo blocked')"
 say rename_app "$(mv "$HOME/.config" "$HOME/.config-app" 2>/dev/null && echo allowed || echo blocked)"
 say rename_room "$(rv room --dev /dev --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'mv "$HOME/.config" "$HOME/.config-room" 2>/dev/null && echo allowed || echo blocked')"
+# SAM hides ~/.ssh from the app with an empty folder over it: a room asking
+# for the home must not see it either.
+say ssh_app "$($P read "$HOME/.ssh/id_ed25519")"
+say ssh_room "$(rv room --ro-bind "$HOME" "$HOME" -- $P read "$HOME/.ssh/id_ed25519")"
+# Links the app makes in its writable home to places it sees protected or
+# hidden: a requested path never follows a link.
+ln -sfn .config/autostart "$HOME/to-autostart"
+say link_protected "$(rv room --dev /dev --bind "$HOME/to-autostart" "$HOME/to-autostart" -- $P write "$HOME/to-autostart" via-link.desktop)"
+ln -sfn .ssh "$HOME/to-ssh"
+say link_hidden "$(rv room --ro-bind "$HOME/to-ssh" "$HOME/to-ssh" -- $P read "$HOME/to-ssh/id_ed25519")"
+"#;
+
+/// A grant inside SAM's own folder, which SAM hides from the app with a
+/// later mount over it: a room asking for it sees nothing either.
+const SAM_FOLDER_GRANT: &str = r#"
+say control "$(rv room -- /usr/bin/echo ok)"
+say grant_app "$($P read "$OTHER_APP")"
+say grant_room "$(rv room --ro-bind-try "$(dirname "$OTHER_APP")" "$(dirname "$OTHER_APP")" -- $P read "$OTHER_APP")"
+"#;
+
+/// The person's own Bubblewrap arguments that cut the app off the network
+/// count for its rooms too.
+const EXTRA_ARGS: &str = r#"
+say control "$(rv room -- /usr/bin/echo ok)"
+say tcp_app "$($P tcp "$PORT")"
+say tcp_room "$(rv room --unshare-all --share-net -- $P tcp "$PORT")"
 "#;
 
 /// Messages written by hand to the room service, past the stand-in: every
@@ -221,7 +261,8 @@ def ask(raw, fds=()):
         s.close()
 
 def refusal(r):
-    return "refused" if r in ("refused", "closed") else r
+    # Only an answer counts: a hang-up could be a crash of the service.
+    return r
 
 say("direct_control", ask(request(BASE, ["/usr/bin/true"])))
 probe = f'echo "CASE direct_greedy=$(/usr/bin/python3 -I -S {APPDIR}/usr/bin/probe.py read {SECRET_FILE})"'
@@ -265,6 +306,54 @@ r = ask(request(BASE, ["/usr/bin/true"]))
 say("served_beside_idle", "yes" if r == "exit=0" and time.monotonic() - t < 20 else f"no-{r}")
 for s in idle:
     s.close()
+time.sleep(1)
+# More than 64 connections at once: the rest are closed at once.
+idle = []
+for i in range(70):
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(3)
+    try:
+        s.connect("/run/sam/rooms")
+        idle.append(s)
+    except OSError:
+        break
+closed = 0
+for s in idle:
+    try:
+        if s.recv(1) == b"":
+            closed += 1
+    except socket.timeout:
+        pass
+    except OSError:
+        closed += 1
+say("connections_limited", "yes" if closed >= 6 else f"no-{closed}-closed")
+for s in idle:
+    s.close()
+time.sleep(1)
+# Connections held while requests are still being sent count against the
+# service's budget (512): the third of three requests with 253 each is
+# refused before it ends.
+null = os.open("/dev/null", os.O_RDONLY)
+half = []
+for i in range(3):
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(5)
+    s.connect("/run/sam/rooms")
+    s.sendmsg([struct.pack("!I", 1000)], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [null] * 253))])
+    half.append(s)
+time.sleep(1)
+answered = 0
+for s in half:
+    try:
+        head = s.recv(4)
+        if len(head) == 4:
+            answered += 1
+    except socket.timeout:
+        pass
+say("held_limited", "yes" if answered >= 1 else "no")
+for s in half:
+    s.close()
+time.sleep(1)
 PY
 say final_control "$(rv room -- /usr/bin/echo ok)"
 "#;
@@ -316,6 +405,14 @@ while [ $i -lt 40 ]; do room -- /usr/bin/sleep 1 & pids="$pids $!"; i=$((i+1)); 
 ok=0
 for p in $pids; do wait "$p" && ok=$((ok+1)); done
 say flood "$ok"
+# Twenty rooms of two seconds each, with at most sixteen at once: the last
+# ones wait, so it takes at least two rounds.
+start=$(date +%s%N)
+pids=""
+i=0
+while [ $i -lt 20 ]; do room -- /usr/bin/sleep 2 & pids="$pids $!"; i=$((i+1)); done
+for p in $pids; do wait "$p"; done
+say sixteen_at_once "$(( ($(date +%s%N) - start) / 1000000000 ))"
 # bwrap itself in the background (not the room function, whose $! would be
 # a subshell): $! is then the stand-in.
 # shellcheck disable=SC2086
@@ -487,7 +584,6 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
         plan: FloorPlan::from_bwrap_args(&args).unwrap(),
         facts: AppFacts::default(),
         bwrap: w.host.tools.bwrap.as_ref().unwrap().path.clone(),
-        helper: sam_runner::find_helper().unwrap(),
         landlock: sam_runner::kernel::LandlockSpec {
             read: vec!["/".into()],
             write: vec![],
@@ -548,7 +644,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     if !rooms_common::require() {
         return;
     }
-    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "kernel-seccomp"])
+    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "bwrap-rooms", "kernel-seccomp"])
         .unwrap_or_else(|e| panic!("{e}"));
     let w = World::new();
     let abstract_scoped = landlock_abi() >= 6;
@@ -607,6 +703,17 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     if !record.iter().any(|l| l.contains("sam-room: built")) {
         failures.push("works: the start record names no room".into());
     }
+    // Every room's line says what SAM's helper confirmed it applied.
+    let want_layers = if landlock_abi() > 0 {
+        "(layers: landlock "
+    } else {
+        "(layers: landlock not available"
+    };
+    for l in record.iter().filter(|l| l.contains("sam-room: built")) {
+        if !l.contains(want_layers) || !l.contains("seccomp") {
+            failures.push(format!("works: a room's layers are not confirmed: {l}"));
+        }
+    }
     if record.iter().any(|l| l.contains(&token)) {
         failures.push("works: the start record holds a value of a room's environment".into());
     }
@@ -662,6 +769,9 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             ("userns_room", "blocked"),
             ("filter_start", "0"),
             ("filter_holds", "blocked"),
+            ("planted_symlink", "refused"),
+            ("planted_dir", "refused"),
+            ("loader_layout", "done"),
         ];
         if abstract_scoped {
             want.push(("abstract_room", "blocked"));
@@ -707,6 +817,29 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 c.get("tcp_room")
             ));
         }
+        for planted in ["evil-link.desktop", "evil-dir"] {
+            if w.home.join(".config/autostart").join(planted).exists() {
+                failures.push(format!(
+                    "{name}: a room made {planted} in the computer's autostart folder"
+                ));
+            }
+        }
+        if !log
+            .lines()
+            .any(|l| l.contains("sam-room: built loader-layout-check (layers: landlock"))
+        {
+            let rooms: Vec<&str> = log.lines().filter(|l| l.contains("sam-room:")).collect();
+            failures.push(format!(
+                "{name}: with the room's library folders pointing into the app's own folder, SAM's room helper did not confirm its layers; the record:\n  {}",
+                rooms.join("\n  ")
+            ));
+        }
+        if !log
+            .lines()
+            .any(|l| l.contains("sam-room: refused") && l.contains("--cap-add"))
+        {
+            failures.push(format!("{name}: a refused room is not in the start record"));
+        }
         let wrote_app: Vec<String> = w
             .app_dirs()
             .iter()
@@ -733,8 +866,55 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     failures.extend(room_within_app(
         "full-home",
         &log,
-        &["autostart", "bashrc", "rename"],
+        &["autostart", "bashrc", "rename", "ssh"],
     ));
+    failures.extend(
+        check(
+            &log,
+            &[
+                ("ssh_app", "blocked"),
+                ("ssh_room", "blocked"),
+                ("link_protected", "refused"),
+                ("link_hidden", "refused"),
+            ],
+        )
+        .into_iter()
+        .map(|f| format!("full-home: {f}")),
+    );
+    if w.home.join(".config/autostart/via-link.desktop").exists() {
+        failures.push("full-home: a room wrote an autostart entry through a link".into());
+    }
+
+    // A grant inside SAM's own folder, hidden from the app.
+    let id = w.add("RoomSamFolderGrant", SAM_FOLDER_GRANT);
+    let other = w.other_app.display().to_string();
+    let log = w.start(&id, |p| p.filesystem.custom_read = vec![other.clone()], 60);
+    failures.extend(control_built("sam-folder", &log));
+    failures.extend(
+        check(
+            &log,
+            &[("grant_app", "blocked"), ("grant_room", "blocked|refused")],
+        )
+        .into_iter()
+        .map(|f| format!("sam-folder: {f}")),
+    );
+
+    // The person's own Bubblewrap arguments that cut the network.
+    let id = w.add("RoomExtraArgs", EXTRA_ARGS);
+    let log = w.start(
+        &id,
+        |p| {
+            p.network.mode = NetworkMode::Full;
+            p.advanced.extra_bwrap_args = vec!["--unshare-net".into()];
+        },
+        60,
+    );
+    failures.extend(control_built("extra-args", &log));
+    failures.extend(
+        check(&log, &[("tcp_app", "blocked"), ("tcp_room", "blocked")])
+            .into_iter()
+            .map(|f| format!("extra-args: {f}")),
+    );
     if w.home.join(".config/autostart/room-evil.desktop").exists() {
         failures.push("full-home: a room left an autostart entry".into());
     }
@@ -778,6 +958,8 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("direct_many_fds", "refused"),
                 ("direct_huge", "refused"),
                 ("served_beside_idle", "yes"),
+                ("connections_limited", "yes"),
+                ("held_limited", "yes"),
                 ("final_control", "ok"),
             ],
         )
@@ -827,6 +1009,15 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         .into_iter()
         .map(|f| format!("lifetime: {f}")),
     );
+    match cases(&log)
+        .get("sixteen_at_once")
+        .and_then(|v| v.parse::<u32>().ok())
+    {
+        Some(t) if (4..20).contains(&t) => {}
+        t => failures.push(format!(
+            "lifetime: 20 rooms of 2 s took {t:?} s: more than 16 ran at once, or they hung"
+        )),
+    }
     let leftover = ["/usr/bin/sleep", left.as_str()];
     let end = Instant::now() + Duration::from_secs(10);
     while !processes(&leftover).is_empty() && Instant::now() < end {

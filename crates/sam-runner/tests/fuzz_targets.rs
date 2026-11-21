@@ -437,10 +437,7 @@ fn the_preview_reader_panics_only_inside_the_squashfs_library() {
 /// the app's floor plan).
 #[test]
 fn changed_room_requests_never_crash_the_readers() {
-    use sam_runner::room_rules::{
-        is_clean_absolute, plan_room, read_bwrap_args, read_request, AppFacts, FloorPlan, Source,
-        Step,
-    };
+    use sam_runner::room_rules::{plan_room, read_bwrap_args, read_request, AppFacts, FloorPlan};
     watch_panics();
     let words = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
     let plan = FloorPlan::from_bwrap_args(&words(&[
@@ -466,17 +463,18 @@ fn changed_room_requests_never_crash_the_readers() {
         "/dev/dri",
         "--tmpfs",
         "/tmp",
+        "--tmpfs",
+        "/home/me/.ssh",
+        "--ro-bind",
+        "/data/sam/apps",
+        "/data/sam/apps",
+        "--tmpfs",
+        "/data/sam",
         "--bind",
         "/run/l1/rooms",
         "/run/sam/rooms",
     ]))
     .unwrap();
-    let tops = [
-        "/usr/lib",
-        "/usr/bin",
-        "/data/homes/app",
-        "/data/homes/app/.config/autostart",
-    ];
     let base = r#"{"v":1,"ops":[["--ro-bind","/usr","/usr"],["--bind","/home/me","/home/me"],["--tmpfs","/tmp-home"],["--perms","0700"],["--dir","/d"],["--setenv","HOME","/tmp-home"],["--seccomp","11"],["--share-net"],["--chmod","0755","/tmp-home"]],"flags":[],"command":["/usr/lib/glycin-loaders/2+/glycin-svg"],"env":{"A":"b"},"cwd":"/home/me","fds":[0,1,2,11]}"#;
     let pieces: [&[u8]; 22] = [
         b"\"",
@@ -533,29 +531,9 @@ fn changed_room_requests_never_crash_the_readers() {
             let Ok(room) = plan_room(&plan, &req, AppFacts { full_network }) else {
                 return;
             };
-            for step in &room.steps {
-                if let Step::Show {
-                    source: Source::Beneath { top, .. },
-                    dst,
-                    ..
-                } = step
-                {
-                    assert!(is_clean_absolute(&dst.to_string_lossy()), "a place {dst:?}");
-                    assert!(
-                        tops.iter().any(|t| top == std::path::Path::new(t)),
-                        "a source {top:?} outside the floor plan"
-                    );
-                    assert_ne!(
-                        dst,
-                        std::path::Path::new("/run/sam/rooms"),
-                        "Room service's socket in a room"
-                    );
-                }
+            if let Err(e) = room_within_plan(&plan, &room, full_network) {
+                panic!("{e}");
             }
-            assert!(
-                !room.share_net || full_network,
-                "the network without the app's full network"
-            );
         }) {
             problems.push(format!("round {round}: {at}: {text:?}"));
         }
@@ -673,52 +651,14 @@ fn changed_room_requests_never_crash_the_readers() {
             };
             for step in &room.steps {
                 match step {
-                    Step::Show {
-                        source: Source::Beneath { top, .. },
-                        dst,
-                        ..
-                    } => {
-                        shown.set(shown.get() + 1);
-                        assert!(is_clean_absolute(&dst.to_string_lossy()), "a place {dst:?}");
-                        assert!(
-                            tops.iter().any(|t| top == std::path::Path::new(t)),
-                            "a source {top:?} outside the floor plan"
-                        );
-                        assert_ne!(
-                            dst,
-                            std::path::Path::new("/run/sam/rooms"),
-                            "Room service's socket in a room"
-                        );
-                    }
-                    Step::Device { src, .. } => {
-                        devices.set(devices.get() + 1);
-                        assert!(src.starts_with("/dev"), "a device from {src:?}");
-                        assert!(
-                            !src.starts_with("/dev/input"),
-                            "a device the app has not: {src:?}"
-                        );
-                    }
-                    Step::Args(a) => {
-                        let bad = [
-                            "--bind-fd",
-                            "--userns",
-                            "--file",
-                            "--cap-add",
-                            "--overlay",
-                            "--args",
-                            "--made-up",
-                            "--bind",
-                            "--ro-bind",
-                            "--dev-bind",
-                        ];
-                        assert!(!bad.contains(&a[0].as_str()), "passed on as it is: {a:?}");
-                    }
+                    sam_runner::room_rules::Step::Show { .. } => shown.set(shown.get() + 1),
+                    sam_runner::room_rules::Step::Device { .. } => devices.set(devices.get() + 1),
+                    _ => {}
                 }
             }
-            assert!(
-                !room.share_net || full_network,
-                "the network without the app's full network"
-            );
+            if let Err(e) = room_within_plan(&plan, &room, full_network) {
+                panic!("{e}");
+            }
         }) {
             problems.push(format!("built round {round}: {at}: {text}"));
         }
@@ -730,4 +670,86 @@ fn changed_room_requests_never_crash_the_readers() {
         devices.get()
     );
     assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+/// What every room the rules decide keeps to, whatever was asked: each
+/// place comes from a floor-plan source, at the same place as in the app,
+/// writable only where the app's is, and not under a mount the app laid
+/// over it later (hidden stays hidden); devices only the app's, at their
+/// place; nothing shown through raw arguments; never Room service's socket
+/// or SAM's own place; the network only with the app's full network.
+fn room_within_plan(
+    plan: &sam_runner::room_rules::FloorPlan,
+    room: &sam_runner::room_rules::RoomPlan,
+    full_network: bool,
+) -> Result<(), String> {
+    use sam_runner::room_rules::{is_clean_absolute, Entry, Source, Step, RESERVED};
+    use std::path::Path;
+    for step in &room.steps {
+        match step {
+            Step::Show {
+                source: Source { entry, rel },
+                dst,
+                writable,
+                ..
+            } => {
+                let e = plan
+                    .entries
+                    .get(*entry)
+                    .ok_or("a source outside the floor plan")?;
+                if e.source().is_none() {
+                    return Err(format!("{dst:?} from an entry without a source: {e:?}"));
+                }
+                if *dst != e.at().join(rel) || !is_clean_absolute(&dst.to_string_lossy()) {
+                    return Err(format!("{dst:?} not at its place ({e:?} + {rel:?})"));
+                }
+                if *writable && !matches!(e, Entry::Rw { .. }) {
+                    return Err(format!("{dst:?} writable from a read-only place"));
+                }
+                let hidden_later = plan.entries.iter().skip(entry + 1).any(|m| {
+                    !matches!(m, Entry::Link { .. } | Entry::Dir { .. }) && dst.starts_with(m.at())
+                });
+                if hidden_later {
+                    return Err(format!("{dst:?} is hidden in the app by a later mount"));
+                }
+                if dst == Path::new("/run/sam/rooms") || dst.starts_with(RESERVED) {
+                    return Err(format!("{dst:?} is Room service's own"));
+                }
+            }
+            Step::Device { src, dst, .. } => {
+                if !src.starts_with("/dev") || src.starts_with("/dev/input") || src != dst {
+                    return Err(format!("a device {src:?} at {dst:?}"));
+                }
+            }
+            Step::Mask(_) => {}
+            Step::Args(a) => {
+                let bad = [
+                    "--bind-fd",
+                    "--ro-bind-fd",
+                    "--userns",
+                    "--file",
+                    "--cap-add",
+                    "--overlay",
+                    "--args",
+                    "--made-up",
+                    "--bind",
+                    "--ro-bind",
+                    "--dev-bind",
+                    "--bind-try",
+                    "--ro-bind-try",
+                    "--dev-bind-try",
+                ];
+                if bad.contains(&a[0].as_str()) {
+                    return Err(format!("passed on as it is: {a:?}"));
+                }
+                if a.iter().skip(1).any(|v| Path::new(v).starts_with(RESERVED)) {
+                    return Err(format!("SAM's own place in {a:?}"));
+                }
+            }
+        }
+    }
+    if room.share_net && !full_network {
+        return Err("the network without the app's full network".into());
+    }
+    Ok(())
 }

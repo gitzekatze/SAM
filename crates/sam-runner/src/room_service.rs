@@ -9,15 +9,14 @@
 //!   and ends with the room's exit code;
 //! - **the service** ([`RoomService`]), part of SAM's launcher for one
 //!   start: it trusts nothing the stand-in checked, decides the room from
-//!   the app's floor plan, opens every folder beneath the floor-plan folder
-//!   that holds it, and starts the computer's Bubblewrap with SAM's helper
-//!   inside, which puts SAM's layers in place before anything of the
-//!   request runs.
+//!   the app's floor plan, shows every place from the source SAM opened
+//!   when the app started (never found by name later), and starts the
+//!   computer's Bubblewrap with SAM's room helper inside, which puts SAM's
+//!   layers in place before anything of the request runs and confirms them.
 //!
 //! Lifetime: a room ends when its stand-in goes (its program ended or was
 //! killed), and every room ends with the app's start.
 
-use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -30,36 +29,55 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
-use serde::{Deserialize, Serialize};
 
 use crate::kernel::{LandlockSpec, SeccompSpec};
-use crate::room_rules::{self, AppFacts, FloorPlan, RoomPlan, Source, Step};
+use crate::room_rules::{self, AppFacts, DeviceAccess, FloorPlan, RoomPlan, Source, Step};
 
 /// Where the service listens inside the app's sandbox.
 pub const SOCKET_INSIDE: &str = "/run/sam/rooms";
 /// At most this many rooms of one app at once; more requests wait.
 pub const MAX_ROOMS: usize = 16;
 /// At most this many connections being read at once; more are closed.
-const MAX_CONNECTIONS: usize = 64;
-/// At most this many passed connections held by the service at once (a
-/// request beyond it is refused): an app cannot fill SAM's launcher with
-/// connections.
-const MAX_HELD: usize = 512;
+pub const MAX_CONNECTIONS: usize = 64;
+/// At most this many passed connections held by the service at once, from
+/// the first byte read until the room has started (a request beyond it is
+/// refused): an app cannot fill SAM's launcher with connections.
+pub const MAX_HELD: usize = 512;
+/// At most this many room lines in one start record (the rest counted).
+const MAX_RECORDS: usize = 200;
 /// How long a connection may take to send its request.
 const READ_LIMIT: Duration = Duration::from_secs(10);
+/// SAM's room helper and the room's rules inside a room (room_rules::RESERVED).
+const HELPER_INSIDE: &str = "/.sam-room/sam-room-exec";
+const SPEC_INSIDE: &str = "/.sam-room/room.spec";
 
-/// What a room's SAM helper gets (as data, never as a file of the
-/// computer): SAM's layers, then the program's own filters and its
-/// environment, applied last.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RoomSpec {
-    pub landlock: LandlockSpec,
-    pub seccomp: SeccompSpec,
-    /// Passed connections holding the program's own syscall filters.
-    pub filters: Vec<i32>,
-    /// The program's environment, exactly.
-    pub env: BTreeMap<String, String>,
+/// SAM's room helper (room-exec/main.rs, built statically by build.rs):
+/// it starts inside a layout the request shapes, so it needs no loader and
+/// no library. Empty when this build could not make it.
+const ROOM_HELPER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/sam-room-exec"));
+
+/// Whether an ELF program asks for a loader (a PT_INTERP program header).
+pub fn needs_loader(elf: &[u8]) -> bool {
+    let u16_at = |i: usize| {
+        elf.get(i..i + 2)
+            .map(|b| u16::from_ne_bytes([b[0], b[1]]) as usize)
+    };
+    let u64_at = |i: usize| {
+        elf.get(i..i + 8)
+            .and_then(|b| b.try_into().ok())
+            .map(|b| u64::from_ne_bytes(b) as usize)
+    };
+    let (Some(phoff), Some(size), Some(count)) = (u64_at(0x20), u16_at(0x36), u16_at(0x38)) else {
+        return true;
+    };
+    if !elf.starts_with(b"\x7fELF") || elf.get(4) != Some(&2) {
+        return true;
+    }
+    (0..count).any(|k| {
+        let at = phoff + k * size;
+        elf.get(at..at + 4)
+            .map_or(true, |t| u32::from_ne_bytes([t[0], t[1], t[2], t[3]]) == 3)
+    })
 }
 
 /// What the service needs to know about the app's start.
@@ -69,13 +87,20 @@ pub struct RoomContext {
     pub facts: AppFacts,
     /// The computer's Bubblewrap (the one SAM checked).
     pub bwrap: PathBuf,
-    /// SAM's helper on the computer.
-    pub helper: PathBuf,
     /// The app's Landlock rules, as they are or would be with Landlock on.
     pub landlock: LandlockSpec,
     /// SAM's filter for rooms: the app's, never weaker than the baseline,
     /// never allowing nested sandboxes.
     pub seccomp: SeccompSpec,
+}
+
+/// The context with the floor plan's sources, opened once when the app
+/// started: a room shows exactly these, whatever the app renames later.
+struct Served {
+    ctx: RoomContext,
+    sources: Vec<Option<OwnedFd>>,
+    /// Set when no room can be built this start (shown in every refusal).
+    refuse_all: Option<String>,
 }
 
 #[derive(Default)]
@@ -87,13 +112,49 @@ struct State {
     freed: Condvar,
     rooms: Mutex<Vec<Arc<Mutex<Child>>>>,
     records: Mutex<Vec<String>>,
+    dropped_records: AtomicUsize,
 }
 
 impl State {
     fn record(&self, line: String) {
         if let Ok(mut r) = self.records.lock() {
-            r.push(line);
+            if r.len() < MAX_RECORDS {
+                r.push(line);
+                return;
+            }
         }
+        self.dropped_records.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+/// Passed connections counted against [`MAX_HELD`] until released.
+struct Held<'a> {
+    total: &'a AtomicUsize,
+    mine: usize,
+}
+
+impl<'a> Held<'a> {
+    fn new(total: &'a AtomicUsize) -> Self {
+        Held { total, mine: 0 }
+    }
+    /// Counts `n` more; false (nothing counted) when that passes the limit.
+    fn add(&mut self, n: usize) -> bool {
+        if self.total.fetch_add(n, Ordering::SeqCst) + n > MAX_HELD {
+            self.total.fetch_sub(n, Ordering::SeqCst);
+            return false;
+        }
+        self.mine += n;
+        true
+    }
+    fn release(&mut self) {
+        self.total.fetch_sub(self.mine, Ordering::SeqCst);
+        self.mine = 0;
+    }
+}
+
+impl Drop for Held<'_> {
+    fn drop(&mut self) {
+        self.release();
     }
 }
 
@@ -119,6 +180,14 @@ impl RoomService {
                 )
             );
         }
+        if ROOM_HELPER.is_empty() || needs_loader(ROOM_HELPER) {
+            bail!(
+                "{}",
+                sam_core::i18n::tr(
+                    "this SAM was built without its static room helper, so Room service is off"
+                )
+            );
+        }
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket)
             .with_context(|| format!("opening Room service's socket {}", socket.display()))?;
@@ -131,45 +200,82 @@ impl RoomService {
         })
     }
 
-    /// Starts serving the app's requests.
+    /// Starts serving the app's requests. Opens the floor plan's sources
+    /// now, before the app runs: a room shows what the app was shown.
     pub fn serve(&mut self, ctx: RoomContext) {
+        let sources = ctx
+            .plan
+            .entries
+            .iter()
+            .map(|e| e.source().and_then(|p| open_path(p).ok()))
+            .collect();
+        self.run(Served {
+            ctx,
+            sources,
+            refuse_all: None,
+        });
+    }
+
+    /// Keeps the socket the app's sandbox shows, but refuses every request
+    /// (when no floor plan could be read this start).
+    pub fn serve_refusing(&mut self, ctx: RoomContext, why: String) {
+        self.run(Served {
+            ctx,
+            sources: Vec::new(),
+            refuse_all: Some(why),
+        });
+    }
+
+    fn run(&mut self, served: Served) {
         let Some(listener) = self.listener.take() else {
             return;
         };
         let state = self.state.clone();
-        let ctx = Arc::new(ctx);
-        self.accept = Some(std::thread::spawn(move || {
-            while !state.stop.load(Ordering::SeqCst) {
-                match listener.accept() {
-                    Ok((stream, _)) => {
-                        if state.connections.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
-                            state.connections.fetch_sub(1, Ordering::SeqCst);
-                            continue; // closed: too many at once
+        let served = Arc::new(served);
+        let spawned = std::thread::Builder::new()
+            .name("sam-rooms".into())
+            .spawn(move || {
+                while !state.stop.load(Ordering::SeqCst) {
+                    match listener.accept() {
+                        Ok((stream, _)) => {
+                            if state.connections.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+                                state.connections.fetch_sub(1, Ordering::SeqCst);
+                                continue; // closed: too many at once
+                            }
+                            let (st, sv) = (state.clone(), served.clone());
+                            let started = std::thread::Builder::new()
+                                .name("sam-room".into())
+                                .spawn(move || {
+                                    serve_one(stream, &st, &sv);
+                                    st.connections.fetch_sub(1, Ordering::SeqCst);
+                                });
+                            if started.is_err() {
+                                state.connections.fetch_sub(1, Ordering::SeqCst);
+                            }
                         }
-                        let (state, ctx) = (state.clone(), ctx.clone());
-                        std::thread::spawn(move || {
-                            serve_one(stream, &state, &ctx);
-                            state.connections.fetch_sub(1, Ordering::SeqCst);
-                        });
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(20));
+                        }
+                        Err(_) => std::thread::sleep(Duration::from_millis(20)),
                     }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(20));
-                    }
-                    Err(_) => std::thread::sleep(Duration::from_millis(20)),
                 }
-            }
-        }));
+            });
+        self.accept = spawned.ok();
     }
 
     /// Ends every room and the service; returns the start record's lines.
     pub fn stop(mut self) -> Vec<String> {
         self.halt();
-        let records = self
+        let mut records = self
             .state
             .records
             .lock()
             .map(|r| r.clone())
             .unwrap_or_default();
+        let dropped = self.state.dropped_records.load(Ordering::SeqCst);
+        if dropped > 0 {
+            records.push(format!("sam-room: {dropped} more not recorded"));
+        }
         records
     }
 
@@ -211,7 +317,12 @@ fn program_name(req_command: &[String]) -> String {
     sam_core::util::display_safe(&name, 60)
 }
 
-fn serve_one(mut stream: UnixStream, state: &State, ctx: &RoomContext) {
+fn serve_one(mut stream: UnixStream, state: &State, served: &Served) {
+    // Only the app's own processes (the same user) reach this socket.
+    // SAFETY: getuid has no arguments and cannot fail.
+    if peer_uid(&stream) != Some(unsafe { libc::getuid() }) {
+        return;
+    }
     let by = asked_by(&stream);
     let refuse = |stream: &mut UnixStream, program: &str, why: &str| {
         state.record(format!(
@@ -220,41 +331,21 @@ fn serve_one(mut stream: UnixStream, state: &State, ctx: &RoomContext) {
         ));
         answer(stream, &serde_json::json!({ "error": why }));
     };
-    // Only the app's own processes (the same user) reach this socket.
-    // SAFETY: getuid has no arguments and cannot fail.
-    if peer_uid(&stream) != Some(unsafe { libc::getuid() }) {
-        return;
-    }
     let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(READ_LIMIT));
-    let (body, fds) = match read_message(&stream) {
+    let mut held = Held::new(&state.held);
+    let (body, fds) = match read_message(&stream, &mut held) {
         Ok(m) => m,
         Err(why) => return refuse(&mut stream, "?", &why),
     };
-    // The connections count against the service's budget until the room
-    // has started (or the request is refused).
-    let passed = fds.len();
-    if state.held.fetch_add(passed, Ordering::SeqCst) + passed > MAX_HELD {
-        state.held.fetch_sub(passed, Ordering::SeqCst);
-        drop(fds);
-        return refuse(
-            &mut stream,
-            "?",
-            "too many connections held for rooms at once",
-        );
-    }
-    struct Held<'a>(&'a AtomicUsize, usize);
-    impl Drop for Held<'_> {
-        fn drop(&mut self) {
-            self.0.fetch_sub(self.1, Ordering::SeqCst);
-        }
-    }
-    let _held = Held(&state.held, passed);
     let req = match room_rules::read_request(&body) {
         Ok(r) => r,
         Err(why) => return refuse(&mut stream, "?", &why),
     };
     let program = program_name(&req.command);
+    if let Some(why) = &served.refuse_all {
+        return refuse(&mut stream, &program, why);
+    }
     if fds.len() != req.fds.len() {
         return refuse(
             &mut stream,
@@ -262,7 +353,7 @@ fn serve_one(mut stream: UnixStream, state: &State, ctx: &RoomContext) {
             "the passed connections do not match the request",
         );
     }
-    let room = match room_rules::plan_room(&ctx.plan, &req, ctx.facts) {
+    let room = match room_rules::plan_room(&served.ctx.plan, &req, served.ctx.facts) {
         Ok(r) => r,
         Err(why) => return refuse(&mut stream, &program, &why),
     };
@@ -282,7 +373,16 @@ fn serve_one(mut stream: UnixStream, state: &State, ctx: &RoomContext) {
         }
         *used += 1;
     }
-    let result = run_room(&mut stream, state, ctx, &req.fds, fds, room, &program);
+    let result = run_room(
+        &mut stream,
+        state,
+        served,
+        &req.fds,
+        fds,
+        held,
+        room,
+        &program,
+    );
     if let Ok(mut used) = state.slots.lock() {
         *used -= 1;
     }
@@ -291,17 +391,22 @@ fn serve_one(mut stream: UnixStream, state: &State, ctx: &RoomContext) {
         Ok(code) => answer(&mut stream, &serde_json::json!({ "exit": code })),
         Err(why) => refuse(&mut stream, &program, &format!("{why:#}")),
     }
+    // The room's watcher (waiting on this connection) ends now too.
+    let _ = stream.shutdown(std::net::Shutdown::Both);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_room(
     stream: &mut UnixStream,
     state: &State,
-    ctx: &RoomContext,
+    served: &Served,
     req_fds: &[i32],
     passed: Vec<OwnedFd>,
+    mut held: Held<'_>,
     room: RoomPlan,
     program: &str,
 ) -> Result<i32> {
+    let ctx = &served.ctx;
     let mut handles: Vec<OwnedFd> = Vec::new();
     let mut numbers: Vec<i32> = Vec::new();
     let mut next = 3;
@@ -329,6 +434,32 @@ fn run_room(
     if room.share_net {
         args.push("--share-net".into());
     }
+    // SAM's own things first, at the place no request may name: its room
+    // helper and the room's rules, both as data in the room's own fresh
+    // file system (nothing of the computer is shown for them).
+    let helper = memfd_with(ROOM_HELPER)?;
+    let n = number(&mut numbers);
+    args.extend([
+        "--perms".into(),
+        "0555".into(),
+        "--ro-bind-data".into(),
+        n.to_string(),
+        HELPER_INSIDE.into(),
+    ]);
+    handles.push(helper);
+    let (status_read, status_write) = pipe()?;
+    let status_n = number(&mut numbers);
+    handles.push(status_write);
+    // SAM's syscall filter, compiled here, applied by the helper.
+    let filter = memfd_with(&crate::kernel::filter_bytes(&ctx.seccomp)?)?;
+    let filter_n = number(&mut numbers);
+    handles.push(filter);
+    let spec = room_spec(ctx, &room, status_n, filter_n)?;
+    let data = memfd_with(&spec)?;
+    let n = number(&mut numbers);
+    args.extend(["--ro-bind-data".into(), n.to_string(), SPEC_INSIDE.into()]);
+    handles.push(data);
+    // The request's places and the room's own things, in order.
     for step in &room.steps {
         match step {
             Step::Show {
@@ -337,9 +468,13 @@ fn run_room(
                 writable,
                 optional,
             } => {
-                let fd = match open_source(source) {
+                let fd = match open_source(source, &served.sources) {
                     Ok(fd) => fd,
                     Err(_) if *optional => continue,
+                    Err(e) if e.raw_os_error() == Some(libc::ELOOP) => bail!(
+                        "{} leads through a link: a room never follows one",
+                        dst.display()
+                    ),
                     Err(e) => bail!("{} cannot be shown: {e}", dst.display()),
                 };
                 let writable = *writable && !read_only_filesystem(&fd);
@@ -356,43 +491,33 @@ fn run_room(
                 args.push(dst.to_string_lossy().into_owned());
                 handles.push(fd);
             }
-            Step::Device { src, dst } => {
-                args.push("--dev-bind-try".into());
+            Step::Device { src, dst, access } => {
+                args.push(
+                    match access {
+                        DeviceAccess::Devices => "--dev-bind-try",
+                        DeviceAccess::NoDevices => "--bind-try",
+                        DeviceAccess::ReadOnly => "--ro-bind-try",
+                    }
+                    .into(),
+                );
                 args.push(src.to_string_lossy().into_owned());
                 args.push(dst.to_string_lossy().into_owned());
+            }
+            Step::Mask(at) => {
+                args.push("--tmpfs".into());
+                args.push(at.to_string_lossy().into_owned());
             }
             Step::Args(a) => args.extend(a.iter().cloned()),
         }
     }
-    // SAM's helper and the room's rules (as data).
-    let mut landlock = ctx.landlock.clone();
-    landlock.write.extend(room.own.iter().cloned());
-    let spec = RoomSpec {
-        landlock,
-        seccomp: ctx.seccomp.clone(),
-        filters: room.filters.clone(),
-        env: room.env.clone(),
-    };
-    let data = memfd_with(&serde_json::to_vec(&spec)?)?;
-    let n = number(&mut numbers);
     args.extend([
-        "--ro-bind-data".into(),
-        n.to_string(),
-        "/run/sam/room.json".into(),
-    ]);
-    handles.push(data);
-    args.extend([
-        "--ro-bind".into(),
-        ctx.helper.to_string_lossy().into_owned(),
-        "/run/sam/sam-jail-run".into(),
         "--chdir".into(),
         room.chdir.to_string_lossy().into_owned(),
         "--remount-ro".into(),
         "/".into(),
         "--".into(),
-        "/run/sam/sam-jail-run".into(),
-        "--room-exec".into(),
-        "/run/sam/room.json".into(),
+        HELPER_INSIDE.into(),
+        SPEC_INSIDE.into(),
         "--".into(),
     ]);
     args.extend(room.command.iter().cloned());
@@ -425,11 +550,22 @@ fn run_room(
     let mut targets: Vec<RawFd> = map.iter().map(|(_, n)| *n).collect();
     targets.sort_unstable();
     let mut temps: Vec<RawFd> = vec![0; map.len()];
-    // SAFETY: only async-signal-safe calls (prctl, fcntl, dup2, close_range)
-    // on buffers made before the fork.
+    // SAFETY: only async-signal-safe calls (prctl, getrlimit, setrlimit,
+    // fcntl, dup2, close_range) on buffers made before the fork.
     unsafe {
         cmd.pre_exec(move || {
             libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong);
+            // Room for the moves above every target, for these few calls
+            // only; the room keeps the launcher's own limit.
+            let mut lim: libc::rlimit = std::mem::zeroed();
+            let have = libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0;
+            if have {
+                let raised = libc::rlimit {
+                    rlim_cur: lim.rlim_max,
+                    rlim_max: lim.rlim_max,
+                };
+                libc::setrlimit(libc::RLIMIT_NOFILE, &raised);
+            }
             // First above every target, then to the target: no connection
             // overwrites another on the way.
             for (i, (src, _)) in map.iter().enumerate() {
@@ -443,6 +579,9 @@ fn run_room(
                 if libc::dup2(temps[i], *dst) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
+            }
+            if have {
+                libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
             }
             // Everything else from 3 on closes when Bubblewrap starts
             // (marked, not closed: Rust reports a failed start through one).
@@ -468,16 +607,38 @@ fn run_room(
         });
     }
     let child = cmd.spawn().context("starting Bubblewrap for the room")?;
+    // The room has its copies: the app's connections leave the budget.
     drop(passed);
     drop(handles);
+    held.release();
     let child = Arc::new(Mutex::new(child));
     if let Ok(mut rooms) = state.rooms.lock() {
         rooms.push(child.clone());
     }
-    let mut layers = vec!["landlock", "seccomp"];
-    if !room.filters.is_empty() {
-        layers.push("the program's own filter");
-    }
+    // The stand-in gone (its program ended or was killed): the room ends.
+    let watcher = {
+        let child = child.clone();
+        let mut peer = stream.try_clone()?;
+        let _ = peer.set_read_timeout(None);
+        std::thread::Builder::new()
+            .name("sam-room-watch".into())
+            .spawn(move || {
+                let mut b = [0u8; 1];
+                let _ = peer.read(&mut b);
+                if let Ok(mut c) = child.lock() {
+                    let _ = c.kill();
+                }
+            })
+            .ok()
+    };
+    // What SAM's helper applied, in its own words (it closes the
+    // connection before the program starts, or the room ends first).
+    let mut status = String::new();
+    let _ = std::io::BufRead::read_line(
+        &mut std::io::BufReader::new(std::fs::File::from(status_read).take(512)),
+        &mut status,
+    );
+    let status = sam_core::util::display_safe(status.trim(), 200);
     let capped = if room.capped.is_empty() {
         String::new()
     } else {
@@ -486,23 +647,15 @@ fn run_room(
             sam_core::util::display_safe(&room.capped.join(", "), 300)
         )
     };
-    state.record(format!(
-        "sam-room: built {program} (layers: {}{capped})",
-        layers.join(", ")
-    ));
-    // The stand-in gone (its program ended or was killed): the room ends.
-    let watcher = {
-        let child = child.clone();
-        let mut peer = stream.try_clone()?;
-        let _ = peer.set_read_timeout(None);
-        std::thread::spawn(move || {
-            let mut b = [0u8; 1];
-            let _ = peer.read(&mut b);
-            if let Ok(mut c) = child.lock() {
-                let _ = c.kill();
-            }
-        })
-    };
+    if status.is_empty() {
+        state.record(format!(
+            "sam-room: failed {program}: SAM's layers were not confirmed{capped}"
+        ));
+    } else {
+        state.record(format!(
+            "sam-room: built {program} (layers: {status}{capped})"
+        ));
+    }
     let status = loop {
         if let Ok(mut c) = child.lock() {
             if let Some(st) = c.try_wait()? {
@@ -514,7 +667,7 @@ fn run_room(
     if let Ok(mut rooms) = state.rooms.lock() {
         rooms.retain(|r| !Arc::ptr_eq(r, &child));
     }
-    drop(watcher); // ends when the stand-in closes its end
+    drop(watcher); // ends when the connection closes
     use std::os::unix::process::ExitStatusExt;
     Ok(status
         .code()
@@ -523,16 +676,54 @@ fn run_room(
 
 const CLOSE_RANGE_CLOEXEC: u32 = 4;
 
-/// The opened folder or file a room shows: `top` (a floor-plan folder SAM
-/// chose), and `rel` strictly beneath it, through no link leading out and
-/// no magic link of /proc.
-fn open_source(source: &Source) -> std::io::Result<OwnedFd> {
-    let Source::Beneath { top, rel } = source;
-    let top_fd = open_path(top)?;
-    if rel.as_os_str().is_empty() {
-        return Ok(top_fd);
+/// The room's rules for SAM's room helper: `key=value` entries separated by
+/// NUL bytes (see room-exec/main.rs). Landlock: the app's rules plus the
+/// room's own new places.
+fn room_spec(ctx: &RoomContext, room: &RoomPlan, status: i32, filter: i32) -> Result<Vec<u8>> {
+    use std::os::unix::ffi::OsStrExt;
+    let mut out: Vec<u8> = Vec::new();
+    let mut put = |key: &str, value: &[u8]| -> Result<()> {
+        if value.contains(&0) {
+            bail!("a value of the room holds a NUL byte");
+        }
+        out.extend_from_slice(key.as_bytes());
+        out.push(b'=');
+        out.extend_from_slice(value);
+        out.push(0);
+        Ok(())
+    };
+    put("status", status.to_string().as_bytes())?;
+    put("seccomp", filter.to_string().as_bytes())?;
+    for fd in &room.filters {
+        put("filter", fd.to_string().as_bytes())?;
     }
-    openat2_beneath(&top_fd, rel)
+    for p in &ctx.landlock.read {
+        put("read", p.as_os_str().as_bytes())?;
+    }
+    for p in ctx.landlock.write.iter().chain(&room.own) {
+        put("write", p.as_os_str().as_bytes())?;
+    }
+    for (k, v) in &room.env {
+        if k.is_empty() || k.contains('=') {
+            bail!("an environment variable of the room has no valid name");
+        }
+        put("env", format!("{k}={v}").as_bytes())?;
+    }
+    Ok(out)
+}
+
+/// A room's place: the floor-plan source SAM opened when the app started,
+/// and `rel` strictly beneath it, through no link at all (a link the app
+/// made could lead to a place the app sees protected or hidden).
+fn open_source(source: &Source, sources: &[Option<OwnedFd>]) -> std::io::Result<OwnedFd> {
+    let top = sources
+        .get(source.entry)
+        .and_then(Option::as_ref)
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
+    if source.rel.as_os_str().is_empty() {
+        return top.try_clone();
+    }
+    openat2_beneath(top, &source.rel)
 }
 
 fn open_path(p: &Path) -> std::io::Result<OwnedFd> {
@@ -549,6 +740,7 @@ fn open_path(p: &Path) -> std::io::Result<OwnedFd> {
 }
 
 const RESOLVE_NO_MAGICLINKS: u64 = 0x02;
+const RESOLVE_NO_SYMLINKS: u64 = 0x04;
 const RESOLVE_BENEATH: u64 = 0x08;
 
 #[repr(C)]
@@ -565,7 +757,7 @@ fn openat2_beneath(dir: &OwnedFd, rel: &Path) -> std::io::Result<OwnedFd> {
     let how = OpenHow {
         flags: (libc::O_PATH | libc::O_CLOEXEC) as u64,
         mode: 0,
-        resolve: RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS,
+        resolve: RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS,
     };
     // SAFETY: openat2 with a valid descriptor, C string and struct size.
     let fd = unsafe {
@@ -604,6 +796,18 @@ fn memfd_with(data: &[u8]) -> Result<OwnedFd> {
     use std::io::Seek;
     f.seek(std::io::SeekFrom::Start(0))?;
     Ok(OwnedFd::from(f))
+}
+
+/// A pipe, both ends close-on-exec (the room gets the write end at its own
+/// number, which the remapping leaves open).
+fn pipe() -> Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0 as RawFd; 2];
+    // SAFETY: pipe2 into a two-element array; the result is checked.
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        bail!("{}", std::io::Error::last_os_error());
+    }
+    // SAFETY: two new descriptors of our own.
+    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
 }
 
 /// Who asked: the name of the program that started the stand-in (for the
@@ -696,17 +900,28 @@ fn recv_with_fds(
 }
 
 /// A whole message: 4 bytes length, then the request; the connections
-/// travel with the first bytes, so every read takes them.
-fn read_message(stream: &UnixStream) -> Result<(Vec<u8>, Vec<OwnedFd>), String> {
+/// travel with the first bytes, so every read takes them, and each counts
+/// against the service's budget as it arrives.
+fn read_message(
+    stream: &UnixStream,
+    held: &mut Held<'_>,
+) -> Result<(Vec<u8>, Vec<OwnedFd>), String> {
     let mut fds = Vec::new();
+    let mut take = |buf: &mut [u8], fds: &mut Vec<OwnedFd>| -> Result<usize, String> {
+        let before = fds.len();
+        let n = recv_with_fds(stream, buf, fds).map_err(|e| format!("reading the request: {e}"))?;
+        if !held.add(fds.len() - before) {
+            return Err("too many connections held for rooms at once".into());
+        }
+        if n == 0 {
+            return Err("the request ended early".into());
+        }
+        Ok(n)
+    };
     let mut head = [0u8; 4];
     let mut got = 0;
     while got < 4 {
-        match recv_with_fds(stream, &mut head[got..], &mut fds) {
-            Ok(0) => return Err("the request ended early".into()),
-            Ok(n) => got += n,
-            Err(e) => return Err(format!("reading the request: {e}")),
-        }
+        got += take(&mut head[got..], &mut fds)?;
     }
     let len = u32::from_be_bytes(head) as usize;
     if len > room_rules::MAX_MESSAGE {
@@ -715,11 +930,7 @@ fn read_message(stream: &UnixStream) -> Result<(Vec<u8>, Vec<OwnedFd>), String> 
     let mut body = vec![0u8; len];
     let mut got = 0;
     while got < len {
-        match recv_with_fds(stream, &mut body[got..], &mut fds) {
-            Ok(0) => return Err("the request ended early".into()),
-            Ok(n) => got += n,
-            Err(e) => return Err(format!("reading the request: {e}")),
-        }
+        got += take(&mut body[got..], &mut fds)?;
     }
     Ok((body, fds))
 }
@@ -782,7 +993,12 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
             return 0;
         }
         Ok(room_rules::Asked::Room { ops, command }) => (ops, command),
-        Err(e) => return fail(&e),
+        // An option no room gets: Room service refuses it too and notes it
+        // in the start record.
+        Err(e) => match room_rules::first_unusable_option(argv) {
+            Some(opt) => (vec![vec![opt]], vec!["?".to_string()]),
+            None => return fail(&e),
+        },
     };
     if ops.iter().any(|o| o[0] == "--die-with-parent") {
         // Asked for: the stand-in ends with the program that started it,
