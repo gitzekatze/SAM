@@ -261,7 +261,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-226 tests.
+227 tests.
 
 | Promise | Test |
 |---|---|
@@ -370,29 +370,30 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The graphics hint is only for a windowed app that has no graphics card yet and showed no sign of how it draws (mutation run of 2026-11-21: offering it to every windowed app went unnoticed). | [`the_graphics_hint_is_only_for_apps_without_it`](../crates/sam-runner/src/repair.rs#L1270) |
 | What SAM reads from the kernel's settings matches what this computer really allows: a program creating its own sandbox (a user namespace with a network namespace in it, as Chromium's sandbox does) works exactly where SAM says it is not blocked. | [`the_chromium_sandbox_check_matches_what_this_computer_allows`](../crates/sam-runner/src/repair.rs#L1304) |
 | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L1328) |
-| Bwrap args are read as bubblewrap reads them. | [`bwrap_args_are_read_as_bubblewrap_reads_them`](../crates/sam-runner/src/room_rules.rs#L954) |
-| Options a room never gets are refused by name. | [`options_a_room_never_gets_are_refused_by_name`](../crates/sam-runner/src/room_rules.rs#L983) |
-| Missing values and commands are refused. | [`missing_values_and_commands_are_refused`](../crates/sam-runner/src/room_rules.rs#L1004) |
-| A request message is read strictly. | [`a_request_message_is_read_strictly`](../crates/sam-runner/src/room_rules.rs#L1011) |
-| Paths must be plain and absolute. | [`paths_must_be_plain_and_absolute`](../crates/sam-runner/src/room_rules.rs#L1044) |
-| A place is shown only at the same place. | [`a_place_is_shown_only_at_the_same_place`](../crates/sam-runner/src/room_rules.rs#L1061) |
-| A place comes from its floor plan entry not a name. | [`a_place_comes_from_its_floor_plan_entry_not_a_name`](../crates/sam-runner/src/room_rules.rs#L1066) |
-| `/usr` is not one place of the app but several: the room gets each, and SAM's links, in the floor plan's order. | [`asking_for_a_parent_shows_the_apps_places_inside_it`](../crates/sam-runner/src/room_rules.rs#L1085) |
-| Writable only where the app writes. | [`writable_only_where_the_app_writes`](../crates/sam-runner/src/room_rules.rs#L1114) |
-| The home shown writable keeps its protected place read-only and its hidden ~/.ssh hidden, mounted after it, in the app's order. | [`protected_and_hidden_places_inside_a_shown_folder_stay_so`](../crates/sam-runner/src/room_rules.rs#L1131) |
-| A grant inside SAM's folder that a later tmpfs hides in the app (audit S-F13) stays hidden: the last mount over a place counts, not the deepest. | [`a_place_the_app_has_hidden_by_a_later_mount_stays_hidden`](../crates/sam-runner/src/room_rules.rs#L1156) |
-| Everything asked is the apps view without its private places. | [`everything_asked_is_the_apps_view_without_its_private_places`](../crates/sam-runner/src/room_rules.rs#L1179) |
-| What the app cannot see is refused or skipped. | [`what_the_app_cannot_see_is_refused_or_skipped`](../crates/sam-runner/src/room_rules.rs#L1205) |
-| Devices only the app's, and only working where the request asked for working devices. | [`devices_only_the_apps_and_only_as_asked`](../crates/sam-runner/src/room_rules.rs#L1217) |
-| The network only with the apps full network and never when given up. | [`the_network_only_with_the_apps_full_network_and_never_when_given_up`](../crates/sam-runner/src/room_rules.rs#L1259) |
-| The apps own restrictions in its arguments count. | [`the_apps_own_restrictions_in_its_arguments_count`](../crates/sam-runner/src/room_rules.rs#L1281) |
-| The environment is kept in order for the program. | [`the_environment_is_kept_in_order_for_the_program`](../crates/sam-runner/src/room_rules.rs#L1319) |
-| The programs own filter must be a passed connection. | [`the_programs_own_filter_must_be_a_passed_connection`](../crates/sam-runner/src/room_rules.rs#L1339) |
-| Permissions only on the rooms own new places. | [`permissions_only_on_the_rooms_own_new_places`](../crates/sam-runner/src/room_rules.rs#L1350) |
-| Bubblewrap makes folders and links on the computer when it is told to make them inside a shown folder, following any link the app left there: the room's own new things only in its own space. | [`new_things_never_inside_a_place_shown_from_the_app`](../crates/sam-runner/src/room_rules.rs#L1376) |
-| SAM's own place in a room (its helper and the room's rules): no request may name it, cover it with a link, or make things in it. | [`sams_own_place_in_a_room_is_out_of_reach`](../crates/sam-runner/src/room_rules.rs#L1410) |
-| The rooms folder is asked or safe. | [`the_rooms_folder_is_asked_or_safe`](../crates/sam-runner/src/room_rules.rs#L1423) |
-| A floor plan with an unknown option gives no rooms. | [`a_floor_plan_with_an_unknown_option_gives_no_rooms`](../crates/sam-runner/src/room_rules.rs#L1438) |
+| Bwrap args are read as bubblewrap reads them. | [`bwrap_args_are_read_as_bubblewrap_reads_them`](../crates/sam-runner/src/room_rules.rs#L987) |
+| Options a room never gets are refused by name. | [`options_a_room_never_gets_are_refused_by_name`](../crates/sam-runner/src/room_rules.rs#L1016) |
+| Missing values and commands are refused. | [`missing_values_and_commands_are_refused`](../crates/sam-runner/src/room_rules.rs#L1037) |
+| A request message is read strictly. | [`a_request_message_is_read_strictly`](../crates/sam-runner/src/room_rules.rs#L1044) |
+| Paths must be plain and absolute. | [`paths_must_be_plain_and_absolute`](../crates/sam-runner/src/room_rules.rs#L1077) |
+| A place is shown only at the same place. | [`a_place_is_shown_only_at_the_same_place`](../crates/sam-runner/src/room_rules.rs#L1094) |
+| A place comes from its floor plan entry not a name. | [`a_place_comes_from_its_floor_plan_entry_not_a_name`](../crates/sam-runner/src/room_rules.rs#L1099) |
+| `/usr` is not one place of the app but several: the room gets each, and SAM's links, in the floor plan's order. | [`asking_for_a_parent_shows_the_apps_places_inside_it`](../crates/sam-runner/src/room_rules.rs#L1118) |
+| Writable only where the app writes. | [`writable_only_where_the_app_writes`](../crates/sam-runner/src/room_rules.rs#L1147) |
+| The home shown writable keeps its protected place read-only and its hidden ~/.ssh hidden, mounted after it, in the app's order. | [`protected_and_hidden_places_inside_a_shown_folder_stay_so`](../crates/sam-runner/src/room_rules.rs#L1164) |
+| A grant inside SAM's folder that a later tmpfs hides in the app (audit S-F13) stays hidden: the last mount over a place counts, not the deepest. | [`a_place_the_app_has_hidden_by_a_later_mount_stays_hidden`](../crates/sam-runner/src/room_rules.rs#L1189) |
+| Everything asked is the apps view without its private places. | [`everything_asked_is_the_apps_view_without_its_private_places`](../crates/sam-runner/src/room_rules.rs#L1212) |
+| What the app cannot see is refused or skipped. | [`what_the_app_cannot_see_is_refused_or_skipped`](../crates/sam-runner/src/room_rules.rs#L1238) |
+| Devices only the app's, and only working where the request asked for working devices. | [`devices_only_the_apps_and_only_as_asked`](../crates/sam-runner/src/room_rules.rs#L1250) |
+| The network only with the apps full network and never when given up. | [`the_network_only_with_the_apps_full_network_and_never_when_given_up`](../crates/sam-runner/src/room_rules.rs#L1292) |
+| The apps own restrictions in its arguments count. | [`the_apps_own_restrictions_in_its_arguments_count`](../crates/sam-runner/src/room_rules.rs#L1314) |
+| The environment is kept in order for the program. | [`the_environment_is_kept_in_order_for_the_program`](../crates/sam-runner/src/room_rules.rs#L1352) |
+| The programs own filter must be a passed connection. | [`the_programs_own_filter_must_be_a_passed_connection`](../crates/sam-runner/src/room_rules.rs#L1372) |
+| Permissions only on the rooms own new places. | [`permissions_only_on_the_rooms_own_new_places`](../crates/sam-runner/src/room_rules.rs#L1383) |
+| Bubblewrap makes folders and links on the computer when it is told to make them inside a shown folder, following any link the app left there: the room's own new things only in its own space. | [`new_things_never_inside_a_place_shown_from_the_app`](../crates/sam-runner/src/room_rules.rs#L1409) |
+| An own place gives no Landlock write right over places of the app below it. | [`an_own_place_above_the_apps_places_gives_no_write_right`](../crates/sam-runner/src/room_rules.rs#L1469) |
+| SAM's own place in a room (its helper and the room's rules): no request may name it, cover it with a link, or make things in it. | [`sams_own_place_in_a_room_is_out_of_reach`](../crates/sam-runner/src/room_rules.rs#L1483) |
+| The rooms folder is asked or safe. | [`the_rooms_folder_is_asked_or_safe`](../crates/sam-runner/src/room_rules.rs#L1496) |
+| A floor plan with an unknown option gives no rooms. | [`a_floor_plan_with_an_unknown_option_gives_no_rooms`](../crates/sam-runner/src/room_rules.rs#L1511) |
 | The relay's settings switch module loading off, listen only on SAM's socket, take no D-Bus name and load no modules at start; a path cannot break out of its quotes. | [`the_relay_cannot_load_modules_and_listens_only_on_its_socket`](../crates/sam-runner/src/sound_relay.rs#L235) |
 | The lock check fails a relay that runs outside a sandbox: it sees the person's folder (mutation run P14: an answer of always "held" went unnoticed, so `sam-jail doctor` would not see such a relay). | [`a_relay_outside_a_sandbox_is_not_held`](../crates/sam-runner/src/sound_relay.rs#L250) |
 | A socket path too long for Linux is refused with a clear reason before PipeWire starts (it ended with an unclear crash: the 240-app run of 2026-11-20). | [`a_too_long_socket_path_is_named_before_the_relay_starts`](../crates/sam-runner/src/sound_relay.rs#L292) |
@@ -448,7 +449,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | AppImages are listed before they have a sandbox; only creating the sandbox adds SAM's menu entry and hides unsandboxed ones, and removing it puts them back. | [`found_appimages_get_a_menu_entry_only_with_a_sandbox`](../crates/sam-runner/tests/overview.rs#L13) |
 | An app gets the name it asks for only when nobody uses it. | [`an_app_gets_the_name_it_asks_for_only_when_nobody_uses_it`](../crates/sam-runner/tests/own_names.rs#L46) |
 | A repair step is kept when it helps and undone when it does not. | [`a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not`](../crates/sam-runner/tests/repair_trial.rs#L30) |
-| Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L639) |
+| Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L718) |
 | Every room is within its app, for generated requests under no network, the full network, and in an app with Landlock and its syscall filter off: no room reads, writes or reaches anything its app cannot, and no room shows a folder of the computer its app is not shown. | [`every_room_is_a_subset_of_its_app`](../crates/sam-runner/tests/room_service_compare.rs#L163) |
 | An image loaded through GTK's real image loader inside a SAM sandbox is decoded in a room of its own, never without a sandbox. | [`glycin_loads_images_in_a_room_never_without_a_sandbox`](../crates/sam-runner/tests/room_service_glycin.rs#L81) |
 | Under "This computer only", a room that asks for the network gets an empty network of its own: it reaches no port of the computer (not even one listed for its app) and no socket outside the sandbox. | [`under_this_computer_only_a_room_reaches_no_more_than_its_app`](../crates/sam-runner/tests/room_service_local.rs#L27) |
@@ -606,4 +607,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 520 automated Rust tests plus 7 scripted checks.
+Total: 521 automated Rust tests plus 7 scripted checks.

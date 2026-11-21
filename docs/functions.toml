@@ -234,6 +234,7 @@ tests = [
   "the_apps_own_restrictions_in_its_arguments_count",
   "new_things_never_inside_a_place_shown_from_the_app",
   "sams_own_place_in_a_room_is_out_of_reach",
+  "an_own_place_above_the_apps_places_gives_no_write_right",
   "bwrap_args_are_read_as_bubblewrap_reads_them",
   "options_a_room_never_gets_are_refused_by_name",
   "missing_values_and_commands_are_refused",

@@ -5978,12 +5978,12 @@ msgstr ""
 msgid "For apps that save next to themselves."
 msgstr ""
 
-#: crates/sam-runner/src/room_service.rs:177
+#: crates/sam-runner/src/room_service.rs:179
 #. Keep the {placeholders}; their order may change.
 msgid "Room service cannot run: the path for its socket is too long ({path})"
 msgstr ""
 
-#: crates/sam-runner/src/room_service.rs:186
+#: crates/sam-runner/src/room_service.rs:188
 msgid "this SAM was built without its static room helper, so Room service is off"
 msgstr ""
 
