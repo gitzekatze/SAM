@@ -5,7 +5,7 @@
 > the version reports changed over time, and the latest commits. For people
 > who use SAM, the front page is [README.md](README.md).
 >
-> Generated on 2026-11-21 at 05:16 by `scripts/dashboard.py`. The website
+> Generated on 2026-11-21 at 05:19 by `scripts/dashboard.py`. The website
 > builds this page again with every change to SAM; this file in the repository
 > is renewed with every version report (`make report`).
 
@@ -21,7 +21,7 @@
 | **Real AppImages** | 229 of 240 start in their sandbox (2026-11-20) |
 | **Mutation testing** | 86.6 % of 1,364 deliberate mistakes caught (of those that could be built) |
 | **Version** | 0.1.0 (the number changes only when a version is published) |
-| **Latest commit** | `9cba46b` WIP reports |
+| **Latest commit** | `0843e2e` Reports: two runs of 240 real AppImages, the release mutation and fuzz runs, version report for 0fe5e52 |
 | **Commits so far** | 490 |
 | **Version reports** | 10; the newest is [0.1.0-0fe5e52](docs/reports/0.1.0-0fe5e52.md) |
 
@@ -549,7 +549,7 @@
 | integration | An app gets the name it asks for only when nobody uses it. | [`an_app_gets_the_name_it_asks_for_only_when_nobody_uses_it`](crates/sam-runner/tests/own_names.rs#L46) |
 | integration | A repair step is kept when it helps and undone when it does not. | [`a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not`](crates/sam-runner/tests/repair_trial.rs#L30) |
 | integration | Inside a real sandbox, each profile shows exactly the files and services it allows. | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](crates/sam-runner/tests/sandbox.rs#L64) |
-| integration | SAM installs an update of itself only when it was really signed with its release key. | [`sam_refuses_a_forged_update_that_carries_its_release_key`](crates/sam-runner/tests/self_update_signature.rs#L78) |
+| integration | SAM installs an update of itself only when it was really signed with its release key. | [`sam_refuses_a_forged_update_that_carries_its_release_key`](crates/sam-runner/tests/self_update_signature.rs#L81) |
 | integration | Turning compatibility mode off restores exactly the settings the user had before. | [`turning_compatibility_mode_off_restores_exactly_the_settings_from_before`](crates/sam-runner/tests/settings.rs#L42) |
 | integration | Undoing repair steps restores the settings from before the first step. | [`undoing_repair_steps_restores_the_settings_from_before_the_first_step`](crates/sam-runner/tests/settings.rs#L59) |
 | integration | Undoing repair steps takes back only what the steps changed: a setting the person changed afterwards stays as they set it, also the one a step had changed (audit G-F4: the whole profile from before the first step came back). | [`undoing_repair_steps_keeps_what_the_person_changed_since`](crates/sam-runner/tests/settings.rs#L86) |
@@ -717,7 +717,7 @@
 
 | Commit | Date | Change |
 |---|---|---|
-| [`9cba46b`](https://github.com/gitzekatze/SAM/commit/9cba46b) | 2026-11-21 | WIP reports |
+| [`0843e2e`](https://github.com/gitzekatze/SAM/commit/0843e2e) | 2026-11-21 | Reports: two runs of 240 real AppImages, the release mutation and fuzz runs, version report for 0fe5e52 |
 | [`0fe5e52`](https://github.com/gitzekatze/SAM/commit/0fe5e52) | 2026-11-21 | Merge pull request #87 from gitzekatze/mutation-gaps |
 | [`24b4709`](https://github.com/gitzekatze/SAM/commit/24b4709) | 2026-11-21 | Apps with long names keep their sound; tests notice what mutation testing found unchecked |
 | [`707cdd3`](https://github.com/gitzekatze/SAM/commit/707cdd3) | 2026-11-20 | Merge pull request #85 from gitzekatze/proofs-end-to-end |
