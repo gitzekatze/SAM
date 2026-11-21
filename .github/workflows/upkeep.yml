@@ -46,11 +46,9 @@ jobs:
         timeout-minutes: 20
         run: |
           # Mirror choice and time limits: see the script.
-          scripts/ci-packages.sh \
-            libgtk-4-dev libadwaita-1-dev pkg-config \
-            bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3 \
-            desktop-file-utils appstream gettext libgtk-4-bin dbus \
-            python3-gi libglib2.0-bin gnupg binutils
+          # The whole suite's packages, the same list as CI's test job:
+          # each run here runs the whole suite and may not skip a test.
+          scripts/ci-packages.sh --suite
       - &userns
         name: Allow user namespaces for Bubblewrap
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
