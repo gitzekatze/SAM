@@ -126,6 +126,67 @@ User namespaces inside the sandbox add kernel attack surface. Only apps whose
 engine builds its own sandbox get them: Electron, CEF, Qt WebEngine and
 WebKitGTK, as found by the dependency analysis.
 
+### Room service: sandboxes that programs ask for
+
+Some programs protect themselves by starting risky parts in a sandbox of
+their own. The common case is GTK's image loader *glycin*: it decodes every
+picture in a separate program locked in with Bubblewrap. Inside SAM's
+sandbox that cannot work (Landlock forbids building sandboxes there), so
+without help glycin would decode pictures with no sandbox at all, or the
+app would crash.
+
+**Room service** builds such a sandbox (a *room*) from outside, under one
+rule: **no more than the app, no less than asked.**
+
+- **The stand-in.** `bwrap` on the app's `PATH` is SAM's helper in a
+  stand-in mode (`/run/sam/bin/bwrap`). It reads Bubblewrap's arguments
+  inside the app's sandbox and sends a small fixed form, with the program's
+  open connections, to SAM's launcher. Programs need no change.
+- **The service** runs in SAM's launcher, which stays for the whole start.
+  It trusts nothing the stand-in checked: every rule is enforced there.
+  - A room shows only places of the app's own view (SAM's *floor plan* of
+    the app), each at the same place as in the app and from the same source
+    on the computer. Every folder is opened beneath the floor-plan folder
+    that holds it, with no link leading out, and shown by that opened
+    handle, so a folder swapped on the way changes nothing.
+  - Writable only where the app's place is writable; devices only the
+    app's; the network only when the app has the full network and the
+    program does not give it up.
+  - Every restriction the program asks for is kept. Options that could give
+    a room more than its app are refused by name (joining other namespaces,
+    other users, extra powers, places or files from connections, options
+    from a connection); an unknown option is refused too, never guessed.
+- **SAM's layers in every room.** SAM's helper starts first inside the
+  room: Landlock (the app's write rules, plus the room's own new folders),
+  then SAM's syscall filter (never allowing nested sandboxes), then the
+  program's own filter, then the program with exactly the environment it
+  asked for. Nothing the program chose runs before SAM's layers are in
+  place. A layer that does not load means no room.
+- **Exceptions are for the app, not its helpers.** If Landlock or the
+  filter is off for an app, or nested sandboxes are allowed, its rooms still
+  get SAM's default layers.
+- **Lifetime and limits.** A room ends when its stand-in goes, and every
+  room ends with the app's start. At most 16 rooms of one app run at once;
+  more requests wait.
+- **Records.** The start record names each room's program, its layers and
+  what was capped or refused, never the room's environment.
+- **Turning it off.** `advanced.room_service` (on by default) turns Room
+  service off for one app. Then programs that build a sandbox of their own
+  fail inside SAM, or run without it.
+
+Not covered: programs that call `/usr/bin/bwrap` by its full path, and
+other sandbox tools (Firejail, `flatpak-spawn --sandbox`). Chromium's own
+sandbox is not Bubblewrap and has its own setting (*Nested sandboxes*).
+
+The tests attack every rule from a real sandbox, under every network
+setting and in an app with its exceptions on, including hand-written
+messages past the stand-in and a folder exchanged for a link while rooms
+are built (`room_service_builds_working_rooms_that_never_get_more_than_their_app`).
+A second test generates many requests and compares each room with its app:
+abilities, writes on the computer, and every mount, so it checks the
+service itself, not only Landlock behind it
+(`every_room_is_a_subset_of_its_app`).
+
 ### Systems that switch user namespaces off
 
 Some systems switch unprivileged user namespaces off on purpose (Debian's

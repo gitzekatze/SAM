@@ -843,6 +843,7 @@ impl Editor {
         self.switch(&g, "advanced.writable_appdir", Always);
         self.switch(&g, "advanced.host_themes", Always);
         self.switch(&g, "advanced.allow_userns", Always);
+        self.switch(&g, "advanced.room_service", Always);
         self.list(
             &g,
             "advanced.extra_bwrap_args",

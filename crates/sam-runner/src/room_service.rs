@@ -215,6 +215,7 @@ fn serve_one(mut stream: UnixStream, state: &State, ctx: &RoomContext) {
         answer(stream, &serde_json::json!({ "error": why }));
     };
     // Only the app's own processes (the same user) reach this socket.
+    // SAFETY: getuid has no arguments and cannot fail.
     if peer_uid(&stream) != Some(unsafe { libc::getuid() }) {
         return;
     }
@@ -581,6 +582,7 @@ fn memfd_with(data: &[u8]) -> Result<OwnedFd> {
 }
 
 fn peer_uid(stream: &UnixStream) -> Option<u32> {
+    // SAFETY: ucred is plain integers; all zeros is a valid value.
     let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
     // SAFETY: getsockopt into a struct of the right size.
@@ -603,6 +605,7 @@ fn recv_with_fds(
     buf: &mut [u8],
     fds: &mut Vec<OwnedFd>,
 ) -> std::io::Result<usize> {
+    // SAFETY: CMSG_SPACE only computes a size.
     let space = unsafe { libc::CMSG_SPACE(((room_rules::MAX_FDS + 1) * 4) as u32) } as usize;
     let mut control = vec![0u8; space];
     let mut iov = libc::iovec {
@@ -615,6 +618,7 @@ fn recv_with_fds(
     msg.msg_iovlen = 1;
     msg.msg_control = control.as_mut_ptr() as *mut libc::c_void;
     msg.msg_controllen = space as _;
+    // SAFETY: msg points at the live buffers above, of the sizes given.
     let n = unsafe { libc::recvmsg(stream.as_raw_fd(), &mut msg, libc::MSG_CMSG_CLOEXEC) };
     if n < 0 {
         return Err(std::io::Error::last_os_error());
@@ -669,6 +673,7 @@ fn read_message(stream: &UnixStream) -> Result<(Vec<u8>, Vec<OwnedFd>), String> 
 }
 
 fn send_with_fds(stream: &UnixStream, data: &[u8], fds: &[RawFd]) -> std::io::Result<()> {
+    // SAFETY: CMSG_SPACE only computes a size.
     let space = unsafe { libc::CMSG_SPACE(std::mem::size_of_val(fds) as u32) } as usize;
     let mut control = vec![0u8; space.max(1)];
     let mut iov = libc::iovec {
@@ -682,6 +687,8 @@ fn send_with_fds(stream: &UnixStream, data: &[u8], fds: &[RawFd]) -> std::io::Re
     if !fds.is_empty() {
         msg.msg_control = control.as_mut_ptr() as *mut libc::c_void;
         msg.msg_controllen = space as _;
+        // SAFETY: the control buffer has room for one header with every
+        // connection number (CMSG_SPACE above).
         unsafe {
             let c = libc::CMSG_FIRSTHDR(&msg);
             (*c).cmsg_level = libc::SOL_SOCKET;
@@ -694,6 +701,7 @@ fn send_with_fds(stream: &UnixStream, data: &[u8], fds: &[RawFd]) -> std::io::Re
             );
         }
     }
+    // SAFETY: msg points at the live buffers above, of the sizes given.
     let n = unsafe { libc::sendmsg(stream.as_raw_fd(), &msg, libc::MSG_NOSIGNAL) };
     if n < 0 {
         return Err(std::io::Error::last_os_error());
@@ -745,6 +753,7 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
                 .collect()
         })
         .unwrap_or_default();
+    // SAFETY: F_GETFD only asks whether the number is an open connection.
     fds.retain(|fd| unsafe { libc::fcntl(*fd, libc::F_GETFD) } >= 0);
     fds.sort_unstable();
     let stream = match UnixStream::connect(SOCKET_INSIDE) {

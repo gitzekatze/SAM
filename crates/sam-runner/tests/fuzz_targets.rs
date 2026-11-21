@@ -429,3 +429,305 @@ fn the_preview_reader_panics_only_inside_the_squashfs_library() {
     assert!(ours.is_empty(), "{}", ours.join("\n"));
     let _ = Path::new("");
 }
+
+/// Room service's readers: changed messages and changed Bubblewrap argument
+/// lists never crash the service's reader, the stand-in's reader or the
+/// rules, and whatever the rules accept stays within them (every place a
+/// plain absolute path, shown at the same place, from beneath a folder of
+/// the app's floor plan).
+#[test]
+fn changed_room_requests_never_crash_the_readers() {
+    use sam_runner::room_rules::{
+        is_clean_absolute, plan_room, read_bwrap_args, read_request, AppFacts, FloorPlan, Source,
+        Step,
+    };
+    watch_panics();
+    let words = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+    let plan = FloorPlan::from_bwrap_args(&words(&[
+        "--ro-bind",
+        "/usr/lib",
+        "/usr/lib",
+        "--ro-bind-try",
+        "/usr/bin",
+        "/usr/bin",
+        "--symlink",
+        "usr/lib",
+        "/lib64",
+        "--bind",
+        "/data/homes/app",
+        "/home/me",
+        "--ro-bind",
+        "/data/homes/app/.config/autostart",
+        "/home/me/.config/autostart",
+        "--dev",
+        "/dev",
+        "--dev-bind-try",
+        "/dev/dri",
+        "/dev/dri",
+        "--tmpfs",
+        "/tmp",
+        "--bind",
+        "/run/l1/rooms",
+        "/run/sam/rooms",
+    ]))
+    .unwrap();
+    let tops = [
+        "/usr/lib",
+        "/usr/bin",
+        "/data/homes/app",
+        "/data/homes/app/.config/autostart",
+    ];
+    let base = r#"{"v":1,"ops":[["--ro-bind","/usr","/usr"],["--bind","/home/me","/home/me"],["--tmpfs","/tmp-home"],["--perms","0700"],["--dir","/d"],["--setenv","HOME","/tmp-home"],["--seccomp","11"],["--share-net"],["--chmod","0755","/tmp-home"]],"flags":[],"command":["/usr/lib/glycin-loaders/2+/glycin-svg"],"env":{"A":"b"},"cwd":"/home/me","fds":[0,1,2,11]}"#;
+    let pieces: [&[u8]; 22] = [
+        b"\"",
+        b"[",
+        b"]",
+        b"{",
+        b"}",
+        b",",
+        b":",
+        b"\\",
+        b"\\u0000",
+        b"..",
+        b"/",
+        b"//",
+        b"--bind",
+        b"--chmod",
+        b"--ro-bind-try",
+        b"--dev-bind",
+        b"-1",
+        b"99999999999",
+        b"\xff",
+        b"null",
+        b"\"/\"",
+        b"/home/me/../..",
+    ];
+    let mut r = rng(0x200f_0001);
+    let mut problems = Vec::new();
+    for round in 0..rounds() {
+        let mut d = base.as_bytes().to_vec();
+        for _ in 0..1 + r.below(8) {
+            let at = r.below(d.len() + 1);
+            match r.below(3) {
+                0 => {
+                    let p = pieces[r.below(pieces.len())];
+                    d.splice(at..at, p.iter().copied());
+                }
+                1 if at < d.len() => {
+                    d.remove(at);
+                }
+                _ if at < d.len() => d[at] = (r.below(256)) as u8,
+                _ => {}
+            }
+        }
+        let full_network = r.below(2) == 0;
+        let text = String::from_utf8_lossy(&d).into_owned();
+        let argv: Vec<String> = text
+            .split([' ', '"', ','])
+            .filter(|w| !w.is_empty())
+            .map(str::to_string)
+            .collect();
+        if let Some(at) = panicked(|| {
+            let _ = read_bwrap_args(&argv);
+            let Ok(req) = read_request(&d) else { return };
+            let Ok(room) = plan_room(&plan, &req, AppFacts { full_network }) else {
+                return;
+            };
+            for step in &room.steps {
+                if let Step::Show {
+                    source: Source::Beneath { top, .. },
+                    dst,
+                    ..
+                } = step
+                {
+                    assert!(is_clean_absolute(&dst.to_string_lossy()), "a place {dst:?}");
+                    assert!(
+                        tops.iter().any(|t| top == std::path::Path::new(t)),
+                        "a source {top:?} outside the floor plan"
+                    );
+                    assert_ne!(
+                        dst,
+                        std::path::Path::new("/run/sam/rooms"),
+                        "Room service's socket in a room"
+                    );
+                }
+            }
+            assert!(
+                !room.share_net || full_network,
+                "the network without the app's full network"
+            );
+        }) {
+            problems.push(format!("round {round}: {at}: {text:?}"));
+        }
+    }
+    // Well-formed requests built from every option with tricky values: the
+    // rules decide them all without a crash and within themselves.
+    // Each option with its usual number of values (sometimes another), and
+    // mostly the same path twice, as a same-place request is.
+    let names: [(&str, usize); 36] = [
+        ("--bind", 2),
+        ("--bind-try", 2),
+        ("--ro-bind", 2),
+        ("--ro-bind-try", 2),
+        ("--dev-bind", 2),
+        ("--dev-bind-try", 2),
+        ("--symlink", 2),
+        ("--tmpfs", 1),
+        ("--dir", 1),
+        ("--dev", 1),
+        ("--proc", 1),
+        ("--mqueue", 1),
+        ("--perms", 1),
+        ("--size", 1),
+        ("--chmod", 2),
+        ("--setenv", 2),
+        ("--unsetenv", 1),
+        ("--chdir", 1),
+        ("--hostname", 1),
+        ("--seccomp", 1),
+        ("--add-seccomp-fd", 1),
+        ("--share-net", 0),
+        ("--unshare-net", 0),
+        ("--unshare-all", 0),
+        ("--clearenv", 0),
+        ("--remount-ro", 1),
+        ("--as-pid-1", 0),
+        ("--cap-drop", 1),
+        ("--die-with-parent", 0),
+        ("--bind-fd", 2),
+        ("--userns", 1),
+        ("--file", 2),
+        ("--cap-add", 1),
+        ("--overlay", 3),
+        ("--args", 1),
+        ("--made-up", 0),
+    ];
+    let values = [
+        "/",
+        "/usr",
+        "/usr/lib",
+        "/usr/lib/x86_64",
+        "/home/me",
+        "/home/me/.config",
+        "/home/me/.config/autostart",
+        "/dev",
+        "/dev/dri",
+        "/dev/null",
+        "/dev/input",
+        "/tmp",
+        "/tmp-home",
+        "/run/sam/rooms",
+        "/run/sam",
+        "/proc",
+        "/secret",
+        "/usr/../etc",
+        "usr",
+        "//",
+        "/home/me/",
+        "11",
+        "3",
+        "-1",
+        "0700",
+        "0777",
+        "99999",
+        "x",
+        "",
+    ];
+    // How often the rules got as far as each kind of step: the control that
+    // the generated requests reach them at all.
+    let (shown, devices) = (std::cell::Cell::new(0usize), std::cell::Cell::new(0usize));
+    for round in 0..rounds() * 5 {
+        let mut ops: Vec<Vec<String>> = Vec::new();
+        for _ in 0..1 + r.below(4) {
+            let (name, arity) = names[r.below(names.len())];
+            let n = if r.below(10) == 0 { r.below(4) } else { arity };
+            let first = values[r.below(values.len())];
+            let mut op = vec![name.to_string()];
+            for k in 0..n {
+                let same = k == 0 || (k == 1 && r.below(4) != 0);
+                op.push(
+                    if same {
+                        first
+                    } else {
+                        values[r.below(values.len())]
+                    }
+                    .to_string(),
+                );
+            }
+            ops.push(op);
+        }
+        let req = sam_runner::room_rules::Request {
+            v: sam_runner::room_rules::VERSION,
+            ops,
+            flags: vec![],
+            command: vec!["/usr/bin/true".into()],
+            env: Default::default(),
+            cwd: values[r.below(values.len())].to_string(),
+            fds: vec![0, 1, 2, 11],
+        };
+        let full_network = r.below(2) == 0;
+        let text = format!("{:?}", req.ops);
+        if let Some(at) = panicked(|| {
+            let Ok(room) = plan_room(&plan, &req, AppFacts { full_network }) else {
+                return;
+            };
+            for step in &room.steps {
+                match step {
+                    Step::Show {
+                        source: Source::Beneath { top, .. },
+                        dst,
+                        ..
+                    } => {
+                        shown.set(shown.get() + 1);
+                        assert!(is_clean_absolute(&dst.to_string_lossy()), "a place {dst:?}");
+                        assert!(
+                            tops.iter().any(|t| top == std::path::Path::new(t)),
+                            "a source {top:?} outside the floor plan"
+                        );
+                        assert_ne!(
+                            dst,
+                            std::path::Path::new("/run/sam/rooms"),
+                            "Room service's socket in a room"
+                        );
+                    }
+                    Step::Device { src, .. } => {
+                        devices.set(devices.get() + 1);
+                        assert!(src.starts_with("/dev"), "a device from {src:?}");
+                        assert!(
+                            !src.starts_with("/dev/input"),
+                            "a device the app has not: {src:?}"
+                        );
+                    }
+                    Step::Args(a) => {
+                        let bad = [
+                            "--bind-fd",
+                            "--userns",
+                            "--file",
+                            "--cap-add",
+                            "--overlay",
+                            "--args",
+                            "--made-up",
+                            "--bind",
+                            "--ro-bind",
+                            "--dev-bind",
+                        ];
+                        assert!(!bad.contains(&a[0].as_str()), "passed on as it is: {a:?}");
+                    }
+                }
+            }
+            assert!(
+                !room.share_net || full_network,
+                "the network without the app's full network"
+            );
+        }) {
+            problems.push(format!("built round {round}: {at}: {text}"));
+        }
+    }
+    assert!(
+        shown.get() > rounds() / 10 && devices.get() > rounds() / 100,
+        "the generated requests hardly reach the rules: {} places, {} devices",
+        shown.get(),
+        devices.get()
+    );
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
