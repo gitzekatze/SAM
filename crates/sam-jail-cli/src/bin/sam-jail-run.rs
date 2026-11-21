@@ -103,15 +103,29 @@ fn main() {
         .nth(1)
         .is_some_and(|a| a == "--room-standin")
     {
-        let args: Vec<String> = std::env::args_os()
-            .skip(2)
-            .map(|a| a.into_string().unwrap_or_else(|_| "--not-text".into()))
-            .collect();
-        let version = args.first().cloned().unwrap_or_default();
-        std::process::exit(sam_runner::room_service::standin(
-            &version,
-            &args[1.min(args.len())..],
-        ));
+        let mut args: Vec<String> = Vec::new();
+        let mut not_text = false;
+        for a in std::env::args_os().skip(2) {
+            match a.into_string() {
+                Ok(a) => args.push(a),
+                Err(_) => {
+                    not_text = true;
+                    args.push("--not-text".into());
+                }
+            }
+        }
+        let version = if args.is_empty() {
+            String::new()
+        } else {
+            args.remove(0)
+        };
+        // An argument that is not text is never replaced and passed on: the
+        // request starts with an option no room accepts, so it is refused
+        // (and recorded) as a whole.
+        if not_text {
+            args.insert(0, "--not-text".into());
+        }
+        std::process::exit(sam_runner::room_service::standin(&version, &args));
     }
     let args = match text_args(std::env::args_os().skip(1)) {
         Ok(a) => a,

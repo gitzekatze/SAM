@@ -47,6 +47,8 @@ pub const MAX_HELD: usize = 512;
 const MAX_PLACES: usize = 600;
 /// At most this many room lines in one start record (the rest counted).
 const MAX_RECORDS: usize = 200;
+/// At most this many lines about rooms built or failed (kept apart).
+const MAX_ROOM_RECORDS: usize = 500;
 /// How long a connection may take to send its request.
 const READ_LIMIT: Duration = Duration::from_secs(10);
 /// SAM's room helper and the room's rules inside a room (room_rules::RESERVED).
@@ -115,9 +117,24 @@ struct State {
     rooms: Mutex<Vec<Arc<Mutex<Child>>>>,
     records: Mutex<Vec<String>>,
     dropped_records: AtomicUsize,
+    /// Rooms built or failed: kept apart, so refusals cannot push them out.
+    room_records: Mutex<Vec<String>>,
+    dropped_room_records: AtomicUsize,
 }
 
 impl State {
+    /// A room built or failed (at most MAX_ROOM_RECORDS; the rest counted).
+    fn record_room(&self, line: String) {
+        if let Ok(mut r) = self.room_records.lock() {
+            if r.len() < MAX_ROOM_RECORDS {
+                r.push(line);
+                return;
+            }
+        }
+        self.dropped_room_records.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// A refusal (at most MAX_RECORDS; the rest counted).
     fn record(&self, line: String) {
         if let Ok(mut r) = self.records.lock() {
             if r.len() < MAX_RECORDS {
@@ -256,7 +273,11 @@ impl RoomService {
                         Ok((stream, _)) => {
                             if state.connections.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
                                 state.connections.fetch_sub(1, Ordering::SeqCst);
-                                continue; // closed: too many at once
+                                state.record(format!(
+                                    "sam-room: refused ? (asked by {}): more than {MAX_CONNECTIONS} requests and rooms at once",
+                                    asked_by(&stream)
+                                ));
+                                continue; // closed
                             }
                             let (st, sv) = (state.clone(), served.clone());
                             let started = std::thread::Builder::new()
@@ -282,15 +303,20 @@ impl RoomService {
     /// Ends every room and the service; returns the start record's lines.
     pub fn stop(mut self) -> Vec<String> {
         self.halt();
-        let mut records = self
-            .state
-            .records
+        let st = &self.state;
+        let mut records = st
+            .room_records
             .lock()
             .map(|r| r.clone())
             .unwrap_or_default();
-        let dropped = self.state.dropped_records.load(Ordering::SeqCst);
+        let dropped = st.dropped_room_records.load(Ordering::SeqCst);
         if dropped > 0 {
-            records.push(format!("sam-room: {dropped} more not recorded"));
+            records.push(format!("sam-room: {dropped} more rooms not recorded"));
+        }
+        records.extend(st.records.lock().map(|r| r.clone()).unwrap_or_default());
+        let dropped = st.dropped_records.load(Ordering::SeqCst);
+        if dropped > 0 {
+            records.push(format!("sam-room: {dropped} more refusals not recorded"));
         }
         records
     }
@@ -643,6 +669,10 @@ fn run_room(
             Ok(())
         });
     }
+    // Everything that can fail is done before the room starts: once it
+    // runs, it is never left untracked.
+    let mut peer = stream.try_clone()?;
+    let _ = peer.set_read_timeout(None);
     let child = cmd.spawn().context("starting Bubblewrap for the room")?;
     // The room has its copies: the app's connections leave the budget.
     drop(passed);
@@ -661,8 +691,6 @@ fn run_room(
     // The stand-in gone (its program ended or was killed): the room ends.
     let watcher = {
         let child = child.clone();
-        let mut peer = stream.try_clone()?;
-        let _ = peer.set_read_timeout(None);
         std::thread::Builder::new()
             .name("sam-room-watch".into())
             .spawn(move || {
@@ -672,7 +700,19 @@ fn run_room(
                     let _ = c.kill();
                 }
             })
-            .ok()
+    };
+    let end_room = |child: &Arc<Mutex<Child>>| {
+        if let Ok(mut c) = child.lock() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        if let Ok(mut rooms) = state.rooms.lock() {
+            rooms.retain(|r| !Arc::ptr_eq(r, child));
+        }
+    };
+    let Ok(watcher) = watcher else {
+        end_room(&child);
+        bail!("no watcher for the room could be started");
     };
     // What SAM's helper applied, in its own words (it closes the
     // connection before the program starts, or the room ends first).
@@ -691,18 +731,26 @@ fn run_room(
         )
     };
     if status.is_empty() {
-        state.record(format!(
+        // Never a room without SAM's layers: it ends at once.
+        end_room(&child);
+        state.record_room(format!(
             "sam-room: failed {program}: SAM's layers were not confirmed{capped}"
         ));
     } else {
-        state.record(format!(
+        state.record_room(format!(
             "sam-room: built {program} (layers: {status}{capped})"
         ));
     }
     let status = loop {
         if let Ok(mut c) = child.lock() {
-            if let Some(st) = c.try_wait()? {
-                break st;
+            match c.try_wait() {
+                Ok(Some(st)) => break st,
+                Ok(None) => {}
+                Err(e) => {
+                    drop(c);
+                    end_room(&child);
+                    return Err(e.into());
+                }
             }
         }
         std::thread::sleep(Duration::from_millis(10));

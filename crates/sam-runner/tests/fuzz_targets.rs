@@ -611,6 +611,16 @@ fn changed_room_requests_never_crash_the_readers() {
         "x",
         "",
     ];
+    let real = [
+        "/usr",
+        "/usr/lib",
+        "/usr/bin",
+        "/home/me",
+        "/home/me/.config/autostart",
+        "/dev/dri",
+        "/dev/null",
+        "/tmp",
+    ];
     // How often the rules got as far as each kind of step: the control that
     // the generated requests reach them at all.
     let (shown, devices) = (std::cell::Cell::new(0usize), std::cell::Cell::new(0usize));
@@ -619,7 +629,13 @@ fn changed_room_requests_never_crash_the_readers() {
         for _ in 0..1 + r.below(4) {
             let (name, arity) = names[r.below(names.len())];
             let n = if r.below(10) == 0 { r.below(4) } else { arity };
-            let first = values[r.below(values.len())];
+            // Half the time a place of the app's: the rules decide whole
+            // rooms often enough, not only the first broken value.
+            let first = if r.below(2) == 0 {
+                real[r.below(real.len())]
+            } else {
+                values[r.below(values.len())]
+            };
             let mut op = vec![name.to_string()];
             for k in 0..n {
                 let same = k == 0 || (k == 1 && r.below(4) != 0);
@@ -677,7 +693,8 @@ fn changed_room_requests_never_crash_the_readers() {
 /// writable only where the app's is, and not under a mount the app laid
 /// over it later (hidden stays hidden); devices only the app's, at their
 /// place; nothing shown through raw arguments; never Room service's socket
-/// or SAM's own place; the network only with the app's full network.
+/// or SAM's own place; nothing inside a place the app can write; the
+/// network only with the app's full network.
 fn room_within_plan(
     plan: &sam_runner::room_rules::FloorPlan,
     room: &sam_runner::room_rules::RoomPlan,
@@ -774,6 +791,41 @@ fn room_within_plan(
                         ));
                     }
                 }
+            }
+        }
+    }
+    // A place the app can write is shown only as a whole: nothing of the
+    // room (a place, a device, a hiding mount, a thing of its own) lies
+    // below it, in any order.
+    let writable: Vec<&Path> = room
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Show {
+                source: Source { entry, .. },
+                dst,
+                ..
+            } if matches!(plan.entries.get(*entry), Some(Entry::Rw { .. })) => Some(dst.as_path()),
+            _ => None,
+        })
+        .collect();
+    for step in &room.steps {
+        let places: Vec<&Path> = match step {
+            Step::Show { dst, .. } | Step::Device { dst, .. } => vec![dst.as_path()],
+            Step::Mask(at) => vec![at.as_path()],
+            // A link's target is only text: where the link lies counts.
+            Step::Args(a) => a
+                .iter()
+                .skip(if a[0] == "--symlink" { 2 } else { 1 })
+                .map(Path::new)
+                .filter(|p| p.is_absolute())
+                .collect(),
+        };
+        for p in places {
+            if let Some(w) = writable.iter().find(|w| p.starts_with(w) && p != **w) {
+                return Err(format!(
+                    "{p:?} lies inside {w:?}, a place the app can write"
+                ));
             }
         }
     }

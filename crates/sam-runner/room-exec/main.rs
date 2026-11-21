@@ -23,7 +23,11 @@
 //! `seccomp=N`, `filter=N` (any number), `read=PATH`, `write=PATH`,
 //! `env=NAME=VALUE` (any number of each).
 
-use std::ffi::OsStr;
+// No Rust start-up code: it would read /proc/self/maps (to find the main
+// thread's stack), a file of the room's layout, before SAM's layers.
+#![no_main]
+
+use std::ffi::{CString, OsStr};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
@@ -33,6 +37,11 @@ use std::os::unix::ffi::OsStrExt;
 extern "C" {
     fn syscall(number: c_long, ...) -> c_long;
     fn prctl(option: c_int, arg2: c_ulong, arg3: c_ulong, arg4: c_ulong, arg5: c_ulong) -> c_int;
+    fn execve(
+        path: *const std::os::raw::c_char,
+        argv: *const *const std::os::raw::c_char,
+        envp: *const *const std::os::raw::c_char,
+    ) -> c_int;
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -206,7 +215,35 @@ fn number(v: &[u8]) -> c_int {
         .unwrap_or_else(|| fail("the room's rules are not valid"))
 }
 
-fn main() {
+/// The program to start: a name without `/` is looked up in the PATH of
+/// the environment it asked for (as Bubblewrap's execvp does).
+fn find_program(name: &OsStr, env: &[(&OsStr, &OsStr)]) -> Vec<u8> {
+    let bytes = name.as_bytes();
+    if bytes.contains(&b'/') {
+        return bytes.to_vec();
+    }
+    let path = env
+        .iter()
+        .rev()
+        .find(|(k, _)| k.as_bytes() == b"PATH")
+        .map_or(&b"/usr/local/bin:/usr/bin:/bin"[..], |(_, v)| v.as_bytes());
+    for dir in path.split(|b| *b == b':').filter(|d| !d.is_empty()) {
+        let mut full = dir.to_vec();
+        full.push(b'/');
+        full.extend_from_slice(bytes);
+        let runs = std::fs::metadata(OsStr::from_bytes(&full)).is_ok_and(|m| {
+            use std::os::unix::fs::PermissionsExt;
+            m.is_file() && m.permissions().mode() & 0o111 != 0
+        });
+        if runs {
+            return full;
+        }
+    }
+    bytes.to_vec()
+}
+
+#[no_mangle]
+pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) -> c_int {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let sep = args.iter().position(|a| a == "--").unwrap_or_else(|| fail("usage: sam-room-exec SPEC -- PROGRAM ARGS"));
     if sep != 2 || sep + 1 >= args.len() {
@@ -219,8 +256,8 @@ fn main() {
         let at = entry.iter().position(|b| *b == b'=').unwrap_or_else(|| fail("the room's rules are not valid"));
         let (key, value) = (&entry[..at], &entry[at + 1..]);
         match key {
-            b"status" => status = Some(number(value)),
-            b"seccomp" => seccomp = Some(number(value)),
+            b"status" if status.is_none() => status = Some(number(value)),
+            b"seccomp" if seccomp.is_none() => seccomp = Some(number(value)),
             b"filter" => filters.push(number(value)),
             b"read" => reads.push(value),
             b"write" => writes.push(value),
@@ -228,32 +265,50 @@ fn main() {
                 let eq = value.iter().position(|b| *b == b'=').unwrap_or_else(|| fail("the room's rules are not valid"));
                 env.push((OsStr::from_bytes(&value[..eq]), OsStr::from_bytes(&value[eq + 1..])));
             }
-            _ => fail("the room's rules hold an unknown entry"),
+            _ => fail("the room's rules hold an unknown or doubled entry"),
         }
     }
     let status = status.unwrap_or_else(|| fail("the room's rules name no status connection"));
     let seccomp = seccomp.unwrap_or_else(|| fail("the room's rules carry no syscall filter"));
-    // SAM's layers first, then the program's own filters.
+    // SAM's layers first.
     let mut report = landlock(&reads, &writes);
     load_filter(seccomp);
     report.push_str(", seccomp");
-    for fd in &filters {
-        load_filter(*fd);
-    }
+    // Everything the program's start needs, prepared now: under its own
+    // filter only the start itself (execve) follows.
+    let program = CString::new(find_program(&args[3], &env)).unwrap_or_else(|_| fail("the program's name is not valid"));
+    let argv: Vec<CString> = args[3..]
+        .iter()
+        .map(|a| CString::new(a.as_bytes()).unwrap_or_else(|_| fail("an argument is not valid")))
+        .collect();
+    let envp: Vec<CString> = env
+        .iter()
+        .map(|(k, v)| {
+            let mut e = k.as_bytes().to_vec();
+            e.push(b'=');
+            e.extend_from_slice(v.as_bytes());
+            CString::new(e).unwrap_or_else(|_| fail("a variable is not valid"))
+        })
+        .collect();
+    let mut argv_ptrs: Vec<*const std::os::raw::c_char> = argv.iter().map(|a| a.as_ptr()).collect();
+    argv_ptrs.push(std::ptr::null());
+    let mut envp_ptrs: Vec<*const std::os::raw::c_char> = envp.iter().map(|e| e.as_ptr()).collect();
+    envp_ptrs.push(std::ptr::null());
     if !filters.is_empty() {
         report.push_str(", the program's own filter");
     }
     report.push('\n');
+    // Report what SAM put in place, and close the connection, before the
+    // program's own filter (which may refuse the calls this needs).
     // SAFETY: the status connection was passed for exactly this; it is
     // written to and closed here, before the program starts.
     let mut f = unsafe { File::from_raw_fd(status) };
     let _ = f.write_all(report.as_bytes());
     drop(f);
-    use std::os::unix::process::CommandExt;
-    let err = std::process::Command::new(&args[3])
-        .args(&args[4..])
-        .env_clear()
-        .envs(env)
-        .exec();
-    fail(&format!("{}: {err}", args[3].to_string_lossy()));
+    for fd in &filters {
+        load_filter(*fd);
+    }
+    // SAFETY: NUL-terminated strings and arrays that live until the call.
+    unsafe { execve(program.as_ptr(), argv_ptrs.as_ptr(), envp_ptrs.as_ptr()) };
+    fail(&format!("{}: {}", args[3].to_string_lossy(), errno()));
 }

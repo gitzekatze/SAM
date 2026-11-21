@@ -159,13 +159,18 @@ rule: **no more than the app, no less than asked.**
     `--remount-ro` arguments count); devices only the app's, and working
     only where the request asked for working devices; the network only when
     the app has the full network (its own Bubblewrap arguments may take it
-    away) and the program, in Bubblewrap's order, asks for it.
+    away) and the program does not take it away (as in Bubblewrap, the last
+    of `--share-net` and `--unshare-net` or `--unshare-all` counts).
   - The room's own new things (folders, links, file systems) are made only
     in its own space, never inside a place shown from the app: Bubblewrap
     makes them before any protection applies and would follow a link the
     app left there onto the computer. The room's own links come last, after
     every mount, and nothing is made or shown at or behind one; a link may
     not name Bubblewrap's build stage (`/oldroot`, `/newroot`, `..`).
+  - A place the app can write is shown only as a whole: nothing of the
+    room (another place, a device, a hiding mount, a thing of its own) may
+    lie below it, in any order. Such a request is refused: the app could
+    exchange anything below that place for a link while the room is built.
   - Writable only where the app can write: its mount and its Landlock rules.
     An own place above a place of the app gives no write right there, and
     SAM's room helper never follows a link to a Landlock rule's place.
@@ -181,11 +186,12 @@ rule: **no more than the app, no less than asked.**
   data together with the room's rules, at a place no request may name
   (`/.sam-room`), before anything of the request is laid out: nothing the
   request shapes runs or is read before SAM's layers. It applies Landlock
-  (the app's write rules, plus the room's own new places; abstract sockets
-  outside the room blocked from Landlock 6 on), then SAM's syscall filter
-  (never allowing nested sandboxes), then the program's own filter, then
-  starts the program with exactly the environment it asked for. It
-  confirms what it applied; the start record says what it confirmed. A
+  (the app's read and write rules, the room's own new places writable;
+  abstract sockets outside the room blocked from Landlock 6 on), then
+  SAM's syscall filter (never allowing nested sandboxes), confirms both,
+  then loads the program's own filter and starts the program with exactly
+  the environment it asked for. The start record says what the helper
+  confirmed; a room whose helper confirmed nothing is ended at once. A
   layer that does not load means no room; on a kernel without Landlock the
   room has what the app has, and the record says so.
 - **Exceptions are for the app, not its helpers.** If Landlock or the
@@ -194,14 +200,17 @@ rule: **no more than the app, no less than asked.**
 - **Lifetime and limits.** A room ends when its stand-in goes, and every
   room ends with the app's start, before SAM waits for the app's output. At
   most 16 rooms of one app run at once (more wait), at most 64 connections
-  are read at once, and at most 512 passed connections are held: an app
+  are open at once (requests being read and rooms running; more are closed
+  and recorded), and at most 512 passed connections are held: an app
   cannot fill SAM's launcher.
 - **Records.** The start record names each room's program, the layers its
   helper confirmed, what was capped, and every refusal of the service,
-  including options the stand-in passes on because no room gets them (an
-  argument that is not text counts as one); a stand-in that cannot reach
-  the service at all says so to its program only. Never the room's
-  environment; at most 200 lines per start.
+  including options the stand-in passes on because no room gets them (a
+  request with an argument that is not text is refused as a whole, never
+  passed on changed); a stand-in that cannot reach the service at all says
+  so to its program only. Never the room's environment. Rooms are recorded
+  apart from refusals, so a flood of refusals cannot push them out: at most
+  500 rooms and 200 refusals per start, the rest counted.
 - **Turning it off.** `advanced.room_service` (on by default) turns Room
   service off for one app. Then programs that build a sandbox of their own
   fail inside SAM, or run without it.

@@ -522,8 +522,9 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         ..Default::default()
     };
     // Bubblewrap's order: the last of --share-net / --unshare-net /
-    // --unshare-all decides (the room's base gives up everything first).
-    let mut want_net = false;
+    // --unshare-all decides; without any of them, Bubblewrap shares the
+    // network (the room then gets the app's, if the app has the full one).
+    let mut want_net = true;
     let mut chdir: Option<PathBuf> = None;
     // Places shown from the app (their place in the room), and the room's
     // own links: the room's own new things never go inside the first, and
@@ -725,6 +726,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         k += 1;
     }
     room.steps.extend(late_links);
+    nothing_inside_writable_places(plan, &room.steps)?;
     // An own place with a place of the app below it gives no write right
     // there (Landlock's rules reach down).
     room.own.retain(|o| !shown.iter().any(|s| under(s, o)));
@@ -748,6 +750,50 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         }
     };
     Ok(room)
+}
+
+/// Where a step puts or changes something in the room (`--remount-ro` only
+/// takes rights away, so it does not count).
+fn step_place(step: &Step) -> Option<&Path> {
+    match step {
+        Step::Show { dst, .. } | Step::Device { dst, .. } => Some(dst),
+        Step::Mask(at) => Some(at),
+        Step::Args(a) => match a.first().map(String::as_str) {
+            Some("--tmpfs" | "--dir" | "--proc" | "--dev" | "--mqueue") => a.get(1).map(Path::new),
+            Some("--symlink" | "--chmod") => a.get(2).map(Path::new),
+            _ => None,
+        },
+    }
+}
+
+/// Nothing is placed inside a place whose source the app can write, in
+/// whatever order: Bubblewrap finds every place by its name, and inside
+/// such a place the names are the app's to change (a folder renamed away
+/// with its protection, a link planted to the computer's root). A room may
+/// show such a place only as a whole, with nothing below it.
+fn nothing_inside_writable_places(plan: &FloorPlan, steps: &[Step]) -> Result<(), String> {
+    let writable: Vec<&Path> = steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Show { source, dst, .. }
+                if matches!(plan.entries.get(source.entry), Some(Entry::Rw { .. })) =>
+            {
+                Some(dst.as_path())
+            }
+            _ => None,
+        })
+        .collect();
+    for step in steps {
+        let Some(at) = step_place(step) else { continue };
+        if let Some(w) = writable.iter().find(|w| at != **w && under(at, w)) {
+            return Err(format!(
+                "{} lies inside {}, a place the app can write: a room shows such a place only as a whole",
+                at.display(),
+                w.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// A path of the request: absolute, without `.` or `..`.
@@ -1155,32 +1201,39 @@ mod tests {
             }
         ));
         assert!(!room.capped.is_empty());
-        let room = ok(&[&["--bind", "/home/me", "/home/me"]]);
+        let room = ok(&[&["--bind", "/home/me/.cache", "/home/me/.cache"]]);
         assert!(matches!(room.steps[0], Step::Show { writable: true, .. }));
     }
 
-    /// The home shown writable keeps its protected place read-only and its
-    /// hidden ~/.ssh hidden, mounted after it, in the app's order.
+    /// A place the app can write is shown only as a whole: the home, with
+    /// its protected and hidden places below it, is refused (Bubblewrap
+    /// would place them by names the app can change); a folder inside it
+    /// with nothing below is fine; the hidden place itself shows nothing.
     #[test]
-    fn protected_and_hidden_places_inside_a_shown_folder_stay_so() {
-        let room = ok(&[&["--bind", "/home/me", "/home/me"]]);
-        assert_eq!(
-            room.steps[1..],
-            [
-                Step::Show {
-                    source: Source {
-                        entry: index_of("/home/me/.config/autostart"),
-                        rel: "".into()
-                    },
-                    dst: "/home/me/.config/autostart".into(),
-                    writable: false,
-                    optional: true
-                },
-                Step::Mask("/home/me/.ssh".into()),
-            ]
-        );
-        // Asking for the hidden place itself shows nothing of it.
+    fn nothing_is_placed_inside_a_place_the_app_can_write() {
+        assert!(refused(&[&["--bind", "/home/me", "/home/me"]]));
+        assert!(refused(&[&["--ro-bind", "/home/me", "/home/me"]]));
+        let room = ok(&[&["--bind", "/home/me/.cache", "/home/me/.cache"]]);
+        assert!(matches!(
+            room.steps[..],
+            [Step::Show { writable: true, .. }]
+        ));
         assert!(refused(&[&["--ro-bind", "/home/me/.ssh", "/home/me/.ssh"]]));
+        // Own things inside it, in either order.
+        for own in [
+            &["--symlink", "/x", "/home/me/.cache/x/evil"][..],
+            &["--dir", "/home/me/.cache/x"],
+            &["--tmpfs", "/home/me/.cache/x"],
+        ] {
+            assert!(
+                refused(&[own, &["--ro-bind", "/home/me/.cache", "/home/me/.cache"]]),
+                "{own:?} first"
+            );
+            assert!(
+                refused(&[&["--ro-bind", "/home/me/.cache", "/home/me/.cache"], own]),
+                "{own:?} after"
+            );
+        }
     }
 
     /// A grant inside SAM's folder that a later tmpfs hides in the app
@@ -1211,7 +1264,18 @@ mod tests {
 
     #[test]
     fn everything_asked_is_the_apps_view_without_its_private_places() {
-        let room = ok(&[&["--bind", "/", "/"]]);
+        // With protections below the home, asking for everything is refused.
+        assert!(refused(&[&["--bind", "/", "/"]]));
+        // Without them: the app's view, its private places left out.
+        let mut p = plan();
+        p.entries
+            .retain(|e| !e.at().starts_with("/home/me/") || e.at() == Path::new("/home/me"));
+        let room = plan_room(
+            &p,
+            &req(&[&["--bind", "/", "/"]], &["x"]),
+            AppFacts::default(),
+        )
+        .unwrap();
         let shown: Vec<PathBuf> = room
             .steps
             .iter()
@@ -1232,7 +1296,6 @@ mod tests {
             !shown.iter().any(|p| p.starts_with("/data/sam")),
             "{shown:?}"
         );
-        assert!(room.steps.contains(&Step::Mask("/home/me/.ssh".into())));
     }
 
     #[test]
@@ -1302,6 +1365,9 @@ mod tests {
                 .share_net
         };
         assert!(!net(&open, &[&["--share-net"]], false));
+        // Bubblewrap shares the network unless told otherwise.
+        assert!(net(&open, &[], true));
+        assert!(!net(&open, &[&["--unshare-all"]], true));
         assert!(net(&open, &[&["--share-net"]], true));
         assert!(!net(&open, &[&["--share-net"], &["--unshare-net"]], true));
         // Bubblewrap's usual way: give up everything, then ask for the network.
@@ -1340,13 +1406,14 @@ mod tests {
                 ..
             }
         ));
-        let room = plan_room(
+        // /h itself holds the read-only /h/docs: shown only as a whole, so
+        // not at all.
+        assert!(plan_room(
             &p,
             &req(&[&["--bind", "/h", "/h"]], &["x"]),
-            AppFacts::default(),
+            AppFacts::default()
         )
-        .unwrap();
-        assert!(matches!(room.steps[0], Step::Show { writable: true, .. }));
+        .is_err());
     }
 
     #[test]
@@ -1468,7 +1535,10 @@ mod tests {
     /// below it.
     #[test]
     fn an_own_place_above_the_apps_places_gives_no_write_right() {
-        let room = ok(&[&["--dir", "/home"], &["--bind", "/home/me", "/home/me"]]);
+        let room = ok(&[
+            &["--dir", "/home"],
+            &["--bind", "/home/me/.cache", "/home/me/.cache"],
+        ]);
         assert!(
             !room.own.contains(&PathBuf::from("/home")),
             "{:?}",

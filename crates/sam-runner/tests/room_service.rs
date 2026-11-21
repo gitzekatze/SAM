@@ -289,6 +289,9 @@ say("direct_fd_place", refusal(ask(request(BASE + [["--bind-fd", str(home_fd), H
 os.close(home_fd)
 say("direct_env", ask(request(BASE + [["--dev", "/dev"], ["--bind", HOME, HOME]], ["/usr/bin/true"],
                               env={"LD_DEBUG": "files", "LD_DEBUG_OUTPUT": HOME + "/ldm", "HOME": HOME})))
+# Far more places than a room may have (each /usr brings SAM's own places
+# below it too): refused as a whole, never built in part.
+say("direct_many_places", refusal(ask(request(BASE + [["--ro-bind", "/usr", "/usr"]] * 250, ["/usr/bin/true"]))))
 say("direct_moved", refusal(ask(request(BASE + [["--ro-bind", "/usr", "/elsewhere"]], ["/usr/bin/true"]))))
 say("direct_dotdot", refusal(ask(request(BASE + [["--ro-bind", "/usr/../etc", "/usr/../etc"]], ["/usr/bin/true"]))))
 say("direct_relative", refusal(ask(request(BASE + [["--ro-bind", "usr", "usr"]], ["/usr/bin/true"]))))
@@ -301,7 +304,7 @@ say("direct_not_utf8", refusal(ask(raw_message(b'{"v":1,"ops":[["--ro-bind","/us
 say("direct_garbage", refusal(ask(b"\x00\x00\x00\x05nope!")))
 say("direct_wrong_version", refusal(ask(message({"v": 99, "ops": BASE, "flags": [], "command": ["/usr/bin/true"],
                                                   "env": {}, "cwd": "/", "fds": []}))))
-say("direct_many_places", refusal(ask(request(BASE + [["--dir", f"/d{i}"] for i in range(257)], ["/usr/bin/true"]))))
+say("direct_many_ops", refusal(ask(request(BASE + [["--dir", f"/d{i}"] for i in range(257)], ["/usr/bin/true"]))))
 say("direct_many_fds", refusal(ask(request(BASE, ["/usr/bin/true"], fds=list(range(254))), fds=[0] * 253)))
 t = time.monotonic()
 r = refusal(ask(struct.pack("!I", 0x7FFFFFFF) + b"{"))
@@ -486,8 +489,9 @@ fn room_within_app(name: &str, log: &str, pairs: &[&str]) -> Vec<String> {
     for p in pairs {
         let app = c.get(&format!("{p}_app")).map(String::as_str);
         let room = c.get(&format!("{p}_room")).map(String::as_str);
+        // A room refused gets nothing at all: never more than its app.
         if !matches!(app, Some("allowed" | "blocked"))
-            || !matches!(room, Some("allowed" | "blocked"))
+            || !matches!(room, Some("allowed" | "blocked" | "refused"))
         {
             out.push(format!(
                 "{name}: {p}: no clear result (app {app:?}, room {room:?})"
@@ -554,6 +558,9 @@ fn same_sources(name: &str, log: &str) -> Vec<String> {
 /// The requested environment reached the room's program (the control, when
 /// `case` names one), never SAM's helper before it, nor anything on the
 /// computer's side (a debug file named `stem.*` in the person's own home).
+/// SAM's helper is linked statically and has no loader, so it ignores the
+/// loader's variables anyway: the helper check stays as a guard against a
+/// helper that is ever linked dynamically again.
 fn environment_only_in_the_program(
     name: &str,
     log: &str,
@@ -707,6 +714,12 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
     let mut rest = Vec::new();
     let _ = conn.set_read_timeout(Some(Duration::from_secs(5)));
     let _ = conn.read_to_end(&mut rest);
+    if rest.len() < 4 || !String::from_utf8_lossy(&rest[4..]).contains("exit") {
+        out.push(format!(
+            "stop: the waiting stand-in got no answer when its room ended ({:?})",
+            String::from_utf8_lossy(&rest)
+        ));
+    }
     out
 }
 
@@ -824,11 +837,11 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         );
         failures.extend(control_built(name, &log));
         let mut want = vec![
-            ("greedy_secret", "blocked"),
-            ("greedy_other_app", "blocked"),
-            ("greedy_settings", "blocked"),
-            ("greedy_key", "blocked"),
-            ("greedy_own_app", "blocked"),
+            ("greedy_secret", "blocked|refused"),
+            ("greedy_other_app", "blocked|refused"),
+            ("greedy_settings", "blocked|refused"),
+            ("greedy_key", "blocked|refused"),
+            ("greedy_own_app", "blocked|refused"),
             ("link_file", "refused"),
             ("link_dir", "refused"),
             ("link_up", "refused"),
@@ -973,7 +986,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             &log,
             &[
                 ("ssh_app", "blocked"),
-                ("ssh_room", "blocked"),
+                ("ssh_room", "blocked|refused"),
                 ("link_protected", "refused"),
                 ("link_hidden", "refused"),
             ],
@@ -1015,7 +1028,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     );
     failures.extend(control_built("held", &log));
     failures.extend(
-        check(&log, &[("renamed", "yes"), ("held", "inside|refused")])
+        check(&log, &[("renamed", "yes"), ("held", "inside")])
             .into_iter()
             .map(|f| format!("held: {f}")),
     );
@@ -1076,6 +1089,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("direct_not_utf8", "refused"),
                 ("direct_garbage", "refused"),
                 ("direct_wrong_version", "refused"),
+                ("direct_many_ops", "refused"),
                 ("direct_many_places", "refused"),
                 ("direct_many_fds", "refused"),
                 ("direct_huge", "refused"),
@@ -1093,10 +1107,26 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     failures.extend(environment_only_in_the_program(
         "messages", &log, &w, &id, "ldm", None,
     ));
-    let room_lines = log.lines().filter(|l| l.starts_with("sam-room:")).count();
-    if room_lines > 201 || !log.contains("more not recorded") {
+    if !log.contains("too many places") {
+        failures.push("messages: a room with too many places was not refused for that".into());
+    }
+    let refusals = log
+        .lines()
+        .filter(|l| l.starts_with("sam-room: refused"))
+        .count();
+    if refusals > 200 || !log.contains("more refusals not recorded") {
         failures.push(format!(
-            "messages: the start record's room lines are not capped ({room_lines} lines)"
+            "messages: the start record's refusals are not capped ({refusals} lines)"
+        ));
+    }
+    // Rooms built are kept apart: a flood of refusals never pushes them out.
+    let built = log
+        .lines()
+        .filter(|l| l.starts_with("sam-room: built"))
+        .count();
+    if built < 2 {
+        failures.push(format!(
+            "messages: rooms built are missing from the start record after a flood of refusals ({built})"
         ));
     }
 

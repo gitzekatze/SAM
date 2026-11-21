@@ -96,7 +96,10 @@ const DIRS: &str = "\"$HOME\" \"$HOME/sub\" \"$HOME/.config/autostart\" \"$APPDI
 
 /// The app's own probe, then `rooms` generated requests. Every request has
 /// a /proc of its own (`--proc /proc`) so the room can list its mounts; the
-/// first one asks for everything (`--bind / /`).
+/// first one asks for much that is allowed (the system, the home as a
+/// whole, the devices, the network), the second for everything
+/// (`--bind / /`, refused where the app's writable home holds places of
+/// its own).
 fn script(rng: &mut Rng, rooms: usize, tag: &str) -> String {
     let mut s = format!(
         "mkdir -p \"$HOME/sub\" \"$HOME/.config/autostart\"\n\
@@ -106,6 +109,11 @@ fn script(rng: &mut Rng, rooms: usize, tag: &str) -> String {
     for i in 0..rooms {
         let mut req: Vec<String> = Vec::new();
         if i == 0 {
+            req.push(
+                "--ro-bind /etc /etc --bind \"$HOME\" \"$HOME\" --dev-bind /dev /dev --share-net"
+                    .into(),
+            );
+        } else if i == 1 {
             req.push("--bind / / --dev-bind /dev /dev --share-net".into());
         } else {
             for _ in 0..1 + rng.next() % 4 {
@@ -227,7 +235,7 @@ fn every_room_is_a_subset_of_its_app() {
         // others for the comparison to mean something.
         if !got.get("room-0").is_some_and(Option::is_some) {
             failures.push(format!(
-                "{mode}: the room asking for everything (--bind / /) was not built, so nothing was compared"
+                "{mode}: the room asking for much (the system, the home, the devices, the network) was not built, so nothing was compared"
             ));
         }
         if built.len() < 20 {
