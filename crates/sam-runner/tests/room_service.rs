@@ -1262,7 +1262,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     {
         Some(t) if (4..20).contains(&t) => {}
         t => failures.push(format!(
-            "lifetime: 20 rooms of 2 s took {t:?} s: more than 16 ran at once, or they hung"
+            "lifetime: 20 rooms of 2 s took {t:?} s: more than 16 ran at once, some were refused, or they hung"
         )),
     }
     let leftover = ["/usr/bin/sleep", left.as_str()];
