@@ -409,7 +409,9 @@ for s in half:
     s.close()
 time.sleep(1)
 PY
-say final_control "$(rv room -- /usr/bin/echo ok)"
+# A room after the flood of refusals: printf is used nowhere else here, so
+# its line in the start record is this room's.
+say final_control "$(rv room -- /usr/bin/printf ok)"
 "#;
 
 /// A folder the room asks for is exchanged, as fast as the kernel allows,
@@ -1125,7 +1127,8 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         "messages", &log, &w, &id, "ldm", None,
     ));
     if !log.contains("requests and rooms at once") {
-        failures.push("messages: connections closed at the limit are not in the start record".into());
+        failures
+            .push("messages: connections closed at the limit are not in the start record".into());
     }
     if !log.contains("too many places") {
         failures.push("messages: a room with too many places was not refused for that".into());
@@ -1139,15 +1142,13 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             "messages: the start record's refusals are not capped ({refusals} lines)"
         ));
     }
-    // Rooms built are kept apart: a flood of refusals never pushes them out.
-    let built = log
-        .lines()
-        .filter(|l| l.starts_with("sam-room: built"))
-        .count();
-    if built < 2 {
-        failures.push(format!(
-            "messages: rooms built are missing from the start record after a flood of refusals ({built})"
-        ));
+    // Rooms built are kept apart: a flood of refusals never pushes out a
+    // room built after it.
+    if !log.lines().any(|l| l.starts_with("sam-room: built printf")) {
+        failures.push(
+            "messages: a room built after a flood of refusals is missing from the start record"
+                .into(),
+        );
     }
 
     // A folder exchanged for a link while rooms are built.
