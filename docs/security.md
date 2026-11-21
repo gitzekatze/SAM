@@ -141,51 +141,81 @@ rule: **no more than the app, no less than asked.**
 - **The stand-in.** `bwrap` on the app's `PATH` is SAM's helper in a
   stand-in mode (`/run/sam/bin/bwrap`). It reads Bubblewrap's arguments
   inside the app's sandbox and sends a small fixed form, with the program's
-  open connections, to SAM's launcher. Programs need no change.
+  open connections (up to 253, as Bubblewrap passes them all), to SAM's
+  launcher. Programs need no change.
 - **The service** runs in SAM's launcher, which stays for the whole start.
   It trusts nothing the stand-in checked: every rule is enforced there.
   - A room shows only places of the app's own view (SAM's *floor plan* of
-    the app), each at the same place as in the app and from the same source
-    on the computer. Every folder is opened beneath the floor-plan folder
-    that holds it, with no link leading out, and shown by that opened
-    handle, so a folder swapped on the way changes nothing.
-  - Writable only where the app's place is writable; devices only the
-    app's; the network only when the app has the full network and the
-    program does not give it up.
+    the app), each at the same place as in the app, rebuilt as it is
+    stacked in the app: the last mount over a place counts, and SAM's
+    hiding mounts (`~/.ssh`, `~/.gnupg`, SAM's own folders, grants inside
+    them) come along, so a room never sees what the app does not.
+  - Every source is opened once when the app starts and shown by that
+    handle; nothing is found by name later, whatever the app renames. A
+    path the request names below a source is opened without following any
+    link (a link the app made could lead to a place it sees protected or
+    hidden); such a request is refused.
+  - Writable only where the app's place is writable (the app's own
+    `--remount-ro` arguments count); devices only the app's, and working
+    only where the request asked for working devices; the network only when
+    the app has the full network (its own Bubblewrap arguments may take it
+    away) and the program, in Bubblewrap's order, asks for it.
+  - The room's own new things (folders, links, file systems) are made only
+    in its own space, never inside a place shown from the app: Bubblewrap
+    makes them before any protection applies and would follow a link the
+    app left there onto the computer.
   - Every restriction the program asks for is kept. Options that could give
     a room more than its app are refused by name (joining other namespaces,
     other users, extra powers, places or files from connections, options
     from a connection); an unknown option is refused too, never guessed.
-- **SAM's layers in every room.** SAM's helper starts first inside the
-  room: Landlock (the app's write rules, plus the room's own new folders),
-  then SAM's syscall filter (never allowing nested sandboxes), then the
-  program's own filter, then the program with exactly the environment it
-  asked for. Nothing the program chose runs before SAM's layers are in
-  place. A layer that does not load means no room.
+- **SAM's layers in every room.** The room's first program is SAM's room
+  helper, a static program (no loader, no library) that SAM passes in as
+  data together with the room's rules, at a place no request may name
+  (`/.sam-room`), before anything of the request is laid out: nothing the
+  request shapes runs or is read before SAM's layers. It applies Landlock
+  (the app's write rules, plus the room's own new places; abstract sockets
+  outside the room blocked from Landlock 6 on), then SAM's syscall filter
+  (never allowing nested sandboxes), then the program's own filter, then
+  starts the program with exactly the environment it asked for. It
+  confirms what it applied; the start record says what it confirmed. A
+  layer that does not load means no room; on a kernel without Landlock the
+  room has what the app has, and the record says so.
 - **Exceptions are for the app, not its helpers.** If Landlock or the
   filter is off for an app, or nested sandboxes are allowed, its rooms still
   get SAM's default layers.
 - **Lifetime and limits.** A room ends when its stand-in goes, and every
-  room ends with the app's start. At most 16 rooms of one app run at once;
-  more requests wait.
-- **Records.** The start record names each room's program, its layers and
-  what was capped or refused, never the room's environment.
+  room ends with the app's start, before SAM waits for the app's output. At
+  most 16 rooms of one app run at once (more wait), at most 64 connections
+  are read at once, and at most 512 passed connections are held: an app
+  cannot fill SAM's launcher.
+- **Records.** The start record names each room's program, the layers its
+  helper confirmed, what was capped, and every refusal (also those of the
+  stand-in), never the room's environment; at most 200 lines per start.
 - **Turning it off.** `advanced.room_service` (on by default) turns Room
   service off for one app. Then programs that build a sandbox of their own
   fail inside SAM, or run without it.
+- **Builds.** SAM's room helper is built as a static program (needs the
+  static C library when SAM is built). A SAM built without it has Room
+  service off, and every start says so.
 
 Not covered: programs that call `/usr/bin/bwrap` by its full path, and
 other sandbox tools (Firejail, `flatpak-spawn --sandbox`). Chromium's own
 sandbox is not Bubblewrap and has its own setting (*Nested sandboxes*).
+Programs in apps with nested sandboxes allowed now get rooms too, so a
+request with options a room refuses (see above) fails there where plain
+Bubblewrap ran before: a room never gets more than the app.
 
 The tests attack every rule from a real sandbox, under every network
-setting and in an app with its exceptions on, including hand-written
-messages past the stand-in and a folder exchanged for a link while rooms
-are built (`room_service_builds_working_rooms_that_never_get_more_than_their_app`).
+setting, in an app with its exceptions on and in a shared home, including
+hand-written messages past the stand-in, a folder exchanged for a link
+while rooms are built, links planted to the computer's root, a room
+layout that points the system's library folders into the app's own
+folder, and the limits
+(`room_service_builds_working_rooms_that_never_get_more_than_their_app`).
 A second test generates many requests and compares each room with its app:
-abilities, writes on the computer, and every mount, so it checks the
-service itself, not only Landlock behind it
-(`every_room_is_a_subset_of_its_app`).
+abilities, writes on the computer, and every mount with its read-only or
+writable state, so it checks the service itself, not only Landlock behind
+it (`every_room_is_a_subset_of_its_app`).
 
 ### Systems that switch user namespaces off
 

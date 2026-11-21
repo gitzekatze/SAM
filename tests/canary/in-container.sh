@@ -26,7 +26,7 @@ setup() {
     case "$ID" in
         fedora)
             dnf install -y -q --setopt=install_weak_deps=False \
-                gcc pkgconf-pkg-config curl ca-certificates kernel-headers \
+                gcc glibc-static pkgconf-pkg-config curl ca-certificates kernel-headers \
                 bubblewrap xdg-dbus-proxy passt bsdtar squashfs-tools gnupg2 strace \
                 python3 python3-gobject glib2 dbus-daemon util-linux shadow-utils ;;
         debian|ubuntu)
@@ -46,7 +46,7 @@ setup() {
             # provide, so a renamed package still comes (issue #86: without
             # them the hostile-AppImage test could not run).
             zypper -q -n install --no-recommends \
-                gcc pkgconf curl ca-certificates linux-glibc-devel \
+                gcc glibc-devel-static pkgconf curl ca-certificates linux-glibc-devel \
                 bubblewrap xdg-dbus-proxy passt bsdtar squashfs gpg2 strace \
                 python3 python3-gobject 'typelib(Gio)' glib2-tools dbus-1 /usr/bin/dbus-daemon \
                 util-linux shadow ;;

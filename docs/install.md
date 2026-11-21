@@ -72,7 +72,7 @@ sudo pacman -S --needed base-devel rust gtk4 libadwaita bubblewrap xdg-dbus-prox
 **Fedora:**
 
 ```sh
-sudo dnf install cargo gtk4-devel libadwaita-devel bubblewrap xdg-dbus-proxy passt git gettext
+sudo dnf install cargo glibc-static gtk4-devel libadwaita-devel bubblewrap xdg-dbus-proxy passt git gettext
 ```
 
 **Ubuntu 24.04 or newer** (Ubuntu's Rust is too old; install Rust with

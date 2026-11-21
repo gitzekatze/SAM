@@ -477,7 +477,7 @@ jobs:
         run: |
           docker run --rm --privileged -v "$PWD:/src" registry.fedoraproject.org/fedora:latest bash -euxc '
             dnf install -y --setopt=install_weak_deps=False \
-              rust cargo gcc pkgconf-pkg-config \
+              rust cargo gcc glibc-static pkgconf-pkg-config \
               bubblewrap xdg-dbus-proxy passt bsdtar squashfs-tools \
               python3 python3-gobject glib2 dbus-daemon \
               gdk-pixbuf2 glycin-loaders \

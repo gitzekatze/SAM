@@ -331,26 +331,23 @@ for s in idle:
     s.close()
 time.sleep(1)
 # Connections held while requests are still being sent count against the
-# service's budget (512): the third of three requests with 253 each is
-# refused before it ends.
+# service's budget (512): two half-sent requests with 253 each are held,
+# a third with 10 more is refused at once (long before the read limit).
 null = os.open("/dev/null", os.O_RDONLY)
 half = []
-for i in range(3):
+for count in (253, 253, 10):
     s = socket.socket(socket.AF_UNIX)
-    s.settimeout(5)
+    s.settimeout(4)
     s.connect("/run/sam/rooms")
-    s.sendmsg([struct.pack("!I", 1000)], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [null] * 253))])
+    s.sendmsg([struct.pack("!I", 1000)], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [null] * count))])
     half.append(s)
-time.sleep(1)
-answered = 0
-for s in half:
-    try:
-        head = s.recv(4)
-        if len(head) == 4:
-            answered += 1
-    except socket.timeout:
-        pass
-say("held_limited", "yes" if answered >= 1 else "no")
+    time.sleep(0.3)
+try:
+    head = half[2].recv(4)
+    third = "refused" if len(head) == 4 else "closed"
+except socket.timeout:
+    third = "held"
+say("held_limited", "yes" if third == "refused" else f"no-{third}")
 for s in half:
     s.close()
 time.sleep(1)
@@ -815,6 +812,19 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             failures.push(format!(
                 "{name}: a room that asked for the network did not get the app's full network ({:?})",
                 c.get("tcp_room")
+            ));
+        }
+        // Refused by Room service's own rule (newer Bubblewraps refuse such
+        // a link on their own; older ones follow it onto the computer).
+        let by_rule = log
+            .lines()
+            .filter(|l| {
+                l.contains("sam-room: refused") && l.contains("inside a place shown from the app")
+            })
+            .count();
+        if by_rule < 2 {
+            failures.push(format!(
+                "{name}: new things inside a shown place were not refused by Room service's rule ({by_rule} of 2)"
             ));
         }
         for planted in ["evil-link.desktop", "evil-dir"] {

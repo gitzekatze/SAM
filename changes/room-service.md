@@ -8,4 +8,9 @@
   sandbox at all ("Glycin running without sandbox"), or the app crashed.
 - No setting to change: Room service is on for every app.
   `advanced.room_service` turns it off for one app.
-- The start record names each room and what was capped or refused.
+- The start record names each room, the protection layers SAM's room
+  helper confirmed, and what was capped or refused.
+- Building SAM now needs the static C library (Debian/Ubuntu: libc6-dev,
+  Fedora: glibc-static, openSUSE: glibc-devel-static) for SAM's room
+  helper, a small static program. Without it the build warns and Room
+  service is off.
