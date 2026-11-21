@@ -105,6 +105,12 @@ protected_tests = [
   "crates/sam-runner/tests/adversarial.rs",
   "crates/sam-runner/tests/changed_appimage.rs",
   "crates/sam-runner/tests/stop.rs",
+  # Room service: rooms never get more than their app (2026-11-21).
+  "crates/sam-runner/tests/room_service.rs",
+  "crates/sam-runner/tests/room_service_compare.rs",
+  "crates/sam-runner/tests/room_service_local.rs",
+  "crates/sam-runner/tests/room_service_glycin.rs",
+  "crates/sam-runner/tests/rooms_common/mod.rs",
   "crates/sam-jail-cli/tests/terminal.rs",
   "crates/sam-jail-cli/tests/unpack.rs",
   "crates/sam-jail-cli/tests/interface.rs",
