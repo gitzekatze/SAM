@@ -162,6 +162,21 @@ exec 11<&-
 exec 11<"$HOME/filter.bpf"
 say filter_holds "$(rv room --seccomp 11 -- $P uname)"
 exec 11<&-
+# A program filter that refuses every write: SAM's helper confirms its
+# layers before loading it, so the room is still built and confirmed.
+python3 - "$HOME/nowrite.bpf" <<'PY'
+import os, struct, sys
+write = 64 if os.path.exists("/lib/ld-linux-aarch64.so.1") else 1
+f = [(0x20, 0, 0, 0), (0x15, 0, 1, write), (0x06, 0, 0, 0x00050001), (0x06, 0, 0, 0x7fff0000)]
+open(sys.argv[1], "wb").write(b"".join(struct.pack("HBBI", *i) for i in f))
+PY
+exec 11<"$HOME/nowrite.bpf"
+room --seccomp 11 -- /usr/bin/true
+say filter_quiet "$?"
+exec 11<&-
+# An argument that is not text: the whole request is refused, never run
+# with the argument changed.
+say not_text "$(rv room -- /usr/bin/echo "$(printf 'x\377')")"
 "#;
 
 /// A shared home (read/write): its protected places (autostart, shell
@@ -858,6 +873,8 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             ("userns_room", "blocked"),
             ("filter_start", "0"),
             ("filter_holds", "blocked"),
+            ("filter_quiet", "0"),
+            ("not_text", "refused"),
             ("planted_symlink", "refused"),
             ("planted_dir", "refused"),
             ("loader_layout", "done"),
@@ -1107,6 +1124,9 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     failures.extend(environment_only_in_the_program(
         "messages", &log, &w, &id, "ldm", None,
     ));
+    if !log.contains("requests and rooms at once") {
+        failures.push("messages: connections closed at the limit are not in the start record".into());
+    }
     if !log.contains("too many places") {
         failures.push("messages: a room with too many places was not refused for that".into());
     }
