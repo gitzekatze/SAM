@@ -119,12 +119,8 @@ jobs:
         timeout-minutes: 20
         run: |
           # Mirror choice and time limits: see the script.
-          scripts/ci-packages.sh \
-            libgtk-4-dev libadwaita-1-dev pkg-config \
-            bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3 \
-            desktop-file-utils appstream gettext libgtk-4-bin dbus \
-            python3-gi libglib2.0-bin \
-            pipewire pipewire-pulse pulseaudio-utils
+          # The whole suite's packages: one list, shared with the weekly runs.
+          scripts/ci-packages.sh --suite
 
       # Ubuntu restricts unprivileged user namespaces through AppArmor, so
       # Bubblewrap cannot run and the end-to-end sandbox tests would skip.

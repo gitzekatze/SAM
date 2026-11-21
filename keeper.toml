@@ -132,6 +132,8 @@ gate = [
   # skip, and builds the hostile inputs. Changing any of it could empty the
   # proofs while every check stays green (verification audit 2026-11-19).
   ".github/workflows/ci.yml",
+  # The packages the whole suite runs with (shared by CI and the weekly runs).
+  "scripts/ci-packages.sh",
   "scripts/flaky-check.py",
   "crates/sam-intake/src/testkit.rs",
   "crates/sam-runner/src/testenv.rs",
