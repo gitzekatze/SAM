@@ -104,7 +104,7 @@ impl LaunchContext {
 }
 
 /// Names SAM itself uses in `/run/sam` inside the sandbox.
-const RUN_SAM_OWN: &[&str] = &["bin", "sam-jail-run", "sandbox.json", "app"];
+const RUN_SAM_OWN: &[&str] = &["bin", "sam-jail-run", "sandbox.json", "app", "rooms"];
 
 /// Where the AppImage file `name` is shown inside the sandbox (`$APPIMAGE`):
 /// `/run/sam/<name>`, or `/run/sam/app/<name>` for a name SAM uses there
@@ -306,7 +306,7 @@ mod appimage_place_tests {
             appimage_inside(OsStr::new("Krita.AppImage")),
             Path::new("/run/sam/Krita.AppImage")
         );
-        for own in ["bin", "sam-jail-run", "sandbox.json", "app"] {
+        for own in ["bin", "sam-jail-run", "sandbox.json", "app", "rooms"] {
             assert_eq!(
                 appimage_inside(OsStr::new(own)),
                 Path::new("/run/sam/app").join(own)

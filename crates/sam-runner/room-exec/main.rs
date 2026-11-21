@@ -9,9 +9,10 @@
 //! 1. Landlock: read everywhere, write only where the rules say; abstract
 //!    sockets outside the room blocked (kernels with Landlock 6 and newer);
 //! 2. SAM's syscall filter (compiled by SAM, passed as a connection);
-//! 3. the program's own syscall filters (passed connections);
-//! 4. reports what is in place on the status connection, closes it;
-//! 5. starts the program with exactly the environment it asked for.
+//! 3. reports what is in place on the status connection, closes it;
+//! 4. the program's own syscall filters (passed connections);
+//! 5. starts the program with exactly the environment it asked for,
+//!    finding it as Bubblewrap's execvp does.
 //!
 //! Any step that fails ends the room (exit 127) before the program starts.
 //! On a kernel without Landlock the room has what the app has, and the
@@ -24,7 +25,10 @@
 //! `env=NAME=VALUE` (any number of each).
 
 // No Rust start-up code: it would read /proc/self/maps (to find the main
-// thread's stack), a file of the room's layout, before SAM's layers.
+// thread's stack), a file of the room's layout, before SAM's layers. The
+// static C library's own start-up still asks once where this program lies
+// (readlink of /proc/self/exe, for $ORIGIN); the answer is never used here
+// and gives no right: nothing else of the layout is read before the layers.
 #![no_main]
 
 use std::ffi::{CString, OsStr};
@@ -215,31 +219,44 @@ fn number(v: &[u8]) -> c_int {
         .unwrap_or_else(|| fail("the room's rules are not valid"))
 }
 
-/// The program to start: a name without `/` is looked up in the PATH of
-/// the environment it asked for (as Bubblewrap's execvp does).
-fn find_program(name: &OsStr, env: &[(&OsStr, &OsStr)]) -> Vec<u8> {
+/// Where to look for the program, in order, as glibc's execvp does with
+/// the environment the program asked for: a name with `/` as it is;
+/// otherwise each PATH entry (an empty one is the current folder), and
+/// "/bin:/usr/bin" when there is no PATH. Never the bare name otherwise.
+fn candidates(name: &OsStr, env: &[(&OsStr, &OsStr)]) -> Vec<Vec<u8>> {
     let bytes = name.as_bytes();
     if bytes.contains(&b'/') {
-        return bytes.to_vec();
+        return vec![bytes.to_vec()];
     }
     let path = env
         .iter()
         .rev()
         .find(|(k, _)| k.as_bytes() == b"PATH")
-        .map_or(&b"/usr/local/bin:/usr/bin:/bin"[..], |(_, v)| v.as_bytes());
-    for dir in path.split(|b| *b == b':').filter(|d| !d.is_empty()) {
-        let mut full = dir.to_vec();
-        full.push(b'/');
-        full.extend_from_slice(bytes);
-        let runs = std::fs::metadata(OsStr::from_bytes(&full)).is_ok_and(|m| {
-            use std::os::unix::fs::PermissionsExt;
-            m.is_file() && m.permissions().mode() & 0o111 != 0
-        });
-        if runs {
-            return full;
-        }
-    }
-    bytes.to_vec()
+        .map_or(&b"/bin:/usr/bin"[..], |(_, v)| v.as_bytes());
+    path.split(|b| *b == b':')
+        .map(|dir| {
+            if dir.is_empty() {
+                return bytes.to_vec();
+            }
+            let mut full = dir.to_vec();
+            if !full.ends_with(b"/") {
+                full.push(b'/');
+            }
+            full.extend_from_slice(bytes);
+            full
+        })
+        .collect()
+}
+
+/// Errors after which execvp tries the next PATH entry.
+fn try_next(e: c_int) -> bool {
+    const ENOENT: c_int = 2;
+    const EACCES: c_int = 13;
+    const ENODEV: c_int = 19;
+    const ENOTDIR: c_int = 20;
+    const ETIMEDOUT: c_int = 110;
+    const ESTALE: c_int = 116;
+    matches!(e, ENOENT | EACCES | ENODEV | ENOTDIR | ETIMEDOUT | ESTALE)
 }
 
 #[no_mangle]
@@ -275,8 +292,19 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
     load_filter(seccomp);
     report.push_str(", seccomp");
     // Everything the program's start needs, prepared now: under its own
-    // filter only the start itself (execve) follows.
-    let program = CString::new(find_program(&args[3], &env)).unwrap_or_else(|_| fail("the program's name is not valid"));
+    // filter only the start itself (execve, as in Bubblewrap's execvp)
+    // follows. Each place to try, with the shell's arguments for a script
+    // without "#!" (as execvp runs it).
+    let shell = CString::new("/bin/sh").unwrap_or_else(|_| fail("no shell"));
+    let tries: Vec<(CString, Vec<CString>)> = candidates(&args[3], &env)
+        .into_iter()
+        .map(|c| {
+            let path = CString::new(c).unwrap_or_else(|_| fail("the program's name is not valid"));
+            let mut sh = vec![shell.clone(), path.clone()];
+            sh.extend(args[4..].iter().map(|a| CString::new(a.as_bytes()).unwrap_or_else(|_| fail("an argument is not valid"))));
+            (path, sh)
+        })
+        .collect();
     let argv: Vec<CString> = args[3..]
         .iter()
         .map(|a| CString::new(a.as_bytes()).unwrap_or_else(|_| fail("an argument is not valid")))
@@ -308,7 +336,26 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
     for fd in &filters {
         load_filter(*fd);
     }
-    // SAFETY: NUL-terminated strings and arrays that live until the call.
-    unsafe { execve(program.as_ptr(), argv_ptrs.as_ptr(), envp_ptrs.as_ptr()) };
-    fail(&format!("{}: {}", args[3].to_string_lossy(), errno()));
+    let sh_ptrs: Vec<Vec<*const std::os::raw::c_char>> = tries
+        .iter()
+        .map(|(_, sh)| sh.iter().map(|a| a.as_ptr()).chain(std::iter::once(std::ptr::null())).collect())
+        .collect();
+    let mut denied = false;
+    for ((path, _), sh) in tries.iter().zip(&sh_ptrs) {
+        // SAFETY: NUL-terminated strings and arrays that live until the call.
+        unsafe { execve(path.as_ptr(), argv_ptrs.as_ptr(), envp_ptrs.as_ptr()) };
+        let e = errno().raw_os_error().unwrap_or(0);
+        if e == 8 {
+            // ENOEXEC: a script without "#!", run by the shell.
+            // SAFETY: as above.
+            unsafe { execve(shell.as_ptr(), sh.as_ptr(), envp_ptrs.as_ptr()) };
+            fail(&format!("{}: {}", args[3].to_string_lossy(), errno()));
+        }
+        if !try_next(e) {
+            fail(&format!("{}: {}", args[3].to_string_lossy(), errno()));
+        }
+        denied |= e == 13;
+    }
+    let why = if denied { "Permission denied" } else { "No such file or directory" };
+    fail(&format!("execvp {}: {why}", args[3].to_string_lossy()));
 }

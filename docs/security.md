@@ -152,12 +152,16 @@ rule: **no more than the app, no less than asked.**
     them) come along, so a room never sees what the app does not.
   - Every source is opened once when the app starts and shown by that
     handle; nothing is found by name later, whatever the app renames. A
+    device place missing when the app starts is left out too, so a device
+    plugged in later never reaches a room. A
     path the request names below a source is opened without following any
     link (a link the app made could lead to a place it sees protected or
     hidden); such a request is refused.
   - Writable only where the app's place is writable (the app's own
     `--remount-ro` arguments count); devices only the app's, and working
-    only where the request asked for working devices; the network only when
+    only where the request asked for working devices (the app's `/dev`
+    asked for without them is the room's own, with the same few nodes not
+    working); the network only when
     the app has the full network (its own Bubblewrap arguments may take it
     away) and the program does not take it away (as in Bubblewrap, the last
     of `--share-net` and `--unshare-net` or `--unshare-all` counts).
@@ -177,20 +181,28 @@ rule: **no more than the app, no less than asked.**
   - A place of the app that cannot be shown means no room, never one
     without it (only a path the request named itself with `-try` may be
     missing); at most 600 places per room.
-  - Every restriction the program asks for is kept. Options that could give
+  - Every restriction the program asks for is kept, its resource limits
+    (where lower than the launcher's) and its umask too, as Bubblewrap's
+    children keep them (glycin caps its loader's memory this way). Options
+    that could give
     a room more than its app are refused by name (joining other namespaces,
     other users, extra powers, places or files from connections, options
     from a connection); an unknown option is refused too, never guessed.
 - **SAM's layers in every room.** The room's first program is SAM's room
   helper, a static program (no loader, no library) that SAM passes in as
   data together with the room's rules, at a place no request may name
-  (`/.sam-room`), before anything of the request is laid out: nothing the
-  request shapes runs or is read before SAM's layers. It applies Landlock
+  (`/.sam-room`), before anything of the request is laid out, and no
+  request may lay anything over it: nothing the request shapes runs
+  before SAM's layers, and nothing of it is read except the one link the C
+  library's start-up asks for (`/proc/self/exe`), whose answer the helper
+  never uses. It applies Landlock
   (the app's read and write rules, the room's own new places writable;
   abstract sockets outside the room blocked from Landlock 6 on), then
   SAM's syscall filter (never allowing nested sandboxes), confirms both,
   then loads the program's own filter and starts the program with exactly
-  the environment it asked for. The start record says what the helper
+  the environment it asked for, found as Bubblewrap finds it (its PATH,
+  never the room's folder otherwise; a script without `#!` through the
+  shell). The start record says what the helper
   confirmed; a room whose helper confirmed nothing is ended at once. A
   layer that does not load means no room; on a kernel without Landlock the
   room has what the app has, and the record says so.
@@ -201,13 +213,16 @@ rule: **no more than the app, no less than asked.**
   room ends with the app's start, before SAM waits for the app's output. At
   most 16 rooms of one app run at once (more wait), at most 64 connections
   are open at once (requests being read and rooms running; more are closed
-  and recorded), and at most 512 passed connections are held: an app
-  cannot fill SAM's launcher.
+  and recorded), and at most 512 passed connections are held. Everything
+  held for rooms (passed connections, the places a room opens) is counted
+  before it is taken, within what the launcher's own descriptor limit
+  leaves free; a request beyond that is refused, so an app cannot run
+  SAM's launcher out of descriptors.
 - **Records.** The start record names each room's program, the layers its
   helper confirmed, what was capped, and every refusal of the service,
   including options the stand-in passes on because no room gets them (a
-  request with an argument that is not text is refused as a whole, never
-  passed on changed); a stand-in that cannot reach the service at all says
+  request with an argument, a variable or a folder that is not text is
+  refused as a whole, never passed on changed); a stand-in that cannot reach the service at all says
   so to its program only. Never the room's environment. Rooms are recorded
   apart from refusals, so a flood of refusals cannot push them out: at most
   500 rooms and 200 refusals per start, the rest counted.

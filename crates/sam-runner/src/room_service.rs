@@ -31,21 +31,32 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 
 use crate::kernel::{LandlockSpec, SeccompSpec};
-use crate::room_rules::{self, AppFacts, DeviceAccess, FloorPlan, RoomPlan, Source, Step};
+use crate::room_rules::{self, AppFacts, DeviceAccess, Entry, FloorPlan, RoomPlan, Source, Step};
 
 /// Where the service listens inside the app's sandbox.
 pub const SOCKET_INSIDE: &str = "/run/sam/rooms";
 /// At most this many rooms of one app at once; more requests wait.
 pub const MAX_ROOMS: usize = 16;
-/// At most this many connections being read at once; more are closed.
+/// At most this many connections open at once (requests being read and
+/// rooms running); more are closed and recorded.
 pub const MAX_CONNECTIONS: usize = 64;
 /// At most this many passed connections held by the service at once, from
 /// the first byte read until the room has started (a request beyond it is
-/// refused): an app cannot fill SAM's launcher with connections.
+/// refused). Everything held for rooms also stays within what the
+/// launcher's own descriptor limit leaves free (`State::fd_budget`).
 pub const MAX_HELD: usize = 512;
 /// At most this many places of the app in one room.
 const MAX_PLACES: usize = 600;
-/// At most this many room lines in one start record (the rest counted).
+/// Descriptors the launcher keeps free for itself and for the connections
+/// (each holds its own, and a second one while its room runs).
+const FD_RESERVE: usize = 128 + 2 * MAX_CONNECTIONS;
+/// At most this many descriptors held for rooms at once, whatever the limit.
+const MAX_SERVICE_FDS: usize = 16 * 1024;
+/// SAM's own descriptors for one room while it is set up (its helper, the
+/// status pipe, the filter, the rules, the watcher's connection, and what
+/// starting Bubblewrap opens for a moment).
+const ROOM_FDS: usize = 12;
+/// At most this many refusals in one start record (the rest counted).
 const MAX_RECORDS: usize = 200;
 /// At most this many lines about rooms built or failed (kept apart).
 const MAX_ROOM_RECORDS: usize = 500;
@@ -111,7 +122,13 @@ struct Served {
 struct State {
     stop: AtomicBool,
     connections: AtomicUsize,
+    /// Passed connections held (at most MAX_HELD).
     held: AtomicUsize,
+    /// Every descriptor held for rooms: passed connections, places, SAM's
+    /// own (at most `fd_budget`).
+    fds: AtomicUsize,
+    /// What the launcher's descriptor limit leaves free for rooms.
+    fd_budget: AtomicUsize,
     slots: Mutex<usize>,
     freed: Condvar,
     rooms: Mutex<Vec<Arc<Mutex<Child>>>>,
@@ -146,28 +163,70 @@ impl State {
     }
 }
 
-/// Passed connections counted against [`MAX_HELD`] until released.
+/// Descriptors one request holds, counted until released: passed
+/// connections against [`MAX_HELD`], and everything against the budget
+/// the launcher's own limit leaves free. Counted before they are taken,
+/// so the launcher never runs out of descriptors.
 struct Held<'a> {
-    total: &'a AtomicUsize,
-    mine: usize,
+    state: &'a State,
+    passed: usize,
+    all: usize,
+}
+
+/// Takes up to `want` of what `max` leaves in `counter`; how many it got.
+fn take_up_to(counter: &AtomicUsize, want: usize, max: usize) -> usize {
+    let mut cur = counter.load(Ordering::SeqCst);
+    loop {
+        let n = want.min(max.saturating_sub(cur));
+        match counter.compare_exchange(cur, cur + n, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return n,
+            Err(now) => cur = now,
+        }
+    }
 }
 
 impl<'a> Held<'a> {
-    fn new(total: &'a AtomicUsize) -> Self {
-        Held { total, mine: 0 }
-    }
-    /// Counts `n` more; false (nothing counted) when that passes the limit.
-    fn add(&mut self, n: usize) -> bool {
-        if self.total.fetch_add(n, Ordering::SeqCst) + n > MAX_HELD {
-            self.total.fetch_sub(n, Ordering::SeqCst);
-            return false;
+    fn new(state: &'a State) -> Self {
+        Held {
+            state,
+            passed: 0,
+            all: 0,
         }
-        self.mine += n;
-        true
+    }
+    /// Reserves room for up to `want` passed connections; how many.
+    fn reserve_passed(&mut self, want: usize) -> usize {
+        let st = self.state;
+        let n = take_up_to(&st.held, want, MAX_HELD);
+        let m = take_up_to(&st.fds, n, st.fd_budget.load(Ordering::SeqCst));
+        st.held.fetch_sub(n - m, Ordering::SeqCst);
+        self.passed += m;
+        self.all += m;
+        m
+    }
+    /// Gives back `n` reserved passed connections that did not come.
+    fn unreserve_passed(&mut self, n: usize) {
+        self.state.held.fetch_sub(n, Ordering::SeqCst);
+        self.state.fds.fetch_sub(n, Ordering::SeqCst);
+        self.passed -= n;
+        self.all -= n;
+    }
+    /// Counts `n` more of SAM's own descriptors; false (nothing counted)
+    /// when the budget has no room for all of them.
+    fn add_own(&mut self, n: usize) -> bool {
+        let st = self.state;
+        let got = take_up_to(&st.fds, n, st.fd_budget.load(Ordering::SeqCst));
+        if got == n {
+            self.all += n;
+            return true;
+        }
+        st.fds.fetch_sub(got, Ordering::SeqCst);
+        false
     }
     fn release(&mut self) {
-        self.total.fetch_sub(self.mine, Ordering::SeqCst);
-        self.mine = 0;
+        self.state.held.fetch_sub(self.passed, Ordering::SeqCst);
+        self.state.fds.fetch_sub(self.all, Ordering::SeqCst);
+        self.passed = 0;
+        self.all = 0;
     }
 }
 
@@ -222,26 +281,8 @@ impl RoomService {
     /// Starts serving the app's requests. Opens the floor plan's sources
     /// now, before the app runs: a room shows what the app was shown.
     pub fn serve(&mut self, mut ctx: RoomContext) {
-        // A place whose source does not exist now is not in the app either
-        // (Bubblewrap skips such `-try` places): it leaves the floor plan,
-        // so it neither shows nor covers anything in a room.
-        let mut sources = Vec::new();
-        let mut entries = Vec::new();
-        for e in std::mem::take(&mut ctx.plan.entries) {
-            match e.source() {
-                Some(p) => {
-                    if let Ok(fd) = open_path(p) {
-                        sources.push(Some(fd));
-                        entries.push(e);
-                    }
-                }
-                None => {
-                    sources.push(None);
-                    entries.push(e);
-                }
-            }
-        }
-        ctx.plan.entries = entries;
+        let (plan, sources) = plan_at_start(std::mem::take(&mut ctx.plan));
+        ctx.plan = plan;
         self.run(Served {
             ctx,
             sources,
@@ -263,6 +304,13 @@ impl RoomService {
         let Some(listener) = self.listener.take() else {
             return;
         };
+        let budget = fd_budget();
+        self.state.fd_budget.store(budget, Ordering::SeqCst);
+        if budget < 64 {
+            self.state.record(format!(
+                "sam-room: the launcher's descriptor limit leaves {budget} for rooms, so most rooms are refused"
+            ));
+        }
         let state = self.state.clone();
         let served = Arc::new(served);
         let spawned = std::thread::Builder::new()
@@ -344,6 +392,37 @@ impl Drop for RoomService {
     }
 }
 
+/// The floor plan as it is when the app starts, with its sources opened
+/// now: a place whose source does not exist now is not in the app either
+/// (Bubblewrap skips such `-try` places), so it leaves the plan and
+/// neither shows nor covers anything in a room. Device places are checked
+/// the same way: one that appears later is never looked up by its name.
+fn plan_at_start(mut plan: FloorPlan) -> (FloorPlan, Vec<Option<OwnedFd>>) {
+    let mut sources = Vec::new();
+    let mut entries = Vec::new();
+    for e in std::mem::take(&mut plan.entries) {
+        match e.source() {
+            Some(p) => {
+                if let Ok(fd) = open_path(p) {
+                    sources.push(Some(fd));
+                    entries.push(e);
+                }
+            }
+            None => {
+                if let Entry::Dev { src, .. } = &e {
+                    if std::fs::symlink_metadata(src).is_err() {
+                        continue;
+                    }
+                }
+                sources.push(None);
+                entries.push(e);
+            }
+        }
+    }
+    plan.entries = entries;
+    (plan, sources)
+}
+
 fn answer(stream: &mut UnixStream, body: &serde_json::Value) {
     let data = body.to_string().into_bytes();
     let mut msg = (data.len() as u32).to_be_bytes().to_vec();
@@ -375,7 +454,7 @@ fn serve_one(mut stream: UnixStream, state: &State, served: &Served) {
     };
     let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(READ_LIMIT));
-    let mut held = Held::new(&state.held);
+    let mut held = Held::new(state);
     let (body, fds) = match read_message(&stream, &mut held) {
         Ok(m) => m,
         Err(why) => return refuse(&mut stream, "?", &why),
@@ -415,16 +494,7 @@ fn serve_one(mut stream: UnixStream, state: &State, served: &Served) {
         }
         *used += 1;
     }
-    let result = run_room(
-        &mut stream,
-        state,
-        served,
-        &req.fds,
-        fds,
-        held,
-        room,
-        &program,
-    );
+    let result = run_room(&mut stream, state, served, &req, fds, held, room, &program);
     if let Ok(mut used) = state.slots.lock() {
         *used -= 1;
     }
@@ -442,13 +512,29 @@ fn run_room(
     stream: &mut UnixStream,
     state: &State,
     served: &Served,
-    req_fds: &[i32],
+    req: &room_rules::Request,
     passed: Vec<OwnedFd>,
     mut held: Held<'_>,
     room: RoomPlan,
     program: &str,
 ) -> Result<i32> {
     let ctx = &served.ctx;
+    let req_fds = &req.fds[..];
+    // The program's lower limits and its umask, kept for the room.
+    let limits: Vec<(i32, libc::rlimit)> = req
+        .limits
+        .iter()
+        .map(|l| {
+            (
+                l[0] as i32,
+                libc::rlimit {
+                    rlim_cur: l[1] as libc::rlim_t,
+                    rlim_max: l[2] as libc::rlim_t,
+                },
+            )
+        })
+        .collect();
+    let umask = req.umask;
     let mut handles: Vec<OwnedFd> = Vec::new();
     let mut numbers: Vec<i32> = Vec::new();
     let mut next = 3;
@@ -509,6 +595,9 @@ fn run_room(
         .count();
     if places > MAX_PLACES {
         bail!("the room asks for too many places ({places}, at most {MAX_PLACES})");
+    }
+    if !held.add_own(places + ROOM_FDS) {
+        bail!("too many places held for rooms at once ({places} more do not fit)");
     }
     for step in &room.steps {
         match step {
@@ -614,7 +703,7 @@ fn run_room(
     targets.sort_unstable();
     let mut temps: Vec<RawFd> = vec![0; map.len()];
     // SAFETY: only async-signal-safe calls (prctl, getrlimit, setrlimit,
-    // fcntl, dup2, close_range) on buffers made before the fork.
+    // umask, fcntl, dup2, close_range) on buffers made before the fork.
     unsafe {
         cmd.pre_exec(move || {
             libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong);
@@ -645,6 +734,26 @@ fn run_room(
             }
             if have {
                 libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
+            }
+            // The program's own limits where lower than the launcher's:
+            // never raised by a request.
+            for (res, want) in &limits {
+                let mut cur: libc::rlimit = std::mem::zeroed();
+                if libc::getrlimit(*res as _, &mut cur) != 0 {
+                    continue;
+                }
+                let hard = want.rlim_max.min(cur.rlim_max);
+                let soft = want.rlim_cur.min(cur.rlim_cur).min(hard);
+                if hard != cur.rlim_max || soft != cur.rlim_cur {
+                    let new = libc::rlimit {
+                        rlim_cur: soft,
+                        rlim_max: hard,
+                    };
+                    libc::setrlimit(*res as _, &new);
+                }
+            }
+            if let Some(m) = umask {
+                libc::umask((m & 0o777) as libc::mode_t);
             }
             // Everything else from 3 on closes when Bubblewrap starts
             // (marked, not closed: Rust reports a failed start through one).
@@ -945,16 +1054,22 @@ fn peer(stream: &UnixStream) -> Option<(i32, u32)> {
     (r == 0).then_some((cred.pid, cred.uid))
 }
 
-/// One receive, keeping the connections that come with it (close-on-exec).
-/// Errors when more connections came than a request may pass.
+/// One receive of what is waiting, keeping at most `max` connections that
+/// come with it (close-on-exec); the kernel closes any beyond them and
+/// says so (MSG_CTRUNC), then this errors.
 fn recv_with_fds(
     stream: &UnixStream,
     buf: &mut [u8],
     fds: &mut Vec<OwnedFd>,
+    max: usize,
 ) -> std::io::Result<usize> {
     // SAFETY: CMSG_SPACE only computes a size.
-    let space = unsafe { libc::CMSG_SPACE(((room_rules::MAX_FDS + 1) * 4) as u32) } as usize;
-    let mut control = vec![0u8; space];
+    let space = if max == 0 {
+        0
+    } else {
+        unsafe { libc::CMSG_SPACE((max * 4) as u32) as usize }
+    };
+    let mut control = vec![0u8; space.max(1)];
     let mut iov = libc::iovec {
         iov_base: buf.as_mut_ptr() as *mut libc::c_void,
         iov_len: buf.len(),
@@ -966,48 +1081,89 @@ fn recv_with_fds(
     msg.msg_control = control.as_mut_ptr() as *mut libc::c_void;
     msg.msg_controllen = space as _;
     // SAFETY: msg points at the live buffers above, of the sizes given.
-    let n = unsafe { libc::recvmsg(stream.as_raw_fd(), &mut msg, libc::MSG_CMSG_CLOEXEC) };
+    let n = unsafe {
+        libc::recvmsg(
+            stream.as_raw_fd(),
+            &mut msg,
+            libc::MSG_CMSG_CLOEXEC | libc::MSG_DONTWAIT,
+        )
+    };
     if n < 0 {
         return Err(std::io::Error::last_os_error());
     }
     // SAFETY: walking the control messages the kernel wrote.
     unsafe {
-        let mut c = libc::CMSG_FIRSTHDR(&msg);
-        while !c.is_null() {
-            if (*c).cmsg_level == libc::SOL_SOCKET && (*c).cmsg_type == libc::SCM_RIGHTS {
-                let data = libc::CMSG_DATA(c) as *const RawFd;
-                let count = ((*c).cmsg_len as usize - libc::CMSG_LEN(0) as usize) / 4;
-                for i in 0..count {
-                    fds.push(OwnedFd::from_raw_fd(std::ptr::read_unaligned(data.add(i))));
+        if space > 0 {
+            let mut c = libc::CMSG_FIRSTHDR(&msg);
+            while !c.is_null() {
+                if (*c).cmsg_level == libc::SOL_SOCKET && (*c).cmsg_type == libc::SCM_RIGHTS {
+                    let data = libc::CMSG_DATA(c) as *const RawFd;
+                    let count = ((*c).cmsg_len as usize - libc::CMSG_LEN(0) as usize) / 4;
+                    for i in 0..count {
+                        fds.push(OwnedFd::from_raw_fd(std::ptr::read_unaligned(data.add(i))));
+                    }
                 }
+                c = libc::CMSG_NXTHDR(&msg, c);
             }
-            c = libc::CMSG_NXTHDR(&msg, c);
         }
     }
-    if msg.msg_flags & libc::MSG_CTRUNC != 0 || fds.len() > room_rules::MAX_FDS {
-        return Err(std::io::Error::other("too many connections passed"));
+    if msg.msg_flags & libc::MSG_CTRUNC != 0 {
+        return Err(std::io::Error::other("more connections than room for them"));
     }
     Ok(n as usize)
 }
 
+/// Waits until the connection has something to read, at most `limit`.
+fn wait_readable(stream: &UnixStream, limit: Duration) -> Result<(), String> {
+    let mut p = libc::pollfd {
+        fd: stream.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let ms = limit.as_millis().min(i32::MAX as u128) as i32;
+    loop {
+        // SAFETY: one pollfd that lives through the call.
+        let r = unsafe { libc::poll(&mut p, 1, ms) };
+        if r > 0 {
+            return Ok(());
+        }
+        if r == 0 {
+            return Err("reading the request: it took too long".into());
+        }
+        let e = std::io::Error::last_os_error();
+        if e.kind() != std::io::ErrorKind::Interrupted {
+            return Err(format!("reading the request: {e}"));
+        }
+    }
+}
+
 /// A whole message: 4 bytes length, then the request; the connections
-/// travel with the first bytes, so every read takes them, and each counts
-/// against the service's budget as it arrives.
+/// travel with the first bytes. Room for them is counted before each
+/// receive (as much as the budgets leave), so no connection is ever taken
+/// in beyond them.
 fn read_message(
     stream: &UnixStream,
     held: &mut Held<'_>,
 ) -> Result<(Vec<u8>, Vec<OwnedFd>), String> {
     let mut fds = Vec::new();
+    let end = std::time::Instant::now() + READ_LIMIT;
     let mut take = |buf: &mut [u8], fds: &mut Vec<OwnedFd>| -> Result<usize, String> {
+        wait_readable(
+            stream,
+            end.saturating_duration_since(std::time::Instant::now()),
+        )?;
+        let want = room_rules::MAX_FDS - fds.len().min(room_rules::MAX_FDS);
+        let got = held.reserve_passed(want);
         let before = fds.len();
-        let n = recv_with_fds(stream, buf, fds).map_err(|e| format!("reading the request: {e}"))?;
-        if !held.add(fds.len() - before) {
-            return Err("too many connections held for rooms at once".into());
+        let r = recv_with_fds(stream, buf, fds, got);
+        held.unreserve_passed(got - (fds.len() - before).min(got));
+        match r {
+            Ok(0) => Err("the request ended early".into()),
+            Ok(n) => Ok(n),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(0),
+            Err(_) if got < want => Err("too many connections held for rooms at once".into()),
+            Err(_) => Err("the request passes too many connections".into()),
         }
-        if n == 0 {
-            return Err("the request ended early".into());
-        }
-        Ok(n)
     };
     let mut head = [0u8; 4];
     let mut got = 0;
@@ -1024,6 +1180,24 @@ fn read_message(
         got += take(&mut body[got..], &mut fds)?;
     }
     Ok((body, fds))
+}
+
+/// What the launcher's descriptor limit leaves free for rooms: its soft
+/// limit, less what is open now and what it keeps for itself.
+fn fd_budget() -> usize {
+    // SAFETY: getrlimit writes the struct given.
+    let mut lim: libc::rlimit = unsafe { std::mem::zeroed() };
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } != 0 {
+        return 0;
+    }
+    let open = std::fs::read_dir("/proc/self/fd").map_or(1024, |d| d.count());
+    budget_from(lim.rlim_cur, open)
+}
+
+/// The budget for a soft limit `soft` with `open` descriptors open.
+fn budget_from(soft: libc::rlim_t, open: usize) -> usize {
+    let soft = usize::try_from(soft).unwrap_or(usize::MAX);
+    soft.saturating_sub(open + FD_RESERVE).min(MAX_SERVICE_FDS)
 }
 
 fn send_with_fds(stream: &UnixStream, data: &[u8], fds: &[RawFd]) -> std::io::Result<()> {
@@ -1123,20 +1297,59 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
     if fds.len() > room_rules::MAX_FDS {
         return fail("too many open connections to pass to a room");
     }
+    // A variable or the folder that is not text is never dropped or
+    // changed: the request is refused as a whole, and recorded.
+    let mut ops = ops;
+    let mut env = std::collections::BTreeMap::new();
+    let mut not_text = false;
+    for (k, v) in std::env::vars_os() {
+        match (k.into_string(), v.into_string()) {
+            (Ok(k), Ok(v)) => {
+                env.insert(k, v);
+            }
+            _ => not_text = true,
+        }
+    }
+    let cwd = match std::env::current_dir() {
+        Ok(p) => match p.into_os_string().into_string() {
+            Ok(p) if room_rules::is_clean_absolute(&p) => p,
+            Ok(_) => "/".into(),
+            Err(_) => {
+                not_text = true;
+                "/".into()
+            }
+        },
+        Err(_) => "/".into(),
+    };
+    if not_text && ops.first().is_none_or(|o| o[0] != room_rules::NOT_TEXT) {
+        ops.insert(0, vec![room_rules::NOT_TEXT.into()]);
+    }
+    // The program's resource limits and umask: a room keeps them, as
+    // Bubblewrap's children do (glycin caps its loader's memory this way).
+    let mut limits = Vec::new();
+    for res in 0..16u32 {
+        // SAFETY: getrlimit writes the struct given.
+        let mut lim: libc::rlimit = unsafe { std::mem::zeroed() };
+        if unsafe { libc::getrlimit(res as _, &mut lim) } == 0 {
+            limits.push([u64::from(res), lim.rlim_cur, lim.rlim_max]);
+        }
+    }
+    // SAFETY: umask only swaps a number; set back at once.
+    let umask = unsafe {
+        let m = libc::umask(0o022);
+        libc::umask(m);
+        m
+    };
     let req = room_rules::Request {
         v: room_rules::VERSION,
         ops,
         flags: Vec::new(),
         command,
-        env: std::env::vars_os()
-            .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
-            .collect(),
-        cwd: std::env::current_dir()
-            .ok()
-            .and_then(|p| p.to_str().map(str::to_string))
-            .filter(|p| room_rules::is_clean_absolute(p))
-            .unwrap_or_else(|| "/".into()),
+        env,
+        cwd,
         fds: fds.clone(),
+        limits,
+        umask: Some(umask),
     };
     let body = match serde_json::to_vec(&req) {
         Ok(b) => b,
@@ -1165,4 +1378,64 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
             .and_then(|e| e.as_str())
             .unwrap_or("the room was refused"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|x| x.to_string()).collect()
+    }
+
+    /// A device place missing when the app starts is not in the app, so it
+    /// leaves the floor plan: a device plugged in later never reaches a
+    /// room by its name. One present stays.
+    #[test]
+    fn a_device_place_missing_at_the_start_leaves_the_floor_plan() {
+        let plan = FloorPlan::from_bwrap_args(&s(&[
+            "--dev-bind-try",
+            "/dev/sam-test-not-here",
+            "/dev/sam-test-not-here",
+            "--dev-bind-try",
+            "/dev/null",
+            "/dev/null",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let (plan, sources) = plan_at_start(plan);
+        let at: Vec<&Path> = plan.entries.iter().map(|e| e.at()).collect();
+        assert_eq!(at, vec![Path::new("/dev/null")]);
+        assert_eq!(sources.len(), plan.entries.len());
+    }
+
+    /// The descriptors held for rooms stay within what the launcher's
+    /// limit leaves free, and a reservation gives back what did not come.
+    #[test]
+    fn descriptors_for_rooms_stay_within_the_launchers_limit() {
+        assert_eq!(budget_from(1024, 100), 1024 - 100 - FD_RESERVE);
+        assert_eq!(budget_from(200, 100), 0);
+        assert_eq!(budget_from(libc::RLIM_INFINITY, 100), MAX_SERVICE_FDS);
+        let state = State::default();
+        state.fd_budget.store(300, Ordering::SeqCst);
+        let mut a = Held::new(&state);
+        assert_eq!(a.reserve_passed(253), 253);
+        let mut b = Held::new(&state);
+        // Only what is left: never more than the budget, in any order.
+        assert_eq!(b.reserve_passed(253), 47);
+        assert!(!b.add_own(1));
+        b.unreserve_passed(47);
+        assert!(b.add_own(40));
+        assert!(!b.add_own(8));
+        assert_eq!(state.fds.load(Ordering::SeqCst), 293);
+        drop(a);
+        drop(b);
+        assert_eq!(state.fds.load(Ordering::SeqCst), 0);
+        assert_eq!(state.held.load(Ordering::SeqCst), 0);
+        // Passed connections stay within MAX_HELD too.
+        state.fd_budget.store(10_000, Ordering::SeqCst);
+        let mut c = Held::new(&state);
+        assert_eq!(c.reserve_passed(MAX_HELD + 10), MAX_HELD);
+    }
 }

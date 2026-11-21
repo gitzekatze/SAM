@@ -53,7 +53,19 @@ pub struct Request {
     /// The numbers the passed connections have in the program; they keep
     /// them in the room.
     pub fds: Vec<i32>,
+    /// The program's resource limits, as `[resource, soft, hard]`: a room
+    /// keeps every one that is lower than the launcher's own.
+    #[serde(default)]
+    pub limits: Vec<[u64; 3]>,
+    /// The program's umask; a room keeps it.
+    #[serde(default)]
+    pub umask: Option<u32>,
 }
+
+/// Put first among a request's options by the stand-in when an argument,
+/// a variable or the folder of the program is not text: the request is
+/// then refused as a whole, never passed on changed.
+pub const NOT_TEXT: &str = "--not-text";
 
 /// What `bwrap ARGS…` asks for, read by the stand-in inside the sandbox.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,6 +238,12 @@ pub fn read_request(body: &[u8]) -> Result<Request, String> {
     if r.env.len() > MAX_ARGS {
         return Err("the request's environment is too large".into());
     }
+    if r.limits.len() > 64 || r.limits.iter().any(|l| l[0] >= 64) {
+        return Err("the request's resource limits are not valid".into());
+    }
+    if r.umask.is_some_and(|m| m > 0o777) {
+        return Err("the request's umask is not valid".into());
+    }
     if !is_clean_absolute(&r.cwd) {
         return Err("the request's folder is not a plain absolute path".into());
     }
@@ -249,8 +267,13 @@ pub enum Entry {
     Ro { src: PathBuf, dst: PathBuf },
     /// … shown writable.
     Rw { src: PathBuf, dst: PathBuf },
-    /// A device (or folder of devices) of the computer.
-    Dev { src: PathBuf, dst: PathBuf },
+    /// A device (or folder of devices) of the computer; `read_only` when
+    /// the app's own `--remount-ro` covers it.
+    Dev {
+        src: PathBuf,
+        dst: PathBuf,
+        read_only: bool,
+    },
     /// A link SAM made.
     Link { target: String, at: PathBuf },
     /// Bubblewrap's minimal /dev.
@@ -346,6 +369,7 @@ impl FloorPlan {
                     entries.push(Entry::Dev {
                         src: p(1)?,
                         dst: p(2)?,
+                        read_only: false,
                     });
                     3
                 }
@@ -413,13 +437,17 @@ impl FloorPlan {
                 continue;
             }
             for e in entries.iter_mut().take(before) {
-                if let Entry::Rw { src, dst } = e {
-                    if dst.starts_with(&at) {
+                match e {
+                    Entry::Rw { src, dst } if dst.starts_with(&at) => {
                         *e = Entry::Ro {
                             src: src.clone(),
                             dst: dst.clone(),
                         };
                     }
+                    Entry::Dev { dst, read_only, .. } if dst.starts_with(&at) => {
+                        *read_only = true;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -508,10 +536,71 @@ fn under(p: &Path, top: &Path) -> bool {
     p.starts_with(top)
 }
 
-/// A path of the request at or below RESERVED (or RESERVED below it, as a
-/// folder that would hold it).
+/// A path at or below RESERVED.
 fn reserved(p: &Path) -> bool {
     p.starts_with(RESERVED)
+}
+
+/// A place whose new mount would cover RESERVED: a folder that holds it.
+fn covers_reserved(p: &Path) -> bool {
+    Path::new(RESERVED).starts_with(p)
+}
+
+/// How a device place of the app is shown for a request that asked for
+/// `asked`: never writable where the app's own `--remount-ro` made it
+/// read-only (working devices stay working, read-only as in the app).
+fn device_steps(src: PathBuf, dst: PathBuf, asked: DeviceAccess, read_only: bool) -> Vec<Step> {
+    match (asked, read_only) {
+        (DeviceAccess::Devices, true) => vec![
+            Step::Device {
+                src,
+                dst: dst.clone(),
+                access: DeviceAccess::Devices,
+            },
+            Step::Args(vec!["--remount-ro".into(), path_arg(&dst)]),
+        ],
+        (DeviceAccess::NoDevices, true) => vec![Step::Device {
+            src,
+            dst,
+            access: DeviceAccess::ReadOnly,
+        }],
+        _ => vec![Step::Device {
+            src,
+            dst,
+            access: asked,
+        }],
+    }
+}
+
+/// Bubblewrap's minimal /dev of the app at `at`: as it is when the request
+/// asked for working devices; otherwise the room's own empty folder with
+/// the same few nodes shown as asked (their devices then do not work), as
+/// Bubblewrap shows a /dev asked for without devices.
+fn devfs_steps(at: &Path, asked: DeviceAccess) -> Vec<Step> {
+    if asked == DeviceAccess::Devices {
+        return vec![Step::Args(vec!["--dev".into(), path_arg(at)])];
+    }
+    let mut steps = vec![Step::Mask(at.to_path_buf())];
+    steps.extend(DEVFS_NODES.iter().map(|n| Step::Device {
+        src: Path::new("/dev").join(n),
+        dst: at.join(n),
+        access: asked,
+    }));
+    // The links and the folder every /dev has (scripts use /dev/stdout).
+    for (name, target) in [
+        ("fd", "/proc/self/fd"),
+        ("stdin", "/proc/self/fd/0"),
+        ("stdout", "/proc/self/fd/1"),
+        ("stderr", "/proc/self/fd/2"),
+    ] {
+        steps.push(Step::Args(vec![
+            "--symlink".into(),
+            target.into(),
+            path_arg(&at.join(name)),
+        ]));
+    }
+    steps.push(Step::Args(vec!["--dir".into(), path_arg(&at.join("shm"))]));
+    steps
 }
 
 /// The room for `req`, or why there is none.
@@ -544,7 +633,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     // it on the computer, through any link the app left there), never
     // through one of the room's own links.
     let own_place = |at: &Path, shown: &[PathBuf], own_links: &[PathBuf]| -> Result<(), String> {
-        if reserved(at) {
+        if reserved(at) || covers_reserved(at) {
             return Err(format!("{} is SAM's own place in a room", at.display()));
         }
         if shown.iter().any(|s| under(at, s)) {
@@ -565,6 +654,12 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     while k < ops.len() {
         let op = &ops[k];
         let name = op.first().ok_or("an empty option")?.as_str();
+        if name == NOT_TEXT {
+            return Err(
+                "an argument, a variable or the folder of the program is not text: a room gets them only unchanged"
+                    .into(),
+            );
+        }
         let (kind, n) =
             option(name).ok_or_else(|| format!("option {name} is not supported in a room"))?;
         if kind == Kind::Refused {
@@ -727,6 +822,16 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     }
     room.steps.extend(late_links);
     nothing_inside_writable_places(plan, &room.steps)?;
+    // SAM's own place stays as SAM laid it out: nothing of the room lands
+    // in it or over it.
+    if let Some(at) = room
+        .steps
+        .iter()
+        .filter_map(step_place)
+        .find(|p| reserved(p) || covers_reserved(p))
+    {
+        return Err(format!("{} is SAM's own place in a room", at.display()));
+    }
     // An own place with a place of the app below it gives no write right
     // there (Landlock's rules reach down).
     room.own.retain(|o| !shown.iter().any(|s| under(s, o)));
@@ -856,18 +961,22 @@ fn place(
                 });
                 shown = true;
             }
-            Entry::Dev { src: top, .. } => {
-                room.steps.push(Step::Device {
-                    src: top.join(&rest),
-                    dst: src.to_path_buf(),
-                    access: asked,
-                });
+            Entry::Dev {
+                src: top,
+                read_only,
+                ..
+            } => {
+                room.steps.extend(device_steps(
+                    top.join(&rest),
+                    src.to_path_buf(),
+                    asked,
+                    *read_only,
+                ));
                 shown = true;
             }
             Entry::DevFs { .. } => {
                 if rest.as_os_str().is_empty() {
-                    room.steps
-                        .push(Step::Args(vec!["--dev".into(), path_arg(src)]));
+                    room.steps.extend(devfs_steps(src, asked));
                     shown = true;
                 } else if let Some(node) = rest.to_str().filter(|n| DEVFS_NODES.contains(n)) {
                     room.steps.push(Step::Device {
@@ -911,17 +1020,17 @@ fn place(
                 });
                 shown = true;
             }
-            Entry::Dev { src: from, dst } => {
-                room.steps.push(Step::Device {
-                    src: from.clone(),
-                    dst: dst.clone(),
-                    access: asked,
-                });
+            Entry::Dev {
+                src: from,
+                dst,
+                read_only,
+            } => {
+                room.steps
+                    .extend(device_steps(from.clone(), dst.clone(), asked, *read_only));
                 shown = true;
             }
             Entry::DevFs { at } => {
-                room.steps
-                    .push(Step::Args(vec!["--dev".into(), path_arg(at)]));
+                room.steps.extend(devfs_steps(at, asked));
                 shown = true;
             }
             // SAM's hiding: the same in the room, always.
@@ -956,6 +1065,8 @@ mod tests {
             env: BTreeMap::new(),
             cwd: "/".into(),
             fds: vec![],
+            limits: vec![],
+            umask: None,
         }
     }
 
@@ -1558,9 +1669,123 @@ mod tests {
             &["--dir", "/.sam-room/x"],
             &["--ro-bind-try", RESERVED, RESERVED],
             &["--remount-ro", RESERVED],
+            // A new file system over the folder that holds it.
+            &["--tmpfs", "/"],
+            &["--proc", "/"],
+            &["--dev", "/"],
+            &["--mqueue", "/"],
+            &["--dir", "/"],
         ] {
             assert!(refused(&[op]), "{op:?}");
         }
+        // Showing the app's places below the root is no new file system
+        // over it: SAM's place stays.
+        assert!(!refused(&[
+            &["--ro-bind", "/usr/lib", "/usr/lib"],
+            &["--remount-ro", "/"]
+        ]));
+    }
+
+    /// The app's /dev asked for without working devices: the same few
+    /// nodes, as Bubblewrap shows them without devices, never its /dev
+    /// with working ones.
+    #[test]
+    fn a_dev_asked_for_without_devices_has_no_working_devices() {
+        for (op, access) in [
+            ("--ro-bind", DeviceAccess::ReadOnly),
+            ("--bind", DeviceAccess::NoDevices),
+        ] {
+            let room = ok(&[&[op, "/dev", "/dev"]]);
+            assert!(
+                !room
+                    .steps
+                    .iter()
+                    .any(|st| matches!(st, Step::Args(a) if a[0] == "--dev")),
+                "{op}: {:?}",
+                room.steps
+            );
+            assert_eq!(room.steps[0], Step::Mask("/dev".into()));
+            assert!(room.steps.contains(&Step::Device {
+                src: "/dev/null".into(),
+                dst: "/dev/null".into(),
+                access
+            }));
+            assert!(room.steps.contains(&Step::Device {
+                src: "/dev/dri".into(),
+                dst: "/dev/dri".into(),
+                access
+            }));
+            assert!(room.steps.iter().all(|st| match st {
+                Step::Device { access: a, .. } => *a == access,
+                _ => true,
+            }));
+        }
+        // A parent asked for read-only: the same, below it.
+        let small = FloorPlan::from_bwrap_args(&s(&[
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            "--dev",
+            "/dev",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let room = plan_room(
+            &small,
+            &req(&[&["--ro-bind", "/", "/"]], &["x"]),
+            AppFacts::default(),
+        )
+        .unwrap();
+        assert!(room.steps.contains(&Step::Mask("/dev".into())));
+        assert!(!room
+            .steps
+            .iter()
+            .any(|st| matches!(st, Step::Args(a) if a[0] == "--dev")));
+    }
+
+    /// The app's own `--remount-ro` over a device place counts in rooms
+    /// too: never writable there, working devices stay read-only.
+    #[test]
+    fn a_device_place_the_app_has_read_only_stays_read_only() {
+        let plan = FloorPlan::from_bwrap_args(&s(&[
+            "--dev-bind",
+            "/srv/shared",
+            "/srv/shared",
+            "--remount-ro",
+            "/srv/shared",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let room = |op: &str| {
+            plan_room(
+                &plan,
+                &req(&[&[op, "/srv/shared", "/srv/shared"]], &["x"]),
+                AppFacts::default(),
+            )
+            .unwrap()
+            .steps
+        };
+        assert_eq!(
+            room("--bind"),
+            vec![Step::Device {
+                src: "/srv/shared".into(),
+                dst: "/srv/shared".into(),
+                access: DeviceAccess::ReadOnly
+            }]
+        );
+        assert_eq!(
+            room("--dev-bind"),
+            vec![
+                Step::Device {
+                    src: "/srv/shared".into(),
+                    dst: "/srv/shared".into(),
+                    access: DeviceAccess::Devices
+                },
+                Step::Args(s(&["--remount-ro", "/srv/shared"])),
+            ]
+        );
     }
 
     #[test]

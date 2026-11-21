@@ -59,6 +59,24 @@ say many_fds "$(python3 -c 'import os, sys
 for _ in range(150):
     os.set_inheritable(os.open("/dev/null", os.O_RDONLY), True)
 os.execvp("sh", ["sh", "-c", sys.argv[1]])' "bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok" 2>/dev/null)"
+# The program's resource limits and umask stay in its room, as with
+# Bubblewrap (glycin caps its loader's memory this way).
+say limits "$(ulimit -v 4000000; ulimit -c 0; umask 077; rv room -- /usr/bin/sh -c 'echo "$(ulimit -v)/$(ulimit -c)/$(umask)"')"
+# Found as Bubblewrap's execvp finds it: never from the room's folder when
+# it is not on PATH; a script without a #! line runs with the shell.
+printf 'echo ran-from-folder\n' > "$HOME/sam-room-not-on-path"
+chmod 755 "$HOME/sam-room-not-on-path"
+say not_on_path "$(rv room --bind "$HOME" "$HOME" --chdir "$HOME" --setenv PATH /usr/bin -- sam-room-not-on-path)"
+say no_shebang "$(rv room --bind "$HOME" "$HOME" -- "$HOME/sam-room-not-on-path")"
+# The app's /dev asked for without devices: its few nodes, not working,
+# and the links every /dev has.
+say dev_without_devices "$(rv room --ro-bind /dev /dev -- /usr/bin/sh -c '(echo x > /dev/null) 2>/dev/null && echo works || echo blocked')"
+say dev_links "$(rv room --ro-bind /dev /dev -- /usr/bin/sh -c 'test -L /dev/stdout && test -L /dev/fd && echo links')"
+# A variable that is not text: the request is refused, never run without it.
+SAM_ROOM_NOT_TEXT="$(printf 'x\377')"
+export SAM_ROOM_NOT_TEXT
+say env_not_text "$(rv room -- /usr/bin/echo ok)"
+unset SAM_ROOM_NOT_TEXT
 "#;
 
 /// Attacks under one network setting: greedy requests; links out of the
@@ -171,7 +189,7 @@ f = [(0x20, 0, 0, 0), (0x15, 0, 1, write), (0x06, 0, 0, 0x00050001), (0x06, 0, 0
 open(sys.argv[1], "wb").write(b"".join(struct.pack("HBBI", *i) for i in f))
 PY
 exec 11<"$HOME/nowrite.bpf"
-room --seccomp 11 -- /usr/bin/true
+room --seccomp 11 -- /usr/bin/sync
 say filter_quiet "$?"
 exec 11<&-
 # An argument that is not text: the whole request is refused, never run
@@ -305,8 +323,9 @@ os.close(home_fd)
 say("direct_env", ask(request(BASE + [["--dev", "/dev"], ["--bind", HOME, HOME]], ["/usr/bin/true"],
                               env={"LD_DEBUG": "files", "LD_DEBUG_OUTPUT": HOME + "/ldm", "HOME": HOME})))
 # Far more places than a room may have (each /usr brings SAM's own places
-# below it too): refused as a whole, never built in part.
-say("direct_many_places", refusal(ask(request(BASE + [["--ro-bind", "/usr", "/usr"]] * 250, ["/usr/bin/true"]))))
+# below it, at least 3): refused as a whole, never built in part. Well
+# under the 256 options a request may have, whatever BASE holds here.
+say("direct_many_places", refusal(ask(request(BASE + [["--ro-bind", "/usr", "/usr"]] * 210, ["/usr/bin/true"]))))
 say("direct_moved", refusal(ask(request(BASE + [["--ro-bind", "/usr", "/elsewhere"]], ["/usr/bin/true"]))))
 say("direct_dotdot", refusal(ask(request(BASE + [["--ro-bind", "/usr/../etc", "/usr/../etc"]], ["/usr/bin/true"]))))
 say("direct_relative", refusal(ask(request(BASE + [["--ro-bind", "usr", "usr"]], ["/usr/bin/true"]))))
@@ -393,10 +412,18 @@ for i in range(2):
     l = socket.socket(socket.AF_UNIX)
     l.settimeout(20)
     l.connect("/run/sam/rooms")
-    l.sendmsg([request(BASE, ["/usr/bin/sleep", "8"], fds=list(range(3, 256)))],
+    l.sendmsg([request(BASE + [["--bind", HOME, HOME]],
+                       ["/usr/bin/sh", "-c", f"echo up > {HOME}/long-room-{i}; exec /usr/bin/sleep 8"],
+                       fds=list(range(3, 256)))],
               [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [null] * 253))])
     longs.append(l)
     time.sleep(1.5)
+# Both run now (else the third request proves nothing).
+for _ in range(100):
+    if all(os.path.exists(f"{HOME}/long-room-{i}") for i in range(2)):
+        break
+    time.sleep(0.1)
+say("long_rooms_built", "yes" if all(os.path.exists(f"{HOME}/long-room-{i}") for i in range(2)) else "no")
 r3 = ask(request(BASE, ["/usr/bin/true"], fds=list(range(3, 13))), fds=[null] * 10)
 say("budget_released", "yes" if r3 == "exit=0" else f"no-{r3}")
 for l in longs:
@@ -664,6 +691,8 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
         env: Default::default(),
         cwd: "/".into(),
         fds: vec![],
+        limits: vec![],
+        umask: None,
     };
     let body = serde_json::to_vec(&req).unwrap();
     let mut conn = std::os::unix::net::UnixStream::connect(&service.socket).unwrap();
@@ -779,6 +808,12 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("host_env_room", "none"),
                 ("nested_userns", "blocked"),
                 ("many_fds", "ok"),
+                ("limits", "4000000/0/0077"),
+                ("not_on_path", "refused"),
+                ("no_shebang", "ran-from-folder"),
+                ("dev_without_devices", "blocked"),
+                ("dev_links", "links"),
+                ("env_not_text", "refused"),
             ],
         )
         .into_iter()
@@ -940,13 +975,27 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 "{name}: new things inside a shown place were not refused by Room service's rule ({by_rule} of 2)"
             ));
         }
-        let trap_refusals = log
-            .lines()
-            .filter(|l| l.contains("sam-room: refused") && l.contains("link"))
-            .count();
-        if trap_refusals < 2 {
+        // Each trap refused by its own rule, in its words.
+        for (trap, words) in [
+            ("trap_link", "a link to ../.sam-room is not allowed"),
+            ("trap_link_later", "lies at or behind a link of the room"),
+        ] {
+            if !log
+                .lines()
+                .any(|l| l.contains("sam-room: refused") && l.contains(words))
+            {
+                failures.push(format!(
+                    "{name}: {trap}: a link of the room's own as a trap was not refused by Room service's rule ({words:?})"
+                ));
+            }
+        }
+        // The room whose own filter refuses every write was built and
+        // confirmed: SAM's helper reports before loading that filter.
+        if !log.lines().any(|l| {
+            l.starts_with("sam-room: built sync (layers:") && l.contains("the program's own filter")
+        }) {
             failures.push(format!(
-                "{name}: links of the room's own as traps were not refused by Room service's rules ({trap_refusals} of 2)"
+                "{name}: filter_quiet: a room with a filter that refuses writes was not confirmed in the start record"
             ));
         }
         for planted in ["evil-link.desktop", "evil-dir"] {
@@ -1115,6 +1164,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("served_beside_idle", "yes"),
                 ("connections_limited", "yes"),
                 ("held_limited", "yes"),
+                ("long_rooms_built", "yes"),
                 ("budget_released", "yes"),
                 ("many_refused", "sent"),
                 ("final_control", "ok"),

@@ -658,6 +658,8 @@ fn changed_room_requests_never_crash_the_readers() {
             env: Default::default(),
             cwd: values[r.below(values.len())].to_string(),
             fds: vec![0, 1, 2, 11],
+            limits: vec![],
+            umask: None,
         };
         let full_network = r.below(2) == 0;
         let text = format!("{:?}", req.ops);
