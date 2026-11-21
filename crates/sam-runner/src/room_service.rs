@@ -76,7 +76,7 @@ pub fn needs_loader(elf: &[u8]) -> bool {
     (0..count).any(|k| {
         let at = phoff + k * size;
         elf.get(at..at + 4)
-            .map_or(true, |t| u32::from_ne_bytes([t[0], t[1], t[2], t[3]]) == 3)
+            .is_none_or(|t| u32::from_ne_bytes([t[0], t[1], t[2], t[3]]) == 3)
     })
 }
 

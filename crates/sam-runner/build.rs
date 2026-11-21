@@ -4,6 +4,10 @@
 //! needs the static C library (Debian/Ubuntu: libc6-dev, Fedora:
 //! glibc-static, Arch: glibc). Without it the build goes on, warns, and
 //! Room service is off in that build (every start says so).
+// A build script speaks to cargo on standard output (cargo:… lines); there
+// is no app text here for SAM's output macros to clean.
+#![allow(clippy::disallowed_macros)]
+
 use std::path::PathBuf;
 use std::process::Command;
 
