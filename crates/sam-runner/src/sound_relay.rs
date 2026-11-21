@@ -129,6 +129,17 @@ impl SoundRelay {
                 .create(&dir)?;
         }
         let socket = dir.join("native");
+        // A Unix socket path has at most 107 characters; PipeWire ends with
+        // an unclear crash on a longer one.
+        if socket.as_os_str().len() > 107 {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "SAM's sound relay cannot run: the path for its socket is too long ({path})",
+                    &[("path", &socket.display())]
+                )
+            );
+        }
         let _ = std::fs::remove_file(&socket);
         let conf = dir.join("relay.conf");
         sam_core::util::atomic_write(&conf, relay_config(&socket).as_bytes())?;
@@ -231,6 +242,74 @@ mod tests {
         assert!(!c.contains("load-module"));
         let c = relay_config(Path::new("/tmp/a\"b"));
         assert!(c.contains(r#""unix:/tmp/a\"b""#), "{c}");
+    }
+
+    /// The lock check fails a relay that runs outside a sandbox: it sees
+    /// the person's folder (mutation run P14: an answer of always "held"
+    /// went unnoticed, so `sam-jail doctor` would not see such a relay).
+    #[test]
+    fn a_relay_outside_a_sandbox_is_not_held() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let child = Command::new("sleep").arg("30").spawn().unwrap();
+        let r = SoundRelay {
+            child,
+            socket: t.path().join("native"),
+        };
+        assert!(!r.contained(&home), "a plain process sees the home");
+        // A relay whose program runs as a child (as Bubblewrap starts it):
+        // the child sees the home, so it is not held either.
+        let child = Command::new("sh")
+            .args(["-c", "sleep 30 & wait"])
+            .spawn()
+            .unwrap();
+        let mut parent = SoundRelay {
+            child,
+            socket: t.path().join("native"),
+        };
+        let until = Instant::now() + Duration::from_secs(5);
+        while descendants(parent.child.id()).is_empty() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            !descendants(parent.child.id()).is_empty(),
+            "the child started"
+        );
+        assert!(!parent.contained(&home), "a child that sees the home");
+        let _ = parent.child.kill();
+        let _ = parent.child.wait();
+        // Ended: no process left to look at, so it cannot count as held.
+        let mut r = r;
+        let _ = r.child.kill();
+        let _ = r.child.wait();
+        assert!(!r.contained(t.path().join("elsewhere").as_path()));
+    }
+
+    /// A socket path too long for Linux is refused with a clear reason
+    /// before PipeWire starts (it ended with an unclear crash: the 240-app
+    /// run of 2026-11-20).
+    #[test]
+    fn a_too_long_socket_path_is_named_before_the_relay_starts() {
+        let t = tempfile::tempdir().unwrap();
+        let mut h = host_with(t.path(), "touch \"$0.ran\"; exec sleep 30");
+        // Never run: the check comes first.
+        h.tools.bwrap = Some(sam_core::host::Tool {
+            path: t.path().join("pipewire"),
+            version: None,
+        });
+        let long = t.path().join("r".repeat(120));
+        let e = SoundRelay::start(&h, &long).err().expect("refused");
+        assert!(format!("{e:#}").contains("too long"), "{e:#}");
+        assert!(!t.path().join("pipewire.ran").exists(), "nothing started");
+        // The longest path Linux allows (107 characters) gets past the
+        // check (and the stand-in fails later, in time).
+        let base = t.path().join("run");
+        let pad = 107 - base.join("sound/native").as_os_str().len() - 1;
+        let exact = base.join("p".repeat(pad));
+        assert_eq!(exact.join("sound/native").as_os_str().len(), 107);
+        let e = SoundRelay::start(&h, &exact).err();
+        assert!(e.is_none_or(|e| !format!("{e:#}").contains("too long")));
     }
 
     /// A stand-in for PipeWire's program at `dir/pipewire` running `body`

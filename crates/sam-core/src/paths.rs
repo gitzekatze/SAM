@@ -144,6 +144,13 @@ impl Paths {
 /// when that path is long too), named after the root, so it is still never
 /// shared.
 fn rooted_runtime(root: &Path) -> PathBuf {
+    rooted_runtime_below(root, std::env::var_os("XDG_RUNTIME_DIR").as_deref())
+}
+
+/// [`rooted_runtime`] for the runtime folder `xdg`. A test's runtime
+/// folder is itself such a folder (`samt-…`); a root inside that test gets
+/// one next to it, not in /tmp, where nothing ever removed them.
+fn rooted_runtime_below(root: &Path, xdg: Option<&std::ffi::OsStr>) -> PathBuf {
     let own = root.join("run");
     if own.as_os_str().len() <= 36 {
         return own;
@@ -151,11 +158,17 @@ fn rooted_runtime(root: &Path) -> PathBuf {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     root.hash(&mut h);
+    let base = xdg
+        .filter(|v| !v.is_empty())
+        .map(Path::new)
+        .map(|d| match d.file_name() {
+            Some(n) if n.to_string_lossy().starts_with("samt-") => d.parent().unwrap_or(d),
+            _ => d,
+        });
     // Short in any case: the runtime folder when its own path is short
     // (/run/user/UID), else /tmp.
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|v| !v.is_empty() && v.len() <= 24)
-        .map(PathBuf::from)
+    base.filter(|d| d.as_os_str().len() <= 24)
+        .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join(format!("samt-{:08x}", h.finish() as u32))
 }
@@ -197,6 +210,32 @@ mod tests {
                 d.display()
             );
         }
+    }
+
+    /// A root inside a test whose runtime folder is already one of these
+    /// gets its folder next to it, never in /tmp (16,304 were left there by
+    /// one mutation run, 2026-11-20); a long runtime folder still falls
+    /// back to /tmp.
+    #[test]
+    fn a_test_inside_a_test_keeps_its_runtime_folder_out_of_tmp() {
+        let long = Path::new("/home/someone/Projects/a/rather/long/checkout/path/tmp/.tmpAbC123");
+        let xdg = |s: &str| rooted_runtime_below(long, Some(std::ffi::OsStr::new(s)));
+        let outer = xdg("/run/user/1000/st1");
+        assert!(
+            outer
+                .to_string_lossy()
+                .starts_with("/run/user/1000/st1/samt-"),
+            "{}",
+            outer.display()
+        );
+        let inner = xdg(&outer.to_string_lossy());
+        assert_eq!(inner.parent(), outer.parent(), "{}", inner.display());
+        assert!(xdg("/run/user/1000/a/runtime/folder/too/long")
+            .to_string_lossy()
+            .starts_with("/tmp/samt-"));
+        assert!(rooted_runtime_below(long, None)
+            .to_string_lossy()
+            .starts_with("/tmp/samt-"));
     }
 
     /// Regression: sandboxed windows carried the app's id as their app ID

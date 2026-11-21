@@ -887,6 +887,33 @@ mod tests {
         assert!(reg.get("../etc/passwd").unwrap().is_none());
     }
 
+    /// A damaged preset is moved aside once; a preset from a newer SAM is
+    /// only skipped and stays where it is, for when SAM is updated
+    /// (mutation run P14: moving every unreadable preset aside went
+    /// unnoticed).
+    #[test]
+    fn only_a_damaged_preset_is_moved_aside() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = PresetStore::new(&Paths::rooted(tmp.path()));
+        fs::create_dir_all(&store.dir).unwrap();
+        let damaged = store.dir.join("damaged.toml");
+        fs::write(&damaged, "[preset\nname = ").unwrap();
+        let newer = store.dir.join("newer.toml");
+        let format = sam_core::format::CURRENT + 1;
+        fs::write(
+            &newer,
+            format!("[preset]\nname = \"Newer\"\nformat = {format}\n\n[permissions]\n"),
+        )
+        .unwrap();
+        assert!(store.list().unwrap().is_empty());
+        assert!(!damaged.exists(), "the damaged preset is moved aside");
+        assert_eq!(
+            sam_core::format::damaged_files(&[store.dir.as_path()]).len(),
+            1
+        );
+        assert!(newer.exists(), "a newer SAM's preset stays");
+    }
+
     /// Presets in the older flat format still load.
     #[test]
     fn presets_in_the_older_flat_format_still_load() {

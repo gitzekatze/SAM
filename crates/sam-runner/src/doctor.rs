@@ -1010,6 +1010,46 @@ mod tests {
         );
     }
 
+    /// Secrets whose name goes on after the known word (`GITHUB_TOKEN_2`,
+    /// `password-hash`, `secret2`), with spaces or quotes around the value,
+    /// and empty values (mutation run P14: these forms were untested).
+    #[test]
+    fn bug_reports_hide_secrets_in_every_spelling() {
+        let r = |s: &str| redact_with(s, "/home/jo", "jo", "jo-laptop");
+        for (given, shown) in [
+            (
+                "GITHUB_TOKEN_2=ghp_abc make",
+                "GITHUB_TOKEN_2=<hidden> make",
+            ),
+            (
+                "{\"password-hash\": \"x1\"}",
+                "{\"password-hash\": \"<hidden>\"}",
+            ),
+            ("secret2=abc", "secret2=<hidden>"),
+            ("password   :   hunter2 ok", "password   :   <hidden> ok"),
+            ("password=  \"hunter2\" ok", "password=  \"<hidden>\" ok"),
+            (
+                "sent with bearer abc;next",
+                "sent with bearer <hidden>;next",
+            ),
+            (
+                "sent with bearer abc,next",
+                "sent with bearer <hidden>,next",
+            ),
+            // A scheme with nothing after it: the scheme word is the value.
+            ("Authorization: Bearer", "Authorization: <hidden>"),
+            // Nothing to hide; a secret word at the very end is no reason
+            // to crash (reading past the text went unnoticed).
+            ("password=", "password="),
+            ("ask for the password", "ask for the password"),
+            ("ask for the password  ", "ask for the password  "),
+            ("the \"password", "the \"password"),
+            ("sent with bearer ", "sent with bearer "),
+        ] {
+            assert_eq!(r(given), shown, "{given}");
+        }
+    }
+
     /// Bug reports hide everything that identifies the user or gives access:
     /// a home folder with spaces, other users' folders, short user names,
     /// the computer's name, email addresses, logins and tokens in links, IP

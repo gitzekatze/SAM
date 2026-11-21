@@ -99,6 +99,31 @@ fn a_start_without_the_helper_reports_its_missing_layers() {
     assert!(missing.contains(&"seccomp"), "recorded: {missing:?}");
     let list = json(&sam(&["--json", "list"]));
     assert_eq!(list["data"][0]["badge"], "protection-missing", "{list}");
+
+    // With the helper next to it, the warnings say exactly what the record
+    // says: no line about missing layers or moved files when there are
+    // none (mutation run P14: a warning printed for nothing went unnoticed).
+    fs::copy(env!("CARGO_BIN_EXE_sam-jail-run"), bin.join("sam-jail-run")).unwrap();
+    let run = sam(&["run", &id]);
+    let err = String::from_utf8_lossy(&run.stderr);
+    let entry = json(&sam(&["--json", "info", &id]))["data"]["entry"].clone();
+    // (An empty list is left out of the record.)
+    let missing = entry["last_launch"]["missing_layers"]
+        .as_array()
+        .map_or(0, Vec::len);
+    assert_eq!(
+        err.contains("this start ran without"),
+        missing > 0,
+        "the warning matches the record ({missing} missing): {err}"
+    );
+    let moved = entry["last_launch"]["moved_aside"]
+        .as_array()
+        .map_or(0, Vec::len);
+    assert_eq!(moved, 0, "{entry}");
+    assert!(
+        !err.contains("SAM moved it aside"),
+        "nothing was moved, so nothing is said: {err}"
+    );
 }
 
 /// A tiny syscall filter of the test's own: loading another filter

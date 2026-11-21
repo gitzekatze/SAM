@@ -173,7 +173,7 @@ fn removing_a_sandbox_while_its_app_runs_is_refused() {
     let launch = sam
         .paths
         .runtime_dir(&id)
-        .join(format!("launch-{}-1", std::process::id()));
+        .join(format!("l{}-1", std::process::id()));
     fs::create_dir_all(&launch).unwrap();
     let lock = fs::File::create(launch.join("running.lock")).unwrap();
     // SAFETY: `lock` is an open file; flock only takes its descriptor.
