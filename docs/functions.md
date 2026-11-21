@@ -512,30 +512,30 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L540) | Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | 🆕 new |
+| [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L546) | Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | 🆕 new |
 | [`every_room_is_a_subset_of_its_app`](../crates/sam-runner/tests/room_service_compare.rs#L163) | Every room is within its app, for generated requests under no network, the full network, and in an app with Landlock and its syscall filter off: no room reads, writes or reaches anything its app cannot, and no room shows a folder of the computer its app is not shown. | 🆕 new |
 | [`under_this_computer_only_a_room_reaches_no_more_than_its_app`](../crates/sam-runner/tests/room_service_local.rs#L27) | Under "This computer only", a room that asks for the network gets an empty network of its own: it reaches no port of the computer (not even one listed for its app) and no socket outside the sandbox. | 🆕 new |
 | [`glycin_loads_images_in_a_room_never_without_a_sandbox`](../crates/sam-runner/tests/room_service_glycin.rs#L81) | An image loaded through GTK's real image loader inside a SAM sandbox is decoded in a room of its own, never without a sandbox. | 🆕 new |
 | [`changed_room_requests_never_crash_the_readers`](../crates/sam-runner/tests/fuzz_targets.rs#L438) | Room service's readers: changed messages and changed Bubblewrap argument lists never crash the service's reader, the stand-in's reader or the rules, and whatever the rules accept stays within them (every place a plain absolute path, shown at the same place, from beneath a folder of the app's floor plan). | 🆕 new |
-| [`bwrap_args_are_read_as_bubblewrap_reads_them`](../crates/sam-runner/src/room_rules.rs#L758) | Bwrap args are read as bubblewrap reads them. | 🆕 new |
-| [`options_a_room_never_gets_are_refused_by_name`](../crates/sam-runner/src/room_rules.rs#L787) | Options a room never gets are refused by name. | 🆕 new |
-| [`missing_values_and_commands_are_refused`](../crates/sam-runner/src/room_rules.rs#L812) | Missing values and commands are refused. | 🆕 new |
-| [`a_request_message_is_read_strictly`](../crates/sam-runner/src/room_rules.rs#L819) | A request message is read strictly. | 🆕 new |
-| [`paths_must_be_plain_and_absolute`](../crates/sam-runner/src/room_rules.rs#L852) | Paths must be plain and absolute. | 🆕 new |
-| [`a_place_is_shown_only_at_the_same_place`](../crates/sam-runner/src/room_rules.rs#L870) | A place is shown only at the same place. | 🆕 new |
-| [`a_place_comes_from_the_floor_plan_beneath_its_folder`](../crates/sam-runner/src/room_rules.rs#L876) | A place comes from the floor plan beneath its folder. | 🆕 new |
-| [`asking_for_a_parent_shows_the_apps_places_inside_it`](../crates/sam-runner/src/room_rules.rs#L899) | `/usr` is not one place of the app but several: the room gets each, and SAM's links, in the floor plan's order. | 🆕 new |
-| [`writable_only_where_the_app_writes`](../crates/sam-runner/src/room_rules.rs#L929) | Writable only where the app writes. | 🆕 new |
-| [`protected_places_inside_a_shown_folder_stay_protected`](../crates/sam-runner/src/room_rules.rs#L948) | The home shown writable keeps its protected place read-only, mounted after it, from beneath the home's own folder. | 🆕 new |
-| [`everything_asked_is_the_apps_view_without_its_private_places`](../crates/sam-runner/src/room_rules.rs#L966) | Everything asked is the apps view without its private places. | 🆕 new |
-| [`what_the_app_cannot_see_is_refused_or_skipped`](../crates/sam-runner/src/room_rules.rs#L988) | What the app cannot see is refused or skipped. | 🆕 new |
-| [`devices_only_the_apps`](../crates/sam-runner/src/room_rules.rs#L1002) | Devices only the apps. | 🆕 new |
-| [`the_network_only_with_the_apps_full_network_and_never_when_given_up`](../crates/sam-runner/src/room_rules.rs#L1029) | The network only with the apps full network and never when given up. | 🆕 new |
-| [`the_environment_is_kept_in_order_for_the_program`](../crates/sam-runner/src/room_rules.rs#L1062) | The environment is kept in order for the program. | 🆕 new |
-| [`the_programs_own_filter_must_be_a_passed_connection`](../crates/sam-runner/src/room_rules.rs#L1082) | The programs own filter must be a passed connection. | 🆕 new |
-| [`permissions_only_on_the_rooms_own_new_places`](../crates/sam-runner/src/room_rules.rs#L1093) | Permissions only on the rooms own new places. | 🆕 new |
-| [`the_rooms_folder_is_asked_or_safe`](../crates/sam-runner/src/room_rules.rs#L1119) | The rooms folder is asked or safe. | 🆕 new |
-| [`a_floor_plan_with_an_unknown_option_gives_no_rooms`](../crates/sam-runner/src/room_rules.rs#L1134) | A floor plan with an unknown option gives no rooms. | 🆕 new |
+| [`bwrap_args_are_read_as_bubblewrap_reads_them`](../crates/sam-runner/src/room_rules.rs#L761) | Bwrap args are read as bubblewrap reads them. | 🆕 new |
+| [`options_a_room_never_gets_are_refused_by_name`](../crates/sam-runner/src/room_rules.rs#L790) | Options a room never gets are refused by name. | 🆕 new |
+| [`missing_values_and_commands_are_refused`](../crates/sam-runner/src/room_rules.rs#L815) | Missing values and commands are refused. | 🆕 new |
+| [`a_request_message_is_read_strictly`](../crates/sam-runner/src/room_rules.rs#L822) | A request message is read strictly. | 🆕 new |
+| [`paths_must_be_plain_and_absolute`](../crates/sam-runner/src/room_rules.rs#L855) | Paths must be plain and absolute. | 🆕 new |
+| [`a_place_is_shown_only_at_the_same_place`](../crates/sam-runner/src/room_rules.rs#L873) | A place is shown only at the same place. | 🆕 new |
+| [`a_place_comes_from_the_floor_plan_beneath_its_folder`](../crates/sam-runner/src/room_rules.rs#L879) | A place comes from the floor plan beneath its folder. | 🆕 new |
+| [`asking_for_a_parent_shows_the_apps_places_inside_it`](../crates/sam-runner/src/room_rules.rs#L902) | `/usr` is not one place of the app but several: the room gets each, and SAM's links, in the floor plan's order. | 🆕 new |
+| [`writable_only_where_the_app_writes`](../crates/sam-runner/src/room_rules.rs#L932) | Writable only where the app writes. | 🆕 new |
+| [`protected_places_inside_a_shown_folder_stay_protected`](../crates/sam-runner/src/room_rules.rs#L951) | The home shown writable keeps its protected place read-only, mounted after it, from beneath the home's own folder. | 🆕 new |
+| [`everything_asked_is_the_apps_view_without_its_private_places`](../crates/sam-runner/src/room_rules.rs#L969) | Everything asked is the apps view without its private places. | 🆕 new |
+| [`what_the_app_cannot_see_is_refused_or_skipped`](../crates/sam-runner/src/room_rules.rs#L991) | What the app cannot see is refused or skipped. | 🆕 new |
+| [`devices_only_the_apps`](../crates/sam-runner/src/room_rules.rs#L1005) | Devices only the apps. | 🆕 new |
+| [`the_network_only_with_the_apps_full_network_and_never_when_given_up`](../crates/sam-runner/src/room_rules.rs#L1032) | The network only with the apps full network and never when given up. | 🆕 new |
+| [`the_environment_is_kept_in_order_for_the_program`](../crates/sam-runner/src/room_rules.rs#L1065) | The environment is kept in order for the program. | 🆕 new |
+| [`the_programs_own_filter_must_be_a_passed_connection`](../crates/sam-runner/src/room_rules.rs#L1085) | The programs own filter must be a passed connection. | 🆕 new |
+| [`permissions_only_on_the_rooms_own_new_places`](../crates/sam-runner/src/room_rules.rs#L1096) | Permissions only on the rooms own new places. | 🆕 new |
+| [`the_rooms_folder_is_asked_or_safe`](../crates/sam-runner/src/room_rules.rs#L1122) | The rooms folder is asked or safe. | 🆕 new |
+| [`a_floor_plan_with_an_unknown_option_gives_no_rooms`](../crates/sam-runner/src/room_rules.rs#L1137) | A floor plan with an unknown option gives no rooms. | 🆕 new |
 
 **Code:** [`sam-runner/src/room_rules.rs`](../crates/sam-runner/src/room_rules.rs), [`sam-runner/src/room_service.rs`](../crates/sam-runner/src/room_service.rs), [`sam-runner/src/kernel.rs`](../crates/sam-runner/src/kernel.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-jail-cli/src/bin/sam-jail-run.rs`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs)
 
