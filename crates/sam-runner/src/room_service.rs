@@ -129,6 +129,10 @@ struct State {
     fds: AtomicUsize,
     /// What the launcher's descriptor limit leaves free for rooms.
     fd_budget: AtomicUsize,
+    /// One receive at a time: each reserves room for the most connections
+    /// a request may pass and gives back what did not come, so requests
+    /// read at the same moment never take each other's room.
+    receiving: Mutex<()>,
     slots: Mutex<usize>,
     freed: Condvar,
     rooms: Mutex<Vec<Arc<Mutex<Child>>>>,
@@ -1153,10 +1157,17 @@ fn read_message(
             end.saturating_duration_since(std::time::Instant::now()),
         )?;
         let want = room_rules::MAX_FDS - fds.len().min(room_rules::MAX_FDS);
+        let state = held.state;
+        let one = state
+            .receiving
+            .lock()
+            .map_err(|_| "reading the request: the service failed".to_string())?;
         let got = held.reserve_passed(want);
         let before = fds.len();
+        // Never waits: something is ready to read.
         let r = recv_with_fds(stream, buf, fds, got);
         held.unreserve_passed(got - (fds.len() - before).min(got));
+        drop(one);
         match r {
             Ok(0) => Err("the request ended early".into()),
             Ok(n) => Ok(n),

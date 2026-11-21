@@ -428,6 +428,21 @@ r3 = ask(request(BASE, ["/usr/bin/true"], fds=list(range(3, 13))), fds=[null] * 
 say("budget_released", "yes" if r3 == "exit=0" else f"no-{r3}")
 for l in longs:
     l.close()
+# Many small requests at the same moment, each passing a few connections:
+# every one is built (requests read together never take each other's
+# room for connections).
+import threading
+results = [None] * 30
+gate = threading.Barrier(30)
+def one(i):
+    gate.wait()
+    results[i] = ask(request(BASE, ["/usr/bin/true"], fds=[3, 4, 5]), fds=[null] * 3)
+threads = [threading.Thread(target=one, args=(i,)) for i in range(30)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+say("together", str(sum(r == "exit=0" for r in results)) + "-" + ",".join(sorted(set(r for r in results if r != "exit=0"))))
 # The start record keeps at most 200 room lines.
 for i in range(230):
     ask(b"\x00\x00\x00\x02{}")
@@ -1164,6 +1179,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("served_beside_idle", "yes"),
                 ("connections_limited", "yes"),
                 ("held_limited", "yes"),
+                ("together", "30-"),
                 ("long_rooms_built", "yes"),
                 ("budget_released", "yes"),
                 ("many_refused", "sent"),
