@@ -24,7 +24,10 @@ pub const VERSION: u32 = 1;
 /// Upper limits of one request (beyond them it is refused).
 pub const MAX_MESSAGE: usize = 64 * 1024;
 pub const MAX_OPS: usize = 256;
-pub const MAX_FDS: usize = 64;
+/// Connections one request may pass: as many as Linux sends in one
+/// message (SCM_MAX_FD). Real Bubblewrap passes on every open connection,
+/// and programs started from large apps (Electron) hold many.
+pub const MAX_FDS: usize = 253;
 pub const MAX_ARGS: usize = 256;
 pub const MAX_TEXT: usize = 4096;
 
@@ -833,7 +836,7 @@ mod tests {
         ] {
             assert!(read_request(bad).is_err(), "{}", String::from_utf8_lossy(bad));
         }
-        let many: Vec<i32> = (0..65).collect();
+        let many: Vec<i32> = (0..=MAX_FDS as i32).collect();
         let r = serde_json::to_vec(&Request {
             fds: many,
             ..req(&[], &["x"])

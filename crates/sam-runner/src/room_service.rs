@@ -41,6 +41,10 @@ pub const SOCKET_INSIDE: &str = "/run/sam/rooms";
 pub const MAX_ROOMS: usize = 16;
 /// At most this many connections being read at once; more are closed.
 const MAX_CONNECTIONS: usize = 64;
+/// At most this many passed connections held by the service at once (a
+/// request beyond it is refused): an app cannot fill SAM's launcher with
+/// connections.
+const MAX_HELD: usize = 512;
 /// How long a connection may take to send its request.
 const READ_LIMIT: Duration = Duration::from_secs(10);
 
@@ -78,6 +82,7 @@ pub struct RoomContext {
 struct State {
     stop: AtomicBool,
     connections: AtomicUsize,
+    held: AtomicUsize,
     slots: Mutex<usize>,
     freed: Condvar,
     rooms: Mutex<Vec<Arc<Mutex<Child>>>>,
@@ -207,9 +212,10 @@ fn program_name(req_command: &[String]) -> String {
 }
 
 fn serve_one(mut stream: UnixStream, state: &State, ctx: &RoomContext) {
+    let by = asked_by(&stream);
     let refuse = |stream: &mut UnixStream, program: &str, why: &str| {
         state.record(format!(
-            "sam-room: refused {program}: {}",
+            "sam-room: refused {program} (asked by {by}): {}",
             sam_core::util::display_safe(why, 300)
         ));
         answer(stream, &serde_json::json!({ "error": why }));
@@ -225,6 +231,25 @@ fn serve_one(mut stream: UnixStream, state: &State, ctx: &RoomContext) {
         Ok(m) => m,
         Err(why) => return refuse(&mut stream, "?", &why),
     };
+    // The connections count against the service's budget until the room
+    // has started (or the request is refused).
+    let passed = fds.len();
+    if state.held.fetch_add(passed, Ordering::SeqCst) + passed > MAX_HELD {
+        state.held.fetch_sub(passed, Ordering::SeqCst);
+        drop(fds);
+        return refuse(
+            &mut stream,
+            "?",
+            "too many connections held for rooms at once",
+        );
+    }
+    struct Held<'a>(&'a AtomicUsize, usize);
+    impl Drop for Held<'_> {
+        fn drop(&mut self) {
+            self.0.fetch_sub(self.1, Ordering::SeqCst);
+        }
+    }
+    let _held = Held(&state.held, passed);
     let req = match room_rules::read_request(&body) {
         Ok(r) => r,
         Err(why) => return refuse(&mut stream, "?", &why),
@@ -581,7 +606,34 @@ fn memfd_with(data: &[u8]) -> Result<OwnedFd> {
     Ok(OwnedFd::from(f))
 }
 
+/// Who asked: the name of the program that started the stand-in (for the
+/// start record only; never trusted for anything).
+fn asked_by(stream: &UnixStream) -> String {
+    let Some((pid, _)) = peer(stream) else {
+        return "?".into();
+    };
+    let ppid = std::fs::read_to_string(format!("/proc/{pid}/status"))
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.strip_prefix("PPid:").map(|v| v.trim().to_string()))
+        });
+    let name = ppid
+        .and_then(|p| std::fs::read_to_string(format!("/proc/{p}/comm")).ok())
+        .unwrap_or_default();
+    let name = sam_core::util::display_safe(name.trim(), 40);
+    if name.is_empty() {
+        "?".into()
+    } else {
+        name
+    }
+}
+
 fn peer_uid(stream: &UnixStream) -> Option<u32> {
+    peer(stream).map(|(_, uid)| uid)
+}
+
+fn peer(stream: &UnixStream) -> Option<(i32, u32)> {
     // SAFETY: ucred is plain integers; all zeros is a valid value.
     let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
@@ -595,7 +647,7 @@ fn peer_uid(stream: &UnixStream) -> Option<u32> {
             &mut len,
         )
     };
-    (r == 0).then_some(cred.uid)
+    (r == 0).then_some((cred.pid, cred.uid))
 }
 
 /// One receive, keeping the connections that come with it (close-on-exec).

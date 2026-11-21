@@ -53,6 +53,12 @@ say host_env_app "$($P env SAM_ROOMS_HOST_MARKER)"
 say host_env_room "$(rv room -- $P env SAM_ROOMS_HOST_MARKER)"
 say nested_userns "$(rv room -- $P userns)"
 say own_pids "$(rv room --proc /proc -- $P pids)"
+# A program holding many open connections (as glycin started from an
+# Electron app does) still gets its room: real Bubblewrap passes them all.
+say many_fds "$(python3 -c 'import os, sys
+for _ in range(150):
+    os.set_inheritable(os.open("/dev/null", os.O_RDONLY), True)
+os.execvp("sh", ["sh", "-c", sys.argv[1]])' "bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok" 2>/dev/null)"
 "#;
 
 /// Attacks under one network setting: greedy requests; links out of the
@@ -239,7 +245,7 @@ say("direct_garbage", refusal(ask(b"\x00\x00\x00\x05nope!")))
 say("direct_wrong_version", refusal(ask(message({"v": 99, "ops": BASE, "flags": [], "command": ["/usr/bin/true"],
                                                   "env": {}, "cwd": "/", "fds": []}))))
 say("direct_many_places", refusal(ask(request(BASE + [["--dir", f"/d{i}"] for i in range(257)], ["/usr/bin/true"]))))
-say("direct_many_fds", refusal(ask(request(BASE, ["/usr/bin/true"], fds=list(range(65))), fds=[0] * 65)))
+say("direct_many_fds", refusal(ask(request(BASE, ["/usr/bin/true"], fds=list(range(254))), fds=[0] * 253)))
 t = time.monotonic()
 r = refusal(ask(struct.pack("!I", 0x7FFFFFFF) + b"{"))
 say("direct_huge", r if time.monotonic() - t < 10 else f"{r}-slow")
@@ -570,6 +576,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("host_env_app", "none"),
                 ("host_env_room", "none"),
                 ("nested_userns", "blocked"),
+                ("many_fds", "ok"),
             ],
         )
         .into_iter()
