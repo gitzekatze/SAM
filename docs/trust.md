@@ -15,10 +15,13 @@ results.
   functions SAM promises, each with the tests that prove it.
 - **[Test library](test-library.md):** every one of the <!-- fact:tests -->491<!-- /fact -->
   tests and the promise it keeps.
-- **[Real AppImages](reports/real-apps-2026-11-15.md):** how each of the <!-- fact:apps_total -->120<!-- /fact --> test AppImages did in its sandbox.
-- **[Mutation testing](reports/mutants-2026-11-16.md):** <!-- fact:mutants_tested -->3,011<!-- /fact -->
-  deliberate mistakes put into the security code, to see whether the tests
-  notice them.
+- **[Real AppImages](reports/real-apps-2026-11-20.md):** how each of the <!-- fact:apps_total -->240<!-- /fact --> test AppImages did in its sandbox.
+- **[Mutation testing](reports/mutants-2026-11-20.md):** <!-- fact:mutants_tested -->1,364<!-- /fact -->
+  deliberate mistakes put into the code changed since the security audit, to
+  see whether the tests notice them.
+- **[Fuzz testing](reports/fuzz-2026-11-20.md):** the long run before the
+  release: damaged AppImages, programs and menu files, hundreds of thousands
+  of times, without a crash.
 - **[Security review](reports/security-review-2026-11-10.md):** the review
   that checked every security promise against a test.
 - **[How SAM is tested](testing.md):** the kinds of tests, what each one

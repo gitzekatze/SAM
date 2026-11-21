@@ -94,7 +94,7 @@ SOURCE_TO_PAGE["README.md"] = "index.html"
 def report_kind(name):
     """The kind of a report, from its file name."""
     for prefix, kind in [("mutants-", "Mutation testing"), ("real-apps-", "Real AppImages"),
-                         ("security-review-", "Security review")]:
+                         ("fuzz-", "Fuzz testing"), ("security-review-", "Security review")]:
         if name.startswith(prefix):
             return kind
     return "Version report"

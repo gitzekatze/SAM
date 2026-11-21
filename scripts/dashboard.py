@@ -136,11 +136,11 @@ def build():
     )
     if "apps_total" in F:
         L += [f"- **Real AppImages:** {F['apps_start'][0]} of {F['apps_total'][0]} start in their sandbox; "
-              f"{F['apps_repaired'][0]} of them after one repair step, {F['apps_fail'][0]} fail for reasons inside the app, "
+              f"{F['apps_repaired'][0]} of them after repair steps SAM offers, {F['apps_fail'][0]} do not start (the report gives the reason for each), "
               f"and {F['apps_refused'][0]} built for another processor is turned away "
               f"([report]({F['apps_total'][1]}))."]
     if "mutants_tested" in F:
-        L += [f"- **Mutation testing:** {F['mutants_tested'][0]} deliberate mistakes in the security code; "
+        L += [f"- **Mutation testing:** {F['mutants_tested'][0]} deliberate mistakes in SAM's code; "
               f"the tests caught {F['mutants_caught_percent'][0]} of those that could be built "
               f"([report]({F['mutants_tested'][1]}))."]
     L += ["- **Breakout and hostile-AppImage tests:** run inside a real sandbox on every change, "

@@ -4,10 +4,17 @@ its code the tests run, how long its steps take, and which parts it depends
 on; compared with the previous report.
 
     scripts/version-report.py [--no-coverage] [--no-bench] [--out DIR]
+    scripts/version-report.py --recheck docs/reports/<version>-<commit>.json
 
 Writes docs/reports/<version>-<commit>.json and .md (or into --out) and
 prints the differences to the previous report in that folder. Build output
 and coverage data go to ../claude (next to the repository) or $SAM_WORK.
+
+Measuring coverage makes the code much slower and makes every program,
+also SAM's helper inside a read-only sandbox, try to write a measurement
+file. A test that fails then is run once more without the measurement:
+if it passes there, the report says so instead of counting it as failing.
+--recheck does that for a report already written (on the same code).
 
 Line coverage is a gap finder, not a score: a part whose coverage drops, or
 code no test runs, is a place to look for a missing regression test.
@@ -91,6 +98,31 @@ def run_tests(bins, env):
     return results
 
 
+def recheck(tests):
+    """Runs each failed test once more without coverage measurement (its
+    own build folder); one that passes there is marked as failing only
+    while coverage is measured. Returns how many it rechecked."""
+    failed = [t for t in tests if t.get("result") == "FAILED"]
+    if not failed:
+        return 0
+    env = {k: v for k, v in os.environ.items() if k not in ("RUSTFLAGS", "LLVM_PROFILE_FILE")}
+    env["CARGO_TARGET_DIR"] = str(WORK / "target-plain")
+    env["TMPDIR"] = str(WORK / "tmp")
+    env["PATH"] = f"{WORK / 'target-plain' / 'debug'}:{env['PATH']}"
+    print("rechecking the failed tests without coverage …", file=sys.stderr)
+    # The tests start SAM's programs (the helper among them): build them once.
+    sh(["cargo", "build", "--workspace", "--locked", "--bins"], env=env)
+    for t in failed:
+        targets = [["--lib"], ["--bins"]] if t["suite"] == "unit" else [["--test", t["suite"]]]
+        for target in targets:
+            r = sh(["cargo", "test", "--locked", "-p", t["part"], *target, "--", t["test"]], env=env)
+            if re.search(rf"^test \S*\b{re.escape(t['test'])} \.\.\. ok$", r.stdout, re.M):
+                t["result"] = "ok"
+                t["fails_only_with_coverage"] = True
+                break
+    return len(failed)
+
+
 def coverage(bins, profdir, env):
     raws = list(profdir.glob("*.profraw"))
     if not raws:
@@ -163,10 +195,13 @@ def markdown(rep, prev):
     L = [f"# Version report {rep['version']} ({rep['commit']})", "", f"Generated {rep['generated']}."]
     L += [f"Compared with {prev['version']} ({prev['commit']}, {prev['generated']})." if prev else "This is the first report; there is nothing to compare with.", ""]
     failed = [k for k, v in tests.items() if v == "FAILED"]
+    only_cov = sorted((t["part"], t["suite"], t["test"]) for t in rep["tests"] if t.get("fails_only_with_coverage"))
     new = sorted(set(tests) - set(ptests)) if prev else []
     gone = sorted(set(ptests) - set(tests)) if prev else []
     L += ["## Summary", ""]
     L += [f"- {sum(v == 'ok' for v in tests.values())} tests pass, {len(failed)} fail, {sum(v == 'ignored' for v in tests.values())} are skipped."]
+    if only_cov:
+        L += [f"- {len(only_cov)} of the passing tests fail only while coverage is measured, and pass without it (see the end of this report)."]
     if prev:
         L += [f"- {len(new)} tests are new and {len(gone)} were removed since the previous report."]
     L += [""]
@@ -204,6 +239,10 @@ def markdown(rep, prev):
     L += ["", "| Part | Depends on |", "|---|---|"] + [f"| {p} | {', '.join(ds) or 'nothing'} |" for p, ds in rep["dependencies"].items()]
     if failed:
         L += ["", "## Failing tests", ""] + [f"- {p} / {s} / `{t}`" for p, s, t in failed]
+    if only_cov:
+        L += ["", "## Passing only without coverage measurement", "",
+              "Measuring coverage makes the code much slower, and every program, SAM's helper inside a read-only sandbox too, tries to write a measurement file. These tests failed in the measured run and passed when run once more without the measurement, so they count as passing:", ""]
+        L += [f"- {p} / {s} / `{t}`" for p, s, t in only_cov]
     if new:
         L += ["", "## New tests", ""] + [f"- {p} / {s} / `{t}`" for p, s, t in new]
     if gone:
@@ -213,6 +252,17 @@ def markdown(rep, prev):
 
 def main():
     args = sys.argv[1:]
+    if "--recheck" in args:
+        path = pathlib.Path(args[args.index("--recheck") + 1])
+        rep = json.loads(path.read_text())
+        WORK.mkdir(parents=True, exist_ok=True)
+        (WORK / "tmp").mkdir(exist_ok=True)
+        recheck(rep["tests"])
+        path.write_text(json.dumps(rep, indent=1) + "\n")
+        md = markdown(rep, previous_report(path.parent, path.stem))
+        path.with_suffix(".md").write_text(md)
+        print(md)
+        return 1 if any(t.get("result") == "FAILED" for t in rep["tests"]) else 0
     outdir = pathlib.Path(args[args.index("--out") + 1]) if "--out" in args else ROOT / "docs" / "reports"
     outdir.mkdir(parents=True, exist_ok=True)
     version, commit = version_and_commit()
@@ -231,6 +281,8 @@ def main():
     bins = test_binaries(env)
     tests = run_tests(bins, env)
     cov = coverage(bins, profdir, env) if "--no-coverage" not in args else {}
+    if "--no-coverage" not in args:
+        recheck(tests)
     print("running the benchmarks …", file=sys.stderr)
     b = bench() if "--no-bench" not in args else []
     rep = {

@@ -84,7 +84,9 @@ def compute():
     if mut:
         text = mut.read_text()
         row = lambda label: number(re.search(rf"^\| {label}[^|]*\| ([\d,]+) \|", text, re.M).group(1))
-        total, missed = row("Mutants in the four crates"), row("Missed")
+        # "Mutants in the four crates" (full runs) or "Mutants in the code
+        # changed since …" (a run on changed code): the first row.
+        total, missed = row("Mutants in the"), row("Missed")
         src = str(mut.relative_to(ROOT))
         f["mutants_tested"] = (fmt(total), src)
         f["mutants_missed"] = (fmt(missed), src)
