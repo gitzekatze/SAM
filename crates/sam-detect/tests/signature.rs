@@ -76,19 +76,19 @@ impl Kit {
             .args(args)
             .output()
             .unwrap();
-        assert!(out.status.success(), "gpg {args:?}");
+        assert!(out.status.success(), "gpg {} failed", args[0]);
         out.stdout
     }
 
     /// A new key that can sign; returns its fingerprint.
-    fn key(&self, uid: &str) -> String {
-        self.gpg(&["--quick-gen-key", uid, "ed25519", "sign", "never"]);
-        self.fingerprint(uid)
+    fn key(&self, signer: &str) -> String {
+        self.gpg(&["--quick-gen-key", signer, "ed25519", "sign", "never"]);
+        self.fingerprint(signer)
     }
 
-    fn fingerprint(&self, uid: &str) -> String {
+    fn fingerprint(&self, signer: &str) -> String {
         let listing =
-            String::from_utf8(self.gpg(&["--with-colons", "--fingerprint", "--list-keys", uid]))
+            String::from_utf8(self.gpg(&["--with-colons", "--fingerprint", "--list-keys", signer]))
                 .unwrap();
         listing
             .lines()
@@ -98,8 +98,8 @@ impl Kit {
             .to_string()
     }
 
-    fn export(&self, uid: &str) -> Vec<u8> {
-        self.gpg(&["--armor", "--export", uid])
+    fn export(&self, signer: &str) -> Vec<u8> {
+        self.gpg(&["--armor", "--export", signer])
     }
 
     /// A runtime with empty signature sections, like the AppImage runtime.
