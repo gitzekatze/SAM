@@ -104,7 +104,7 @@ id = 8
 area = "B"
 promise = "You can change permissions per app, for several apps at once, or through your own presets."
 code = ["sam-core/src/permissions.rs", "sam-profile/src/lib.rs", "sam-runner/src/ops/profiles.rs", "sam-storage/src/lib.rs"]
-tests = ["set_and_get_keys", "change_check_flags_removals_and_additions", "folders_are_not_breakage_but_lost_local_network_and_bus_are", "lost_sound_is_named_sound", "preset_template_is_strict", "user_changes_survive_better_recommendation", "a_dry_run_changes_nothing_and_names_what_would_stop_working", "only_changed_apps_are_saved_and_one_undo_restores_all_of_them", "an_invalid_value_or_unknown_app_changes_no_app", "sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user", "saving_an_apps_settings_as_a_preset_keeps_them_exactly", "reset_to_recommendation_brings_back_the_recommended_settings", "preset_names_cannot_place_files_outside_the_presets_folder", "a_saved_preset_loads_back_unchanged", "group_list_set_and_restore_round_trip", "group_set_refuses_bad_input_without_changing_anything", "presets_are_the_users_own_only", "each_permission_adds_exactly_its_part_to_the_command",
+tests = ["set_and_get_keys", "change_check_flags_removals_and_additions", "folders_are_not_breakage_but_lost_local_network_and_bus_are", "lost_sound_is_named_sound", "preset_template_is_strict", "only_a_damaged_preset_is_moved_aside", "user_changes_survive_better_recommendation", "a_dry_run_changes_nothing_and_names_what_would_stop_working", "only_changed_apps_are_saved_and_one_undo_restores_all_of_them", "an_invalid_value_or_unknown_app_changes_no_app", "sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user", "saving_an_apps_settings_as_a_preset_keeps_them_exactly", "reset_to_recommendation_brings_back_the_recommended_settings", "preset_names_cannot_place_files_outside_the_presets_folder", "a_saved_preset_loads_back_unchanged", "group_list_set_and_restore_round_trip", "group_set_refuses_bad_input_without_changing_anything", "presets_are_the_users_own_only", "each_permission_adds_exactly_its_part_to_the_command",
   "only_new_or_higher_serious_risks_ask",
   "a_change_from_an_old_copy_keeps_what_changed_meanwhile",
   "a_change_from_the_window_keeps_changes_made_elsewhere",
@@ -171,14 +171,14 @@ id = 15
 area = "C"
 promise = "Sound, GPU, camera and game controllers only when allowed."
 code = ["sam-sandbox/src/lib.rs"]
-tests = ["a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+tests = ["a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "a_relay_outside_a_sandbox_is_not_held", "a_too_long_socket_path_is_named_before_the_relay_starts", "a_launchs_sockets_fit_even_for_the_longest_app_id", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
 
 [[function]]
 id = 16
 area = "C"
 promise = "The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries)."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/kernel.rs"]
-tests = ["grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "a_writable_part_of_the_home_holding_start_places_is_watched", "full_home_access_cannot_leave_anything_that_runs_later", "the_home_protections_hold_whatever_else_is_granted", "a_new_start_file_never_stays_silently", "start_places_follow_other_config_and_data_folders", "a_folder_that_cannot_be_watched_is_reported", "paths_are_resolved_through_links_also_where_they_do_not_exist_yet", "a_path_through_a_link_into_a_grant_is_visible", "a_missing_home_folder_stops_the_start", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "protected_parents_are_locked_and_linked_keys_hidden", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter"]
+tests = ["grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "a_writable_part_of_the_home_holding_start_places_is_watched", "full_home_access_cannot_leave_anything_that_runs_later", "the_home_protections_hold_whatever_else_is_granted", "a_new_start_file_never_stays_silently", "start_places_follow_other_config_and_data_folders", "a_folder_that_cannot_be_watched_is_reported", "paths_are_resolved_through_links_also_where_they_do_not_exist_yet", "a_path_through_a_link_into_a_grant_is_visible", "a_missing_home_folder_stops_the_start", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "a_start_file_left_in_the_home_is_moved_aside_and_named", "protected_parents_are_locked_and_linked_keys_hidden", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter"]
 
 [[function]]
 id = 17
@@ -278,7 +278,7 @@ id = 24
 area = "E"
 promise = "Repair steps go from mild to strong, and each one can be undone."
 code = ["sam-runner/src/repair.rs", "sam-sandbox/src/lib.rs"]
-tests = ["steps_that_add_are_undone_and_tried_steps_are_no_hints", "only_an_ordinary_start_judges_repair_steps", "a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not", "a_repair_step_that_did_not_help_is_undone", "the_ladder_offers_only_what_can_help_and_says_what_it_costs", "compatibility_mode_needs_yes_and_says_why", "a_repair_step_says_what_it_changes_and_costs", "ladder_skips_applied_and_noop_steps", "a_writable_app_folder_is_offered_only_where_it_can_work", "undoing_repair_steps_restores_the_settings_from_before_the_first_step", "switching_off_one_repair_step_keeps_the_others", "only_plain_library_names_are_accepted", "system_copies_replace_only_bundled_libraries_by_plain_name",
+tests = ["steps_that_add_are_undone_and_tried_steps_are_no_hints", "only_an_ordinary_start_judges_repair_steps", "the_no_sandbox_hint_is_only_for_electron_where_it_is_blocked", "the_graphics_hint_is_only_for_apps_without_it", "the_chromium_sandbox_check_matches_what_this_computer_allows", "a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not", "a_repair_step_that_did_not_help_is_undone", "the_ladder_offers_only_what_can_help_and_says_what_it_costs", "compatibility_mode_needs_yes_and_says_why", "a_repair_step_says_what_it_changes_and_costs", "ladder_skips_applied_and_noop_steps", "a_writable_app_folder_is_offered_only_where_it_can_work", "undoing_repair_steps_restores_the_settings_from_before_the_first_step", "switching_off_one_repair_step_keeps_the_others", "only_plain_library_names_are_accepted", "system_copies_replace_only_bundled_libraries_by_plain_name",
   "undoing_repair_steps_keeps_what_the_person_changed_since",
 ]
 
@@ -387,7 +387,7 @@ id = 34
 area = "G"
 promise = "Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets."
 code = ["sam-runner/src/doctor.rs"]
-tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus", "bug_reports_hide_tokens_in_every_shape", "a_log_cannot_break_out_of_its_code_block"]
+tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "bug_reports_hide_secrets_in_every_spelling", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus", "bug_reports_hide_tokens_in_every_shape", "a_log_cannot_break_out_of_its_code_block"]
 
 [[area]]
 id = "H"
@@ -445,11 +445,11 @@ area = "I"
 internal = true
 promise = "SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones."
 code = ["sam-jail-cli/tests/architecture.rs", "docs/architecture.md"]
-tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends_on_no_other_part", "the_window_reaches_sam_only_through_the_command_line", "lower_parts_never_depend_on_higher_ones", "the_sandbox_builder_depends_only_on_the_permission_model", "the_component_diagram_shows_the_real_dependencies", "diagram_labels_are_quoted_so_github_draws_them", "version_reports_the_json_interface", "an_error_code_survives_added_context", "a_required_run_does_not_skip", "a_failing_section_is_named_and_the_next_still_runs",
+tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends_on_no_other_part", "the_window_reaches_sam_only_through_the_command_line", "lower_parts_never_depend_on_higher_ones", "the_sandbox_builder_depends_only_on_the_permission_model", "the_component_diagram_shows_the_real_dependencies", "diagram_labels_are_quoted_so_github_draws_them", "version_reports_the_json_interface", "an_error_code_survives_added_context", "a_required_run_does_not_skip", "skips_are_refused_in_ci_and_always_written_down", "a_failing_section_is_named_and_the_next_still_runs",
   "a_skipped_test_is_recorded_with_its_reason",
   "tests_find_the_helper_of_their_own_build",
   "a_build_never_takes_a_helper_from_path",
-  "rooted_paths_have_a_runtime_folder_of_their_own",
+  "rooted_paths_have_a_runtime_folder_of_their_own", "a_test_inside_a_test_keeps_its_runtime_folder_out_of_tmp",
   "an_error_names_its_sam_function_and_keeps_its_message",
   "json_run_keeps_its_reply_alone_on_standard_output",
   "preset_names_are_never_read_as_options",

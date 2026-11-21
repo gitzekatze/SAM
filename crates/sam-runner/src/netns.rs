@@ -225,6 +225,11 @@ mod tests {
         assert!(has_ipv6_loopback(&format!("{eth}{lo}")));
         assert!(!has_ipv6_loopback(eth));
         assert!(!has_ipv6_loopback(""));
+        // Both are needed: ::1 on another device, or another address on the
+        // loopback, is not it (mutation run P14).
+        let one_elsewhere = "00000000000000000000000000000001 05 80 10 80     tun0\n";
+        let other_on_lo = "fe800000000000000000000000000001 01 40 20 80       lo\n";
+        assert!(!has_ipv6_loopback(&format!("{one_elsewhere}{other_on_lo}")));
     }
 
     /// Local services whose clients would hand an app control or secrets

@@ -81,6 +81,23 @@ pub struct Prepared {
 }
 
 /// Removes a per-launch runtime directory when the launch is over.
+/// The name of a launch's runtime folder: `l<process>-<n>`, `n` counting
+/// the launches of this process. Short on purpose: the folder holds the
+/// app's sockets (Wayland, bus, sound), whose whole path may have at most
+/// 107 characters, below the runtime folder and an app id of up to 46
+/// (the 240-app run of 2026-11-20: longer names cost apps with long ids
+/// their sound, their bus and the Wayland security context).
+fn launch_dir_name() -> String {
+    static COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("l{}-{n}", std::process::id())
+}
+
+/// The process that made a launch's runtime folder, from its name.
+pub(crate) fn launch_dir_pid(name: &str) -> Option<u32> {
+    name.strip_prefix('l')?.split_once('-')?.0.parse().ok()
+}
+
 struct RuntimeDir(PathBuf);
 impl Drop for RuntimeDir {
     fn drop(&mut self) {
@@ -246,12 +263,9 @@ pub fn prepare(
 
     // One runtime directory per launch (two instances of an app never share
     // proxy sockets or spec files); removed when `Prepared` is dropped.
-    let runtime_dir = paths.runtime_dir(&app.id).join(format!(
-        "launch-{}-{}{}",
-        std::process::id(),
-        now(),
-        if opts.name_retry { "-again" } else { "" }
-    ));
+    let runtime_dir = paths.runtime_dir(&app.id).join(launch_dir_name());
+    // A folder of a finished process that had the same number.
+    let _ = fs::remove_dir_all(&runtime_dir);
     fs::create_dir_all(&runtime_dir)?;
     let runtime_guard = RuntimeDir(runtime_dir.clone());
     {
@@ -2132,5 +2146,34 @@ mod tests {
             &judge_outcome(exited(1), "", never_started, false, None),
             exited(1)
         ));
+    }
+    /// Every socket SAM makes for a launch fits a Unix socket path (107
+    /// characters), even for the longest app id (one that grew twice for
+    /// names that were taken), the highest process number Linux hands out
+    /// and the longest user number (the 240-app run of 2026-11-20: apps
+    /// with long ids lost their sound, bus and Wayland security context).
+    #[test]
+    fn a_launchs_sockets_fit_even_for_the_longest_app_id() {
+        let id = sam_intake::id::generate_id(
+            &"a long name for an app".repeat(4),
+            Path::new("A.AppImage"),
+            &"f".repeat(64),
+            |id| id.len() < 50,
+        );
+        assert_eq!(id.len(), 50, "{id}");
+        let name = launch_dir_name();
+        assert_eq!(launch_dir_pid(&name), Some(std::process::id()));
+        assert_ne!(name, launch_dir_name(), "each launch has its own folder");
+        let longest = name.replacen(&std::process::id().to_string(), "4194304", 1);
+        let dir = Path::new("/run/user/4294967294/sam")
+            .join(&id)
+            .join(longest);
+        for socket in ["wayland-0", "bus", "sound/native"] {
+            let p = dir.join(socket);
+            assert!(p.as_os_str().len() <= 107, "{} is too long", p.display());
+        }
+        assert_eq!(launch_dir_pid("l12-3"), Some(12));
+        assert_eq!(launch_dir_pid("12-3"), None);
+        assert_eq!(launch_dir_pid("lx-3"), None);
     }
 }

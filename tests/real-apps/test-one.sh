@@ -262,7 +262,7 @@ ok() { grep -q '"ok":true' "$out.selftest$1.json" && python3 -I -c "import json,
   $S stop "$id" >/dev/null 2>&1
   # Leftovers after closing: launch folders or processes of this app.
   sleep 2
-  left=$(ls -d "$XDG_RUNTIME_DIR/sam/$id"/launch-* 2>/dev/null | wc -l)
+  left=$(ls -d "$XDG_RUNTIME_DIR/sam/$id"/l[0-9]* 2>/dev/null | wc -l)
   echo "leftovers $left" >> "$out.checks"
 } > "$out.txt" 2>&1
 # Window titles seen after 20 s, from KWin's log.

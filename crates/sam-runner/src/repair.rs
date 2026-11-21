@@ -66,6 +66,12 @@ pub fn changes_something(
 /// Things likely to surprise the user right after creating a sandbox,
 /// each with a one-click change. Shown once as the "first-run check".
 pub fn first_run_hints(e: &AppEntry) -> Vec<Suggestion> {
+    hints(e, chromium_sandbox_blocked())
+}
+
+/// [`first_run_hints`] on a computer that does or does not block
+/// Chromium's own sandbox.
+fn hints(e: &AppEntry, chromium_blocked: bool) -> Vec<Suggestion> {
     let p = &e.profile.permissions;
     let req = e
         .detection
@@ -112,10 +118,7 @@ pub fn first_run_hints(e: &AppEntry) -> Vec<Suggestion> {
     {
         out.push(s("gpu", "Graphics may not work", "SAM found no graphics libraries in this app, which usually means it loads them at start (common for Rust and game engines). If it fails to start or draw, turn on GPU acceleration.", set("devices.gpu", "true"), RiskLevel::Medium));
     }
-    if req.electron
-        && chromium_sandbox_blocked()
-        && !e.profile.args.iter().any(|a| a == "--no-sandbox")
-    {
+    if req.electron && chromium_blocked && !e.profile.args.iter().any(|a| a == "--no-sandbox") {
         out.push(no_sandbox());
     }
     let signs_in = matches!(e.category.as_str(), "communication" | "browser") || req.electron;
@@ -1217,6 +1220,105 @@ mod tests {
         assert!(blocked_by(None, None, Some("1")));
         assert!(!blocked_by(Some("63000"), Some("1"), Some("0")));
         assert!(!blocked_by(None, None, None));
+    }
+
+    /// The first-start hints offer starting without Chromium's own sandbox
+    /// only to an Electron app that does not already start without it, and
+    /// only where the computer blocks that sandbox (audit A1; mutation run
+    /// P14: offering it to every app, or on every computer, went
+    /// unnoticed). Both kinds of computer are checked here; CI and most
+    /// computers do not block it.
+    #[test]
+    fn the_no_sandbox_hint_is_only_for_electron_where_it_is_blocked() {
+        let app = |electron: bool| {
+            let mut e = AppEntry::default();
+            e.profile.permissions = PermissionSet::strict_gui();
+            e.detection = Some(sam_core::DependencyReport {
+                requirements: sam_core::model::Requirements {
+                    electron,
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+            e
+        };
+        let offered = |e: &AppEntry, blocked: bool| {
+            hints(e, blocked)
+                .iter()
+                .any(|s| s.id == "chromium-no-sandbox")
+        };
+        assert!(offered(&app(true), true), "Electron, blocked");
+        assert!(!offered(&app(true), false), "Electron, not blocked");
+        assert!(!offered(&app(false), true), "never for another app");
+        let mut has_it = app(true);
+        has_it.profile.args.push("--no-sandbox".into());
+        assert!(
+            !offered(&has_it, true),
+            "not when it already starts without"
+        );
+        // On this computer: what its kernel settings say.
+        let ids = |v: Vec<Suggestion>| v.into_iter().map(|s| s.id).collect::<Vec<_>>();
+        assert_eq!(
+            ids(first_run_hints(&app(true))),
+            ids(hints(&app(true), chromium_sandbox_blocked()))
+        );
+    }
+
+    /// The graphics hint is only for a windowed app that has no graphics
+    /// card yet and showed no sign of how it draws (mutation run of
+    /// 2026-11-21: offering it to every windowed app went unnoticed).
+    #[test]
+    fn the_graphics_hint_is_only_for_apps_without_it() {
+        let app = |gpu: bool| {
+            let mut e = AppEntry::default();
+            e.profile.permissions = PermissionSet::strict_gui();
+            e.profile.permissions.devices.gpu = gpu;
+            e.detection = Some(sam_core::DependencyReport {
+                elf_count: 1,
+                ..Default::default()
+            });
+            e
+        };
+        let offered = |e: &AppEntry| hints(e, false).iter().any(|s| s.id == "gpu");
+        assert!(
+            offered(&app(false)),
+            "no graphics card, no sign of how it draws"
+        );
+        assert!(!offered(&app(true)), "it already has the graphics card");
+        let mut wayland = app(false);
+        if let Some(d) = wayland.detection.as_mut() {
+            d.requirements.wayland = true;
+        }
+        assert!(!offered(&wayland), "it draws through Wayland");
+        let mut no_programs = app(false);
+        if let Some(d) = no_programs.detection.as_mut() {
+            d.elf_count = 0;
+        }
+        assert!(!offered(&no_programs), "no program of its own to look at");
+    }
+
+    /// What SAM reads from the kernel's settings matches what this computer
+    /// really allows: a program creating its own sandbox (a user namespace
+    /// with a network namespace in it, as Chromium's sandbox does) works
+    /// exactly where SAM says it is not blocked.
+    #[test]
+    fn the_chromium_sandbox_check_matches_what_this_computer_allows() {
+        if sam_core::util::which("unshare").is_none() {
+            crate::contracts::skip("unshare (util-linux) is not installed")
+                .unwrap_or_else(|e| panic!("{e}"));
+            return;
+        }
+        let can = std::process::Command::new("unshare")
+            .args(["--user", "--map-root-user", "--net", "true"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        assert_eq!(
+            chromium_sandbox_blocked(),
+            !can,
+            "a sandbox in a sandbox works: {can}"
+        );
     }
 
     /// The repair steps offer a writable app folder only where an overlay

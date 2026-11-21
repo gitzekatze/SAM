@@ -203,7 +203,7 @@ impl Sam {
     /// Remove the sandbox. Returns the removed entry and problems that did
     /// not stop the removal (e.g. a hidden menu entry that could not be put back).
     /// Launches of this app that are running now. Each launch keeps
-    /// `<runtime>/launch-<pid>-<time>/running.lock` locked while it runs;
+    /// `<runtime>/l<pid>-<n>/running.lock` locked while it runs;
     /// folders left by a killed runner are removed here.
     pub fn running(&self, id: &str) -> Vec<u32> {
         let mut pids = Vec::new();
@@ -212,11 +212,7 @@ impl Sam {
         };
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            let Some(pid) = name
-                .strip_prefix("launch-")
-                .and_then(|r| r.split('-').next())
-                .and_then(|p| p.parse::<u32>().ok())
-            else {
+            let Some(pid) = crate::launch::launch_dir_pid(&name) else {
                 continue;
             };
             let lock = e.path().join("running.lock");
@@ -242,9 +238,7 @@ impl Sam {
         let mut runners = Vec::new();
         for p in self.running(&entry.id) {
             for e in fs::read_dir(&base).into_iter().flatten().flatten() {
-                if e.file_name()
-                    .to_string_lossy()
-                    .starts_with(&format!("launch-{p}-"))
+                if crate::launch::launch_dir_pid(&e.file_name().to_string_lossy()) == Some(p)
                     && holds_open(p, &e.path().join("running.lock"))
                 {
                     // So the launch is recorded as closed, not as a failed start.

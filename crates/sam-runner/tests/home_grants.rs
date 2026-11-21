@@ -8,6 +8,8 @@
 //!   writable `~/.bash_profile` stays read-only;
 //! - a Documents folder that `user-dirs.dirs` points above the home is not
 //!   shown;
+//! - a writable Documents folder that holds the real `~/.bashrc` is shown,
+//!   the start file in it stays read-only;
 //! - a file inside SAM's folder (kept outside the home) or `~/.netrc` named
 //!   on the command line is not shared;
 //! - with the whole home, Vivaldi's profile and `~/.npmrc` stay hidden;
@@ -36,6 +38,7 @@ H="$HOME"
 for f in "$@"; do echo pwned >> "$f" 2>/dev/null; done
 echo pwned >> "$H/dotfiles/bashrc" 2>/dev/null
 echo pwned >> "$H/work/notes.txt" 2>/dev/null
+echo pwned >> "$H/dotfiles/notes.txt" 2>/dev/null
 mkdir -p "$H/.config/autostart" 2>/dev/null && echo x > "$H/.config/autostart/evil.desktop" 2>/dev/null
 mkdir -p "$H/.config/myapp" 2>/dev/null && echo x > "$H/.config/myapp/settings" 2>/dev/null
 echo pwned >> "$H/.bash_profile" 2>/dev/null
@@ -79,6 +82,7 @@ fn grants_of_parts_of_the_home_never_reach_start_places_or_secrets() {
     fs::write(home.join("dotfiles/bashrc"), "# mine\n").unwrap();
     std::os::unix::fs::symlink(home.join("dotfiles/bashrc"), home.join(".bashrc")).unwrap();
     fs::write(home.join("work/notes.txt"), "notes\n").unwrap();
+    fs::write(home.join("dotfiles/notes.txt"), "notes\n").unwrap();
     fs::write(home.join(".bash_profile"), "# mine\n").unwrap();
     fs::write(home.join(".netrc"), "machine x password SECRET\n").unwrap();
     fs::write(home.join(".config/vivaldi/Default/Login Data"), "SECRET").unwrap();
@@ -201,6 +205,25 @@ fn grants_of_parts_of_the_home_never_reach_start_places_or_secrets() {
     check(
         !home.join(".config/autostart/evil2.desktop").exists(),
         "S-F11: an autostart entry was left through Documents".into(),
+    );
+
+    // Documents set to the folder that holds the real ~/.bashrc (dotfiles
+    // linked into the home), granted writable: the folder is shown, the
+    // start file in it stays read-only (mutation run P14: whether a granted
+    // user folder counts as writable was untested).
+    // (The first case's attack left a file of that name in the app's own
+    // home, where the folder is shown.)
+    let _ = fs::remove_file(app.paths.app_home(&id).join("dotfiles"));
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.documents = Access::Rw;
+    start(p, vec![], Some(home.join("dotfiles")));
+    check(
+        read(&home.join(".bashrc")) == "# mine\n",
+        "the start file in a writable Documents folder was written".into(),
+    );
+    check(
+        read(&home.join("dotfiles/notes.txt")).contains("pwned"),
+        "control: the writable Documents folder was not written".into(),
     );
 
     // S-F13: a file inside SAM's folder, and ~/.netrc, named on the command

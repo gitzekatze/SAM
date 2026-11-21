@@ -281,6 +281,16 @@ fn presets_are_the_users_own_only() {
     );
     fs::metadata(e.tmp.path().join("config/presets"))
         .expect("stored as a file in the presets folder");
+    // Exported without a file: the preset as text, or in JSON mode only the
+    // JSON answer with the text inside (mutation run P14: untested).
+    let text = e.run(&["preset", "export", "Mine"], None);
+    let text = String::from_utf8_lossy(&text.stdout);
+    assert!(text.contains("name = \"Mine\""), "{text}");
+    let v = e.json(&["preset", "export", "Mine"], None);
+    assert!(
+        v["toml"].as_str().unwrap().contains("name = \"Mine\""),
+        "{v}"
+    );
 }
 
 /// Regression (found by the fuzzer): one damaged AppImage in a searched

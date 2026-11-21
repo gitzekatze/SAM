@@ -3607,6 +3607,11 @@ mod guard_tests {
             !home.join(".bashrc").exists(),
             "only what the grant shows is made"
         );
+        // Folders too (mutation run P14: a missing folder outside the grant
+        // was made in the person's home unnoticed).
+        for d in [".local/bin", ".local/share/applications"] {
+            assert!(!home.join(d).exists(), "{d} is not shown, so not made");
+        }
         fs::create_dir_all(home.join(".config/sway")).unwrap();
         fs::write(home.join(".config/sway/config"), "exec evil").unwrap();
         let moved: Vec<String> = w
