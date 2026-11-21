@@ -4,15 +4,17 @@
 //! needs the static C library (Debian/Ubuntu: libc6-dev, Fedora:
 //! glibc-static, Arch: glibc). Without it the build goes on, warns, and
 //! Room service is off in that build (every start says so).
-// A build script speaks to cargo on standard output (cargo:… lines); there
-// is no app text here for SAM's output macros to clean.
-#![allow(clippy::disallowed_macros)]
-
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
+/// A line for cargo (build scripts talk to cargo on standard output).
+fn cargo(line: &str) {
+    let _ = writeln!(std::io::stdout(), "cargo:{line}");
+}
+
 fn main() {
-    println!("cargo:rerun-if-changed=room-exec/main.rs");
+    cargo("rerun-if-changed=room-exec/main.rs");
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("sam-room-exec");
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
     let target = std::env::var("TARGET").expect("TARGET");
@@ -40,10 +42,10 @@ fn main() {
             "/usr/lib/x86_64-linux-gnu/libc.a",
             "/usr/lib/aarch64-linux-gnu/libc.a",
         ] {
-            println!("cargo:rerun-if-changed={lib}");
+            cargo(&format!("rerun-if-changed={lib}"));
         }
-        println!(
-            "cargo:warning=SAM's room helper could not be built as a static program (is the static C library installed? Debian/Ubuntu: libc6-dev, Fedora: glibc-static); Room service is off in this build"
+        cargo(
+            "warning=SAM's room helper could not be built as a static program (is the static C library installed? Debian/Ubuntu: libc6-dev, Fedora: glibc-static); Room service is off in this build"
         );
     }
 }
