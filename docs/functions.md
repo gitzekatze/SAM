@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 39 proven by passing tests, 1 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 515 tests in all.
+**41 functions:** 39 proven by passing tests, 1 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 520 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -31,7 +31,7 @@
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 19 | ✅ |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
-| 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 24 | ✅ 🆕 24 new tests since the report |
+| 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 29 | ✅ 🆕 29 new tests since the report |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 22 | ✅ |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 14 | ✅ |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 8 | ✅ |
@@ -337,8 +337,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`well_known_local_services_are_never_taken_over`](../crates/sam-runner/src/netns.rs#L237) | Local services whose clients would hand an app control or secrets are never taken over automatically. | ✅ |
 | [`the_apps_ports_are_offered_on_this_computer_only`](../crates/sam-jail-cli/tests/local_network.rs#L106) | The apps ports are offered on this computer only. | ✅ |
 | [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L102) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
-| [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L2013) | A pasta command ending in the separator is refused not a panic. | ✅ |
-| [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L2020) | The status shell goes between the separator and the program. | ✅ |
+| [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L2010) | A pasta command ending in the separator is refused not a panic. | ✅ |
+| [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L2017) | The status shell goes between the separator and the program. | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/netns.rs`](../crates/sam-runner/src/netns.rs)
 
@@ -360,8 +360,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`menu_ids_are_the_file_names`](../crates/sam-runner/src/own_names.rs#L232) | Menu entry ids come from file names, subfolders joined with `-`; only `.desktop` files count. | ✅ |
 | [`the_proxy_record_names_what_the_app_wanted_to_own`](../crates/sam-runner/src/dbus_proxy.rs#L215) | Only the proxy's "wants to own" lines name a name to learn, and only a well-formed one (what the app printed never reaches this). | ✅ |
 | [`the_apps_own_words_never_give_it_a_bus_name`](../crates/sam-runner/src/repair.rs#L907) | What the app prints never gets it a bus name, whatever name it claims it needs (a terminal's name runs host commands; audit D-M6): names come only from the D-Bus filter's record (`own_names`). | ✅ |
-| [`the_filter_refuses_x32_odd_sockets_and_the_siblings`](../crates/sam-runner/src/kernel.rs#L675) | The filter, applied by the real kernel in a child process: every call through the x32 ABI is refused (audit S-F9; x32 `ptrace` has its own number), the siblings of blocked calls are blocked too (S-F10), and a socket opens only as local, internet or netlink, Bluetooth only with its switch (S-F7). | ✅ |
-| [`the_filter_reaches_bubblewrap_as_whole_instructions`](../crates/sam-runner/src/kernel.rs#L736) | Bubblewrap reads the filter as eight bytes per instruction. | ✅ |
+| [`the_filter_refuses_x32_odd_sockets_and_the_siblings`](../crates/sam-runner/src/kernel.rs#L613) | The filter, applied by the real kernel in a child process: every call through the x32 ABI is refused (audit S-F9; x32 `ptrace` has its own number), the siblings of blocked calls are blocked too (S-F10), and a socket opens only as local, internet or netlink, Bluetooth only with its switch (S-F7). | ✅ |
+| [`the_filter_reaches_bubblewrap_as_whole_instructions`](../crates/sam-runner/src/kernel.rs#L674) | Bubblewrap reads the filter as eight bytes per instruction. | ✅ |
 | [`an_app_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L104) | An app cannot open the kernels rarely used doors. | ✅ |
 | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1235) | Own names that are refused. | ✅ |
 | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1282) | A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | ✅ |
@@ -372,7 +372,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`without_nested_namespaces_user_namespaces_are_disabled`](../crates/sam-sandbox/src/lib.rs#L2905) | Without nested namespaces, the sandbox disables user namespaces and starts through SAM's helper. | ✅ |
 | [`extra_sockets_must_be_sockets`](../crates/sam-sandbox/src/lib.rs#L2961) | Extra sockets are passed in only when they really are sockets. | ✅ |
 | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L247) | An app may register a tray icon only while the tray service is allowed. | ✅ |
-| [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L747) | The syscall filter compiles in every variant and always blocks mount and io_uring. | ✅ |
+| [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L685) | The syscall filter compiles in every variant and always blocks mount and io_uring. | ✅ |
 | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) | Every security promise holds inside a real sandbox: each breakout attempt fails. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L159) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
 | [`a_socket_counts_as_ready_only_when_it_accepts`](../crates/sam-runner/src/dbus_proxy.rs#L269) | The proxy counts as ready only when its socket accepts connections, not when the file merely exists (regression: the sandbox check sometimes found the session bus refused right after the start). | ✅ |
@@ -403,7 +403,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay`](../crates/sam-runner/src/sound_relay.rs#L339) | A relay that never opens its socket stops the start's sound within moments instead of holding the start; one that does is stopped, and its socket removed, when the start ends. | ✅ |
 | [`a_relay_outside_a_sandbox_is_not_held`](../crates/sam-runner/src/sound_relay.rs#L250) | The lock check fails a relay that runs outside a sandbox: it sees the person's folder (mutation run P14: an answer of always "held" went unnoticed, so `sam-jail doctor` would not see such a relay). | ✅ |
 | [`a_too_long_socket_path_is_named_before_the_relay_starts`](../crates/sam-runner/src/sound_relay.rs#L292) | A socket path too long for Linux is refused with a clear reason before PipeWire starts (it ended with an unclear crash: the 240-app run of 2026-11-20). | ✅ |
-| [`a_launchs_sockets_fit_even_for_the_longest_app_id`](../crates/sam-runner/src/launch.rs#L2269) | Every socket SAM makes for a launch fits a Unix socket path (107 characters), even for the longest app id (one that grew twice for names that were taken), the highest process number Linux hands out and the longest user number (the 240-app run of 2026-11-20: apps with long ids lost their sound, bus and Wayland security context). | ✅ |
+| [`a_launchs_sockets_fit_even_for_the_longest_app_id`](../crates/sam-runner/src/launch.rs#L2266) | Every socket SAM makes for a launch fits a Unix socket path (107 characters), even for the longest app id (one that grew twice for names that were taken), the highest process number Linux hands out and the longest user number (the 240-app run of 2026-11-20: apps with long ids lost their sound, bus and Wayland security context). | ✅ |
 | [`the_sound_relay_check_needs_pipewire`](../crates/sam-runner/src/contracts.rs#L725) | The relay's quick check says "not here" on a computer without PipeWire, instead of reporting the contract broken. | ✅ |
 | [`sound_comes_from_the_relay_or_only_when_allowed_from_the_server`](../crates/sam-sandbox/src/lib.rs#L2438) | Sound comes from SAM's relay, never from the sound server's own socket; that one only when the person allowed sound without the relay (audit S-F1). | ✅ |
 | [`sound_never_loads_code_into_the_sound_server`](../crates/sam-runner/tests/sound_relay.rs#L98) | Sound never loads code into the sound server. | ✅ |
@@ -435,7 +435,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_new_startup_file_is_moved_aside_while_the_app_runs`](../crates/sam-runner/src/home_live.rs#L184) | A startup file created while the app runs is moved aside at once, not only when the app ends; a removed link is put back at once. | ✅ |
 | [`a_start_file_left_in_the_home_is_moved_aside_and_named`](../crates/sam-jail-cli/tests/moved_aside_message.rs#L25) | A start file left in the home is moved aside and named. | ✅ |
 | [`protected_parents_are_locked_and_linked_keys_hidden`](../crates/sam-sandbox/src/lib.rs#L3155) | With a writable home, the folders above protected places are mount points of their own (so they cannot be renamed away), and a key folder that is a link is hidden where it points. | ✅ |
-| [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L568) | The Landlock rules allow writing exactly in the folders the permissions grant. | ✅ |
+| [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L506) | The Landlock rules allow writing exactly in the folders the permissions grant. | ✅ |
 | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L152) | Every security promise holds inside a real sandbox: each breakout attempt fails. | ✅ |
 | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L159) | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | ✅ |
 | [`every_known_syscall_has_been_reviewed`](../crates/sam-runner/tests/syscalls.rs#L67) | Every known syscall has been reviewed. | ✅ |
@@ -448,7 +448,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`output_shown_in_a_terminal_is_filtered_without_the_relay`](../crates/sam-runner/src/launch.rs#L2070) | With its input redirected an app has no terminal relay; its output shown in a terminal still loses clipboard codes and title reports, even split over two pieces. | ✅ |
+| [`output_shown_in_a_terminal_is_filtered_without_the_relay`](../crates/sam-runner/src/launch.rs#L2067) | With its input redirected an app has no terminal relay; its output shown in a terminal still loses clipboard codes and title reports, even split over two pieces. | ✅ |
 | [`a_pipe_into_a_terminal_program_passes_through_unchanged`](../crates/sam-jail-cli/tests/pipes.rs#L28) | A pipe into a terminal program passes through unchanged: the tool reads the piped input, its output arrives byte for byte, and it has no terminal of its own. | ✅ |
 | [`plain_text_survives_unfinished_and_odd_codes`](../crates/sam-runner/src/pty.rs#L649) | The log's plain text survives every unfinished or odd code: one cut off at the end of the data (no read past it), a title ended by ESC \\ with text after it, a backslash inside a title, and an ESC with intermediate bytes at the very end (found by mutation testing: no test reached these edges). | ✅ |
 | [`the_terminal_connection_passes_typing_and_filtered_output`](../crates/sam-runner/tests/terminal_relay.rs#L166) | Typing reaches the app; its output reaches the user filtered (colours pass, a clipboard write does not); the window size is copied at the start and follows a resize; the log and the error head get the text without control codes; the user's terminal is raw while the app runs and gets its settings back afterwards. | ✅ |
@@ -491,7 +491,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`names_lose_direction_overrides_and_invisible_characters`](../crates/sam-core/src/util.rs#L796) | Names that would show other than they are lose the characters that do it (audit I-F12): a direction override (`invoice\u{202E}fdp.exe` shows as `invoiceexe.pdf`), invisible spaces and joiners between letters, tag characters, 8-bit control codes. | ✅ |
 | [`what_sam_prints_about_an_app_cannot_reach_past_the_terminal`](../crates/sam-jail-cli/tests/terminal.rs#L297) | What SAM itself prints about an app (G-F5, L-F3, I-F11, I-F12): the name of its file, the failure summary taken from its error output, its log. | ✅ |
 | [`every_printed_line_goes_through_the_screen_filter`](../crates/sam-jail-cli/tests/architecture.rs#L268) | Everything SAM prints goes through one place that removes escape codes and hidden characters from it (`sam_core::terminal::for_screen`, audit G-F5): the plain print macros are refused by the code check (clippy.toml), and in SAM's program code only that one file may allow them. | ✅ |
-| [`an_old_log_shows_only_its_text`](../crates/sam-runner/src/launch.rs#L1908) | A log written before SAM kept only the text, or edited by hand, still shows only text (audit L-F3): `sam-jail logs` and bug reports read it through `tail`. | ✅ |
+| [`an_old_log_shows_only_its_text`](../crates/sam-runner/src/launch.rs#L1905) | A log written before SAM kept only the text, or edited by hand, still shows only text (audit L-F3): `sam-jail logs` and bug reports read it through `tail`. | ✅ |
 
 **Code:** [`sam-runner/src/pty.rs`](../crates/sam-runner/src/pty.rs), [`sam-runner/src/kernel.rs`](../crates/sam-runner/src/kernel.rs), [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs)
 
@@ -512,32 +512,37 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L546) | Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | 🆕 new |
+| [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L639) | Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | 🆕 new |
 | [`every_room_is_a_subset_of_its_app`](../crates/sam-runner/tests/room_service_compare.rs#L163) | Every room is within its app, for generated requests under no network, the full network, and in an app with Landlock and its syscall filter off: no room reads, writes or reaches anything its app cannot, and no room shows a folder of the computer its app is not shown. | 🆕 new |
 | [`under_this_computer_only_a_room_reaches_no_more_than_its_app`](../crates/sam-runner/tests/room_service_local.rs#L27) | Under "This computer only", a room that asks for the network gets an empty network of its own: it reaches no port of the computer (not even one listed for its app) and no socket outside the sandbox. | 🆕 new |
 | [`glycin_loads_images_in_a_room_never_without_a_sandbox`](../crates/sam-runner/tests/room_service_glycin.rs#L81) | An image loaded through GTK's real image loader inside a SAM sandbox is decoded in a room of its own, never without a sandbox. | 🆕 new |
 | [`changed_room_requests_never_crash_the_readers`](../crates/sam-runner/tests/fuzz_targets.rs#L438) | Room service's readers: changed messages and changed Bubblewrap argument lists never crash the service's reader, the stand-in's reader or the rules, and whatever the rules accept stays within them (every place a plain absolute path, shown at the same place, from beneath a folder of the app's floor plan). | 🆕 new |
-| [`bwrap_args_are_read_as_bubblewrap_reads_them`](../crates/sam-runner/src/room_rules.rs#L761) | Bwrap args are read as bubblewrap reads them. | 🆕 new |
-| [`options_a_room_never_gets_are_refused_by_name`](../crates/sam-runner/src/room_rules.rs#L790) | Options a room never gets are refused by name. | 🆕 new |
-| [`missing_values_and_commands_are_refused`](../crates/sam-runner/src/room_rules.rs#L815) | Missing values and commands are refused. | 🆕 new |
-| [`a_request_message_is_read_strictly`](../crates/sam-runner/src/room_rules.rs#L822) | A request message is read strictly. | 🆕 new |
-| [`paths_must_be_plain_and_absolute`](../crates/sam-runner/src/room_rules.rs#L855) | Paths must be plain and absolute. | 🆕 new |
-| [`a_place_is_shown_only_at_the_same_place`](../crates/sam-runner/src/room_rules.rs#L873) | A place is shown only at the same place. | 🆕 new |
-| [`a_place_comes_from_the_floor_plan_beneath_its_folder`](../crates/sam-runner/src/room_rules.rs#L879) | A place comes from the floor plan beneath its folder. | 🆕 new |
-| [`asking_for_a_parent_shows_the_apps_places_inside_it`](../crates/sam-runner/src/room_rules.rs#L902) | `/usr` is not one place of the app but several: the room gets each, and SAM's links, in the floor plan's order. | 🆕 new |
-| [`writable_only_where_the_app_writes`](../crates/sam-runner/src/room_rules.rs#L932) | Writable only where the app writes. | 🆕 new |
-| [`protected_places_inside_a_shown_folder_stay_protected`](../crates/sam-runner/src/room_rules.rs#L951) | The home shown writable keeps its protected place read-only, mounted after it, from beneath the home's own folder. | 🆕 new |
-| [`everything_asked_is_the_apps_view_without_its_private_places`](../crates/sam-runner/src/room_rules.rs#L969) | Everything asked is the apps view without its private places. | 🆕 new |
-| [`what_the_app_cannot_see_is_refused_or_skipped`](../crates/sam-runner/src/room_rules.rs#L991) | What the app cannot see is refused or skipped. | 🆕 new |
-| [`devices_only_the_apps`](../crates/sam-runner/src/room_rules.rs#L1005) | Devices only the apps. | 🆕 new |
-| [`the_network_only_with_the_apps_full_network_and_never_when_given_up`](../crates/sam-runner/src/room_rules.rs#L1032) | The network only with the apps full network and never when given up. | 🆕 new |
-| [`the_environment_is_kept_in_order_for_the_program`](../crates/sam-runner/src/room_rules.rs#L1065) | The environment is kept in order for the program. | 🆕 new |
-| [`the_programs_own_filter_must_be_a_passed_connection`](../crates/sam-runner/src/room_rules.rs#L1085) | The programs own filter must be a passed connection. | 🆕 new |
-| [`permissions_only_on_the_rooms_own_new_places`](../crates/sam-runner/src/room_rules.rs#L1096) | Permissions only on the rooms own new places. | 🆕 new |
-| [`the_rooms_folder_is_asked_or_safe`](../crates/sam-runner/src/room_rules.rs#L1122) | The rooms folder is asked or safe. | 🆕 new |
-| [`a_floor_plan_with_an_unknown_option_gives_no_rooms`](../crates/sam-runner/src/room_rules.rs#L1137) | A floor plan with an unknown option gives no rooms. | 🆕 new |
+| [`a_room_dies_with_sams_launcher`](../crates/sam-jail-cli/tests/room_teardown.rs#L52) | A room of an app (built by Room service, outside the app's sandbox) ends when SAM's launcher is killed outright. | 🆕 new |
+| [`a_place_the_app_has_hidden_by_a_later_mount_stays_hidden`](../crates/sam-runner/src/room_rules.rs#L1156) | A grant inside SAM's folder that a later tmpfs hides in the app (audit S-F13) stays hidden: the last mount over a place counts, not the deepest. | 🆕 new |
+| [`the_apps_own_restrictions_in_its_arguments_count`](../crates/sam-runner/src/room_rules.rs#L1281) | The apps own restrictions in its arguments count. | 🆕 new |
+| [`new_things_never_inside_a_place_shown_from_the_app`](../crates/sam-runner/src/room_rules.rs#L1376) | Bubblewrap makes folders and links on the computer when it is told to make them inside a shown folder, following any link the app left there: the room's own new things only in its own space. | 🆕 new |
+| [`sams_own_place_in_a_room_is_out_of_reach`](../crates/sam-runner/src/room_rules.rs#L1410) | SAM's own place in a room (its helper and the room's rules): no request may name it, cover it with a link, or make things in it. | 🆕 new |
+| [`bwrap_args_are_read_as_bubblewrap_reads_them`](../crates/sam-runner/src/room_rules.rs#L954) | Bwrap args are read as bubblewrap reads them. | 🆕 new |
+| [`options_a_room_never_gets_are_refused_by_name`](../crates/sam-runner/src/room_rules.rs#L983) | Options a room never gets are refused by name. | 🆕 new |
+| [`missing_values_and_commands_are_refused`](../crates/sam-runner/src/room_rules.rs#L1004) | Missing values and commands are refused. | 🆕 new |
+| [`a_request_message_is_read_strictly`](../crates/sam-runner/src/room_rules.rs#L1011) | A request message is read strictly. | 🆕 new |
+| [`paths_must_be_plain_and_absolute`](../crates/sam-runner/src/room_rules.rs#L1044) | Paths must be plain and absolute. | 🆕 new |
+| [`a_place_is_shown_only_at_the_same_place`](../crates/sam-runner/src/room_rules.rs#L1061) | A place is shown only at the same place. | 🆕 new |
+| [`a_place_comes_from_its_floor_plan_entry_not_a_name`](../crates/sam-runner/src/room_rules.rs#L1066) | A place comes from its floor plan entry not a name. | 🆕 new |
+| [`asking_for_a_parent_shows_the_apps_places_inside_it`](../crates/sam-runner/src/room_rules.rs#L1085) | `/usr` is not one place of the app but several: the room gets each, and SAM's links, in the floor plan's order. | 🆕 new |
+| [`writable_only_where_the_app_writes`](../crates/sam-runner/src/room_rules.rs#L1114) | Writable only where the app writes. | 🆕 new |
+| [`protected_and_hidden_places_inside_a_shown_folder_stay_so`](../crates/sam-runner/src/room_rules.rs#L1131) | The home shown writable keeps its protected place read-only and its hidden ~/.ssh hidden, mounted after it, in the app's order. | 🆕 new |
+| [`everything_asked_is_the_apps_view_without_its_private_places`](../crates/sam-runner/src/room_rules.rs#L1179) | Everything asked is the apps view without its private places. | 🆕 new |
+| [`what_the_app_cannot_see_is_refused_or_skipped`](../crates/sam-runner/src/room_rules.rs#L1205) | What the app cannot see is refused or skipped. | 🆕 new |
+| [`devices_only_the_apps_and_only_as_asked`](../crates/sam-runner/src/room_rules.rs#L1217) | Devices only the app's, and only working where the request asked for working devices. | 🆕 new |
+| [`the_network_only_with_the_apps_full_network_and_never_when_given_up`](../crates/sam-runner/src/room_rules.rs#L1259) | The network only with the apps full network and never when given up. | 🆕 new |
+| [`the_environment_is_kept_in_order_for_the_program`](../crates/sam-runner/src/room_rules.rs#L1319) | The environment is kept in order for the program. | 🆕 new |
+| [`the_programs_own_filter_must_be_a_passed_connection`](../crates/sam-runner/src/room_rules.rs#L1339) | The programs own filter must be a passed connection. | 🆕 new |
+| [`permissions_only_on_the_rooms_own_new_places`](../crates/sam-runner/src/room_rules.rs#L1350) | Permissions only on the rooms own new places. | 🆕 new |
+| [`the_rooms_folder_is_asked_or_safe`](../crates/sam-runner/src/room_rules.rs#L1423) | The rooms folder is asked or safe. | 🆕 new |
+| [`a_floor_plan_with_an_unknown_option_gives_no_rooms`](../crates/sam-runner/src/room_rules.rs#L1438) | A floor plan with an unknown option gives no rooms. | 🆕 new |
 
-**Code:** [`sam-runner/src/room_rules.rs`](../crates/sam-runner/src/room_rules.rs), [`sam-runner/src/room_service.rs`](../crates/sam-runner/src/room_service.rs), [`sam-runner/src/kernel.rs`](../crates/sam-runner/src/kernel.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-jail-cli/src/bin/sam-jail-run.rs`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs)
+**Code:** [`sam-runner/src/room_rules.rs`](../crates/sam-runner/src/room_rules.rs), [`sam-runner/src/room_service.rs`](../crates/sam-runner/src/room_service.rs), [`sam-runner/room-exec/main.rs`](../crates/sam-runner/room-exec/main.rs), [`sam-runner/build.rs`](../crates/sam-runner/build.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-jail-cli/src/bin/sam-jail-run.rs`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs)
 
 ## D. Starting and running
 
@@ -562,7 +567,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`as_root_only_what_no_one_else_can_change_may_run`](../crates/sam-core/src/util.rs#L719) | Run as root, SAM takes a program only where root alone can change it: owned by root, not writable for others, and writable for a group only when that group is root's. | ✅ |
 | [`menu_entries_name_sams_launcher_by_its_whole_path`](../crates/sam-intake/src/desktop.rs#L368) | A menu entry names SAM's launcher by its whole path, so the desktop never looks it up on a `$PATH` an app may have put a copy into (audit G-F10); an older entry that names it alone is reported, and the window rewrites it at its next start. | ✅ |
 | [`an_installed_window_runs_only_the_tool_next_to_it`](../crates/sam-gtk/src/backend.rs#L379) | An installed (release) window runs only the command line tool next to it, never one in a neighbouring `debug` or `release` folder that an app with write access to the home could create (audit G-F10). | ✅ |
-| [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L284) | A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | ✅ |
+| [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L280) | A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | ✅ |
 | [`a_folder_name_that_is_not_text_stops_the_start`](../crates/sam-sandbox/src/lib.rs#L2809) | A folder whose name is not valid text (Linux allows any bytes) is never passed on with a replaced character, which would name another folder (audit S-F15): the start is refused with the folder named. | ✅ |
 | [`an_appimage_never_covers_sams_own_files`](../crates/sam-core/src/sandbox.rs#L303) | An AppImage file named like one of SAM's own files in the sandbox gets a folder of its own instead of covering SAM's (audit S-F17). | ✅ |
 | [`an_appimage_called_bin_starts_and_finds_itself`](../crates/sam-jail-cli/tests/odd_names.rs#L84) | An AppImage file called like one of SAM's own files in the sandbox (`bin`) starts, and finds itself at `$APPIMAGE`. | ✅ |
@@ -585,12 +590,12 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_check_expects_the_rest_where_setting_and_computer_allow_it`](../crates/sam-runner/src/verify.rs#L880) | Network, display, sound, the session bus, the SSH agent, variables and the security layers: the check expects each only where both the setting and this computer provide it. | ✅ |
 | [`folder_check_tells_real_from_private`](../crates/sam-runner/src/probe.rs#L761) | The sandbox check tells a real folder of the user from a private stand-in. | ✅ |
 | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L23) | The sandbox check passes when the settings apply, and catches a setting that does not apply. | ✅ |
-| [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L1976) | A wanted layer that was not applied is reported missing. | ✅ |
+| [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L1973) | A wanted layer that was not applied is reported missing. | ✅ |
 | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) | A start without the helper reports its missing layers. | ✅ |
 | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L795) | A start without a wanted protection layer is marked. | ✅ |
 | [`a_syscall_filter_that_fails_to_load_stops_the_start`](../crates/sam-jail-cli/tests/layers.rs#L153) | Threat model row 52: "a syscall filter that fails to load stops the start". | ✅ |
 | [`sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`](../crates/sam-jail-cli/tests/start_check.rs#L49) | Sam jail run refuses a sandbox whose settings do not apply. | ✅ |
-| [`the_wanted_layers_follow_the_apps_switches`](../crates/sam-runner/src/launch.rs#L2095) | Landlock is wanted only where the app's switch wants it and the kernel has it; the app's strict filter switch works by itself, without a global setting (audit D-M13). | ✅ |
+| [`the_wanted_layers_follow_the_apps_switches`](../crates/sam-runner/src/launch.rs#L2092) | Landlock is wanted only where the app's switch wants it and the kernel has it; the app's strict filter switch works by itself, without a global setting (audit D-M13). | ✅ |
 | [`checks_that_do_not_pass_end_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L269) | In a real sandbox: `run --json` passes on the app's exit code, a `selftest` with a failing app ends with 3, and `verify` with a failed check ends with 3, so `sam-jail verify APP && sam-jail run APP` gates. | ✅ |
 
 **Code:** [`sam-runner/src/verify.rs`](../crates/sam-runner/src/verify.rs), [`sam-runner/src/probe.rs`](../crates/sam-runner/src/probe.rs)
@@ -622,7 +627,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`the_newest_log_survives_pruning_within_one_second`](../crates/sam-storage/src/lib.rs#L658) | With more launches in one second than logs are kept, the newest log survives the pruning after its launch (regression: on a fast machine a pruned name was reused, sorted as the oldest and deleted at once). | ✅ |
 | [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L840) | The newest log is found even when two logs start within the same second. | ✅ |
-| [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L1924) | An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | ✅ |
+| [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L1921) | An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | ✅ |
 
 **Code:** [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs)
 
@@ -635,9 +640,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1710) | A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | ✅ |
 | [`the_apps_own_words_never_give_it_a_bus_name`](../crates/sam-runner/src/repair.rs#L907) | What the app prints never gets it a bus name, whatever name it claims it needs (a terminal's name runs host commands; audit D-M6): names come only from the D-Bus filter's record (`own_names`). | ✅ |
-| [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L2132) | Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | ✅ |
-| [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L2171) | Bubblewrap setup errors are told apart from errors of the app itself. | ✅ |
-| [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L2192) | A start is judged by whether Bubblewrap announced the app, not by what the app printed. | ✅ |
+| [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L2129) | Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | ✅ |
+| [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L2168) | Bubblewrap setup errors are told apart from errors of the app itself. | ✅ |
+| [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L2189) | A start is judged by whether Bubblewrap announced the app, not by what the app printed. | ✅ |
 | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L926) | Analyzer maps errors to fixes. | ✅ |
 | [`fake_bwrap_error_is_not_a_sandbox_failure`](../crates/sam-runner/tests/adversarial.rs#L21) | H1: an app printing a fake Bubblewrap error is not a sandbox failure. | ✅ |
 
@@ -651,7 +656,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Test | Promise | Result |
 |---|---|---|
 | [`steps_that_add_are_undone_and_tried_steps_are_no_hints`](../crates/sam-runner/src/repair.rs#L1125) | Steps that add a list entry or an argument are undone by removing exactly that, and a tried step is not offered again as a first-run hint either. | ✅ |
-| [`only_an_ordinary_start_judges_repair_steps`](../crates/sam-runner/src/launch.rs#L2042) | Only an ordinary start decides the repair steps on trial: not a traced or checking run, and not a start that failed for a bus name SAM just allowed. | ✅ |
+| [`only_an_ordinary_start_judges_repair_steps`](../crates/sam-runner/src/launch.rs#L2039) | Only an ordinary start decides the repair steps on trial: not a traced or checking run, and not a start that failed for a bus name SAM just allowed. | ✅ |
 | [`the_no_sandbox_hint_is_only_for_electron_where_it_is_blocked`](../crates/sam-runner/src/repair.rs#L1231) | The first-start hints offer starting without Chromium's own sandbox only to an Electron app that does not already start without it, and only where the computer blocks that sandbox (audit A1; mutation run P14: offering it to every app, or on every computer, went unnoticed). | ✅ |
 | [`the_graphics_hint_is_only_for_apps_without_it`](../crates/sam-runner/src/repair.rs#L1270) | The graphics hint is only for a windowed app that has no graphics card yet and showed no sign of how it draws (mutation run of 2026-11-21: offering it to every windowed app went unnoticed). | ✅ |
 | [`the_chromium_sandbox_check_matches_what_this_computer_allows`](../crates/sam-runner/src/repair.rs#L1304) | What SAM reads from the kernel's settings matches what this computer really allows: a program creating its own sandbox (a user namespace with a network namespace in it, as Chromium's sandbox does) works exactly where SAM says it is not blocked. | ✅ |

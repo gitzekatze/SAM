@@ -198,9 +198,10 @@ covers = [
 ]
 functions = [41]
 probe = "bwrap-option:--ro-bind-fd"
-tests = ["room_service_builds_working_rooms_that_never_get_more_than_their_app", "every_room_is_a_subset_of_its_app", "options_a_room_never_gets_are_refused_by_name"]
+tests = ["room_service_builds_working_rooms_that_never_get_more_than_their_app", "every_room_is_a_subset_of_its_app", "options_a_room_never_gets_are_refused_by_name", "a_room_dies_with_sams_launcher"]
 on_break = "feature"
-coverage = "full"
+coverage = "partial"
+gaps = "The options a room uses (--bind-fd, --ro-bind-fd, --ro-bind-data with --perms, --share-net) are checked by real rooms in every test. Of the options a room refuses, the tests try each against a real stand-in and service, but not what each would do if Bubblewrap changed its meaning: a refused option is never passed on, so a changed meaning cannot reach a room."
 playbook = "A Bubblewrap without these options builds no room: a program that asks fails as it would without Room service, and the app itself is unaffected. A new Bubblewrap option is refused in rooms until it is reviewed and added to option() in room_rules.rs; a changed meaning shows in the Room service tests (the mount comparison names the place)."
 
 [[contract]]
@@ -621,7 +622,7 @@ playbook = "These are long-stable standards; a change would show in SAM's own fo
 # --------------------------------------------- SAM's own names (not contracts)
 
 [[own]]
-covers = ["env:SAM_*", "program:sam-jail-run", "program:sam-jail-gui", "option:--sandbox-exec", "option:--room-exec", "option:--room-standin", "option:--app-id", "option:--help", "option:-h", "option:--max-bytes", "option:--max-files", "option:--max-seconds"]
+covers = ["env:SAM_*", "program:sam-jail-run", "program:sam-jail-gui", "option:--sandbox-exec", "option:--room-standin", "option:--not-text", "option:--app-id", "option:--help", "option:-h", "option:--max-bytes", "option:--max-files", "option:--max-seconds"]
 why = "SAM's own programs, their options and SAM's own variables."
 
 [[own]]

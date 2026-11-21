@@ -89,7 +89,10 @@ bwrap --ro-bind /usr /usr $SYS -- /usr/bin/sleep {left}
         .args(["dev", "make-fixture", "--name", "Roomer", "--apprun"])
         .arg(&apprun)
         .arg(&img));
-    ok(sam(root).arg("add").arg(&img).arg("--no-launcher"));
+    ok(sam(root)
+        .arg("add")
+        .arg(&img)
+        .args(["--no-launcher", "--accept"]));
     let list = ok(sam(root).args(["--json", "list"]));
     let id = list
         .lines()
@@ -106,7 +109,23 @@ bwrap --ro-bind /usr /usr $SYS -- /usr/bin/sleep {left}
     let room = ["/usr/bin/sleep", left.as_str()];
     if !wait_for(|| !running(&room).is_empty(), 30) {
         let _ = launcher.kill();
-        panic!("the app's room did not start (Room service missing or broken)");
+        let _ = launcher.wait();
+        let logs: String = fs::read_dir(root.join("config/logs").join(&id))
+            .map(|d| {
+                d.flatten()
+                    .filter_map(|e| fs::read_to_string(e.path()).ok())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default();
+        let lines: Vec<&str> = logs
+            .lines()
+            .filter(|l| !l.starts_with("# command:"))
+            .collect();
+        panic!(
+            "the app's room did not start (Room service missing or broken); the start record:\n{}",
+            lines.join("\n")
+        );
     }
     launcher.kill().unwrap(); // SIGKILL
     launcher.wait().unwrap();
