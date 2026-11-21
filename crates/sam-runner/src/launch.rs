@@ -788,7 +788,7 @@ fn run_once(
         format_ts(started_at)
     )?;
 
-    let prepared = match prepare(app, opts, cfg, paths, host) {
+    let mut prepared = match prepare(app, opts, cfg, paths, host) {
         Ok(p) => p,
         Err(e) => {
             writeln!(log, "# preparation failed: {e:#}")?;
@@ -978,6 +978,11 @@ fn run_once(
         (mode == TerminalMode::None).then_some(prepared.context.runtime_dir.as_path()),
     )?;
     child_done.store(true, std::sync::atomic::Ordering::SeqCst);
+    // Every room ends with the app's start, before SAM waits for the app's
+    // output: a room holds the program's output, and one left running must
+    // not hold up the end of the start. What was built or refused goes into
+    // the start record (never a room's environment).
+    let room_lines = prepared.rooms.take().map(|r| r.stop()).unwrap_or_default();
     for t in pumps {
         let _ = t.join();
     }
@@ -990,14 +995,9 @@ fn run_once(
     drop(prepared.proxy);
     drop(prepared.sound);
     drop(prepared.wayland);
-    // Every room ends with the app's start; what was built or refused goes
-    // into the start record (never a room's environment).
-    if let Some(rooms) = prepared.rooms {
-        let lines = rooms.stop();
-        if let Ok(mut l) = log.lock() {
-            for line in lines {
-                let _ = writeln!(l, "{line}");
-            }
+    if let Ok(mut l) = log.lock() {
+        for line in room_lines {
+            let _ = writeln!(l, "{line}");
         }
     }
 

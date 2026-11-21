@@ -451,6 +451,87 @@ fn environment_only_in_the_program(
     out
 }
 
+/// A room built for a connection that stays open ends when the service
+/// stops (the end of the app's start).
+fn rooms_end_with_the_service(w: &World) -> Vec<String> {
+    use sam_runner::room_rules::{AppFacts, FloorPlan, Request, VERSION};
+    use sam_runner::room_service::{RoomContext, RoomService};
+    use std::io::{Read, Write};
+    let dir = w.root.join("service");
+    fs::create_dir_all(&dir).unwrap();
+    let Ok(mut service) = RoomService::open(&dir) else {
+        return vec!["stop: the service could not open its socket".into()];
+    };
+    let mut sys: Vec<String> = Vec::new();
+    for d in ["/bin", "/sbin", "/lib", "/lib32", "/lib64"] {
+        let p = std::path::Path::new(d);
+        if let Ok(t) = fs::read_link(p) {
+            sys.extend([
+                "--symlink".into(),
+                t.to_string_lossy().into_owned(),
+                d.into(),
+            ]);
+        } else if p.is_dir() {
+            sys.extend(["--ro-bind".into(), d.into(), d.into()]);
+        }
+    }
+    let mut args: Vec<String> = vec!["--ro-bind".into(), "/usr".into(), "/usr".into()];
+    args.extend(sys.iter().cloned());
+    service.serve(RoomContext {
+        plan: FloorPlan::from_bwrap_args(&args).unwrap(),
+        facts: AppFacts::default(),
+        bwrap: w.host.tools.bwrap.as_ref().unwrap().path.clone(),
+        helper: sam_runner::find_helper().unwrap(),
+        landlock: sam_runner::kernel::LandlockSpec {
+            read: vec!["/".into()],
+            write: vec![],
+        },
+        seccomp: sam_runner::kernel::SeccompSpec::default(),
+    });
+    let sleep = format!("{}.25", 4000 + std::process::id() % 1000);
+    let mut ops = vec![vec!["--ro-bind".to_string(), "/usr".into(), "/usr".into()]];
+    ops.extend(sys.chunks(3).map(<[String]>::to_vec));
+    let req = Request {
+        v: VERSION,
+        ops,
+        flags: vec![],
+        command: vec!["/usr/bin/sleep".into(), sleep.clone()],
+        env: Default::default(),
+        cwd: "/".into(),
+        fds: vec![],
+    };
+    let body = serde_json::to_vec(&req).unwrap();
+    let mut conn = std::os::unix::net::UnixStream::connect(&service.socket).unwrap();
+    conn.write_all(&(body.len() as u32).to_be_bytes()).unwrap();
+    conn.write_all(&body).unwrap();
+    let target = ["/usr/bin/sleep", sleep.as_str()];
+    let end = Instant::now() + Duration::from_secs(10);
+    while processes(&target).is_empty() && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if processes(&target).is_empty() {
+        return vec!["stop: the room was never built".into()];
+    }
+    let lines = service.stop();
+    let end = Instant::now() + Duration::from_secs(5);
+    while !processes(&target).is_empty() && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let mut out = Vec::new();
+    if !processes(&target).is_empty() {
+        kill_all(&target);
+        out.push("stop: a room outlived the service's stop".into());
+    }
+    if !lines.iter().any(|l| l.starts_with("sam-room: built sleep")) {
+        out.push(format!("stop: the record names no room ({lines:?})"));
+    }
+    // The connection learns the room ended.
+    let mut rest = Vec::new();
+    let _ = conn.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = conn.read_to_end(&mut rest);
+    out
+}
+
 /// Room service builds rooms that work, and no room ever gets more than its
 /// app: not under "No network" or the full network, not in an app whose
 /// Landlock and syscall filter are off, not in a shared home, not through
@@ -748,6 +829,10 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         kill_all(&leftover);
         failures.push("lifetime: a room outlived its app's start".into());
     }
+
+    // A room whose stand-in stays connected still ends when the start ends
+    // (the service's own stop, besides the stand-in dying with its app).
+    failures.extend(rooms_end_with_the_service(&w));
 
     // The room service keeps nothing open after the starts (it runs in this
     // process: a handle it forgot would also reach later rooms).
