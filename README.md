@@ -74,13 +74,13 @@ SAM protects you from programs you download, so it does not ask for blind
 trust. It shows its work, and every number below comes from a report in this
 repository.
 
-- **<!-- fact:apps_start -->117<!-- /fact --> of <!-- fact:apps_total -->120<!-- /fact --> real AppImages start in their sandbox.**
+- **<!-- fact:apps_start -->229<!-- /fact --> of <!-- fact:apps_total -->240<!-- /fact --> real AppImages start in their sandbox.**
   The test sets cover Electron, Qt, GTK, Flutter, Tauri, Java, Wine, games
-  and command-line tools. <!-- fact:apps_repaired -->2<!-- /fact --> of them
-  need one repair step that SAM offers by itself, <!-- fact:apps_fail -->2<!-- /fact --> fail for reasons inside the app,
-  and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
+  and command-line tools. <!-- fact:apps_repaired -->3<!-- /fact --> of them
+  need repair steps that SAM offers by itself, <!-- fact:apps_fail -->10<!-- /fact --> do not start (the report gives
+  the reason for each), and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
-  ([report of <!-- fact:apps_date -->2026-11-15<!-- /fact -->](docs/reports/real-apps-2026-11-15.md)).
+  ([report of <!-- fact:apps_date -->2026-11-20<!-- /fact -->](docs/reports/real-apps-2026-11-20.md)).
 - **<!-- fact:tests -->491<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
@@ -89,13 +89,14 @@ repository.
   [threat model](docs/threat-model.md) lists each threat with what stops it,
   the test that proves it, and just as clearly what SAM does *not* protect
   against.
-- **The tests themselves are tested.** Mutation testing changed the
-  security-critical code <!-- fact:mutants_tested -->3,011<!-- /fact --> times on purpose, and the tests caught <!-- fact:mutants_caught_percent -->84.8 %<!-- /fact --> of
-  the changes that could be built. The report names the weakest files, and
+- **The tests themselves are tested.** Mutation testing changed every line
+  of code touched since the security audit <!-- fact:mutants_tested -->1,364<!-- /fact --> times on purpose, and the tests caught <!-- fact:mutants_caught_percent -->86.6 %<!-- /fact --> of
+  the changes that could be built. The report sorts what they missed, and
   each gap that matters gets a test
-  ([report](docs/reports/mutants-2026-11-16.md)).
+  ([report](docs/reports/mutants-2026-11-20.md)).
 - **SAM's readers of untrusted files are fuzzed.** Hundreds of thousands of
-  damaged AppImages, programs and menu files go through them without a crash.
+  damaged AppImages, programs and menu files go through them without a crash
+  ([report](docs/reports/fuzz-2026-11-20.md)).
 - **Every release is tested and signed.** The finished AppImage is tested on
   fresh Ubuntu, Debian, Fedora, Arch and openSUSE systems and signed with
   SAM's release key ([sam-release-key.asc](sam-release-key.asc)), the only key
@@ -318,7 +319,7 @@ reading; this table is the same set in the repository.
 | [Threat model](docs/threat-model.md) | what SAM protects, against whom, how, and where that ends |
 | [Architecture](docs/architecture.md) | developers: how the parts fit together |
 | [Testing](docs/testing.md) | automated tests and the manual checklist |
-| [Real AppImages](docs/reports/real-apps-2026-11-15.md) | everyone: how each of the test AppImages did in its sandbox |
+| [Real AppImages](docs/reports/real-apps-2026-11-20.md) | everyone: how each of the test AppImages did in its sandbox |
 | [AUTOMATION.md](AUTOMATION.md) | what automation may do in this repository, its checks and the kill switch |
 | [Contracts](docs/contracts.md) | every assumption SAM makes about the outside world, what happens when one breaks, and how each is checked |
 | [Maintainer handbook](docs/handbook/index.md) | whoever looks after SAM: GitHub, everyday work, tools, care |

@@ -194,7 +194,7 @@ group of apps (toolkit, packager), not app by app:
 
 ```sh
 python3 -I tests/real-apps/table.py "$WORK" kinds.txt > after.txt
-python3 -I tests/real-apps/compare.py docs/reports/real-apps-2026-11-15.md after.txt kinds.txt
+python3 -I tests/real-apps/compare.py docs/reports/real-apps-2026-11-20.md after.txt kinds.txt
 ```
 
 It prints each group whose results changed, for example
