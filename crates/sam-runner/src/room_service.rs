@@ -43,6 +43,8 @@ pub const MAX_CONNECTIONS: usize = 64;
 /// the first byte read until the room has started (a request beyond it is
 /// refused): an app cannot fill SAM's launcher with connections.
 pub const MAX_HELD: usize = 512;
+/// At most this many places of the app in one room.
+const MAX_PLACES: usize = 600;
 /// At most this many room lines in one start record (the rest counted).
 const MAX_RECORDS: usize = 200;
 /// How long a connection may take to send its request.
@@ -202,13 +204,27 @@ impl RoomService {
 
     /// Starts serving the app's requests. Opens the floor plan's sources
     /// now, before the app runs: a room shows what the app was shown.
-    pub fn serve(&mut self, ctx: RoomContext) {
-        let sources = ctx
-            .plan
-            .entries
-            .iter()
-            .map(|e| e.source().and_then(|p| open_path(p).ok()))
-            .collect();
+    pub fn serve(&mut self, mut ctx: RoomContext) {
+        // A place whose source does not exist now is not in the app either
+        // (Bubblewrap skips such `-try` places): it leaves the floor plan,
+        // so it neither shows nor covers anything in a room.
+        let mut sources = Vec::new();
+        let mut entries = Vec::new();
+        for e in std::mem::take(&mut ctx.plan.entries) {
+            match e.source() {
+                Some(p) => {
+                    if let Ok(fd) = open_path(p) {
+                        sources.push(Some(fd));
+                        entries.push(e);
+                    }
+                }
+                None => {
+                    sources.push(None);
+                    entries.push(e);
+                }
+            }
+        }
+        ctx.plan.entries = entries;
         self.run(Served {
             ctx,
             sources,
@@ -460,6 +476,14 @@ fn run_room(
     args.extend(["--ro-bind-data".into(), n.to_string(), SPEC_INSIDE.into()]);
     handles.push(data);
     // The request's places and the room's own things, in order.
+    let places = room
+        .steps
+        .iter()
+        .filter(|s| matches!(s, Step::Show { .. }))
+        .count();
+    if places > MAX_PLACES {
+        bail!("the room asks for too many places ({places}, at most {MAX_PLACES})");
+    }
     for step in &room.steps {
         match step {
             Step::Show {
@@ -470,14 +494,27 @@ fn run_room(
             } => {
                 let fd = match open_source(source, &served.sources) {
                     Ok(fd) => fd,
-                    Err(_) if *optional => continue,
+                    // Only a path the request named below a place may be
+                    // missing (asked with -try); a place of the app that
+                    // cannot be shown means no room, never one without it.
+                    Err(e)
+                        if *optional
+                            && !source.rel.as_os_str().is_empty()
+                            && e.raw_os_error() == Some(libc::ENOENT) =>
+                    {
+                        continue
+                    }
                     Err(e) if e.raw_os_error() == Some(libc::ELOOP) => bail!(
                         "{} leads through a link: a room never follows one",
                         dst.display()
                     ),
                     Err(e) => bail!("{} cannot be shown: {e}", dst.display()),
                 };
-                let writable = *writable && !read_only_filesystem(&fd);
+                // Writable only where the app can write: its mount and its
+                // Landlock rules (whatever Landlock the room gets).
+                let writable = *writable
+                    && !read_only_filesystem(&fd)
+                    && ctx.landlock.write.iter().any(|w| dst.starts_with(w));
                 let n = number(&mut numbers);
                 args.push(
                     if writable {
@@ -614,6 +651,12 @@ fn run_room(
     let child = Arc::new(Mutex::new(child));
     if let Ok(mut rooms) = state.rooms.lock() {
         rooms.push(child.clone());
+    }
+    // Started while the service was stopping: it ends now too.
+    if state.stop.load(Ordering::SeqCst) {
+        if let Ok(mut c) = child.lock() {
+            let _ = c.kill();
+        }
     }
     // The stand-in gone (its program ended or was killed): the room ends.
     let watcher = {

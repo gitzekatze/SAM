@@ -99,6 +99,11 @@ say planted_dir "$(rv room --bind "$HOME" "$HOME" --dir "$HOME/planted/evil-dir"
 mkdir -p "$HOME/fakelib"
 bwrap --ro-bind /usr /usr --bind "$HOME" "$HOME" --symlink "$HOME/fakelib" /lib64 --symlink "$HOME/fakelib" /lib -- /usr/bin/loader-layout-check >/dev/null 2>&1
 say loader_layout done
+# A link of the room's own as a trap for a later place of the app: asking
+# for everything after a link at /usr/lib pointing to SAM's own place would
+# mount the app's /usr/lib over SAM's room helper.
+say trap_link "$(rv bwrap --symlink ../.sam-room /usr/lib --ro-bind / / -- /usr/bin/echo ok)"
+say trap_link_later "$(rv bwrap --symlink .sam-room /usr --ro-bind / / -- /usr/bin/echo ok)"
 say moved_folder "$(rv room --ro-bind /usr /elsewhere -- /usr/bin/echo ok)"
 exec 7<"$HOME"
 say folder_by_handle "$(rv room --bind-fd 7 "$HOME" -- /usr/bin/echo ok)"
@@ -189,6 +194,16 @@ say grant_app "$($P read "$OTHER_APP")"
 say grant_room "$(rv room --ro-bind-try "$(dirname "$OTHER_APP")" "$(dirname "$OTHER_APP")" -- $P read "$OTHER_APP")"
 "#;
 
+/// A folder the app is shown is renamed away inside its writable home and
+/// a link to a place it is not shown is put in its place: a room shows the
+/// folder the app was shown (held since the start), never the link's target.
+const HELD_SOURCES: &str = r#"
+say control "$(rv room -- /usr/bin/echo ok)"
+mv "$HOME/work" "$HOME/work-moved" && mkdir -p "$HOME/work" && ln -sfn "$SECRET_DIR" "$HOME/work/docs"
+say renamed "$([ -L "$HOME/work/docs" ] && echo yes || echo no)"
+say held "$(rv room --ro-bind "$HOME/work/docs" "$HOME/work/docs" -- /usr/bin/cat "$HOME/work/docs/f")"
+"#;
+
 /// The person's own Bubblewrap arguments that cut the app off the network
 /// count for its rooms too.
 const EXTRA_ARGS: &str = r#"
@@ -266,8 +281,9 @@ def refusal(r):
 
 say("direct_control", ask(request(BASE, ["/usr/bin/true"])))
 probe = f'echo "CASE direct_greedy=$(/usr/bin/python3 -I -S {APPDIR}/usr/bin/probe.py read {SECRET_FILE})"'
-if ask(request([["--bind", "/", "/"]] + BASE, ["/usr/bin/sh", "-c", probe], fds=[1]), fds=[1]) != "exit=0":
-    say("direct_greedy", "refused")
+a = ask(request([["--bind", "/", "/"]] + BASE, ["/usr/bin/sh", "-c", probe], fds=[1]), fds=[1])
+if a != "exit=0":
+    say("direct_greedy", a)
 home_fd = os.open(HOME, os.O_RDONLY | os.O_DIRECTORY)
 say("direct_fd_place", refusal(ask(request(BASE + [["--bind-fd", str(home_fd), HOME]], ["/usr/bin/true"], fds=[home_fd]), fds=[home_fd])))
 os.close(home_fd)
@@ -348,6 +364,29 @@ try:
 except socket.timeout:
     third = "held"
 say("held_limited", "yes" if third == "refused" else f"no-{third}")
+for s in half:
+    s.close()
+time.sleep(1)
+# Once a room has started, its connections leave the budget: two running
+# rooms that were passed 253 connections each do not keep a third request
+# out (counted, they would make 516 of 512).
+longs = []
+for i in range(2):
+    l = socket.socket(socket.AF_UNIX)
+    l.settimeout(20)
+    l.connect("/run/sam/rooms")
+    l.sendmsg([request(BASE, ["/usr/bin/sleep", "8"], fds=list(range(3, 256)))],
+              [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [null] * 253))])
+    longs.append(l)
+    time.sleep(1.5)
+r3 = ask(request(BASE, ["/usr/bin/true"], fds=list(range(3, 13))), fds=[null] * 10)
+say("budget_released", "yes" if r3 == "exit=0" else f"no-{r3}")
+for l in longs:
+    l.close()
+# The start record keeps at most 200 room lines.
+for i in range(230):
+    ask(b"\x00\x00\x00\x02{}")
+say("many_refused", "sent")
 for s in half:
     s.close()
 time.sleep(1)
@@ -541,7 +580,10 @@ fn environment_only_in_the_program(
     let home = w.app_home(id);
     let in_helper = markers(&home, &format!("{stem}."))
         .iter()
-        .filter(|f| fs::read_to_string(home.join(f)).is_ok_and(|t| t.contains("sam-jail-run")))
+        .filter(|f| {
+            fs::read_to_string(home.join(f))
+                .is_ok_and(|t| t.contains("sam-room-exec") || t.contains("sam-jail-run"))
+        })
         .count();
     if in_helper > 0 {
         out.push(format!(
@@ -623,6 +665,43 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
     }
     if !lines.iter().any(|l| l.starts_with("sam-room: built sleep")) {
         out.push(format!("stop: the record names no room ({lines:?})"));
+    }
+    // A service that cannot read the app's floor plan keeps its socket and
+    // refuses every request, saying why.
+    let dir2 = w.root.join("service-refusing");
+    fs::create_dir_all(&dir2).unwrap();
+    if let Ok(mut refusing) = RoomService::open(&dir2) {
+        refusing.serve_refusing(
+            RoomContext {
+                plan: FloorPlan::default(),
+                facts: AppFacts::default(),
+                bwrap: w.host.tools.bwrap.as_ref().unwrap().path.clone(),
+                landlock: sam_runner::kernel::LandlockSpec {
+                    read: vec!["/".into()],
+                    write: vec![],
+                },
+                seccomp: sam_runner::kernel::SeccompSpec::default(),
+            },
+            "no floor plan".into(),
+        );
+        let mut c = std::os::unix::net::UnixStream::connect(&refusing.socket).unwrap();
+        c.write_all(&(body.len() as u32).to_be_bytes()).unwrap();
+        c.write_all(&body).unwrap();
+        let _ = c.set_read_timeout(Some(Duration::from_secs(10)));
+        let mut answer = Vec::new();
+        let _ = c.read_to_end(&mut answer);
+        let lines = refusing.stop();
+        if !String::from_utf8_lossy(&answer).contains("no floor plan")
+            || !lines
+                .iter()
+                .any(|l| l.contains("refused") && l.contains("no floor plan"))
+        {
+            out.push(format!(
+                "refusing: a service without a floor plan did not refuse ({lines:?})"
+            ));
+        }
+    } else {
+        out.push("refusing: the second service could not open its socket".into());
     }
     // The connection learns the room ended.
     let mut rest = Vec::new();
@@ -769,6 +848,8 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             ("planted_symlink", "refused"),
             ("planted_dir", "refused"),
             ("loader_layout", "done"),
+            ("trap_link", "refused"),
+            ("trap_link_later", "refused"),
         ];
         if abstract_scoped {
             want.push(("abstract_room", "blocked"));
@@ -825,6 +906,15 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         if by_rule < 2 {
             failures.push(format!(
                 "{name}: new things inside a shown place were not refused by Room service's rule ({by_rule} of 2)"
+            ));
+        }
+        let trap_refusals = log
+            .lines()
+            .filter(|l| l.contains("sam-room: refused") && l.contains("link"))
+            .count();
+        if trap_refusals < 2 {
+            failures.push(format!(
+                "{name}: links of the room's own as traps were not refused by Room service's rules ({trap_refusals} of 2)"
             ));
         }
         for planted in ["evil-link.desktop", "evil-dir"] {
@@ -909,6 +999,28 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         .map(|f| format!("sam-folder: {f}")),
     );
 
+    // Sources held since the start, whatever the app renames.
+    std::fs::create_dir_all(w.home.join("work/docs")).unwrap();
+    std::fs::write(w.home.join("work/docs/f"), "inside").unwrap();
+    let id = w.add("RoomHeldSources", HELD_SOURCES);
+    let docs = w.home.join("work/docs").display().to_string();
+    let log = w.start(
+        &id,
+        |p| {
+            p.filesystem.home = true;
+            p.filesystem.home_access = Access::Rw;
+            p.filesystem.custom_read = vec![docs.clone()];
+        },
+        60,
+    );
+    failures.extend(control_built("held", &log));
+    failures.extend(
+        check(&log, &[("renamed", "yes"), ("held", "inside|refused")])
+            .into_iter()
+            .map(|f| format!("held: {f}")),
+    );
+    let _ = std::fs::rename(w.home.join("work-moved"), w.home.join("work-restored"));
+
     // The person's own Bubblewrap arguments that cut the network.
     let id = w.add("RoomExtraArgs", EXTRA_ARGS);
     let log = w.start(
@@ -970,6 +1082,8 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("served_beside_idle", "yes"),
                 ("connections_limited", "yes"),
                 ("held_limited", "yes"),
+                ("budget_released", "yes"),
+                ("many_refused", "sent"),
                 ("final_control", "ok"),
             ],
         )
@@ -979,6 +1093,12 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     failures.extend(environment_only_in_the_program(
         "messages", &log, &w, &id, "ldm", None,
     ));
+    let room_lines = log.lines().filter(|l| l.starts_with("sam-room:")).count();
+    if room_lines > 201 || !log.contains("more not recorded") {
+        failures.push(format!(
+            "messages: the start record's room lines are not capped ({room_lines} lines)"
+        ));
+    }
 
     // A folder exchanged for a link while rooms are built.
     let id = w.add("RoomRace", RACE);

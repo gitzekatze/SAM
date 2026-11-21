@@ -163,7 +163,15 @@ rule: **no more than the app, no less than asked.**
   - The room's own new things (folders, links, file systems) are made only
     in its own space, never inside a place shown from the app: Bubblewrap
     makes them before any protection applies and would follow a link the
-    app left there onto the computer.
+    app left there onto the computer. The room's own links come last, after
+    every mount, and nothing is made or shown at or behind one; a link may
+    not name Bubblewrap's build stage (`/oldroot`, `/newroot`, `..`).
+  - Writable only where the app can write: its mount and its Landlock rules.
+    An own place above a place of the app gives no write right there, and
+    SAM's room helper never follows a link to a Landlock rule's place.
+  - A place of the app that cannot be shown means no room, never one
+    without it (only a path the request named itself with `-try` may be
+    missing); at most 600 places per room.
   - Every restriction the program asks for is kept. Options that could give
     a room more than its app are refused by name (joining other namespaces,
     other users, extra powers, places or files from connections, options
@@ -189,8 +197,11 @@ rule: **no more than the app, no less than asked.**
   are read at once, and at most 512 passed connections are held: an app
   cannot fill SAM's launcher.
 - **Records.** The start record names each room's program, the layers its
-  helper confirmed, what was capped, and every refusal (also those of the
-  stand-in), never the room's environment; at most 200 lines per start.
+  helper confirmed, what was capped, and every refusal of the service,
+  including options the stand-in passes on because no room gets them (an
+  argument that is not text counts as one); a stand-in that cannot reach
+  the service at all says so to its program only. Never the room's
+  environment; at most 200 lines per start.
 - **Turning it off.** `advanced.room_service` (on by default) turns Room
   service off for one app. Then programs that build a sandbox of their own
   fail inside SAM, or run without it.

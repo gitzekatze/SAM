@@ -35,9 +35,13 @@ fn under_this_computer_only_a_room_reaches_no_more_than_its_app() {
         );
         return;
     }
-    let _contracts =
-        sam_runner::contracts::guard(&["bwrap-core", "kernel-seccomp", "pasta-splice-only"])
-            .unwrap_or_else(|e| panic!("{e}"));
+    let _contracts = sam_runner::contracts::guard(&[
+        "bwrap-core",
+        "bwrap-rooms",
+        "kernel-seccomp",
+        "pasta-splice-only",
+    ])
+    .unwrap_or_else(|e| panic!("{e}"));
     let w = World::new();
     // A port listed for the app: the control that its network works.
     let listed = TcpListener::bind("127.0.0.1:0").unwrap();

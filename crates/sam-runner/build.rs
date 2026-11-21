@@ -33,6 +33,15 @@ fn main() {
         .is_ok_and(|s| s.success());
     if !built {
         let _ = std::fs::write(&out, b"");
+        // Build again once the static C library is installed.
+        for lib in [
+            "/usr/lib/libc.a",
+            "/usr/lib64/libc.a",
+            "/usr/lib/x86_64-linux-gnu/libc.a",
+            "/usr/lib/aarch64-linux-gnu/libc.a",
+        ] {
+            println!("cargo:rerun-if-changed={lib}");
+        }
         println!(
             "cargo:warning=SAM's room helper could not be built as a static program (is the static C library installed? Debian/Ubuntu: libc6-dev, Fedora: glibc-static); Room service is off in this build"
         );

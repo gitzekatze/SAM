@@ -165,7 +165,7 @@ fn every_room_is_a_subset_of_its_app() {
     if !rooms_common::require() {
         return;
     }
-    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "kernel-seccomp"])
+    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "bwrap-rooms", "kernel-seccomp"])
         .unwrap_or_else(|e| panic!("{e}"));
     let seed: u64 = std::env::var("SAM_ROOMS_SEED")
         .ok()

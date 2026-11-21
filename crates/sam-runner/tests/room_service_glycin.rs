@@ -89,7 +89,7 @@ fn glycin_loads_images_in_a_room_never_without_a_sandbox() {
         );
         return;
     }
-    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "kernel-seccomp"])
+    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "bwrap-rooms", "kernel-seccomp"])
         .unwrap_or_else(|e| panic!("{e}"));
     let w = World::new();
     if !glycin_sandboxes_here(&w.root.join("control")) {

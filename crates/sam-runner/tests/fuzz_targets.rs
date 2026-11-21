@@ -748,6 +748,35 @@ fn room_within_plan(
             }
         }
     }
+    // Hidden stays hidden: every hiding mount of the app below a place the
+    // room shows (and mounted after that place's source) is in the room
+    // too, after it.
+    for (k, step) in room.steps.iter().enumerate() {
+        if let Step::Show {
+            source: Source { entry, .. },
+            dst,
+            ..
+        } = step
+        {
+            for (i, m) in plan.entries.iter().enumerate().skip(entry + 1) {
+                if let Entry::Mask { at } = m {
+                    let later_cover = plan.entries.iter().skip(i + 1).any(|l| {
+                        !matches!(l, Entry::Link { .. } | Entry::Dir { .. })
+                            && at.starts_with(l.at())
+                    });
+                    if at.starts_with(dst)
+                        && at != dst
+                        && !later_cover
+                        && !room.steps[k + 1..].contains(&Step::Mask(at.clone()))
+                    {
+                        return Err(format!(
+                            "{at:?} is hidden in the app but not in the room shown at {dst:?}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
     if room.share_net && !full_network {
         return Err("the network without the app's full network".into());
     }

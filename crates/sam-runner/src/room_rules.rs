@@ -530,6 +530,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     // nothing is shown through the second.
     let mut shown: Vec<PathBuf> = Vec::new();
     let mut own_links: Vec<PathBuf> = Vec::new();
+    let mut late_links: Vec<Step> = Vec::new();
     // Flags of the older form first, then the options in order.
     let ops: Vec<Vec<String>> = req
         .flags
@@ -551,8 +552,11 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 at.display()
             ));
         }
-        if own_links.iter().any(|l| under(at, l) && at != l) {
-            return Err(format!("{} lies behind a link of the room", at.display()));
+        if own_links.iter().any(|l| under(at, l)) {
+            return Err(format!(
+                "{} is at or behind a link of the room",
+                at.display()
+            ));
         }
         Ok(())
     };
@@ -619,9 +623,21 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 "--symlink" => {
                     let at = clean(&op[2])?;
                     own_place(&at, &shown, &own_links)?;
+                    // While Bubblewrap builds the room, /newroot is the room
+                    // and /oldroot the computer: a link may not name them.
+                    let target = Path::new(&op[1]);
+                    if target
+                        .components()
+                        .any(|c| matches!(c, std::path::Component::ParentDir))
+                        || target.starts_with("/oldroot")
+                        || target.starts_with("/newroot")
+                    {
+                        return Err(format!("a link to {} is not allowed in a room", op[1]));
+                    }
                     own_links.push(at.clone());
-                    room.steps
-                        .push(Step::Args(vec![name.into(), op[1].clone(), path_arg(&at)]));
+                    // Made last, after every mount: Bubblewrap follows links,
+                    // so nothing may be laid out through one.
+                    late_links.push(Step::Args(vec![name.into(), op[1].clone(), path_arg(&at)]));
                 }
                 "--perms" | "--size" => {
                     // They shape the next new place only.
@@ -684,6 +700,19 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 // What is now mounted from the app (not the asked path: for
                 // `/` that is the app's places inside it, not the root).
                 for step in &room.steps[before..] {
+                    let at = match step {
+                        Step::Show { dst, .. } | Step::Device { dst, .. } => Some(dst),
+                        Step::Mask(at) => Some(at),
+                        Step::Args(_) => None,
+                    };
+                    if let Some(at) = at {
+                        if own_links.iter().any(|l| under(at, l)) {
+                            return Err(format!(
+                                "{} lies at or behind a link of the room",
+                                at.display()
+                            ));
+                        }
+                    }
                     if let Step::Show { dst, .. } | Step::Device { dst, .. } = step {
                         shown.push(dst.clone());
                     }
@@ -695,6 +724,10 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         }
         k += 1;
     }
+    room.steps.extend(late_links);
+    // An own place with a place of the app below it gives no write right
+    // there (Landlock's rules reach down).
+    room.own.retain(|o| !shown.iter().any(|s| under(s, o)));
     if want_net {
         if facts.full_network && !plan.no_network {
             room.share_net = true;
@@ -1403,6 +1436,46 @@ mod tests {
             &["--symlink", "/home/me", "/h"],
             &["--dir", "/h/x"]
         ]));
+        // … or at them.
+        assert!(refused(&[
+            &["--symlink", "/x", "/h"],
+            &["--dir", "/h"],
+            &["--chmod", "0777", "/h"]
+        ]));
+        // A link where a place of the app is mounted later: refused.
+        assert!(refused(&[
+            &["--symlink", "/x", "/home/me/.config/autostart"],
+            &["--bind", "/home/me", "/home/me"]
+        ]));
+        // Links into Bubblewrap's build stage.
+        for t in [
+            "/oldroot/home",
+            "/newroot/.sam-room",
+            "../../.sam-room",
+            "a/../b",
+        ] {
+            assert!(refused(&[&["--symlink", t, "/x"]]), "{t}");
+        }
+        // The room's own links come last, after every mount.
+        let room = ok(&[
+            &["--symlink", "usr/lib", "/lib64"],
+            &["--ro-bind", "/usr/lib", "/usr/lib"],
+        ]);
+        assert!(matches!(room.steps.last(), Some(Step::Args(a)) if a[0] == "--symlink"));
+    }
+
+    /// An own place gives no Landlock write right over places of the app
+    /// below it.
+    #[test]
+    fn an_own_place_above_the_apps_places_gives_no_write_right() {
+        let room = ok(&[&["--dir", "/home"], &["--bind", "/home/me", "/home/me"]]);
+        assert!(
+            !room.own.contains(&PathBuf::from("/home")),
+            "{:?}",
+            room.own
+        );
+        let room = ok(&[&["--tmpfs", "/scratch"]]);
+        assert!(room.own.contains(&PathBuf::from("/scratch")));
     }
 
     /// SAM's own place in a room (its helper and the room's rules): no

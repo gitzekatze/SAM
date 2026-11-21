@@ -29,7 +29,6 @@ use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::raw::{c_int, c_long, c_ulong};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::OpenOptionsExt;
 
 extern "C" {
     fn syscall(number: c_long, ...) -> c_long;
@@ -141,15 +140,13 @@ fn landlock(read_paths: &[&[u8]], write_paths: &[&[u8]]) -> String {
     let read_rights = (EXECUTE | READ_FILE | READ_DIR) & all;
     for (paths, rights) in [(read_paths, read_rights), (write_paths, all)] {
         for p in paths {
-            let Ok(f) = std::fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(O_PATH | O_CLOEXEC)
-                .open(OsStr::from_bytes(p))
-            else {
-                continue; // not in this room
+            // Never through a link: the request lays out the room, and a
+            // link would turn a rule onto another place.
+            let Some(f) = open_no_links(p) else {
+                continue; // not in this room, or behind a link
             };
             let fd = f.as_raw_fd();
-            let is_dir = std::fs::metadata(OsStr::from_bytes(p)).is_ok_and(|m| m.is_dir());
+            let is_dir = f.metadata().is_ok_and(|m| m.is_dir());
             #[repr(C, packed)]
             struct Beneath {
                 allowed: u64,
@@ -178,6 +175,28 @@ fn landlock(read_paths: &[&[u8]], write_paths: &[&[u8]]) -> String {
         drop(File::from_raw_fd(ruleset));
     }
     format!("landlock {abi}")
+}
+
+const SYS_OPENAT2: c_long = 437;
+const AT_FDCWD: c_int = -100;
+const RESOLVE_NO_SYMLINKS: u64 = 0x04;
+
+/// A path opened (O_PATH) without following any link in it.
+fn open_no_links(path: &[u8]) -> Option<File> {
+    let c = std::ffi::CString::new(path).ok()?;
+    #[repr(C)]
+    struct How {
+        flags: u64,
+        mode: u64,
+        resolve: u64,
+    }
+    let how = How { flags: (O_PATH | O_CLOEXEC) as u64, mode: 0, resolve: RESOLVE_NO_SYMLINKS };
+    // SAFETY: openat2 with a valid C string and a struct of the size given.
+    let fd = unsafe {
+        syscall(SYS_OPENAT2, AT_FDCWD, c.as_ptr(), &how as *const How, std::mem::size_of::<How>())
+    } as c_int;
+    // SAFETY: a new descriptor of our own.
+    (fd >= 0).then(|| unsafe { File::from_raw_fd(fd) })
 }
 
 fn number(v: &[u8]) -> c_int {
