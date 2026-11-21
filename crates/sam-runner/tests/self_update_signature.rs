@@ -30,12 +30,15 @@ fn gpg(home: &Path, args: &[&str]) -> Vec<u8> {
         .args(args)
         .output()
         .unwrap();
-    assert!(out.status.success(), "gpg {args:?}");
+    assert!(out.status.success(), "gpg {} failed", args[0]);
     out.stdout
 }
 
-fn new_key(home: &Path, uid: &str, email: &str) -> String {
-    gpg(home, &["--quick-gen-key", uid, "ed25519", "sign", "never"]);
+fn new_key(home: &Path, signer: &str, email: &str) -> String {
+    gpg(
+        home,
+        &["--quick-gen-key", signer, "ed25519", "sign", "never"],
+    );
     let listing = String::from_utf8(gpg(
         home,
         &["--with-colons", "--fingerprint", "--list-keys", email],
