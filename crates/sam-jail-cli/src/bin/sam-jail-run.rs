@@ -108,6 +108,27 @@ fn main() {
             std::process::exit(1);
         }
     };
+    // Inside a room: SAM's layers, then the program (Room service).
+    if args.first().map(String::as_str) == Some("--room-exec") {
+        let spec = args.get(1).map(PathBuf::from).unwrap_or_else(|| usage());
+        let rest: Vec<String> = match args.iter().position(|a| a == "--") {
+            Some(i) => args[i + 1..].to_vec(),
+            None => usage(),
+        };
+        if let Err(e) = sam_runner::kernel::room_exec(&spec, &rest) {
+            errln!("sam-jail-run: {e:#}");
+            std::process::exit(127);
+        }
+        return;
+    }
+    // Inside an app's sandbox in place of `bwrap` (Room service's stand-in).
+    if args.first().map(String::as_str) == Some("--room-standin") {
+        let version = args.get(1).cloned().unwrap_or_default();
+        std::process::exit(sam_runner::room_service::standin(
+            &version,
+            &args[2.min(args.len())..],
+        ));
+    }
     if args.first().map(String::as_str) == Some("--sandbox-exec") {
         let spec = args.get(1).map(PathBuf::from).unwrap_or_else(|| usage());
         let rest: Vec<String> = match args.iter().position(|a| a == "--") {

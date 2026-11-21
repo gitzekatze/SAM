@@ -347,8 +347,8 @@ pub fn host_mount_devices() -> BTreeSet<String> {
 }
 
 /// One mount as the probe reports it: device, folder within that device's
-/// filesystem, where it is mounted.
-pub type Mount = (String, String, String);
+/// filesystem, where it is mounted, `ro` or `rw`.
+pub type Mount = (String, String, String, String);
 
 pub fn mounts_of(probe: &serde_json::Value) -> Vec<Mount> {
     probe["mounts"]
@@ -361,6 +361,7 @@ pub fn mounts_of(probe: &serde_json::Value) -> Vec<Mount> {
                         m.first()?.as_str()?.to_string(),
                         m.get(1)?.as_str()?.to_string(),
                         m.get(2)?.as_str()?.to_string(),
+                        m.get(3)?.as_str()?.to_string(),
                     ))
                 })
                 .collect()
@@ -383,8 +384,32 @@ pub fn mounts_beyond_app(
     host_devices: &BTreeSet<String>,
 ) -> Vec<Mount> {
     room.iter()
-        .filter(|(dev, _, _)| host_devices.contains(dev))
-        .filter(|(dev, root, _)| !app.iter().any(|(d, r, _)| d == dev && path_within(root, r)))
+        .filter(|(dev, _, _, _)| host_devices.contains(dev))
+        .filter(|(dev, root, _, _)| {
+            !app.iter()
+                .any(|(d, r, _, _)| d == dev && path_within(root, r))
+        })
+        .cloned()
+        .collect()
+}
+
+/// The room's writable mounts of a folder of the computer that the app has
+/// only read-only: judged by the app's mount that holds the folder most
+/// closely. Checks the room service's own read-only rule, whatever
+/// Landlock would stop later.
+pub fn writable_beyond_app(
+    room: &[Mount],
+    app: &[Mount],
+    host_devices: &BTreeSet<String>,
+) -> Vec<Mount> {
+    room.iter()
+        .filter(|(dev, _, _, opts)| host_devices.contains(dev) && opts == "rw")
+        .filter(|(dev, root, _, _)| {
+            app.iter()
+                .filter(|(d, r, _, _)| d == dev && path_within(root, r))
+                .max_by_key(|(_, r, _, _)| r.len())
+                .is_some_and(|(_, _, _, o)| o != "rw")
+        })
         .cloned()
         .collect()
 }
@@ -449,7 +474,7 @@ def mounts():
     try:
         for line in open("/proc/self/mountinfo"):
             f = line.split()
-            out.append([f[2], f[3], f[4]])
+            out.append([f[2], f[3], f[4], f[5].split(",")[0]])
     except OSError:
         return None
     return out

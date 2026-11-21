@@ -1892,8 +1892,18 @@ impl Section<'_> {
         a.setenv("LOGNAME", &h.user);
         a.setenv("SHELL", "/bin/sh");
         if p.dbus.session.mode != DbusMode::None {
-            // Link opener shims (see OPEN_SHIM), written by write_identity_files.
+            // Link opener shims (see OPEN_SHIM), written by write_identity_files,
+            // and Room service's stand-in for Bubblewrap.
             a.op2("--ro-bind-try", ctx.runtime_dir.join("bin"), "/run/sam/bin");
+            a.setenv("PATH", "/run/sam/bin:/usr/local/bin:/usr/bin:/bin");
+        } else if ctx.room_socket.is_some() {
+            // Without the bus, no link openers (they need it): only Room
+            // service's stand-in for Bubblewrap.
+            a.op2(
+                "--ro-bind-try",
+                ctx.runtime_dir.join("bin-rooms"),
+                "/run/sam/bin",
+            );
             a.setenv("PATH", "/run/sam/bin:/usr/local/bin:/usr/bin:/bin");
         } else {
             a.setenv("PATH", "/usr/local/bin:/usr/bin:/bin");
@@ -1964,6 +1974,10 @@ impl Section<'_> {
             keep_fds.push(fd);
         }
 
+        // Room service's socket.
+        if let Some(socket) = &ctx.room_socket {
+            a.op2("--bind", socket, "/run/sam/rooms");
+        }
         // Landlock helper.
         let mut cmd: Vec<String> = Vec::new();
         if let Some(helper) = &ctx.helper {

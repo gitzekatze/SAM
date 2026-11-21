@@ -83,6 +83,8 @@ pub struct LaunchContext {
     /// granted folder would make them visible, so an app cannot change its
     /// own permissions or another app's files.
     pub sam_dirs: Vec<PathBuf>,
+    /// Room service's socket for this start (shown at /run/sam/rooms).
+    pub room_socket: Option<PathBuf>,
 }
 
 impl LaunchContext {
@@ -242,6 +244,7 @@ pub fn sample_context() -> LaunchContext {
         extra_binds: vec![],
         appdir_overlay: None,
         sam_dirs: vec![],
+        room_socket: None,
     }
 }
 

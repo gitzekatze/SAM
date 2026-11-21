@@ -310,7 +310,10 @@ while [ $i -lt 40 ]; do room -- /usr/bin/sleep 1 & pids="$pids $!"; i=$((i+1)); 
 ok=0
 for p in $pids; do wait "$p" && ok=$((ok+1)); done
 say flood "$ok"
-room --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'while :; do date +%s%N > "$HOME/beat"; /usr/bin/sleep 0.2; done' &
+# bwrap itself in the background (not the room function, whose $! would be
+# a subshell): $! is then the stand-in.
+# shellcheck disable=SC2086
+bwrap --ro-bind /usr /usr $SYS --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'while :; do date +%s%N > "$HOME/beat"; /usr/bin/sleep 0.2; done' &
 standin=$!
 i=0; while [ ! -s "$HOME/beat" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
 kill -9 "$standin"

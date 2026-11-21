@@ -19,7 +19,9 @@ mod rooms_common;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use rooms_common::{host_mount_devices, markers, mounts_beyond_app, mounts_of, World, SECRET};
+use rooms_common::{
+    host_mount_devices, markers, mounts_beyond_app, mounts_of, writable_beyond_app, World, SECRET,
+};
 use sam_core::permissions::{NetworkMode, PermissionSet};
 
 /// Places a request may name (shell words, expanded in the app).
@@ -247,7 +249,14 @@ fn every_room_is_a_subset_of_its_app() {
             if room_mounts.is_empty() {
                 failures.push(format!("{mode}: {name}: its mounts could not be read"));
             }
-            for (dev, root, at) in mounts_beyond_app(&room_mounts, &app_mounts, &host_devices) {
+            for (dev, root, at, _) in writable_beyond_app(&room_mounts, &app_mounts, &host_devices)
+            {
+                failures.push(format!(
+                    "{mode}: {name} has {root} of device {dev} writable at {at}, which its app has read-only (request: {})",
+                    request_of(name)
+                ));
+            }
+            for (dev, root, at, _) in mounts_beyond_app(&room_mounts, &app_mounts, &host_devices) {
                 failures.push(format!(
                     "{mode}: {name} shows {root} of device {dev} at {at}, which its app is not shown (request: {})",
                     request_of(name)

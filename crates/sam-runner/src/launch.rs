@@ -77,6 +77,8 @@ pub struct Prepared {
     /// read/write); looked at again when the app has ended.
     pub home_watch: Option<sam_sandbox::HomeWatch>,
     wayland: Option<crate::wayland_ctx::WaylandContext>,
+    /// Room service for this start, if the app has it.
+    rooms: Option<crate::room_service::RoomService>,
     _runtime: RuntimeDir,
 }
 
@@ -346,6 +348,7 @@ pub fn prepare(
             paths.data_dir.clone(),
             paths.extracted_root(&cfg.extraction.location),
         ],
+        room_socket: None,
     };
     if perms.advanced.writable_appdir && !sam_core::host::bwrap_supports_overlay() {
         warnings.push(Warning::warn(
@@ -488,7 +491,10 @@ pub fn prepare(
         let strict = perms.advanced.seccomp_strict;
         wanted_landlock = want_landlock;
         wanted_seccomp = want_seccomp;
-        if want_landlock || want_seccomp || opts.probe.is_some() {
+        // Room service needs SAM's helper in the sandbox (its stand-in for
+        // Bubblewrap), even where the app itself gets no layer from it.
+        let want_rooms = perms.advanced.room_service && opts.probe.is_none();
+        if want_landlock || want_seccomp || want_rooms || opts.probe.is_some() {
             match crate::find_helper() {
                 Some(helper) => {
                     let spec = kernel::SandboxSpec {
@@ -511,7 +517,73 @@ pub fn prepare(
         }
     }
 
+    // Room service: its socket exists before the sandbox is built (the
+    // sandbox shows it), its rules come from the sandbox once built.
+    let mut rooms = None;
+    if let (true, Some(helper), Some(bwrap)) = (
+        perms.advanced.room_service && opts.probe.is_none(),
+        ctx.helper.as_ref().map(|h| h.binary.clone()),
+        host.tools.bwrap.as_ref().map(|t| t.path.clone()),
+    ) {
+        match crate::room_service::RoomService::open(&runtime_dir)
+            .and_then(|r| write_room_standin(&runtime_dir, &bwrap).map(|()| r))
+        {
+            Ok(r) => {
+                ctx.room_socket = Some(r.socket.clone());
+                rooms = Some((r, helper, bwrap));
+            }
+            Err(e) => warnings.push(Warning::warn(
+                "room-service-failed",
+                "Room service unavailable",
+                sam_core::i18n::trf(
+                    "{error}; programs in this app that build a sandbox of their own fail this time",
+                    &[("error", &format!("{e:#}"))],
+                ),
+            )),
+        }
+    }
     let mut command = sam_sandbox::Bubblewrap.build(&ctx)?;
+    let rooms = match rooms {
+        Some((mut service, helper, bwrap)) => {
+            match crate::room_rules::FloorPlan::from_bwrap_args(&command.args) {
+                Ok(plan) => {
+                    service.serve(crate::room_service::RoomContext {
+                        plan,
+                        facts: crate::room_rules::AppFacts {
+                            full_network: perms.network.mode
+                                == sam_core::permissions::NetworkMode::Full,
+                        },
+                        bwrap,
+                        helper,
+                        landlock: kernel::landlock_spec(
+                            perms,
+                            host,
+                            &format!("/run/user/{}", host.uid),
+                            &launch_writable_paths(&ctx),
+                        ),
+                        seccomp: kernel::SeccompSpec {
+                            strict: perms.advanced.seccomp_strict,
+                            allow_userns: false,
+                            bluetooth: perms.devices.bluetooth,
+                        },
+                    });
+                    Some(service)
+                }
+                Err(e) => {
+                    warnings.push(Warning::warn(
+                        "room-service-failed",
+                        "Room service unavailable",
+                        sam_core::i18n::trf(
+                            "{error}; programs in this app that build a sandbox of their own fail this time",
+                            &[("error", &e)],
+                        ),
+                    ));
+                    None
+                }
+            }
+        }
+        None => None,
+    };
     if perms.network.mode == sam_core::permissions::NetworkMode::Localhost {
         if let Err(e) = crate::netns::wrap_localhost(
             &mut command,
@@ -544,8 +616,40 @@ pub fn prepare(
         wayland_context_failed,
         home_watch,
         wayland,
+        rooms,
         _runtime: runtime_guard,
     })
+}
+
+/// Room service's stand-in for Bubblewrap, first on the app's PATH: SAM's
+/// helper in its stand-in mode, told the computer's Bubblewrap version.
+/// In `bin` (with the link openers) and in `bin-rooms` (for apps without
+/// the session bus, which get no link openers).
+fn write_room_standin(runtime_dir: &Path, bwrap: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let version = Command::new(bwrap)
+        .arg("--version")
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    // Only plain characters go into the script.
+    let version: String = version
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || " ._-".contains(*c))
+        .take(60)
+        .collect();
+    let script = format!(
+        "#!/bin/sh\n# SAM: Room service's stand-in for Bubblewrap. The program's sandbox\n# is built by SAM, outside, never with more than the app.\nexec /run/sam/sam-jail-run --room-standin '{version}' \"$@\"\n"
+    );
+    for dir in ["bin", "bin-rooms"] {
+        let d = runtime_dir.join(dir);
+        fs::create_dir_all(&d)?;
+        let f = d.join("bwrap");
+        fs::write(&f, &script)?;
+        fs::set_permissions(&f, fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(())
 }
 
 /// Paths mounted writable only for this launch: files and folders named on
@@ -886,6 +990,16 @@ fn run_once(
     drop(prepared.proxy);
     drop(prepared.sound);
     drop(prepared.wayland);
+    // Every room ends with the app's start; what was built or refused goes
+    // into the start record (never a room's environment).
+    if let Some(rooms) = prepared.rooms {
+        let lines = rooms.stop();
+        if let Ok(mut l) = log.lock() {
+            for line in lines {
+                let _ = writeln!(l, "{line}");
+            }
+        }
+    }
 
     // Judge the outcome.
     let err_head = err_head.lock().map(|h| h.clone()).unwrap_or_default();
