@@ -111,7 +111,7 @@ pub struct RoomContext {
 /// started: a room shows exactly these, whatever the app renames later.
 struct Served {
     ctx: RoomContext,
-    sources: Vec<Option<OwnedFd>>,
+    sources: Vec<Option<SourceHandle>>,
     /// Set when no room can be built this start (shown in every refusal).
     refuse_all: Option<String>,
 }
@@ -412,14 +412,51 @@ impl Drop for RoomService {
 /// (Bubblewrap skips such `-try` places), so it leaves the plan and
 /// neither shows nor covers anything in a room. Device places are checked
 /// the same way: one that appears later is never looked up by its name.
-fn plan_at_start(mut plan: FloorPlan) -> (FloorPlan, Vec<Option<OwnedFd>>) {
+fn plan_at_start(plan: FloorPlan) -> (FloorPlan, Vec<Option<SourceHandle>>) {
+    plan_at_start_with(plan, on_removable_drive)
+}
+
+/// Drives a person may want to unmount while the app runs: a source there
+/// is remembered by what it is, not held open (an open handle in the
+/// launcher would keep the drive busy).
+fn on_removable_drive(p: &Path) -> bool {
+    ["/media/", "/mnt/", "/run/media/"]
+        .iter()
+        .any(|d| p.to_string_lossy().starts_with(d))
+}
+
+/// A floor-plan source as the service keeps it from the app's start.
+pub(crate) enum SourceHandle {
+    /// Held open (O_PATH): shown by this handle, whatever is renamed.
+    Open(OwnedFd),
+    /// On a drive that may be unmounted: what it was (device and inode),
+    /// opened again for a room and refused unless it is still the same.
+    Known { path: PathBuf, dev: u64, ino: u64 },
+}
+
+fn plan_at_start_with(
+    mut plan: FloorPlan,
+    removable: impl Fn(&Path) -> bool,
+) -> (FloorPlan, Vec<Option<SourceHandle>>) {
     let mut sources = Vec::new();
     let mut entries = Vec::new();
     for e in std::mem::take(&mut plan.entries) {
         match e.source() {
             Some(p) => {
                 if let Ok(fd) = open_path(p) {
-                    sources.push(Some(fd));
+                    let handle = if removable(p) {
+                        match identity(&fd) {
+                            Ok((dev, ino)) => SourceHandle::Known {
+                                path: p.to_path_buf(),
+                                dev,
+                                ino,
+                            },
+                            Err(_) => continue,
+                        }
+                    } else {
+                        SourceHandle::Open(fd)
+                    };
+                    sources.push(Some(handle));
                     entries.push(e);
                 }
             }
@@ -442,7 +479,33 @@ fn answer(stream: &mut UnixStream, body: &serde_json::Value) {
     let data = body.to_string().into_bytes();
     let mut msg = (data.len() as u32).to_be_bytes().to_vec();
     msg.extend(data);
-    let _ = stream.write_all(&msg);
+    send_quietly(stream, &msg);
+}
+
+/// Sends all of `data`, never raising SIGPIPE: a stand-in that has
+/// already gone must not end SAM's launcher (`sam-jail run` restores
+/// SIGPIPE's default, which ends the process).
+fn send_quietly(stream: &UnixStream, data: &[u8]) {
+    let mut sent = 0;
+    while sent < data.len() {
+        // SAFETY: a live buffer of the given length.
+        let n = unsafe {
+            libc::send(
+                stream.as_raw_fd(),
+                data[sent..].as_ptr().cast(),
+                data.len() - sent,
+                libc::MSG_NOSIGNAL,
+            )
+        };
+        if n > 0 {
+            sent += n as usize;
+            continue;
+        }
+        if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+            continue;
+        }
+        return; // the stand-in left (EPIPE) or the connection failed
+    }
 }
 
 fn program_name(req_command: &[String]) -> String {
@@ -794,8 +857,15 @@ fn run_room(
             "sam-room: failed {program}: SAM's layers were not confirmed{capped}"
         ));
     } else {
+        // The program's own filter is loaded after the helper reports, so
+        // it is named as asked for, not as confirmed.
+        let own = if room.filters.is_empty() {
+            ""
+        } else {
+            "; the program's own filter asked for"
+        };
         state.record_room(format!(
-            "sam-room: built {program} (layers: {status}{capped})"
+            "sam-room: built {program} (layers: {status}{own}{capped})"
         ));
     }
     let status = loop {
@@ -1084,23 +1154,51 @@ fn room_spec(ctx: &RoomContext, room: &RoomPlan, status: i32, filter: i32) -> Re
         if k.is_empty() || k.contains('=') {
             bail!("an environment variable of the room has no valid name");
         }
-        put("env", format!("{k}={v}").as_bytes())?;
+        if k != "PWD" {
+            put("env", format!("{k}={v}").as_bytes())?;
+        }
     }
+    // As Bubblewrap: PWD names the room's folder, whatever came before.
+    let mut pwd = b"PWD=".to_vec();
+    pwd.extend_from_slice(room.chdir.as_os_str().as_bytes());
+    put("env", &pwd)?;
     Ok(out)
 }
 
 /// A room's place: the floor-plan source SAM opened when the app started,
 /// and `rel` strictly beneath it, through no link at all (a link the app
 /// made could lead to a place the app sees protected or hidden).
-fn open_source(source: &Source, sources: &[Option<OwnedFd>]) -> std::io::Result<OwnedFd> {
-    let top = sources
+fn open_source(source: &Source, sources: &[Option<SourceHandle>]) -> std::io::Result<OwnedFd> {
+    let handle = sources
         .get(source.entry)
         .and_then(Option::as_ref)
         .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
+    let top = match handle {
+        SourceHandle::Open(fd) => fd.try_clone()?,
+        SourceHandle::Known { path, dev, ino } => {
+            let fd = open_path(path)?;
+            if identity(&fd)? != (*dev, *ino) {
+                return Err(std::io::Error::other(
+                    "it is no longer what the app was shown when it started",
+                ));
+            }
+            fd
+        }
+    };
     if source.rel.as_os_str().is_empty() {
-        return top.try_clone();
+        return Ok(top);
     }
-    openat2_beneath(top, &source.rel)
+    openat2_beneath(&top, &source.rel)
+}
+
+/// Device and inode of an open file or folder.
+fn identity(fd: &OwnedFd) -> std::io::Result<(u64, u64)> {
+    // SAFETY: fstat writes the struct given.
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok((st.st_dev, st.st_ino))
 }
 
 fn open_path(p: &Path) -> std::io::Result<OwnedFd> {
@@ -1256,7 +1354,14 @@ fn recv_with_fds(
     msg.msg_iov = &mut iov;
     msg.msg_iovlen = 1;
     msg.msg_control = control.as_mut_ptr() as *mut libc::c_void;
-    msg.msg_controllen = space as _;
+    // Room for exactly `max` (CMSG_SPACE rounds up, and the kernel would
+    // fill the rounding with one more).
+    msg.msg_controllen = if max == 0 {
+        0
+    } else {
+        // SAFETY: CMSG_LEN only computes a size.
+        unsafe { libc::CMSG_LEN((max * 4) as u32) as usize }
+    } as _;
     // SAFETY: msg points at the live buffers above, of the sizes given.
     let n = unsafe {
         libc::recvmsg(
@@ -1349,8 +1454,14 @@ fn read_message(
         let before = fds.len();
         // Never waits: something is ready to read.
         let r = recv_with_fds(stream, buf, fds, got);
-        held.unreserve_passed(got - (fds.len() - before).min(got));
+        let came = fds.len() - before;
+        held.unreserve_passed(got - came.min(got));
         drop(one);
+        if came > got {
+            // Never kept beyond what was counted.
+            fds.truncate(before);
+            return Err("the request passes too many connections".into());
+        }
         match r {
             Ok(0) => Err("the request ended early".into()),
             Ok(n) => Ok(n),
@@ -1604,6 +1715,53 @@ mod tests {
         assert_eq!(sources.len(), plan.entries.len());
     }
 
+    /// An answer to a stand-in that has already gone never ends SAM's
+    /// launcher, also with SIGPIPE at its default (as `sam-jail run` has
+    /// it). Checked in a child process: this test runs itself again.
+    #[test]
+    fn an_answer_to_a_stand_in_that_left_never_ends_the_launcher() {
+        const NAME: &str =
+            "room_service::tests::an_answer_to_a_stand_in_that_left_never_ends_the_launcher";
+        if std::env::var_os("SAM_TEST_SIGPIPE_CHILD").is_some() {
+            // SAFETY: sets one signal's handling to its default.
+            unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+            let (mut a, b) = UnixStream::pair().unwrap();
+            drop(b);
+            answer(&mut a, &serde_json::json!({ "exit": 0 }));
+            answer(&mut a, &serde_json::json!({ "exit": 0 }));
+            return;
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", NAME, "--test-threads=1"])
+            .env("SAM_TEST_SIGPIPE_CHILD", "1")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success() && String::from_utf8_lossy(&out.stdout).contains("1 passed"),
+            "{:?}\n{}",
+            out.status,
+            String::from_utf8_lossy(&out.stdout)
+        );
+    }
+
+    /// A receive keeps at most the connections it has room for: one more
+    /// is refused, never kept uncounted (CMSG_SPACE's rounding would fit
+    /// it).
+    #[test]
+    fn a_receive_keeps_no_more_connections_than_counted() {
+        let (a, b) = UnixStream::pair().unwrap();
+        let nulls: Vec<OwnedFd> = (0..4)
+            .map(|_| OwnedFd::from(std::fs::File::open("/dev/null").unwrap()))
+            .collect();
+        let raw: Vec<RawFd> = nulls.iter().map(|f| f.as_raw_fd()).collect();
+        send_with_fds(&a, b"x", &raw).unwrap();
+        let mut buf = [0u8; 1];
+        let mut got = Vec::new();
+        let r = recv_with_fds(&b, &mut buf, &mut got, 3);
+        assert!(r.is_err(), "more connections than room for them were taken");
+        assert!(got.len() <= 3, "{} kept", got.len());
+    }
+
     /// A failed start of the room's Bubblewrap is reported as one even when
     /// the room's connections take every low number (where the report's
     /// own pipe would be): never a room that seems started.
@@ -1656,6 +1814,38 @@ mod tests {
         std::fs::File::from(r).read_to_string(&mut out).unwrap();
         assert_eq!(out, "via-9\n");
         assert_eq!(exit_code(p.wait().unwrap()), 3);
+    }
+
+    /// A source on a drive that may be unmounted is not held open (the
+    /// drive stays free to unmount while the app runs); a room still shows
+    /// it, but never another folder put in its place since the start.
+    #[test]
+    fn a_source_on_a_removable_drive_is_remembered_not_held() {
+        let tmp = tempfile::tempdir().unwrap();
+        let stick = tmp.path().join("stick");
+        std::fs::create_dir(&stick).unwrap();
+        let plan = FloorPlan::from_bwrap_args(&s(&[
+            "--ro-bind",
+            stick.to_str().unwrap(),
+            "/run/media/me/stick",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let (_, sources) = plan_at_start_with(plan, |p| p.starts_with(tmp.path()));
+        assert!(matches!(sources[0], Some(SourceHandle::Known { .. })));
+        let whole = Source {
+            entry: 0,
+            rel: PathBuf::new(),
+        };
+        assert!(open_source(&whole, &sources).is_ok());
+        std::fs::rename(&stick, tmp.path().join("old")).unwrap();
+        std::fs::create_dir(&stick).unwrap();
+        let e = open_source(&whole, &sources).unwrap_err();
+        assert!(
+            e.to_string().contains("no longer what the app was shown"),
+            "{e}"
+        );
     }
 
     /// The descriptors held for rooms stay within what the launcher's

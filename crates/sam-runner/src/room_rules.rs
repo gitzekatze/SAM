@@ -327,7 +327,8 @@ pub const NOT_FOR_ROOMS: &[&str] = &["/run/sam/rooms"];
 
 /// Where SAM puts its own things in a room (its helper and the room's
 /// rules), mounted before anything the request asks for. No request may
-/// name this place or anything in it.
+/// make, show, change or enter anything there, point a link into it, or
+/// lay anything over the folder that holds it (its program may read it).
 pub const RESERVED: &str = "/.sam-room";
 
 impl FloorPlan {
@@ -717,7 +718,13 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 "--unsetenv" => {
                     room.env.remove(&op[1]);
                 }
-                "--chdir" => chdir = Some(clean(&op[1])?),
+                "--chdir" => {
+                    let at = clean(&op[1])?;
+                    if reserved(&at) {
+                        return Err(format!("{} is SAM's own place in a room", at.display()));
+                    }
+                    chdir = Some(at);
+                }
                 "--hostname" => room.steps.push(Step::Args(op.clone())),
                 "--proc" | "--dev" | "--tmpfs" | "--mqueue" | "--dir" => {
                     let at = clean(&op[1])?;
@@ -739,6 +746,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                         .any(|c| matches!(c, std::path::Component::ParentDir))
                         || target.starts_with("/oldroot")
                         || target.starts_with("/newroot")
+                        || reserved(&at.parent().unwrap_or(Path::new("/")).join(target))
                     {
                         return Err(format!("a link to {} is not allowed in a room", op[1]));
                     }
@@ -846,7 +854,9 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     }
     // An own place with a place of the app below it gives no write right
     // there (Landlock's rules reach down).
-    room.own.retain(|o| !shown.iter().any(|s| under(s, o)));
+    // Nor one inside a place shown from the app, in whatever order.
+    room.own
+        .retain(|o| !shown.iter().any(|s| under(s, o) || under(o, s)));
     if want_net {
         if facts.full_network && !plan.no_network {
             room.share_net = true;
@@ -883,12 +893,34 @@ fn step_place(step: &Step) -> Option<&Path> {
     }
 }
 
+/// Whether the app could move a protected or hidden place inside the
+/// writable entry `w` to another name: true when a folder between `w` and
+/// such a place is not a mount point of its own (pinned). A renamed folder
+/// takes the app's hiding along in the app, but a room shows the folder
+/// from the computer, where nothing hides it.
+fn protections_movable(plan: &FloorPlan, w: usize) -> bool {
+    let top = plan.entries[w].at();
+    let later = &plan.entries[w + 1..];
+    later.iter().filter(|e| e.is_mount()).any(|e| {
+        let at = e.at();
+        at != top
+            && under(at, top)
+            && at
+                .ancestors()
+                .skip(1)
+                .take_while(|a| *a != top)
+                .any(|a| !later.iter().any(|p| p.is_mount() && p.at() == a))
+    })
+}
+
 /// Nothing is placed inside a place whose source the app can write, in
 /// whatever order: Bubblewrap finds every place by its name, and inside
 /// such a place the names are the app's to change (a folder renamed away
 /// with its protection, a link planted to the computer's root). A room may
 /// show such a place only as a whole, with nothing below it.
 fn nothing_inside_writable_places(plan: &FloorPlan, steps: &[Step]) -> Result<(), String> {
+    // A device place of the app counts too: shown by name, and possibly a
+    // folder the app (or the person) can write.
     let writable: Vec<&Path> = steps
         .iter()
         .filter_map(|s| match s {
@@ -897,6 +929,7 @@ fn nothing_inside_writable_places(plan: &FloorPlan, steps: &[Step]) -> Result<()
             {
                 Some(dst.as_path())
             }
+            Step::Device { dst, .. } => Some(dst.as_path()),
             _ => None,
         })
         .collect();
@@ -955,6 +988,16 @@ fn place(
             .unwrap_or_default();
         match e {
             Entry::Ro { .. } | Entry::Rw { .. } => {
+                if matches!(e, Entry::Rw { .. })
+                    && !rest.as_os_str().is_empty()
+                    && protections_movable(plan, i)
+                {
+                    return Err(format!(
+                        "{} lies in {}, a place the app can write where it could move a protected or hidden place (a folder above one is not pinned): a room shows nothing below it",
+                        src.display(),
+                        e.at().display()
+                    ));
+                }
                 let writable = want_write && matches!(e, Entry::Rw { .. });
                 if want_write && !writable {
                     room.capped.push(format!(
@@ -1033,13 +1076,20 @@ fn place(
         }
         match e {
             Entry::Ro { dst, .. } | Entry::Rw { dst, .. } => {
+                let writable = want_write && matches!(e, Entry::Rw { .. });
+                if want_write && !writable {
+                    room.capped.push(format!(
+                        "{}: read-only for the app, so read-only here",
+                        dst.display()
+                    ));
+                }
                 room.steps.push(Step::Show {
                     source: Source {
                         entry: i,
                         rel: PathBuf::new(),
                     },
                     dst: dst.clone(),
-                    writable: want_write && matches!(e, Entry::Rw { .. }),
+                    writable,
                     optional: true,
                 });
                 shown = true;
@@ -1128,6 +1178,10 @@ mod tests {
             "--bind",
             "/data/homes/app",
             "/home/me",
+            // Pinned, as SAM pins the folders above protected places.
+            "--bind",
+            "/data/homes/app/.config",
+            "/home/me/.config",
             "--ro-bind",
             "/data/homes/app/.config/autostart",
             "/home/me/.config/autostart",
@@ -1704,6 +1758,11 @@ mod tests {
             &["--dev", "/"],
             &["--mqueue", "/"],
             &["--dir", "/"],
+            // Its folder or a link into it.
+            &["--chdir", RESERVED],
+            &["--chdir", "/.sam-room/x"],
+            &["--symlink", "/.sam-room/room.spec", "/x"],
+            &["--symlink", ".sam-room", "/y"],
         ] {
             assert!(refused(&[op]), "{op:?}");
         }
@@ -1771,6 +1830,90 @@ mod tests {
             .steps
             .iter()
             .any(|st| matches!(st, Step::Args(a) if a[0] == "--dev")));
+    }
+
+    /// A device place the app has (perhaps a folder it or the person can
+    /// write) is shown only as a whole too: nothing of the room's own lies
+    /// inside it in any order, and an own place inside it gets no
+    /// Landlock write right.
+    #[test]
+    fn nothing_of_the_room_lies_inside_a_device_place() {
+        let plan = FloorPlan::from_bwrap_args(&s(&[
+            "--dev-bind",
+            "/srv/shared",
+            "/srv/shared",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let ask = |ops: &[&[&str]]| plan_room(&plan, &req(ops, &["x"]), AppFacts::default());
+        let e = ask(&[
+            &["--symlink", "/srv/shared/x.desktop", "/srv/shared/sub/evil"],
+            &["--dev-bind", "/srv/shared", "/srv/shared"],
+        ])
+        .unwrap_err();
+        assert!(e.contains("only as a whole"), "{e}");
+        assert!(ask(&[
+            &["--dir", "/srv/shared/sub"],
+            &["--dev-bind", "/srv/shared", "/srv/shared"],
+        ])
+        .is_err());
+        // An own folder that lies under a place shown later gives no write
+        // right there.
+        let room = ok(&[
+            &["--dir", "/usr/lib/x"],
+            &["--ro-bind", "/usr/lib", "/usr/lib"],
+        ]);
+        assert!(
+            !room.own.iter().any(|o| o.starts_with("/usr/lib")),
+            "{:?}",
+            room.own
+        );
+    }
+
+    /// Places inside a request's place that the app has read-only are
+    /// recorded as capped when the request asked for them writable.
+    #[test]
+    fn read_only_places_inside_a_writable_request_are_recorded() {
+        let room = ok(&[&["--bind", "/usr", "/usr"]]);
+        for p in ["/usr/lib:", "/usr/bin:"] {
+            assert!(
+                room.capped.iter().any(|c| c.starts_with(p)),
+                "{p} {:?}",
+                room.capped
+            );
+        }
+    }
+
+    /// A place below a folder the app can write is shown only when the app
+    /// cannot move its protected or hidden places there: every folder
+    /// between that folder and such a place is pinned (a mount point of
+    /// its own). A `~/.ssh` kept in a dotfiles folder whose folders are not
+    /// pinned could be renamed by the app and then shown unhidden.
+    #[test]
+    fn a_place_below_a_writable_folder_needs_its_protections_pinned() {
+        let stow = |pinned: bool| {
+            let mut a = s(&["--bind", "/h", "/home/me"]);
+            if pinned {
+                a.extend(s(&["--bind", "/h/dotfiles", "/home/me/dotfiles"]));
+                a.extend(s(&["--bind", "/h/dotfiles/ssh", "/home/me/dotfiles/ssh"]));
+            }
+            a.extend(s(&["--tmpfs", "/home/me/dotfiles/ssh/.ssh", "--", "x"]));
+            FloorPlan::from_bwrap_args(&a).unwrap()
+        };
+        let ask = |plan: &FloorPlan| {
+            plan_room(
+                plan,
+                &req(
+                    &[&["--ro-bind", "/home/me/Pictures", "/home/me/Pictures"]],
+                    &["x"],
+                ),
+                AppFacts::default(),
+            )
+        };
+        let e = ask(&stow(false)).unwrap_err();
+        assert!(e.contains("could move a protected or hidden place"), "{e}");
+        assert!(ask(&stow(true)).is_ok());
     }
 
     /// A device place is shown only as a whole: a path below it is never

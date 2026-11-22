@@ -451,6 +451,9 @@ fn changed_room_requests_never_crash_the_readers() {
         "usr/lib",
         "/lib64",
         "--bind",
+        "/data/w",
+        "/w",
+        "--bind",
         "/data/homes/app",
         "/home/me",
         "--ro-bind",
@@ -620,10 +623,15 @@ fn changed_room_requests_never_crash_the_readers() {
         "/dev/dri",
         "/dev/null",
         "/tmp",
+        "/w",
+        "/w/sub",
     ];
     // How often the rules got as far as each kind of step: the control that
     // the generated requests reach them at all.
     let (shown, devices) = (std::cell::Cell::new(0usize), std::cell::Cell::new(0usize));
+    // Rooms with a writable place: the control that the "nothing inside a
+    // writable place" invariant sees any.
+    let writable_rooms = std::cell::Cell::new(0usize);
     for round in 0..rounds() * 5 {
         let mut ops: Vec<Vec<String>> = Vec::new();
         for _ in 0..1 + r.below(4) {
@@ -667,6 +675,14 @@ fn changed_room_requests_never_crash_the_readers() {
             let Ok(room) = plan_room(&plan, &req, AppFacts { full_network }) else {
                 return;
             };
+            if room.steps.iter().any(|st| {
+                matches!(
+                    st,
+                    sam_runner::room_rules::Step::Show { writable: true, .. }
+                )
+            }) {
+                writable_rooms.set(writable_rooms.get() + 1);
+            }
             for step in &room.steps {
                 match step {
                     sam_runner::room_rules::Step::Show { .. } => shown.set(shown.get() + 1),
@@ -686,6 +702,10 @@ fn changed_room_requests_never_crash_the_readers() {
         "the generated requests hardly reach the rules: {} places, {} devices",
         shown.get(),
         devices.get()
+    );
+    assert!(
+        writable_rooms.get() > 0,
+        "no generated room had a writable place, so its invariant was never checked"
     );
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }

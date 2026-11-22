@@ -57,6 +57,8 @@ const SYS_LANDLOCK_ADD_RULE: c_long = 445;
 const SYS_LANDLOCK_RESTRICT_SELF: c_long = 446;
 
 const PR_SET_NO_NEW_PRIVS: c_int = 38;
+const PR_SET_SECCOMP: c_int = 22;
+const SECCOMP_MODE_FILTER: c_ulong = 2;
 const O_PATH: c_int = 0o10000000;
 const O_CLOEXEC: c_int = 0o2000000;
 
@@ -92,18 +94,29 @@ fn read_fd(fd: c_int, limit: usize) -> Vec<u8> {
     out
 }
 
-/// Loads a classic BPF syscall filter from a connection.
-fn load_filter(fd: c_int) {
+/// Reads a classic BPF syscall filter from a connection.
+fn read_filter(fd: c_int) -> Vec<u8> {
     let prog = read_fd(fd, 4096 * 8);
     if prog.is_empty() || prog.len() % 8 != 0 {
         fail("a passed syscall filter is not valid");
     }
-    #[repr(C)]
-    struct Fprog {
-        len: u16,
-        filter: *const u8,
-    }
-    let p = Fprog { len: (prog.len() / 8) as u16, filter: prog.as_ptr() };
+    prog
+}
+
+#[repr(C)]
+struct Fprog {
+    len: u16,
+    filter: *const u8,
+}
+
+fn fprog(prog: &[u8]) -> Fprog {
+    Fprog { len: (prog.len() / 8) as u16, filter: prog.as_ptr() }
+}
+
+/// Loads SAM's syscall filter from a connection (no_new_privs first).
+fn load_filter(fd: c_int) {
+    let prog = read_filter(fd);
+    let p = fprog(&prog);
     // SAFETY: prctl and seccomp with a filter that lives until they return.
     unsafe {
         if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
@@ -322,9 +335,15 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
     argv_ptrs.push(std::ptr::null());
     let mut envp_ptrs: Vec<*const std::os::raw::c_char> = envp.iter().map(|e| e.as_ptr()).collect();
     envp_ptrs.push(std::ptr::null());
-    if !filters.is_empty() {
-        report.push_str(", the program's own filter");
-    }
+    // The program's own filters, read now and only loaded right before it
+    // starts (as Bubblewrap does: one prctl each, then the start). Not in
+    // the report: that names only what is in place when it is written.
+    let programs: Vec<Vec<u8>> = filters.iter().map(|fd| read_filter(*fd)).collect();
+    let progs: Vec<Fprog> = programs.iter().map(|p| fprog(p)).collect();
+    let sh_ptrs: Vec<Vec<*const std::os::raw::c_char>> = tries
+        .iter()
+        .map(|(_, sh)| sh.iter().map(|a| a.as_ptr()).chain(std::iter::once(std::ptr::null())).collect())
+        .collect();
     report.push('\n');
     // Report what SAM put in place, and close the connection, before the
     // program's own filter (which may refuse the calls this needs).
@@ -333,13 +352,13 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
     let mut f = unsafe { File::from_raw_fd(status) };
     let _ = f.write_all(report.as_bytes());
     drop(f);
-    for fd in &filters {
-        load_filter(*fd);
+    for p in &progs {
+        // SAFETY: a filter that lives until the call returns; no_new_privs
+        // is set already (SAM's filter).
+        if unsafe { prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, p as *const Fprog as c_ulong, 0, 0) } != 0 {
+            fail(&format!("loading the program's syscall filter: {}", errno()));
+        }
     }
-    let sh_ptrs: Vec<Vec<*const std::os::raw::c_char>> = tries
-        .iter()
-        .map(|(_, sh)| sh.iter().map(|a| a.as_ptr()).chain(std::iter::once(std::ptr::null())).collect())
-        .collect();
     let mut denied = false;
     for ((path, _), sh) in tries.iter().zip(&sh_ptrs) {
         // SAFETY: NUL-terminated strings and arrays that live until the call.

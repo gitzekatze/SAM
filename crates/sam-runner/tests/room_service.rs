@@ -72,6 +72,11 @@ say no_shebang "$(rv room --bind "$HOME" "$HOME" -- "$HOME/sam-room-not-on-path"
 # and the links every /dev has.
 say dev_without_devices "$(rv room --ro-bind /dev /dev -- /usr/bin/sh -c '(echo x > /dev/null) 2>/dev/null && echo works || echo blocked')"
 say dev_links "$(rv room --ro-bind /dev /dev -- /usr/bin/sh -c 'test -L /dev/stdout && test -L /dev/fd && echo links')"
+# PWD names the room's folder, as with Bubblewrap (also after --clearenv).
+say pwd "$(rv room --clearenv --chdir /usr -- /usr/bin/sh -c 'echo "$PWD"')"
+# A name found on PATH (the default /bin:/usr/bin without one).
+say on_path "$(rv room --setenv PATH /usr/bin -- echo ok)"
+say default_path "$(rv room --clearenv -- echo ok)"
 # A variable that is not text: the request is refused, never run without it.
 SAM_ROOM_NOT_TEXT="$(printf 'x\377')"
 export SAM_ROOM_NOT_TEXT
@@ -121,7 +126,8 @@ say loader_layout done
 # for everything after a link at /usr/lib pointing to SAM's own place would
 # mount the app's /usr/lib over SAM's room helper.
 say trap_link "$(rv bwrap --symlink ../.sam-room /usr/lib --ro-bind / / -- /usr/bin/echo ok)"
-say trap_link_later "$(rv bwrap --symlink .sam-room /usr --ro-bind / / -- /usr/bin/echo ok)"
+say trap_link_later "$(rv bwrap --symlink /tmp /usr --ro-bind / / -- /usr/bin/echo ok)"
+say trap_link_name "$(rv bwrap --symlink .sam-room /usr --ro-bind / / -- /usr/bin/echo ok)"
 say moved_folder "$(rv room --ro-bind /usr /elsewhere -- /usr/bin/echo ok)"
 exec 7<"$HOME"
 say folder_by_handle "$(rv room --bind-fd 7 "$HOME" -- /usr/bin/echo ok)"
@@ -130,7 +136,9 @@ accepted=""
 for opt in "--userns 0" "--userns2 0" "--pidns 0" "--info-fd 1" "--json-status-fd 1" \
            "--overlay-src /usr" "--uid 0" "--gid 0" "--exec-label x" "--file-label x" \
            "--file 0 /x" "--bind-data 0 /x" "--ro-bind-data 0 /x" "--sync-fd 1" \
-           "--block-fd 0" "--userns-block-fd 0" "--cap-add CAP_SYS_ADMIN"; do
+           "--block-fd 0" "--userns-block-fd 0" "--cap-add CAP_SYS_ADMIN" \
+           "--lock-file /tmp/x" "--tmp-overlay /opt" "--ro-overlay /opt" \
+           "--overlay /tmp /tmp /opt" "--argv0 x" "--args 0" "--not-a-security-boundary"; do
   # A file, not a pipe: a process the attempt leaves behind must not hold
   # this script up.
   # shellcheck disable=SC2086
@@ -838,6 +846,9 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("many_fds", "ok"),
                 ("limits", "4000000/0/0077"),
                 ("not_on_path", "refused"),
+                ("on_path", "ok"),
+                ("default_path", "ok"),
+                ("pwd", "/usr"),
                 ("no_shebang", "ran-from-folder"),
                 ("dev_without_devices", "blocked"),
                 ("dev_links", "links"),
@@ -847,6 +858,14 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         .into_iter()
         .map(|f| format!("works: {f}")),
     );
+    // The program not on PATH was looked for in a built room, not refused
+    // before.
+    if !log
+        .lines()
+        .any(|l| l.starts_with("sam-room: built sam-room-not-on-path (layers:"))
+    {
+        failures.push("works: not_on_path: no room was built for it".into());
+    }
     let c = cases(&log);
     if c.get("version") != Some(&host_bwrap_version(&w.host)) {
         failures.push(format!(
@@ -945,6 +964,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             ("loader_layout", "done"),
             ("trap_link", "refused"),
             ("trap_link_later", "refused"),
+            ("trap_link_name", "refused"),
         ];
         if abstract_scoped {
             want.push(("abstract_room", "blocked"));
@@ -1007,6 +1027,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         for (trap, words) in [
             ("trap_link", "a link to ../.sam-room is not allowed"),
             ("trap_link_later", "lies at or behind a link of the room"),
+            ("trap_link_name", "a link to .sam-room is not allowed"),
         ] {
             if !log
                 .lines()

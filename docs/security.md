@@ -159,7 +159,10 @@ rule: **no more than the app, no less than asked.**
     whole, as SAM or the person named them, never a path below one (which
     could lead through a link the app made in `/dev/shm`); one missing
     when the app starts is left out, so a device plugged in later never
-    reaches a room.
+    reaches a room. A source on a drive that may be unmounted (`/media`,
+    `/mnt`, `/run/media`) is not held open, so the drive stays free to
+    unmount: it is remembered by what it is (device and inode) and opened
+    again for a room, which is refused unless it is still the same.
   - Writable only where the app's place is writable (the app's own
     `--remount-ro` arguments count); devices only the app's, and working
     only where the request asked for working devices (the app's `/dev`
@@ -174,10 +177,15 @@ rule: **no more than the app, no less than asked.**
     app left there onto the computer. The room's own links come last, after
     every mount, and nothing is made or shown at or behind one; a link may
     not name Bubblewrap's build stage (`/oldroot`, `/newroot`, `..`).
-  - A place the app can write is shown only as a whole: nothing of the
-    room (another place, a device, a hiding mount, a thing of its own) may
-    lie below it, in any order. Such a request is refused: the app could
-    exchange anything below that place for a link while the room is built.
+  - A place the app can write, and any device place, is shown only as a
+    whole: nothing of the room (another place, a device, a hiding mount, a
+    thing of its own) may lie below it, in any order. Such a request is
+    refused: the app could exchange anything below that place for a link
+    while the room is built. A place below a folder the app can write is
+    shown only when every protected or hidden place inside that folder is
+    pinned in the app (each folder above it a mount point of its own, as
+    SAM makes them): otherwise the app could rename a folder holding one,
+    and the room would show it from the computer, unhidden.
   - Writable only where the app can write: its mount and its Landlock rules.
     An own place above a place of the app gives no write right there, and
     SAM's room helper never follows a link to a Landlock rule's place.
@@ -193,9 +201,10 @@ rule: **no more than the app, no less than asked.**
     from a connection); an unknown option is refused too, never guessed.
 - **SAM's layers in every room.** The room's first program is SAM's room
   helper, a static program (no loader, no library) that SAM passes in as
-  data together with the room's rules, at a place no request may name
-  (`/.sam-room`), before anything of the request is laid out, and no
-  request may lay anything over it: nothing the request shapes runs
+  data together with the room's rules, at a place where no request may
+  make, show, change or enter anything, or point a link (`/.sam-room`),
+  before anything of the request is laid out, and no request may lay
+  anything over it: nothing the request shapes runs
   before SAM's layers, and nothing of it is read except the one link the C
   library's start-up asks for (`/proc/self/exe`), whose answer the helper
   never uses. It applies Landlock
@@ -203,9 +212,11 @@ rule: **no more than the app, no less than asked.**
   abstract sockets outside the room blocked from Landlock 6 on), then
   SAM's syscall filter (never allowing nested sandboxes), confirms both,
   then loads the program's own filter and starts the program with exactly
-  the environment it asked for, found as Bubblewrap finds it (its PATH,
-  never the room's folder otherwise; a script without `#!` through the
-  shell). The start record says what the helper
+  the environment it asked for (with `PWD` naming the room's folder, as
+  Bubblewrap sets it), found as Bubblewrap finds it (its PATH, never the
+  room's folder otherwise; a script without `#!` through the shell). The
+  program's own filters are read before the report and loaded only right
+  before it starts; the record names them as asked for, not as confirmed. The start record says what the helper
   confirmed; a room whose helper confirmed nothing is ended at once. A
   layer that does not load means no room; on a kernel without Landlock the
   room has what the app has, and the record says so.

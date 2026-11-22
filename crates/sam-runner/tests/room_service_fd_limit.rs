@@ -12,7 +12,7 @@ use rooms_common::{cases, World};
 
 /// The soft limit for this test: low enough that one room of many places
 /// would take every descriptor the launcher has, without the budget.
-const SOFT_LIMIT: libc::rlim_t = 400;
+const SOFT_LIMIT: libc::rlim_t = 520;
 
 #[test]
 fn rooms_never_run_the_launcher_out_of_descriptors() {
@@ -32,6 +32,7 @@ fn rooms_never_run_the_launcher_out_of_descriptors() {
     let id = w.add(
         "RoomFdLimit",
         r#"
+say control "$(rv room -- /usr/bin/echo ok)"
 many() { n=$1; out=""; while [ "$n" -gt 0 ]; do out="$out --ro-bind /usr /usr"; n=$((n-1)); done; echo "$out"; }
 # Each /usr brings SAM's own places below it (about 44 here, more or
 # less elsewhere): of 8 to 16 of them, some stay within a room's 600
@@ -49,6 +50,13 @@ say too_many "$(rv room $(many 230) -- /usr/bin/echo ok)"
     let c = cases(&log);
     let room_lines: Vec<&str> = log.lines().filter(|l| l.starts_with("sam-room:")).collect();
     let mut failures = Vec::new();
+    // A room of a few places still fits: the budget refuses only big ones.
+    if c.get("control").map(String::as_str) != Some("ok") {
+        failures.push(format!(
+            "a small room was not built under the low limit ({:?})",
+            c.get("control")
+        ));
+    }
     if room_lines.iter().any(|l| l.contains("Too many open files")) {
         failures.push("a room ran SAM's launcher out of descriptors".to_string());
     }
