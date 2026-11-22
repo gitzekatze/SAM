@@ -1223,6 +1223,7 @@ fn open_source(source: &Source, sources: &[Option<SourceHandle>]) -> std::io::Re
 fn identity(fd: &OwnedFd) -> std::io::Result<(u64, u64)> {
     // SAFETY: fstat writes the struct given.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: fstat on our own descriptor writes the struct given.
     if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
         return Err(std::io::Error::last_os_error());
     }
@@ -1370,6 +1371,7 @@ fn recv_with_fds(
     let space = if max == 0 {
         0
     } else {
+        // SAFETY: CMSG_SPACE only computes a size.
         unsafe { libc::CMSG_SPACE((max * 4) as u32) as usize }
     };
     let mut control = vec![0u8; space.max(1)];
@@ -1520,6 +1522,7 @@ fn read_message(
 fn fd_budget() -> usize {
     // SAFETY: getrlimit writes the struct given.
     let mut lim: libc::rlimit = unsafe { std::mem::zeroed() };
+    // SAFETY: getrlimit writes the struct given.
     if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } != 0 {
         return 0;
     }
@@ -1663,6 +1666,7 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
     for res in 0..16u32 {
         // SAFETY: getrlimit writes the struct given.
         let mut lim: libc::rlimit = unsafe { std::mem::zeroed() };
+        // SAFETY: getrlimit writes the struct given.
         if unsafe { libc::getrlimit(res as _, &mut lim) } == 0 {
             limits.push([u64::from(res), lim.rlim_cur, lim.rlim_max]);
         }
