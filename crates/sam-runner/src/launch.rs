@@ -151,6 +151,30 @@ impl Prepared {
 /// has it; the syscall filter where the baseline is on in both the
 /// configuration and the app, or the app's own strict switch is on. The
 /// strict switch decides by itself (audit D-M13: it did nothing unless a
+/// Whether the app gets Room service, and whether SAM's helper goes into
+/// its sandbox: for Landlock, the syscall filter, a probe, or Room service
+/// (its stand-in), each on its own. A probe start has no rooms.
+fn helper_wanted(landlock: bool, seccomp: bool, room_service: bool, probe: bool) -> Wanted {
+    let rooms = room_service && !probe;
+    let layers = landlock || seccomp || probe;
+    Wanted {
+        rooms,
+        layers,
+        helper: layers || rooms,
+    }
+}
+
+/// What a start wants SAM's helper for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Wanted {
+    /// Room service (never on a probe start).
+    rooms: bool,
+    /// Landlock, the syscall filter or a probe.
+    layers: bool,
+    /// The helper in the sandbox at all.
+    helper: bool,
+}
+
 /// The warnings when SAM's helper is missing: each names only what is
 /// really lost (the kernel layers the app wanted, Room service).
 fn helper_missing_warnings(want_layers: bool, want_rooms: bool) -> Vec<Warning> {
@@ -520,8 +544,13 @@ pub fn prepare(
         wanted_seccomp = want_seccomp;
         // Room service needs SAM's helper in the sandbox (its stand-in for
         // Bubblewrap), even where the app itself gets no layer from it.
-        let want_rooms = perms.advanced.room_service && opts.probe.is_none();
-        if want_landlock || want_seccomp || want_rooms || opts.probe.is_some() {
+        let wanted = helper_wanted(
+            want_landlock,
+            want_seccomp,
+            perms.advanced.room_service,
+            opts.probe.is_some(),
+        );
+        if wanted.helper {
             match crate::find_helper() {
                 Some(helper) => {
                     let spec = kernel::SandboxSpec {
@@ -549,10 +578,7 @@ pub fn prepare(
                     landlock = want_landlock;
                     seccomp = want_seccomp;
                 }
-                None => warnings.extend(helper_missing_warnings(
-                    want_landlock || want_seccomp || opts.probe.is_some(),
-                    want_rooms,
-                )),
+                None => warnings.extend(helper_missing_warnings(wanted.layers, wanted.rooms)),
             }
         }
     }
@@ -562,7 +588,13 @@ pub fn prepare(
     // needs SAM's helper in the app's sandbox (the stand-in for bwrap).
     let mut rooms = None;
     if let (true, true, Some(bwrap)) = (
-        perms.advanced.room_service && opts.probe.is_none(),
+        helper_wanted(
+            false,
+            false,
+            perms.advanced.room_service,
+            opts.probe.is_some(),
+        )
+        .rooms,
         ctx.helper.is_some(),
         host.tools.bwrap.as_ref().map(|t| t.path.clone()),
     ) {
@@ -2342,6 +2374,25 @@ mod tests {
 #[cfg(test)]
 mod helper_missing_tests {
     use super::*;
+
+    /// SAM's helper goes into the sandbox for each of its jobs on its own
+    /// (Landlock, the syscall filter, a probe, Room service), so an app
+    /// with Room service off still gets its layers; a probe has no rooms.
+    #[test]
+    fn the_helper_comes_for_each_of_its_jobs() {
+        for l in [false, true] {
+            for s in [false, true] {
+                for r in [false, true] {
+                    for p in [false, true] {
+                        let w = helper_wanted(l, s, r, p);
+                        assert_eq!(w.rooms, r && !p, "{l} {s} {r} {p}");
+                        assert_eq!(w.layers, l || s || p, "{l} {s} {r} {p}");
+                        assert_eq!(w.helper, l || s || (r && !p) || p, "{l} {s} {r} {p}");
+                    }
+                }
+            }
+        }
+    }
 
     /// Without SAM's helper, each warning names only what is really lost:
     /// no word about Landlock and seccomp when the app wanted neither, and

@@ -190,19 +190,19 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Promise | Test |
 |---|---|
 | A setting the saved form leaves out while at its default (Room service is written only when off) can be changed back: turned off, then on again from an old copy, it is left out again, never null. | [`a_left_out_setting_can_be_turned_back_on`](../crates/sam-profile/src/lib.rs#L796) |
-| A change made on an old copy applies only what it changed: another setting changed meanwhile stays; the same setting changed elsewhere to another value is named, not overwritten (audit G-F4). | [`a_change_from_an_old_copy_keeps_what_changed_meanwhile`](../crates/sam-profile/src/lib.rs#L820) |
-| Terminal programs get no display, GPU or desktop bus access. | [`terminal_programs_get_no_display`](../crates/sam-profile/src/lib.rs#L858) |
-| An app that calls itself a development tool gets Documents, but no writable project folder: the category is the AppImage's own claim, and a project folder lets an app plant code that runs outside the sandbox (git hooks, .envrc). | [`a_development_tool_gets_no_project_folder_on_its_own_word`](../crates/sam-profile/src/lib.rs#L885) |
-| The category of an app is recognized from its desktop categories. | [`the_app_category_is_recognized_from_its_desktop_categories`](../crates/sam-profile/src/lib.rs#L915) |
-| Recommended permissions fit the category: a browser gets the network and Downloads, an editor no network. | [`recommendations_fit_the_category`](../crates/sam-profile/src/lib.rs#L980) |
-| What SAM finds in the app (GPU, X11-only toolkit) adjusts the recommendation. | [`what_sam_finds_in_the_app_adjusts_the_recommendation`](../crates/sam-profile/src/lib.rs#L995) |
-| The syscall filter is switched off only for an app whose start program is 32-bit itself: 32-bit files next to a script that starts a 64-bit program do not switch it off (audit M5/I-F4). | [`only_a_32_bit_start_program_switches_the_filter_off`](../crates/sam-profile/src/lib.rs#L1015) |
-| The change check names what an app would lose that it needs, and the dangerous access it would gain. | [`change_check_flags_removals_and_additions`](../crates/sam-profile/src/lib.rs#L1041) |
-| A preset (or any change) that adds a function of a service asks first, as one that adds the X11 display does (audit D-H2: a preset with "may call systemd" applied without a question). | [`a_change_that_adds_a_service_function_asks_first`](../crates/sam-profile/src/lib.rs#L1079) |
-| A hidden folder is not a reason to warn that an app stops working: it is listed apart (regression for the group warning, which only interrupts for breakage). | [`folders_are_not_breakage_but_lost_local_network_and_bus_are`](../crates/sam-profile/src/lib.rs#L1105) |
-| An app that needs sound is warned about in the switch's word. | [`lost_sound_is_named_sound`](../crates/sam-profile/src/lib.rs#L1135) |
-| A new preset starts without home, network or system bus access. | [`preset_template_is_strict`](../crates/sam-profile/src/lib.rs#L1153) |
-| The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L1176) |
+| A change made on an old copy applies only what it changed: another setting changed meanwhile stays; the same setting changed elsewhere to another value is named, not overwritten (audit G-F4). | [`a_change_from_an_old_copy_keeps_what_changed_meanwhile`](../crates/sam-profile/src/lib.rs#L826) |
+| Terminal programs get no display, GPU or desktop bus access. | [`terminal_programs_get_no_display`](../crates/sam-profile/src/lib.rs#L864) |
+| An app that calls itself a development tool gets Documents, but no writable project folder: the category is the AppImage's own claim, and a project folder lets an app plant code that runs outside the sandbox (git hooks, .envrc). | [`a_development_tool_gets_no_project_folder_on_its_own_word`](../crates/sam-profile/src/lib.rs#L891) |
+| The category of an app is recognized from its desktop categories. | [`the_app_category_is_recognized_from_its_desktop_categories`](../crates/sam-profile/src/lib.rs#L921) |
+| Recommended permissions fit the category: a browser gets the network and Downloads, an editor no network. | [`recommendations_fit_the_category`](../crates/sam-profile/src/lib.rs#L986) |
+| What SAM finds in the app (GPU, X11-only toolkit) adjusts the recommendation. | [`what_sam_finds_in_the_app_adjusts_the_recommendation`](../crates/sam-profile/src/lib.rs#L1001) |
+| The syscall filter is switched off only for an app whose start program is 32-bit itself: 32-bit files next to a script that starts a 64-bit program do not switch it off (audit M5/I-F4). | [`only_a_32_bit_start_program_switches_the_filter_off`](../crates/sam-profile/src/lib.rs#L1021) |
+| The change check names what an app would lose that it needs, and the dangerous access it would gain. | [`change_check_flags_removals_and_additions`](../crates/sam-profile/src/lib.rs#L1047) |
+| A preset (or any change) that adds a function of a service asks first, as one that adds the X11 display does (audit D-H2: a preset with "may call systemd" applied without a question). | [`a_change_that_adds_a_service_function_asks_first`](../crates/sam-profile/src/lib.rs#L1085) |
+| A hidden folder is not a reason to warn that an app stops working: it is listed apart (regression for the group warning, which only interrupts for breakage). | [`folders_are_not_breakage_but_lost_local_network_and_bus_are`](../crates/sam-profile/src/lib.rs#L1111) |
+| An app that needs sound is warned about in the switch's word. | [`lost_sound_is_named_sound`](../crates/sam-profile/src/lib.rs#L1141) |
+| A new preset starts without home, network or system bus access. | [`preset_template_is_strict`](../crates/sam-profile/src/lib.rs#L1159) |
+| The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L1182) |
 | An app with SAM's strictest window profile shows no tags, because it has nothing beyond the basics. | [`a_strict_window_app_has_no_tags`](../crates/sam-profile/src/tags.rs#L163) |
 | Tags appear in the family order Network, Files, Devices, Desktop, and read-only access is marked. | [`tags_follow_the_family_order_and_mark_read_only`](../crates/sam-profile/src/tags.rs#L173) |
 | Dangerous access gets red tags, and the filtered desktop bus, which every app has, gets none. | [`dangerous_access_is_red_and_filtered_bus_has_no_tag`](../crates/sam-profile/src/tags.rs#L209) |
@@ -263,7 +263,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-250 tests.
+251 tests.
 
 | Promise | Test |
 |---|---|
@@ -308,19 +308,20 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The filter, applied by the real kernel in a child process: every call through the x32 ABI is refused (audit S-F9; x32 `ptrace` has its own number), the siblings of blocked calls are blocked too (S-F10), and a socket opens only as local, internet or netlink, Bluetooth only with its switch (S-F7). | [`the_filter_refuses_x32_odd_sockets_and_the_siblings`](../crates/sam-runner/src/kernel.rs#L613) |
 | Bubblewrap reads the filter as eight bytes per instruction. | [`the_filter_reaches_bubblewrap_as_whole_instructions`](../crates/sam-runner/src/kernel.rs#L674) |
 | The syscall filter compiles in every variant and always blocks mount and io_uring. | [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L685) |
-| A log written before SAM kept only the text, or edited by hand, still shows only text (audit L-F3): `sam-jail logs` and bug reports read it through `tail`. | [`an_old_log_shows_only_its_text`](../crates/sam-runner/src/launch.rs#L1955) |
-| An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L1971) |
-| A wanted layer that was not applied is reported missing. | [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L2023) |
-| A pasta command ending in the separator is refused not a panic. | [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L2060) |
-| The status shell goes between the separator and the program. | [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L2067) |
-| Only an ordinary start decides the repair steps on trial: not a traced or checking run, and not a start that failed for a bus name SAM just allowed. | [`only_an_ordinary_start_judges_repair_steps`](../crates/sam-runner/src/launch.rs#L2089) |
-| With its input redirected an app has no terminal relay; its output shown in a terminal still loses clipboard codes and title reports, even split over two pieces. | [`output_shown_in_a_terminal_is_filtered_without_the_relay`](../crates/sam-runner/src/launch.rs#L2117) |
-| Landlock is wanted only where the app's switch wants it and the kernel has it; the app's strict filter switch works by itself, without a global setting (audit D-M13). | [`the_wanted_layers_follow_the_apps_switches`](../crates/sam-runner/src/launch.rs#L2142) |
-| Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L2179) |
-| Bubblewrap setup errors are told apart from errors of the app itself. | [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L2218) |
-| A start is judged by whether Bubblewrap announced the app, not by what the app printed. | [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L2239) |
-| Every socket SAM makes for a launch fits a Unix socket path (107 characters), even for the longest app id (one that grew twice for names that were taken), the highest process number Linux hands out and the longest user number (the 240-app run of 2026-11-20: apps with long ids lost their sound, bus and Wayland security context). | [`a_launchs_sockets_fit_even_for_the_longest_app_id`](../crates/sam-runner/src/launch.rs#L2316) |
-| Without SAM's helper, each warning names only what is really lost: no word about Landlock and seccomp when the app wanted neither, and Room service named when it is lost. | [`a_missing_helper_names_only_what_is_lost`](../crates/sam-runner/src/launch.rs#L2349) |
+| A log written before SAM kept only the text, or edited by hand, still shows only text (audit L-F3): `sam-jail logs` and bug reports read it through `tail`. | [`an_old_log_shows_only_its_text`](../crates/sam-runner/src/launch.rs#L1987) |
+| An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L2003) |
+| A wanted layer that was not applied is reported missing. | [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L2055) |
+| A pasta command ending in the separator is refused not a panic. | [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L2092) |
+| The status shell goes between the separator and the program. | [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L2099) |
+| Only an ordinary start decides the repair steps on trial: not a traced or checking run, and not a start that failed for a bus name SAM just allowed. | [`only_an_ordinary_start_judges_repair_steps`](../crates/sam-runner/src/launch.rs#L2121) |
+| With its input redirected an app has no terminal relay; its output shown in a terminal still loses clipboard codes and title reports, even split over two pieces. | [`output_shown_in_a_terminal_is_filtered_without_the_relay`](../crates/sam-runner/src/launch.rs#L2149) |
+| Landlock is wanted only where the app's switch wants it and the kernel has it; the app's strict filter switch works by itself, without a global setting (audit D-M13). | [`the_wanted_layers_follow_the_apps_switches`](../crates/sam-runner/src/launch.rs#L2174) |
+| Without Bubblewrap, starting an app stops while it is being prepared, before any process is started, and the error says what to install. | [`a_start_without_bubblewrap_stops_before_anything_runs`](../crates/sam-runner/src/launch.rs#L2211) |
+| Bubblewrap setup errors are told apart from errors of the app itself. | [`sandbox_setup_errors_are_told_apart_from_app_errors`](../crates/sam-runner/src/launch.rs#L2250) |
+| A start is judged by whether Bubblewrap announced the app, not by what the app printed. | [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L2271) |
+| Every socket SAM makes for a launch fits a Unix socket path (107 characters), even for the longest app id (one that grew twice for names that were taken), the highest process number Linux hands out and the longest user number (the 240-app run of 2026-11-20: apps with long ids lost their sound, bus and Wayland security context). | [`a_launchs_sockets_fit_even_for_the_longest_app_id`](../crates/sam-runner/src/launch.rs#L2348) |
+| SAM's helper goes into the sandbox for each of its jobs on its own (Landlock, the syscall filter, a probe, Room service), so an app with Room service off still gets its layers; a probe has no rooms. | [`the_helper_comes_for_each_of_its_jobs`](../crates/sam-runner/src/launch.rs#L2381) |
+| Without SAM's helper, each warning names only what is really lost: no word about Landlock and seccomp when the app wanted neither, and Room service named when it is lost. | [`a_missing_helper_names_only_what_is_lost`](../crates/sam-runner/src/launch.rs#L2400) |
 | A program of a Cargo build whose helper is not built gets none, even when one is on PATH (an installed SAM or another build): the test then says it cannot run, instead of checking a different version. | [`a_build_never_takes_a_helper_from_path`](../crates/sam-runner/src/lib.rs#L101) |
 | A test program inside Cargo's build folder finds the helper of its own build, so tests that need it run instead of skipping; an installed program never looks above its own folder. | [`tests_find_the_helper_of_their_own_build`](../crates/sam-runner/src/lib.rs#L125) |
 | With "this computer only", the app reaches only the ports on this computer the user lists. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L184) |
@@ -633,4 +634,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 547 automated Rust tests plus 7 scripted checks.
+Total: 548 automated Rust tests plus 7 scripted checks.

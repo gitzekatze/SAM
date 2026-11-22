@@ -809,6 +809,12 @@ mod tests {
         let to = json!({"a": 2, "b": 2});
         super::merge_into(&mut cur, &from, &to, "", &mut clashes);
         assert_eq!(cur, json!({"a": 2}));
+        // Turned off from a record that leaves it out: written as off.
+        let mut cur = json!({"advanced": {"x": 1}});
+        let from = json!({"advanced": {"x": 1}});
+        let to = json!({"advanced": {"room_service": false, "x": 1}});
+        super::merge_into(&mut cur, &from, &to, "", &mut clashes);
+        assert_eq!(cur, json!({"advanced": {"room_service": false, "x": 1}}));
         let set: sam_core::permissions::PermissionSet =
             serde_json::from_value(json!({"advanced": {}})).unwrap_or_default();
         assert!(set.advanced.room_service);

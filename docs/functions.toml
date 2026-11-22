@@ -238,6 +238,7 @@ tests = [
   "a_room_gets_its_connections_at_their_numbers",
   "a_record_from_before_room_service_keeps_its_checksum",
   "a_missing_helper_names_only_what_is_lost",
+  "the_helper_comes_for_each_of_its_jobs",
   "an_answer_to_a_stand_in_that_left_never_ends_the_launcher",
   "a_receive_keeps_no_more_connections_than_counted",
   "a_source_on_a_removable_drive_is_remembered_not_held",
