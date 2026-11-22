@@ -10,6 +10,9 @@
   `advanced.room_service` turns it off for one app.
 - The start record names each room, the protection layers SAM's room
   helper confirmed, and what was capped or refused.
+- With a Bubblewrap older than 0.10 (no `--ro-bind-fd`), Room service
+  stays off and every start says so; programs keep the computer's own
+  Bubblewrap as before.
 - Building SAM now needs the static C library (Debian/Ubuntu: libc6-dev,
   Fedora: glibc-static, openSUSE: glibc-devel-static) for SAM's room
   helper, a small static program. Without it the build warns and Room
