@@ -566,7 +566,16 @@ pub fn prepare(
         ctx.helper.is_some(),
         host.tools.bwrap.as_ref().map(|t| t.path.clone()),
     ) {
-        match crate::room_service::RoomService::open(&runtime_dir)
+        if !crate::room_service::bwrap_builds_rooms(&bwrap) {
+            // No room could be built: programs keep the computer's own
+            // Bubblewrap, as before Room service.
+            warnings.push(Warning::warn(
+                "room-service-failed",
+                "Room service unavailable",
+                "This Bubblewrap cannot show places by handle (--ro-bind-fd, Bubblewrap 0.10 or newer); programs in this app that build a sandbox of their own use it as before Room service.",
+            ));
+        } else {
+            match crate::room_service::RoomService::open(&runtime_dir)
             .and_then(|r| write_room_standin(&runtime_dir, &bwrap).map(|()| r))
         {
             Ok(r) => {
@@ -581,6 +590,7 @@ pub fn prepare(
                     &[("error", &format!("{e:#}"))],
                 ),
             )),
+        }
         }
     }
     let mut command = sam_sandbox::Bubblewrap.build(&ctx)?;

@@ -769,8 +769,14 @@ fn merge_into(
             } else {
                 format!("{path}.{k}")
             };
-            let cv = c.entry(k.clone()).or_insert(Value::Null);
-            merge_into(cv, fv, tv, &sub, clashes);
+            // A key the saved form leaves out (a setting at its default)
+            // stays out: never written back as null, which no setting reads.
+            let had = c.contains_key(k.as_str());
+            let mut cv = c.remove(k.as_str()).unwrap_or(Value::Null);
+            merge_into(&mut cv, fv, tv, &sub, clashes);
+            if !cv.is_null() || (had && t.contains_key(k.as_str())) {
+                c.insert(k.clone(), cv);
+            }
         }
         return;
     }
@@ -783,6 +789,30 @@ fn merge_into(
 
 #[cfg(test)]
 mod tests {
+
+    /// A setting the saved form leaves out while at its default (Room
+    /// service is written only when off) can be changed back: turned off,
+    /// then on again from an old copy, it is left out again, never null.
+    #[test]
+    fn a_left_out_setting_can_be_turned_back_on() {
+        use serde_json::json;
+        let mut cur = json!({"advanced": {"room_service": false, "x": 1}});
+        let from = json!({"advanced": {"room_service": false, "x": 1}});
+        let to = json!({"advanced": {"x": 1}});
+        let mut clashes = Vec::new();
+        super::merge_into(&mut cur, &from, &to, "", &mut clashes);
+        assert!(clashes.is_empty());
+        assert_eq!(cur, json!({"advanced": {"x": 1}}));
+        // Keys nobody changed are not made up either.
+        let mut cur = json!({"a": 1});
+        let from = json!({"a": 1, "b": 2});
+        let to = json!({"a": 2, "b": 2});
+        super::merge_into(&mut cur, &from, &to, "", &mut clashes);
+        assert_eq!(cur, json!({"a": 2}));
+        let set: sam_core::permissions::PermissionSet =
+            serde_json::from_value(json!({"advanced": {}})).unwrap_or_default();
+        assert!(set.advanced.room_service);
+    }
 
     /// A change made on an old copy applies only what it changed: another
     /// setting changed meanwhile stays; the same setting changed elsewhere

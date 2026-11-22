@@ -407,7 +407,8 @@ impl FloorPlan {
                     4
                 }
                 "--remount-ro" => {
-                    // Everything mounted so far at or below it is read-only.
+                    // The mount at its place, as it stands now, becomes
+                    // read-only (not recursive, as in Bubblewrap).
                     read_only.push((entries.len(), p(1)?));
                     2
                 }
@@ -430,24 +431,28 @@ impl FloorPlan {
                 }
             };
         }
-        // A --remount-ro makes the mounts made before it read-only at and
-        // below its place (SAM's own final `--remount-ro /` only concerns
-        // the sandbox's root, which holds nothing of the computer).
+        // A --remount-ro makes read-only the one mount at its place made
+        // last before it: Bubblewrap's remount is not recursive, so mounts
+        // below it made earlier keep their rights (SAM's own final
+        // `--remount-ro /` only concerns the sandbox's root, which holds
+        // nothing of the computer).
         for (before, at) in read_only {
             if at == Path::new("/") {
                 continue;
             }
-            for e in entries.iter_mut().take(before) {
-                match e {
-                    Entry::Rw { src, dst } if dst.starts_with(&at) => {
-                        *e = Entry::Ro {
+            let top = entries
+                .iter()
+                .take(before)
+                .rposition(|e| e.is_mount() && e.at() == at);
+            if let Some(i) = top {
+                match &mut entries[i] {
+                    Entry::Rw { src, dst } => {
+                        entries[i] = Entry::Ro {
                             src: src.clone(),
                             dst: dst.clone(),
                         };
                     }
-                    Entry::Dev { dst, read_only, .. } if dst.starts_with(&at) => {
-                        *read_only = true;
-                    }
+                    Entry::Dev { read_only, .. } => *read_only = true,
                     _ => {}
                 }
             }
@@ -903,7 +908,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         let keep = !shown.iter().any(|s| under(s, o) || under(o, s));
         if !keep {
             cut.push(format!(
-                "{}: a place of the app lies inside or over it, so not writable",
+                "{}: a place of the app lies inside or over it, so it gets no write rule of its own",
                 o.display()
             ));
         } else if !own_tmpfs.iter().any(|t| under(o, t)) {
@@ -1888,6 +1893,28 @@ mod tests {
             .steps
             .iter()
             .any(|st| matches!(st, Step::Args(a) if a[0] == "--dev")));
+    }
+
+    /// The app's own --remount-ro makes read-only only the mount at its
+    /// place, as Bubblewrap's (not recursive): a place mounted below it
+    /// before keeps its rights, in the app as in its rooms.
+    #[test]
+    fn the_apps_remount_is_not_recursive() {
+        let plan = FloorPlan::from_bwrap_args(&s(&[
+            "--bind",
+            "/h",
+            "/home/me",
+            "--bind",
+            "/h/c",
+            "/home/me/c",
+            "--remount-ro",
+            "/home/me",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        assert!(matches!(plan.entries[0], Entry::Ro { .. }));
+        assert!(matches!(plan.entries[1], Entry::Rw { .. }));
     }
 
     /// The room's own link is never made inside a place shown from the

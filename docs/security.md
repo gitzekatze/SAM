@@ -159,9 +159,10 @@ rule: **no more than the app, no less than asked.**
     whole, as SAM or the person named them, never a path below one (which
     could lead through a link the app made in `/dev/shm`); one missing
     when the app starts is left out, so a device plugged in later never
-    reaches a room. A source on a drive that may be unmounted (`/media`,
-    `/mnt`, `/run/media`) is not held open, so the drive stays free to
-    unmount: it is remembered by what it is (device and inode) and opened
+    reaches a room. A source on a drive that may be unmounted (any file
+    system other than the root's and the home's, and anything under
+    `/media`, `/mnt`, `/run/media`) is not held open, so the drive stays
+    free to unmount: it is remembered by what it is (device and inode) and opened
     again for a room, which is refused unless it is still the same.
   - Writable only where the app's place is writable (the app's own
     `--remount-ro` arguments count); devices only the app's, and working
@@ -189,8 +190,9 @@ rule: **no more than the app, no less than asked.**
   - Writable only where the app can write: its mount and its Landlock rules.
     The room's own new places are writable inside its own file systems
     (`--tmpfs`); the room's root is read-only, so a folder made there is
-    not, and an own place with a place of the app inside or over it is not
-    writable at all (both recorded). A place asked for read-only keeps the
+    not, and an own place with a place of the app inside or over it gets no
+    write rule of its own (writable only where the app's own rules reach;
+    both recorded). A place asked for read-only keeps the
     app's hiding places and `/dev` inside it read-only too. SAM's room
     helper never follows a link to a Landlock rule's place.
   - The room's own links are made last, after every mount, and never
@@ -255,7 +257,10 @@ rule: **no more than the app, no less than asked.**
   fail inside SAM, or run without it.
 - **Builds.** SAM's room helper is built as a static program (needs the
   static C library when SAM is built). A SAM built without it has Room
-  service off, and every start says so.
+  service off, and every start says so. So does a start with a Bubblewrap
+  that cannot show places by handle (`--ro-bind-fd`, Bubblewrap 0.10 or a
+  backport): no room could be built, so programs keep the computer's own
+  Bubblewrap, as before Room service.
 
 Not covered: programs that call `/usr/bin/bwrap` by its full path, and
 other sandbox tools (Firejail, `flatpak-spawn --sandbox`). Chromium's own

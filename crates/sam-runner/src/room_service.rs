@@ -413,16 +413,44 @@ impl Drop for RoomService {
 /// neither shows nor covers anything in a room. Device places are checked
 /// the same way: one that appears later is never looked up by its name.
 fn plan_at_start(plan: FloorPlan) -> (FloorPlan, Vec<Option<SourceHandle>>) {
-    plan_at_start_with(plan, on_removable_drive)
+    use std::os::unix::fs::MetadataExt;
+    let fixed: Vec<u64> = [
+        Some(PathBuf::from("/")),
+        std::env::var_os("HOME").map(PathBuf::from),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.dev()))
+    .collect();
+    plan_at_start_with(plan, |p, dev| may_be_unmounted(p, dev, &fixed))
 }
 
-/// Drives a person may want to unmount while the app runs: a source there
-/// is remembered by what it is, not held open (an open handle in the
-/// launcher would keep the drive busy).
-fn on_removable_drive(p: &Path) -> bool {
-    ["/media/", "/mnt/", "/run/media/"]
-        .iter()
-        .any(|d| p.to_string_lossy().starts_with(d))
+/// Whether Bubblewrap at `bwrap` can build rooms: it must show places by
+/// handle (`--bind-fd`, `--ro-bind-fd`, Bubblewrap 0.10 or a backport).
+/// Without them no room could be built, and programs keep the computer's
+/// own Bubblewrap as before Room service. Asked once per start.
+pub fn bwrap_builds_rooms(bwrap: &Path) -> bool {
+    std::process::Command::new(bwrap)
+        .arg("--help")
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .is_ok_and(|o| {
+            let help = String::from_utf8_lossy(&o.stdout);
+            help.contains("--ro-bind-fd") && help.contains("--bind-fd")
+        })
+}
+
+/// Drives a person may want to unmount while the app runs: anything not
+/// on the file system of the root or of the home (a second disk, a stick,
+/// a network or FUSE mount), and anything under /media, /mnt, /run/media.
+/// A source there is remembered by what it is, not held open (an open
+/// handle in the launcher would keep the drive busy).
+fn may_be_unmounted(p: &Path, dev: u64, fixed: &[u64]) -> bool {
+    !fixed.contains(&dev)
+        || ["/media/", "/mnt/", "/run/media/"]
+            .iter()
+            .any(|d| p.to_string_lossy().starts_with(d))
 }
 
 /// A floor-plan source as the service keeps it from the app's start.
@@ -436,7 +464,7 @@ pub(crate) enum SourceHandle {
 
 fn plan_at_start_with(
     mut plan: FloorPlan,
-    removable: impl Fn(&Path) -> bool,
+    removable: impl Fn(&Path, u64) -> bool,
 ) -> (FloorPlan, Vec<Option<SourceHandle>>) {
     let mut sources = Vec::new();
     let mut entries = Vec::new();
@@ -444,14 +472,14 @@ fn plan_at_start_with(
         match e.source() {
             Some(p) => {
                 if let Ok(fd) = open_path(p) {
-                    let handle = if removable(p) {
-                        match identity(&fd) {
-                            Ok((dev, ino)) => SourceHandle::Known {
-                                path: p.to_path_buf(),
-                                dev,
-                                ino,
-                            },
-                            Err(_) => continue,
+                    let Ok((dev, ino)) = identity(&fd) else {
+                        continue;
+                    };
+                    let handle = if removable(p, dev) {
+                        SourceHandle::Known {
+                            path: p.to_path_buf(),
+                            dev,
+                            ino,
                         }
                     } else {
                         SourceHandle::Open(fd)
@@ -1818,6 +1846,52 @@ mod tests {
         assert_eq!(exit_code(p.wait().unwrap()), 3);
     }
 
+    /// A drive is one a person may unmount when it is not the file system
+    /// of the root or the home, or lies under /media, /mnt, /run/media.
+    #[test]
+    fn drives_that_may_be_unmounted_are_known_by_their_file_system() {
+        let fixed = [1, 2];
+        assert!(!may_be_unmounted(Path::new("/usr/lib"), 1, &fixed));
+        assert!(!may_be_unmounted(
+            Path::new("/home/me/Documents"),
+            2,
+            &fixed
+        ));
+        assert!(may_be_unmounted(
+            Path::new("/data/apps/x.AppImage"),
+            7,
+            &fixed
+        ));
+        assert!(may_be_unmounted(Path::new("/home/me/sshfs/f"), 9, &fixed));
+        assert!(may_be_unmounted(Path::new("/mnt/stick"), 1, &fixed));
+    }
+
+    /// Room service starts only with a Bubblewrap that can show places by
+    /// handle: with an older one, programs keep the computer's own
+    /// Bubblewrap instead of a stand-in that could build no room.
+    #[test]
+    fn rooms_need_a_bubblewrap_that_shows_places_by_handle() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = |name: &str, help: &str| {
+            let p = tmp.path().join(name);
+            std::fs::write(&p, format!("#!/bin/sh\ncat <<'EOF'\n{help}\nEOF\n")).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        let old = fake(
+            "old",
+            "usage: bwrap\n    --bind SRC DEST\n    --ro-bind SRC DEST",
+        );
+        let new = fake(
+            "new",
+            "usage: bwrap\n    --bind-fd FD DEST\n    --ro-bind-fd FD DEST",
+        );
+        assert!(!bwrap_builds_rooms(&old));
+        assert!(bwrap_builds_rooms(&new));
+        assert!(!bwrap_builds_rooms(&tmp.path().join("missing")));
+    }
+
     /// A source on a drive that may be unmounted is not held open (the
     /// drive stays free to unmount while the app runs); a room still shows
     /// it, but never another folder put in its place since the start.
@@ -1834,7 +1908,7 @@ mod tests {
             "x",
         ]))
         .unwrap();
-        let (_, sources) = plan_at_start_with(plan, |p| p.starts_with(tmp.path()));
+        let (_, sources) = plan_at_start_with(plan, |p, _| p.starts_with(tmp.path()));
         assert!(matches!(sources[0], Some(SourceHandle::Known { .. })));
         let whole = Source {
             entry: 0,
