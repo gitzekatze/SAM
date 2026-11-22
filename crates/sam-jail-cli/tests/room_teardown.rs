@@ -56,6 +56,14 @@ fn a_room_dies_with_sams_launcher() {
         sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
         return;
     }
+    if let Some(b) = host.tools.bwrap.as_ref() {
+        if !sam_runner::room_service::bwrap_builds_rooms(&b.path) {
+            sam_runner::contracts::not_here(
+                "this Bubblewrap cannot show places by handle (--ro-bind-fd), so SAM leaves Room service out",
+            );
+            return;
+        }
+    }
     let _contracts = sam_runner::contracts::guard(&["bwrap-core", "bwrap-rooms"])
         .unwrap_or_else(|e| panic!("{e}"));
     let tmp = tempfile::tempdir().unwrap();

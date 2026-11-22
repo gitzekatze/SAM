@@ -14,7 +14,9 @@
 //! - The room's own new places (folders, links, file systems) only in its
 //!   own space, never inside a place shown from the app; SAM's own mounts
 //!   come first, at a place no request may touch.
-//! - Every restriction the request asks for is kept. An option the rules do
+//! - Every restriction the request asks for (its Bubblewrap arguments) is
+//!   kept; filters the program put on itself do not follow it into a room
+//!   built from outside, which gets SAM's layers instead. An option the rules do
 //!   not know is refused, never guessed.
 //! - The network only when the app has the full network (and the request
 //!   does not also give it up).
@@ -640,7 +642,6 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     let mut own_links: Vec<PathBuf> = Vec::new();
     let mut late_links: Vec<Step> = Vec::new();
     let mut late_remounts: Vec<Step> = Vec::new();
-    let mut read_only_asked: Vec<PathBuf> = Vec::new();
     // The room's own file systems (--tmpfs): writable; the room's root is
     // read-only when it starts.
     let mut own_tmpfs: Vec<PathBuf> = Vec::new();
@@ -835,11 +836,24 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 } else {
                     DeviceAccess::NoDevices
                 };
-                if asked == DeviceAccess::ReadOnly {
-                    read_only_asked.push(src.clone());
-                }
                 let before = room.steps.len();
                 let found = place(plan, &src, asked, optional, &mut room)?;
+                // A place asked for read-only keeps the app's hiding places
+                // and /dev inside it read-only too (their file systems are
+                // the room's own): remounted right after this place is laid
+                // out, so a later mount of the request's own is not hit.
+                if asked == DeviceAccess::ReadOnly {
+                    let masks: Vec<Step> = room.steps[before..]
+                        .iter()
+                        .filter_map(|st| match st {
+                            Step::Mask(at) => {
+                                Some(Step::Args(vec!["--remount-ro".into(), path_arg(at)]))
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    room.steps.extend(masks);
+                }
                 // What is now mounted from the app (not the asked path: for
                 // `/` that is the app's places inside it, not the root).
                 for step in &room.steps[before..] {
@@ -876,15 +890,6 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
             "{} is inside a place shown from the app: a room makes new things only in its own space",
             l.display()
         ));
-    }
-    // A place asked for read-only keeps the app's hiding places and /dev
-    // inside it read-only too (their file systems are the room's own).
-    for st in &room.steps {
-        if let Step::Mask(at) = st {
-            if read_only_asked.iter().any(|r| under(at, r)) {
-                late_remounts.push(Step::Args(vec!["--remount-ro".into(), path_arg(at)]));
-            }
-        }
     }
     room.steps.extend(late_links);
     room.steps.extend(late_remounts);
@@ -1955,6 +1960,19 @@ mod tests {
         assert!(room.steps[..at]
             .iter()
             .any(|st| matches!(st, Step::Args(a) if a[0] == "--dir")));
+        // An own mount laid later at the same place is not remounted.
+        let room = ok(&[&["--ro-bind", "/dev", "/dev"], &["--tmpfs", "/dev"]]);
+        let last_remount = room
+            .steps
+            .iter()
+            .rposition(|st| matches!(st, Step::Args(a) if a == &s(&["--remount-ro", "/dev"])))
+            .unwrap();
+        let own = room
+            .steps
+            .iter()
+            .position(|st| matches!(st, Step::Args(a) if a == &s(&["--tmpfs", "/dev"])))
+            .unwrap();
+        assert!(last_remount < own, "{:?}", room.steps);
         let room = ok(&[
             &["--dir", "/work"],
             &["--tmpfs", "/scratch"],

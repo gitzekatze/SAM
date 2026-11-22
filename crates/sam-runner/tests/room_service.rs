@@ -67,7 +67,19 @@ say limits "$(ulimit -v 4000000; ulimit -c 0; umask 077; rv room -- /usr/bin/sh 
 printf 'echo ran-from-folder\n' > "$HOME/sam-room-not-on-path"
 chmod 755 "$HOME/sam-room-not-on-path"
 say not_on_path "$(rv room --bind "$HOME" "$HOME" --chdir "$HOME" --setenv PATH /usr/bin -- sam-room-not-on-path)"
-say no_shebang "$(rv room --bind "$HOME" "$HOME" -- "$HOME/sam-room-not-on-path")"
+cp "$HOME/sam-room-not-on-path" "$HOME/sam-room-no-shebang"
+say no_shebang "$(rv room --bind "$HOME" "$HOME" -- "$HOME/sam-room-no-shebang")"
+# With no shell in the room, a script without a #! line is passed over and
+# the search goes on along PATH, as Bubblewrap's would.
+mkdir -p "$HOME/first"
+cp "$HOME/sam-room-not-on-path" "$HOME/first/echo"
+LIBS=""
+for d in /lib /lib32 /lib64; do
+  if [ -L "$d" ]; then LIBS="$LIBS --symlink $(readlink "$d") $d"
+  elif [ -d "$d" ]; then LIBS="$LIBS --ro-bind $d $d"; fi
+done
+# shellcheck disable=SC2086
+say shell_missing "$(bwrap --ro-bind /usr /usr $LIBS --bind "$HOME" "$HOME" --setenv PATH "$HOME/first:/usr/bin" -- echo next 2>/dev/null || echo refused)"
 # The app's /dev asked for without devices: its few nodes, not working,
 # and the links every /dev has.
 say dev_without_devices "$(rv room --ro-bind /dev /dev -- /usr/bin/sh -c '(echo x > /dev/null) 2>/dev/null && echo works || echo blocked')"
@@ -889,6 +901,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("pwd", "/usr"),
                 ("pwd_stale", "/usr"),
                 ("no_shebang", "ran-from-folder"),
+                ("shell_missing", "next"),
                 ("dev_without_devices", "blocked"),
                 ("dev_links", "links"),
                 ("env_not_text", "refused"),

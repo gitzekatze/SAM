@@ -46,7 +46,21 @@ pub fn usable() -> Result<(), String> {
 /// must prove everything, as on CI).
 pub fn require() -> bool {
     match usable() {
-        Ok(()) => true,
+        Ok(()) => {
+            // A Bubblewrap that cannot show places by handle builds no
+            // room: SAM leaves Room service out there (it says so), so
+            // these tests do not apply on such a computer.
+            let host = HostInfo::probe();
+            if let Some(b) = host.tools.bwrap.as_ref() {
+                if !sam_runner::room_service::bwrap_builds_rooms(&b.path) {
+                    sam_runner::contracts::not_here(
+                        "this Bubblewrap cannot show places by handle (--ro-bind-fd), so SAM leaves Room service out",
+                    );
+                    return false;
+                }
+            }
+            true
+        }
         Err(reason) => {
             sam_runner::contracts::skip(&reason).unwrap_or_else(|e| panic!("{e}"));
             false

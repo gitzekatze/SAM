@@ -201,10 +201,13 @@ rule: **no more than the app, no less than asked.**
   - A place of the app that cannot be shown means no room, never one
     without it (only a path the request named itself with `-try` may be
     missing); at most 600 places per room.
-  - Every restriction the program asks for is kept, its resource limits
-    (where lower than the launcher's) and its umask too, as Bubblewrap's
-    children keep them (glycin caps its loader's memory this way). Options
-    that could give
+  - Every restriction the program asks for in its Bubblewrap arguments is
+    kept, and its resource limits (where lower than the launcher's) and
+    its umask too, as Bubblewrap's children keep them (glycin caps its
+    loader's memory this way). A syscall filter or Landlock the program
+    put on itself, outside those arguments, does not follow it into the
+    room: the room is built from outside, and gets SAM's own layers
+    instead, never more than the app. Options that could give
     a room more than its app are refused by name (joining other namespaces,
     other users, extra powers, places or files from connections, options
     from a connection); an unknown option is refused too, never guessed.

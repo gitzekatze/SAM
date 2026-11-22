@@ -363,12 +363,14 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
     for ((path, _), sh) in tries.iter().zip(&sh_ptrs) {
         // SAFETY: NUL-terminated strings and arrays that live until the call.
         unsafe { execve(path.as_ptr(), argv_ptrs.as_ptr(), envp_ptrs.as_ptr()) };
-        let e = errno().raw_os_error().unwrap_or(0);
+        let mut e = errno().raw_os_error().unwrap_or(0);
         if e == 8 {
-            // ENOEXEC: a script without "#!", run by the shell.
+            // ENOEXEC: a script without "#!", run by the shell; when the
+            // shell cannot start, glibc's execvp goes on as for any other
+            // failed place, and so does this.
             // SAFETY: as above.
             unsafe { execve(shell.as_ptr(), sh.as_ptr(), envp_ptrs.as_ptr()) };
-            fail(&format!("{}: {}", args[3].to_string_lossy(), errno()));
+            e = errno().raw_os_error().unwrap_or(0);
         }
         if !try_next(e) {
             fail(&format!("{}: {}", args[3].to_string_lossy(), errno()));
