@@ -10,9 +10,12 @@ mod rooms_common;
 
 use rooms_common::{cases, World};
 
-/// The soft limit for this test: low enough that one room of many places
-/// would take every descriptor the launcher has, without the budget.
-const SOFT_LIMIT: libc::rlim_t = 520;
+/// Descriptors left above what is open when the app starts (SAM keeps 256
+/// of them for itself): low enough that one room of many places would take
+/// every descriptor the launcher has without the budget, enough for a room
+/// of a few places. Counted from what is open, as a CI machine's test
+/// process holds many more than a desktop's.
+const ABOVE_OPEN: usize = 480;
 
 #[test]
 fn rooms_never_run_the_launcher_out_of_descriptors() {
@@ -21,14 +24,15 @@ fn rooms_never_run_the_launcher_out_of_descriptors() {
     }
     let _contracts = sam_runner::contracts::guard(&["bwrap-core", "bwrap-rooms"])
         .unwrap_or_else(|e| panic!("{e}"));
+    let w = World::new();
+    let open = std::fs::read_dir("/proc/self/fd").unwrap().count();
     // SAFETY: getrlimit and setrlimit write and read the struct given.
     unsafe {
         let mut lim: libc::rlimit = std::mem::zeroed();
         assert_eq!(libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim), 0);
-        lim.rlim_cur = SOFT_LIMIT.min(lim.rlim_max);
+        lim.rlim_cur = ((open + ABOVE_OPEN) as libc::rlim_t).min(lim.rlim_max);
         assert_eq!(libc::setrlimit(libc::RLIMIT_NOFILE, &lim), 0);
     }
-    let w = World::new();
     let id = w.add(
         "RoomFdLimit",
         r#"
@@ -83,7 +87,7 @@ say too_many "$(rv room $(many 230) -- /usr/bin/echo ok)"
     }
     assert!(
         failures.is_empty(),
-        "{}\nthe start record:\n{}",
+        "{}\n(open when the app started: {open})\nthe start record:\n{}",
         failures.join("\n"),
         room_lines.join("\n")
     );

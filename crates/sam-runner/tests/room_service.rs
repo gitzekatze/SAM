@@ -48,6 +48,7 @@ say stdin "$(echo piped | room -- /usr/bin/cat)"
 say env "$(rv room --clearenv --setenv ROOM_VAR yes -- /usr/bin/sh -c 'echo "${ROOM_VAR:-unset}-${HOME:-nohome}"')"
 say token "$(rv room --setenv ROOM_TOKEN "tok-$TEST_PID-secret" -- $P env ROOM_TOKEN)"
 say version "$(bwrap --version)"
+say fds_app "$($P fds)"
 say fds "$(rv room --proc /proc -- $P fds)"
 say host_env_app "$($P env SAM_ROOMS_HOST_MARKER)"
 say host_env_room "$(rv room -- $P env SAM_ROOMS_HOST_MARKER)"
@@ -594,6 +595,27 @@ fn link_named_first_refused(name: &str, log: &str, w: &World) -> Vec<String> {
     out
 }
 
+/// The start record's room lines and the script's last cases, shown with
+/// a failure (CI keeps no start record).
+fn record_dump(name: &str, log: &str) -> String {
+    let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
+    for l in log.lines().filter(|l| l.starts_with("sam-room:")) {
+        // Group equal lines without the asking process.
+        let key = match (l.find(" (asked by "), l.find("): ")) {
+            (Some(a), Some(b)) if b > a => format!("{}{}", &l[..a], &l[b + 1..]),
+            _ => l.to_string(),
+        };
+        *counts.entry(key.chars().take(240).collect()).or_default() += 1;
+    }
+    let lines: Vec<String> = counts.iter().map(|(l, n)| format!("{n:>4}x {l}")).collect();
+    let tail: Vec<&str> = log.lines().filter(|l| l.starts_with("CASE ")).collect();
+    format!(
+        "{name}: the start record's room lines:\n  {}\n{name}: the last cases: {:?}",
+        lines.join("\n  "),
+        &tail[tail.len().saturating_sub(6)..]
+    )
+}
+
 fn control_built(name: &str, log: &str) -> Option<String> {
     let c = cases(log);
     (c.get("control").map(String::as_str) != Some("ok")).then(|| {
@@ -896,7 +918,6 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("exit", "7"),
                 ("stdin", "piped"),
                 ("env", "yes-nohome"),
-                ("fds", "0,1,2"),
                 ("host_env_app", "none"),
                 ("host_env_room", "none"),
                 ("nested_userns", "blocked"),
@@ -927,6 +948,15 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         failures.push("works: not_on_path: no room was built for it".into());
     }
     let c = cases(&log);
+    // The room gets exactly the program's own open connections, as with
+    // Bubblewrap: no other, none missing.
+    if c.get("fds").is_none() || c.get("fds") != c.get("fds_app") {
+        failures.push(format!(
+            "works: the room's open connections {:?} are not its program's {:?}",
+            c.get("fds"),
+            c.get("fds_app")
+        ));
+    }
     if c.get("version") != Some(&host_bwrap_version(&w.host)) {
         failures.push(format!(
             "works: --version does not answer like the computer's Bubblewrap ({:?})",
@@ -981,6 +1011,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         ("exceptions", NetworkMode::Full, true),
     ];
     for (name, mode, exceptions) in runs {
+        let before = failures.len();
         let id = w.add(&format!("Room{}", name.replace('-', "")), ATTACKS);
         let log = w.start(
             &id,
@@ -1139,6 +1170,9 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             failures.push(format!(
                 "{name}: a room wrote into an app's own folder: {wrote_app:?}"
             ));
+        }
+        if failures.len() > before {
+            failures.push(record_dump(name, &log));
         }
     }
 
@@ -1377,9 +1411,12 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     );
     match (n("race_inside"), n("race_leaked")) {
         (Some(inside), Some(0)) if inside > 0 => {}
-        (inside, leaked) => failures.push(format!(
-            "race: rooms showing the real folder {inside:?} (must be some), showing the secret {leaked:?} (must be 0)"
-        )),
+        (inside, leaked) => {
+            failures.push(format!(
+                "race: rooms showing the real folder {inside:?} (must be some), showing the secret {leaked:?} (must be 0)"
+            ));
+            failures.push(record_dump("race", &log));
+        }
     }
 
     // Many rooms; a stand-in killed; a room left running when the app ends.
