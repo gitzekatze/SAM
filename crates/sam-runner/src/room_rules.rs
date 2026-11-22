@@ -549,7 +549,19 @@ fn covers_reserved(p: &Path) -> bool {
 /// How a device place of the app is shown for a request that asked for
 /// `asked`: never writable where the app's own `--remount-ro` made it
 /// read-only (working devices stay working, read-only as in the app).
-fn device_steps(src: PathBuf, dst: PathBuf, asked: DeviceAccess, read_only: bool) -> Vec<Step> {
+fn device_steps(
+    src: PathBuf,
+    dst: PathBuf,
+    asked: DeviceAccess,
+    read_only: bool,
+    capped: &mut Vec<String>,
+) -> Vec<Step> {
+    if read_only && asked != DeviceAccess::ReadOnly {
+        capped.push(format!(
+            "{}: read-only for the app, so read-only here",
+            dst.display()
+        ));
+    }
     match (asked, read_only) {
         (DeviceAccess::Devices, true) => vec![
             Step::Device {
@@ -966,11 +978,23 @@ fn place(
                 read_only,
                 ..
             } => {
+                // Device places are shown by their name (Bubblewrap has no
+                // way to show a device by handle): only as SAM or the
+                // person named them, never a path below one, which could
+                // lead through a link the app made (in /dev/shm, say).
+                if !rest.as_os_str().is_empty() {
+                    return Err(format!(
+                        "{} lies below the device place {}: a room shows a device place only as a whole",
+                        src.display(),
+                        top.display()
+                    ));
+                }
                 room.steps.extend(device_steps(
                     top.join(&rest),
                     src.to_path_buf(),
                     asked,
                     *read_only,
+                    &mut room.capped,
                 ));
                 shown = true;
             }
@@ -1025,8 +1049,13 @@ fn place(
                 dst,
                 read_only,
             } => {
-                room.steps
-                    .extend(device_steps(from.clone(), dst.clone(), asked, *read_only));
+                room.steps.extend(device_steps(
+                    from.clone(),
+                    dst.clone(),
+                    asked,
+                    *read_only,
+                    &mut room.capped,
+                ));
                 shown = true;
             }
             Entry::DevFs { at } => {
@@ -1744,6 +1773,27 @@ mod tests {
             .any(|st| matches!(st, Step::Args(a) if a[0] == "--dev")));
     }
 
+    /// A device place is shown only as a whole: a path below it is never
+    /// looked up by name (a link the app made in /dev/shm could lead to a
+    /// file the app cannot see).
+    #[test]
+    fn a_device_place_is_shown_only_as_a_whole() {
+        let plan =
+            FloorPlan::from_bwrap_args(&s(&["--dev-bind", "/dev", "/dev", "--", "x"])).unwrap();
+        let ask = |p: &str| {
+            plan_room(
+                &plan,
+                &req(&[&["--dev-bind", p, p]], &["x"]),
+                AppFacts::default(),
+            )
+        };
+        assert!(ask("/dev").is_ok());
+        for below in ["/dev/shm/evil", "/dev/dri", "/dev/null"] {
+            let e = ask(below).unwrap_err();
+            assert!(e.contains("only as a whole"), "{below}: {e}");
+        }
+    }
+
     /// The app's own `--remount-ro` over a device place counts in rooms
     /// too: never writable there, working devices stay read-only.
     #[test]
@@ -1758,15 +1808,24 @@ mod tests {
             "x",
         ]))
         .unwrap();
-        let room = |op: &str| {
+        let full = |op: &str| {
             plan_room(
                 &plan,
                 &req(&[&[op, "/srv/shared", "/srv/shared"]], &["x"]),
                 AppFacts::default(),
             )
             .unwrap()
-            .steps
         };
+        let room = |op: &str| full(op).steps;
+        // Said in the start record, as every cap is.
+        assert!(full("--bind")
+            .capped
+            .iter()
+            .any(|c| c.contains("/srv/shared: read-only for the app")));
+        assert!(!full("--ro-bind")
+            .capped
+            .iter()
+            .any(|c| c.contains("/srv/shared")));
         assert_eq!(
             room("--bind"),
             vec![Step::Device {

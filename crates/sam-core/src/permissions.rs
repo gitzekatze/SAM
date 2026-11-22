@@ -654,6 +654,10 @@ pub struct AdvancedPerms {
     /// Room service: a program that builds a Bubblewrap sandbox of its own
     /// (GTK's image loader) gets it from SAM, never with more than the app.
     /// Off: such programs fail inside SAM, or run without their sandbox.
+    /// Written only when off: a record saved before Room service existed
+    /// keeps its checksum, so no app looks changed outside SAM after an
+    /// update.
+    #[serde(default = "room_service_on", skip_serializing_if = "is_on")]
     pub room_service: bool,
     /// Expose host theme configuration (GTK/Qt/KDE settings, read-only).
     pub host_themes: bool,
@@ -900,7 +904,7 @@ impl PermissionSet {
             )
         })?;
         let existing = obj.get(*last);
-        if existing.is_none() && !(*last == "landlock" && parents == ["advanced"]) {
+        if existing.is_none() && !LEFT_OUT_WHEN_EMPTY.iter().any(|(k, _)| *k == key) {
             bail!(
                 "{}",
                 crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
@@ -958,7 +962,17 @@ const LEFT_OUT_WHEN_EMPTY: &[(&str, &str)] = &[
     ("dbus.session.calls", "[]"),
     ("dbus.session.broadcasts", "[]"),
     ("advanced.landlock", "null"),
+    ("advanced.room_service", "true"),
 ];
+
+fn room_service_on() -> bool {
+    true
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+fn is_on(v: &bool) -> bool {
+    *v
+}
 
 macro_rules! perm {
     ($key:expr, $cat:expr, $title:expr, $desc:expr, $risk:ident) => {

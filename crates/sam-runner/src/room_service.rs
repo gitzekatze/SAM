@@ -20,9 +20,7 @@
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
@@ -135,7 +133,7 @@ struct State {
     receiving: Mutex<()>,
     slots: Mutex<usize>,
     freed: Condvar,
-    rooms: Mutex<Vec<Arc<Mutex<Child>>>>,
+    rooms: Mutex<Vec<Arc<Mutex<RoomProcess>>>>,
     records: Mutex<Vec<String>>,
     dropped_records: AtomicUsize,
     /// Rooms built or failed: kept apart, so refusals cannot push them out.
@@ -355,6 +353,19 @@ impl RoomService {
     /// Ends every room and the service; returns the start record's lines.
     pub fn stop(mut self) -> Vec<String> {
         self.halt();
+        // Requests still being read, waiting for a slot or with a room
+        // ending now record themselves; a short wait lets them, and any
+        // left after it are counted.
+        let end = std::time::Instant::now() + Duration::from_secs(2);
+        while self.state.connections.load(Ordering::SeqCst) > 0 && std::time::Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let left = self.state.connections.load(Ordering::SeqCst);
+        if left > 0 {
+            self.state.record(format!(
+                "sam-room: {left} requests still unfinished when the app's start ended"
+            ));
+        }
         let st = &self.state;
         let mut records = st
             .room_records
@@ -494,7 +505,12 @@ fn serve_one(mut stream: UnixStream, state: &State, served: &Served) {
             };
         }
         if state.stop.load(Ordering::SeqCst) {
-            return;
+            drop(used);
+            return refuse(
+                &mut stream,
+                &program,
+                "the app's start ended before the room was built",
+            );
         }
         *used += 1;
     }
@@ -603,6 +619,8 @@ fn run_room(
     if !held.add_own(places + ROOM_FDS) {
         bail!("too many places held for rooms at once ({places} more do not fit)");
     }
+    // Writes the request asked for but the app cannot make (recorded).
+    let mut capped_here: Vec<String> = Vec::new();
     for step in &room.steps {
         match step {
             Step::Show {
@@ -631,9 +649,15 @@ fn run_room(
                 };
                 // Writable only where the app can write: its mount and its
                 // Landlock rules (whatever Landlock the room gets).
-                let writable = *writable
-                    && !read_only_filesystem(&fd)
+                let can = !read_only_filesystem(&fd)
                     && ctx.landlock.write.iter().any(|w| dst.starts_with(w));
+                if *writable && !can {
+                    capped_here.push(format!(
+                        "{}: not writable for the app, so read-only here",
+                        dst.display()
+                    ));
+                }
+                let writable = *writable && can;
                 let n = number(&mut numbers);
                 args.push(
                     if writable {
@@ -691,102 +715,14 @@ fn run_room(
             .map(|(fd, n)| (fd.as_raw_fd(), *n)),
     );
     let highest = map.iter().map(|(_, n)| *n).max().unwrap_or(2);
-    let mut cmd = Command::new(&ctx.bwrap);
-    cmd.args(&args).env_clear();
     // The program's standard streams only when it passed them.
-    if !req_fds.contains(&0) {
-        cmd.stdin(Stdio::null());
-    }
-    if !req_fds.contains(&1) {
-        cmd.stdout(Stdio::null());
-    }
-    if !req_fds.contains(&2) {
-        cmd.stderr(Stdio::null());
-    }
-    let mut targets: Vec<RawFd> = map.iter().map(|(_, n)| *n).collect();
-    targets.sort_unstable();
-    let mut temps: Vec<RawFd> = vec![0; map.len()];
-    // SAFETY: only async-signal-safe calls (prctl, getrlimit, setrlimit,
-    // umask, fcntl, dup2, close_range) on buffers made before the fork.
-    unsafe {
-        cmd.pre_exec(move || {
-            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong);
-            // Room for the moves above every target, for these few calls
-            // only; the room keeps the launcher's own limit.
-            let mut lim: libc::rlimit = std::mem::zeroed();
-            let have = libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0;
-            if have {
-                let raised = libc::rlimit {
-                    rlim_cur: lim.rlim_max,
-                    rlim_max: lim.rlim_max,
-                };
-                libc::setrlimit(libc::RLIMIT_NOFILE, &raised);
-            }
-            // First above every target, then to the target: no connection
-            // overwrites another on the way.
-            for (i, (src, _)) in map.iter().enumerate() {
-                let t = libc::fcntl(*src, libc::F_DUPFD_CLOEXEC, highest + 1);
-                if t < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                temps[i] = t;
-            }
-            for (i, (_, dst)) in map.iter().enumerate() {
-                if libc::dup2(temps[i], *dst) < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-            }
-            if have {
-                libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
-            }
-            // The program's own limits where lower than the launcher's:
-            // never raised by a request.
-            for (res, want) in &limits {
-                let mut cur: libc::rlimit = std::mem::zeroed();
-                if libc::getrlimit(*res as _, &mut cur) != 0 {
-                    continue;
-                }
-                let hard = want.rlim_max.min(cur.rlim_max);
-                let soft = want.rlim_cur.min(cur.rlim_cur).min(hard);
-                if hard != cur.rlim_max || soft != cur.rlim_cur {
-                    let new = libc::rlimit {
-                        rlim_cur: soft,
-                        rlim_max: hard,
-                    };
-                    libc::setrlimit(*res as _, &new);
-                }
-            }
-            if let Some(m) = umask {
-                libc::umask((m & 0o777) as libc::mode_t);
-            }
-            // Everything else from 3 on closes when Bubblewrap starts
-            // (marked, not closed: Rust reports a failed start through one).
-            let mut from: RawFd = 3;
-            for t in &targets {
-                if *t > from {
-                    libc::syscall(
-                        libc::SYS_close_range,
-                        from as u32,
-                        (*t - 1) as u32,
-                        CLOSE_RANGE_CLOEXEC,
-                    );
-                }
-                from = from.max(*t + 1);
-            }
-            libc::syscall(
-                libc::SYS_close_range,
-                from as u32,
-                u32::MAX,
-                CLOSE_RANGE_CLOEXEC,
-            );
-            Ok(())
-        });
-    }
+    let null_std = [0, 1, 2].map(|n| !req_fds.contains(&n));
     // Everything that can fail is done before the room starts: once it
     // runs, it is never left untracked.
     let mut peer = stream.try_clone()?;
     let _ = peer.set_read_timeout(None);
-    let child = cmd.spawn().context("starting Bubblewrap for the room")?;
+    let child = spawn_room(&ctx.bwrap, &args, &map, highest, null_std, &limits, umask)
+        .context("starting Bubblewrap for the room")?;
     // The room has its copies: the app's connections leave the budget.
     drop(passed);
     drop(handles);
@@ -808,13 +744,19 @@ fn run_room(
             .name("sam-room-watch".into())
             .spawn(move || {
                 let mut b = [0u8; 1];
-                let _ = peer.read(&mut b);
+                // A signal that interrupts the wait is not the stand-in
+                // leaving (the launcher handles terminal resizes, say).
+                while let Err(e) = peer.read(&mut b) {
+                    if e.kind() != std::io::ErrorKind::Interrupted {
+                        break;
+                    }
+                }
                 if let Ok(mut c) = child.lock() {
                     let _ = c.kill();
                 }
             })
     };
-    let end_room = |child: &Arc<Mutex<Child>>| {
+    let end_room = |child: &Arc<Mutex<RoomProcess>>| {
         if let Ok(mut c) = child.lock() {
             let _ = c.kill();
             let _ = c.wait();
@@ -835,12 +777,14 @@ fn run_room(
         &mut status,
     );
     let status = sam_core::util::display_safe(status.trim(), 200);
-    let capped = if room.capped.is_empty() {
+    let all_capped: Vec<&String> = room.capped.iter().chain(&capped_here).collect();
+    let capped = if all_capped.is_empty() {
         String::new()
     } else {
+        let list: Vec<&str> = all_capped.iter().map(|c| c.as_str()).collect();
         format!(
             "; capped: {}",
-            sam_core::util::display_safe(&room.capped.join(", "), 300)
+            sam_core::util::display_safe(&list.join(", "), 300)
         )
     };
     if status.is_empty() {
@@ -872,10 +816,239 @@ fn run_room(
         rooms.retain(|r| !Arc::ptr_eq(r, &child));
     }
     drop(watcher); // ends when the connection closes
-    use std::os::unix::process::ExitStatusExt;
-    Ok(status
-        .code()
-        .unwrap_or_else(|| 128 + status.signal().unwrap_or(0)))
+    Ok(exit_code(status))
+}
+
+/// The exit code a shell shows for a wait status (128 + signal when killed).
+fn exit_code(status: i32) -> i32 {
+    if libc::WIFEXITED(status) {
+        libc::WEXITSTATUS(status)
+    } else if libc::WIFSIGNALED(status) {
+        128 + libc::WTERMSIG(status)
+    } else {
+        1
+    }
+}
+
+/// A room's Bubblewrap, started by [`spawn_room`]: ended and waited for by
+/// its process id.
+pub(crate) struct RoomProcess {
+    pid: libc::pid_t,
+    status: Option<i32>,
+}
+
+impl RoomProcess {
+    fn kill(&mut self) -> std::io::Result<()> {
+        if self.status.is_none() {
+            // SAFETY: a signal to our own child, not yet waited for (so
+            // its number cannot belong to another process).
+            if unsafe { libc::kill(self.pid, libc::SIGKILL) } != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+        Ok(())
+    }
+    fn wait_with(&mut self, flags: libc::c_int) -> std::io::Result<Option<i32>> {
+        if let Some(st) = self.status {
+            return Ok(Some(st));
+        }
+        let mut st = 0;
+        loop {
+            // SAFETY: waits for our own child; st is a live int.
+            let r = unsafe { libc::waitpid(self.pid, &mut st, flags) };
+            if r == self.pid {
+                self.status = Some(st);
+                return Ok(Some(st));
+            }
+            if r == 0 {
+                return Ok(None);
+            }
+            let e = std::io::Error::last_os_error();
+            if e.kind() != std::io::ErrorKind::Interrupted {
+                return Err(e);
+            }
+        }
+    }
+    fn try_wait(&mut self) -> std::io::Result<Option<i32>> {
+        self.wait_with(libc::WNOHANG)
+    }
+    fn wait(&mut self) -> std::io::Result<i32> {
+        self.wait_with(0).map(|s| s.unwrap_or(0))
+    }
+}
+
+/// Starts the room's Bubblewrap with every connection of `map` at its
+/// number in the room and nothing else open: the program's lower limits
+/// and its umask applied, standard streams it did not pass on /dev/null.
+/// SAM's own start, not Rust's: Rust reports a failed start through a pipe
+/// at a number the moves could overwrite; here that pipe is moved above
+/// every target first, so a failed start is always reported as one.
+fn spawn_room(
+    bwrap: &Path,
+    args: &[String],
+    map: &[(RawFd, RawFd)],
+    highest: RawFd,
+    null_std: [bool; 3],
+    limits: &[(i32, libc::rlimit)],
+    umask: Option<u32>,
+) -> Result<RoomProcess> {
+    use std::os::unix::ffi::OsStrExt;
+    let bad = |_| std::io::Error::from(std::io::ErrorKind::InvalidInput);
+    // Everything the child needs, made before the fork (it may only make
+    // async-signal-safe calls).
+    let path = std::ffi::CString::new(bwrap.as_os_str().as_bytes()).map_err(bad)?;
+    let argv: Vec<std::ffi::CString> = std::iter::once(Ok(path.clone()))
+        .chain(
+            args.iter()
+                .map(|a| std::ffi::CString::new(a.as_bytes()).map_err(bad)),
+        )
+        .collect::<std::io::Result<_>>()?;
+    let mut argv_ptrs: Vec<*const libc::c_char> = argv.iter().map(|a| a.as_ptr()).collect();
+    argv_ptrs.push(std::ptr::null());
+    let envp: [*const libc::c_char; 1] = [std::ptr::null()];
+    let null = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/null")?;
+    let (err_read, err_write) = pipe()?;
+    let mut targets: Vec<RawFd> = map.iter().map(|(_, n)| *n).collect();
+    targets.sort_unstable();
+    let mut temps: Vec<RawFd> = vec![0; map.len()];
+    let (null_fd, err_fd) = (null.as_raw_fd(), err_write.as_raw_fd());
+    // SAFETY: getpid has no arguments.
+    let parent = unsafe { libc::getpid() };
+    // SAFETY: the child below makes only async-signal-safe calls on data
+    // made before the fork, then execs or exits.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if pid == 0 {
+        // SAFETY: the child, as said above.
+        unsafe {
+            let fail = |fd: RawFd| -> ! {
+                let e: i32 = *libc::__errno_location();
+                let b = e.to_ne_bytes();
+                libc::write(fd, b.as_ptr().cast(), 4);
+                libc::_exit(127)
+            };
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong);
+            if libc::getppid() != parent {
+                libc::_exit(127);
+            }
+            // Signals as a new program expects them (Rust ignores SIGPIPE).
+            let mut none: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut none);
+            libc::pthread_sigmask(libc::SIG_SETMASK, &none, std::ptr::null_mut());
+            libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+            // Room for the moves above every target, for these few calls
+            // only; the room keeps the launcher's own limit.
+            let mut lim: libc::rlimit = std::mem::zeroed();
+            let have = libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0;
+            if have {
+                let raised = libc::rlimit {
+                    rlim_cur: lim.rlim_max,
+                    rlim_max: lim.rlim_max,
+                };
+                libc::setrlimit(libc::RLIMIT_NOFILE, &raised);
+            }
+            // The error pipe and /dev/null above every target first, then
+            // every connection above them, then to its target: nothing
+            // overwrites another on the way.
+            let err = libc::fcntl(err_fd, libc::F_DUPFD_CLOEXEC, highest + 1);
+            if err < 0 {
+                fail(err_fd);
+            }
+            let null = libc::fcntl(null_fd, libc::F_DUPFD_CLOEXEC, highest + 1);
+            if null < 0 {
+                fail(err);
+            }
+            for (i, (src, _)) in map.iter().enumerate() {
+                let t = libc::fcntl(*src, libc::F_DUPFD_CLOEXEC, highest + 1);
+                if t < 0 {
+                    fail(err);
+                }
+                temps[i] = t;
+            }
+            for (i, (_, dst)) in map.iter().enumerate() {
+                if libc::dup2(temps[i], *dst) < 0 {
+                    fail(err);
+                }
+            }
+            for (n, use_null) in null_std.iter().enumerate() {
+                if *use_null && libc::dup2(null, n as RawFd) < 0 {
+                    fail(err);
+                }
+            }
+            if have {
+                libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
+            }
+            // The program's own limits where lower than the launcher's:
+            // never raised by a request.
+            for (res, want) in limits {
+                let mut cur: libc::rlimit = std::mem::zeroed();
+                if libc::getrlimit(*res as _, &mut cur) != 0 {
+                    continue;
+                }
+                let hard = want.rlim_max.min(cur.rlim_max);
+                let soft = want.rlim_cur.min(cur.rlim_cur).min(hard);
+                if hard != cur.rlim_max || soft != cur.rlim_cur {
+                    let new = libc::rlimit {
+                        rlim_cur: soft,
+                        rlim_max: hard,
+                    };
+                    libc::setrlimit(*res as _, &new);
+                }
+            }
+            if let Some(m) = umask {
+                libc::umask((m & 0o777) as libc::mode_t);
+            }
+            // Everything else from 3 on closes when Bubblewrap starts.
+            let mut from: RawFd = 3;
+            for t in &targets {
+                if *t > from {
+                    libc::syscall(
+                        libc::SYS_close_range,
+                        from as u32,
+                        (*t - 1) as u32,
+                        CLOSE_RANGE_CLOEXEC,
+                    );
+                }
+                from = from.max(*t + 1);
+            }
+            libc::syscall(
+                libc::SYS_close_range,
+                from as u32,
+                u32::MAX,
+                CLOSE_RANGE_CLOEXEC,
+            );
+            libc::execve(path.as_ptr(), argv_ptrs.as_ptr(), envp.as_ptr());
+            fail(err)
+        }
+    }
+    drop(err_write);
+    drop(null);
+    let mut child = RoomProcess { pid, status: None };
+    let mut errno = [0u8; 4];
+    let mut got = 0;
+    let mut f = std::fs::File::from(err_read);
+    while got < 4 {
+        match f.read(&mut errno[got..]) {
+            Ok(0) => break,
+            Ok(n) => got += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(e.into());
+            }
+        }
+    }
+    if got == 0 {
+        return Ok(child);
+    }
+    let _ = child.wait();
+    Err(std::io::Error::from_raw_os_error(i32::from_ne_bytes(errno)).into())
 }
 
 const CLOSE_RANGE_CLOEXEC: u32 = 4;
@@ -1118,21 +1291,30 @@ fn recv_with_fds(
 }
 
 /// Waits until the connection has something to read, at most `limit`.
-fn wait_readable(stream: &UnixStream, limit: Duration) -> Result<(), String> {
+fn wait_readable(stream: &UnixStream, limit: Duration, stop: &AtomicBool) -> Result<(), String> {
     let mut p = libc::pollfd {
         fd: stream.as_raw_fd(),
         events: libc::POLLIN,
         revents: 0,
     };
-    let ms = limit.as_millis().min(i32::MAX as u128) as i32;
+    let end = std::time::Instant::now() + limit;
     loop {
+        if stop.load(Ordering::SeqCst) {
+            return Err("the app's start ended while the request was read".into());
+        }
+        let left = end.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return Err("reading the request: it took too long".into());
+        }
+        // In short steps, so the end of the app's start is noticed.
+        let ms = left.as_millis().min(200) as i32;
         // SAFETY: one pollfd that lives through the call.
         let r = unsafe { libc::poll(&mut p, 1, ms) };
         if r > 0 {
             return Ok(());
         }
         if r == 0 {
-            return Err("reading the request: it took too long".into());
+            continue;
         }
         let e = std::io::Error::last_os_error();
         if e.kind() != std::io::ErrorKind::Interrupted {
@@ -1155,6 +1337,7 @@ fn read_message(
         wait_readable(
             stream,
             end.saturating_duration_since(std::time::Instant::now()),
+            &held.state.stop,
         )?;
         let want = room_rules::MAX_FDS - fds.len().min(room_rules::MAX_FDS);
         let state = held.state;
@@ -1419,6 +1602,56 @@ mod tests {
         let at: Vec<&Path> = plan.entries.iter().map(|e| e.at()).collect();
         assert_eq!(at, vec![Path::new("/dev/null")]);
         assert_eq!(sources.len(), plan.entries.len());
+    }
+
+    /// A failed start of the room's Bubblewrap is reported as one even when
+    /// the room's connections take every low number (where the report's
+    /// own pipe would be): never a room that seems started.
+    #[test]
+    fn a_failed_start_is_reported_whatever_numbers_the_room_takes() {
+        let fds: Vec<OwnedFd> = (0..40)
+            .map(|_| OwnedFd::from(std::fs::File::open("/dev/null").unwrap()))
+            .collect();
+        let map: Vec<(RawFd, RawFd)> = fds
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (f.as_raw_fd(), 3 + i as RawFd))
+            .collect();
+        let r = spawn_room(
+            Path::new("/nonexistent/sam-test-bwrap"),
+            &[],
+            &map,
+            42,
+            [true; 3],
+            &[],
+            None,
+        );
+        let e = r
+            .err()
+            .expect("a start that cannot happen was reported as started");
+        assert!(format!("{e:#}").contains("No such file"), "{e:#}");
+    }
+
+    /// The room's Bubblewrap gets each connection at its number, its
+    /// standard streams on /dev/null when not passed, and its exit code.
+    #[test]
+    fn a_room_gets_its_connections_at_their_numbers() {
+        let (r, w) = pipe().unwrap();
+        let mut p = spawn_room(
+            Path::new("/bin/sh"),
+            &s(&["-c", "echo via-9 >&9; exit 3"]),
+            &[(w.as_raw_fd(), 9)],
+            9,
+            [true; 3],
+            &[],
+            None,
+        )
+        .unwrap();
+        drop(w);
+        let mut out = String::new();
+        std::fs::File::from(r).read_to_string(&mut out).unwrap();
+        assert_eq!(out, "via-9\n");
+        assert_eq!(exit_code(p.wait().unwrap()), 3);
     }
 
     /// The descriptors held for rooms stay within what the launcher's

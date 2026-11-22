@@ -151,6 +151,33 @@ impl Prepared {
 /// has it; the syscall filter where the baseline is on in both the
 /// configuration and the app, or the app's own strict switch is on. The
 /// strict switch decides by itself (audit D-M13: it did nothing unless a
+/// The warnings when SAM's helper is missing: each names only what is
+/// really lost (the kernel layers the app wanted, Room service).
+fn helper_missing_warnings(want_layers: bool, want_rooms: bool) -> Vec<Warning> {
+    let mut out = Vec::new();
+    if want_layers {
+        out.push(Warning::warn(
+            "helper-missing",
+            "Kernel restrictions unavailable",
+            "sam-jail-run was not found next to sam-jail; Landlock and seccomp are not applied.",
+        ));
+    }
+    if want_rooms {
+        out.push(Warning::warn(
+            "room-service-failed",
+            "Room service unavailable",
+            sam_core::i18n::trf(
+                "{error}; programs in this app that build a sandbox of their own fail this time",
+                &[(
+                    "error",
+                    &"sam-jail-run was not found next to sam-jail".to_string(),
+                )],
+            ),
+        ));
+    }
+    out
+}
+
 /// second, global setting was on).
 fn wanted_layers(
     perms: &sam_core::permissions::PermissionSet,
@@ -498,20 +525,33 @@ pub fn prepare(
             match crate::find_helper() {
                 Some(helper) => {
                     let spec = kernel::SandboxSpec {
-                        landlock: want_landlock.then(|| kernel::landlock_spec(perms, host, &format!("/run/user/{}", host.uid), &launch_writable_paths(&ctx))),
-                        seccomp: want_seccomp.then_some(kernel::SeccompSpec { strict, allow_userns: perms.advanced.allow_userns, bluetooth: perms.devices.bluetooth }),
+                        landlock: want_landlock.then(|| {
+                            kernel::landlock_spec(
+                                perms,
+                                host,
+                                &format!("/run/user/{}", host.uid),
+                                &launch_writable_paths(&ctx),
+                            )
+                        }),
+                        seccomp: want_seccomp.then_some(kernel::SeccompSpec {
+                            strict,
+                            allow_userns: perms.advanced.allow_userns,
+                            bluetooth: perms.devices.bluetooth,
+                        }),
                         probe: opts.probe.clone(),
                     };
                     let spec_path = runtime_dir.join("sandbox.json");
                     fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
-                    ctx.helper = Some(sam_core::sandbox::SandboxHelper { binary: helper, spec: spec_path });
+                    ctx.helper = Some(sam_core::sandbox::SandboxHelper {
+                        binary: helper,
+                        spec: spec_path,
+                    });
                     landlock = want_landlock;
                     seccomp = want_seccomp;
                 }
-                None => warnings.push(Warning::warn(
-                    "helper-missing",
-                    "Kernel restrictions unavailable",
-                    "sam-jail-run was not found next to sam-jail; Landlock and seccomp are not applied.",
+                None => warnings.extend(helper_missing_warnings(
+                    want_landlock || want_seccomp || opts.probe.is_some(),
+                    want_rooms,
                 )),
             }
         }
@@ -2286,5 +2326,30 @@ mod tests {
         assert_eq!(launch_dir_pid("l12-3"), Some(12));
         assert_eq!(launch_dir_pid("12-3"), None);
         assert_eq!(launch_dir_pid("lx-3"), None);
+    }
+}
+
+#[cfg(test)]
+mod helper_missing_tests {
+    use super::*;
+
+    /// Without SAM's helper, each warning names only what is really lost:
+    /// no word about Landlock and seccomp when the app wanted neither, and
+    /// Room service named when it is lost.
+    #[test]
+    fn a_missing_helper_names_only_what_is_lost() {
+        let codes = |l, r| -> Vec<String> {
+            helper_missing_warnings(l, r)
+                .into_iter()
+                .map(|w| w.code)
+                .collect()
+        };
+        assert_eq!(codes(false, true), vec!["room-service-failed"]);
+        assert_eq!(codes(true, false), vec!["helper-missing"]);
+        assert_eq!(
+            codes(true, true),
+            vec!["helper-missing", "room-service-failed"]
+        );
+        assert!(codes(false, false).is_empty());
     }
 }

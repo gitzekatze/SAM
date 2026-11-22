@@ -137,10 +137,10 @@ for opt in "--userns 0" "--userns2 0" "--pidns 0" "--info-fd 1" "--json-status-f
   timeout -s KILL 10 bwrap --ro-bind /usr /usr $SYS $opt -- /usr/bin/echo ok </dev/null >"$HOME/exotic.out" 2>/dev/null
   rc=$?
   out=$(cat "$HOME/exotic.out")
-  case "$rc:$out" in
-    137:*) accepted="$accepted [$opt: hung]" ;;
-    *:ok) accepted="$accepted [$opt]" ;;
-  esac
+  # The room ran (its "ok" on a line of its own), whatever else came out:
+  # --info-fd 1 and --json-status-fd 1 would add Bubblewrap's own lines.
+  if [ "$rc" = 137 ]; then accepted="$accepted [$opt: hung]"
+  elif printf '%s\n' "$out" | grep -qx ok; then accepted="$accepted [$opt]"; fi
 done
 say exotic "${accepted:-all-refused}"
 say chmod_app_folder "$(rv room --bind "$HOME" "$HOME" --chmod 0777 "$HOME" -- /usr/bin/echo ok)"
@@ -721,7 +721,12 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
     if processes(&target).is_empty() {
         return vec!["stop: the room was never built".into()];
     }
+    // A request still being read when the service stops: it is recorded,
+    // never lost.
+    let idle = std::os::unix::net::UnixStream::connect(&service.socket).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
     let lines = service.stop();
+    drop(idle);
     let end = Instant::now() + Duration::from_secs(5);
     while !processes(&target).is_empty() && Instant::now() < end {
         std::thread::sleep(Duration::from_millis(50));
@@ -733,6 +738,14 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
     }
     if !lines.iter().any(|l| l.starts_with("sam-room: built sleep")) {
         out.push(format!("stop: the record names no room ({lines:?})"));
+    }
+    if !lines
+        .iter()
+        .any(|l| l.contains("the app's start ended while the request was read"))
+    {
+        out.push(format!(
+            "stop: a request still being read when the service stopped is not in the record ({lines:?})"
+        ));
     }
     // A service that cannot read the app's floor plan keeps its socket and
     // refuses every request, saying why.
@@ -1080,6 +1093,54 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     if w.home.join(".config/autostart/via-link.desktop").exists() {
         failures.push("full-home: a room wrote an autostart entry through a link".into());
     }
+    // Refused for the right reason: a writable home is shown only as a
+    // whole, and SAM's protections lie inside it (the four requests above).
+    let whole = log
+        .lines()
+        .filter(|l| {
+            l.starts_with("sam-room: refused")
+                && l.contains(
+                    "a place the app can write: a room shows such a place only as a whole",
+                )
+        })
+        .count();
+    if whole < 4 {
+        failures.push(format!(
+            "full-home: the requests for the writable home were not refused by the only-as-a-whole rule ({whole} of 4)"
+        ));
+    }
+
+    // A shared home read-only: here such rooms are built, with SAM's hiding
+    // and protecting places inside the home rebuilt as in the app.
+    let id = w.add("RoomFullHomeRo", FULL_HOME);
+    let log = w.start(
+        &id,
+        |p| {
+            p.filesystem.home = true;
+            p.filesystem.home_access = Access::Ro;
+        },
+        60,
+    );
+    failures.extend(control_built("full-home-ro", &log));
+    failures.extend(
+        check(
+            &log,
+            &[
+                ("autostart_room", "blocked"),
+                ("bashrc_room", "blocked"),
+                ("rename_room", "blocked"),
+                ("ssh_app", "blocked"),
+                ("ssh_room", "blocked"),
+            ],
+        )
+        .into_iter()
+        .map(|f| format!("full-home-ro: {f}")),
+    );
+    failures.extend(room_within_app(
+        "full-home-ro",
+        &log,
+        &["autostart", "bashrc", "rename", "ssh"],
+    ));
 
     // A grant inside SAM's own folder, hidden from the app.
     let id = w.add("RoomSamFolderGrant", SAM_FOLDER_GRANT);

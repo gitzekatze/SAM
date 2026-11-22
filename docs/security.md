@@ -151,12 +151,15 @@ rule: **no more than the app, no less than asked.**
     hiding mounts (`~/.ssh`, `~/.gnupg`, SAM's own folders, grants inside
     them) come along, so a room never sees what the app does not.
   - Every source is opened once when the app starts and shown by that
-    handle; nothing is found by name later, whatever the app renames. A
-    device place missing when the app starts is left out too, so a device
-    plugged in later never reaches a room. A
-    path the request names below a source is opened without following any
-    link (a link the app made could lead to a place it sees protected or
-    hidden); such a request is refused.
+    handle; nothing else is found by name later, whatever the app renames.
+    A path the request names below a source is opened without following
+    any link (a link the app made could lead to a place it sees protected
+    or hidden); such a request is refused. Device places are the one thing
+    shown by name (Bubblewrap cannot show a device by handle): only as a
+    whole, as SAM or the person named them, never a path below one (which
+    could lead through a link the app made in `/dev/shm`); one missing
+    when the app starts is left out, so a device plugged in later never
+    reaches a room.
   - Writable only where the app's place is writable (the app's own
     `--remount-ro` arguments count); devices only the app's, and working
     only where the request asked for working devices (the app's `/dev`
