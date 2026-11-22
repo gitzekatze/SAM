@@ -10,12 +10,32 @@ mod rooms_common;
 
 use rooms_common::{cases, World};
 
-/// Descriptors left above what is open when the app starts (SAM keeps 256
-/// of them for itself): low enough that one room of many places would take
-/// every descriptor the launcher has without the budget, enough for a room
-/// of a few places. Counted from what is open, as a CI machine's test
-/// process holds many more than a desktop's.
-const ABOVE_OPEN: usize = 480;
+/// Descriptors left above what SAM's launcher holds while an app runs (it
+/// keeps 256 of them for itself): low enough that one room of many places
+/// would take every descriptor it has without the budget, enough for a
+/// room of a few places. Counted from what the launcher really holds here
+/// (it holds each place of the app's floor plan, more on some systems).
+const ABOVE_HELD: usize = 480;
+
+/// The most descriptors this process holds while `run` runs.
+fn most_held_during(run: impl FnOnce()) -> usize {
+    let count = || std::fs::read_dir("/proc/self/fd").map_or(0, |d| d.count());
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let most = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(count()));
+    let watcher = {
+        let (stop, most) = (stop.clone(), most.clone());
+        std::thread::spawn(move || {
+            while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+                most.fetch_max(count(), std::sync::atomic::Ordering::SeqCst);
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        })
+    };
+    run();
+    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    watcher.join().unwrap();
+    most.load(std::sync::atomic::Ordering::SeqCst)
+}
 
 #[test]
 fn rooms_never_run_the_launcher_out_of_descriptors() {
@@ -25,12 +45,16 @@ fn rooms_never_run_the_launcher_out_of_descriptors() {
     let _contracts = sam_runner::contracts::guard(&["bwrap-core", "bwrap-rooms"])
         .unwrap_or_else(|e| panic!("{e}"));
     let w = World::new();
-    let open = std::fs::read_dir("/proc/self/fd").unwrap().count();
+    // What the launcher holds while an app runs, at the usual limit.
+    let quiet = w.add("RoomFdQuiet", "sleep 2\n");
+    let open = most_held_during(|| {
+        w.start(&quiet, |_| {}, 30);
+    });
     // SAFETY: getrlimit and setrlimit write and read the struct given.
     unsafe {
         let mut lim: libc::rlimit = std::mem::zeroed();
         assert_eq!(libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim), 0);
-        lim.rlim_cur = ((open + ABOVE_OPEN) as libc::rlim_t).min(lim.rlim_max);
+        lim.rlim_cur = ((open + ABOVE_HELD) as libc::rlim_t).min(lim.rlim_max);
         assert_eq!(libc::setrlimit(libc::RLIMIT_NOFILE, &lim), 0);
     }
     let id = w.add(
@@ -87,7 +111,7 @@ say too_many "$(rv room $(many 230) -- /usr/bin/echo ok)"
     }
     assert!(
         failures.is_empty(),
-        "{}\n(open when the app started: {open})\nthe start record:\n{}",
+        "{}\n(the launcher held {open} while an app ran)\nthe start record:\n{}",
         failures.join("\n"),
         room_lines.join("\n")
     );
