@@ -263,7 +263,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-249 tests.
+250 tests.
 
 | Promise | Test |
 |---|---|
@@ -408,15 +408,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The app's own `--remount-ro` over a device place counts in rooms too: never writable there, working devices stay read-only. | [`a_device_place_the_app_has_read_only_stays_read_only`](../crates/sam-runner/src/room_rules.rs#L2187) |
 | The rooms folder is asked or safe. | [`the_rooms_folder_is_asked_or_safe`](../crates/sam-runner/src/room_rules.rs#L2238) |
 | A floor plan with an unknown option gives no rooms. | [`a_floor_plan_with_an_unknown_option_gives_no_rooms`](../crates/sam-runner/src/room_rules.rs#L2253) |
-| A device place missing when the app starts is not in the app, so it leaves the floor plan: a device plugged in later never reaches a room by its name. | [`a_device_place_missing_at_the_start_leaves_the_floor_plan`](../crates/sam-runner/src/room_service.rs#L1731) |
-| An answer to a stand-in that has already gone never ends SAM's launcher, also with SIGPIPE at its default (as `sam-jail run` has it). | [`an_answer_to_a_stand_in_that_left_never_ends_the_launcher`](../crates/sam-runner/src/room_service.rs#L1755) |
-| A receive keeps at most the connections it has room for: one more is refused, never kept uncounted (CMSG_SPACE's rounding would fit it). | [`a_receive_keeps_no_more_connections_than_counted`](../crates/sam-runner/src/room_service.rs#L1784) |
-| A failed start of the room's Bubblewrap is reported as one even when the room's connections take every low number (where the report's own pipe would be): never a room that seems started. | [`a_failed_start_is_reported_whatever_numbers_the_room_takes`](../crates/sam-runner/src/room_service.rs#L1802) |
-| The room's Bubblewrap gets each connection at its number, its standard streams on /dev/null when not passed, and its exit code. | [`a_room_gets_its_connections_at_their_numbers`](../crates/sam-runner/src/room_service.rs#L1833) |
-| A drive is one a person may unmount when it is not the file system of the root or the home, or lies under /media, /mnt, /run/media. | [`drives_that_may_be_unmounted_are_known_by_their_file_system`](../crates/sam-runner/src/room_service.rs#L1855) |
-| Room service starts only with a Bubblewrap that can show places by handle: with an older one, programs keep the computer's own Bubblewrap instead of a stand-in that could build no room. | [`rooms_need_a_bubblewrap_that_shows_places_by_handle`](../crates/sam-runner/src/room_service.rs#L1876) |
-| A source on a drive that may be unmounted is not held open (the drive stays free to unmount while the app runs); a room still shows it, but never another folder put in its place since the start. | [`a_source_on_a_removable_drive_is_remembered_not_held`](../crates/sam-runner/src/room_service.rs#L1902) |
-| The descriptors held for rooms stay within what the launcher's limit leaves free, and a reservation gives back what did not come. | [`descriptors_for_rooms_stay_within_the_launchers_limit`](../crates/sam-runner/src/room_service.rs#L1933) |
+| A device place missing when the app starts is not in the app, so it leaves the floor plan: a device plugged in later never reaches a room by its name. | [`a_device_place_missing_at_the_start_leaves_the_floor_plan`](../crates/sam-runner/src/room_service.rs#L1762) |
+| An answer to a stand-in that has already gone never ends SAM's launcher, also with SIGPIPE at its default (as `sam-jail run` has it). | [`an_answer_to_a_stand_in_that_left_never_ends_the_launcher`](../crates/sam-runner/src/room_service.rs#L1786) |
+| A receive keeps at most the connections it has room for: one more is refused, never kept uncounted (CMSG_SPACE's rounding would fit it). | [`a_receive_keeps_no_more_connections_than_counted`](../crates/sam-runner/src/room_service.rs#L1815) |
+| A failed start of the room's Bubblewrap is reported as one even when the room's connections take every low number (where the report's own pipe would be): never a room that seems started. | [`a_failed_start_is_reported_whatever_numbers_the_room_takes`](../crates/sam-runner/src/room_service.rs#L1833) |
+| The room's Bubblewrap gets each connection at its number, its standard streams on /dev/null when not passed, and its exit code. | [`a_room_gets_its_connections_at_their_numbers`](../crates/sam-runner/src/room_service.rs#L1864) |
+| A drive is one a person may unmount when it is not the file system of the root or the home, or lies under /media, /mnt, /run/media. | [`drives_that_may_be_unmounted_are_known_by_their_file_system`](../crates/sam-runner/src/room_service.rs#L1886) |
+| Room service starts only with a Bubblewrap that can show places by handle: with an older one, programs keep the computer's own Bubblewrap instead of a stand-in that could build no room. | [`rooms_need_a_bubblewrap_that_shows_places_by_handle`](../crates/sam-runner/src/room_service.rs#L1907) |
+| A source on a drive that may be unmounted is not held open (the drive stays free to unmount while the app runs); a room still shows it, but never another folder put in its place since the start. | [`a_source_on_a_removable_drive_is_remembered_not_held`](../crates/sam-runner/src/room_service.rs#L1933) |
+| The descriptors held for rooms stay within what the launcher's limit leaves free, and a reservation gives back what did not come. | [`descriptors_for_rooms_stay_within_the_launchers_limit`](../crates/sam-runner/src/room_service.rs#L1964) |
 | The relay's settings switch module loading off, listen only on SAM's socket, take no D-Bus name and load no modules at start; a path cannot break out of its quotes. | [`the_relay_cannot_load_modules_and_listens_only_on_its_socket`](../crates/sam-runner/src/sound_relay.rs#L235) |
 | The lock check fails a relay that runs outside a sandbox: it sees the person's folder (mutation run P14: an answer of always "held" went unnoticed, so `sam-jail doctor` would not see such a relay). | [`a_relay_outside_a_sandbox_is_not_held`](../crates/sam-runner/src/sound_relay.rs#L250) |
 | A socket path too long for Linux is refused with a clear reason before PipeWire starts (it ended with an unclear crash: the 240-app run of 2026-11-20). | [`a_too_long_socket_path_is_named_before_the_relay_starts`](../crates/sam-runner/src/sound_relay.rs#L292) |
@@ -476,6 +476,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Every room is within its app, for generated requests under no network, the full network, and in an app with Landlock and its syscall filter off: no room reads, writes or reaches anything its app cannot, and no room shows a folder of the computer its app is not shown. | [`every_room_is_a_subset_of_its_app`](../crates/sam-runner/tests/room_service_compare.rs#L171) |
 | Rooms never run the launcher out of descriptors. | [`rooms_never_run_the_launcher_out_of_descriptors`](../crates/sam-runner/tests/room_service_fd_limit.rs#L20) |
 | An image loaded through GTK's real image loader inside a SAM sandbox is decoded in a room of its own, never without a sandbox. | [`glycin_loads_images_in_a_room_never_without_a_sandbox`](../crates/sam-runner/tests/room_service_glycin.rs#L81) |
+| A room shows only what sam opened whatever bubblewrap does. | [`a_room_shows_only_what_sam_opened_whatever_bubblewrap_does`](../crates/sam-runner/tests/room_service_identity.rs#L74) |
 | Under "This computer only", a room that asks for the network gets an empty network of its own: it reaches no port of the computer (not even one listed for its app) and no socket outside the sandbox. | [`under_this_computer_only_a_room_reaches_no_more_than_its_app`](../crates/sam-runner/tests/room_service_local.rs#L27) |
 | Inside a real sandbox, each profile shows exactly the files and services it allows. | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L64) |
 | SAM installs an update of itself only when it was really signed with its release key. | [`sam_refuses_a_forged_update_that_carries_its_release_key`](../crates/sam-runner/tests/self_update_signature.rs#L81) |
@@ -632,4 +633,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 546 automated Rust tests plus 7 scripted checks.
+Total: 547 automated Rust tests plus 7 scripted checks.

@@ -154,7 +154,12 @@ rule: **no more than the app, no less than asked.**
     handle; nothing else is found by name later, whatever the app renames.
     A path the request names below a source is opened without following
     any link (a link the app made could lead to a place it sees protected
-    or hidden); such a request is refused. Device places are the one thing
+    or hidden); such a request is refused. SAM's room helper then checks,
+    before anything else, that every place shown by handle is exactly the
+    file or folder SAM opened (same device and inode) and ends the room
+    otherwise: Ubuntu 24.04's Bubblewrap mounts a handle's path by name,
+    so an app swapping a folder for a link while its room is built would
+    put the link's target in the room. Device places are the one thing
     shown by name (Bubblewrap cannot show a device by handle): only as a
     whole, as SAM or the person named them, never a path below one (which
     could lead through a link the app made in `/dev/shm`); one missing
@@ -200,7 +205,7 @@ rule: **no more than the app, no less than asked.**
     in: Bubblewrap would follow a link in that place onto the computer.
   - A place of the app that cannot be shown means no room, never one
     without it (only a path the request named itself with `-try` may be
-    missing); at most 600 places per room.
+    missing); at most 2000 places per room.
   - Every restriction the program asks for in its Bubblewrap arguments is
     kept, and its resource limits (where lower than the launcher's) and
     its umask too, as Bubblewrap's children keep them (glycin caps its

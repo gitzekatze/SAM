@@ -44,7 +44,7 @@ pub const MAX_CONNECTIONS: usize = 64;
 /// launcher's own descriptor limit leaves free (`State::fd_budget`).
 pub const MAX_HELD: usize = 512;
 /// At most this many places of the app in one room.
-const MAX_PLACES: usize = 600;
+const MAX_PLACES: usize = 2000;
 /// Descriptors the launcher keeps free for itself and for the connections
 /// (each holds its own, and a second one while its room runs).
 const FD_RESERVE: usize = 128 + 2 * MAX_CONNECTIONS;
@@ -693,11 +693,18 @@ fn run_room(
     let filter = memfd_with(&crate::kernel::filter_bytes(&ctx.seccomp)?)?;
     let filter_n = number(&mut numbers);
     handles.push(filter);
-    let spec = room_spec(ctx, &room, status_n, filter_n)?;
-    let data = memfd_with(&spec)?;
+    // The room's rules: written once every place is laid out (they name
+    // what each place must be), passed now so they come before the request.
+    let data = memfd_with(&[])?;
     let n = number(&mut numbers);
     args.extend(["--ro-bind-data".into(), n.to_string(), SPEC_INSIDE.into()]);
+    let spec_at = handles.len();
     handles.push(data);
+    // Each place shown by handle, with what it is (device, inode): SAM's
+    // helper checks in the room that Bubblewrap showed exactly that (an
+    // older Bubblewrap mounts the handle's path by name, which the app can
+    // swap while the room is built).
+    let mut shown_ids: Vec<(u64, u64, PathBuf)> = Vec::new();
     // The request's places and the room's own things, in order.
     let places = room
         .steps
@@ -760,6 +767,8 @@ fn run_room(
                 );
                 args.push(n.to_string());
                 args.push(dst.to_string_lossy().into_owned());
+                let (dev, ino) = identity(&fd)?;
+                shown_ids.push((dev, ino, dst.clone()));
                 handles.push(fd);
             }
             Step::Device { src, dst, access } => {
@@ -781,6 +790,8 @@ fn run_room(
             Step::Args(a) => args.extend(a.iter().cloned()),
         }
     }
+    let spec = room_spec(ctx, &room, status_n, filter_n, &shown_ids)?;
+    fill_memfd(&handles[spec_at], &spec)?;
     args.extend([
         "--chdir".into(),
         room.chdir.to_string_lossy().into_owned(),
@@ -1154,7 +1165,13 @@ const CLOSE_RANGE_CLOEXEC: u32 = 4;
 /// The room's rules for SAM's room helper: `key=value` entries separated by
 /// NUL bytes (see room-exec/main.rs). Landlock: the app's rules plus the
 /// room's own new places.
-fn room_spec(ctx: &RoomContext, room: &RoomPlan, status: i32, filter: i32) -> Result<Vec<u8>> {
+fn room_spec(
+    ctx: &RoomContext,
+    room: &RoomPlan,
+    status: i32,
+    filter: i32,
+    shown: &[(u64, u64, PathBuf)],
+) -> Result<Vec<u8>> {
     use std::os::unix::ffi::OsStrExt;
     let mut out: Vec<u8> = Vec::new();
     let mut put = |key: &str, value: &[u8]| -> Result<()> {
@@ -1190,6 +1207,11 @@ fn room_spec(ctx: &RoomContext, room: &RoomPlan, status: i32, filter: i32) -> Re
     let mut pwd = b"PWD=".to_vec();
     pwd.extend_from_slice(room.chdir.as_os_str().as_bytes());
     put("env", &pwd)?;
+    for (dev, ino, dst) in shown {
+        let mut v = format!("{dev}:{ino}:").into_bytes();
+        v.extend_from_slice(dst.as_os_str().as_bytes());
+        put("place", &v)?;
+    }
     Ok(out)
 }
 
@@ -1286,6 +1308,15 @@ fn read_only_filesystem(fd: &OwnedFd) -> bool {
         let mut st: libc::statvfs = std::mem::zeroed();
         libc::fstatvfs(fd.as_raw_fd(), &mut st) == 0 && st.f_flag & libc::ST_RDONLY != 0
     }
+}
+
+/// Writes `data` into an empty memfd made by [`memfd_with`], from its start.
+fn fill_memfd(fd: &OwnedFd, data: &[u8]) -> Result<()> {
+    let mut f = std::fs::File::from(fd.try_clone()?);
+    f.write_all(data)?;
+    use std::io::Seek;
+    f.seek(std::io::SeekFrom::Start(0))?;
+    Ok(())
 }
 
 fn memfd_with(data: &[u8]) -> Result<OwnedFd> {

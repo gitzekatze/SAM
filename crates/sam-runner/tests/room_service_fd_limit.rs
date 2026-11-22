@@ -39,7 +39,7 @@ fn rooms_never_run_the_launcher_out_of_descriptors() {
 say control "$(rv room -- /usr/bin/echo ok)"
 many() { n=$1; out=""; while [ "$n" -gt 0 ]; do out="$out --ro-bind /usr /usr"; n=$((n-1)); done; echo "$out"; }
 # Each /usr brings SAM's own places below it (about 44 here, more or
-# less elsewhere): of 8 to 16 of them, some stay within a room's 600
+# less elsewhere): of 8 to 16 of them, some stay within a room's 2000
 # places but need more descriptors than this launcher has free.
 for k in 8 9 10 11 12 13 14 15 16; do
   # shellcheck disable=SC2046
@@ -81,7 +81,7 @@ say too_many "$(rv room $(many 230) -- /usr/bin/echo ok)"
     }
     if !room_lines
         .iter()
-        .any(|l| l.contains("too many places (") && l.contains("at most 600"))
+        .any(|l| l.contains("too many places (") && l.contains("at most 2000"))
     {
         failures.push("the room over the place limit was not refused for that".into());
     }

@@ -6,6 +6,8 @@
 //! room's request shapes: nothing of that layout may run or be read before
 //! SAM's layers are in place. It reads the room's rules from SAM's own
 //! place (`/.sam-room/room.spec`), then, in this order:
+//! 0. checks that every place SAM showed by handle is exactly what SAM
+//!    opened (device and inode), whatever Bubblewrap did;
 //! 1. Landlock: read everywhere, write only where the rules say; abstract
 //!    sockets outside the room blocked (kernels with Landlock 6 and newer);
 //! 2. SAM's syscall filter (compiled by SAM, passed as a connection);
@@ -22,7 +24,7 @@
 //!
 //! SPEC holds `key=value` entries separated by NUL bytes: `status=N`,
 //! `seccomp=N`, `filter=N` (any number), `read=PATH`, `write=PATH`,
-//! `env=NAME=VALUE` (any number of each).
+//! `env=NAME=VALUE`, `place=DEV:INO:PATH` (any number of each).
 
 // No Rust start-up code: it would read /proc/self/maps (to find the main
 // thread's stack), a file of the room's layout, before SAM's layers. The
@@ -261,6 +263,31 @@ fn candidates(name: &OsStr, env: &[(&OsStr, &OsStr)]) -> Vec<Vec<u8>> {
         .collect()
 }
 
+/// A place `DEV:INO:PATH` of the room is the file or folder SAM opened
+/// (same device, same inode), or the room ends here.
+fn check_place(entry: &[u8]) {
+    use std::os::unix::fs::MetadataExt;
+    let mut parts = entry.splitn(3, |b| *b == b':');
+    let (Some(dev), Some(ino), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+        fail("the room's rules are not valid");
+    };
+    let num = |v: &[u8]| -> u64 {
+        std::str::from_utf8(v)
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| fail("the room's rules are not valid"))
+    };
+    let (dev, ino) = (num(dev), num(ino));
+    let path = OsStr::from_bytes(path);
+    match std::fs::symlink_metadata(path) {
+        Ok(m) if m.dev() == dev && m.ino() == ino => {}
+        _ => fail(&format!(
+            "{} is not the place SAM opened for this room (Bubblewrap showed something else)",
+            path.to_string_lossy()
+        )),
+    }
+}
+
 /// Errors after which execvp tries the next PATH entry.
 fn try_next(e: c_int) -> bool {
     const ENOENT: c_int = 2;
@@ -282,6 +309,7 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
     let spec = std::fs::read(&args[1]).unwrap_or_else(|e| fail(&format!("reading the room's rules: {e}")));
     let (mut status, mut seccomp) = (None, None);
     let (mut filters, mut reads, mut writes, mut env) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut places: Vec<&[u8]> = Vec::new();
     for entry in spec.split(|b| *b == 0).filter(|e| !e.is_empty()) {
         let at = entry.iter().position(|b| *b == b'=').unwrap_or_else(|| fail("the room's rules are not valid"));
         let (key, value) = (&entry[..at], &entry[at + 1..]);
@@ -291,6 +319,7 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
             b"filter" => filters.push(number(value)),
             b"read" => reads.push(value),
             b"write" => writes.push(value),
+            b"place" => places.push(value),
             b"env" => {
                 let eq = value.iter().position(|b| *b == b'=').unwrap_or_else(|| fail("the room's rules are not valid"));
                 env.push((OsStr::from_bytes(&value[..eq]), OsStr::from_bytes(&value[eq + 1..])));
@@ -300,6 +329,12 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
     }
     let status = status.unwrap_or_else(|| fail("the room's rules name no status connection"));
     let seccomp = seccomp.unwrap_or_else(|| fail("the room's rules carry no syscall filter"));
+    // Every place SAM showed by handle is exactly what SAM opened: an
+    // older Bubblewrap mounts a handle's path by name, which the app could
+    // swap while the room was built. Checked before anything else.
+    for place in &places {
+        check_place(place);
+    }
     // SAM's layers first.
     let mut report = landlock(&reads, &writes);
     load_filter(seccomp);

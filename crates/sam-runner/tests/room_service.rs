@@ -203,13 +203,13 @@ f = [(0x20, 0, 0, 0), (0x15, 0, 1, 444), (0x06, 0, 0, 0x80000000),
      (0x15, 0, 1, uname), (0x06, 0, 0, 0x00050001), (0x06, 0, 0, 0x7fff0000)]
 open(sys.argv[1], "wb").write(b"".join(struct.pack("HBBI", *i) for i in f))
 PY
-exec 11<"$HOME/filter.bpf"
-room --seccomp 11 -- /usr/bin/true
+exec 9<"$HOME/filter.bpf"
+room --seccomp 9 -- /usr/bin/true
 say filter_start "$?"
-exec 11<&-
-exec 11<"$HOME/filter.bpf"
-say filter_holds "$(rv room --seccomp 11 -- $P uname)"
-exec 11<&-
+exec 9<&-
+exec 9<"$HOME/filter.bpf"
+say filter_holds "$(rv room --seccomp 9 -- $P uname)"
+exec 9<&-
 # A program filter that refuses every write: SAM's helper confirms its
 # layers before loading it, so the room is still built and confirmed.
 python3 - "$HOME/nowrite.bpf" <<'PY'
@@ -218,10 +218,10 @@ write = 64 if os.path.exists("/lib/ld-linux-aarch64.so.1") else 1
 f = [(0x20, 0, 0, 0), (0x15, 0, 1, write), (0x06, 0, 0, 0x00050001), (0x06, 0, 0, 0x7fff0000)]
 open(sys.argv[1], "wb").write(b"".join(struct.pack("HBBI", *i) for i in f))
 PY
-exec 11<"$HOME/nowrite.bpf"
-room --seccomp 11 -- /usr/bin/sync
+exec 9<"$HOME/nowrite.bpf"
+room --seccomp 9 -- /usr/bin/sync
 say filter_quiet "$?"
-exec 11<&-
+exec 9<&-
 # An argument that is not text: the whole request is refused, never run
 # with the argument changed.
 say not_text "$(rv room -- /usr/bin/echo "$(printf 'x\377')")"
