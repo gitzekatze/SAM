@@ -965,11 +965,23 @@ fn step_place(step: &Step) -> Option<&Path> {
 /// writable entry `w` to another name: true when a folder between `w` and
 /// such a place is not a mount point of its own (pinned). A renamed folder
 /// takes the app's hiding along in the app, but a room shows the folder
-/// from the computer, where nothing hides it.
+/// from the computer, where nothing hides it. A protection is a hiding
+/// mount, or a read-only (or device) place showing part of that same
+/// writable folder with fewer rights; a place brought in from elsewhere
+/// (the computer's theme settings in an app's own home) protects nothing
+/// there: moved, a room sees only the app's own files below it.
 fn protections_movable(plan: &FloorPlan, w: usize) -> bool {
     let top = plan.entries[w].at();
+    let Some(top_src) = plan.entries[w].source() else {
+        return false;
+    };
     let later = &plan.entries[w + 1..];
-    later.iter().filter(|e| e.is_mount()).any(|e| {
+    let protects = |e: &Entry| match e {
+        Entry::Mask { .. } => true,
+        Entry::Ro { src, .. } | Entry::Dev { src, .. } => under(src, top_src),
+        _ => false,
+    };
+    later.iter().filter(|e| protects(e)).any(|e| {
         let at = e.at();
         at != top
             && under(at, top)
@@ -1100,8 +1112,10 @@ fn place(
                         top.display()
                     ));
                 }
+                // (Never `top.join("")`: that adds a "/", which a device
+                // file is not.)
                 room.steps.extend(device_steps(
-                    top.join(&rest),
+                    top.clone(),
                     src.to_path_buf(),
                     asked,
                     *read_only,
@@ -2103,6 +2117,24 @@ mod tests {
         let e = ask(&stow(false)).unwrap_err();
         assert!(e.contains("could move a protected or hidden place"), "{e}");
         assert!(ask(&stow(true)).is_ok());
+        // A read-only place re-showing part of the folder protects it; one
+        // brought in from elsewhere (the computer's theme settings in an
+        // app's own home) does not, and lets nothing out when moved.
+        let with = |src: &str| {
+            FloorPlan::from_bwrap_args(&s(&[
+                "--bind",
+                "/h",
+                "/home/me",
+                "--ro-bind",
+                src,
+                "/home/me/.config/gtk-3.0",
+                "--",
+                "x",
+            ]))
+            .unwrap()
+        };
+        assert!(ask(&with("/h/.config/gtk-3.0")).is_err());
+        assert!(ask(&with("/real/.config/gtk-3.0")).is_ok());
     }
 
     /// A device place is shown only as a whole: a path below it is never
@@ -2123,6 +2155,30 @@ mod tests {
         for below in ["/dev/shm/evil", "/dev/dri", "/dev/null"] {
             let e = ask(below).unwrap_err();
             assert!(e.contains("only as a whole"), "{below}: {e}");
+        }
+    }
+
+    /// A device that is a single file, asked for at its own place, is shown
+    /// by exactly its name (no "/" after it, which a file cannot have).
+    #[test]
+    fn a_single_device_file_is_shown_by_its_exact_name() {
+        let plan = FloorPlan::from_bwrap_args(&s(&[
+            "--dev-bind-try",
+            "/dev/video0",
+            "/dev/video0",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let room = plan_room(
+            &plan,
+            &req(&[&["--dev-bind", "/dev/video0", "/dev/video0"]], &["x"]),
+            AppFacts::default(),
+        )
+        .unwrap();
+        match &room.steps[0] {
+            Step::Device { src, .. } => assert_eq!(src.to_string_lossy(), "/dev/video0"),
+            st => panic!("{st:?}"),
         }
     }
 

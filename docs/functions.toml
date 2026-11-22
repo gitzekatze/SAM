@@ -251,6 +251,7 @@ tests = [
   "the_apps_remount_is_not_recursive",
   "drives_that_may_be_unmounted_are_known_by_their_file_system",
   "rooms_need_a_bubblewrap_that_shows_places_by_handle",
+  "a_single_device_file_is_shown_by_its_exact_name",
   "a_left_out_setting_can_be_turned_back_on",
   "changed_room_requests_never_crash_the_readers",
   "a_room_dies_with_sams_launcher",
