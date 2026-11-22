@@ -634,6 +634,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     let mut shown: Vec<PathBuf> = Vec::new();
     let mut own_links: Vec<PathBuf> = Vec::new();
     let mut late_links: Vec<Step> = Vec::new();
+    let mut late_remounts: Vec<Step> = Vec::new();
     // Flags of the older form first, then the options in order.
     let ops: Vec<Vec<String>> = req
         .flags
@@ -692,10 +693,16 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                     if reserved(&at) {
                         return Err(format!("{} is SAM's own place in a room", at.display()));
                     }
-                    room.steps
-                        .push(Step::Args(vec![name.into(), path_arg(&at)]));
+                    // After the room's own links, as Bubblewrap would make
+                    // them before a later remount (it only takes rights away).
+                    late_remounts.push(Step::Args(vec![name.into(), path_arg(&at)]));
                 }
-                "--as-pid-1" => room.steps.push(Step::Args(vec![name.into()])),
+                // Not passed on: without it Bubblewrap's own init stays the
+                // room's first process, whose parent-death signal the
+                // program cannot clear, so the room always ends with SAM.
+                "--as-pid-1" => room
+                    .capped
+                    .push("--as-pid-1 (a room always keeps Bubblewrap's own first process)".into()),
                 // The rest the room's fixed base has already (all namespaces
                 // new, no nested sandboxes, no powers, a new session, ends
                 // with its starter), or only changes how errors look.
@@ -746,7 +753,12 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                         .any(|c| matches!(c, std::path::Component::ParentDir))
                         || target.starts_with("/oldroot")
                         || target.starts_with("/newroot")
-                        || reserved(&at.parent().unwrap_or(Path::new("/")).join(target))
+                        || {
+                            // Nor into SAM's place, nor to a folder holding
+                            // it (a path through the link would reach it).
+                            let to = at.parent().unwrap_or(Path::new("/")).join(target);
+                            reserved(&to) || covers_reserved(&to)
+                        }
                     {
                         return Err(format!("a link to {} is not allowed in a room", op[1]));
                     }
@@ -841,6 +853,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         k += 1;
     }
     room.steps.extend(late_links);
+    room.steps.extend(late_remounts);
     nothing_inside_writable_places(plan, &room.steps)?;
     // SAM's own place stays as SAM laid it out: nothing of the room lands
     // in it or over it.
@@ -1830,6 +1843,35 @@ mod tests {
             .steps
             .iter()
             .any(|st| matches!(st, Step::Args(a) if a[0] == "--dev")));
+    }
+
+    /// --as-pid-1 is not passed into a room (Bubblewrap's own first
+    /// process stays, and the room ends with SAM), and says so; a
+    /// request's --remount-ro comes after its own links, as Bubblewrap
+    /// would apply them; a link to a folder holding SAM's place is refused.
+    #[test]
+    fn rooms_keep_their_first_process_and_their_order() {
+        let room = ok(&[&["--as-pid-1"]]);
+        assert!(!room
+            .steps
+            .iter()
+            .any(|st| matches!(st, Step::Args(a) if a[0] == "--as-pid-1")));
+        assert!(room.capped.iter().any(|c| c.starts_with("--as-pid-1")));
+        let room = ok(&[
+            &["--ro-bind", "/usr/lib", "/usr/lib"],
+            &["--symlink", "usr/lib", "/lib"],
+            &["--remount-ro", "/"],
+        ]);
+        let pos = |first: &str| {
+            room.steps
+                .iter()
+                .position(|st| matches!(st, Step::Args(a) if a[0] == first))
+                .unwrap()
+        };
+        assert!(pos("--symlink") < pos("--remount-ro"), "{:?}", room.steps);
+        for target in ["/", "."] {
+            assert!(refused(&[&["--symlink", target, "/a"]]), "{target}");
+        }
     }
 
     /// A device place the app has (perhaps a folder it or the person can

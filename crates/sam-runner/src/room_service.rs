@@ -1717,7 +1717,9 @@ mod tests {
 
     /// An answer to a stand-in that has already gone never ends SAM's
     /// launcher, also with SIGPIPE at its default (as `sam-jail run` has
-    /// it). Checked in a child process: this test runs itself again.
+    /// it). SAM sends without the signal on purpose; Rust's own socket
+    /// writes do too today, so this guards against either changing.
+    /// Checked in a child process: this test runs itself again.
     #[test]
     fn an_answer_to_a_stand_in_that_left_never_ends_the_launcher() {
         const NAME: &str =

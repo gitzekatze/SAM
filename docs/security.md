@@ -224,7 +224,10 @@ rule: **no more than the app, no less than asked.**
   filter is off for an app, or nested sandboxes are allowed, its rooms still
   get SAM's default layers.
 - **Lifetime and limits.** A room ends when its stand-in goes, and every
-  room ends with the app's start, before SAM waits for the app's output. At
+  room ends with the app's start, before SAM waits for the app's output.
+  A room always keeps Bubblewrap's own first process (`--as-pid-1` is not
+  passed on): its parent-death signal, which the program cannot clear,
+  ends everything in the room with SAM. At
   most 16 rooms of one app run at once (more wait), at most 64 connections
   are open at once (requests being read and rooms running; more are closed
   and recorded), and at most 512 passed connections are held. Everything

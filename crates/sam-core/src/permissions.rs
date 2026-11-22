@@ -965,6 +965,15 @@ const LEFT_OUT_WHEN_EMPTY: &[(&str, &str)] = &[
     ("advanced.room_service", "true"),
 ];
 
+/// The value of a key the saved form leaves out while it has its default
+/// (readers of the raw form, such as the window, use it for a missing key).
+pub fn left_out_default(key: &str) -> Option<serde_json::Value> {
+    LEFT_OUT_WHEN_EMPTY
+        .iter()
+        .find(|(k, _)| *k == key)
+        .and_then(|(_, v)| serde_json::from_str(v).ok())
+}
+
 fn room_service_on() -> bool {
     true
 }

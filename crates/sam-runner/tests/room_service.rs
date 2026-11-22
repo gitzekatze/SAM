@@ -73,7 +73,9 @@ say no_shebang "$(rv room --bind "$HOME" "$HOME" -- "$HOME/sam-room-not-on-path"
 say dev_without_devices "$(rv room --ro-bind /dev /dev -- /usr/bin/sh -c '(echo x > /dev/null) 2>/dev/null && echo works || echo blocked')"
 say dev_links "$(rv room --ro-bind /dev /dev -- /usr/bin/sh -c 'test -L /dev/stdout && test -L /dev/fd && echo links')"
 # PWD names the room's folder, as with Bubblewrap (also after --clearenv).
-say pwd "$(rv room --clearenv --chdir /usr -- /usr/bin/sh -c 'echo "$PWD"')"
+# (Read by the probe: a shell would set PWD itself.)
+say pwd "$(rv room --clearenv --chdir /usr -- $P env PWD)"
+say pwd_stale "$(export PWD=/tmp; rv room --chdir /usr -- $P env PWD)"
 # A name found on PATH (the default /bin:/usr/bin without one).
 say on_path "$(rv room --setenv PATH /usr/bin -- echo ok)"
 say default_path "$(rv room --clearenv -- echo ok)"
@@ -500,6 +502,11 @@ say race_leaked "$leaked"
 say race_other "$other"
 "#;
 
+/// The program of the --as-pid-1 room: it clears its parent-death signal
+/// and waits (the seconds follow).
+const PDEATH_CODE: &str =
+    "import ctypes, time; ctypes.CDLL(None).prctl(1, 0, 0, 0, 0); time.sleep(";
+
 /// Many rooms at once all finish. A stand-in killed outright ends its room;
 /// a room still running when its app ends does not outlive the app's start.
 fn lifetime_script(left: &str) -> String {
@@ -531,6 +538,9 @@ if [ -z "$a" ]; then say killed_standin no-room
 elif [ "$a" = "$b" ]; then say killed_standin room-ended
 else say killed_standin room-still-running; fi
 room --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'echo up > "$HOME/alive"; exec /usr/bin/sleep {left}' &
+# A room asked to make its program the first process, whose program then
+# drops its tie to the room's starter: it still ends with the app's start.
+room --as-pid-1 -- /usr/bin/python3 -c "{PDEATH_CODE}{left})" </dev/null >/dev/null 2>&1 &
 i=0; while [ ! -s "$HOME/alive" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
 say left_running "$([ -s "$HOME/alive" ] && echo started || echo not-started)"
 "#
@@ -849,6 +859,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("on_path", "ok"),
                 ("default_path", "ok"),
                 ("pwd", "/usr"),
+                ("pwd_stale", "/usr"),
                 ("no_shebang", "ran-from-folder"),
                 ("dev_without_devices", "blocked"),
                 ("dev_links", "links"),
@@ -1355,6 +1366,19 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     if !processes(&leftover).is_empty() {
         kill_all(&leftover);
         failures.push("lifetime: a room outlived its app's start".into());
+    }
+    let code = format!("{PDEATH_CODE}{left})");
+    let pid1 = ["/usr/bin/python3", "-c", code.as_str()];
+    let end = Instant::now() + Duration::from_secs(10);
+    while !processes(&pid1).is_empty() && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    if !processes(&pid1).is_empty() {
+        kill_all(&pid1);
+        failures.push(
+            "lifetime: a room's program that dropped its tie to the room outlived its app's start"
+                .into(),
+        );
     }
 
     // A room whose stand-in stays connected still ends when the start ends

@@ -453,6 +453,17 @@ fn changed_room_requests_never_crash_the_readers() {
         "--bind",
         "/data/w",
         "/w",
+        // Read-only, with a hidden place inside and a place covered later.
+        "--ro-bind",
+        "/data/share",
+        "/share",
+        "--tmpfs",
+        "/share/hidden",
+        "--ro-bind",
+        "/data/x",
+        "/share/x",
+        "--tmpfs",
+        "/share/x",
         "--bind",
         "/data/homes/app",
         "/home/me",
@@ -625,6 +636,9 @@ fn changed_room_requests_never_crash_the_readers() {
         "/tmp",
         "/w",
         "/w/sub",
+        "/share",
+        "/share/hidden",
+        "/share/x",
     ];
     // How often the rules got as far as each kind of step: the control that
     // the generated requests reach them at all.
@@ -632,6 +646,9 @@ fn changed_room_requests_never_crash_the_readers() {
     // Rooms with a writable place: the control that the "nothing inside a
     // writable place" invariant sees any.
     let writable_rooms = std::cell::Cell::new(0usize);
+    // Rooms that rebuilt a hiding mount below a shown place: the control
+    // that "hidden stays hidden" is ever checked.
+    let hiding_rooms = std::cell::Cell::new(0usize);
     for round in 0..rounds() * 5 {
         let mut ops: Vec<Vec<String>> = Vec::new();
         for _ in 0..1 + r.below(4) {
@@ -683,6 +700,22 @@ fn changed_room_requests_never_crash_the_readers() {
             }) {
                 writable_rooms.set(writable_rooms.get() + 1);
             }
+            let shown_at: Vec<&std::path::Path> = room
+                .steps
+                .iter()
+                .filter_map(|st| match st {
+                    sam_runner::room_rules::Step::Show { dst, .. } => Some(dst.as_path()),
+                    _ => None,
+                })
+                .collect();
+            if room.steps.iter().any(|st| match st {
+                sam_runner::room_rules::Step::Mask(at) => {
+                    shown_at.iter().any(|d| at.starts_with(d) && at != *d)
+                }
+                _ => false,
+            }) {
+                hiding_rooms.set(hiding_rooms.get() + 1);
+            }
             for step in &room.steps {
                 match step {
                     sam_runner::room_rules::Step::Show { .. } => shown.set(shown.get() + 1),
@@ -707,6 +740,28 @@ fn changed_room_requests_never_crash_the_readers() {
         writable_rooms.get() > 0,
         "no generated room had a writable place, so its invariant was never checked"
     );
+    assert!(
+        hiding_rooms.get() > 0,
+        "no generated room rebuilt a hiding mount, so \"hidden stays hidden\" was never checked"
+    );
+    // A remount inside a writable place is no place of its own: the rules
+    // accept it, and so does the invariant.
+    let req = sam_runner::room_rules::Request {
+        v: sam_runner::room_rules::VERSION,
+        ops: vec![
+            vec!["--bind".into(), "/w".into(), "/w".into()],
+            vec!["--remount-ro".into(), "/w/sub".into()],
+        ],
+        flags: vec![],
+        command: vec!["/usr/bin/true".into()],
+        env: Default::default(),
+        cwd: "/".into(),
+        fds: vec![],
+        limits: vec![],
+        umask: None,
+    };
+    let room = plan_room(&plan, &req, AppFacts::default()).unwrap();
+    room_within_plan(&plan, &room, false).unwrap();
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
@@ -843,13 +898,15 @@ fn room_within_plan(
         let places: Vec<&Path> = match step {
             Step::Show { dst, .. } | Step::Device { dst, .. } => vec![dst.as_path()],
             Step::Mask(at) => vec![at.as_path()],
-            // A link's target is only text: where the link lies counts.
-            Step::Args(a) => a
-                .iter()
-                .skip(if a[0] == "--symlink" { 2 } else { 1 })
-                .map(Path::new)
-                .filter(|p| p.is_absolute())
-                .collect(),
+            // Only what makes or changes a place counts (a link's target is
+            // only text; --remount-ro only takes rights away).
+            Step::Args(a) => match a[0].as_str() {
+                "--tmpfs" | "--dir" | "--proc" | "--dev" | "--mqueue" => {
+                    a.get(1).map(Path::new).into_iter().collect()
+                }
+                "--symlink" | "--chmod" => a.get(2).map(Path::new).into_iter().collect(),
+                _ => Vec::new(),
+            },
         };
         for p in places {
             if let Some(w) = writable.iter().find(|w| p.starts_with(w) && p != **w) {

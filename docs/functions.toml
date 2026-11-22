@@ -244,6 +244,8 @@ tests = [
   "a_place_below_a_writable_folder_needs_its_protections_pinned",
   "nothing_of_the_room_lies_inside_a_device_place",
   "read_only_places_inside_a_writable_request_are_recorded",
+  "rooms_keep_their_first_process_and_their_order",
+  "a_left_out_setting_shows_its_default",
   "changed_room_requests_never_crash_the_readers",
   "a_room_dies_with_sams_launcher",
   "a_place_the_app_has_hidden_by_a_later_mount_stays_hidden",
