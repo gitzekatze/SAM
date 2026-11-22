@@ -103,6 +103,20 @@ fn main() {
         .nth(1)
         .is_some_and(|a| a == "--room-standin")
     {
+        // Named as Bubblewrap is: SAM's "please quit" spares Bubblewrap
+        // by its name, so the program in the room gets its time to save
+        // and quit, and its room ends when it has.
+        // SAFETY: PR_SET_NAME reads a NUL-terminated name of at most 16
+        // bytes, which this static string is.
+        unsafe {
+            libc::prctl(
+                libc::PR_SET_NAME,
+                c"bwrap".as_ptr() as libc::c_ulong,
+                0,
+                0,
+                0,
+            );
+        }
         let mut args: Vec<String> = Vec::new();
         let mut not_text = false;
         for a in std::env::args_os().skip(2) {

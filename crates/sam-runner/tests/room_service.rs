@@ -91,6 +91,13 @@ say pwd_stale "$(export PWD=/tmp; rv room --chdir /usr -- $P env PWD)"
 # A name found on PATH (the default /bin:/usr/bin without one).
 say on_path "$(rv room --setenv PATH /usr/bin -- echo ok)"
 say default_path "$(rv room --clearenv -- echo ok)"
+# The stand-in is named as Bubblewrap is, so SAM's "please quit" spares it
+# as it spares Bubblewrap (the program in the room gets its time to quit).
+bwrap --ro-bind /usr /usr $SYS -- /usr/bin/sleep 3 </dev/null >/dev/null 2>&1 &
+standin=$!
+sleep 0.5
+say standin_name "$(cat /proc/$standin/comm 2>/dev/null)"
+kill "$standin" 2>/dev/null
 # A variable that is not text: the request is refused, never run without it.
 SAM_ROOM_NOT_TEXT="$(printf 'x\377')"
 export SAM_ROOM_NOT_TEXT
@@ -905,6 +912,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("dev_without_devices", "blocked"),
                 ("dev_links", "links"),
                 ("env_not_text", "refused"),
+                ("standin_name", "bwrap"),
             ],
         )
         .into_iter()
@@ -1064,16 +1072,16 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         }
         // Refused by Room service's own rule (newer Bubblewraps refuse such
         // a link on their own; older ones follow it onto the computer).
-        let by_rule = log
-            .lines()
-            .filter(|l| {
-                l.contains("sam-room: refused") && l.contains("inside a place shown from the app")
-            })
-            .count();
-        if by_rule < 2 {
-            failures.push(format!(
-                "{name}: new things inside a shown place were not refused by Room service's rule ({by_rule} of 2)"
-            ));
+        for planted in ["planted/evil-link.desktop", "planted/evil-dir"] {
+            if !log.lines().any(|l| {
+                l.contains("sam-room: refused")
+                    && l.contains(planted)
+                    && l.contains("inside a place shown from the app")
+            }) {
+                failures.push(format!(
+                    "{name}: {planted}: a new thing inside a shown place was not refused by Room service's rule"
+                ));
+            }
         }
         // Each trap refused by its own rule, in its words.
         for (trap, words) in [
