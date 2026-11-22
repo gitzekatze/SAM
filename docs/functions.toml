@@ -246,6 +246,8 @@ tests = [
   "read_only_places_inside_a_writable_request_are_recorded",
   "rooms_keep_their_first_process_and_their_order",
   "a_left_out_setting_shows_its_default",
+  "a_room_link_named_first_is_never_made_inside_a_later_place",
+  "read_only_asks_and_unwritable_own_places_are_kept_and_said",
   "changed_room_requests_never_crash_the_readers",
   "a_room_dies_with_sams_launcher",
   "a_place_the_app_has_hidden_by_a_later_mount_stays_hidden",

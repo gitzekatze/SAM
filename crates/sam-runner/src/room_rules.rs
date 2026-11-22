@@ -635,6 +635,10 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     let mut own_links: Vec<PathBuf> = Vec::new();
     let mut late_links: Vec<Step> = Vec::new();
     let mut late_remounts: Vec<Step> = Vec::new();
+    let mut read_only_asked: Vec<PathBuf> = Vec::new();
+    // The room's own file systems (--tmpfs): writable; the room's root is
+    // read-only when it starts.
+    let mut own_tmpfs: Vec<PathBuf> = Vec::new();
     // Flags of the older form first, then the options in order.
     let ops: Vec<Vec<String>> = req
         .flags
@@ -736,6 +740,9 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 "--proc" | "--dev" | "--tmpfs" | "--mqueue" | "--dir" => {
                     let at = clean(&op[1])?;
                     own_place(&at, &shown, &own_links)?;
+                    if name == "--tmpfs" {
+                        own_tmpfs.push(at.clone());
+                    }
                     if matches!(name, "--tmpfs" | "--dir") {
                         room.own.push(at.clone());
                     }
@@ -823,6 +830,9 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 } else {
                     DeviceAccess::NoDevices
                 };
+                if asked == DeviceAccess::ReadOnly {
+                    read_only_asked.push(src.clone());
+                }
                 let before = room.steps.len();
                 let found = place(plan, &src, asked, optional, &mut room)?;
                 // What is now mounted from the app (not the asked path: for
@@ -852,6 +862,25 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         }
         k += 1;
     }
+    // The room's own links are made last, after every mount: none may lie
+    // inside a place shown from the app, in whatever order they were named
+    // (Bubblewrap would make it there, through any link in that place,
+    // onto the computer).
+    if let Some(l) = own_links.iter().find(|l| shown.iter().any(|s| under(l, s))) {
+        return Err(format!(
+            "{} is inside a place shown from the app: a room makes new things only in its own space",
+            l.display()
+        ));
+    }
+    // A place asked for read-only keeps the app's hiding places and /dev
+    // inside it read-only too (their file systems are the room's own).
+    for st in &room.steps {
+        if let Step::Mask(at) = st {
+            if read_only_asked.iter().any(|r| under(at, r)) {
+                late_remounts.push(Step::Args(vec!["--remount-ro".into(), path_arg(at)]));
+            }
+        }
+    }
     room.steps.extend(late_links);
     room.steps.extend(late_remounts);
     nothing_inside_writable_places(plan, &room.steps)?;
@@ -867,9 +896,25 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     }
     // An own place with a place of the app below it gives no write right
     // there (Landlock's rules reach down).
-    // Nor one inside a place shown from the app, in whatever order.
-    room.own
-        .retain(|o| !shown.iter().any(|s| under(s, o) || under(o, s)));
+    // Nor one inside a place shown from the app, in whatever order. Both
+    // are recorded, as is a new folder on the room's read-only root.
+    let mut cut = Vec::new();
+    room.own.retain(|o| {
+        let keep = !shown.iter().any(|s| under(s, o) || under(o, s));
+        if !keep {
+            cut.push(format!(
+                "{}: a place of the app lies inside or over it, so not writable",
+                o.display()
+            ));
+        } else if !own_tmpfs.iter().any(|t| under(o, t)) {
+            cut.push(format!(
+                "{}: on the room's read-only root, so not writable (an own --tmpfs is)",
+                o.display()
+            ));
+        }
+        keep
+    });
+    room.capped.extend(cut);
     if want_net {
         if facts.full_network && !plan.no_network {
             room.share_net = true;
@@ -1845,6 +1890,60 @@ mod tests {
             .any(|st| matches!(st, Step::Args(a) if a[0] == "--dev")));
     }
 
+    /// The room's own link is never made inside a place shown from the
+    /// app, also when it was named before that place (links are made last,
+    /// after every mount, so a link in a read-only place of the app would
+    /// lead it onto the computer).
+    #[test]
+    fn a_room_link_named_first_is_never_made_inside_a_later_place() {
+        for place in [
+            &["--ro-bind", "/usr/lib", "/usr/lib"][..],
+            &["--bind", "/home/me/.cache", "/home/me/.cache"],
+        ] {
+            let at = format!("{}/x/home/me/.config/autostart/evil.desktop", place[1]);
+            let e = plan_room(
+                &plan(),
+                &req(&[&["--symlink", "/x", &at], place], &["x"]),
+                AppFacts::default(),
+            )
+            .unwrap_err();
+            assert!(
+                e.contains("inside a place shown from the app"),
+                "{place:?}: {e}"
+            );
+        }
+    }
+
+    /// A place asked for read-only keeps what the room makes for it (the
+    /// app's hiding places, its /dev) read-only; own new places that cannot
+    /// be written are recorded.
+    #[test]
+    fn read_only_asks_and_unwritable_own_places_are_kept_and_said() {
+        let room = ok(&[&["--ro-bind", "/dev", "/dev"]]);
+        let at = room
+            .steps
+            .iter()
+            .position(|st| matches!(st, Step::Args(a) if a == &s(&["--remount-ro", "/dev"])))
+            .expect("/dev not remounted read-only");
+        assert!(room.steps[..at]
+            .iter()
+            .any(|st| matches!(st, Step::Args(a) if a[0] == "--dir")));
+        let room = ok(&[
+            &["--dir", "/work"],
+            &["--tmpfs", "/scratch"],
+            &["--dir", "/scratch/a"],
+        ]);
+        assert!(room
+            .capped
+            .iter()
+            .any(|c| c.starts_with("/work: on the room's read-only root")));
+        assert!(
+            !room.capped.iter().any(|c| c.starts_with("/scratch")),
+            "{:?}",
+            room.capped
+        );
+    }
+
     /// --as-pid-1 is not passed into a room (Bubblewrap's own first
     /// process stays, and the room ends with SAM), and says so; a
     /// request's --remount-ro comes after its own links, as Bubblewrap
@@ -1894,7 +1993,10 @@ mod tests {
             &["--dev-bind", "/srv/shared", "/srv/shared"],
         ])
         .unwrap_err();
-        assert!(e.contains("only as a whole"), "{e}");
+        assert!(
+            e.contains("only as a whole") || e.contains("inside a place shown from the app"),
+            "{e}"
+        );
         assert!(ask(&[
             &["--dir", "/srv/shared/sub"],
             &["--dev-bind", "/srv/shared", "/srv/shared"],

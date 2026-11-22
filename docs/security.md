@@ -187,8 +187,15 @@ rule: **no more than the app, no less than asked.**
     SAM makes them): otherwise the app could rename a folder holding one,
     and the room would show it from the computer, unhidden.
   - Writable only where the app can write: its mount and its Landlock rules.
-    An own place above a place of the app gives no write right there, and
-    SAM's room helper never follows a link to a Landlock rule's place.
+    The room's own new places are writable inside its own file systems
+    (`--tmpfs`); the room's root is read-only, so a folder made there is
+    not, and an own place with a place of the app inside or over it is not
+    writable at all (both recorded). A place asked for read-only keeps the
+    app's hiding places and `/dev` inside it read-only too. SAM's room
+    helper never follows a link to a Landlock rule's place.
+  - The room's own links are made last, after every mount, and never
+    inside a place shown from the app, whatever the order they were named
+    in: Bubblewrap would follow a link in that place onto the computer.
   - A place of the app that cannot be shown means no room, never one
     without it (only a path the request named itself with `-try` may be
     missing); at most 600 places per room.

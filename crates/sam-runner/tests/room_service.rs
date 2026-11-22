@@ -225,6 +225,10 @@ say ssh_room "$(rv room --ro-bind "$HOME" "$HOME" -- $P read "$HOME/.ssh/id_ed25
 # hidden: a requested path never follows a link.
 ln -sfn .config/autostart "$HOME/to-autostart"
 say link_protected "$(rv room --dev /dev --bind "$HOME/to-autostart" "$HOME/to-autostart" -- $P write "$HOME/to-autostart" via-link.desktop)"
+# A room link named before a place the app is shown (here read-only for
+# the room), through a link in that place to Bubblewrap's view of the
+# computer: refused, never made last through the link.
+say link_first "$(rv room --symlink /nonexistent "$HOME/rodir/x$HOME/.config/autostart/link-first.desktop" --ro-bind "$HOME/rodir" "$HOME/rodir" -- /usr/bin/true)"
 ln -sfn .ssh "$HOME/to-ssh"
 say link_hidden "$(rv room --ro-bind "$HOME/to-ssh" "$HOME/to-ssh" -- $P read "$HOME/to-ssh/id_ed25519")"
 "#;
@@ -502,10 +506,9 @@ say race_leaked "$leaked"
 say race_other "$other"
 "#;
 
-/// The program of the --as-pid-1 room: it clears its parent-death signal
+/// The program of the --as-pid-1 room: it leaves a marker, clears its parent-death signal
 /// and waits (the seconds follow).
-const PDEATH_CODE: &str =
-    "import ctypes, time; ctypes.CDLL(None).prctl(1, 0, 0, 0, 0); time.sleep(";
+const PDEATH_CODE: &str = "import ctypes, os, time; open(os.environ['HOME'] + '/pid1-up', 'w').close(); ctypes.CDLL(None).prctl(1, 0, 0, 0, 0); time.sleep(";
 
 /// Many rooms at once all finish. A stand-in killed outright ends its room;
 /// a room still running when its app ends does not outlive the app's start.
@@ -540,11 +543,36 @@ else say killed_standin room-still-running; fi
 room --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'echo up > "$HOME/alive"; exec /usr/bin/sleep {left}' &
 # A room asked to make its program the first process, whose program then
 # drops its tie to the room's starter: it still ends with the app's start.
-room --as-pid-1 -- /usr/bin/python3 -c "{PDEATH_CODE}{left})" </dev/null >/dev/null 2>&1 &
+room --as-pid-1 --bind "$HOME" "$HOME" -- /usr/bin/python3 -c "{PDEATH_CODE}{left})" </dev/null >/dev/null 2>&1 &
+i=0; while [ ! -e "$HOME/pid1-up" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
+say pid1_running "$([ -e "$HOME/pid1-up" ] && echo started || echo not-started)"
 i=0; while [ ! -s "$HOME/alive" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
 say left_running "$([ -s "$HOME/alive" ] && echo started || echo not-started)"
 "#
     )
+}
+
+/// The room link named before a place shown from the app was refused by
+/// Room service's rule, and nothing reached the person's autostart folder.
+fn link_named_first_refused(name: &str, log: &str, w: &World) -> Vec<String> {
+    let mut out = Vec::new();
+    if cases(log).get("link_first").map(String::as_str) != Some("refused")
+        || !log.lines().any(|l| {
+            l.starts_with("sam-room: refused")
+                && l.contains("rodir/x")
+                && l.contains("inside a place shown from the app")
+        })
+    {
+        out.push(format!(
+            "{name}: link_first: a room link named before a shown place was not refused by the rule"
+        ));
+    }
+    if w.home.join(".config/autostart/link-first.desktop").exists() {
+        out.push(format!(
+            "{name}: a room made a link in the person's autostart folder"
+        ));
+    }
+    out
 }
 
 fn control_built(name: &str, log: &str) -> Option<String> {
@@ -1093,7 +1121,10 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         }
     }
 
-    // A shared home: its protected places stay protected in rooms.
+    // A shared home: its protected places stay protected in rooms. The
+    // person's folder holds a link to Bubblewrap's view of the computer.
+    fs::create_dir_all(w.home.join("rodir")).unwrap();
+    std::os::unix::fs::symlink("/oldroot", w.home.join("rodir/x")).unwrap();
     let id = w.add("RoomFullHome", FULL_HOME);
     let log = w.start(
         &id,
@@ -1141,6 +1172,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             "full-home: the requests for the writable home were not refused by the only-as-a-whole rule ({whole} of 4)"
         ));
     }
+    failures.extend(link_named_first_refused("full-home", &log, &w));
 
     // A shared home read-only: here such rooms are built, with SAM's hiding
     // and protecting places inside the home rebuilt as in the app.
@@ -1173,6 +1205,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         &log,
         &["autostart", "bashrc", "rename", "ssh"],
     ));
+    failures.extend(link_named_first_refused("full-home-ro", &log, &w));
 
     // A grant inside SAM's own folder, hidden from the app.
     let id = w.add("RoomSamFolderGrant", SAM_FOLDER_GRANT);
@@ -1344,6 +1377,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("flood", "40"),
                 ("killed_standin", "room-ended"),
                 ("left_running", "started"),
+                ("pid1_running", "started"),
             ],
         )
         .into_iter()
