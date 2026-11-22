@@ -950,7 +950,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     let c = cases(&log);
     // The room gets exactly the program's own open connections, as with
     // Bubblewrap: no other, none missing.
-    if c.get("fds").is_none() || c.get("fds") != c.get("fds_app") {
+    if !c.contains_key("fds") || c.get("fds") != c.get("fds_app") {
         failures.push(format!(
             "works: the room's open connections {:?} are not its program's {:?}",
             c.get("fds"),
