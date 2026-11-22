@@ -2,6 +2,14 @@
 # Installs Ubuntu packages on a throwaway CI machine:
 #
 #     scripts/ci-packages.sh PACKAGE...
+#     scripts/ci-packages.sh --suite [PACKAGE...]
+#
+# --suite: everything SAM's whole test suite needs, plus the packages
+# named. Every job that runs the whole suite uses it (CI's test job, the
+# weekly mutation and fuzz runs), so a package one of them needs cannot be
+# missing in another: a test that cannot run fails those runs
+# (SAM_REQUIRE_SANDBOX=1), and the weekly mutation run judged nothing for
+# a week because PipeWire was only in CI's list (2026-11-21).
 #
 # Package servers fail in two ways, and each has hit SAM's CI:
 # - GitHub's own mirror was unreachable for hours (2026-11-11).
@@ -13,8 +21,19 @@
 # server each one waited a minute before it was given up.
 set -eu
 
+SUITE="libgtk-4-dev libadwaita-1-dev pkg-config
+    bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3
+    desktop-file-utils appstream gettext libgtk-4-bin dbus
+    python3-gi libglib2.0-bin gnupg binutils
+    pipewire pipewire-pulse pulseaudio-utils"
+
+if [ "${1:-}" = "--suite" ]; then
+    shift
+    # shellcheck disable=SC2086 # SUITE is split into words on purpose.
+    set -- $SUITE "$@"
+fi
 if [ "$#" -eq 0 ]; then
-    echo "usage: $0 PACKAGE..." >&2
+    echo "usage: $0 [--suite] PACKAGE..." >&2
     exit 2
 fi
 
