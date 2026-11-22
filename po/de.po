@@ -6432,7 +6432,7 @@ msgid ""
 "This Bubblewrap cannot show places by handle (--ro-bind-fd, Bubblewrap 0.10 "
 "or newer); programs in this app that build a sandbox of their own use it as "
 "before Room service."
-msgstr ""
+msgstr "Dieses Bubblewrap kann Orte nicht über ein Handle zeigen (--ro-bind-fd, Bubblewrap 0.10 oder neuer); Programme in dieser App, die eine eigene Sandbox bauen, nutzen es wie vor Room service."
 
 #: crates/sam-runner/src/launch.rs:642
 msgid "\"This computer only\" unavailable"
@@ -8549,6 +8549,3 @@ msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
 #~ "Dieses AppImage braucht eventuell weiterreichenden Zugriff auf das "
 #~ "System, um richtig zu funktionieren. SAM kann zusätzliche Berechtigungen "
 #~ "erteilen, aber das verringert die Abschottung."
-
-msgid "This Bubblewrap cannot show places by handle (--ro-bind-fd, Bubblewrap 0.10 or newer); programs in this app that build a sandbox of their own use it as before Room service."
-msgstr "Dieses Bubblewrap kann Orte nicht über ein Handle zeigen (--ro-bind-fd, Bubblewrap 0.10 oder neuer); Programme in dieser App, die eine eigene Sandbox bauen, nutzen es wie vor Room service."

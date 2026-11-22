@@ -6510,7 +6510,7 @@ msgid ""
 "This Bubblewrap cannot show places by handle (--ro-bind-fd, Bubblewrap 0.10 "
 "or newer); programs in this app that build a sandbox of their own use it as "
 "before Room service."
-msgstr ""
+msgstr "Ce Bubblewrap ne peut pas montrer des emplacements par descripteur (--ro-bind-fd, Bubblewrap 0.10 ou plus récent) ; les programmes de cette app qui construisent leur propre bac à sable l'utilisent comme avant Room service."
 
 #: crates/sam-runner/src/launch.rs:642
 msgid "\"This computer only\" unavailable"
@@ -8635,6 +8635,3 @@ msgstr "clé « {other} » inconnue dans le modèle plat"
 #~ "Cet AppImage a peut-être besoin d’un accès plus large au système pour "
 #~ "fonctionner correctement. SAM peut accorder des autorisations "
 #~ "supplémentaires, mais cela réduit l’isolation."
-
-msgid "This Bubblewrap cannot show places by handle (--ro-bind-fd, Bubblewrap 0.10 or newer); programs in this app that build a sandbox of their own use it as before Room service."
-msgstr "Ce Bubblewrap ne peut pas montrer des emplacements par descripteur (--ro-bind-fd, Bubblewrap 0.10 ou plus récent) ; les programmes de cette app qui construisent leur propre bac à sable l'utilisent comme avant Room service."
