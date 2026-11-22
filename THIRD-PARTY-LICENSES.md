@@ -25,11 +25,11 @@ Bubblewrap and others) are not part of SAM's files and are not listed.
 | cairo-rs | 0.22.9 | MIT |
 | cairo-sys-rs | 0.22.9 | MIT |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 |
-| clap | 4.6.7 | MIT OR Apache-2.0 |
+| clap | 4.6.9 | MIT OR Apache-2.0 |
 | clap_builder | 4.6.7 | MIT OR Apache-2.0 |
-| clap_derive | 4.6.7 | MIT OR Apache-2.0 |
+| clap_derive | 4.6.9 | MIT OR Apache-2.0 |
 | clap_lex | 1.1.1 | MIT OR Apache-2.0 |
-| clap_mangen | 0.3.3 | MIT OR Apache-2.0 |
+| clap_mangen | 0.3.4 | MIT OR Apache-2.0 |
 | colorchoice | 1.0.5 | MIT OR Apache-2.0 |
 | const-oid | 0.10.3 | Apache-2.0 OR MIT |
 | cpufeatures | 0.3.1 | MIT OR Apache-2.0 |
@@ -125,7 +125,7 @@ Bubblewrap and others) are not part of SAM's files and are not listed.
 | solana-nohash-hasher | 0.2.1 | Apache-2.0 OR MIT |
 | strsim | 0.11.1 | MIT |
 | syn | 2.0.119 | MIT OR Apache-2.0 |
-| syn | 3.0.9 | MIT OR Apache-2.0 |
+| syn | 3.0.10 | MIT OR Apache-2.0 |
 | tap | 1.0.1 | MIT |
 | tempfile | 3.27.0 | MIT OR Apache-2.0 |
 | thiserror | 2.0.21 | MIT OR Apache-2.0 |
@@ -347,7 +347,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-## clap 4.6.7
+## clap 4.6.9
 
 License: MIT OR Apache-2.0
 Source: https://github.com/clap-rs/clap
@@ -373,7 +373,7 @@ The text is printed once below, as shared text 11.
 
 The text is printed once below, as shared text 2.
 
-## clap_derive 4.6.7
+## clap_derive 4.6.9
 
 License: MIT OR Apache-2.0
 Source: https://github.com/clap-rs/clap
@@ -399,14 +399,14 @@ The text is printed once below, as shared text 11.
 
 The text is printed once below, as shared text 2.
 
-## clap_mangen 0.3.3
+## clap_mangen 0.3.4
 
 License: MIT OR Apache-2.0
 Source: https://github.com/clap-rs/clap
 
 ### LICENSE-APACHE
 
-The text is printed once below, as shared text 1.
+The text is printed once below, as shared text 11.
 
 ### LICENSE-MIT
 
@@ -3486,7 +3486,7 @@ The text is printed once below, as shared text 3.
 
 The text is printed once below, as shared text 4.
 
-## syn 3.0.9
+## syn 3.0.10
 
 License: MIT OR Apache-2.0
 Source: https://github.com/dtolnay/syn
