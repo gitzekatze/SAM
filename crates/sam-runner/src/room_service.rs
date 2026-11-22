@@ -1609,9 +1609,13 @@ mod tests {
     /// own pipe would be): never a room that seems started.
     #[test]
     fn a_failed_start_is_reported_whatever_numbers_the_room_takes() {
-        let fds: Vec<OwnedFd> = (0..40)
-            .map(|_| OwnedFd::from(std::fs::File::open("/dev/null").unwrap()))
-            .collect();
+        let open = || OwnedFd::from(std::fs::File::open("/dev/null").unwrap());
+        // Low numbers taken first, then the room's connections above them,
+        // then the low ones freed again: the start's own pipe lands among
+        // the numbers the room's connections are moved to.
+        let low: Vec<OwnedFd> = (0..60).map(|_| open()).collect();
+        let fds: Vec<OwnedFd> = (0..40).map(|_| open()).collect();
+        drop(low);
         let map: Vec<(RawFd, RawFd)> = fds
             .iter()
             .enumerate()
