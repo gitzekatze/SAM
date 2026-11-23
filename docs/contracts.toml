@@ -531,6 +531,19 @@ coverage = "full"
 playbook = "A desktop that adds a new launcher service: add it to DANGEROUS_BUS_NAMES (sam-core permissions.rs) and to the evil suite."
 
 [[contract]]
+id = "dbus-command-terminals"
+component = "dbus"
+assumes = "These terminals open a window running any command they are sent over the session bus (GNOME Terminal's Factory0.CreateInstance and Terminal0.Exec, Konsole's and Yakuake's runCommand, Xfce Terminal's Launch, Guake's execute_command, a GApplication's forwarded command line for Console, Ptyxis and Tilix). The filtered bus blocks them unless allowed by name; this list rates allowing one, or a function of it, Dangerous, and repair never offers one from what the app printed."
+covers = ["dbus:org.gnome.Terminal", "dbus:org.gnome.Console", "dbus:org.gnome.Ptyxis", "dbus:com.gexperts.Tilix", "dbus:org.kde.konsole", "dbus:org.kde.yakuake", "dbus:org.xfce.Terminal", "dbus:org.guake3.RemoteControl"]
+functions = [7, 9, 13]
+probe = "none"
+tests = ["a_terminal_that_runs_commands_is_dangerous_to_reach", "the_apps_own_words_never_give_it_a_terminal_to_talk_to"]
+on_break = "none"
+coverage = "partial"
+gaps = "The tests check the rating and the repair offer, not the terminals themselves: whether a terminal runs a command it is sent is read from its documentation. A terminal not on the list is blocked by the filter, but rated as an ordinary service when someone allows it."
+playbook = "A terminal or another program that runs commands for whoever asks over D-Bus: add its bus name to COMMAND_TERMINAL_BUS_NAMES (sam-core permissions.rs)."
+
+[[contract]]
 id = "dbus-integrations"
 component = "dbus"
 assumes = "Notifications, tray icons (StatusNotifier), media keys (MPRIS), screen saver and power inhibition, the file manager and input methods are reached under these names."

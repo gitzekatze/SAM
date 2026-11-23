@@ -341,6 +341,48 @@ const DANGEROUS_BUS_NAMES: &[(&str, &str)] = &[
     ),
 ];
 
+/// Terminals that open a window running any command they are sent
+/// (GNOME Terminal's `Factory0.CreateInstance` and `Terminal0.Exec`,
+/// Konsole's and Yakuake's `runCommand`, a GApplication's command line):
+/// reached from the sandbox, a command runs outside it (audit D-M6, the
+/// TALK half: repair offered them as a harmless service). They count as
+/// dangerous to reach, not to own: an app owning one of these names is a
+/// terminal of its own, which the own-name rules decide.
+const COMMAND_TERMINAL_BUS_NAMES: &[(&str, &str)] = &[
+    (
+        "org.gnome.Terminal",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.gnome.Console",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.gnome.Ptyxis",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "com.gexperts.Tilix",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.kde.konsole",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.kde.yakuake",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.xfce.Terminal",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.guake3.RemoteControl",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+];
+
 /// Session-bus services that hand out stored passwords and logins: the
 /// names of the keyring switch (`integrations.keyring`, rated Think twice)
 /// and the stores beside them. Allowing one by name is that switch by
@@ -478,7 +520,7 @@ pub fn refuse_own_name(
             &[("name", &name)],
         ));
     }
-    if let Some(why) = dangerous_bus_name(name) {
+    if let Some(why) = dangerous_service(name) {
         return Some(why);
     }
     // A wildcard covers every on-demand service under it (audit L-F13).
@@ -495,7 +537,14 @@ pub fn refuse_own_name(
 /// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
 /// Wildcards (`org.kde.*`, `*`) count when they cover a dangerous name, and
 /// any wildcard over the portal namespace would bypass SAM's portal filter.
+/// Terminals that run any command they are sent count too.
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
+    dangerous_service(name).or_else(|| listed_bus_name(name, COMMAND_TERMINAL_BUS_NAMES))
+}
+
+/// [`dangerous_bus_name`] without the terminals: the services no app may
+/// reach or own.
+fn dangerous_service(name: &str) -> Option<String> {
     let name = name.trim();
     // Any wildcard that covers the portal's own name: xdg-dbus-proxy then
     // lets every call to the portal through, not only the interfaces SAM
@@ -512,8 +561,16 @@ pub fn dangerous_bus_name(name: &str) -> Option<String> {
             &[("name", &name)],
         ));
     }
+    listed_bus_name(name, DANGEROUS_BUS_NAMES)
+}
+
+/// Why `name` (or a wildcard) is one of `list`, if it is: the name itself,
+/// a name under it, its numbered (`5`, `6`) and per-process (`-1234`, as
+/// Konsole's) variants, and wildcards that cover it.
+fn listed_bus_name(name: &str, list: &[(&str, &str)]) -> Option<String> {
+    let name = name.trim();
     let wildcard = name.strip_suffix(".*").or_else(|| name.strip_suffix('*'));
-    for (d, why) in DANGEROUS_BUS_NAMES {
+    for (d, why) in list {
         let hit = match wildcard {
             Some(prefix) => d.starts_with(prefix) || prefix.starts_with(d.trim_end_matches('.')),
             None => {
@@ -522,6 +579,7 @@ pub fn dangerous_bus_name(name: &str) -> Option<String> {
                 } else {
                     name == *d
                         || name.starts_with(&format!("{d}."))
+                        || name.starts_with(&format!("{d}-"))
                         || name.starts_with(&format!("{d}5"))
                         || name.starts_with(&format!("{d}6"))
                 }

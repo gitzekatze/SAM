@@ -1319,6 +1319,51 @@ mod tests {
         assert!(dangerous_bus_name(PORTAL_NAME).is_none());
     }
 
+    /// A terminal that runs any command it is sent is Dangerous to reach,
+    /// by name, a wildcard over it or a function rule, so adding it asks
+    /// first (audit D-M6: `set APP dbus.session.allow org.gnome.Terminal`
+    /// added no risk and asked nothing). Owning such a name is left to the
+    /// own-name rules, as before.
+    #[test]
+    fn a_terminal_that_runs_commands_is_dangerous_to_reach() {
+        let mut before = PermissionSet::strict_gui();
+        before.dbus.session.mode = DbusMode::Filtered;
+        for name in [
+            "org.gnome.Terminal",
+            "org.gnome.Terminal.Factory0",
+            "org.kde.konsole",
+            "org.kde.konsole-4242",
+            "org.kde.yakuake",
+            "org.xfce.Terminal5",
+            "org.guake3.RemoteControl",
+            "org.gnome.Console",
+            "org.gnome.Ptyxis",
+            "com.gexperts.Tilix",
+            "org.xfce.*",
+        ] {
+            let mut after = before.clone();
+            after.dbus.session.allow.push(name.into());
+            assert_eq!(assess(&after).level, RiskLevel::Dangerous, "{name}");
+            assert!(!new_risks(&before, &after).is_empty(), "{name} asks first");
+            let mut call = before.clone();
+            call.dbus.session.calls.push(format!("{name}=*"));
+            assert_eq!(assess(&call).level, RiskLevel::Dangerous, "{name}");
+        }
+        let none = std::collections::BTreeSet::new();
+        assert!(crate::permissions::refuse_own_name("org.gnome.Terminal", &none).is_none());
+        assert!(crate::permissions::refuse_own_name("org.kde.konsole", &none).is_none());
+        // Still refused as its own name, as before.
+        assert!(crate::permissions::refuse_own_name("org.kde.KWin", &none).is_some());
+        assert!(crate::permissions::refuse_own_name("*", &none).is_some());
+        let mut ordinary = before.clone();
+        ordinary
+            .dbus
+            .session
+            .allow
+            .push("org.example.Viewer".into());
+        assert!(new_risks(&before, &ordinary).is_empty());
+    }
+
     /// The sound server's own socket listed as an extra socket is as
     /// dangerous as "Sound without SAM's relay" (review SB-4); PipeWire's
     /// stays at the level of "Direct PipeWire access".
