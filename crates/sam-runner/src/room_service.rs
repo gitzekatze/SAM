@@ -2079,6 +2079,70 @@ mod process_tests {
         assert_eq!(exit_code(st), 0);
     }
 
+    /// A signal that comes while SAM waits to hear whether a room's
+    /// Bubblewrap started (the launcher gets signals) is no failed start:
+    /// the room starts, and SAM keeps track of it. Runs on its own: it
+    /// sets how this process handles a signal and sends it many times.
+    #[test]
+    fn a_signal_while_a_room_starts_does_not_fail_the_start() {
+        if !alone("a_signal_while_a_room_starts_does_not_fail_the_start") {
+            return;
+        }
+        extern "C" fn nothing(_: libc::c_int) {}
+        // SIGURG with a handler that does not restart calls: it interrupts
+        // the wait for the start's answer.
+        // SAFETY: sigaction with a zeroed struct filled as documented.
+        unsafe {
+            let mut new: libc::sigaction = std::mem::zeroed();
+            new.sa_sigaction = nothing as extern "C" fn(libc::c_int) as libc::sighandler_t;
+            libc::sigemptyset(&mut new.sa_mask);
+            assert_eq!(libc::sigaction(libc::SIGURG, &new, std::ptr::null_mut()), 0);
+        }
+        // SAFETY: pthread_self has no arguments.
+        let me = unsafe { libc::pthread_self() };
+        let done = Arc::new(AtomicBool::new(false));
+        let sender = {
+            let done = done.clone();
+            std::thread::spawn(move || {
+                while !done.load(Ordering::SeqCst) {
+                    // SAFETY: a signal to this test's thread, which waits
+                    // for this one to end before it ends.
+                    unsafe { libc::pthread_kill(me, libc::SIGURG) };
+                    std::thread::sleep(Duration::from_micros(50));
+                }
+            })
+        };
+        // A long command line: the kernel copies it while the program
+        // starts, so SAM waits a while for the answer, and signals come
+        // during that wait.
+        let args = vec!["x".repeat(100_000); 12];
+        let results: Vec<String> = (0..50)
+            .map(|_| {
+                match spawn_room(
+                    Path::new("/bin/true"),
+                    &args,
+                    &[],
+                    2,
+                    [true; 3],
+                    &[],
+                    None,
+                ) {
+                    Ok(mut p) => match p.wait() {
+                        Ok(st) => format!("ended with {}", exit_code(st)),
+                        Err(e) => format!("not waited for: {e}"),
+                    },
+                    Err(e) => format!("not started: {e:#}"),
+                }
+            })
+            .collect();
+        done.store(true, Ordering::SeqCst);
+        sender.join().unwrap();
+        assert!(
+            results.iter().all(|r| r == "ended with 0"),
+            "{results:?}"
+        );
+    }
+
     /// A room's program has exactly its connections, each at its number,
     /// and /dev/null where it passed no standard stream: none is lost or
     /// overwritten by another on the way, and nothing else of the

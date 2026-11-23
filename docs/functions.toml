@@ -248,6 +248,7 @@ tests = [
   "waiting_for_a_process_that_is_no_child_fails_at_once",
   "a_room_under_a_low_limit_gets_its_connections_and_keeps_lower_limits",
   "a_start_that_fails_while_moving_connections_is_reported_with_its_cause",
+  "a_signal_while_a_room_starts_does_not_fail_the_start",
   "a_room_gets_exactly_its_connections_and_none_overwrites_another",
   "a_room_never_gets_a_variable_without_a_valid_name",
   "a_place_is_opened_beneath_its_source_as_a_handle_through_no_link",
