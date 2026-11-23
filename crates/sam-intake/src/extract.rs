@@ -514,15 +514,12 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         report.removed_special.len()
     )?;
 
-    // Atomically swap the new payload into place.
     let appdir = req.root.join("AppDir");
     let old = req.root.join(format!(".old-{}", std::process::id()));
-    if appdir.exists() {
-        fs::rename(&appdir, &old)?;
-    }
-    fs::rename(&staging, &appdir)?;
+    let swapped = swap_into_place(&staging, &appdir, &old, true);
     let _ = fs::remove_dir_all(&unpack_box);
-    if old.exists() {
+    swapped?;
+    if fs::symlink_metadata(&old).is_ok() {
         let _ = fs::remove_dir_all(&old);
     }
     Ok(ExtractOutcome {
@@ -531,6 +528,70 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         report,
         attempts,
     })
+}
+
+/// Puts the unpacked app `new` at `appdir`, in one step where the file
+/// system can: the old app and the new one change places at once, so there
+/// is never a moment without an app (`old` then holds the old one). Where
+/// it cannot (`exchange` false, or a file system without that), the old app
+/// is moved to `old` first and put back if the new one cannot follow: a
+/// failed second step left the app with no unpacked files at all (audit
+/// I-F16).
+fn swap_into_place(new: &Path, appdir: &Path, old: &Path, exchange: bool) -> Result<()> {
+    if fs::symlink_metadata(appdir).is_err() {
+        fs::rename(new, appdir).with_context(|| format!("moving into {}", appdir.display()))?;
+        return Ok(());
+    }
+    if exchange {
+        match exchange_paths(new, appdir) {
+            Ok(()) => {
+                // The old app now sits where the new one was; the new one is
+                // in place whatever happens to the old one now.
+                if fs::rename(new, old).is_err() {
+                    let _ = fs::remove_dir_all(new);
+                }
+                return Ok(());
+            }
+            Err(e)
+                if matches!(
+                    e.raw_os_error(),
+                    Some(libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP)
+                ) => {}
+            Err(e) => {
+                return Err(anyhow::Error::new(e).context(format!("moving into {}", appdir.display())))
+            }
+        }
+    }
+    fs::rename(appdir, old)?;
+    if let Err(e) = fs::rename(new, appdir) {
+        fs::rename(old, appdir).with_context(|| {
+            format!("putting the old app back at {} ({e})", appdir.display())
+        })?;
+        return Err(anyhow::Error::new(e).context(format!("moving into {}", appdir.display())));
+    }
+    Ok(())
+}
+
+/// Swaps two paths in one step (`renameat2` with `RENAME_EXCHANGE`).
+fn exchange_paths(a: &Path, b: &Path) -> io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let ca = std::ffi::CString::new(a.as_os_str().as_bytes())?;
+    let cb = std::ffi::CString::new(b.as_os_str().as_bytes())?;
+    // SAFETY: both are NUL-terminated paths; renameat2 only renames.
+    let r = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            ca.as_ptr(),
+            libc::AT_FDCWD,
+            cb.as_ptr(),
+            libc::RENAME_EXCHANGE,
+        )
+    };
+    if r == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 /// An error for an exceeded unpacking limit. It carries a code, so it is
@@ -940,6 +1001,39 @@ mod space_tests {
             .context("writing usr/lib/libbig.so");
         assert!(is_disk_full(&e));
         assert!(!is_disk_full(&anyhow!("some other problem")));
+    }
+
+    /// Regression (audit I-F16): putting a new unpack in place was two
+    /// renames, and when the second failed the app had no unpacked files
+    /// left. Now the old app stays (or comes back) when the new one cannot
+    /// be moved in, both with the one-step swap and without it; and a
+    /// working swap leaves the new app in place and the old one aside.
+    #[test]
+    fn a_failed_swap_keeps_the_old_app() {
+        for exchange in [true, false] {
+            let d = tempfile::tempdir().unwrap();
+            let appdir = d.path().join("AppDir");
+            let old = d.path().join(".old-1");
+            fs::create_dir(&appdir).unwrap();
+            fs::write(appdir.join("AppRun"), "old").unwrap();
+            // The new unpack cannot be moved in: it is not there.
+            let gone = d.path().join("gone");
+            assert!(swap_into_place(&gone, &appdir, &old, exchange).is_err());
+            assert_eq!(
+                fs::read_to_string(appdir.join("AppRun")).ok().as_deref(),
+                Some("old"),
+                "exchange {exchange}: the old app is gone"
+            );
+            assert!(fs::symlink_metadata(&old).is_err());
+
+            let new = d.path().join("new");
+            fs::create_dir(&new).unwrap();
+            fs::write(new.join("AppRun"), "new").unwrap();
+            swap_into_place(&new, &appdir, &old, exchange).unwrap();
+            assert_eq!(fs::read_to_string(appdir.join("AppRun")).unwrap(), "new");
+            assert_eq!(fs::read_to_string(old.join("AppRun")).unwrap(), "old");
+            assert!(fs::symlink_metadata(&new).is_err());
+        }
     }
 
     /// Only an exceeded limit counts as one: other errors are not explained
