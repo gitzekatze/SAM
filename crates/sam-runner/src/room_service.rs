@@ -3521,3 +3521,251 @@ exec "$@"
         });
     }
 }
+
+#[cfg(test)]
+mod message_tests {
+    //! How a request travels: the service reading it from its connection,
+    //! the stand-in sending it, and what the stand-in does with
+    //! Bubblewrap's arguments before it sends.
+    use super::*;
+    use std::os::unix::thread::JoinHandleExt;
+    use std::time::Instant;
+
+    fn dev_null() -> OwnedFd {
+        OwnedFd::from(std::fs::File::open("/dev/null").unwrap())
+    }
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|x| x.to_string()).collect()
+    }
+
+    /// A service state with room for `budget` descriptors.
+    fn state_with_budget(budget: usize) -> State {
+        let state = State::default();
+        state.fd_budget.store(budget, Ordering::SeqCst);
+        state
+    }
+
+    /// A message as the stand-in sends it: 4 bytes length, then the body.
+    fn framed(body: &[u8]) -> Vec<u8> {
+        let mut msg = (body.len() as u32).to_be_bytes().to_vec();
+        msg.extend(body);
+        msg
+    }
+
+    /// How many bytes wait to be read on `stream`.
+    fn waiting(stream: &UnixStream) -> usize {
+        let mut n: libc::c_int = 0;
+        // SAFETY: FIONREAD writes one int.
+        let r = unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut n) };
+        assert_eq!(r, 0, "FIONREAD");
+        n as usize
+    }
+
+    /// A stray byte the program marks urgent (out of band) makes the
+    /// connection look readable while there is nothing to read yet: the
+    /// service waits on for the request and reads it, never takes that
+    /// for a refusal.
+    #[test]
+    fn an_urgent_byte_before_the_request_does_not_end_its_reading() {
+        let (a, b) = UnixStream::pair().unwrap();
+        // SAFETY: send reads one byte of the buffer given.
+        let r = unsafe { libc::send(a.as_raw_fd(), b"!".as_ptr().cast(), 1, libc::MSG_OOB) };
+        assert_eq!(r, 1, "sending an urgent byte");
+        let body = br#"{"after":"urgent"}"#.to_vec();
+        let sent = body.clone();
+        // The request itself only comes a moment after the reading began.
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            (&a).write_all(&framed(&sent)).unwrap();
+            a
+        });
+        let state = state_with_budget(10_000);
+        let mut held = Held::new(&state);
+        let got = read_message(&b, &mut held);
+        drop(sender.join().unwrap());
+        let (got, fds) = got.expect("the request after the urgent byte");
+        assert_eq!(got, body);
+        assert!(fds.is_empty());
+    }
+
+    /// Too many connections are refused for what they are: more than one
+    /// request may pass ("passes too many"), or more than the launcher has
+    /// room for now ("held for rooms at once", which says the app is not
+    /// at fault). The words matter: the start record shows them.
+    #[test]
+    fn too_many_connections_are_refused_with_the_right_reason() {
+        // More than a request may pass, with room for all of them: the
+        // first part brings the most a request may have, a later part one
+        // more.
+        let (a, b) = UnixStream::pair().unwrap();
+        let null = dev_null();
+        let msg = framed(b"{}");
+        send_with_fds(&a, &msg[..1], &vec![null.as_raw_fd(); room_rules::MAX_FDS]).unwrap();
+        send_with_fds(&a, &msg[1..], &[null.as_raw_fd()]).unwrap();
+        let state = state_with_budget(10_000);
+        let mut held = Held::new(&state);
+        assert_eq!(
+            read_message(&b, &mut held).expect_err("one more than a request may pass"),
+            "the request passes too many connections"
+        );
+        // Within what a request may pass, but the launcher has room for
+        // only one more descriptor: two are refused as held at once.
+        let (a, b) = UnixStream::pair().unwrap();
+        send_with_fds(&a, &msg, &[null.as_raw_fd(), null.as_raw_fd()]).unwrap();
+        let state = state_with_budget(1);
+        let mut held = Held::new(&state);
+        assert_eq!(
+            read_message(&b, &mut held).expect_err("more than the launcher has room for"),
+            "too many connections held for rooms at once"
+        );
+        // Nothing stays counted for the refused request.
+        drop(held);
+        assert_eq!(state.held.load(Ordering::SeqCst), 0);
+        assert_eq!(state.fds.load(Ordering::SeqCst), 0);
+    }
+
+    /// A request of exactly the largest size is read whole; one byte more
+    /// is refused before it is read.
+    #[test]
+    fn a_request_of_the_largest_size_is_read_and_one_byte_more_is_refused() {
+        let state = state_with_budget(10_000);
+        for (len, ok) in [
+            (room_rules::MAX_MESSAGE, true),
+            (room_rules::MAX_MESSAGE + 1, false),
+        ] {
+            let (a, b) = UnixStream::pair().unwrap();
+            let body = vec![b'x'; len];
+            let sent = body.clone();
+            // In its own thread: the message may not fit the connection's
+            // buffer at once.
+            let sender = std::thread::spawn(move || {
+                let _ = (&a).write_all(&framed(&sent));
+                a
+            });
+            let mut held = Held::new(&state);
+            let got = read_message(&b, &mut held);
+            drop(b);
+            drop(sender.join().unwrap());
+            if ok {
+                assert_eq!(got.expect("the largest request").0, body);
+            } else {
+                assert_eq!(
+                    got.expect_err("one byte more than the largest"),
+                    "the request is too large"
+                );
+            }
+        }
+    }
+
+    /// Sending nothing is done at once, and a send to a connection whose
+    /// other end is gone says so (it never reads as sent).
+    #[test]
+    fn an_empty_send_succeeds_and_a_send_to_a_closed_connection_fails() {
+        let (a, b) = UnixStream::pair().unwrap();
+        send_with_fds(&a, b"", &[]).expect("nothing to send");
+        drop(b);
+        let e = send_with_fds(&a, b"x", &[]).expect_err("the other end is gone");
+        assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
+    }
+
+    /// A send the kernel takes only in part (here a signal ends the wait
+    /// for room in a full connection) still sends the rest: the other side
+    /// gets every byte and the connection that came with the first part,
+    /// and the send returns once all is sent.
+    #[test]
+    fn a_send_taken_in_part_still_sends_everything() {
+        extern "C" fn nothing(_: libc::c_int) {}
+        // SIGURG (ignored by default, sent by nothing else here) with a
+        // handler that does not restart calls: it ends the wait for room.
+        // SAFETY: sigaction with zeroed structs filled as documented.
+        let old = unsafe {
+            let mut new: libc::sigaction = std::mem::zeroed();
+            new.sa_sigaction = nothing as extern "C" fn(libc::c_int) as libc::sighandler_t;
+            libc::sigemptyset(&mut new.sa_mask);
+            let mut old: libc::sigaction = std::mem::zeroed();
+            assert_eq!(libc::sigaction(libc::SIGURG, &new, &mut old), 0);
+            old
+        };
+        let (a, b) = UnixStream::pair().unwrap();
+        b.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+        // Far more than a connection holds: the send waits for room.
+        let data: Vec<u8> = (0..4 * 1024 * 1024u32).map(|i| (i % 251) as u8).collect();
+        let sent = data.clone();
+        let null = dev_null();
+        let (done_tx, done) = std::sync::mpsc::channel();
+        let sender = std::thread::spawn(move || {
+            let r = send_with_fds(&a, &sent, &[null.as_raw_fd()]);
+            let _ = done_tx.send(r.map_err(|e| e.to_string()));
+            drop(a);
+        });
+        // Once the first part has come, the sender waits for room: one
+        // signal ends that wait with part of the message sent.
+        let end = Instant::now() + Duration::from_secs(20);
+        while waiting(&b) == 0 {
+            assert!(Instant::now() < end, "nothing was sent");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        // SAFETY: a signal to a thread that is not joined yet.
+        unsafe { libc::pthread_kill(sender.as_pthread_t(), libc::SIGURG) };
+        let mut got = vec![0u8; data.len()];
+        let mut fds = Vec::new();
+        let first = recv_with_fds(&b, &mut got, &mut fds, 1).unwrap();
+        let rest = (&b).read_exact(&mut got[first..]);
+        let finished = done.recv_timeout(Duration::from_secs(20));
+        // SAFETY: puts back the handling found before.
+        unsafe { libc::sigaction(libc::SIGURG, &old, std::ptr::null_mut()) };
+        rest.expect("every byte of the message");
+        assert!(got == data, "the message came changed");
+        assert_eq!(fds.len(), 1, "the connection sent with the first part");
+        assert_eq!(
+            finished,
+            Ok(Ok(())),
+            "the send did not return once all was sent"
+        );
+        sender.join().unwrap();
+    }
+
+    /// The death signal the stand-in sets for itself, on this thread.
+    fn death_signal() -> libc::c_int {
+        let mut sig: libc::c_int = -1;
+        // SAFETY: PR_GET_PDEATHSIG writes one int.
+        assert_eq!(unsafe { libc::prctl(libc::PR_GET_PDEATHSIG, &mut sig) }, 0);
+        sig
+    }
+
+    /// The stand-in ends with the program that started it exactly when
+    /// Bubblewrap is asked to (`--die-with-parent`), not otherwise: it
+    /// sets that before it even looks for Room service (here there is
+    /// none, so it then ends with an error).
+    #[test]
+    fn the_standin_dies_with_its_parent_only_when_asked() {
+        // In a thread of its own: the setting belongs to the thread.
+        std::thread::spawn(|| {
+            assert!(
+                !Path::new(SOCKET_INSIDE).exists(),
+                "this computer has a Room service at {SOCKET_INSIDE}"
+            );
+            // SAFETY: prctl with a number argument.
+            unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, 0 as libc::c_ulong) };
+            let plain = standin(
+                "bwrap 0.11.0",
+                &s(&["--ro-bind", "/usr", "/usr", "--", "/usr/bin/true"]),
+            );
+            let plain_sig = death_signal();
+            let asked = standin(
+                "bwrap 0.11.0",
+                &s(&["--die-with-parent", "--", "/usr/bin/true"]),
+            );
+            let asked_sig = death_signal();
+            // SAFETY: prctl with a number argument.
+            unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, 0 as libc::c_ulong) };
+            assert_eq!((plain, asked), (1, 1), "no Room service here");
+            assert_eq!(plain_sig, 0, "set without --die-with-parent");
+            assert_eq!(asked_sig, libc::SIGKILL, "not set with --die-with-parent");
+        })
+        .join()
+        .unwrap();
+    }
+}
