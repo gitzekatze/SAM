@@ -131,13 +131,15 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             )
             .with_key("filesystem.home"),
         );
-        if p.filesystem.ssh || p.filesystem.gnupg || p.filesystem.hidden_files {
-            w.push(Warning::danger(
-                "secrets-exposed",
-                "Private keys exposed",
-                "SSH keys, GnuPG keys or other credential stores are visible to the app.",
-            ));
-        }
+    }
+    // Its own warning: switching off the full-home warning silenced this
+    // one too (audit U-M10).
+    if p.filesystem.home && (p.filesystem.ssh || p.filesystem.gnupg || p.filesystem.hidden_files) {
+        w.push(Warning::danger(
+            "secrets-exposed",
+            "Private keys exposed",
+            "SSH keys, GnuPG keys or other credential stores are visible to the app.",
+        ));
     }
     for path in p
         .filesystem
@@ -196,9 +198,10 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             .with_key("dbus.system.mode"),
         ),
     }
+    // Dangerous, as the risk words rate it (audit U-M10: a plain warning here).
     if p.dbus.session.mode == DbusMode::Full {
         w.push(
-            Warning::warn(
+            Warning::danger(
                 "session-dbus-full",
                 "Full session D-Bus",
                 "Unfiltered session bus access lets the app control other desktop applications and services, and can be used to escape the sandbox.",
@@ -235,6 +238,78 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             "Raw device access",
             "Raw input, USB or sound devices are exposed. Input devices can be used to log keystrokes.",
         ));
+    }
+    // Grants the risk words rate "Think twice" or higher had no warning at
+    // all (audit U-M10).
+    if p.integrations.keyring {
+        w.push(
+            Warning::warn(
+                "keyring",
+                "Passwords & keyring",
+                "The app can read every password and secret stored in your keyring, also those of other apps.",
+            )
+            .with_key("integrations.keyring"),
+        );
+    }
+    if p.devices.webcam {
+        w.push(
+            Warning::warn(
+                "webcam",
+                "Webcam",
+                "The app can switch on your camera and record what it sees.",
+            )
+            .with_key("devices.webcam"),
+        );
+    }
+    if p.sockets.ssh_agent {
+        w.push(
+            Warning::warn(
+                "ssh-agent",
+                "SSH agent",
+                "While it runs, the app can use your SSH keys through the agent to log in to other computers as you.",
+            )
+            .with_key("sockets.ssh_agent"),
+        );
+    }
+    if p.display.wayland && p.display.wayland_privileged {
+        w.push(
+            Warning::warn(
+                "wayland-privileged",
+                "Privileged Wayland protocols",
+                "The app can use desktop functions meant for trusted tools, such as capturing the screen, reading the clipboard history or typing into other windows.",
+            )
+            .with_key("display.wayland_privileged"),
+        );
+    }
+    if !p.advanced.seccomp_baseline {
+        w.push(
+            Warning::warn(
+                "seccomp-off",
+                "Syscall filter off",
+                "The kernel functions SAM normally blocks are within the app's reach, so a flaw in the kernel is easier to use from inside the sandbox.",
+            )
+            .with_key("advanced.seccomp_baseline"),
+        );
+    }
+    if p.advanced.landlock == Some(false) {
+        w.push(
+            Warning::warn(
+                "landlock-off",
+                "Landlock off",
+                "The second barrier around your files (Landlock) is off; only the sandbox's own view of the files protects them.",
+            )
+            .with_key("advanced.landlock"),
+        );
+    }
+    if p.advanced.allow_userns {
+        w.push(
+            Warning::info(
+                "nested-namespaces",
+                "Nested namespaces",
+                "The app may build sandboxes of its own, which brings more of the kernel within its reach. Browsers built on Chromium need this for their own sandbox.",
+            )
+            .with_key("advanced.allow_userns"),
+        );
     }
     if p.devices.bluetooth {
         w.push(
@@ -328,6 +403,61 @@ mod tests {
         ] {
             assert!(c.contains(&code), "missing {code} in {c:?}");
         }
+    }
+
+    /// Regression (audit U-M10): grants the risk words rate "Think twice"
+    /// had no warning at all, the private-keys warning was silenced by
+    /// switching off the full-home warning, and the full session bus was a
+    /// plain warning while the risk words call it Dangerous.
+    #[test]
+    fn every_grant_the_risk_words_question_is_warned_about() {
+        let mut p = PermissionSet::strict_gui();
+        p.integrations.keyring = true;
+        p.devices.webcam = true;
+        p.sockets.ssh_agent = true;
+        p.display.wayland = true;
+        p.display.wayland_privileged = true;
+        p.advanced.seccomp_baseline = false;
+        p.advanced.landlock = Some(false);
+        p.advanced.allow_userns = true;
+        let w = evaluate(&p, &WarningContext::default());
+        let c = codes(&w);
+        for code in [
+            "keyring",
+            "webcam",
+            "ssh-agent",
+            "wayland-privileged",
+            "seccomp-off",
+            "landlock-off",
+            "nested-namespaces",
+        ] {
+            assert!(c.contains(&code), "missing {code} in {c:?}");
+        }
+
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.ssh = true;
+        let quiet = WarningContext::default();
+        assert!(!quiet.warn_full_home);
+        let w = evaluate(&p, &quiet);
+        let c = codes(&w);
+        assert!(c.contains(&"secrets-exposed"), "{c:?}");
+        assert!(!c.contains(&"full-home"), "that warning is switched off");
+
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Full;
+        let w = evaluate(&p, &quiet);
+        let bus = w.iter().find(|w| w.code == "session-dbus-full").unwrap();
+        assert_eq!(bus.severity, Severity::Danger);
+        assert_eq!(
+            crate::risk::assess(&p)
+                .items
+                .iter()
+                .find(|i| i.key == "dbus.session.mode")
+                .map(|i| i.level),
+            Some(crate::risk::RiskLevel::Dangerous),
+            "the same as the risk words"
+        );
     }
 
     /// SAM's strictest window profile produces no danger warning.
