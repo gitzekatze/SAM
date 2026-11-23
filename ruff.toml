@@ -1,11 +1,17 @@
 # The Python scripts and test helpers (CI: "Scripts and workflows pass their
 # linters"). Mistakes that are real bugs or hide a failed check: unused
-# results (F), syntax (E9), loop variables (B007, B023), and `except: pass`
-# without a reason (S110: a silent one can turn a failed check green).
+# results (F), syntax (E9), loop variables (B007, B023), `except: pass`
+# without a reason (S110: a silent one can turn a failed check green), and
+# subprocess.run without check= (PLW1510: a failed command that nobody
+# looks at can do the same; check=False says its status is read).
 [lint]
-select = ["F", "E9", "B007", "B023", "S110"]
+select = ["F", "E9", "B007", "B023", "S110", "PLW1510"]
 
 [lint.per-file-ignores]
 # entries() is called at once, in the same pass of the loop. The file is
 # part of the approval check, so a note here instead of in it.
-"scripts/contract-verifier.py" = ["B023"]
+# PLW1510: show() there and one_run() in flaky-check.py read the command's
+# status themselves; both files are part of the approval check (keeper.toml
+# verifier.gate), so the note is here too.
+"scripts/contract-verifier.py" = ["B023", "PLW1510"]
+"scripts/flaky-check.py" = ["PLW1510"]

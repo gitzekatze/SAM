@@ -19,7 +19,7 @@ def check(name, cond, detail=""):
     print(("ok   " if cond else "FAIL ") + name + ("" if cond else f"  [{detail}]"))
 
 def perms():
-    out = subprocess.run([CLI, "--json", "group", "list"], capture_output=True, text=True).stdout
+    out = subprocess.run([CLI, "--json", "group", "list"], check=False, capture_output=True, text=True).stdout
     data = json.loads(out)
     data = data.get("data", data)
     return {a["name"]: a for a in data}

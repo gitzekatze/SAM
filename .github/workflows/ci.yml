@@ -22,8 +22,9 @@ jobs:
   # the build, test, window and sandbox steps are skipped; the website, the
   # test library and the function map are still checked. GitHub counts a
   # skipped job as passed, so such a pull request can be merged in about a
-  # minute. Three documents are part of the code: docs/guide.md is built into
-  # the window, and tests read docs/architecture.md and docs/syscalls-reviewed.txt.
+  # minute. Some documents are part of the code: docs/guide.md and
+  # docs/contracts.toml are built into SAM, and tests read others
+  # (scripts/workflow-check.py checks that every one is listed here).
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -40,7 +41,7 @@ jobs:
         run: |
           docs='^(docs/|[^/]+\.md$|scripts/site\.py$|\.github/ISSUE_TEMPLATE/)'
           # Documents SAM builds in or its checks read: they count as code.
-          code_docs='^docs/((guide|architecture)\.md|syscalls-reviewed\.txt|contracts\.toml|functions\.toml)$'
+          code_docs='^docs/((guide|architecture|permissions)\.md|syscalls-reviewed\.txt|contracts\.toml|functions\.toml)$'
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             code=true    # run by hand, or no earlier commit to compare with
           elif git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Ev "$docs" | grep -q . \
@@ -53,9 +54,11 @@ jobs:
           [ "$code" = true ] && echo "Code changed: every job runs." || echo "Only documents changed: the code jobs are skipped."
 
   # The scripts and workflows through their linters (audit P10, P11):
-  # shellcheck for shell scripts, ruff for the Python ones (ruff.toml), and
+  # shellcheck for shell scripts, ruff for the Python ones (ruff.toml),
   # zizmor for what a workflow can be made to do (untrusted text in a shell
-  # command, broad tokens, checkouts that keep their token). Pinned versions.
+  # command, broad tokens, checkouts that keep their token), and actionlint
+  # for mistakes in the workflow files themselves (unknown keys, wrong
+  # expressions, the shell in run: through shellcheck). Pinned versions.
   lint:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -69,6 +72,14 @@ jobs:
         run: pipx run ruff==0.17.5 check scripts tests
       - name: Workflows
         run: pipx run zizmor==1.31.1 --offline --min-severity medium .github/workflows
+      # actionlint's release build, checked against the checksum its
+      # release lists for this file.
+      - name: Workflow files
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tar.gz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
 
   # Dependencies: security advisories, licences, banned crates, sources
   # (deny.toml).
@@ -242,9 +253,9 @@ jobs:
       - name: Contract map covers every outside assumption
         run: python3 scripts/contract-map.py --check
 
-      # AUTOMATION.md: no workflow hands an attacker the repository, and
+      # AUTOMATION.md: the rules every workflow keeps (scripts/workflow-check.py), and
       # every pull request shows its risk class.
-      - name: Two workflow patterns, and the automation rules work
+      - name: Workflow rules, and the automation rules work
         run: |
           python3 scripts/workflow-check.py
           python3 scripts/workflow-check.py --self-test

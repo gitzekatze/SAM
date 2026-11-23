@@ -31,7 +31,7 @@ spec.loader.exec_module(facts)
 
 
 def git(*args):
-    return subprocess.run(["git", *args], cwd=ROOT, text=True, capture_output=True).stdout.strip()
+    return subprocess.run(["git", *args], cwd=ROOT, text=True, check=False, capture_output=True).stdout.strip()
 
 
 def reports():

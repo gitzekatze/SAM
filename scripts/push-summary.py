@@ -25,7 +25,7 @@ spec.loader.exec_module(fmap)
 
 
 def changed_files(base, head):
-    p = subprocess.run(["git", "diff", "--name-only", f"{base}..{head}"], cwd=ROOT, text=True, capture_output=True)
+    p = subprocess.run(["git", "diff", "--name-only", f"{base}..{head}"], cwd=ROOT, text=True, check=False, capture_output=True)
     if p.returncode != 0:
         return None
     return [l for l in p.stdout.splitlines() if l]
