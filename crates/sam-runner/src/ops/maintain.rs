@@ -760,10 +760,23 @@ impl Sam {
         let target = dir.join(&name);
         let tmp = work.join(&name);
         let fetched = crate::updates::download_update(&p, &installed, &tmp)?;
-        if !inspect(&tmp)?.is_appimage() {
+        let info = inspect(&tmp)?;
+        if !info.is_appimage() {
             bail!(
                 "{}",
                 sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted")
+            );
+        }
+        // A build for another processor would not start: the working version
+        // would be in the backups and the app broken until Undo (review
+        // 2026-11-23, U-8). Adding an app refuses it the same way.
+        if let Some(why) = sam_detect::appimage::wrong_processor(&info) {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the downloaded update was not installed and was deleted: {reason}",
+                    &[("reason", &why)]
+                )
             );
         }
         // What the new file is compared with: the recorded signature when it

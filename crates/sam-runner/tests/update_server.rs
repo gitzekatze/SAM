@@ -37,6 +37,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        # /endless/NAME streams zeros without naming a length (64 MiB) and
+        # logs how many pieces of 64 KiB the client took.
+        if self.path.startswith("/endless/"):
+            self.send_response(200)
+            self.end_headers()
+            sent = 0
+            try:
+                for _ in range(1024):
+                    self.wfile.write(b"\0" * 65536)
+                    sent += 1
+            except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                pass
+            with open(log, "a") as f:
+                f.write(f"endless {sent}\n")
+            return
         path = self.translate_path(self.path)
         if not os.path.isfile(path):
             self.send_error(404)
@@ -1150,4 +1165,122 @@ fn walkdir_count(dir: &Path) -> usize {
             }
         })
         .sum()
+}
+
+/// Regression (review 2026-11-23, U-8): an update did not look at the
+/// processor the new file is built for. A release pattern that also matches
+/// the ARM build handed it to an x86-64 computer; SAM checked its checksum,
+/// moved the working version into the backups and left the app unable to
+/// start until Undo. Adding an app already refused that; now an update
+/// does too, and nothing changes.
+#[test]
+fn an_update_built_for_another_processor_is_not_installed() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    if sam_detect::appimage::host_arch() != "x86_64" {
+        sam_runner::contracts::not_here("the test changes an x86-64 AppImage into an ARM one");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let before = fs::read(&installed).unwrap();
+    // Version 2 as the ARM build: the ELF machine field (offset 18, little
+    // endian) 0xB7 is aarch64.
+    let v2 = tmp.path().join("v2.AppImage");
+    appimage(&v2, &url, "2.0");
+    let mut data = fs::read(&v2).unwrap();
+    data[18] = 0xB7;
+    data[19] = 0x00;
+    fs::write(&v2, &data).unwrap();
+    assert_eq!(
+        sam_detect::inspect(&v2).unwrap().arch.as_deref(),
+        Some("aarch64")
+    );
+    publish(&server, &v2, "Tool-2.0-aarch64.AppImage");
+
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+    let err = format!("{:#}", sam.update(&id, false).unwrap_err());
+    assert!(
+        err.contains("built for ARM (aarch64) processors") && err.contains("not installed"),
+        "{err}"
+    );
+    let e = sam.resolve(&id).unwrap();
+    assert_eq!(e.source_path, fs::canonicalize(&installed).unwrap());
+    assert_eq!(
+        fs::read(&installed).unwrap(),
+        before,
+        "the working version stays"
+    );
+    assert!(e.update_backup.is_none(), "nothing was replaced");
+    assert!(
+        !apps.join("Tool-2.0-aarch64.AppImage").exists(),
+        "the ARM build was not put in place"
+    );
+    assert_eq!(unpacked_version(&sam, &id), "1.0");
+}
+
+/// Regression (review 2026-11-23, U-5): a full download stopped at the
+/// published length only through curl's `--max-filesize`, which before curl
+/// 8.4 does nothing when the server names no length: a server could stream
+/// into the home folder for an hour. Here the published file's address
+/// streams without a length; SAM stops at the length the update
+/// description names, deletes what came, and nothing changes.
+#[test]
+fn a_server_that_sends_more_than_announced_cannot_fill_the_disk() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let before = fs::read(&installed).unwrap();
+    let v2 = tmp.path().join("v2.AppImage");
+    appimage(&v2, &url, "2.0");
+    publish(&server, &v2, "Tool-2.0-x86_64.AppImage");
+    // The update description sends SAM to the endless address.
+    let zsync = server.root.join("Tool-x86_64.AppImage.zsync");
+    let mut z = fs::read(&zsync).unwrap();
+    let from = b"URL: Tool-2.0-x86_64.AppImage\n";
+    let at = z.windows(from.len()).position(|w| w == from).unwrap();
+    z.splice(
+        at..at + from.len(),
+        b"URL: endless/Tool-2.0-x86_64.AppImage\n".iter().copied(),
+    );
+    fs::write(&zsync, z).unwrap();
+
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+    let err = format!("{:#}", sam.update(&id, false).unwrap_err());
+    assert!(
+        err.contains("more than the update description announced"),
+        "stopped by SAM at the published length: {err}"
+    );
+    assert_eq!(fs::read(&installed).unwrap(), before, "nothing changed");
+    assert!(sam.resolve(&id).unwrap().update_backup.is_none());
+    // The full download (the last request) stopped soon after the
+    // published length, about 1 MB, instead of taking all 64 MiB.
+    let log = fs::read_to_string(&server.log).unwrap();
+    let taken: Vec<u32> = log
+        .lines()
+        .filter_map(|l| l.strip_prefix("endless "))
+        .map(|n| n.parse().unwrap())
+        .collect();
+    assert!(
+        taken.last().is_some_and(|n| *n < 1024),
+        "SAM stopped the stream: {taken:?}"
+    );
+    let downloads = tmp
+        .path()
+        .join("sam")
+        .join("data")
+        .join("downloads")
+        .join(&id);
+    assert!(!downloads.exists(), "what came was deleted");
 }

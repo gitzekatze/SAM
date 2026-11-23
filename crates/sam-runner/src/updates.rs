@@ -21,8 +21,11 @@ use sam_detect::update_info::{self, UpdateSource};
 // catches damaged downloads, not tampering (the signature check does that).
 use sha1::{Digest, Sha1};
 
-/// The most read from any answer.
-const MAX_ANSWER: usize = 512 * 1024;
+/// The most read from a GitHub release description. It holds the release
+/// notes and about 2 KB per file, so a release with a few hundred files
+/// passes 512 KiB (review 2026-11-23, U-7); a longer answer is an error,
+/// never read as if it were complete.
+const MAX_RELEASE_ANSWER: usize = 16 << 20;
 /// The largest update file SAM downloads when the server names no length.
 pub const MAX_DOWNLOAD: u64 = 8 << 30;
 
@@ -146,23 +149,7 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
                 .get("html_url")
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
-            let urls: Vec<String> = json
-                .get("assets")
-                .and_then(|a| a.as_array())
-                .into_iter()
-                .flatten()
-                .filter(|x| {
-                    x.get("name")
-                        .and_then(|n| n.as_str())
-                        .is_some_and(|n| update_info::matches(pattern, n))
-                })
-                .filter_map(|x| {
-                    x.get("browser_download_url")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string)
-                })
-                .take(4)
-                .collect();
+            let urls = release_zsyncs(&json, pattern, sam_detect::appimage::host_arch());
             if urls.is_empty() {
                 bail!(
                     "{}",
@@ -203,6 +190,59 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
         page: page.filter(|p| p.starts_with("https://")),
         zsync_url,
     }))
+}
+
+/// The update descriptions (.zsync) of a GitHub release whose names match
+/// `pattern`, at most four, those for `host`'s processor first and those
+/// naming another processor last: a pattern like `App-*.AppImage.zsync`
+/// also matches the ARM build, and the first one that differs from the
+/// installed file is taken (review 2026-11-23, U-8).
+fn release_zsyncs(json: &serde_json::Value, pattern: &str, host: &str) -> Vec<String> {
+    let mut found: Vec<(u8, String)> = json
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|x| {
+            let name = x.get("name").and_then(|n| n.as_str())?;
+            let url = x.get("browser_download_url").and_then(|v| v.as_str())?;
+            update_info::matches(pattern, name).then(|| (arch_rank(name, host), url.to_string()))
+        })
+        .collect();
+    // Stable: within a rank, the release's own order.
+    found.sort_by_key(|(rank, _)| *rank);
+    found.into_iter().take(4).map(|(_, url)| url).collect()
+}
+
+/// 0 when `name` names `host`'s processor, 2 when it names only another
+/// one, 1 when it names none.
+fn arch_rank(name: &str, host: &str) -> u8 {
+    const NAMES: [(&str, &[&str]); 5] = [
+        ("x86_64", &["x86_64", "x86-64", "amd64", "x64"]),
+        ("aarch64", &["aarch64", "arm64"]),
+        ("armhf", &["armhf", "armv7", "armv7l"]),
+        ("i686", &["i686", "i386"]),
+        ("riscv64", &["riscv64"]),
+    ];
+    let lower = name.to_ascii_lowercase();
+    // Whole words, so that "x64" is not found inside another word.
+    let words: Vec<&str> = lower
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .collect();
+    let names = |arch: &str| {
+        NAMES
+            .iter()
+            .filter(|(a, _)| *a == arch)
+            .flat_map(|(_, n)| n.iter())
+            .any(|n| words.contains(n) || (n.contains(['_', '-']) && lower.contains(n)))
+    };
+    if names(host) {
+        0
+    } else if NAMES.iter().any(|(a, _)| *a != host && names(a)) {
+        2
+    } else {
+        1
+    }
 }
 
 fn check_source(appimage: &Path, source: &UpdateSource) -> Result<UpdateStatus> {
@@ -306,20 +346,83 @@ fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetch
             sam_core::i18n::tr("the update description changed while reading it")
         );
     }
-    let old_data = std::fs::read(old)?;
-    let plan = crate::zsync::plan(&ctl, &old_data);
+    // Mapped, not read: the old AppImage can be several GB, and mapped
+    // pages the system can drop again under pressure (review 2026-11-23, U-6).
+    let mapped = Mapped::open(old)?;
+    let old_data = mapped.bytes();
+    let plan = crate::zsync::plan(&ctl, old_data);
     let ranges = crate::zsync::missing_ranges(&ctl, &plan, 64 * 1024);
     let bytes: u64 = ranges.iter().map(|(s, e)| e - s).sum();
     if ranges.len() > 300 || bytes * 10 > ctl.length * 7 {
         return Ok(None);
     }
-    crate::zsync::assemble(&ctl, &old_data, &plan, &ranges, dest, |s, e| {
+    crate::zsync::assemble(&ctl, old_data, &plan, &ranges, dest, |s, e| {
         fetch_range(&p.file_url, s, e)
     })?;
     Ok(Some(Fetched::Delta {
         bytes,
         total: ctl.length,
     }))
+}
+
+/// A file mapped into memory, read-only. Only for SAM's own copy of the
+/// installed version, in SAM's own folder (0700), which nothing else
+/// shortens while it is mapped.
+struct Mapped {
+    ptr: *mut libc::c_void,
+    len: usize,
+}
+
+impl Mapped {
+    fn open(path: &Path) -> Result<Mapped> {
+        use std::os::fd::AsRawFd;
+        let f = File::open(path)?;
+        let len = usize::try_from(f.metadata()?.len())?;
+        if len == 0 {
+            return Ok(Mapped {
+                ptr: std::ptr::null_mut(),
+                len: 0,
+            });
+        }
+        // SAFETY: a new private read-only mapping of an open file; the
+        // kernel picks the address, nothing else is touched. The result is
+        // checked against MAP_FAILED before use.
+        let ptr = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                len,
+                libc::PROT_READ,
+                libc::MAP_PRIVATE,
+                f.as_raw_fd(),
+                0,
+            )
+        };
+        if ptr == libc::MAP_FAILED {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        Ok(Mapped { ptr, len })
+    }
+
+    fn bytes(&self) -> &[u8] {
+        if self.len == 0 {
+            return &[];
+        }
+        // SAFETY: `ptr` is a live read-only mapping of `len` bytes (see
+        // `open`), unmapped only in `drop`, so it outlives the borrow.
+        unsafe { std::slice::from_raw_parts(self.ptr.cast::<u8>(), self.len) }
+    }
+}
+
+impl Drop for Mapped {
+    fn drop(&mut self) {
+        if self.len > 0 {
+            // SAFETY: unmaps exactly the mapping made in `open`, once; no
+            // borrow of it outlives `self`.
+            unsafe {
+                libc::munmap(self.ptr, self.len);
+            }
+        }
+    }
 }
 
 /// Bytes `start..end` of `url` (an HTTP range request). At most that many
@@ -369,24 +472,10 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
     // An hour for the whole file; the speed limit ends a stalled one sooner.
     let mut cmd = curl(3600)?;
     cmd.args(["--speed-limit", "1024", "--speed-time", "60"]);
-    // A little more than the published length (or SAM's ceiling) is the
-    // most curl writes; `saturating_add`: a Length of u64::MAX wrapped.
+    cmd.arg("--").arg(&p.file_url);
+    // The published length (or SAM's ceiling) is the most SAM keeps.
     let cap = p.length.unwrap_or(MAX_DOWNLOAD).min(MAX_DOWNLOAD);
-    cmd.args(["--max-filesize", &cap.saturating_add(1).to_string()]);
-    let out = cmd
-        .arg("--output")
-        .arg(dest)
-        .arg("--")
-        .arg(&p.file_url)
-        .stdin(Stdio::null())
-        .output()
-        .context(sam_core::i18n::tr("starting curl"))?;
-    if !out.status.success() {
-        bail!(
-            "download failed: {}",
-            curl_error(&String::from_utf8_lossy(&out.stderr))
-        );
-    }
+    save_capped(cmd, dest, cap)?;
     let got = sha1_of(dest)?;
     if got != p.sha1 {
         bail!(
@@ -397,6 +486,68 @@ fn download_inner(p: &Published, dest: &Path) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Runs `cmd`, which prints the file it downloads, and writes that into the
+/// new file `dest` (never through a link), at most `cap` bytes: one byte
+/// more stops the download, and the file is deleted. SAM counts itself
+/// because curl's own `--max-filesize` does nothing before curl 8.4 when
+/// the server names no length (Debian 12, Ubuntu 22.04), so a server could
+/// fill the disk for an hour (review 2026-11-23, U-5).
+fn save_capped(mut cmd: Command, dest: &Path, cap: u64) -> Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .mode(0o644)
+        .open(dest)
+        .with_context(|| format!("creating {}", dest.display()))?;
+    let res = (|| -> Result<()> {
+        let mut child = cmd
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context(sam_core::i18n::tr("starting curl"))?;
+        // Read alongside, so that curl never waits on a full pipe.
+        let mut stderr = child.stderr.take().context("stderr")?;
+        let errors = std::thread::spawn(move || {
+            let mut kept = Vec::new();
+            let _ = (&mut stderr).take(64 * 1024).read_to_end(&mut kept);
+            let _ = std::io::copy(&mut stderr, &mut std::io::sink());
+            String::from_utf8_lossy(&kept).into_owned()
+        });
+        let mut out = child.stdout.take().context("stdout")?;
+        let copied = std::io::copy(&mut (&mut out).take(cap.saturating_add(1)), &mut file);
+        if !matches!(copied, Ok(n) if n <= cap) {
+            // Closed first: a helper curl left holding the pipes then ends
+            // too, instead of keeping SAM waiting for its error output.
+            drop(out);
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = errors.join();
+            copied?;
+            bail!(
+                "{}",
+                sam_core::i18n::tr(
+                    "the server sent more than the update description announced; the download was stopped and deleted"
+                )
+            );
+        }
+        drop(out);
+        let st = child.wait()?;
+        let err = errors.join().unwrap_or_default();
+        if !st.success() {
+            bail!("download failed: {}", curl_error(&err));
+        }
+        file.sync_all()?;
+        Ok(())
+    })();
+    if res.is_err() {
+        let _ = std::fs::remove_file(dest);
+    }
+    res
 }
 
 /// curl's error, in words: HTTP status codes become sentences.
@@ -480,8 +631,10 @@ fn sha1_of(path: &Path) -> Result<String> {
     Ok(sam_core::util::hex(&h.finalize()))
 }
 
-/// GETs `url` (HTTPS only) and returns at most `limit` bytes (or
-/// `MAX_ANSWER`). With a limit, only that range is asked for.
+/// GETs `url` (HTTPS only). With a limit, only that range is asked for
+/// and at most that many bytes are returned (a server that ignores the
+/// range sends everything: enough was read). Without one, the whole answer
+/// up to `MAX_RELEASE_ANSWER`; a longer one is an error.
 fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
         bail!(
@@ -497,24 +650,43 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
     if let Some(n) = limit {
         cmd.args(["--range", &format!("0-{}", n - 1)]);
     }
-    cmd.arg("--")
-        .arg(url)
+    cmd.arg("--").arg(url);
+    match limit {
+        Some(n) => answer_of(cmd, n, false),
+        None => answer_of(cmd, MAX_RELEASE_ANSWER, true),
+    }
+}
+
+/// What `cmd` prints, at most `max` bytes. With `whole`, a longer answer
+/// is an error: cut off, it would be read as if it were complete (review
+/// 2026-11-23, U-7: a release with many files failed as "GitHub's answer").
+fn answer_of(mut cmd: Command, max: usize, whole: bool) -> Result<Vec<u8>> {
+    let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = cmd.spawn().context(sam_core::i18n::tr("starting curl"))?;
-    let max = limit.unwrap_or(MAX_ANSWER);
+        .stderr(Stdio::piped())
+        .spawn()
+        .context(sam_core::i18n::tr("starting curl"))?;
+    let keep = if whole { max.saturating_add(1) } else { max };
     let mut out = Vec::new();
     child
         .stdout
         .take()
         .context(sam_core::i18n::tr("curl output"))?
-        .take(max as u64)
+        .take(keep as u64)
         .read_to_end(&mut out)?;
-    // Servers that ignore the range send everything: enough was read.
-    if out.len() >= max {
+    if out.len() >= keep {
         let _ = child.kill();
         let _ = child.wait();
+        if whole {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the update source answered with more than {size} MB, more than SAM reads",
+                    &[("size", &(max >> 20))]
+                )
+            );
+        }
         return Ok(out);
     }
     let mut err = String::new();
@@ -622,6 +794,152 @@ mod tests {
         assert!(resolve(z, "http://cdn.example.org/App.AppImage").is_err());
         assert!(resolve(z, "../../evil").is_err());
         assert!(resolve(z, "").is_err());
+    }
+
+    /// A stand-in for curl: prints `n` zero bytes, as curl prints what it
+    /// downloads (contract updates-curl: SAM's curl writes the file to its
+    /// standard output).
+    fn prints(n: usize) -> Command {
+        let mut c = Command::new("head");
+        c.args(["-c", &n.to_string(), "/dev/zero"]);
+        c
+    }
+
+    /// Like `prints`, then leaves `done` behind if it was not stopped.
+    fn prints_then_marks(n: usize, done: &Path) -> Command {
+        let mut c = Command::new("sh");
+        c.arg("-c")
+            .arg(format!("head -c {n} /dev/zero && : > \"$1\""))
+            .arg("sh")
+            .arg(done);
+        c
+    }
+
+    /// Regression (review 2026-11-23, U-5): the size limit of a full
+    /// download was left to curl's `--max-filesize`, which before curl 8.4
+    /// does nothing when the server names no length, so a server could
+    /// stream into the home folder for an hour. SAM now counts what it
+    /// writes: one byte more than the published length stops the download
+    /// and deletes the file; exactly the length is kept.
+    #[test]
+    fn a_full_download_stops_at_the_published_length_whatever_the_server_sends() {
+        let t = tempfile::tempdir().unwrap();
+        let dest = t.path().join("new.AppImage");
+        let done = t.path().join("sent-everything");
+        let err = save_capped(prints_then_marks(3_000_000, &done), &dest, 1_000_000)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("more than the update description announced"),
+            "{err}"
+        );
+        assert!(!dest.exists(), "the partial file was deleted");
+        assert!(
+            !done.exists(),
+            "the download was stopped, not read to its end"
+        );
+        save_capped(prints(1_000_000), &dest, 1_000_000).unwrap();
+        assert_eq!(std::fs::metadata(&dest).unwrap().len(), 1_000_000);
+        // Never written through a link someone placed there.
+        let victim = t.path().join("victim");
+        std::fs::write(&victim, "keep").unwrap();
+        let link = t.path().join("link.AppImage");
+        std::os::unix::fs::symlink(&victim, &link).unwrap();
+        assert!(save_capped(prints(10), &link, 100).is_err());
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+    }
+
+    /// Regression (review 2026-11-23, U-7): an answer longer than SAM
+    /// reads was cut off and handed on as if complete, so a GitHub release
+    /// description over 512 KiB failed as "GitHub's answer" every time.
+    /// Now a whole answer may be longer, and one longer still is an error;
+    /// for a range request (the first part of a .zsync), the first bytes
+    /// are all SAM needs, also from a server that ignores the range.
+    #[test]
+    fn a_whole_answer_is_never_cut_off_and_handed_on_as_complete() {
+        let err = answer_of(prints(2000), 1000, true).unwrap_err().to_string();
+        assert!(err.contains("more than"), "{err}");
+        assert_eq!(answer_of(prints(1000), 1000, true).unwrap().len(), 1000);
+        assert_eq!(answer_of(prints(2000), 1000, false).unwrap().len(), 1000);
+    }
+
+    /// A release with 600 files: each file's entry carries its
+    /// uploader, so the description is well over 512 KiB (review
+    /// 2026-11-23, U-7). It is read whole and its update description found.
+    #[test]
+    fn a_release_with_hundreds_of_files_is_read_whole() {
+        let uploader = serde_json::json!({
+            "login": "builder", "id": 1, "node_id": "x".repeat(20),
+            "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+            "url": "https://api.github.com/users/builder",
+            "html_url": "https://github.com/builder",
+            "followers_url": "https://api.github.com/users/builder/followers",
+            "repos_url": "https://api.github.com/users/builder/repos",
+            "events_url": "https://api.github.com/users/builder/events{/privacy}",
+            "type": "User", "site_admin": false
+        });
+        let mut assets: Vec<serde_json::Value> = (0..600)
+            .map(|i| {
+                serde_json::json!({
+                    "name": format!("App-1.0-plugin{i}-x86_64.tar.gz"),
+                    "browser_download_url": format!("https://github.com/o/r/releases/download/v1/App-1.0-plugin{i}-x86_64.tar.gz"),
+                    "uploader": uploader, "label": "", "state": "uploaded",
+                    "content_type": "application/gzip", "size": 1000 + i,
+                    "download_count": i, "created_at": "2026-11-10T10:00:00Z",
+                    "updated_at": "2026-11-10T10:00:00Z"
+                })
+            })
+            .collect();
+        assets.push(serde_json::json!({
+            "name": "App-1.0-x86_64.AppImage.zsync",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/App-1.0-x86_64.AppImage.zsync",
+            "uploader": uploader
+        }));
+        let release = serde_json::json!({
+            "tag_name": "v1", "html_url": "https://github.com/o/r/releases/tag/v1",
+            "body": "notes ".repeat(20_000), "assets": assets
+        });
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join("release.json");
+        std::fs::write(&file, serde_json::to_vec(&release).unwrap()).unwrap();
+        assert!(std::fs::metadata(&file).unwrap().len() > 512 * 1024);
+        let mut cat = Command::new("cat");
+        cat.arg(&file);
+        let got = answer_of(cat, MAX_RELEASE_ANSWER, true).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&got).unwrap();
+        assert_eq!(
+            release_zsyncs(&json, "App-*x86_64.AppImage.zsync", "x86_64"),
+            vec!["https://github.com/o/r/releases/download/v1/App-1.0-x86_64.AppImage.zsync"]
+        );
+    }
+
+    /// Regression (review 2026-11-23, U-8): with a pattern that matches the
+    /// builds for every processor, the release's first file was taken, so
+    /// an x86-64 computer could get the ARM build. The builds for this
+    /// computer's processor come first, those naming another one last.
+    #[test]
+    fn release_files_for_this_processor_come_first() {
+        let release = serde_json::json!({ "assets": [
+            {"name": "App-2.0-aarch64.AppImage.zsync", "browser_download_url": "https://x/arm"},
+            {"name": "App-2.0.AppImage.zsync", "browser_download_url": "https://x/plain"},
+            {"name": "App-2.0-x86_64.AppImage.zsync", "browser_download_url": "https://x/intel"},
+            {"name": "App-2.0-x86_64.AppImage", "browser_download_url": "https://x/file"},
+        ]});
+        assert_eq!(
+            release_zsyncs(&release, "App-*.AppImage.zsync", "x86_64"),
+            vec!["https://x/intel", "https://x/plain", "https://x/arm"]
+        );
+        assert_eq!(
+            release_zsyncs(&release, "App-*.AppImage.zsync", "aarch64"),
+            vec!["https://x/arm", "https://x/plain", "https://x/intel"]
+        );
+        assert_eq!(arch_rank("App-amd64.AppImage", "x86_64"), 0);
+        assert_eq!(arch_rank("App-arm64.AppImage", "x86_64"), 2);
+        assert_eq!(
+            arch_rank("Appx64tool.AppImage", "x86_64"),
+            1,
+            "whole words only"
+        );
     }
 
     /// Update downloads use HTTPS only; HTTP and file addresses are refused.
