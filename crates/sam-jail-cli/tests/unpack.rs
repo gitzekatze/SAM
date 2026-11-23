@@ -235,3 +235,93 @@ fn an_unpacking_limit_inside_the_sandbox_stops_unpacking() {
         "the reason is shown: {info}"
     );
 }
+
+/// An update where SAM can build no sandbox stops at once with that reason,
+/// before anything is downloaded or asked: the new version could be neither
+/// unpacked nor its signature checked there. Before (review of PR 95), the
+/// update was downloaded and, for a signed app, the question about its
+/// signature said to install GnuPG, which was not the cause. Here the app
+/// was added with Bubblewrap; the update runs where SAM finds none (curl
+/// is still there), and its update source on this computer counts who
+/// comes.
+#[test]
+fn an_update_without_a_sandbox_stops_before_downloading() {
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    for d in ["bin", "run", "tools"] {
+        fs::create_dir_all(root.join(d)).unwrap();
+    }
+    fs::copy(env!("CARGO_BIN_EXE_sam-jail"), root.join("bin/sam-jail")).unwrap();
+    std::os::unix::fs::symlink("/usr/bin/curl", root.join("tools/curl")).unwrap();
+    let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    server.set_nonblocking(true).unwrap();
+    let port = server.local_addr().unwrap().port();
+    let came = AtomicUsize::new(0);
+    let done = AtomicBool::new(false);
+    let img = root.join("Updating-1.0-x86_64.AppImage");
+    let mut spec = sam_intake::testkit::FixtureSpec::hello("Updating");
+    spec.update_info = Some(format!(
+        "zsync|https://127.0.0.1:{port}/Updating-x86_64.AppImage.zsync"
+    ));
+    sam_intake::testkit::build(&img, &spec).unwrap();
+    let added = sam(
+        root,
+        "sam-jail",
+        &["add", img.to_str().unwrap(), "--no-launcher"],
+    );
+    assert!(
+        added.status.success(),
+        "{}",
+        String::from_utf8_lossy(&added.stderr)
+    );
+    let id = json(&sam(root, "sam-jail", &["--json", "list"]))["data"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let updated = std::thread::scope(|s| {
+        s.spawn(|| {
+            while !done.load(Ordering::SeqCst) {
+                match server.accept() {
+                    Ok(_) => {
+                        came.fetch_add(1, Ordering::SeqCst);
+                    }
+                    Err(_) => std::thread::sleep(std::time::Duration::from_millis(20)),
+                }
+            }
+        });
+        let out = Command::new(root.join("bin/sam-jail"))
+            .args(["--json", "update", &id])
+            .env("SAM_CONFIG_DIR", root.join("config"))
+            .env("SAM_DATA_DIR", root.join("data"))
+            .env("SAM_APPLICATIONS_DIR", root.join("applications"))
+            .env("XDG_RUNTIME_DIR", root.join("run"))
+            .env("LC_ALL", "C")
+            .env_remove("LANGUAGE")
+            // No Bubblewrap on the way; curl only, trusted from here.
+            .env("PATH", root.join("tools"))
+            .env("SAM_TRUST_TOOLS_IN", root.join("tools"))
+            .output()
+            .unwrap();
+        done.store(true, Ordering::SeqCst);
+        out
+    });
+    let reply = json(&updated);
+    assert!(!updated.status.success(), "the update stops: {reply}");
+    assert_eq!(reply["code"], "unpack-needs-sandbox", "{reply}");
+    let message = reply["error"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("Bubblewrap cannot run"),
+        "and names the cause: {message}"
+    );
+    assert!(!message.contains("GnuPG"), "not GnuPG: {message}");
+    assert_eq!(
+        came.load(Ordering::SeqCst),
+        0,
+        "nothing was downloaded: {reply}"
+    );
+}

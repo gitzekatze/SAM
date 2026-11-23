@@ -759,6 +759,12 @@ impl Sam {
                 )
             );
         }
+        // Where SAM can build no sandbox, the new version could be neither
+        // unpacked nor its signature checked: stop here with that reason,
+        // before anything is downloaded or asked. Before, the update was
+        // downloaded and the question about its signature said to install
+        // GnuPG, which was not the cause (review of PR 95).
+        self.extract_isolation()?;
         // Downloaded and checked in SAM's own folder: in the AppImage's
         // folder (often Downloads) another app could plant a link under the
         // download's name, or swap the file between the check and its use
