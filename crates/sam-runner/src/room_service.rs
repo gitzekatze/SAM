@@ -1749,6 +1749,759 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
 }
 
 #[cfg(test)]
+mod process_tests {
+    //! The low-level parts of Room service: how a room's Bubblewrap is
+    //! started, ended and waited for, how SAM opens its own descriptors,
+    //! and how a request's bytes and connections are read.
+    use super::*;
+    use std::ffi::OsString;
+    use std::os::fd::IntoRawFd;
+    use std::process::{Command, Stdio};
+    use std::time::Instant;
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|x| x.to_string()).collect()
+    }
+
+    fn dev_null() -> OwnedFd {
+        OwnedFd::from(std::fs::File::open("/dev/null").unwrap())
+    }
+
+    /// The variable that tells a copy of this test program which test it
+    /// runs on its own.
+    const OWN: &str = "SAM_TEST_OWN_PROCESS";
+
+    /// Whether this is the copy of the test program that runs test `name`
+    /// on its own.
+    fn is_own_process(name: &str) -> bool {
+        std::env::var(OWN).as_deref() == Ok(name)
+    }
+
+    /// A copy of this test program that runs only test `name`, started
+    /// through `wrap` (a program and its arguments) when given. For tests
+    /// that change what the whole process has (its descriptor limits, its
+    /// standard input), which the other tests share.
+    fn own_process(name: &str, wrap: &[OsString]) -> Command {
+        let exe = std::env::current_exe().unwrap();
+        let mut c = match wrap.split_first() {
+            Some((first, rest)) => {
+                let mut c = Command::new(first);
+                c.args(rest).arg(&exe);
+                c
+            }
+            None => Command::new(&exe),
+        };
+        c.args([
+            "--exact",
+            &format!("room_service::process_tests::{name}"),
+            "--test-threads=1",
+        ])
+        .env(OWN, name);
+        c
+    }
+
+    /// Checks that the copy found its test, ran it and it passed there.
+    fn passed_alone(out: std::process::Output) {
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success() && stdout.contains("1 passed"),
+            "{:?}\n{stdout}\n{}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// Runs test `name` on its own in a copy of this program: true in the
+    /// copy (where the test's body runs), false here once the copy passed.
+    fn alone(name: &str) -> bool {
+        if is_own_process(name) {
+            return true;
+        }
+        passed_alone(own_process(name, &[]).output().unwrap());
+        false
+    }
+
+    /// Sets this process's descriptor limit (only in a copy of its own).
+    fn set_nofile(soft: libc::rlim_t, hard: libc::rlim_t) {
+        let lim = libc::rlimit {
+            rlim_cur: soft,
+            rlim_max: hard,
+        };
+        // SAFETY: setrlimit reads the struct given.
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lim) }, 0);
+    }
+
+    const PT_LOAD: u32 = 1;
+    const PT_INTERP: u32 = 3;
+
+    /// A stand-in for a program, with only what `needs_loader` reads: a
+    /// 64-bit ELF header and, right after it, program headers of these
+    /// types.
+    fn elf(types: &[u32]) -> Vec<u8> {
+        let mut e = vec![0u8; 64];
+        e[..4].copy_from_slice(b"\x7fELF");
+        e[4] = 2; // 64-bit
+        e[0x20..0x28].copy_from_slice(&64u64.to_ne_bytes()); // where they start
+        e[0x36..0x38].copy_from_slice(&56u16.to_ne_bytes()); // the size of one
+        e[0x38..0x3a].copy_from_slice(&(types.len() as u16).to_ne_bytes());
+        for t in types {
+            let mut header = vec![0u8; 56];
+            header[..4].copy_from_slice(&t.to_ne_bytes());
+            e.extend(header);
+        }
+        e
+    }
+
+    /// A program asks for a loader when any of its program headers says
+    /// so, first or later; a program without one (as SAM's static room
+    /// helper) needs none, also when it is as short as it can be. Anything
+    /// that is not a 64-bit ELF program, or is cut short, counts as asking
+    /// (SAM then builds no rooms rather than a helper that cannot start).
+    #[test]
+    fn a_program_needs_a_loader_only_when_a_program_header_asks_for_one() {
+        assert!(needs_loader(&std::fs::read("/bin/sh").unwrap()), "/bin/sh");
+        assert!(needs_loader(&elf(&[PT_INTERP])), "first and only");
+        assert!(needs_loader(&elf(&[PT_INTERP, PT_LOAD])), "first of two");
+        assert!(needs_loader(&elf(&[PT_LOAD, PT_INTERP])), "second of two");
+        assert!(!needs_loader(&elf(&[PT_LOAD])), "a static program");
+        assert!(
+            !needs_loader(&elf(&[])),
+            "a header alone, without program headers"
+        );
+        let mut bits32 = elf(&[]);
+        bits32[4] = 1;
+        assert!(needs_loader(&bits32), "a 32-bit program");
+        let mut not_elf = elf(&[]);
+        not_elf[0] = 0;
+        assert!(needs_loader(&not_elf), "not an ELF program");
+        let mut cut = elf(&[PT_LOAD]);
+        cut.truncate(66);
+        assert!(needs_loader(&cut), "a program header cut short");
+        assert!(needs_loader(b""), "nothing");
+    }
+
+    /// What the launcher keeps for itself is never given to rooms: 128 of
+    /// its own, and two for each connection it may have open (the
+    /// connection itself, and a second one while its room runs).
+    #[test]
+    fn the_launcher_keeps_two_descriptors_for_each_connection_for_itself() {
+        let soft: usize = 4096;
+        for open in [0, 100, 500] {
+            let budget = budget_from(soft as libc::rlim_t, open);
+            assert!(
+                budget + open + 128 + 2 * MAX_CONNECTIONS <= soft,
+                "{budget} for rooms with {open} open"
+            );
+        }
+    }
+
+    /// Waits until the room has ended, at most 10 seconds, asking without
+    /// waiting as the service does while a room runs.
+    fn ended_within(p: &mut RoomProcess) -> Option<i32> {
+        let end = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < end {
+            if let Some(st) = p.try_wait().unwrap() {
+                return Some(st);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        None
+    }
+
+    /// A room SAM ends is killed at once and ends as killed (exit code
+    /// 137, as a shell shows it); its status stays known, and ending it
+    /// again changes nothing. A room that ends by itself is seen to end,
+    /// with its own code.
+    #[test]
+    fn a_room_sam_ends_is_killed_and_ends_with_the_killed_code() {
+        let (r, w) = pipe().unwrap();
+        // The room waits for a line on its standard input that never comes.
+        let mut p = spawn_room(
+            Path::new("/bin/sh"),
+            &s(&["-c", "read x"]),
+            &[(r.as_raw_fd(), 0)],
+            0,
+            [false, true, true],
+            &[],
+            None,
+        )
+        .unwrap();
+        drop(r);
+        assert_eq!(p.try_wait().unwrap(), None, "the room has not ended yet");
+        p.kill().expect("a running room is ended");
+        let st = ended_within(&mut p).expect("the room ended when killed");
+        assert_eq!(exit_code(st), 137);
+        p.kill()
+            .expect("ending a room that has ended changes nothing");
+        assert_eq!(p.try_wait().unwrap(), Some(st));
+        drop(w);
+
+        let mut p = spawn_room(
+            Path::new("/bin/sh"),
+            &s(&["-c", "exit 5"]),
+            &[],
+            2,
+            [true; 3],
+            &[],
+            None,
+        )
+        .unwrap();
+        assert_eq!(ended_within(&mut p).map(exit_code), Some(5));
+    }
+
+    /// Waiting for a process that is no room of this launcher fails at
+    /// once (the kernel says it is no child), never waits on forever.
+    #[test]
+    fn waiting_for_a_process_that_is_no_child_fails_at_once() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            // This test program itself: never its own child. Only waited
+            // for, never signalled.
+            // SAFETY: getpid has no arguments.
+            let pid = unsafe { libc::getpid() };
+            let mut p = RoomProcess { pid, status: None };
+            let _ = tx.send(p.try_wait().map_err(|e| e.raw_os_error()));
+        });
+        let r = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the wait returned");
+        assert_eq!(r, Err(Some(libc::ECHILD)));
+    }
+
+    /// Starts a room that prints its descriptor limits (soft, then hard)
+    /// and the numbers of its open connections, with `extra` connections
+    /// at their numbers and its standard output to this test.
+    fn room_limits_and_numbers(
+        extra: &[(RawFd, RawFd)],
+        highest: RawFd,
+        limits: &[(i32, libc::rlimit)],
+    ) -> Result<(u64, u64, Vec<RawFd>)> {
+        let (r, w) = pipe()?;
+        let mut map = vec![(w.as_raw_fd(), 1)];
+        map.extend_from_slice(extra);
+        let mut p = spawn_room(
+            Path::new("/bin/sh"),
+            &s(&[
+                "-c",
+                "ulimit -S -n; ulimit -H -n; exec /bin/ls /proc/self/fd",
+            ]),
+            &map,
+            highest,
+            [true, false, true],
+            limits,
+            None,
+        )?;
+        drop(w);
+        let mut out = String::new();
+        std::fs::File::from(r).read_to_string(&mut out)?;
+        p.wait()?;
+        let mut lines = out.lines();
+        let soft = lines.next().unwrap_or("").parse()?;
+        let hard = lines.next().unwrap_or("").parse()?;
+        Ok((soft, hard, lines.filter_map(|l| l.parse().ok()).collect()))
+    }
+
+    /// Under a low descriptor limit a room still gets a connection at a
+    /// number above it (the moves use the hard limit for a moment), then
+    /// runs with the launcher's own limit; a program's lower limit is kept
+    /// whether only its soft or only its hard limit is lower, and a higher
+    /// one is never given. Runs on its own: it lowers this process's limit.
+    #[test]
+    fn a_room_under_a_low_limit_gets_its_connections_and_keeps_lower_limits() {
+        if !alone("a_room_under_a_low_limit_gets_its_connections_and_keeps_lower_limits") {
+            return;
+        }
+        set_nofile(64, 256);
+        let x = dev_null();
+        let (soft, hard, numbers) = room_limits_and_numbers(&[(x.as_raw_fd(), 200)], 200, &[])
+            .expect("a room starts with a connection above the soft limit");
+        assert_eq!((soft, hard), (64, 256), "the launcher's own limit");
+        assert!(numbers.contains(&200), "{numbers:?}");
+        let nofile = |soft, hard| {
+            (
+                libc::RLIMIT_NOFILE as i32,
+                libc::rlimit {
+                    rlim_cur: soft,
+                    rlim_max: hard,
+                },
+            )
+        };
+        let only_soft = room_limits_and_numbers(&[], 1, &[nofile(32, 256)]).unwrap();
+        assert_eq!((only_soft.0, only_soft.1), (32, 256), "only soft lower");
+        let only_hard = room_limits_and_numbers(&[], 1, &[nofile(64, 128)]).unwrap();
+        assert_eq!((only_hard.0, only_hard.1), (64, 128), "only hard lower");
+        let higher = room_limits_and_numbers(&[], 1, &[nofile(128, 1024)]).unwrap();
+        assert_eq!((higher.0, higher.1), (64, 256), "never raised");
+    }
+
+    /// A start that fails while the connections are moved is reported
+    /// with its own cause, whichever move finds no number: never a room
+    /// that seems started. Runs on its own: it lowers this process's hard
+    /// limit to 256.
+    #[test]
+    fn a_start_that_fails_while_moving_connections_is_reported_with_its_cause() {
+        if !alone("a_start_that_fails_while_moving_connections_is_reported_with_its_cause") {
+            return;
+        }
+        // The last numbers below the limit free: this copy may have been
+        // given a connection there by another test of the program that
+        // started it, which nothing here owns.
+        for fd in 240..256 {
+            // SAFETY: closes a number nothing in this copy owns.
+            unsafe { libc::close(fd) };
+        }
+        set_nofile(256, 256);
+        let start = |map: &[(RawFd, RawFd)], highest: RawFd| {
+            spawn_room(
+                Path::new("/bin/true"),
+                &[],
+                map,
+                highest,
+                [false; 3],
+                &[],
+                None,
+            )
+            .map(|mut p| p.wait().unwrap())
+        };
+        // No number above the highest exists at all.
+        let e = start(&[], 255).expect_err("no number for the error pipe");
+        assert!(format!("{e:#}").contains("Invalid argument"), "{e:#}");
+        // The error pipe takes the last number; /dev/null finds none.
+        let e = start(&[], 254).expect_err("no number for /dev/null");
+        assert!(format!("{e:#}").contains("Too many open files"), "{e:#}");
+        // The error pipe and /dev/null take the last two; the connection
+        // finds none.
+        let x = dev_null();
+        let e = start(&[(x.as_raw_fd(), 253)], 253).expect_err("no number for the connection");
+        assert!(format!("{e:#}").contains("Too many open files"), "{e:#}");
+        // One number more: the room starts.
+        let st = start(&[(x.as_raw_fd(), 252)], 252).expect("room enough");
+        assert_eq!(exit_code(st), 0);
+    }
+
+    /// A room's program has exactly its connections, each at its number,
+    /// and /dev/null where it passed no standard stream: none is lost or
+    /// overwritten by another on the way, and nothing else of the
+    /// launcher stays open, also what would not close by itself when a
+    /// program starts.
+    #[test]
+    fn a_room_gets_exactly_its_connections_and_none_overwrites_another() {
+        let null = dev_null();
+        // A descriptor of the launcher that a started program would keep
+        // (not close-on-exec), at a number between the room's.
+        // SAFETY: F_DUPFD copies our own open descriptor; checked below.
+        let leak = unsafe { libc::fcntl(null.as_raw_fd(), libc::F_DUPFD, 500) };
+        assert!(leak >= 500);
+        // SAFETY: a new descriptor of our own.
+        let leak = unsafe { OwnedFd::from_raw_fd(leak) };
+        let (a_r, a_w) = pipe().unwrap();
+        let (b_r, b_w) = pipe().unwrap();
+        let (out_r, out_w) = pipe().unwrap();
+        let map = [
+            (a_w.as_raw_fd(), 900),
+            (b_w.as_raw_fd(), 899),
+            (out_w.as_raw_fd(), 1),
+        ];
+        let mut p = spawn_room(
+            Path::new("/bin/ls"),
+            &s(&["-l", "/proc/self/fd"]),
+            &map,
+            900,
+            [true, false, true],
+            &[],
+            None,
+        )
+        .unwrap();
+        drop(out_w);
+        let mut out = String::new();
+        std::fs::File::from(out_r.try_clone().unwrap())
+            .read_to_string(&mut out)
+            .unwrap();
+        assert_eq!(exit_code(p.wait().unwrap()), 0, "{out}");
+        // "… 899 -> pipe:[123]": each number and what it is.
+        let seen: std::collections::BTreeMap<RawFd, String> = out
+            .lines()
+            .filter_map(|l| {
+                let (left, target) = l.split_once(" -> ")?;
+                Some((left.split_whitespace().last()?.parse().ok()?, target.into()))
+            })
+            // ls's own reading of the folder.
+            .filter(|(_, target): &(RawFd, String)| !target.starts_with("/proc/"))
+            .collect();
+        let pipe_of = |fd: &OwnedFd| format!("pipe:[{}]", identity(fd).unwrap().1);
+        let want: std::collections::BTreeMap<RawFd, String> = [
+            (0, "/dev/null".to_string()),
+            (1, pipe_of(&out_r)),
+            (2, "/dev/null".to_string()),
+            (899, pipe_of(&b_r)),
+            (900, pipe_of(&a_r)),
+        ]
+        .into();
+        assert_eq!(seen, want, "launcher's own at {}\n{out}", leak.as_raw_fd());
+    }
+
+    /// The room's rules never carry an environment variable without a
+    /// valid name: none without a name, none whose name holds '=' (SAM's
+    /// helper would read it as another variable).
+    #[test]
+    fn a_room_never_gets_a_variable_without_a_valid_name() {
+        let ctx = RoomContext {
+            plan: FloorPlan::default(),
+            facts: AppFacts::default(),
+            bwrap: PathBuf::from("/usr/bin/bwrap"),
+            landlock: LandlockSpec::default(),
+            seccomp: SeccompSpec::default(),
+        };
+        let room = |name: &str| RoomPlan {
+            steps: Vec::new(),
+            share_net: false,
+            env: [(name.to_string(), "v".to_string())].into(),
+            filters: Vec::new(),
+            own: Vec::new(),
+            chdir: PathBuf::from("/"),
+            command: s(&["x"]),
+            capped: Vec::new(),
+        };
+        let spec = room_spec(&ctx, &room("NAME"), 3, 4, &[]).unwrap();
+        assert!(
+            spec.split(|b| *b == 0).any(|e| e == b"env=NAME=v"),
+            "{spec:?}"
+        );
+        for bad in ["", "A=B", "="] {
+            let e = room_spec(&ctx, &room(bad), 3, 4, &[])
+                .expect_err("a variable without a valid name");
+            assert!(e.to_string().contains("no valid name"), "{bad:?}: {e}");
+        }
+    }
+
+    /// A place beneath a source is opened as a handle only (never read,
+    /// so also a file nobody may read), closed when a program starts, and
+    /// only strictly beneath its source through no link: a link, a way
+    /// out, or a missing path is an error with its own cause.
+    #[test]
+    fn a_place_is_opened_beneath_its_source_as_a_handle_through_no_link() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("sub")).unwrap();
+        let secret = tmp.path().join("sub/secret");
+        std::fs::write(&secret, "x").unwrap();
+        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o000)).unwrap();
+        std::os::unix::fs::symlink("sub", tmp.path().join("link")).unwrap();
+        let handle_only = |fd: &OwnedFd| {
+            // SAFETY: F_GETFL and F_GETFD only read our descriptor's flags.
+            let (fl, fd_fl) = unsafe {
+                (
+                    libc::fcntl(fd.as_raw_fd(), libc::F_GETFL),
+                    libc::fcntl(fd.as_raw_fd(), libc::F_GETFD),
+                )
+            };
+            assert!(fl & libc::O_PATH != 0, "opened as a handle only");
+            assert!(
+                fd_fl & libc::FD_CLOEXEC != 0,
+                "closed when a program starts"
+            );
+        };
+        let top = open_path(tmp.path()).unwrap();
+        handle_only(&top);
+        let fd = openat2_beneath(&top, Path::new("sub/secret"))
+            .expect("a file nobody may read is still shown by handle");
+        handle_only(&fd);
+        assert_eq!(identity(&fd).unwrap(), {
+            use std::os::unix::fs::MetadataExt;
+            let m = std::fs::metadata(&secret).unwrap();
+            (m.dev(), m.ino())
+        });
+        for (rel, errno) in [
+            ("link/secret", libc::ELOOP),
+            ("../", libc::EXDEV),
+            ("/etc", libc::EXDEV),
+            ("missing", libc::ENOENT),
+        ] {
+            let e = openat2_beneath(&top, Path::new(rel)).expect_err(rel);
+            assert_eq!(e.raw_os_error(), Some(errno), "{rel}: {e}");
+        }
+        let e = open_path(&tmp.path().join("missing")).expect_err("missing");
+        assert_eq!(e.raw_os_error(), Some(libc::ENOENT));
+    }
+
+    /// SAM's own descriptors (a place's handle, a room's data) work at any
+    /// number the kernel gives, also 0 when the launcher was started
+    /// without standard input; with no number left they are an error,
+    /// never a handle that is not there. Runs on its own: it closes this
+    /// process's standard input and lowers its limit.
+    #[test]
+    fn sams_own_descriptors_work_at_any_number_and_fail_when_none_is_left() {
+        if !alone("sams_own_descriptors_work_at_any_number_and_fail_when_none_is_left") {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("sub")).unwrap();
+        let top = open_path(tmp.path()).unwrap();
+        // SAFETY: closes this copy's standard input, which nothing uses.
+        assert_eq!(unsafe { libc::close(0) }, 0);
+        let fd = open_path(tmp.path()).expect("a handle at number 0");
+        assert_eq!(fd.as_raw_fd(), 0);
+        drop(fd);
+        let fd = openat2_beneath(&top, Path::new("sub")).expect("a place at number 0");
+        assert_eq!(fd.as_raw_fd(), 0);
+        drop(fd);
+        let fd = memfd_with(b"the room's rules").expect("data at number 0");
+        assert_eq!(fd.as_raw_fd(), 0);
+        let mut back = String::new();
+        std::fs::File::from(fd).read_to_string(&mut back).unwrap();
+        assert_eq!(back, "the room's rules");
+
+        // No number left at all.
+        let mut lim: libc::rlimit = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        // SAFETY: getrlimit writes the struct given.
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) }, 0);
+        set_nofile(0, lim.rlim_max);
+        let handle = open_path(tmp.path()).map(|_| ());
+        let place = openat2_beneath(&top, Path::new("sub")).map(|_| ());
+        let data = memfd_with(b"x").map(|_| ());
+        set_nofile(lim.rlim_cur, lim.rlim_max);
+        for (what, r) in [
+            ("handle", handle.map_err(anyhow::Error::from)),
+            ("place", place.map_err(anyhow::Error::from)),
+            ("data", data),
+        ] {
+            let e = r.expect_err(what);
+            assert!(
+                format!("{e:#}").contains("Too many open files"),
+                "{what}: {e:#}"
+            );
+        }
+    }
+
+    /// A place on a read-only file system is known as one (a room never
+    /// gets it writable), and one on a writable file system is not. The
+    /// copy of this test runs in Bubblewrap with the whole computer shown
+    /// read-only and a fresh writable /dev.
+    #[test]
+    fn a_place_on_a_read_only_file_system_is_known_as_one() {
+        const NAME: &str = "a_place_on_a_read_only_file_system_is_known_as_one";
+        if is_own_process(NAME) {
+            let root = open_path(Path::new("/")).unwrap();
+            assert!(read_only_filesystem(&root), "/ is shown read-only");
+            let dev = open_path(Path::new("/dev")).unwrap();
+            assert!(!read_only_filesystem(&dev), "/dev is writable");
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(!read_only_filesystem(&open_path(tmp.path()).unwrap()));
+        let Some(bwrap) = sam_core::HostInfo::probe().tools.bwrap else {
+            crate::contracts::skip("bubblewrap is not installed").unwrap_or_else(|e| panic!("{e}"));
+            return;
+        };
+        let mut wrap: Vec<OsString> = vec![bwrap.path.into()];
+        wrap.extend(
+            [
+                "--ro-bind",
+                "/",
+                "/",
+                "--dev",
+                "/dev",
+                "--die-with-parent",
+                "--",
+            ]
+            .map(OsString::from),
+        );
+        passed_alone(own_process(NAME, &wrap).output().unwrap());
+    }
+
+    /// The start record names who asked: the program that started the
+    /// requesting one (here this test program, which starts a copy of
+    /// itself that connects).
+    #[test]
+    fn a_request_is_recorded_as_asked_by_the_program_that_started_the_requester() {
+        const NAME: &str =
+            "a_request_is_recorded_as_asked_by_the_program_that_started_the_requester";
+        const AT: &str = "SAM_TEST_ASK_AT";
+        if is_own_process(NAME) {
+            // The requester: connects and waits until the other side is done.
+            let mut c = UnixStream::connect(std::env::var(AT).unwrap()).unwrap();
+            let mut rest = Vec::new();
+            c.read_to_end(&mut rest).unwrap();
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let at = tmp.path().join("ask");
+        let listener = UnixListener::bind(&at).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut child = own_process(NAME, &[])
+            .env(AT, &at)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let end = Instant::now() + Duration::from_secs(30);
+        let stream = loop {
+            match listener.accept() {
+                Ok((c, _)) => break c,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < end, "the requester never came");
+                    assert!(child.try_wait().unwrap().is_none(), "the requester left");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(e) => panic!("{e}"),
+            }
+        };
+        let by = asked_by(&stream);
+        drop(stream);
+        passed_alone(child.wait_with_output().unwrap());
+        let me = std::fs::read_to_string("/proc/self/comm").unwrap();
+        assert_eq!(by, me.trim());
+    }
+
+    /// A room is named in the start record by its program's file name;
+    /// "?" when the request names no program.
+    #[test]
+    fn a_room_is_named_by_its_programs_file_name() {
+        assert_eq!(
+            program_name(&s(&[
+                "/usr/libexec/glycin-loaders/2+/glycin-image-rs",
+                "--dbus-fd",
+                "3"
+            ])),
+            "glycin-image-rs"
+        );
+        assert_eq!(program_name(&s(&["python3"])), "python3");
+        assert_eq!(program_name(&[]), "?");
+    }
+
+    /// A received connection closes when a program starts (it reaches a
+    /// room only at the number the service gives it); a receive with
+    /// nothing waiting returns at once, and the end of the stream reads
+    /// as no bytes, not as an error.
+    #[test]
+    fn a_receive_takes_connections_close_on_exec_and_never_waits() {
+        let (a, b) = UnixStream::pair().unwrap();
+        let null = dev_null();
+        send_with_fds(&a, b"x", &[null.as_raw_fd()]).unwrap();
+        let mut buf = [0u8; 4];
+        let mut got = Vec::new();
+        assert_eq!(recv_with_fds(&b, &mut buf, &mut got, 3).unwrap(), 1);
+        assert_eq!(got.len(), 1);
+        // SAFETY: F_GETFD only reads the descriptor's flags.
+        let flags = unsafe { libc::fcntl(got[0].as_raw_fd(), libc::F_GETFD) };
+        assert!(
+            flags & libc::FD_CLOEXEC != 0,
+            "closed when a program starts"
+        );
+        let e = recv_with_fds(&b, &mut buf, &mut got, 3).expect_err("nothing waits");
+        assert_eq!(e.kind(), std::io::ErrorKind::WouldBlock);
+        // The sender is done (a shutdown, not a close: a copy another
+        // test's new process holds for a moment would delay the end).
+        a.shutdown(std::net::Shutdown::Write).unwrap();
+        assert_eq!(recv_with_fds(&b, &mut buf, &mut got, 3).unwrap(), 0);
+        assert_eq!(got.len(), 1);
+    }
+
+    /// Only passed connections are taken from what comes with a request:
+    /// the sender's credentials, which the kernel adds where the socket
+    /// asks for them, are never taken for connections.
+    #[test]
+    fn credentials_that_come_with_a_request_are_never_taken_for_connections() {
+        let (a, b) = UnixStream::pair().unwrap();
+        let one: libc::c_int = 1;
+        // SAFETY: setsockopt reads the int given, of the size given.
+        let r = unsafe {
+            libc::setsockopt(
+                b.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_PASSCRED,
+                (&one as *const libc::c_int).cast(),
+                std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+            )
+        };
+        assert_eq!(r, 0);
+        (&a).write_all(b"x").unwrap();
+        let mut buf = [0u8; 4];
+        let mut got = Vec::new();
+        assert_eq!(recv_with_fds(&b, &mut buf, &mut got, 3).unwrap(), 1);
+        // Given up without closing: numbers that are no connections of
+        // ours must not be closed.
+        let taken: Vec<RawFd> = got.into_iter().map(IntoRawFd::into_raw_fd).collect();
+        assert!(taken.is_empty(), "taken for connections: {taken:?}");
+    }
+
+    /// Waiting for a request ends with an error when nothing comes in
+    /// time or when the app's start ends, and returns once something comes.
+    #[test]
+    fn waiting_for_a_request_ends_in_time_and_when_the_start_ends() {
+        let (a, b) = UnixStream::pair().unwrap();
+        let stop = AtomicBool::new(false);
+        let begin = Instant::now();
+        let e = wait_readable(&b, Duration::from_millis(500), &stop).expect_err("nothing came");
+        assert!(e.contains("too long"), "{e}");
+        assert!(begin.elapsed() >= Duration::from_millis(500));
+        stop.store(true, Ordering::SeqCst);
+        let e = wait_readable(&b, Duration::from_secs(10), &stop).expect_err("the start ended");
+        assert!(e.contains("start ended"), "{e}");
+        stop.store(false, Ordering::SeqCst);
+        (&a).write_all(b"x").unwrap();
+        assert_eq!(wait_readable(&b, Duration::from_secs(10), &stop), Ok(()));
+    }
+
+    /// A signal that interrupts the wait for a request (the launcher gets
+    /// signals, such as one when a child ends) does not end the wait: the
+    /// request is still read.
+    #[test]
+    fn a_signal_during_the_wait_for_a_request_does_not_end_it() {
+        use std::os::unix::thread::JoinHandleExt;
+        extern "C" fn nothing(_: libc::c_int) {}
+        // SIGURG (ignored by default, sent by nothing else here) with a
+        // handler that does not restart calls: it interrupts the wait.
+        // SAFETY: sigaction with zeroed structs filled as documented.
+        let old = unsafe {
+            let mut new: libc::sigaction = std::mem::zeroed();
+            new.sa_sigaction = nothing as extern "C" fn(libc::c_int) as libc::sighandler_t;
+            libc::sigemptyset(&mut new.sa_mask);
+            let mut old: libc::sigaction = std::mem::zeroed();
+            assert_eq!(libc::sigaction(libc::SIGURG, &new, &mut old), 0);
+            old
+        };
+        let (a, b) = UnixStream::pair().unwrap();
+        let waiting = std::thread::spawn(move || {
+            wait_readable(&b, Duration::from_secs(10), &AtomicBool::new(false))
+        });
+        let thread = waiting.as_pthread_t();
+        for _ in 0..10 {
+            std::thread::sleep(Duration::from_millis(20));
+            // SAFETY: a signal to a thread that is not joined yet.
+            unsafe { libc::pthread_kill(thread, libc::SIGURG) };
+        }
+        (&a).write_all(b"x").unwrap();
+        let r = waiting.join().unwrap();
+        // SAFETY: puts back the handling found before.
+        unsafe { libc::sigaction(libc::SIGURG, &old, std::ptr::null_mut()) };
+        assert_eq!(r, Ok(()));
+    }
+
+    /// A request never brings more connections than a request may have,
+    /// also when they come in parts: once the most have come, a later
+    /// part with one more is refused.
+    #[test]
+    fn a_request_never_brings_more_connections_than_allowed_in_parts() {
+        let (a, b) = UnixStream::pair().unwrap();
+        let null = dev_null();
+        let body = b"{}";
+        let mut msg = (body.len() as u32).to_be_bytes().to_vec();
+        msg.extend(body);
+        send_with_fds(&a, &msg[..1], &vec![null.as_raw_fd(); room_rules::MAX_FDS]).unwrap();
+        send_with_fds(&a, &msg[1..], &[null.as_raw_fd()]).unwrap();
+        let state = State::default();
+        state.fd_budget.store(10_000, Ordering::SeqCst);
+        let mut held = Held::new(&state);
+        let e = read_message(&b, &mut held).expect_err("one more than allowed");
+        assert!(e.contains("too many connections"), "{e}");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
