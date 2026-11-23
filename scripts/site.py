@@ -402,7 +402,7 @@ POINT_ICONS = {
     "sandboxed apps fit into your desktop": "menu", "sam is built on proven parts": "bricks",
     # README: the evidence
     "# of # real appimages start in their sandbox": "boxes", "# automated tests guard # functions": "grid",
-    "every security promise is attacked from inside a real sandbox": "zap",
+    "every security promise is attacked by a test, most from inside a real sandbox": "zap",
     "the tests themselves are tested": "microscope", "sam's readers of untrusted files are fuzzed": "shuffle",
     "every release is tested and signed": "stamp",
     # Use SAM: the short version
@@ -422,7 +422,7 @@ POINT_ICONS = {
 # Points that state the same thing in two documents share one meaning, so they share an icon.
 SAME_POINT = {"real appimages": "# of # real appimages start in their sandbox",
               "mutation testing": "the tests themselves are tested",
-              "breakout and hostile-appimage tests": "every security promise is attacked from inside a real sandbox"}
+              "breakout and hostile-appimage tests": "every security promise is attacked by a test, most from inside a real sandbox"}
 MISSING_ICONS = []
 
 

@@ -470,7 +470,7 @@ systemd-run and flatpak-spawn are the host tools that start programs outside a s
 
 - **Component:** D-Bus and desktop services ([releases](https://gitlab.freedesktop.org/dbus/dbus/-/tags))
 - **When it breaks:** nothing breaks: the assumption only ever narrows access.
-- **SAM functions that rely on it:** [16](functions.md#16)
+- **SAM functions that rely on it:** [13](functions.md#13), [16](functions.md#16)
 - **Quick check:** none (only the tests below)
 - **Tests:** `host_tools_that_start_programs_outside_meet_their_stand_ins`, `every_breakout_attempt_from_a_real_sandbox_fails`, `every_hostile_appimage_fails_to_escape` (fully)
 - **Checked first by:** `sandbox.rs` (a broken contract stops these tests with its name)

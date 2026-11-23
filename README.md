@@ -84,7 +84,7 @@ repository.
 - **<!-- fact:tests -->660<!-- /fact --> automated tests guard <!-- fact:functions -->41<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
-- **Every security promise is attacked from inside a real sandbox.**
+- **Every security promise is attacked by a test, most from inside a real sandbox.**
   Breakout tests run on every change, on Ubuntu and on Fedora. The
   [threat model](docs/threat-model.md) lists each threat with what stops it,
   the test that proves it, and just as clearly what SAM does *not* protect
