@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-update 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-update 1 2026-11-23 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-update \- Download the newest published version of an app\*(Aqs AppImage and put it in place of the old one (kept, so `\-\-undo` can go back). Settings and files stay
 .SH SYNOPSIS
@@ -13,7 +13,7 @@ Download the newest published version of an app\*(Aqs AppImage and put it in pla
 Go back to the version the last update replaced
 .TP
 \fB\-\-accept\-key\-change\fR
-Accept a new file signed with another key than the installed one
+Install the download the last run refused because its signing key changed or its signature could not be checked: exactly that file, while it is still the published one (never a new download)
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help
