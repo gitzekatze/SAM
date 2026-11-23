@@ -30,7 +30,13 @@ fn json(out: &Output) -> serde_json::Value {
 
 /// Runs SAM's command line from `root/bin` with its own folders and home.
 fn sam(root: &Path, args: &[&str]) -> Output {
-    Command::new(root.join("bin/sam-jail"))
+    sam_with(root, args, "")
+}
+
+/// [`sam`] with `stdin` on its standard input.
+fn sam_with(root: &Path, args: &[&str], stdin: &str) -> Output {
+    use std::io::Write;
+    let mut c = Command::new(root.join("bin/sam-jail"))
         .args(args)
         .env("SAM_CONFIG_DIR", root.join("config"))
         .env("SAM_DATA_DIR", root.join("data"))
@@ -42,8 +48,13 @@ fn sam(root: &Path, args: &[&str]) -> Output {
         .env("LC_ALL", "C")
         .env_remove("LANGUAGE")
         .env("PATH", "/usr/bin:/bin")
-        .output()
-        .unwrap()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    c.stdin.take().unwrap().write_all(stdin.as_bytes()).unwrap();
+    c.wait_with_output().unwrap()
 }
 
 #[test]
@@ -142,14 +153,33 @@ fn an_app_nobody_has_confirmed_does_not_start() {
         .as_str()
         .unwrap()
         .to_string();
-    // One switch changed, alone or for a group of apps, confirms nothing
-    // about the others (review F5: any change marked the app reviewed).
-    let changes: [&[&str]; 2] = [
-        &["set", &id, "devices.gpu", "true"],
-        &["group", "set", "audio.enabled", "false", &id],
+    // One switch changed, alone, from the window (`profile change`), for
+    // a group of apps or undone, confirms nothing about the others, and
+    // neither does putting back what SAM chose (review F5: any change
+    // marked the app reviewed).
+    let loaded = json(&sam(root, &["--json", "get", &id]))["data"].clone();
+    let mut edited = loaded.clone();
+    edited["devices"]["gamepads"] = true.into();
+    let window = serde_json::json!({"from": loaded, "to": edited}).to_string();
+    let group = sam(
+        root,
+        &["--json", "group", "set", "audio.enabled", "false", &id],
+    );
+    assert!(
+        group.status.success(),
+        "{}",
+        String::from_utf8_lossy(&group.stderr)
+    );
+    let undo = json(&group)["data"]["undo"].to_string();
+    let changes: [(&[&str], &str); 5] = [
+        (&["set", &id, "devices.gpu", "true"], ""),
+        (&["profile", "change", &id], &window),
+        (&["group", "restore"], &undo),
+        (&["profile", "reset", &id], ""),
+        (&["group", "set", "audio.enabled", "false", &id], ""),
     ];
-    for change in changes {
-        let o = sam(root, change);
+    for (change, stdin) in changes {
+        let o = sam_with(root, change, stdin);
         assert!(
             o.status.success(),
             "{change:?}: {}",
