@@ -234,15 +234,23 @@ impl App {
         }
     }
 
-    pub async fn set_config(self: &Rc<Self>, key: &str, value: &str) {
-        if let Err(e) = self
+    /// Saves one setting and loads the settings again; false when the
+    /// save failed (the control that asked for it then shows the stored
+    /// value again, audit G-F15).
+    pub async fn set_config(self: &Rc<Self>, key: &str, value: &str) -> bool {
+        let saved = match self
             .backend
             .call(&["config", "set", key, value], None)
             .await
         {
-            self.report_error(&e);
-        }
+            Ok(_) => true,
+            Err(e) => {
+                self.report_error(&e);
+                false
+            }
+        };
         self.load_config().await;
+        saved
     }
 
     pub async fn refresh_apps(self: &Rc<Self>) {

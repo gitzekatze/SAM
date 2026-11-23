@@ -95,6 +95,28 @@ pub fn language(app: &Rc<App>) -> adw::NavigationPage {
 
 // ---------------------------------------------------------------- preferences
 
+/// The question to ask before a global setting is set to `on`, when that
+/// takes a protection away from every sandbox: heading, text and the
+/// button that goes ahead. `None` for every other change (audit G-F11:
+/// Landlock and the syscall filter went off for all apps without a word,
+/// while the same switch on one app's page asks).
+pub(crate) fn weakening(key: &str, on: bool) -> Option<(String, String, String)> {
+    match (key, on) {
+        ("security.experimental_landlock", false) => Some((
+            tr("Turn Off Landlock for Every App?"),
+            tr("Every sandboxed app loses Landlock's write protection and the block on abstract sockets outside the sandbox (such as XWayland's). Apps can then reach more of this computer than their settings say. To help one app, turn it off on that app's page instead."),
+            tr("Turn Off"),
+        )),
+        ("security.baseline_seccomp", false) => Some((
+            tr("Turn Off the Syscall Filter for Every App?"),
+            tr("Every sandboxed app can then use kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection), which attacks on the kernel use. To help one app, use its repair steps instead."),
+            tr("Turn Off"),
+        )),
+        _ => None,
+    }
+}
+
+
 pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let pref = adw::PreferencesPage::new();
     let header = adw::HeaderBar::new();
@@ -108,11 +130,37 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             .active(util::bool_of(&cfg, key))
             .build();
         let w = Rc::downgrade(app);
+        // Set while the switch is moved back to the stored value, which is
+        // no new choice.
+        let syncing: Rc<std::cell::Cell<bool>> = Rc::default();
         row.connect_active_notify(move |r| {
-            if let Some(app) = w.upgrade() {
-                let v = if r.is_active() { "true" } else { "false" };
-                glib::spawn_future_local(async move { app.set_config(key, v).await });
+            if syncing.get() {
+                return;
             }
+            let Some(app) = w.upgrade() else { return };
+            let on = r.is_active();
+            let (r, syncing) = (r.clone(), syncing.clone());
+            glib::spawn_future_local(async move {
+                // A switch that takes a protection away from every app asks
+                // first, like the same switch on an app's page (audit G-F11).
+                let go = match weakening(key, on) {
+                    Some((heading, body, accept)) => {
+                        window::confirm(&app.window, &heading, &body, &accept, true).await
+                    }
+                    None => true,
+                };
+                if go {
+                    app.set_config(key, if on { "true" } else { "false" }).await;
+                }
+                // The switch shows what is stored: after Cancel, and after
+                // a save that failed (audit G-F15: it kept the new position).
+                let stored = util::bool_of(&app.state.borrow().config, key);
+                if r.is_active() != stored {
+                    syncing.set(true);
+                    r.set_active(stored);
+                    syncing.set(false);
+                }
+            });
         });
         g.add(&row);
     };
@@ -130,10 +178,23 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             .selected(opts.iter().position(|o| o.0 == cur).unwrap_or(0) as u32)
             .build();
         let w = Rc::downgrade(app);
+        let syncing: Rc<std::cell::Cell<bool>> = Rc::default();
         row.connect_selected_notify(move |r| {
+            if syncing.get() {
+                return;
+            }
             if let (Some(app), Some(o)) = (w.upgrade(), opts.get(r.selected() as usize)) {
                 let v = o.0;
-                glib::spawn_future_local(async move { app.set_config(key, v).await });
+                let (r, syncing) = (r.clone(), syncing.clone());
+                glib::spawn_future_local(async move {
+                    if !app.set_config(key, v).await {
+                        // Shows what is stored again (audit G-F15).
+                        let cur = util::str_of(&app.state.borrow().config, key).to_string();
+                        syncing.set(true);
+                        r.set_selected(opts.iter().position(|o| o.0 == cur).unwrap_or(0) as u32);
+                        syncing.set(false);
+                    }
+                });
             }
         });
         g.add(&row);
@@ -150,19 +211,34 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
         row.set_value(cur);
         let w = Rc::downgrade(app);
         let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::default();
+        let syncing: Rc<std::cell::Cell<bool>> = Rc::default();
         row.connect_value_notify(move |r| {
+            if syncing.get() {
+                return;
+            }
             let v = r.value();
             if let Some(id) = pending.borrow_mut().take() {
                 id.remove();
             }
-            let (w, p2) = (w.clone(), pending.clone());
+            let (w, p2, rw, syncing) = (w.clone(), pending.clone(), r.downgrade(), syncing.clone());
             // Save once the value stops changing.
             let id =
                 glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
                     p2.borrow_mut().take();
-                    if let Some(app) = w.upgrade() {
+                    if let (Some(app), Some(r)) = (w.upgrade(), rw.upgrade()) {
                         let s = format!("{}", v as i64);
-                        glib::spawn_future_local(async move { app.set_config(key, &s).await });
+                        glib::spawn_future_local(async move {
+                            if !app.set_config(key, &s).await {
+                                // Shows what is stored again (audit G-F15).
+                                if let Some(cur) = util::get(&app.state.borrow().config, key)
+                                    .and_then(Value::as_f64)
+                                {
+                                    syncing.set(true);
+                                    r.set_value(cur);
+                                    syncing.set(false);
+                                }
+                            }
+                        });
                     }
                 });
             *pending.borrow_mut() = Some(id);
@@ -1121,4 +1197,29 @@ pub fn diagnostics(app: &Rc<App>) -> adw::NavigationPage {
     cli.add_css_class("property");
     maint.add(&cli);
     page
+}
+
+#[cfg(test)]
+mod tests {
+    /// Turning Landlock or the syscall filter off for every app asks
+    /// first; turning them on, and every other preference, does not
+    /// (audit G-F11).
+    #[test]
+    fn turning_a_protection_off_for_every_app_asks_first() {
+        let d = sam_core::config::Config::default().security;
+        // Both protect every sandbox unless turned off.
+        assert!(d.experimental_landlock && d.baseline_seccomp);
+        for key in ["security.experimental_landlock", "security.baseline_seccomp"] {
+            assert!(super::weakening(key, false).is_some(), "{key} off");
+            assert!(super::weakening(key, true).is_none(), "{key} on");
+        }
+        for key in [
+            "security.check_before_launch",
+            "security.warn_x11",
+            "general.desktop_integration",
+            "updates.check_on_start",
+        ] {
+            assert!(super::weakening(key, false).is_none(), "{key}");
+        }
+    }
 }
