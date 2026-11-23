@@ -8,6 +8,9 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 #![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
+#[path = "../../sam-runner/tests/gpg_agent/mod.rs"]
+mod gpg_agent;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -31,6 +34,8 @@ impl Drop for Kit {
             .arg(&self.home)
             .args(["--kill", "all"])
             .status();
+        // Also removes the socket folder GnuPG keeps outside the test folder.
+        gpg_agent::stop(&self.home);
     }
 }
 

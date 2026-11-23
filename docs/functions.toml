@@ -609,6 +609,7 @@ tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_
   "the_apps_variables_reach_it_only_after_the_helpers_layers",
   "the_apps_variables_go_to_the_helper_never_to_its_start",
   "a_missing_layer_is_told_while_the_app_runs",
+  "a_missing_layer_is_told_once_when_sam_starts_the_app_again",
   "a_menu_start_is_told_when_a_protection_layer_is_missing",
   "the_check_is_repeated_after_the_kernel_or_a_sandbox_program_changed",
 ]
@@ -750,6 +751,8 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "an_update_built_for_another_processor_is_not_installed",
   "consent_to_a_new_key_covers_only_the_file_that_was_shown",
   "going_back_puts_the_earlier_version_only_into_the_apps_folder",
+  "declining_an_update_deletes_the_download_that_waited",
+  "a_download_never_answered_is_deleted_after_a_week",
 ]
 
 [[function]]
@@ -868,6 +871,7 @@ code = ["sam-core/src/i18n.rs", "sam-gtk/src/i18n.rs", "scripts/i18n.py", "po/de
 tests = [
   "texts_without_a_translation_come_back_with_their_values",
   "the_command_line_speaks_german_when_asked",
+  "the_helpers_line_speaks_the_persons_language",
   "every_translated_language_can_be_chosen",
   "the_language_is_the_system_or_one_sam_speaks",
   "the_chosen_language_and_the_systems_are_kept_apart",
@@ -937,4 +941,5 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
   "each_command_names_its_sam_function",
   "man_writes_a_page_per_visible_command_and_none_for_hidden_ones",
   "private_services_end_with_the_test_process_that_started_them",
+  "a_test_that_fails_partway_leaves_no_gpg_agent_running",
 ]

@@ -820,7 +820,9 @@ downloads a file, and only when you ask:
   folder, and accepting it (*Update Anyway*, `sam-jail update --accept-key-change`)
   installs exactly that file, as long as it is still the published one;
   SAM never downloads again for that answer, so a server cannot hand out a
-  different file under your yes. A yes counts once. When the installed version's signature
+  different file under your yes. A yes counts once. Saying no (*Cancel*,
+  `sam-jail update --decline-key-change`) deletes the waiting download; one
+  never answered is deleted after a week, when updates are checked or run. When the installed version's signature
   could not be checked when it was added (GnuPG missing), SAM checks the
   installed file again now; a signature that still cannot be checked lets
   no other key, missing or bad signature through without a question. A signed update that was signed earlier

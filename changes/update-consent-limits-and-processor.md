@@ -24,3 +24,8 @@
   use gigabytes of memory: such an update is downloaded whole.
 - Going back to the earlier version puts it into the app's own folder under
   the name it had, never to a place a changed app record names.
+- Saying no to such an update (*Cancel*, or
+  `sam-jail update --decline-key-change`) deletes the waiting download at
+  once. One that is never answered is deleted after a week, the next time
+  updates are checked or run. Before, it stayed in SAM's folder until that
+  app's next update.

@@ -682,8 +682,8 @@ fn answer_of(mut cmd: Command, max: usize, whole: bool) -> Result<Vec<u8>> {
             bail!(
                 "{}",
                 sam_core::i18n::trf(
-                    "the update source answered with more than {size} MB, more than SAM reads",
-                    &[("size", &(max >> 20))]
+                    "the update source answered with more than {size}, more than SAM reads",
+                    &[("size", &sam_core::util::human_size(max as u64))]
                 )
             );
         }
@@ -859,6 +859,8 @@ mod tests {
     fn a_whole_answer_is_never_cut_off_and_handed_on_as_complete() {
         let err = answer_of(prints(2000), 1000, true).unwrap_err().to_string();
         assert!(err.contains("more than"), "{err}");
+        // A limit under 1 MiB is named as it is, not as "0 MB".
+        assert!(err.contains("more than 1000 B,"), "{err}");
         assert_eq!(answer_of(prints(1000), 1000, true).unwrap().len(), 1000);
         assert_eq!(answer_of(prints(2000), 1000, false).unwrap().len(), 1000);
     }

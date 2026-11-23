@@ -594,7 +594,14 @@ impl AppPage {
                             .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
                             .await;
                     } else {
-                        result = Ok(Value::Null);
+                        // Said no: the download kept for this answer is
+                        // deleted now, not left in SAM's folder.
+                        args.push("--decline-key-change".into());
+                        result = app
+                            .backend
+                            .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
+                            .await
+                            .map(|_| Value::Null);
                     }
                 }
             }
