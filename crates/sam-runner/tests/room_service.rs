@@ -135,23 +135,28 @@ say on_path "$(rv room --setenv PATH /usr/bin -- echo ok)"
 say default_path "$(rv room --clearenv -- echo ok)"
 # The stand-in is named as Bubblewrap is, so SAM's "please quit" spares it
 # as it spares Bubblewrap (the program in the room gets its time to quit).
+# The name of process $1 once it is bwrap, or the last name seen within
+# 3 s: a busy computer may take a while to start it (it is named by the
+# shell first, then by the program it starts).
+name_of() {
+  n=""; i=0
+  while [ $i -lt 30 ]; do
+    n="$(cat /proc/$1/comm 2>/dev/null)"
+    [ "$n" = bwrap ] && break
+    i=$((i+1)); sleep 0.1
+  done
+  echo "$n"
+}
 bwrap --ro-bind /usr /usr $SYS -- /usr/bin/sleep 3 </dev/null >/dev/null 2>&1 &
 standin=$!
-sleep 0.5
-say standin_name "$(cat /proc/$standin/comm 2>/dev/null)"
+say standin_name "$(name_of $standin)"
 kill "$standin" 2>/dev/null
 # Also when the program starts SAM's helper by its own path under
 # Bubblewrap's name (the kernel names it after the helper's file then).
 # shellcheck disable=SC2086
 python3 -c 'import os, sys; os.execv("/run/sam/sam-jail-run", ["bwrap"] + sys.argv[1:])' --ro-bind /usr /usr $SYS -- /usr/bin/sleep 3 </dev/null >/dev/null 2>&1 &
 standin=$!
-n=""; i=0
-while [ $i -lt 30 ]; do
-  n="$(cat /proc/$standin/comm 2>/dev/null)"
-  [ "$n" = bwrap ] && break
-  i=$((i+1)); sleep 0.1
-done
-say standin_name_by_name "$n"
+say standin_name_by_name "$(name_of $standin)"
 kill "$standin" 2>/dev/null
 # A variable that is not text: the request is refused, never run without it.
 SAM_ROOM_NOT_TEXT="$(printf 'x\377')"
