@@ -60,7 +60,7 @@ id = 4
 area = "A"
 promise = "SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them."
 code = ["sam-intake/src/metadata.rs", "sam-intake/src/peek.rs", "sam-intake/src/id.rs", "sam-core/src/util.rs"]
-tests = ["the_desktop_file_inside_an_appimage_is_read", "reads_metadata_and_icon", "a_readable_name_is_taken_from_the_file_name", "icon_paths_cannot_climb_out_of_the_app", "neutralizes_markup_and_controls", "markup_in_metadata_is_neutralized", "only_icons_that_are_safe_to_decode_are_taken", "preview_and_unpack_take_the_same_desktop_file", "changed_desktop_files_never_crash_the_reader", "a_byte_order_mark_does_not_hide_the_desktop_entry"]
+tests = ["the_desktop_file_inside_an_appimage_is_read", "reads_metadata_and_icon", "a_readable_name_is_taken_from_the_file_name", "icon_paths_cannot_climb_out_of_the_app", "neutralizes_markup_and_controls", "markup_in_metadata_is_neutralized", "only_icons_that_are_safe_to_decode_are_taken", "only_a_real_svg_counts_as_one", "preview_and_unpack_take_the_same_desktop_file", "changed_desktop_files_never_crash_the_reader", "a_byte_order_mark_does_not_hide_the_desktop_entry"]
 
 [[function]]
 id = 5

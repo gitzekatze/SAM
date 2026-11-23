@@ -928,8 +928,13 @@ reader hang, run out of memory or crash ends only that sandbox
 `the_overview_reads_names_inside_a_sandbox`). Where no sandbox can be
 built, SAM shows only the file name. Icons are taken only as PNG of at most
 1024×1024 pixels (read from the header, before anything decodes them) or
-small SVG, at most 1 MiB; XPM is not taken. The window checks this again
-before it shows an icon (`only_icons_that_are_safe_to_decode_are_taken`).
+small SVG, at most 1 MiB; XPM is not taken. The format is read from the
+file's start only: a PNG starts with the PNG signature, and an SVG is text
+whose first element is `<svg`, so an XPM, ICO or other image that merely
+contains the text `<svg` is not installed as an SVG for the desktop to
+decode with its own loader (`only_a_real_svg_counts_as_one`). The window
+checks this again before it shows an icon
+(`only_icons_that_are_safe_to_decode_are_taken`).
 The preview and the unpacked app use the same desktop file
 (`preview_and_unpack_take_the_same_desktop_file`).
 
@@ -972,7 +977,7 @@ was easily misread.
 ## Known limitations
 
 - **Icons are drawn outside the sandbox.** SAM copies an AppImage's icon
-  (PNG, SVG or XPM, at most 10 MB) into its cache. The window and the menu
+  (PNG or SVG, checked as above, at most 1 MiB) into its cache. The window and the menu
   draw it with the system's image libraries, as every AppImage integration
   tool does.
 - **D-Bus filtering needs `xdg-dbus-proxy`.** Without it, an app with

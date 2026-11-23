@@ -49,18 +49,64 @@ pub fn safe_icon(data: &[u8]) -> Option<IconFormat> {
     }
 }
 
+/// The format of an icon, from its first bytes only: a PNG starts with the
+/// PNG signature, an SVG is text whose first element is `<svg`, after at
+/// most an XML declaration, comments, processing instructions and a
+/// DOCTYPE. The desktop's image code chooses its decoder from the content,
+/// so a file that merely contains the text `<svg` somewhere (an XPM or ICO
+/// with it in a comment or its pixels) is not an SVG: taken as one, it
+/// reached the decoders SAM keeps away from (review 2026-11-23, F3).
 pub fn sniff_icon(data: &[u8]) -> Option<IconFormat> {
     if data.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Some(IconFormat::Png);
     }
-    let head = String::from_utf8_lossy(&data[..data.len().min(2048)]).to_lowercase();
-    if head.contains("<svg") {
-        return Some(IconFormat::Svg);
-    }
-    if head.contains("/* xpm */") {
+    if data.starts_with(b"/* XPM */") {
         return Some(IconFormat::Xpm);
     }
-    None
+    svg_root(data).then_some(IconFormat::Svg)
+}
+
+/// Whether `data` is text (UTF-8, no NUL) whose first element is `<svg`.
+fn svg_root(data: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    if text.contains('\0') {
+        return false;
+    }
+    let mut rest = text.strip_prefix('\u{feff}').unwrap_or(text);
+    loop {
+        rest = rest.trim_start_matches([' ', '\t', '\r', '\n']);
+        if let Some(r) = rest.strip_prefix("<?") {
+            let Some(end) = r.find("?>") else {
+                return false;
+            };
+            rest = &r[end + 2..];
+        } else if let Some(r) = rest.strip_prefix("<!--") {
+            let Some(end) = r.find("-->") else {
+                return false;
+            };
+            rest = &r[end + 3..];
+        } else if let Some(r) = rest.strip_prefix("<!DOCTYPE") {
+            // Up to the closing `>`, past an internal subset in `[...]`.
+            let close = match (r.find('['), r.find('>')) {
+                (Some(open), Some(gt)) if open < gt => r[open..].find(']').and_then(|e| {
+                    let after = open + e + 1;
+                    r[after..].find('>').map(|g| after + g)
+                }),
+                (_, gt) => gt,
+            };
+            let Some(end) = close else {
+                return false;
+            };
+            rest = &r[end + 1..];
+        } else {
+            let Some(r) = rest.strip_prefix("<svg") else {
+                return false;
+            };
+            return r.starts_with([' ', '\t', '\r', '\n', '>', '/']);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -115,5 +161,56 @@ mod tests {
         );
         assert_eq!(safe_icon(b"/* XPM */\nstatic char *x[] = {};"), None);
         assert_eq!(safe_icon(b""), None);
+    }
+
+    /// Regression (review 2026-11-23, F3): any file with the text `<svg`
+    /// in its first 2 KiB counted as an SVG, so an XPM, ICO or TGA icon
+    /// carrying it in a comment or its pixels was installed as `.svg` and
+    /// reached the desktop's decoder for its real format. Only a file whose
+    /// first element is `<svg` is an SVG now; real SVG headers still are.
+    #[test]
+    fn only_a_real_svg_counts_as_one() {
+        // Look-alikes: other formats with the text inside.
+        let xpm = b"/* XPM */\n/* <svg */\nstatic char *x[] = {\"1 1 1 1\"};";
+        assert_eq!(sniff_icon(xpm), Some(IconFormat::Xpm));
+        assert_eq!(safe_icon(xpm), None, "an XPM with <svg in a comment");
+        let mut ico = vec![0, 0, 1, 0, 1, 0, 16, 16, 0, 0];
+        ico.extend(b"<svg xmlns='http://www.w3.org/2000/svg'/>");
+        assert_eq!(safe_icon(&ico), None, "an ICO with <svg in its data");
+        let mut tga = vec![0, 0, 2, 0];
+        tga.extend(b"<svg>");
+        assert_eq!(safe_icon(&tga), None, "a TGA with <svg in its data");
+        for fake in [
+            &b"GIF89a<svg>"[..],
+            b"<html><svg></svg></html>",
+            b"text before <svg/>",
+            b"<svgfoo/>",
+            b"<?xml version='1.0'?><!-- not closed <svg>",
+            b"<svg\0>",
+            b"<!-- <svg> -->",
+        ] {
+            assert_eq!(
+                safe_icon(fake),
+                None,
+                "{}",
+                String::from_utf8_lossy(fake)
+            );
+        }
+        // Real SVG headers, as editors write them.
+        for real in [
+            &b"<svg/>"[..],
+            b"\xef\xbb\xbf<svg xmlns='http://www.w3.org/2000/svg'></svg>",
+            b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<!-- Created with Inkscape -->\n\n<svg\n  width=\"48\">",
+            b"<?xml version=\"1.0\"?>\n<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n<svg version=\"1.1\">",
+            b"<?xml version=\"1.0\"?>\n<!DOCTYPE svg [\n<!ENTITY ns_svg \"http://www.w3.org/2000/svg\">\n]>\n<svg xmlns=\"&ns_svg;\">",
+            b"  \r\n<svg>",
+        ] {
+            assert_eq!(
+                safe_icon(real),
+                Some(IconFormat::Svg),
+                "{}",
+                String::from_utf8_lossy(real)
+            );
+        }
     }
 }
