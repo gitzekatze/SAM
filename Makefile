@@ -53,11 +53,13 @@ mo:
 pot:
 	python3 scripts/i18n.py extract
 
-# A test that cannot run here (no Bubblewrap, for example) is listed at the
-# end instead of passing silently.
+# As in CI, a sandbox test that cannot build its sandbox here (no working
+# Bubblewrap, for example) fails instead of passing without testing
+# (SAM_REQUIRE_SANDBOX=1). A test that does not apply to this computer at
+# all ("not here") is listed at the end.
 test:
 	@mkdir -p target && : > target/test-skips.log
-	SAM_SKIP_LOG="$(CURDIR)/target/test-skips.log" $(CARGO) test --workspace --locked
+	SAM_REQUIRE_SANDBOX=1 SAM_SKIP_LOG="$(CURDIR)/target/test-skips.log" $(CARGO) test --workspace --locked
 	@python3 scripts/skips.py target/test-skips.log
 
 # Mutation testing of only the code changed since main (or BASE=…): every

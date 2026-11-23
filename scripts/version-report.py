@@ -109,6 +109,7 @@ def recheck(tests):
     env["CARGO_TARGET_DIR"] = str(WORK / "target-plain")
     env["TMPDIR"] = str(WORK / "tmp")
     env["PATH"] = f"{WORK / 'target-plain' / 'debug'}:{env['PATH']}"
+    env["SAM_REQUIRE_SANDBOX"] = "1"
     print("rechecking the failed tests without coverage …", file=sys.stderr)
     # The tests start SAM's programs (the helper among them): build them once.
     sh(["cargo", "build", "--workspace", "--locked", "--bins"], env=env)
@@ -271,7 +272,9 @@ def main():
     profdir = WORK / "profraw"
     shutil.rmtree(profdir, ignore_errors=True)
     profdir.mkdir(parents=True)
-    env = {**os.environ, "CARGO_TARGET_DIR": str(WORK / "target"), "TMPDIR": str(WORK / "tmp"), "SAM_TEST_GPG": os.environ.get("SAM_TEST_GPG", "")}
+    env = {**os.environ, "CARGO_TARGET_DIR": str(WORK / "target"), "TMPDIR": str(WORK / "tmp"), "SAM_TEST_GPG": os.environ.get("SAM_TEST_GPG", ""),
+           # A sandbox test that cannot run fails instead of counting as passed.
+           "SAM_REQUIRE_SANDBOX": "1"}
     (WORK / "tmp").mkdir(exist_ok=True)
     if "--no-coverage" not in args:
         env["RUSTFLAGS"] = (env.get("RUSTFLAGS", "") + " -C instrument-coverage").strip()

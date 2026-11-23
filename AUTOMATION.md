@@ -73,8 +73,8 @@ All of them run in CI and block a merge when they fail:
   read-only by default and only listed jobs may write; every download is
   checked against a fixed checksum; every shell and Python file is linted;
   every document the code reads counts as code in CI's change filter; and
-  every `cargo test` a workflow or script runs fails instead of skipping
-  where it cannot build a sandbox (`SAM_REQUIRE_SANDBOX=1`).
+  every `cargo test` a workflow, script or the Makefile runs fails instead
+  of skipping where it cannot build a sandbox (`SAM_REQUIRE_SANDBOX=1`).
 
 A weakening, a protected test with a line removed or changed (adding to it
 is fine), or a new dependency passes only when the owner sets the label

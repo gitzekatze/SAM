@@ -17,6 +17,7 @@ would look green. The results are written to target/test-results.json
 import contextlib
 import io
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -62,10 +63,12 @@ def read_output(out, status):
 
 
 def one_run(extra):
-    """read_output() for one full run of the suite."""
+    """read_output() for one full run of the suite. A sandbox test that
+    cannot build its sandbox fails instead of passing (SAM_REQUIRE_SANDBOX)."""
     p = subprocess.run(
         ["cargo", "test", "--workspace", "--locked", "--no-fail-fast", *extra],
         cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        env={**os.environ, "SAM_REQUIRE_SANDBOX": "1"},
     )
     sys.stdout.write(p.stdout)
     return read_output(p.stdout, p.returncode)

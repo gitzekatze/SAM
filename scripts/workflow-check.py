@@ -27,13 +27,15 @@ What the checks cover:
 7. A document the code reads (include_str!, a path joined in a test)
    counts as code in CI's change filter, so a change to it alone still runs
    the tests (audit D-M11).
-8. Every `cargo test` run by a workflow or a script runs with
-   SAM_REQUIRE_SANDBOX=1: a sandbox test that cannot build its sandbox
-   fails instead of passing without testing (audit D-M11).
+8. Every `cargo test` run by a workflow, a shell script, the Makefile or a
+   Python script runs with SAM_REQUIRE_SANDBOX=1: a sandbox test that
+   cannot build its sandbox fails instead of passing without testing
+   (audit D-M11).
 
     scripts/workflow-check.py              check the repository
     scripts/workflow-check.py --self-test  check the rules on made-up files
 """
+import ast
 import fnmatch
 import pathlib
 import re
@@ -263,29 +265,42 @@ def code_doc_problems(ci, sources, tracked):
     return errs
 
 
-def sandbox_problems(name, text, workflow):
-    """Rule 8 for one workflow (each run: command on its own, with its
-    step's and the workflow's env:) or shell script (the whole file)."""
+REQUIRED_ENV = re.compile(r"\s*SAM_REQUIRE_SANDBOX:\s*['\"]?1['\"]?\s*$")
+NO_SANDBOX = "cargo test without SAM_REQUIRE_SANDBOX=1 (sandbox tests would pass without running)"
+
+
+def sandbox_problems(name, text, kind):
+    """Rule 8 for one file. `kind` is "workflow" (each run: command on its
+    own, with its step's and the workflow's env:), "shell" (the whole file;
+    an export counts for the lines after it), "make" (each recipe command on
+    its own: make starts a new shell for every line) or "python"."""
+    if kind == "python":
+        return python_sandbox_problems(name, text)
     errs = []
     lines = text.splitlines()
-    if workflow:
+    if kind == "workflow":
         top = top_env = False
         for line in lines:
             if re.match(r"env:\s*$", line):
                 top = True
             elif line.strip() and indent(line) == 0:
                 top = False
-            elif top and re.match(r"\s*SAM_REQUIRE_SANDBOX:\s*['\"]?1['\"]?\s*$", line):
+            elif top and REQUIRED_ENV.match(line):
                 top_env = True
         parts = []
         for first, body in run_blocks(lines):
             step_env = False
             for j in range(first - 1, -1, -1):
-                if re.match(r"\s*SAM_REQUIRE_SANDBOX:\s*['\"]?1['\"]?\s*$", lines[j]):
+                if REQUIRED_ENV.match(lines[j]):
                     step_env = True
                 if lines[j].lstrip().startswith("- "):
                     break
             parts.append((first, body.splitlines(), top_env or step_env))
+    elif kind == "make":
+        # $(CARGO) test is cargo test; an export in one recipe line ends
+        # with that line's shell.
+        lines = [re.sub(r"\$[({]CARGO[)}]", "cargo", line) for line in lines]
+        parts = [(1, lines, False)]
     else:
         parts = [(1, lines, False)]
     for first, body, exported in parts:
@@ -293,7 +308,7 @@ def sandbox_problems(name, text, workflow):
             s = line.strip()
             if s.startswith("#"):
                 continue
-            if re.match(r"export\s.*\bSAM_REQUIRE_SANDBOX=1\b", s):
+            if kind != "make" and re.match(r"export\s.*\bSAM_REQUIRE_SANDBOX=1\b", s):
                 exported = True
             if "cargo test" not in s:
                 continue
@@ -303,8 +318,93 @@ def sandbox_problems(name, text, workflow):
                 k -= 1
                 cmd = body[k].strip() + " " + cmd
             if not (exported or re.search(r"\bSAM_REQUIRE_SANDBOX=1\b[^|;&]*cargo test", cmd)):
-                errs.append(f"{name}:{first + n}: cargo test without SAM_REQUIRE_SANDBOX=1 (sandbox tests would pass without running)")
+                errs.append(f"{name}:{first + n}: {NO_SANDBOX}")
     return errs
+
+
+def _const(node, value):
+    return isinstance(node, ast.Constant) and node.value == value
+
+
+def _sets_required(node):
+    """The name whose environment `node` gives SAM_REQUIRE_SANDBOX="1"
+    (`env["SAM_REQUIRE_SANDBOX"] = "1"` or `env = {..., "SAM_REQUIRE_SANDBOX":
+    "1"}`), "os.environ" for the script's own environment, else None."""
+    if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+        return None
+    t = node.targets[0]
+    if isinstance(t, ast.Subscript) and _const(t.slice, "SAM_REQUIRE_SANDBOX") and _const(node.value, "1"):
+        return ast.unparse(t.value)
+    if isinstance(t, ast.Name) and _required_dict(node.value):
+        return t.id
+    return None
+
+
+def _required_dict(node):
+    return isinstance(node, ast.Dict) and any(
+        _const(k, "SAM_REQUIRE_SANDBOX") and _const(v, "1") for k, v in zip(node.keys, node.values))
+
+
+def _cargo_test(node):
+    """Whether `node` is a command list that runs tests: ["cargo", "test",
+    ...] without --no-run."""
+    if isinstance(node, (ast.List, ast.Tuple)):
+        e = node.elts
+        return len(e) >= 2 and _const(e[0], "cargo") and _const(e[1], "test") and not any(
+            _const(x, "--no-run") for x in e)
+    return False
+
+
+def _runs_cargo_test(call):
+    """Whether a call runs tests: a command list (_cargo_test), or a shell
+    line with "cargo test" (shell=True, os.system, os.popen)."""
+    if not call.args:
+        return False
+    cmd = call.args[0]
+    if _cargo_test(cmd):
+        return True
+    shell = any(k.arg == "shell" and _const(k.value, True) for k in call.keywords) or \
+        ast.unparse(call.func) in ("os.system", "os.popen")
+    return shell and isinstance(cmd, ast.Constant) and isinstance(cmd.value, str) and "cargo test" in cmd.value
+
+
+def python_sandbox_problems(name, text):
+    """Rule 8 for a Python script: every call whose command is `cargo test`
+    passes an environment with SAM_REQUIRE_SANDBOX="1": a dict written in
+    the call, or a name the same function sets it in. Without env= the
+    script must set it in os.environ. A cargo test command that is not
+    handed straight to a call cannot be followed and is a problem too."""
+    errs = []
+    tree = ast.parse(text)
+    module_os = any(_sets_required(n) == "os.environ" for n in ast.walk(tree))
+
+    def visit(scope, ready):
+        here = set(ready) | {r for n in ast.walk(scope) if (r := _sets_required(n))}
+        seen = set()
+        for node in ast.walk(scope):
+            if node is not scope and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                visit(node, ready)
+                seen |= {id(x) for x in ast.walk(node)}
+        for node in ast.walk(scope):
+            if id(node) in seen:
+                continue
+            if isinstance(node, ast.Call) and _runs_cargo_test(node):
+                seen.add(id(node.args[0]))
+                env = next((k.value for k in node.keywords if k.arg == "env"), None)
+                if env is None:
+                    ok = module_os
+                elif _required_dict(env):
+                    ok = True
+                else:
+                    ok = isinstance(env, ast.Name) and env.id in here
+                if not ok:
+                    errs.append(f"{name}:{node.lineno}: {NO_SANDBOX}")
+        for node in ast.walk(scope):
+            if id(node) not in seen and isinstance(node, (ast.List, ast.Tuple)) and _cargo_test(node):
+                errs.append(f"{name}:{node.lineno}: a cargo test command not handed straight to a call "
+                            "(rule 8 cannot see its environment)")
+    visit(tree, set())
+    return sorted(set(errs))
 
 
 def self_test():
@@ -384,17 +484,37 @@ def self_test():
         if len(got) != want:
             wrong.append(f"code docs, {what}: {len(got)} problems, expected {want}: {got}")
     sb_cases = [
-        ("inline", "SAM_REQUIRE_SANDBOX=1 cargo test -p x\n", False, 0),
-        ("exported", "export A=1 SAM_REQUIRE_SANDBOX=1\ncargo test -p x\n", False, 0),
-        ("missing", "cargo test -p x\n", False, 1),
-        ("set for another command", "SAM_REQUIRE_SANDBOX=1 true; cargo test -p x\n", False, 1),
-        ("continued line", "SAM_REQUIRE_SANDBOX=1 X=2 \\\n  cargo test -p x\n", False, 0),
-        ("a comment", "# cargo test -p x\n", False, 0),
-        ("a workflow step's env", "    steps:\n      - name: t\n        env:\n          SAM_REQUIRE_SANDBOX: 1\n        run: cargo test\n", True, 0),
-        ("another step's env", "    steps:\n      - env:\n          SAM_REQUIRE_SANDBOX: 1\n        run: true\n      - run: cargo test\n", True, 1),
+        ("inline", "SAM_REQUIRE_SANDBOX=1 cargo test -p x\n", "shell", 0),
+        ("exported", "export A=1 SAM_REQUIRE_SANDBOX=1\ncargo test -p x\n", "shell", 0),
+        ("missing", "cargo test -p x\n", "shell", 1),
+        ("set for another command", "SAM_REQUIRE_SANDBOX=1 true; cargo test -p x\n", "shell", 1),
+        ("continued line", "SAM_REQUIRE_SANDBOX=1 X=2 \\\n  cargo test -p x\n", "shell", 0),
+        ("a comment", "# cargo test -p x\n", "shell", 0),
+        ("a workflow step's env", "    steps:\n      - name: t\n        env:\n          SAM_REQUIRE_SANDBOX: 1\n        run: cargo test\n", "workflow", 0),
+        ("another step's env", "    steps:\n      - env:\n          SAM_REQUIRE_SANDBOX: 1\n        run: true\n      - run: cargo test\n", "workflow", 1),
+        ("make: $(CARGO) test without it", "test:\n\tSAM_SKIP_LOG=x $(CARGO) test --workspace\n", "make", 1),
+        ("make: $(CARGO) test with it", "test:\n\t@SAM_REQUIRE_SANDBOX=1 SAM_SKIP_LOG=x $(CARGO) test --workspace\n", "make", 0),
+        ("make: an export on an earlier recipe line", "test:\n\texport SAM_REQUIRE_SANDBOX=1\n\t${CARGO} test\n", "make", 1),
+        ("python: no env", "import subprocess\nsubprocess.run(['cargo', 'test', '--workspace'])\n", "python", 1),
+        ("python: the script's own environment",
+         "import os, subprocess\nos.environ['SAM_REQUIRE_SANDBOX'] = '1'\nsubprocess.run(['cargo', 'test'])\n", "python", 0),
+        ("python: env written in the call",
+         "import os, subprocess\nsubprocess.run(['cargo', 'test'], env={**os.environ, 'SAM_REQUIRE_SANDBOX': '1'})\n", "python", 0),
+        ("python: env set to another value",
+         "import os, subprocess\nsubprocess.run(['cargo', 'test'], env={**os.environ, 'SAM_REQUIRE_SANDBOX': '0'})\n", "python", 1),
+        ("python: env built in the same function",
+         "def f(sh):\n    env = dict(os.environ)\n    env['SAM_REQUIRE_SANDBOX'] = '1'\n    sh(['cargo', 'test', '-p', 'x'], env=env)\n", "python", 0),
+        ("python: env built in another function",
+         "def g():\n    env = {}\n    env['SAM_REQUIRE_SANDBOX'] = '1'\n\n\ndef f(sh, env):\n    sh(['cargo', 'test'], env=env)\n", "python", 1),
+        ("python: os.environ passed as it is", "import os, subprocess\nsubprocess.run(['cargo', 'test'], env=os.environ)\n", "python", 1),
+        ("python: a build without running", "import subprocess\nsubprocess.run(['cargo', 'test', '--no-run'])\n", "python", 0),
+        ("python: a command kept in a name first", "import subprocess\ncmd = ['cargo', 'test']\nsubprocess.run(cmd)\n", "python", 1),
+        ("python: a shell line", "import subprocess\nsubprocess.run('cd x && cargo test -p x', shell=True)\n", "python", 1),
+        ("python: os.system", "import os\nos.system('cargo test')\n", "python", 1),
+        ("python: text that only names it", "if line.startswith('cargo test'):\n    print('cargo test')\n", "python", 0),
     ]
-    for what, text, workflow, want in sb_cases:
-        got = sandbox_problems("t", text, workflow)
+    for what, text, kind, want in sb_cases:
+        got = sandbox_problems("t", text, kind)
         if len(got) != want:
             wrong.append(f"required sandbox, {what}: {len(got)} problems, expected {want}: {got}")
     total = len(cases) + 1 + len(lint_cases) + len(doc_cases) + len(sb_cases)
@@ -428,11 +548,17 @@ def main():
     for f in flows:
         name = str(f.relative_to(ROOT))
         errs += workflow_problems(name, f.read_text())
-        errs += sandbox_problems(name, f.read_text(), True)
+        errs += sandbox_problems(name, f.read_text(), "workflow")
     files = tracked_files()
     shell = [f for f in files if is_shell(f)]
     for f in shell:
-        errs += sandbox_problems(f, (ROOT / f).read_text(), False)
+        errs += sandbox_problems(f, (ROOT / f).read_text(), "shell")
+    for f in files:
+        base = f.rsplit("/", 1)[-1]
+        if base in ("Makefile", "GNUmakefile", "makefile") or base.endswith(".mk"):
+            errs += sandbox_problems(f, (ROOT / f).read_text(), "make")
+        elif f.endswith(".py"):
+            errs += sandbox_problems(f, (ROOT / f).read_text(), "python")
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
 
     def exists(p):
