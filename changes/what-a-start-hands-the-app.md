@@ -8,11 +8,13 @@
   `LD_LIBRARY_PATH` made the helper's loader run the app's library before
   either layer existed. The app sees the same variables as before, and the
   sandbox check checks them where the app gets them. The launch log lists
-  them on their own line (values you gave stay hidden).
+  them on their own line (values you gave stay hidden), and so does
+  `sam-jail command`.
 - A descriptor the program that started SAM left open (a terminal's or a
-  launcher's, a shell's `exec 3<>/dev/tty`) no longer reaches the app: SAM's
-  programs mark everything above standard input, output and error
-  close-on-exec before they start anything, as Flatpak does.
+  launcher's, a shell's `exec 3<>/dev/tty`) no longer reaches the app, from
+  the command line, the menu or SAM's window: SAM's programs mark
+  everything above standard input, output and error close-on-exec before
+  they start anything, as Flatpak does.
 - `$OWD` names the folder the app was started from only when the app can
   see it; otherwise it is the app's home, where the app starts. Before,
   `cd ~/private/clientX && sam-jail run app` told the app that folder's

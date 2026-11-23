@@ -153,6 +153,11 @@ pub struct CommandPreview {
     pub landlock: bool,
     pub seccomp: bool,
     pub dbus_proxy: Option<Vec<String>>,
+    /// The app's own variables when SAM's helper sets them for the app,
+    /// once its layers are in place: they are then not in `argv` (review
+    /// SB-5), and a preview without them would hide what the app gets.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub app_variables: Vec<(String, String)>,
 }
 
 impl Prepared {
@@ -169,6 +174,7 @@ impl Prepared {
             landlock: self.landlock,
             seccomp: self.seccomp,
             dbus_proxy: self.proxy.as_ref().map(|p| p.args.clone()),
+            app_variables: self.command.exec_env.clone(),
         }
     }
 }

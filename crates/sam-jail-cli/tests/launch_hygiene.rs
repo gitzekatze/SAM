@@ -32,7 +32,12 @@ fn bwrap_works() -> bool {
 
 /// `sam-jail` for a test rooted at `root`, as the person runs it.
 fn sam_cmd(root: &Path, args: &[&str]) -> Command {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_sam-jail"));
+    rooted(env!("CARGO_BIN_EXE_sam-jail"), root, args)
+}
+
+/// `program`, one of SAM's, for a test rooted at `root`.
+fn rooted(program: &str, root: &Path, args: &[&str]) -> Command {
+    let mut c = Command::new(program);
     c.args(args)
         .env("SAM_CONFIG_DIR", root.join("config"))
         .env("SAM_DATA_DIR", root.join("data"))
@@ -160,6 +165,17 @@ fn the_apps_variables_reach_it_only_after_the_helpers_layers() {
         all.contains("helper=0"),
         "the helper's loader never saw it: {all}"
     );
+    // `sam-jail command` still shows them, as what the helper sets.
+    let shown = sam(root, &["command", &id]);
+    let shown = out_and_err(&shown);
+    let helper_line = shown
+        .lines()
+        .find(|l| l.starts_with("# set by SAM's helper for the app"))
+        .unwrap_or_else(|| panic!("the preview names the app's variables: {shown}"));
+    assert!(
+        helper_line.contains("LD_DEBUG=files"),
+        "the preview names the app's variables: {shown}"
+    );
     // The helper really started the app (the syscall filter is on).
     let info = json(&sam(root, &["--json", "info", &id]));
     let enforced = info["data"]["entry"]["last_launch"]["enforcement"]
@@ -174,8 +190,9 @@ fn the_apps_variables_reach_it_only_after_the_helpers_layers() {
 /// close-on-exec mark) never reaches the app, which could otherwise write
 /// to whatever it leads to; nor does any other descriptor above the
 /// standard three. In each way a start can go: through SAM's helper,
-/// without it (no layer asks for it), and inside pasta ("This computer
-/// only"), whose shell opens the status channels for Bubblewrap.
+/// without it (no layer asks for it), inside pasta ("This computer
+/// only"), whose shell opens the status channels for Bubblewrap, and from
+/// the menu or SAM's window, which start `sam-jail-run`.
 #[test]
 fn a_descriptor_sam_inherited_never_reaches_the_app() {
     if !usable() {
@@ -192,7 +209,7 @@ fn a_descriptor_sam_inherited_never_reaches_the_app() {
          for fd in 3 4 5 6 7 8 9; do [ -e /proc/self/fd/$fd ] && echo \"open=$fd\"; done\n\
          echo listed\n",
     );
-    let start = |case: &str| {
+    let start = |case: &str, program: &str, args: &[&str]| {
         let mut ends = [0; 2];
         // SAFETY: pipe2 writes two descriptors into the array.
         let made = unsafe { libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC) };
@@ -201,7 +218,7 @@ fn a_descriptor_sam_inherited_never_reaches_the_app() {
         let (read, write) =
             unsafe { (OwnedFd::from_raw_fd(ends[0]), OwnedFd::from_raw_fd(ends[1])) };
         let w = write.as_raw_fd();
-        let mut c = sam_cmd(root, &["run", &id]);
+        let mut c = rooted(program, root, args);
         // SAFETY: between fork and exec only dup2, which is async-signal-safe;
         // the copy at 7 has no close-on-exec mark, as a leaked one has not.
         unsafe {
@@ -234,10 +251,12 @@ fn a_descriptor_sam_inherited_never_reaches_the_app() {
         let n = std::io::Read::read(&mut fs::File::from(read), &mut got).unwrap_or(0);
         assert_eq!(n, 0, "{case}: the app wrote into it: {:?}", &got[..n]);
     };
-    start("through SAM's helper");
+    let sam_jail = env!("CARGO_BIN_EXE_sam-jail");
+    let run = ["run", id.as_str()];
+    start("through SAM's helper", sam_jail, &run);
     if sam_runner::netns::pasta_usable().is_ok() {
         set(root, &id, "network.mode", "localhost");
-        start("inside pasta");
+        start("inside pasta", sam_jail, &run);
         set(root, &id, "network.mode", "none");
     } else {
         sam_runner::contracts::not_here("no usable pasta, so a start inside it was not tried");
@@ -249,7 +268,12 @@ fn a_descriptor_sam_inherited_never_reaches_the_app() {
     ] {
         set(root, &id, key, value);
     }
-    start("without SAM's helper");
+    start("without SAM's helper", sam_jail, &run);
+    start(
+        "from the menu, without SAM's helper",
+        env!("CARGO_BIN_EXE_sam-jail-run"),
+        &["--app-id", &id],
+    );
 }
 
 /// Audit L-F16: started from a folder the app cannot see, the app is not

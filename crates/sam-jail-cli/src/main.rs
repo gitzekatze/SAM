@@ -897,6 +897,14 @@ fn real_main(cli: Cli) -> Result<()> {
                 for n in &pv.notes {
                     outln!("# note: {n}");
                 }
+                if !pv.app_variables.is_empty() {
+                    outln!(
+                        "# set by SAM's helper for the app, after its layers: {}",
+                        sam_core::util::shell_join(
+                            pv.app_variables.iter().map(|(k, v)| format!("{k}={v}"))
+                        )
+                    );
+                }
                 outln!("{}", pretty_command(&pv.argv));
             });
         }
