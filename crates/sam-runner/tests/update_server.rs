@@ -1265,8 +1265,23 @@ fn a_server_that_sends_more_than_announced_cannot_fill_the_disk() {
     assert_eq!(fs::read(&installed).unwrap(), before, "nothing changed");
     assert!(sam.resolve(&id).unwrap().update_backup.is_none());
     // The full download (the last request) stopped soon after the
-    // published length, about 1 MB, instead of taking all 64 MiB.
-    let log = fs::read_to_string(&server.log).unwrap();
+    // published length, about 1 MB, instead of taking all 64 MiB. The
+    // server writes how much was taken only once it notices that SAM hung
+    // up, which on a busy computer comes after SAM has returned: waited
+    // for, every endless request's count, never assumed to be there.
+    let ended = |log: &str| {
+        let started = log.lines().filter(|l| l.starts_with("/endless/")).count();
+        let ended = log.lines().filter(|l| l.starts_with("endless ")).count();
+        started > 0 && ended >= started
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    let log = loop {
+        let log = fs::read_to_string(&server.log).unwrap();
+        if ended(&log) || std::time::Instant::now() > deadline {
+            break log;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
     let taken: Vec<u32> = log
         .lines()
         .filter_map(|l| l.strip_prefix("endless "))
