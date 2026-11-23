@@ -990,8 +990,9 @@ fn an_update_never_takes_a_published_name_that_is_not_an_appimage_name() {
 /// has its signature recorded as "not checked", and every key comparison
 /// needed a checked record, so an update signed with another key was
 /// installed without a question even after GnuPG was installed. Now the
-/// installed file (the one SAM unpacked) is checked again at update time.
-/// With the real GnuPG (SAM_TEST_GPG=1).
+/// installed file (the one SAM unpacked) is checked again at update time:
+/// another key is refused, the same key goes through. With the real GnuPG
+/// (SAM_TEST_GPG=1).
 #[test]
 fn an_update_compares_keys_even_when_the_installed_signature_was_never_checked() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -1068,6 +1069,17 @@ fn an_update_compares_keys_even_when_the_installed_signature_was_never_checked()
     );
     assert_eq!(fs::read(&installed).unwrap(), before, "nothing changed");
     assert_eq!(unpacked_version(&sam, &id), "1.0");
+
+    // Checked now, the installed file is a trusted baseline: an update
+    // signed with the same key goes through without a question.
+    let same_key = tmp.path().join("v2-first.AppImage");
+    signed(&same_key, "2.0", "first@example.invalid");
+    publish(&server, &same_key, "Tool-2.0-x86_64.AppImage");
+    let e = sam.update(&id, false).unwrap();
+    assert_eq!(unpacked_version(&sam, &id), "2.0");
+    let sig = e.signature.unwrap();
+    assert_eq!(sig.state, sam_core::model::SignatureState::Valid, "{sig:?}");
+    assert_eq!(e.signing_key_changed, None);
     let _ = Command::new("gpgconf")
         .arg("--homedir")
         .arg(&gpg_home)
