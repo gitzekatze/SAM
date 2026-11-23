@@ -115,9 +115,10 @@ elif step == "preferences":
         cancel = find(app, lambda s: s == "Cancel", "button")
         if cancel:
             press(cancel)
-        time.sleep(1.5)
-        check("…after Cancel Landlock stays on", setting("security.experimental_landlock") is True)
-        check("…and the switch shows it on", is_on(ll))
+        # The switch goes back once the answer is in; only then is a
+        # save that Cancel should have stopped finished too.
+        check("…after Cancel the switch shows it on", wait(lambda: is_on(ll)) is True)
+        check("…and Landlock stays on", setting("security.experimental_landlock") is True)
         press(ll)
         turn_off = wait(lambda: find(app, lambda s: s == "Turn Off", "button"))
         if turn_off:
@@ -132,9 +133,11 @@ elif step == "preferences":
         os.chmod(cfg, 0o555)
         try:
             press(sc)
-            time.sleep(3)
+            # The window reports the refused write; the switch then goes
+            # back once the stored settings are read again.
+            check("…the save fails and the window says so", wait(lambda: find(app, lambda s: "os error 13" in s)) is not None)
             check("…a failed save leaves it off", setting("security.check_before_launch") is False)
-            check("…and the switch shows it off", not is_on(sc))
+            check("…and the switch shows it off", wait(lambda: not is_on(sc)) is True)
         finally:
             os.chmod(cfg, 0o755)
 print("RESULT " + ("pass" if ok else "fail"))

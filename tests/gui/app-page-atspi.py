@@ -27,7 +27,10 @@ def walk(n, out):
         return out
     out.append(n)
     for i in range(c):
-        ch = n.get_child_at_index(i)
+        try:
+            ch = n.get_child_at_index(i)
+        except Exception:  # noqa: S112 -- a child that vanished while walking; one not found fails the check
+            continue
         if ch is not None:
             walk(ch, out)
     return out
@@ -143,10 +146,14 @@ if printing:
     os.chmod(apps, 0o555)
     try:
         printing.get_action_iface().do_action(0)
-        time.sleep(3)
+        # The window reports the refused write, then shows the stored
+        # settings again once they are read back.
+        check("…the save fails and the window says so", wait(lambda: find(app, lambda s: "os error 13" in s)) is not None)
         check("…a failed save leaves the app without printing", info()["sockets"]["cups"] is False)
-        again = find(app, lambda s: s == "Printing", "switch")
-        check("…and the page shows it off", again is not None and not again.get_state_set().contains(Atspi.StateType.CHECKED))
+        def shown_off():
+            again = find(app, lambda s: s == "Printing", "switch")
+            return again is not None and not again.get_state_set().contains(Atspi.StateType.CHECKED)
+        check("…and the page shows it off", wait(shown_off) is True)
     finally:
         os.chmod(apps, 0o755)
 # Compatibility mode: the switch asks first, and after "Turn On" the app

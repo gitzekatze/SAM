@@ -34,9 +34,10 @@ rc=0; python3 -I "$here/tests/gui/permissions-atspi.py" || rc=$?
 wait $gui || true
 # One app selected: its editor after a save that failed.
 browser=$("$bin/sam-jail" --json group list | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d=d.get("data",d); print([a["id"] for a in d if a["name"]=="Browser"][0])')
-"$bin/sam-jail-gui" --screenshot "$out/permissions-one.png" --size 1180x800 --delay 20000 --page permissions --app "$browser" > "$out/gui-one.log" 2>&1 & gui=$!
+"$bin/sam-jail-gui" --screenshot "$out/permissions-one.png" --size 1180x800 --delay 60000 --page permissions --app "$browser" > "$out/gui-one.log" 2>&1 & gui=$!
 python3 -I "$here/tests/gui/permissions-atspi.py" single || rc=1
-wait $gui || true
+# The window stays open longer than the checks wait; it is closed here.
+kill $gui 2>/dev/null || true; wait $gui 2>/dev/null || true
 chmod 755 "$SAM_DATA_DIR/apps"
 kill $registry $launcher 2>/dev/null || true
 if grep -E 'CRITICAL|panicked' "$out/gui.log" "$out/gui-one.log"; then rc=1; fi

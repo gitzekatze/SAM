@@ -35,9 +35,10 @@ printf '#!/bin/sh\necho "./app: error while loading shared libraries: libfoo.so.
 "$bin/sam-jail" dev make-fixture --name Broken --apprun "$out/data-set/broken-apprun" "$out/data-set/apps-folder/Broken.AppImage" >/dev/null
 broken=$("$bin/sam-jail" --json add "$out/data-set/apps-folder/Broken.AppImage" --no-launcher --accept | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d=d.get("data",d); print(d["entry"]["id"])')
 "$bin/sam-jail" run "$broken" >"$out/broken-run.log" 2>&1 || true
-"$bin/sam-jail-gui" --screenshot "$out/app-page-broken.png" --size 1180x800 --delay 15000 --page app --app "$broken" > "$out/gui-broken.log" 2>&1 & gui=$!
+"$bin/sam-jail-gui" --screenshot "$out/app-page-broken.png" --size 1180x800 --delay 60000 --page app --app "$broken" > "$out/gui-broken.log" 2>&1 & gui=$!
 SAM_TEST_BIN="$bin" SAM_TEST_APP="$broken" python3 -I "$here/tests/gui/app-page-atspi.py" finding || rc=1
-wait $gui || true
+# The window stays open longer than the checks wait; it is closed here.
+kill $gui 2>/dev/null || true; wait $gui 2>/dev/null || true
 kill $registry $launcher 2>/dev/null || true
 if grep -E 'CRITICAL|panicked' "$out/gui.log" "$out/gui-broken.log"; then rc=1; fi
 exit $rc
