@@ -117,19 +117,29 @@ def steps(lines):
     return out
 
 
+def unquote(s):
+    return s.strip().strip("'\"").strip()
+
+
 def permissions(lines):
-    """{right: level} of a `permissions:` block at the start of lines (or None)."""
+    """{right: level} of the first `permissions:` in lines (or None): a
+    block, a flow mapping (`{ contents: write }`) or one level for all
+    (`write-all`), quoted or not."""
     for n, line in enumerate(lines):
-        m = re.match(r"\s*permissions:\s*(\S*)\s*$", line)
+        m = re.match(r"\s*permissions:\s*(.*?)\s*(#.*)?$", line)
         if m:
-            if m.group(1):
-                return {"*": m.group(1)}
+            value = m.group(1)
+            if value.startswith("{"):
+                pairs = value.strip("{}").split(",")
+            elif value:
+                return {"*": unquote(value)}
+            else:
+                pairs = [l.split("#")[0] for _, l in block(lines, n)]
             out = {}
-            for _, l in block(lines, n):
-                l = l.split("#")[0]
-                if ":" in l:
-                    k, v = l.split(":", 1)
-                    out[k.strip()] = v.strip()
+            for pair in pairs:
+                if ":" in pair:
+                    k, v = pair.split(":", 1)
+                    out[unquote(k)] = unquote(v)
             return out
     return None
 
@@ -145,8 +155,12 @@ def workflow_problems(name, text):
     the_jobs = jobs(lines)
     computed = set()
     for job, (_, jl) in the_jobs.items():
-        if any("fromJSON(" in l for l in jl if "matrix" in l or "runner:" in l):
-            computed.add(job)
+        for i, l in enumerate(jl):
+            # Anywhere in the job's strategy: the matrix itself, or its
+            # include list or one of its values.
+            if re.match(r"\s*strategy:", l) and any(
+                    "fromJSON(" in x for x in [l] + [y for _, y in block(jl, i)]):
+                computed.add(job)
     for first, body in run_blocks(lines):
         job = next((j for j, (m, jl) in the_jobs.items() if m < first - 1 <= m + len(jl)), None)
         for k, l in enumerate(body.splitlines()):
@@ -154,14 +168,23 @@ def workflow_problems(name, text):
                 errs.append(f"{name}:{first + k}: untrusted text inline in a run command; pass it through env:")
             elif job in computed and MATRIX.search(l):
                 errs.append(f"{name}:{first + k}: a matrix value computed at run time inline in a run command; pass it through env:")
+    def pinned(uses):
+        if not (uses.startswith("./") or PINNED.match(uses)
+                or re.match(r"^docker://\S+@sha256:[0-9a-f]{64}$", uses)):
+            errs.append(f"{name}: {uses} is not pinned to a full commit hash")
+    # A job that calls another workflow (`uses:` on the job itself).
+    for _, jl in the_jobs.values():
+        keys = next((indent(l) for l in jl if l.strip()), None)
+        for l in jl:
+            m = re.match(r"\s*uses:\s*(\S+)", l)
+            if m and indent(l) == keys:
+                pinned(unquote(m.group(1)))
     for st in steps(lines):
         uses = next((re.match(r"\s*(- )?uses:\s*(\S+)", l).group(2) for l in st
                      if re.match(r"\s*(- )?uses:\s*\S", l)), None)
         if uses is None:
             continue
-        if not (uses.startswith("./") or PINNED.match(uses)
-                or re.match(r"^docker://\S+@sha256:[0-9a-f]{64}$", uses)):
-            errs.append(f"{name}: {uses} is not pinned to a full commit hash")
+        pinned(uses)
         if uses.startswith("actions/checkout@") and not any(
                 re.match(r"\s*persist-credentials:\s*false\s*$", l) for l in st):
             errs.append(f"{name}: a checkout keeps its token (persist-credentials: false is missing)")
@@ -299,6 +322,9 @@ def self_test():
         ("a computed matrix inline",
          wf.replace("    runs-on: u\n", "    strategy:\n      matrix: ${{ fromJSON(needs.a.outputs.m) }}\n    runs-on: u\n")
          + "      - run: echo ${{ matrix.name }}\n", 1),
+        ("a matrix whose include list is computed",
+         wf.replace("    runs-on: u\n", "    strategy:\n      matrix:\n        include: ${{ fromJSON(needs.a.outputs.m) }}\n    runs-on: u\n")
+         + "      - run: echo ${{ matrix.name }}\n", 1),
         ("a fixed matrix inline",
          wf.replace("    runs-on: u\n", "    strategy:\n      matrix:\n        arch: [x86_64]\n    runs-on: u\n")
          + "      - run: echo ${{ matrix.arch }}\n", 0),
@@ -309,6 +335,13 @@ def self_test():
         ("no top-level permissions", wf.replace("permissions:\n  contents: read\n", ""), 1),
         ("top-level write", wf.replace("contents: read", "contents: write"), 1),
         ("a job writing what it may not", wf.replace("    runs-on: u\n", "    runs-on: u\n    permissions:\n      contents: write\n"), 1),
+        ("a job writing through a flow mapping", wf.replace("    runs-on: u\n", "    runs-on: u\n    permissions: { contents: write }\n"), 1),
+        ("a quoted write", wf.replace("    runs-on: u\n", "    runs-on: u\n    permissions:\n      contents: \"write\"\n"), 1),
+        ("a quoted top-level write", wf.replace("contents: read", "contents: 'write'"), 1),
+        ("write-all with a comment", wf.replace("    runs-on: u\n", "    runs-on: u\n    permissions: write-all # all\n"), 1),
+        ("a reusable workflow on a tag", wf + "  y:\n    uses: someone/repo/.github/workflows/w.yml@v1\n", 1),
+        ("a pinned reusable workflow",
+         wf + "  y:\n    uses: someone/repo/.github/workflows/w.yml@3d3c42e5aac5ba805825da76410c181273ba90b1\n", 0),
         ("a download without a checksum", wf + "      - run: curl -fsSL -o f https://x/f\n", 1),
         ("a download with a checksum", wf + "      - run: |\n          curl -fsSL -o f https://x/f\n          echo \"abc  f\" | sha256sum -c -\n", 0),
     ]
