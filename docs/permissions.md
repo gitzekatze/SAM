@@ -24,19 +24,19 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `filesystem.documents` … `downloads`, `music`, `pictures`, `videos`, `desktop` | `none` / `ro` / `rw` |
 | `filesystem.ssh`, `filesystem.gnupg`, `filesystem.hidden_files` | `true` / `false` (only apply with full home) |
 | `filesystem.opened_files` | `none` / `ro` / `rw`: files you open with the app ("Open with") |
-| `filesystem.custom_read`, `filesystem.custom_write` | list, e.g. `"~/Projects, /mnt/data"` |
+| `filesystem.custom_read`, `filesystem.custom_write` | list, e.g. `"~/Projects, /mnt/data"`; rated where they lead (`/.` is `/`, `~/..` the folder above the home). Read-only does not stop the app from connecting to programs listening in the folder, so `/tmp` is rated Dangerous |
 | `network.mode` | `none` / `localhost` (no internet; loopback ports forwarded by pasta, Bubblewrap only) / `full` (a `filtered` value from old profiles loads as `none`) |
 | `devices.gpu`, `devices.webcam`, `devices.gamepads`, `devices.input`, `devices.usb`, `devices.bluetooth` | `true` / `false` |
 | `audio.enabled`, `audio.direct`, `audio.pipewire`, `audio.alsa_raw` | `true` / `false` |
 | `display.wayland`, `display.x11`, `display.wayland_privileged` | `true` / `false` |
 | `dbus.session.mode` | `none` / `filtered` / `full` |
 | `dbus.system.mode` | `none` / `full` (the system bus cannot be filtered; a `filtered` value from old profiles loads as `none`) |
-| `dbus.session.allow` | bus names the app may talk to (wildcards allowed) |
+| `dbus.session.allow` | bus names the app may talk to (wildcards allowed; a password service counts as `integrations.keyring`, a wildcard over the portal is Dangerous) |
 | `dbus.session.own` | extra bus names the app may own (filtered bus) |
 | `dbus.session.calls` | single functions of a service, `NAME=[FUNCTION][@PATH]` (rated: a dangerous service makes it Dangerous) |
 | `dbus.session.broadcasts` | signals of a service, `NAME=[SIGNAL][@PATH]` |
 | `sockets.ssh_agent`, `sockets.cups` | `true` / `false` |
-| `sockets.custom` | paths of extra service sockets; only real socket files are passed in |
+| `sockets.custom` | paths of extra service sockets; only real socket files are passed in, from where their links lead, and never through a link in a folder the app may change |
 | `environment.passthrough` | list of variable names |
 | `dbus.session.deny` | bus names that stay blocked even if allowed elsewhere |
 | `environment.set` | variables set inside the sandbox, e.g. `{"QT_SCALE_FACTOR": "1.5"}` (names: letters, digits, `_`) |

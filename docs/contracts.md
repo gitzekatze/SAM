@@ -397,8 +397,8 @@ These desktop services can start programs outside the sandbox, control the deskt
 - **When it breaks:** nothing breaks: the assumption only ever narrows access.
 - **SAM functions that rely on it:** [9](functions.md#9), [13](functions.md#13)
 - **Quick check:** none (only the tests below)
-- **Tests:** `every_hostile_appimage_fails_to_escape` (fully)
-- **Covers:** `dbus:org.freedesktop.[*]`, `dbus:org.freedesktop.DBus`, `dbus:org.freedesktop.systemd1`, `dbus:org.freedesktop.Flatpak`, `dbus:org.freedesktop.portal.Flatpak`, `dbus:org.freedesktop.secrets`, `dbus:org.gnome.Shell`, `dbus:org.gnome.SessionManager`, `dbus:org.kde.KWin`, `dbus:org.kde.kded`, `dbus:org.kde.kglobalaccel`, `dbus:org.kde.klauncher`, `dbus:org.kde.krunner`, `dbus:org.kde.ksmserver`, `dbus:org.kde.kwalletd5`, `dbus:org.kde.kwalletd6`, `dbus:org.kde.plasmashell`, `dbus:ca.desrt.dconf`
+- **Tests:** `every_hostile_appimage_fails_to_escape`, `a_password_service_allowed_by_name_counts_as_the_keyring_switch` (fully)
+- **Covers:** `dbus:org.freedesktop.[*]`, `dbus:org.freedesktop.DBus`, `dbus:org.freedesktop.systemd1`, `dbus:org.freedesktop.Flatpak`, `dbus:org.freedesktop.portal.Flatpak`, `dbus:org.freedesktop.secrets`, `dbus:org.gnome.Shell`, `dbus:org.gnome.SessionManager`, `dbus:org.kde.KWin`, `dbus:org.kde.kded`, `dbus:org.kde.kglobalaccel`, `dbus:org.kde.klauncher`, `dbus:org.kde.krunner`, `dbus:org.kde.ksmserver`, `dbus:org.kde.kwalletd`, `dbus:org.kde.kwalletd5`, `dbus:org.kde.kwalletd6`, `dbus:org.kde.plasmashell`, `dbus:ca.desrt.dconf`, `dbus:org.gnome.keyring`, `dbus:org.gnome.OnlineAccounts`
 - **If it breaks:** A desktop that adds a new launcher service: add it to DANGEROUS_BUS_NAMES (sam-core permissions.rs) and to the evil suite.
 
 ## dbus-integrations

@@ -4,6 +4,9 @@
 //! so nothing is bound there), the app puts a link in its place to a
 //! socket in the real home (here a stand-in for a password manager's
 //! agent), and at the next start SAM bound whatever the link named.
+//! Newer Bubblewrap versions refuse to mount on a link, so there the start
+//! failed instead; older ones followed it. Now SAM leaves such a socket
+//! out with a note, and the app starts without it.
 //!
 //! The control: before the swap, the app reaches the listed socket, so a
 //! connection through the link would have been seen.
