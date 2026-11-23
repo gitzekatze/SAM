@@ -129,7 +129,7 @@ impl PrivateServices {
         }
         if sam_core::util::which("ssh-agent").is_some() {
             let socket = dir.join("agent");
-            if let Ok(child) = service("ssh-agent")
+            if let Ok(child) = service(plain_program("ssh-agent", &dir))
                 .arg("-D")
                 .arg("-a")
                 .arg(&socket)
@@ -172,12 +172,36 @@ impl PrivateServices {
     }
 }
 
+/// The installed `name`, or a copy of it in `dir` without the set-user-ID
+/// and set-group-ID bits when it has them: the kernel drops the
+/// end-with-the-parent signal for such a program (`service`), and
+/// Ubuntu's ssh-agent is set-group-ID (`_ssh`). The copy is the same
+/// program; the installed one is used when no copy can be made.
+fn plain_program(name: &str, dir: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let Some(installed) = sam_core::util::which(name) else {
+        return std::path::PathBuf::from(name);
+    };
+    let special = std::fs::metadata(&installed).is_ok_and(|m| m.permissions().mode() & 0o6000 != 0);
+    if !special {
+        return installed;
+    }
+    let copy = dir.join(name);
+    let made = std::fs::copy(&installed, &copy).is_ok()
+        && std::fs::set_permissions(&copy, std::fs::Permissions::from_mode(0o755)).is_ok();
+    if made {
+        copy
+    } else {
+        installed
+    }
+}
+
 /// A private service's command: the service ends with the test process
 /// however that ends (killed, a closed output pipe, an abort), when no
 /// `Drop` runs, and it inherits no descriptor above the standard three.
 /// On 2026-11-23 a dbus-daemon and an ssh-agent that outlived their test
 /// held a build slot's lock for 5.5 hours.
-fn service(program: &str) -> std::process::Command {
+fn service(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     use std::os::unix::process::CommandExt;
     let mut c = std::process::Command::new(program);
     // SAFETY: getpid has no preconditions.
