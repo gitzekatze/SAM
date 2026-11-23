@@ -1836,7 +1836,7 @@ msgstr "Prüfen"
 msgid "Show only apps whose settings nobody has confirmed yet"
 msgstr "Nur Apps zeigen, deren Einstellungen noch niemand bestätigt hat"
 
-#: crates/sam-gtk/src/all_perms.rs:100 crates/sam-gtk/src/app_page/mod.rs:834
+#: crates/sam-gtk/src/all_perms.rs:100 crates/sam-gtk/src/app_page/mod.rs:830
 #: crates/sam-gtk/src/window.rs:1788
 msgid "May not start"
 msgstr "Startet eventuell nicht"
@@ -2594,29 +2594,29 @@ msgstr ""
 "sie sich geändert haben, aber nicht, was sich geändert hat. Bestätige nur, "
 "wenn du die Änderung selbst gemacht hast oder weißt, wer es war."
 
-#: crates/sam-gtk/src/app_page/mod.rs:730
+#: crates/sam-gtk/src/app_page/mod.rs:726
 msgid ""
 "SAM cannot read these settings. Look through them below before you confirm."
 msgstr ""
 "SAM kann diese Einstellungen nicht lesen. Sieh sie dir unten an, bevor du "
 "bestätigst."
 
-#: crates/sam-gtk/src/app_page/mod.rs:745
+#: crates/sam-gtk/src/app_page/mod.rs:741
 msgid "None of these settings is rated Think twice or Dangerous."
 msgstr ""
 "Keine dieser Einstellungen ist als „Gut überlegen“ oder „Gefährlich“ "
 "eingestuft."
 
-#: crates/sam-gtk/src/app_page/mod.rs:750
+#: crates/sam-gtk/src/app_page/mod.rs:746
 msgid "These settings let the app use:"
 msgstr "Mit diesen Einstellungen darf die App nutzen:"
 
-#: crates/sam-gtk/src/app_page/mod.rs:779 crates/sam-gtk/src/window.rs:622
+#: crates/sam-gtk/src/app_page/mod.rs:775 crates/sam-gtk/src/window.rs:622
 #: crates/sam-gtk/src/window.rs:755 crates/sam-gtk/src/window.rs:1784
 msgid "Not sandboxed"
 msgstr "Ohne Sandbox"
 
-#: crates/sam-gtk/src/app_page/mod.rs:781
+#: crates/sam-gtk/src/app_page/mod.rs:777
 msgid ""
 "No sandbox yet. Nothing has been unpacked or run; below are the settings SAM "
 "recommends"
@@ -2624,14 +2624,14 @@ msgstr ""
 "Noch keine Sandbox. Es wurde nichts entpackt oder ausgeführt; unten stehen "
 "die Einstellungen, die SAM empfiehlt"
 
-#: crates/sam-gtk/src/app_page/mod.rs:785
-#: crates/sam-gtk/src/app_page/mod.rs:794 crates/sam-gtk/src/window.rs:621
+#: crates/sam-gtk/src/app_page/mod.rs:781
+#: crates/sam-gtk/src/app_page/mod.rs:790 crates/sam-gtk/src/window.rs:621
 #: crates/sam-gtk/src/window.rs:753 crates/sam-gtk/src/window.rs:1794
 msgid "Sandboxed"
 msgstr "In Sandbox"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/mod.rs:787
+#: crates/sam-gtk/src/app_page/mod.rs:783
 msgid ""
 "SAM runs this app in its sandbox, but its last start lacked {layers}, which "
 "its settings ask for"
@@ -2639,17 +2639,17 @@ msgstr ""
 "SAM führt diese App in ihrer Sandbox aus, aber beim letzten Start fehlte "
 "{layers}, obwohl ihre Einstellungen es verlangen"
 
-#: crates/sam-gtk/src/app_page/mod.rs:796
+#: crates/sam-gtk/src/app_page/mod.rs:792
 msgid "SAM runs this app in its sandbox, with exactly the access listed below"
 msgstr ""
 "SAM führt diese App in ihrer Sandbox aus, mit genau dem unten aufgeführten "
 "Zugriff"
 
-#: crates/sam-gtk/src/app_page/mod.rs:823
+#: crates/sam-gtk/src/app_page/mod.rs:819
 msgid "SAM's analysis found possible problems."
 msgstr "SAMs Analyse hat mögliche Probleme gefunden."
 
-#: crates/sam-gtk/src/app_page/mod.rs:828
+#: crates/sam-gtk/src/app_page/mod.rs:824
 msgid ""
 "Just launch it: if it starts, this label goes away. If not, see "
 "Troubleshooting below."
@@ -2657,15 +2657,15 @@ msgstr ""
 "Starte sie einfach: Wenn sie startet, verschwindet diese Kennzeichnung. Wenn "
 "nicht, sieh unter „Fehlerbehebung“ nach."
 
-#: crates/sam-gtk/src/app_page/mod.rs:832
+#: crates/sam-gtk/src/app_page/mod.rs:828
 msgid "Likely won't start"
 msgstr "Startet wahrscheinlich nicht"
 
-#: crates/sam-gtk/src/app_page/mod.rs:862
+#: crates/sam-gtk/src/app_page/mod.rs:858
 msgid "Creating the sandbox"
 msgstr "Sandbox wird erstellt"
 
-#: crates/sam-gtk/src/app_page/mod.rs:868
+#: crates/sam-gtk/src/app_page/mod.rs:864
 msgid ""
 "Large apps take a minute or two. You can keep using SAM meanwhile; you will "
 "see a message when it is done."
@@ -2673,12 +2673,12 @@ msgstr ""
 "Große Apps brauchen ein bis zwei Minuten. Du kannst SAM währenddessen weiter "
 "nutzen; eine Meldung erscheint, wenn es fertig ist."
 
-#: crates/sam-gtk/src/app_page/mod.rs:888
+#: crates/sam-gtk/src/app_page/mod.rs:884
 msgid "Creating the sandbox…"
 msgstr "Sandbox wird erstellt …"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/mod.rs:904
+#: crates/sam-gtk/src/app_page/mod.rs:900
 msgid "Step {n} of {total}: {step}"
 msgstr "Schritt {n} von {total}: {step}"
 

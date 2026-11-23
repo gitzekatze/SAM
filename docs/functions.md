@@ -848,7 +848,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`an_app_changed_outside_sam_starts_only_after_confirmation`](../crates/sam-runner/tests/tamper.rs#L107) | An app whose settings were changed outside SAM does not start until the user has confirmed them; changes SAM makes itself never count as such. | ✅ |
 | [`a_changed_record_stays_blocked_until_it_is_confirmed`](../crates/sam-runner/tests/tamper.rs#L146) ⟲ | Regression (audit U-H1): the mark "changed outside SAM" was erased by the next save of the record. | ✅ |
 | [`a_late_save_keeps_a_change_made_meanwhile`](../crates/sam-storage/src/lib.rs#L764) | `update` changes the record as it is on disk now, so work that took a while does not undo a change made meanwhile (audit U-M8: the update check turned a switch back on). | ✅ |
-| [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L931) | "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | 🆕 new |
+| [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L927) | "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | 🆕 new |
 
 **Code:** [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs)
 
@@ -1016,7 +1016,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L886) | Apps are found by name or ID, and an ambiguous name is refused. | ✅ |
 | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L351) | The user guide keeps the text of a list item that has a nested list below it. | ✅ |
 | [`links_to_other_pages_open_on_github`](../crates/sam-gtk/src/guide.rs#L375) | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | ✅ |
-| [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L957) | The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | 🆕 new |
+| [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L953) | The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | 🆕 new |
 
 **Code:** [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs), [`sam-gtk/src/pages.rs`](../crates/sam-gtk/src/pages.rs), [`sam-core/src/model.rs`](../crates/sam-core/src/model.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs)
 

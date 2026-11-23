@@ -1864,7 +1864,7 @@ msgstr ""
 "N’afficher que les applications dont personne n’a encore confirmé les "
 "réglages"
 
-#: crates/sam-gtk/src/all_perms.rs:100 crates/sam-gtk/src/app_page/mod.rs:834
+#: crates/sam-gtk/src/all_perms.rs:100 crates/sam-gtk/src/app_page/mod.rs:830
 #: crates/sam-gtk/src/window.rs:1788
 msgid "May not start"
 msgstr "Risque de ne pas démarrer"
@@ -2630,27 +2630,27 @@ msgstr ""
 "ce qui a changé. Ne confirme que si tu as fait la modification toi-même ou "
 "si tu sais qui l'a faite."
 
-#: crates/sam-gtk/src/app_page/mod.rs:730
+#: crates/sam-gtk/src/app_page/mod.rs:726
 msgid ""
 "SAM cannot read these settings. Look through them below before you confirm."
 msgstr ""
 "SAM ne peut pas lire ces réglages. Regarde-les ci-dessous avant de confirmer."
 
-#: crates/sam-gtk/src/app_page/mod.rs:745
+#: crates/sam-gtk/src/app_page/mod.rs:741
 msgid "None of these settings is rated Think twice or Dangerous."
 msgstr ""
 "Aucun de ces réglages n'est classé « À bien réfléchir » ou « Dangereux »."
 
-#: crates/sam-gtk/src/app_page/mod.rs:750
+#: crates/sam-gtk/src/app_page/mod.rs:746
 msgid "These settings let the app use:"
 msgstr "Avec ces réglages, l'application peut utiliser :"
 
-#: crates/sam-gtk/src/app_page/mod.rs:779 crates/sam-gtk/src/window.rs:622
+#: crates/sam-gtk/src/app_page/mod.rs:775 crates/sam-gtk/src/window.rs:622
 #: crates/sam-gtk/src/window.rs:755 crates/sam-gtk/src/window.rs:1784
 msgid "Not sandboxed"
 msgstr "Sans bac à sable"
 
-#: crates/sam-gtk/src/app_page/mod.rs:781
+#: crates/sam-gtk/src/app_page/mod.rs:777
 msgid ""
 "No sandbox yet. Nothing has been unpacked or run; below are the settings SAM "
 "recommends"
@@ -2658,14 +2658,14 @@ msgstr ""
 "Pas encore de bac à sable. Rien n’a été décompressé ni exécuté ; ci-dessous "
 "figurent les réglages recommandés par SAM"
 
-#: crates/sam-gtk/src/app_page/mod.rs:785
-#: crates/sam-gtk/src/app_page/mod.rs:794 crates/sam-gtk/src/window.rs:621
+#: crates/sam-gtk/src/app_page/mod.rs:781
+#: crates/sam-gtk/src/app_page/mod.rs:790 crates/sam-gtk/src/window.rs:621
 #: crates/sam-gtk/src/window.rs:753 crates/sam-gtk/src/window.rs:1794
 msgid "Sandboxed"
 msgstr "En bac à sable"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/mod.rs:787
+#: crates/sam-gtk/src/app_page/mod.rs:783
 msgid ""
 "SAM runs this app in its sandbox, but its last start lacked {layers}, which "
 "its settings ask for"
@@ -2673,17 +2673,17 @@ msgstr ""
 "SAM exécute cette application dans son bac à sable, mais à son dernier "
 "démarrage il manquait {layers}, que ses réglages demandent"
 
-#: crates/sam-gtk/src/app_page/mod.rs:796
+#: crates/sam-gtk/src/app_page/mod.rs:792
 msgid "SAM runs this app in its sandbox, with exactly the access listed below"
 msgstr ""
 "SAM exécute cette application dans son bac à sable, avec exactement les "
 "accès indiqués ci-dessous"
 
-#: crates/sam-gtk/src/app_page/mod.rs:823
+#: crates/sam-gtk/src/app_page/mod.rs:819
 msgid "SAM's analysis found possible problems."
 msgstr "L’analyse de SAM a trouvé des problèmes possibles."
 
-#: crates/sam-gtk/src/app_page/mod.rs:828
+#: crates/sam-gtk/src/app_page/mod.rs:824
 msgid ""
 "Just launch it: if it starts, this label goes away. If not, see "
 "Troubleshooting below."
@@ -2691,15 +2691,15 @@ msgstr ""
 "Lance-la simplement : si elle démarre, cette étiquette disparaît. Sinon, "
 "consulte « Dépannage » ci-dessous."
 
-#: crates/sam-gtk/src/app_page/mod.rs:832
+#: crates/sam-gtk/src/app_page/mod.rs:828
 msgid "Likely won't start"
 msgstr "Ne démarrera probablement pas"
 
-#: crates/sam-gtk/src/app_page/mod.rs:862
+#: crates/sam-gtk/src/app_page/mod.rs:858
 msgid "Creating the sandbox"
 msgstr "Création du bac à sable"
 
-#: crates/sam-gtk/src/app_page/mod.rs:868
+#: crates/sam-gtk/src/app_page/mod.rs:864
 msgid ""
 "Large apps take a minute or two. You can keep using SAM meanwhile; you will "
 "see a message when it is done."
@@ -2707,12 +2707,12 @@ msgstr ""
 "Les grosses applications prennent une ou deux minutes. Tu peux continuer à "
 "utiliser SAM pendant ce temps ; un message apparaîtra à la fin."
 
-#: crates/sam-gtk/src/app_page/mod.rs:888
+#: crates/sam-gtk/src/app_page/mod.rs:884
 msgid "Creating the sandbox…"
 msgstr "Création du bac à sable…"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/mod.rs:904
+#: crates/sam-gtk/src/app_page/mod.rs:900
 msgid "Step {n} of {total}: {step}"
 msgstr "Étape {n} sur {total} : {step}"
 

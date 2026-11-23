@@ -718,11 +718,7 @@ fn confirm_outside_text(perms: Option<&Value>, file: bool) -> (String, bool) {
     } else {
         crate::i18n::tr("Something other than SAM changed these settings. SAM can tell that they changed, not what changed. Confirm only if you made the change yourself or know who did.")
     };
-    body.push_str(
-        "
-
-",
-    );
+    body.push_str("\n\n");
     let parsed = perms.and_then(|p| {
         serde_json::from_value::<sam_core::permissions::PermissionSet>(p.clone()).ok()
     });
