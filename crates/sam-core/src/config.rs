@@ -510,4 +510,114 @@ cleanup_stale = true
         assert!(c.set_key("general.theme", "pink").is_err());
         assert!(c.set_key("nope.key", "1").is_err());
     }
+
+    /// `sam-jail config get` reads back what is set; an unknown key is an
+    /// error. Text settings take the typed text literally: quotes are part
+    /// of the value, not JSON.
+    #[test]
+    fn settings_read_back_by_key_and_text_is_taken_literally() {
+        let mut c = Config::default();
+        assert_eq!(
+            c.get_key("general.theme").unwrap(),
+            serde_json::json!("system")
+        );
+        c.set_key("security.warn_x11", "false").unwrap();
+        assert_eq!(
+            c.get_key("security.warn_x11").unwrap(),
+            serde_json::json!(false)
+        );
+        assert_eq!(
+            c.get_key("extraction.max_files").unwrap(),
+            serde_json::json!(200_000)
+        );
+        assert!(c.get_key("no.such").is_err());
+        assert!(c.get_key("general.nope").is_err());
+        assert!(
+            c.set_key("general.theme", "\"dark\"").is_err(),
+            "the quotes belong to the value, which is no theme"
+        );
+        assert_eq!(c.general.theme, "system", "a refused value changes nothing");
+        c.set_key("compatibility.behavior", "never").unwrap();
+        assert_eq!(c.compatibility.behavior, CompatBehavior::Never);
+    }
+
+    /// A settings file that exists but cannot be read (not text, or a
+    /// folder) is an error that names it, and it stays as it is: the
+    /// stricter settings in it are never silently replaced by the
+    /// defaults, which a later save would write over it.
+    #[test]
+    fn a_settings_file_that_cannot_be_read_is_an_error_and_stays() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = crate::paths::Paths::rooted(t.path());
+        let file = paths.config_file();
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let bytes = b"format = 1\n[security]\ncheck_before_launch = true\n# \xff\n";
+        std::fs::write(&file, bytes).unwrap();
+        assert!(Config::load(&paths).is_err(), "not text");
+        assert_eq!(std::fs::read(&file).unwrap(), bytes, "left unchanged");
+        std::fs::remove_file(&file).unwrap();
+        std::fs::create_dir(&file).unwrap();
+        assert!(Config::load(&paths).is_err(), "a folder");
+        assert!(file.is_dir(), "left in place");
+        std::fs::remove_dir(&file).unwrap();
+        assert_eq!(
+            Config::load(&paths).unwrap(),
+            Config::default(),
+            "only a missing file means the defaults"
+        );
+    }
+
+    /// A file already in the current format is not migrated again: an old
+    /// theme name in it is an invalid value and is reset to System, and a
+    /// theme that is no text makes the file damaged (moved aside).
+    #[test]
+    fn a_current_settings_file_is_not_migrated_again() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = crate::paths::Paths::rooted(t.path());
+        let file = paths.config_file();
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "format = 1\n[general]\ntheme = \"breeze-dark\"\n").unwrap();
+        assert_eq!(Config::load(&paths).unwrap().general.theme, "system");
+        std::fs::write(&file, "format = 0\n[general]\ntheme = \"breeze-dark\"\n").unwrap();
+        assert_eq!(
+            Config::load(&paths).unwrap().general.theme,
+            "dark",
+            "format 0 is migrated"
+        );
+        std::fs::write(&file, "format = 1\n[general]\ntheme = 5\n").unwrap();
+        assert_eq!(Config::load(&paths).unwrap(), Config::default());
+        assert!(!file.exists(), "the damaged file was moved aside");
+    }
+
+    /// The extraction folder is a folder of its own: never the root, never
+    /// the home folder itself (however it is written), never relative and
+    /// never with `..`. SAM unpacks into it and later removes what it put
+    /// there.
+    #[test]
+    fn the_extraction_folder_is_never_the_root_or_the_home_folder() {
+        let home = expand_home("~");
+        let home_s = home.to_string_lossy().into_owned();
+        for bad in [
+            "/".to_string(),
+            "~".to_string(),
+            "~/".to_string(),
+            home_s.clone(),
+            format!("{home_s}/"),
+            format!("{home_s}/x/.."),
+            "/tmp/a/..".to_string(),
+            "relative/dir".to_string(),
+        ] {
+            let mut c = Config::default();
+            c.extraction.location = bad.clone();
+            assert!(c.validate().is_err(), "{bad}");
+            let mut c = Config::default();
+            assert!(c.set_key("extraction.location", &bad).is_err(), "{bad}");
+            assert_eq!(c.extraction.location, "", "{bad} changed nothing");
+        }
+        for ok in ["/tmp/sam-x", "~/x", ""] {
+            let mut c = Config::default();
+            c.set_key("extraction.location", ok).unwrap();
+            assert_eq!(c.extraction.location, ok);
+        }
+    }
 }

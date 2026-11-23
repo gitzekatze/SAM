@@ -171,7 +171,7 @@ pub struct NetworkPerms {
 }
 
 impl NetworkPerms {
-    /// Valid ports from `host_ports` (DNS, port 53, is never forwarded).
+    /// Valid ports from `app_ports`, sorted, each once (port 0 is no port).
     pub fn valid_app_ports(&self) -> Vec<u16> {
         let mut v: Vec<u16> = self
             .app_ports
@@ -184,6 +184,8 @@ impl NetworkPerms {
         v
     }
 
+    /// Valid ports from `host_ports`, sorted, each once (DNS, port 53, is
+    /// never forwarded; port 0 is no port).
     pub fn valid_host_ports(&self) -> Vec<u16> {
         let mut v: Vec<u16> = self
             .host_ports
@@ -1406,6 +1408,160 @@ mod tests {
         assert!(p.set_key("network.bogus", "1").is_err());
         assert!(p.set_key("network.mode", "sideways").is_err());
         assert_eq!(p.get_key("network.mode").unwrap(), "full");
+        // A key the saved form may leave out is known only by its full
+        // name: a misspelt hardening switch, or `landlock` in another
+        // group, is refused instead of reported as set and dropped.
+        for unknown in [
+            "advanced.bogus",
+            "advanced.seccomp_strct",
+            "network.landlock",
+            "filesystem.room_service",
+            "dbus.system.calls",
+        ] {
+            let before = p.clone();
+            assert!(p.set_key(unknown, "true").is_err(), "{unknown}");
+            assert_eq!(p, before, "{unknown} changed nothing");
+        }
+        p.set_key("advanced.room_service", "false").unwrap();
+        assert!(!p.advanced.room_service);
+    }
+
+    /// A list the saved form leaves out while it is empty (function and
+    /// signal rules) takes comma-separated input like every other list,
+    /// also while it is still empty.
+    #[test]
+    fn an_empty_list_left_out_of_the_saved_form_takes_comma_separated_input() {
+        let mut p = PermissionSet::default();
+        p.set_key("dbus.session.calls", "org.example.App=*")
+            .unwrap();
+        assert_eq!(p.dbus.session.calls, vec!["org.example.App=*"]);
+        p.set_key(
+            "dbus.session.broadcasts",
+            "org.example.App=@/a, org.example.B=*",
+        )
+        .unwrap();
+        assert_eq!(
+            p.dbus.session.broadcasts,
+            vec!["org.example.App=@/a", "org.example.B=*"]
+        );
+        p.set_key("dbus.session.calls", "").unwrap();
+        assert!(p.dbus.session.calls.is_empty());
+        p.set_key("dbus.session.calls", r#"["org.example.C=*"]"#)
+            .unwrap();
+        assert_eq!(p.dbus.session.calls, vec!["org.example.C=*"]);
+        p.set_key("advanced.landlock", "true").unwrap();
+        assert_eq!(p.advanced.landlock, Some(true));
+    }
+
+    /// Each user-folder switch grants exactly its own folder, read-only or
+    /// writable, and no other.
+    #[test]
+    fn every_user_folder_switch_grants_exactly_its_folder() {
+        for (raw, level) in [("ro", Access::Ro), ("rw", Access::Rw)] {
+            for key in XDG_DIR_KEYS {
+                let mut p = PermissionSet::default();
+                p.set_key(&format!("filesystem.{key}"), raw).unwrap();
+                for other in XDG_DIR_KEYS {
+                    let want = if other == key { level } else { Access::None };
+                    assert_eq!(p.filesystem.xdg_access(other), want, "{key}={raw}: {other}");
+                }
+            }
+        }
+        assert_eq!(
+            FilesystemPerms::default().xdg_access("templates"),
+            Access::None
+        );
+    }
+
+    /// "This computer only" forwards exactly the ports the user listed:
+    /// each once, sorted, without port 0, and never DNS (port 53) from the
+    /// host. An empty list would mean "every port the app opens" (pasta's
+    /// automatic forwarding), so dropping listed ports widens access.
+    #[test]
+    fn only_the_ports_the_user_listed_are_forwarded() {
+        let n = NetworkPerms {
+            mode: NetworkMode::Localhost,
+            app_ports: ["8080", " 3000 ", "x", "0", "8080", "70000"]
+                .map(String::from)
+                .into(),
+            host_ports: ["53", "0", " 11434 ", "11434", "x", "631"]
+                .map(String::from)
+                .into(),
+        };
+        assert_eq!(n.valid_app_ports(), vec![3000, 8080]);
+        assert_eq!(n.valid_host_ports(), vec![631, 11434]);
+        let only_zero = NetworkPerms {
+            app_ports: vec!["0".into()],
+            host_ports: vec!["0".into(), "53".into()],
+            ..n
+        };
+        assert!(only_zero.valid_app_ports().is_empty());
+        assert!(only_zero.valid_host_ports().is_empty());
+    }
+
+    /// Wildcards and versioned names of dangerous desktop services count
+    /// as dangerous (warned about, rated Dangerous, never owned), and so
+    /// does any wildcard over the portal's names; ordinary names do not.
+    #[test]
+    fn wildcards_and_versions_of_dangerous_services_are_dangerous() {
+        let none = std::collections::BTreeSet::new();
+        for bad in [
+            // Wildcards that cover a dangerous name.
+            "org.kde.*",
+            "org.kde*",
+            "org.gnome.*",
+            "org.kde.KWin.Scripting.*",
+            // Wildcards over the portal namespace.
+            "org.freedesktop.portal.*.*",
+            "org.freedesktop.portal.**",
+            // Sub-names and versioned names of dangerous services.
+            "org.gnome.Shell.Screencast",
+            "org.kde.KWin.Scripting",
+            "org.freedesktop.systemd1.Manager",
+            "org.kde.kded5",
+            "org.kde.kded6",
+            "org.kde.klauncher5",
+        ] {
+            assert!(dangerous_bus_name(bad).is_some(), "{bad}");
+            assert!(refuse_own_name(bad, &none).is_some(), "own {bad}");
+        }
+        for ok in [
+            "org.example.*",
+            "org.example.App",
+            "org.kde.kdenlive",
+            "org.kde.kdeconnect",
+        ] {
+            assert!(dangerous_bus_name(ok).is_none(), "{ok}");
+        }
+    }
+
+    /// A switched-on integration reaches the enforced bus filter: every
+    /// one of its names is allowed, next to the user's own entries, and
+    /// each name only once.
+    #[test]
+    fn switched_on_integrations_reach_the_bus_filter_once() {
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.allow = vec!["org.example.App".into()];
+        p.integrations.keyring = true;
+        p.integrations.file_manager = true;
+        let count = |b: &DbusBusPerms, n: &str| b.allow.iter().filter(|a| *a == n).count();
+        let b = p.effective_session_bus();
+        for n in [
+            "org.example.App",
+            "org.freedesktop.secrets",
+            "org.kde.kwalletd6",
+            "org.kde.kwalletd5",
+            "org.freedesktop.FileManager1",
+        ] {
+            assert_eq!(count(&b, n), 1, "{n} in {:?}", b.allow);
+        }
+        p.dbus.session.allow = vec![];
+        assert_eq!(count(&p.effective_session_bus(), "org.kde.kwalletd5"), 1);
+        p.dbus.session.allow = vec!["org.freedesktop.FileManager1".into()];
+        assert_eq!(
+            count(&p.effective_session_bus(), "org.freedesktop.FileManager1"),
+            1
+        );
     }
 
     /// A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it.
