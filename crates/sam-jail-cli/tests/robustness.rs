@@ -278,3 +278,113 @@ fn signing_a_file_without_signature_sections_is_refused() {
     assert!(out.contains("no signature sections"), "{out}");
     assert_eq!(fs::read(&f).unwrap(), before, "the file is unchanged");
 }
+
+/// `dev sign-appimage` (the release scripts sign with it) signs with the
+/// key named by its full fingerprint and says so; when the signature it
+/// made does not check out as that fingerprint's, here because the key
+/// was named by its shorter id, it refuses instead of reporting success.
+/// With the real GnuPG (SAM_TEST_GPG=1, as CI sets it).
+#[test]
+fn signing_succeeds_only_with_the_named_fingerprint() {
+    if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
+        sam_runner::contracts::skip("set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    assert!(
+        ["gpg", "gpgv", "objcopy"]
+            .iter()
+            .all(|t| sam_core::util::which(t).is_some()),
+        "SAM_TEST_GPG=1, but gpg, gpgv or objcopy is not installed"
+    );
+    let e = env();
+    let gnupg = e.config.join("gnupg");
+    fs::create_dir(&gnupg).unwrap();
+    fs::set_permissions(&gnupg, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    // The agent this starts is stopped at the end, also when the test fails.
+    struct Agent(std::path::PathBuf);
+    impl Drop for Agent {
+        fn drop(&mut self) {
+            let _ = Command::new("gpgconf")
+                .arg("--homedir")
+                .arg(&self.0)
+                .args(["--kill", "all"])
+                .status();
+        }
+    }
+    let _agent = Agent(gnupg.clone());
+    let gpg = |args: &[&str]| {
+        let o = Command::new("gpg")
+            .arg("--homedir")
+            .arg(&gnupg)
+            .args([
+                "--batch",
+                "--quiet",
+                "--passphrase",
+                "",
+                "--pinentry-mode",
+                "loopback",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "gpg {args:?}");
+        String::from_utf8(o.stdout).unwrap()
+    };
+    gpg(&[
+        "--quick-gen-key",
+        "SAM test <test@example.invalid>",
+        "ed25519",
+        "sign",
+        "never",
+    ]);
+    let fpr = gpg(&["--with-colons", "--fingerprint", "--list-keys"])
+        .lines()
+        .find(|l| l.starts_with("fpr:"))
+        .and_then(|l| l.split(':').nth(9))
+        .unwrap()
+        .to_string();
+    let image = |name: &str| {
+        let mut spec = sam_intake::testkit::FixtureSpec::hello(name);
+        spec.signature_sections = true;
+        let f = e.config.join(format!("{name}.AppImage"));
+        sam_intake::testkit::build(&f, &spec).unwrap();
+        f
+    };
+    let sign = |f: &Path, key: &str| {
+        Command::new(env!("CARGO_BIN_EXE_sam-jail"))
+            .args([
+                "--json",
+                "dev",
+                "sign-appimage",
+                f.to_str().unwrap(),
+                "--key",
+                key,
+            ])
+            .env("SAM_CONFIG_DIR", &e.config)
+            .env("SAM_DATA_DIR", &e.data)
+            .env("SAM_APPLICATIONS_DIR", &e.apps)
+            .env("GNUPGHOME", &gnupg)
+            .env("LC_ALL", "C")
+            .env_remove("LANGUAGE")
+            .output()
+            .unwrap()
+    };
+
+    let signed = image("Signed");
+    let o = sign(&signed, &fpr);
+    let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert!(o.status.success(), "{v}");
+    assert_eq!(v["data"]["fingerprint"], fpr.as_str(), "{v}");
+    let sig = sam_detect::signature::check(&signed);
+    assert_eq!(sig.state, sam_core::model::SignatureState::Valid);
+
+    let short = &fpr[fpr.len() - 16..];
+    let o = sign(&image("ShortId"), short);
+    let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert!(!o.status.success(), "{v}");
+    assert!(
+        v["error"].as_str().unwrap().contains("does not check out"),
+        "{v}"
+    );
+}
