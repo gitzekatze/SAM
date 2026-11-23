@@ -1052,7 +1052,10 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
 
     // Rooms work.
     let id = w.add("RoomsWork", WORKS);
-    let log = w.start(&id, |_| {}, 60);
+    // The app ends by itself in a few seconds; the limit is only for a
+    // hang, and generous: under heavy load building rooms takes many times
+    // as long, and the app alone may wait a minute for its stand-in's room.
+    let log = w.start(&id, |_| {}, 180);
     let before = failures.len();
     failures.extend(control_built("works", &log));
     failures.extend(
@@ -1486,7 +1489,9 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
 
     // Messages past the stand-in.
     let id = w.add("RoomHostileMessages", HOSTILE_MESSAGES);
-    let log = w.start(&id, |_| {}, 150);
+    // Ends by itself (about 25 s); the limit is only for a hang, and
+    // generous for a busy computer.
+    let log = w.start(&id, |_| {}, 300);
     if cases(&log).get("direct_control").map(String::as_str) != Some("exit=0") {
         failures.push(format!(
             "messages: a well-formed message built no room ({:?}), so the other results mean nothing",
