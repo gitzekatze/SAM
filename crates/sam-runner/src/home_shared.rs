@@ -378,6 +378,19 @@ mod tests {
         // last look: the record stays, no longer locked.
         fs::write(home.join(".bash_profile"), "echo pwned").unwrap();
         drop(r.file.take());
+        // Another test of this process may have started a program in the
+        // moment the record was open: until that program starts, its copy
+        // holds the record's lock. Wait until the lock is free, as it is
+        // for a launcher that is really gone (seen once under the load of
+        // a whole-suite run, 2026-11-23).
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !try_lock(&fs::File::open(&r.path).unwrap()) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the record stayed locked"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         std::mem::forget(r);
 
         assert!(app.running("someapp").is_empty());
