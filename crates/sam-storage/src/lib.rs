@@ -44,6 +44,10 @@ fn damaged_record(p: &Path, err: &anyhow::Error) {
     }
 }
 
+/// The first record format that carries SAM's checksum (`integrity`).
+const CHECKSUM_SINCE: u32 = 1;
+const _: () = assert!(CHECKSUM_SINCE <= sam_core::format::CURRENT);
+
 impl Registry {
     pub fn new(paths: &Paths) -> Self {
         Registry {
@@ -107,12 +111,17 @@ impl Registry {
         // any change). Records from SAM versions before the checksum are
         // marked once and confirmed once. A checksum is compared only in the
         // current format: a record migrated from an older one is
-        // re-serialized differently. No record of an older format carries a
-        // checksum (it came after format 1), so one that does had its format
-        // lowered (review F4: `"format": 0` hid any change). A mark found
-        // earlier stays until it is confirmed.
+        // re-serialized differently. No record from before the checksum's
+        // format carries one, so one that does had its format lowered
+        // (review F4: `"format": 0` hid any change). A genuine record of a
+        // format between that one and the current one (once there is a
+        // newer format) is migrated, not marked. A mark found earlier stays
+        // until it is confirmed.
         let mismatch = match e.integrity.clone() {
-            Some(stored) => found != sam_core::format::CURRENT || integrity_of(&e)? != stored,
+            Some(stored) => {
+                found < CHECKSUM_SINCE
+                    || (found == sam_core::format::CURRENT && integrity_of(&e)? != stored)
+            }
             None => true,
         };
         e.changed_outside = e.changed_outside || mismatch;
