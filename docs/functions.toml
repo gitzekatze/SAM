@@ -552,7 +552,7 @@ id = 30
 area = "G"
 promise = "Removing an app deletes only SAM's own folders, never your files."
 code = ["sam-runner/src/ops/maintain.rs", "sam-storage/src/lib.rs", "sam-core/src/util.rs"]
-tests = ["removing_a_sandbox_never_deletes_outside_sams_unpack_folder", "a_record_with_a_climbing_id_reaches_nothing", "records_with_unsafe_or_mismatched_ids_are_not_loaded", "removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it", "removing_a_sandbox_while_its_app_runs_is_refused", "names_become_safe_identifiers"]
+tests = ["removing_a_sandbox_never_deletes_outside_sams_unpack_folder", "the_extraction_folder_is_never_the_root_or_the_home_folder", "a_record_with_a_climbing_id_reaches_nothing", "records_with_unsafe_or_mismatched_ids_are_not_loaded", "removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it", "removing_a_sandbox_while_its_app_runs_is_refused", "names_become_safe_identifiers"]
 
 [[function]]
 id = 31
@@ -635,7 +635,7 @@ id = 38
 area = "I"
 promise = "SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM."
 code = ["sam-core/src/format.rs", "sam-core/src/config.rs", "sam-core/src/permissions.rs", "sam-storage/src/lib.rs"]
-tests = ["a_complete_configuration_file_loads_every_setting", "settings_change_by_key_and_old_theme_names_are_migrated", "files_from_a_newer_sam_are_never_overwritten", "access_from_bool_and_str", "old_profiles_with_removed_options_still_load", "permissions_saved_as_toml_load_back_unchanged", "old_extra_backend_args_still_load", "presets_in_the_older_flat_format_still_load", "old_formats_are_migrated_and_kept", "newer_formats_are_left_untouched", "damaged_files_are_moved_aside_and_reported", "mangled_files_never_crash", "empty_or_relative_folder_settings_are_ignored"]
+tests = ["a_complete_configuration_file_loads_every_setting", "settings_change_by_key_and_old_theme_names_are_migrated", "settings_read_back_by_key_and_text_is_taken_literally", "a_settings_file_that_cannot_be_read_is_an_error_and_stays", "a_current_settings_file_is_not_migrated_again", "files_from_a_newer_sam_are_never_overwritten", "access_from_bool_and_str", "old_profiles_with_removed_options_still_load", "permissions_saved_as_toml_load_back_unchanged", "old_extra_backend_args_still_load", "presets_in_the_older_flat_format_still_load", "old_formats_are_migrated_and_kept", "newer_formats_are_left_untouched", "damaged_files_are_moved_aside_and_reported", "mangled_files_never_crash", "empty_or_relative_folder_settings_are_ignored"]
 checks = ["tests/upgrade/run.sh"]
 
 [[function]]
