@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 26 proven by passing tests, 14 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 660 tests in all.
+**41 functions:** 25 proven by passing tests, 15 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 665 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -32,11 +32,11 @@
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
 | 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 118 | ✅ 🆕 118 new tests since the report |
-| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 25 | ✅ 🆕 3 new tests since the report |
+| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 28 | ✅ 🆕 6 new tests since the report |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 18 | ✅ 🆕 4 new tests since the report |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 11 | ✅ 🆕 3 new tests since the report |
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 3 | ✅ |
-| 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 9 | ✅ 🆕 2 new tests since the report |
+| 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 11 | ✅ 🆕 4 new tests since the report |
 | 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | sam-runner, sam-sandbox | 17 | ✅ |
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 9 | ✅ |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 3 | ✅ |
@@ -53,7 +53,7 @@
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 6 | ✅ |
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 13 | ✅ |
-| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 20 | ✅ |
+| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 21 | ✅ 🆕 1 new test since the report |
 
 ## Components and their functions
 
@@ -698,6 +698,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`blocked_file_types_hold_in_any_case_and_old_names`](../crates/sam-intake/src/desktop.rs#L444) | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | ✅ |
 | [`an_app_can_never_replace_the_programs_that_menu_entries_run`](../crates/sam-runner/tests/own_programs.rs#L53) | An app can never replace the programs that menu entries run. | 🆕 new |
 | [`the_app_gets_its_arguments_without_the_separator`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L342) | The files from the menu and the arguments typed after the id reach the app as given; only one leading `--` is a separator (the app never sees it as its first argument), a later one is the app's. | 🆕 new |
+| [`the_files_from_the_menu_reach_the_app`](../crates/sam-jail-cli/tests/menu_notice.rs#L262) | The files from the menu reach the app, without the `--` that may separate them from the id. | 🆕 new |
+| [`a_refused_menu_start_is_told_in_a_notice`](../crates/sam-jail-cli/tests/menu_notice.rs#L161) | A start SAM refuses before any sandbox is built (an app it does not know, a file name that is not text) is told in a notice, naming what went wrong; the start still ends with an error. | 🆕 new |
+| [`a_menu_start_the_sandbox_check_refuses_points_to_test`](../crates/sam-jail-cli/tests/menu_notice.rs#L225) | A start the sandbox check refuses (a setting that does not apply) gets the notice that says where to look: the app's Test. | 🆕 new |
 | [`only_a_failed_terminal_app_keeps_its_window_open`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L371) | A terminal app's window waits for Enter only after a failed end, and only with someone at the terminal; a clean end closes it at once, and a graphical app never waits. | 🆕 new |
 
 **Code:** [`sam-intake/src/desktop.rs`](../crates/sam-intake/src/desktop.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-core/src/paths.rs`](../crates/sam-core/src/paths.rs)
@@ -778,8 +781,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L2433) | A start is judged by whether Bubblewrap announced the app, not by what the app printed. | ✅ |
 | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L934) | Analyzer maps errors to fixes. | ✅ |
 | [`fake_bwrap_error_is_not_a_sandbox_failure`](../crates/sam-runner/tests/adversarial.rs#L21) | H1: an app printing a fake Bubblewrap error is not a sandbox failure. | ✅ |
+| [`a_quick_failure_gets_a_notice_with_the_fix_button`](../crates/sam-jail-cli/tests/menu_notice.rs#L193) | An app that fails right after it started gets a notice saying so, and its button opens SAM's window at that app's repair page. | 🆕 new |
 | [`the_fix_button_opens_sam_only_when_sam_is_found`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L394) | "Show the fix" opens SAM's own AppImage when SAM runs from one; with no SAM window anywhere there is no button (a plain notice), never a button that runs nothing. | 🆕 new |
 | [`only_a_quick_failure_counts_as_stopped_right_after_start`](../crates/sam-core/src/model.rs#L884) | Only a failure within the first ten seconds counts as "stopped right after starting" (the menu start's notice with a likely fix): not a clean end, however quick, and not a failure after the app ran for a while. | 🆕 new |
+| [`a_refused_menu_start_is_told_in_a_notice`](../crates/sam-jail-cli/tests/menu_notice.rs#L161) | A start SAM refuses before any sandbox is built (an app it does not know, a file name that is not text) is told in a notice, naming what went wrong; the start still ends with an error. | 🆕 new |
 
 **Code:** [`sam-runner/src/repair.rs`](../crates/sam-runner/src/repair.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-gtk/src/app_page/render.rs`](../crates/sam-gtk/src/app_page/render.rs)
 
@@ -1117,6 +1122,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | ✅ |
 | [`json_run_keeps_its_reply_alone_on_standard_output`](../crates/sam-jail-cli/tests/odd_names.rs#L112) | With `--json`, SAM's standard output is its reply and nothing else: an app that prints a line looking like the reply cannot be read as SAM's. | ✅ |
 | [`preset_names_are_never_read_as_options`](../crates/sam-gtk/src/backend.rs#L363) | Preset names reach SAM after `--`, so one that starts with `-` is not read as an option (audit G-F20). | ✅ |
+| [`man_writes_a_page_per_visible_command_and_none_for_hidden_ones`](../crates/sam-jail-cli/tests/man_pages.rs#L8) | Man writes a page per visible command and none for hidden ones. | 🆕 new |
 
 **Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md)
 

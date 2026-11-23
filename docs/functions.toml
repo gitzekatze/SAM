@@ -412,6 +412,9 @@ promise = "Starting from SAM's window, from the menu, or from the terminal alway
 code = ["sam-intake/src/desktop.rs", "sam-intake/src/menu.rs", "sam-runner/src/launch.rs", "sam-core/src/paths.rs"]
 tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "a_hostile_name_adds_no_line_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign", "blocked_file_types_hold_in_any_case_and_old_names", "an_app_can_never_replace_the_programs_that_menu_entries_run",
   "the_app_gets_its_arguments_without_the_separator",
+  "the_files_from_the_menu_reach_the_app",
+  "a_refused_menu_start_is_told_in_a_notice",
+  "a_menu_start_the_sandbox_check_refuses_points_to_test",
   "only_a_failed_terminal_app_keeps_its_window_open",
 ]
 checks = ["tests/gui/flow-atspi.sh", "tests/gui/taskbar-kwin.sh"]
@@ -460,8 +463,10 @@ area = "E"
 promise = "After a failed start, SAM says what went wrong and offers a fix with one click."
 code = ["sam-runner/src/repair.rs", "sam-runner/src/launch.rs", "sam-gtk/src/app_page/render.rs"]
 tests = ["a_step_from_the_apps_output_needs_yes", "the_apps_own_words_never_give_it_a_bus_name", "a_start_without_bubblewrap_stops_before_anything_runs", "sandbox_setup_errors_are_told_apart_from_app_errors", "a_start_is_judged_by_whether_the_app_started", "analyzer_maps_errors_to_fixes", "fake_bwrap_error_is_not_a_sandbox_failure",
+  "a_quick_failure_gets_a_notice_with_the_fix_button",
   "the_fix_button_opens_sam_only_when_sam_is_found",
   "only_a_quick_failure_counts_as_stopped_right_after_start",
+  "a_refused_menu_start_is_told_in_a_notice",
 ]
 checks = ["tests/gui/app-page-atspi.sh", "tests/real-apps/run.sh"]
 
@@ -656,4 +661,5 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
   "an_error_names_its_sam_function_and_keeps_its_message",
   "json_run_keeps_its_reply_alone_on_standard_output",
   "preset_names_are_never_read_as_options",
+  "man_writes_a_page_per_visible_command_and_none_for_hidden_ones",
 ]

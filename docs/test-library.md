@@ -645,7 +645,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-60 tests.
+65 tests.
 
 | Promise | Test |
 |---|---|
@@ -681,6 +681,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A start without the helper reports its missing layers. | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) |
 | Threat model row 52: "a syscall filter that fails to load stops the start". | [`a_syscall_filter_that_fails_to_load_stops_the_start`](../crates/sam-jail-cli/tests/layers.rs#L153) |
 | The apps ports are offered on this computer only. | [`the_apps_ports_are_offered_on_this_computer_only`](../crates/sam-jail-cli/tests/local_network.rs#L106) |
+| Man writes a page per visible command and none for hidden ones. | [`man_writes_a_page_per_visible_command_and_none_for_hidden_ones`](../crates/sam-jail-cli/tests/man_pages.rs#L8) |
+| A start SAM refuses before any sandbox is built (an app it does not know, a file name that is not text) is told in a notice, naming what went wrong; the start still ends with an error. | [`a_refused_menu_start_is_told_in_a_notice`](../crates/sam-jail-cli/tests/menu_notice.rs#L161) |
+| An app that fails right after it started gets a notice saying so, and its button opens SAM's window at that app's repair page. | [`a_quick_failure_gets_a_notice_with_the_fix_button`](../crates/sam-jail-cli/tests/menu_notice.rs#L193) |
+| A start the sandbox check refuses (a setting that does not apply) gets the notice that says where to look: the app's Test. | [`a_menu_start_the_sandbox_check_refuses_points_to_test`](../crates/sam-jail-cli/tests/menu_notice.rs#L225) |
+| The files from the menu reach the app, without the `--` that may separate them from the id. | [`the_files_from_the_menu_reach_the_app`](../crates/sam-jail-cli/tests/menu_notice.rs#L262) |
 | A start file left in the home is moved aside and named. | [`a_start_file_left_in_the_home_is_moved_aside_and_named`](../crates/sam-jail-cli/tests/moved_aside_message.rs#L25) |
 | An AppImage file called like one of SAM's own files in the sandbox (`bin`) starts, and finds itself at `$APPIMAGE`. | [`an_appimage_called_bin_starts_and_finds_itself`](../crates/sam-jail-cli/tests/odd_names.rs#L84) |
 | With `--json`, SAM's standard output is its reply and nothing else: an app that prints a line looking like the reply cannot be read as SAM's. | [`json_run_keeps_its_reply_alone_on_standard_output`](../crates/sam-jail-cli/tests/odd_names.rs#L112) |
@@ -746,4 +751,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 660 automated Rust tests plus 7 scripted checks.
+Total: 665 automated Rust tests plus 7 scripted checks.
