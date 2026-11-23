@@ -158,6 +158,9 @@ tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged
   "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them",
   "sams_own_folders_behind_a_link_are_hidden_where_the_app_reaches_them",
   "an_extra_folder_that_leads_to_the_whole_computer_asks_first",
+  "no_later_bind_shows_a_hidden_credential_again",
+  "credential_places_of_any_kind_are_hidden",
+  "credentials_behind_links_pipes_and_sockets_stay_hidden",
 ]
 
 [[function]]

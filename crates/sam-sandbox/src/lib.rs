@@ -1196,10 +1196,32 @@ fn bind_place(views: &Views, at: &Path) -> PathBuf {
 
 /// Step 2 of the protections, after every mount (a later mount covers an
 /// earlier one: a grant of `/home` or `~/.local` after them showed `~/.ssh`
-/// and made autostart writable again; regression, audit S-F2): credential
-/// stores hidden, start files and menu entries read-only, SAM's own folders
-/// replaced by an empty folder, at every place the sandbox shows them.
+/// and made autostart writable again; regression, audit S-F2): start files
+/// and menu entries read-only, SAM's own folders replaced by an empty
+/// folder, and last the credential stores hidden, whatever kind of file
+/// they are, at every place the sandbox shows them.
 fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
+    for prot in protected_places(home) {
+        let path = home.join(&prot);
+        // Never on a link (dotfiles kept elsewhere): what it points to is
+        // locked, and the link itself is put back after the start if the
+        // app replaces it (regression: with `~/.bashrc` a link and the
+        // whole home granted, Bubblewrap refused and no app started; the
+        // same with `~/.config` a link, SB-6).
+        for c in views.mount_points(&path) {
+            if matches!(prot.as_str(), ".config/sam" | ".local/share/sam") {
+                if c.is_dir() {
+                    a.push("--tmpfs").push(c.to_string_lossy());
+                }
+            } else if views.writable(&c) && c.exists() {
+                a.ro(&c);
+            }
+        }
+    }
+    // The credential stores last: a later bind of a folder above one
+    // covers the hiding. With `~/.git-credentials` a link into
+    // `~/.config/git`, the protected place bound read-only after it showed
+    // the real file again (mutation run 2026-11-23).
     let mut masks: Vec<&str> = Vec::new();
     if !fsp.ssh {
         masks.push(".ssh");
@@ -1232,25 +1254,11 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
                 Ok(t) if t.is_dir() => {
                     a.push("--tmpfs").push(c.to_string_lossy());
                 }
-                Ok(t) if t.is_file() => a.op2("--ro-bind", "/dev/null", &c),
-                _ => {}
-            }
-        }
-    }
-    for prot in protected_places(home) {
-        let path = home.join(&prot);
-        // Never on a link (dotfiles kept elsewhere): what it points to is
-        // locked, and the link itself is put back after the start if the
-        // app replaces it (regression: with `~/.bashrc` a link and the
-        // whole home granted, Bubblewrap refused and no app started; the
-        // same with `~/.config` a link, SB-6).
-        for c in views.mount_points(&path) {
-            if matches!(prot.as_str(), ".config/sam" | ".local/share/sam") {
-                if c.is_dir() {
-                    a.push("--tmpfs").push(c.to_string_lossy());
-                }
-            } else if views.writable(&c) && c.exists() {
-                a.ro(&c);
+                // A file, and also a named pipe or a socket: `~/.netrc` as
+                // a pipe a password manager feeds stayed readable
+                // (mutation run 2026-11-23).
+                Ok(_) => a.op2("--ro-bind", "/dev/null", &c),
+                Err(_) => {}
             }
         }
     }
@@ -4939,5 +4947,75 @@ mod guard_tests {
             (13, 300)
         );
         assert_eq!((libc_major(0x0001_0305), libc_minor(0x0001_0305)), (259, 5));
+    }
+
+    /// A hidden credential is never shown again by a bind after it: with
+    /// `~/.git-credentials` a link into `~/.config/git` (a protected place,
+    /// bound read-only onto itself), the protected place came after the
+    /// hiding and showed the real file (mutation run 2026-11-23). No hidden
+    /// place has a bind of itself or of a folder above it later on, with the
+    /// home writable or read-only.
+    #[test]
+    fn no_later_bind_shows_a_hidden_credential_again() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap();
+        fs::create_dir_all(home.join(".config/git")).unwrap();
+        fs::write(home.join(".config/git/credentials"), "secret").unwrap();
+        std::os::unix::fs::symlink(
+            home.join(".config/git/credentials"),
+            home.join(".git-credentials"),
+        )
+        .unwrap();
+        fs::write(home.join(".netrc"), "secret").unwrap();
+        fs::create_dir(home.join(".ssh")).unwrap();
+        for access in [Access::Rw, Access::Ro] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = access;
+            let a = args_of(&ctx_for(&p, &home));
+            let s = |n: &str| home.join(n).to_string_lossy().into_owned();
+            let hidden: Vec<(usize, PathBuf)> = a
+                .windows(3)
+                .enumerate()
+                .filter_map(|(i, w)| match (w[0].as_str(), w[1].as_str()) {
+                    ("--ro-bind", "/dev/null") => Some((i, PathBuf::from(&w[2]))),
+                    ("--tmpfs", _) => Some((i, PathBuf::from(&w[1]))),
+                    _ => None,
+                })
+                .filter(|(_, p)| p.starts_with(&home) && *p != home)
+                .collect();
+            for want in [".config/git/credentials", ".netrc", ".ssh"] {
+                assert!(
+                    hidden.iter().any(|(_, p)| p == Path::new(&s(want))),
+                    "{want} hidden, home {access:?}: {a:?}"
+                );
+            }
+            for (i, place) in &hidden {
+                let later = a[i + 1..].windows(3).find(|w| {
+                    w[0].contains("bind") && w[1] != "/dev/null" && place.starts_with(&w[2])
+                });
+                assert!(
+                    later.is_none(),
+                    "{place:?} is shown again by {later:?}, home {access:?}"
+                );
+            }
+        }
+    }
+
+    /// A credential place that is neither a file nor a folder is hidden
+    /// too: `~/.netrc` as a named pipe a password manager feeds (so the
+    /// secret never lies on disk) or a socket was left showing, and the app
+    /// could read the secret from it.
+    #[test]
+    fn credential_places_of_any_kind_are_hidden() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap();
+        let _socket = std::os::unix::net::UnixListener::bind(home.join(".netrc")).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        let a = args_of(&ctx_for(&p, &home));
+        let netrc = home.join(".netrc").to_string_lossy().into_owned();
+        assert!(has_seq(&a, &["--ro-bind", "/dev/null", &netrc]), "{a:?}");
     }
 }
