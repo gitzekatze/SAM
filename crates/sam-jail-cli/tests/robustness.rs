@@ -387,7 +387,8 @@ fn signing_succeeds_only_with_the_named_fingerprint() {
     let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
     assert!(o.status.success(), "{v}");
     assert_eq!(v["data"]["fingerprint"], fpr.as_str(), "{v}");
-    let sig = sam_detect::signature::check(&signed);
+    // The test's own file: checked as the user (GnuPg::Direct).
+    let sig = sam_detect::signature::check(&signed, &sam_detect::signature::GnuPg::Direct);
     assert_eq!(sig.state, sam_core::model::SignatureState::Valid);
 
     let short = &fpr[fpr.len() - 16..];

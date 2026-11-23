@@ -691,8 +691,10 @@ cleanup_stale = true
     }
 
     /// A file already in the current format is not migrated again: an old
-    /// theme name in it is an invalid value and is reset to System, and a
-    /// theme that is no text makes the file damaged (moved aside).
+    /// theme name in it is an invalid value and is reset to System. A theme
+    /// that is no text resets only the theme and the file stays (audit
+    /// U-L4: one unreadable value costs nothing else); a file that is no
+    /// TOML at all is damaged (moved aside, the defaults apply).
     #[test]
     fn a_current_settings_file_is_not_migrated_again() {
         let t = tempfile::tempdir().unwrap();
@@ -707,7 +709,23 @@ cleanup_stale = true
             "dark",
             "format 0 is migrated"
         );
-        std::fs::write(&file, "format = 1\n[general]\ntheme = 5\n").unwrap();
+        std::fs::write(
+            &file,
+            "format = 1\n[general]\ntheme = 5\n[compatibility]\nbehavior = \"never\"\n",
+        )
+        .unwrap();
+        let c = Config::load(&paths).unwrap();
+        assert_eq!(c.general.theme, "system", "only the theme is reset");
+        assert_ne!(
+            c.compatibility,
+            Config::default().compatibility,
+            "the other settings stay"
+        );
+        assert!(
+            file.exists(),
+            "one unreadable value does not move the file aside"
+        );
+        std::fs::write(&file, "format = 1\n[general\ntheme = ").unwrap();
         assert_eq!(Config::load(&paths).unwrap(), Config::default());
         assert!(!file.exists(), "the damaged file was moved aside");
     }

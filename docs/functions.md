@@ -1074,7 +1074,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L168) | A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | ✅ |
 | [`names_become_safe_identifiers`](../crates/sam-core/src/util.rs#L856) | Names become safe identifiers made of lowercase letters, digits and dashes. | ✅ |
 | [`an_apps_icon_is_kept_in_sams_icon_folder_and_goes_with_it`](../crates/sam-runner/tests/settings.rs#L209) | The app's icon is copied into SAM's own icon folder, named after the app, and goes with its sandbox; nothing lands in the folder SAM was started in. | 🆕 new |
-| [`the_extraction_folder_is_never_the_root_or_the_home_folder`](../crates/sam-core/src/config.rs#L719) | The extraction folder is a folder of its own: never the root, never the home folder itself (however it is written), never relative and never with `..`. | 🆕 new |
+| [`the_extraction_folder_is_never_the_root_or_the_home_folder`](../crates/sam-core/src/config.rs#L737) | The extraction folder is a folder of its own: never the root, never the home folder itself (however it is written), never relative and never with `..`. | 🆕 new |
 
 **Code:** [`sam-runner/src/ops/maintain.rs`](../crates/sam-runner/src/ops/maintain.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-core/src/util.rs`](../crates/sam-core/src/util.rs)
 
@@ -1233,7 +1233,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L613) | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | ✅ |
 | [`settings_read_back_by_key_and_text_is_taken_literally`](../crates/sam-core/src/config.rs#L640) | `sam-jail config get` reads back what is set; an unknown key is an error. | 🆕 new |
 | [`a_settings_file_that_cannot_be_read_is_an_error_and_stays`](../crates/sam-core/src/config.rs#L671) | A settings file that exists but cannot be read (not text, or a folder) is an error that names it, and it stays as it is: the stricter settings in it are never silently replaced by the defaults, which a later save would write over it. | 🆕 new |
-| [`a_current_settings_file_is_not_migrated_again`](../crates/sam-core/src/config.rs#L696) | A file already in the current format is not migrated again: an old theme name in it is an invalid value and is reset to System, and a theme that is no text makes the file damaged (moved aside). | 🆕 new |
+| [`a_current_settings_file_is_not_migrated_again`](../crates/sam-core/src/config.rs#L698) | A file already in the current format is not migrated again: an old theme name in it is an invalid value and is reset to System. | 🆕 new |
 | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | ✅ |
 | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1382) | Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | ✅ |
 | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1586) | Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | ✅ |
