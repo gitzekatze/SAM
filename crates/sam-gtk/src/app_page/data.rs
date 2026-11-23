@@ -523,7 +523,11 @@ impl AppPage {
                     &app.window,
                     &crate::i18n::trf("Apply “{step}”?", &[("step", &title)]),
                     &body,
-                    &crate::i18n::tr("Apply"),
+                    &if then_run {
+                        crate::i18n::tr("Apply and Start")
+                    } else {
+                        crate::i18n::tr("Apply")
+                    },
                     false,
                 )
                 .await

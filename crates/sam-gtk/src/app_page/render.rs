@@ -162,20 +162,10 @@ impl AppPage {
             self.icon_slot.remove(&c);
         }
         self.icon_slot.append(&window::app_icon(&icon, 64));
-        if sandboxed {
-            util::set_badge(&self.status_badge, &crate::i18n::tr("Sandboxed"), "good");
-            self.status_badge.set_tooltip_text(Some(&crate::i18n::tr(
-                "SAM runs this app in its sandbox, with exactly the access listed below",
-            )));
-        } else {
-            util::set_badge(
-                &self.status_badge,
-                &crate::i18n::tr("Not sandboxed"),
-                "neutral",
-            );
-            self.status_badge
-                .set_tooltip_text(Some(&crate::i18n::tr("No sandbox yet. Nothing has been unpacked or run; below are the settings SAM recommends")));
-        }
+        let missing = missing_layers(entry.as_ref());
+        let (text, tone, tip) = status_label(sandboxed, &missing);
+        util::set_badge(&self.status_badge, &text, tone);
+        self.status_badge.set_tooltip_text(Some(&tip));
         // Anything that needs attention, next to the status.
         let badge_state = summary
             .as_ref()
@@ -190,6 +180,7 @@ impl AppPage {
             "stale" => Some((crate::i18n::tr("AppImage changed"), "warn", crate::i18n::tr("The AppImage file changed since it was unpacked; SAM still runs the previous version until you update the sandbox"))),
             "broken" => Some((crate::i18n::tr("Broken"), "bad", crate::i18n::tr("The last start failed; see Troubleshooting below"))),
             "missing" => Some((crate::i18n::tr("File missing"), "bad", crate::i18n::tr("The AppImage file is gone; SAM can still run the unpacked copy"))),
+            "protection-missing" => Some((crate::i18n::tr("Protection missing"), "bad", crate::i18n::tr("Its last start lacked a protection layer its settings ask for; see the note below"))),
             _ => None,
         };
         set_badge_visible(&self.state_badge, state.is_some());
@@ -303,17 +294,6 @@ impl AppPage {
         }
         // A protection layer its settings ask for was missing at the last
         // start: never silent (an older kernel, or SAM's helper not found).
-        let missing: Vec<String> = entry
-            .as_ref()
-            .and_then(|e| util::get(e, "last_launch.missing_layers"))
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(Value::as_str)
-                    .map(String::from)
-                    .collect()
-            })
-            .unwrap_or_default();
         if !missing.is_empty() {
             let row = adw::ActionRow::builder()
                 .title(crate::i18n::trf(
@@ -398,9 +378,7 @@ impl AppPage {
                 .subtitle(esc(util::str_of(e, "update.detail")))
                 .build();
             row.add_prefix(&status_icon("software-update-available-symbolic", "accent"));
-            if let Some(page) =
-                Some(util::str_of(e, "update.download_page")).filter(|p| p.starts_with("https://"))
-            {
+            if let Some(page) = util::web_page(util::str_of(e, "update.download_page")) {
                 let open = gtk::Button::builder()
                     .label(tr("Open Download Page"))
                     .valign(gtk::Align::Center)
@@ -496,12 +474,31 @@ impl AppPage {
                 btn.add_css_class("suggested-action");
                 let w = Rc::downgrade(self);
                 btn.connect_clicked(move |_| {
-                    if let Some(me) = w.upgrade() {
-                        me.simple(
-                            vec!["review".into(), me.app_id.clone()],
-                            &crate::i18n::tr("Settings confirmed; the app starts again"),
-                        );
-                    }
+                    let Some(me) = w.upgrade() else { return };
+                    let Some(app) = me.app() else { return };
+                    // One click is no look at the settings: the question
+                    // names what they let the app do (audit G-F12/13).
+                    let entry = me.entry();
+                    let (body, risky) = confirm_outside_text(
+                        entry.as_ref().and_then(|e| util::get(e, "profile.permissions")),
+                        file,
+                    );
+                    glib::spawn_future_local(async move {
+                        if window::confirm(
+                            &app.window,
+                            &crate::i18n::tr("Confirm These Settings?"),
+                            &body,
+                            &crate::i18n::tr("Confirm"),
+                            risky,
+                        )
+                        .await
+                        {
+                            me.simple(
+                                vec!["review".into(), me.app_id.clone()],
+                                &crate::i18n::tr("Settings confirmed; the app starts again"),
+                            );
+                        }
+                    });
                 });
                 row.add_suffix(&btn);
                 self.add_dynamic(&self.notices, &row);
@@ -952,6 +949,15 @@ impl AppPage {
             if as_repair { "warning" } else { "accent" },
         ));
         if !none {
+            // A finding from the last start applies its fix and starts the
+            // app again; the row says so (audit G-F12/13: it started the
+            // app without a word).
+            if then_run {
+                let l = gtk::Label::new(Some(&crate::i18n::tr("Fix and start")));
+                l.add_css_class("dim-label");
+                l.add_css_class("caption");
+                row.add_suffix(&l);
+            }
             row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
             let w = Rc::downgrade(self);
             let s = s.clone();

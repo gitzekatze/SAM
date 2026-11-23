@@ -1534,7 +1534,7 @@ impl App {
                 Err(e) => return me.report_error(&e),
             };
             if util::str_of(&check, "state") == "manual" {
-                let page = util::str_of(&check, "page").to_string();
+                let page = release_page(&check).unwrap_or_default();
                 let body = util::plain(util::str_of(&check, "detail"));
                 if !page.is_empty()
                     && confirm(
@@ -1875,6 +1875,12 @@ pub async fn confirm(
     d.choose_future(Some(win)).await == "ok"
 }
 
+/// The release page a "download it yourself" answer of the self-update
+/// check names, when the window may open it (an https page).
+fn release_page(check: &Value) -> Option<String> {
+    util::web_page(util::str_of(check, "page")).map(String::from)
+}
+
 /// Whether a file name may be an AppImage worth refreshing for: not hidden,
 /// not a download still in progress. AppImages without the usual ending
 /// count too, since SAM recognises them by content.
@@ -1933,6 +1939,30 @@ mod tests {
         let app = tmp.path().join("app");
         std::fs::write(&app, b"\x7fELF\x02\x01\x01\0AI\x02rest").unwrap();
         assert!(super::is_appimage(&app));
+    }
+
+    /// The release page of SAM's own update opens only when it is an https
+    /// page: another scheme could open a local file or start a program
+    /// through its handler (audit G-F12/13).
+    #[test]
+    fn only_an_https_release_page_is_opened() {
+        use serde_json::json;
+        let page = |p: &str| super::release_page(&json!({"state": "manual", "page": p}));
+        assert_eq!(
+            page("https://github.com/x/sam/releases/tag/v2").as_deref(),
+            Some("https://github.com/x/sam/releases/tag/v2")
+        );
+        for bad in [
+            "file:///home/me/.local/share/applications/evil.desktop",
+            "http://example.org/release",
+            "javascript:alert(1)",
+            "ssh://host",
+            " https://x",
+            "",
+        ] {
+            assert_eq!(page(bad), None, "{bad}");
+        }
+        assert_eq!(super::release_page(&json!({"state": "manual"})), None);
     }
 
     /// The folder watcher reacts to AppImages and ignores hidden files and downloads in progress.

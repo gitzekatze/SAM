@@ -706,6 +706,96 @@ fn framed(v: &gtk::TextView, height: i32) -> gtk::Widget {
     s.upcast()
 }
 
+/// The question "Confirm Settings" asks before an app whose record (or
+/// AppImage file) changed outside SAM may start again, and whether the
+/// settings hold anything rated Think twice or Dangerous. SAM can tell
+/// that something changed, not what: so the question names what the
+/// settings let the app do (audit G-F12/13: one click confirmed them,
+/// without showing anything).
+fn confirm_outside_text(perms: Option<&Value>, file: bool) -> (String, bool) {
+    let mut body = if file {
+        crate::i18n::tr("The AppImage file was replaced by something other than a SAM update. Confirm only if you replaced it yourself or know who did.")
+    } else {
+        crate::i18n::tr("Something other than SAM changed these settings. SAM can tell that they changed, not what changed. Confirm only if you made the change yourself or know who did.")
+    };
+    body.push_str("
+
+");
+    let parsed = perms.and_then(|p| {
+        serde_json::from_value::<sam_core::permissions::PermissionSet>(p.clone()).ok()
+    });
+    let Some(p) = parsed else {
+        body.push_str(&crate::i18n::tr(
+            "SAM cannot read these settings. Look through them below before you confirm.",
+        ));
+        return (body, true);
+    };
+    let mut lines: Vec<String> = Vec::new();
+    for i in sam_core::risk::assess(&p).items {
+        if i.level >= sam_core::risk::RiskLevel::High {
+            let line = format!("• {} ({})", i.title, i.level.words());
+            if !lines.contains(&line) {
+                lines.push(line);
+            }
+        }
+    }
+    if lines.is_empty() {
+        body.push_str(&crate::i18n::tr(
+            "None of these settings is rated Think twice or Dangerous.",
+        ));
+        (body, false)
+    } else {
+        body.push_str(&crate::i18n::tr("These settings let the app use:"));
+        body.push('\n');
+        body.push_str(&lines.join("\n"));
+        (body, true)
+    }
+}
+
+/// The protection layers the app's last start lacked although its
+/// settings ask for them (an older kernel, or SAM's helper not found).
+fn missing_layers(entry: Option<&Value>) -> Vec<String> {
+    entry
+        .and_then(|e| util::get(e, "last_launch.missing_layers"))
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The status badge in the page's header: text, tone and explanation. The
+/// green "Sandboxed" only while the last start had every layer the
+/// settings ask for (audit G-F15: it stayed green while the list said
+/// "Protection missing").
+fn status_label(sandboxed: bool, missing: &[String]) -> (String, &'static str, String) {
+    if !sandboxed {
+        (
+            crate::i18n::tr("Not sandboxed"),
+            "neutral",
+            crate::i18n::tr("No sandbox yet. Nothing has been unpacked or run; below are the settings SAM recommends"),
+        )
+    } else if !missing.is_empty() {
+        (
+            crate::i18n::tr("Sandboxed"),
+            "warn",
+            crate::i18n::trf(
+                "SAM runs this app in its sandbox, but its last start lacked {layers}, which its settings ask for",
+                &[("layers", &missing.join(", "))],
+            ),
+        )
+    } else {
+        (
+            crate::i18n::tr("Sandboxed"),
+            "good",
+            crate::i18n::tr("SAM runs this app in its sandbox, with exactly the access listed below"),
+        )
+    }
+}
+
 /// "May not start": what SAM's analysis found, in words, for the header label.
 fn compat_risk_label(entry: Option<&Value>) -> (String, &'static str, String) {
     let det = entry
@@ -823,5 +913,57 @@ impl CreationProgress {
 
     pub fn finish(&self) {
         self.panel.set_visible(false);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    /// "Confirm Settings" names what the changed settings let the app do
+    /// before it may start again: full home and X11 written into the record
+    /// from outside appear in the question (audit G-F12/13: one click
+    /// confirmed them unseen).
+    #[test]
+    fn confirming_changed_settings_names_what_they_allow() {
+        use sam_core::permissions::PermissionSet;
+        let mut p = PermissionSet::default();
+        let (calm, risky) =
+            super::confirm_outside_text(Some(&serde_json::to_value(&p).unwrap()), false);
+        assert!(!risky, "{calm}");
+        assert!(calm.contains("not what changed"), "{calm}");
+        p.set_key("filesystem.home", "true").unwrap();
+        p.set_key("filesystem.home_access", "rw").unwrap();
+        p.set_key("display.x11", "true").unwrap();
+        let (body, risky) =
+            super::confirm_outside_text(Some(&serde_json::to_value(&p).unwrap()), false);
+        assert!(risky);
+        assert!(body.contains("X11"), "{body}");
+        assert!(body.contains("Dangerous"), "{body}");
+        let (file, _) =
+            super::confirm_outside_text(Some(&serde_json::to_value(&p).unwrap()), true);
+        assert!(file.contains("AppImage file was replaced"), "{file}");
+        // Settings it cannot read are never called harmless.
+        assert!(super::confirm_outside_text(Some(&json!({"filesystem": 3})), false).1);
+        assert!(super::confirm_outside_text(None, false).1);
+    }
+
+    /// The header's "Sandboxed" is green only while the last start had
+    /// every protection layer; with one missing it is amber and names the
+    /// layer (audit G-F15: it stayed green).
+    #[test]
+    fn the_header_is_not_green_while_a_protection_layer_was_missing() {
+        let full = json!({"last_launch": {"missing_layers": []}});
+        let lacking = json!({"last_launch": {"missing_layers": ["Landlock"]}});
+        let tone = |e: &serde_json::Value| {
+            let m = super::missing_layers(Some(e));
+            super::status_label(true, &m)
+        };
+        assert_eq!(tone(&full).1, "good");
+        assert_eq!(tone(&json!({})).1, "good");
+        let (_, t, tip) = tone(&lacking);
+        assert_eq!(t, "warn");
+        assert!(tip.contains("Landlock"), "{tip}");
+        assert_eq!(super::status_label(false, &[]).1, "neutral");
     }
 }
