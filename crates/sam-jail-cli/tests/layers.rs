@@ -177,7 +177,9 @@ fn a_start_without_the_helper_reports_its_missing_layers() {
 /// A stand-in for an older `sam-jail-run`: it reports Landlock and seccomp
 /// in place but says nothing about the abstract-socket fence, then starts
 /// the app (it applies nothing itself).
-const OLD_HELPER: &str = r#"#!/bin/sh
+/// (bash, not sh: the status descriptor is above 9, and dash, Ubuntu's sh,
+/// cannot name such a descriptor in a redirection: "Bad fd number".)
+const OLD_HELPER: &str = r#"#!/bin/bash
 [ "$1" = --sandbox-exec ] && [ "$3" = -- ] || exit 97
 shift 3
 eval "echo 'landlock: fully enforced; seccomp: baseline loaded' >&$SAM_STATUS_FD; exec $SAM_STATUS_FD>&-"
