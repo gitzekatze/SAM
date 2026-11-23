@@ -537,12 +537,7 @@ impl HomeWatch {
                     }
                 }
             }
-            let gone = match fs::symlink_metadata(&from) {
-                Ok(m) if m.is_dir() => fs::remove_dir_all(&from).is_ok(),
-                Ok(_) => fs::remove_file(&from).is_ok(),
-                Err(_) => true,
-            };
-            Some(if gone {
+            Some(if remove_any(&from) {
                 (from, Aside::Deleted)
             } else {
                 (from, Aside::Failed)
@@ -582,6 +577,16 @@ impl HomeWatch {
             }
         }
         moved
+    }
+}
+
+/// Removes whatever is at `p`: a folder with all in it, a file, or a link
+/// (never what it points to). True when nothing is left there.
+fn remove_any(p: &Path) -> bool {
+    match fs::symlink_metadata(p) {
+        Ok(m) if m.is_dir() => fs::remove_dir_all(p).is_ok(),
+        Ok(_) => fs::remove_file(p).is_ok(),
+        Err(_) => true,
     }
 }
 
@@ -2288,7 +2293,7 @@ pub fn system_library_binds(ctx: &LaunchContext) -> Vec<(PathBuf, PathBuf)> {
         let Some(host) = SYSTEM_LIB_DIRS
             .iter()
             .filter_map(|d| fs::canonicalize(Path::new(d).join(name)).ok())
-            .find(|p| p.is_file() && (p.starts_with("/usr") || p.starts_with("/lib")))
+            .find(|p| system_copy_ok(p))
         else {
             continue;
         };
@@ -2302,7 +2307,12 @@ pub fn system_library_binds(ctx: &LaunchContext) -> Vec<(PathBuf, PathBuf)> {
     out
 }
 
-/// Write the synthetic passwd/group files referenced by the command.
+/// Whether `p` (a resolved path) may replace a bundled library: a plain
+/// file of the system's, under /usr or /lib.
+fn system_copy_ok(p: &Path) -> bool {
+    p.is_file() && (p.starts_with("/usr") || p.starts_with("/lib"))
+}
+
 /// Display number of X11 inside every sandbox.
 ///
 /// X11 libraries look for the display's *abstract* socket first. SAM's
@@ -2391,6 +2401,7 @@ fn rewrite_xauthority(data: &[u8], from: &str, to: &str) -> Vec<u8> {
 pub const LOCALHOST_ONLY_HOSTS: &str =
     "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n";
 
+/// Write the synthetic passwd/group files referenced by the command.
 pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
     fs::create_dir_all(&ctx.runtime_dir)?;
     let h = &ctx.host;
@@ -4435,5 +4446,498 @@ mod guard_tests {
                 assert_eq!(shown, folder.into_iter().collect::<Vec<_>>(), "{case}");
             }
         }
+    }
+
+    /// The value of the last `--setenv key` in `a`: the one the app sees.
+    fn env_in(a: &[String], key: &str) -> Option<String> {
+        a.windows(3)
+            .rev()
+            .find(|w| w[0] == "--setenv" && w[1] == key)
+            .map(|w| w[2].clone())
+    }
+
+    /// The last way out of a start place, when SAM can neither move nor
+    /// rename what an app put there, deletes it: a file, a folder with
+    /// everything in it, and a link (never what it points to).
+    #[test]
+    fn what_cannot_be_moved_aside_is_deleted_whatever_it_is() {
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join("evil.desktop");
+        fs::write(&file, "x").unwrap();
+        let dir = t.path().join("autostart");
+        fs::create_dir_all(dir.join("deep/er")).unwrap();
+        fs::write(dir.join("deep/er/evil.desktop"), "x").unwrap();
+        let kept = t.path().join("kept");
+        fs::create_dir(&kept).unwrap();
+        fs::write(kept.join("mine"), "x").unwrap();
+        let link = t.path().join("link");
+        std::os::unix::fs::symlink(&kept, &link).unwrap();
+        for p in [&file, &dir, &link] {
+            assert!(remove_any(p), "{p:?} reported as still there");
+            assert!(fs::symlink_metadata(p).is_err(), "{p:?} is still there");
+        }
+        assert!(
+            kept.join("mine").is_file(),
+            "the link's target is left alone"
+        );
+        assert!(remove_any(&t.path().join("never-was")), "nothing there");
+    }
+
+    /// A start place that appears with the folder above it (`~/.config`
+    /// and `~/.config/autostart` both new) is moved aside once, inside the
+    /// folder above, not once more on its own.
+    #[test]
+    fn a_new_folder_above_start_places_is_moved_aside_once_as_a_whole() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let w = HomeWatch::before(&ctx_for(&full_rw(), &home)).unwrap();
+        assert!(w.absent.iter().any(|a| a == ".config/autostart"));
+        fs::create_dir_all(home.join(".config/autostart")).unwrap();
+        fs::write(home.join(".config/autostart/evil.desktop"), "x").unwrap();
+        let aside = t.path().join("aside");
+        let m = w.settle(&aside);
+        let places: Vec<&str> = m.iter().map(|m| m.place.as_str()).collect();
+        assert_eq!(places, [".config"], "{m:?}");
+        assert!(aside.join(".config/autostart/evil.desktop").is_file());
+        assert!(!home.join(".config").exists());
+    }
+
+    /// Next to a shown system path, links to the system's data and settings
+    /// are shown too (`/usr/share/X11/xkb` → `xkeyboard-config-2`), once;
+    /// links to anywhere else are not, and neither are links that stay
+    /// inside the path (shown already).
+    #[test]
+    fn links_beside_a_shown_system_path_bring_only_allowed_targets() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let shown = root.join("shown");
+        let elsewhere = root.join("elsewhere");
+        fs::create_dir_all(shown.join("sub")).unwrap();
+        fs::create_dir_all(&elsewhere).unwrap();
+        let link = |to: &Path, at: &Path| std::os::unix::fs::symlink(to, at).unwrap();
+        link(Path::new("/etc"), &shown.join("settings"));
+        link(Path::new("/etc"), &shown.join("settings-again"));
+        link(&elsewhere, &shown.join("out"));
+        link(&shown.join("sub"), &shown.join("inner"));
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let ro = |p: &str| ["--ro-bind-try".to_string(), p.into(), p.into()];
+        let mut a = Args::default();
+        ro_follow(&mut a, &shown);
+        assert_eq!(a.v, [ro(&s(&shown)), ro("/etc")].concat());
+        // The path itself a link: to an allowed place, or anywhere else.
+        link(Path::new("/etc"), &root.join("to-etc"));
+        link(&elsewhere, &root.join("to-elsewhere"));
+        let mut a = Args::default();
+        ro_follow(&mut a, &root.join("to-etc"));
+        ro_follow(&mut a, &root.join("to-elsewhere"));
+        assert_eq!(
+            a.v,
+            [
+                ro(&s(&root.join("to-etc"))),
+                ro("/etc"),
+                ro(&s(&root.join("to-elsewhere")))
+            ]
+            .concat()
+        );
+    }
+
+    /// A top-level path of the system is copied as it is on the host: a
+    /// link stays a link, a real folder is shown read-only, and anything
+    /// else (a file, nothing) is left out.
+    #[test]
+    fn top_level_system_paths_are_copied_as_they_are() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("lib64");
+        fs::create_dir(&dir).unwrap();
+        let link = t.path().join("lib");
+        std::os::unix::fs::symlink("usr/lib", &link).unwrap();
+        let file = t.path().join("lib32");
+        fs::write(&file, "").unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let of = |p: &Path| {
+            let mut a = Args::default();
+            mirror(&mut a, &s(p));
+            a.v
+        };
+        assert_eq!(of(&dir), ["--ro-bind-try", &s(&dir), &s(&dir)]);
+        assert_eq!(of(&link), ["--symlink", "usr/lib", &s(&link)]);
+        assert!(of(&file).is_empty(), "a file");
+        assert!(of(&t.path().join("libx32")).is_empty(), "nothing there");
+    }
+
+    /// An empty argument (the folder the app was started in) and options
+    /// are never taken as files to share, even where a file of that name
+    /// exists.
+    #[test]
+    fn empty_arguments_and_options_open_nothing() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap();
+        let proj = home.join("proj");
+        fs::create_dir(&proj).unwrap();
+        fs::write(proj.join("-v"), "").unwrap();
+        fs::write(proj.join("notes.txt"), "").unwrap();
+        let mut ctx = ctx_for(&PermissionSet::strict_gui(), &home);
+        ctx.owd = proj.clone();
+        for arg in ["", "-v"] {
+            ctx.args = vec![arg.into()];
+            assert_eq!(opened_paths(&ctx), [], "{arg:?}");
+        }
+        // Control: a plain name there is shared.
+        ctx.args = vec!["notes.txt".into()];
+        assert_eq!(opened_paths(&ctx), [(proj.join("notes.txt"), true)]);
+    }
+
+    /// The host's name server settings are shown with the network only:
+    /// an app without it sees none of them.
+    #[test]
+    fn name_server_settings_are_shown_with_the_network_only() {
+        for mode in [NetworkMode::None, NetworkMode::Localhost, NetworkMode::Full] {
+            let mut ctx = sample_context();
+            ctx.permissions.network.mode = mode;
+            let a = args_of(&ctx);
+            let full = mode == NetworkMode::Full;
+            for p in ["/etc/resolv.conf", "/etc/services", "/run/systemd/resolve"] {
+                assert_eq!(
+                    has_seq(&a, &["--ro-bind-try", p, p]),
+                    full,
+                    "{p} with network {mode:?}"
+                );
+            }
+        }
+    }
+
+    /// The host's theme settings in the home are shown, read-only, only
+    /// when asked for and the home is not shown anyway.
+    #[test]
+    fn host_themes_are_shown_only_when_asked_for_without_the_home() {
+        for (themes, home, shown) in [
+            (false, false, false),
+            (true, false, true),
+            (true, true, false),
+            (false, true, false),
+        ] {
+            let mut ctx = sample_context();
+            ctx.permissions.advanced.host_themes = themes;
+            ctx.permissions.filesystem.home = home;
+            ctx.permissions.filesystem.home_access = Access::Rw;
+            let a = args_of(&ctx);
+            for t in [".config/gtk-3.0", ".config/kdeglobals", ".icons"] {
+                let p = format!("/home/tester/{t}");
+                assert_eq!(
+                    has_seq(&a, &["--ro-bind-try", &p, &p]),
+                    shown,
+                    "{t}: themes {themes}, home {home}"
+                );
+                if !shown {
+                    assert!(!a.contains(&p), "{t} is not named at all: {a:?}");
+                }
+            }
+        }
+    }
+
+    /// A bundled library is replaced only by a plain file of the system's
+    /// own (the copy found is checked by
+    /// `system_copies_replace_only_bundled_libraries_by_plain_name`):
+    /// never by a file elsewhere, nor by a folder.
+    #[test]
+    fn only_a_system_file_replaces_a_bundled_library() {
+        let t = tempfile::tempdir().unwrap();
+        let elsewhere = t.path().join("libc.so.6");
+        fs::write(&elsewhere, "").unwrap();
+        assert!(!system_copy_ok(&elsewhere), "a file outside /usr and /lib");
+        assert!(!system_copy_ok(Path::new("/usr/lib")), "a folder");
+        assert!(!system_copy_ok(Path::new("/usr/lib/no-such-lib.so.1")));
+    }
+
+    /// What SAM says about Bubblewrap names what is wrong, and only that.
+    #[test]
+    fn the_bubblewrap_status_says_what_is_missing_and_nothing_else() {
+        let ok = sample_context().host;
+        let s = Bubblewrap.status(&ok);
+        assert!(s.installed && s.usable && s.notes.is_empty(), "{s:?}");
+
+        let mut none = ok.clone();
+        none.tools.bwrap = None;
+        let s = Bubblewrap.status(&none);
+        let hint =
+            sam_core::i18n::tr("Bubblewrap is not installed. Install the 'bubblewrap' package.");
+        assert!(!s.installed && !s.usable);
+        assert_eq!(s.notes, [hint]);
+
+        let mut closed = ok.clone();
+        closed.userns.max_user_namespaces = Some(0);
+        let s = Bubblewrap.status(&closed);
+        assert!(s.installed && !s.usable);
+        assert_eq!(s.notes, [closed.userns.explain()]);
+    }
+
+    /// Without the whole system (`host_runtime` Minimal), the shared data
+    /// of sound and of D-Bus is shown with their permissions, and only
+    /// then; the sound settings in /etc in any case. Either sound
+    /// permission is enough.
+    #[test]
+    fn sound_and_bus_data_come_with_their_permissions() {
+        for (sound, raw, bus) in [
+            (false, false, DbusMode::None),
+            (true, false, DbusMode::None),
+            (false, true, DbusMode::None),
+            (false, false, DbusMode::Filtered),
+        ] {
+            let mut ctx = sample_context();
+            let p = &mut ctx.permissions;
+            p.advanced.host_runtime = HostRuntime::Minimal;
+            p.audio.enabled = sound;
+            p.audio.alsa_raw = raw;
+            p.dbus.session.mode = bus;
+            let a = args_of(&ctx);
+            let case = format!("sound {sound}, raw {raw}, bus {bus:?}");
+            let ro = |p: &str| has_seq(&a, &["--ro-bind-try", p, p]);
+            assert_eq!(ro("/usr/share/alsa"), sound || raw, "{case}");
+            assert_eq!(ro("/usr/share/pipewire"), sound || raw, "{case}");
+            assert_eq!(ro("/etc/asound.conf"), sound || raw, "{case}");
+            assert_eq!(ro("/etc/pulse"), sound || raw, "{case}");
+            assert_eq!(ro("/usr/share/dbus-1"), bus != DbusMode::None, "{case}");
+        }
+    }
+
+    /// The device trees in /sys and udev's device data are shown with any
+    /// one device permission that needs them, and never without one.
+    #[test]
+    fn device_information_comes_with_each_device_permission() {
+        type Grant = fn(&mut DevicePerms);
+        let grants: [(&str, Grant); 6] = [
+            ("none", |_| {}),
+            ("gpu", |d| d.gpu = true),
+            ("usb", |d| d.usb = true),
+            ("input", |d| d.input = true),
+            ("gamepads", |d| d.gamepads = true),
+            ("webcam", |d| d.webcam = true),
+        ];
+        for (name, grant) in grants {
+            let mut ctx = sample_context();
+            grant(&mut ctx.permissions.devices);
+            let a = args_of(&ctx);
+            for p in [
+                "/sys/dev",
+                "/sys/devices",
+                "/sys/bus",
+                "/sys/class",
+                "/run/udev/data",
+            ] {
+                assert_eq!(
+                    has_seq(&a, &["--ro-bind-try", p, p]),
+                    name != "none",
+                    "{p} with {name}"
+                );
+            }
+        }
+    }
+
+    /// The X11 cookie is passed on only when the host has one and SAM
+    /// wrote the sandbox's copy: a cookie bind of a missing file stops the
+    /// start, and a copy left from before is not the host's.
+    #[test]
+    fn the_x11_cookie_is_passed_on_only_when_both_are_there() {
+        let t = tempfile::tempdir().unwrap();
+        for (host_cookie, written) in [(true, false), (false, true), (true, true)] {
+            let run = t.path().join(format!("{host_cookie}-{written}"));
+            fs::create_dir_all(&run).unwrap();
+            if written {
+                fs::write(run.join("Xauthority"), "cookie").unwrap();
+            }
+            let mut ctx = sample_context();
+            ctx.permissions.display.x11 = true;
+            ctx.runtime_dir = run.clone();
+            if !host_cookie {
+                ctx.host.sockets.xauthority = None;
+            }
+            let a = args_of(&ctx);
+            let both = host_cookie && written;
+            let cookie = run.join("Xauthority").to_string_lossy().into_owned();
+            assert_eq!(
+                has_seq(&a, &["--ro-bind", &cookie, "/run/user/1000/Xauthority"]),
+                both,
+                "host cookie {host_cookie}, written {written}"
+            );
+            assert_eq!(
+                env_in(&a, "XAUTHORITY").is_some(),
+                both,
+                "host cookie {host_cookie}, written {written}"
+            );
+        }
+    }
+
+    /// The display kind and the toolkits' backends follow what the app may
+    /// use and what the host has: never a display the sandbox does not
+    /// show, and none at all without a display.
+    #[test]
+    fn display_variables_name_only_displays_the_sandbox_shows() {
+        // (Wayland allowed, X11 allowed, host has Wayland, host has X11)
+        // → (XDG_SESSION_TYPE, QT_QPA_PLATFORM, GDK_BACKEND = SDL_VIDEODRIVER)
+        type Want = (&'static str, Option<&'static str>, Option<&'static str>);
+        let cases: [((bool, bool, bool, bool), Want); 7] = [
+            (
+                (true, true, true, true),
+                ("wayland", None, Some("wayland,x11")),
+            ),
+            (
+                (true, false, true, true),
+                ("wayland", Some("wayland"), Some("wayland")),
+            ),
+            ((false, true, true, true), ("x11", Some("xcb"), Some("x11"))),
+            ((false, false, true, true), ("tty", Some("offscreen"), None)),
+            ((true, true, false, true), ("x11", Some("xcb"), Some("x11"))),
+            (
+                (true, true, true, false),
+                ("wayland", Some("wayland"), Some("wayland")),
+            ),
+            ((true, true, false, false), ("tty", Some("offscreen"), None)),
+        ];
+        for ((wl, x, host_wl, host_x), (session, qt, gdk)) in cases {
+            let mut ctx = sample_context();
+            ctx.permissions.display.wayland = wl;
+            ctx.permissions.display.x11 = x;
+            if !host_wl {
+                ctx.host.sockets.wayland = None;
+            }
+            if !host_x {
+                ctx.host.sockets.x11 = None;
+            }
+            let a = args_of(&ctx);
+            let case = format!("allowed {wl}/{x}, host {host_wl}/{host_x}");
+            assert_eq!(
+                env_in(&a, "XDG_SESSION_TYPE").as_deref(),
+                Some(session),
+                "{case}"
+            );
+            assert_eq!(env_in(&a, "QT_QPA_PLATFORM").as_deref(), qt, "{case}");
+            assert_eq!(env_in(&a, "GDK_BACKEND").as_deref(), gdk, "{case}");
+            assert_eq!(env_in(&a, "SDL_VIDEODRIVER").as_deref(), gdk, "{case}");
+        }
+    }
+
+    /// The notes that a device or input method needs a bus come only when
+    /// it is asked for and the bus is not granted.
+    #[test]
+    fn notes_about_a_missing_bus_come_only_when_it_is_missing() {
+        let bt = sam_core::i18n::tr("Bluetooth needs the system D-Bus; not granted");
+        let im = sam_core::i18n::tr("Input method needs the session D-Bus; not granted");
+        for asked in [false, true] {
+            for bus in [DbusMode::None, DbusMode::Filtered] {
+                let mut ctx = sample_context();
+                ctx.permissions.devices.bluetooth = asked;
+                ctx.permissions.dbus.system.mode = bus;
+                let notes = Bubblewrap.build(&ctx).unwrap().notes;
+                let want = asked && bus == DbusMode::None;
+                assert_eq!(notes.contains(&bt), want, "Bluetooth {asked}, bus {bus:?}");
+
+                let mut ctx = sample_context();
+                ctx.permissions.integrations.input_method = asked;
+                ctx.permissions.dbus.session.mode = bus;
+                let c = Bubblewrap.build(&ctx).unwrap();
+                assert_eq!(
+                    c.notes.contains(&im),
+                    want,
+                    "input method {asked}, bus {bus:?}"
+                );
+                assert_eq!(
+                    env_in(&c.args, "IBUS_USE_PORTAL").is_some(),
+                    asked,
+                    "input method {asked}"
+                );
+            }
+        }
+    }
+
+    /// An app started in a folder it reaches only through a link (`~/link`
+    /// to a granted `/data/proj`) starts there, so relative names work.
+    #[test]
+    fn the_start_folder_reached_through_a_link_is_kept() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let real = root.join("proj");
+        fs::create_dir(&real).unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let mut ctx = sample_context();
+        ctx.permissions.filesystem.custom_read = vec![real.to_string_lossy().into_owned()];
+        ctx.owd = link.clone();
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--chdir", &link.to_string_lossy()]), "{a:?}");
+        // Control: a folder not shown at all falls back to the home.
+        ctx.owd = root.clone();
+        assert!(has_seq(&args_of(&ctx), &["--chdir", "/home/tester"]));
+    }
+
+    /// The sandbox's X11 display number is never the host's: 99, or 100
+    /// when the host's display is :99 itself.
+    #[test]
+    fn the_sandbox_display_number_is_never_the_hosts() {
+        let with = |d: Option<&str>| sam_core::host::Sockets {
+            x11_display: d.map(String::from),
+            ..Default::default()
+        };
+        assert_eq!(sandbox_x11_display(&with(Some(":99"))), 100);
+        assert_eq!(sandbox_x11_display(&with(Some(":99.0"))), 100);
+        assert_eq!(sandbox_x11_display(&with(Some(":0"))), 99);
+        assert_eq!(sandbox_x11_display(&with(None)), 99);
+    }
+
+    /// The cookie copy keeps every record for the host's display, wherever
+    /// it stands in the file, and an empty file gives an empty copy.
+    #[test]
+    fn every_cookie_for_the_display_is_copied() {
+        assert!(rewrite_xauthority(&[], "0", "99").is_empty());
+        let rec = |num: &str, cookie: &[u8]| {
+            let mut r = vec![0x01, 0x00];
+            for f in [
+                b"host".as_slice(),
+                num.as_bytes(),
+                b"MIT-MAGIC-COOKIE-1",
+                cookie,
+            ] {
+                r.extend_from_slice(&(f.len() as u16).to_be_bytes());
+                r.extend_from_slice(f);
+            }
+            r
+        };
+        let data = [rec("1", b"a"), rec("2", b"b"), rec("0", b"c")].concat();
+        assert_eq!(rewrite_xauthority(&data, "0", "99"), rec("99", b"c"));
+        let data = [
+            rec("0", b"a"),
+            rec("1", b"b"),
+            rec("2", b"c"),
+            rec("0", b"d"),
+        ]
+        .concat();
+        assert_eq!(
+            rewrite_xauthority(&data, "0", "99"),
+            [rec("99", b"a"), rec("99", b"d")].concat()
+        );
+    }
+
+    /// Device numbers are split as the kernel numbers them: udev's data
+    /// for a game controller is found under `c<major>:<minor>`.
+    #[test]
+    fn device_numbers_split_into_major_and_minor() {
+        use std::os::unix::fs::MetadataExt;
+        // Fixed by the kernel's list of devices: /dev/null is 1:3, /dev/tty 5:0.
+        for (dev, major, minor) in [("/dev/null", 1, 3), ("/dev/tty", 5, 0)] {
+            let rdev = fs::metadata(dev).unwrap().rdev();
+            assert_eq!(
+                (libc_major(rdev), libc_minor(rdev)),
+                (major, minor),
+                "{dev}"
+            );
+        }
+        // An input event node 13:300 and a large major (259:5), encoded as
+        // glibc's makedev does: minor bits 0-7 and 20-43, major bits 8-19
+        // and 44-63.
+        assert_eq!(
+            (libc_major(0x0010_0d2c), libc_minor(0x0010_0d2c)),
+            (13, 300)
+        );
+        assert_eq!((libc_major(0x0001_0305), libc_minor(0x0001_0305)), (259, 5));
     }
 }

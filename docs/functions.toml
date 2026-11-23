@@ -144,7 +144,7 @@ id = 10
 area = "C"
 promise = "The app sees only a private home folder and the folders you grant."
 code = ["sam-sandbox/src/lib.rs"]
-tests = ["links_in_etc_never_bring_sockets_or_devices", "a_user_folder_that_shows_more_is_not_shown", "a_writable_folder_stays_writable_in_a_read_only_home", "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "only_proper_variable_names_are_set", "user_folders_come_from_user_dirs_dirs"]
+tests = ["links_in_etc_never_bring_sockets_or_devices", "a_user_folder_that_shows_more_is_not_shown", "a_writable_folder_stays_writable_in_a_read_only_home", "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "only_proper_variable_names_are_set", "user_folders_come_from_user_dirs_dirs", "links_beside_a_shown_system_path_bring_only_allowed_targets", "top_level_system_paths_are_copied_as_they_are", "empty_arguments_and_options_open_nothing", "host_themes_are_shown_only_when_asked_for_without_the_home", "the_start_folder_reached_through_a_link_is_kept"]
 
 [[function]]
 id = 11
@@ -165,7 +165,7 @@ id = 12
 area = "C"
 promise = "Network: none, \"This computer only\" (selected ports), or full."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/netns.rs"]
-tests = ["localhost_network_leaves_netns_to_pasta", "only_listed_host_ports", "the_apps_ports_listen_on_loopback_only", "well_known_local_services_are_never_taken_over", "the_apps_ports_are_offered_on_this_computer_only", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "a_pasta_command_ending_in_the_separator_is_refused_not_a_panic", "the_status_shell_goes_between_the_separator_and_the_program"]
+tests = ["localhost_network_leaves_netns_to_pasta", "only_listed_host_ports", "the_apps_ports_listen_on_loopback_only", "well_known_local_services_are_never_taken_over", "the_apps_ports_are_offered_on_this_computer_only", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "a_pasta_command_ending_in_the_separator_is_refused_not_a_panic", "the_status_shell_goes_between_the_separator_and_the_program", "name_server_settings_are_shown_with_the_network_only"]
 
 [[function]]
 id = 13
@@ -213,6 +213,7 @@ tests = [
   "an_extra_socket_that_leads_to_a_dangerous_one_is_not_passed_in",
   "an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one",
   "a_wildcard_over_the_portal_is_dangerous",
+  "notes_about_a_missing_bus_come_only_when_it_is_missing",
 ]
 
 [[function]]
@@ -220,21 +221,21 @@ id = 14
 area = "C"
 promise = "Display: Wayland with a security context; X11 only when allowed, with its cost explained."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/wayland_ctx.rs", "sam-core/src/host.rs"]
-tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox_display_number", "the_x11_display_number_is_read_from_every_display_form", "the_x11_key_copy_is_private_and_follows_no_link"]
+tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox_display_number", "the_x11_display_number_is_read_from_every_display_form", "the_x11_key_copy_is_private_and_follows_no_link", "the_x11_cookie_is_passed_on_only_when_both_are_there", "display_variables_name_only_displays_the_sandbox_shows", "the_sandbox_display_number_is_never_the_hosts", "every_cookie_for_the_display_is_copied"]
 
 [[function]]
 id = 15
 area = "C"
 promise = "Sound, GPU, camera and game controllers only when allowed."
 code = ["sam-sandbox/src/lib.rs"]
-tests = ["a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "nothing_in_the_sound_relay_can_make_a_user_namespace", "a_relay_outside_a_sandbox_is_not_held", "a_too_long_socket_path_is_named_before_the_relay_starts", "a_launchs_sockets_fit_even_for_the_longest_app_id", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+tests = ["a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "nothing_in_the_sound_relay_can_make_a_user_namespace", "a_relay_outside_a_sandbox_is_not_held", "a_too_long_socket_path_is_named_before_the_relay_starts", "a_launchs_sockets_fit_even_for_the_longest_app_id", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "sound_and_bus_data_come_with_their_permissions", "device_information_comes_with_each_device_permission", "device_numbers_split_into_major_and_minor"]
 
 [[function]]
 id = 16
 area = "C"
 promise = "The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries)."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/kernel.rs", "sam-core/src/util.rs", "sam-runner/src/home_shared.rs"]
-tests = ["a_second_launch_never_takes_a_link_planted_meanwhile_for_the_users_own", "a_watch_read_back_from_disk_never_reaches_outside_the_home", "a_start_file_left_by_a_killed_launcher_is_still_moved_aside", "closing_an_app_that_ignores_it_still_finishes_its_launch", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "a_writable_part_of_the_home_holding_start_places_is_watched", "full_home_access_cannot_leave_anything_that_runs_later", "the_home_protections_hold_whatever_else_is_granted", "a_new_start_file_never_stays_silently", "start_places_follow_other_config_and_data_folders", "a_folder_that_cannot_be_watched_is_reported", "paths_are_resolved_through_links_also_where_they_do_not_exist_yet", "a_path_through_a_link_into_a_grant_is_visible", "a_missing_home_folder_stops_the_start", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "a_start_file_left_in_the_home_is_moved_aside_and_named", "protected_parents_are_locked_and_linked_keys_hidden", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter", "an_app_can_never_replace_the_programs_that_menu_entries_run", "sams_own_programs_are_read_only_wherever_an_app_could_write_them", "sams_own_programs_are_its_appimage_and_the_programs_beside_it", "places_behind_links_stay_protected_and_the_app_still_starts", "the_way_to_a_place_is_followed_link_by_link_as_the_app_follows_it", "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them"]
+tests = ["a_second_launch_never_takes_a_link_planted_meanwhile_for_the_users_own", "a_watch_read_back_from_disk_never_reaches_outside_the_home", "a_start_file_left_by_a_killed_launcher_is_still_moved_aside", "closing_an_app_that_ignores_it_still_finishes_its_launch", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "a_writable_part_of_the_home_holding_start_places_is_watched", "full_home_access_cannot_leave_anything_that_runs_later", "the_home_protections_hold_whatever_else_is_granted", "a_new_start_file_never_stays_silently", "start_places_follow_other_config_and_data_folders", "a_folder_that_cannot_be_watched_is_reported", "paths_are_resolved_through_links_also_where_they_do_not_exist_yet", "a_path_through_a_link_into_a_grant_is_visible", "a_missing_home_folder_stops_the_start", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "a_start_file_left_in_the_home_is_moved_aside_and_named", "protected_parents_are_locked_and_linked_keys_hidden", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter", "an_app_can_never_replace_the_programs_that_menu_entries_run", "sams_own_programs_are_read_only_wherever_an_app_could_write_them", "sams_own_programs_are_its_appimage_and_the_programs_beside_it", "places_behind_links_stay_protected_and_the_app_still_starts", "the_way_to_a_place_is_followed_link_by_link_as_the_app_follows_it", "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them", "what_cannot_be_moved_aside_is_deleted_whatever_it_is", "a_new_folder_above_start_places_is_moved_aside_once_as_a_whole"]
 
 [[function]]
 id = 17
@@ -466,6 +467,7 @@ promise = "Repair steps go from mild to strong, and each one can be undone."
 code = ["sam-runner/src/repair.rs", "sam-sandbox/src/lib.rs"]
 tests = ["steps_that_add_are_undone_and_tried_steps_are_no_hints", "only_an_ordinary_start_judges_repair_steps", "the_no_sandbox_hint_is_only_for_electron_where_it_is_blocked", "the_graphics_hint_is_only_for_apps_without_it", "the_chromium_sandbox_check_matches_what_this_computer_allows", "a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not", "a_repair_step_that_did_not_help_is_undone", "the_ladder_offers_only_what_can_help_and_says_what_it_costs", "compatibility_mode_needs_yes_and_says_why", "a_repair_step_says_what_it_changes_and_costs", "ladder_skips_applied_and_noop_steps", "a_writable_app_folder_is_offered_only_where_it_can_work", "undoing_repair_steps_restores_the_settings_from_before_the_first_step", "switching_off_one_repair_step_keeps_the_others", "only_plain_library_names_are_accepted", "system_copies_replace_only_bundled_libraries_by_plain_name",
   "undoing_repair_steps_keeps_what_the_person_changed_since",
+  "only_a_system_file_replaces_a_bundled_library",
 ]
 
 [[function]]
@@ -577,6 +579,7 @@ tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_names
   "the_install_hint_fits_the_distribution",
   "the_apparmor_advice_keeps_the_restriction_for_other_programs",
   "diagnostics_say_when_landlock_cannot_fence_abstract_sockets",
+  "the_bubblewrap_status_says_what_is_missing_and_nothing_else",
 ]
 
 [[function]]
