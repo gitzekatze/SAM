@@ -1311,6 +1311,16 @@ mod tests {
             "/run/dbus//system_bus_socket",
             "/run/user/1000/pulse/./native",
             "/run/user/1000/systemd//private",
+            // Plain spellings: each socket that hands out control of the
+            // computer or a way around the bus filter.
+            "/run/docker.sock",
+            "/var/run/docker.sock",
+            "/run/user/1000/podman/podman.sock",
+            "/run/containerd/containerd.sock",
+            "/run/dbus/system_bus_socket",
+            "/run/user/1000/bus",
+            "/run/libvirt/libvirt-sock",
+            "/run/user/1000/pulse/native",
         ] {
             assert!(dangerous_socket(s).is_some(), "{s}");
             let mut p = PermissionSet::strict_gui();
@@ -1318,5 +1328,9 @@ mod tests {
             assert_eq!(assess(&p).level, RiskLevel::Dangerous, "{s}");
         }
         assert!(dangerous_socket("/run/user/1000/kpxc_server").is_none());
+        assert!(dangerous_socket("/tmp/app.sock").is_none());
+        let mut p = PermissionSet::strict_gui();
+        p.sockets.custom = vec!["/tmp/app.sock".into()];
+        assert_eq!(assess(&p).level, RiskLevel::High, "an ordinary socket");
     }
 }
