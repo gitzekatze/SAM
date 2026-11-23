@@ -2538,7 +2538,9 @@ mod process_tests {
             // SAFETY: a signal to a thread that is not joined yet.
             unsafe { libc::pthread_kill(thread, libc::SIGURG) };
         }
-        (&a).write_all(b"x").unwrap();
+        // Fails only when the wait has ended already (its end of the
+        // connection is gone); the check below then says why.
+        let _ = (&a).write_all(b"x");
         let r = waiting.join().unwrap();
         // SAFETY: puts back the handling found before.
         unsafe { libc::sigaction(libc::SIGURG, &old, std::ptr::null_mut()) };
