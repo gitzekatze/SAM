@@ -3245,6 +3245,34 @@ mod tests {
         ));
     }
 
+    /// "All input devices" names every device it shows the app, and says
+    /// what the virtual one allows: typing and moving the mouse as the
+    /// person (audit: /dev/uinput was shown without being named).
+    #[test]
+    fn the_input_switch_names_every_device_it_shows() {
+        let devices = |input: bool| -> std::collections::BTreeSet<String> {
+            let mut ctx = sample_context();
+            ctx.permissions.devices.input = input;
+            ctx.permissions.devices.gamepads = false;
+            args_of(&ctx)
+                .windows(3)
+                .filter(|w| w[0].starts_with("--dev-bind"))
+                .map(|w| w[2].clone())
+                .collect()
+        };
+        let shown: Vec<String> = devices(true).difference(&devices(false)).cloned().collect();
+        assert!(shown.contains(&"/dev/uinput".to_string()), "{shown:?}");
+        let text = sam_core::permissions::permission_catalog()
+            .into_iter()
+            .find(|i| i.key == "devices.input")
+            .unwrap()
+            .description;
+        for d in &shown {
+            assert!(text.contains(d.as_str()), "{d} is not named in: {text}");
+        }
+        assert!(text.contains("type or move the mouse"), "{text}");
+    }
+
     /// "Game controllers" exposes only joysticks, never keyboards or mice.
     #[test]
     fn gamepads_only_exposes_joysticks() {
