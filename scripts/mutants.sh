@@ -28,6 +28,15 @@
 # - ten minutes per change (--timeout 600): with six changes at once the
 #   whole suite took about 240 s, so changes that make no difference were
 #   cut off and counted as caught (2026-11-23).
+# - memory limits where systemd can give them (a delegated user scope):
+#   the run gets MUTANTS_MEMORY (7G per change at once), no swap, and each
+#   copy's test programs a compartment of their own with
+#   MUTANTS_TEST_MEMORY (6G), through scripts/mutants-cgroup.sh as Cargo's
+#   test runner. A change that makes a test use memory without end then
+#   ends only that test (counted as caught); before, it filled the run's
+#   limit and systemd-oomd ended the whole run (2026-11-23, after 358 of
+#   2307 changes). Without such a scope the run goes on unlimited and says
+#   so.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 out="$here/target/mutants"
@@ -42,6 +51,7 @@ export TMPDIR="$out/copies"
 case "$out" in
     /tmp/* | /var/tmp/*) echo "the output folder must not be below /tmp or /var/tmp: $out" >&2; exit 2 ;;
 esac
+real_runtime=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 export XDG_RUNTIME_DIR="$run" SAM_REQUIRE_SANDBOX=1
 if command -v gpg >/dev/null && command -v gpgv >/dev/null; then export SAM_TEST_GPG=1; fi
 if [ "$1" = "--diff" ]; then
@@ -55,16 +65,46 @@ else
     sel=$(for f in "$@"; do printf -- '--file %s ' "$f"; done)
 fi
 cd "$here"
+jobs=${JOBS:-2}
+# The run's memory limits (see above). systemd-run needs the real runtime
+# folder to reach the user's service manager; the run gets its own inside.
+limited=""
+case "$here" in
+    *" "*) ;;
+    *) if command -v systemd-run >/dev/null \
+        && XDG_RUNTIME_DIR="$real_runtime" systemd-run --user --scope -q -p Delegate=yes true 2>/dev/null; then
+           limited=1
+       fi ;;
+esac
+[ -n "$limited" ] || echo "note: no delegated systemd user scope here, so no memory limits: a change that makes a test use memory without end can end the whole run"
+# Runs a command within the run's limit (when there is one).
+in_limit() {
+    if [ -n "$limited" ]; then
+        env XDG_RUNTIME_DIR="$real_runtime" systemd-run --user --scope -q -p Delegate=yes \
+            -p MemoryMax="${MUTANTS_MEMORY:-$((jobs * 7))G}" -p MemorySwapMax=0 \
+            env XDG_RUNTIME_DIR="$run" MUTANTS_TEST_MEMORY="${MUTANTS_TEST_MEMORY:-6G}" "$@"
+    else
+        "$@"
+    fi
+}
 echo "Baseline: the whole suite on the unchanged code (log: $out/baseline.log)"
-if ! cargo test --workspace --no-fail-fast --config "env.TMPDIR.value=\"$tests_tmp\"" \
+if ! in_limit cargo test --workspace --no-fail-fast --config "env.TMPDIR.value=\"$tests_tmp\"" \
     --config 'env.TMPDIR.force=true' > "$out/baseline.log" 2>&1; then
     echo "The unchanged code fails here, so no change could be judged:"
     grep -E '^test .* FAILED$|panicked at' -A1 "$out/baseline.log" | head -20
     exit 1
 fi
+if [ -n "$limited" ]; then
+    # Each copy's test programs in a compartment of their own.
+    triple=$(rustc -vV | sed -n 's/^host: //p')
+    set -- "$here/scripts/mutants-cgroup.sh" start cargo mutants --cargo-arg=--config \
+        --cargo-arg="target.$triple.runner=[\"$here/scripts/mutants-cgroup.sh\",\"test\"]"
+else
+    set -- cargo mutants
+fi
 # shellcheck disable=SC2086 # $sel is a list of options on purpose
-cargo mutants $sel --test-workspace=true --baseline=skip --timeout 600 --build-timeout 600 \
+in_limit "$@" $sel --test-workspace=true --baseline=skip --timeout 600 --build-timeout 600 \
     --cargo-arg=--config --cargo-arg="env.TMPDIR.value=\"$tests_tmp\"" \
     --cargo-arg=--config --cargo-arg='env.TMPDIR.force=true' \
-    -j "${JOBS:-2}" -o "$out" || true
+    -j "$jobs" -o "$out" || true
 python3 "$here/scripts/mutants-report.py" "$out"
