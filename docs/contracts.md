@@ -328,7 +328,7 @@ Devices appear under these names: GPUs as /dev/dri/card* and renderD*, NVIDIA as
 - **SAM functions that rely on it:** [15](functions.md#15)
 - **Quick check:** none (only the tests below)
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Device checks only assert where the computer has the device; CI has no GPU, sound card, camera or gamepad.)
-- **Covers:** `path:/dev/bus/usb`, `path:/dev/dri`, `path:/dev/dri/card0`, `path:/dev/dri/renderD128`, `path:/dev/input`, `path:/dev/nvidia`, `path:/dev/snd`, `path:/dev/uinput`, `path:/dev/video`, `path:/run/udev/data`, `path:/sys/bus`, `path:/sys/class`, `path:/sys/dev`, `path:/sys/devices`, `path:/sys/devices/system/cpu`, `path:/sys/module`
+- **Covers:** `path:/dev/bus/usb`, `path:/dev/dri`, `path:/dev/dri/card0`, `path:/dev/dri/renderD128`, `path:/dev/input`, `path:/dev/nvidia`, `path:/dev/nvidia0`, `path:/dev/nvidiactl`, `path:/dev/snd`, `path:/dev/uinput`, `path:/dev/video`, `path:/run/udev/data`, `path:/sys/bus`, `path:/sys/class`, `path:/sys/dev`, `path:/sys/devices`, `path:/sys/devices/system/cpu`, `path:/sys/module`
 - **If it breaks:** A renamed device is simply not passed in: the app loses that device, never gains another. Add the new name in sam-sandbox (devices) and host.rs (gpu_devices).
 
 ## wayland-socket

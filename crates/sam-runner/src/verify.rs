@@ -1266,7 +1266,8 @@ mod tests {
         let key = |h: &HostInfo| check_key(&app, &cfg, h);
         let same = key(&host);
         assert_eq!(key(&host.clone()), same, "the same computer");
-        let changes: [(&str, fn(&mut HostInfo)); 5] = [
+        type Change = fn(&mut HostInfo);
+        let changes: [(&str, Change); 5] = [
             ("no GPU", |h| h.gpu_devices.clear()),
             ("another GPU", |h| h.gpu_devices.truncate(2)),
             ("no D-Bus proxy", |h| h.tools.xdg_dbus_proxy = None),
