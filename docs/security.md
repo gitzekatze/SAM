@@ -926,6 +926,14 @@ through. SAM itself writes those files without following links.
 Running the AppImage's own `--appimage-extract` is a fallback that needs your
 consent, and also runs in a sandbox.
 
+Adding an AppImage and *Unpack Again* first copy the file into SAM's own
+data folder, reading it once; its checksum, its signature and what is
+unpacked all come from that copy. Another program with access to the
+AppImage's folder can no longer swap the file between SAM's check and the
+unpacking, so SAM never records one file and unpacks another
+(`what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped`). A
+file swapped there afterwards is noticed like any changed AppImage.
+
 Nothing in an unpack sandbox can make a user namespace of its own
 (Bubblewrap's `--disable-userns` and the syscall filter): one would give
 the program inside full rights over a fresh network namespace, the usual

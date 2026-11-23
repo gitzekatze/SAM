@@ -538,7 +538,7 @@ id = 29
 area = "F"
 promise = "SAM notices AppImages that were moved or changed."
 code = ["sam-intake/src/fingerprint.rs", "sam-runner/src/ops/maintain.rs"]
-tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
+tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
 
 [[area]]
 id = "G"
