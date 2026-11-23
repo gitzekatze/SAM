@@ -140,8 +140,13 @@ impl Registry {
         valid_id(id) && self.paths.app_file(id).exists()
     }
 
-    /// Resolve a user-supplied reference: exact id, unique id prefix,
-    /// slug match or case-insensitive name match.
+    /// Resolve a user-supplied reference: the exact id, or the one app
+    /// that the reference names by any rule: an id prefix, its name slug,
+    /// its name (case-insensitive) or a part of its name. The rules count
+    /// together, never one before the other: an AppImage chooses its own
+    /// name, so an app named `vlc` must not capture a command meant for
+    /// "VLC media player", which `vlc` names too (audit G-F7: an exact name
+    /// won over every other match, without an ambiguity error).
     pub fn resolve(&self, query: &str) -> Result<AppEntry> {
         if let Some(a) = self.get(query)? {
             return Ok(a);
@@ -149,33 +154,42 @@ impl Registry {
         let all = self.list()?;
         let q = query.to_lowercase();
         let qslug = slugify(query);
-        let tiers: [&dyn Fn(&AppEntry) -> bool; 4] = [
-            &|a| a.name.to_lowercase() == q,
-            &|a| a.id.starts_with(&q),
-            &|a| !qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")),
-            &|a| a.name.to_lowercase().contains(&q),
-        ];
-        for tier in tiers {
-            let m: Vec<&AppEntry> = all.iter().filter(|a| tier(a)).collect();
-            match m.len() {
-                0 => continue,
-                1 => return Ok(m[0].clone()),
-                _ => bail!(
-                    "'{query}' is ambiguous: {}",
-                    m.iter()
-                        .map(|a| a.id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-            }
+        let m: Vec<&AppEntry> = all
+            .iter()
+            .filter(|a| {
+                let name = a.name.to_lowercase();
+                a.id.starts_with(&q)
+                    || (!qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")))
+                    || name.contains(&q)
+            })
+            .collect();
+        match m.as_slice() {
+            [one] => Ok((*one).clone()),
+            [] => bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "no registered app matches '{query}' (see `sam-jail list`)",
+                    &[("query", &query)]
+                )
+            ),
+            many => bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "'{query}' names more than one app: {apps}. Use the app's ID.",
+                    &[(
+                        "query",
+                        &query
+                    ), (
+                        "apps",
+                        &many
+                            .iter()
+                            .map(|a| format!("{} ({})", a.id, a.name))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )]
+                )
+            ),
         }
-        bail!(
-            "{}",
-            sam_core::i18n::trf(
-                "no registered app matches '{query}' (see `sam-jail list`)",
-                &[("query", &query)]
-            )
-        )
     }
 
     pub fn save(&self, entry: &mut AppEntry) -> Result<()> {
@@ -885,6 +899,45 @@ mod tests {
         assert!(reg.remove(&a.id).unwrap());
         assert!(reg.get(&a.id).unwrap().is_none());
         assert!(reg.get("../etc/passwd").unwrap().is_none());
+    }
+
+    /// An AppImage chooses its own name: an app named `vlc` does not
+    /// capture a command meant for "VLC media player", which `vlc` also
+    /// names; the reference is refused as naming more than one app, and
+    /// each app is still found by its ID or a reference only it matches
+    /// (audit G-F7: the exact name won, so `sam-jail set vlc network.mode
+    /// full` changed the hostile app without a word).
+    #[test]
+    fn an_apps_own_name_never_captures_a_reference_to_another_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let reg = Registry::new(&Paths::rooted(tmp.path()));
+        let mut real = AppEntry {
+            id: "appimage-vlc-media-player-9f3c".into(),
+            name: "VLC media player".into(),
+            ..Default::default()
+        };
+        reg.save(&mut real).unwrap();
+        // Before the hostile app arrives, `vlc` names the real one.
+        assert_eq!(reg.resolve("vlc").unwrap().id, real.id);
+        let mut hostile = AppEntry {
+            id: "appimage-vlc-1234".into(),
+            name: "vlc".into(),
+            ..Default::default()
+        };
+        reg.save(&mut hostile).unwrap();
+        let err = reg.resolve("vlc").unwrap_err().to_string();
+        assert!(
+            err.contains(&real.id) && err.contains(&hostile.id),
+            "not refused as naming both: {err}"
+        );
+        // A name the hostile app copies from part of the real one is
+        // refused too ("media" names both).
+        hostile.name = "media".into();
+        reg.save(&mut hostile).unwrap();
+        assert!(reg.resolve("media").is_err());
+        assert_eq!(reg.resolve("vlc media player").unwrap().id, real.id);
+        assert_eq!(reg.resolve(&real.id).unwrap().id, real.id);
+        assert_eq!(reg.resolve("appimage-vlc-1").unwrap().id, hostile.id);
     }
 
     /// A damaged preset is moved aside once; a preset from a newer SAM is
