@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 27 proven by passing tests, 13 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 656 tests in all.
+**41 functions:** 27 proven by passing tests, 13 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 667 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -19,7 +19,7 @@
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 10 | ✅ |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 11 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 16 | ✅ |
-| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 26 | ✅ 🆕 8 new tests since the report |
+| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 37 | ✅ 🆕 19 new tests since the report |
 | 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 25 | ✅ |
 | 9 | [Things an app printed can never grant it access on their own; SAM always asks.](#9) | sam-runner | 4 | ✅ 🆕 1 new test since the report |
 | 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox | 11 | ✅ |
@@ -223,7 +223,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`network_and_x11_high`](../crates/sam-core/src/risk.rs#L1063) | Full network together with X11 makes the settings think twice (high risk). | ✅ |
 | [`each_dangerous_setting_produces_its_warning`](../crates/sam-core/src/warnings.rs#L312) | Dangerous settings (X11, full home, system bus, network an app does not need) each produce a warning. | ✅ |
 | [`strict_has_no_danger`](../crates/sam-core/src/warnings.rs#L334) | SAM's strictest window profile produces no danger warning. | ✅ |
-| [`x11_warning_can_be_disabled`](../crates/sam-core/src/warnings.rs#L341) | The X11 warning disappears when the user turns it off in the preferences. | ✅ |
+| [`x11_warning_can_be_disabled`](../crates/sam-core/src/warnings.rs#L739) | The X11 warning disappears when the user turns it off in the preferences. | ✅ |
 | [`tags_and_the_risk_list_use_the_same_words`](../crates/sam-profile/src/tags.rs#L262) | One name per permission: where the risk list names a permission that also has a tag, both use the same words (regression: "Audio" vs "Sound", "GPU" vs "GPU acceleration", "Show in folder"). | ✅ |
 | [`folder_explanations_name_the_path`](../crates/sam-gtk/src/all_perms.rs#L1494) | Personal folders explain where they are; other permissions keep their description unchanged. | ✅ |
 | [`risk_has_the_same_three_words_everywhere`](../crates/sam-core/src/risk.rs#L887) | The command line and the window name risk with the same three words, and the command line's filter understands both names. | ✅ |
@@ -244,6 +244,17 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_sound_servers_own_socket_is_dangerous_as_an_extra_socket`](../crates/sam-core/src/risk.rs#L1295) | The sound server's own socket listed as an extra socket is as dangerous as "Sound without SAM's relay" (review SB-4); PipeWire's stays at the level of "Direct PipeWire access". | 🆕 new |
 | [`a_function_of_a_password_service_counts_with_the_network`](../crates/sam-core/src/risk.rs#L1257) | A function rule of a password service reaches the stored passwords as the allowed name does: with full network the app "can send what it reads" (review 2026-11-23). | 🆕 new |
 | [`a_dangerous_socket_is_known_however_it_is_written`](../crates/sam-core/src/risk.rs#L1308) | A dangerous socket is known however its path is written: `.` and doubled `/` count for nothing, as for the kernel (review 2026-11-23: `/run/dbus//system_bus_socket` read as an ordinary extra socket). | 🆕 new |
+| [`each_credential_store_in_a_full_home_is_named_as_exposed_keys`](../crates/sam-core/src/warnings.rs#L358) | With the whole home granted, each credential store on its own (SSH keys, GnuPG keys, the other hidden files) gives the danger warning that private keys are visible; with all three off there is none. | 🆕 new |
+| [`only_the_full_session_bus_is_named_as_an_escape`](../crates/sam-core/src/warnings.rs#L383) | Only an unfiltered session bus is named as a way out of the sandbox; a filtered bus or none is not. | 🆕 new |
+| [`dangerous_bus_names_and_a_missing_proxy_are_named_for_the_filtered_bus_only`](../crates/sam-core/src/warnings.rs#L404) | On a filtered session bus, an allowed name that reaches outside the sandbox gives a danger warning, and a missing xdg-dbus-proxy is named. | 🆕 new |
+| [`a_wildcard_over_a_blocked_name_is_named_for_the_filtered_bus_only`](../crates/sam-core/src/warnings.rs#L433) | A wildcard that also covers a blocked name is named only when the filtered bus would use it: not for a filter without such a wildcard, and not for a full or no session bus, where the lists do not apply. | 🆕 new |
+| [`each_raw_device_gives_the_raw_device_danger`](../crates/sam-core/src/warnings.rs#L465) | Raw input devices (keystrokes), raw USB and raw sound devices each give the danger warning on their own; the strict profile none. | 🆕 new |
+| [`raw_backend_arguments_are_named_when_there_are_some`](../crates/sam-core/src/warnings.rs#L487) | Unchecked Bubblewrap arguments are named when there are some, and only then. | 🆕 new |
+| [`no_display_is_named_only_without_any_display`](../crates/sam-core/src/warnings.rs#L499) | "Cannot open windows" is said only with neither Wayland nor X11; a terminal program gets its own notice instead. | 🆕 new |
+| [`network_advice_fits_the_setting_and_the_apps_need`](../crates/sam-core/src/warnings.rs#L532) | The network advice fits both the setting and what the app seems to need: "may not be needed" only for network on and not needed, "network is off" only for network off and needed. | 🆕 new |
+| [`unusable_user_namespaces_are_named_only_where_they_are`](../crates/sam-core/src/warnings.rs#L566) | Unusable user namespaces are a danger notice on such a computer only; setuid Bubblewrap makes them usable again. | 🆕 new |
+| [`missing_display_and_sound_are_named_only_when_the_app_would_miss_them`](../crates/sam-core/src/warnings.rs#L594) | A missing Wayland socket, X11 display or sound server is named only when the app uses it, the host lacks it and no fallback is there. | 🆕 new |
+| [`missing_sound_names_pipewire_pulse_when_pipewire_runs`](../crates/sam-core/src/warnings.rs#L722) | Without pipewire-pulse the sound notice names it when PipeWire runs. | 🆕 new |
 
 **Code:** [`sam-core/src/permissions.rs`](../crates/sam-core/src/permissions.rs), [`sam-core/src/risk.rs`](../crates/sam-core/src/risk.rs), [`sam-core/src/warnings.rs`](../crates/sam-core/src/warnings.rs), [`sam-gtk/src/all_perms.rs`](../crates/sam-gtk/src/all_perms.rs)
 

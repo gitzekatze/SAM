@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-92 tests.
+103 tests.
 
 | Promise | Test |
 |---|---|
@@ -106,7 +106,18 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Names that would show other than they are lose the characters that do it (audit I-F12): a direction override (`invoice\u{202E}fdp.exe` shows as `invoiceexe.pdf`), invisible spaces and joiners between letters, tag characters, 8-bit control codes. | [`names_lose_direction_overrides_and_invisible_characters`](../crates/sam-core/src/util.rs#L854) |
 | Dangerous settings (X11, full home, system bus, network an app does not need) each produce a warning. | [`each_dangerous_setting_produces_its_warning`](../crates/sam-core/src/warnings.rs#L312) |
 | SAM's strictest window profile produces no danger warning. | [`strict_has_no_danger`](../crates/sam-core/src/warnings.rs#L334) |
-| The X11 warning disappears when the user turns it off in the preferences. | [`x11_warning_can_be_disabled`](../crates/sam-core/src/warnings.rs#L341) |
+| With the whole home granted, each credential store on its own (SSH keys, GnuPG keys, the other hidden files) gives the danger warning that private keys are visible; with all three off there is none. | [`each_credential_store_in_a_full_home_is_named_as_exposed_keys`](../crates/sam-core/src/warnings.rs#L358) |
+| Only an unfiltered session bus is named as a way out of the sandbox; a filtered bus or none is not. | [`only_the_full_session_bus_is_named_as_an_escape`](../crates/sam-core/src/warnings.rs#L383) |
+| On a filtered session bus, an allowed name that reaches outside the sandbox gives a danger warning, and a missing xdg-dbus-proxy is named. | [`dangerous_bus_names_and_a_missing_proxy_are_named_for_the_filtered_bus_only`](../crates/sam-core/src/warnings.rs#L404) |
+| A wildcard that also covers a blocked name is named only when the filtered bus would use it: not for a filter without such a wildcard, and not for a full or no session bus, where the lists do not apply. | [`a_wildcard_over_a_blocked_name_is_named_for_the_filtered_bus_only`](../crates/sam-core/src/warnings.rs#L433) |
+| Raw input devices (keystrokes), raw USB and raw sound devices each give the danger warning on their own; the strict profile none. | [`each_raw_device_gives_the_raw_device_danger`](../crates/sam-core/src/warnings.rs#L465) |
+| Unchecked Bubblewrap arguments are named when there are some, and only then. | [`raw_backend_arguments_are_named_when_there_are_some`](../crates/sam-core/src/warnings.rs#L487) |
+| "Cannot open windows" is said only with neither Wayland nor X11; a terminal program gets its own notice instead. | [`no_display_is_named_only_without_any_display`](../crates/sam-core/src/warnings.rs#L499) |
+| The network advice fits both the setting and what the app seems to need: "may not be needed" only for network on and not needed, "network is off" only for network off and needed. | [`network_advice_fits_the_setting_and_the_apps_need`](../crates/sam-core/src/warnings.rs#L532) |
+| Unusable user namespaces are a danger notice on such a computer only; setuid Bubblewrap makes them usable again. | [`unusable_user_namespaces_are_named_only_where_they_are`](../crates/sam-core/src/warnings.rs#L566) |
+| A missing Wayland socket, X11 display or sound server is named only when the app uses it, the host lacks it and no fallback is there. | [`missing_display_and_sound_are_named_only_when_the_app_would_miss_them`](../crates/sam-core/src/warnings.rs#L594) |
+| Without pipewire-pulse the sound notice names it when PipeWire runs. | [`missing_sound_names_pipewire_pulse_when_pipewire_runs`](../crates/sam-core/src/warnings.rs#L722) |
+| The X11 warning disappears when the user turns it off in the preferences. | [`x11_warning_can_be_disabled`](../crates/sam-core/src/warnings.rs#L739) |
 | Nothing past the filter reaches past the terminal. | [`nothing_past_the_filter_reaches_past_the_terminal`](../crates/sam-core/tests/terminal_fuzz.rs#L440) |
 | The model itself finds what it should: each known way past a filter, read without SAM's filter, counts as dangerous (so a passing fuzz run means something). | [`the_model_recognizes_the_known_attacks`](../crates/sam-core/tests/terminal_fuzz.rs#L514) |
 
@@ -742,4 +753,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 656 automated Rust tests plus 7 scripted checks.
+Total: 667 automated Rust tests plus 7 scripted checks.
