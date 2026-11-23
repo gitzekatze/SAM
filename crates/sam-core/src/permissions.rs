@@ -946,14 +946,19 @@ impl PermissionSet {
                 crate::i18n::trf("'{key}' is not a settable key", &[("key", &key)])
             )
         })?;
-        let existing = obj.get(*last);
-        if existing.is_none() && !LEFT_OUT_WHEN_EMPTY.iter().any(|(k, _)| *k == key) {
-            bail!(
-                "{}",
-                crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
-            );
-        }
-        let new_val = parse_value(raw, existing);
+        // A key left out while it has its default is read as that default,
+        // so an empty list takes comma-separated input like any other list.
+        let left_out = match obj.get(*last) {
+            Some(_) => None,
+            None => match LEFT_OUT_WHEN_EMPTY.iter().find(|(k, _)| *k == key) {
+                Some((_, empty)) => Some(serde_json::from_str::<serde_json::Value>(empty)?),
+                None => bail!(
+                    "{}",
+                    crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
+                ),
+            },
+        };
+        let new_val = parse_value(raw, obj.get(*last).or(left_out.as_ref()));
         obj.insert((*last).to_string(), new_val);
         *self = serde_json::from_value(v).with_context(|| {
             crate::i18n::trf(
@@ -1342,6 +1347,33 @@ mod tests {
         assert!(p.set_key("network.bogus", "1").is_err());
         assert!(p.set_key("network.mode", "sideways").is_err());
         assert_eq!(p.get_key("network.mode").unwrap(), "full");
+    }
+
+    /// A list the saved form leaves out while it is empty (function and
+    /// signal rules) takes comma-separated input like every other list,
+    /// also while it is still empty.
+    #[test]
+    fn an_empty_list_left_out_of_the_saved_form_takes_comma_separated_input() {
+        let mut p = PermissionSet::default();
+        p.set_key("dbus.session.calls", "org.example.App=*")
+            .unwrap();
+        assert_eq!(p.dbus.session.calls, vec!["org.example.App=*"]);
+        p.set_key(
+            "dbus.session.broadcasts",
+            "org.example.App=@/a, org.example.B=*",
+        )
+        .unwrap();
+        assert_eq!(
+            p.dbus.session.broadcasts,
+            vec!["org.example.App=@/a", "org.example.B=*"]
+        );
+        p.set_key("dbus.session.calls", "").unwrap();
+        assert!(p.dbus.session.calls.is_empty());
+        p.set_key("dbus.session.calls", r#"["org.example.C=*"]"#)
+            .unwrap();
+        assert_eq!(p.dbus.session.calls, vec!["org.example.C=*"]);
+        p.set_key("advanced.landlock", "true").unwrap();
+        assert_eq!(p.advanced.landlock, Some(true));
     }
 
     /// A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it.
