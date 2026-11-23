@@ -47,6 +47,9 @@ yn '[ -e "$SAM_MATRIX_EXTRA/data.txt" ]' EXTRA_READ
 yn '( echo x > "$SAM_MATRIX_EXTRA/new.txt" )' EXTRA_WRITE
 yn '( echo x > "$APPDIR/portable.ini" )' APPDIR_WRITE
 yn '[ -e "$HOME/marker" ]' MARKER
+yn 'grep -q matrix-theme "$HOME/.config/gtk-3.0/settings.ini"' THEME
+yn 'grep -q file:// "$HOME/.config/gtk-3.0/bookmarks"' BOOKMARKS
+yn 'grep -q sftp:// "$HOME/.config/gtk-3.0/servers"' SERVERS
 touch "$HOME/marker" 2>/dev/null
 yn '[ -e /usr/share/sam-matrix-never ] || [ -d /usr/include ]' FULL_USR
 yn 'unshare -U true' USERNS
@@ -128,6 +131,13 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     fs::write(home.join(".gnupg/pubring.kbx"), "keys").unwrap();
     fs::write(home.join(".hidden-note"), "note").unwrap();
     fs::write(home.join("Documents/report.txt"), "hello").unwrap();
+    // Theme settings, and next to them the file chooser's bookmarks and
+    // server list, which name the person's folders and servers.
+    let gtk3 = home.join(".config/gtk-3.0");
+    fs::create_dir_all(&gtk3).unwrap();
+    fs::write(gtk3.join("settings.ini"), "[Settings]\ngtk-theme-name=matrix-theme\n").unwrap();
+    fs::write(gtk3.join("bookmarks"), "file:///home/tester/Secret%20project\n").unwrap();
+    fs::write(gtk3.join("servers"), "<bookmark href=\"sftp://me@work.example\"/>\n").unwrap();
     let extra = root.join("extra");
     fs::create_dir_all(&extra).unwrap();
     fs::write(extra.join("data.txt"), "data").unwrap();
@@ -646,11 +656,28 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         p.advanced.landlock = Some(true);
         launch("strict-filters", p);
 
-        for flag in [false, true] {
-            let mut p = base();
-            p.advanced.host_themes = flag;
-            launch("themes", p);
-        }
+        // Theme settings: shown read-only with the switch, but not the
+        // file chooser's bookmarks and server list next to them, unless a
+        // grant shows the folder itself.
+        let mut p = base();
+        p.advanced.host_themes = false;
+        let r = launch("no-themes", p);
+        assert_eq!((r["THEME"].as_str(), r["BOOKMARKS"].as_str()), ("no", "no"));
+        let mut p = base();
+        p.advanced.host_themes = true;
+        let r = launch("themes", p);
+        assert_eq!(r["THEME"], "yes", "the theme settings are shown");
+        assert_eq!(r["BOOKMARKS"], "no", "the bookmarks stay out");
+        assert_eq!(r["SERVERS"], "no", "the server list stays out");
+        let mut p = base();
+        p.advanced.host_themes = true;
+        p.filesystem.custom_read = vec![gtk3.display().to_string()];
+        let r = launch("themes-folder-granted", p);
+        assert_eq!(
+            (r["THEME"].as_str(), r["BOOKMARKS"].as_str()),
+            ("yes", "yes"),
+            "a grant of the folder itself shows the bookmarks"
+        );
     });
     c.section("running-app-and-its-layer", || {
         // A running app cannot lose its sandbox or be unpacked again.

@@ -32,7 +32,7 @@ proves it, is in [threat-model.md](threat-model.md).
 
 | Path in the sandbox | What it is |
 |---|---|
-| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus only the folders you granted |
+| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus the folders you granted. Also shown, read-only: your fonts (`~/.local/share/fonts`, `~/.fonts`, `~/.config/fontconfig`) and, with *Host theme settings* (on by default), your desktop's look: the GTK, Qt and KDE settings (`~/.config/gtk-3.0`, `~/.config/gtk-4.0`, `~/.config/kdeglobals` and similar), icons and themes. The file chooser's bookmarks and server list in the GTK folders stay out, unless you grant their folder |
 | `/opt/app` | the unpacked app, read-only |
 | `/usr/lib`, `/usr/bin` | the system's libraries and programs, read-only (all of `/usr` with `advanced.host_runtime full` or compatibility mode) |
 | `/usr/share/…` | selected shared data (fonts, icons, locales, themes), read-only |
@@ -56,8 +56,8 @@ proves it, is in [threat-model.md](threat-model.md).
   terminal of SAM's own instead (see [Terminal programs](#terminal-programs)).
   Either way it cannot type commands into your shell (`TIOCSTI`).
 - **Clean environment:** cleared, then only safe variables are set.
-- **Your ids:** the app runs with your user and group id, also with *Local
-  network only*, where it would otherwise appear as root.
+- **Your ids:** the app runs with your user and group id, also with *This
+  computer only*, where it would otherwise appear as root.
 
 ---
 

@@ -605,6 +605,18 @@ const THEME_FILES: &[&str] = &[
     ".local/share/color-schemes",
 ];
 
+/// Files inside the theme folders above that are not theme settings: the
+/// file chooser's bookmarks and server list name the person's folders and
+/// servers. With only the theme settings shown, they stay out (an empty
+/// file); a grant that shows them anyway (the whole home, the folder
+/// itself) keeps them.
+const THEME_PRIVATE_FILES: &[&str] = &[
+    ".config/gtk-3.0/bookmarks",
+    ".config/gtk-3.0/servers",
+    ".config/gtk-4.0/bookmarks",
+    ".config/gtk-4.0/servers",
+];
+
 /// The value a forwarded variable gets inside the sandbox. When SAM's
 /// window shows a language of its own, `LANGUAGE` is the system's from
 /// before, so an app started from the window keeps the user's language.
@@ -1750,6 +1762,17 @@ impl Section<'_> {
             for t in THEME_FILES {
                 let at = bind_place(&self.views, &home.join(t));
                 mount(&at, &|m| m.ro(&at));
+            }
+            // Deeper than its folder, so mounted after it. Only a plain
+            // file: a link inside leads where the sandbox shows nothing,
+            // and Bubblewrap cannot mount over a link.
+            for f in THEME_PRIVATE_FILES {
+                let at = home.join(f);
+                if !self.views.visible(&at)
+                    && fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_file())
+                {
+                    mount(&at, &|m| m.op2("--ro-bind", "/dev/null", &at));
+                }
             }
         }
         // Extra folders, at their resolved place: what the app sees there.
