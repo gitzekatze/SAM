@@ -307,7 +307,10 @@ fn host_tools_that_start_programs_outside_meet_their_stand_ins() {
         .collect();
     assert_eq!(names, ["systemd-run", "flatpak-spawn"]);
     let tmp = tempfile::tempdir().unwrap();
-    let (bin, lib) = (tmp.path().join("usr/bin"), tmp.path().join("usr/lib/systemd"));
+    let (bin, lib) = (
+        tmp.path().join("usr/bin"),
+        tmp.path().join("usr/lib/systemd"),
+    );
     fs::create_dir_all(&bin).unwrap();
     fs::create_dir_all(&lib).unwrap();
     let real = "#!/bin/sh\necho ESCAPED\n";
@@ -326,7 +329,11 @@ fn host_tools_that_start_programs_outside_meet_their_stand_ins() {
     // The control: outside a sandbox the "host tools" run.
     for t in &tools {
         let out = Command::new(t).output().unwrap();
-        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ESCAPED", "{t}");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "ESCAPED",
+            "{t}"
+        );
     }
 
     // SAM's stand-ins, as every start writes them, and its arguments.
@@ -349,12 +356,23 @@ fn host_tools_that_start_programs_outside_meet_their_stand_ins() {
         String::from_utf8_lossy(&spawn.stdout),
         String::from_utf8_lossy(&spawn.stderr),
     );
-    assert!(!spawn.status.success(), "flatpak-spawn refuses: {stdout} {stderr}");
+    assert!(
+        !spawn.status.success(),
+        "flatpak-spawn refuses: {stdout} {stderr}"
+    );
     assert!(
         stderr.contains("flatpak-spawn: not available in SAM's sandbox") && stdout.is_empty(),
         "the stand-in answered: {stdout} {stderr}"
     );
-    let run = inside(&[tools[0], "--user", "--scope", "--unit=x.scope", "sh", "-c", "echo ran"]);
+    let run = inside(&[
+        tools[0],
+        "--user",
+        "--scope",
+        "--unit=x.scope",
+        "sh",
+        "-c",
+        "echo ran",
+    ]);
     assert_eq!(
         String::from_utf8_lossy(&run.stdout).trim(),
         "ran",

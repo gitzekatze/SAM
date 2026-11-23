@@ -60,7 +60,10 @@ fn commands_below(
         let page_s: &'static str = Box::leak(page.clone().into_boxed_str());
         let words_s: &'static str = Box::leak(words.clone().into_boxed_str());
         out.push((
-            sub.clone().name(page_s).display_name(page_s).bin_name(words_s),
+            sub.clone()
+                .name(page_s)
+                .display_name(page_s)
+                .bin_name(words_s),
             page.clone(),
         ));
         commands_below(sub, &page, &words, out);
@@ -79,7 +82,9 @@ mod tests {
         write_man_pages(d.path()).unwrap();
         let mut named = std::collections::BTreeSet::new();
         for e in std::fs::read_dir(d.path()).unwrap().flatten() {
-            let text = std::fs::read_to_string(e.path()).unwrap().replace("\\-", "-");
+            let text = std::fs::read_to_string(e.path())
+                .unwrap()
+                .replace("\\-", "-");
             for (i, _) in text.match_indices("(1)") {
                 let start = text[..i]
                     .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))

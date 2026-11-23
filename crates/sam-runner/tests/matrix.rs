@@ -195,9 +195,21 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     // server list, which name the person's folders and servers.
     let gtk3 = home.join(".config/gtk-3.0");
     fs::create_dir_all(&gtk3).unwrap();
-    fs::write(gtk3.join("settings.ini"), "[Settings]\ngtk-theme-name=matrix-theme\n").unwrap();
-    fs::write(gtk3.join("bookmarks"), "file:///home/tester/Secret%20project\n").unwrap();
-    fs::write(gtk3.join("servers"), "<bookmark href=\"sftp://me@work.example\"/>\n").unwrap();
+    fs::write(
+        gtk3.join("settings.ini"),
+        "[Settings]\ngtk-theme-name=matrix-theme\n",
+    )
+    .unwrap();
+    fs::write(
+        gtk3.join("bookmarks"),
+        "file:///home/tester/Secret%20project\n",
+    )
+    .unwrap();
+    fs::write(
+        gtk3.join("servers"),
+        "<bookmark href=\"sftp://me@work.example\"/>\n",
+    )
+    .unwrap();
     let extra = root.join("extra");
     fs::create_dir_all(&extra).unwrap();
     fs::write(extra.join("data.txt"), "data").unwrap();

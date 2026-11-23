@@ -260,9 +260,13 @@ fn the_host_tools_unpack_what_sams_own_reader_cannot() {
     // An ordinary test AppImage, taken apart: its runtime and its files.
     let plain = root.join("Plain-1.0-x86_64.AppImage");
     let plain_s = plain.to_str().unwrap();
-    assert!(sam(root, "sam-jail", &["dev", "make-fixture", "--name", "Plain", plain_s])
-        .status
-        .success());
+    assert!(sam(
+        root,
+        "sam-jail",
+        &["dev", "make-fixture", "--name", "Plain", plain_s]
+    )
+    .status
+    .success());
     let off = sam_detect::inspect(&plain).unwrap().payload_offset.unwrap() as usize;
     let tree = root.join("tree");
     let st = Command::new("unsquashfs")
@@ -283,7 +287,14 @@ fn the_host_tools_unpack_what_sams_own_reader_cannot() {
     let st = Command::new("mksquashfs")
         .arg(&tree)
         .arg(&lzo)
-        .args(["-comp", "lzo", "-all-root", "-noappend", "-quiet", "-no-progress"])
+        .args([
+            "-comp",
+            "lzo",
+            "-all-root",
+            "-noappend",
+            "-quiet",
+            "-no-progress",
+        ])
         .stdout(Stdio::null())
         .status()
         .unwrap();
@@ -304,7 +315,10 @@ fn the_host_tools_unpack_what_sams_own_reader_cannot() {
         .unwrap();
     assert!(st.success(), "bsdtar made an ISO 9660 image");
     let mut data = fs::read(&iso).unwrap();
-    assert!(data[..64].iter().all(|b| *b == 0), "the system area is unused");
+    assert!(
+        data[..64].iter().all(|b| *b == 0),
+        "the system area is unused"
+    );
     data[..64].copy_from_slice(&runtime[..64]);
     data[10] = 1;
     let type1 = root.join("Old-1.0-x86_64.AppImage");
@@ -312,18 +326,27 @@ fn the_host_tools_unpack_what_sams_own_reader_cannot() {
 
     for (img, tool) in [(&type2, "unsquashfs"), (&type1, "bsdtar")] {
         let img_s = img.to_str().unwrap();
-        let added = sam(root, "sam-jail", &["--json", "add", img_s, "--accept", "--no-launcher"]);
+        let added = sam(
+            root,
+            "sam-jail",
+            &["--json", "add", img_s, "--accept", "--no-launcher"],
+        );
         let v = json(&added);
         assert!(added.status.success(), "{tool}: {v}");
         let entry = &v["data"]["entry"];
-        let id = entry["id"].as_str().unwrap_or_else(|| panic!("{tool}: {v}"));
+        let id = entry["id"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{tool}: {v}"));
         let log = unpacked_log(root, id).unwrap_or_default();
         assert_eq!(
             entry["extraction"]["method"].as_str(),
             Some(tool),
             "unpacked by {tool}:\n{log}"
         );
-        assert!(log.contains("[extract] isolated"), "{tool} ran in the sandbox:\n{log}");
+        assert!(
+            log.contains("[extract] isolated"),
+            "{tool} ran in the sandbox:\n{log}"
+        );
         let appdir = Path::new(entry["extraction"]["appdir"].as_str().unwrap());
         assert_eq!(fs::read(appdir.join("AppRun")).unwrap(), app_run, "{tool}");
         let mode = fs::metadata(appdir.join("AppRun")).unwrap().permissions();

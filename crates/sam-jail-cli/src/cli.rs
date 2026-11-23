@@ -386,9 +386,7 @@ pub(crate) enum PresetCmd {
     /// List your own presets.
     List,
     /// Print a preset (built-in or your own) as TOML.
-    Show {
-        name: String,
-    },
+    Show { name: String },
     /// Apply a preset to an app (asks for confirmation when it conflicts).
     Apply {
         name: String,
@@ -406,23 +404,13 @@ pub(crate) enum PresetCmd {
         description: String,
     },
     /// Delete one of your own presets.
-    Delete {
-        name: String,
-    },
+    Delete { name: String },
     /// Copy a preset under a new name, as a preset of your own.
-    Duplicate {
-        name: String,
-        new_name: String,
-    },
+    Duplicate { name: String, new_name: String },
     /// Add a preset from a TOML file.
-    Import {
-        file: PathBuf,
-    },
+    Import { file: PathBuf },
     /// Write a preset as TOML to a file, or print it.
-    Export {
-        name: String,
-        file: Option<PathBuf>,
-    },
+    Export { name: String, file: Option<PathBuf> },
     /// Create or replace a user preset from JSON on stdin.
     Put,
 }
@@ -430,9 +418,7 @@ pub(crate) enum PresetCmd {
 #[derive(Subcommand)]
 pub(crate) enum ProfileCmd {
     /// Print an app's permissions as JSON.
-    Get {
-        app: String,
-    },
+    Get { app: String },
     /// Replace permissions from JSON (a PermissionSet) on stdin.
     Set {
         app: String,
@@ -454,9 +440,7 @@ pub(crate) enum ProfileCmd {
         yes: bool,
     },
     /// Reset to the recommended profile.
-    Reset {
-        app: String,
-    },
+    Reset { app: String },
 }
 
 #[derive(Subcommand)]
@@ -464,14 +448,9 @@ pub(crate) enum ConfigCmd {
     /// Print the whole configuration.
     Show,
     /// Print one setting (for example extraction.max_files).
-    Get {
-        key: String,
-    },
+    Get { key: String },
     /// Change one setting.
-    Set {
-        key: String,
-        value: String,
-    },
+    Set { key: String, value: String },
     /// Replace the whole configuration from JSON on stdin.
     Put,
     /// Print where SAM keeps its configuration, data and logs.

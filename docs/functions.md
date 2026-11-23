@@ -1118,7 +1118,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | ✅ |
 | [`json_run_keeps_its_reply_alone_on_standard_output`](../crates/sam-jail-cli/tests/odd_names.rs#L112) | With `--json`, SAM's standard output is its reply and nothing else: an app that prints a line looking like the reply cannot be read as SAM's. | ✅ |
 | [`preset_names_are_never_read_as_options`](../crates/sam-gtk/src/backend.rs#L363) | Preset names reach SAM after `--`, so one that starts with `-` is not read as an option (audit G-F20). | ✅ |
-| [`every_man_page_named_is_written`](../crates/sam-jail-cli/src/man.rs#L76) | Every page a man page names (`sam-jail-config-get(1)`) is written too (audit: `sam-jail-config.1` named six pages that did not exist). | 🆕 new |
+| [`every_man_page_named_is_written`](../crates/sam-jail-cli/src/man.rs#L79) | Every page a man page names (`sam-jail-config-get(1)`) is written too (audit: `sam-jail-config.1` named six pages that did not exist). | 🆕 new |
 
 **Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md), [`sam-jail-cli/src/man.rs`](../crates/sam-jail-cli/src/man.rs)
 
