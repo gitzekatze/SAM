@@ -215,6 +215,7 @@ tests = [
   "an_extra_socket_that_leads_to_a_dangerous_one_is_not_passed_in",
   "an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one",
   "a_wildcard_over_the_portal_is_dangerous",
+  "host_tools_that_start_programs_outside_meet_their_stand_ins",
 ]
 
 [[function]]

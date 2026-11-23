@@ -472,7 +472,8 @@ systemd-run and flatpak-spawn are the host tools that start programs outside a s
 - **When it breaks:** nothing breaks: the assumption only ever narrows access.
 - **SAM functions that rely on it:** [16](functions.md#16)
 - **Quick check:** none (only the tests below)
-- **Tests:** `every_hostile_appimage_fails_to_escape` (fully)
+- **Tests:** `host_tools_that_start_programs_outside_meet_their_stand_ins`, `every_breakout_attempt_from_a_real_sandbox_fails`, `every_hostile_appimage_fails_to_escape` (fully)
+- **Checked first by:** `sandbox.rs` (a broken contract stops these tests with its name)
 - **Covers:** `path:/usr/bin/systemd-run`, `path:/usr/bin/flatpak-spawn`, `option:--scope`, `option:--unit`, `option:--user`
 - **If it breaks:** A new tool of this kind still needs a blocked D-Bus service to act; add a stand-in for it too and an evil-suite case.
 

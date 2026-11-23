@@ -29,7 +29,7 @@ pub struct Bubblewrap;
 /// Host programs that ask a service outside the sandbox to start a program
 /// (which would then run unsandboxed). Inside every sandbox each is
 /// replaced by a stand-in from `TOOL_SHIMS` (see the /usr binding).
-const HIDDEN_HOST_TOOLS: &[&str] = &["/usr/bin/systemd-run", "/usr/bin/flatpak-spawn"];
+pub const HIDDEN_HOST_TOOLS: &[&str] = &["/usr/bin/systemd-run", "/usr/bin/flatpak-spawn"];
 
 /// For each host tool that exists: its name and the file to cover with
 /// the stand-in, which is the file a link (or a chain of links) leads to.
@@ -41,6 +41,23 @@ fn hidden_tool_targets(tools: &[&str]) -> Vec<(std::ffi::OsString, PathBuf)> {
             Some((Path::new(t).file_name()?.to_os_string(), real))
         })
         .collect()
+}
+
+/// Covers each of `tools` that exists with its stand-in from
+/// `<runtime_dir>/tools` (written by [`write_identity_files`]).
+fn cover_host_tools(a: &mut Args, runtime_dir: &Path, tools: &[&str]) {
+    for (name, target) in hidden_tool_targets(tools) {
+        a.op2("--ro-bind", runtime_dir.join("tools").join(name), target);
+    }
+}
+
+/// The Bubblewrap arguments with which every sandbox covers the host tools
+/// `tools` by their stand-ins ([`HIDDEN_HOST_TOOLS`] in every sandbox; a
+/// test passes tools of its own, since not every computer has them all).
+pub fn host_tool_stand_in_args(runtime_dir: &Path, tools: &[&str]) -> Vec<String> {
+    let mut a = Args::default();
+    cover_host_tools(&mut a, runtime_dir, tools);
+    a.v
 }
 
 /// Stand-ins, written by `write_identity_files` into `<runtime>/tools`.
@@ -1555,13 +1572,7 @@ impl Section<'_> {
         // Bubblewrap cannot mount over a link, so the stand-in goes over the
         // file a link leads to (audit S-F14: a systemd-run that was a link
         // stayed the real one).
-        for (name, target) in hidden_tool_targets(HIDDEN_HOST_TOOLS) {
-            a.op2(
-                "--ro-bind",
-                ctx.runtime_dir.join("tools").join(name),
-                target,
-            );
-        }
+        cover_host_tools(a, &ctx.runtime_dir, HIDDEN_HOST_TOOLS);
 
         // /etc, beyond the basic files of `common_system`.
         let mut etc: Vec<&str> = Vec::new();
