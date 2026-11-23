@@ -222,6 +222,12 @@ impl Sam {
                 permissions,
                 ..Default::default()
             },
+            // Nothing of the app runs here, only SAM's stand-in above and its
+            // test program, with the settings the person is looking at. The
+            // start gate for unconfirmed settings (audit U-M11) keeps the
+            // app's own code from running; for this scratch record nobody
+            // could confirm it, so it refused every check before adding.
+            reviewed: true,
             ..Default::default()
         };
         let out = crate::verify::verify(&entry, &self.config, &paths, &self.host());

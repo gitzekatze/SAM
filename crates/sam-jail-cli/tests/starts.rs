@@ -1,8 +1,8 @@
-//! What `selftest` and `run` report after a real start in a real
+//! What `selftest`, `run` and `verify` report after a real start in a real
 //! sandbox: a selftest ends an app that keeps running after the time given
 //! and calls that a pass, keeps the app's output out of its own answer and
 //! marks each app passed or not on the terminal; `run` hands the app the
-//! arguments given.
+//! arguments given; `verify` checks an AppImage that has no sandbox yet.
 //! Each was missing (mutation run 2026-11-23).
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
@@ -227,4 +227,48 @@ fn run_hands_the_app_the_arguments_given() {
     assert_eq!(reply(&o)["data"]["success"], true);
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains("ARGS:--hello world"), "{err}");
+}
+
+/// `verify FILE` checks an AppImage that has no sandbox yet, with the
+/// settings SAM would give it or, as the window asks before adding, with
+/// the settings given; no sandbox is created. Regression: the check was
+/// refused because nobody had confirmed the settings of its scratch
+/// record (which nobody can).
+#[test]
+fn verify_checks_an_appimage_without_a_sandbox() {
+    let Some(_contracts) = sandbox_here() else {
+        return;
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let img = fixture(root, "Unadded", "#!/bin/sh\nexit 0\n");
+    let img = img.to_str().unwrap();
+    let mut settings =
+        reply(&sam(root, &["--json", "preview", img]))["data"]["permissions"].clone();
+    settings["network"]["mode"] = "localhost".into();
+    let settings = settings.to_string();
+    for (args, input) in [
+        (&["--json", "verify", img][..], None),
+        (
+            &["--json", "verify", img, "--permissions-stdin"][..],
+            Some(settings.as_str()),
+        ),
+    ] {
+        let o = sam_with_input(root, args, input, Duration::from_secs(120));
+        let r = reply(&o);
+        assert_eq!(r["ok"], true, "{args:?}: {r}");
+        assert!(
+            !r["data"]["report"]["results"]
+                .as_array()
+                .unwrap()
+                .is_empty(),
+            "{r}"
+        );
+    }
+    let list = reply(&sam(root, &["--json", "list"]));
+    assert_eq!(
+        list["data"],
+        serde_json::json!([]),
+        "no sandbox was created"
+    );
 }
