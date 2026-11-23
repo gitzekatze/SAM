@@ -450,3 +450,79 @@ fn a_full_log_never_loses_the_starts_record() {
     assert_eq!(last["success"], true, "{last}");
     assert_eq!(last["summary"], "exited normally", "{last}");
 }
+
+/// The line naming what SAM's helper sets for the app speaks the person's
+/// language, in `sam-jail command` and in the launch log, like SAM's other
+/// texts (it was English only). In German here, from po/de.po.
+#[test]
+fn the_helpers_line_speaks_the_persons_language() {
+    if !usable() {
+        return;
+    }
+    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "kernel-seccomp"])
+        .unwrap_or_else(|e| panic!("{e}"));
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let mo_dir = root.join("locale/de/LC_MESSAGES");
+    fs::create_dir_all(&mo_dir).unwrap();
+    let po = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../po/de.po");
+    let Ok(built) = Command::new("msgfmt")
+        .arg("-o")
+        .arg(mo_dir.join("sam.mo"))
+        .arg(&po)
+        .status()
+    else {
+        sam_runner::contracts::skip("msgfmt (gettext) is not installed")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    };
+    assert!(built.success(), "po/de.po does not compile");
+    // A locale other than C, which gettext needs before it honours LANGUAGE.
+    let locales = Command::new("locale").arg("-a").output().unwrap();
+    let Some(locale) = String::from_utf8_lossy(&locales.stdout)
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('C') && *l != "POSIX")
+        .map(str::to_string)
+    else {
+        sam_runner::contracts::not_here("no locale other than C is installed");
+        return;
+    };
+    let id = add(
+        root,
+        "Greeting-1.0-x86_64.AppImage",
+        "#!/bin/sh\necho \"greeting=$GREETING\"\n",
+    );
+    set(root, &id, "environment.set", r#"{"GREETING": "hallo"}"#);
+    let german = |args: &[&str]| {
+        let mut c = sam_cmd(root, args);
+        c.env("SAM_LOCALE_DIR", root.join("locale"))
+            .env("LC_ALL", &locale)
+            .env("LANGUAGE", "de");
+        c.output().unwrap()
+    };
+    const GERMAN: &str = "# von SAMs Helfer für die App gesetzt, nach ihren Schutzschichten: ";
+    let shown = german(&["command", &id]);
+    let shown = out_and_err(&shown);
+    assert!(
+        shown
+            .lines()
+            .any(|l| l.starts_with(GERMAN) && l.contains("GREETING=hallo")),
+        "{shown}"
+    );
+    let ran = german(&["run", &id]);
+    assert!(ran.status.success(), "{}", out_and_err(&ran));
+    let info = json(&sam(root, &["--json", "info", &id]));
+    let log = info["data"]["entry"]["last_launch"]["log_file"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let log = fs::read_to_string(log).unwrap();
+    assert!(log.contains("greeting=hallo"), "{log}");
+    // The value the person gave stays hidden in the log.
+    assert!(
+        log.lines()
+            .any(|l| l.starts_with(GERMAN) && l.contains("'GREETING=<hidden>'")),
+        "{log}"
+    );
+}

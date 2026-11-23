@@ -9,6 +9,8 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 #![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
+mod gpg_agent;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -94,6 +96,7 @@ fn sam_refuses_a_forged_update_that_carries_its_release_key() {
     let dir = tmp.path();
     let home = dir.join("gnupg");
     std::fs::create_dir(&home).unwrap();
+    let _agent = gpg_agent::Stop::new(&home);
     std::fs::set_permissions(&home, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
     let release = new_key(
         &home,

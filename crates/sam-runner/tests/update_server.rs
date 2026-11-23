@@ -9,6 +9,8 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 #![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
+mod gpg_agent;
+
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -535,6 +537,7 @@ fn an_older_signed_version_is_not_installed_as_an_update() {
     };
     let home = tmp.path().join("gnupg");
     fs::create_dir(&home).unwrap();
+    let _agent = gpg_agent::Stop::new(&home);
     fs::set_permissions(&home, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
     let st = Command::new("gpg")
         .arg("--homedir")
@@ -711,6 +714,7 @@ fn an_update_signed_with_another_key_waits_for_consent() {
     };
     let gpg_home = tmp.path().join("gnupg");
     fs::create_dir(&gpg_home).unwrap();
+    let _agent = gpg_agent::Stop::new(&gpg_home);
     fs::set_permissions(
         &gpg_home,
         std::os::unix::fs::PermissionsExt::from_mode(0o700),
@@ -1025,6 +1029,7 @@ fn an_update_compares_keys_even_when_the_installed_signature_was_never_checked()
     };
     let gpg_home = tmp.path().join("gnupg");
     fs::create_dir(&gpg_home).unwrap();
+    let _agent = gpg_agent::Stop::new(&gpg_home);
     fs::set_permissions(
         &gpg_home,
         std::os::unix::fs::PermissionsExt::from_mode(0o700),
@@ -1326,6 +1331,7 @@ fn consent_to_a_new_key_covers_only_the_file_that_was_shown() {
     };
     let gpg_home = tmp.path().join("gnupg");
     fs::create_dir(&gpg_home).unwrap();
+    let _agent = gpg_agent::Stop::new(&gpg_home);
     fs::set_permissions(
         &gpg_home,
         std::os::unix::fs::PermissionsExt::from_mode(0o700),

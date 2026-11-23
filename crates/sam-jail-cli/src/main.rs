@@ -683,8 +683,46 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         Cmd::Update {
             app: q,
+            decline_key_change: true,
+            ..
+        } => {
+            let (e, was) = app.decline_update(&q)?;
+            #[derive(Serialize)]
+            struct Declined {
+                deleted: bool,
+                #[serde(flatten)]
+                app: AppSummary,
+            }
+            let answer = Declined {
+                deleted: was,
+                app: AppSummary::from_entry(&e),
+            };
+            out.emit(&answer, || {
+                let name = sam_core::util::display_safe(e.display_name(), 80);
+                if was {
+                    outln!(
+                        "{}",
+                        trf(
+                            "The update of {app} that waited for your answer was deleted.",
+                            &[("app", &name)]
+                        )
+                    );
+                } else {
+                    outln!(
+                        "{}",
+                        trf(
+                            "No update of {app} waits for your answer.",
+                            &[("app", &name)]
+                        )
+                    );
+                }
+            });
+        }
+        Cmd::Update {
+            app: q,
             undo,
             accept_key_change,
+            ..
         } => {
             let e = if undo {
                 app.undo_update(&q)?
@@ -889,9 +927,15 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
                 if !pv.app_variables.is_empty() {
                     outln!(
-                        "# set by SAM's helper for the app, after its layers: {}",
-                        sam_core::util::shell_join(
-                            pv.app_variables.iter().map(|(k, v)| format!("{k}={v}"))
+                        "# {}",
+                        trf(
+                            "set by SAM's helper for the app, after its layers: {variables}",
+                            &[(
+                                "variables",
+                                &sam_core::util::shell_join(
+                                    pv.app_variables.iter().map(|(k, v)| format!("{k}={v}"))
+                                )
+                            )]
                         )
                     );
                 }

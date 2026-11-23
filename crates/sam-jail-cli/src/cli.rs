@@ -205,6 +205,10 @@ pub(crate) enum Cmd {
         /// file, while it is still the published one (never a new download).
         #[arg(long)]
         accept_key_change: bool,
+        /// Delete the download the last run kept for that answer, without
+        /// installing it (one never answered is deleted after a week).
+        #[arg(long, conflicts_with_all = ["accept_key_change", "undo"])]
+        decline_key_change: bool,
     },
     /// Update SAM itself, when it runs from its AppImage ($APPIMAGE).
     SelfUpdate {

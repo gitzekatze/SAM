@@ -531,3 +531,37 @@ fn onboarding_is_changed_only_by_done_and_reset() {
     assert!(!done(&["onboarding", "reset"]));
     assert!(!done(&["onboarding"]));
 }
+
+/// `update APP --decline-key-change` (the window's answer "no" to an
+/// update signed differently) deletes the download that waited for that
+/// answer, and only that one; the app stays as it was. Before, it stayed
+/// in SAM's folder until the app's next update.
+#[test]
+fn declining_an_update_deletes_the_download_that_waited() {
+    let e = Env::new();
+    let img = e.fixture("apps", "Kept", "Utility;");
+    let id = e.add(&img, true);
+    let before = fs::read(&img).unwrap();
+    let consent = e.root().join("data/update-consent");
+    for app in [id.as_str(), "appimage-other-1234"] {
+        fs::create_dir_all(consent.join(app)).unwrap();
+        fs::write(consent.join(app).join("download"), "the update").unwrap();
+        fs::write(consent.join(app).join("waiting.json"), "{}").unwrap();
+    }
+    let answer = e.text(&["update", &id, "--decline-key-change"]);
+    assert!(answer.contains("was deleted"), "{answer}");
+    assert!(!consent.join(&id).exists(), "the waiting download is gone");
+    assert!(
+        consent.join("appimage-other-1234/download").exists(),
+        "another app's waiting download stays"
+    );
+    assert_eq!(fs::read(&img).unwrap(), before, "the AppImage is unchanged");
+    assert_eq!(e.list(&[]), vec![id.clone()]);
+    // Nothing waits any more: it says so.
+    let again = e.json(&["update", &id, "--decline-key-change"], None);
+    assert_eq!(again["id"], id.as_str(), "{again}");
+    assert_eq!(again["deleted"], false, "{again}");
+    assert!(e
+        .text(&["update", &id, "--decline-key-change"])
+        .contains("No update of"));
+}

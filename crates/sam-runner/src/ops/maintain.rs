@@ -705,6 +705,7 @@ impl Sam {
         if if_due && !self.config.updates.check_on_start {
             return Ok(vec![]);
         }
+        self.forget_old_waiting();
         let entries = match query {
             Some(q) => vec![self.resolve(q)?],
             None => self.registry().list()?,
@@ -749,6 +750,7 @@ impl Sam {
     ///    download, with its settings kept.
     pub fn update(&self, query: &str, accept_key_change: bool) -> Result<AppEntry> {
         let entry = self.resolve(query)?;
+        self.forget_old_waiting();
         self.ensure_not_running(&entry, "update it")?;
         if !entry.source_path.exists() {
             bail!(
@@ -773,6 +775,29 @@ impl Sam {
         let result = self.update_in(&entry, &work, accept_key_change);
         let _ = remove_tree(&work);
         result
+    }
+
+    /// The person said no to the question about an update's signature:
+    /// the download kept for that answer is deleted now, not left in SAM's
+    /// folder until the app's next update. Whether one was waiting.
+    pub fn decline_update(&self, query: &str) -> Result<(AppEntry, bool)> {
+        let entry = self.resolve(query)?;
+        let waiting = self.paths.data_dir.join("update-consent").join(&entry.id);
+        let was = fs::symlink_metadata(&waiting).is_ok();
+        if was {
+            remove_waiting(&waiting)?;
+        }
+        Ok((entry, was))
+    }
+
+    /// Deletes the downloads that have waited for an answer longer than
+    /// [`WAITING_KEPT_FOR`] (a question never answered: the window was
+    /// closed, or the command line was not run again).
+    fn forget_old_waiting(&self) {
+        forget_waiting_older_than(
+            &self.paths.data_dir.join("update-consent"),
+            std::time::Duration::from_secs(WAITING_KEPT_FOR),
+        );
     }
 
     fn update_in(
@@ -1370,6 +1395,43 @@ fn take_waiting(dir: &Path, work: &Path) -> Option<(Waiting, PathBuf)> {
     found
 }
 
+/// How long an update download waits for the person's answer: a week.
+/// The question comes right when the person updates, so an answer later
+/// than that is unlikely; each waiting download can be as large as the
+/// AppImage (up to 8 GiB), and a later yes only means downloading and
+/// asking again, never anything less safe.
+const WAITING_KEPT_FOR: u64 = 7 * 24 * 3600;
+
+/// Deletes one waiting download's folder (or whatever else has its name).
+fn remove_waiting(path: &Path) -> Result<()> {
+    if fs::symlink_metadata(path)?.is_dir() {
+        remove_tree(path)
+    } else {
+        Ok(fs::remove_file(path)?)
+    }
+}
+
+/// Deletes what waits in `root` (`<data>/update-consent`) and was last
+/// changed more than `max_age` ago; what it deleted. A time in the future
+/// counts as new.
+fn forget_waiting_older_than(root: &Path, max_age: std::time::Duration) -> Vec<PathBuf> {
+    let mut removed = Vec::new();
+    let Ok(rd) = fs::read_dir(root) else {
+        return removed;
+    };
+    for e in rd.flatten() {
+        let old = fs::symlink_metadata(e.path())
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > max_age);
+        if old && remove_waiting(&e.path()).is_ok() {
+            removed.push(e.path());
+        }
+    }
+    removed
+}
+
 /// Keeps `file` (in SAM's download folder) in `dir` until the answer.
 fn keep_waiting(dir: &Path, file: &Path, w: &Waiting) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -1517,6 +1579,30 @@ mod tests {
         assert!(sam.paths.app_home("appimage-broken-1234").exists());
         assert!(sam.paths.app_home("appimage-newer-1234").exists());
         assert!(!sam.paths.app_home("appimage-gone-1234").exists());
+    }
+
+    /// A download that waited for an answer about an update for more
+    /// than a week (the question was never answered) is deleted when
+    /// updates are checked; a younger one stays for its answer. Before,
+    /// it stayed until that app's next update or its removal.
+    #[test]
+    fn a_download_never_answered_is_deleted_after_a_week() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let root = sam.paths.data_dir.join("update-consent");
+        let day = std::time::Duration::from_secs(24 * 3600);
+        for (id, days) in [("appimage-old-1234", 8), ("appimage-young-1234", 6)] {
+            let d = root.join(id);
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join("download"), "the update").unwrap();
+            fs::File::open(&d)
+                .unwrap()
+                .set_modified(std::time::SystemTime::now() - day * days)
+                .unwrap();
+        }
+        sam.check_updates(None, false).unwrap();
+        assert!(!root.join("appimage-old-1234").exists(), "never answered");
+        assert!(root.join("appimage-young-1234/download").exists());
     }
 
     /// An update keeps its published name only when that is a plain

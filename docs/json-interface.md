@@ -163,7 +163,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `config show/get/set/put/path` | configuration; `put` reads it on stdin |
 | `permissions` | the catalogue: every key with title, explanation, risk |
 | `updates [APP] [--if-due]` | `{apps: [{id, update: {state, latest, download_page, detail, checked_at}}]}`; `state` is `available`, `current`, `failed` or `unsupported` |
-| `update APP [--undo] [--accept-key-change]` | app summary; the error code `signing-key-changed` means the new file is signed with another key |
+| `update APP [--undo] [--accept-key-change \| --decline-key-change]` | app summary; the error code `signing-key-changed` means the new file is signed with another key. With `--decline-key-change`: the app summary and `deleted` (whether a download waited for the answer and was deleted) |
 | `self-update [--check]` | `{state, latest, path, detail, page}`; `state` is `current`, `available` or `updated` (only from SAM's AppImage) |
 | `space [APP]` | `{apps: [{id, name, unpacked, home, overlay, logs, previous, total, can_free}], total}` (bytes) |
 | `free-space APP` | `{freed}` (bytes) |

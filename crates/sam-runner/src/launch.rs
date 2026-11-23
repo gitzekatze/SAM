@@ -931,7 +931,11 @@ pub fn run(
     paths: &Paths,
     host: &HostInfo,
 ) -> Result<LaunchRecord> {
-    let rec = run_once(app, opts, cfg, paths, host)?;
+    // What this start has told about missing layers: the restart below
+    // tells it again only when it lacks something more, so a start from
+    // the menu shows its notification once.
+    let told = Arc::new(Mutex::new(Vec::new()));
+    let rec = run_once(app, opts, cfg, paths, host, &told)?;
     // Refused a name it may now own and did not run: one restart, at once,
     // so the person does not have to start it again (option D). After the
     // first start has ended and given back its folder and lock.
@@ -949,18 +953,20 @@ pub fn run(
             name_retry: true,
             ..opts.clone()
         };
-        return run_once(app, &again, cfg, paths, host);
+        return run_once(app, &again, cfg, paths, host, &told);
     }
     Ok(rec)
 }
 
-/// One start of the app: prepare, run, judge, record.
+/// One start of the app: prepare, run, judge, record. `told` holds the
+/// missing layers already told for this start (by an earlier try).
 fn run_once(
     app: &mut AppEntry,
     opts: &LaunchOptions,
     cfg: &Config,
     paths: &Paths,
     host: &HostInfo,
+    told: &Arc<Mutex<Vec<String>>>,
 ) -> Result<LaunchRecord> {
     let logs = Logs::new(paths);
     let (log_path, mut log) = logs.create(
@@ -1121,11 +1127,14 @@ fn run_once(
         prepared.wanted_fence,
         prepared.wayland_context_failed,
     );
+    let told = told.clone();
     let tell_missing = move |report: Option<&str>| {
         if let Some((f, id, name)) = &tell {
             let missing = layers_missing(report, asked.0, asked.1, asked.2, asked.3);
-            if !missing.is_empty() {
+            let mut told = told.lock().unwrap_or_else(|e| e.into_inner());
+            if missing.iter().any(|m| !told.contains(m)) {
                 f(id, name, &missing);
+                told.extend(missing);
             }
         }
     };
@@ -1511,8 +1520,11 @@ fn write_log_header(log: &mut fs::File, prepared: &Prepared) -> Result<()> {
             .collect();
         writeln!(
             log,
-            "# set by SAM's helper for the app, after its layers: {}",
-            shown.join(" ")
+            "# {}",
+            sam_core::i18n::trf(
+                "set by SAM's helper for the app, after its layers: {variables}",
+                &[("variables", &shown.join(" "))]
+            )
         )?;
     }
     writeln!(log, "# ---- output ----")?;

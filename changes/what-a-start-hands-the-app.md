@@ -9,7 +9,7 @@
   either layer existed. The app sees the same variables as before, and the
   sandbox check checks them where the app gets them. The launch log lists
   them on their own line (values you gave stay hidden), and so does
-  `sam-jail command`.
+  `sam-jail command`; that line is in your language.
 - A descriptor the program that started SAM left open (a terminal's or a
   launcher's, a shell's `exec 3<>/dev/tty`) no longer reaches the app, from
   the command line, the menu or SAM's window: SAM's programs mark
