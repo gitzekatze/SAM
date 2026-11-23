@@ -377,7 +377,6 @@ pub fn prepare(
     };
     let mut app_env: Vec<(String, String)> = vec![
         ("APPDIR".into(), "@APPDIR@".into()),
-        ("OWD".into(), owd.display().to_string()),
         (
             "ARGV0".into(),
             app.source_path
@@ -423,7 +422,6 @@ pub fn prepare(
         sound_socket: None,
         wayland_socket: None,
         helper: None,
-        seccomp_fd: None,
         own_terminal: terminal != TerminalMode::None,
         compatibility_mode: app.profile.compatibility_mode,
         tracer: opts.tracer.clone(),
@@ -493,11 +491,14 @@ pub fn prepare(
     let mut moved_at_start = Vec::new();
     let home_aside = paths
         .data_dir
-        .join("moved-aside")
+        .join(MOVED_ASIDE)
         .join(&app.id)
         .join(now().to_string());
     let mut landlock = false;
     let mut seccomp = false;
+    // SAM's helper's file, written once the sandbox is built (it holds the
+    // app's own variables from the build).
+    let mut helper_spec: Option<kernel::SandboxSpec> = None;
     let wanted_landlock: bool;
     let wanted_seccomp: bool;
     {
@@ -653,12 +654,12 @@ pub fn prepare(
                         }),
                         seccomp: want_seccomp.then(|| seccomp_spec(app)),
                         probe: opts.probe.clone(),
+                        env: Vec::new(),
                     };
-                    let spec_path = runtime_dir.join("sandbox.json");
-                    fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
+                    helper_spec = Some(spec);
                     ctx.helper = Some(sam_core::sandbox::SandboxHelper {
                         binary: helper,
-                        spec: spec_path,
+                        spec: runtime_dir.join("sandbox.json"),
                     });
                     landlock = want_landlock;
                     seccomp = want_seccomp;
@@ -711,6 +712,10 @@ pub fn prepare(
         }
     }
     let mut command = sam_sandbox::Bubblewrap.build(&ctx)?;
+    if let (Some(mut spec), Some(helper)) = (helper_spec, &ctx.helper) {
+        spec.env = command.exec_env.clone();
+        fs::write(&helper.spec, serde_json::to_vec_pretty(&spec)?)?;
+    }
     let rooms = rooms.map(|(mut service, bwrap)| {
         let plan = crate::room_rules::FloorPlan::from_bwrap_args(&command.args);
         let room_ctx = crate::room_service::RoomContext {
@@ -1080,11 +1085,7 @@ fn run_once(
         .spawn()
         .with_context(|| format!("starting {}", prepared.command.program.display()));
     // Close our copies of the write ends so the readers see EOF.
-    for fd in channels
-        .close_after_spawn
-        .iter()
-        .chain(prepared.context.seccomp_fd.as_ref())
-    {
+    for fd in &channels.close_after_spawn {
         // SAFETY: the descriptor belongs to this launch and is closed exactly once here.
         unsafe { libc::close(*fd) };
     }
@@ -1453,6 +1454,26 @@ fn write_log_header(log: &mut fs::File, prepared: &Prepared) -> Result<()> {
         "# command: {}",
         prepared.command.display_hiding(&given)
     )?;
+    if !prepared.command.exec_env.is_empty() {
+        let shown: Vec<String> = prepared
+            .command
+            .exec_env
+            .iter()
+            .map(|(k, v)| {
+                let v = if given.contains(&k.as_str()) {
+                    "<hidden>"
+                } else {
+                    v.as_str()
+                };
+                shell_join([format!("{k}={v}")])
+            })
+            .collect();
+        writeln!(
+            log,
+            "# set by SAM's helper for the app, after its layers: {}",
+            shown.join(" ")
+        )?;
+    }
     writeln!(log, "# ---- output ----")?;
     log.flush()?;
     Ok(())

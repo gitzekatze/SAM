@@ -34,6 +34,10 @@ pub struct SandboxSpec {
     /// Sandbox check: run these checks instead of the app.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub probe: Option<crate::probe::ProbePlan>,
+    /// The app's own variables ([`sam_core::SandboxCommand::exec_env`]):
+    /// set once every layer is in place, for the app alone (review SB-5).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -112,6 +116,11 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
     let (prog, rest) = argv
         .split_first()
         .context(sam_core::i18n::tr("no command given"))?;
+    // SAM's private channel, read before the app's variables are set: one
+    // of them cannot redirect the report.
+    let status_fd = std::env::var("SAM_STATUS_FD")
+        .ok()
+        .and_then(|v| v.parse::<i32>().ok());
     let mut report: Vec<String> = Vec::new();
     if let Some(ll) = &spec.landlock {
         match apply_landlock(ll) {
@@ -136,6 +145,11 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
             if sc.strict { "strict" } else { "baseline" }
         ));
     }
+    // Only now, with every layer in place, the app's own variables: this
+    // helper's loader has long finished, so LD_PRELOAD, LD_LIBRARY_PATH,
+    // LD_AUDIT and the like act on the app alone, inside its layers
+    // (review SB-5). The sandbox check below sees them as the app will.
+    set_app_variables(&spec.env);
     // Report to SAM on a private fd, then close it before the app runs, so
     // the app cannot forge or read the report.
     if let Some(plan) = &spec.probe {
@@ -148,10 +162,7 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
         );
         std::process::exit(0);
     }
-    if let Some(fd) = std::env::var("SAM_STATUS_FD")
-        .ok()
-        .and_then(|v| v.parse::<i32>().ok())
-    {
+    if let Some(fd) = status_fd {
         let line = format!("{}\n", report.join("; "));
         // SAFETY: `line` is a valid buffer of line.len() bytes; `fd` was handed to this process for this one report and is not used afterwards.
         unsafe {
@@ -160,6 +171,18 @@ pub fn sandbox_exec(spec_path: &Path, argv: &[String]) -> Result<()> {
         }
     }
     run_and_reap(prog, rest)
+}
+
+/// Sets the app's own variables in this process, whose children inherit
+/// them. A name the environment cannot hold (empty, with `=` or NUL) or a
+/// value with NUL is left out, and so is SAM's status channel.
+fn set_app_variables(env: &[(String, String)]) {
+    for (k, v) in env {
+        let holds = !k.is_empty() && !k.contains(['=', '\0']) && !v.contains('\0');
+        if holds && k != "SAM_STATUS_FD" {
+            std::env::set_var(k, v);
+        }
+    }
 }
 
 /// Starts the app and stays until its last process has ended, not only the

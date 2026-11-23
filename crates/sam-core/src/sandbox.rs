@@ -51,7 +51,8 @@ pub struct LaunchContext {
     pub private_home: PathBuf,
     /// Host scratch directory for this launch.
     pub runtime_dir: PathBuf,
-    /// AppImage runtime variables computed by the runner (APPDIR, OWD, ...).
+    /// AppImage runtime variables computed by the runner (APPDIR, ARGV0, ...;
+    /// the builder adds OWD, the folder the app really starts in).
     /// Values may reference `@APPDIR@`, which the command builder replaces with the AppDir path.
     pub app_env: Vec<(String, String)>,
     /// Host path of a filtered D-Bus session proxy socket, if one is running.
@@ -64,8 +65,6 @@ pub struct LaunchContext {
     /// (privileged protocols hidden); `None` = the compositor's own socket.
     pub wayland_socket: Option<PathBuf>,
     pub helper: Option<SandboxHelper>,
-    /// File descriptor holding a compiled seccomp program (bwrap `--seccomp`).
-    pub seccomp_fd: Option<i32>,
     /// The app's standard streams are a terminal of SAM's own (`sam_runner::pty`),
     /// never the user's: the sandbox keeps the session, so resizing and
     /// Ctrl+C reach the app. Otherwise it gets a new session, cut off from
@@ -133,8 +132,14 @@ pub struct SandboxCommand {
     pub env: Vec<(String, String)>,
     /// Start Bubblewrap with an empty environment plus `env`.
     pub clear_env: bool,
-    /// File descriptors that must survive exec.
-    pub keep_fds: Vec<i32>,
+    /// The app's own variables (its AppImage variables, the passed-through
+    /// and the set ones) when SAM's helper starts the app: the helper sets
+    /// them for the app alone, once Landlock and the syscall filter are in
+    /// place. Never for the helper's own start, whose loader would act on
+    /// `LD_PRELOAD`, `LD_LIBRARY_PATH` and the like before any of its layers
+    /// (review SB-5). Empty without the helper: Bubblewrap sets them then.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exec_env: Vec<(String, String)>,
     /// Human readable notes (e.g. features that were downgraded).
     pub notes: Vec<String>,
     /// Files the sandbox builder generated.
@@ -242,7 +247,6 @@ pub fn sample_context() -> LaunchContext {
         sound_socket: None,
         wayland_socket: None,
         helper: None,
-        seccomp_fd: None,
         own_terminal: false,
         compatibility_mode: false,
         tracer: None,
@@ -279,7 +283,7 @@ mod display_tests {
             .collect(),
             env: vec![],
             clear_env: false,
-            keep_fds: vec![],
+            exec_env: vec![],
             notes: vec![],
             generated_files: vec![],
         };
