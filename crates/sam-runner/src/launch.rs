@@ -1588,8 +1588,12 @@ fn with_status_options(
     let mut args = vec!["--json-status-fd".to_string(), status_fd.to_string()];
     args.extend(bwrap_args.iter().cloned());
     if let Some(hw) = helper_fd {
-        // After --clearenv: right before bwrap's "--" separator.
-        let sep = args.iter().position(|a| a == "--").unwrap_or(args.len());
+        // After --clearenv: right before bwrap's own "--" separator, found
+        // the way Bubblewrap reads its options, so an option's value that
+        // reads "--" is never taken for it (review F5).
+        let sep = crate::room_rules::options_end(&args)
+            .or_else(|| args.iter().position(|a| a == "--"))
+            .unwrap_or(args.len());
         args.splice(
             sep..sep,
             [
@@ -2251,6 +2255,63 @@ mod pasta_status_tests {
         assert_eq!(out[7], "", "no helper pipe");
         assert_eq!(out[8], "bwrap");
         assert!(out[9..].contains(&"--unshare-all".to_string()));
+    }
+
+    /// Review F5: the helper's status channel goes right before
+    /// Bubblewrap's own separator, never into an option whose value reads
+    /// `--` (an AppImage file called `--`, a variable set to it), and the
+    /// helper's own `--` after the separator stays where it is.
+    #[test]
+    fn the_status_channel_goes_before_bubblewraps_own_separator() {
+        let bwrap = v(&[
+            "--clearenv",
+            "--setenv",
+            "ARGV0",
+            "--",
+            "--setenv",
+            "TERM",
+            "--",
+            "--chdir",
+            "/home/u",
+            "--",
+            "/run/sam/sam-jail-run",
+            "--sandbox-exec",
+            "/run/sam/sandbox.json",
+            "--",
+            "/opt/app/AppRun",
+        ]);
+        let out = with_status_options(&bwrap, 3, Some(4));
+        assert_eq!(&out[..2], &v(&["--json-status-fd", "3"]));
+        assert_eq!(
+            &out[2..],
+            &v(&[
+                "--clearenv",
+                "--setenv",
+                "ARGV0",
+                "--",
+                "--setenv",
+                "TERM",
+                "--",
+                "--chdir",
+                "/home/u",
+                "--setenv",
+                "SAM_STATUS_FD",
+                "4",
+                "--",
+                "/run/sam/sam-jail-run",
+                "--sandbox-exec",
+                "/run/sam/sandbox.json",
+                "--",
+                "/opt/app/AppRun",
+            ])[..]
+        );
+        // Bubblewrap ends its options at the first word that is not one.
+        assert_eq!(
+            crate::room_rules::options_end(&v(&["--die-with-parent", "app", "--"])),
+            Some(1)
+        );
+        // An option without its values is no end at all.
+        assert_eq!(crate::room_rules::options_end(&v(&["--setenv", "A"])), None);
     }
 }
 
