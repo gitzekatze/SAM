@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 39 proven by passing tests, 1 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 589 tests in all.
+**41 functions:** 39 proven by passing tests, 1 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 595 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -31,7 +31,7 @@
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 19 | ✅ |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
-| 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 98 | ✅ 🆕 98 new tests since the report |
+| 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 104 | ✅ 🆕 104 new tests since the report |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 22 | ✅ |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 14 | ✅ |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 8 | ✅ |
@@ -512,7 +512,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L892) | Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | 🆕 new |
+| [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L920) | Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | 🆕 new |
 | [`every_room_is_a_subset_of_its_app`](../crates/sam-runner/tests/room_service_compare.rs#L171) | Every room is within its app, for generated requests under no network, the full network, and in an app with Landlock and its syscall filter off: no room reads, writes or reaches anything its app cannot, and no room shows a folder of the computer its app is not shown. | 🆕 new |
 | [`under_this_computer_only_a_room_reaches_no_more_than_its_app`](../crates/sam-runner/tests/room_service_local.rs#L27) | Under "This computer only", a room that asks for the network gets an empty network of its own: it reaches no port of the computer (not even one listed for its app) and no socket outside the sandbox. | 🆕 new |
 | [`glycin_loads_images_in_a_room_never_without_a_sandbox`](../crates/sam-runner/tests/room_service_glycin.rs#L81) | An image loaded through GTK's real image loader inside a SAM sandbox is decoded in a room of its own, never without a sandbox. | 🆕 new |
@@ -549,6 +549,12 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`waiting_for_a_request_ends_in_time_and_when_the_start_ends`](../crates/sam-runner/src/room_service.rs#L2486) | Waiting for a request ends with an error when nothing comes in time or when the app's start ends, and returns once something comes. | 🆕 new |
 | [`a_signal_during_the_wait_for_a_request_does_not_end_it`](../crates/sam-runner/src/room_service.rs#L2505) | A signal that interrupts the wait for a request (the launcher gets signals, such as one when a child ends) does not end the wait: the request is still read. | 🆕 new |
 | [`a_request_never_brings_more_connections_than_allowed_in_parts`](../crates/sam-runner/src/room_service.rs#L2542) | A request never brings more connections than a request may have, also when they come in parts: once the most have come, a later part with one more is refused. | 🆕 new |
+| [`an_urgent_byte_before_the_request_does_not_end_its_reading`](../crates/sam-runner/src/room_service.rs#L3569) | A stray byte the program marks urgent (out of band) makes the connection look readable while there is nothing to read yet: the service waits on for the request and reads it, never takes that for a refusal. | 🆕 new |
+| [`too_many_connections_are_refused_with_the_right_reason`](../crates/sam-runner/src/room_service.rs#L3596) | Too many connections are refused for what they are: more than one request may pass ("passes too many"), or more than the launcher has room for now ("held for rooms at once", which says the app is not at fault). | 🆕 new |
+| [`a_request_of_the_largest_size_is_read_and_one_byte_more_is_refused`](../crates/sam-runner/src/room_service.rs#L3630) | A request of exactly the largest size is read whole; one byte more is refused before it is read. | 🆕 new |
+| [`an_empty_send_succeeds_and_a_send_to_a_closed_connection_fails`](../crates/sam-runner/src/room_service.rs#L3664) | Sending nothing is done at once, and a send to a connection whose other end is gone says so (it never reads as sent). | 🆕 new |
+| [`a_send_taken_in_part_still_sends_everything`](../crates/sam-runner/src/room_service.rs#L3679) | A send the kernel takes only in part (here a signal ends the wait for room in a full connection) still sends the rest: the other side gets every byte and the connection that came with the first part, and the send returns once all is sent. | 🆕 new |
+| [`the_standin_dies_with_its_parent_only_when_asked`](../crates/sam-runner/src/room_service.rs#L3745) | The stand-in ends with the program that started it exactly when Bubblewrap is asked to (`--die-with-parent`), not otherwise: it sets that before it even looks for Room service (here there is none, so it then ends with an error). | 🆕 new |
 | [`the_start_record_keeps_its_room_lines_and_counts_the_rest`](../crates/sam-runner/src/room_service.rs#L3059) | The start record keeps at most MAX_ROOM_RECORDS lines about rooms and MAX_RECORDS refusals, in that order, and counts the rest: one line more than fits is counted, never kept. | 🆕 new |
 | [`a_stop_with_nothing_left_is_quick_and_adds_nothing`](../crates/sam-runner/src/room_service.rs#L3080) | A stop with nothing left to wait for returns at once and adds no line of its own to the start record (no "0 more …", no "0 requests still unfinished"). | 🆕 new |
 | [`a_stop_names_requests_still_unfinished`](../crates/sam-runner/src/room_service.rs#L3093) | A request still not finished when the service stops is named in the start record after the short wait, never lost. | 🆕 new |

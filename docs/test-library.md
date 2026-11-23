@@ -263,7 +263,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-292 tests.
+298 tests.
 
 | Promise | Test |
 |---|---|
@@ -459,6 +459,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Rooms one after another each give their slot back: more rooms than may run at once are all built, one by one. | [`rooms_one_after_another_never_run_out_of_slots`](../crates/sam-runner/src/room_service.rs#L3417) |
 | Every room still running ends with the app's start, also after other rooms ended before it: one whose layers were never confirmed, one whose program ended. | [`every_room_ends_with_the_start_whatever_other_rooms_did_before`](../crates/sam-runner/src/room_service.rs#L3438) |
 | A signal that interrupts the room's watcher (the launcher handles terminal resizes, say) is not its stand-in leaving: the room runs on to its own end. | [`a_signal_to_the_rooms_watcher_never_ends_the_room`](../crates/sam-runner/src/room_service.rs#L3472) |
+| A stray byte the program marks urgent (out of band) makes the connection look readable while there is nothing to read yet: the service waits on for the request and reads it, never takes that for a refusal. | [`an_urgent_byte_before_the_request_does_not_end_its_reading`](../crates/sam-runner/src/room_service.rs#L3569) |
+| Too many connections are refused for what they are: more than one request may pass ("passes too many"), or more than the launcher has room for now ("held for rooms at once", which says the app is not at fault). | [`too_many_connections_are_refused_with_the_right_reason`](../crates/sam-runner/src/room_service.rs#L3596) |
+| A request of exactly the largest size is read whole; one byte more is refused before it is read. | [`a_request_of_the_largest_size_is_read_and_one_byte_more_is_refused`](../crates/sam-runner/src/room_service.rs#L3630) |
+| Sending nothing is done at once, and a send to a connection whose other end is gone says so (it never reads as sent). | [`an_empty_send_succeeds_and_a_send_to_a_closed_connection_fails`](../crates/sam-runner/src/room_service.rs#L3664) |
+| A send the kernel takes only in part (here a signal ends the wait for room in a full connection) still sends the rest: the other side gets every byte and the connection that came with the first part, and the send returns once all is sent. | [`a_send_taken_in_part_still_sends_everything`](../crates/sam-runner/src/room_service.rs#L3679) |
+| The stand-in ends with the program that started it exactly when Bubblewrap is asked to (`--die-with-parent`), not otherwise: it sets that before it even looks for Room service (here there is none, so it then ends with an error). | [`the_standin_dies_with_its_parent_only_when_asked`](../crates/sam-runner/src/room_service.rs#L3745) |
 | The relay's settings switch module loading off, listen only on SAM's socket, take no D-Bus name and load no modules at start; a path cannot break out of its quotes. | [`the_relay_cannot_load_modules_and_listens_only_on_its_socket`](../crates/sam-runner/src/sound_relay.rs#L235) |
 | The lock check fails a relay that runs outside a sandbox: it sees the person's folder (mutation run P14: an answer of always "held" went unnoticed, so `sam-jail doctor` would not see such a relay). | [`a_relay_outside_a_sandbox_is_not_held`](../crates/sam-runner/src/sound_relay.rs#L250) |
 | A socket path too long for Linux is refused with a clear reason before PipeWire starts (it ended with an unclear crash: the 240-app run of 2026-11-20). | [`a_too_long_socket_path_is_named_before_the_relay_starts`](../crates/sam-runner/src/sound_relay.rs#L292) |
@@ -514,7 +520,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | AppImages are listed before they have a sandbox; only creating the sandbox adds SAM's menu entry and hides unsandboxed ones, and removing it puts them back. | [`found_appimages_get_a_menu_entry_only_with_a_sandbox`](../crates/sam-runner/tests/overview.rs#L13) |
 | An app gets the name it asks for only when nobody uses it. | [`an_app_gets_the_name_it_asks_for_only_when_nobody_uses_it`](../crates/sam-runner/tests/own_names.rs#L46) |
 | A repair step is kept when it helps and undone when it does not. | [`a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not`](../crates/sam-runner/tests/repair_trial.rs#L30) |
-| Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L892) |
+| Room service builds rooms that work, and no room ever gets more than its app: not under "No network" or the full network, not in an app whose Landlock and syscall filter are off, not in a shared home, not through messages written by hand past the stand-in, not by exchanging a folder for a link while rooms are built; and no room outlives its app. | [`room_service_builds_working_rooms_that_never_get_more_than_their_app`](../crates/sam-runner/tests/room_service.rs#L920) |
 | Every room is within its app, for generated requests under no network, the full network, and in an app with Landlock and its syscall filter off: no room reads, writes or reaches anything its app cannot, and no room shows a folder of the computer its app is not shown. | [`every_room_is_a_subset_of_its_app`](../crates/sam-runner/tests/room_service_compare.rs#L171) |
 | Rooms never run the launcher out of descriptors. | [`rooms_never_run_the_launcher_out_of_descriptors`](../crates/sam-runner/tests/room_service_fd_limit.rs#L47) |
 | An image loaded through GTK's real image loader inside a SAM sandbox is decoded in a room of its own, never without a sandbox. | [`glycin_loads_images_in_a_room_never_without_a_sandbox`](../crates/sam-runner/tests/room_service_glycin.rs#L81) |
@@ -675,4 +681,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 589 automated Rust tests plus 7 scripted checks.
+Total: 595 automated Rust tests plus 7 scripted checks.
