@@ -124,7 +124,66 @@ fn a_start_without_the_helper_reports_its_missing_layers() {
         !err.contains("SAM moved it aside"),
         "nothing was moved, so nothing is said: {err}"
     );
+
+    // Review K-1: a helper that reports Landlock and seccomp but nothing
+    // about the abstract-socket fence (an older one, or one that lost it).
+    // A start that shares the computer's network on a kernel with the fence
+    // (Linux 6.12, Landlock 6) relies on it, so the record names it as
+    // missing; a start without network does not, and nothing is missing.
+    // On an older kernel nothing can be fenced, and nothing is named.
+    fs::write(bin.join("sam-jail-run"), OLD_HELPER).unwrap();
+    fs::set_permissions(
+        bin.join("sam-jail-run"),
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+    let missing_with = |network: &str| -> Vec<String> {
+        assert!(sam(&["set", &id, "network.mode", network, "--yes"])
+            .status
+            .success());
+        assert!(sam(&["review", &id]).status.success());
+        let run = sam(&["run", &id]);
+        let entry = json(&sam(&["--json", "info", &id]))["data"]["entry"].clone();
+        assert!(
+            entry["last_launch"]["enforcement"]
+                .as_str()
+                .is_some_and(|e| e.contains("landlock: fully enforced")),
+            "the stand-in reported: {entry}\n{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        entry["last_launch"]["missing_layers"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(missing_with("none"), Vec::<String>::new(), "no network");
+    let fence = sam_core::host::landlock_abi().is_some_and(|v| v >= 6);
+    assert_eq!(
+        missing_with("full"),
+        if fence {
+            vec!["Landlock socket fence".to_string()]
+        } else {
+            vec![]
+        },
+        "full network, Landlock {:?}",
+        sam_core::host::landlock_abi()
+    );
 }
+
+/// A stand-in for an older `sam-jail-run`: it reports Landlock and seccomp
+/// in place but says nothing about the abstract-socket fence, then starts
+/// the app (it applies nothing itself).
+const OLD_HELPER: &str = r#"#!/bin/sh
+[ "$1" = --sandbox-exec ] && [ "$3" = -- ] || exit 97
+shift 3
+eval "echo 'landlock: fully enforced; seccomp: baseline loaded' >&$SAM_STATUS_FD; exec $SAM_STATUS_FD>&-"
+unset SAM_STATUS_FD
+exec "$@"
+"#;
 
 /// A tiny syscall filter of the test's own: loading another filter
 /// (`seccomp()`, or `prctl(PR_SET_SECCOMP)`) fails with EPERM, everything
