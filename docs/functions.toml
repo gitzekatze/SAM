@@ -106,6 +106,7 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "the_sound_servers_own_socket_is_dangerous_as_an_extra_socket",
   "a_function_of_a_password_service_counts_with_the_network",
   "a_dangerous_socket_is_known_however_it_is_written",
+  "every_grant_the_risk_words_question_is_warned_about",
 ]
 
 [[function]]
@@ -473,7 +474,9 @@ id = 25
 area = "E"
 promise = "The diagnose run finds missing files and suggests only what helps."
 code = ["sam-runner/src/diagnose.rs"]
-tests = ["failed_accesses_are_read_from_a_trace", "failed_accesses_map_to_the_permission_that_fixes_them", "a_failure_despite_the_permission_is_not_suggested_again", "the_apps_own_folders_in_its_private_home_are_not_reported", "failed_changes_to_a_file_are_not_missing_access", "write_checks_on_system_folders_are_not_missing_access", "files_in_etc_are_suggested_and_not_added_automatically", "the_apps_own_settings_folder_is_not_reported_as_sensitive", "diagnostic_runs_obey_the_preference"]
+tests = ["failed_accesses_are_read_from_a_trace", "failed_accesses_map_to_the_permission_that_fixes_them", "a_failure_despite_the_permission_is_not_suggested_again", "the_apps_own_folders_in_its_private_home_are_not_reported", "failed_changes_to_a_file_are_not_missing_access", "write_checks_on_system_folders_are_not_missing_access", "files_in_etc_are_suggested_and_not_added_automatically", "the_apps_own_settings_folder_is_not_reported_as_sensitive", "diagnostic_runs_obey_the_preference",
+  "the_trace_is_read_only_as_a_plain_file_of_limited_size",
+]
 
 [[function]]
 id = 26
@@ -499,7 +502,7 @@ tests = ["records_changed_outside_sam_are_recognized", "an_app_changed_outside_s
 [[function]]
 id = 28
 area = "F"
-promise = "Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, and refuse a changed signing key until you accept it."
+promise = "Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, refuse a changed signing key until you accept it (the yes covers only the file you were shown), and never install a build for another processor."
 code = ["sam-runner/src/updates.rs", "sam-runner/src/zsync.rs", "sam-runner/src/release_key.rs", "sam-detect/src/update_info.rs", "sam-detect/src/signature.rs"]
 tests = ["both_forms_of_update_information_are_understood", "update_wildcards_match_only_the_right_build", "signed_appimage_is_checked", "key_changes_are_noticed", "an_update_signed_with_another_key_waits_for_consent", "sam_updates_itself_only_with_its_release_key", "release_keys_are_full_fingerprints", "signing_a_file_without_signature_sections_is_refused", "without_a_release_key_sam_never_updates_itself", "the_zsync_header_is_read", "update_download_addresses_are_resolved_and_http_refused", "updates_are_downloaded_over_https_only", "an_update_is_rebuilt_from_the_old_version_and_changed_blocks", "the_rolling_checksum_matches_a_direct_computation", "refuses_compressed_and_broken_files", "undo_puts_the_previous_version_back", "undoing_an_update_never_moves_files_outside_sams_backup_folder", "block_checksums_match_the_zsync_definition", "the_download_checksum_is_sha1_of_the_whole_file", "updates_download_only_changes_check_them_and_refuse_tampering", "the_weak_hashes_stay_in_the_zsync_update_code", "an_update_never_comes_over_plain_http", "a_download_from_plain_http_is_refused_before_curl_runs",
   "an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature",
@@ -531,6 +534,15 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "a_signature_that_was_never_checked_lets_no_key_through",
   "going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change",
   "going_back_works_when_the_update_could_not_be_unpacked",
+  "a_full_download_stops_at_the_published_length_whatever_the_server_sends",
+  "a_whole_answer_is_never_cut_off_and_handed_on_as_complete",
+  "a_release_with_hundreds_of_files_is_read_whole",
+  "release_files_for_this_processor_come_first",
+  "a_description_with_tiny_or_countless_blocks_is_refused_before_allocating",
+  "a_server_that_sends_more_than_announced_cannot_fill_the_disk",
+  "an_update_built_for_another_processor_is_not_installed",
+  "consent_to_a_new_key_covers_only_the_file_that_was_shown",
+  "going_back_puts_the_earlier_version_only_into_the_apps_folder",
 ]
 
 [[function]]
@@ -596,7 +608,9 @@ id = 35
 area = "H"
 promise = "The overview of all apps, with clear status badges."
 code = ["sam-gtk/src/window.rs", "sam-gtk/src/pages.rs", "sam-core/src/model.rs", "sam-storage/src/lib.rs"]
-tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text", "links_to_other_pages_open_on_github"]
+tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text", "links_to_other_pages_open_on_github",
+  "a_name_an_app_chose_cannot_take_over_another_apps_query",
+]
 checks = ["tests/gui/session.sh"]
 
 [[function]]
@@ -612,7 +626,10 @@ id = 37
 area = "H"
 promise = "SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's."
 code = ["sam-core/src/i18n.rs", "sam-gtk/src/i18n.rs", "scripts/i18n.py", "po/de.po", "po/es.po", "po/fr.po"]
-tests = ["texts_without_a_translation_come_back_with_their_values", "the_command_line_speaks_german_when_asked", "every_translated_language_can_be_chosen", "the_language_is_the_system_or_one_sam_speaks", "the_chosen_language_and_the_systems_are_kept_apart", "apps_keep_the_system_language_whatever_sams_window_shows"]
+tests = ["texts_without_a_translation_come_back_with_their_values", "the_command_line_speaks_german_when_asked", "every_translated_language_can_be_chosen", "the_language_is_the_system_or_one_sam_speaks", "the_chosen_language_and_the_systems_are_kept_apart", "apps_keep_the_system_language_whatever_sams_window_shows",
+  "a_value_is_never_filled_in_again",
+  "only_a_program_cargo_built_reads_a_checkouts_translations",
+]
 checks = ["tests/gui/flow-atspi.sh", "scripts/i18n.py"]
 
 [[function]]
@@ -633,7 +650,10 @@ id = 38
 area = "I"
 promise = "SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM."
 code = ["sam-core/src/format.rs", "sam-core/src/config.rs", "sam-core/src/permissions.rs", "sam-storage/src/lib.rs"]
-tests = ["a_complete_configuration_file_loads_every_setting", "settings_change_by_key_and_old_theme_names_are_migrated", "files_from_a_newer_sam_are_never_overwritten", "access_from_bool_and_str", "old_profiles_with_removed_options_still_load", "permissions_saved_as_toml_load_back_unchanged", "old_extra_backend_args_still_load", "presets_in_the_older_flat_format_still_load", "old_formats_are_migrated_and_kept", "newer_formats_are_left_untouched", "damaged_files_are_moved_aside_and_reported", "mangled_files_never_crash", "empty_or_relative_folder_settings_are_ignored"]
+tests = ["a_complete_configuration_file_loads_every_setting", "settings_change_by_key_and_old_theme_names_are_migrated", "files_from_a_newer_sam_are_never_overwritten", "access_from_bool_and_str", "old_profiles_with_removed_options_still_load", "permissions_saved_as_toml_load_back_unchanged", "old_extra_backend_args_still_load", "presets_in_the_older_flat_format_still_load", "old_formats_are_migrated_and_kept", "newer_formats_are_left_untouched", "damaged_files_are_moved_aside_and_reported", "mangled_files_never_crash", "empty_or_relative_folder_settings_are_ignored",
+  "one_unreadable_setting_does_not_cost_the_others",
+  "data_of_an_unreadable_record_is_not_offered_for_deletion",
+]
 checks = ["tests/upgrade/run.sh"]
 
 [[function]]

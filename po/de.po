@@ -10,12 +10,21 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:230
+#: crates/sam-core/src/config.rs:283
+msgid ""
+"{file}: {settings} could not be read and went back to the default; the other "
+"settings stay"
+msgstr ""
+"{file}: {settings} ließ sich nicht lesen und steht wieder auf dem "
+"Standardwert; die übrigen Einstellungen bleiben"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/config.rs:295
 msgid "{file}: {error}; that setting was reset"
 msgstr "{file}: {error}; diese Einstellung wurde zurückgesetzt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:263
+#: crates/sam-core/src/config.rs:328
 msgid ""
 "{file} could not be read; it was moved to {moved} and the default settings "
 "are used"
@@ -24,14 +33,14 @@ msgstr ""
 "und die Standardeinstellungen werden verwendet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:268
+#: crates/sam-core/src/config.rs:333
 msgid "{file} could not be read; the default settings are used"
 msgstr ""
 "{file} konnte nicht gelesen werden; die Standardeinstellungen werden "
 "verwendet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:286
+#: crates/sam-core/src/config.rs:351
 msgid ""
 "unknown language '{language}'; choose one of: {choices}, or leave it empty "
 "to follow the system"
@@ -40,18 +49,18 @@ msgstr ""
 "Feld leer, um dem System zu folgen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:295
+#: crates/sam-core/src/config.rs:360
 msgid "unknown theme '{theme}'; choose one of: {choices}"
 msgstr "unbekanntes Design „{theme}“; möglich sind: {choices}"
 
-#: crates/sam-core/src/config.rs:313
+#: crates/sam-core/src/config.rs:378
 msgid ""
 "extraction.location must be an absolute path (or start with ~/), without '..'"
 msgstr ""
 "extraction.location muss ein absoluter Pfad sein (oder mit ~/ beginnen), "
 "ohne „..“"
 
-#: crates/sam-core/src/config.rs:316
+#: crates/sam-core/src/config.rs:381
 msgid ""
 "extraction.location cannot be / or the home folder itself; choose a folder "
 "of its own"
@@ -60,22 +69,22 @@ msgstr ""
 "wähle einen eigenen Ordner"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:349 crates/sam-core/src/config.rs:366
-#: crates/sam-core/src/config.rs:379
+#: crates/sam-core/src/config.rs:414 crates/sam-core/src/config.rs:431
+#: crates/sam-core/src/config.rs:444
 msgid "unknown config key '{key}'"
 msgstr "unbekannter Einstellungsschlüssel „{key}“"
 
-#: crates/sam-core/src/config.rs:360 crates/sam-core/src/permissions.rs:933
+#: crates/sam-core/src/config.rs:425 crates/sam-core/src/permissions.rs:933
 msgid "empty key"
 msgstr "leerer Schlüssel"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:373
+#: crates/sam-core/src/config.rs:438
 msgid "'{key}' is not settable"
 msgstr "„{key}“ lässt sich nicht einstellen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:395 crates/sam-core/src/permissions.rs:959
+#: crates/sam-core/src/config.rs:460 crates/sam-core/src/permissions.rs:959
 msgid "invalid value for '{key}': {raw}"
 msgstr "ungültiger Wert für „{key}“: {raw}"
 
@@ -506,7 +515,7 @@ msgstr ""
 "Systems. Die meisten Spiele, Browser und Editoren brauchen sie."
 
 #: crates/sam-core/src/permissions.rs:1090 crates/sam-core/src/risk.rs:271
-#: crates/sam-runner/src/verify.rs:352
+#: crates/sam-core/src/warnings.rs:256 crates/sam-runner/src/verify.rs:352
 msgid "Webcam"
 msgstr "Webcam"
 
@@ -557,7 +566,7 @@ msgstr ""
 "Hardware-Hilfsprogramme."
 
 #: crates/sam-core/src/permissions.rs:1098 crates/sam-core/src/risk.rs:293
-#: crates/sam-core/src/warnings.rs:241
+#: crates/sam-core/src/warnings.rs:316
 msgid "Bluetooth"
 msgstr "Bluetooth"
 
@@ -641,6 +650,7 @@ msgstr ""
 "getrennt."
 
 #: crates/sam-core/src/permissions.rs:1110 crates/sam-core/src/risk.rs:304
+#: crates/sam-core/src/warnings.rs:276
 msgid "Privileged Wayland protocols"
 msgstr "Privilegierte Wayland-Protokolle"
 
@@ -703,6 +713,7 @@ msgstr ""
 "Standardmäßig gesperrt."
 
 #: crates/sam-core/src/permissions.rs:1120 crates/sam-core/src/risk.rs:339
+#: crates/sam-core/src/warnings.rs:246
 msgid "Passwords & keyring"
 msgstr "Passwörter und Schlüsselbund"
 
@@ -765,7 +776,7 @@ msgstr ""
 "Beispiel für Chinesisch, Japanisch oder Koreanisch, und Emoji-Auswahl."
 
 #: crates/sam-core/src/permissions.rs:1130 crates/sam-core/src/risk.rs:480
-#: crates/sam-runner/src/verify.rs:518
+#: crates/sam-core/src/warnings.rs:266 crates/sam-runner/src/verify.rs:518
 msgid "SSH agent"
 msgstr "SSH-Agent"
 
@@ -929,7 +940,7 @@ msgstr ""
 "perf, Schlüsselringe, io_uring, Einschleusen ins Terminal). Nur ausschalten, "
 "wenn eine App deswegen nicht läuft."
 
-#: crates/sam-core/src/permissions.rs:1158
+#: crates/sam-core/src/permissions.rs:1158 crates/sam-core/src/warnings.rs:306
 msgid "Nested namespaces"
 msgstr "Verschachtelte Namensräume"
 
@@ -1057,11 +1068,11 @@ msgstr "Systembus: voller Zugriff"
 msgid "All of /usr"
 msgstr "Ganz /usr"
 
-#: crates/sam-core/src/risk.rs:519
+#: crates/sam-core/src/risk.rs:519 crates/sam-core/src/warnings.rs:286
 msgid "Syscall filter off"
 msgstr "Syscall-Filter aus"
 
-#: crates/sam-core/src/risk.rs:527
+#: crates/sam-core/src/risk.rs:527 crates/sam-core/src/warnings.rs:296
 msgid "Landlock off"
 msgstr "Landlock aus"
 
@@ -1131,22 +1142,22 @@ msgstr ""
 "schützt die üblichen Stellen (Shell-Start, Autostart, Menüeinträge), nicht "
 "jede. Nur für Apps, denen du vertraust."
 
-#: crates/sam-core/src/warnings.rs:135
+#: crates/sam-core/src/warnings.rs:138
 msgid "Private keys exposed"
 msgstr "Private Schlüssel sichtbar"
 
-#: crates/sam-core/src/warnings.rs:135
+#: crates/sam-core/src/warnings.rs:138
 msgid "SSH keys, GnuPG keys or other credential stores are visible to the app."
 msgstr ""
 "SSH-Schlüssel, GnuPG-Schlüssel oder andere Zugangsdatenspeicher sind für die "
 "App sichtbar."
 
-#: crates/sam-core/src/warnings.rs:150
+#: crates/sam-core/src/warnings.rs:152
 msgid "Connections to other programs exposed"
 msgstr "Verbindungen zu anderen Programmen sichtbar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/warnings.rs:153
+#: crates/sam-core/src/warnings.rs:155
 msgid ""
 "'{path}' holds connections to programs outside the sandbox (terminal "
 "sessions, SSH connections, the X server). The app can use them to run "
@@ -1156,12 +1167,12 @@ msgstr ""
 "(Terminalsitzungen, SSH-Verbindungen, den X-Server). Die App kann über sie "
 "Befehle außerhalb der Sandbox ausführen, auch mit Nur-Lese-Zugriff."
 
-#: crates/sam-core/src/warnings.rs:159
+#: crates/sam-core/src/warnings.rs:161
 msgid "Sensitive path exposed"
 msgstr "Sensibler Pfad sichtbar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/warnings.rs:162
+#: crates/sam-core/src/warnings.rs:164
 msgid ""
 "'{path}' contains system or credential data. Exposing it weakens the sandbox "
 "significantly."
@@ -1169,11 +1180,11 @@ msgstr ""
 "„{path}“ enthält System- oder Zugangsdaten. Ihn freizugeben schwächt die "
 "Sandbox erheblich."
 
-#: crates/sam-core/src/warnings.rs:170
+#: crates/sam-core/src/warnings.rs:172
 msgid "Network may not be needed"
 msgstr "Netzwerk vermutlich unnötig"
 
-#: crates/sam-core/src/warnings.rs:170
+#: crates/sam-core/src/warnings.rs:172
 msgid ""
 "This app does not appear to need the network. Consider setting network "
 "access to 'none'."
@@ -1181,11 +1192,11 @@ msgstr ""
 "Diese App scheint das Netzwerk nicht zu brauchen. Überleg dir, den "
 "Netzwerkzugriff auf „Kein Netzwerk“ zu stellen."
 
-#: crates/sam-core/src/warnings.rs:180
+#: crates/sam-core/src/warnings.rs:182
 msgid "Network is off"
 msgstr "Netzwerk ist aus"
 
-#: crates/sam-core/src/warnings.rs:180
+#: crates/sam-core/src/warnings.rs:182
 msgid ""
 "This app looks like it uses the network. Some features may not work until "
 "network access is enabled."
@@ -1193,11 +1204,11 @@ msgstr ""
 "Diese App scheint das Netzwerk zu nutzen. Manche Funktionen gehen erst, wenn "
 "der Netzwerkzugriff erlaubt ist."
 
-#: crates/sam-core/src/warnings.rs:191
+#: crates/sam-core/src/warnings.rs:193
 msgid "System D-Bus requested"
 msgstr "System-D-Bus angefordert"
 
-#: crates/sam-core/src/warnings.rs:191
+#: crates/sam-core/src/warnings.rs:193
 msgid ""
 "The system bus controls hardware, networking, power and package management. "
 "Grant only to apps you trust."
@@ -1205,11 +1216,11 @@ msgstr ""
 "Der Systembus steuert Hardware, Netzwerk, Energieverwaltung und "
 "Paketverwaltung. Nur Apps erlauben, denen du vertraust."
 
-#: crates/sam-core/src/warnings.rs:201
+#: crates/sam-core/src/warnings.rs:204
 msgid "Full session D-Bus"
 msgstr "Voller Sitzungs-D-Bus"
 
-#: crates/sam-core/src/warnings.rs:201
+#: crates/sam-core/src/warnings.rs:204
 msgid ""
 "Unfiltered session bus access lets the app control other desktop "
 "applications and services, and can be used to escape the sandbox."
@@ -1217,23 +1228,23 @@ msgstr ""
 "Ungefilterter Zugriff auf den Sitzungsbus lässt die App andere Desktop-"
 "Programme und -Dienste steuern und kann zum Ausbruch aus der Sandbox dienen."
 
-#: crates/sam-core/src/warnings.rs:213
+#: crates/sam-core/src/warnings.rs:216
 msgid "Dangerous D-Bus access"
 msgstr "Gefährlicher D-Bus-Zugriff"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/warnings.rs:216
+#: crates/sam-core/src/warnings.rs:219
 msgid ""
 "Allowed session service: {why}. This can let the app escape the sandbox."
 msgstr ""
 "Erlaubter Sitzungsdienst: {why}. Damit kann die App aus der Sandbox "
 "ausbrechen."
 
-#: crates/sam-core/src/warnings.rs:224
+#: crates/sam-core/src/warnings.rs:227
 msgid "D-Bus filtering unavailable"
 msgstr "D-Bus-Filter nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:224
+#: crates/sam-core/src/warnings.rs:227
 msgid ""
 "xdg-dbus-proxy is not installed, so the filtered session bus is disabled. "
 "Install xdg-dbus-proxy."
@@ -1241,11 +1252,11 @@ msgstr ""
 "xdg-dbus-proxy ist nicht installiert, deshalb ist der gefilterte Sitzungsbus "
 "aus. Installiere xdg-dbus-proxy."
 
-#: crates/sam-core/src/warnings.rs:233
+#: crates/sam-core/src/warnings.rs:236
 msgid "Raw device access"
 msgstr "Direkter Gerätezugriff"
 
-#: crates/sam-core/src/warnings.rs:233
+#: crates/sam-core/src/warnings.rs:236
 msgid ""
 "Raw input, USB or sound devices are exposed. Input devices can be used to "
 "log keystrokes."
@@ -1253,7 +1264,61 @@ msgstr ""
 "Eingabe-, USB- oder Tongeräte sind direkt sichtbar. Über Eingabegeräte "
 "lassen sich Tastendrücke mitschneiden."
 
-#: crates/sam-core/src/warnings.rs:241
+#: crates/sam-core/src/warnings.rs:246
+msgid ""
+"The app can read every password and secret stored in your keyring, also "
+"those of other apps."
+msgstr ""
+"Die App kann jedes Passwort und jedes Geheimnis in deinem Schlüsselbund "
+"lesen, auch die anderer Apps."
+
+#: crates/sam-core/src/warnings.rs:256
+msgid "The app can switch on your camera and record what it sees."
+msgstr "Die App kann deine Kamera einschalten und aufnehmen, was sie sieht."
+
+#: crates/sam-core/src/warnings.rs:266
+msgid ""
+"While it runs, the app can use your SSH keys through the agent to log in to "
+"other computers as you."
+msgstr ""
+"Solange sie läuft, kann die App über den Agenten deine SSH-Schlüssel "
+"benutzen und sich in deinem Namen bei anderen Computern anmelden."
+
+#: crates/sam-core/src/warnings.rs:276
+msgid ""
+"The app can use desktop functions meant for trusted tools, such as capturing "
+"the screen, reading the clipboard history or typing into other windows."
+msgstr ""
+"Die App kann Funktionen des Desktops nutzen, die für vertrauenswürdige "
+"Werkzeuge gedacht sind, etwa den Bildschirm aufnehmen, den Verlauf der "
+"Zwischenablage lesen oder in andere Fenster tippen."
+
+#: crates/sam-core/src/warnings.rs:286
+msgid ""
+"The kernel functions SAM normally blocks are within the app's reach, so a "
+"flaw in the kernel is easier to use from inside the sandbox."
+msgstr ""
+"Die Kernel-Funktionen, die SAM sonst sperrt, sind für die App erreichbar; "
+"ein Fehler im Kernel lässt sich so aus der Sandbox heraus leichter "
+"ausnutzen."
+
+#: crates/sam-core/src/warnings.rs:296
+msgid ""
+"The second barrier around your files (Landlock) is off; only the sandbox's "
+"own view of the files protects them."
+msgstr ""
+"Die zweite Schranke um deine Dateien (Landlock) ist aus; nur die eigene "
+"Dateiansicht der Sandbox schützt sie."
+
+#: crates/sam-core/src/warnings.rs:306
+msgid ""
+"The app may build sandboxes of its own, which brings more of the kernel "
+"within its reach. Browsers built on Chromium need this for their own sandbox."
+msgstr ""
+"Die App darf eigene Sandboxen bauen, dadurch ist mehr vom Kernel für sie "
+"erreichbar. Browser auf Chromium-Basis brauchen das für ihre eigene Sandbox."
+
+#: crates/sam-core/src/warnings.rs:316
 msgid ""
 "Bluetooth requires system D-Bus access (BlueZ), which SAM cannot filter. The "
 "toggle is ignored unless the system bus is granted."
@@ -1262,11 +1327,11 @@ msgstr ""
 "filtern kann. Der Schalter bleibt wirkungslos, solange der Systembus nicht "
 "erlaubt ist."
 
-#: crates/sam-core/src/warnings.rs:250
+#: crates/sam-core/src/warnings.rs:325
 msgid "Raw backend arguments"
 msgstr "Rohe Backend-Argumente"
 
-#: crates/sam-core/src/warnings.rs:250
+#: crates/sam-core/src/warnings.rs:325
 msgid ""
 "Custom backend arguments are passed through unchecked and may weaken the "
 "sandbox."
@@ -1274,11 +1339,11 @@ msgstr ""
 "Eigene Backend-Argumente werden ungeprüft durchgereicht und können die "
 "Sandbox schwächen."
 
-#: crates/sam-core/src/warnings.rs:257
+#: crates/sam-core/src/warnings.rs:332
 msgid "Experimental seccomp filter"
 msgstr "Experimenteller seccomp-Filter"
 
-#: crates/sam-core/src/warnings.rs:257
+#: crates/sam-core/src/warnings.rs:332
 msgid ""
 "Strict syscall filtering is experimental and can break apps (for example, "
 "Electron apps that need nested namespaces)."
@@ -1286,15 +1351,15 @@ msgstr ""
 "Strenges Filtern von Systemaufrufen ist experimentell und kann Apps stören "
 "(zum Beispiel Electron-Apps, die verschachtelte Namensräume brauchen)."
 
-#: crates/sam-core/src/warnings.rs:266
+#: crates/sam-core/src/warnings.rs:341
 msgid "User namespaces unavailable"
 msgstr "Benutzer-Namensräume nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:273 crates/sam-sandbox/src/lib.rs:1822
+#: crates/sam-core/src/warnings.rs:348 crates/sam-sandbox/src/lib.rs:1822
 msgid "Wayland socket not available"
 msgstr "Wayland-Socket nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:273
+#: crates/sam-core/src/warnings.rs:348
 msgid ""
 "The Wayland socket is not available. Enable X11 or log in to a Wayland "
 "session."
@@ -1302,21 +1367,21 @@ msgstr ""
 "Der Wayland-Socket ist nicht verfügbar. Schalte X11 ein oder melde dich in "
 "einer Wayland-Sitzung an."
 
-#: crates/sam-core/src/warnings.rs:280 crates/sam-sandbox/src/lib.rs:1842
+#: crates/sam-core/src/warnings.rs:355 crates/sam-sandbox/src/lib.rs:1842
 msgid "X11 display not available"
 msgstr "X11-Anzeige nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:280
+#: crates/sam-core/src/warnings.rs:355
 msgid "No X11 display was found ($DISPLAY is unset or its socket is missing)."
 msgstr ""
 "Es wurde keine X11-Anzeige gefunden ($DISPLAY ist nicht gesetzt oder sein "
 "Socket fehlt)."
 
-#: crates/sam-core/src/warnings.rs:287
+#: crates/sam-core/src/warnings.rs:362
 msgid "Sound server not found"
 msgstr "Kein Soundserver gefunden"
 
-#: crates/sam-core/src/warnings.rs:291
+#: crates/sam-core/src/warnings.rs:366
 msgid ""
 "PipeWire runs without its PulseAudio service (pipewire-pulse), which "
 "sandboxed apps use for sound. Install or start pipewire-pulse."
@@ -1324,7 +1389,7 @@ msgstr ""
 "PipeWire läuft ohne seinen PulseAudio-Dienst (pipewire-pulse), den Apps in "
 "einer Sandbox für Ton verwenden. Installiere oder starte pipewire-pulse."
 
-#: crates/sam-core/src/warnings.rs:295
+#: crates/sam-core/src/warnings.rs:370
 msgid "No PulseAudio or PipeWire sound server was found. Audio may not work."
 msgstr ""
 "Es wurde kein PulseAudio- oder PipeWire-Soundserver gefunden. Ton geht "
@@ -5930,7 +5995,7 @@ msgstr ""
 "Die App wollte auf {path} zugreifen. Gib den Ordner frei, wenn das erwartet "
 "ist."
 
-#: crates/sam-runner/src/diagnose.rs:351
+#: crates/sam-runner/src/diagnose.rs:381
 msgid ""
 "diagnostic runs are switched off; turn on Preferences → Allow diagnostic "
 "runs to run an app under strace"
@@ -5939,19 +6004,19 @@ msgstr ""
 "erlauben ein, um eine App unter strace auszuführen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/diagnose.rs:358
+#: crates/sam-runner/src/diagnose.rs:388
 msgid "strace is not installed; it is needed for the diagnose run. {hint}"
 msgstr ""
 "strace ist nicht installiert; es wird für den Diagnoselauf gebraucht. {hint}"
 
-#: crates/sam-runner/src/diagnose.rs:367
+#: crates/sam-runner/src/diagnose.rs:397
 msgid "diagnostic runs are refused while full home access is granted"
 msgstr ""
 "Diagnoseläufe sind abgelehnt, solange voller Zugriff auf den Persönlichen "
 "Ordner erteilt ist"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/diagnose.rs:483
+#: crates/sam-runner/src/diagnose.rs:513
 msgid ""
 "{path} could not be opened ({error}), although the app already has this "
 "access. The cause is elsewhere; the trace line shows the call."
@@ -6828,12 +6893,12 @@ msgstr "ihre Sandbox entfernen"
 msgid "could not restore the menu entry {entry}: {error}"
 msgstr "der Menüeintrag {entry} ließ sich nicht wiederherstellen: {error}"
 
-#: crates/sam-runner/src/ops/maintain.rs:534
+#: crates/sam-runner/src/ops/maintain.rs:539
 msgid "free its space"
 msgstr "ihren Platz freigeben"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:538
+#: crates/sam-runner/src/ops/maintain.rs:543
 msgid ""
 "the AppImage {file} is missing, so the unpacked copy is the only one left; "
 "it is kept"
@@ -6842,12 +6907,12 @@ msgstr ""
 "übrig ist; sie bleibt erhalten"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:699
+#: crates/sam-runner/src/ops/maintain.rs:710
 msgid "the AppImage {file} is missing; relocate it first"
 msgstr "das AppImage {file} fehlt; zeig SAM zuerst seinen neuen Ort"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:733
+#: crates/sam-runner/src/ops/maintain.rs:744
 msgid ""
 "{file} changed outside SAM since it was last unpacked, so SAM does not "
 "update it: another program may have replaced it. Use Unpack Again and look "
@@ -6858,52 +6923,62 @@ msgstr ""
 "ersetzt. Nutze „Erneut entpacken“ und sieh dir die App zuerst an."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:742
+#: crates/sam-runner/src/ops/maintain.rs:753
 msgid "{app} is already the newest published version"
 msgstr "{app} ist bereits die neueste veröffentlichte Version"
 
-#: crates/sam-runner/src/ops/maintain.rs:753
-#: crates/sam-runner/src/ops/maintain.rs:1102
+#: crates/sam-runner/src/ops/maintain.rs:764
+#: crates/sam-runner/src/ops/maintain.rs:969
+#: crates/sam-runner/src/ops/maintain.rs:1172
 msgid "no folder"
 msgstr "kein Ordner"
 
-#: crates/sam-runner/src/ops/maintain.rs:766
-#: crates/sam-runner/src/ops/maintain.rs:1115
+#: crates/sam-runner/src/ops/maintain.rs:798
+#: crates/sam-runner/src/ops/maintain.rs:1185
 msgid "the downloaded file is not an AppImage; it was deleted"
 msgstr "die heruntergeladene Datei ist kein AppImage; sie wurde gelöscht"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:787
-msgid ""
-"The signing key changed: the installed version was {before}, the new file is "
-"{now}. The download was deleted; update again and accept the change only if "
-"you trust it."
+#: crates/sam-runner/src/ops/maintain.rs:807
+msgid "the downloaded update was not installed and was deleted: {reason}"
 msgstr ""
-"Der Signaturschlüssel hat sich geändert: Die installierte Version war "
-"{before}, die neue Datei ist {now}. Der Download wurde gelöscht; "
-"aktualisiere erneut und akzeptiere die Änderung nur, wenn du ihr vertraust."
+"das heruntergeladene Update wurde nicht installiert und gelöscht: {reason}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:806
+#: crates/sam-runner/src/ops/maintain.rs:849
+msgid ""
+"The signing key changed: the installed version was {before}, the new file is "
+"{now}. Accept the change only if you trust it: SAM then installs exactly "
+"this file, never one downloaded later."
+msgstr ""
+"Der Signaturschlüssel hat sich geändert: Die installierte Version war "
+"{before}, die neue Datei ist {now}. Akzeptiere die Änderung nur, wenn du ihr"
+" vertraust: SAM installiert dann genau diese Datei, nie eine später "
+"heruntergeladene."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:867
 msgid ""
 "The installed version was {before}, but the signature of the new file cannot "
 "be checked, so SAM cannot tell whether it comes from the same developer. "
 "Install GnuPG (gpg and gpgv) and update again; accept the update without the "
-"check only if you trust its source. The download was deleted."
+"check only if you trust its source: SAM then installs exactly this file, "
+"never one downloaded later."
 msgstr ""
 "Die installierte Version war {before}, aber die Signatur der neuen Datei "
 "lässt sich nicht prüfen, deshalb kann SAM nicht feststellen, ob sie vom "
 "selben Entwickler stammt. Installiere GnuPG (gpg und gpgv) und aktualisiere "
 "erneut; nimm das Update ohne Prüfung nur an, wenn du seiner Quelle "
-"vertraust. Der Download wurde gelöscht."
+"vertraust: SAM installiert dann genau diese Datei, nie eine später "
+"heruntergeladene."
 
-#: crates/sam-runner/src/ops/maintain.rs:835
-#: crates/sam-runner/src/ops/maintain.rs:1138
+#: crates/sam-runner/src/ops/maintain.rs:895
+#: crates/sam-runner/src/ops/maintain.rs:1208
 msgid "putting the new version in place"
 msgstr "die neue Version wird an ihren Platz gesetzt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:859
+#: crates/sam-runner/src/ops/maintain.rs:919
 msgid ""
 "Updated; this is the newest published version. Only the changed parts were "
 "downloaded ({part} of {whole} MB)."
@@ -6912,23 +6987,23 @@ msgstr ""
 "geänderten Teile wurden heruntergeladen ({part} von {whole} MB)."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:863
+#: crates/sam-runner/src/ops/maintain.rs:923
 msgid "Updated; this is the newest published version ({size} MB downloaded)."
 msgstr ""
 "Aktualisiert; dies ist die neueste veröffentlichte Version ({size} MB "
 "heruntergeladen)."
 
-#: crates/sam-runner/src/ops/maintain.rs:879
+#: crates/sam-runner/src/ops/maintain.rs:939
 msgid "there is no earlier version to go back to"
 msgstr "es gibt keine frühere Version, zu der man zurückkehren könnte"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:885
+#: crates/sam-runner/src/ops/maintain.rs:945
 msgid "the earlier version is no longer there ({file})"
 msgstr "die frühere Version ist nicht mehr da ({file})"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:898
+#: crates/sam-runner/src/ops/maintain.rs:958
 msgid ""
 "the earlier version is not in SAM's backup folder ({file}); SAM does not "
 "move it"
@@ -6936,17 +7011,18 @@ msgstr ""
 "die frühere Version liegt nicht in SAMs Sicherungsordner ({file}); SAM "
 "verschiebt sie nicht"
 
-#. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:904
-msgid "{file} exists again; move it away first"
-msgstr "{file} existiert wieder; verschieb es zuerst"
-
-#: crates/sam-runner/src/ops/maintain.rs:913
+#: crates/sam-runner/src/ops/maintain.rs:970
+#: crates/sam-runner/src/ops/maintain.rs:983
 msgid "no name"
 msgstr "kein Name"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:953
+#: crates/sam-runner/src/ops/maintain.rs:974
+msgid "{file} exists again; move it away first"
+msgstr "{file} existiert wieder; verschieb es zuerst"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:1023
 msgid ""
 "{file} changed outside SAM since it was last unpacked, so SAM does not go "
 "back: another program may have replaced it. Use Unpack Again and look at the "
@@ -6957,24 +7033,24 @@ msgstr ""
 "es vielleicht ersetzt. Nutze „Erneut entpacken“ und sieh dir die App zuerst "
 "an."
 
-#: crates/sam-runner/src/ops/maintain.rs:1053
+#: crates/sam-runner/src/ops/maintain.rs:1123
 msgid ""
 "SAM is not running from an AppImage; update it with your package manager"
 msgstr ""
 "SAM läuft nicht aus einem AppImage; aktualisiere es mit deiner "
 "Paketverwaltung"
 
-#: crates/sam-runner/src/ops/maintain.rs:1063
+#: crates/sam-runner/src/ops/maintain.rs:1133
 msgid "SAM is up to date."
 msgstr "SAM ist auf dem neuesten Stand."
 
-#: crates/sam-runner/src/ops/maintain.rs:1075
-#: crates/sam-runner/src/ops/maintain.rs:1090
+#: crates/sam-runner/src/ops/maintain.rs:1145
+#: crates/sam-runner/src/ops/maintain.rs:1160
 msgid "A newer version"
 msgstr "Eine neuere Version"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1078
+#: crates/sam-runner/src/ops/maintain.rs:1148
 msgid ""
 "{version} is published. This SAM cannot yet check where an update comes "
 "from, so it does not update itself: download the new version from the "
@@ -6985,26 +7061,26 @@ msgstr ""
 "neue Version von der Veröffentlichungsseite herunter."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1093
-#: crates/sam-runner/src/updates.rs:227
+#: crates/sam-runner/src/ops/maintain.rs:1163
+#: crates/sam-runner/src/updates.rs:267
 msgid "{version} is published."
 msgstr "{version} ist veröffentlicht."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1147
+#: crates/sam-runner/src/ops/maintain.rs:1217
 msgid "only the changed parts were downloaded ({part} of {whole} MB)"
 msgstr ""
 "nur die geänderten Teile wurden heruntergeladen ({part} von {whole} MB)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1162
+#: crates/sam-runner/src/ops/maintain.rs:1232
 msgid "SAM was updated; {how}. Restart SAM to use the new version."
 msgstr ""
 "SAM wurde aktualisiert; {how}. Starte SAM neu, um die neue Version zu "
 "verwenden."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1182
+#: crates/sam-runner/src/ops/maintain.rs:1252
 msgid ""
 "The download was signed on {now}, before the installed version ({was}): it "
 "is an older version, which may have security holes that were fixed since. It "
@@ -7918,7 +7994,7 @@ msgstr "SAMs Ton-Vermittler hat sich beim Start beendet ({status})"
 msgid "SAM's sound relay did not open its socket in time"
 msgstr "SAMs Ton-Vermittler hat seinen Socket nicht rechtzeitig geöffnet"
 
-#: crates/sam-runner/src/updates.rs:39
+#: crates/sam-runner/src/updates.rs:42
 msgid ""
 "curl is not installed, so SAM cannot check for or download updates. Install "
 "the package curl."
@@ -7926,97 +8002,105 @@ msgstr ""
 "curl ist nicht installiert, deshalb kann SAM nicht nach Aktualisierungen "
 "suchen oder sie herunterladen. Installiere das Paket curl."
 
-#: crates/sam-runner/src/updates.rs:70
+#: crates/sam-runner/src/updates.rs:73
 msgid "This AppImage does not say where updates are published."
 msgstr "Dieses AppImage sagt nicht, wo Aktualisierungen veröffentlicht werden."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:82
+#: crates/sam-runner/src/updates.rs:85
 msgid "The update check failed: {error}"
 msgstr "Die Suche nach Aktualisierungen ist fehlgeschlagen: {error}"
 
-#: crates/sam-runner/src/updates.rs:112
+#: crates/sam-runner/src/updates.rs:115
 msgid "this AppImage does not say where updates are published"
 msgstr "dieses AppImage sagt nicht, wo Aktualisierungen veröffentlicht werden"
 
-#: crates/sam-runner/src/updates.rs:139
+#: crates/sam-runner/src/updates.rs:142
 msgid "GitHub's answer"
 msgstr "Antwort von GitHub"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:169
+#: crates/sam-runner/src/updates.rs:156
 msgid "release {tag_name} has no file matching {pattern}"
 msgstr "Veröffentlichung {tag_name} hat keine Datei, die zu {pattern} passt"
 
-#: crates/sam-runner/src/updates.rs:189
+#: crates/sam-runner/src/updates.rs:176
 msgid "no update description"
 msgstr "keine Aktualisierungsbeschreibung"
 
-#: crates/sam-runner/src/updates.rs:195
+#: crates/sam-runner/src/updates.rs:182
 msgid "the update description names no file"
 msgstr "die Aktualisierungsbeschreibung nennt keine Datei"
 
-#: crates/sam-runner/src/updates.rs:212
+#: crates/sam-runner/src/updates.rs:252
 msgid "This is the newest published version."
 msgstr "Dies ist die neueste veröffentlichte Version."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:217
+#: crates/sam-runner/src/updates.rs:257
 msgid "{file} (release {release})"
 msgstr "{file} (Veröffentlichung {release})"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:222
+#: crates/sam-runner/src/updates.rs:262
 msgid "release {release}"
 msgstr "Veröffentlichung {release}"
 
-#: crates/sam-runner/src/updates.rs:223
+#: crates/sam-runner/src/updates.rs:263
 msgid "a newer version"
 msgstr "eine neuere Version"
 
-#: crates/sam-runner/src/updates.rs:247 crates/sam-runner/src/updates.rs:366
+#: crates/sam-runner/src/updates.rs:287 crates/sam-runner/src/updates.rs:469
 msgid "the update file is not offered over HTTPS"
 msgstr "die Aktualisierungsdatei wird nicht über HTTPS angeboten"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:253
+#: crates/sam-runner/src/updates.rs:293
 msgid "the update description names an unusable file ({file})"
 msgstr "die Aktualisierungsbeschreibung nennt eine unbrauchbare Datei ({file})"
 
-#: crates/sam-runner/src/updates.rs:262
+#: crates/sam-runner/src/updates.rs:302
 msgid "bad update address"
 msgstr "ungültige Aktualisierungsadresse"
 
-#: crates/sam-runner/src/updates.rs:306
+#: crates/sam-runner/src/updates.rs:346
 msgid "the update description changed while reading it"
 msgstr "die Aktualisierungsbeschreibung hat sich beim Lesen geändert"
 
-#: crates/sam-runner/src/updates.rs:329
+#: crates/sam-runner/src/updates.rs:432
 msgid "not HTTPS"
 msgstr "kein HTTPS"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:345
+#: crates/sam-runner/src/updates.rs:448
 msgid "downloading the changed parts failed: {reason}"
 msgstr "das Herunterladen der geänderten Teile ist fehlgeschlagen: {reason}"
 
-#: crates/sam-runner/src/updates.rs:383 crates/sam-runner/src/updates.rs:505
-msgid "starting curl"
-msgstr "curl wird gestartet"
-
-#: crates/sam-runner/src/updates.rs:394
+#: crates/sam-runner/src/updates.rs:483
 msgid ""
 "the downloaded file does not match the published checksum; it was deleted"
 msgstr ""
 "die heruntergeladene Datei passt nicht zur veröffentlichten Prüfsumme; sie "
 "wurde gelöscht"
 
-#: crates/sam-runner/src/updates.rs:411
+#: crates/sam-runner/src/updates.rs:512 crates/sam-runner/src/updates.rs:669
+msgid "starting curl"
+msgstr "curl wird gestartet"
+
+#: crates/sam-runner/src/updates.rs:533
+msgid ""
+"the server sent more than the update description announced; the download was "
+"stopped and deleted"
+msgstr ""
+"der Server hat mehr geschickt, als die Update-Beschreibung angekündigt hat; "
+"der Download wurde abgebrochen und gelöscht"
+
+#: crates/sam-runner/src/updates.rs:562
 msgid "the update source has nothing published at that address (yet)"
 msgstr ""
 "die Update-Quelle hat unter dieser Adresse (noch) nichts veröffentlicht"
 
-#: crates/sam-runner/src/updates.rs:413
+#: crates/sam-runner/src/updates.rs:564
 msgid ""
 "the update source refused the request for now (rate limit); try again later"
 msgstr ""
@@ -8024,27 +8108,34 @@ msgstr ""
 "später erneut"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:416
+#: crates/sam-runner/src/updates.rs:567
 msgid "the update source has a problem (HTTP {status}); try again later"
 msgstr ""
 "die Update-Quelle hat ein Problem (HTTP {status}); versuch es später erneut"
 
-#: crates/sam-runner/src/updates.rs:421
+#: crates/sam-runner/src/updates.rs:572
 msgid "no connection to the update source; check the internet connection"
 msgstr "keine Verbindung zur Update-Quelle; prüfe die Internetverbindung"
 
-#: crates/sam-runner/src/updates.rs:458
+#: crates/sam-runner/src/updates.rs:609
 msgid "the update description (.zsync) has no SHA-1"
 msgstr "die Aktualisierungsbeschreibung (.zsync) hat kein SHA-1"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:489
+#: crates/sam-runner/src/updates.rs:642
 msgid "the update address is not HTTPS ({address})"
 msgstr "die Aktualisierungsadresse ist kein HTTPS ({address})"
 
-#: crates/sam-runner/src/updates.rs:511
+#: crates/sam-runner/src/updates.rs:675
 msgid "curl output"
 msgstr "Ausgabe von curl"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/updates.rs:684
+msgid ""
+"the update source answered with more than {size} MB, more than SAM reads"
+msgstr ""
+"die Update-Quelle hat mit mehr als {size} MB geantwortet, mehr als SAM liest"
 
 #: crates/sam-runner/src/verify.rs:66
 msgid "Your home folder"
@@ -8211,36 +8302,44 @@ msgstr "Wayland-Verbindung"
 msgid "reading the compositor's globals"
 msgstr "die Globals des Compositors werden gelesen"
 
-#: crates/sam-runner/src/zsync.rs:86
+#: crates/sam-runner/src/zsync.rs:101
 msgid "the update description (.zsync) has no end of header"
 msgstr "der Aktualisierungsbeschreibung (.zsync) fehlt das Ende des Kopfteils"
 
-#: crates/sam-runner/src/zsync.rs:116
+#: crates/sam-runner/src/zsync.rs:132
 msgid "bad Hash-Lengths"
 msgstr "ungültige Hash-Lengths"
 
-#: crates/sam-runner/src/zsync.rs:122
+#: crates/sam-runner/src/zsync.rs:138
 msgid "compressed zsync downloads are not supported"
 msgstr "komprimierte zsync-Downloads werden nicht unterstützt"
 
-#: crates/sam-runner/src/zsync.rs:136
+#: crates/sam-runner/src/zsync.rs:152
 msgid "the update description (.zsync) is incomplete"
 msgstr "die Aktualisierungsbeschreibung (.zsync) ist unvollständig"
 
-#: crates/sam-runner/src/zsync.rs:145
+#: crates/sam-runner/src/zsync.rs:161
 msgid "the update description (.zsync) names an impossible length"
 msgstr "die Update-Beschreibung (.zsync) nennt eine unmögliche Länge"
 
-#: crates/sam-runner/src/zsync.rs:153
+#: crates/sam-runner/src/zsync.rs:171
+msgid ""
+"the update description (.zsync) lists too many small blocks for a partial "
+"download"
+msgstr ""
+"die Update-Beschreibung (.zsync) listet zu viele kleine Blöcke für einen "
+"Teil-Download"
+
+#: crates/sam-runner/src/zsync.rs:180
 msgid "the update description (.zsync) is cut short"
 msgstr "die Aktualisierungsbeschreibung (.zsync) ist abgeschnitten"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/zsync.rs:347
+#: crates/sam-runner/src/zsync.rs:390
 msgid "the server sent {got} bytes instead of {expected}"
 msgstr "der Server hat {got} Bytes statt {expected} gesendet"
 
-#: crates/sam-runner/src/zsync.rs:370
+#: crates/sam-runner/src/zsync.rs:413
 msgid "the assembled file does not match the published checksum"
 msgstr "die zusammengesetzte Datei passt nicht zur veröffentlichten Prüfsumme"
 
@@ -8369,7 +8468,7 @@ msgid "the app record {file} could not be read: {error}"
 msgstr "der App-Eintrag {file} konnte nicht gelesen werden: {error}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:97
+#: crates/sam-storage/src/lib.rs:114
 msgid ""
 "{file}: the app id {id} is not a safe name or does not match the file name; "
 "the record is ignored"
@@ -8378,33 +8477,33 @@ msgstr ""
 "Dateinamen; der Eintrag wird ignoriert"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:174
+#: crates/sam-storage/src/lib.rs:209
 msgid "no registered app matches '{query}' (see `sam-jail list`)"
 msgstr "keine eingetragene App passt zu „{query}“ (siehe `sam-jail list`)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:185
+#: crates/sam-storage/src/lib.rs:220
 msgid "invalid app id '{id}'"
 msgstr "ungültige App-ID „{id}“"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:309
+#: crates/sam-storage/src/lib.rs:344
 msgid "the preset {file} could not be read ({error}); it was moved to {moved}"
 msgstr ""
 "die Vorlage {file} konnte nicht gelesen werden ({error}); sie wurde nach "
 "{moved} verschoben"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:316
+#: crates/sam-storage/src/lib.rs:351
 msgid "skipping the damaged preset {file}: {error}"
 msgstr "die beschädigte Vorlage {file} wird übersprungen: {error}"
 
-#: crates/sam-storage/src/lib.rs:334
+#: crates/sam-storage/src/lib.rs:369
 msgid "preset name must not be empty"
 msgstr "der Name der Vorlage darf nicht leer sein"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:350
+#: crates/sam-storage/src/lib.rs:385
 msgid ""
 "the preset “{other}” already uses the file for this name; choose another name"
 msgstr ""
@@ -8412,7 +8511,7 @@ msgstr ""
 "einen anderen Namen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:408
+#: crates/sam-storage/src/lib.rs:443
 msgid ""
 "this preset was made by a newer SAM (format {format}); update SAM to use it"
 msgstr ""
@@ -8420,9 +8519,32 @@ msgstr ""
 "SAM, um sie zu verwenden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:456
+#: crates/sam-storage/src/lib.rs:491
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
+
+#~ msgid ""
+#~ "The signing key changed: the installed version was {before}, the new file "
+#~ "is {now}. The download was deleted; update again and accept the change "
+#~ "only if you trust it."
+#~ msgstr ""
+#~ "Der Signaturschlüssel hat sich geändert: Die installierte Version war "
+#~ "{before}, die neue Datei ist {now}. Der Download wurde gelöscht; "
+#~ "aktualisiere erneut und akzeptiere die Änderung nur, wenn du ihr "
+#~ "vertraust."
+
+#~ msgid ""
+#~ "The installed version was {before}, but the signature of the new file "
+#~ "cannot be checked, so SAM cannot tell whether it comes from the same "
+#~ "developer. Install GnuPG (gpg and gpgv) and update again; accept the "
+#~ "update without the check only if you trust its source. The download was "
+#~ "deleted."
+#~ msgstr ""
+#~ "Die installierte Version war {before}, aber die Signatur der neuen Datei "
+#~ "lässt sich nicht prüfen, deshalb kann SAM nicht feststellen, ob sie vom "
+#~ "selben Entwickler stammt. Installiere GnuPG (gpg und gpgv) und "
+#~ "aktualisiere erneut; nimm das Update ohne Prüfung nur an, wenn du seiner "
+#~ "Quelle vertraust. Der Download wurde gelöscht."
 
 #~ msgid "Additional folders the app can read but not change."
 #~ msgstr "Zusätzliche Ordner, die die App lesen, aber nicht ändern darf."
