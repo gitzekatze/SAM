@@ -946,14 +946,20 @@ impl PermissionSet {
                 crate::i18n::trf("'{key}' is not a settable key", &[("key", &key)])
             )
         })?;
-        let existing = obj.get(*last);
-        if existing.is_none() && !LEFT_OUT_WHEN_EMPTY.iter().any(|(k, _)| *k == key) {
-            bail!(
-                "{}",
-                crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
-            );
-        }
-        let new_val = parse_value(raw, existing);
+        // A setting the saved form leaves out while empty is read as its
+        // empty value, so a comma list goes into it as into any other list
+        // (review F8: `set APP dbus.session.calls 'org.x=Foo'` was refused
+        // while the list was empty).
+        let existing = match obj.get(*last) {
+            Some(v) => v.clone(),
+            None => left_out_default(key).ok_or_else(|| {
+                anyhow!(
+                    "{}",
+                    crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
+                )
+            })?,
+        };
+        let new_val = parse_value(raw, Some(&existing));
         obj.insert((*last).to_string(), new_val);
         *self = serde_json::from_value(v).with_context(|| {
             crate::i18n::trf(
@@ -1375,6 +1381,44 @@ mod tests {
         let full: PermissionSet =
             serde_json::from_str(r#"{"dbus": {"system": {"mode": "full"}}}"#).unwrap();
         assert_eq!(full.dbus.system.mode, DbusMode::Full);
+    }
+
+    /// The function and signal rules can be set by name while they are
+    /// empty, as a comma list like every other list (review F8: the saved
+    /// form leaves them out while empty, and `sam-jail set` and `group set`
+    /// refused them), and every setting of the catalogue can be set to the
+    /// value it reads.
+    #[test]
+    fn every_setting_can_be_set_by_name_also_while_left_out() {
+        for key in ["dbus.session.calls", "dbus.session.broadcasts"] {
+            let mut p = PermissionSet::strict_gui();
+            assert_eq!(p.get_key(key).unwrap(), serde_json::json!([]), "{key}");
+            p.set_key(key, "org.example.A=Foo")
+                .unwrap_or_else(|e| panic!("{key}: {e:#}"));
+            assert_eq!(
+                p.get_key(key).unwrap(),
+                serde_json::json!(["org.example.A=Foo"])
+            );
+            let mut q = PermissionSet::strict_gui();
+            q.set_key(key, "org.example.A=Foo, org.example.B=@/b")
+                .unwrap();
+            assert_eq!(
+                q.get_key(key).unwrap(),
+                serde_json::json!(["org.example.A=Foo", "org.example.B=@/b"])
+            );
+            q.set_key(key, "").unwrap();
+            assert_eq!(q.get_key(key).unwrap(), serde_json::json!([]), "{key}");
+        }
+        let p = PermissionSet::strict_gui();
+        for i in permission_catalog() {
+            let v = p
+                .get_key(i.key)
+                .unwrap_or_else(|e| panic!("{}: {e:#}", i.key));
+            let mut q = p.clone();
+            q.set_key(i.key, &v.to_string())
+                .unwrap_or_else(|e| panic!("{}: {e:#}", i.key));
+            assert_eq!(q, p, "{}", i.key);
+        }
     }
 
     /// Permissions saved as TOML load back unchanged.
