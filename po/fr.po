@@ -8407,6 +8407,60 @@ msgstr ""
 "être remplacé. Utilise « Décompresser à nouveau » et examine d’abord "
 "l’application."
 
+#: crates/sam-core/src/permissions.rs:400
+msgid ""
+"is the sound server's own connection, through which the app could make it "
+"load code outside the sandbox"
+msgstr ""
+"est la connexion propre du serveur audio, par laquelle l’application "
+"pourrait lui faire charger du code hors du bac à sable"
+
+#: crates/sam-core/src/permissions.rs:1040
+msgid ""
+"Additional folders the app can read but not change. Programs that listen in "
+"them stay reachable: read-only does not stop the app from connecting to them "
+"(for example to a terminal session in /tmp)."
+msgstr ""
+"Dossiers supplémentaires que l’application peut lire, mais pas modifier. Les "
+"programmes qui y attendent des connexions restent joignables : la lecture "
+"seule n’empêche pas l’application de s’y connecter (par exemple à une "
+"session de terminal dans /tmp)."
+
+#: crates/sam-core/src/warnings.rs:150
+msgid "Connections to other programs exposed"
+msgstr "Connexions vers d’autres programmes exposées"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/warnings.rs:153
+msgid ""
+"'{path}' holds connections to programs outside the sandbox (terminal "
+"sessions, SSH connections, the X server). The app can use them to run "
+"commands outside the sandbox, even with read-only access."
+msgstr ""
+"« {path} » contient des connexions vers des programmes hors du bac à sable "
+"(sessions de terminal, connexions SSH, le serveur X). L’application peut "
+"s’en servir pour exécuter des commandes hors du bac à sable, même en lecture "
+"seule."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-sandbox/src/lib.rs:1840
+msgid ""
+"{path} is reached through a link in a folder the app can change; it is not "
+"passed into the sandbox. List the socket by its real place."
+msgstr ""
+"{path} est atteint par un lien dans un dossier que l’application peut "
+"modifier ; il n’est pas transmis au bac à sable. Indique le socket par son "
+"emplacement réel."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-sandbox/src/lib.rs:1859
+msgid ""
+"{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
+"socket by its real place if the app needs it."
+msgstr ""
+"{path} mène ailleurs : {why}. Il n’est pas transmis au bac à sable ; indique "
+"ce socket par son emplacement réel si l’application en a besoin."
+
 #~ msgid ""
 #~ "32-bit app: the baseline syscall filter is off, because it only supports "
 #~ "64-bit programs and would stop the app"

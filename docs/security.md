@@ -357,6 +357,26 @@ How these stay protected with the home writable:
   they really lead: a granted link (or a home folder that is itself a link)
   is followed, and the protections apply wherever the app sees these
   places.
+- **Extra folders are rated where they lead.** `.`, `..` and doubled `/`
+  count for nothing, so `/.` is the whole computer and `~/..` the folder
+  above the home, both *Dangerous*; a folder that holds the home counts as
+  the home, and a relative path or one with `..` is *Dangerous* too
+  (`a_path_with_dots_or_double_slashes_is_rated_where_it_leads`).
+- **A folder hands over the programs listening in it.** Connecting to a
+  socket file needs no write access, so even a read-only folder lets the
+  app talk to the programs that listen there: `/tmp` holds the sockets of
+  tmux, SSH connections and the X server (without systemd also the session
+  bus and the sound server), and a tmux socket runs commands
+  outside the sandbox. A grant of `/tmp`, or of those places in it, is
+  rated *Dangerous* and warned about
+  (`a_grant_of_tmp_or_its_listening_places_is_dangerous_even_read_only`).
+- **Extra sockets** (`sockets.custom`) are passed in from where their links
+  lead. One reached through a link in a folder the app may change is left
+  out (the app could have made that link, to the session bus or another
+  program's socket), and so is one whose link leads to a socket SAM rates
+  *Dangerous* (Docker, the system or session bus, the sound server's own
+  socket) unless you listed that socket by name
+  (`an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one`).
 - **Files whose mere presence changes behaviour** (`.bash_profile`, `.zshrc`,
   `.xprofile`, `.vimrc`, `.pam_environment` and the like) cannot be protected
   by a mount before they exist: making one would create the file. So SAM
@@ -755,8 +775,8 @@ The preview and the unpacked app use the same desktop file
 |---|---|---|
 | **Low** | Harmless | fonts, icons, locales, time zone (read-only), Wayland, filtered D-Bus, "This computer only", the app's own ports |
 | **Medium** | Harmless | GPU, sound, folder access, all of `/usr`, nested namespaces, names the app may own, passed-through variables |
-| **High** | Think twice | network, X11, whole home read-only, webcam, SSH agent, keyring, direct PipeWire, raw sound devices (ALSA), local services the app may reach, a passed-through variable that holds a secret, the syscall filter or Landlock switched off, single functions of a service |
-| **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, sound without SAM's relay, a function of a service that can act outside the sandbox, and the network together with your home, keys or passwords (it can send what it reads) |
+| **High** | Think twice | network, X11, whole home read-only, webcam, SSH agent, keyring (also a password service allowed by name), direct PipeWire, raw sound devices (ALSA), local services the app may reach, a passed-through variable that holds a secret, the syscall filter or Landlock switched off, single functions of a service |
+| **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, sound without SAM's relay (also the sound server's socket as an extra socket), a function of a service that can act outside the sandbox, a wildcard over the portal, an extra folder that is a system folder, the home, a folder above it or `/tmp` (however it is written), and the network together with your home, keys or passwords (it can send what it reads) |
 
 An app's risk is the level of its riskiest permission. SAM shows the level
 with the permission that sets it, for example *High risk · Network +1*. The

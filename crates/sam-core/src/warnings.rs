@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::host::HostInfo;
 use crate::permissions::*;
-use crate::risk::is_sensitive_path;
+use crate::risk::is_dangerous_grant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -145,7 +145,16 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
         .iter()
         .chain(p.filesystem.custom_read.iter())
     {
-        if is_sensitive_path(path) {
+        if crate::risk::shows_host_sockets(path) {
+            w.push(
+                Warning::danger(
+                    "socket-folder",
+                    "Connections to other programs exposed",
+                    crate::i18n::trf("'{path}' holds connections to programs outside the sandbox (terminal sessions, SSH connections, the X server). The app can use them to run commands outside the sandbox, even with read-only access.", &[("path", &path)]),
+                )
+                .with_key("filesystem.custom_write"),
+            );
+        } else if is_dangerous_grant(path) {
             w.push(
                 Warning::danger(
                     "sensitive-path",
