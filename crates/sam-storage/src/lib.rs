@@ -250,6 +250,15 @@ pub fn integrity_of(e: &AppEntry) -> Result<String> {
     Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// A fingerprint of a set of permissions (SHA-256 over its saved form):
+/// what a question was asked about, so that only that is applied after the
+/// answer (`preset apply --expect`).
+pub fn fingerprint(p: &PermissionSet) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(serde_json::to_vec(p)?);
+    Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
+}
+
 /// App ids are used as file names; keep them to a safe alphabet.
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()

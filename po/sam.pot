@@ -1276,7 +1276,7 @@ msgstr ""
 msgid "Show only apps that are running now"
 msgstr ""
 
-#: crates/sam-gtk/src/all_perms.rs:95 crates/sam-gtk/src/app_page/render.rs:176 crates/sam-gtk/src/window.rs:1779
+#: crates/sam-gtk/src/all_perms.rs:95 crates/sam-gtk/src/app_page/render.rs:176 crates/sam-gtk/src/window.rs:1786
 msgid "Needs review"
 msgstr ""
 
@@ -1284,7 +1284,7 @@ msgstr ""
 msgid "Show only apps whose settings nobody has confirmed yet"
 msgstr ""
 
-#: crates/sam-gtk/src/all_perms.rs:100 crates/sam-gtk/src/app_page/mod.rs:834 crates/sam-gtk/src/window.rs:1781
+#: crates/sam-gtk/src/all_perms.rs:100 crates/sam-gtk/src/app_page/mod.rs:834 crates/sam-gtk/src/window.rs:1788
 msgid "May not start"
 msgstr ""
 
@@ -1470,7 +1470,7 @@ msgstr[1] ""
 msgid "This adds:"
 msgstr ""
 
-#: crates/sam-gtk/src/all_perms.rs:1250 crates/sam-gtk/src/all_perms.rs:1286 crates/sam-gtk/src/app_page/data.rs:360 crates/sam-gtk/src/window.rs:1867
+#: crates/sam-gtk/src/all_perms.rs:1250 crates/sam-gtk/src/all_perms.rs:1286 crates/sam-gtk/src/app_page/data.rs:360 crates/sam-gtk/src/window.rs:1874
 msgid "Cancel"
 msgstr ""
 
@@ -1666,7 +1666,7 @@ msgstr ""
 msgid "Apply and Start"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/data.rs:529 crates/sam-gtk/src/window.rs:1497
+#: crates/sam-gtk/src/app_page/data.rs:529 crates/sam-gtk/src/window.rs:1504
 msgid "Apply"
 msgstr ""
 
@@ -1688,11 +1688,11 @@ msgstr ""
 msgid "Update Now?"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/data.rs:574 crates/sam-gtk/src/window.rs:1564
+#: crates/sam-gtk/src/app_page/data.rs:574 crates/sam-gtk/src/window.rs:1571
 msgid "Update"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/data.rs:579 crates/sam-gtk/src/window.rs:1567
+#: crates/sam-gtk/src/app_page/data.rs:579 crates/sam-gtk/src/window.rs:1574
 msgid "Downloading the update…"
 msgstr ""
 
@@ -1788,7 +1788,7 @@ msgstr ""
 msgid "Open the app's private folder in the file manager"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/mod.rs:310 crates/sam-gtk/src/app_page/render.rs:177 crates/sam-gtk/src/pages.rs:278 crates/sam-gtk/src/window.rs:1780 crates/sam-runner/src/ops/overview.rs:89 crates/sam-runner/src/repair.rs:657
+#: crates/sam-gtk/src/app_page/mod.rs:310 crates/sam-gtk/src/app_page/render.rs:177 crates/sam-gtk/src/pages.rs:278 crates/sam-gtk/src/window.rs:1787 crates/sam-runner/src/ops/overview.rs:89 crates/sam-runner/src/repair.rs:657
 msgid "Compatibility mode"
 msgstr ""
 
@@ -1896,7 +1896,7 @@ msgstr ""
 msgid "These settings let the app use:"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/mod.rs:779 crates/sam-gtk/src/window.rs:622 crates/sam-gtk/src/window.rs:755 crates/sam-gtk/src/window.rs:1777
+#: crates/sam-gtk/src/app_page/mod.rs:779 crates/sam-gtk/src/window.rs:622 crates/sam-gtk/src/window.rs:755 crates/sam-gtk/src/window.rs:1784
 msgid "Not sandboxed"
 msgstr ""
 
@@ -1904,7 +1904,7 @@ msgstr ""
 msgid "No sandbox yet. Nothing has been unpacked or run; below are the settings SAM recommends"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/mod.rs:785 crates/sam-gtk/src/app_page/mod.rs:794 crates/sam-gtk/src/window.rs:621 crates/sam-gtk/src/window.rs:753 crates/sam-gtk/src/window.rs:1787
+#: crates/sam-gtk/src/app_page/mod.rs:785 crates/sam-gtk/src/app_page/mod.rs:794 crates/sam-gtk/src/window.rs:621 crates/sam-gtk/src/window.rs:753 crates/sam-gtk/src/window.rs:1794
 msgid "Sandboxed"
 msgstr ""
 
@@ -1964,7 +1964,7 @@ msgstr ""
 msgid "Restart {name}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:175 crates/sam-gtk/src/window.rs:1778
+#: crates/sam-gtk/src/app_page/render.rs:175 crates/sam-gtk/src/window.rs:1785
 msgid "Changed outside SAM"
 msgstr ""
 
@@ -1980,7 +1980,7 @@ msgstr ""
 msgid "Compatibility mode is on: so that the app works, it gets broad access (internet, the whole session bus, all of /usr, X11, GPU and sound). Turn it off under Launching → Compatibility mode once a narrower setting works; your previous settings come back"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:179 crates/sam-gtk/src/window.rs:1782
+#: crates/sam-gtk/src/app_page/render.rs:179 crates/sam-gtk/src/window.rs:1789
 msgid "Unsafe"
 msgstr ""
 
@@ -1996,7 +1996,7 @@ msgstr ""
 msgid "The AppImage file changed since it was unpacked; SAM still runs the previous version until you update the sandbox"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:181 crates/sam-gtk/src/window.rs:1784
+#: crates/sam-gtk/src/app_page/render.rs:181 crates/sam-gtk/src/window.rs:1791
 msgid "Broken"
 msgstr ""
 
@@ -2012,7 +2012,7 @@ msgstr ""
 msgid "The AppImage file is gone; SAM can still run the unpacked copy"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:183 crates/sam-gtk/src/window.rs:1786
+#: crates/sam-gtk/src/app_page/render.rs:183 crates/sam-gtk/src/window.rs:1793
 msgid "Protection missing"
 msgstr ""
 
@@ -3738,168 +3738,168 @@ msgstr ""
 msgid "Starting in sandbox…"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1440 crates/sam-gtk/src/window.rs:1456
+#: crates/sam-gtk/src/window.rs:1440 crates/sam-gtk/src/window.rs:1463
 #. Keep the {placeholders}; their order may change.
 msgid "Applied “{name}”"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1470
+#: crates/sam-gtk/src/window.rs:1477
 #. Keep the {placeholders}; their order may change.
 msgid "This preset removes permissions the app likely needs: {permissions}."
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1480
+#: crates/sam-gtk/src/window.rs:1487
 #. Keep the {placeholders}; their order may change.
 msgid "It adds high-risk permissions: {permissions}."
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1486
+#: crates/sam-gtk/src/window.rs:1493
 #. Keep the {placeholders}; their order may change.
 msgid "The risk changes from {before} to {after}."
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1495
+#: crates/sam-gtk/src/window.rs:1502
 #. Keep the {placeholders}; their order may change.
 msgid "Apply “{name}” Anyway?"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1511
+#: crates/sam-gtk/src/window.rs:1518
 msgid "Unpacked again"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1514
+#: crates/sam-gtk/src/window.rs:1521
 #. Keep the {placeholders}; their order may change.
 msgid "The update likely needs: {needs}"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1542
+#: crates/sam-gtk/src/window.rs:1549
 msgid "New Version of SAM"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1544
+#: crates/sam-gtk/src/window.rs:1551
 msgid "Open Release Page"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1560
+#: crates/sam-gtk/src/window.rs:1567
 msgid "SAM is up to date"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1563
+#: crates/sam-gtk/src/window.rs:1570
 msgid "SAM downloads it (only the changed parts when possible), checks it and puts it next to the current file. The current version is kept until the next update."
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1564
+#: crates/sam-gtk/src/window.rs:1571
 msgid "Update SAM?"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1575
+#: crates/sam-gtk/src/window.rs:1582
 msgid "SAM Was Updated"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1577
+#: crates/sam-gtk/src/window.rs:1584
 msgid "Restart SAM"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1611
+#: crates/sam-gtk/src/window.rs:1618
 #. Keep the {placeholders}; their order may change.
 msgid "version {version} (interface {interface})"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1625
+#: crates/sam-gtk/src/window.rs:1632
 msgid "an older version"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1627
+#: crates/sam-gtk/src/window.rs:1634
 #. Keep the {placeholders}; their order may change.
 msgid "This window is SAM {version} (interface {interface}), but the command line tool it uses, {program}, is {found}.\n\nInstall matching versions of both, or point SAM_CLI at the right sam-jail. Until then, SAM may show wrong or missing information."
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1629
+#: crates/sam-gtk/src/window.rs:1636
 msgid "SAM's Parts Do Not Match"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1632
+#: crates/sam-gtk/src/window.rs:1639
 msgid "OK"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1660
+#: crates/sam-gtk/src/window.rs:1667
 #. Keep the {placeholders}; their order may change.
 msgid "An update is available for {n} app."
 msgid_plural "Updates are available for {n} apps."
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/sam-gtk/src/window.rs:1743
+#: crates/sam-gtk/src/window.rs:1750
 #. Keep the {placeholders}; their order may change.
 msgid "File missing: {path}"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1745
+#: crates/sam-gtk/src/window.rs:1752
 msgid "Moved copy of a sandboxed app"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1764
+#: crates/sam-gtk/src/window.rs:1771
 msgid "The AppImage file is missing"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1766
+#: crates/sam-gtk/src/window.rs:1773
 #. Keep the {placeholders}; their order may change.
 msgid "Didn't work last time: {problem}"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1771
+#: crates/sam-gtk/src/window.rs:1778
 msgid "Has a menu entry that starts it without a sandbox"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1783
+#: crates/sam-gtk/src/window.rs:1790
 msgid "Changed"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1785
+#: crates/sam-gtk/src/window.rs:1792
 msgid "Missing"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1791
+#: crates/sam-gtk/src/window.rs:1798
 msgid "No sandbox yet"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1792
+#: crates/sam-gtk/src/window.rs:1799
 msgid "Something other than SAM changed its settings; it does not start until you confirm them on its page"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1793
+#: crates/sam-gtk/src/window.rs:1800
 msgid "Look over its settings: SAM chose them automatically or the app asks for new access"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1794
+#: crates/sam-gtk/src/window.rs:1801
 msgid "Compatibility mode is on: the app has broad access so that it works"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1796
+#: crates/sam-gtk/src/window.rs:1803
 msgid "SAM's analysis found it may not start in its sandbox; this goes away after the first successful start"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1798
+#: crates/sam-gtk/src/window.rs:1805
 msgid "Its settings let it reach far outside its sandbox"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1799
+#: crates/sam-gtk/src/window.rs:1806
 msgid "The AppImage file changed since it was unpacked"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1800
+#: crates/sam-gtk/src/window.rs:1807
 msgid "The last start failed"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1801
+#: crates/sam-gtk/src/window.rs:1808
 msgid "The AppImage file is gone"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1802
+#: crates/sam-gtk/src/window.rs:1809
 msgid "Its last start lacked a protection layer its settings ask for; its page says which"
 msgstr ""
 
-#: crates/sam-gtk/src/window.rs:1803
+#: crates/sam-gtk/src/window.rs:1810
 msgid "Runs in its sandbox"
 msgstr ""
 
@@ -4459,82 +4459,82 @@ msgstr ""
 msgid "You have no presets yet. Save an app's settings with `sam-jail preset save APP NAME`."
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:46
+#: crates/sam-jail-cli/src/presets.rs:51
 #. Keep the {placeholders}; their order may change.
 msgid "Applied “{preset}” (risk {before} → {after})"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:58
+#: crates/sam-jail-cli/src/presets.rs:63
 msgid "Not applied. Run again with --yes to confirm."
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:76
+#: crates/sam-jail-cli/src/presets.rs:81
 #. Keep the {placeholders}; their order may change.
 msgid "Saved the preset “{name}” ({risk})"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:88
+#: crates/sam-jail-cli/src/presets.rs:93
 #. Keep the {placeholders}; their order may change.
 msgid "no user preset named '{name}'"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:94
+#: crates/sam-jail-cli/src/presets.rs:99
 #. Keep the {placeholders}; their order may change.
 msgid "Deleted the preset “{name}”"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:104
+#: crates/sam-jail-cli/src/presets.rs:109
 #. Keep the {placeholders}; their order may change.
 msgid "a preset named '{new_name}' already exists"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:116
+#: crates/sam-jail-cli/src/presets.rs:121
 #. Keep the {placeholders}; their order may change.
 msgid "Created the preset “{name}”"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:126
+#: crates/sam-jail-cli/src/presets.rs:131
 #. Keep the {placeholders}; their order may change.
 msgid "Imported “{name}” → {path}"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:146
+#: crates/sam-jail-cli/src/presets.rs:151
 #. Keep the {placeholders}; their order may change.
 msgid "Exported “{name}” → {path}"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:158
+#: crates/sam-jail-cli/src/presets.rs:163
 msgid "expected a preset as JSON or TOML on stdin"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:169
+#: crates/sam-jail-cli/src/presets.rs:174
 #. Keep the {placeholders}; their order may change.
 msgid "Saved the preset “{name}”"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:236
+#: crates/sam-jail-cli/src/presets.rs:241
 #. Keep the {placeholders}; their order may change.
 msgid "Would change {key} to {value} for {n} app"
 msgid_plural "Would change {key} to {value} for {n} apps"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/sam-jail-cli/src/presets.rs:246
+#: crates/sam-jail-cli/src/presets.rs:251
 #. Keep the {placeholders}; their order may change.
 msgid "Changed {key} to {value} for {n} app"
 msgid_plural "Changed {key} to {value} for {n} apps"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/sam-jail-cli/src/presets.rs:256
+#: crates/sam-jail-cli/src/presets.rs:261
 msgid "Running apps use the new settings the next time they start."
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:265
+#: crates/sam-jail-cli/src/presets.rs:270
 msgid "expected the \"undo\" object of `group set` as JSON on stdin"
 msgstr ""
 
-#: crates/sam-jail-cli/src/presets.rs:272
+#: crates/sam-jail-cli/src/presets.rs:277
 #. Keep the {placeholders}; their order may change.
 msgid "Restored the settings of {n} app."
 msgid_plural "Restored the settings of {n} apps."
@@ -5516,7 +5516,7 @@ msgstr ""
 msgid "The download was signed on {now}, before the installed version ({was}): it is an older version, which may have security holes that were fixed since. It was deleted and nothing changed. To go back to an earlier version on purpose, use Undo after an update."
 msgstr ""
 
-#: crates/sam-runner/src/ops/mod.rs:384
+#: crates/sam-runner/src/ops/mod.rs:387
 #. Keep the {placeholders}; their order may change.
 msgid "refusing to delete {folder}: it is not one of SAM's own folders"
 msgstr ""
@@ -5616,6 +5616,11 @@ msgstr ""
 #: crates/sam-runner/src/ops/profiles.rs:360
 #. Keep the {placeholders}; their order may change.
 msgid "no repair steps to undo for {app}"
+msgstr ""
+
+#: crates/sam-runner/src/ops/profiles.rs:403
+#. Keep the {placeholders}; their order may change.
+msgid "the preset “{preset}” changed after it was checked; nothing was applied. Check it again."
 msgstr ""
 
 #: crates/sam-runner/src/own_names.rs:60
@@ -6610,31 +6615,31 @@ msgstr ""
 msgid "invalid app id '{id}'"
 msgstr ""
 
-#: crates/sam-storage/src/lib.rs:323
+#: crates/sam-storage/src/lib.rs:332
 #. Keep the {placeholders}; their order may change.
 msgid "the preset {file} could not be read ({error}); it was moved to {moved}"
 msgstr ""
 
-#: crates/sam-storage/src/lib.rs:330
+#: crates/sam-storage/src/lib.rs:339
 #. Keep the {placeholders}; their order may change.
 msgid "skipping the damaged preset {file}: {error}"
 msgstr ""
 
-#: crates/sam-storage/src/lib.rs:348
+#: crates/sam-storage/src/lib.rs:357
 msgid "preset name must not be empty"
 msgstr ""
 
-#: crates/sam-storage/src/lib.rs:364
+#: crates/sam-storage/src/lib.rs:373
 #. Keep the {placeholders}; their order may change.
 msgid "the preset “{other}” already uses the file for this name; choose another name"
 msgstr ""
 
-#: crates/sam-storage/src/lib.rs:422
+#: crates/sam-storage/src/lib.rs:431
 #. Keep the {placeholders}; their order may change.
 msgid "this preset was made by a newer SAM (format {format}); update SAM to use it"
 msgstr ""
 
-#: crates/sam-storage/src/lib.rs:470
+#: crates/sam-storage/src/lib.rs:479
 #. Keep the {placeholders}; their order may change.
 msgid "unknown flat preset key '{other}'"
 msgstr ""

@@ -381,21 +381,38 @@ impl Sam {
         Ok(e)
     }
 
+    /// Applies a preset; asks (returns it not applied) when it removes
+    /// what the app needs or adds risk, unless `confirm`. With `expect`,
+    /// only the preset as it was when the question was asked is applied:
+    /// the window asks, then applies by name, and a preset changed in
+    /// between would otherwise be applied unseen (audit G-F12/13).
     pub fn apply_preset(
         &self,
         query: &str,
         preset_name: &str,
         confirm: bool,
+        expect: Option<&str>,
     ) -> Result<PresetApply> {
         let mut e = self.resolve(query)?;
         let preset = find_preset(&self.paths, preset_name)?
             .with_context(|| format!("unknown preset '{preset_name}'"))?;
+        let fingerprint = sam_storage::fingerprint(&preset.permissions)?;
+        if expect.is_some_and(|x| x != fingerprint) {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the preset “{preset}” changed after it was checked; nothing was applied. Check it again.",
+                    &[("preset", &preset.name)]
+                )
+            );
+        }
         let check = check_change(&e, &preset.permissions);
         if check.needs_confirmation() && !confirm {
             return Ok(PresetApply {
                 preset: preset.name,
                 check,
                 applied: false,
+                fingerprint,
             });
         }
         e.profile.permissions = preset.permissions.clone();
@@ -405,6 +422,7 @@ impl Sam {
             preset: preset.name,
             check,
             applied: true,
+            fingerprint,
         })
     }
 

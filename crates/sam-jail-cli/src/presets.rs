@@ -21,8 +21,13 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                 .with_context(|| format!("unknown preset '{name}'"))?;
             out.emit(&p, || out!("{}", preset_to_toml(&p).unwrap_or_default()));
         }
-        PresetCmd::Apply { name, app: q, yes } => {
-            let r = app.apply_preset(&q, &name, yes)?;
+        PresetCmd::Apply {
+            name,
+            app: q,
+            yes,
+            expect,
+        } => {
+            let r = app.apply_preset(&q, &name, yes, expect.as_deref())?;
             if !r.applied {
                 crate::exit_with(crate::EXIT_NOT_PASSED);
             }

@@ -1445,10 +1445,17 @@ impl App {
         if !self.confirm_preset(name, &c).await {
             return false;
         }
+        // Only the preset as it was asked about: one changed while the
+        // question was open is refused (audit G-F12/13).
+        let fingerprint = util::str_of(&r, "fingerprint").to_string();
         match self
             .backend
             .call(
-                &crate::backend::preset_args("apply", &["--yes"], &[name, app_id]),
+                &crate::backend::preset_args(
+                    "apply",
+                    &["--yes", "--expect", &fingerprint],
+                    &[name, app_id],
+                ),
                 None,
             )
             .await
