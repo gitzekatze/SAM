@@ -8556,6 +8556,129 @@ msgstr ""
 msgid "the compositor did not answer within {seconds} seconds"
 msgstr "le compositeur n'a pas répondu en {seconds} secondes"
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/config.rs:283
+msgid ""
+"{file}: {settings} could not be read and went back to the default; the other "
+"settings stay"
+msgstr ""
+"{file} : {settings} n’a pas pu être lu et a repris sa valeur par défaut ; "
+"les autres réglages restent"
+
+#: crates/sam-core/src/warnings.rs:246
+msgid ""
+"The app can read every password and secret stored in your keyring, also "
+"those of other apps."
+msgstr ""
+"L’application peut lire tous les mots de passe et secrets enregistrés dans "
+"ton trousseau, y compris ceux des autres applications."
+
+#: crates/sam-core/src/warnings.rs:256
+msgid "The app can switch on your camera and record what it sees."
+msgstr "L’application peut allumer ta caméra et enregistrer ce qu’elle voit."
+
+#: crates/sam-core/src/warnings.rs:266
+msgid ""
+"While it runs, the app can use your SSH keys through the agent to log in to "
+"other computers as you."
+msgstr ""
+"Pendant qu’elle tourne, l’application peut utiliser tes clés SSH via l’agent "
+"pour se connecter à d’autres ordinateurs en ton nom."
+
+#: crates/sam-core/src/warnings.rs:276
+msgid ""
+"The app can use desktop functions meant for trusted tools, such as capturing "
+"the screen, reading the clipboard history or typing into other windows."
+msgstr ""
+"L’application peut utiliser des fonctions du bureau prévues pour des outils "
+"de confiance, comme capturer l’écran, lire l’historique du presse-papiers ou "
+"taper dans d’autres fenêtres."
+
+#: crates/sam-core/src/warnings.rs:286
+msgid ""
+"The kernel functions SAM normally blocks are within the app's reach, so a "
+"flaw in the kernel is easier to use from inside the sandbox."
+msgstr ""
+"Les fonctions du noyau que SAM bloque d’habitude sont à la portée de "
+"l’application : une faille du noyau est alors plus facile à exploiter depuis "
+"le bac à sable."
+
+#: crates/sam-core/src/warnings.rs:296
+msgid ""
+"The second barrier around your files (Landlock) is off; only the sandbox's "
+"own view of the files protects them."
+msgstr ""
+"La deuxième barrière autour de tes fichiers (Landlock) est désactivée ; "
+"seule la vue des fichiers propre au bac à sable les protège."
+
+#: crates/sam-core/src/warnings.rs:306
+msgid ""
+"The app may build sandboxes of its own, which brings more of the kernel "
+"within its reach. Browsers built on Chromium need this for their own sandbox."
+msgstr ""
+"L’application peut créer ses propres bacs à sable, ce qui met davantage du "
+"noyau à sa portée. Les navigateurs basés sur Chromium en ont besoin pour "
+"leur propre bac à sable."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:807
+msgid "the downloaded update was not installed and was deleted: {reason}"
+msgstr ""
+"la mise à jour téléchargée n’a pas été installée et a été supprimée : "
+"{reason}"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:849
+msgid ""
+"The signing key changed: the installed version was {before}, the new file is "
+"{now}. Accept the change only if you trust it: SAM then installs exactly "
+"this file, never one downloaded later."
+msgstr ""
+"La clé de signature a changé : la version installée était {before}, le "
+"nouveau fichier est {now}. N’accepte le changement que si tu lui fais "
+"confiance : SAM installe alors exactement ce fichier, jamais un fichier "
+"téléchargé plus tard."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:867
+msgid ""
+"The installed version was {before}, but the signature of the new file cannot "
+"be checked, so SAM cannot tell whether it comes from the same developer. "
+"Install GnuPG (gpg and gpgv) and update again; accept the update without the "
+"check only if you trust its source: SAM then installs exactly this file, "
+"never one downloaded later."
+msgstr ""
+"La version installée était {before}, mais la signature du nouveau fichier ne "
+"peut pas être vérifiée, donc SAM ne peut pas savoir s’il vient du même "
+"développeur. Installe GnuPG (gpg et gpgv) et refais la mise à jour ; accepte "
+"la mise à jour sans vérification seulement si tu fais confiance à sa "
+"source : SAM installe alors exactement ce fichier, jamais un fichier "
+"téléchargé plus tard."
+
+#: crates/sam-runner/src/updates.rs:533
+msgid ""
+"the server sent more than the update description announced; the download was "
+"stopped and deleted"
+msgstr ""
+"le serveur a envoyé plus que ce qu’annonçait la description de mise à jour ; "
+"le téléchargement a été arrêté et supprimé"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/updates.rs:684
+msgid ""
+"the update source answered with more than {size} MB, more than SAM reads"
+msgstr ""
+"la source de mises à jour a répondu avec plus de {size} Mo, plus que ce que "
+"SAM lit"
+
+#: crates/sam-runner/src/zsync.rs:171
+msgid ""
+"the update description (.zsync) lists too many small blocks for a partial "
+"download"
+msgstr ""
+"la description de mise à jour (.zsync) liste trop de petits blocs pour un "
+"téléchargement partiel"
+
 #~ msgid "Additional folders the app can read but not change."
 #~ msgstr ""
 #~ "Dossiers supplémentaires que l’application peut lire, mais pas modifier."

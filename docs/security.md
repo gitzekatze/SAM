@@ -811,20 +811,32 @@ downloads a file, and only when you ask:
   no app can reach, never in the AppImage's folder, where another app could
   plant a link under the download's name or swap the file between the check
   and the move.
-- It must match the published SHA-1 and be an AppImage.
+- It must match the published SHA-1, be an AppImage, and be built for this
+  computer's processor: a build for another one would leave the app unable
+  to start. Among the files of a GitHub release, those that name this
+  computer's processor are tried first.
 - It must be signed like the installed version. A new or missing key stops
-  the update unless you accept it. When the installed version's signature
+  the update unless you accept it. The refused download waits in SAM's own
+  folder, and accepting it (*Update Anyway*, `sam-jail update --accept-key-change`)
+  installs exactly that file, as long as it is still the published one;
+  SAM never downloads again for that answer, so a server cannot hand out a
+  different file under your yes. A yes counts once. When the installed version's signature
   could not be checked when it was added (GnuPG missing), SAM checks the
   installed file again now; a signature that still cannot be checked lets
   no other key, missing or bad signature through without a question. A signed update that was signed earlier
   than the installed version is an older version and is refused: whoever
   controls the download cannot hand out an old release with holes fixed
   since. For unsigned apps SAM cannot tell versions apart this way.
-- A server cannot keep SAM busy or crash it: every request has a time
-  limit, a download at most the published length (8 GiB without one),
-  update addresses are never expanded as patterns, and working out which
-  parts of the old file can be reused stops after a minute (the rest is
-  downloaded).
+- A server cannot keep SAM busy, crash it or fill the disk: every request
+  has a time limit; SAM itself counts what a download writes and stops at
+  the published length (8 GiB without one), whatever the server sends and
+  whichever curl is installed; a release description may be up to 16 MiB,
+  and a longer one is an error, never read as if complete; update addresses
+  are never expanded as patterns; a description whose blocks are smaller
+  than 512 bytes or number more than about four million is not used for a
+  partial download (the file is downloaded whole); the old version is
+  mapped, not read into memory; and working out which parts of the old
+  file can be reused stops after a minute (the rest is downloaded).
 - The new file keeps its published name only when that is a plain
   AppImage name (letters, digits and `._+-`, ending in `.AppImage`) that no
   other file in the folder has; otherwise it takes the old name. The update
@@ -833,7 +845,10 @@ downloads a file, and only when you ask:
   sandbox.
 - The checked copy of the old file is kept in SAM's data folder, so you can
   go back; going back keeps the newer version, also when both have the same
-  file name. Going back checks the current file like an update does: SAM
+  file name. The earlier version goes back into the app's folder under the
+  name it had, never to a place an app record names: a record changed
+  outside SAM cannot make it a command in `~/.local/bin`. Going back checks
+  the current file like an update does: SAM
   keeps a copy of it in its own folder (never the file itself, which
   another app could still hold under a second name) and accepts it only
   when it is what SAM unpacked, or what the update put there when

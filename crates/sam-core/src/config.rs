@@ -35,6 +35,56 @@ fn migrate(mut v: serde_json::Value, from: u32) -> serde_json::Value {
     v
 }
 
+/// The configuration `v` with every setting that cannot be read in its
+/// default, and the names of those settings (`extraction.max_files`).
+/// Each value is tried on its own against the defaults, so one unreadable
+/// value never costs the others.
+fn readable_settings(v: &serde_json::Value) -> (Config, Vec<String>) {
+    let mut good = serde_json::to_value(Config::default()).unwrap_or_default();
+    let mut reset = Vec::new();
+    keep_readable(&mut good, &[], v, &mut reset);
+    let c = serde_json::from_value(good).unwrap_or_default();
+    (c, reset)
+}
+
+fn keep_readable(
+    good: &mut serde_json::Value,
+    at: &[&str],
+    user: &serde_json::Value,
+    reset: &mut Vec<String>,
+) {
+    let Some(fields) = user.as_object() else {
+        return;
+    };
+    for (k, value) in fields {
+        let here: Vec<&str> = at.iter().copied().chain([k.as_str()]).collect();
+        let section_is_object = |root: &serde_json::Value| {
+            here.iter()
+                .try_fold(root, |cur, p| cur.get(*p))
+                .is_some_and(serde_json::Value::is_object)
+        };
+        if value.is_object() && section_is_object(good) {
+            keep_readable(good, &here, value, reset);
+            continue;
+        }
+        let mut trial = good.clone();
+        let parent = here[..here.len() - 1]
+            .iter()
+            .try_fold(&mut trial, |cur, p| cur.get_mut(*p))
+            .and_then(serde_json::Value::as_object_mut);
+        let Some(parent) = parent else {
+            reset.push(here.join("."));
+            continue;
+        };
+        parent.insert(k.clone(), value.clone());
+        if serde_json::from_value::<Config>(trial.clone()).is_ok() {
+            *good = trial;
+        } else {
+            reset.push(here.join("."));
+        }
+    }
+}
+
 /// Theme names of format 0, mapped to the current ones.
 fn migrate_theme(t: &str) -> &'static str {
     match t {
@@ -220,8 +270,23 @@ impl Config {
         let found = crate::format::of_json(&v);
         crate::format::check_not_newer(&file, found)?;
         let v = migrate(v, found);
-        let Ok(mut c) = serde_json::from_value::<Config>(v) else {
-            return Ok(Self::damaged(&file));
+        let mut c = match serde_json::from_value::<Config>(v.clone()) {
+            Ok(c) => c,
+            // A value of the wrong kind (`max_files = "x"`) or an unknown
+            // word: only that setting is reset. Resetting the whole file
+            // lost stricter choices such as compatibility.behavior = never
+            // (audit U-L4).
+            Err(_) => {
+                let (c, reset) = readable_settings(&v);
+                crate::errln!(
+                    "sam-jail: {}",
+                    crate::i18n::trf(
+                        "{file}: {settings} could not be read and went back to the default; the other settings stay",
+                        &[("file", &file.display()), ("settings", &reset.join(", "))]
+                    )
+                );
+                c
+            }
         };
         // A single invalid value is reset, not the whole file.
         if let Err(e) = c.validate() {
@@ -484,6 +549,61 @@ cleanup_stale = true
             "an unknown language in the file is reset"
         );
         assert_eq!(loaded.general.theme, "dark", "the other settings stay");
+    }
+
+    /// Regression (audit U-L4): one value of the wrong kind
+    /// (`max_files = "x"`) or an unknown word made the whole file
+    /// unreadable, and SAM used the defaults for everything, losing
+    /// stricter choices such as "never offer compatibility mode". Now only
+    /// the unreadable settings go back to their defaults; the file stays.
+    #[test]
+    fn one_unreadable_setting_does_not_cost_the_others() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = crate::paths::Paths::rooted(t.path());
+        std::fs::create_dir_all(paths.config_file().parent().unwrap()).unwrap();
+        let file = "format = 1\n[extraction]\nmax_files = \"x\"\nmax_size_mb = 123\n[security]\ncheck_before_launch = true\n[compatibility]\nbehavior = \"never\"\n[dependencies]\nautomatic_low_risk_fixes = false\n[updates]\ncheck_on_start = \"sometimes\"\n";
+        std::fs::write(paths.config_file(), file).unwrap();
+        let c = Config::load(&paths).unwrap();
+        assert_eq!(
+            c.compatibility.behavior,
+            CompatBehavior::Never,
+            "a stricter choice stays"
+        );
+        assert!(
+            !c.dependencies.automatic_low_risk_fixes,
+            "a stricter choice stays"
+        );
+        assert_eq!(
+            c.extraction.max_size_mb, 123,
+            "the same section keeps its other values"
+        );
+        assert!(c.security.check_before_launch, "a stricter choice stays");
+        assert_eq!(
+            c.extraction.max_files,
+            Config::default().extraction.max_files
+        );
+        assert!(!c.updates.check_on_start);
+        assert_eq!(
+            std::fs::read_to_string(paths.config_file()).unwrap(),
+            file,
+            "the file is not moved aside"
+        );
+        // An unknown word for a choice: only that choice is reset.
+        std::fs::write(
+            paths.config_file(),
+            "format = 1\n[compatibility]\nbehavior = \"sometimes\"\n[dependencies]\nautomatic_low_risk_fixes = false\n",
+        )
+        .unwrap();
+        let c = Config::load(&paths).unwrap();
+        assert_eq!(c.compatibility.behavior, CompatBehavior::Ask);
+        assert!(!c.dependencies.automatic_low_risk_fixes);
+        assert_eq!(
+            readable_settings(
+                &serde_json::json!({"extraction": {"max_files": "x"}, "general": "y"})
+            )
+            .1,
+            vec!["extraction.max_files", "general"]
+        );
     }
 
     /// Settings can be changed by key, and old theme names are migrated to Light, Dark or System.

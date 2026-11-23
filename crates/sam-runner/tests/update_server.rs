@@ -37,6 +37,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        # /endless/NAME streams zeros without naming a length (64 MiB) and
+        # logs how many pieces of 64 KiB the client took.
+        if self.path.startswith("/endless/"):
+            self.send_response(200)
+            self.end_headers()
+            sent = 0
+            try:
+                for _ in range(1024):
+                    self.wfile.write(b"\0" * 65536)
+                    sent += 1
+            except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                pass
+            with open(log, "a") as f:
+                f.write(f"endless {sent}\n")
+            return
         path = self.translate_path(self.path)
         if not os.path.isfile(path):
             self.send_error(404)
@@ -1150,4 +1165,271 @@ fn walkdir_count(dir: &Path) -> usize {
             }
         })
         .sum()
+}
+
+/// Regression (review 2026-11-23, U-8): an update did not look at the
+/// processor the new file is built for. A release pattern that also matches
+/// the ARM build handed it to an x86-64 computer; SAM checked its checksum,
+/// moved the working version into the backups and left the app unable to
+/// start until Undo. Adding an app already refused that; now an update
+/// does too, and nothing changes.
+#[test]
+fn an_update_built_for_another_processor_is_not_installed() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    if sam_detect::appimage::host_arch() != "x86_64" {
+        sam_runner::contracts::not_here("the test changes an x86-64 AppImage into an ARM one");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let before = fs::read(&installed).unwrap();
+    // Version 2 as the ARM build: the ELF machine field (offset 18, little
+    // endian) 0xB7 is aarch64.
+    let v2 = tmp.path().join("v2.AppImage");
+    appimage(&v2, &url, "2.0");
+    let mut data = fs::read(&v2).unwrap();
+    data[18] = 0xB7;
+    data[19] = 0x00;
+    fs::write(&v2, &data).unwrap();
+    assert_eq!(
+        sam_detect::inspect(&v2).unwrap().arch.as_deref(),
+        Some("aarch64")
+    );
+    publish(&server, &v2, "Tool-2.0-aarch64.AppImage");
+
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+    let err = format!("{:#}", sam.update(&id, false).unwrap_err());
+    assert!(
+        err.contains("built for ARM (aarch64) processors") && err.contains("not installed"),
+        "{err}"
+    );
+    let e = sam.resolve(&id).unwrap();
+    assert_eq!(e.source_path, fs::canonicalize(&installed).unwrap());
+    assert_eq!(
+        fs::read(&installed).unwrap(),
+        before,
+        "the working version stays"
+    );
+    assert!(e.update_backup.is_none(), "nothing was replaced");
+    assert!(
+        !apps.join("Tool-2.0-aarch64.AppImage").exists(),
+        "the ARM build was not put in place"
+    );
+    assert_eq!(unpacked_version(&sam, &id), "1.0");
+}
+
+/// Regression (review 2026-11-23, U-5): a full download stopped at the
+/// published length only through curl's `--max-filesize`, which before curl
+/// 8.4 does nothing when the server names no length: a server could stream
+/// into the home folder for an hour. Here the published file's address
+/// streams without a length; SAM stops at the length the update
+/// description names, deletes what came, and nothing changes.
+#[test]
+fn a_server_that_sends_more_than_announced_cannot_fill_the_disk() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let before = fs::read(&installed).unwrap();
+    let v2 = tmp.path().join("v2.AppImage");
+    appimage(&v2, &url, "2.0");
+    publish(&server, &v2, "Tool-2.0-x86_64.AppImage");
+    // The update description sends SAM to the endless address.
+    let zsync = server.root.join("Tool-x86_64.AppImage.zsync");
+    let mut z = fs::read(&zsync).unwrap();
+    let from = b"URL: Tool-2.0-x86_64.AppImage\n";
+    let at = z.windows(from.len()).position(|w| w == from).unwrap();
+    z.splice(
+        at..at + from.len(),
+        b"URL: endless/Tool-2.0-x86_64.AppImage\n".iter().copied(),
+    );
+    fs::write(&zsync, z).unwrap();
+
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+    let err = format!("{:#}", sam.update(&id, false).unwrap_err());
+    assert!(
+        err.contains("more than the update description announced"),
+        "stopped by SAM at the published length: {err}"
+    );
+    assert_eq!(fs::read(&installed).unwrap(), before, "nothing changed");
+    assert!(sam.resolve(&id).unwrap().update_backup.is_none());
+    // The full download (the last request) stopped soon after the
+    // published length, about 1 MB, instead of taking all 64 MiB. The
+    // server writes how much was taken only once it notices that SAM hung
+    // up, which on a busy computer comes after SAM has returned: waited
+    // for, every endless request's count, never assumed to be there.
+    let ended = |log: &str| {
+        let started = log.lines().filter(|l| l.starts_with("/endless/")).count();
+        let ended = log.lines().filter(|l| l.starts_with("endless ")).count();
+        started > 0 && ended >= started
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    let log = loop {
+        let log = fs::read_to_string(&server.log).unwrap();
+        if ended(&log) || std::time::Instant::now() > deadline {
+            break log;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let taken: Vec<u32> = log
+        .lines()
+        .filter_map(|l| l.strip_prefix("endless "))
+        .map(|n| n.parse().unwrap())
+        .collect();
+    assert!(
+        taken.last().is_some_and(|n| *n < 1024),
+        "SAM stopped the stream: {taken:?}"
+    );
+    let downloads = tmp
+        .path()
+        .join("sam")
+        .join("data")
+        .join("downloads")
+        .join(&id);
+    assert!(!downloads.exists(), "what came was deleted");
+}
+
+/// Regression (review 2026-11-23, U-4): "Update Anyway" ran the update a
+/// second time with a blanket "accept any key change". The second request
+/// could bring another file: the dialog said "signed (key …X)", which
+/// looks like a normal key change, and the next download, signed with any
+/// other key, went through under the same yes. Now the refused download
+/// waits in SAM's own folder and the consent covers exactly that file: a
+/// different file published meanwhile is asked about again, and the file
+/// that was shown is installed without being downloaded again. With the
+/// real GnuPG (SAM_TEST_GPG=1).
+#[test]
+fn consent_to_a_new_key_covers_only_the_file_that_was_shown() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
+        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
+        return;
+    }
+    assert!(
+        ["gpg", "gpgv", "objcopy"].iter().all(|t| have(t)),
+        "SAM_TEST_GPG=1, but gpg, gpgv or objcopy is not installed"
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let gpg_home = tmp.path().join("gnupg");
+    fs::create_dir(&gpg_home).unwrap();
+    fs::set_permissions(
+        &gpg_home,
+        std::os::unix::fs::PermissionsExt::from_mode(0o700),
+    )
+    .unwrap();
+    for signer in [
+        "First Key <first@example.invalid>",
+        "Second Key <second@example.invalid>",
+        "Third Key <third@example.invalid>",
+    ] {
+        let st = Command::new("gpg")
+            .arg("--homedir")
+            .arg(&gpg_home)
+            .args([
+                "--batch",
+                "--quiet",
+                "--passphrase",
+                "",
+                "--pinentry-mode",
+                "loopback",
+            ])
+            .args(["--quick-gen-key", signer, "ed25519", "sign", "never"])
+            .status()
+            .unwrap();
+        assert!(st.success(), "gpg could not make a key");
+    }
+    let signed = |path: &Path, version: &str, key: &str| {
+        let mut spec = FixtureSpec::hello("Tool");
+        spec.comment = format!("Tool, version {version}");
+        spec.files.push(FixtureFile {
+            path: "usr/share/tool/data.bin".into(),
+            data: vec![7u8; 300_000],
+            mode: 0o644,
+        });
+        spec.files.push(FixtureFile {
+            path: "usr/share/tool/version".into(),
+            data: version.as_bytes().to_vec(),
+            mode: 0o644,
+        });
+        spec.update_info = Some(format!("zsync|{url}"));
+        spec.signature_sections = true;
+        build(path, &spec).unwrap();
+        sam_detect::signature::sign_for_test(path, &gpg_home, key).unwrap();
+    };
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let v1 = apps.join("Tool-1.0-x86_64.AppImage");
+    signed(&v1, "1.0", "first@example.invalid");
+    let shown = tmp.path().join("v2.AppImage");
+    signed(&shown, "2.0", "second@example.invalid");
+    let other = tmp.path().join("v2b.AppImage");
+    signed(&other, "2.0b", "third@example.invalid");
+    publish(&server, &shown, "Tool-2.0-x86_64.AppImage");
+
+    let (sam, id) = add_reviewed(tmp.path(), &v1);
+    let before = fs::read(&v1).unwrap();
+    let code = |e: &anyhow::Error| sam_core::error::code_of(e);
+
+    // Asked about the second key.
+    let err = sam.update(&id, false).unwrap_err();
+    assert_eq!(code(&err), Some("signing-key-changed"), "{err:#}");
+
+    // Before the person answers, the server publishes another file, signed
+    // with a third key. "Update Anyway" does not install it: it is asked
+    // about again, and nothing changes.
+    publish(&server, &other, "Tool-2.0-x86_64.AppImage");
+    let err = sam.update(&id, true).unwrap_err();
+    assert_eq!(code(&err), Some("signing-key-changed"), "{err:#}");
+    assert_eq!(
+        fs::read(&v1).unwrap(),
+        before,
+        "the installed version is untouched"
+    );
+    assert!(sam.resolve(&id).unwrap().update_backup.is_none());
+
+    // Accepting what was shown last installs exactly that file, taken from
+    // SAM's own folder, not downloaded again.
+    fs::write(&server.log, "").unwrap();
+    let e = sam.update(&id, true).unwrap();
+    assert_eq!(fs::read(&e.source_path).unwrap(), fs::read(&other).unwrap());
+    assert_eq!(unpacked_version(&sam, &id), "2.0b");
+    let log = fs::read_to_string(&server.log).unwrap();
+    assert!(
+        !log.lines().any(|l| l.contains("Tool-2.0-x86_64.AppImage ")),
+        "the accepted file was not downloaded again:\n{log}"
+    );
+    assert!(
+        !tmp.path()
+            .join("sam")
+            .join("data")
+            .join("update-consent")
+            .join(&id)
+            .exists(),
+        "the consent was used up"
+    );
+    // A consent is used once: the next update asks again.
+    let v3 = tmp.path().join("v3.AppImage");
+    signed(&v3, "3.0", "first@example.invalid");
+    publish(&server, &v3, "Tool-3.0-x86_64.AppImage");
+    let err = sam.update(&id, true).unwrap_err();
+    assert_eq!(code(&err), Some("signing-key-changed"), "{err:#}");
+    let _ = Command::new("gpgconf")
+        .arg("--homedir")
+        .arg(&gpg_home)
+        .args(["--kill", "all"])
+        .status();
 }

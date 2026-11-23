@@ -102,6 +102,44 @@ fn undoing_an_update_never_moves_files_outside_sams_backup_folder() {
     assert!(!tmp.path().join("stolen").exists());
 }
 
+/// Regression (audit U-L10): going back took the destination from the
+/// record unchecked. A record changed outside SAM could make SAM put the
+/// earlier version under any name anywhere, for example as a command in
+/// ~/.local/bin, made executable, outside any sandbox. Now the earlier
+/// version goes back only into the app's own folder, under the name of
+/// its kept copy.
+#[test]
+fn going_back_puts_the_earlier_version_only_into_the_apps_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = one_app(tmp.path());
+    // A kept earlier version, where SAM keeps them.
+    let kept = sam.paths.data_dir.join("update-backups").join(&id);
+    fs::create_dir_all(&kept).unwrap();
+    let earlier = kept.join("Tool-0.9-x86_64.AppImage");
+    build(&earlier, &FixtureSpec::hello("Tool")).unwrap();
+    let bin = tmp.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let file = sam.paths.app_file(&id);
+    let mut rec: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    rec["update_backup"] =
+        serde_json::json!({"file": earlier, "original_path": bin.join("sudo"), "replaced_at": 0});
+    fs::write(&file, rec.to_string()).unwrap();
+    let res = sam.undo_update(&id);
+    assert!(
+        !bin.join("sudo").exists(),
+        "the earlier version was put where the record pointed"
+    );
+    let back = tmp.path().join("Tool-0.9-x86_64.AppImage");
+    assert!(
+        back.is_file(),
+        "it went back into the app's folder: {res:?}"
+    );
+    if let Ok(e) = res {
+        assert_eq!(e.source_path, fs::canonicalize(&back).unwrap());
+    }
+}
+
 /// An app whose settings were changed outside SAM does not start until the
 /// user has confirmed them; changes SAM makes itself never count as such.
 #[test]

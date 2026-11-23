@@ -172,15 +172,15 @@ AppImages are type 2: an ELF runtime followed by a SquashFS or DwarFS image at t
 
 ## updates-curl
 
-curl downloads over HTTPS only (also after redirects) with these limits, and fetches byte ranges for delta updates.
+curl downloads over HTTPS only (also after redirects) with these limits, prints what it downloads to its standard output (SAM writes the file and stops at the published length itself), and fetches byte ranges for delta updates.
 
 - **Component:** curl ([releases](https://curl.se/changes.html))
 - **When it breaks:** SAM does not start the sandbox and says why.
 - **SAM functions that rely on it:** [28](functions.md#28), [34](functions.md#34)
 - **Quick check:** `program:curl`
-- **Tests:** `updates_are_downloaded_over_https_only`, `updates_download_only_changes_check_them_and_refuse_tampering` (fully)
+- **Tests:** `updates_are_downloaded_over_https_only`, `updates_download_only_changes_check_them_and_refuse_tampering`, `a_server_that_sends_more_than_announced_cannot_fill_the_disk` (fully)
 - **Checked first by:** `update_server.rs` (a broken contract stops these tests with its name)
-- **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--max-filesize`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`, `option:--disable`, `option:--globoff`
+- **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`, `option:--disable`, `option:--globoff`
 - **If it breaks:** No update is installed when curl fails; the old version stays. A changed option shows in the update server test.
 
 ## signatures-gnupg

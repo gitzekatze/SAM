@@ -470,7 +470,9 @@ pub struct AppEntry {
 pub struct UpdateBackup {
     /// The kept file (in `<data>/update-backups/<id>/`).
     pub file: PathBuf,
-    /// Where it was before the update.
+    /// Where it was before the update. Shown only: going back puts the
+    /// kept file into the app's current folder under the kept file's name,
+    /// never where a record changed outside SAM points (audit U-L10).
     pub original_path: PathBuf,
     /// When the update ran (Unix seconds).
     pub replaced_at: i64,

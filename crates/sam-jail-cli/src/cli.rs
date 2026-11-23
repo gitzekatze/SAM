@@ -200,7 +200,9 @@ pub(crate) enum Cmd {
         /// Go back to the version the last update replaced.
         #[arg(long, conflicts_with = "accept_key_change")]
         undo: bool,
-        /// Accept a new file signed with another key than the installed one.
+        /// Install the download the last run refused because its signing
+        /// key changed or its signature could not be checked: exactly that
+        /// file, while it is still the published one (never a new download).
         #[arg(long)]
         accept_key_change: bool,
     },

@@ -82,6 +82,23 @@ impl Registry {
         Ok(out)
     }
 
+    /// The ids of every record file in the apps folder, also those SAM
+    /// cannot read: one from a newer SAM (left in place) or a damaged one
+    /// (moved aside as `<id>.json.damaged-…`). Their data still belongs to
+    /// an app, so it is no leftover to delete (audit U-L4).
+    pub fn record_ids(&self) -> std::collections::HashSet<String> {
+        fs::read_dir(self.paths.apps_dir())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let id = name.split_once(".json").map(|(id, _)| id.to_string())?;
+                valid_id(&id).then_some(id)
+            })
+            .collect()
+    }
+
     /// Reads one app record: migrated from older formats (original kept),
     /// an error for a newer one (left untouched).
     fn load_file(&self, p: &Path) -> Result<AppEntry> {
@@ -151,8 +168,14 @@ impl Registry {
         valid_id(id) && self.paths.app_file(id).exists()
     }
 
-    /// Resolve a user-supplied reference: exact id, unique id prefix,
-    /// slug match or case-insensitive name match.
+    /// Resolve a user-supplied reference: exact id, then the apps the query
+    /// names exactly (their name, the start of their id, or the words their
+    /// id begins with), then a slug or name that merely starts or contains
+    /// it. Among several exact matches, one whose name is the query wins
+    /// only if it was added before the others: the name is chosen by the
+    /// AppImage itself, and one added later and calling itself "firefox"
+    /// would otherwise be started for `run firefox` in place of "Firefox
+    /// Web Browser" (audit U-L7). Otherwise the query is ambiguous.
     pub fn resolve(&self, query: &str) -> Result<AppEntry> {
         if let Some(a) = self.get(query)? {
             return Ok(a);
@@ -160,14 +183,26 @@ impl Registry {
         let all = self.list()?;
         let q = query.to_lowercase();
         let qslug = slugify(query);
-        let tiers: [&dyn Fn(&AppEntry) -> bool; 4] = [
-            &|a| a.name.to_lowercase() == q,
-            &|a| a.id.starts_with(&q),
+        let named = |a: &AppEntry| a.name.to_lowercase() == q;
+        let tiers: [&dyn Fn(&AppEntry) -> bool; 3] = [
+            &|a| {
+                named(a)
+                    || a.id.starts_with(&q)
+                    || (!qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}-")))
+            },
             &|a| !qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")),
             &|a| a.name.to_lowercase().contains(&q),
         ];
         for tier in tiers {
             let m: Vec<&AppEntry> = all.iter().filter(|a| tier(a)).collect();
+            let by_name: Vec<&&AppEntry> = m.iter().filter(|a| named(a)).collect();
+            if let [first] = by_name[..] {
+                if m.iter()
+                    .all(|a| a.id == first.id || a.added_at > first.added_at)
+                {
+                    return Ok((*first).clone());
+                }
+            }
             match m.len() {
                 0 => continue,
                 1 => return Ok(m[0].clone()),
@@ -952,6 +987,55 @@ mod tests {
         assert!(reg.remove(&a.id).unwrap());
         assert!(reg.get(&a.id).unwrap().is_none());
         assert!(reg.get("../etc/passwd").unwrap().is_none());
+    }
+
+    /// Regression (audit U-L7): the name an AppImage gives itself came
+    /// first, so one added later calling itself "firefox" was started for
+    /// `sam-jail run firefox` instead of "Firefox Web Browser", with its own
+    /// permissions. Now a later app's name cannot take a query over: it is
+    /// ambiguous. A name that was there first keeps its meaning when
+    /// another app with a longer name is added.
+    #[test]
+    fn a_name_an_app_chose_cannot_take_over_another_apps_query() {
+        let tmp = tempfile::tempdir().unwrap();
+        let reg = Registry::new(&Paths::rooted(tmp.path()));
+        let mut real = AppEntry {
+            id: "appimage-firefox-web-browser-9f3c".into(),
+            name: "Firefox Web Browser".into(),
+            added_at: 100,
+            ..Default::default()
+        };
+        reg.save(&mut real).unwrap();
+        assert_eq!(reg.resolve("firefox").unwrap().id, real.id);
+        let mut other = AppEntry {
+            id: "appimage-firefox-1234".into(),
+            name: "firefox".into(),
+            added_at: 200,
+            ..Default::default()
+        };
+        reg.save(&mut other).unwrap();
+        let e = reg.resolve("firefox").unwrap_err().to_string();
+        assert!(e.contains("ambiguous"), "{e}");
+        assert_eq!(reg.resolve("Firefox Web Browser").unwrap().id, real.id);
+        assert_eq!(reg.resolve(&other.id).unwrap().id, other.id);
+
+        // The other way round: "Foo" was there first, "Foo Pro" came later.
+        let mut foo = AppEntry {
+            id: "appimage-foo-1111".into(),
+            name: "Foo".into(),
+            added_at: 300,
+            ..Default::default()
+        };
+        reg.save(&mut foo).unwrap();
+        let mut pro = AppEntry {
+            id: "appimage-foo-pro-2222".into(),
+            name: "Foo Pro".into(),
+            added_at: 400,
+            ..Default::default()
+        };
+        reg.save(&mut pro).unwrap();
+        assert_eq!(reg.resolve("foo").unwrap().id, foo.id);
+        assert_eq!(reg.resolve("foo pro").unwrap().id, pro.id);
     }
 
     /// A damaged preset is moved aside once; a preset from a newer SAM is
