@@ -224,7 +224,8 @@ impl Drop for PrivateServices {
 #[cfg(test)]
 mod tests {
     use super::PrivateServices;
-    use std::os::fd::{FromRawFd, OwnedFd};
+    use std::fs;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     use std::time::{Duration, Instant};
 
     const NAME: &str =
@@ -277,7 +278,7 @@ mod tests {
         // SAFETY: both descriptors were just made and belong to this test.
         let (read, write) =
             unsafe { (OwnedFd::from_raw_fd(ends[0]), OwnedFd::from_raw_fd(ends[1])) };
-        let inherited = std::os::fd::AsRawFd::as_raw_fd(&write);
+        let inherited = write.as_raw_fd();
         let mut holder = std::process::Command::new(std::env::current_exe().unwrap());
         holder
             .args(["--exact", NAME, "--nocapture", "--test-threads=1"])
@@ -320,10 +321,34 @@ mod tests {
             .map(|p| p.parse().unwrap())
             .collect();
         assert_eq!(pids.len(), 2, "both services started: {line:?}");
+        // While they run, neither holds the pipe the holder inherited.
+        let pipe = {
+            use std::os::unix::fs::MetadataExt;
+            let ino = fs::metadata(format!("/proc/self/fd/{}", read.as_raw_fd()))
+                .unwrap()
+                .ino();
+            format!("pipe:[{ino}]")
+        };
+        // (ssh-agent hides its descriptors from everyone: it makes itself
+        // non-dumpable. dbus-daemon shows them.)
+        let mut looked = 0;
+        for p in &pids {
+            let Ok(fds) = fs::read_dir(format!("/proc/{p}/fd")) else {
+                continue;
+            };
+            let held: Vec<String> = fds
+                .flatten()
+                .filter_map(|e| fs::read_link(e.path()).ok())
+                .map(|t| t.display().to_string())
+                .collect();
+            assert!(!held.contains(&pipe), "service {p} holds {pipe}: {held:?}");
+            looked += 1;
+        }
+        assert!(looked > 0, "at least one service shows its descriptors");
         holder.kill().unwrap();
         holder.wait().unwrap();
         // The pipe ends when nobody holds its write end any more.
-        let fd = std::os::fd::AsRawFd::as_raw_fd(&read);
+        let fd = read.as_raw_fd();
         let deadline = Instant::now() + Duration::from_secs(60);
         let mut buf = [0u8; 1];
         let at_end = loop {
