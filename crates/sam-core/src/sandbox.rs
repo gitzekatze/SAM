@@ -83,6 +83,11 @@ pub struct LaunchContext {
     /// granted folder would make them visible, so an app cannot change its
     /// own permissions or another app's files.
     pub sam_dirs: Vec<PathBuf>,
+    /// SAM's own programs outside the sandbox (`util::own_programs`): its
+    /// AppImage file and `sam-jail-run`, which every menu entry runs.
+    /// Never writable inside, and the folders above them cannot be renamed
+    /// away, so an app cannot put its own program in their place.
+    pub sam_programs: Vec<PathBuf>,
 }
 
 impl LaunchContext {
@@ -242,6 +247,7 @@ pub fn sample_context() -> LaunchContext {
         extra_binds: vec![],
         appdir_overlay: None,
         sam_dirs: vec![],
+        sam_programs: vec![],
     }
 }
 

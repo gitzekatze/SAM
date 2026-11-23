@@ -346,6 +346,7 @@ pub fn prepare(
             paths.data_dir.clone(),
             paths.extracted_root(&cfg.extraction.location),
         ],
+        sam_programs: sam_core::util::own_programs(),
     };
     if perms.advanced.writable_appdir && !sam_core::host::bwrap_supports_overlay() {
         warnings.push(Warning::warn(

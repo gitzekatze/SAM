@@ -279,6 +279,15 @@ permission, a folder you open with the app or a path on its command line
 would show them. They are replaced by an empty, throwaway folder, so an app
 cannot change its own permissions or another app's files.
 
+**Read-only whenever anything would show them writable:** SAM's own
+programs, which every menu entry runs outside the sandbox: SAM's AppImage
+file and the `sam-jail-run`, `sam-jail` and `sam-jail-gui` next to the
+running program, wherever you keep them (`~/Downloads`, `~/Applications`,
+`~/.cargo/bin`). An app with write access to that folder can neither
+change, rename nor delete them, nor rename the folders above them to put
+its own program in their place: the next click on a menu entry would have
+run its program unsandboxed.
+
 **Read-only, even with write access** (each of these can make your system
 run a program the next time you log in or open a file):
 
@@ -343,8 +352,15 @@ How these stay protected with the home writable:
   report, without a timer.
   The same holds for `~/.ssh` and `~/.gnupg` when the app was not given them.
 - **Key folders that are links** (dotfiles managed with `stow`, for example)
-  are hidden where they point; **start files that are links** are locked
-  where they point, and a replaced link is put back.
+  are hidden where they point, also when only the folder they point into is
+  granted (`~/.gnupg` a link to `~/Sync/gnupg`, and `~/Sync` granted);
+  **start files that are links** are locked where they point, and a
+  replaced link is put back.
+- **Links are followed as the app follows them.** Each protection is
+  mounted where the app reaches the place, never through a link: with
+  `~/.config` a link (to `~/dotfiles/config` or to another drive), apps
+  start as usual, and a folder granted read-only that the link leads into
+  stays read-only.
 
 **What full home access does not cover.** With read and write access to the
 home, an app can still change other files that programs outside the sandbox
