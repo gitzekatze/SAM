@@ -77,6 +77,25 @@ app = find_app()
 check("window reachable through AT-SPI", app is not None)
 if not app:
     sys.exit(1)
+if sys.argv[1:] == ["single"]:
+    # The one-app editor after a save that failed shows the stored
+    # settings, not the switch as it was flipped (audit G-F3).
+    sw = wait(lambda: by_name(app, lambda s: s == "Printing", "switch"), 20)
+    check("the one-app editor has the printing switch, off", sw is not None
+          and not sw.get_state_set().contains(Atspi.StateType.CHECKED))
+    if sw:
+        apps = os.path.join(os.environ["SAM_DATA_DIR"], "apps")
+        os.chmod(apps, 0o555)
+        try:
+            press(sw)
+            time.sleep(3)
+            check("…a failed save leaves the app without printing", perms()["Browser"]["permissions"]["sockets"]["cups"] is False)
+            again = by_name(app, lambda s: s == "Printing", "switch")
+            check("…and the editor shows it off", again is not None and not again.get_state_set().contains(Atspi.StateType.CHECKED))
+        finally:
+            os.chmod(apps, 0o755)
+    print("RESULT", "pass" if ok else "fail")
+    sys.exit(0 if ok else 1)
 wait(lambda: by_name(app, lambda s: s.startswith("Select Browser")), 20)
 before = perms()
 for name in ["Browser", "Player", "Editor"]:

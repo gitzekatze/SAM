@@ -3,7 +3,8 @@
 # invisible KWin session: four test apps, three of them selected; the script
 # checks the names of the controls, the warning before an app loses sound it
 # needs, the group change, Undo, the question before a risky permission
-# goes to several apps, and the tag filter. Prints one line per
+# goes to several apps, and the tag filter; then the one-app editor after a
+# save that failed. Prints one line per
 # check and "RESULT pass" or "RESULT fail".
 #
 #   tests/gui/permissions-atspi.sh OUTDIR
@@ -31,6 +32,12 @@ sleep 1
 "$bin/sam-jail-gui" --screenshot "$out/permissions.png" --size 1180x800 --delay 25000 --page permissions --app "$ids" > "$out/gui.log" 2>&1 & gui=$!
 rc=0; python3 -I "$here/tests/gui/permissions-atspi.py" || rc=$?
 wait $gui || true
+# One app selected: its editor after a save that failed.
+browser=$("$bin/sam-jail" --json group list | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d=d.get("data",d); print([a["id"] for a in d if a["name"]=="Browser"][0])')
+"$bin/sam-jail-gui" --screenshot "$out/permissions-one.png" --size 1180x800 --delay 20000 --page permissions --app "$browser" > "$out/gui-one.log" 2>&1 & gui=$!
+python3 -I "$here/tests/gui/permissions-atspi.py" single || rc=1
+wait $gui || true
+chmod 755 "$SAM_DATA_DIR/apps"
 kill $registry $launcher 2>/dev/null || true
-if grep -E 'CRITICAL|panicked' "$out/gui.log"; then rc=1; fi
+if grep -E 'CRITICAL|panicked' "$out/gui.log" "$out/gui-one.log"; then rc=1; fi
 exit $rc

@@ -1,8 +1,9 @@
 #!/bin/sh
 # The app page through the accessibility interface (AT-SPI), in an
 # invisible KWin session: one sandboxed test app; checks the Test button and
-# its state, the advice group, "Files This App Saved", turning on
-# compatibility mode through its dialog, and the remove dialog.
+# its state, the advice group, "Files This App Saved", Confirm Settings for
+# a record changed outside SAM, a failed save, turning on compatibility
+# mode through its dialog, and the remove dialog.
 # Prints one line per check and "RESULT pass" or "RESULT fail".
 #
 #   tests/gui/app-page-atspi.sh OUTDIR
@@ -18,12 +19,15 @@ export SAM_CONFIG_DIR="$out/data-set/config" SAM_DATA_DIR="$out/data-set/data" S
 printf '[general]\nscan_directories = ["%s"]\n' "$out/data-set/apps-folder" > "$SAM_CONFIG_DIR/config.toml"
 "$bin/sam-jail" dev make-fixture --name Tool "$out/data-set/apps-folder/Tool.AppImage" >/dev/null
 id=$("$bin/sam-jail" --json add "$out/data-set/apps-folder/Tool.AppImage" --no-launcher --accept | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d=d.get("data",d); print(d["entry"]["id"])')
+# Something other than SAM turns X11 on in the app's record.
+python3 -I -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["profile"]["permissions"]["display"]["x11"]=True; json.dump(d,open(p,"w"))' "$SAM_DATA_DIR/apps/$id.json"
 "${ATSPI_LAUNCHER:-/usr/lib/at-spi-bus-launcher}" --launch-immediately >/dev/null 2>&1 & launcher=$!
 sleep 1
 "${ATSPI_REGISTRY:-/usr/lib/at-spi2-registryd}" >/dev/null 2>&1 & registry=$!
-"$bin/sam-jail-gui" --screenshot "$out/app-page.png" --size 1180x800 --delay 30000 --page app --app "$id" > "$out/gui.log" 2>&1 & gui=$!
+"$bin/sam-jail-gui" --screenshot "$out/app-page.png" --size 1180x800 --delay 45000 --page app --app "$id" > "$out/gui.log" 2>&1 & gui=$!
 rc=0; SAM_TEST_BIN="$bin" SAM_TEST_APP="$id" python3 -I "$here/tests/gui/app-page-atspi.py" || rc=$?
 wait $gui || true
+chmod 755 "$SAM_DATA_DIR/apps"
 kill $registry $launcher 2>/dev/null || true
 if grep -E 'CRITICAL|panicked' "$out/gui.log"; then rc=1; fi
 exit $rc
