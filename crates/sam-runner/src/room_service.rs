@@ -2215,21 +2215,30 @@ exec "$@"
         unsafe { libc::syscall(libc::SYS_gettid) as libc::pid_t }
     }
 
-    fn signal_thread(tid: libc::pid_t, sig: libc::c_int) {
+    /// Sends `sig` to thread `tid` of this process; false when that thread
+    /// has already ended (the test then says what that means).
+    fn signal_thread(tid: libc::pid_t, sig: libc::c_int) -> bool {
         // SAFETY: a signal to a thread of this process, by its id.
         let r = unsafe { libc::syscall(libc::SYS_tgkill, libc::getpid(), tid, sig) };
-        assert_eq!(r, 0, "{}", std::io::Error::last_os_error());
+        if r != 0 {
+            let e = std::io::Error::last_os_error();
+            assert_eq!(e.raw_os_error(), Some(libc::ESRCH), "{e}");
+            return false;
+        }
+        true
     }
 
-    /// Waits until thread `tid` of this process sleeps (blocked in a call).
-    fn wait_until_blocked(tid: libc::pid_t) {
+    /// Waits until thread `tid` of this process sleeps (blocked in a call);
+    /// false when that thread has already ended.
+    fn wait_until_blocked(tid: libc::pid_t) -> bool {
         let end = Instant::now() + Duration::from_secs(10);
         loop {
-            let stat =
-                std::fs::read_to_string(format!("/proc/self/task/{tid}/stat")).unwrap_or_default();
+            let Ok(stat) = std::fs::read_to_string(format!("/proc/self/task/{tid}/stat")) else {
+                return false;
+            };
             let state = stat.rsplit_once(") ").and_then(|(_, r)| r.chars().next());
             if state == Some('S') {
-                return;
+                return true;
             }
             assert!(Instant::now() < end, "thread {tid} never blocked ({stat})");
             std::thread::sleep(Duration::from_millis(10));
@@ -2418,11 +2427,13 @@ exec "$@"
                 let tid = rx.recv().unwrap();
                 // The connection is full: the first signal ends the send
                 // part way, the second interrupts the next before anything
-                // went.
+                // went. A send that gave up early has ended its thread; the
+                // bytes that arrived below then show what went wrong.
                 for _ in 0..2 {
                     std::thread::sleep(Duration::from_millis(200));
-                    wait_until_blocked(tid);
-                    signal_thread(tid, libc::SIGUSR1);
+                    if !wait_until_blocked(tid) || !signal_thread(tid, libc::SIGUSR1) {
+                        break;
+                    }
                 }
                 std::thread::sleep(Duration::from_millis(200));
                 let mut got = Vec::new();
@@ -2684,16 +2695,21 @@ exec "$@"
                 assert!(Instant::now() < end, "no watcher for the room");
                 std::thread::sleep(Duration::from_millis(10));
             };
-            wait_until_blocked(tid);
+            let waited = wait_until_blocked(tid);
+            let mut reached = 0;
             for _ in 0..3 {
-                signal_thread(tid, libc::SIGUSR1);
+                if signal_thread(tid, libc::SIGUSR1) {
+                    reached += 1;
+                }
                 std::thread::sleep(Duration::from_millis(50));
             }
             std::fs::write(&go, "").unwrap();
             let a = answer_of(&ours);
             drop(ours);
             t.join().unwrap();
-            assert_eq!(a["exit"], 5, "{a}");
+            assert_eq!(a["exit"], 5, "the room after a signal to its watcher: {a}");
+            // The watcher was still waiting for every signal.
+            assert!(waited && reached == 3, "the watcher ended early");
         });
     }
 }
