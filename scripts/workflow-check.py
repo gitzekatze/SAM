@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The rules every GitHub workflow of SAM keeps (AUTOMATION.md). It runs in
 the required test job, so a change that breaks one cannot be merged; the
-lint job (zizmor, shellcheck, ruff) only warns.
+lint job (zizmor, actionlint, shellcheck, ruff) only warns.
 
 Workflow safety:
 1. `pull_request_target` together with a checkout of the pull request's
@@ -378,13 +378,16 @@ def python_sandbox_problems(name, text):
     tree = ast.parse(text)
     module_os = any(_sets_required(n) == "os.environ" for n in ast.walk(tree))
 
-    def visit(scope, ready):
-        here = set(ready) | {r for n in ast.walk(scope) if (r := _sets_required(n))}
+    def visit(scope):
         seen = set()
         for node in ast.walk(scope):
-            if node is not scope and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-                visit(node, ready)
+            if node is not scope and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) \
+                    and id(node) not in seen:
+                visit(node)
                 seen |= {id(x) for x in ast.walk(node)}
+        # Only what this function itself sets: a nested function may never
+        # run before the call.
+        here = {r for n in ast.walk(scope) if id(n) not in seen and (r := _sets_required(n))}
         for node in ast.walk(scope):
             if id(node) in seen:
                 continue
@@ -403,7 +406,7 @@ def python_sandbox_problems(name, text):
             if id(node) not in seen and isinstance(node, (ast.List, ast.Tuple)) and _cargo_test(node):
                 errs.append(f"{name}:{node.lineno}: a cargo test command not handed straight to a call "
                             "(rule 8 cannot see its environment)")
-    visit(tree, set())
+    visit(tree)
     return sorted(set(errs))
 
 
@@ -506,6 +509,10 @@ def self_test():
          "def f(sh):\n    env = dict(os.environ)\n    env['SAM_REQUIRE_SANDBOX'] = '1'\n    sh(['cargo', 'test', '-p', 'x'], env=env)\n", "python", 0),
         ("python: env built in another function",
          "def g():\n    env = {}\n    env['SAM_REQUIRE_SANDBOX'] = '1'\n\n\ndef f(sh, env):\n    sh(['cargo', 'test'], env=env)\n", "python", 1),
+        ("python: env set only in a function the script's own run may never call",
+         "import subprocess\nenv = {}\n\n\ndef g():\n    env['SAM_REQUIRE_SANDBOX'] = '1'\n\n\nsubprocess.run(['cargo', 'test'], env=env)\n", "python", 1),
+        ("python: env set only in a nested function",
+         "def f(sh):\n    env = {}\n\n    def g():\n        env['SAM_REQUIRE_SANDBOX'] = '1'\n    sh(['cargo', 'test'], env=env)\n", "python", 1),
         ("python: os.environ passed as it is", "import os, subprocess\nsubprocess.run(['cargo', 'test'], env=os.environ)\n", "python", 1),
         ("python: a build without running", "import subprocess\nsubprocess.run(['cargo', 'test', '--no-run'])\n", "python", 0),
         ("python: a command kept in a name first", "import subprocess\ncmd = ['cargo', 'test']\nsubprocess.run(cmd)\n", "python", 1),

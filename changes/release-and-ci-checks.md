@@ -19,4 +19,6 @@
   check, the version report) now require the sandbox too, as CI does; CI's
   rule check covers the Makefile and Python scripts. CI also runs
   actionlint, a checker for the workflow files, pinned to a checked
-  release.
+  release. In a Python script, the rule check counts only an environment
+  the calling function itself sets, not one set in a function that may
+  never run.
