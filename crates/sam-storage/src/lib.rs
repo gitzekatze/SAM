@@ -107,10 +107,12 @@ impl Registry {
         // any change). Records from SAM versions before the checksum are
         // marked once and confirmed once. A checksum is compared only in the
         // current format: a record migrated from an older one is
-        // re-serialized differently. A mark found earlier stays until it is
-        // confirmed.
+        // re-serialized differently. No record of an older format carries a
+        // checksum (it came after format 1), so one that does had its format
+        // lowered (review F4: `"format": 0` hid any change). A mark found
+        // earlier stays until it is confirmed.
         let mismatch = match e.integrity.clone() {
-            Some(stored) => found == sam_core::format::CURRENT && integrity_of(&e)? != stored,
+            Some(stored) => found != sam_core::format::CURRENT || integrity_of(&e)? != stored,
             None => true,
         };
         e.changed_outside = e.changed_outside || mismatch;
@@ -358,6 +360,35 @@ impl PresetStore {
         Ok(path)
     }
 
+    /// Saves a preset from a file under a name no preset has yet: the file's
+    /// own name when it is free, otherwise "NAME (imported)", "NAME
+    /// (imported 2)", … An imported file never replaces a preset of the same
+    /// name, which would later be applied as the person's own (review F9).
+    pub fn import(&self, preset: &mut Preset) -> Result<PathBuf> {
+        let taken = |name: &str| -> Result<bool> {
+            Ok(self.get(name)?.is_some() || self.file_for(name).exists())
+        };
+        // An empty name is refused by `save`, as before.
+        if !preset.name.trim().is_empty() && taken(&preset.name)? {
+            let base = preset.name.trim().to_string();
+            let mut n = 1u32;
+            loop {
+                let candidate = match n {
+                    1 => sam_core::i18n::trf("{name} (imported)", &[("name", &base)]),
+                    _ => {
+                        sam_core::i18n::trf("{name} (imported {n})", &[("name", &base), ("n", &n)])
+                    }
+                };
+                if !taken(&candidate)? {
+                    preset.name = candidate.trim().to_string();
+                    break;
+                }
+                n += 1;
+            }
+        }
+        self.save(preset)
+    }
+
     pub fn delete(&self, name: &str) -> Result<bool> {
         let p = self.file_for(name);
         match fs::remove_file(&p) {
@@ -415,8 +446,12 @@ pub fn parse_preset_toml(s: &str) -> Result<Preset> {
     Ok(Preset {
         name: file.preset.name,
         description: file.preset.description,
+        // Worked out from the permissions, never taken from the file: a
+        // preset file placed in the folder (copied, synced, written by a
+        // script) said "low" for full home and network, and the lists showed
+        // it as Harmless (review F6). The stored word is only written.
+        risk: sam_core::risk::assess(&permissions).level,
         permissions,
-        risk: file.preset.risk,
         created_at: file.preset.created_at,
         modified_at: file.preset.modified_at,
         compatibility_notes: file.preset.compatibility_notes,
@@ -733,6 +768,29 @@ mod tests {
             ok.changed_outside = false;
             reg.save(&mut ok).unwrap();
         }
+        // Regression (review F4): lowering the format number with the old
+        // checksum left in place (`0`, or no number, which reads as 0)
+        // skipped the comparison and hid the change. (`1.0` is no number a
+        // record can have: such a record is moved aside as damaged.)
+        for format in [Some(serde_json::json!(0)), None] {
+            let mut v: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+            assert!(v["integrity"].is_string(), "SAM's save wrote a checksum");
+            v["profile"]["permissions"]["network"]["mode"] = "full".into();
+            match &format {
+                Some(f) => v["format"] = f.clone(),
+                None => drop(v.as_object_mut().unwrap().remove("format")),
+            }
+            fs::write(&file, v.to_string()).unwrap();
+            assert!(
+                reg.get("appimage-x-1").unwrap().unwrap().changed_outside,
+                "with format {format:?}"
+            );
+            let mut ok = reg.get("appimage-x-1").unwrap().unwrap();
+            ok.changed_outside = false;
+            reg.save(&mut ok).unwrap();
+            assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside);
+        }
     }
 
     /// `update` changes the record as it is on disk now, so work that took a
@@ -944,6 +1002,78 @@ dbus_system = "none"
     }
 
     /// A saved preset loads back unchanged, found by its name in any letter case.
+    /// The risk word of a preset is worked out from its permissions, never
+    /// taken from the file: a file placed in the presets folder that says
+    /// "low" for full home and network is listed as Dangerous (review F6).
+    #[test]
+    fn a_presets_risk_word_comes_from_its_permissions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let store = PresetStore::new(&paths);
+        let mut perms = PermissionSet::strict_gui();
+        perms.filesystem.home = true;
+        perms.filesystem.home_access = sam_core::permissions::Access::Rw;
+        perms.network.mode = sam_core::permissions::NetworkMode::Full;
+        let mut p = Preset {
+            name: "Looks Harmless".into(),
+            permissions: perms.clone(),
+            ..Default::default()
+        };
+        // The file claims the lowest word.
+        p.risk = sam_core::RiskLevel::Low;
+        let claimed = preset_to_toml(&p).unwrap();
+        assert!(claimed.contains("risk = \"low\""), "{claimed}");
+        fs::create_dir_all(paths.presets_dir()).unwrap();
+        fs::write(store.file_for(&p.name), &claimed).unwrap();
+        let want = sam_core::risk::assess(&perms).level;
+        assert_eq!(want, sam_core::RiskLevel::Dangerous);
+        assert_eq!(store.get("Looks Harmless").unwrap().unwrap().risk, want);
+        assert_eq!(parse_preset_toml(&claimed).unwrap().risk, want);
+    }
+
+    /// Importing a preset file never replaces a preset of the same name: it
+    /// gets a free name instead, and the person's own stays as it was
+    /// (review F9).
+    #[test]
+    fn an_imported_preset_never_replaces_one_of_the_same_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = PresetStore::new(&Paths::rooted(tmp.path()));
+        let mut own = Preset {
+            name: "Browser".into(),
+            permissions: PermissionSet::strict_gui(),
+            ..Default::default()
+        };
+        store.save(&mut own).unwrap();
+        let mut wide = PermissionSet::strict_gui();
+        wide.filesystem.home = true;
+        let imported = |name: &str| Preset {
+            name: name.into(),
+            permissions: wide.clone(),
+            ..Default::default()
+        };
+        // Same name, other letter case and the same file name: all kept.
+        for (i, name) in ["Browser", "BROWSER", "browser!"].iter().enumerate() {
+            let mut p = imported(name);
+            let path = store.import(&mut p).unwrap();
+            assert_ne!(path, store.file_for("Browser"), "{name}");
+            assert_ne!(p.name.to_lowercase(), "browser", "{name}");
+            assert!(p.name.contains("(imported"), "{name}: {}", p.name);
+            assert_eq!(store.list().unwrap().len(), i + 2);
+        }
+        let kept = store.get("Browser").unwrap().unwrap();
+        assert_eq!(kept.name, "Browser");
+        assert_eq!(
+            kept.permissions, own.permissions,
+            "the own preset is unchanged"
+        );
+        assert!(store.get("Browser (imported)").unwrap().is_some());
+        assert!(store.get("Browser (imported 2)").unwrap().is_some());
+        // A free name is kept as it is.
+        let mut fresh = imported("Editor");
+        store.import(&mut fresh).unwrap();
+        assert_eq!(fresh.name, "Editor");
+    }
+
     #[test]
     fn a_saved_preset_loads_back_unchanged() {
         let tmp = tempfile::tempdir().unwrap();

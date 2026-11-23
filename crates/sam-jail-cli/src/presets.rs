@@ -119,8 +119,19 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
         }
         PresetCmd::Import { file } => {
             let mut p = read_preset_file(&file)?;
-            let path = store.save(&mut p)?;
+            let asked = p.name.clone();
+            // Never over a preset of the same name (review F9).
+            let path = store.import(&mut p)?;
             out.emit(&p, || {
+                if p.name != asked {
+                    outln!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "A preset named “{asked}” already exists; the file was imported as “{name}”.",
+                            &[("asked", &asked), ("name", &p.name)]
+                        )
+                    );
+                }
                 outln!(
                     "{}",
                     sam_core::i18n::trf(
