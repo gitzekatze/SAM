@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-92 tests.
+101 tests.
 
 | Promise | Test |
 |---|---|
@@ -24,16 +24,25 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) |
 | An error code survives added context. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L137) |
 | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) |
-| The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L184) |
-| Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L202) |
-| Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L230) |
-| Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L739) |
-| The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L754) |
-| Only a real socket counts as a desktop service. | [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L767) |
-| The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L788) |
-| Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L797) |
-| Where AppArmor restricts user namespaces, the advice names the restricted profile for Bubblewrap alone and what it costs, and warns against the ways that lift the restriction for every program (audit A3). | [`the_apparmor_advice_keeps_the_restriction_for_other_programs`](../crates/sam-core/src/host.rs#L815) |
-| The install hint names this distribution's package manager, also on derivatives (by `ID_LIKE`), and none where SAM does not know it (audit T2). | [`the_install_hint_fits_the_distribution`](../crates/sam-core/src/host.rs#L830) |
+| The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L190) |
+| Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L208) |
+| The overlay check believes Bubblewrap's answer: a Bubblewrap that fails means no overlay, even though the check's folders could be made (NFS, eCryptfs, another overlay), and one that succeeds means a working overlay. | [`the_overlay_check_believes_bubblewraps_answer`](../crates/sam-core/src/host.rs#L238) |
+| Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L256) |
+| The sockets given to a sandbox follow the user's session: a set variable names the socket (WAYLAND_DISPLAY=wayland-7 is not wayland-0, which may be another compositor's), and an empty one counts as unset, so the usual places are used. | [`the_sockets_follow_the_sessions_variables`](../crates/sam-core/src/host.rs#L809) |
+| `$XDG_CONFIG_HOME` decides where user-dirs.dirs is read, so which real folder a Documents or Downloads permission shows; an empty one counts as unset, never as the current folder. | [`the_user_folders_are_read_from_the_users_config_folder`](../crates/sam-core/src/host.rs#L868) |
+| Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L879) |
+| The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L894) |
+| Only a real socket counts as a desktop service. | [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L907) |
+| The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L928) |
+| Only library folders a sandbox does not show anyway and that may be shown are kept: below /opt or /usr/local, never below the home folder (also where the home is itself below /opt) or in /etc, /var or /run. | [`only_library_folders_outside_the_home_and_system_areas_are_shown`](../crates/sam-core/src/host.rs#L946) |
+| The loader's folders come from the files in ld.so.conf.d in the order of their names, after /usr/local/lib: only lines that name a folder, and only folders that exist. | [`the_loaders_folders_come_from_its_config_files`](../crates/sam-core/src/host.rs#L976) |
+| The graphics devices are everything in dri/ and the nvidia* entries, sorted, and nothing else of the device folder. | [`the_graphics_devices_are_found_in_the_device_folder`](../crates/sam-core/src/host.rs#L1010) |
+| The sandbox's user name is `$USER`; where that is empty or unset, the home folder's name, and "user" where there is none. | [`the_user_name_is_users_or_the_home_folders`](../crates/sam-core/src/host.rs#L1039) |
+| A setuid Bubblewrap is told from a normal one by its file's setuid bit: only a setuid one works where user namespaces are switched off. | [`a_setuid_bubblewrap_is_told_from_a_normal_one`](../crates/sam-core/src/host.rs#L1050) |
+| The kernel's user namespace knobs are read as they are meant: "1" is on, "0" off, a missing file unknown (the AppArmor restriction of Ubuntu 24.04 and later included). | [`the_user_namespace_knobs_are_read_as_meant`](../crates/sam-core/src/host.rs#L1067) |
+| Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L1107) |
+| Where AppArmor restricts user namespaces, the advice names the restricted profile for Bubblewrap alone and what it costs, and warns against the ways that lift the restriction for every program (audit A3). | [`the_apparmor_advice_keeps_the_restriction_for_other_programs`](../crates/sam-core/src/host.rs#L1125) |
+| The install hint names this distribution's package manager, also on derivatives (by `ID_LIKE`), and none where SAM does not know it (audit T2). | [`the_install_hint_fits_the_distribution`](../crates/sam-core/src/host.rs#L1140) |
 | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | [`every_translated_language_can_be_chosen`](../crates/sam-core/src/i18n.rs#L179) |
 | Texts without a translation come back with their values. | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L193) |
 | Only icons that are safe to decode reach the desktop's image code: a PNG whose header announces more than 1024×1024 pixels (a decode bomb: a small file that asks for gigabytes) is refused before anything decodes it, and so are oversized files, large SVGs and XPM (audit G-F8, I-F18). | [`only_icons_that_are_safe_to_decode_are_taken`](../crates/sam-core/src/icon.rs#L85) |
@@ -742,4 +751,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 656 automated Rust tests plus 7 scripted checks.
+Total: 665 automated Rust tests plus 7 scripted checks.

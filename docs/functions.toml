@@ -143,8 +143,8 @@ about = "Inside the sandbox an app sees only what you allowed: files, network, d
 id = 10
 area = "C"
 promise = "The app sees only a private home folder and the folders you grant."
-code = ["sam-sandbox/src/lib.rs"]
-tests = ["links_in_etc_never_bring_sockets_or_devices", "a_user_folder_that_shows_more_is_not_shown", "a_writable_folder_stays_writable_in_a_read_only_home", "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "only_proper_variable_names_are_set", "user_folders_come_from_user_dirs_dirs"]
+code = ["sam-sandbox/src/lib.rs", "sam-core/src/host.rs"]
+tests = ["the_user_folders_are_read_from_the_users_config_folder", "only_library_folders_outside_the_home_and_system_areas_are_shown", "the_loaders_folders_come_from_its_config_files", "links_in_etc_never_bring_sockets_or_devices", "a_user_folder_that_shows_more_is_not_shown", "a_writable_folder_stays_writable_in_a_read_only_home", "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "only_proper_variable_names_are_set", "user_folders_come_from_user_dirs_dirs"]
 
 [[function]]
 id = 11
@@ -171,8 +171,10 @@ tests = ["localhost_network_leaves_netns_to_pasta", "only_listed_host_ports", "t
 id = 13
 area = "C"
 promise = "The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox."
-code = ["sam-runner/src/dbus_proxy.rs", "sam-sandbox/src/lib.rs", "sam-core/src/permissions.rs", "sam-runner/src/kernel.rs"]
+code = ["sam-runner/src/dbus_proxy.rs", "sam-sandbox/src/lib.rs", "sam-core/src/permissions.rs", "sam-runner/src/kernel.rs", "sam-core/src/host.rs"]
 tests = [
+  "the_sockets_follow_the_sessions_variables",
+  "the_user_name_is_users_or_the_home_folders",
   "a_32_bit_start_program_keeps_the_syscall_filter_on",
   "without_nested_sandboxes_clone_cannot_make_a_user_namespace",
   "a_32_bit_app_gets_its_calls_filtered_not_switched_off",
@@ -226,8 +228,8 @@ tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox
 id = 15
 area = "C"
 promise = "Sound, GPU, camera and game controllers only when allowed."
-code = ["sam-sandbox/src/lib.rs"]
-tests = ["a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "nothing_in_the_sound_relay_can_make_a_user_namespace", "a_relay_outside_a_sandbox_is_not_held", "a_too_long_socket_path_is_named_before_the_relay_starts", "a_launchs_sockets_fit_even_for_the_longest_app_id", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+code = ["sam-sandbox/src/lib.rs", "sam-core/src/host.rs"]
+tests = ["the_graphics_devices_are_found_in_the_device_folder", "a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "nothing_in_the_sound_relay_can_make_a_user_namespace", "a_relay_outside_a_sandbox_is_not_held", "a_too_long_socket_path_is_named_before_the_relay_starts", "a_launchs_sockets_fit_even_for_the_longest_app_id", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
 
 [[function]]
 id = 16
@@ -272,7 +274,7 @@ id = 18
 area = "C"
 promise = "Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/launch.rs", "sam-core/src/host.rs"]
-tests = ["writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted"]
+tests = ["the_overlay_check_believes_bubblewraps_answer", "writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted"]
 
 [[function]]
 id = 41
@@ -571,7 +573,7 @@ id = 33
 area = "G"
 promise = "The doctor check finds problems with the system or an app."
 code = ["sam-runner/src/doctor.rs", "sam-runner/src/bwrap.rs", "sam-runner/src/dbus_check.rs", "sam-core/src/host.rs"]
-tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "the_login_files_check_looks_for_shadow", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
+tests = ["a_setuid_bubblewrap_is_told_from_a_normal_one", "the_user_namespace_knobs_are_read_as_meant", "missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "the_login_files_check_looks_for_shadow", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
   "a_broken_contract_ends_with_not_passed",
   "doctor_ends_with_what_it_reports",
   "the_install_hint_fits_the_distribution",
