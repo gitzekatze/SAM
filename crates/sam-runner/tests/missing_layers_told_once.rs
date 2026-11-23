@@ -36,6 +36,8 @@ else
 fi
 "#;
 
+/// A start that lacks the Wayland security context and is started again
+/// by SAM for its bus name calls the start's hook once, not once per try.
 #[test]
 fn a_missing_layer_is_told_once_when_sam_starts_the_app_again() {
     let host = HostInfo::probe();
