@@ -4,13 +4,16 @@
 .SH NAME
 sam\-jail\-preset\-apply \- Apply a preset to an app (asks for confirmation when it conflicts)
 .SH SYNOPSIS
-\fBsam\-jail preset apply\fR [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fINAME\fR> <\fIAPP\fR> 
+\fBsam\-jail preset apply\fR [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-expect\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fINAME\fR> <\fIAPP\fR> 
 .SH DESCRIPTION
 Apply a preset to an app (asks for confirmation when it conflicts)
 .SH OPTIONS
 .TP
 \fB\-y\fR, \fB\-\-yes\fR
 
+.TP
+\fB\-\-expect\fR \fI<EXPECT>\fR
+Apply only if the preset is still the one checked: the `fingerprint` of an earlier `preset apply` reply
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help
