@@ -135,29 +135,21 @@ say on_path "$(rv room --setenv PATH /usr/bin -- echo ok)"
 say default_path "$(rv room --clearenv -- echo ok)"
 # The stand-in is named as Bubblewrap is, so SAM's "please quit" spares it
 # as it spares Bubblewrap (the program in the room gets its time to quit).
-# The name of process $1 once it is bwrap, or the last name seen within
-# 3 s: a busy computer may take a while to start it (it is named by the
-# shell first, then by the program it starts).
-name_of() {
-  n=""; i=0
-  while [ $i -lt 30 ]; do
-    n="$(cat /proc/$1/comm 2>/dev/null)"
-    [ "$n" = bwrap ] && break
-    i=$((i+1)); sleep 0.1
-  done
-  echo "$n"
-}
-bwrap --ro-bind /usr /usr $SYS -- /usr/bin/sleep 3 </dev/null >/dev/null 2>&1 &
+# Its name is read once its room runs (the stand-in has then sent its
+# request), not after a fixed time a busy computer may not keep to.
+bwrap --ro-bind /usr /usr $SYS --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'echo up > "$HOME/standin-up"; exec /usr/bin/sleep 30' </dev/null >/dev/null 2>&1 &
 standin=$!
-say standin_name "$(name_of $standin)"
-kill "$standin" 2>/dev/null
+i=0; while [ ! -s "$HOME/standin-up" ] && [ $i -lt 300 ]; do sleep 0.2; i=$((i+1)); done
+say standin_name "$(cat /proc/$standin/comm 2>/dev/null)"
+kill -9 "$standin" 2>/dev/null
 # Also when the program starts SAM's helper by its own path under
 # Bubblewrap's name (the kernel names it after the helper's file then).
 # shellcheck disable=SC2086
-python3 -c 'import os, sys; os.execv("/run/sam/sam-jail-run", ["bwrap"] + sys.argv[1:])' --ro-bind /usr /usr $SYS -- /usr/bin/sleep 3 </dev/null >/dev/null 2>&1 &
+python3 -c 'import os, sys; os.execv("/run/sam/sam-jail-run", ["bwrap"] + sys.argv[1:])' --ro-bind /usr /usr $SYS --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'echo up > "$HOME/standin-up-by-name"; exec /usr/bin/sleep 30' </dev/null >/dev/null 2>&1 &
 standin=$!
-say standin_name_by_name "$(name_of $standin)"
-kill "$standin" 2>/dev/null
+i=0; while [ ! -s "$HOME/standin-up-by-name" ] && [ $i -lt 300 ]; do sleep 0.2; i=$((i+1)); done
+say standin_name_by_name "$(cat /proc/$standin/comm 2>/dev/null)"
+kill -9 "$standin" 2>/dev/null
 # A variable that is not text: the request is refused, never run without it.
 SAM_ROOM_NOT_TEXT="$(printf 'x\377')"
 export SAM_ROOM_NOT_TEXT
@@ -589,8 +581,49 @@ say race_other "$other"
 /// and waits (the seconds follow).
 const PDEATH_CODE: &str = "import ctypes, os, time; open(os.environ['HOME'] + '/pid1-up', 'w').close(); ctypes.CDLL(None).prctl(1, 0, 0, 0, 0); time.sleep(";
 
-/// Many rooms at once all finish. A stand-in killed outright ends its room;
-/// a room still running when its app ends does not outlive the app's start.
+/// The program of each room in the count of rooms at once (its number
+/// follows). It marks itself running in a folder it shares with the app
+/// ($HOME/slots), counts the marks again and again and keeps the highest
+/// count it saw. Once sixteen run (Room service's most, MAX_ROOMS), it
+/// stays as long again as they took to gather, and two seconds more: a
+/// seventeenth room built beside them would be counted by then, however
+/// busy the computer. The first room to leave says so ("done"), and the
+/// rooms built after it leave at once. If sixteen never gather, the rooms
+/// give up once no new room has come for a minute (each room also leaves a
+/// lasting "seen" mark): not after a fixed time from the start, which a
+/// busy computer may need just to build sixteen rooms. A slot frees only
+/// after its room has ended, so the count never runs ahead of the rooms
+/// really running.
+const SLOT_ROOM: &str = r#"me=$1
+d=$HOME/slots
+: > "$d/seen-$me"
+: > "$d/run-$me"
+read -r t0 < "$d/t0"
+most=0; full=0; seen=0; came=$(/usr/bin/date +%s%N)
+while :; do
+  set -- "$d"/run-*
+  n=$#
+  [ -e "$1" ] || n=0
+  [ "$n" -gt "$most" ] && most=$n
+  [ -e "$d/done" ] && break
+  now=$(/usr/bin/date +%s%N)
+  set -- "$d"/seen-*
+  [ "$#" != "$seen" ] && seen=$# && came=$now
+  [ "$full" = 0 ] && [ "$n" -ge 16 ] && full=$now
+  if [ "$full" != 0 ] && [ $((now - full)) -ge $((full - t0 + 2000000000)) ]; then : > "$d/done"; break; fi
+  if [ "$full" = 0 ] && [ $((now - came)) -ge 60000000000 ]; then : > "$d/done"; break; fi
+  /usr/bin/sleep 0.1
+done
+echo "$most" > "$d/most-$me"
+/usr/bin/rm -f "$d/run-$me""#;
+
+/// Many rooms at once all finish, and no more than sixteen run at a time
+/// (counted by the rooms themselves, not timed). A stand-in killed outright
+/// ends its room; a room still running when its app's start ends does not
+/// outlive it. The waits are generous (a minute) for a busy computer; they
+/// only cost time when something is wrong. The script ends by writing
+/// `lifetime-done`: its start is then ended from outside (see
+/// [`end_start_after`]), since the rooms left running keep it going.
 fn lifetime_script(left: &str) -> String {
     format!(
         r#"
@@ -600,35 +633,88 @@ while [ $i -lt 40 ]; do room -- /usr/bin/sleep 1 & pids="$pids $!"; i=$((i+1)); 
 ok=0
 for p in $pids; do wait "$p" && ok=$((ok+1)); done
 say flood "$ok"
-# Twenty rooms of two seconds each, with at most sixteen at once: the last
-# ones wait, so it takes at least two rounds.
-start=$(date +%s%N)
+# Twenty rooms at once: sixteen run together, the other four wait for a
+# slot (SLOT_ROOM above counts them).
+mkdir -p "$HOME/slots"
+date +%s%N > "$HOME/slots/t0"
 pids=""
 i=0
-while [ $i -lt 20 ]; do room -- /usr/bin/sleep 2 & pids="$pids $!"; i=$((i+1)); done
-for p in $pids; do wait "$p"; done
-say sixteen_at_once "$(( ($(date +%s%N) - start) / 1000000000 ))"
+while [ $i -lt 20 ]; do room --bind "$HOME" "$HOME" -- /usr/bin/sh -c '{SLOT_ROOM}' sh "$i" & pids="$pids $!"; i=$((i+1)); done
+ok=0
+for p in $pids; do wait "$p" && ok=$((ok+1)); done
+say slots_ended_well "$ok"
+ran=0; most=0
+for f in "$HOME"/slots/most-*; do
+  [ -e "$f" ] || continue
+  ran=$((ran+1)); m=$(cat "$f")
+  [ "$m" -gt "$most" ] && most=$m
+done
+say slots_ran "$ran"
+say slots_most_at_once "$most"
 # bwrap itself in the background (not the room function, whose $! would be
 # a subshell): $! is then the stand-in.
 # shellcheck disable=SC2086
 bwrap --ro-bind /usr /usr $SYS --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'while :; do date +%s%N > "$HOME/beat"; /usr/bin/sleep 0.2; done' &
 standin=$!
-i=0; while [ ! -s "$HOME/beat" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
+i=0; while [ ! -s "$HOME/beat" ] && [ $i -lt 300 ]; do sleep 0.2; i=$((i+1)); done
 kill -9 "$standin"
-sleep 2; a=$(cat "$HOME/beat" 2>/dev/null); sleep 2; b=$(cat "$HOME/beat" 2>/dev/null)
-if [ -z "$a" ]; then say killed_standin no-room
-elif [ "$a" = "$b" ]; then say killed_standin room-ended
-else say killed_standin room-still-running; fi
+# The room ends soon after its stand-in: its beat stops (unchanged for two
+# seconds), within a minute on a busy computer.
+if [ ! -s "$HOME/beat" ]; then killed=no-room; else
+  killed=room-still-running; i=0
+  while [ $i -lt 30 ]; do
+    a=$(cat "$HOME/beat"); sleep 2; b=$(cat "$HOME/beat")
+    if [ "$a" = "$b" ]; then killed=room-ended; break; fi
+    i=$((i+1))
+  done
+fi
+say killed_standin "$killed"
 room --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'echo up > "$HOME/alive"; exec /usr/bin/sleep {left}' &
 # A room asked to make its program the first process, whose program then
 # drops its tie to the room's starter: it still ends with the app's start.
 room --as-pid-1 --bind "$HOME" "$HOME" -- /usr/bin/python3 -c "{PDEATH_CODE}{left})" </dev/null >/dev/null 2>&1 &
-i=0; while [ ! -e "$HOME/pid1-up" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
+i=0; while [ ! -e "$HOME/pid1-up" ] && [ $i -lt 300 ]; do sleep 0.2; i=$((i+1)); done
 say pid1_running "$([ -e "$HOME/pid1-up" ] && echo started || echo not-started)"
-i=0; while [ ! -s "$HOME/alive" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
+i=0; while [ ! -s "$HOME/alive" ] && [ $i -lt 300 ]; do sleep 0.2; i=$((i+1)); done
 say left_running "$([ -s "$HOME/alive" ] && echo started || echo not-started)"
+: > "$HOME/lifetime-done"
 "#
     )
+}
+
+/// Ends an app's start once the app has written `marker` (a file in its
+/// home on the computer), the way SAM's own time limit ends it: its
+/// sandbox is killed. An app whose rooms still run never ends by itself:
+/// its sandbox lives while any of its processes does (Bubblewrap's first
+/// process waits for them all), and a room's stand-in waits for its room.
+/// Gives up when `ended` is set (the start ended by itself).
+fn end_start_after(marker: &std::path::Path, ended: &std::sync::atomic::AtomicBool) {
+    use std::sync::atomic::Ordering;
+    while !marker.exists() {
+        if ended.load(Ordering::SeqCst) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    // The app's sandbox: a child of this process (the start runs here)
+    // that is shown Room service's socket. Rooms are children too, but
+    // none of these asks for that socket.
+    let me = std::process::id().to_string();
+    for d in fs::read_dir("/proc").unwrap().flatten() {
+        let Ok(pid) = d.file_name().to_string_lossy().parse::<i32>() else {
+            continue;
+        };
+        let stat = fs::read_to_string(d.path().join("stat")).unwrap_or_default();
+        let parent = stat
+            .rfind(')')
+            .and_then(|i| stat[i + 1..].split_whitespace().nth(1));
+        let cmdline = fs::read(d.path().join("cmdline")).unwrap_or_default();
+        if parent == Some(me.as_str()) && cmdline.split(|b| *b == 0).any(|a| a == b"/run/sam/rooms")
+        {
+            // SAFETY: a plain signal to a child of this process.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+    }
 }
 
 /// The room link named before a place shown from the app was refused by
@@ -805,6 +891,21 @@ fn environment_only_in_the_program(
     out
 }
 
+/// How many threads of this process carry `name` (the name a thread
+/// gives itself, as /proc shows it).
+fn threads_named(name: &str) -> usize {
+    fs::read_dir("/proc/self/task")
+        .map(|tasks| {
+            tasks
+                .flatten()
+                .filter(|t| {
+                    fs::read_to_string(t.path().join("comm")).is_ok_and(|c| c.trim_end() == name)
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
 /// A room built for a connection that stays open ends when the service
 /// stops (the end of the app's start).
 fn rooms_end_with_the_service(w: &World) -> Vec<String> {
@@ -860,7 +961,9 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
     conn.write_all(&(body.len() as u32).to_be_bytes()).unwrap();
     conn.write_all(&body).unwrap();
     let target = ["/usr/bin/sleep", sleep.as_str()];
-    let end = Instant::now() + Duration::from_secs(10);
+    // (The waits here are generous for a busy computer; they only cost
+    // time when something is wrong.)
+    let end = Instant::now() + Duration::from_secs(60);
     while processes(&target).is_empty() && Instant::now() < end {
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -869,11 +972,19 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
     }
     // A request still being read when the service stops: it is recorded,
     // never lost.
+    // It is stopped only once the service has taken the request in (a
+    // thread of its own, named "sam-room", reads it): a fixed short wait
+    // may end before a busy computer has taken it, and a request never
+    // taken in is not one being read.
+    let serving = threads_named("sam-room");
     let idle = std::os::unix::net::UnixStream::connect(&service.socket).unwrap();
-    std::thread::sleep(Duration::from_millis(300));
+    let end = Instant::now() + Duration::from_secs(30);
+    while threads_named("sam-room") <= serving && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let lines = service.stop();
     drop(idle);
-    let end = Instant::now() + Duration::from_secs(5);
+    let end = Instant::now() + Duration::from_secs(30);
     while !processes(&target).is_empty() && Instant::now() < end {
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -914,7 +1025,7 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
         let mut c = std::os::unix::net::UnixStream::connect(&refusing.socket).unwrap();
         c.write_all(&(body.len() as u32).to_be_bytes()).unwrap();
         c.write_all(&body).unwrap();
-        let _ = c.set_read_timeout(Some(Duration::from_secs(10)));
+        let _ = c.set_read_timeout(Some(Duration::from_secs(30)));
         let mut answer = Vec::new();
         let _ = c.read_to_end(&mut answer);
         let lines = refusing.stop();
@@ -932,7 +1043,7 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
     }
     // The connection learns the room ended.
     let mut rest = Vec::new();
-    let _ = conn.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = conn.set_read_timeout(Some(Duration::from_secs(30)));
     let _ = conn.read_to_end(&mut rest);
     if rest.len() < 4 || !String::from_utf8_lossy(&rest[4..]).contains("exit") {
         out.push(format!(
@@ -962,7 +1073,10 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
 
     // Rooms work.
     let id = w.add("RoomsWork", WORKS);
-    let log = w.start(&id, |_| {}, 60);
+    // The app ends by itself in a few seconds; the limit is only for a
+    // hang, and generous: under heavy load building rooms takes many times
+    // as long, and the app alone may wait a minute for its stand-in's room.
+    let log = w.start(&id, |_| {}, 180);
     let before = failures.len();
     failures.extend(control_built("works", &log));
     failures.extend(
@@ -1413,7 +1527,9 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
 
     // Messages past the stand-in.
     let id = w.add("RoomHostileMessages", HOSTILE_MESSAGES);
-    let log = w.start(&id, |_| {}, 150);
+    // Ends by itself (about 25 s); the limit is only for a hang, and
+    // generous for a busy computer.
+    let log = w.start(&id, |_| {}, 300);
     if cases(&log).get("direct_control").map(String::as_str) != Some("exit=0") {
         failures.push(format!(
             "messages: a well-formed message built no room ({:?}), so the other results mean nothing",
@@ -1507,19 +1623,33 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     let left = format!("{}.5", 3000 + std::process::id() % 1000);
     let id = w.add("RoomLifetime", &lifetime_script(&left));
     let started = Instant::now();
-    // The script ends by itself in a few seconds; the limit is only for a
-    // hang, and generous: on a computer under heavy load (a mutation run
-    // runs six whole test suites at once) 40 rooms took over 40 s to start.
-    let log = w.start(&id, |_| {}, 120);
+    // The script's end ends the start (its rooms left running would keep
+    // it going); the limit is only for a hang, and generous: on a computer
+    // under heavy load (a mutation run runs six whole test suites at once)
+    // 40 rooms took over 40 s to start.
+    let marker = w.app_home(&id).join("lifetime-done");
+    let ended = std::sync::atomic::AtomicBool::new(false);
+    let log = std::thread::scope(|s| {
+        s.spawn(|| end_start_after(&marker, &ended));
+        let log = w.start(&id, |_| {}, 300);
+        ended.store(true, std::sync::atomic::Ordering::SeqCst);
+        log
+    });
     eprintln!(
         "lifetime: the start took {:.1} s",
         started.elapsed().as_secs_f64()
     );
+    let before = failures.len();
     failures.extend(
         check(
             &log,
             &[
                 ("flood", "40"),
+                // All twenty rooms ran and ended well (none refused), and
+                // exactly sixteen ran at once: never more, and side by side.
+                ("slots_ended_well", "20"),
+                ("slots_ran", "20"),
+                ("slots_most_at_once", "16"),
                 ("killed_standin", "room-ended"),
                 ("left_running", "started"),
                 ("pid1_running", "started"),
@@ -1528,20 +1658,11 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         .into_iter()
         .map(|f| format!("lifetime: {f}")),
     );
-    match cases(&log)
-        .get("sixteen_at_once")
-        .and_then(|v| v.parse::<u32>().ok())
-    {
-        // At least two rounds of 2 s (no more than 16 at once); below 40 s,
-        // which rooms one at a time would take at the least, whatever the
-        // load.
-        Some(t) if (4..36).contains(&t) => {}
-        t => failures.push(format!(
-            "lifetime: 20 rooms of 2 s took {t:?} s: more than 16 ran at once, some were refused, or they hung"
-        )),
+    if failures.len() > before {
+        failures.push(record_dump("lifetime", &log));
     }
     let leftover = ["/usr/bin/sleep", left.as_str()];
-    let end = Instant::now() + Duration::from_secs(10);
+    let end = Instant::now() + Duration::from_secs(30);
     while !processes(&leftover).is_empty() && Instant::now() < end {
         std::thread::sleep(Duration::from_millis(200));
     }
@@ -1551,7 +1672,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     }
     let code = format!("{PDEATH_CODE}{left})");
     let pid1 = ["/usr/bin/python3", "-c", code.as_str()];
-    let end = Instant::now() + Duration::from_secs(10);
+    let end = Instant::now() + Duration::from_secs(30);
     while !processes(&pid1).is_empty() && Instant::now() < end {
         std::thread::sleep(Duration::from_millis(200));
     }
@@ -1569,7 +1690,12 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
 
     // The room service keeps nothing open after the starts (it runs in this
     // process: a handle it forgot would also reach later rooms).
-    std::thread::sleep(Duration::from_millis(500));
+    // (Waited for a while: on a busy computer a room's thread may still be
+    // closing its handles.)
+    let end = Instant::now() + Duration::from_secs(10);
+    while open_fds() != fds_before && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(200));
+    }
     let fds_after = open_fds();
     if fds_after != fds_before {
         failures.push(format!(
