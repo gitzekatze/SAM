@@ -5245,21 +5245,21 @@ msgstr ""
 "Ouvre SAM pour réparer."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:205
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:217
 msgid "no registered app '{id}'"
 msgstr "aucune application enregistrée « {id} »"
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:208
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:220
 msgid "unpacking the AppImage again"
 msgstr "nouvelle décompression de l’AppImage"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:215
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:227
 msgid "{app} was not started"
 msgstr "{app} n’a pas été lancée"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:216
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:228
 msgid ""
 "{reason}.\n"
 "Open SAM → {app} → Test."
@@ -5268,41 +5268,41 @@ msgstr ""
 "Ouvre SAM → {app} → Tester."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:243
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:257
 msgid "{app} ended: {summary}"
 msgstr "{app} s’est terminée : {summary}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:251
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:265
 msgid "{app} did not run: {summary}"
 msgstr "{app} n’a pas fonctionné : {summary}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:259
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:273
 msgid "SAM found a likely fix: {fix}. Open SAM to apply it."
 msgstr ""
 "SAM a trouvé une solution probable : {fix}. Ouvre SAM pour l’appliquer."
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:266
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:280
 msgid "Press Enter to close this window."
 msgstr "Appuie sur Entrée pour fermer cette fenêtre."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:273
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:287
 msgid "{app} failed to start"
 msgstr "{app} n’a pas pu démarrer"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:283
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:297
 msgid "SAM found a likely fix: {fix}."
 msgstr "SAM a trouvé une solution probable : {fix}."
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:284
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:298
 msgid "SAM's repair steps may help."
 msgstr "Les étapes de réparation de SAM peuvent aider."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:287
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:301
 msgid "{app} stopped right after starting"
 msgstr "{app} s’est arrêtée juste après le démarrage"
 

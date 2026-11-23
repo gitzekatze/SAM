@@ -377,6 +377,16 @@ pub struct LaunchRecord {
     pub findings: Vec<Suggestion>,
 }
 
+impl LaunchRecord {
+    /// The app ended with a failure within ten seconds of its start: the
+    /// sandbox is likely missing something, so a menu start says so and
+    /// points to the repair steps. An app that ends fine, or fails after it
+    /// ran for a while, is not reported this way.
+    pub fn stopped_right_after_start(&self) -> bool {
+        !self.success && self.finished_at - self.started_at <= 10
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AppEntry {
@@ -605,7 +615,7 @@ impl AppEntry {
     pub fn started_fine(&self) -> bool {
         self.last_launch
             .as_ref()
-            .is_some_and(|l| !l.sandbox_failure && (l.success || l.finished_at - l.started_at > 10))
+            .is_some_and(|l| !l.sandbox_failure && !l.stopped_right_after_start())
     }
 
     pub fn display_name(&self) -> &str {
@@ -864,6 +874,36 @@ mod badge_tests {
         assert_eq!(e.badge(), Badge::Ready, "ran for a minute: it starts");
         e.profile.compatibility_mode = true;
         assert_eq!(e.badge(), Badge::CompatibilityMode);
+    }
+
+    /// Only a failure within the first ten seconds counts as "stopped right
+    /// after starting" (the menu start's notice with a likely fix): not a
+    /// clean end, however quick, and not a failure after the app ran for a
+    /// while. Real start times (Unix seconds), so a sum or a quotient of
+    /// the two times can not pass for their difference.
+    #[test]
+    fn only_a_quick_failure_counts_as_stopped_right_after_start() {
+        let start = 1_700_000_000;
+        for (success, ran_for, quick) in [
+            (false, 3, true),
+            (false, 10, true),
+            (false, 11, false),
+            (false, 60, false),
+            (true, 3, false),
+            (true, 60, false),
+        ] {
+            let rec = LaunchRecord {
+                started_at: start,
+                finished_at: start + ran_for,
+                success,
+                ..Default::default()
+            };
+            assert_eq!(
+                rec.stopped_right_after_start(),
+                quick,
+                "success {success}, ran for {ran_for} s"
+            );
+        }
     }
 
     #[test]

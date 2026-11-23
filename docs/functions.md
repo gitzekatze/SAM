@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 27 proven by passing tests, 13 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 656 tests in all.
+**41 functions:** 26 proven by passing tests, 14 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 660 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -32,11 +32,11 @@
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
 | 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 118 | ✅ 🆕 118 new tests since the report |
-| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 23 | ✅ 🆕 1 new test since the report |
+| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 25 | ✅ 🆕 3 new tests since the report |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 18 | ✅ 🆕 4 new tests since the report |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 11 | ✅ 🆕 3 new tests since the report |
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 3 | ✅ |
-| 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 7 | ✅ |
+| 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 9 | ✅ 🆕 2 new tests since the report |
 | 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | sam-runner, sam-sandbox | 17 | ✅ |
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 9 | ✅ |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 3 | ✅ |
@@ -569,7 +569,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_device_place_is_shown_only_as_a_whole`](../crates/sam-runner/src/room_rules.rs#L2208) | A device place is shown only as a whole: a path below it is never looked up by name (a link the app made in /dev/shm could lead to a file the app cannot see). | 🆕 new |
 | [`a_failed_start_is_reported_whatever_numbers_the_room_takes`](../crates/sam-runner/src/room_service.rs#L2881) | A failed start of the room's Bubblewrap is reported as one even when the room's connections take every low number (where the report's own pipe would be): never a room that seems started. | 🆕 new |
 | [`a_room_gets_its_connections_at_their_numbers`](../crates/sam-runner/src/room_service.rs#L2912) | The room's Bubblewrap gets each connection at its number, its standard streams on /dev/null when not passed, and its exit code. | 🆕 new |
-| [`a_record_from_before_room_service_keeps_its_checksum`](../crates/sam-core/src/model.rs#L781) | A record saved before Room service existed (no `room_service` key) reads with Room service on and writes back exactly as it was, so its checksum holds and no app looks changed outside SAM after an update. | 🆕 new |
+| [`a_record_from_before_room_service_keeps_its_checksum`](../crates/sam-core/src/model.rs#L791) | A record saved before Room service existed (no `room_service` key) reads with Room service on and writes back exactly as it was, so its checksum holds and no app looks changed outside SAM after an update. | 🆕 new |
 | [`a_missing_helper_names_only_what_is_lost`](../crates/sam-runner/src/launch.rs#L2562) | Without SAM's helper, each warning names only what is really lost: no word about Landlock and seccomp when the app wanted neither, and Room service named when it is lost. | 🆕 new |
 | [`the_helper_comes_for_each_of_its_jobs`](../crates/sam-runner/src/launch.rs#L2543) | SAM's helper goes into the sandbox for each of its jobs on its own (Landlock, the syscall filter, a probe, Room service), so an app with Room service off still gets its layers; a probe has no rooms. | 🆕 new |
 | [`the_first_unusable_option_is_found_where_bubblewrap_reads_options`](../crates/sam-runner/src/room_rules.rs#L1403) | The first option a room never gets is found where the stand-in looks for it: up to the end of the options, `--` or the command, never past the end of the arguments. | 🆕 new |
@@ -690,13 +690,15 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`as_root_only_what_no_one_else_can_change_may_run`](../crates/sam-core/src/util.rs#L777) | Run as root, SAM takes a program only where root alone can change it: owned by root, not writable for others, and writable for a group only when that group is root's. | ✅ |
 | [`menu_entries_name_sams_launcher_by_its_whole_path`](../crates/sam-intake/src/desktop.rs#L368) | A menu entry names SAM's launcher by its whole path, so the desktop never looks it up on a `$PATH` an app may have put a copy into (audit G-F10); an older entry that names it alone is reported, and the window rewrites it at its next start. | ✅ |
 | [`an_installed_window_runs_only_the_tool_next_to_it`](../crates/sam-gtk/src/backend.rs#L379) | An installed (release) window runs only the command line tool next to it, never one in a neighbouring `debug` or `release` folder that an app with write access to the home could create (audit G-F10). | ✅ |
-| [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L305) | A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | ✅ |
+| [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L319) | A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | ✅ |
 | [`a_folder_name_that_is_not_text_stops_the_start`](../crates/sam-sandbox/src/lib.rs#L3106) | A folder whose name is not valid text (Linux allows any bytes) is never passed on with a replaced character, which would name another folder (audit S-F15): the start is refused with the folder named. | ✅ |
 | [`an_appimage_never_covers_sams_own_files`](../crates/sam-core/src/sandbox.rs#L309) | An AppImage file named like one of SAM's own files in the sandbox gets a folder of its own instead of covering SAM's (audit S-F17). | ✅ |
 | [`an_appimage_called_bin_starts_and_finds_itself`](../crates/sam-jail-cli/tests/odd_names.rs#L84) | An AppImage file called like one of SAM's own files in the sandbox (`bin`) starts, and finds itself at `$APPIMAGE`. | ✅ |
 | [`a_percent_sign_in_sams_path_stays_a_percent_sign`](../crates/sam-intake/src/desktop.rs#L404) | A `%` in SAM's own path is written `%%` in the menu entry, where a single one would start a field code like `%F` (audit G-F17). | ✅ |
 | [`blocked_file_types_hold_in_any_case_and_old_names`](../crates/sam-intake/src/desktop.rs#L444) | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | ✅ |
 | [`an_app_can_never_replace_the_programs_that_menu_entries_run`](../crates/sam-runner/tests/own_programs.rs#L53) | An app can never replace the programs that menu entries run. | 🆕 new |
+| [`the_app_gets_its_arguments_without_the_separator`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L342) | The files from the menu and the arguments typed after the id reach the app as given; only one leading `--` is a separator (the app never sees it as its first argument), a later one is the app's. | 🆕 new |
+| [`only_a_failed_terminal_app_keeps_its_window_open`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L371) | A terminal app's window waits for Enter only after a failed end, and only with someone at the terminal; a clean end closes it at once, and a graphical app never waits. | 🆕 new |
 
 **Code:** [`sam-intake/src/desktop.rs`](../crates/sam-intake/src/desktop.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-core/src/paths.rs`](../crates/sam-core/src/paths.rs)
 
@@ -716,7 +718,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L23) | The sandbox check passes when the settings apply, and catches a setting that does not apply. | ✅ |
 | [`a_wanted_layer_that_was_not_applied_is_reported_missing`](../crates/sam-runner/src/launch.rs#L2193) | A wanted layer that was not applied is reported missing. | ✅ |
 | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) | A start without the helper reports its missing layers. | ✅ |
-| [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L869) | A start without a wanted protection layer is marked. | ✅ |
+| [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L909) | A start without a wanted protection layer is marked. | ✅ |
 | [`a_syscall_filter_that_fails_to_load_stops_the_start`](../crates/sam-jail-cli/tests/layers.rs#L153) | Threat model row 52: "a syscall filter that fails to load stops the start". | ✅ |
 | [`sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`](../crates/sam-jail-cli/tests/start_check.rs#L49) | Sam jail run refuses a sandbox whose settings do not apply. | ✅ |
 | [`the_wanted_layers_follow_the_apps_switches`](../crates/sam-runner/src/launch.rs#L2314) | Landlock is wanted only where the app's switch wants it and the kernel has it; the app's strict filter switch works by itself, without a global setting (audit D-M13). | ✅ |
@@ -776,6 +778,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_start_is_judged_by_whether_the_app_started`](../crates/sam-runner/src/launch.rs#L2433) | A start is judged by whether Bubblewrap announced the app, not by what the app printed. | ✅ |
 | [`analyzer_maps_errors_to_fixes`](../crates/sam-runner/src/repair.rs#L934) | Analyzer maps errors to fixes. | ✅ |
 | [`fake_bwrap_error_is_not_a_sandbox_failure`](../crates/sam-runner/tests/adversarial.rs#L21) | H1: an app printing a fake Bubblewrap error is not a sandbox failure. | ✅ |
+| [`the_fix_button_opens_sam_only_when_sam_is_found`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L394) | "Show the fix" opens SAM's own AppImage when SAM runs from one; with no SAM window anywhere there is no button (a plain notice), never a button that runs nothing. | 🆕 new |
+| [`only_a_quick_failure_counts_as_stopped_right_after_start`](../crates/sam-core/src/model.rs#L884) | Only a failure within the first ten seconds counts as "stopped right after starting" (the menu start's notice with a likely fix): not a clean end, however quick, and not a failure after the app ran for a while. | 🆕 new |
 
 **Code:** [`sam-runner/src/repair.rs`](../crates/sam-runner/src/repair.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-gtk/src/app_page/render.rs`](../crates/sam-gtk/src/app_page/render.rs)
 
@@ -916,7 +920,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_swapped_appimage_does_not_start_until_it_is_confirmed`](../crates/sam-runner/tests/changed_appimage.rs#L13) | A swapped appimage does not start until it is confirmed. | ✅ |
 | [`a_swapped_appimage_stays_marked_when_a_switch_changes`](../crates/sam-runner/tests/changed_appimage.rs#L71) ⟲ | Regression (audit U-H1, Part 5): changing any switch cleared the mark of a swapped AppImage file, so it started without the person looking at it. | ✅ |
 | [`a_swapped_appimage_is_marked_also_after_the_change_check`](../crates/sam-runner/tests/changed_appimage.rs#L111) ⟲ | Regression (audit U-H2): "Check all AppImages for changes" (or moving the file with relocate) recorded the swapped file's checksum, so the following "Unpack Again" compared the file with itself: the swapped content ran with the old app's permissions, unmarked, and its signature was not checked again. | ✅ |
-| [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L751) | An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | ✅ |
+| [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L761) | An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | ✅ |
 | [`a_changed_appimage_file_is_noticed`](../crates/sam-intake/src/fingerprint.rs#L107) | A changed AppImage file is noticed by its fingerprint. | ✅ |
 | [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L208) | When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | ✅ |
 
@@ -1006,8 +1010,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L733) | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | ✅ |
-| [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L831) | An app with compatibility risk carries a warning badge until it has started successfully once. | ✅ |
+| [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L743) | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | ✅ |
+| [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L841) | An app with compatibility risk carries a warning badge until it has started successfully once. | ✅ |
 | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L863) | Apps are found by name or ID, and an ambiguous name is refused. | ✅ |
 | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L351) | The user guide keeps the text of a list item that has a nested list below it. | ✅ |
 | [`links_to_other_pages_open_on_github`](../crates/sam-gtk/src/guide.rs#L375) | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | ✅ |

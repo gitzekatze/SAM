@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-92 tests.
+93 tests.
 
 | Promise | Test |
 |---|---|
@@ -37,11 +37,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | [`every_translated_language_can_be_chosen`](../crates/sam-core/src/i18n.rs#L179) |
 | Texts without a translation come back with their values. | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L193) |
 | Only icons that are safe to decode reach the desktop's image code: a PNG whose header announces more than 1024×1024 pixels (a decode bomb: a small file that asks for gigabytes) is refused before anything decodes it, and so are oversized files, large SVGs and XPM (audit G-F8, I-F18). | [`only_icons_that_are_safe_to_decode_are_taken`](../crates/sam-core/src/icon.rs#L85) |
-| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L733) |
-| An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L751) |
-| A record saved before Room service existed (no `room_service` key) reads with Room service on and writes back exactly as it was, so its checksum holds and no app looks changed outside SAM after an update. | [`a_record_from_before_room_service_keeps_its_checksum`](../crates/sam-core/src/model.rs#L781) |
-| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L831) |
-| A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L869) |
+| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L743) |
+| An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L761) |
+| A record saved before Room service existed (no `room_service` key) reads with Room service on and writes back exactly as it was, so its checksum holds and no app looks changed outside SAM after an update. | [`a_record_from_before_room_service_keeps_its_checksum`](../crates/sam-core/src/model.rs#L791) |
+| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L841) |
+| Only a failure within the first ten seconds counts as "stopped right after starting" (the menu start's notice with a likely fix): not a clean end, however quick, and not a failure after the app ran for a while. | [`only_a_quick_failure_counts_as_stopped_right_after_start`](../crates/sam-core/src/model.rs#L884) |
+| A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L909) |
 | Rooted paths (tests) keep their runtime folders apart from SAM's real one and from every other root, and short enough for SAM's sockets. | [`rooted_paths_have_a_runtime_folder_of_their_own`](../crates/sam-core/src/paths.rs#L182) |
 | A root inside a test whose runtime folder is already one of these gets its folder next to it, never in /tmp (16,304 were left there by one mutation run, 2026-11-20); a long runtime folder still falls back to /tmp. | [`a_test_inside_a_test_keeps_its_runtime_folder_out_of_tmp`](../crates/sam-core/src/paths.rs#L219) |
 | ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L245) |
@@ -644,11 +645,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-57 tests.
+60 tests.
 
 | Promise | Test |
 |---|---|
-| A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L305) |
+| A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L319) |
+| The files from the menu and the arguments typed after the id reach the app as given; only one leading `--` is a separator (the app never sees it as its first argument), a later one is the app's. | [`the_app_gets_its_arguments_without_the_separator`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L342) |
+| A terminal app's window waits for Enter only after a failed end, and only with someone at the terminal; a clean end closes it at once, and a graphical app never waits. | [`only_a_failed_terminal_app_keeps_its_window_open`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L371) |
+| "Show the fix" opens SAM's own AppImage when SAM runs from one; with no SAM window anywhere there is no button (a plain notice), never a button that runs nothing. | [`the_fix_button_opens_sam_only_when_sam_is_found`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L394) |
 | Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1698) |
 | A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1710) |
 | `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L313) |
@@ -742,4 +746,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 656 automated Rust tests plus 7 scripted checks.
+Total: 660 automated Rust tests plus 7 scripted checks.
