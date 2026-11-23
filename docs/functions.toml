@@ -146,6 +146,7 @@ tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged
   "a_linked_key_folder_is_hidden_also_when_only_its_target_is_granted",
   "places_behind_links_stay_protected_and_the_app_still_starts",
   "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them",
+  "sams_own_folders_behind_a_link_are_hidden_where_the_app_reaches_them",
 ]
 
 [[function]]

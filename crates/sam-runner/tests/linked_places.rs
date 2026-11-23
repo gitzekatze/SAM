@@ -8,7 +8,9 @@
 //! - with `~/.config` a link to another place nobody granted, the app
 //!   starts (also with fonts settings there, which SAM shows read-only),
 //!   and a `~/.config` the app puts in the link's place is moved aside
-//!   afterwards;
+//!   afterwards; SAM's own settings are in `~/.config/sam`, behind the
+//!   link, as on a real system (the empty folder SAM puts on them went
+//!   through the link and stopped the start);
 //! - with `~/.config` a link into a folder granted read-only, that folder
 //!   stays read-only (the folder above autostart, made a mount point of
 //!   its own, made it writable again);
@@ -84,6 +86,9 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
     fs::write(home.join("Sync/gnupg/private.key"), "SECRET KEY").unwrap();
     fs::write(home.join("Sync/gnupg/gpg-agent.conf"), "# mine\n").unwrap();
     symlink(home.join("Sync/gnupg"), home.join(".gnupg")).unwrap();
+    // `~/.config` a link with a whole path into the home (dotfiles kept
+    // elsewhere); SAM keeps its settings in it, as on a real system.
+    symlink(home.join("dotfiles/config"), home.join(".config")).unwrap();
     std::env::set_var("HOME", &home);
     std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
     std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
@@ -111,6 +116,11 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
         let mut h = sam_runner::testenv::test_host(HostInfo::probe());
         h.home = seen.to_path_buf();
         h.xdg_dirs.clear();
+        // SAM's settings where SAM keeps them: in `~/.config`, behind the
+        // link (the empty folder SAM puts on them went through the link
+        // and stopped the start when it led to a place nobody granted).
+        let mut paths = app.paths.clone();
+        paths.config_dir = seen.join(".config/sam");
         let rec = run(
             &mut e,
             &LaunchOptions {
@@ -120,7 +130,7 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
                 ..Default::default()
             },
             &app.config,
-            &app.paths,
+            &paths,
             &h,
         )
         .unwrap_or_else(|e| panic!("the app did not start: {e:#}"));
@@ -155,7 +165,6 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
         p.filesystem.home_access = Access::Rw;
         p
     };
-    symlink(home.join("dotfiles/config"), home.join(".config")).unwrap();
     let r = start(full(), &[]);
     assert_eq!(read(&home.join("work.txt")), "written\n", "control");
     assert_eq!(r["AUTOSTART"], "refused", "{r:?}");

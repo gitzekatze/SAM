@@ -1983,11 +1983,17 @@ impl Section<'_> {
             if nested || !d.is_dir() {
                 continue;
             }
-            // Also where a grant shows only something inside it (audit
-            // S-F13: a folder granted inside SAM's moved folder was shown).
-            let mut places = views.seen_at(d);
+            // Where the app reaches it, never through a link
+            // (`Views::mount_points`): with `~/.config` a link to a place
+            // nothing grants, the empty folder on `~/.config/sam` stopped
+            // every start with the whole home granted (security review
+            // 2026-11-23, SB-6). Also where a grant shows only something
+            // inside it (audit S-F13: a folder granted inside SAM's moved
+            // folder was shown); no grant shows a folder above that place,
+            // so the way there leads through no link inside.
+            let mut places = views.mount_points(d);
             for c in [d.clone(), resolve(d)] {
-                if views.shows_any_of(&c) && !places.contains(&c) {
+                if !views.visible(&c) && views.shows_any_of(&c) && !places.contains(&c) {
                     places.push(c);
                 }
             }
@@ -3411,6 +3417,42 @@ mod guard_tests {
         assert!(has_seq(&a, &["--bind", &config, &config]), "{a:?}");
         let gnupg = s(named.join("Sync/gnupg"));
         assert!(has_seq(&a, &["--tmpfs", &gnupg]), "{a:?}");
+    }
+
+    /// SAM's own folders kept behind a link (`~/.config` a link, SAM's
+    /// settings in `~/.config/sam`) are hidden where the app reaches them,
+    /// never through the link: with the link leading to a place nothing
+    /// grants, the empty folder on `~/.config/sam` stopped every start with
+    /// the whole home writable (Bubblewrap could not make the folders above
+    /// it); with the link leading into the home, the folder is hidden where
+    /// it points (security review 2026-11-23, SB-6).
+    #[test]
+    fn sams_own_folders_behind_a_link_are_hidden_where_the_app_reaches_them() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        fs::create_dir_all(home.join("dots/config/sam")).unwrap();
+        fs::create_dir_all(base.join("elsewhere/config/sam")).unwrap();
+        std::os::unix::fs::symlink(base.join("elsewhere/config"), home.join(".config")).unwrap();
+        let mut ctx = ctx_for(&full_rw(), &home);
+        ctx.sam_dirs = vec![home.join(".config/sam")];
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        let through_link = s(home.join(".config/sam"));
+        let a = args_of(&ctx);
+        assert!(!has_seq(&a, &["--tmpfs", &through_link]), "{a:?}");
+        assert!(
+            !has_seq(&a, &["--tmpfs", &s(base.join("elsewhere/config/sam"))]),
+            "nothing shows the place the link leads to: {a:?}"
+        );
+        // The link leads into the home: hidden there.
+        fs::remove_file(home.join(".config")).unwrap();
+        std::os::unix::fs::symlink(home.join("dots/config"), home.join(".config")).unwrap();
+        let a = args_of(&ctx);
+        assert!(!has_seq(&a, &["--tmpfs", &through_link]), "{a:?}");
+        assert!(
+            has_seq(&a, &["--tmpfs", &s(home.join("dots/config/sam"))]),
+            "{a:?}"
+        );
     }
 
     /// SAM's own programs are bound read-only onto themselves where the app
