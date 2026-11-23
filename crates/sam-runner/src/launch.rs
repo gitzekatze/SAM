@@ -63,6 +63,11 @@ pub struct Prepared {
     /// helper they cannot be): what a start is checked against.
     pub wanted_landlock: bool,
     pub wanted_seccomp: bool,
+    /// The start relies on Landlock's fence around abstract sockets: the
+    /// app shares the host's network namespace, where the X server's and
+    /// other abstract sockets of the desktop live, and the kernel has the
+    /// fence (Linux 6.12, Landlock ABI 6). Checked like a layer (review K-1).
+    pub wanted_fence: bool,
     /// How the app's terminal is handled (see `pty`).
     pub terminal: TerminalMode,
     proxy: Option<DbusProxy>,
@@ -163,6 +168,22 @@ fn wanted_layers(
     let seccomp = (cfg.security.baseline_seccomp && perms.advanced.seccomp_baseline)
         || perms.advanced.seccomp_strict;
     (landlock, seccomp)
+}
+
+/// The syscall filter for a start of `app`: its switches, and whether the
+/// program it starts is 32-bit, whose 32-bit calls the filter then takes
+/// instead of ending the app (review K-3).
+fn seccomp_spec(app: &AppEntry) -> kernel::SeccompSpec {
+    let perms = &app.profile.permissions;
+    kernel::SeccompSpec {
+        strict: perms.advanced.seccomp_strict,
+        allow_userns: perms.advanced.allow_userns,
+        bluetooth: perms.devices.bluetooth,
+        i386: app
+            .detection
+            .as_ref()
+            .is_some_and(sam_core::DependencyReport::starts_32_bit_program),
+    }
 }
 
 /// Environment checks before launching. Returns blocking errors
@@ -485,7 +506,6 @@ pub fn prepare(
         }
         // Landlock and seccomp are applied by SAM's helper inside the sandbox.
         let (want_landlock, want_seccomp) = wanted_layers(perms, cfg, host);
-        let strict = perms.advanced.seccomp_strict;
         wanted_landlock = want_landlock;
         wanted_seccomp = want_seccomp;
         if want_landlock || want_seccomp || opts.probe.is_some() {
@@ -493,7 +513,7 @@ pub fn prepare(
                 Some(helper) => {
                     let spec = kernel::SandboxSpec {
                         landlock: want_landlock.then(|| kernel::landlock_spec(perms, host, &format!("/run/user/{}", host.uid), &launch_writable_paths(&ctx))),
-                        seccomp: want_seccomp.then_some(kernel::SeccompSpec { strict, allow_userns: perms.advanced.allow_userns, bluetooth: perms.devices.bluetooth }),
+                        seccomp: want_seccomp.then(|| seccomp_spec(app)),
                         probe: opts.probe.clone(),
                     };
                     let spec_path = runtime_dir.join("sandbox.json");
@@ -537,6 +557,9 @@ pub fn prepare(
         seccomp,
         wanted_landlock,
         wanted_seccomp,
+        wanted_fence: wanted_landlock
+            && perms.network.mode == sam_core::permissions::NetworkMode::Full
+            && host.landlock_abi.is_some_and(|v| v >= 6),
         terminal,
         proxy,
         sound,
@@ -1013,6 +1036,7 @@ fn run_once(
             enforcement.as_deref(),
             prepared.wanted_landlock,
             prepared.wanted_seccomp,
+            prepared.wanted_fence,
             prepared.wayland_context_failed,
         ),
         moved_aside: moved,
@@ -1249,8 +1273,16 @@ impl StatusChannels {
 /// The kernel layers a start asked for but did not get, judged from what
 /// SAM's helper reported from inside the sandbox. No report while layers
 /// were wanted means none of them was applied (the helper did not run).
-/// A partly enforced Landlock (an older kernel) counts as applied.
-pub fn missing_layers(enforcement: Option<&str>, landlock: bool, seccomp: bool) -> Vec<String> {
+/// A partly enforced Landlock (an older kernel) counts as applied. `fence`:
+/// the start relies on Landlock's abstract-socket fence (see
+/// [`Prepared::wanted_fence`]), which then must be reported in place on
+/// its own (review K-1: "partially enforced" hid that it was not).
+pub fn missing_layers(
+    enforcement: Option<&str>,
+    landlock: bool,
+    seccomp: bool,
+    fence: bool,
+) -> Vec<String> {
     let report = enforcement.unwrap_or("");
     let mut missing = Vec::new();
     if landlock
@@ -1258,6 +1290,8 @@ pub fn missing_layers(enforcement: Option<&str>, landlock: bool, seccomp: bool) 
             || report.contains("landlock: partially enforced"))
     {
         missing.push("Landlock".to_string());
+    } else if landlock && fence && !report.contains(crate::kernel::ABSTRACT_SCOPED) {
+        missing.push("Landlock socket fence".to_string());
     }
     if seccomp && !report.contains("seccomp: ") {
         missing.push("seccomp".to_string());
@@ -1272,9 +1306,10 @@ pub fn layers_missing(
     enforcement: Option<&str>,
     landlock: bool,
     seccomp: bool,
+    fence: bool,
     wayland_failed: bool,
 ) -> Vec<String> {
-    let mut m = missing_layers(enforcement, landlock, seccomp);
+    let mut m = missing_layers(enforcement, landlock, seccomp, fence);
     if wayland_failed {
         m.push("Wayland security context".to_string());
     }
@@ -1859,19 +1894,45 @@ mod log_limit_tests {
 mod pasta_status_tests {
     use super::*;
 
+    /// Review K-1: a start that relies on Landlock's abstract-socket fence
+    /// (it shares the host's network, the kernel has the fence) counts it
+    /// as missing unless the helper reported it in place, also when
+    /// Landlock itself reads "fully enforced" (a helper too old to report
+    /// it). One that does not rely on it is not warned about.
+    #[test]
+    fn a_missing_socket_fence_is_reported_when_the_start_relies_on_it() {
+        let fenced = "landlock: fully enforced; abstract sockets: scoped; seccomp: baseline loaded";
+        let unfenced = "landlock: partially enforced; abstract sockets: NOT scoped (needs Linux 6.12); seccomp: baseline loaded";
+        let unreported = "landlock: fully enforced; seccomp: baseline loaded";
+        assert!(missing_layers(Some(fenced), true, true, true).is_empty());
+        for report in [unfenced, unreported] {
+            assert_eq!(
+                missing_layers(Some(report), true, true, true),
+                vec!["Landlock socket fence"],
+                "{report}"
+            );
+            assert!(
+                missing_layers(Some(report), true, true, false).is_empty(),
+                "not relied on: {report}"
+            );
+        }
+    }
+
     #[test]
     fn a_wanted_layer_that_was_not_applied_is_reported_missing() {
         let full = "landlock: fully enforced; seccomp: baseline loaded";
-        assert!(missing_layers(Some(full), true, true).is_empty());
+        assert!(missing_layers(Some(full), true, true, false).is_empty());
         assert!(missing_layers(
             Some("landlock: partially enforced; seccomp: strict loaded"),
             true,
-            true
+            true,
+            false
         )
         .is_empty());
         assert_eq!(
             missing_layers(
                 Some("landlock: NOT applied (no kernel support); seccomp: baseline loaded"),
+                true,
                 true,
                 true
             ),
@@ -1879,17 +1940,17 @@ mod pasta_status_tests {
         );
         // No report at all: the helper did not run, nothing was applied.
         assert_eq!(
-            missing_layers(None, true, true),
+            missing_layers(None, true, true, false),
             vec!["Landlock", "seccomp"]
         );
         // Layers that were not asked for are never missing.
-        assert!(missing_layers(None, false, false).is_empty());
+        assert!(missing_layers(None, false, false, false).is_empty());
         // A Wayland security context that could not be made is missing too.
         assert_eq!(
-            layers_missing(Some(full), true, true, true),
+            layers_missing(Some(full), true, true, false, true),
             vec!["Wayland security context"]
         );
-        assert!(layers_missing(Some(full), true, true, false).is_empty());
+        assert!(layers_missing(Some(full), true, true, false, false).is_empty());
     }
 
     fn v(a: &[&str]) -> Vec<String> {
@@ -2011,6 +2072,28 @@ mod tests {
             !wanted_layers(&p, &cfg, &host).1,
             "the baseline off for this app"
         );
+    }
+
+    /// A 32-bit start program gets the filter's 32-bit part (review K-3);
+    /// a script among 32-bit files, or an app nobody analyzed, does not.
+    #[test]
+    fn a_32_bit_start_program_gets_the_filters_32_bit_part() {
+        let app = |arch: &str, script: bool| AppEntry {
+            detection: Some(sam_core::DependencyReport {
+                arch: arch.into(),
+                entry_is_script: script,
+                entry_binary: Some("usr/bin/game".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(seccomp_spec(&app("i686", false)).i386);
+        assert!(!seccomp_spec(&app("i686", true)).i386, "a script");
+        assert!(
+            !seccomp_spec(&app("x86_64", false)).i386,
+            "a 64-bit program"
+        );
+        assert!(!seccomp_spec(&AppEntry::default()).i386, "not analyzed");
     }
 
     /// Without Bubblewrap, starting an app stops while it is being prepared,

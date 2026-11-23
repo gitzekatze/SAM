@@ -18,8 +18,17 @@
 #   limited                          some uses refused: ioctl typing into the
 #                                    terminal (TIOCSTI, TIOCLINUX); socket
 #                                    families other than local, internet and
-#                                    netlink (Bluetooth with its switch)
-# Apart from this list, every call through the x32 ABI is refused.
+#                                    netlink (Bluetooth with its switch);
+#                                    clone into a new user namespace, unless
+#                                    the app may run nested sandboxes
+# clone3 keeps its flags in memory no filter can read, so without nested
+# sandboxes it is refused as a whole, answering "not implemented" (ENOSYS)
+# so the C library falls back to clone (review K-2, as in Flatpak).
+# Apart from this list, every call through the x32 ABI is refused. 32-bit
+# x86 calls end the process, except for an app whose start program is
+# 32-bit: there they get the same statuses through their own numbers
+# (review K-3), apart from socketcall, whose socket family the filter
+# cannot read.
 # Reviewed 2026-11-16 against the headers of Linux 6.x (x86_64 and the
 # generic table aarch64 uses); statuses made exact 2026-11-19 (audit
 # S-F10), with clock_adjtime, quotactl_fd, fspick and mount_setattr now
@@ -54,8 +63,8 @@ clock_nanosleep	allowed
 clock_nanosleep_time64	allowed
 clock_settime	blocked
 clock_settime64	allowed
-clone	allowed
-clone3	allowed
+clone	limited
+clone3	blocked unless nested sandboxes
 close	allowed
 close_range	allowed
 connect	allowed

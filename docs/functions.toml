@@ -43,6 +43,7 @@ tests = ["an_appimages_own_extractor_cannot_open_the_kernels_rarely_used_doors",
   "without_the_command_line_a_menu_start_refuses_to_unpack",
   "sams_programs_never_unpack_without_a_sandbox",
   "a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder",
+  "nothing_in_the_unpack_sandbox_can_make_a_user_namespace",
   "files_sam_writes_never_go_through_a_planted_link",
   "the_icon_is_cached_and_never_written_through_a_link",
   "an_unpacking_limit_inside_the_sandbox_stops_unpacking",
@@ -157,7 +158,7 @@ id = 13
 area = "C"
 promise = "The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox."
 code = ["sam-runner/src/dbus_proxy.rs", "sam-sandbox/src/lib.rs", "sam-core/src/permissions.rs", "sam-runner/src/kernel.rs"]
-tests = ["only_a_32_bit_start_program_switches_the_filter_off", "links_to_other_programs_ask_first", "the_link_portal_check_finds_the_ask_option", "function_and_signal_rules_count_in_the_risk_word", "a_change_that_adds_a_service_function_asks_first", "bus_names_follow_the_rules_of_the_bus", "media_controls_talk_but_ask_for_no_wildcard_name", "wanted_names_are_kept_once_and_at_most_eight", "an_app_gets_the_name_it_asks_for_only_when_nobody_uses_it", "a_name_is_allowed_only_when_nobody_else_has_it", "menu_ids_are_the_file_names", "the_proxy_record_names_what_the_app_wanted_to_own", "the_apps_own_words_never_give_it_a_bus_name", "the_filter_refuses_x32_odd_sockets_and_the_siblings", "the_filter_reaches_bubblewrap_as_whole_instructions", "an_app_cannot_open_the_kernels_rarely_used_doors", "own_names_that_are_refused", "blocked_names_win_over_wildcards", "only_real_socket_paths_are_taken_from_a_dbus_address", "own_names_from_the_id_and_the_window_class", "filtered_dbus_uses_proxy", "the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins", "without_nested_namespaces_user_namespaces_are_disabled", "extra_sockets_must_be_sockets", "tray_names_follow_watcher_permission", "the_syscall_filter_compiles_and_blocks_mount_and_io_uring", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "a_socket_counts_as_ready_only_when_it_accepts", "only_a_real_socket_counts_as_a_desktop_service", "services_that_start_on_demand_are_recognized", "stand_ins_cover_the_real_tool_also_behind_a_link"]
+tests = ["a_32_bit_start_program_keeps_the_syscall_filter_on", "without_nested_sandboxes_clone_cannot_make_a_user_namespace", "a_32_bit_app_gets_its_calls_filtered_not_switched_off", "every_blocked_call_is_blocked_for_32_bit_apps_too", "a_32_bit_start_program_gets_the_filters_32_bit_part", "links_to_other_programs_ask_first", "the_link_portal_check_finds_the_ask_option", "function_and_signal_rules_count_in_the_risk_word", "a_change_that_adds_a_service_function_asks_first", "bus_names_follow_the_rules_of_the_bus", "media_controls_talk_but_ask_for_no_wildcard_name", "wanted_names_are_kept_once_and_at_most_eight", "an_app_gets_the_name_it_asks_for_only_when_nobody_uses_it", "a_name_is_allowed_only_when_nobody_else_has_it", "menu_ids_are_the_file_names", "the_proxy_record_names_what_the_app_wanted_to_own", "the_apps_own_words_never_give_it_a_bus_name", "the_filter_refuses_x32_odd_sockets_and_the_siblings", "the_filter_reaches_bubblewrap_as_whole_instructions", "an_app_cannot_open_the_kernels_rarely_used_doors", "own_names_that_are_refused", "blocked_names_win_over_wildcards", "only_real_socket_paths_are_taken_from_a_dbus_address", "own_names_from_the_id_and_the_window_class", "filtered_dbus_uses_proxy", "the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins", "without_nested_namespaces_user_namespaces_are_disabled", "extra_sockets_must_be_sockets", "tray_names_follow_watcher_permission", "the_syscall_filter_compiles_and_blocks_mount_and_io_uring", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "a_socket_counts_as_ready_only_when_it_accepts", "only_a_real_socket_counts_as_a_desktop_service", "services_that_start_on_demand_are_recognized", "stand_ins_cover_the_real_tool_also_behind_a_link"]
 
 [[function]]
 id = 14
@@ -239,6 +240,10 @@ code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs"]
 tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_each_desktop_service_as_the_filter_shows_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked", "a_syscall_filter_that_fails_to_load_stops_the_start",
   "sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply",
   "the_wanted_layers_follow_the_apps_switches",
+  "the_helper_reports_the_socket_fence_on_its_own",
+  "a_missing_socket_fence_is_reported_when_the_start_relies_on_it",
+  "an_abstract_socket_that_answers_is_found_reachable",
+  "the_check_tries_the_hosts_abstract_sockets_the_app_must_not_reach",
   "checks_that_do_not_pass_end_with_not_passed",
 ]
 checks = ["tests/real-apps/run.sh"]
@@ -380,6 +385,7 @@ tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_names
   "doctor_ends_with_what_it_reports",
   "the_install_hint_fits_the_distribution",
   "the_apparmor_advice_keeps_the_restriction_for_other_programs",
+  "diagnostics_say_when_landlock_cannot_fence_abstract_sockets",
 ]
 
 [[function]]

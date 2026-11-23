@@ -43,9 +43,9 @@ def show(key, r):
 import platform
 ARM = platform.machine() in ("aarch64", "arm64")
 NR = dict(keyctl=219, userfaultfd=282, unshare=97, perf=241, bpf=280, init_module=105,
-          open_by_handle=265, syslog=116, ioctl=29, io_uring_setup=425) if ARM else \
+          open_by_handle=265, syslog=116, ioctl=29, io_uring_setup=425, clone=220, clone3=435) if ARM else \
      dict(keyctl=250, userfaultfd=323, unshare=272, perf=298, bpf=321, init_module=175,
-          open_by_handle=304, syslog=103, ioctl=16, io_uring_setup=425)
+          open_by_handle=304, syslog=103, ioctl=16, io_uring_setup=425, clone=56, clone3=435)
 # Calls that work for an ordinary user without the filter.
 show("SC_KEYCTL", sc(NR["keyctl"], 0, -3, 0))            # keyctl(GET_KEYRING_ID, SESSION)
 show("SC_USERFAULTFD", sc(NR["userfaultfd"], 1))         # userfaultfd(UFFD_USER_MODE_ONLY)
@@ -58,6 +58,10 @@ show("SC_SYSLOG", sc(NR["syslog"], 10, 0, 0))            # SYSLOG_ACTION_SIZE_BU
 show("SC_IO_URING", sc(NR["io_uring_setup"], 1, 0))      # io_uring_setup(1, NULL): EFAULT unfiltered
 show("SC_TIOCSTI", sc(NR["ioctl"], 0, 0x5412, 0))        # ioctl(0, TIOCSTI): ENOTTY unfiltered
 show("SC_TIOCLINUX", sc(NR["ioctl"], 0, 0x541C, 0))
+# A new user namespace through clone (CLONE_NEWUSER | CLONE_THREAD: invalid,
+# so EINVAL unfiltered and no process is made) and clone3 (EINVAL unfiltered).
+show("SC_CLONE_NEWUSER", sc(NR["clone"], 0x10000000 | 0x10000, 0, 0, 0, 0))
+show("SC_CLONE3", sc(NR["clone3"], 0, 0))
 # The same calls through the x32 ABI (bit 30, x86_64 only): the filter
 # answers before the kernel would say ENOSYS, so EPERM proves x32 is covered.
 if ARM:
@@ -265,6 +269,12 @@ fn every_breakout_attempt_from_a_real_sandbox_fails() {
             "probe did not finish: {}\n{errors}\n{r:?}",
             rec.summary
         );
+        let mut r = r;
+        r.insert(
+            "_ENFORCEMENT".into(),
+            rec.enforcement.clone().unwrap_or_default(),
+        );
+        r.insert("_MISSING".into(), rec.missing_layers.join(", "));
         r
     };
 
@@ -316,6 +326,10 @@ fn every_breakout_attempt_from_a_real_sandbox_fails() {
             }
             assert_eq!(r[k], "EPERM", "{k} is blocked by the syscall filter");
         }
+        // Review K-2: clone cannot make a user namespace either, and
+        // clone3 answers "not implemented" so libraries fall back to clone.
+        assert_eq!(r["SC_CLONE_NEWUSER"], "EPERM");
+        assert_eq!(r["SC_CLONE3"], "ENOSYS");
         for k in [
             "SC_PERF",
             "SC_BPF",
@@ -345,11 +359,19 @@ fn every_breakout_attempt_from_a_real_sandbox_fails() {
     });
     c.section("abstract-sockets", || {
         // Abstract sockets of the host (Landlock ABI 6, kernel 6.12+).
+        // Review K-1: the helper reports the fence on its own, and a start
+        // with full network that should have it but did not get it says
+        // so; on an older kernel the report says it is not there.
+        let e = &r["_ENFORCEMENT"];
         if host.landlock_abi.is_some_and(|v| v >= 6) {
             assert_ne!(
                 r["ABSTRACT"], "connected",
                 "host abstract sockets are blocked"
             );
+            assert!(e.contains("abstract sockets: scoped"), "{e}");
+            assert_eq!(r["_MISSING"], "", "{e}");
+        } else {
+            assert!(e.contains("abstract sockets: NOT scoped"), "{e}");
         }
         assert_ne!(r["ROOT_WRITE"], "written", "/ is read-only");
         assert_eq!(

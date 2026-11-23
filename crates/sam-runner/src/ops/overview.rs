@@ -454,6 +454,7 @@ fn unpack_isolation(
                 strict: false,
                 allow_userns: false,
                 bluetooth: false,
+                i386: false,
             })?;
             Ok(Some(sam_intake::extract::Isolation {
                 bwrap,
