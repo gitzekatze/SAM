@@ -106,6 +106,8 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "the_sound_servers_own_socket_is_dangerous_as_an_extra_socket",
   "a_function_of_a_password_service_counts_with_the_network",
   "a_dangerous_socket_is_known_however_it_is_written",
+  "a_terminal_that_runs_commands_is_dangerous_to_reach",
+  "a_presets_risk_word_comes_from_its_permissions",
 ]
 
 [[function]]
@@ -120,6 +122,9 @@ tests = ["set_and_get_keys", "change_check_flags_removals_and_additions", "folde
   "undo_takes_back_only_its_own_change",
   "a_preset_not_applied_ends_with_not_passed",
   "presets_keep_their_own_files_and_any_name",
+  "the_last_rule_and_a_variable_can_be_taken_away",
+  "every_setting_can_be_set_by_name_also_while_left_out",
+  "an_imported_preset_never_replaces_one_of_the_same_name",
 ]
 checks = ["tests/gui/permissions-atspi.sh"]
 
@@ -132,6 +137,7 @@ tests = ["app_output_cannot_buy_dangerous_grants",
   "a_forged_trace_line_cannot_widen_a_low_risk_grant",
   "an_app_nobody_has_confirmed_does_not_start",
   "a_folder_or_password_store_from_the_apps_words_is_judged_where_it_leads",
+  "the_apps_own_words_never_give_it_a_terminal_to_talk_to",
 ]
 
 [[area]]
@@ -213,6 +219,7 @@ tests = [
   "an_extra_socket_that_leads_to_a_dangerous_one_is_not_passed_in",
   "an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one",
   "a_wildcard_over_the_portal_is_dangerous",
+  "a_terminal_that_runs_commands_is_dangerous_to_reach",
 ]
 
 [[function]]
