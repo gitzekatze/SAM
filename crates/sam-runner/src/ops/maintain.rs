@@ -955,12 +955,22 @@ impl Sam {
                 sam_core::i18n::trf("the earlier version is not in SAM's backup folder ({file}); SAM does not move it", &[("file", &tildify(&b.file))])
             );
         }
-        if b.original_path.exists() && b.original_path != entry.source_path {
+        // Where the earlier version goes: the app's folder, under the name
+        // its kept copy carries (the name it had there). Not the place the
+        // record names: a record changed outside SAM could put the old
+        // AppImage anywhere under any name, for example as a command in
+        // ~/.local/bin (audit U-L10).
+        let back_to = entry
+            .source_path
+            .parent()
+            .context(sam_core::i18n::tr("no folder"))?
+            .join(b.file.file_name().context(sam_core::i18n::tr("no name"))?);
+        if back_to.exists() && back_to != entry.source_path {
             bail!(
                 "{}",
                 sam_core::i18n::trf(
                     "{file} exists again; move it away first",
-                    &[("file", &tildify(&b.original_path))]
+                    &[("file", &tildify(&back_to))]
                 )
             );
         }
@@ -1031,7 +1041,7 @@ impl Sam {
                 .unwrap_or(0o755)
                 & 0o777
         };
-        let placed = match place_copy(&earlier, &b.original_path, mode) {
+        let placed = match place_copy(&earlier, &back_to, mode) {
             Ok(fp) => fp,
             Err(e) => {
                 // Put the current file back; the kept copy is never
@@ -1047,11 +1057,11 @@ impl Sam {
                 return Err(e);
             }
         };
-        let back_at = match (b.original_path.parent(), b.original_path.file_name()) {
+        let back_at = match (back_to.parent(), back_to.file_name()) {
             (Some(dir), Some(name)) => fs::canonicalize(dir)
                 .map(|d| d.join(name))
-                .unwrap_or_else(|_| b.original_path.clone()),
-            _ => b.original_path.clone(),
+                .unwrap_or_else(|_| back_to.clone()),
+            _ => back_to.clone(),
         };
         let way_forward = UpdateBackup {
             file: keep,
