@@ -932,6 +932,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     // Rooms work.
     let id = w.add("RoomsWork", WORKS);
     let log = w.start(&id, |_| {}, 60);
+    let before = failures.len();
     failures.extend(control_built("works", &log));
     failures.extend(
         check(
@@ -994,6 +995,9 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             "works: --version does not answer like the computer's Bubblewrap ({:?})",
             c.get("version")
         ));
+    }
+    if failures.len() > before {
+        failures.push(record_dump("works", &log));
     }
     if !c
         .get("own_pids")
