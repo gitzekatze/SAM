@@ -53,8 +53,34 @@ say stdin "$(echo piped | room -- /usr/bin/cat)"
 say env "$(rv room --clearenv --setenv ROOM_VAR yes -- /usr/bin/sh -c 'echo "${ROOM_VAR:-unset}-${HOME:-nohome}"')"
 say token "$(rv room --setenv ROOM_TOKEN "tok-$TEST_PID-secret" -- $P env ROOM_TOKEN)"
 say version "$(bwrap --version)"
-say fds_app "$($P fds)"
-say fds "$(rv room --proc /proc -- $P fds)"
+KEEP_FDS='import os, sys
+want = int(sys.argv[1])
+def kept():
+    n = 0
+    for f in os.listdir("/proc/self/fd"):
+        try:
+            n += os.get_inheritable(int(f))
+        except OSError:
+            pass  # the listing of the folder, closed again
+    return n
+while kept() < want:
+    os.set_inheritable(os.open("/dev/null", os.O_RDONLY), True)
+os.execvp(sys.argv[2], sys.argv[2:])'
+# The room gets exactly its program's open connections, also for a
+# program holding many (16 here): a shell between the program and SAM's
+# helper would add its own (dash, /bin/sh on Debian and Ubuntu, leaves the
+# script's file open in the program it starts once 10 or more are open).
+# One line from the program itself, one from its room.
+FDS_BOTH="$(python3 -c "$KEEP_FDS" 16 /usr/bin/sh -c "$P fds; bwrap --ro-bind /usr /usr $SYS --ro-bind $APPDIR $APPDIR --proc /proc -- $P fds" 2>/dev/null)"
+say fds_app "$(echo "$FDS_BOTH" | sed -n 1p)"
+say fds "$(echo "$FDS_BOTH" | sed -n 2p)"
+# The stand-in is SAM's helper itself, with no script and no shell in
+# between (nothing that could leave a file open in it).
+say standin_is_helper "$(if [ "$(command -v bwrap)" -ef /run/sam/sam-jail-run ]; then echo helper; else echo other; fi)"
+# It answers as Bubblewrap when started by its path under another name, or
+# as SAM's helper under Bubblewrap's name.
+say version_by_path "$(python3 -c 'import os; os.execv("/run/sam/bin/bwrap", ["loader", "--version"])' 2>/dev/null)"
+say version_by_name "$(python3 -c 'import os; os.execv("/run/sam/sam-jail-run", ["bwrap", "--version"])' 2>/dev/null)"
 say host_env_app "$($P env SAM_ROOMS_HOST_MARKER)"
 say host_env_room "$(rv room -- $P env SAM_ROOMS_HOST_MARKER)"
 say nested_userns "$(rv room -- $P userns)"
@@ -100,19 +126,6 @@ say cwd "$(cd /usr/bin && rv room -- /usr/bin/sh -c 'pwd -P')"
 say cwd_not_shown "$(cd "$HOME" && rv room -- /usr/bin/sh -c 'pwd -P')"
 # Exactly as many open connections as a request may pass (253, room_rules::MAX_FDS):
 # still a room; one more is refused.
-KEEP_FDS='import os, sys
-want = int(sys.argv[1])
-def kept():
-    n = 0
-    for f in os.listdir("/proc/self/fd"):
-        try:
-            n += os.get_inheritable(int(f))
-        except OSError:
-            pass  # the listing of the folder, closed again
-    return n
-while kept() < want:
-    os.set_inheritable(os.open("/dev/null", os.O_RDONLY), True)
-os.execvp(sys.argv[2], sys.argv[2:])'
 # shellcheck disable=SC2086
 say fds_most "$(rv python3 -c "$KEEP_FDS" 253 bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok)"
 # shellcheck disable=SC2086
@@ -126,6 +139,19 @@ bwrap --ro-bind /usr /usr $SYS -- /usr/bin/sleep 3 </dev/null >/dev/null 2>&1 &
 standin=$!
 sleep 0.5
 say standin_name "$(cat /proc/$standin/comm 2>/dev/null)"
+kill "$standin" 2>/dev/null
+# Also when the program starts SAM's helper by its own path under
+# Bubblewrap's name (the kernel names it after the helper's file then).
+# shellcheck disable=SC2086
+python3 -c 'import os, sys; os.execv("/run/sam/sam-jail-run", ["bwrap"] + sys.argv[1:])' --ro-bind /usr /usr $SYS -- /usr/bin/sleep 3 </dev/null >/dev/null 2>&1 &
+standin=$!
+n=""; i=0
+while [ $i -lt 30 ]; do
+  n="$(cat /proc/$standin/comm 2>/dev/null)"
+  [ "$n" = bwrap ] && break
+  i=$((i+1)); sleep 0.1
+done
+say standin_name_by_name "$n"
 kill "$standin" 2>/dev/null
 # A variable that is not text: the request is refused, never run without it.
 SAM_ROOM_NOT_TEXT="$(printf 'x\377')"
@@ -967,6 +993,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("dev_links", "links"),
                 ("env_not_text", "refused"),
                 ("standin_name", "bwrap"),
+                ("standin_name_by_name", "bwrap"),
             ],
         )
         .into_iter()
@@ -990,11 +1017,27 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             c.get("fds_app")
         ));
     }
-    if c.get("version") != Some(&host_bwrap_version(&w.host)) {
+    // The program really held many open connections: with fewer than 10,
+    // dash would close the script's file itself and hide a leak.
+    let program_fds = c.get("fds_app").map_or(0, |v| v.split(',').count());
+    if program_fds < 12 {
         failures.push(format!(
-            "works: --version does not answer like the computer's Bubblewrap ({:?})",
-            c.get("version")
+            "works: the program held {program_fds} open connections, not at least 12"
         ));
+    }
+    if c.get("standin_is_helper").map(String::as_str) != Some("helper") {
+        failures.push(format!(
+            "works: bwrap on the app's PATH is not SAM's helper itself ({:?})",
+            c.get("standin_is_helper")
+        ));
+    }
+    for case in ["version", "version_by_path", "version_by_name"] {
+        if c.get(case) != Some(&host_bwrap_version(&w.host)) {
+            failures.push(format!(
+                "works: {case}: --version does not answer like the computer's Bubblewrap ({:?})",
+                c.get(case)
+            ));
+        }
     }
     if failures.len() > before {
         failures.push(record_dump("works", &log));
