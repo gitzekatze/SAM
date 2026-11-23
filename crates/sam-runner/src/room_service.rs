@@ -161,7 +161,8 @@ struct State {
 #[derive(Default)]
 struct FdQueue {
     next: u64,
-    waiting: std::collections::VecDeque<u64>,
+    /// Each waiting room's number and how many descriptors it needs.
+    waiting: std::collections::VecDeque<(u64, usize)>,
     /// Requests being read that wait for the rooms being built (no new
     /// room is built meanwhile).
     readers: usize,
@@ -327,9 +328,10 @@ impl<'a> Held<'a> {
     /// up to `limit` while other rooms hold them: rooms being built give
     /// theirs back as soon as their room has started. Rooms wait in line,
     /// so a big room is not passed again and again by small ones; only
-    /// while nothing is being built (then nothing the first in line waits
-    /// for comes back soon) may a later room that fits go first. A room
-    /// that cannot fit even with nothing else held is refused at once.
+    /// while nothing is being built and the first in line does not fit now
+    /// (then nothing it waits for comes back soon) may a later room that
+    /// fits go first. A room that cannot fit even with nothing else held
+    /// is refused at once.
     fn wait_for_own(&mut self, n: usize, limit: Duration) -> Result<(), NoRoom> {
         let st = self.state;
         // What this request holds already counts too: it stays held.
@@ -340,15 +342,24 @@ impl<'a> Held<'a> {
         let mut line = st.fd_queue.lock().unwrap_or_else(|e| e.into_inner());
         let ticket = line.next;
         line.next += 1;
-        line.waiting.push_back(ticket);
+        line.waiting.push_back((ticket, n));
         let got = loop {
             if st.stop.load(Ordering::SeqCst) {
                 break Err(NoRoom::Stopped);
             }
             // Never while a request being read waits for the rooms built.
+            // A later room goes before the first in line only when that
+            // one cannot go now either: when it fits, it goes first (it
+            // was woken by the same giving back), else a steady stream of
+            // small rooms could keep a big one waiting until its time ran
+            // out.
             let turn = line.readers == 0
-                && (line.waiting.front() == Some(&ticket)
-                    || st.building.load(Ordering::SeqCst) == 0);
+                && line.waiting.front().is_some_and(|&(first, need)| {
+                    first == ticket
+                        || (st.building.load(Ordering::SeqCst) == 0
+                            && st.fds.load(Ordering::SeqCst).saturating_add(need)
+                                > st.fd_budget.load(Ordering::SeqCst))
+                });
             if turn && self.add_own(n) {
                 // Counted under the line's lock, so no other room sees
                 // nothing being built while this one is.
@@ -367,7 +378,7 @@ impl<'a> Held<'a> {
         };
         // The next in line is woken when this request gives back what it
         // holds (`release`, at the latest when it is dropped).
-        line.waiting.retain(|t| *t != ticket);
+        line.waiting.retain(|(t, _)| *t != ticket);
         got
     }
     fn release(&mut self) {
@@ -3015,6 +3026,7 @@ mod tests {
         assert_eq!(build.wait_for_own(60, LONG), Ok(()));
         std::thread::scope(|s| {
             let w = waiter(s, &state, 50, LONG);
+            until_in_line(&state, 1);
             assert!(
                 w.recv_timeout(Duration::from_millis(300)).is_err(),
                 "the room did not wait while the other was built"
@@ -3100,13 +3112,15 @@ mod tests {
         let mut build = Held::new(&state);
         assert_eq!(build.wait_for_own(60, LONG), Ok(()));
         std::thread::scope(|s| {
-            let first = waiter(s, &state, 50, Duration::from_millis(600));
+            let first = waiter(s, &state, 50, Duration::from_secs(2));
             until_in_line(&state, 1);
             let second = waiter(s, &state, 30, LONG);
             assert!(
                 second.recv_timeout(Duration::from_millis(300)).is_err(),
                 "a later room went before the first in line"
             );
+            // Both really waited in line (not a second that started late).
+            until_in_line(&state, 2);
             let (r, _) = first.recv_timeout(LONG).unwrap();
             assert_eq!(r, Err(NoRoom::TimedOut));
             let left = std::time::Instant::now();
@@ -3164,6 +3178,84 @@ mod tests {
         assert_eq!(state.building.load(Ordering::SeqCst), 0);
     }
 
+    /// While nothing is being built, a later room passes the first in line
+    /// only when the first cannot go now: when what was given back lets
+    /// the first go (here exactly), the later room waits for it, even
+    /// though it would fit itself, and goes after it. Else a steady stream
+    /// of small rooms could keep a big one waiting until its time ran out.
+    #[test]
+    fn a_later_room_never_passes_the_first_in_line_when_that_one_fits() {
+        let state = state_with_budget(100);
+        let mut request = Held::new(&state);
+        assert_eq!(request.reserve_passed(70), 70);
+        std::thread::scope(|s| {
+            let first = waiter(s, &state, 50, LONG);
+            until_in_line(&state, 1);
+            // 20 of the request's 70 given back without waking anyone yet,
+            // as when a later room looks between a giving back and its
+            // wake-up: the first fits now (50 + 50 of 100), the later room
+            // too (50 + 30), but not both.
+            request.passed -= 20;
+            request.all -= 20;
+            state.held.fetch_sub(20, Ordering::SeqCst);
+            state.fds.fetch_sub(20, Ordering::SeqCst);
+            let second = waiter(s, &state, 30, LONG);
+            if let Ok(r) = second.recv_timeout(Duration::from_millis(300)) {
+                panic!("a later room passed the first in line, which fit: {r:?}");
+            }
+            // The later room really waits in line (or the first already
+            // went: a wake-up of its own).
+            let end = std::time::Instant::now() + QUICK;
+            while in_line(&state) < 2 && state.building.load(Ordering::SeqCst) == 0 {
+                assert!(
+                    std::time::Instant::now() < end,
+                    "the later room never waited"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            state.wake_fd_waiters();
+            let (r, _) = first.recv_timeout(LONG).unwrap();
+            assert_eq!(r, Ok(()));
+            // The first's thread ends and gives back: the later room goes.
+            let (r, _) = second.recv_timeout(LONG).unwrap();
+            assert_eq!(r, Ok(()));
+        });
+        assert_eq!(state.fds.load(Ordering::SeqCst), 50);
+        drop(request);
+        assert_eq!(state.fds.load(Ordering::SeqCst), 0);
+        assert_eq!(state.building.load(Ordering::SeqCst), 0);
+        assert_eq!(in_line(&state), 0);
+    }
+
+    /// A request being read counts room for every connection it may pass
+    /// before each receive, and gives back at once what did not come: a
+    /// room that waited only for that room goes as soon as it is given
+    /// back, not when some room is released later or its wait runs out.
+    #[test]
+    fn a_room_waiting_for_descriptors_goes_when_a_request_being_read_gives_back_what_did_not_come()
+    {
+        let state = state_with_budget(100);
+        let mut reading = Held::new(&state);
+        assert_eq!(reading.reserve_passed(80), 80);
+        std::thread::scope(|s| {
+            let room = waiter(s, &state, 30, LONG);
+            until_in_line(&state, 1);
+            assert!(
+                room.recv_timeout(Duration::from_millis(300)).is_err(),
+                "the room did not wait for the request being read"
+            );
+            // Three connections came, 77 did not.
+            reading.unreserve_passed(77);
+            let (r, _) = room
+                .recv_timeout(QUICK)
+                .expect("the room did not go when the request gave back what did not come");
+            assert_eq!(r, Ok(()));
+        });
+        assert_eq!(state.fds.load(Ordering::SeqCst), 3);
+        drop(reading);
+        assert_eq!(state.fds.load(Ordering::SeqCst), 0);
+    }
+
     /// How many requests being read wait for the rooms being built.
     fn readers(state: &State) -> usize {
         state.fd_queue.lock().unwrap().readers
@@ -3193,6 +3285,7 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(5));
             }
             let room = waiter(s, &state, 30, LONG);
+            until_in_line(&state, 1);
             assert!(
                 room.recv_timeout(Duration::from_millis(300)).is_err(),
                 "a room was built while a request waited"
