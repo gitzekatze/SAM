@@ -99,7 +99,8 @@ containers, and makes a **draft** release with the files and the changelog as
 notes. The build jobs themselves add build provenance for every file they
 made, the unsigned AppImages included: GitHub's signed statement that this
 workflow built them from this tag. The SBOM is made in a job of its own that
-can change nothing; only the job that makes the draft may write.
+can change nothing, and gets its provenance from another job that runs no
+third-party action; only the job that makes the draft may write.
 
 1. **Sign the AppImages** on this computer, so the key never goes to GitHub:
 
@@ -107,14 +108,22 @@ can change nothing; only the job that makes the draft may write.
    SIGN_KEY=AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 scripts/sign-release.sh vX.Y.Z
    ```
 
-   It downloads the draft's files and first checks them: every AppImage
-   must be the file the build job made (`gh attestation verify`; a draft
-   can be edited, and the release key must never sign anything else), and
-   the source tarballs must have the checksums `scripts/release.sh` wrote
-   into the PKGBUILD. Then it writes the signature into each AppImage and
-   checks it, writes the `.zsync` and `.sha256` files again (they
-   depend on the signed file), adds a detached `.asc` signature to every
-   file and uploads them to the draft.
+   It downloads the draft's files and first checks every one of them, before
+   the key signs anything (a draft can be edited, and the release key must
+   never sign anything else):
+   - every AppImage, and every other file the script does not write itself
+     (the SBOM), must be the file the release build of **this tag** made
+     (`gh attestation verify --source-ref refs/tags/vX.Y.Z`: a file built
+     for an older release is refused too);
+   - the source tarballs must have the checksums `scripts/release.sh` wrote
+     into the PKGBUILD;
+   - `SHA256SUMS` and the AppImages' `.zsync` and `.sha256` files are
+     written again from the checked files, never taken from the draft.
+
+   A file that passes none of these (one added to the draft, say) stops the
+   script with its name; remove it from the draft and start again. Then it
+   writes the signature into each AppImage and checks it, adds a detached
+   `.asc` signature to every file and uploads them to the draft.
 2. Check the draft: every file is there (AppImages with `.zsync`, `.sha256`
    and `.asc`, source and vendored tarballs, `SHA256SUMS`, the SBOM `sam-vX.Y.Z.spdx.json`), and the notes
    read well.

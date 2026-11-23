@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 27 proven by passing tests, 13 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 656 tests in all.
+**42 functions:** 27 proven by passing tests, 14 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 667 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -54,6 +54,7 @@
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 13 | ✅ |
 | 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 20 | ✅ |
+| 42 | [SAM is checked and released as it says: the release key signs only files the release build of that very tag made, source files that match the package recipe and checksum lists the signing script writes itself; a failed release build leaves no tag; the owner's approval counts only for the version the owner saw and is judged by the base branch's checker; the CI scripts fail when the tests could not run; and every workflow keeps pinned actions, least rights and checked downloads.](#42) |  | 11 | ✅ 🆕 11 new tests since the report |
 
 ## Components and their functions
 
@@ -1115,5 +1116,28 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`preset_names_are_never_read_as_options`](../crates/sam-gtk/src/backend.rs#L363) | Preset names reach SAM after `--`, so one that starts with `-` is not read as an option (audit G-F20). | ✅ |
 
 **Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md)
+
+<a id="42"></a>
+### 42. SAM is checked and released as it says: the release key signs only files the release build of that very tag made, source files that match the package recipe and checksum lists the signing script writes itself; a failed release build leaves no tag; the owner's approval counts only for the version the owner saw and is judged by the base branch's checker; the CI scripts fail when the tests could not run; and every workflow keeps pinned actions, least rights and checked downloads.
+
+*An internal guarantee: it keeps SAM maintainable and is not a feature users see.*
+
+| Test | Promise | Result |
+|---|---|---|
+| [`the_release_key_signs_no_appimage_the_release_build_did_not_make`](../crates/sam-jail-cli/tests/automation.rs#L337) | The release key signs no AppImage that the release build did not make: a draft can be edited by anyone with access, and GitHub's build provenance is what tells a changed file apart (audit P1). | 🆕 new |
+| [`an_appimage_built_for_an_older_release_is_not_signed`](../crates/sam-jail-cli/tests/automation.rs#L354) | An AppImage that the release build made for an older tag is refused: only provenance from this tag's run counts, so an older, perhaps vulnerable version cannot be signed as the new one (audit P1, a replay). | 🆕 new |
+| [`a_file_added_to_a_draft_release_stops_the_signing`](../crates/sam-jail-cli/tests/automation.rs#L366) | A file someone added to the draft stops the signing: the release key signs only files that were checked or written here, so neither a new file nor a .sha256 without its AppImage gets SAM's signature (audit P1). | 🆕 new |
+| [`source_files_that_differ_from_the_package_recipe_are_not_signed`](../crates/sam-jail-cli/tests/automation.rs#L381) | Source tarballs that differ from the ones the maintainer built (their checksums in the PKGBUILD) are refused before anything is signed (audit P13). | 🆕 new |
+| [`a_checked_draft_is_signed_with_its_checksum_lists_written_again`](../crates/sam-jail-cli/tests/automation.rs#L399) | A draft whose files all check out is signed, and the checksum lists the release key signs are written here from the checked files: a swapped SHA256SUMS or .sha256 in the draft never gets SAM's signature (audit P1). | 🆕 new |
+| [`a_release_that_fails_to_build_leaves_no_tag`](../crates/sam-jail-cli/tests/automation.rs#L591) | A release whose build fails after the release commit leaves no tag behind: the tag starts the release workflow, so it is set only after everything was built (audit P14). | 🆕 new |
+| [`release_builds_use_one_fixed_rust_and_stop_on_overflow`](../crates/sam-jail-cli/tests/automation.rs#L138) | Release builds use one fixed rust and stop on overflow. | 🆕 new |
+| [`the_owners_label_counts_only_right_after_it_is_set`](../crates/sam-jail-cli/tests/automation.rs#L533) | The owner's label counts only on the event of setting or removing a label, i.e. | 🆕 new |
+| [`the_approval_check_runs_the_base_branchs_checker`](../crates/sam-jail-cli/tests/automation.rs#L579) | The approval check runs the checker as the base branch has it, never the pull request's own copy: a change cannot rewrite the check that judges it (audit P2, the part a pull request's workflow run can keep). | 🆕 new |
+| [`a_desktop_test_run_that_does_not_build_fails`](../crates/sam-jail-cli/tests/automation.rs#L677) | The sandbox tests in the desktop session are judged by cargo's exit status: a run that does not even build prints no "FAILED" and must still fail (audit D-M11). | 🆕 new |
+| [`the_website_is_not_built_with_a_changed_diagram_script`](../crates/sam-jail-cli/tests/automation.rs#L717) | The website serves its diagram script only when it is exactly the one checked: a changed download stops the build before the site is made (audit P8). | 🆕 new |
+
+**Code:** [`scripts/sign-release.sh`](../scripts/sign-release.sh), [`scripts/release.sh`](../scripts/release.sh), [`scripts/workflow-check.py`](../scripts/workflow-check.py), [`.github/workflows/approval.yml`](../.github/workflows/approval.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`.github/workflows/pages.yml`](../.github/workflows/pages.yml), [`tests/gui/desktop-sandbox.sh`](../tests/gui/desktop-sandbox.sh), [`Cargo.toml`](../Cargo.toml)
+
+**Also tried by:** [`scripts/workflow-check.py`](../scripts/workflow-check.py)
 
 ✅ passed in the newest version report · ❌ failed there · 🆕 new: added after that report, so it has no result yet (every test passes before it is committed; the next report fills it in) · ⟲ a regression test: it guards against a bug that really happened.

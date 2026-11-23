@@ -644,7 +644,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-57 tests.
+68 tests.
 
 | Promise | Test |
 |---|---|
@@ -660,6 +660,17 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Every box and arrow label in the documents' diagrams is quoted, so GitHub draws them: unquoted brackets or semicolons inside a label are a parse error there (the component diagram once failed that way). | [`diagram_labels_are_quoted_so_github_draws_them`](../crates/sam-jail-cli/tests/architecture.rs#L155) |
 | SHA-1 and MD4 are broken as protection against tampering. | [`the_weak_hashes_stay_in_the_zsync_update_code`](../crates/sam-jail-cli/tests/architecture.rs#L206) |
 | Everything SAM prints goes through one place that removes escape codes and hidden characters from it (`sam_core::terminal::for_screen`, audit G-F5): the plain print macros are refused by the code check (clippy.toml), and in SAM's program code only that one file may allow them. | [`every_printed_line_goes_through_the_screen_filter`](../crates/sam-jail-cli/tests/architecture.rs#L268) |
+| Release builds use one fixed rust and stop on overflow. | [`release_builds_use_one_fixed_rust_and_stop_on_overflow`](../crates/sam-jail-cli/tests/automation.rs#L138) |
+| The release key signs no AppImage that the release build did not make: a draft can be edited by anyone with access, and GitHub's build provenance is what tells a changed file apart (audit P1). | [`the_release_key_signs_no_appimage_the_release_build_did_not_make`](../crates/sam-jail-cli/tests/automation.rs#L337) |
+| An AppImage that the release build made for an older tag is refused: only provenance from this tag's run counts, so an older, perhaps vulnerable version cannot be signed as the new one (audit P1, a replay). | [`an_appimage_built_for_an_older_release_is_not_signed`](../crates/sam-jail-cli/tests/automation.rs#L354) |
+| A file someone added to the draft stops the signing: the release key signs only files that were checked or written here, so neither a new file nor a .sha256 without its AppImage gets SAM's signature (audit P1). | [`a_file_added_to_a_draft_release_stops_the_signing`](../crates/sam-jail-cli/tests/automation.rs#L366) |
+| Source tarballs that differ from the ones the maintainer built (their checksums in the PKGBUILD) are refused before anything is signed (audit P13). | [`source_files_that_differ_from_the_package_recipe_are_not_signed`](../crates/sam-jail-cli/tests/automation.rs#L381) |
+| A draft whose files all check out is signed, and the checksum lists the release key signs are written here from the checked files: a swapped SHA256SUMS or .sha256 in the draft never gets SAM's signature (audit P1). | [`a_checked_draft_is_signed_with_its_checksum_lists_written_again`](../crates/sam-jail-cli/tests/automation.rs#L399) |
+| The owner's label counts only on the event of setting or removing a label, i.e. | [`the_owners_label_counts_only_right_after_it_is_set`](../crates/sam-jail-cli/tests/automation.rs#L533) |
+| The approval check runs the checker as the base branch has it, never the pull request's own copy: a change cannot rewrite the check that judges it (audit P2, the part a pull request's workflow run can keep). | [`the_approval_check_runs_the_base_branchs_checker`](../crates/sam-jail-cli/tests/automation.rs#L579) |
+| A release whose build fails after the release commit leaves no tag behind: the tag starts the release workflow, so it is set only after everything was built (audit P14). | [`a_release_that_fails_to_build_leaves_no_tag`](../crates/sam-jail-cli/tests/automation.rs#L591) |
+| The sandbox tests in the desktop session are judged by cargo's exit status: a run that does not even build prints no "FAILED" and must still fail (audit D-M11). | [`a_desktop_test_run_that_does_not_build_fails`](../crates/sam-jail-cli/tests/automation.rs#L677) |
+| The website serves its diagram script only when it is exactly the one checked: a changed download stops the build before the site is made (audit P8). | [`the_website_is_not_built_with_a_changed_diagram_script`](../crates/sam-jail-cli/tests/automation.rs#L717) |
 | The quick checks notice a broken or missing tool. | [`the_quick_checks_notice_a_broken_or_missing_tool`](../crates/sam-jail-cli/tests/contracts.rs#L48) |
 | `compat` takes on and off in any case and refuses anything else. | [`compat_takes_on_and_off_in_any_case_and_nothing_else`](../crates/sam-jail-cli/tests/exit_codes.rs#L100) |
 | `doctor` and `doctor --contracts` end with 3 exactly when they report a failed check or a broken contract, and with 0 otherwise. | [`doctor_ends_with_what_it_reports`](../crates/sam-jail-cli/tests/exit_codes.rs#L134) |
@@ -742,4 +753,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 656 automated Rust tests plus 7 scripted checks.
+Total: 667 automated Rust tests plus 7 scripted checks.
