@@ -87,7 +87,7 @@ elif step == "preferences":
     # it on (audit G-F11: the switch wrote the setting at once).
     def setting(key):
         out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "config", "show"],
-                             capture_output=True, text=True).stdout.strip().splitlines()[-1]
+                             check=False, capture_output=True, text=True).stdout.strip().splitlines()[-1]
         d = json.loads(out)
         d = d.get("data", d)
         for part in key.split("."):

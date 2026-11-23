@@ -76,7 +76,7 @@ if sys.argv[1:] == ["finding"]:
     sys.exit(0 if ok else 1)
 def entry():
     out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "info", os.environ["SAM_TEST_APP"]],
-                         capture_output=True, text=True).stdout
+                         check=False, capture_output=True, text=True).stdout
     d = json.loads(out)
     return d.get("data", d)["entry"]
 # The shell part turned X11 on in the record from outside SAM. "Confirm
