@@ -2118,15 +2118,7 @@ mod process_tests {
         let args = vec!["x".repeat(100_000); 12];
         let results: Vec<String> = (0..50)
             .map(|_| {
-                match spawn_room(
-                    Path::new("/bin/true"),
-                    &args,
-                    &[],
-                    2,
-                    [true; 3],
-                    &[],
-                    None,
-                ) {
+                match spawn_room(Path::new("/bin/true"), &args, &[], 2, [true; 3], &[], None) {
                     Ok(mut p) => match p.wait() {
                         Ok(st) => format!("ended with {}", exit_code(st)),
                         Err(e) => format!("not waited for: {e}"),
@@ -2137,10 +2129,7 @@ mod process_tests {
             .collect();
         done.store(true, Ordering::SeqCst);
         sender.join().unwrap();
-        assert!(
-            results.iter().all(|r| r == "ended with 0"),
-            "{results:?}"
-        );
+        assert!(results.iter().all(|r| r == "ended with 0"), "{results:?}");
     }
 
     /// A room's program has exactly its connections, each at its number,
