@@ -141,7 +141,11 @@ impl Sam {
     /// an update; only SAM's own update (`own_update`) is then checked as
     /// before, so SAM can still update itself there. Only a program that is
     /// not SAM's (a test) runs GnuPG directly.
-    pub(crate) fn check_signature(&self, path: &Path, own_update: bool) -> sam_core::model::SignatureInfo {
+    pub(crate) fn check_signature(
+        &self,
+        path: &Path,
+        own_update: bool,
+    ) -> sam_core::model::SignatureInfo {
         use sam_detect::signature::{check, GnuPg};
         match self.extract_isolation() {
             Ok(Some(iso)) => check(

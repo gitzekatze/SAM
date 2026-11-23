@@ -354,7 +354,13 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                                 "--max-seconds",
                                 &req.limits.max_seconds.to_string(),
                             ]);
-                            run_tool(&mut c, &req.limits, started, log, dst.parent().unwrap_or(dst))
+                            run_tool(
+                                &mut c,
+                                &req.limits,
+                                started,
+                                log,
+                                dst.parent().unwrap_or(dst),
+                            )
                         }
                         // In SAM's own process (no sandbox for the reader): a
                         // panic of the SquashFS reader on a damaged image becomes
@@ -592,15 +598,16 @@ fn swap_into_place(new: &Path, appdir: &Path, old: &Path, exchange: bool) -> Res
                     Some(libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP)
                 ) => {}
             Err(e) => {
-                return Err(anyhow::Error::new(e).context(format!("moving into {}", appdir.display())))
+                return Err(
+                    anyhow::Error::new(e).context(format!("moving into {}", appdir.display()))
+                )
             }
         }
     }
     fs::rename(appdir, old)?;
     if let Err(e) = fs::rename(new, appdir) {
-        fs::rename(old, appdir).with_context(|| {
-            format!("putting the old app back at {} ({e})", appdir.display())
-        })?;
+        fs::rename(old, appdir)
+            .with_context(|| format!("putting the old app back at {} ({e})", appdir.display()))?;
         return Err(anyhow::Error::new(e).context(format!("moving into {}", appdir.display())));
     }
     Ok(())
@@ -813,7 +820,8 @@ fn wait_within_limits(
                     let t = Instant::now();
                     let over = over_limits(dir, limits);
                     next_count = Instant::now()
-                        + (t.elapsed() * 4).clamp(Duration::from_millis(200), Duration::from_secs(5));
+                        + (t.elapsed() * 4)
+                            .clamp(Duration::from_millis(200), Duration::from_secs(5));
                     over
                 }
                 None => None,
@@ -950,8 +958,10 @@ fn run_tool(
             || err.contains("No space left on device")
             || free_bytes(watch).is_some_and(|f| f < 1024 * 1024);
         if full {
-            return Err(anyhow::Error::new(io::Error::from_raw_os_error(libc::ENOSPC))
-                .context(format!("exited with {st}")));
+            return Err(
+                anyhow::Error::new(io::Error::from_raw_os_error(libc::ENOSPC))
+                    .context(format!("exited with {st}")),
+            );
         }
         bail!("exited with {st}");
     }

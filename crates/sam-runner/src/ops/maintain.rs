@@ -46,8 +46,8 @@ impl Sam {
         }
         let work = self.download_folder(&format!("{}.unpack", entry.id))?;
         let copy = work.join("app.AppImage");
-        let result = fingerprint::copy_with_fingerprint(&entry.source_path, &copy, 0o700)
-            .and_then(|placed| {
+        let result = fingerprint::copy_with_fingerprint(&entry.source_path, &copy, 0o700).and_then(
+            |placed| {
                 self.reextract_from(
                     query,
                     consent_fallback,
@@ -57,7 +57,8 @@ impl Sam {
                         sams_update: false,
                     },
                 )
-            });
+            },
+        );
         let _ = remove_tree(&work);
         result
     }

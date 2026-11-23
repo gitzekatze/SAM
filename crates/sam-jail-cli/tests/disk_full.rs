@@ -50,7 +50,11 @@ fn a_full_disk_in_the_unpack_sandbox_stops_unpacking() {
     for d in ["bin", "run", "data", "probe"] {
         fs::create_dir_all(root.join(d)).unwrap();
     }
-    let probe = on_small_disk(&root.join("probe"), &["bwrap", "--ro-bind", "/", "/", "true"], &[]);
+    let probe = on_small_disk(
+        &root.join("probe"),
+        &["bwrap", "--ro-bind", "/", "/", "true"],
+        &[],
+    );
     if !probe.as_ref().is_ok_and(|o| o.status.success()) {
         sam_runner::contracts::skip(&format!(
             "no small file system of the test's own here (unshare and Bubblewrap in user namespaces): {probe:?}"
@@ -64,7 +68,10 @@ fn a_full_disk_in_the_unpack_sandbox_stops_unpacking() {
     let apprun = root.join("apprun");
     fs::write(
         &apprun,
-        format!("#!/bin/sh\n{}", format!("{}\n", "x".repeat(1023)).repeat(120 * 1024)),
+        format!(
+            "#!/bin/sh\n{}",
+            format!("{}\n", "x".repeat(1023)).repeat(120 * 1024)
+        ),
     )
     .unwrap();
     let img = root.join("Big-1.0-x86_64.AppImage");
@@ -83,7 +90,12 @@ fn a_full_disk_in_the_unpack_sandbox_stops_unpacking() {
 
     let out = on_small_disk(
         &root.join("data"),
-        &[sam.to_str().unwrap(), "add", img.to_str().unwrap(), "--no-launcher"],
+        &[
+            sam.to_str().unwrap(),
+            "add",
+            img.to_str().unwrap(),
+            "--no-launcher",
+        ],
         &[
             ("SAM_CONFIG_DIR", &root.join("config")),
             ("SAM_DATA_DIR", &root.join("data")),

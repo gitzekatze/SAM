@@ -135,5 +135,9 @@ fn what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped() {
         unpacked == hex(d, &good) || e.content_changed_outside,
         "another program's file got the app's permissions unmarked"
     );
-    assert_eq!(fs::read(&img).unwrap(), evil, "the folder holds the swapped file");
+    assert_eq!(
+        fs::read(&img).unwrap(),
+        evil,
+        "the folder holds the swapped file"
+    );
 }

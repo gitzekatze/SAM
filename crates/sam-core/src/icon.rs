@@ -189,12 +189,7 @@ mod tests {
             b"<svg\0>",
             b"<!-- <svg> -->",
         ] {
-            assert_eq!(
-                safe_icon(fake),
-                None,
-                "{}",
-                String::from_utf8_lossy(fake)
-            );
+            assert_eq!(safe_icon(fake), None, "{}", String::from_utf8_lossy(fake));
         }
         // Real SVG headers, as editors write them.
         for real in [

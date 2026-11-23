@@ -101,10 +101,9 @@ pub fn foreign_entries(user_dir: &Path) -> Vec<ForeignEntry> {
                 continue;
             };
             let is_true = |k: &str| get(k).is_some_and(|v| v.trim().eq_ignore_ascii_case("true"));
-            let opens_files = get("MimeType").is_some_and(|v| v.split(';').any(|t| !t.trim().is_empty()));
-            let hidden_by = get(MARKER)
-                .filter(|_| is_true(HIDDEN))
-                .map(str::to_string);
+            let opens_files =
+                get("MimeType").is_some_and(|v| v.split(';').any(|t| !t.trim().is_empty()));
+            let hidden_by = get(MARKER).filter(|_| is_true(HIDDEN)).map(str::to_string);
             let hidden_elsewhere = hidden_by.is_none()
                 && get(MARKER).is_none()
                 && (is_true(HIDDEN) || (is_true(NO_DISPLAY) && !opens_files));
@@ -505,10 +504,17 @@ mod tests {
             return;
         };
         let name = "appimagekit_x-Editor.desktop";
-        assert!(before.contains(name), "the control: it opens files: {before}");
+        assert!(
+            before.contains(name),
+            "the control: it opens files: {before}"
+        );
 
         // Why NoDisplay alone is not enough: out of the menu, still opening.
-        fs::write(&entry, original.replace("Name=Editor\n", "Name=Editor\nNoDisplay=true\n")).unwrap();
+        fs::write(
+            &entry,
+            original.replace("Name=Editor\n", "Name=Editor\nNoDisplay=true\n"),
+        )
+        .unwrap();
         refresh_desktop_database(&apps);
         let menu_only = openers(&data, "text/markdown").unwrap();
         assert!(menu_only.contains(name), "{menu_only}");
@@ -517,7 +523,10 @@ mod tests {
 
         let h = hide(&entry, &apps, "appimage-editor-1").unwrap();
         let hidden = openers(&data, "text/markdown").unwrap();
-        assert!(!hidden.contains(name), "a hidden entry still opens files: {hidden}");
+        assert!(
+            !hidden.contains(name),
+            "a hidden entry still opens files: {hidden}"
+        );
         let found = foreign_entries(&apps);
         let f = found.iter().find(|f| f.file == entry).unwrap();
         assert_eq!(f.hidden_by.as_deref(), Some("appimage-editor-1"));
@@ -573,13 +582,21 @@ mod tests {
             previous_hidden: None,
         }];
         let h = hide(&old_sam, &apps, "appimage-tool-1").unwrap();
-        assert_eq!(h.previous_nodisplay, None, "SAM's own NoDisplay is not the entry's");
+        assert_eq!(
+            h.previous_nodisplay, None,
+            "SAM's own NoDisplay is not the entry's"
+        );
         merge_hidden(&mut records, h);
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].previous_nodisplay.as_deref(), Some("false"));
         let found = foreign_entries(&apps);
         assert_eq!(
-            found.iter().find(|f| f.file == old_sam).unwrap().hidden_by.as_deref(),
+            found
+                .iter()
+                .find(|f| f.file == old_sam)
+                .unwrap()
+                .hidden_by
+                .as_deref(),
             Some("appimage-tool-1")
         );
         restore(&records[0], "appimage-tool-1").unwrap();

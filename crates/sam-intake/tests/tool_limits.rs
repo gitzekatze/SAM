@@ -41,7 +41,8 @@ fn script(path: &Path, body: &str) {
 }
 
 /// Finds the folder `unsquashfs` is told to write (`-d DIR`).
-const DEST: &str = "while [ $# -gt 0 ]; do [ \"$1\" = -d ] && dst=$2; shift; done\nmkdir -p \"$dst\"";
+const DEST: &str =
+    "while [ $# -gt 0 ]; do [ \"$1\" = -d ] && dst=$2; shift; done\nmkdir -p \"$dst\"";
 /// A minimal app, as a real tool leaves it.
 const APP: &str = "printf '#!/bin/sh\\n' > \"$dst/AppRun\" && chmod 755 \"$dst/AppRun\"";
 

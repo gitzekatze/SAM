@@ -13,14 +13,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-92 tests.
+93 tests.
 
 | Promise | Test |
 |---|---|
-| A complete configuration file with every section loads without loss. | [`a_complete_configuration_file_loads_every_setting`](../crates/sam-core/src/config.rs#L411) |
-| SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L451) |
-| The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L464) |
-| Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L490) |
+| A complete configuration file with every section loads without loss. | [`a_complete_configuration_file_loads_every_setting`](../crates/sam-core/src/config.rs#L414) |
+| SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L454) |
+| The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L467) |
+| Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L493) |
 | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) |
 | An error code survives added context. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L137) |
 | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) |
@@ -36,12 +36,13 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The install hint names this distribution's package manager, also on derivatives (by `ID_LIKE`), and none where SAM does not know it (audit T2). | [`the_install_hint_fits_the_distribution`](../crates/sam-core/src/host.rs#L830) |
 | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | [`every_translated_language_can_be_chosen`](../crates/sam-core/src/i18n.rs#L179) |
 | Texts without a translation come back with their values. | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L193) |
-| Only icons that are safe to decode reach the desktop's image code: a PNG whose header announces more than 1024×1024 pixels (a decode bomb: a small file that asks for gigabytes) is refused before anything decodes it, and so are oversized files, large SVGs and XPM (audit G-F8, I-F18). | [`only_icons_that_are_safe_to_decode_are_taken`](../crates/sam-core/src/icon.rs#L85) |
-| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L733) |
-| An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L751) |
-| A record saved before Room service existed (no `room_service` key) reads with Room service on and writes back exactly as it was, so its checksum holds and no app looks changed outside SAM after an update. | [`a_record_from_before_room_service_keeps_its_checksum`](../crates/sam-core/src/model.rs#L781) |
-| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L831) |
-| A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L869) |
+| Only icons that are safe to decode reach the desktop's image code: a PNG whose header announces more than 1024×1024 pixels (a decode bomb: a small file that asks for gigabytes) is refused before anything decodes it, and so are oversized files, large SVGs and XPM (audit G-F8, I-F18). | [`only_icons_that_are_safe_to_decode_are_taken`](../crates/sam-core/src/icon.rs#L131) |
+| ⟲ Regression (review 2026-11-23, F3): any file with the text `<svg` in its first 2 KiB counted as an SVG, so an XPM, ICO or TGA icon carrying it in a comment or its pixels was installed as `.svg` and reached the desktop's decoder for its real format. | [`only_a_real_svg_counts_as_one`](../crates/sam-core/src/icon.rs#L171) |
+| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L736) |
+| An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L754) |
+| A record saved before Room service existed (no `room_service` key) reads with Room service on and writes back exactly as it was, so its checksum holds and no app looks changed outside SAM after an update. | [`a_record_from_before_room_service_keeps_its_checksum`](../crates/sam-core/src/model.rs#L784) |
+| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L834) |
+| A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L872) |
 | Rooted paths (tests) keep their runtime folders apart from SAM's real one and from every other root, and short enough for SAM's sockets. | [`rooted_paths_have_a_runtime_folder_of_their_own`](../crates/sam-core/src/paths.rs#L182) |
 | A root inside a test whose runtime folder is already one of these gets its folder next to it, never in /tmp (16,304 were left there by one mutation run, 2026-11-20); a long runtime folder still falls back to /tmp. | [`a_test_inside_a_test_keeps_its_runtime_folder_out_of_tmp`](../crates/sam-core/src/paths.rs#L219) |
 | ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L245) |
@@ -92,18 +93,18 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | What SAM prints keeps its own colours and loses everything else an app's text could bring: string sequences (clipboard, title), other control sequences (title reports, hidden text), the 8-bit forms, carriage returns that overwrite a line, and direction overrides. | [`the_screen_keeps_only_text_and_sams_colours`](../crates/sam-core/src/terminal.rs#L1089) |
 | The log and the screen drop the same hidden characters as names do. | [`plain_text_has_no_hidden_characters`](../crates/sam-core/src/terminal.rs#L1115) |
 | JSON for the terminal is the same data: hidden characters are written as escapes, which every JSON reader turns back into them. | [`json_for_the_screen_is_the_same_data`](../crates/sam-core/src/terminal.rs#L1126) |
-| SAM's own programs are its AppImage, the running program and SAM's programs next to it, each once; other files there are not (security review 2026-11-23, SB-1). | [`sams_own_programs_are_its_appimage_and_the_programs_beside_it`](../crates/sam-core/src/util.rs#L559) |
-| Reading a file from an untrusted app returns at once for anything that is not a regular file: a named pipe made SAM wait forever (audit I-F9, I-F15). | [`a_named_pipe_is_refused_without_waiting`](../crates/sam-core/src/util.rs#L583) |
-| SAM's own files in folders an untrusted program could have touched are written without following links: a planted link is replaced, the file it pointed to stays as it was, and a link in place of a folder becomes a real folder (audit I-F2). | [`files_sam_writes_never_go_through_a_planted_link`](../crates/sam-core/src/util.rs#L610) |
-| A helper program that hangs is stopped at the time limit instead of hanging SAM (GnuPG reads keys from untrusted AppImages), and a program that prints more than SAM keeps neither blocks nor floods SAM's memory. | [`a_helper_program_is_stopped_at_its_time_limit`](../crates/sam-core/src/util.rs#L647) |
-| Times are shown without a date library: UTC dates exactly, local times in the computer's own zone and shape (chrono was dropped when it became unmaintained, RUSTSEC-2026-0543). | [`times_are_shown_without_a_date_library`](../crates/sam-core/src/util.rs#L714) |
-| A link to a device that never ends, or a file larger than the limit, cannot fill SAM's memory (regression: an AppImage whose AppRun links to /dev/zero made adding it grow without end). | [`reading_a_file_of_an_appimage_is_bounded`](../crates/sam-core/src/util.rs#L741) |
-| Names become safe identifiers made of lowercase letters, digits and dashes. | [`names_become_safe_identifiers`](../crates/sam-core/src/util.rs#L754) |
-| Shell quoting keeps spaces, quotes and empty strings intact. | [`shell_quoting_keeps_spaces_and_quotes_intact`](../crates/sam-core/src/util.rs#L761) |
-| Run as root, SAM takes a program only where root alone can change it: owned by root, not writable for others, and writable for a group only when that group is root's. | [`as_root_only_what_no_one_else_can_change_may_run`](../crates/sam-core/src/util.rs#L777) |
-| SAM runs only programs the user cannot change: one in a folder the user owns is refused, also behind a link, and a link there that leads to a system program is followed to it (audit L-F12). | [`only_programs_the_user_cannot_change_may_run`](../crates/sam-core/src/util.rs#L792) |
-| Text from an app is shown without markup or control characters, and long text is shortened. | [`neutralizes_markup_and_controls`](../crates/sam-core/src/util.rs#L843) |
-| Names that would show other than they are lose the characters that do it (audit I-F12): a direction override (`invoice\u{202E}fdp.exe` shows as `invoiceexe.pdf`), invisible spaces and joiners between letters, tag characters, 8-bit control codes. | [`names_lose_direction_overrides_and_invisible_characters`](../crates/sam-core/src/util.rs#L854) |
+| SAM's own programs are its AppImage, the running program and SAM's programs next to it, each once; other files there are not (security review 2026-11-23, SB-1). | [`sams_own_programs_are_its_appimage_and_the_programs_beside_it`](../crates/sam-core/src/util.rs#L567) |
+| Reading a file from an untrusted app returns at once for anything that is not a regular file: a named pipe made SAM wait forever (audit I-F9, I-F15). | [`a_named_pipe_is_refused_without_waiting`](../crates/sam-core/src/util.rs#L591) |
+| SAM's own files in folders an untrusted program could have touched are written without following links: a planted link is replaced, the file it pointed to stays as it was, and a link in place of a folder becomes a real folder (audit I-F2). | [`files_sam_writes_never_go_through_a_planted_link`](../crates/sam-core/src/util.rs#L618) |
+| A helper program that hangs is stopped at the time limit instead of hanging SAM (GnuPG reads keys from untrusted AppImages), and a program that prints more than SAM keeps neither blocks nor floods SAM's memory. | [`a_helper_program_is_stopped_at_its_time_limit`](../crates/sam-core/src/util.rs#L655) |
+| Times are shown without a date library: UTC dates exactly, local times in the computer's own zone and shape (chrono was dropped when it became unmaintained, RUSTSEC-2026-0543). | [`times_are_shown_without_a_date_library`](../crates/sam-core/src/util.rs#L722) |
+| A link to a device that never ends, or a file larger than the limit, cannot fill SAM's memory (regression: an AppImage whose AppRun links to /dev/zero made adding it grow without end). | [`reading_a_file_of_an_appimage_is_bounded`](../crates/sam-core/src/util.rs#L749) |
+| Names become safe identifiers made of lowercase letters, digits and dashes. | [`names_become_safe_identifiers`](../crates/sam-core/src/util.rs#L762) |
+| Shell quoting keeps spaces, quotes and empty strings intact. | [`shell_quoting_keeps_spaces_and_quotes_intact`](../crates/sam-core/src/util.rs#L769) |
+| Run as root, SAM takes a program only where root alone can change it: owned by root, not writable for others, and writable for a group only when that group is root's. | [`as_root_only_what_no_one_else_can_change_may_run`](../crates/sam-core/src/util.rs#L785) |
+| SAM runs only programs the user cannot change: one in a folder the user owns is refused, also behind a link, and a link there that leads to a system program is followed to it (audit L-F12). | [`only_programs_the_user_cannot_change_may_run`](../crates/sam-core/src/util.rs#L800) |
+| Text from an app is shown without markup or control characters, and long text is shortened. | [`neutralizes_markup_and_controls`](../crates/sam-core/src/util.rs#L851) |
+| Names that would show other than they are lose the characters that do it (audit I-F12): a direction override (`invoice\u{202E}fdp.exe` shows as `invoiceexe.pdf`), invisible spaces and joiners between letters, tag characters, 8-bit control codes. | [`names_lose_direction_overrides_and_invisible_characters`](../crates/sam-core/src/util.rs#L862) |
 | Dangerous settings (X11, full home, system bus, network an app does not need) each produce a warning. | [`each_dangerous_setting_produces_its_warning`](../crates/sam-core/src/warnings.rs#L312) |
 | SAM's strictest window profile produces no danger warning. | [`strict_has_no_danger`](../crates/sam-core/src/warnings.rs#L334) |
 | The X11 warning disappears when the user turns it off in the preferences. | [`x11_warning_can_be_disabled`](../crates/sam-core/src/warnings.rs#L341) |
@@ -116,14 +117,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 | Promise | Test |
 |---|---|
-| Header values that point past the end of every file give no ELF end, never an overflow: with overflow checks in release builds (audit P16) that would end SAM (audit I-F14, found again by fuzzing). | [`impossible_header_values_give_no_elf_end`](../crates/sam-detect/src/appimage.rs#L340) |
-| A DwarFS image right after the ELF part is taken as DwarFS, not as SquashFS: the SquashFS check looks for its own magic there. | [`a_dwarfs_image_after_the_elf_part_is_dwarfs`](../crates/sam-detect/src/appimage.rs#L374) |
-| An ordinary program file is not taken for an AppImage. | [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L395) |
-| A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L403) |
-| A download that broke off is recognized: the file is shorter than its SquashFS image says, and a complete one is not. | [`an_appimage_shorter_than_its_image_is_incomplete`](../crates/sam-detect/src/appimage.rs#L431) |
-| An AppImage with a DwarFS image instead of squashfs is recognized. | [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L468) |
-| A file that is not an ELF program is not taken for an AppImage. | [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L489) |
-| An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L504) |
+| Header values that point past the end of every file give no ELF end, never an overflow: with overflow checks in release builds (audit P16) that would end SAM (audit I-F14, found again by fuzzing). | [`impossible_header_values_give_no_elf_end`](../crates/sam-detect/src/appimage.rs#L343) |
+| A DwarFS image right after the ELF part is taken as DwarFS, not as SquashFS: the SquashFS check looks for its own magic there. | [`a_dwarfs_image_after_the_elf_part_is_dwarfs`](../crates/sam-detect/src/appimage.rs#L377) |
+| An ordinary program file is not taken for an AppImage. | [`plain_elf_is_not_appimage`](../crates/sam-detect/src/appimage.rs#L398) |
+| A type 2 AppImage (ELF with the AppImage magic and a squashfs image) is recognized. | [`a_type_2_appimage_is_recognized`](../crates/sam-detect/src/appimage.rs#L406) |
+| A download that broke off is recognized: the file is shorter than its SquashFS image says, and a complete one is not. | [`an_appimage_shorter_than_its_image_is_incomplete`](../crates/sam-detect/src/appimage.rs#L434) |
+| An AppImage with a DwarFS image instead of squashfs is recognized. | [`an_appimage_with_a_dwarfs_image_is_recognized`](../crates/sam-detect/src/appimage.rs#L471) |
+| A file that is not an ELF program is not taken for an AppImage. | [`a_file_that_is_no_program_is_not_an_appimage`](../crates/sam-detect/src/appimage.rs#L492) |
+| An AppImage runs on the same processor and 32-bit builds on their 64-bit relatives; ARM builds never run on x86-64 or the other way. | [`appimages_run_only_on_a_matching_processor`](../crates/sam-detect/src/appimage.rs#L507) |
 | Bundled libraries are sorted into system, graphics, display-controlled and dangerous classes. | [`bundled_libraries_are_sorted_by_what_they_reach`](../crates/sam-detect/src/classify.rs#L262) |
 | Programs that load graphics libraries only at run time are recognized as needing the GPU. | [`programs_that_load_graphics_at_run_time`](../crates/sam-detect/src/elf.rs#L1221) |
 | A missing optional library is reported with the feature it provides, not as a broken app. | [`missing_optional_libraries_name_the_feature`](../crates/sam-detect/src/elf.rs#L1247) |
@@ -135,10 +136,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Electron apps are recognized by their markers, and bundled library symlinks are followed. | [`electron_markers_and_bundled_symlinks`](../crates/sam-detect/src/elf.rs#L1469) |
 | Libraries an app finds relative to its own folder ($ORIGIN) are counted as bundled, not as missing. | [`origin_relative_needed_paths`](../crates/sam-detect/src/elf.rs#L1482) |
 | The C library version an app needs is read from its symbol versions. | [`the_c_library_version_an_app_needs_is_read`](../crates/sam-detect/src/elf.rs#L1498) |
-| The signer is read from gpgv's own report of the signature it checked: the primary key, or the signing key when no primary is given. | [`the_signer_is_what_gpgv_reports_and_nothing_unclear_counts`](../crates/sam-detect/src/signature.rs#L525) |
-| The signing time is the one good signature's own (seconds since 1970); nothing unclear gives a time. | [`the_signing_time_is_read_from_the_one_good_signature`](../crates/sam-detect/src/signature.rs#L568) |
-| Primary keys are counted from GnuPG's listing; subkeys are not keys of their own (a signer with a signing subkey carries one key). | [`primary_keys_are_counted_without_their_subkeys`](../crates/sam-detect/src/signature.rs#L586) |
-| The fixed test material of the GnuPG contract is what its comments say: key B's fingerprint is the one recorded. | [`the_contract_material_names_key_b`](../crates/sam-detect/src/signature.rs#L602) |
+| The signer is read from gpgv's own report of the signature it checked: the primary key, or the signing key when no primary is given. | [`the_signer_is_what_gpgv_reports_and_nothing_unclear_counts`](../crates/sam-detect/src/signature.rs#L561) |
+| The signing time is the one good signature's own (seconds since 1970); nothing unclear gives a time. | [`the_signing_time_is_read_from_the_one_good_signature`](../crates/sam-detect/src/signature.rs#L604) |
+| Primary keys are counted from GnuPG's listing; subkeys are not keys of their own (a signer with a signing subkey carries one key). | [`primary_keys_are_counted_without_their_subkeys`](../crates/sam-detect/src/signature.rs#L622) |
+| The fixed test material of the GnuPG contract is what its comments say: key B's fingerprint is the one recorded. | [`the_contract_material_names_key_b`](../crates/sam-detect/src/signature.rs#L638) |
 | Both forms of update information (a direct zsync address and GitHub releases) are understood. | [`both_forms_of_update_information_are_understood`](../crates/sam-detect/src/update_info.rs#L143) |
 | Wildcards in update information match the right file name and not the build for another processor. | [`update_wildcards_match_only_the_right_build`](../crates/sam-detect/src/update_info.rs#L183) |
 | The signature of a signed AppImage is checked with GnuPG: unsigned, valid with the signer's fingerprint and name, invalid after one changed byte. | [`signed_appimage_is_checked`](../crates/sam-detect/tests/signature.rs#L139) |
@@ -148,38 +149,42 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 
-40 tests.
+45 tests.
 
 | Promise | Test |
 |---|---|
-| SAM's menu entry starts the app only through SAM's sandbox: no value taken from the app (name, comment, categories, file types, window class) can add a line such as a second "Exec=" to it, even from a record changed outside SAM. | [`app_metadata_cannot_add_lines_to_sams_menu_entry`](../crates/sam-intake/src/desktop.rs#L319) |
-| Program paths in menu entries are quoted so spaces and dollar signs cannot change the command. | [`menu_entry_paths_are_quoted_against_spaces_and_dollar_signs`](../crates/sam-intake/src/desktop.rs#L354) |
-| A menu entry names SAM's launcher by its whole path, so the desktop never looks it up on a `$PATH` an app may have put a copy into (audit G-F10); an older entry that names it alone is reported, and the window rewrites it at its next start. | [`menu_entries_name_sams_launcher_by_its_whole_path`](../crates/sam-intake/src/desktop.rs#L368) |
-| A `%` in SAM's own path is written `%%` in the menu entry, where a single one would start a field code like `%F` (audit G-F17). | [`a_percent_sign_in_sams_path_stays_a_percent_sign`](../crates/sam-intake/src/desktop.rs#L404) |
-| SAM's menu entry starts the app through sam-jail-run, never the AppImage directly. | [`sams_menu_entry_starts_the_app_only_through_sam`](../crates/sam-intake/src/desktop.rs#L417) |
-| SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | [`blocked_file_types_hold_in_any_case_and_old_names`](../crates/sam-intake/src/desktop.rs#L444) |
-| Launcher mime types drop hijack targets. | [`launcher_mime_types_drop_hijack_targets`](../crates/sam-intake/src/desktop.rs#L461) |
-| The question before the AppImage unpacks itself says what the sandbox holds back, including the kernel limits (audit I-F17: it named only the network and the files), and why SAM could not. | [`the_self_unpack_question_names_the_sandbox_and_the_reason`](../crates/sam-intake/src/extract.rs#L864) |
-| Error files opened at the same moment in one process are separate files: an unpack running beside another no longer fails with "File exists" (it did on CI when two tests unpacked at once). | [`two_unpacks_at_once_get_their_own_error_files`](../crates/sam-intake/src/extract.rs#L886) |
-| Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L906) |
-| A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L937) |
-| Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L947) |
-| A changed AppImage file is noticed by its fingerprint. | [`a_changed_appimage_file_is_noticed`](../crates/sam-intake/src/fingerprint.rs#L107) |
+| SAM's menu entry starts the app only through SAM's sandbox: no value taken from the app (name, comment, categories, file types, window class) can add a line such as a second "Exec=" to it, even from a record changed outside SAM. | [`app_metadata_cannot_add_lines_to_sams_menu_entry`](../crates/sam-intake/src/desktop.rs#L326) |
+| Program paths in menu entries are quoted so spaces and dollar signs cannot change the command. | [`menu_entry_paths_are_quoted_against_spaces_and_dollar_signs`](../crates/sam-intake/src/desktop.rs#L361) |
+| A menu entry names SAM's launcher by its whole path, so the desktop never looks it up on a `$PATH` an app may have put a copy into (audit G-F10); an older entry that names it alone is reported, and the window rewrites it at its next start. | [`menu_entries_name_sams_launcher_by_its_whole_path`](../crates/sam-intake/src/desktop.rs#L375) |
+| A `%` in SAM's own path is written `%%` in the menu entry, where a single one would start a field code like `%F` (audit G-F17). | [`a_percent_sign_in_sams_path_stays_a_percent_sign`](../crates/sam-intake/src/desktop.rs#L411) |
+| SAM's menu entry starts the app through sam-jail-run, never the AppImage directly. | [`sams_menu_entry_starts_the_app_only_through_sam`](../crates/sam-intake/src/desktop.rs#L424) |
+| SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | [`blocked_file_types_hold_in_any_case_and_old_names`](../crates/sam-intake/src/desktop.rs#L453) |
+| Launcher mime types drop hijack targets. | [`launcher_mime_types_drop_hijack_targets`](../crates/sam-intake/src/desktop.rs#L472) |
+| The question before the AppImage unpacks itself says what the sandbox holds back, including the kernel limits (audit I-F17: it named only the network and the files), and why SAM could not. | [`the_self_unpack_question_names_the_sandbox_and_the_reason`](../crates/sam-intake/src/extract.rs#L1102) |
+| Error files opened at the same moment in one process are separate files: an unpack running beside another no longer fails with "File exists" (it did on CI when two tests unpacked at once). | [`two_unpacks_at_once_get_their_own_error_files`](../crates/sam-intake/src/extract.rs#L1124) |
+| Unpacking does not start when the folder clearly has too little room; the message names the folder, both sizes, and where to choose another folder. | [`unpacking_refuses_to_start_without_enough_free_space`](../crates/sam-intake/src/extract.rs#L1144) |
+| A full disk during unpacking is recognized, also inside an error chain, so SAM can clean up and say what happened. | [`a_full_disk_during_unpacking_is_recognized`](../crates/sam-intake/src/extract.rs#L1175) |
+| ⟲ Regression (audit I-F16): putting a new unpack in place was two renames, and when the second failed the app had no unpacked files left. | [`a_failed_swap_keeps_the_old_app`](../crates/sam-intake/src/extract.rs#L1188) |
+| Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L1218) |
+| A changed AppImage file is noticed by its fingerprint. | [`a_changed_appimage_file_is_noticed`](../crates/sam-intake/src/fingerprint.rs#L158) |
 | A readable name is taken from an AppImage's file name, without version and architecture. | [`a_readable_name_is_taken_from_the_file_name`](../crates/sam-intake/src/id.rs#L81) |
 | App IDs are stable and unique, also when two AppImages have the same name. | [`app_ids_stay_unique_when_names_collide`](../crates/sam-intake/src/id.rs#L98) |
-| The AppImage a foreign menu entry starts is found in its Exec line, also behind env and with quotes. | [`the_appimage_behind_a_foreign_menu_entry_is_found`](../crates/sam-intake/src/menu.rs#L295) |
-| An unsandboxed menu entry in the user's folder is hidden on request and restored exactly as it was. | [`hide_and_restore_user_entry`](../crates/sam-intake/src/menu.rs#L309) |
-| An unsandboxed menu entry in a system folder is hidden through an entry in the user's folder, without touching the system file. | [`system_entry_gets_override`](../crates/sam-intake/src/menu.rs#L353) |
+| The AppImage a foreign menu entry starts is found in its Exec line, also behind env and with quotes. | [`the_appimage_behind_a_foreign_menu_entry_is_found`](../crates/sam-intake/src/menu.rs#L360) |
+| ⟲ Regression (audit I-F15): a menu entry whose `Exec=` names a named pipe hung the overview, which opened it to look for an AppImage and waited for a writer that never came. | [`a_menu_entry_naming_a_pipe_does_not_hang_the_search`](../crates/sam-intake/src/menu.rs#L376) |
+| An unsandboxed menu entry in the user's folder is hidden on request and restored exactly as it was. | [`hide_and_restore_user_entry`](../crates/sam-intake/src/menu.rs#L413) |
+| ⟲ Regression (review 2026-11-23, F4): hiding an unsandboxed entry set only `NoDisplay=true`, which takes it out of the menu but leaves it a handler for its file types, so opening a file still started the AppImage without its sandbox. | [`a_hidden_entry_no_longer_opens_files`](../crates/sam-intake/src/menu.rs#L483) |
+| An entry out of the menu that still opens files is a way to start the AppImage without its sandbox, so it is offered for hiding; one deleted (`Hidden=true`) or opening nothing counts as hidden elsewhere. | [`entries_that_still_open_files_are_not_taken_for_hidden`](../crates/sam-intake/src/menu.rs#L546) |
+| An unsandboxed menu entry in a system folder is hidden through an entry in the user's folder, without touching the system file. | [`system_entry_gets_override`](../crates/sam-intake/src/menu.rs#L614) |
 | A desktop file that starts with a byte order mark keeps its keys (found by fuzzing: the mark hid the `[Desktop Entry]` line). | [`a_byte_order_mark_does_not_hide_the_desktop_entry`](../crates/sam-intake/src/metadata.rs#L254) |
 | The preview and the unpacked app take the same desktop file: the top folder before `usr/share/applications`, each by name, and the first that leads to a file (audit I-F8: the preview gave up at a broken first one, the unpack took the next). | [`preview_and_unpack_take_the_same_desktop_file`](../crates/sam-intake/src/metadata.rs#L265) |
 | The desktop file inside an AppImage is read with name, translations, categories and file types. | [`the_desktop_file_inside_an_appimage_is_read`](../crates/sam-intake/src/metadata.rs#L291) |
 | Name, icon and categories are read from the unpacked app. | [`reads_metadata_and_icon`](../crates/sam-intake/src/metadata.rs#L304) |
 | The app's icon is copied for SAM's menu entry and next to the unpacked app, replacing an older icon of another format, and never written through a link planted in the app's folder (audit I-F2). | [`the_icon_is_cached_and_never_written_through_a_link`](../crates/sam-intake/src/metadata.rs#L325) |
-| Unpacking stops with a clear error when it takes longer than the time limit, so a huge or hostile AppImage cannot keep SAM busy forever. | [`unpacking_stops_at_the_time_limit`](../crates/sam-intake/src/normalize.rs#L215) |
-| A symlink that points outside the unpacked app is recognized. | [`symlinks_pointing_outside_the_app_are_recognized`](../crates/sam-intake/src/normalize.rs#L229) |
-| Paths from the AppImage image are made relative, and paths that climb out with .. | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L242) |
-| Unpacking removes setuid bits and makes files read-only for others. | [`unpacking_removes_setuid_bits`](../crates/sam-intake/src/normalize.rs#L253) |
-| Unpacking stops when the AppImage contains more files than the limit. | [`unpacking_stops_at_the_file_limit`](../crates/sam-intake/src/normalize.rs#L310) |
+| Unpacking stops with a clear error when it takes longer than the time limit, so a huge or hostile AppImage cannot keep SAM busy forever. | [`unpacking_stops_at_the_time_limit`](../crates/sam-intake/src/normalize.rs#L219) |
+| A symlink that points outside the unpacked app is recognized. | [`symlinks_pointing_outside_the_app_are_recognized`](../crates/sam-intake/src/normalize.rs#L233) |
+| Paths from the AppImage image are made relative, and paths that climb out with .. | [`paths_climbing_out_of_the_image_are_refused`](../crates/sam-intake/src/normalize.rs#L246) |
+| Unpacking removes setuid bits and makes files read-only for others. | [`unpacking_removes_setuid_bits`](../crates/sam-intake/src/normalize.rs#L257) |
+| Unpacking stops when the AppImage contains more files than the limit. | [`unpacking_stops_at_the_file_limit`](../crates/sam-intake/src/normalize.rs#L314) |
 | The name and icon of an AppImage are read without unpacking or running it. | [`peeks_name_and_icon_without_extracting`](../crates/sam-intake/src/peek.rs#L264) |
 | Icon paths from the AppImage cannot climb out of the unpacked app. | [`icon_paths_cannot_climb_out_of_the_app`](../crates/sam-intake/src/peek.rs#L278) |
 | Every SquashFS compression AppImages use is unpacked by the built-in reader, so none needs the AppImage's own extractor. | [`appimages_with_every_compression_unpack`](../crates/sam-intake/src/testkit.rs#L257) |
@@ -191,6 +196,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A hostile unpacking tool cannot plant links in sams app folder. | [`a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder`](../crates/sam-intake/tests/hostile_extractor.rs#L32) |
 | The file-count and size limits let an app through that reaches them exactly and stop one entry or one byte more; a time limit of zero stops at once. | [`unpacking_stops_exactly_at_its_limits`](../crates/sam-intake/tests/limits.rs#L45) |
 | A reader gone wrong comes to nothing. | [`a_reader_gone_wrong_comes_to_nothing`](../crates/sam-intake/tests/preview_sandbox.rs#L50) |
+| Every unpacking tool meets the limits while it runs. | [`every_unpacking_tool_meets_the_limits_while_it_runs`](../crates/sam-intake/tests/tool_limits.rs#L49) |
 | Nothing in the unpack sandbox can make a user namespace. | [`nothing_in_the_unpack_sandbox_can_make_a_user_namespace`](../crates/sam-intake/tests/unpack_userns.rs#L47) |
 
 ## sam-profile: Recommendations, the user's presets, change checks, permission tags
@@ -282,7 +288,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-338 tests.
+339 tests.
 
 | Promise | Test |
 |---|---|
@@ -355,20 +361,20 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | With "this computer only", the app reaches only the ports on this computer the user lists. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L184) |
 | The app's ports are offered on this computer's loopback addresses only, for IPv4 and IPv6 alike, never on every address (audit L-F7). | [`the_apps_ports_listen_on_loopback_only`](../crates/sam-runner/src/netns.rs#L204) |
 | Local services whose clients would hand an app control or secrets are never taken over automatically. | [`well_known_local_services_are_never_taken_over`](../crates/sam-runner/src/netns.rs#L237) |
-| An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L505) |
-| An update keeps its published name only when that is a plain AppImage name no other file has: the update server chooses it, and a name like `sudo` in ~/.local/bin would replace a command outside any sandbox (review 2026-11-23, U-2). | [`only_a_plain_appimage_name_is_taken_from_an_update`](../crates/sam-runner/src/ops/maintain.rs#L1303) |
-| The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1349) |
-| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1425) |
-| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1445) |
-| When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L612) |
-| An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L718) |
-| An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L759) |
-| A signature recorded as "not checked" (GnuPG was missing) lets no key through: once the new file's signature can be read, whatever it is (another key, none, a bad one) counts as a change; both unchecked is no news (review 2026-11-23, U-3). | [`a_signature_that_was_never_checked_lets_no_key_through`](../crates/sam-runner/src/ops/mod.rs#L787) |
-| A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L809) |
-| Review 2026-11-23 F3: asking an app to quit reaches the app's own processes, also one whose program is called `bwrap`, and nothing of SAM's: not the program the launcher started (here a stand-in for pasta that quits on SIGTERM, which would take the sandbox down at once), not a helper beside the sandbox (as the sound relay). | [`only_the_apps_own_processes_are_asked_to_quit`](../crates/sam-runner/src/ops/mod.rs#L848) |
-| A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L491) |
-| Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L519) |
-| Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L541) |
+| An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L527) |
+| An update keeps its published name only when that is a plain AppImage name no other file has: the update server chooses it, and a name like `sudo` in ~/.local/bin would replace a command outside any sandbox (review 2026-11-23, U-2). | [`only_a_plain_appimage_name_is_taken_from_an_update`](../crates/sam-runner/src/ops/maintain.rs#L1362) |
+| The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1408) |
+| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1484) |
+| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1504) |
+| When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L613) |
+| An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L719) |
+| An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L760) |
+| A signature recorded as "not checked" (GnuPG was missing) lets no key through: once the new file's signature can be read, whatever it is (another key, none, a bad one) counts as a change; both unchecked is no news (review 2026-11-23, U-3). | [`a_signature_that_was_never_checked_lets_no_key_through`](../crates/sam-runner/src/ops/mod.rs#L788) |
+| A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L810) |
+| Review 2026-11-23 F3: asking an app to quit reaches the app's own processes, also one whose program is called `bwrap`, and nothing of SAM's: not the program the launcher started (here a stand-in for pasta that quits on SIGTERM, which would take the sandbox down at once), not a helper beside the sandbox (as the sound relay). | [`only_the_apps_own_processes_are_asked_to_quit`](../crates/sam-runner/src/ops/mod.rs#L849) |
+| A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L523) |
+| Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L551) |
+| Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L573) |
 | A name the app asks for is refused when it belongs to an installed app (audit D-M6: a terminal's name runs host commands), to a desktop protocol, to an on-demand service (also through a wildcard, L-F13), or to another app in SAM; its own name passes; a media player's name passes with the media switch (L-Q1). | [`a_name_is_allowed_only_when_nobody_else_has_it`](../crates/sam-runner/src/own_names.rs#L190) |
 | Menu entry ids come from file names, subfolders joined with `-`; only `.desktop` files count. | [`menu_ids_are_the_file_names`](../crates/sam-runner/src/own_names.rs#L232) |
 | Each check reports what it finds, not what it hopes: run on facts that are the same on every computer, a check whose expectation is wrong fails, one whose expectation is right passes, and the report counts them (found by mutation testing: a check turning every failure into a pass went unnoticed). | [`a_check_reports_what_it_finds_not_what_it_hopes`](../crates/sam-runner/src/probe.rs#L602) |
@@ -543,8 +549,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L159) |
 | Full home access cannot leave anything that runs later. | [`full_home_access_cannot_leave_anything_that_runs_later`](../crates/sam-runner/tests/full_home.rs#L54) |
 | Changed AppImages are recognized or refused, and unpacked or refused, without a panic; unpacking writes only inside its own folder and keeps its time limit. | [`changed_appimages_never_crash_or_escape_the_unpacker`](../crates/sam-runner/tests/fuzz.rs#L141) |
-| Changed desktop files, zsync files and update information are parsed or refused without a panic. | [`changed_text_inputs_never_crash_the_parsers`](../crates/sam-runner/tests/fuzz.rs#L223) |
-| Changed ELF programs inside an unpacked app are analyzed or skipped without a panic. | [`changed_programs_never_crash_the_analysis`](../crates/sam-runner/tests/fuzz.rs#L255) |
+| Changed desktop files, zsync files and update information are parsed or refused without a panic. | [`changed_text_inputs_never_crash_the_parsers`](../crates/sam-runner/tests/fuzz.rs#L224) |
+| Changed ELF programs inside an unpacked app are analyzed or skipped without a panic. | [`changed_programs_never_crash_the_analysis`](../crates/sam-runner/tests/fuzz.rs#L256) |
 | Changed ELF section tables and signature, key and update sections are read or refused without a panic: inspect, the signature check and the update information. | [`changed_signature_and_update_sections_never_crash_the_readers`](../crates/sam-runner/tests/fuzz_targets.rs#L117) |
 | Changed zsync control files are refused, or planned and assembled within their limits, without a panic: the parser, the block plan, the missing ranges and the assembly all see them. | [`changed_zsync_controls_never_crash_planning_or_assembly`](../crates/sam-runner/tests/fuzz_targets.rs#L224) |
 | Desktop files with a byte order mark, Windows line ends, odd sections and broken text are read without a panic, and the byte order mark and line ends do not hide the name. | [`changed_desktop_files_never_crash_the_reader`](../crates/sam-runner/tests/fuzz_targets.rs#L335) |
@@ -591,6 +597,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Sound never loads code into the sound server. | [`sound_never_loads_code_into_the_sound_server`](../crates/sam-runner/tests/sound_relay.rs#L98) |
 | Freeing space deletes the unpacked copy, and unpacking again brings the app back. | [`freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it`](../crates/sam-runner/tests/space.rs#L13) |
 | Closing an app ends all of its running starts. | [`stop_closes_running_apps`](../crates/sam-runner/tests/stop.rs#L68) |
+| What is unpacked is what sam checked even if the file is swapped. | [`what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped`](../crates/sam-runner/tests/swap_during_unpack.rs#L50) |
 | Every known syscall has been reviewed. | [`every_known_syscall_has_been_reviewed`](../crates/sam-runner/tests/syscalls.rs#L67) |
 | The review list says what the filter does with each syscall; it must say exactly that, or the review describes a filter that does not exist. | [`the_review_list_matches_the_filter`](../crates/sam-runner/tests/syscalls.rs#L89) |
 | ⟲ Regression: the unpack folder in a record was only checked with Path::starts_with, which does not resolve "..": "extracted/../../victim" passed, and removing the sandbox deleted the victim folder. | [`removing_a_sandbox_never_deletes_outside_sams_unpack_folder`](../crates/sam-runner/tests/tamper.rs#L34) |
@@ -644,13 +651,13 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-57 tests.
+59 tests.
 
 | Promise | Test |
 |---|---|
 | A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L305) |
-| Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1698) |
-| A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1710) |
+| Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1707) |
+| A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1719) |
 | `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L313) |
 | The permission model is the base: it depends on no other SAM part, so every other part can use it without creating a cycle. | [`the_permission_model_depends_on_no_other_part`](../crates/sam-jail-cli/tests/architecture.rs#L59) |
 | The window contains no sandbox logic: it depends only on the permission model and reaches everything else through `sam-jail --json`, so the window and the command line always behave the same. | [`the_window_reaches_sam_only_through_the_command_line`](../crates/sam-jail-cli/tests/architecture.rs#L67) |
@@ -661,12 +668,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | SHA-1 and MD4 are broken as protection against tampering. | [`the_weak_hashes_stay_in_the_zsync_update_code`](../crates/sam-jail-cli/tests/architecture.rs#L206) |
 | Everything SAM prints goes through one place that removes escape codes and hidden characters from it (`sam_core::terminal::for_screen`, audit G-F5): the plain print macros are refused by the code check (clippy.toml), and in SAM's program code only that one file may allow them. | [`every_printed_line_goes_through_the_screen_filter`](../crates/sam-jail-cli/tests/architecture.rs#L268) |
 | The quick checks notice a broken or missing tool. | [`the_quick_checks_notice_a_broken_or_missing_tool`](../crates/sam-jail-cli/tests/contracts.rs#L48) |
+| A full disk in the unpack sandbox stops unpacking. | [`a_full_disk_in_the_unpack_sandbox_stops_unpacking`](../crates/sam-jail-cli/tests/disk_full.rs#L46) |
 | `compat` takes on and off in any case and refuses anything else. | [`compat_takes_on_and_off_in_any_case_and_nothing_else`](../crates/sam-jail-cli/tests/exit_codes.rs#L100) |
 | `doctor` and `doctor --contracts` end with 3 exactly when they report a failed check or a broken contract, and with 0 otherwise. | [`doctor_ends_with_what_it_reports`](../crates/sam-jail-cli/tests/exit_codes.rs#L134) |
 | `sam-jail info` shows every permission with its value, each group of permissions under one heading (audit G-F14). | [`info_on_the_terminal_shows_every_permission_once`](../crates/sam-jail-cli/tests/exit_codes.rs#L167) |
 | A preset that is not applied (it needs a confirmation) ends with 3 and still says what it would change; applied, it ends with 0. | [`a_preset_not_applied_ends_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L210) |
 | A broken contract (here a Bubblewrap that cannot build a sandbox) ends `doctor --contracts` with 3. | [`a_broken_contract_ends_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L239) |
 | In a real sandbox: `run --json` passes on the app's exit code, a `selftest` with a failing app ends with 3, and `verify` with a failed check ends with 3, so `sam-jail verify APP && sam-jail run APP` gates. | [`checks_that_do_not_pass_end_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L269) |
+| Gnupg reads an appimages key and signature only in a sandbox. | [`gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox`](../crates/sam-jail-cli/tests/gnupg_sandbox.rs#L53) |
 | The JSON interface lists apps with their tags, changes a permission for several apps, and restores them with the returned "previous" object. | [`group_list_set_and_restore_round_trip`](../crates/sam-jail-cli/tests/interface.rs#L79) |
 | Undo takes back only its own change: a change made to an app since stays, and a later change to the same setting refuses the whole undo instead of being overwritten (audit G-F4: the whole sets from before were written back). | [`undo_takes_back_only_its_own_change`](../crates/sam-jail-cli/tests/interface.rs#L158) |
 | `profile change` applies only what differs between "from" and "to", as the window sends it: a change made elsewhere since the window loaded the settings stays (audit G-F4). | [`a_change_from_the_window_keeps_changes_made_elsewhere`](../crates/sam-jail-cli/tests/interface.rs#L208) |
@@ -742,4 +751,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 656 automated Rust tests plus 7 scripted checks.
+Total: 665 automated Rust tests plus 7 scripted checks.

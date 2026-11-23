@@ -77,11 +77,22 @@ fn gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox() {
     let _agent = Agent(&home);
     gpg(
         &home,
-        &["--quick-gen-key", "Signer <signer@example.org>", "ed25519", "sign", "never"],
+        &[
+            "--quick-gen-key",
+            "Signer <signer@example.org>",
+            "ed25519",
+            "sign",
+            "never",
+        ],
     );
     let listing = String::from_utf8(gpg(
         &home,
-        &["--with-colons", "--fingerprint", "--list-keys", "signer@example.org"],
+        &[
+            "--with-colons",
+            "--fingerprint",
+            "--list-keys",
+            "signer@example.org",
+        ],
     ))
     .unwrap();
     let fpr = listing
@@ -121,7 +132,10 @@ fn gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox() {
             .env("SAM_DATA_DIR", root.join("data"))
             .env("SAM_APPLICATIONS_DIR", root.join("applications"))
             .env("XDG_RUNTIME_DIR", root.join("run"))
-            .env("PATH", format!("{}:/usr/bin:/bin", root.join("tools").display()))
+            .env(
+                "PATH",
+                format!("{}:/usr/bin:/bin", root.join("tools").display()),
+            )
             // The stand-ins belong to the user: SAM runs them only from here.
             .env("SAM_TRUST_TOOLS_IN", root.join("tools"))
             .env("LC_ALL", "C")
@@ -131,7 +145,11 @@ fn gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox() {
     };
     let added = run(&["--json", "add", img.to_str().unwrap(), "--no-launcher"]);
     let text = String::from_utf8_lossy(&added.stdout);
-    assert!(added.status.success(), "{text}{}", String::from_utf8_lossy(&added.stderr));
+    assert!(
+        added.status.success(),
+        "{text}{}",
+        String::from_utf8_lossy(&added.stderr)
+    );
     let reply: serde_json::Value =
         serde_json::from_str(text.lines().last().unwrap_or("null")).unwrap();
     let sig = reply

@@ -13,7 +13,7 @@ use std::process::Command;
 
 use sam_core::model::SignatureState;
 use sam_detect::signature::{
-    check, gnupg_contract, sign_for_test, GnuPg, sign_with_key_block_for_test, CONTRACT_MSG,
+    check, gnupg_contract, sign_for_test, sign_with_key_block_for_test, GnuPg, CONTRACT_MSG,
     CONTRACT_SIGNER,
 };
 
