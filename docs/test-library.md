@@ -646,13 +646,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-58 tests.
+59 tests.
 
 | Promise | Test |
 |---|---|
 | A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L305) |
 | Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1698) |
 | A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1710) |
+| Every page a man page names (`sam-jail-config-get(1)`) is written too (audit: `sam-jail-config.1` named six pages that did not exist). | [`every_man_page_named_is_written`](../crates/sam-jail-cli/src/man.rs#L76) |
 | `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L313) |
 | The permission model is the base: it depends on no other SAM part, so every other part can use it without creating a cycle. | [`the_permission_model_depends_on_no_other_part`](../crates/sam-jail-cli/tests/architecture.rs#L59) |
 | The window contains no sandbox logic: it depends only on the permission model and reaches everything else through `sam-jail --json`, so the window and the command line always behave the same. | [`the_window_reaches_sam_only_through_the_command_line`](../crates/sam-jail-cli/tests/architecture.rs#L67) |
@@ -745,4 +746,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 659 automated Rust tests plus 7 scripted checks.
+Total: 660 automated Rust tests plus 7 scripted checks.

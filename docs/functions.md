@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 26 proven by passing tests, 14 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 659 tests in all.
+**41 functions:** 25 proven by passing tests, 15 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 660 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -53,7 +53,7 @@
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 6 | ✅ |
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 13 | ✅ |
-| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 20 | ✅ |
+| 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 21 | ✅ 🆕 1 new test since the report |
 
 ## Components and their functions
 
@@ -1117,7 +1117,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | ✅ |
 | [`json_run_keeps_its_reply_alone_on_standard_output`](../crates/sam-jail-cli/tests/odd_names.rs#L112) | With `--json`, SAM's standard output is its reply and nothing else: an app that prints a line looking like the reply cannot be read as SAM's. | ✅ |
 | [`preset_names_are_never_read_as_options`](../crates/sam-gtk/src/backend.rs#L363) | Preset names reach SAM after `--`, so one that starts with `-` is not read as an option (audit G-F20). | ✅ |
+| [`every_man_page_named_is_written`](../crates/sam-jail-cli/src/man.rs#L76) | Every page a man page names (`sam-jail-config-get(1)`) is written too (audit: `sam-jail-config.1` named six pages that did not exist). | 🆕 new |
 
-**Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md)
+**Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md), [`sam-jail-cli/src/man.rs`](../crates/sam-jail-cli/src/man.rs)
 
 ✅ passed in the newest version report · ❌ failed there · 🆕 new: added after that report, so it has no result yet (every test passes before it is committed; the next report fills it in) · ⟲ a regression test: it guards against a bug that really happened.
