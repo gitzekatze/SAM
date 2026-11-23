@@ -263,7 +263,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-277 tests.
+292 tests.
 
 | Promise | Test |
 |---|---|
@@ -444,6 +444,21 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Room service starts only with a Bubblewrap that can show places by handle: with an older one, programs keep the computer's own Bubblewrap instead of a stand-in that could build no room. | [`rooms_need_a_bubblewrap_that_shows_places_by_handle`](../crates/sam-runner/src/room_service.rs#L2715) |
 | A source on a drive that may be unmounted is not held open (the drive stays free to unmount while the app runs); a room still shows it, but never another folder put in its place since the start. | [`a_source_on_a_removable_drive_is_remembered_not_held`](../crates/sam-runner/src/room_service.rs#L2741) |
 | The descriptors held for rooms stay within what the launcher's limit leaves free, and a reservation gives back what did not come. | [`descriptors_for_rooms_stay_within_the_launchers_limit`](../crates/sam-runner/src/room_service.rs#L2772) |
+| The start record keeps at most MAX_ROOM_RECORDS lines about rooms and MAX_RECORDS refusals, in that order, and counts the rest: one line more than fits is counted, never kept. | [`the_start_record_keeps_its_room_lines_and_counts_the_rest`](../crates/sam-runner/src/room_service.rs#L3059) |
+| A stop with nothing left to wait for returns at once and adds no line of its own to the start record (no "0 more …", no "0 requests still unfinished"). | [`a_stop_with_nothing_left_is_quick_and_adds_nothing`](../crates/sam-runner/src/room_service.rs#L3080) |
+| A request still not finished when the service stops is named in the start record after the short wait, never lost. | [`a_stop_names_requests_still_unfinished`](../crates/sam-runner/src/room_service.rs#L3093) |
+| The service's socket may have a path of 107 bytes, the most a Unix socket's address holds (108 with its closing NUL byte); one byte more is refused as too long. | [`a_socket_path_of_the_longest_length_still_opens`](../crates/sam-runner/src/room_service.rs#L3109) |
+| A service that is dropped without a stop ends like one: it stops listening and its socket is gone. | [`dropping_the_service_ends_it_like_a_stop`](../crates/sam-runner/src/room_service.rs#L3137) |
+| A Bubblewrap that knows only one of the two options that show a place by handle builds no room either. | [`rooms_need_both_options_that_show_places_by_handle`](../crates/sam-runner/src/room_service.rs#L3154) |
+| The start record says so when the launcher's descriptor limit leaves rooms fewer than 64 descriptors (so most rooms are refused), and only then: at 64 it says nothing, at 63 it does. | [`a_descriptor_limit_leaving_rooms_fewer_than_64_is_recorded`](../crates/sam-runner/src/room_service.rs#L3175) |
+| An answer reaches the stand-in whole even when the send stops part way (a signal while the connection is full) and when a signal interrupts it before anything went: never cut short, never more, never a part twice. | [`a_long_answer_arrives_whole_through_partial_and_interrupted_sends`](../crates/sam-runner/src/room_service.rs#L3216) |
+| An answer to a stand-in that has already gone gives up at once: the service never keeps trying. | [`an_answer_to_a_stand_in_that_left_returns_at_once`](../crates/sam-runner/src/room_service.rs#L3269) |
+| A room may have exactly MAX_PLACES places: such a room passes the place limit (here it is then refused for the descriptors, as none are left for rooms), and only one more place is refused for their number. | [`a_room_of_exactly_the_most_places_is_not_refused_for_their_number`](../crates/sam-runner/src/room_service.rs#L3288) |
+| A path the request names below a place and asks for with `-try` is left out of the room when it is missing; missing without `-try`, the room is refused, never built without it. | [`a_room_leaves_out_only_missing_paths_asked_with_try_and_never_follows_a_link`](../crates/sam-runner/src/room_service.rs#L3336) |
+| A place asked for writable is writable in the room only where the app can write (its Landlock rules); elsewhere it is read-only and the start record says so. | [`a_place_is_writable_in_a_room_only_where_the_app_can_write`](../crates/sam-runner/src/room_service.rs#L3377) |
+| Rooms one after another each give their slot back: more rooms than may run at once are all built, one by one. | [`rooms_one_after_another_never_run_out_of_slots`](../crates/sam-runner/src/room_service.rs#L3417) |
+| Every room still running ends with the app's start, also after other rooms ended before it: one whose layers were never confirmed, one whose program ended. | [`every_room_ends_with_the_start_whatever_other_rooms_did_before`](../crates/sam-runner/src/room_service.rs#L3438) |
+| A signal that interrupts the room's watcher (the launcher handles terminal resizes, say) is not its stand-in leaving: the room runs on to its own end. | [`a_signal_to_the_rooms_watcher_never_ends_the_room`](../crates/sam-runner/src/room_service.rs#L3472) |
 | The relay's settings switch module loading off, listen only on SAM's socket, take no D-Bus name and load no modules at start; a path cannot break out of its quotes. | [`the_relay_cannot_load_modules_and_listens_only_on_its_socket`](../crates/sam-runner/src/sound_relay.rs#L235) |
 | The lock check fails a relay that runs outside a sandbox: it sees the person's folder (mutation run P14: an answer of always "held" went unnoticed, so `sam-jail doctor` would not see such a relay). | [`a_relay_outside_a_sandbox_is_not_held`](../crates/sam-runner/src/sound_relay.rs#L250) |
 | A socket path too long for Linux is refused with a clear reason before PipeWire starts (it ended with an unclear crash: the 240-app run of 2026-11-20). | [`a_too_long_socket_path_is_named_before_the_relay_starts`](../crates/sam-runner/src/sound_relay.rs#L292) |
@@ -660,4 +675,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 574 automated Rust tests plus 7 scripted checks.
+Total: 589 automated Rust tests plus 7 scripted checks.

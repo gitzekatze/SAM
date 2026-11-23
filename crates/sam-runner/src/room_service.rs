@@ -2796,3 +2796,728 @@ mod tests {
         assert_eq!(c.reserve_passed(MAX_HELD + 10), MAX_HELD);
     }
 }
+
+#[cfg(test)]
+mod service_tests {
+    //! The service itself: its start record, its stop, its socket, the
+    //! answers it sends, and the rooms it runs. Rooms here are run by a
+    //! stand-in for Bubblewrap that runs the room's command right here, so
+    //! the service's own decisions show without a sandbox (the tests in
+    //! tests/room_service*.rs run real rooms).
+    use super::*;
+    use crate::room_rules::{Request, VERSION};
+    use std::time::Instant;
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|x| x.to_string()).collect()
+    }
+
+    fn request(ops: &[&[&str]], command: &[&str]) -> Request {
+        Request {
+            v: VERSION,
+            ops: ops.iter().map(|o| s(o)).collect(),
+            flags: vec![],
+            command: s(command),
+            env: Default::default(),
+            cwd: "/".into(),
+            fds: vec![],
+            limits: vec![],
+            umask: None,
+        }
+    }
+
+    /// A test that changes something of its whole process (how a signal is
+    /// handled, the descriptor limit) runs alone in a child process: this
+    /// test program started again for just that test.
+    fn in_own_process(name: &str, body: impl FnOnce()) {
+        const VAR: &str = "SAM_TEST_SERVICE_OWN_PROCESS";
+        if std::env::var(VAR).is_ok_and(|v| v == name) {
+            body();
+            return;
+        }
+        let full = format!("room_service::service_tests::{name}");
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", &full, "--test-threads=1", "--nocapture"])
+            .env(VAR, name)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success() && stdout.contains("1 passed"),
+            "{:?}\n{stdout}\n{}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// A service listening in `dir`, made as `RoomService::open` makes it
+    /// (without its check for SAM's room helper, which the stand-in for
+    /// Bubblewrap below never runs).
+    fn service_in(dir: &Path) -> RoomService {
+        let socket = dir.join("rooms");
+        let listener = UnixListener::bind(&socket).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        RoomService {
+            socket,
+            listener: Some(listener),
+            state: Arc::new(State::default()),
+            accept: None,
+        }
+    }
+
+    /// An app that sees `app` (writable for its mount), and may write only
+    /// in `write` by its Landlock rules.
+    fn context(app: &Path, bwrap: &Path, write: &[PathBuf]) -> RoomContext {
+        let a = app.to_str().unwrap();
+        RoomContext {
+            plan: FloorPlan::from_bwrap_args(&s(&["--bind", a, a, "--", "x"])).unwrap(),
+            facts: AppFacts::default(),
+            bwrap: bwrap.to_path_buf(),
+            landlock: LandlockSpec {
+                read: vec!["/".into()],
+                write: write.to_vec(),
+            },
+            seccomp: SeccompSpec::default(),
+        }
+    }
+
+    /// What `serve` keeps, with every source held open.
+    fn served(ctx: RoomContext) -> Arc<Served> {
+        let (plan, sources) = plan_at_start_with(ctx.plan.clone(), |_, _| false);
+        Arc::new(Served {
+            ctx: RoomContext { plan, ..ctx },
+            sources,
+            refuse_all: None,
+        })
+    }
+
+    fn state_with_budget(n: usize) -> Arc<State> {
+        let state = State::default();
+        state.fd_budget.store(n, Ordering::SeqCst);
+        Arc::new(state)
+    }
+
+    /// A stand-in for the computer's Bubblewrap: it writes its arguments
+    /// down (one per line, in the file returned second), confirms SAM's
+    /// layers the way SAM's room helper does (a line on the status
+    /// connection the room's rules name), then runs the room's command
+    /// right here. The command `unconfirmed` ends it with exit code 3
+    /// before it confirms anything, as a room whose helper never reported.
+    fn fake_bwrap(dir: &Path) -> (PathBuf, PathBuf) {
+        let bwrap = dir.join("bwrap");
+        let log = dir.join("bwrap-args");
+        let script = format!(
+            r#"export PATH=/usr/bin:/bin
+printf '%s\n' "$@" > '{log}'
+spec=; p2=; p1=
+for a in "$@"; do
+  if [ "$p2" = --ro-bind-data ] && [ "$a" = {SPEC_INSIDE} ]; then spec=$p1; fi
+  p2=$p1; p1=$a
+done
+while [ $# -gt 0 ] && [ "$1" != -- ]; do shift; done
+shift 4
+[ "$1" = unconfirmed ] && exit 3
+status=$(tr '\0' '\n' < "/proc/self/fd/$spec" | sed -n 's/^status=//p')
+echo "layers of the stand-in" > "/proc/self/fd/$status"
+exec "$@"
+"#,
+            log = log.display()
+        );
+        write_program(&bwrap, &script);
+        (bwrap, log)
+    }
+
+    /// Writes a shell script at `p` and makes it runnable. A program
+    /// another test starts at that moment may hold the new file open for
+    /// an instant, and Linux then refuses to run it ("Text file busy"); so
+    /// this waits until the script runs (it ends at once when
+    /// SAM_TEST_PROBE is set), for at most ten seconds.
+    fn write_program(p: &Path, body: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        let script = format!("#!/bin/sh\n[ -n \"$SAM_TEST_PROBE\" ] && exit 0\n{body}");
+        std::fs::write(p, script).unwrap();
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let end = Instant::now() + Duration::from_secs(10);
+        loop {
+            let probe = std::process::Command::new(p)
+                .env("SAM_TEST_PROBE", "1")
+                .status();
+            match probe {
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::ExecutableFileBusy
+                        && Instant::now() < end =>
+                {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                probe => {
+                    assert!(probe.unwrap().success(), "{} does not run", p.display());
+                    return;
+                }
+            }
+        }
+    }
+
+    fn write_request(conn: &UnixStream, req: &Request) {
+        let body = serde_json::to_vec(req).unwrap();
+        let mut c = conn;
+        c.write_all(&(body.len() as u32).to_be_bytes()).unwrap();
+        c.write_all(&body).unwrap();
+    }
+
+    /// The service's answer on `conn` (null when none came in 20 seconds).
+    fn answer_of(conn: &UnixStream) -> serde_json::Value {
+        conn.set_read_timeout(Some(Duration::from_secs(20)))
+            .unwrap();
+        let mut c = conn;
+        let mut head = [0u8; 4];
+        if c.read_exact(&mut head).is_err() {
+            return serde_json::Value::Null;
+        }
+        let mut body = vec![0u8; u32::from_be_bytes(head) as usize];
+        if c.read_exact(&mut body).is_err() {
+            return serde_json::Value::Null;
+        }
+        serde_json::from_slice(&body).unwrap_or_default()
+    }
+
+    fn ask_service(socket: &Path, req: &Request) -> serde_json::Value {
+        let conn = UnixStream::connect(socket).unwrap();
+        write_request(&conn, req);
+        answer_of(&conn)
+    }
+
+    /// One request served on its own connection, as the service serves it.
+    fn ask_directly(state: &Arc<State>, served: &Arc<Served>, req: &Request) -> serde_json::Value {
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        let (st, sv) = (state.clone(), served.clone());
+        let t = std::thread::spawn(move || serve_one(theirs, &st, &sv));
+        write_request(&ours, req);
+        let a = answer_of(&ours);
+        drop(ours);
+        t.join().unwrap();
+        a
+    }
+
+    fn last_room_record(state: &State) -> String {
+        let r = state.room_records.lock().unwrap();
+        r.last().cloned().unwrap_or_default()
+    }
+
+    /// A handler that does nothing, set without SA_RESTART: a call it
+    /// interrupts ends with EINTR (as with the launcher's own handlers).
+    fn interrupting(sig: libc::c_int) {
+        extern "C" fn nothing(_: libc::c_int) {}
+        // SAFETY: a zeroed sigaction is valid; the handler is a plain
+        // function that does nothing; the old action is not asked for.
+        unsafe {
+            let mut sa: libc::sigaction = std::mem::zeroed();
+            sa.sa_sigaction = nothing as extern "C" fn(libc::c_int) as usize;
+            sa.sa_flags = 0;
+            libc::sigemptyset(&mut sa.sa_mask);
+            assert_eq!(libc::sigaction(sig, &sa, std::ptr::null_mut()), 0);
+        }
+    }
+
+    fn thread_id() -> libc::pid_t {
+        // SAFETY: gettid has no arguments and cannot fail.
+        unsafe { libc::syscall(libc::SYS_gettid) as libc::pid_t }
+    }
+
+    /// Sends `sig` to thread `tid` of this process; false when that thread
+    /// has already ended (the test then says what that means).
+    fn signal_thread(tid: libc::pid_t, sig: libc::c_int) -> bool {
+        // SAFETY: a signal to a thread of this process, by its id.
+        let r = unsafe { libc::syscall(libc::SYS_tgkill, libc::getpid(), tid, sig) };
+        if r != 0 {
+            let e = std::io::Error::last_os_error();
+            assert_eq!(e.raw_os_error(), Some(libc::ESRCH), "{e}");
+            return false;
+        }
+        true
+    }
+
+    /// Waits until thread `tid` of this process sleeps (blocked in a call);
+    /// false when that thread has already ended.
+    fn wait_until_blocked(tid: libc::pid_t) -> bool {
+        let end = Instant::now() + Duration::from_secs(10);
+        loop {
+            let Ok(stat) = std::fs::read_to_string(format!("/proc/self/task/{tid}/stat")) else {
+                return false;
+            };
+            let state = stat.rsplit_once(") ").and_then(|(_, r)| r.chars().next());
+            if state == Some('S') {
+                return true;
+            }
+            assert!(Instant::now() < end, "thread {tid} never blocked ({stat})");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// The start record keeps at most MAX_ROOM_RECORDS lines about rooms
+    /// and MAX_RECORDS refusals, in that order, and counts the rest: one
+    /// line more than fits is counted, never kept.
+    #[test]
+    fn the_start_record_keeps_its_room_lines_and_counts_the_rest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let service = service_in(tmp.path());
+        for i in 0..=MAX_ROOM_RECORDS {
+            service.state.record_room(format!("room {i}"));
+        }
+        for i in 0..=MAX_RECORDS {
+            service.state.record(format!("refusal {i}"));
+        }
+        let lines = service.stop();
+        let mut want: Vec<String> = (0..MAX_ROOM_RECORDS).map(|i| format!("room {i}")).collect();
+        want.push("sam-room: 1 more rooms not recorded".into());
+        want.extend((0..MAX_RECORDS).map(|i| format!("refusal {i}")));
+        want.push("sam-room: 1 more refusals not recorded".into());
+        assert_eq!(lines, want);
+    }
+
+    /// A stop with nothing left to wait for returns at once and adds no
+    /// line of its own to the start record (no "0 more …", no "0 requests
+    /// still unfinished").
+    #[test]
+    fn a_stop_with_nothing_left_is_quick_and_adds_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let service = service_in(tmp.path());
+        let started = Instant::now();
+        let lines = service.stop();
+        let took = started.elapsed();
+        assert!(lines.is_empty(), "{lines:?}");
+        assert!(took < Duration::from_secs(1), "the stop took {took:?}");
+    }
+
+    /// A request still not finished when the service stops is named in the
+    /// start record after the short wait, never lost.
+    #[test]
+    fn a_stop_names_requests_still_unfinished() {
+        let tmp = tempfile::tempdir().unwrap();
+        let service = service_in(tmp.path());
+        // One connection whose request never finishes.
+        service.state.connections.store(1, Ordering::SeqCst);
+        let lines = service.stop();
+        assert_eq!(
+            lines,
+            vec!["sam-room: 1 requests still unfinished when the app's start ended".to_string()]
+        );
+    }
+
+    /// The service's socket may have a path of 107 bytes, the most a Unix
+    /// socket's address holds (108 with its closing NUL byte); one byte
+    /// more is refused as too long.
+    #[test]
+    fn a_socket_path_of_the_longest_length_still_opens() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().as_os_str().len();
+        assert!(
+            base + "/d/rooms".len() < 107,
+            "the temporary folder's path is too long for this test: {}",
+            tmp.path().display()
+        );
+        for (len, too_long) in [(107, false), (108, true)] {
+            let dir = tmp.path().join("d".repeat(len - base - 1 - "/rooms".len()));
+            std::fs::create_dir(&dir).unwrap();
+            assert_eq!(dir.join("rooms").as_os_str().len(), len);
+            let r = RoomService::open(&dir);
+            let said = r
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.to_string().contains("too long"));
+            assert_eq!(said, too_long, "{len} bytes: {:?}", r.as_ref().err());
+            // Where this build has its room helper, it really listens.
+            if let Ok(service) = r {
+                assert!(UnixStream::connect(&service.socket).is_ok());
+            }
+        }
+    }
+
+    /// A service that is dropped without a stop ends like one: it stops
+    /// listening and its socket is gone.
+    #[test]
+    fn dropping_the_service_ends_it_like_a_stop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut service = service_in(tmp.path());
+        let socket = service.socket.clone();
+        service.serve_refusing(
+            context(tmp.path(), Path::new("/nonexistent"), &[]),
+            "no floor plan".into(),
+        );
+        assert!(UnixStream::connect(&socket).is_ok());
+        drop(service);
+        assert!(!socket.exists(), "the socket outlived its service");
+        assert!(UnixStream::connect(&socket).is_err());
+    }
+
+    /// A Bubblewrap that knows only one of the two options that show a
+    /// place by handle builds no room either.
+    #[test]
+    fn rooms_need_both_options_that_show_places_by_handle() {
+        let tmp = tempfile::tempdir().unwrap();
+        for (name, help, builds) in [
+            ("only-ro", "usage: bwrap\n    --ro-bind-fd FD DEST", false),
+            ("only-rw", "usage: bwrap\n    --bind-fd FD DEST", false),
+            (
+                "both",
+                "usage: bwrap\n    --bind-fd FD DEST\n    --ro-bind-fd FD DEST",
+                true,
+            ),
+        ] {
+            let p = tmp.path().join(name);
+            write_program(&p, &format!("cat <<'EOF'\n{help}\nEOF\n"));
+            assert_eq!(bwrap_builds_rooms(&p), builds, "{name}");
+        }
+    }
+
+    /// The start record says so when the launcher's descriptor limit leaves
+    /// rooms fewer than 64 descriptors (so most rooms are refused), and
+    /// only then: at 64 it says nothing, at 63 it does.
+    #[test]
+    fn a_descriptor_limit_leaving_rooms_fewer_than_64_is_recorded() {
+        in_own_process(
+            "a_descriptor_limit_leaving_rooms_fewer_than_64_is_recorded",
+            || {
+                let tmp = tempfile::tempdir().unwrap();
+                for (want, said) in [(64usize, false), (63, true)] {
+                    let dir = tmp.path().join(want.to_string());
+                    std::fs::create_dir(&dir).unwrap();
+                    let mut service = service_in(&dir);
+                    let ctx = context(&dir, Path::new("/nonexistent"), &[]);
+                    // A soft limit the budget is not capped at, then lowered
+                    // by what it leaves beyond `want`.
+                    // SAFETY: getrlimit and setrlimit read and write the
+                    // struct given.
+                    unsafe {
+                        let mut lim: libc::rlimit = std::mem::zeroed();
+                        assert_eq!(libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim), 0);
+                        lim.rlim_cur = lim.rlim_max.min(4096);
+                        assert_eq!(libc::setrlimit(libc::RLIMIT_NOFILE, &lim), 0);
+                        let left = fd_budget();
+                        assert!(left > want, "the hard limit is too low for this test");
+                        lim.rlim_cur -= (left - want) as libc::rlim_t;
+                        assert_eq!(libc::setrlimit(libc::RLIMIT_NOFILE, &lim), 0);
+                    }
+                    assert_eq!(fd_budget(), want);
+                    service.serve_refusing(ctx, "no floor plan".into());
+                    let lines = service.stop();
+                    let named = lines
+                        .iter()
+                        .any(|l| l.contains(&format!("leaves {want} for rooms")));
+                    assert_eq!(named, said, "{want}: {lines:?}");
+                }
+            },
+        );
+    }
+
+    /// An answer reaches the stand-in whole even when the send stops part
+    /// way (a signal while the connection is full) and when a signal
+    /// interrupts it before anything went: never cut short, never more,
+    /// never a part twice.
+    #[test]
+    fn a_long_answer_arrives_whole_through_partial_and_interrupted_sends() {
+        in_own_process(
+            "a_long_answer_arrives_whole_through_partial_and_interrupted_sends",
+            || {
+                interrupting(libc::SIGUSR1);
+                let len = 4 << 20;
+                // The answer, followed in memory by other bytes that must
+                // never be sent.
+                let pattern = |i: usize| (i % 251) as u8;
+                let buf: Vec<u8> = (0..2 * len)
+                    .map(|i| if i < len { pattern(i) } else { 0xEE })
+                    .collect();
+                let (a, mut b) = UnixStream::pair().unwrap();
+                let (tx, rx) = std::sync::mpsc::channel();
+                let sender = std::thread::spawn(move || {
+                    tx.send(thread_id()).unwrap();
+                    send_quietly(&a, &buf[..len]);
+                });
+                let tid = rx.recv().unwrap();
+                // The connection is full: the first signal ends the send
+                // part way, the second interrupts the next before anything
+                // went. A send that gave up early has ended its thread; the
+                // bytes that arrived below then show what went wrong.
+                for _ in 0..2 {
+                    std::thread::sleep(Duration::from_millis(200));
+                    if !wait_until_blocked(tid) || !signal_thread(tid, libc::SIGUSR1) {
+                        break;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(200));
+                let mut got = Vec::new();
+                let mut chunk = vec![0u8; 1 << 16];
+                while got.len() <= len {
+                    // Until the sender's end closes (once it is done).
+                    match b.read(&mut chunk) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => got.extend_from_slice(&chunk[..n]),
+                    }
+                }
+                drop(b);
+                sender.join().unwrap();
+                assert_eq!(got.len(), len, "bytes arrived");
+                assert!(
+                    got.iter().enumerate().all(|(i, x)| *x == pattern(i)),
+                    "the answer arrived changed"
+                );
+            },
+        );
+    }
+
+    /// An answer to a stand-in that has already gone gives up at once:
+    /// the service never keeps trying.
+    #[test]
+    fn an_answer_to_a_stand_in_that_left_returns_at_once() {
+        let (a, b) = UnixStream::pair().unwrap();
+        drop(b);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            send_quietly(&a, b"{\"exit\":0}");
+            let _ = tx.send(());
+        });
+        assert!(
+            rx.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "the send to a gone stand-in never returned"
+        );
+    }
+
+    /// A room may have exactly MAX_PLACES places: such a room passes the
+    /// place limit (here it is then refused for the descriptors, as none
+    /// are left for rooms), and only one more place is refused for their
+    /// number.
+    #[test]
+    fn a_room_of_exactly_the_most_places_is_not_refused_for_their_number() {
+        let tmp = tempfile::tempdir().unwrap();
+        let top = tmp.path().join("top");
+        std::fs::create_dir(&top).unwrap();
+        let t = top.to_str().unwrap();
+        for places in [MAX_PLACES, MAX_PLACES + 1] {
+            // The app sees `top`, and below it places shown from it.
+            let mut args = s(&["--ro-bind", t, t]);
+            for i in 1..places {
+                args.extend(s(&["--ro-bind", t, &format!("{t}/d{i}")]));
+            }
+            args.extend(s(&["--", "x"]));
+            let plan = FloorPlan::from_bwrap_args(&args).unwrap();
+            // Remembered, not held open: the test holds no 2000 descriptors.
+            let (plan, sources) = plan_at_start_with(plan, |_, _| true);
+            assert_eq!(plan.entries.len(), places);
+            let mut ctx = context(&top, Path::new("/nonexistent"), &[]);
+            ctx.plan = plan;
+            let served = Arc::new(Served {
+                ctx,
+                sources,
+                refuse_all: None,
+            });
+            let a = ask_directly(
+                &state_with_budget(0),
+                &served,
+                &request(&[&["--ro-bind", t, t]], &["/bin/true"]),
+            );
+            let e = a["error"].as_str().unwrap_or_default().to_string();
+            if places == MAX_PLACES {
+                assert!(
+                    e.contains("too many places held for rooms at once"),
+                    "{places}: {a}"
+                );
+            } else {
+                assert!(
+                    e.contains(&format!("too many places ({places}, at most {MAX_PLACES})")),
+                    "{places}: {a}"
+                );
+            }
+        }
+    }
+
+    /// A path the request names below a place and asks for with `-try` is
+    /// left out of the room when it is missing; missing without `-try`,
+    /// the room is refused, never built without it. A path that leads
+    /// through a link is refused as one, with `-try` too.
+    #[test]
+    fn a_room_leaves_out_only_missing_paths_asked_with_try_and_never_follows_a_link() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path().join("app");
+        std::fs::create_dir(&app).unwrap();
+        std::os::unix::fs::symlink("/etc", app.join("link")).unwrap();
+        let (bwrap, log) = fake_bwrap(tmp.path());
+        let state = state_with_budget(1000);
+        let served = served(context(&app, &bwrap, &[]));
+        let missing = app.join("missing");
+        let m = missing.to_str().unwrap();
+        let link = app.join("link");
+        let l = link.to_str().unwrap();
+        let exit7 = ["/bin/sh", "-c", "exit 7"];
+        let a = ask_directly(
+            &state,
+            &served,
+            &request(&[&["--ro-bind-try", m, m]], &exit7),
+        );
+        assert_eq!(a["exit"], 7, "a room without a missing -try path: {a}");
+        let args = std::fs::read_to_string(&log).unwrap();
+        assert!(!args.lines().any(|x| x == m), "{args}");
+        let a = ask_directly(&state, &served, &request(&[&["--ro-bind", m, m]], &exit7));
+        let e = a["error"].as_str().unwrap_or_default();
+        assert!(
+            e.contains("cannot be shown") && !e.contains("leads through a link"),
+            "a missing path without -try: {a}"
+        );
+        for op in ["--ro-bind", "--ro-bind-try"] {
+            let a = ask_directly(&state, &served, &request(&[&[op, l, l]], &exit7));
+            let e = a["error"].as_str().unwrap_or_default();
+            assert!(
+                e.contains("leads through a link"),
+                "{op} through a link: {a}"
+            );
+        }
+    }
+
+    /// A place asked for writable is writable in the room only where the
+    /// app can write (its Landlock rules); elsewhere it is read-only and
+    /// the start record says so. A place asked for read-only is not named.
+    #[test]
+    fn a_place_is_writable_in_a_room_only_where_the_app_can_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path().join("app");
+        let (w, r) = (app.join("w"), app.join("r"));
+        std::fs::create_dir_all(&w).unwrap();
+        std::fs::create_dir_all(&r).unwrap();
+        let (bwrap, log) = fake_bwrap(tmp.path());
+        let state = state_with_budget(1000);
+        let served = served(context(&app, &bwrap, std::slice::from_ref(&w)));
+        for (op, place, shown_as, named) in [
+            ("--bind", &w, "--bind-fd", false),
+            ("--bind", &r, "--ro-bind-fd", true),
+            ("--ro-bind", &r, "--ro-bind-fd", false),
+        ] {
+            let p = place.to_str().unwrap();
+            let a = ask_directly(
+                &state,
+                &served,
+                &request(&[&[op, p, p]], &["/bin/sh", "-c", "exit 7"]),
+            );
+            assert_eq!(a["exit"], 7, "{op} {p}: {a}");
+            let args: Vec<String> = std::fs::read_to_string(&log)
+                .unwrap()
+                .lines()
+                .map(str::to_string)
+                .collect();
+            let at = args.iter().position(|x| x == p).unwrap();
+            assert_eq!(args[at - 2], shown_as, "{op} {p}: {args:?}");
+            let record = last_room_record(&state);
+            assert_eq!(
+                record.contains(&format!("{p}: not writable for the app")),
+                named,
+                "{op} {p}: {record}"
+            );
+        }
+    }
+
+    /// Rooms one after another each give their slot back: more rooms than
+    /// may run at once are all built, one by one.
+    #[test]
+    fn rooms_one_after_another_never_run_out_of_slots() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (bwrap, _) = fake_bwrap(tmp.path());
+        let mut service = service_in(tmp.path());
+        service.serve(context(tmp.path(), &bwrap, &[]));
+        for k in 0..=MAX_ROOMS {
+            let a = ask_service(&service.socket, &request(&[], &["/bin/sh", "-c", "exit 7"]));
+            assert_eq!(a["exit"], 7, "room {k}: {a}");
+        }
+        let lines = service.stop();
+        let built = lines
+            .iter()
+            .filter(|l| l.starts_with("sam-room: built sh"))
+            .count();
+        assert_eq!(built, MAX_ROOMS + 1, "{lines:?}");
+    }
+
+    /// Every room still running ends with the app's start, also after
+    /// other rooms ended before it: one whose layers were never confirmed,
+    /// one whose program ended.
+    #[test]
+    fn every_room_ends_with_the_start_whatever_other_rooms_did_before() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (bwrap, _) = fake_bwrap(tmp.path());
+        let mut service = service_in(tmp.path());
+        service.serve(context(tmp.path(), &bwrap, &[]));
+        let long = UnixStream::connect(&service.socket).unwrap();
+        write_request(&long, &request(&[], &["/bin/sleep", "60"]));
+        let end = Instant::now() + Duration::from_secs(10);
+        while !last_room_record(&service.state).starts_with("sam-room: built sleep") {
+            assert!(Instant::now() < end, "the long room was never built");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let a = ask_service(&service.socket, &request(&[], &["unconfirmed"]));
+        assert_eq!(a["exit"], 3, "{a}");
+        assert!(
+            last_room_record(&service.state).contains("layers were not confirmed"),
+            "{}",
+            last_room_record(&service.state)
+        );
+        let a = ask_service(&service.socket, &request(&[], &["/bin/sh", "-c", "exit 0"]));
+        assert_eq!(a["exit"], 0, "{a}");
+        let lines = service.stop();
+        let a = answer_of(&long);
+        assert_eq!(a["exit"], 128 + libc::SIGKILL, "the long room: {a}");
+        assert!(
+            !lines.iter().any(|l| l.contains("still unfinished")),
+            "{lines:?}"
+        );
+    }
+
+    /// A signal that interrupts the room's watcher (the launcher handles
+    /// terminal resizes, say) is not its stand-in leaving: the room runs
+    /// on to its own end.
+    #[test]
+    fn a_signal_to_the_rooms_watcher_never_ends_the_room() {
+        in_own_process("a_signal_to_the_rooms_watcher_never_ends_the_room", || {
+            interrupting(libc::SIGUSR1);
+            let tmp = tempfile::tempdir().unwrap();
+            let (bwrap, _) = fake_bwrap(tmp.path());
+            let state = state_with_budget(1000);
+            let served = served(context(tmp.path(), &bwrap, &[]));
+            let go = tmp.path().join("go");
+            let cmd = format!(
+                "while [ ! -e '{}' ]; do sleep 0.05; done; exit 5",
+                go.display()
+            );
+            let (ours, theirs) = UnixStream::pair().unwrap();
+            let (st, sv) = (state.clone(), served.clone());
+            let t = std::thread::spawn(move || serve_one(theirs, &st, &sv));
+            write_request(&ours, &request(&[], &["/bin/sh", "-c", &cmd]));
+            // The room's watcher, once it waits on the connection.
+            let end = Instant::now() + Duration::from_secs(10);
+            let tid = loop {
+                let found = std::fs::read_dir("/proc/self/task")
+                    .unwrap()
+                    .flatten()
+                    .find(|e| {
+                        std::fs::read_to_string(e.path().join("comm"))
+                            .is_ok_and(|c| c.trim() == "sam-room-watch")
+                    })
+                    .and_then(|e| e.file_name().to_str()?.parse::<libc::pid_t>().ok());
+                if let Some(tid) = found {
+                    break tid;
+                }
+                assert!(Instant::now() < end, "no watcher for the room");
+                std::thread::sleep(Duration::from_millis(10));
+            };
+            let waited = wait_until_blocked(tid);
+            let mut reached = 0;
+            for _ in 0..3 {
+                if signal_thread(tid, libc::SIGUSR1) {
+                    reached += 1;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            std::fs::write(&go, "").unwrap();
+            let a = answer_of(&ours);
+            drop(ours);
+            t.join().unwrap();
+            assert_eq!(a["exit"], 5, "the room after a signal to its watcher: {a}");
+            // The watcher was still waiting for every signal.
+            assert!(waited && reached == 3, "the watcher ended early");
+        });
+    }
+}
