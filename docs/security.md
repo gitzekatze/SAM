@@ -961,7 +961,10 @@ window's list of permissions fails to load.
 partly chosen from what the app says about itself (its name and
 description decide its category, and with that for example the network),
 so an app added on the command line without `--accept` starts only after
-`sam-jail review APP` or confirming its settings in the window.
+`sam-jail review APP` or confirming its settings in the window. The check
+before adding (`sam-jail verify FILE`) is not held back by this: it runs
+only SAM's stand-in and test program with the settings shown, never the
+app's own code (`verify_checks_an_appimage_without_a_sandbox`).
 
 For scripts, the JSON output still has a weighted score (`risk.score`, at
 most 100). The window does not show it, because a number next to the level
