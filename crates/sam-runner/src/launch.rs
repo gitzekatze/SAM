@@ -55,6 +55,9 @@ pub const STOP_MARKER: &str = "stop-requested";
 /// started (Bubblewrap, or pasta with "This computer only"). `Sam::stop`
 /// asks only the processes below it to quit (`ops::ask_to_quit`).
 pub const SANDBOX_PID: &str = "sandbox-pid";
+/// In SAM's data folder: what an app left in places that make the computer
+/// run something, moved aside (one folder per app and start).
+const MOVED_ASIDE: &str = "moved-aside";
 
 pub struct Prepared {
     pub sandbox: SandboxInfo,
@@ -434,6 +437,17 @@ pub fn prepare(
         sam_programs: sam_core::util::own_programs(),
         room_socket: None,
     };
+    // The folders that hold apps' data are for this user only, also when
+    // an older SAM made them readable for everyone (review F4).
+    for d in [
+        paths.homes_dir(),
+        paths.overlays_dir(),
+        paths.data_dir.join(MOVED_ASIDE),
+    ] {
+        if d.is_dir() {
+            let _ = sam_core::util::private_dirs(&paths.data_dir, &d);
+        }
+    }
     if perms.advanced.writable_appdir && !sam_core::host::bwrap_supports_overlay() {
         warnings.push(Warning::warn(
             "writable-appdir-unavailable",
@@ -453,13 +467,16 @@ pub fn prepare(
         ));
     } else if perms.advanced.writable_appdir {
         let base = paths.overlays_dir().join(&app.id);
+        // Its own layers inside stay as made: the upper one is the app
+        // folder's top as the app sees it.
+        sam_core::util::private_dirs(&paths.data_dir, &base)?;
         fs::create_dir_all(base.join("upper"))?;
         fs::create_dir_all(base.join("work"))?;
         ctx.appdir_overlay = Some(base);
     }
 
     if perms.advanced.persistent_home {
-        fs::create_dir_all(&ctx.private_home).with_context(|| {
+        sam_core::util::private_dirs(&paths.data_dir, &ctx.private_home).with_context(|| {
             sam_core::i18n::trf(
                 "creating the private home {folder}",
                 &[("folder", &ctx.private_home.display())],
@@ -489,6 +506,10 @@ pub fn prepare(
         // over what the running ones saw at their start and keeps its own
         // record on disk (`home_shared`, review 2026-11-23 F1 and F2).
         let shared = if sam_sandbox::writes_start_places(&ctx) {
+            // What is moved aside comes from the person's home: for them
+            // only (review F4).
+            let _ =
+                sam_core::util::private_dirs(&paths.data_dir, &paths.data_dir.join(MOVED_ASIDE));
             Some(crate::home_shared::Shared::open(paths)?)
         } else {
             None
