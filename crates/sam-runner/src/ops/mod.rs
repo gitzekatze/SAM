@@ -137,6 +137,9 @@ pub struct PresetApply {
     pub preset: String,
     pub check: ChangeCheck,
     pub applied: bool,
+    /// The fingerprint of the preset's permissions as checked; passed back
+    /// with `--expect`, only these are applied.
+    pub fingerprint: String,
 }
 
 /// A sandboxed app as the Permissions page shows it.

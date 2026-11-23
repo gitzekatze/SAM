@@ -219,6 +219,14 @@ pub fn risk_tone(level: &str) -> &'static str {
 
 use gtk::prelude::*;
 
+/// An address the window may hand to the browser: only an https page.
+/// Another scheme could open a local file or start a program through its
+/// handler (audit G-F12/13: the release page of SAM's own update was
+/// opened unchecked, while the app-update link was checked).
+pub fn web_page(address: &str) -> Option<&str> {
+    Some(address).filter(|p| p.starts_with("https://"))
+}
+
 /// Replaces a badge's text and tone in place.
 pub fn set_badge(l: &gtk::Label, text: &str, tone: &str) {
     for t in ["good", "warn", "bad", "danger", "neutral", "accent", "blue"] {

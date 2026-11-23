@@ -148,6 +148,7 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "missing_display_and_sound_are_named_only_when_the_app_would_miss_them",
   "missing_sound_names_pipewire_pulse_when_pipewire_runs",
   "every_grant_the_risk_words_question_is_warned_about",
+  "turning_a_protection_off_for_every_app_asks_first",
 ]
 
 [[function]]
@@ -166,6 +167,8 @@ tests = ["set_and_get_keys", "an_empty_list_left_out_of_the_saved_form_takes_com
   "every_setting_can_be_set_by_name_also_while_left_out",
   "an_imported_preset_never_replaces_one_of_the_same_name",
   "set_shows_the_warnings_about_the_changed_setting",
+  "an_apps_own_name_never_captures_a_reference_to_another_app",
+  "a_preset_changed_after_the_question_is_not_applied",
 ]
 checks = ["tests/gui/permissions-atspi.sh"]
 
@@ -708,6 +711,7 @@ promise = "SAM notices app settings that something else changed and asks before 
 code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs"]
 tests = ["records_changed_outside_sam_are_recognized", "an_app_changed_outside_sam_starts_only_after_confirmation", "a_changed_record_stays_blocked_until_it_is_confirmed", "a_late_save_keeps_a_change_made_meanwhile",
   "add_reminds_to_confirm_unconfirmed_settings",
+  "confirming_changed_settings_names_what_they_allow",
 ]
 
 [[function]]
@@ -758,6 +762,7 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "going_back_puts_the_earlier_version_only_into_the_apps_folder",
   "declining_an_update_deletes_the_download_that_waited",
   "a_download_never_answered_is_deleted_after_a_week",
+  "only_an_https_release_page_is_opened",
 ]
 
 [[function]]
@@ -857,6 +862,7 @@ tests = [
   "every_isolation_verdict_says_why",
   "list_filters_and_sorts_the_apps",
   "a_name_an_app_chose_cannot_take_over_another_apps_query",
+  "the_header_is_not_green_while_a_protection_layer_was_missing",
 ]
 checks = ["tests/gui/session.sh"]
 
@@ -884,6 +890,7 @@ tests = [
   "only_a_folder_with_a_compiled_catalogue_holds_translations",
   "a_value_is_never_filled_in_again",
   "only_a_program_cargo_built_reads_a_checkouts_translations",
+  "every_text_the_window_builds_is_translated",
 ]
 checks = ["tests/gui/flow-atspi.sh", "scripts/i18n.py"]
 

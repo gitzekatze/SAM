@@ -80,6 +80,113 @@ pub fn chosen_language_name(code: &str) -> Option<&'static str> {
 mod tests {
     use super::language_env;
 
+    /// Text the window builds itself, outside tr/trf/trn: every `format!`
+    /// and every `"…".into()` / `.to_string()` with words in it, in the
+    /// window's code (not its tests). Technical strings (style classes,
+    /// keys, paths, markup) have no words left once placeholders, tags and
+    /// options are taken out; the few that do are listed.
+    fn untranslated(src: &str) -> Vec<String> {
+        const TECHNICAL: [&str; 4] = [
+            "[Desktop Entry]",
+            "max-width: {}px",
+            "{} \\\"{}\\\" [page {page}]",
+            "list row",
+        ];
+        let code = src.split("#[cfg(test)]").next().unwrap_or_default();
+        let mut found = Vec::new();
+        let mut check = |lit: &str| {
+            if !lit.chars().any(char::is_whitespace) || TECHNICAL.iter().any(|t| lit.starts_with(t))
+            {
+                return;
+            }
+            let mut words = String::new();
+            let mut depth = (0, 0);
+            let mut chars = lit.chars().peekable();
+            while let Some(c) = chars.next() {
+                match c {
+                    '{' => depth.0 += 1,
+                    '}' => depth.0 -= 1,
+                    '<' => depth.1 += 1,
+                    '>' => depth.1 -= 1,
+                    '-' if chars.peek() == Some(&'-') => {
+                        while chars.peek().is_some_and(|c| !c.is_whitespace()) {
+                            chars.next();
+                        }
+                    }
+                    _ if depth == (0, 0) => words.push(c),
+                    _ => {}
+                }
+            }
+            let mut run = 0;
+            for c in words.chars() {
+                run = if c.is_ascii_alphabetic() { run + 1 } else { 0 };
+                if run >= 3 {
+                    found.push(lit.to_string());
+                    return;
+                }
+            }
+        };
+        // `format!("…"`
+        for (i, _) in code.match_indices("format!(") {
+            let rest = code[i + 8..].trim_start();
+            if let Some(body) = rest.strip_prefix('"') {
+                let mut end = 0;
+                let b = body.as_bytes();
+                while end < b.len() && (b[end] != b'"' || (end > 0 && b[end - 1] == b'\\')) {
+                    end += 1;
+                }
+                check(&body[..end]);
+            }
+        }
+        // `"…".into()` and the like
+        for tail in ["\".into()", "\".to_string()", "\".to_owned()"] {
+            for (i, _) in code.match_indices(tail) {
+                let b = code.as_bytes();
+                let mut start = i;
+                while start > 0 && (b[start - 1] != b'"' || (start > 1 && b[start - 2] == b'\\')) {
+                    start -= 1;
+                }
+                check(&code[start..i]);
+            }
+        }
+        found
+    }
+
+    /// Every text the window shows goes through the translations (audit
+    /// part 5: "1 app selected", "{n} apps selected" and the Permission
+    /// Manager's switch names stayed English in every language).
+    #[test]
+    fn every_text_the_window_builds_is_translated() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = vec![dir.clone()];
+        let mut bad = Vec::new();
+        while let Some(d) = files.pop() {
+            for e in std::fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    files.push(p);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    for t in untranslated(&std::fs::read_to_string(&p).unwrap()) {
+                        bad.push(format!("{}: {t}", p.display()));
+                    }
+                }
+            }
+        }
+        assert!(bad.is_empty(), "not translated: {bad:#?}");
+        // The scan sees the kinds it looks for.
+        assert_eq!(
+            untranslated(
+                "let a = format!(\"{n} apps selected\"); let b = \"1 app selected\".into();"
+            )
+            .len(),
+            2
+        );
+        assert!(
+            untranslated("format!(\"sam-badge-{t}\"); format!(\"{} --app-id {}\", a, b);")
+                .is_empty()
+        );
+    }
+
     fn s(v: &str) -> Option<String> {
         Some(v.to_string())
     }

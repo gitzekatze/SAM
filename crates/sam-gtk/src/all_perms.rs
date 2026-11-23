@@ -828,8 +828,7 @@ impl PermsPage {
         self.select_all.set_sensitive(!shown.is_empty());
         self.count.set_label(&match sel.len() {
             0 => String::new(),
-            1 => "1 app selected".into(),
-            n => format!("{n} apps selected"),
+            n => crate::i18n::trn("{n} app selected", "{n} apps selected", n as u64, &[]),
         });
         self.updating.set(false);
         self.render_side();
@@ -1076,8 +1075,12 @@ impl PermsPage {
             _ if n == total => {
                 crate::i18n::trf("{ptitle} for all selected apps", &[("ptitle", &ptitle)])
             }
-            1 => format!("{ptitle} for 1 app"),
-            _ => format!("{ptitle} for {n} apps"),
+            _ => crate::i18n::trn(
+                "{ptitle} for {n} app",
+                "{ptitle} for {n} apps",
+                n as u64,
+                &[("ptitle", &ptitle)],
+            ),
         };
         row.add_suffix(&self.control(key, opts, tok, ids, &what));
         // The apps' icons follow the name (the row puts later suffixes in
@@ -1092,7 +1095,7 @@ impl PermsPage {
                 opts,
                 tok,
                 vec![util::str_of(a, "id").to_string()],
-                &format!("{ptitle} for {name}"),
+                &crate::i18n::trf("{ptitle} for {app}", &[("ptitle", &ptitle), ("app", &name)]),
             ));
             row.add_row(&r);
         }
@@ -1326,17 +1329,28 @@ impl PermsPage {
                             .map(|i| i.title.clone())
                             .unwrap_or_else(|| key.to_string());
                         let text = if n == 1 {
-                            format!(
-                                "{title}: {} for {}",
-                                opt_label(opts, tok),
-                                previous
-                                    .as_object()
-                                    .and_then(|o| o.keys().next())
-                                    .map(|k| me.name_of(k))
-                                    .unwrap_or_default()
+                            crate::i18n::trf(
+                                "{title}: {value} for {app}",
+                                &[
+                                    ("title", &title),
+                                    ("value", &opt_label(opts, tok)),
+                                    (
+                                        "app",
+                                        &previous
+                                            .as_object()
+                                            .and_then(|o| o.keys().next())
+                                            .map(|k| me.name_of(k))
+                                            .unwrap_or_default(),
+                                    ),
+                                ],
                             )
                         } else {
-                            format!("{title}: {} for {n} apps", opt_label(opts, tok))
+                            crate::i18n::trn(
+                                "{title}: {value} for {n} app",
+                                "{title}: {value} for {n} apps",
+                                n as u64,
+                                &[("title", &title), ("value", &opt_label(opts, tok))],
+                            )
                         };
                         me.toast_undo(&text, previous);
                     }

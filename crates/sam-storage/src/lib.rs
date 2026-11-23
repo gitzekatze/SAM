@@ -168,14 +168,17 @@ impl Registry {
         valid_id(id) && self.paths.app_file(id).exists()
     }
 
-    /// Resolve a user-supplied reference: exact id, then the apps the query
-    /// names exactly (their name, the start of their id, or the words their
-    /// id begins with), then a slug or name that merely starts or contains
-    /// it. Among several exact matches, one whose name is the query wins
-    /// only if it was added before the others: the name is chosen by the
-    /// AppImage itself, and one added later and calling itself "firefox"
-    /// would otherwise be started for `run firefox` in place of "Firefox
-    /// Web Browser" (audit U-L7). Otherwise the query is ambiguous.
+    /// Resolve a user-supplied reference: the exact id, or the one app
+    /// that the reference names by any rule: an id prefix, its name slug,
+    /// its name (case-insensitive) or a part of its name. The rules count
+    /// together, never one before the other: an AppImage chooses its own
+    /// name, so an app named `vlc` must not capture a command meant for
+    /// "VLC media player", which `vlc` names too (audit G-F7). Of several
+    /// apps named, one whose name is exactly the reference wins only if it
+    /// was added before all the others: a name that was there first keeps
+    /// its meaning when "Foo Pro" comes after "Foo", and an app added later
+    /// can never take a reference over (audit U-L7). Otherwise the
+    /// reference names more than one app and is refused.
     pub fn resolve(&self, query: &str) -> Result<AppEntry> {
         if let Some(a) = self.get(query)? {
             return Ok(a);
@@ -183,45 +186,54 @@ impl Registry {
         let all = self.list()?;
         let q = query.to_lowercase();
         let qslug = slugify(query);
-        let named = |a: &AppEntry| a.name.to_lowercase() == q;
-        let tiers: [&dyn Fn(&AppEntry) -> bool; 3] = [
-            &|a| {
-                named(a)
-                    || a.id.starts_with(&q)
-                    || (!qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}-")))
-            },
-            &|a| !qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")),
-            &|a| a.name.to_lowercase().contains(&q),
-        ];
-        for tier in tiers {
-            let m: Vec<&AppEntry> = all.iter().filter(|a| tier(a)).collect();
-            let by_name: Vec<&&AppEntry> = m.iter().filter(|a| named(a)).collect();
-            if let [first] = by_name[..] {
-                if m.iter()
-                    .all(|a| a.id == first.id || a.added_at > first.added_at)
-                {
-                    return Ok((*first).clone());
-                }
-            }
-            match m.len() {
-                0 => continue,
-                1 => return Ok(m[0].clone()),
-                _ => bail!(
-                    "'{query}' is ambiguous: {}",
-                    m.iter()
-                        .map(|a| a.id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
+        let m: Vec<&AppEntry> = all
+            .iter()
+            .filter(|a| {
+                let name = a.name.to_lowercase();
+                a.id.starts_with(&q)
+                    || (!qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")))
+                    || name.contains(&q)
+            })
+            .collect();
+        // Of several, the app named exactly so, if it came before all the
+        // others (equal times, as in records from before `added_at`, do
+        // not count as before).
+        if let [named] = m
+            .iter()
+            .filter(|a| a.name.to_lowercase() == q)
+            .collect::<Vec<_>>()[..]
+        {
+            if m.iter().all(|a| a.id == named.id || a.added_at > named.added_at) {
+                return Ok((*named).clone());
             }
         }
-        bail!(
-            "{}",
-            sam_core::i18n::trf(
-                "no registered app matches '{query}' (see `sam-jail list`)",
-                &[("query", &query)]
-            )
-        )
+        match m.as_slice() {
+            [one] => Ok((*one).clone()),
+            [] => bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "no registered app matches '{query}' (see `sam-jail list`)",
+                    &[("query", &query)]
+                )
+            ),
+            many => bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "'{query}' names more than one app: {apps}. Use the app's ID.",
+                    &[
+                        ("query", &query),
+                        (
+                            "apps",
+                            &many
+                                .iter()
+                                .map(|a| format!("{} ({})", a.id, a.name))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    ]
+                )
+            ),
+        }
     }
 
     pub fn save(&self, entry: &mut AppEntry) -> Result<()> {
@@ -279,6 +291,15 @@ pub fn integrity_of(e: &AppEntry) -> Result<String> {
         o.remove("integrity");
     }
     let digest = Sha256::digest(serde_json::to_vec(&v)?);
+    Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// A fingerprint of a set of permissions (SHA-256 over its saved form):
+/// what a question was asked about, so that only that is applied after the
+/// answer (`preset apply --expect`).
+pub fn fingerprint(p: &PermissionSet) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(serde_json::to_vec(p)?);
     Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -1015,7 +1036,7 @@ mod tests {
         };
         reg.save(&mut other).unwrap();
         let e = reg.resolve("firefox").unwrap_err().to_string();
-        assert!(e.contains("ambiguous"), "{e}");
+        assert!(e.contains(&real.id) && e.contains(&other.id), "{e}");
         assert_eq!(reg.resolve("Firefox Web Browser").unwrap().id, real.id);
         assert_eq!(reg.resolve(&other.id).unwrap().id, other.id);
 
@@ -1036,6 +1057,45 @@ mod tests {
         reg.save(&mut pro).unwrap();
         assert_eq!(reg.resolve("foo").unwrap().id, foo.id);
         assert_eq!(reg.resolve("foo pro").unwrap().id, pro.id);
+    }
+
+    /// An AppImage chooses its own name: an app named `vlc` does not
+    /// capture a command meant for "VLC media player", which `vlc` also
+    /// names; the reference is refused as naming more than one app, and
+    /// each app is still found by its ID or a reference only it matches
+    /// (audit G-F7: the exact name won, so `sam-jail set vlc network.mode
+    /// full` changed the hostile app without a word).
+    #[test]
+    fn an_apps_own_name_never_captures_a_reference_to_another_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let reg = Registry::new(&Paths::rooted(tmp.path()));
+        let mut real = AppEntry {
+            id: "appimage-vlc-media-player-9f3c".into(),
+            name: "VLC media player".into(),
+            ..Default::default()
+        };
+        reg.save(&mut real).unwrap();
+        // Before the hostile app arrives, `vlc` names the real one.
+        assert_eq!(reg.resolve("vlc").unwrap().id, real.id);
+        let mut hostile = AppEntry {
+            id: "appimage-vlc-1234".into(),
+            name: "vlc".into(),
+            ..Default::default()
+        };
+        reg.save(&mut hostile).unwrap();
+        let err = reg.resolve("vlc").unwrap_err().to_string();
+        assert!(
+            err.contains(&real.id) && err.contains(&hostile.id),
+            "not refused as naming both: {err}"
+        );
+        // A name the hostile app copies from part of the real one is
+        // refused too ("media" names both).
+        hostile.name = "media".into();
+        reg.save(&mut hostile).unwrap();
+        assert!(reg.resolve("media").is_err());
+        assert_eq!(reg.resolve("vlc media player").unwrap().id, real.id);
+        assert_eq!(reg.resolve(&real.id).unwrap().id, real.id);
+        assert_eq!(reg.resolve("appimage-vlc-1").unwrap().id, hostile.id);
     }
 
     /// A damaged preset is moved aside once; a preset from a newer SAM is

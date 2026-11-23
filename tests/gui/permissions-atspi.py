@@ -42,7 +42,10 @@ def walk(node, out):
         return out
     out.append(node)
     for i in range(n):
-        c = node.get_child_at_index(i)
+        try:
+            c = node.get_child_at_index(i)
+        except Exception:  # noqa: S112 -- a child that vanished while walking; one not found fails the check
+            continue
         if c is not None:
             walk(c, out)
     return out
@@ -77,6 +80,38 @@ app = find_app()
 check("window reachable through AT-SPI", app is not None)
 if not app:
     sys.exit(1)
+if sys.argv[1:] == ["single"]:
+    # The one-app editor after a save that failed shows the stored
+    # settings, not the switch as it was flipped (audit G-F3).
+    sw = wait(lambda: by_name(app, lambda s: s == "Printing", "switch"), 20)
+    check("the one-app editor has the printing switch, off", sw is not None
+          and not sw.get_state_set().contains(Atspi.StateType.CHECKED))
+    if sw:
+        apps = os.path.join(os.environ["SAM_DATA_DIR"], "apps")
+        os.chmod(apps, 0o555)
+        try:
+            # The window reports the refused write, then shows the stored
+            # settings again once they are read back. A press before the
+            # editor has loaded the app's settings saves nothing and the
+            # switch shows off again: then it is pressed again.
+            def refused():
+                for _ in range(4):
+                    node = wait(lambda: by_name(app, lambda s: s == "Printing", "switch"), 20)
+                    if node is not None and not node.get_state_set().contains(Atspi.StateType.CHECKED):
+                        press(node)
+                    if wait(lambda: by_name(app, lambda s: "os error 13" in s), 5):
+                        return True
+                return False
+            check("…the save fails and the window says so", refused())
+            check("…a failed save leaves the app without printing", perms()["Browser"]["permissions"]["sockets"]["cups"] is False)
+            def shown_off():
+                again = by_name(app, lambda s: s == "Printing", "switch")
+                return again is not None and not again.get_state_set().contains(Atspi.StateType.CHECKED)
+            check("…and the editor shows it off", wait(shown_off, 20) is True)
+        finally:
+            os.chmod(apps, 0o755)
+    print("RESULT", "pass" if ok else "fail")
+    sys.exit(0 if ok else 1)
 wait(lambda: by_name(app, lambda s: s.startswith("Select Browser")), 20)
 before = perms()
 for name in ["Browser", "Player", "Editor"]:

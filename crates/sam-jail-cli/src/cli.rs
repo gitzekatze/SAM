@@ -399,6 +399,10 @@ pub(crate) enum PresetCmd {
         app: String,
         #[arg(long, short)]
         yes: bool,
+        /// Apply only if the preset is still the one checked: the
+        /// `fingerprint` of an earlier `preset apply` reply.
+        #[arg(long)]
+        expect: Option<String>,
     },
     /// Print a starting point for a new preset (SAM's strictest settings).
     Template,

@@ -173,7 +173,7 @@ fn sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user() {
     PresetStore::new(&sam.paths).save(&mut p).unwrap();
     // Applying it to the browser asks first: it removes the network.
     let r = sam
-        .apply_preset(&ids[0], "untrusted utility", false)
+        .apply_preset(&ids[0], "untrusted utility", false, None)
         .unwrap();
     assert!(!r.applied && r.check.removes_needed.iter().any(|s| s == "network access"));
     assert_ne!(
@@ -182,10 +182,52 @@ fn sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user() {
         "nothing applied without confirmation"
     );
     assert!(
-        sam.apply_preset(&ids[0], "Untrusted Utility", true)
+        sam.apply_preset(&ids[0], "Untrusted Utility", true, None)
             .unwrap()
             .applied
     );
+    assert_eq!(perms(&sam, &ids[0]).network.mode, NetworkMode::None);
+}
+
+/// The window asks about a preset, then applies it by name: a preset
+/// changed while the question was open is refused, and only the preset as
+/// it was asked about is applied (audit G-F12/13: the changed one was
+/// applied unseen).
+#[test]
+fn a_preset_changed_after_the_question_is_not_applied() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, ids) = three_apps(tmp.path());
+    let mut offline = PermissionSet::strict_gui();
+    offline.network.mode = NetworkMode::None;
+    let mut p = Preset {
+        name: "Offline".into(),
+        permissions: offline,
+        ..Default::default()
+    };
+    let store = PresetStore::new(&sam.paths);
+    store.save(&mut p).unwrap();
+    let asked = sam.apply_preset(&ids[0], "Offline", false, None).unwrap();
+    assert!(!asked.applied, "it asks first: it removes the network");
+    // While the question is open, something rewrites the preset.
+    let mut changed = p.clone();
+    changed.permissions.filesystem.home = true;
+    changed.permissions.filesystem.home_access = Access::Rw;
+    store.save(&mut changed).unwrap();
+    let before = perms(&sam, &ids[0]);
+    let err = sam
+        .apply_preset(&ids[0], "Offline", true, Some(&asked.fingerprint))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("changed after it was checked"), "{err}");
+    assert_eq!(perms(&sam, &ids[0]), before, "nothing applied");
+    // The preset as asked about again is applied.
+    store.save(&mut p).unwrap();
+    assert!(
+        sam.apply_preset(&ids[0], "Offline", true, Some(&asked.fingerprint))
+            .unwrap()
+            .applied
+    );
+    assert!(!perms(&sam, &ids[0]).filesystem.home);
     assert_eq!(perms(&sam, &ids[0]).network.mode, NetworkMode::None);
 }
 
