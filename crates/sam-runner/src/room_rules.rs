@@ -2487,7 +2487,10 @@ mod tests {
                 .no_network
         );
         for never in ["--not-a-security-boundary", "--help"] {
-            assert!(fp(&[never, "--", "x"]).is_err(), "{never}");
+            assert_eq!(
+                fp(&[never, "--", "x"]).unwrap_err(),
+                format!("SAM's own sandbox command has {never}, unknown to Room service")
+            );
         }
     }
 
@@ -2545,13 +2548,18 @@ mod tests {
         let p = FloorPlan::from_bwrap_args(&s(&["--bind", "/data/w", "/w", "--", "x"])).unwrap();
         let ask = |ops: &[&[&str]]| plan_room(&p, &req(ops, &["x"]), AppFacts::default());
         assert!(ask(&[&["--tmpfs", "/w"], &["--bind", "/w", "/w"]]).is_ok());
+        // Refused for the mode change itself (another rule's message also
+        // speaks of "a place the app can write", so the whole text counts).
         let e = ask(&[
             &["--tmpfs", "/w"],
             &["--chmod", "0755", "/w/c"],
             &["--bind", "/w", "/w"],
         ])
         .unwrap_err();
-        assert!(e.contains("a place the app can write"), "{e}");
+        assert_eq!(
+            e,
+            "/w/c lies inside /w, a place the app can write: a room shows such a place only as a whole"
+        );
     }
 
     /// Only a place asked for writable and given read-only is recorded as
