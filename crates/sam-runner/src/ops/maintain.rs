@@ -213,12 +213,15 @@ impl Sam {
     /// not stop the removal (e.g. a hidden menu entry that could not be put back).
     /// Launches of this app that are running now. Each launch keeps
     /// `<runtime>/l<pid>-<n>/running.lock` locked while it runs;
-    /// folders left by a killed runner are removed here.
+    /// folders left by a killed runner are removed here, and what its app
+    /// left in start places is moved aside first (review 2026-11-23 F2:
+    /// the runner's own last look never came).
     pub fn running(&self, id: &str) -> Vec<u32> {
         let mut pids = Vec::new();
         let Ok(rd) = fs::read_dir(self.paths.runtime_dir(id)) else {
             return pids;
         };
+        let mut killed = false;
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
             let Some(pid) = crate::launch::launch_dir_pid(&name) else {
@@ -230,15 +233,22 @@ impl Sam {
             } else if lock.exists() && !Path::new(&format!("/proc/{pid}")).exists() {
                 // The runner was killed before it could clean up.
                 let _ = fs::remove_dir_all(e.path());
+                killed = true;
             }
+        }
+        if killed {
+            crate::home_shared::settle_left_behind(&self.paths);
         }
         pids
     }
 
     /// Closes every running launch of this app. The app's own processes get
     /// SIGTERM first, so it can save and quit like on logout; launches still
-    /// running after 10 seconds are ended by stopping their runner (Bubblewrap
-    /// then takes the whole sandbox down). Returns how many launches ran.
+    /// running after 10 seconds are ended by stopping their runner, which
+    /// ends the sandbox at once (its grace time is over) and then finishes
+    /// the launch: the last look at the start places, the record, the log.
+    /// Only a runner that is still there 15 seconds later is killed.
+    /// Returns how many launches ran.
     pub fn stop(&self, query: &str) -> Result<usize> {
         let entry = self.resolve(query)?;
         // Only processes that really hold their launch's lock open: a process
@@ -250,9 +260,13 @@ impl Sam {
                 if crate::launch::launch_dir_pid(&e.file_name().to_string_lossy()) == Some(p)
                     && holds_open(p, &e.path().join("running.lock"))
                 {
-                    // So the launch is recorded as closed, not as a failed start.
+                    let sandbox = fs::read_to_string(e.path().join(crate::launch::SANDBOX_PID))
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok());
+                    // So the launch is recorded as closed, not as a failed
+                    // start; its time tells the runner when the app was asked.
                     let _ = fs::write(e.path().join(crate::launch::STOP_MARKER), b"");
-                    runners.push(p);
+                    runners.push((p, sandbox));
                     break;
                 }
             }
@@ -264,8 +278,12 @@ impl Sam {
         let signal = |pid: u32, sig: i32| unsafe {
             libc::kill(pid as libc::pid_t, sig);
         };
-        for &r in &runners {
-            super::ask_to_quit(r);
+        for &(r, sandbox) in &runners {
+            match sandbox {
+                Some(s) => super::ask_to_quit(r, s),
+                // Not started yet: the runner asks the app itself.
+                None => signal(r, libc::SIGTERM),
+            }
         }
         let wait = |secs: u64| {
             let end = std::time::Instant::now() + std::time::Duration::from_secs(secs);
@@ -277,12 +295,15 @@ impl Sam {
             }
             false
         };
-        if !wait(10) {
-            for &r in &runners {
+        let grace = crate::launch::QUIT_GRACE.as_secs();
+        if !wait(grace) {
+            for &(r, _) in &runners {
                 signal(r, libc::SIGTERM);
             }
-            if !wait(3) {
-                for &r in &runners {
+            // Longer than the runner's own grace time, in case it began
+            // one anew (review 2026-11-23 F2: SIGKILL came after 3 seconds).
+            if !wait(grace + 5) {
+                for &(r, _) in &runners {
                     signal(r, libc::SIGKILL);
                 }
                 if !wait(3) {

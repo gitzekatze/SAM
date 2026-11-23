@@ -377,6 +377,16 @@ impl HomeWatch {
     /// The snapshot before a start that can write a start place
     /// ([`writes_start_places`]); `None` otherwise.
     pub fn before(ctx: &LaunchContext) -> Option<HomeWatch> {
+        HomeWatch::before_alongside(ctx, &[])
+    }
+
+    /// [`HomeWatch::before`] while other launches that watch the same home
+    /// are running (`running`, oldest first). What they saw at their start
+    /// is taken over, not what is there now: a place that was empty then
+    /// stays empty, a link stays the link it was. Otherwise a second launch
+    /// took a link another app had planted while it ran for the user's own,
+    /// and put it back each time it was moved aside (review 2026-11-23 F1).
+    pub fn before_alongside(ctx: &LaunchContext, running: &[HomeWatch]) -> Option<HomeWatch> {
         if !writes_start_places(ctx) {
             return None;
         }
@@ -385,7 +395,19 @@ impl HomeWatch {
             home: home.to_path_buf(),
             ..Default::default()
         };
+        let running: Vec<&HomeWatch> = running.iter().filter(|r| &r.home == home).collect();
         for rel in watched_places(&ctx.permissions, home) {
+            if running.iter().any(|r| r.absent.contains(&rel)) {
+                w.absent.push(rel);
+                continue;
+            }
+            if let Some(t) = running
+                .iter()
+                .find_map(|r| r.links.iter().find(|(l, _)| l == &rel).map(|(_, t)| t))
+            {
+                w.links.push((rel, t.clone()));
+                continue;
+            }
             let path = home.join(&rel);
             match fs::symlink_metadata(&path) {
                 Err(_) => w.absent.push(rel),
@@ -397,6 +419,65 @@ impl HomeWatch {
                 Ok(_) => {}
             }
         }
+        Some(w)
+    }
+
+    /// The watch as lines of text, for keeping it on disk while the app
+    /// runs: SAM can then still look again when its launcher was killed.
+    /// Paths are written as hex, so any name survives.
+    pub fn to_lines(&self) -> Vec<String> {
+        use std::os::unix::ffi::OsStrExt;
+        let hex = |p: &Path| -> String {
+            p.as_os_str()
+                .as_bytes()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect()
+        };
+        let mut out = vec![format!("home {}", hex(&self.home))];
+        for a in &self.absent {
+            out.push(format!("absent {}", hex(Path::new(a))));
+        }
+        for (l, t) in &self.links {
+            out.push(format!("link {} {}", hex(Path::new(l)), hex(t)));
+        }
+        out
+    }
+
+    /// A watch read back from [`HomeWatch::to_lines`]; lines of other kinds
+    /// are left out. `None` without a home or with a line that is damaged.
+    pub fn from_lines<'a>(lines: impl IntoIterator<Item = &'a str>) -> Option<HomeWatch> {
+        use std::os::unix::ffi::OsStringExt;
+        let unhex = |s: &str| -> Option<PathBuf> {
+            if !s.len().is_multiple_of(2) {
+                return None;
+            }
+            let bytes = (0..s.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
+                .collect::<Option<Vec<u8>>>()?;
+            Some(PathBuf::from(std::ffi::OsString::from_vec(bytes)))
+        };
+        // A place is always below the home: `home.join` of an absolute
+        // path would leave it, and of an empty one is the home itself.
+        let rel = |p: PathBuf| {
+            (p.is_relative() && !p.as_os_str().is_empty()).then(|| p.to_str().map(String::from))?
+        };
+        let mut home = None;
+        let mut w = HomeWatch::default();
+        for line in lines {
+            let mut parts = line.split(' ');
+            match (parts.next(), parts.next(), parts.next(), parts.next()) {
+                (Some("home"), Some(h), None, None) => home = Some(unhex(h)?),
+                (Some("absent"), Some(a), None, None) => w.absent.push(rel(unhex(a)?)?),
+                (Some("link"), Some(l), Some(t), None) => {
+                    w.links.push((rel(unhex(l)?)?, unhex(t)?));
+                }
+                (Some("home" | "absent" | "link"), ..) => return None,
+                _ => {}
+            }
+        }
+        w.home = home.filter(|h| h.is_absolute())?;
         Some(w)
     }
 
@@ -3527,6 +3608,36 @@ mod guard_tests {
         p.filesystem.home = true;
         p.filesystem.home_access = Access::Rw;
         p
+    }
+
+    /// The watch kept on disk while an app runs comes back as it was, odd
+    /// names included; a damaged record never names a place outside the
+    /// home or the home itself, which the last look would move aside.
+    #[test]
+    fn a_watch_read_back_from_disk_never_reaches_outside_the_home() {
+        use std::os::unix::ffi::OsStrExt;
+        let hex = |s: &[u8]| -> String { s.iter().map(|b| format!("{b:02x}")).collect() };
+        let w = HomeWatch {
+            home: PathBuf::from("/home/u"),
+            absent: vec![".bash_profile".into(), ".config/auto start\nx".into()],
+            links: vec![(".config/git".into(), PathBuf::from("/home/u/dots/git"))],
+        };
+        let lines = w.to_lines();
+        let back = HomeWatch::from_lines(lines.iter().map(String::as_str)).unwrap();
+        assert_eq!(back.home, w.home);
+        assert_eq!(back.absent, w.absent);
+        assert_eq!(back.links, w.links);
+        for bad in [b"/etc/profile".as_slice(), b"".as_slice()] {
+            let rec = [
+                format!("home {}", hex(Path::new("/home/u").as_os_str().as_bytes())),
+                format!("absent {}", hex(bad)),
+            ];
+            assert!(
+                HomeWatch::from_lines(rec.iter().map(String::as_str)).is_none(),
+                "{:?} was taken as a place",
+                String::from_utf8_lossy(bad)
+            );
+        }
     }
 
     /// A new start file is taken out of its place whatever happens, and
