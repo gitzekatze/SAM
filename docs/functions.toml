@@ -106,6 +106,9 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "the_sound_servers_own_socket_is_dangerous_as_an_extra_socket",
   "a_function_of_a_password_service_counts_with_the_network",
   "a_dangerous_socket_is_known_however_it_is_written",
+  "the_reason_names_exactly_the_riskiest_permissions",
+  "game_controllers_count_unless_all_input_is_granted",
+  "a_risk_level_shows_as_its_name",
 ]
 
 [[function]]
@@ -213,6 +216,9 @@ tests = [
   "an_extra_socket_that_leads_to_a_dangerous_one_is_not_passed_in",
   "an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one",
   "a_wildcard_over_the_portal_is_dangerous",
+  "a_missing_dbus_proxy_is_named_only_where_the_filter_needs_it",
+  "the_status_names_a_missing_dbus_proxy",
+  "the_app_gets_the_users_own_user_and_group_ids",
 ]
 
 [[function]]
@@ -227,7 +233,7 @@ id = 15
 area = "C"
 promise = "Sound, GPU, camera and game controllers only when allowed."
 code = ["sam-sandbox/src/lib.rs"]
-tests = ["a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "nothing_in_the_sound_relay_can_make_a_user_namespace", "a_relay_outside_a_sandbox_is_not_held", "a_too_long_socket_path_is_named_before_the_relay_starts", "a_launchs_sockets_fit_even_for_the_longest_app_id", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+tests = ["a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "nothing_in_the_sound_relay_can_make_a_user_namespace", "a_relay_outside_a_sandbox_is_not_held", "a_too_long_socket_path_is_named_before_the_relay_starts", "a_launchs_sockets_fit_even_for_the_longest_app_id", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "the_gpu_brings_exactly_the_render_and_nvidia_nodes"]
 
 [[function]]
 id = 16
@@ -410,7 +416,7 @@ id = 19
 area = "D"
 promise = "Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox."
 code = ["sam-intake/src/desktop.rs", "sam-intake/src/menu.rs", "sam-runner/src/launch.rs", "sam-core/src/paths.rs"]
-tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "a_hostile_name_adds_no_line_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign", "blocked_file_types_hold_in_any_case_and_old_names", "an_app_can_never_replace_the_programs_that_menu_entries_run"]
+tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "a_hostile_name_adds_no_line_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign", "blocked_file_types_hold_in_any_case_and_old_names", "an_app_can_never_replace_the_programs_that_menu_entries_run", "a_user_may_run_only_what_they_neither_own_nor_can_write", "only_the_appimage_this_program_runs_from_is_sams_own", "only_executable_files_count_as_programs"]
 checks = ["tests/gui/flow-atspi.sh", "tests/gui/taskbar-kwin.sh"]
 
 [[function]]
@@ -426,6 +432,7 @@ tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_
   "an_abstract_socket_that_answers_is_found_reachable",
   "the_check_tries_the_hosts_abstract_sockets_the_app_must_not_reach",
   "checks_that_do_not_pass_end_with_not_passed",
+  "a_passed_check_is_repeated_when_the_computer_changes",
 ]
 checks = ["tests/real-apps/run.sh"]
 
@@ -456,7 +463,7 @@ id = 23
 area = "E"
 promise = "After a failed start, SAM says what went wrong and offers a fix with one click."
 code = ["sam-runner/src/repair.rs", "sam-runner/src/launch.rs", "sam-gtk/src/app_page/render.rs"]
-tests = ["a_step_from_the_apps_output_needs_yes", "the_apps_own_words_never_give_it_a_bus_name", "a_start_without_bubblewrap_stops_before_anything_runs", "sandbox_setup_errors_are_told_apart_from_app_errors", "a_start_is_judged_by_whether_the_app_started", "analyzer_maps_errors_to_fixes", "fake_bwrap_error_is_not_a_sandbox_failure"]
+tests = ["a_step_from_the_apps_output_needs_yes", "the_apps_own_words_never_give_it_a_bus_name", "a_start_without_bubblewrap_stops_before_anything_runs", "sandbox_setup_errors_are_told_apart_from_app_errors", "a_start_is_judged_by_whether_the_app_started", "analyzer_maps_errors_to_fixes", "fake_bwrap_error_is_not_a_sandbox_failure", "only_a_failed_start_leaves_a_last_problem"]
 checks = ["tests/gui/app-page-atspi.sh", "tests/real-apps/run.sh"]
 
 [[function]]
@@ -550,14 +557,14 @@ id = 30
 area = "G"
 promise = "Removing an app deletes only SAM's own folders, never your files."
 code = ["sam-runner/src/ops/maintain.rs", "sam-storage/src/lib.rs", "sam-core/src/util.rs"]
-tests = ["removing_a_sandbox_never_deletes_outside_sams_unpack_folder", "a_record_with_a_climbing_id_reaches_nothing", "records_with_unsafe_or_mismatched_ids_are_not_loaded", "removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it", "removing_a_sandbox_while_its_app_runs_is_refused", "names_become_safe_identifiers"]
+tests = ["removing_a_sandbox_never_deletes_outside_sams_unpack_folder", "a_record_with_a_climbing_id_reaches_nothing", "records_with_unsafe_or_mismatched_ids_are_not_loaded", "removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it", "removing_a_sandbox_while_its_app_runs_is_refused", "names_become_safe_identifiers", "an_apps_icon_is_kept_in_sams_icon_folder_and_goes_with_it"]
 
 [[function]]
 id = 31
 area = "G"
 promise = "Disk space per app, and freeing space."
 code = ["sam-runner/src/ops/maintain.rs"]
-tests = ["freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it"]
+tests = ["freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it", "sizes_beyond_a_tebibyte_stay_in_tebibytes"]
 
 [[function]]
 id = 32
@@ -577,6 +584,8 @@ tests = ["missing_bubblewrap_names_the_package_to_install", "disabled_user_names
   "the_install_hint_fits_the_distribution",
   "the_apparmor_advice_keeps_the_restriction_for_other_programs",
   "diagnostics_say_when_landlock_cannot_fence_abstract_sockets",
+  "diagnostics_warn_about_what_this_session_lacks",
+  "a_wayland_session_without_its_socket_breaks_the_wayland_contract",
 ]
 
 [[function]]
@@ -596,7 +605,7 @@ id = 35
 area = "H"
 promise = "The overview of all apps, with clear status badges."
 code = ["sam-gtk/src/window.rs", "sam-gtk/src/pages.rs", "sam-core/src/model.rs", "sam-storage/src/lib.rs"]
-tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text", "links_to_other_pages_open_on_github"]
+tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text", "links_to_other_pages_open_on_github", "a_marked_state_decides_the_badge", "every_badge_is_named_for_people_and_scripts", "every_isolation_verdict_says_why"]
 checks = ["tests/gui/session.sh"]
 
 [[function]]
@@ -612,7 +621,7 @@ id = 37
 area = "H"
 promise = "SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's."
 code = ["sam-core/src/i18n.rs", "sam-gtk/src/i18n.rs", "scripts/i18n.py", "po/de.po", "po/es.po", "po/fr.po"]
-tests = ["texts_without_a_translation_come_back_with_their_values", "the_command_line_speaks_german_when_asked", "every_translated_language_can_be_chosen", "the_language_is_the_system_or_one_sam_speaks", "the_chosen_language_and_the_systems_are_kept_apart", "apps_keep_the_system_language_whatever_sams_window_shows"]
+tests = ["texts_without_a_translation_come_back_with_their_values", "the_command_line_speaks_german_when_asked", "every_translated_language_can_be_chosen", "the_language_is_the_system_or_one_sam_speaks", "the_chosen_language_and_the_systems_are_kept_apart", "apps_keep_the_system_language_whatever_sams_window_shows", "only_a_folder_with_a_compiled_catalogue_holds_translations"]
 checks = ["tests/gui/flow-atspi.sh", "scripts/i18n.py"]
 
 [[function]]
@@ -650,4 +659,6 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
   "an_error_names_its_sam_function_and_keeps_its_message",
   "json_run_keeps_its_reply_alone_on_standard_output",
   "preset_names_are_never_read_as_options",
+  "runtime_folders_go_into_the_sessions_runtime_folder",
+  "the_first_run_guide_is_marked_done_and_reset",
 ]
