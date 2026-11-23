@@ -757,6 +757,7 @@ impl Sam {
             }
             _ => sam_detect::signature::check(&installed),
         };
+        let new_sha256 = fingerprint::sha256_file(&tmp)?;
         let new_sig = sam_detect::signature::check(&tmp);
         if let Some(before) = signing_key_change(Some(&before_sig), &new_sig) {
             if !accept_key_change {
@@ -820,6 +821,7 @@ impl Sam {
             original_path: old,
             replaced_at: now(),
             sha256: Some(installed_sha256),
+            placed_sha256: Some(new_sha256),
         };
         self.registry().update(&entry.id, |f| {
             f.source_path = target.clone();
@@ -895,17 +897,35 @@ impl Sam {
         let earlier = b.file.with_file_name(".going-back");
         move_file(&b.file, &earlier)?;
         // The current file is kept as the newer version, and going forward
-        // again unpacks it as SAM's own: so it must be what SAM unpacked,
-        // checked once it is in SAM's own folder (review 2026-11-23, U-1).
+        // again unpacks it as SAM's own: so it must be what SAM unpacked (or
+        // what the update put there, when unpacking that failed), checked
+        // once it is in SAM's own folder (review 2026-11-23, U-1). A copy,
+        // never a move: another app that can write to the AppImage's folder
+        // may hold the file under a second name (a hard link) or open for
+        // writing, and could change a moved file after SAM checked it.
+        let current_mode = {
+            use std::os::unix::fs::PermissionsExt;
+            fs::metadata(&current)
+                .map(|m| m.permissions().mode())
+                .unwrap_or(0o755)
+                & 0o777
+        };
         let mut kept_sha256 = None;
         if current.exists() {
-            if let Err(e) = move_file(&current, &keep) {
+            if keep != earlier {
+                // Left over from an interrupted run; never the earlier version.
+                let _ = fs::remove_file(&keep);
+            }
+            if let Err(e) = place_copy(&current, &keep, current_mode) {
                 let _ = move_file(&earlier, &b.file);
                 return Err(e);
             }
             let sha = fingerprint::sha256_file(&keep).ok();
-            if sha.as_deref() != Some(unpacked_sha256(&entry)) {
-                let _ = move_file(&keep, &current);
+            let known = sha.as_deref().is_some_and(|s| {
+                s == unpacked_sha256(&entry) || Some(s) == b.placed_sha256.as_deref()
+            });
+            if !known {
+                let _ = fs::remove_file(&keep);
                 let _ = move_file(&earlier, &b.file);
                 bail!(
                     "{}",
@@ -914,6 +934,11 @@ impl Sam {
                         &[("file", &tildify(&current))]
                     )
                 );
+            }
+            if let Err(e) = fs::remove_file(&current) {
+                let _ = fs::remove_file(&keep);
+                let _ = move_file(&earlier, &b.file);
+                return Err(e.into());
             }
             kept_sha256 = sha;
         }
@@ -931,8 +956,16 @@ impl Sam {
         let placed = match place_copy(&earlier, &b.original_path, mode) {
             Ok(fp) => fp,
             Err(e) => {
-                let _ = move_file(&keep, &current);
-                let _ = move_file(&earlier, &b.file);
+                // Put the current file back; the kept copy is never
+                // overwritten while it is the only one.
+                let mut restored = kept_sha256.is_none();
+                if !restored && place_copy(&keep, &current, current_mode).is_ok() {
+                    let _ = fs::remove_file(&keep);
+                    restored = true;
+                }
+                if restored || keep != b.file {
+                    let _ = move_file(&earlier, &b.file);
+                }
                 return Err(e);
             }
         };
@@ -947,6 +980,11 @@ impl Sam {
             original_path: current,
             replaced_at: now(),
             sha256: kept_sha256,
+            placed_sha256: if earlier_checked {
+                b.sha256.clone()
+            } else {
+                None
+            },
         };
         self.registry().update(&entry.id, |f| {
             f.source_path = back_at.clone();

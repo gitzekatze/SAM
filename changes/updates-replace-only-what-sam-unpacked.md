@@ -6,7 +6,8 @@
   app's permissions without a review. Now SAM checks a copy of the installed
   file in its own folder first and refuses a file replaced outside SAM
   (*Unpack Again* asks you to look at it). Going back checks the current
-  file the same way.
+  file the same way, on a copy only SAM can reach; when unpacking an update
+  failed, going back still accepts the file the update put there.
 - The sandbox is unpacked from the checked download in SAM's own folder,
   not from the AppImage's folder, where the file could be swapped in that
   moment.

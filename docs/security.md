@@ -554,9 +554,12 @@ downloads a file, and only when you ask:
   sandbox.
 - The checked copy of the old file is kept in SAM's data folder, so you can
   go back; going back keeps the newer version, also when both have the same
-  file name. Going back checks the current file like an update does, and a
-  version kept by an older SAM (without its recorded checksum) asks for a
-  review once it is back.
+  file name. Going back checks the current file like an update does: SAM
+  keeps a copy of it in its own folder (never the file itself, which
+  another app could still hold under a second name) and accepts it only
+  when it is what SAM unpacked, or what the update put there when
+  unpacking that failed. A version kept by an older SAM (without its
+  recorded checksum) asks for a review once it is back.
 - The new file is put in place as a copy in a new file; SAM never writes
   through a link it finds there. The sandbox is unpacked from the checked
   download in SAM's own folder, not from the AppImage's folder, where

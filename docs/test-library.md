@@ -37,10 +37,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | [`every_translated_language_can_be_chosen`](../crates/sam-core/src/i18n.rs#L179) |
 | Texts without a translation come back with their values. | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L193) |
 | Only icons that are safe to decode reach the desktop's image code: a PNG whose header announces more than 1024×1024 pixels (a decode bomb: a small file that asks for gigabytes) is refused before anything decodes it, and so are oversized files, large SVGs and XPM (audit G-F8, I-F18). | [`only_icons_that_are_safe_to_decode_are_taken`](../crates/sam-core/src/icon.rs#L85) |
-| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L717) |
-| An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L735) |
-| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L762) |
-| A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L800) |
+| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L722) |
+| An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L740) |
+| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L767) |
+| A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L805) |
 | Rooted paths (tests) keep their runtime folders apart from SAM's real one and from every other root, and short enough for SAM's sockets. | [`rooted_paths_have_a_runtime_folder_of_their_own`](../crates/sam-core/src/paths.rs#L182) |
 | A root inside a test whose runtime folder is already one of these gets its folder next to it, never in /tmp (16,304 were left there by one mutation run, 2026-11-20); a long runtime folder still falls back to /tmp. | [`a_test_inside_a_test_keeps_its_runtime_folder_out_of_tmp`](../crates/sam-core/src/paths.rs#L219) |
 | ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L245) |
@@ -261,7 +261,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-206 tests.
+208 tests.
 
 | Promise | Test |
 |---|---|
@@ -324,10 +324,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The app's ports are offered on this computer's loopback addresses only, for IPv4 and IPv6 alike, never on every address (audit L-F7). | [`the_apps_ports_listen_on_loopback_only`](../crates/sam-runner/src/netns.rs#L204) |
 | Local services whose clients would hand an app control or secrets are never taken over automatically. | [`well_known_local_services_are_never_taken_over`](../crates/sam-runner/src/netns.rs#L237) |
 | An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L505) |
-| An update keeps its published name only when that is a plain AppImage name no other file has: the update server chooses it, and a name like `sudo` in ~/.local/bin would replace a command outside any sandbox (review 2026-11-23, U-2). | [`only_a_plain_appimage_name_is_taken_from_an_update`](../crates/sam-runner/src/ops/maintain.rs#L1244) |
-| The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1290) |
-| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1366) |
-| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1386) |
+| An update keeps its published name only when that is a plain AppImage name no other file has: the update server chooses it, and a name like `sudo` in ~/.local/bin would replace a command outside any sandbox (review 2026-11-23, U-2). | [`only_a_plain_appimage_name_is_taken_from_an_update`](../crates/sam-runner/src/ops/maintain.rs#L1282) |
+| The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1328) |
+| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1404) |
+| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1424) |
 | When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L531) |
 | An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L637) |
 | An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L678) |
@@ -457,8 +457,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Uninstalling SAM removes all of its files and restores the menu entries it had hidden. | [`uninstall_removes_everything_and_restores_menus`](../crates/sam-runner/tests/uninstall.rs#L17) |
 | Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L123) |
 | Undoing an update puts the previous version back. | [`undo_puts_the_previous_version_back`](../crates/sam-runner/tests/update.rs#L15) |
-| ⟲ Regression (review 2026-11-23, U-1): going back kept the current file as "the newer version" without looking at it, and going forward again unpacked it as SAM's own work, without the review a replaced file needs. | [`going_back_refuses_a_current_version_swapped_outside_sam`](../crates/sam-runner/tests/update.rs#L137) |
-| ⟲ Regression (review 2026-11-23, U-1): a version kept by an earlier SAM was moved out of the AppImage's folder without being checked, so it may not be what SAM unpacked then. | [`going_back_to_a_version_kept_without_its_checksum_needs_a_review`](../crates/sam-runner/tests/update.rs#L175) |
+| ⟲ Regression (review 2026-11-23, U-1): going back kept the current file as "the newer version" without looking at it, and going forward again unpacked it as SAM's own work, without the review a replaced file needs. | [`going_back_refuses_a_current_version_swapped_outside_sam`](../crates/sam-runner/tests/update.rs#L139) |
+| ⟲ Regression (review 2026-11-23, U-1): a version kept by an earlier SAM was moved out of the AppImage's folder without being checked, so it may not be what SAM unpacked then. | [`going_back_to_a_version_kept_without_its_checksum_needs_a_review`](../crates/sam-runner/tests/update.rs#L177) |
+| ⟲ Regression (review check 2026-11-23, U-1): going back moved the current file from the AppImage's folder into SAM's backup folder and checked it there. | [`going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change`](../crates/sam-runner/tests/update.rs#L200) |
 | Updates download only changes check them and refuse tampering. | [`updates_download_only_changes_check_them_and_refuse_tampering`](../crates/sam-runner/tests/update_server.rs#L195) |
 | ⟲ Regressions (audit U-H4, U-H3): updates were downloaded next to the AppImage under a guessable name (`.<name>.sam-download`) with tools that follow links, so an app with write access to that folder (often Downloads) could plant a link there and SAM wrote the update through it into any file of the person. | [`an_update_writes_through_no_planted_link_and_keeps_the_sandbox`](../crates/sam-runner/tests/update_server.rs#L356) |
 | ⟲ Regression (audit U-H5): when the new version had the same file name as the old one, going back moved the current file onto the kept old version (destroying it), then "restored" the new file and reported that the app was back. | [`going_back_with_an_unchanged_file_name_keeps_both_versions`](../crates/sam-runner/tests/update_server.rs#L451) |
@@ -469,6 +470,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (review 2026-11-23, U-1): after putting the checked download in the AppImage's folder, SAM read it from there again to unpack it. | [`an_update_unpacks_the_checked_download_even_if_the_placed_file_is_swapped`](../crates/sam-runner/tests/update_server.rs#L899) |
 | ⟲ Regression (review 2026-11-23, U-2): the update server chose the new file's name in the AppImage's folder, and SAM made it executable. | [`an_update_never_takes_a_published_name_that_is_not_an_appimage_name`](../crates/sam-runner/tests/update_server.rs#L960) |
 | ⟲ Regression (review 2026-11-23, U-3): an app added while GnuPG was missing has its signature recorded as "not checked", and every key comparison needed a checked record, so an update signed with another key was installed without a question even after GnuPG was installed. | [`an_update_compares_keys_even_when_the_installed_signature_was_never_checked`](../crates/sam-runner/tests/update_server.rs#L996) |
+| ⟲ Regression (review check 2026-11-23, U-1): the way back is recorded before the new version is unpacked, so that the old one can be put back when unpacking fails (audit U-L2). | [`going_back_works_when_the_update_could_not_be_unpacked`](../crates/sam-runner/tests/update_server.rs#L1096) |
 | The sandbox check passes when the settings apply, and catches a setting that does not apply. | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L23) |
 | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L14) |
 
@@ -585,4 +587,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 499 automated Rust tests plus 7 scripted checks.
+Total: 501 automated Rust tests plus 7 scripted checks.

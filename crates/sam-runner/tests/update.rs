@@ -51,6 +51,7 @@ fn undo_puts_the_previous_version_back() {
         original_path: v1.clone(),
         replaced_at: 1,
         sha256: None,
+        placed_sha256: None,
     });
     sam.registry().save(&mut e).unwrap();
     assert!(
@@ -123,6 +124,7 @@ fn updated_by_hand(
         file: kept.clone(),
         original_path: v1.clone(),
         replaced_at: 1,
+        placed_sha256: None,
     });
     sam.registry().save(&mut e).unwrap();
     (sam, id, v2, kept)
@@ -186,4 +188,39 @@ fn going_back_to_a_version_kept_without_its_checksum_needs_a_review() {
     let (sam, id, _, _) = updated_by_hand(tmp.path(), true);
     let e = sam.undo_update(&id).unwrap();
     assert!(!e.content_changed_outside, "a checked version is SAM's own");
+}
+
+/// Regression (review check 2026-11-23, U-1): going back moved the current
+/// file from the AppImage's folder into SAM's backup folder and checked it
+/// there. A move keeps the file itself: another app that still held it (a
+/// second name, a hard link, in the same folder, or the file open for
+/// writing) could change it after the check, and going forward again
+/// unpacked its program as SAM's own. Now SAM keeps a copy that only it can
+/// reach.
+#[test]
+fn going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, v2, _) = updated_by_hand(tmp.path(), true);
+    let newer = fs::read(&v2).unwrap();
+    let unpacked = sam.resolve(&id).unwrap().extraction.unwrap().source.sha256;
+    // Another app keeps a second name for the current file.
+    let held = v2.with_file_name(".held");
+    fs::hard_link(&v2, &held).unwrap();
+
+    let e = sam.undo_update(&id).unwrap();
+    let kept_newer = e.update_backup.unwrap().file;
+    // It writes its own program through that name.
+    let mut evil = FixtureSpec::hello("Tool");
+    evil.comment = "another app's program".into();
+    build(&tmp.path().join("evil.AppImage"), &evil).unwrap();
+    fs::write(&held, fs::read(tmp.path().join("evil.AppImage")).unwrap()).unwrap();
+    assert!(
+        fs::read(&kept_newer).unwrap() == newer,
+        "the newer version kept in SAM's folder is SAM's own copy"
+    );
+
+    // Going forward again brings back the newer version as it was checked.
+    let e = sam.undo_update(&id).unwrap();
+    assert_eq!(e.extraction.unwrap().source.sha256, unpacked);
+    assert!(!e.content_changed_outside, "it is the version SAM checked");
 }

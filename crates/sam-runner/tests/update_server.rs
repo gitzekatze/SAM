@@ -1086,3 +1086,68 @@ fn an_update_compares_keys_even_when_the_installed_signature_was_never_checked()
         .args(["--kill", "all"])
         .status();
 }
+
+/// Regression (review check 2026-11-23, U-1): the way back is recorded
+/// before the new version is unpacked, so that the old one can be put back
+/// when unpacking fails (audit U-L2). Going back then also checked the
+/// current file against what SAM unpacked last, which is still the old
+/// version, so it refused the very file the update had put there. Now going
+/// back also accepts the file the update itself put in place.
+#[test]
+fn going_back_works_when_the_update_could_not_be_unpacked() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Downloads");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let (mut sam, id) = add_reviewed(tmp.path(), &installed);
+    let unpacked = sam.resolve(&id).unwrap().extraction.unwrap().source.sha256;
+    // The new version has more files than SAM is set to unpack.
+    let files = walkdir_count(&sam.resolve(&id).unwrap().extraction.unwrap().appdir);
+    sam.config.extraction.max_files = files as u64 + 5;
+    let v2 = tmp.path().join("v2.AppImage");
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "Tool, version 2.0".into();
+    for i in 0..40 {
+        spec.files.push(FixtureFile {
+            path: format!("usr/share/tool/part{i}"),
+            data: vec![b'x'; 10],
+            mode: 0o644,
+        });
+    }
+    spec.update_info = Some(format!("zsync|{url}"));
+    build(&v2, &spec).unwrap();
+    publish(&server, &v2, "Tool-2.0-x86_64.AppImage");
+
+    let err = sam.update(&id, false).unwrap_err();
+    assert!(format!("{err:#}").contains("max_files"), "{err:#}");
+    assert!(sam.resolve(&id).unwrap().update_backup.is_some());
+
+    let e = sam
+        .undo_update(&id)
+        .unwrap_or_else(|e| panic!("going back was refused: {e:#}"));
+    assert_eq!(e.source_path, fs::canonicalize(&installed).unwrap());
+    assert_eq!(e.extraction.unwrap().source.sha256, unpacked);
+    assert_eq!(unpacked_version(&sam, &id), "1.0");
+    assert!(!e.content_changed_outside, "the old version is SAM's own");
+}
+
+/// How many files and folders are below `dir`.
+fn walkdir_count(dir: &Path) -> usize {
+    fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| {
+            let t = e.file_type().unwrap();
+            1 + if t.is_dir() {
+                walkdir_count(&e.path())
+            } else {
+                0
+            }
+        })
+        .sum()
+}

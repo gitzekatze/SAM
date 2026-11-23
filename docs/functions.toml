@@ -343,6 +343,8 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "only_a_plain_appimage_name_is_taken_from_an_update",
   "an_update_compares_keys_even_when_the_installed_signature_was_never_checked",
   "a_signature_that_was_never_checked_lets_no_key_through",
+  "going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change",
+  "going_back_works_when_the_update_could_not_be_unpacked",
 ]
 
 [[function]]
