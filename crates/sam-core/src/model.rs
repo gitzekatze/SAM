@@ -855,6 +855,25 @@ mod badge_tests {
             Badge::CompatibilityRisk,
             "a crash right away keeps it"
         );
+        // Real start times: a crash right away is a crash, whenever it was.
+        let failed_after = |secs: i64| {
+            Some(LaunchRecord {
+                started_at: 1_700_000_000,
+                finished_at: 1_700_000_000 + secs,
+                success: false,
+                ..Default::default()
+            })
+        };
+        e.last_launch = failed_after(3);
+        assert_eq!(e.badge(), Badge::CompatibilityRisk, "a crash after 3 s");
+        e.last_launch = failed_after(10);
+        assert_eq!(
+            e.badge(),
+            Badge::CompatibilityRisk,
+            "ten seconds are not more than ten"
+        );
+        e.last_launch = failed_after(11);
+        assert_eq!(e.badge(), Badge::Ready, "ran for more than ten seconds");
         e.last_launch = Some(LaunchRecord {
             started_at: 0,
             finished_at: 60,
@@ -888,5 +907,178 @@ mod badge_tests {
             ..Default::default()
         });
         assert_eq!(e.badge(), Badge::Ready, "the next full start clears it");
+    }
+
+    /// A record SAM marked broken, stale or unsafe shows that badge
+    /// whatever else is true of it: a re-unpacking that failed keeps the
+    /// old unpacked folder, a changed AppImage file keeps its record, and
+    /// an app that asks for administrator rights stays Unsafe even after a
+    /// start that failed in the sandbox setup (which alone shows Broken).
+    #[test]
+    fn a_marked_state_decides_the_badge() {
+        let ready = AppEntry {
+            extraction: Some(ExtractionInfo::default()),
+            reviewed: true,
+            ..Default::default()
+        };
+        assert_eq!(ready.badge(), Badge::Ready);
+        for (state, badge) in [
+            (AppState::Broken, Badge::Broken),
+            (AppState::Stale, Badge::Stale),
+            (AppState::Unsafe, Badge::Unsafe),
+            (AppState::Missing, Badge::Missing),
+        ] {
+            let e = AppEntry {
+                state,
+                ..ready.clone()
+            };
+            assert_eq!(e.badge(), badge, "{state:?}");
+        }
+        let unsafe_after_failed_setup = AppEntry {
+            state: AppState::Unsafe,
+            detection: Some(DependencyReport {
+                verdict: Some(IsolationVerdict::UnsafeToSandbox),
+                ..Default::default()
+            }),
+            last_launch: Some(LaunchRecord {
+                sandbox_failure: true,
+                ..Default::default()
+            }),
+            ..ready.clone()
+        };
+        assert_eq!(unsafe_after_failed_setup.badge(), Badge::Unsafe);
+    }
+
+    /// Every badge has its own name, the one the command line shows and
+    /// the JSON interface gives scripts in `badge_label` next to the code
+    /// in `badge`: a warning badge never reads as another or as nothing.
+    #[test]
+    fn every_badge_is_named_for_people_and_scripts() {
+        let all = [
+            (Badge::Ready, "Ready", "ready"),
+            (Badge::NeedsReview, "Needs Review", "needs-review"),
+            (
+                Badge::CompatibilityMode,
+                "Compatibility Mode",
+                "compatibility-mode",
+            ),
+            (
+                Badge::CompatibilityRisk,
+                "May Not Start",
+                "compatibility-risk",
+            ),
+            (Badge::Stale, "Stale", "stale"),
+            (Badge::Broken, "Broken", "broken"),
+            (Badge::Unsafe, "Unsafe", "unsafe"),
+            (Badge::Missing, "Missing", "missing"),
+            (
+                Badge::ChangedOutside,
+                "Changed Outside SAM",
+                "changed-outside",
+            ),
+            (
+                Badge::ProtectionMissing,
+                "Protection Missing",
+                "protection-missing",
+            ),
+        ];
+        for (b, label, code) in all {
+            assert_eq!(b.label(), label);
+            assert_eq!(serde_json::to_value(b).unwrap(), code);
+        }
+        let e = AppEntry {
+            state: AppState::Unsafe,
+            extraction: Some(ExtractionInfo::default()),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(AppSummary::from_entry(&e)).unwrap();
+        assert_eq!(json["badge"], "unsafe");
+        assert_eq!(json["badge_label"], "Unsafe");
+    }
+
+    /// Each isolation verdict tells the person why, in words of its own
+    /// (shown as the app's warning and in `info`).
+    #[test]
+    fn every_isolation_verdict_says_why() {
+        for (v, words) in [
+            (IsolationVerdict::WeaklyIsolated, "isolation is limited"),
+            (
+                IsolationVerdict::LikelyBroken,
+                "cannot run correctly inside a sandbox",
+            ),
+            (
+                IsolationVerdict::UnsafeToSandbox,
+                "cannot be safely sandboxed (it asks for administrator rights)",
+            ),
+        ] {
+            let m = v.message();
+            assert!(m.contains(words), "{v:?}: {m}");
+        }
+    }
+
+    /// The last problem names a start that failed by itself: the first
+    /// finding, or else the exit summary. A start that went well, or one
+    /// that SAM or the person ended (SIGKILL, SIGTERM), has none; any other
+    /// signal is a crash.
+    #[test]
+    fn only_a_failed_start_leaves_a_last_problem() {
+        let problem = |l: LaunchRecord| {
+            AppSummary::from_entry(&AppEntry {
+                last_launch: Some(l),
+                ..Default::default()
+            })
+            .last_problem
+        };
+        let failed = LaunchRecord {
+            success: false,
+            summary: "exited with code 1".into(),
+            ..Default::default()
+        };
+        assert_eq!(problem(failed.clone()), Some("exited with code 1".into()));
+        assert_eq!(
+            problem(LaunchRecord {
+                success: true,
+                summary: "exited normally".into(),
+                ..Default::default()
+            }),
+            None
+        );
+        for sig in [9, 15] {
+            assert_eq!(
+                problem(LaunchRecord {
+                    signal: Some(sig),
+                    ..failed.clone()
+                }),
+                None,
+                "ended by signal {sig}"
+            );
+        }
+        assert_eq!(
+            problem(LaunchRecord {
+                signal: Some(11),
+                summary: "killed by signal 11".into(),
+                ..failed.clone()
+            }),
+            Some("killed by signal 11".into())
+        );
+        let finding = Suggestion {
+            id: "libs-missing".into(),
+            title: "A library is missing".into(),
+            explanation: String::new(),
+            action: FixAction::None,
+            risk: crate::risk::RiskLevel::Low,
+            from_app_output: false,
+        };
+        assert_eq!(
+            problem(LaunchRecord {
+                findings: vec![finding],
+                ..failed
+            }),
+            Some("A library is missing".into())
+        );
+        assert_eq!(
+            AppSummary::from_entry(&AppEntry::default()).last_problem,
+            None
+        );
     }
 }

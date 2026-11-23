@@ -179,7 +179,8 @@ pub fn sample_context() -> LaunchContext {
     }
     let host = HostInfo {
         uid: 1000,
-        gid: 1000,
+        // Not the same number as the user's, so a mix-up shows.
+        gid: 1001,
         user: "tester".into(),
         home: "/home/tester".into(),
         runtime_dir: Some("/run/user/1000".into()),
@@ -211,7 +212,13 @@ pub fn sample_context() -> LaunchContext {
             }),
             ..Default::default()
         },
-        gpu_devices: vec!["/dev/dri/card0".into(), "/dev/dri/renderD128".into()],
+        // As the host lists them: the render nodes and NVIDIA's own nodes.
+        gpu_devices: vec![
+            "/dev/dri/card0".into(),
+            "/dev/dri/renderD128".into(),
+            "/dev/nvidia0".into(),
+            "/dev/nvidiactl".into(),
+        ],
         xdg_dirs: xdg,
         ..Default::default()
     };

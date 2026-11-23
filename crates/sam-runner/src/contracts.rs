@@ -728,6 +728,22 @@ mod tests {
         assert!(matches!(state, State::Absent), "{why}");
     }
 
+    /// A Wayland session whose compositor socket SAM cannot find breaks the
+    /// Wayland contract (the sandbox tests would otherwise skip every
+    /// window check); on an X11 session the socket is simply not there.
+    #[test]
+    fn a_wayland_session_without_its_socket_breaks_the_wayland_contract() {
+        let mut host = sam_core::sandbox::sample_context().host;
+        let (state, why) = probe("wayland-socket", &host);
+        assert!(matches!(state, State::Holds), "{why}");
+        host.sockets.wayland = None;
+        let (state, why) = probe("wayland-socket", &host);
+        assert!(matches!(state, State::Broken), "{why}");
+        host.session_type = "x11".into();
+        let (state, why) = probe("wayland-socket", &host);
+        assert!(matches!(state, State::NotHere), "{why}");
+    }
+
     /// The link portal's ask option is found in its description, and its
     /// absence is reported (stand-in descriptions; the real one is checked
     /// by `sam-jail doctor --contracts` and on CI).

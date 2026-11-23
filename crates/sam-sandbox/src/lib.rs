@@ -3128,6 +3128,68 @@ mod tests {
         );
     }
 
+    /// The app's user and group are the person's own, each where it
+    /// belongs: on bwrap's command line and in the passwd and group files
+    /// the sandbox shows (the group is never the user's number, nor root's).
+    #[test]
+    fn the_app_gets_the_users_own_user_and_group_ids() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ctx = sample_context();
+        assert_ne!(ctx.host.uid, ctx.host.gid, "the sample tells them apart");
+        ctx.runtime_dir = tmp.path().join("run");
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--uid", "1000", "--gid", "1001"]), "{a:?}");
+        write_identity_files(&ctx).unwrap();
+        assert_eq!(
+            fs::read_to_string(ctx.runtime_dir.join("passwd")).unwrap(),
+            "tester:x:1000:1001:tester:/home/tester:/bin/sh\n\
+             nobody:x:65534:65534:Nobody:/:/usr/bin/nologin\n"
+        );
+        assert_eq!(
+            fs::read_to_string(ctx.runtime_dir.join("group")).unwrap(),
+            "tester:x:1001:\nnobody:x:65534:\n"
+        );
+    }
+
+    /// With the GPU allowed the app gets the render nodes (`/dev/dri` as a
+    /// whole) and NVIDIA's own device nodes; no other device the host
+    /// lists is bound on its own. Without it, none of them.
+    #[test]
+    fn the_gpu_brings_exactly_the_render_and_nvidia_nodes() {
+        let mut ctx = sample_context();
+        let binds = |a: &[String]| -> Vec<String> {
+            a.windows(2)
+                .filter(|w| w[0] == "--dev-bind-try")
+                .map(|w| w[1].clone())
+                .filter(|d| d.starts_with("/dev/dri") || d.starts_with("/dev/nvidia"))
+                .collect()
+        };
+        ctx.permissions.devices.gpu = true;
+        assert_eq!(
+            binds(&args_of(&ctx)),
+            ["/dev/dri", "/dev/nvidia0", "/dev/nvidiactl"]
+        );
+        ctx.permissions.devices.gpu = false;
+        assert!(binds(&args_of(&ctx)).is_empty());
+    }
+
+    /// Bubblewrap's status says when xdg-dbus-proxy is missing (the
+    /// filtered session bus is then off), and only then.
+    #[test]
+    fn the_status_names_a_missing_dbus_proxy() {
+        let mut host = sample_context().host;
+        let named = |h: &HostInfo| {
+            Bubblewrap
+                .status(h)
+                .notes
+                .iter()
+                .any(|n| n.contains("xdg-dbus-proxy"))
+        };
+        assert!(!named(&host), "installed");
+        host.tools.xdg_dbus_proxy = None;
+        assert!(named(&host), "missing");
+    }
+
     #[test]
     fn the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins() {
         let ctx = sample_context();

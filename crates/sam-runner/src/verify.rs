@@ -1249,6 +1249,32 @@ mod tests {
         drop(services);
     }
 
+    /// A passed check is reused only on the same computer as it was then:
+    /// other GPU devices, the D-Bus proxy installed or removed, other
+    /// sockets or another Landlock each make the check run again.
+    #[test]
+    fn a_passed_check_is_repeated_when_the_computer_changes() {
+        let app = AppEntry::default();
+        let cfg = Config::default();
+        let host = sam_core::sandbox::sample_context().host;
+        let key = |h: &HostInfo| check_key(&app, &cfg, h);
+        let same = key(&host);
+        assert_eq!(key(&host.clone()), same, "the same computer");
+        type Change = fn(&mut HostInfo);
+        let changes: [(&str, Change); 5] = [
+            ("no GPU", |h| h.gpu_devices.clear()),
+            ("another GPU", |h| h.gpu_devices.truncate(2)),
+            ("no D-Bus proxy", |h| h.tools.xdg_dbus_proxy = None),
+            ("no Wayland socket", |h| h.sockets.wayland = None),
+            ("another Landlock", |h| h.landlock_abi = Some(99)),
+        ];
+        for (what, change) in changes {
+            let mut h = host.clone();
+            change(&mut h);
+            assert_ne!(key(&h), same, "{what}");
+        }
+    }
+
     /// Review K-1: with X11 off, the check tries the X server's abstract
     /// socket, which needs no file; with a session bus on an abstract
     /// socket, it tries that too unless the app may use the whole bus.

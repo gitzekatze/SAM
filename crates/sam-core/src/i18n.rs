@@ -190,6 +190,28 @@ mod tests {
         assert!(LANGUAGES.iter().any(|(c, _)| *c == "en"));
     }
 
+    /// A folder counts as holding SAM's translations only with a compiled
+    /// catalogue for at least one language: an empty folder, or one with
+    /// language folders but no `sam.mo` (another program's), is passed
+    /// over for the next place to look.
+    #[test]
+    fn only_a_folder_with_a_compiled_catalogue_holds_translations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        assert!(!has_catalogs(&d.join("missing")));
+        assert!(!has_catalogs(d), "empty");
+        let msgs = d.join("de/LC_MESSAGES");
+        std::fs::create_dir_all(&msgs).unwrap();
+        assert!(!has_catalogs(d), "no catalogue");
+        std::fs::write(msgs.join("other.mo"), b"x").unwrap();
+        assert!(!has_catalogs(d), "another program's catalogue");
+        std::fs::create_dir(msgs.join("sam.mo")).unwrap();
+        assert!(!has_catalogs(d), "a folder named like one");
+        std::fs::remove_dir(msgs.join("sam.mo")).unwrap();
+        std::fs::write(msgs.join("sam.mo"), b"x").unwrap();
+        assert!(has_catalogs(d));
+    }
+
     #[test]
     fn texts_without_a_translation_come_back_with_their_values() {
         assert_eq!(tr("Create Sandbox"), "Create Sandbox");

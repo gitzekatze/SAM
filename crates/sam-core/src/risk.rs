@@ -1086,14 +1086,99 @@ mod tests {
         assert_eq!(a.level, RiskLevel::Low);
     }
 
-    /// Full home access counts as dangerous, and as think twice when it is read-only.
+    /// Full home access counts as dangerous, and as think twice when it is
+    /// read-only; its name says which, so a writable home never reads as a
+    /// read-only one.
     #[test]
     fn full_home_is_dangerous() {
+        let home = |p: &PermissionSet| {
+            let a = assess(p);
+            let i = a.items.iter().find(|i| i.key == "filesystem.home").unwrap();
+            (i.title.clone(), i.level, a.level)
+        };
         let mut p = PermissionSet::strict_gui();
         p.filesystem.home = true;
-        assert_eq!(assess(&p).level, RiskLevel::Dangerous);
+        p.filesystem.home_access = Access::Rw;
+        assert_eq!(
+            home(&p),
+            (
+                "Full home access".into(),
+                RiskLevel::Dangerous,
+                RiskLevel::Dangerous
+            )
+        );
         p.filesystem.home_access = Access::Ro;
-        assert_eq!(assess(&p).level, RiskLevel::High);
+        assert_eq!(
+            home(&p),
+            (
+                "Full home access (read-only)".into(),
+                RiskLevel::High,
+                RiskLevel::High
+            )
+        );
+    }
+
+    /// The reason given for a risk word names exactly the permissions at
+    /// that level: the riskiest ones, never the milder ones next to them and
+    /// never the basics every sandbox gets; low risk names none.
+    #[test]
+    fn the_reason_names_exactly_the_riskiest_permissions() {
+        let deciding = |p: &PermissionSet| -> Vec<String> {
+            assess(p).deciding().iter().map(|i| i.key.clone()).collect()
+        };
+        let mut p = PermissionSet::strict_gui();
+        assert!(deciding(&p).is_empty(), "Wayland alone");
+        assert_eq!(assess(&p).reason(), "");
+        p.devices.gpu = true;
+        assert_eq!(deciding(&p), ["devices.gpu"], "the one at Medium");
+        p.network.mode = NetworkMode::Full;
+        assert_eq!(deciding(&p), ["network.mode"]);
+        assert_eq!(assess(&p).reason(), "Full network");
+        p.devices.webcam = true;
+        assert_eq!(deciding(&p), ["network.mode", "devices.webcam"]);
+        assert_eq!(assess(&p).reason(), "Full network +1");
+        let mut p = PermissionSet::strict_gui();
+        p.devices.gpu = true;
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        p.filesystem.ssh = true;
+        assert_eq!(deciding(&p), ["filesystem.home", "filesystem.ssh"]);
+    }
+
+    /// Game controllers count on their own; with all input devices granted
+    /// they are part of that one, which counts as dangerous.
+    #[test]
+    fn game_controllers_count_unless_all_input_is_granted() {
+        let mut p = PermissionSet::strict_gui();
+        p.devices.gamepads = true;
+        let a = assess(&p);
+        assert!(a
+            .items
+            .iter()
+            .any(|i| i.key == "devices.gamepads" && i.level == RiskLevel::Medium));
+        assert_eq!(a.level, RiskLevel::Medium);
+        p.devices.input = true;
+        let a = assess(&p);
+        assert!(!a.items.iter().any(|i| i.key == "devices.gamepads"));
+        assert!(a
+            .items
+            .iter()
+            .any(|i| i.key == "devices.input" && i.level == RiskLevel::Dangerous));
+    }
+
+    /// A level shows as its name where it is put into a text (the message
+    /// after saving a preset).
+    #[test]
+    fn a_risk_level_shows_as_its_name() {
+        for l in [
+            RiskLevel::Low,
+            RiskLevel::Medium,
+            RiskLevel::High,
+            RiskLevel::Dangerous,
+        ] {
+            assert_eq!(l.to_string(), l.label());
+        }
+        assert_eq!(format!("({})", RiskLevel::High), "(High)");
     }
 
     /// Full network together with X11 makes the settings think twice (high risk).

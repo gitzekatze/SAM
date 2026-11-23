@@ -337,6 +337,28 @@ mod tests {
         assert!(w.iter().all(|w| w.severity != Severity::Danger));
     }
 
+    /// A filtered session bus on a computer without xdg-dbus-proxy (where
+    /// SAM then gives the app no session bus) says so; with the proxy
+    /// installed, or without a filtered bus, it does not.
+    #[test]
+    fn a_missing_dbus_proxy_is_named_only_where_the_filter_needs_it() {
+        let mut host = crate::sandbox::sample_context().host;
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Filtered;
+        let named = |p: &PermissionSet, h: &crate::host::HostInfo| {
+            let ctx = WarningContext {
+                host: Some(h),
+                ..WarningContext::all_enabled()
+            };
+            codes(&evaluate(p, &ctx)).contains(&"dbus-proxy-missing")
+        };
+        assert!(!named(&p, &host), "installed");
+        host.tools.xdg_dbus_proxy = None;
+        assert!(named(&p, &host), "missing");
+        p.dbus.session.mode = DbusMode::None;
+        assert!(!named(&p, &host), "no filtered bus asked for");
+    }
+
     /// The X11 warning disappears when the user turns it off in the preferences.
     #[test]
     fn x11_warning_can_be_disabled() {
