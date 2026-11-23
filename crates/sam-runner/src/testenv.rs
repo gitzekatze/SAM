@@ -295,10 +295,18 @@ mod tests {
                 Ok(())
             });
         }
-        let mut holder = holder.spawn().unwrap();
+        // Ended however this test ends, a failed assertion too.
+        struct Holder(std::process::Child);
+        impl Drop for Holder {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let mut holder = Holder(holder.spawn().unwrap());
         // From now on only the holder holds the write end.
         drop(write);
-        let out = holder.stdout.take().unwrap();
+        let out = holder.0.stdout.take().unwrap();
         // The holder's line with the services' numbers, within a minute.
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -312,10 +320,7 @@ mod tests {
         });
         let line = rx
             .recv_timeout(Duration::from_secs(60))
-            .unwrap_or_else(|_| {
-                let _ = holder.kill();
-                panic!("the holder never said which services it started")
-            });
+            .unwrap_or_else(|_| panic!("the holder never said which services it started"));
         let pids: Vec<u32> = line
             .split_whitespace()
             .map(|p| p.parse().unwrap())
@@ -345,8 +350,8 @@ mod tests {
             looked += 1;
         }
         assert!(looked > 0, "at least one service shows its descriptors");
-        holder.kill().unwrap();
-        holder.wait().unwrap();
+        holder.0.kill().unwrap();
+        holder.0.wait().unwrap();
         // The pipe ends when nobody holds its write end any more.
         let fd = read.as_raw_fd();
         let deadline = Instant::now() + Duration::from_secs(60);
