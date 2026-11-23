@@ -95,7 +95,10 @@ fn killing_the_launcher_ends_the_sandbox(network: &str) {
         .args(["dev", "make-fixture", "--name", "Sleeper", "--apprun"])
         .arg(&apprun)
         .arg(&img));
-    ok(sam(root).arg("add").arg(&img).arg("--no-launcher"));
+    ok(sam(root)
+        .arg("add")
+        .arg(&img)
+        .args(["--no-launcher", "--accept"]));
     let list = ok(sam(root).args(["--json", "list"]));
     let id = list
         .lines()

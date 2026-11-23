@@ -77,7 +77,9 @@ fn sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply() {
             .status
             .success()
     );
-    assert!(sam(root, &["add", img_s, "--no-launcher"]).status.success());
+    assert!(sam(root, &["add", img_s, "--no-launcher", "--accept"])
+        .status
+        .success());
     let id = json(&sam(root, &["--json", "list"]))["data"][0]["id"]
         .as_str()
         .unwrap()
@@ -140,14 +142,28 @@ fn an_app_nobody_has_confirmed_does_not_start() {
         .as_str()
         .unwrap()
         .to_string();
-    let run = sam(root, &["run", &id]);
-    let err = String::from_utf8_lossy(&run.stderr);
-    assert!(!run.status.success(), "the start stops: {err}");
-    assert!(
-        err.contains("have not been confirmed"),
-        "and says why: {err}"
-    );
-    assert!(err.contains("sam-jail review"), "and what to do: {err}");
+    // One switch changed, alone or for a group of apps, confirms nothing
+    // about the others (review F5: any change marked the app reviewed).
+    let changes: [&[&str]; 2] = [
+        &["set", &id, "devices.gpu", "true"],
+        &["group", "set", "audio.enabled", "false", &id],
+    ];
+    for change in changes {
+        let o = sam(root, change);
+        assert!(
+            o.status.success(),
+            "{change:?}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        let run = sam(root, &["run", &id]);
+        let err = String::from_utf8_lossy(&run.stderr);
+        assert!(!run.status.success(), "{change:?}: the start stops: {err}");
+        assert!(
+            err.contains("have not been confirmed"),
+            "{change:?}: and says why: {err}"
+        );
+        assert!(err.contains("sam-jail review"), "and what to do: {err}");
+    }
     assert!(sam(root, &["review", &id]).status.success());
     let again = sam(root, &["run", &id]);
     let err = String::from_utf8_lossy(&again.stderr);

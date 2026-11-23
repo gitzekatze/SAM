@@ -1094,7 +1094,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     &sam_core::risk::new_risks(&cur.profile.permissions, &merged),
                     yes,
                 )?;
-                let e = app.set_permissions(&cur.id, merged)?;
+                let e = app.change_permissions(&cur.id, merged)?;
                 out.emit(&AppSummary::from_entry(&e), || {
                     outln!(
                         "{}",

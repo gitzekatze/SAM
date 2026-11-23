@@ -432,7 +432,7 @@ pub fn diagnose(
             }
         }
         if applied > 0 {
-            *entry = sam.set_permissions(&entry.id, perms)?;
+            *entry = sam.change_permissions(&entry.id, perms)?;
         }
     }
     let _ = fs::remove_dir_all(&diag_dir);
