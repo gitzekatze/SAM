@@ -203,7 +203,9 @@ impl Registry {
             .filter(|a| a.name.to_lowercase() == q)
             .collect::<Vec<_>>()[..]
         {
-            if m.iter().all(|a| a.id == named.id || a.added_at > named.added_at) {
+            if m.iter()
+                .all(|a| a.id == named.id || a.added_at > named.added_at)
+            {
                 return Ok((*named).clone());
             }
         }

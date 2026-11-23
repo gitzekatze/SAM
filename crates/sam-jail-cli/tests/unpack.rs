@@ -326,7 +326,6 @@ fn an_update_without_a_sandbox_stops_before_downloading() {
     );
 }
 
-
 /// The host's unpacking tools unpack what SAM's own reader cannot, inside
 /// the unpack sandbox, with the options SAM gives them (contract
 /// unpack-tools; audit D-M10: its tests saw only SAM's own reader). A
