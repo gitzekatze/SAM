@@ -1596,7 +1596,8 @@ fn real_main(cli: Cli) -> Result<()> {
             cmd: DevCmd::SignAppimage { file, key },
         } => {
             sam_detect::signature::sign_embedded(&file, None, &key)?;
-            let sig = sam_detect::signature::check(&file);
+            // SAM's own file, just signed here: GnuPG reads only our key.
+            let sig = sam_detect::signature::check(&file, &sam_detect::signature::GnuPg::Direct);
             let fp = sig.fingerprint.clone().unwrap_or_default();
             if sig.state != sam_core::model::SignatureState::Valid || !fp.eq_ignore_ascii_case(&key)
             {

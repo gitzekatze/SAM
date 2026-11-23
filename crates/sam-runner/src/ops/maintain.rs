@@ -79,7 +79,7 @@ impl Sam {
                     if checked.is_none() {
                         entry.content_changed_outside = true;
                     }
-                    let new_sig = sam_detect::signature::check(&source);
+                    let new_sig = self.check_signature(&source, false);
                     entry.signing_key_changed =
                         signing_key_change(entry.signature.as_ref(), &new_sig);
                     entry.signature = Some(new_sig);
@@ -776,10 +776,10 @@ impl Sam {
             {
                 s.clone()
             }
-            _ => sam_detect::signature::check(&installed),
+            _ => self.check_signature(&installed, false),
         };
         let new_sha256 = fingerprint::sha256_file(&tmp)?;
-        let new_sig = sam_detect::signature::check(&tmp);
+        let new_sig = self.check_signature(&tmp, false);
         if let Some(before) = signing_key_change(Some(&before_sig), &new_sig) {
             if !accept_key_change {
                 return Err(sam_core::error::CodedError::new(
@@ -1117,9 +1117,9 @@ impl Sam {
             }
             // Only SAM's makers may replace SAM (see release_key), and never
             // with an older release than the one running.
-            let new_sig = sam_detect::signature::check(&tmp);
+            let new_sig = self.check_signature(&tmp, true);
             crate::release_key::check(&new_sig, keys)?;
-            let running = sam_detect::signature::check(appimage);
+            let running = self.check_signature(appimage, true);
             if let Some((was, now)) = older_signed_version(Some(&running), &new_sig) {
                 return Err(older_version_error(was, now).into());
             }

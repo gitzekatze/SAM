@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use sam_detect::signature::{check, sign_for_test, sign_with_key_block_for_test};
+use sam_detect::signature::{check, sign_for_test, sign_with_key_block_for_test, GnuPg};
 use sam_runner::release_key;
 
 fn gpg(home: &Path, args: &[&str]) -> Vec<u8> {
@@ -109,7 +109,7 @@ fn sam_refuses_a_forged_update_that_carries_its_release_key() {
 
     let genuine = download(dir, "SAM-genuine.AppImage");
     sign_for_test(&genuine, &home, "release@example.invalid").unwrap();
-    assert!(release_key::check(&check(&genuine), &keys).is_ok());
+    assert!(release_key::check(&check(&genuine, &GnuPg::Direct), &keys).is_ok());
 
     let forged = download(dir, "SAM-forged.AppImage");
     let mut block = gpg(&home, &["--armor", "--export", "release@example.invalid"]);
@@ -118,7 +118,7 @@ fn sam_refuses_a_forged_update_that_carries_its_release_key() {
         &["--armor", "--export", "attacker@example.invalid"],
     ));
     sign_with_key_block_for_test(&forged, &home, "attacker@example.invalid", &block).unwrap();
-    let e = release_key::check(&check(&forged), &keys)
+    let e = release_key::check(&check(&forged, &GnuPg::Direct), &keys)
         .unwrap_err()
         .to_string();
     assert!(
@@ -128,7 +128,7 @@ fn sam_refuses_a_forged_update_that_carries_its_release_key() {
 
     let other = download(dir, "SAM-other.AppImage");
     sign_for_test(&other, &home, "attacker@example.invalid").unwrap();
-    let e = release_key::check(&check(&other), &keys)
+    let e = release_key::check(&check(&other, &GnuPg::Direct), &keys)
         .unwrap_err()
         .to_string();
     assert!(e.contains("not with SAM's release key"), "{e}");

@@ -131,6 +131,18 @@ pub(crate) fn isolated(
 /// the memory; two pools are plenty for unpacking.
 const FEW_MALLOC_ARENAS: [&str; 3] = ["--setenv", "MALLOC_ARENA_MAX", "2"];
 
+/// `program` inside the same sandbox as the unpacking tools, with `home`
+/// as the only folder it sees of the computer's own files, writable: for
+/// GnuPG, which reads the key and the signature an AppImage carries (review
+/// 2026-11-23, F6; audit I-F18). No network, nothing of the home, the
+/// baseline syscall filter; a program it leaves behind (a gpg-agent) ends
+/// with the sandbox.
+pub fn isolated_program(iso: &Isolation, home: &Path, program: &Path) -> Result<Command> {
+    let mut c = isolated(iso, home, home, program)?;
+    c.arg(program);
+    Ok(c)
+}
+
 /// Exit code of `sam-jail dev extract-squashfs` when an unpacking limit was
 /// exceeded inside the sandbox. Without it the parent saw only "failed",
 /// tried the next tool (which has only a time limit) and then offered to let

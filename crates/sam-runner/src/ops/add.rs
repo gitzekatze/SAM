@@ -115,7 +115,7 @@ impl Sam {
             source: fp.clone(),
             added_at: t,
             state: AppState::Registered,
-            signature: Some(sam_detect::signature::check(&source)),
+            signature: Some(self.check_signature(&source, false)),
             ..Default::default()
         };
         // Extract into a temporary root; the final id depends on metadata.

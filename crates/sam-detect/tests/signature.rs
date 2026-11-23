@@ -13,7 +13,7 @@ use std::process::Command;
 
 use sam_core::model::SignatureState;
 use sam_detect::signature::{
-    check, gnupg_contract, sign_for_test, sign_with_key_block_for_test, CONTRACT_MSG,
+    check, gnupg_contract, sign_for_test, GnuPg, sign_with_key_block_for_test, CONTRACT_MSG,
     CONTRACT_SIGNER,
 };
 
@@ -141,7 +141,7 @@ fn signed_appimage_is_checked() {
     let Some(k) = kit() else { return };
     let fpr = k.key("SAM Test <test@example.invalid>");
     let img = k.image("Signed-x86_64.AppImage");
-    let unsigned = check(&img);
+    let unsigned = check(&img, &GnuPg::Direct);
     assert_eq!(
         unsigned.state,
         SignatureState::Unsigned,
@@ -151,13 +151,13 @@ fn signed_appimage_is_checked() {
     assert!(!unsigned.detail.is_empty(), "the result is explained");
 
     sign_for_test(&img, &k.home, "test@example.invalid").unwrap();
-    let ok = check(&img);
+    let ok = check(&img, &GnuPg::Direct);
     assert_eq!(ok.state, SignatureState::Valid, "{}", ok.detail);
     assert_eq!(ok.fingerprint.as_deref(), Some(fpr.as_str()));
     assert!(ok.detail.contains("SAM Test"), "{}", ok.detail);
 
     flip_last_byte(&img);
-    let bad = check(&img);
+    let bad = check(&img, &GnuPg::Direct);
     assert_eq!(bad.state, SignatureState::Invalid);
     assert_eq!(
         bad.fingerprint, None,
@@ -181,7 +181,7 @@ fn a_second_key_in_the_file_cannot_borrow_a_trusted_name() {
     block.extend(k.export("attacker@example.invalid"));
     sign_with_key_block_for_test(&img, &k.home, "attacker@example.invalid", &block).unwrap();
 
-    let r = check(&img);
+    let r = check(&img, &GnuPg::Direct);
     assert_eq!(r.state, SignatureState::Invalid, "{}", r.detail);
     assert_ne!(r.fingerprint.as_deref(), Some(trusted.as_str()));
     assert!(r.detail.contains("2 keys"), "{}", r.detail);
@@ -191,7 +191,7 @@ fn a_second_key_in_the_file_cannot_borrow_a_trusted_name() {
     let mut block2 = k.export("attacker@example.invalid");
     block2.extend(k.export("trusted@example.invalid"));
     sign_with_key_block_for_test(&img2, &k.home, "attacker@example.invalid", &block2).unwrap();
-    assert_eq!(check(&img2).state, SignatureState::Invalid);
+    assert_eq!(check(&img2, &GnuPg::Direct).state, SignatureState::Invalid);
 
     // Only the trusted key in the file, but signed by the attacker: gpgv
     // cannot verify it, so it is not valid and names nobody.
@@ -199,7 +199,7 @@ fn a_second_key_in_the_file_cannot_borrow_a_trusted_name() {
     let only_trusted = k.export("trusted@example.invalid");
     sign_with_key_block_for_test(&img3, &k.home, "attacker@example.invalid", &only_trusted)
         .unwrap();
-    let r3 = check(&img3);
+    let r3 = check(&img3, &GnuPg::Direct);
     assert_eq!(r3.state, SignatureState::Invalid, "{}", r3.detail);
     assert_eq!(r3.fingerprint, None);
 
@@ -207,7 +207,7 @@ fn a_second_key_in_the_file_cannot_borrow_a_trusted_name() {
     // what it is.
     let img4 = k.image("Honest-x86_64.AppImage");
     sign_for_test(&img4, &k.home, "attacker@example.invalid").unwrap();
-    let r4 = check(&img4);
+    let r4 = check(&img4, &GnuPg::Direct);
     assert_eq!(r4.state, SignatureState::Valid, "{}", r4.detail);
     assert_eq!(r4.fingerprint.as_deref(), Some(attacker.as_str()));
 }
@@ -228,7 +228,7 @@ fn a_signature_by_a_subkey_names_its_primary_key() {
     k.gpg(&["--quick-add-key", &primary, "ed25519", "sign", "never"]);
     let img = k.image("Subkey-x86_64.AppImage");
     sign_for_test(&img, &k.home, "sub@example.invalid").unwrap();
-    let r = check(&img);
+    let r = check(&img, &GnuPg::Direct);
     assert_eq!(r.state, SignatureState::Valid, "{}", r.detail);
     assert_eq!(r.fingerprint.as_deref(), Some(primary.as_str()));
 }

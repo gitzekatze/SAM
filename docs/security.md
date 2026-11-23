@@ -884,6 +884,16 @@ trusted one, for example SAM's public release key. Every GnuPG step has a
 time limit of 20 seconds, and `sam-jail doctor` checks that the installed
 GnuPG still names the real signer.
 
+The key and the signature are the file's own bytes, written by whoever
+made it, so GnuPG reads them inside the unpack sandbox, like every other
+program that reads an AppImage: no network, nothing of the home, the
+throwaway GnuPG folder as the only writable place, the baseline syscall
+filter, and anything GnuPG leaves running (a gpg-agent) ends with the
+sandbox (`gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox`).
+Where SAM can build no sandbox, an added AppImage's signature counts as not
+checked (an update then asks first); only SAM's own update is still checked
+directly there, as before.
+
 ---
 
 ## Safe unpacking

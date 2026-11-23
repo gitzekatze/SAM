@@ -203,7 +203,7 @@ fn changed_signature_and_update_sections_never_crash_the_readers() {
             // A header cut anywhere, also before its first fields.
             let _ = sam_detect::appimage::elf_end_offset(&d[..r_cut.min(d.len())]);
             let _ = sam_detect::update_info::read(&img);
-            let _ = sam_detect::signature::check(&img);
+            let _ = sam_detect::signature::check(&img, &sam_detect::signature::GnuPg::Direct);
         }) {
             let saved = tmp.path().join(format!("crash-{round}.AppImage"));
             let _ = fs::copy(&img, &saved);
