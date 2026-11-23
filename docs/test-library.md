@@ -21,23 +21,28 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L451) |
 | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L464) |
 | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L490) |
-| `sam-jail config get` reads back what is set; an unknown key is an error. | [`settings_read_back_by_key_and_text_is_taken_literally`](../crates/sam-core/src/config.rs#L517) |
-| A settings file that exists but cannot be read (not text, or a folder) is an error that names it, and it stays as it is: the stricter settings in it are never silently replaced by the defaults, which a later save would write over it. | [`a_settings_file_that_cannot_be_read_is_an_error_and_stays`](../crates/sam-core/src/config.rs#L548) |
-| A file already in the current format is not migrated again: an old theme name in it is an invalid value and is reset to System, and a theme that is no text makes the file damaged (moved aside). | [`a_current_settings_file_is_not_migrated_again`](../crates/sam-core/src/config.rs#L573) |
-| The extraction folder is a folder of its own: never the root, never the home folder itself (however it is written), never relative and never with `..`. | [`the_extraction_folder_is_never_the_root_or_the_home_folder`](../crates/sam-core/src/config.rs#L596) |
 | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) |
 | An error code survives added context. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L137) |
 | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) |
-| The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L184) |
-| Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L202) |
-| Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L230) |
-| Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L739) |
-| The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L754) |
-| Only a real socket counts as a desktop service. | [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L767) |
-| The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L788) |
-| Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L797) |
-| Where AppArmor restricts user namespaces, the advice names the restricted profile for Bubblewrap alone and what it costs, and warns against the ways that lift the restriction for every program (audit A3). | [`the_apparmor_advice_keeps_the_restriction_for_other_programs`](../crates/sam-core/src/host.rs#L815) |
-| The install hint names this distribution's package manager, also on derivatives (by `ID_LIKE`), and none where SAM does not know it (audit T2). | [`the_install_hint_fits_the_distribution`](../crates/sam-core/src/host.rs#L830) |
+| The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L190) |
+| Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L208) |
+| The overlay check believes Bubblewrap's answer: a Bubblewrap that fails means no overlay, even though the check's folders could be made (NFS, eCryptfs, another overlay), and one that succeeds means a working overlay. | [`the_overlay_check_believes_bubblewraps_answer`](../crates/sam-core/src/host.rs#L238) |
+| Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L256) |
+| The sockets given to a sandbox follow the user's session: a set variable names the socket (WAYLAND_DISPLAY=wayland-7 is not wayland-0, which may be another compositor's), and an empty one counts as unset, so the usual places are used. | [`the_sockets_follow_the_sessions_variables`](../crates/sam-core/src/host.rs#L809) |
+| `$XDG_CONFIG_HOME` decides where user-dirs.dirs is read, so which real folder a Documents or Downloads permission shows; an empty one counts as unset, never as the current folder. | [`the_user_folders_are_read_from_the_users_config_folder`](../crates/sam-core/src/host.rs#L868) |
+| Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L879) |
+| The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L894) |
+| Only a real socket counts as a desktop service. | [`only_a_real_socket_counts_as_a_desktop_service`](../crates/sam-core/src/host.rs#L907) |
+| The X11 display number is read from every common DISPLAY form, and remote displays are refused. | [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L928) |
+| Only library folders a sandbox does not show anyway and that may be shown are kept: below /opt or /usr/local, never below the home folder (also where the home is itself below /opt) or in /etc, /var or /run. | [`only_library_folders_outside_the_home_and_system_areas_are_shown`](../crates/sam-core/src/host.rs#L946) |
+| The loader's folders come from the files in ld.so.conf.d in the order of their names, after /usr/local/lib: only lines that name a folder, and only folders that exist. | [`the_loaders_folders_come_from_its_config_files`](../crates/sam-core/src/host.rs#L976) |
+| The graphics devices are everything in dri/ and the nvidia* entries, sorted, and nothing else of the device folder. | [`the_graphics_devices_are_found_in_the_device_folder`](../crates/sam-core/src/host.rs#L1010) |
+| The sandbox's user name is `$USER`; where that is empty or unset, the home folder's name, and "user" where there is none. | [`the_user_name_is_users_or_the_home_folders`](../crates/sam-core/src/host.rs#L1039) |
+| A setuid Bubblewrap is told from a normal one by its file's setuid bit: only a setuid one works where user namespaces are switched off. | [`a_setuid_bubblewrap_is_told_from_a_normal_one`](../crates/sam-core/src/host.rs#L1050) |
+| The kernel's user namespace knobs are read as they are meant: "1" is on, "0" off, a missing file unknown (the AppArmor restriction of Ubuntu 24.04 and later included). | [`the_user_namespace_knobs_are_read_as_meant`](../crates/sam-core/src/host.rs#L1067) |
+| Only real socket paths are taken from a D-Bus address; abstract sockets are not. | [`only_real_socket_paths_are_taken_from_a_dbus_address`](../crates/sam-core/src/host.rs#L1107) |
+| Where AppArmor restricts user namespaces, the advice names the restricted profile for Bubblewrap alone and what it costs, and warns against the ways that lift the restriction for every program (audit A3). | [`the_apparmor_advice_keeps_the_restriction_for_other_programs`](../crates/sam-core/src/host.rs#L1125) |
+| The install hint names this distribution's package manager, also on derivatives (by `ID_LIKE`), and none where SAM does not know it (audit T2). | [`the_install_hint_fits_the_distribution`](../crates/sam-core/src/host.rs#L1140) |
 | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | [`every_translated_language_can_be_chosen`](../crates/sam-core/src/i18n.rs#L179) |
 | Texts without a translation come back with their values. | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L193) |
 | Only icons that are safe to decode reach the desktop's image code: a PNG whose header announces more than 1024×1024 pixels (a decode bomb: a small file that asks for gigabytes) is refused before anything decodes it, and so are oversized files, large SVGs and XPM (audit G-F8, I-F18). | [`only_icons_that_are_safe_to_decode_are_taken`](../crates/sam-core/src/icon.rs#L85) |
@@ -49,23 +54,18 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Rooted paths (tests) keep their runtime folders apart from SAM's real one and from every other root, and short enough for SAM's sockets. | [`rooted_paths_have_a_runtime_folder_of_their_own`](../crates/sam-core/src/paths.rs#L182) |
 | A root inside a test whose runtime folder is already one of these gets its folder next to it, never in /tmp (16,304 were left there by one mutation run, 2026-11-20); a long runtime folder still falls back to /tmp. | [`a_test_inside_a_test_keeps_its_runtime_folder_out_of_tmp`](../crates/sam-core/src/paths.rs#L219) |
 | ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L245) |
-| The catalogue is the one list of permissions: it names every setting an app's permissions have, and every name in it can be read. | [`the_catalogue_names_every_setting`](../crates/sam-core/src/permissions.rs#L1188) |
-| The permissions page of the documentation names every permission. | [`the_documentation_names_every_permission`](../crates/sam-core/src/permissions.rs#L1231) |
-| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`bus_names_follow_the_rules_of_the_bus`](../crates/sam-core/src/permissions.rs#L1264) |
-| Media controls let the app talk to the screen saver and power services; they no longer ask for the media-player wildcard, which was always refused (audit L-Q1): the app's own player name is learned instead. | [`media_controls_talk_but_ask_for_no_wildcard_name`](../crates/sam-core/src/permissions.rs#L1287) |
-| Own names that are refused. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1308) |
-| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1323) |
-| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L1336) |
-| A list the saved form leaves out while it is empty (function and signal rules) takes comma-separated input like every other list, also while it is still empty. | [`an_empty_list_left_out_of_the_saved_form_takes_comma_separated_input`](../crates/sam-core/src/permissions.rs#L1373) |
-| Each user-folder switch grants exactly its own folder, read-only or writable, and no other. | [`every_user_folder_switch_grants_exactly_its_folder`](../crates/sam-core/src/permissions.rs#L1399) |
-| "This computer only" forwards exactly the ports the user listed: each once, sorted, without port 0, and never DNS (port 53) from the host. | [`only_the_ports_the_user_listed_are_forwarded`](../crates/sam-core/src/permissions.rs#L1421) |
-| Wildcards and versioned names of dangerous desktop services count as dangerous (warned about, rated Dangerous, never owned), and so does any wildcard over the portal's names; ordinary names do not. | [`wildcards_and_versions_of_dangerous_services_are_dangerous`](../crates/sam-core/src/permissions.rs#L1446) |
-| A switched-on integration reaches the enforced bus filter: every one of its names is allowed, next to the user's own entries, and each name only once. | [`switched_on_integrations_reach_the_bus_filter_once`](../crates/sam-core/src/permissions.rs#L1482) |
-| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1509) |
-| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1527) |
-| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1542) |
-| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1555) |
-| Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1564) |
+| The catalogue is the one list of permissions: it names every setting an app's permissions have, and every name in it can be read. | [`the_catalogue_names_every_setting`](../crates/sam-core/src/permissions.rs#L1181) |
+| The permissions page of the documentation names every permission. | [`the_documentation_names_every_permission`](../crates/sam-core/src/permissions.rs#L1224) |
+| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`bus_names_follow_the_rules_of_the_bus`](../crates/sam-core/src/permissions.rs#L1257) |
+| Media controls let the app talk to the screen saver and power services; they no longer ask for the media-player wildcard, which was always refused (audit L-Q1): the app's own player name is learned instead. | [`media_controls_talk_but_ask_for_no_wildcard_name`](../crates/sam-core/src/permissions.rs#L1280) |
+| Own names that are refused. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1301) |
+| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1316) |
+| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L1329) |
+| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1348) |
+| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1366) |
+| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1381) |
+| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1394) |
+| Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1403) |
 | Every switch says the same risk word in the window (its catalogue entry) as in the risk assessment that decides the badges and which changes ask first (audit D-M12: raw ALSA was "Think twice" in one and "Dangerous" in the other, so the window did not ask). | [`every_switch_has_one_risk_word`](../crates/sam-core/src/risk.rs#L816) |
 | Single functions and signals of a service count in the risk word: a function of a service that can act outside the sandbox is Dangerous, any other function Think twice, a signal Harmless (audit D-H2: they counted for nothing). | [`function_and_signal_rules_count_in_the_risk_word`](../crates/sam-core/src/risk.rs#L861) |
 | The command line and the window name risk with the same three words, and the command line's filter understands both names. | [`risk_has_the_same_three_words_everywhere`](../crates/sam-core/src/risk.rs#L887) |
@@ -291,7 +291,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-338 tests.
+344 tests.
 
 | Promise | Test |
 |---|---|
@@ -567,6 +567,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Saving an app's settings as a preset keeps them exactly. | [`saving_an_apps_settings_as_a_preset_keeps_them_exactly`](../crates/sam-runner/tests/groups.rs#L193) |
 | Grants of parts of the home never reach start places or secrets. | [`grants_of_parts_of_the_home_never_reach_start_places_or_secrets`](../crates/sam-runner/tests/home_grants.rs#L65) |
 | The home protections hold whatever else is granted. | [`the_home_protections_hold_whatever_else_is_granted`](../crates/sam-runner/tests/home_guards.rs#L51) |
+| The Landlock version SAM reads is the kernel's: none where Landlock is not active, and at least the version this kernel brings where it is (a wrong one turns layers on that do not exist, or switches off the check that Landlock fences abstract sockets). | [`the_landlock_version_is_the_kernels`](../crates/sam-runner/tests/host_probe.rs#L42) |
+| The kernel release gives the least landlock version. | [`the_kernel_release_gives_the_least_landlock_version`](../crates/sam-runner/tests/host_probe.rs#L61) |
+| Where Landlock's version query answers 0 (no version at all; a filter SAM runs under that fakes success), SAM counts no Landlock: it must never report or plan on a protection layer that is not there. | [`a_landlock_answer_of_zero_is_no_landlock`](../crates/sam-runner/tests/host_probe.rs#L90) |
+| SAM offers the writable app folder exactly where the real Bubblewrap can give it: overlays only from a Bubblewrap that has them (it lists `--overlay-src`), and only on a folder where a real overlay works. | [`the_overlay_checks_match_the_real_bubblewrap`](../crates/sam-runner/tests/host_probe.rs#L157) |
+| The loader's library folders SAM shows are this computer's: every existing folder its ld.so.conf.d files list, and /usr/local/lib, which is outside the folders a sandbox shows anyway. | [`the_loaders_folders_on_this_computer_are_found`](../crates/sam-runner/tests/host_probe.rs#L193) |
+| The graphics devices SAM can give an app are this computer's: every entry of /dev/dri and every /dev/nvidia* entry, and nothing else. | [`the_graphics_devices_on_this_computer_are_found`](../crates/sam-runner/tests/host_probe.rs#L223) |
 | A download that broke off is refused and nothing is kept. | [`a_download_that_broke_off_is_refused_and_nothing_is_kept`](../crates/sam-runner/tests/incomplete.rs#L9) |
 | An app cannot open the kernels rarely used doors. | [`an_app_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L104) |
 | An unpacking tool cannot open the kernels rarely used doors. | [`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L153) |
@@ -751,4 +757,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 665 automated Rust tests plus 7 scripted checks.
+Total: 671 automated Rust tests plus 7 scripted checks.
