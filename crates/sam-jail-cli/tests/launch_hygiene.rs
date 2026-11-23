@@ -172,7 +172,10 @@ fn the_apps_variables_reach_it_only_after_the_helpers_layers() {
 /// Review F6 and the audit's open item: a descriptor SAM inherited (a
 /// terminal's or launcher's leak; here a pipe at number 7 without its
 /// close-on-exec mark) never reaches the app, which could otherwise write
-/// to whatever it leads to.
+/// to whatever it leads to; nor does any other descriptor above the
+/// standard three. In each way a start can go: through SAM's helper,
+/// without it (no layer asks for it), and inside pasta ("This computer
+/// only"), whose shell opens the status channels for Bubblewrap.
 #[test]
 fn a_descriptor_sam_inherited_never_reaches_the_app() {
     if !usable() {
@@ -185,40 +188,68 @@ fn a_descriptor_sam_inherited_never_reaches_the_app() {
     let id = add(
         root,
         "Leak-1.0-x86_64.AppImage",
-        "#!/bin/sh\n( echo leaked >&7 ) 2>/dev/null && echo fd7=open || echo fd7=closed\n",
+        "#!/bin/sh\n( echo leaked >&7 ) 2>/dev/null && echo fd7=open || echo fd7=closed\n\
+         for fd in 3 4 5 6 7 8 9; do [ -e /proc/self/fd/$fd ] && echo \"open=$fd\"; done\n\
+         echo listed\n",
     );
-    let mut ends = [0; 2];
-    // SAFETY: pipe2 writes two descriptors into the array.
-    let made = unsafe { libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC) };
-    assert_eq!(made, 0);
-    // SAFETY: both descriptors were just made and belong to this test.
-    let (read, write) = unsafe { (OwnedFd::from_raw_fd(ends[0]), OwnedFd::from_raw_fd(ends[1])) };
-    let w = write.as_raw_fd();
-    let mut c = sam_cmd(root, &["run", &id]);
-    // SAFETY: between fork and exec only dup2, which is async-signal-safe;
-    // the copy at 7 has no close-on-exec mark, as a leaked one has not.
-    unsafe {
-        c.pre_exec(move || {
-            if libc::dup2(w, 7) < 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
+    let start = |case: &str| {
+        let mut ends = [0; 2];
+        // SAFETY: pipe2 writes two descriptors into the array.
+        let made = unsafe { libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC) };
+        assert_eq!(made, 0);
+        // SAFETY: both descriptors were just made and belong to this test.
+        let (read, write) =
+            unsafe { (OwnedFd::from_raw_fd(ends[0]), OwnedFd::from_raw_fd(ends[1])) };
+        let w = write.as_raw_fd();
+        let mut c = sam_cmd(root, &["run", &id]);
+        // SAFETY: between fork and exec only dup2, which is async-signal-safe;
+        // the copy at 7 has no close-on-exec mark, as a leaked one has not.
+        unsafe {
+            c.pre_exec(move || {
+                if libc::dup2(w, 7) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let run = c.output().unwrap();
+        drop(write);
+        let all = out_and_err(&run);
+        assert!(
+            run.status.success() && all.contains("listed"),
+            "{case}: {all}"
+        );
+        assert!(
+            all.contains("fd7=closed"),
+            "{case}: the app got SAM's descriptor: {all}"
+        );
+        assert!(
+            !all.contains("open="),
+            "{case}: the app got a descriptor: {all}"
+        );
+        // What is in the pipe now, without waiting for its end.
+        // SAFETY: fcntl only sets a flag on this test's own descriptor.
+        unsafe { libc::fcntl(read.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) };
+        let mut got = [0u8; 64];
+        let n = std::io::Read::read(&mut fs::File::from(read), &mut got).unwrap_or(0);
+        assert_eq!(n, 0, "{case}: the app wrote into it: {:?}", &got[..n]);
+    };
+    start("through SAM's helper");
+    if sam_runner::netns::pasta_usable().is_ok() {
+        set(root, &id, "network.mode", "localhost");
+        start("inside pasta");
+        set(root, &id, "network.mode", "none");
+    } else {
+        sam_runner::contracts::not_here("no usable pasta, so a start inside it was not tried");
     }
-    let run = c.output().unwrap();
-    drop(write);
-    let all = out_and_err(&run);
-    assert!(run.status.success(), "{all}");
-    assert!(
-        all.contains("fd7=closed"),
-        "the app got SAM's descriptor: {all}"
-    );
-    // What is in the pipe now, without waiting for its end.
-    // SAFETY: fcntl only sets a flag on this test's own descriptor.
-    unsafe { libc::fcntl(read.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) };
-    let mut got = [0u8; 64];
-    let n = std::io::Read::read(&mut fs::File::from(read), &mut got).unwrap_or(0);
-    assert_eq!(n, 0, "the app wrote into it: {:?}", &got[..n]);
+    for (key, value) in [
+        ("advanced.seccomp_baseline", "false"),
+        ("advanced.landlock", "false"),
+        ("advanced.room_service", "false"),
+    ] {
+        set(root, &id, key, value);
+    }
+    start("without SAM's helper");
 }
 
 /// Audit L-F16: started from a folder the app cannot see, the app is not
