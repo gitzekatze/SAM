@@ -242,6 +242,7 @@ tests = [
   "the_first_unusable_option_is_found_where_bubblewrap_reads_options",
   "an_answer_to_a_stand_in_that_left_never_ends_the_launcher",
   "a_receive_keeps_no_more_connections_than_counted",
+  "the_helper_folder_comes_first_on_path_only_where_it_holds_helpers",
   "a_program_needs_a_loader_only_when_a_program_header_asks_for_one",
   "the_launcher_keeps_two_descriptors_for_each_connection_for_itself",
   "a_room_sam_ends_is_killed_and_ends_with_the_killed_code",
