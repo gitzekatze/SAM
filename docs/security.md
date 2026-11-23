@@ -976,7 +976,10 @@ so an app added on the command line without `--accept` starts only after
 `sam-jail review APP` or confirming its settings in the window. Changing
 one switch (`sam-jail set`, a group change, a repair step, a switch in the
 window) confirms nothing about the others; applying a preset or setting the
-whole profile (`profile set`) replaces them all and does.
+whole profile (`profile set`) replaces them all and does. The check before
+adding (`sam-jail verify FILE`) is not held back by this: it runs only
+SAM's stand-in and test program with the settings shown, never the app's
+own code (`verify_checks_an_appimage_without_a_sandbox`).
 
 For scripts, the JSON output still has a weighted score (`risk.score`, at
 most 100). The window does not show it, because a number next to the level
