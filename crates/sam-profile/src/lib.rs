@@ -860,6 +860,40 @@ mod tests {
         assert!(merged.devices.webcam);
     }
 
+    /// The last function rule, the last signal rule and a set variable can
+    /// be taken away through a change (the window's switches, the undo of
+    /// a group change): the saved form leaves empty rule lists out, and a
+    /// removed variable is missing from the map, which used to come back as
+    /// null and refuse the whole change (review F3: a Dangerous rule to
+    /// systemd could not be taken back from the window).
+    #[test]
+    fn the_last_rule_and_a_variable_can_be_taken_away() {
+        let mut from = PermissionSet::strict_gui();
+        from.dbus.session.mode = sam_core::permissions::DbusMode::Filtered;
+        from.dbus.session.calls = vec!["org.freedesktop.systemd1=*".into()];
+        from.dbus.session.broadcasts = vec!["org.example.A=@/a".into()];
+        from.environment.set.insert("FOO".into(), "1".into());
+        from.environment.set.insert("KEEP".into(), "2".into());
+        let mut to = from.clone();
+        to.dbus.session.calls.clear();
+        to.dbus.session.broadcasts.clear();
+        to.environment.set.remove("FOO");
+        let current = from.clone();
+        let merged = apply_change(&current, &from, &to)
+            .expect("the change is not refused")
+            .expect("nothing changed meanwhile");
+        assert!(merged.dbus.session.calls.is_empty());
+        assert!(merged.dbus.session.broadcasts.is_empty());
+        assert_eq!(merged.environment.set.get("FOO"), None);
+        assert_eq!(
+            merged.environment.set.get("KEEP").map(String::as_str),
+            Some("2")
+        );
+        // And back again (the undo of the change).
+        let undone = apply_change(&merged, &to, &from).unwrap().unwrap();
+        assert_eq!(undone, from);
+    }
+
     /// Terminal programs get no display, GPU or desktop bus access.
     #[test]
     fn terminal_programs_get_no_display() {
