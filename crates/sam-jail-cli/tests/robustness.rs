@@ -301,18 +301,29 @@ fn signing_succeeds_only_with_the_named_fingerprint() {
     let gnupg = e.config.join("gnupg");
     fs::create_dir(&gnupg).unwrap();
     fs::set_permissions(&gnupg, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
-    // The agent this starts is stopped at the end, also when the test fails.
+    // The agent this starts is stopped at the end, also when the test fails,
+    // and its socket folder (outside the test's folder, in the computer's
+    // runtime folder) is removed with it.
     struct Agent(std::path::PathBuf);
     impl Drop for Agent {
         fn drop(&mut self) {
-            let _ = Command::new("gpgconf")
-                .arg("--homedir")
-                .arg(&self.0)
-                .args(["--kill", "all"])
-                .status();
+            for what in [&["--kill", "all"][..], &["--remove-socketdir"][..]] {
+                let _ = Command::new("gpgconf")
+                    .arg("--homedir")
+                    .arg(&self.0)
+                    .args(what)
+                    .status();
+            }
         }
     }
-    let _agent = Agent(gnupg.clone());
+    let socket_dir = Command::new("gpgconf")
+        .arg("--homedir")
+        .arg(&gnupg)
+        .args(["--list-dirs", "socketdir"])
+        .output()
+        .unwrap();
+    let socket_dir = std::path::PathBuf::from(String::from_utf8(socket_dir.stdout).unwrap().trim());
+    let agent = Agent(gnupg.clone());
     let gpg = |args: &[&str]| {
         let o = Command::new("gpg")
             .arg("--homedir")
@@ -387,4 +398,12 @@ fn signing_succeeds_only_with_the_named_fingerprint() {
         v["error"].as_str().unwrap().contains("does not check out"),
         "{v}"
     );
+
+    // Nothing of the test stays behind in the runtime folder (without
+    // /run/user, GnuPG keeps its sockets in the test's own folder).
+    assert!(socket_dir.is_absolute(), "{socket_dir:?}");
+    drop(agent);
+    if socket_dir != gnupg {
+        assert!(!socket_dir.exists(), "{socket_dir:?} stays behind");
+    }
 }
