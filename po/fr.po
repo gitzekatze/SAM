@@ -8471,7 +8471,7 @@ msgid "the app record {file} could not be read: {error}"
 msgstr "la fiche d’application {file} n’a pas pu être lue : {error}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:97
+#: crates/sam-storage/src/lib.rs:101
 msgid ""
 "{file}: the app id {id} is not a safe name or does not match the file name; "
 "the record is ignored"
@@ -8480,34 +8480,34 @@ msgstr ""
 "correspond pas au nom du fichier ; la fiche est ignorée"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:176
+#: crates/sam-storage/src/lib.rs:185
 msgid "no registered app matches '{query}' (see `sam-jail list`)"
 msgstr ""
 "aucune application enregistrée ne correspond à « {query} » (voir `sam-jail "
 "list`)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:187
+#: crates/sam-storage/src/lib.rs:196
 msgid "invalid app id '{id}'"
 msgstr "identifiant d’application non valide « {id} »"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:311
+#: crates/sam-storage/src/lib.rs:320
 msgid "the preset {file} could not be read ({error}); it was moved to {moved}"
 msgstr ""
 "le modèle {file} n’a pas pu être lu ({error}) ; il a été déplacé vers {moved}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:318
+#: crates/sam-storage/src/lib.rs:327
 msgid "skipping the damaged preset {file}: {error}"
 msgstr "le modèle endommagé {file} est ignoré : {error}"
 
-#: crates/sam-storage/src/lib.rs:336
+#: crates/sam-storage/src/lib.rs:345
 msgid "preset name must not be empty"
 msgstr "le nom du modèle ne doit pas être vide"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:352
+#: crates/sam-storage/src/lib.rs:361
 msgid ""
 "the preset “{other}” already uses the file for this name; choose another name"
 msgstr ""
@@ -8515,17 +8515,17 @@ msgstr ""
 "nom"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:377
+#: crates/sam-storage/src/lib.rs:386
 msgid "{name} (imported)"
 msgstr "{name} (importé)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:379
+#: crates/sam-storage/src/lib.rs:388
 msgid "{name} (imported {n})"
 msgstr "{name} (importé {n})"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:439
+#: crates/sam-storage/src/lib.rs:448
 msgid ""
 "this preset was made by a newer SAM (format {format}); update SAM to use it"
 msgstr ""
@@ -8533,7 +8533,7 @@ msgstr ""
 "jour pour l’utiliser"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:491
+#: crates/sam-storage/src/lib.rs:500
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
 
