@@ -64,6 +64,7 @@ fn unpacking_stops_exactly_at_its_limits() {
         max_files: 100_000,
         max_bytes: 1 << 40,
         max_seconds: 600,
+        max_memory: 0,
     };
     unpack(&img, offset, &out, roomy).unwrap();
     let (entries, bytes) = measure(&out);

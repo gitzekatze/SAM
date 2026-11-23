@@ -907,7 +907,10 @@ through. SAM itself writes those files without following links.
 | a start file that names a program outside the app (`Exec=/usr/bin/…`, `../`) | never used as the app's entry point |
 | named pipes and other special files | removed while unpacking; SAM's own reads refuse them without waiting |
 | device nodes, FIFOs, sockets | removed |
-| huge or endless archives | file-count, size and time limits stop the unpacking and remove partial output; a limit reached inside the unpack sandbox stops it too, without trying other tools or the AppImage's own unpacker |
+| huge or endless archives | file-count, size and time limits stop the unpacking and remove partial output; a limit reached inside the unpack sandbox stops it too, without trying other tools or the AppImage's own unpacker. They hold for every unpacking program while it runs (SAM's reader, `unsquashfs`, `bsdtar`, `dwarfsextract`, the AppImage's own unpacker): SAM counts the files it wrote as it goes and stops it once it passes a limit, and the kernel lets no single file grow past the size limit (`every_unpacking_tool_meets_the_limits_while_it_runs`) |
+| an archive built to use up memory | every unpacking program may use at most `extraction.max_memory_mb` (4 GiB by default) of memory; SAM's reader reaching it stops the unpacking like a limit |
+| a full disk | SAM stops at once, removes what was unpacked and says the disk is full; it does not try the next tool or offer the AppImage's own unpacker (`a_full_disk_in_the_unpack_sandbox_stops_unpacking`) |
+| replacing the earlier unpacked app | the new one takes its place in one step, or the old one stays (`a_failed_swap_keeps_the_old_app`) |
 | reading outside the sandbox | SAM itself reads only icon and desktop files, and never follows a link out of the app |
 
 Running the AppImage's own `--appimage-extract` is a fallback that needs your

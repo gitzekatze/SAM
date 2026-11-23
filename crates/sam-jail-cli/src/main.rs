@@ -1497,10 +1497,12 @@ fn real_main(cli: Cli) -> Result<()> {
                     max_seconds,
                 },
         } => {
+            // The memory limit was set by SAM before the sandbox started.
             let limits = sam_intake::normalize::Limits {
                 max_files,
                 max_bytes,
                 max_seconds,
+                max_memory: 0,
             };
             // Runs inside the unpack sandbox: an exceeded limit gets its own
             // exit code, so the parent stops instead of trying other ways.
@@ -1510,6 +1512,12 @@ fn real_main(cli: Cli) -> Result<()> {
                 if sam_core::error::code_of(&e) == Some("extraction-limit") {
                     errln!("error: {}", sam_core::error::message_of(&e));
                     std::process::exit(sam_intake::extract::EXIT_LIMIT);
+                }
+                // A full disk too: the parent stops instead of filling it
+                // again with the next tool (review F2).
+                if sam_intake::extract::is_disk_full(&e) {
+                    errln!("error: {e:#}");
+                    std::process::exit(sam_intake::extract::EXIT_DISK_FULL);
                 }
                 return Err(e);
             }

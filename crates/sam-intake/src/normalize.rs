@@ -18,6 +18,9 @@ pub struct Limits {
     pub max_files: u64,
     pub max_bytes: u64,
     pub max_seconds: u64,
+    /// How much memory (address space, bytes) each unpacking program may
+    /// use; 0 for no limit.
+    pub max_memory: u64,
 }
 
 impl Default for Limits {
@@ -26,6 +29,7 @@ impl Default for Limits {
             max_files: 200_000,
             max_bytes: 8 * 1024 * 1024 * 1024,
             max_seconds: 600,
+            max_memory: 4 * 1024 * 1024 * 1024,
         }
     }
 }

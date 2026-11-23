@@ -141,6 +141,8 @@ pub struct Extraction {
     pub max_files: u64,
     pub max_size_mb: u64,
     pub max_seconds: u64,
+    /// How much memory each unpacking program may use (MiB; 0: no limit).
+    pub max_memory_mb: u64,
     /// Allow `--appimage-extract` fallback (always asks for consent per app).
     pub allow_fallback: bool,
 }
@@ -152,6 +154,7 @@ impl Default for Extraction {
             max_files: 200_000,
             max_size_mb: 8192,
             max_seconds: 600,
+            max_memory_mb: 4096,
             allow_fallback: true,
         }
     }

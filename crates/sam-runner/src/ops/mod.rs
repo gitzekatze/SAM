@@ -211,6 +211,7 @@ impl Sam {
             max_files: e.max_files,
             max_bytes: e.max_size_mb.saturating_mul(1024 * 1024),
             max_seconds: e.max_seconds,
+            max_memory: e.max_memory_mb.saturating_mul(1024 * 1024),
         }
     }
 

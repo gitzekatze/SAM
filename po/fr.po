@@ -10,12 +10,12 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:230
+#: crates/sam-core/src/config.rs:233
 msgid "{file}: {error}; that setting was reset"
 msgstr "{file} : {error} ; ce réglage a été réinitialisé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:263
+#: crates/sam-core/src/config.rs:266
 msgid ""
 "{file} could not be read; it was moved to {moved} and the default settings "
 "are used"
@@ -24,12 +24,12 @@ msgstr ""
 "réglages par défaut sont utilisés"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:268
+#: crates/sam-core/src/config.rs:271
 msgid "{file} could not be read; the default settings are used"
 msgstr "Impossible de lire {file} ; les réglages par défaut sont utilisés"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:286
+#: crates/sam-core/src/config.rs:289
 msgid ""
 "unknown language '{language}'; choose one of: {choices}, or leave it empty "
 "to follow the system"
@@ -38,18 +38,18 @@ msgstr ""
 "pour suivre le système"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:295
+#: crates/sam-core/src/config.rs:298
 msgid "unknown theme '{theme}'; choose one of: {choices}"
 msgstr "thème inconnu « {theme} » ; choisis parmi : {choices}"
 
-#: crates/sam-core/src/config.rs:313
+#: crates/sam-core/src/config.rs:316
 msgid ""
 "extraction.location must be an absolute path (or start with ~/), without '..'"
 msgstr ""
 "extraction.location doit être un chemin absolu (ou commencer par ~/), sans "
 "« .. »"
 
-#: crates/sam-core/src/config.rs:316
+#: crates/sam-core/src/config.rs:319
 msgid ""
 "extraction.location cannot be / or the home folder itself; choose a folder "
 "of its own"
@@ -58,22 +58,22 @@ msgstr ""
 "choisis un dossier dédié"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:349 crates/sam-core/src/config.rs:366
-#: crates/sam-core/src/config.rs:379
+#: crates/sam-core/src/config.rs:352 crates/sam-core/src/config.rs:369
+#: crates/sam-core/src/config.rs:382
 msgid "unknown config key '{key}'"
 msgstr "clé de configuration inconnue « {key} »"
 
-#: crates/sam-core/src/config.rs:360 crates/sam-core/src/permissions.rs:933
+#: crates/sam-core/src/config.rs:363 crates/sam-core/src/permissions.rs:933
 msgid "empty key"
 msgstr "clé vide"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:373
+#: crates/sam-core/src/config.rs:376
 msgid "'{key}' is not settable"
 msgstr "« {key} » ne peut pas être réglé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/config.rs:395 crates/sam-core/src/permissions.rs:959
+#: crates/sam-core/src/config.rs:398 crates/sam-core/src/permissions.rs:959
 msgid "invalid value for '{key}': {raw}"
 msgstr "valeur non valide pour « {key} » : {raw}"
 
@@ -1090,12 +1090,12 @@ msgstr ""
 "Peut envoyer ce qu’elle lit : ton dossier personnel, tes clés ou mots de "
 "passe, avec le réseau"
 
-#: crates/sam-core/src/util.rs:139
+#: crates/sam-core/src/util.rs:147
 msgid "path has no parent"
 msgstr "le chemin n’a pas de dossier parent"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/util.rs:380
+#: crates/sam-core/src/util.rs:388
 msgid "{program} did not finish within {seconds} seconds and was stopped"
 msgstr "{program} n'a pas fini en {seconds} secondes et a été arrêté"
 
@@ -1349,16 +1349,16 @@ msgstr ""
 "Aucun serveur de son PulseAudio ou PipeWire trouvé. Le son risque de ne pas "
 "fonctionner."
 
-#: crates/sam-detect/src/appimage.rs:112
+#: crates/sam-detect/src/appimage.rs:115
 msgid "type 1 magic present but no ISO 9660 signature found"
 msgstr "marqueur de type 1 présent, mais aucune signature ISO 9660 trouvée"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/appimage.rs:142
+#: crates/sam-detect/src/appimage.rs:145
 msgid "SquashFS found by scanning at offset {off}"
 msgstr "SquashFS trouvé en parcourant le fichier à la position {off}"
 
-#: crates/sam-detect/src/appimage.rs:155
+#: crates/sam-detect/src/appimage.rs:158
 msgid ""
 "The AppImage marker is missing; it is treated as Type 2 because it contains "
 "a SquashFS image"
@@ -1366,14 +1366,14 @@ msgstr ""
 "Le marqueur AppImage manque ; le fichier est traité comme type 2 car il "
 "contient une image SquashFS"
 
-#: crates/sam-detect/src/appimage.rs:158
+#: crates/sam-detect/src/appimage.rs:161
 msgid "The AppImage marker is present, but the file contains no app image"
 msgstr ""
 "Le marqueur AppImage est présent, mais le fichier ne contient aucune image "
 "d’application"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-detect/src/appimage.rs:268
+#: crates/sam-detect/src/appimage.rs:271
 msgid ""
 "it is built for {app} processors, but this computer's processor is {host}, "
 "so it cannot run here. Download the {version} version of the app instead"
@@ -4989,25 +4989,25 @@ msgstr ""
 msgid "Runs in its sandbox"
 msgstr "S’exécute dans son bac à sable"
 
-#: crates/sam-intake/src/desktop.rs:252
+#: crates/sam-intake/src/desktop.rs:259
 msgid "the menu entry file is missing"
 msgstr "le fichier de l’entrée de menu manque"
 
-#: crates/sam-intake/src/desktop.rs:262
+#: crates/sam-intake/src/desktop.rs:269
 msgid "the menu entry does not start the app through sam-jail-run"
 msgstr "l’entrée de menu ne lance pas l’application via sam-jail-run"
 
-#: crates/sam-intake/src/desktop.rs:265
+#: crates/sam-intake/src/desktop.rs:272
 msgid "the menu entry has no Exec line"
 msgstr "l’entrée de menu n’a pas de ligne Exec"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/desktop.rs:274
+#: crates/sam-intake/src/desktop.rs:281
 msgid "runner {runner} does not exist"
 msgstr "le programme de lancement {runner} n’existe pas"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:202
+#: crates/sam-intake/src/extract.rs:210
 msgid ""
 "There is not enough free space to unpack this AppImage: it needs about "
 "{needed}, but the folder {folder} has only {free} free. Free some space, or "
@@ -5020,50 +5020,24 @@ msgstr ""
 "décompressées dans Préférences → Décompression → Emplacement."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:215
+#: crates/sam-intake/src/extract.rs:223
 msgid ""
 "SAM stopped unpacking this AppImage: {reason}. The limits protect your "
 "computer from AppImages built to fill the disk or keep SAM busy. If you "
 "trust this AppImage, raise the limit, for example with `sam-jail config set "
-"extraction.max_files 400000` (also extraction.max_size_mb and "
-"extraction.max_seconds), then create the sandbox again."
+"extraction.max_files 400000` (also extraction.max_size_mb, "
+"extraction.max_seconds and extraction.max_memory_mb), then create the "
+"sandbox again."
 msgstr ""
 "SAM a arrêté la décompression de cet AppImage : {reason}. Les limites "
 "protègent ton ordinateur des AppImage conçus pour remplir le disque ou "
 "occuper SAM. Si tu fais confiance à cet AppImage, relève la limite, par "
 "exemple avec `sam-jail config set extraction.max_files 400000` (ainsi que "
-"extraction.max_size_mb et extraction.max_seconds), puis recrée le bac à "
-"sable."
-
-#: crates/sam-intake/src/extract.rs:262 crates/sam-intake/src/extract.rs:298
-#: crates/sam-intake/src/peek.rs:66
-msgid "the app image inside the AppImage was not found"
-msgstr "l’image de l’application dans l’AppImage est introuvable"
-
-#: crates/sam-intake/src/extract.rs:294
-msgid ""
-"this AppImage uses a DwarFS image; install the dwarfs tools (dwarfsextract) "
-"to unpack it without running it"
-msgstr ""
-"cet AppImage utilise une image DwarFS ; installe les outils dwarfs "
-"(dwarfsextract) pour le décompresser sans l’exécuter"
-
-#: crates/sam-intake/src/extract.rs:336
-msgid "the AppImage's SquashFS image is damaged (the reader stopped)"
-msgstr ""
-"l’image SquashFS de l’AppImage est endommagée (le lecteur s’est arrêté)"
-
-#: crates/sam-intake/src/extract.rs:400
-msgid "bsdtar (libarchive) is not installed"
-msgstr "bsdtar (libarchive) n’est pas installé"
+"extraction.max_size_mb, extraction.max_seconds et "
+"extraction.max_memory_mb), puis recrée le bac à sable."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:405
-msgid "{file} is not a recognized AppImage"
-msgstr "{file} n’est pas un AppImage reconnu"
-
-#. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:444
+#: crates/sam-intake/src/extract.rs:234
 msgid ""
 "The disk became full while unpacking this AppImage into {folder}. SAM "
 "removed the part that was already unpacked. Free some space, or choose "
@@ -5074,8 +5048,35 @@ msgstr ""
 "choisis un autre dossier pour les applications décompressées dans "
 "Préférences → Décompression → Emplacement."
 
+#: crates/sam-intake/src/extract.rs:281 crates/sam-intake/src/extract.rs:318
+#: crates/sam-intake/src/peek.rs:66
+msgid "the app image inside the AppImage was not found"
+msgstr "l’image de l’application dans l’AppImage est introuvable"
+
+#: crates/sam-intake/src/extract.rs:314
+msgid ""
+"this AppImage uses a DwarFS image; install the dwarfs tools (dwarfsextract) "
+"to unpack it without running it"
+msgstr ""
+"cet AppImage utilise une image DwarFS ; installe les outils dwarfs "
+"(dwarfsextract) pour le décompresser sans l’exécuter"
+
+#: crates/sam-intake/src/extract.rs:356
+msgid "the AppImage's SquashFS image is damaged (the reader stopped)"
+msgstr ""
+"l’image SquashFS de l’AppImage est endommagée (le lecteur s’est arrêté)"
+
+#: crates/sam-intake/src/extract.rs:422
+msgid "bsdtar (libarchive) is not installed"
+msgstr "bsdtar (libarchive) n’est pas installé"
+
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:479
+#: crates/sam-intake/src/extract.rs:427
+msgid "{file} is not a recognized AppImage"
+msgstr "{file} n’est pas un AppImage reconnu"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-intake/src/extract.rs:501
 msgid ""
 "all ways of unpacking failed:\n"
 "  {attempts}"
@@ -5083,66 +5084,78 @@ msgstr ""
 "toutes les méthodes de décompression ont échoué :\n"
 "  {attempts}"
 
-#: crates/sam-intake/src/extract.rs:493
+#: crates/sam-intake/src/extract.rs:515
 msgid "the unpacked app is not a plain folder; it was removed"
 msgstr ""
 "l'application décompressée n'est pas un dossier ordinaire ; elle a été "
 "supprimée"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:555
+#: crates/sam-intake/src/extract.rs:638
 msgid "a link at {path} points outside the app"
 msgstr "un lien en {path} pointe hors de l’application"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:563
+#: crates/sam-intake/src/extract.rs:646
 msgid "{path} is not a folder"
 msgstr "{path} n’est pas un dossier"
 
-#: crates/sam-intake/src/extract.rs:583
+#: crates/sam-intake/src/extract.rs:666
 msgid "unpacking limit exceeded: the app is too large"
 msgstr "limite de décompression dépassée : l’application est trop volumineuse"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:609 crates/sam-intake/src/normalize.rs:95
+#: crates/sam-intake/src/extract.rs:692 crates/sam-intake/src/extract.rs:838
+#: crates/sam-intake/src/normalize.rs:99
 msgid "unpacking limit exceeded: more than {count} files"
 msgstr "limite de décompression dépassée : plus de {count} fichiers"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:615 crates/sam-intake/src/extract.rs:695
-#: crates/sam-intake/src/normalize.rs:101
+#: crates/sam-intake/src/extract.rs:698 crates/sam-intake/src/extract.rs:794
+#: crates/sam-intake/src/normalize.rs:105
 msgid "unpacking limit exceeded: it took longer than {seconds} seconds"
 msgstr ""
 "limite de décompression dépassée : cela a pris plus de {seconds} secondes"
 
-#: crates/sam-intake/src/extract.rs:639
+#: crates/sam-intake/src/extract.rs:722
 msgid "entry without name"
 msgstr "entrée sans nom"
 
-#: crates/sam-intake/src/extract.rs:716
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-intake/src/extract.rs:844 crates/sam-intake/src/extract.rs:921
+#: crates/sam-intake/src/normalize.rs:138
+msgid "unpacking limit exceeded: more than {size} unpacked"
+msgstr "limite de décompression dépassée : plus de {size} décompressés"
+
+#: crates/sam-intake/src/extract.rs:901
 msgid "starting the unpacking tool"
 msgstr "lancement de l’outil de décompression"
 
-#: crates/sam-intake/src/extract.rs:774
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-intake/src/extract.rs:929
+msgid "unpacking limit exceeded: it needed more than {size} of memory"
+msgstr "limite de décompression dépassée : il a fallu plus de {size} de mémoire"
+
+#: crates/sam-intake/src/extract.rs:989
 msgid "Bubblewrap is needed to let the AppImage unpack itself in a sandbox"
 msgstr ""
 "Bubblewrap est nécessaire pour que l’AppImage se décompresse lui-même dans "
 "un bac à sable"
 
-#: crates/sam-intake/src/extract.rs:794
+#: crates/sam-intake/src/extract.rs:1009
 msgid "copying the AppImage so it can unpack itself"
 msgstr "copie de l’AppImage pour qu’il puisse se décompresser lui-même"
 
-#: crates/sam-intake/src/extract.rs:798
+#: crates/sam-intake/src/extract.rs:1013
 msgid "making the copy executable"
 msgstr "la copie est rendue exécutable"
 
-#: crates/sam-intake/src/extract.rs:846
+#: crates/sam-intake/src/extract.rs:1062
 msgid "--appimage-extract produced no squashfs-root"
 msgstr "--appimage-extract n’a produit aucun squashfs-root"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/extract.rs:850
+#: crates/sam-intake/src/extract.rs:1066
 msgid "moving the unpacked app to {folder}"
 msgstr "déplacement de l’application décompressée vers {folder}"
 
@@ -5155,38 +5168,33 @@ msgid "file was replaced (inode changed)"
 msgstr "le fichier a été remplacé (inode changé)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/menu.rs:213
+#: crates/sam-intake/src/menu.rs:250
 msgid "{file} is not a menu entry"
 msgstr "{file} n’est pas une entrée de menu"
 
-#: crates/sam-intake/src/menu.rs:225
+#: crates/sam-intake/src/menu.rs:266
 msgid "entry without file name"
 msgstr "entrée sans nom de fichier"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/menu.rs:231
+#: crates/sam-intake/src/menu.rs:272
 msgid "{file} already exists; it was not overwritten"
 msgstr "{file} existe déjà ; il n’a pas été écrasé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/normalize.rs:50
+#: crates/sam-intake/src/normalize.rs:54
 msgid "setuid/setgid bit removed: {path}"
 msgstr "bit setuid/setgid retiré : {path}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/normalize.rs:53
+#: crates/sam-intake/src/normalize.rs:57
 msgid "link pointing outside the app removed: {path}"
 msgstr "lien pointant hors de l’application retiré : {path}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/normalize.rs:61
+#: crates/sam-intake/src/normalize.rs:65
 msgid "special file removed: {path}"
 msgstr "fichier spécial retiré : {path}"
-
-#. Keep the {placeholders}; their order may change.
-#: crates/sam-intake/src/normalize.rs:134
-msgid "unpacking limit exceeded: more than {size} unpacked"
-msgstr "limite de décompression dépassée : plus de {size} décompressés"
 
 #: crates/sam-intake/src/peek.rs:43
 msgid ""
@@ -5594,31 +5602,31 @@ msgstr[0] "Données de {n} application supprimées : {size}"
 msgstr[1] "Données de {n} applications supprimées : {size}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1551
+#: crates/sam-jail-cli/src/main.rs:1559
 msgid "Update information written to {file}."
 msgstr "Informations de mise à jour écrites dans {file}."
 
-#: crates/sam-jail-cli/src/main.rs:1569
+#: crates/sam-jail-cli/src/main.rs:1577
 msgid "no file name"
 msgstr "aucun nom de fichier"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1583 crates/sam-jail-cli/src/main.rs:1633
+#: crates/sam-jail-cli/src/main.rs:1591 crates/sam-jail-cli/src/main.rs:1641
 msgid "Wrote {path}"
 msgstr "{path} écrit"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1597
+#: crates/sam-jail-cli/src/main.rs:1605
 msgid "the signature in {file} does not check out: {detail}"
 msgstr "la signature de {file} n’est pas valide : {detail}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1606
+#: crates/sam-jail-cli/src/main.rs:1614
 msgid "Signed {path} with {key}"
 msgstr "{path} signé avec {key}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1654
+#: crates/sam-jail-cli/src/main.rs:1662
 msgid ""
 "This change adds {items}. Look at it, then repeat it with --yes, or make it "
 "in SAM's window, which asks."
@@ -5626,7 +5634,7 @@ msgstr ""
 "Ce changement ajoute {items}. Examine-le, puis répète-le avec --yes, ou fais-"
 "le dans la fenêtre de SAM, qui demande."
 
-#: crates/sam-jail-cli/src/main.rs:1668
+#: crates/sam-jail-cli/src/main.rs:1676
 msgid ""
 "Compatibility mode gives the app the network, all of /usr, X11, the GPU, "
 "sound and the whole session bus. Through the whole session bus it can ask "
@@ -5640,7 +5648,7 @@ msgstr ""
 "confiance : ajoute --yes."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1682
+#: crates/sam-jail-cli/src/main.rs:1690
 msgid ""
 "\"{title}\" comes from what the app printed, which the app controls: "
 "{explanation} Look at it, then apply it with --yes, or in SAM's window."
@@ -7096,7 +7104,7 @@ msgstr ""
 "jour."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/mod.rs:384
+#: crates/sam-runner/src/ops/mod.rs:385
 msgid "refusing to delete {folder}: it is not one of SAM's own folders"
 msgstr "refus de supprimer {folder} : ce n’est pas un dossier propre à SAM"
 
@@ -8508,6 +8516,20 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:456
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
+
+#~ msgid ""
+#~ "SAM stopped unpacking this AppImage: {reason}. The limits protect your "
+#~ "computer from AppImages built to fill the disk or keep SAM busy. If you "
+#~ "trust this AppImage, raise the limit, for example with `sam-jail config "
+#~ "set extraction.max_files 400000` (also extraction.max_size_mb and "
+#~ "extraction.max_seconds), then create the sandbox again."
+#~ msgstr ""
+#~ "SAM a arrêté la décompression de cet AppImage : {reason}. Les limites "
+#~ "protègent ton ordinateur des AppImage conçus pour remplir le disque ou "
+#~ "occuper SAM. Si tu fais confiance à cet AppImage, relève la limite, par "
+#~ "exemple avec `sam-jail config set extraction.max_files 400000` (ainsi que "
+#~ "extraction.max_size_mb et extraction.max_seconds), puis recrée le bac à "
+#~ "sable."
 
 #~ msgid "Additional folders the app can read but not change."
 #~ msgstr ""

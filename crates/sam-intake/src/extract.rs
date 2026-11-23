@@ -118,16 +118,18 @@ pub(crate) fn isolated(
     if !tool.starts_with("/usr") && tool != iso.self_exe {
         c.arg("--ro-bind").arg(tool).arg(tool);
     }
-    c.args([
-        "--setenv",
-        "PATH",
-        "/usr/bin:/bin",
-        "--remount-ro",
-        "/",
-        "--",
-    ]);
+    c.args(["--setenv", "PATH", "/usr/bin:/bin"]);
+    c.args(FEW_MALLOC_ARENAS);
+    c.args(["--remount-ro", "/", "--"]);
     Ok(c)
 }
+
+/// Unpacking programs run with a memory limit ([`Limits::max_memory`],
+/// counted as address space). The C library reserves address space for
+/// each thread's own memory pool, so a tool with a thread per processor
+/// could reach the limit on a computer with many processors without using
+/// the memory; two pools are plenty for unpacking.
+const FEW_MALLOC_ARENAS: [&str; 3] = ["--setenv", "MALLOC_ARENA_MAX", "2"];
 
 /// Exit code of `sam-jail dev extract-squashfs` when an unpacking limit was
 /// exceeded inside the sandbox. Without it the parent saw only "failed",
@@ -135,6 +137,12 @@ pub(crate) fn isolated(
 /// the AppImage unpack itself: a crafted image escaped the limits (audit
 /// I-F3).
 pub const EXIT_LIMIT: i32 = 87;
+
+/// Exit code of `sam-jail dev extract-squashfs` when the disk became full
+/// inside the sandbox. Without it the parent saw only "exited with 1", so
+/// SAM filled the disk again with the next tool and then offered to let
+/// the AppImage unpack itself (review F2).
+pub const EXIT_DISK_FULL: i32 = 88;
 
 /// Entry point of `sam-jail dev extract-squashfs` (runs inside the sandbox).
 pub fn builtin_squashfs_entry(src: &Path, offset: u64, dst: &Path, limits: &Limits) -> Result<()> {
@@ -213,14 +221,25 @@ fn explain_limit(e: anyhow::Error) -> anyhow::Error {
     anyhow!(
         "{}",
         sam_core::i18n::trf(
-            "SAM stopped unpacking this AppImage: {reason}. The limits protect your computer from AppImages built to fill the disk or keep SAM busy. If you trust this AppImage, raise the limit, for example with `sam-jail config set extraction.max_files 400000` (also extraction.max_size_mb and extraction.max_seconds), then create the sandbox again.",
+            "SAM stopped unpacking this AppImage: {reason}. The limits protect your computer from AppImages built to fill the disk or keep SAM busy. If you trust this AppImage, raise the limit, for example with `sam-jail config set extraction.max_files 400000` (also extraction.max_size_mb, extraction.max_seconds and extraction.max_memory_mb), then create the sandbox again.",
             &[("reason", &format!("{e:#}"))],
         )
     )
 }
 
+/// What SAM says when the disk became full while unpacking into `root`.
+fn disk_full(root: &Path) -> anyhow::Error {
+    anyhow!(
+        "{}",
+        sam_core::i18n::trf(
+            "The disk became full while unpacking this AppImage into {folder}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Unpacking → Location.",
+            &[("folder", &root.display())],
+        )
+    )
+}
+
 /// Whether an unpacking error came from a full disk.
-fn is_disk_full(e: &anyhow::Error) -> bool {
+pub fn is_disk_full(e: &anyhow::Error) -> bool {
     e.chain().any(|c| {
         c.downcast_ref::<std::io::Error>()
             .is_some_and(|io| io.raw_os_error() == Some(libc::ENOSPC))
@@ -286,6 +305,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                             &req.limits,
                             started,
                             log,
+                            dst.parent().unwrap_or(dst),
                         )
                     }),
                 ));
@@ -322,7 +342,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                                 "--max-seconds",
                                 &req.limits.max_seconds.to_string(),
                             ]);
-                            run_tool(&mut c, &req.limits, started, log)
+                            run_tool(&mut c, &req.limits, started, log, dst.parent().unwrap_or(dst))
                         }
                         // In SAM's own process (no sandbox for the reader): a
                         // panic of the SquashFS reader on a damaged image becomes
@@ -364,6 +384,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                             &req.limits,
                             started,
                             log,
+                            dst.parent().unwrap_or(dst),
                         )
                     }),
                 ));
@@ -393,6 +414,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                             &req.limits,
                             started,
                             log,
+                            dst.parent().unwrap_or(dst),
                         )
                     }),
                 ));
@@ -439,13 +461,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                 // the next method would fail the same way.
                 if is_disk_full(&e) {
                     let _ = fs::remove_dir_all(&unpack_box);
-                    bail!(
-                        "{}",
-                        sam_core::i18n::trf(
-                            "The disk became full while unpacking this AppImage into {folder}. SAM removed the part that was already unpacked. Free some space, or choose another folder for unpacked apps under Preferences → Unpacking → Location.",
-                            &[("folder", &req.root.display())],
-                        )
-                    );
+                    return Err(disk_full(req.root));
                 }
                 attempts.push(format!("{name}: {e:#}"));
             }
@@ -473,6 +489,12 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             Ok(()) => method_used = Some("appimage-extract (sandboxed)".into()),
             Err(e) => {
                 let _ = fs::remove_dir_all(&unpack_box);
+                if is_limit_error(&e) {
+                    return Err(explain_limit(e));
+                }
+                if is_disk_full(&e) {
+                    return Err(disk_full(req.root));
+                }
                 attempts.push(format!("appimage-extract: {e:#}"));
                 bail!(
                     "{}",
@@ -742,40 +764,142 @@ fn builtin_squashfs(
 }
 
 pub(crate) fn wait_with_timeout(
-    mut child: std::process::Child,
+    child: std::process::Child,
     limits: &Limits,
     started: Instant,
 ) -> Result<std::process::ExitStatus> {
+    wait_within_limits(child, limits, started, None)
+}
+
+/// Waits for an unpacking program, stopping it at the time limit and, with
+/// `watch`, as soon as the folder it writes holds more files or bytes than
+/// the limits allow. Only SAM's own reader counted while it unpacked; every
+/// other tool (`unsquashfs`, `bsdtar`, `dwarfsextract`, the AppImage's own
+/// extractor) was checked only after it had finished, so a crafted image
+/// that SAM's reader cannot read could fill the disk first (review F1).
+/// The folder is measured again after a pause several times as long as
+/// the last measuring took, so a large unpack is not slowed down by it.
+fn wait_within_limits(
+    mut child: std::process::Child,
+    limits: &Limits,
+    started: Instant,
+    watch: Option<&Path>,
+) -> Result<std::process::ExitStatus> {
+    let mut next_count = Instant::now();
     loop {
         if let Some(st) = child.try_wait()? {
             return Ok(st);
         }
-        if started.elapsed() > Duration::from_secs(limits.max_seconds) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(limit_error(sam_core::i18n::trf(
+        let over = if started.elapsed() > Duration::from_secs(limits.max_seconds) {
+            Some(limit_error(sam_core::i18n::trf(
                 "unpacking limit exceeded: it took longer than {seconds} seconds",
                 &[("seconds", &limits.max_seconds)],
-            )));
+            )))
+        } else {
+            match watch.filter(|_| Instant::now() >= next_count) {
+                Some(dir) => {
+                    let t = Instant::now();
+                    let over = over_limits(dir, limits);
+                    next_count = Instant::now()
+                        + (t.elapsed() * 4).clamp(Duration::from_millis(200), Duration::from_secs(5));
+                    over
+                }
+                None => None,
+            }
+        };
+        if let Some(e) = over {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(e);
         }
         std::thread::sleep(Duration::from_millis(50));
     }
 }
 
+/// The limit `dir` is past, if any: more entries than `max_files`, or more
+/// bytes in its files than `max_bytes`. Counted as `normalize` counts them
+/// afterwards (which holds the exact limit); links are not followed.
+fn over_limits(dir: &Path, limits: &Limits) -> Option<anyhow::Error> {
+    let (mut entries, mut bytes) = (0u64, 0u64);
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = fs::read_dir(&d) else { continue };
+        for e in rd.flatten() {
+            entries += 1;
+            let Ok(m) = e.metadata() else { continue };
+            if m.is_dir() {
+                stack.push(e.path());
+            } else if m.is_file() {
+                bytes = bytes.saturating_add(m.len());
+            }
+            // The box's own folders (the tool's top folder) do not count:
+            // `normalize` counts only what is inside the app.
+            if entries > limits.max_files.saturating_add(2) {
+                return Some(limit_error(sam_core::i18n::trf(
+                    "unpacking limit exceeded: more than {count} files",
+                    &[("count", &limits.max_files)],
+                )));
+            }
+            if bytes > limits.max_bytes {
+                return Some(limit_error(sam_core::i18n::trf(
+                    "unpacking limit exceeded: more than {size} unpacked",
+                    &[("size", &sam_core::util::human_size(limits.max_bytes))],
+                )));
+            }
+        }
+    }
+    None
+}
+
+/// Limits the kernel holds for an unpacking program and everything it
+/// starts: no file larger than the size limit (the write fails, or the
+/// program is stopped with SIGXFSZ), and no more memory than
+/// [`Limits::max_memory`]. A crafted image could otherwise make a tool
+/// use up the memory and freeze the session (review F5).
+fn with_kernel_limits(c: &mut Command, limits: &Limits) {
+    use std::os::unix::process::CommandExt;
+    let (fsize, memory) = (limits.max_bytes, limits.max_memory);
+    // SAFETY: runs between fork and exec and calls only setrlimit, which
+    // is async-signal-safe.
+    unsafe {
+        c.pre_exec(move || {
+            let set = |what, n: u64| {
+                let lim = libc::rlimit {
+                    rlim_cur: n,
+                    rlim_max: n,
+                };
+                if libc::setrlimit(what, &lim) != 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                Ok(())
+            };
+            set(libc::RLIMIT_FSIZE, fsize.max(1))?;
+            if memory > 0 {
+                set(libc::RLIMIT_AS, memory)?;
+            }
+            Ok(())
+        });
+    }
+}
+
+/// Runs one unpacking program within every limit. `watch` is the folder
+/// it writes in (the unpack box).
 fn run_tool(
     cmd: &mut Command,
     limits: &Limits,
     started: Instant,
     log: &mut dyn Write,
+    watch: &Path,
 ) -> Result<()> {
     let errf = tempfile_in_tmp()?;
+    with_kernel_limits(cmd, limits);
     let child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::from(errf.try_clone()?))
         .spawn()
         .context(sam_core::i18n::tr("starting the unpacking tool"))?;
-    let st = wait_with_timeout(child, limits, started)?;
+    let st = wait_within_limits(child, limits, started, Some(watch))?;
     let mut err = String::new();
     let mut f = errf;
     use std::io::Seek;
@@ -793,10 +917,40 @@ fn run_tool(
             .trim_start_matches("error: ");
         return Err(limit_error(why.to_string()));
     }
+    if died_of(&st, libc::SIGXFSZ) {
+        return Err(limit_error(sam_core::i18n::trf(
+            "unpacking limit exceeded: more than {size} unpacked",
+            &[("size", &sam_core::util::human_size(limits.max_bytes))],
+        )));
+    }
+    // SAM's own reader ran out of the memory it may use: a limit too, so
+    // SAM stops instead of trying a tool without SAM's checks.
+    if died_of(&st, libc::SIGABRT) && err.contains("memory allocation of") {
+        return Err(limit_error(sam_core::i18n::trf(
+            "unpacking limit exceeded: it needed more than {size} of memory",
+            &[("size", &sam_core::util::human_size(limits.max_memory))],
+        )));
+    }
     if !st.success() {
+        // A full disk, said by SAM's reader, by the tool in its own words
+        // (the sandbox runs it in the C locale), or seen on the disk itself.
+        let full = st.code() == Some(EXIT_DISK_FULL)
+            || err.contains("No space left on device")
+            || free_bytes(watch).is_some_and(|f| f < 1024 * 1024);
+        if full {
+            return Err(anyhow::Error::new(io::Error::from_raw_os_error(libc::ENOSPC))
+                .context(format!("exited with {st}")));
+        }
         bail!("exited with {st}");
     }
     Ok(())
+}
+
+/// Whether a program ended through `signal`, also as Bubblewrap reports it
+/// for the program inside (exit code 128 + the signal's number).
+fn died_of(st: &std::process::ExitStatus, signal: i32) -> bool {
+    use std::os::unix::process::ExitStatusExt;
+    st.signal() == Some(signal) || st.code() == Some(128 + signal)
 }
 
 /// A fresh, already deleted file for a tool's error output. Its name holds
@@ -887,8 +1041,9 @@ fn self_extract_sandboxed(
             "HOME",
             "/out",
         ])
+        .args(FEW_MALLOC_ARENAS)
         .args(["--", "/in/app.AppImage", "--appimage-extract"]);
-    let ran = run_tool(&mut cmd, limits, started, log);
+    let ran = run_tool(&mut cmd, limits, started, log, &work);
     let _ = fs::remove_file(&exe_copy);
     ran?;
     // Classic runtimes write squashfs-root; uruntime writes AppDir and makes
