@@ -26,11 +26,16 @@ use rooms_common::{
 };
 use sam_core::permissions::{Access, NetworkMode};
 
+/// The most open connections a request may pass (room_rules::MAX_FDS): the
+/// scripts below name the number itself.
+const _MOST_FDS: () = assert!(sam_runner::room_rules::MAX_FDS == 253);
+
 /// Rooms work: a room shows what it asks for and nothing of the app it did
 /// not ask for, writes where asked and the app can, passes open
 /// connections, the exit code and its environment, answers like the
-/// computer's Bubblewrap, gets no other open connection and nothing of the
-/// computer's environment, and keeps what it asked to give up.
+/// computer's Bubblewrap, starts in its program's folder where it shows
+/// it, gets no other open connection and nothing of the computer's
+/// environment, and keeps what it asked to give up.
 const WORKS: &str = r#"
 say control "$(rv room -- /usr/bin/echo ok)"
 say view "$(rv room -- /usr/bin/sh -c "test -e '$HOME' && echo sees-home || echo no-home")"
@@ -89,6 +94,29 @@ say dev_links "$(rv room --ro-bind /dev /dev -- /usr/bin/sh -c 'test -L /dev/std
 # (Read by the probe: a shell would set PWD itself.)
 say pwd "$(rv room --clearenv --chdir /usr -- $P env PWD)"
 say pwd_stale "$(export PWD=/tmp; rv room --chdir /usr -- $P env PWD)"
+# Without --chdir a room starts in its program's folder when it shows
+# that folder as a place of the app (/usr/bin here), else in /.
+say cwd "$(cd /usr/bin && rv room -- /usr/bin/sh -c 'pwd -P')"
+say cwd_not_shown "$(cd "$HOME" && rv room -- /usr/bin/sh -c 'pwd -P')"
+# Exactly as many open connections as a request may pass (253, room_rules::MAX_FDS):
+# still a room; one more is refused.
+KEEP_FDS='import os, sys
+want = int(sys.argv[1])
+def kept():
+    n = 0
+    for f in os.listdir("/proc/self/fd"):
+        try:
+            n += os.get_inheritable(int(f))
+        except OSError:
+            pass  # the listing of the folder, closed again
+    return n
+while kept() < want:
+    os.set_inheritable(os.open("/dev/null", os.O_RDONLY), True)
+os.execvp(sys.argv[2], sys.argv[2:])'
+# shellcheck disable=SC2086
+say fds_most "$(rv python3 -c "$KEEP_FDS" 253 bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok)"
+# shellcheck disable=SC2086
+say fds_over "$(rv python3 -c "$KEEP_FDS" 254 bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok)"
 # A name found on PATH (the default /bin:/usr/bin without one).
 say on_path "$(rv room --setenv PATH /usr/bin -- echo ok)"
 say default_path "$(rv room --clearenv -- echo ok)"
@@ -928,6 +956,10 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("default_path", "ok"),
                 ("pwd", "/usr"),
                 ("pwd_stale", "/usr"),
+                ("cwd", "/usr/bin"),
+                ("cwd_not_shown", "/"),
+                ("fds_most", "ok"),
+                ("fds_over", "refused"),
                 ("no_shebang", "ran-from-folder"),
                 ("shell_missing", "next"),
                 ("dev_without_devices", "blocked"),
