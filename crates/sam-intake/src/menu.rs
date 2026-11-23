@@ -284,6 +284,7 @@ fn same_dir(a: &Path, b: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::OpenOptionsExt;
 
     fn fake_appimage(dir: &Path) -> PathBuf {
         let p = dir.join("Tool.AppImage");
@@ -302,6 +303,45 @@ mod tests {
         assert_eq!(
             appimage_in("env FOO=1 /nope/X.AppImage %U"),
             Some(PathBuf::from("/nope/X.AppImage"))
+        );
+    }
+
+    /// Regression (audit I-F15): a menu entry whose `Exec=` names a named
+    /// pipe hung the overview, which opened it to look for an AppImage and
+    /// waited for a writer that never came. Now it is passed over at once.
+    #[test]
+    fn a_menu_entry_naming_a_pipe_does_not_hang_the_search() {
+        use std::os::unix::ffi::OsStrExt;
+        let d = tempfile::tempdir().unwrap();
+        let apps = d.path().join("applications");
+        fs::create_dir_all(&apps).unwrap();
+        let pipe = d.path().join("tool");
+        let c = std::ffi::CString::new(pipe.as_os_str().as_bytes()).unwrap();
+        // SAFETY: `c` is a NUL-terminated path; mkfifo only creates the pipe.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        fs::write(
+            apps.join("tool.desktop"),
+            format!("[Desktop Entry]\nName=Tool\nExec={} %F\n", pipe.display()),
+        )
+        .unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let dir = apps.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(foreign_entries(&dir));
+        });
+        // Generous: without the fix it never returns at all.
+        let got = rx.recv_timeout(std::time::Duration::from_secs(30));
+        if got.is_err() {
+            // Let the stuck search go before failing.
+            let _ = fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&pipe);
+        }
+        let found = got.expect("the search waited on the named pipe");
+        assert!(
+            found.iter().all(|f| f.appimage != pipe),
+            "a pipe is no AppImage: {found:?}"
         );
     }
 

@@ -20,7 +20,7 @@ id = 1
 area = "A"
 promise = "SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything."
 code = ["sam-intake/src/peek.rs", "sam-intake/src/menu.rs", "sam-intake/src/id.rs", "sam-runner/src/ops/overview.rs", "sam-gtk/src/window.rs"]
-tests = ["peeks_name_and_icon_without_extracting", "the_appimage_behind_a_foreign_menu_entry_is_found", "app_ids_stay_unique_when_names_collide", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "the_folder_watcher_ignores_hidden_files_and_unfinished_downloads", "a_reader_gone_wrong_comes_to_nothing", "the_overview_reads_names_inside_a_sandbox", "dropped_pipes_and_icon_bombs_never_reach_gtk"]
+tests = ["peeks_name_and_icon_without_extracting", "the_appimage_behind_a_foreign_menu_entry_is_found", "app_ids_stay_unique_when_names_collide", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "the_folder_watcher_ignores_hidden_files_and_unfinished_downloads", "a_reader_gone_wrong_comes_to_nothing", "the_overview_reads_names_inside_a_sandbox", "dropped_pipes_and_icon_bombs_never_reach_gtk", "a_menu_entry_naming_a_pipe_does_not_hang_the_search"]
 
 [[function]]
 id = 2
