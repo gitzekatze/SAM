@@ -262,14 +262,9 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
         let e = app.set_permission(&id, "network.mode", mode).unwrap();
         let mut h = host.clone();
         h.landlock_abi = Some(abi);
-        let p = sam_runner::launch::prepare(
-            &e,
-            &LaunchOptions::default(),
-            &app.config,
-            &app.paths,
-            &h,
-        )
-        .unwrap();
+        let p =
+            sam_runner::launch::prepare(&e, &LaunchOptions::default(), &app.config, &app.paths, &h)
+                .unwrap();
         (p.wanted_landlock, p.wanted_fence)
     };
     assert_eq!(fence("full", 6), (true, true), "full network");
