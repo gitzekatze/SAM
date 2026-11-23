@@ -22,8 +22,9 @@ jobs:
   # the build, test, window and sandbox steps are skipped; the website, the
   # test library and the function map are still checked. GitHub counts a
   # skipped job as passed, so such a pull request can be merged in about a
-  # minute. Three documents are part of the code: docs/guide.md is built into
-  # the window, and tests read docs/architecture.md and docs/syscalls-reviewed.txt.
+  # minute. Some documents are part of the code: docs/guide.md and
+  # docs/contracts.toml are built into SAM, and tests read others
+  # (scripts/workflow-check.py checks that every one is listed here).
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -40,7 +41,7 @@ jobs:
         run: |
           docs='^(docs/|[^/]+\.md$|scripts/site\.py$|\.github/ISSUE_TEMPLATE/)'
           # Documents SAM builds in or its checks read: they count as code.
-          code_docs='^docs/((guide|architecture)\.md|syscalls-reviewed\.txt|contracts\.toml|functions\.toml)$'
+          code_docs='^docs/((guide|architecture|permissions)\.md|syscalls-reviewed\.txt|contracts\.toml|functions\.toml)$'
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             code=true    # run by hand, or no earlier commit to compare with
           elif git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Ev "$docs" | grep -q . \
@@ -242,9 +243,9 @@ jobs:
       - name: Contract map covers every outside assumption
         run: python3 scripts/contract-map.py --check
 
-      # AUTOMATION.md: no workflow hands an attacker the repository, and
+      # AUTOMATION.md: the rules every workflow keeps (scripts/workflow-check.py), and
       # every pull request shows its risk class.
-      - name: Two workflow patterns, and the automation rules work
+      - name: Workflow rules, and the automation rules work
         run: |
           python3 scripts/workflow-check.py
           python3 scripts/workflow-check.py --self-test

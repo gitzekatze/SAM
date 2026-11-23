@@ -124,10 +124,10 @@ jobs:
           # The targeted fuzzers (sections, zsync, desktop files, the
           # unguarded preview) and the terminal filter's model; a tenth of
           # the rounds, as zsync planning may take up to two seconds a round.
-          SAM_FUZZ_SEED=$seed SAM_FUZZ_ITERS=$((ROUNDS / 10)) \
+          SAM_REQUIRE_SANDBOX=1 SAM_FUZZ_SEED=$seed SAM_FUZZ_ITERS=$((ROUNDS / 10)) \
             cargo test --locked -p sam-runner --test fuzz_targets -- --nocapture 2>&1 | tee -a "$RUNNER_TEMP/results/fuzz/report.txt"
           [ "${PIPESTATUS[0]}" = 0 ] || rc=1
-          SAM_FUZZ_SEED=$seed SAM_FUZZ_ITERS=$ROUNDS \
+          SAM_REQUIRE_SANDBOX=1 SAM_FUZZ_SEED=$seed SAM_FUZZ_ITERS=$ROUNDS \
             cargo test --locked -p sam-core --test terminal_fuzz -- --nocapture 2>&1 | tee -a "$RUNNER_TEMP/results/fuzz/report.txt"
           [ "${PIPESTATUS[0]}" = 0 ] || rc=1
           echo "$rc" > "$RUNNER_TEMP/results/fuzz/exit"
