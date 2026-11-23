@@ -1284,7 +1284,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_first_run_guide_is_marked_done_and_reset`](../crates/sam-jail-cli/tests/interface.rs#L341) | The window's first-run guide is shown until it is marked done, and again after a reset: the mark is kept in SAM's settings folder. | 🆕 new |
 | [`each_command_names_its_sam_function`](../crates/sam-jail-cli/src/main.rs#L1739) | Each command's errors name the SAM function it carries out (docs/functions.md), and the commands outside SAM's functions name none (mutation run: every answer could be dropped or be any number). | 🆕 new |
 | [`man_writes_a_page_per_visible_command_and_none_for_hidden_ones`](../crates/sam-jail-cli/tests/man_pages.rs#L8) | Man writes a page per visible command and none for hidden ones. | 🆕 new |
-| [`private_services_end_with_the_test_process_that_started_them`](../crates/sam-runner/src/testenv.rs#L250) | TEST-LEAK (2026-11-23): a test process killed while it holds private services takes them along, and they never held one of its descriptors: a pipe the test process inherited reaches its end once the test process is gone, and both services have ended. | 🆕 new |
+| [`private_services_end_with_the_test_process_that_started_them`](../crates/sam-runner/src/testenv.rs#L274) | TEST-LEAK (2026-11-23): a test process killed while it holds private services takes them along, and they never held one of its descriptors: a pipe the test process inherited reaches its end once the test process is gone, and both services have ended. | 🆕 new |
 
 **Code:** [`sam-jail-cli/tests/architecture.rs`](../crates/sam-jail-cli/tests/architecture.rs), [`docs/architecture.md`](../docs/architecture.md)
 
