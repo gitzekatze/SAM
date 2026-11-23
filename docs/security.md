@@ -334,7 +334,8 @@ How these stay protected with the home writable:
 - **A folder hands over the programs listening in it.** Connecting to a
   socket file needs no write access, so even a read-only folder lets the
   app talk to the programs that listen there: `/tmp` holds the sockets of
-  tmux, SSH connections and the X server, and a tmux socket runs commands
+  tmux, SSH connections and the X server (without systemd also the session
+  bus and the sound server), and a tmux socket runs commands
   outside the sandbox. A grant of `/tmp`, or of those places in it, is
   rated *Dangerous* and warned about
   (`a_grant_of_tmp_or_its_listening_places_is_dangerous_even_read_only`).

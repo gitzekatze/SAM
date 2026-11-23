@@ -580,7 +580,13 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             .session
             .allow
             .iter()
-            .any(|n| crate::permissions::secret_bus_name(n));
+            .any(|n| crate::permissions::secret_bus_name(n))
+        // A function rule reaches the password store as well
+        // (`org.freedesktop.secrets=*`).
+        || (p.dbus.session.mode == DbusMode::Filtered
+            && p.dbus.session.calls.iter().any(|r| {
+                crate::permissions::secret_bus_name(r.split(['=', '@']).next().unwrap_or(""))
+            }));
     if p.network.mode == NetworkMode::Full && reads_secrets {
         item(
             &mut items,
@@ -690,7 +696,10 @@ pub fn is_sensitive_path_in(path: &str, home: &std::path::Path) -> bool {
 }
 
 /// Folders in `/tmp` where programs outside the sandbox listen: terminal
-/// multiplexers, SSH connections and agents, the X server, editors.
+/// multiplexers, SSH connections and agents, the X server, editors, and
+/// the session bus and sound server where they keep their socket in
+/// `/tmp` (`dbus-launch` without systemd, PulseAudio without a runtime
+/// folder).
 const SOCKET_FOLDERS_IN_TMP: &[&str] = &[
     "tmux-",
     "ssh-",
@@ -698,6 +707,8 @@ const SOCKET_FOLDERS_IN_TMP: &[&str] = &[
     ".ICE-unix",
     ".XIM-unix",
     "emacs",
+    "dbus-",
+    "pulse-",
 ];
 
 /// Whether a folder grant of `path` shows the places in `/tmp` where
@@ -1173,6 +1184,8 @@ mod tests {
             "/tmp/tmux-1000",
             "/tmp/ssh-XXXXabcd",
             "/tmp/.X11-unix",
+            "/tmp/dbus-AbCdEf1234",
+            "/tmp/pulse-AbCdEf1234",
         ] {
             let mut after = before.clone();
             after.filesystem.custom_read = vec![path.to_string()];
@@ -1238,6 +1251,26 @@ mod tests {
         }
     }
 
+    /// A function rule of a password service reaches the stored passwords
+    /// as the allowed name does: with full network the app "can send what
+    /// it reads" (review 2026-11-23).
+    #[test]
+    fn a_function_of_a_password_service_counts_with_the_network() {
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Filtered;
+        p.network.mode = NetworkMode::Full;
+        let combined = |p: &PermissionSet| {
+            assess(p)
+                .items
+                .iter()
+                .any(|i| i.key == "combination.read_and_send")
+        };
+        assert!(!combined(&p));
+        p.dbus.session.calls = vec!["org.freedesktop.secrets=*".into()];
+        assert!(combined(&p));
+        assert_eq!(assess(&p).level, RiskLevel::Dangerous);
+    }
+
     /// A wildcard that covers the portal's own name lets every portal call
     /// through, past SAM's choice of interfaces: Dangerous. The portal's
     /// plain name stays allowed by default (review F2).
@@ -1266,5 +1299,24 @@ mod tests {
         assert_eq!(assess(&p).level, RiskLevel::Dangerous);
         p.sockets.custom = vec!["/run/user/1000/pipewire-0".into()];
         assert_eq!(assess(&p).level, RiskLevel::High);
+    }
+
+    /// A dangerous socket is known however its path is written: `.` and
+    /// doubled `/` count for nothing, as for the kernel (review
+    /// 2026-11-23: `/run/dbus//system_bus_socket` read as an ordinary
+    /// extra socket).
+    #[test]
+    fn a_dangerous_socket_is_known_however_it_is_written() {
+        for s in [
+            "/run/dbus//system_bus_socket",
+            "/run/user/1000/pulse/./native",
+            "/run/user/1000/systemd//private",
+        ] {
+            assert!(dangerous_socket(s).is_some(), "{s}");
+            let mut p = PermissionSet::strict_gui();
+            p.sockets.custom = vec![s.into()];
+            assert_eq!(assess(&p).level, RiskLevel::Dangerous, "{s}");
+        }
+        assert!(dangerous_socket("/run/user/1000/kpxc_server").is_none());
     }
 }

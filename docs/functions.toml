@@ -103,6 +103,8 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "a_password_service_allowed_by_name_counts_as_the_keyring_switch",
   "a_wildcard_over_the_portal_is_dangerous",
   "the_sound_servers_own_socket_is_dangerous_as_an_extra_socket",
+  "a_function_of_a_password_service_counts_with_the_network",
+  "a_dangerous_socket_is_known_however_it_is_written",
 ]
 
 [[function]]
@@ -128,6 +130,7 @@ code = ["sam-runner/src/repair.rs"]
 tests = ["app_output_cannot_buy_dangerous_grants",
   "a_forged_trace_line_cannot_widen_a_low_risk_grant",
   "an_app_nobody_has_confirmed_does_not_start",
+  "a_folder_or_password_store_from_the_apps_words_is_judged_where_it_leads",
 ]
 
 [[area]]

@@ -1833,7 +1833,17 @@ impl Section<'_> {
         // write the socket's folder replaced the socket with a link to the
         // real session bus, and the bind followed it).
         let views = &self.views;
-        let app_can_change = |d: &Path| views.writable(d) || inside_sam(ctx, d);
+        // Writable for the app: its grants (seen at their real place),
+        // SAM's folders (its private home among them) and the host side of
+        // a writable extra bind (the views know only where those are shown).
+        let app_can_change = |d: &Path| {
+            views.writable(d)
+                || inside_sam(ctx, d)
+                || ctx
+                    .extra_binds
+                    .iter()
+                    .any(|(h, _, rw)| *rw && d.starts_with(resolve(h)))
+        };
         for s in &p.sockets.custom {
             let sp = expand_home(s);
             if link_the_app_can_change(&sp, &app_can_change) {
@@ -3089,6 +3099,12 @@ mod tests {
         ctx.permissions.filesystem.custom_read.clear();
         ctx.permissions.filesystem.custom_write = vec![shared.display().to_string()];
         ctx.permissions.sockets.custom = vec![dir_link.join("target.sock").display().to_string()];
+        assert!(!args_of(&ctx).iter().any(|a| a == &target_s));
+        // Also when the folder is writable through an extra bind (shown
+        // elsewhere in the sandbox, as for the diagnosis run).
+        ctx.permissions.filesystem.custom_write.clear();
+        ctx.permissions.sockets.custom = vec![listed_s.clone()];
+        ctx.extra_binds = vec![(shared.clone(), "/run/x".into(), true)];
         assert!(!args_of(&ctx).iter().any(|a| a == &target_s));
     }
 

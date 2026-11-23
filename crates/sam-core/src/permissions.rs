@@ -363,13 +363,20 @@ pub fn secret_bus_name(name: &str) -> bool {
         .any(|s| bus_pattern_matches(name, s) || name.starts_with(&format!("{s}.")))
 }
 
-/// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
-/// Wildcards (`org.kde.*`, `*`) count when they cover a dangerous name, and
-/// any wildcard over the portal namespace would bypass SAM's portal filter.
 /// Sockets that give whoever can connect control over the computer or
-/// a way around the sandbox's D-Bus filter.
+/// a way around the sandbox's D-Bus filter. Compared without `.` and
+/// repeated `/`, which the kernel skips: `/run/dbus//system_bus_socket` is
+/// the system bus (review 2026-11-23).
 pub fn dangerous_socket(path: &str) -> Option<String> {
     let p = path.trim();
+    let lead = if p.starts_with('/') { "/" } else { "" };
+    let norm = format!(
+        "{lead}{}",
+        p.split('/')
+            .filter(|c| !c.is_empty() && *c != ".")
+            .collect::<Vec<_>>()
+            .join("/")
+    );
     let bad: &[(&str, &str)] = &[
         (
             "docker.sock",
@@ -401,7 +408,7 @@ pub fn dangerous_socket(path: &str) -> Option<String> {
         ),
     ];
     bad.iter()
-        .find(|(needle, _)| p.contains(needle))
+        .find(|(needle, _)| norm.contains(needle))
         .map(|(_, why)| format!("{p} {}", crate::i18n::tr(why)))
 }
 
@@ -485,6 +492,9 @@ pub fn refuse_own_name(
         .then(|| crate::i18n::trf("{name} is a service on this computer that starts on demand; owning it would intercept its requests", &[("name", &name)]))
 }
 
+/// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
+/// Wildcards (`org.kde.*`, `*`) count when they cover a dangerous name, and
+/// any wildcard over the portal namespace would bypass SAM's portal filter.
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
     let name = name.trim();
     // Any wildcard that covers the portal's own name: xdg-dbus-proxy then
