@@ -700,33 +700,34 @@ pub fn prepare(
     })
 }
 
-/// Room service's stand-in for Bubblewrap, first on the app's PATH: SAM's
-/// helper in its stand-in mode, told the computer's Bubblewrap version.
-/// In `bin` (with the link openers) and in `bin-rooms` (for apps without
-/// the session bus, which get no link openers).
+/// Room service's stand-in for Bubblewrap, first on the app's PATH: a link
+/// named `bwrap` to SAM's helper (its place inside the sandbox), which
+/// serves as the stand-in when started under that name, and beside it the
+/// computer's Bubblewrap version line, which the stand-in answers to
+/// `--version`. No script: a shell in between could leave its script's
+/// file open in the helper, and the room would get it (see
+/// room_service::STANDIN_TARGET). In `bin` (with the link openers) and in
+/// `bin-rooms` (for apps without the session bus, which get no link
+/// openers).
 fn write_room_standin(runtime_dir: &Path, bwrap: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
+    use crate::room_service::{plain_version, STANDIN_NAME, STANDIN_TARGET, STANDIN_VERSION_FILE};
     let version = Command::new(bwrap)
         .arg("--version")
         .stderr(Stdio::null())
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
         .unwrap_or_default();
-    // Only plain characters go into the script.
-    let version: String = version
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || " ._-".contains(*c))
-        .take(60)
-        .collect();
-    let script = format!(
-        "#!/bin/sh\n# SAM: Room service's stand-in for Bubblewrap. The program's sandbox\n# is built by SAM, outside, never with more than the app.\nexec /run/sam/sam-jail-run --room-standin '{version}' \"$@\"\n"
-    );
+    // Only plain characters go into the file.
+    let version = plain_version(&version);
     for dir in ["bin", "bin-rooms"] {
         let d = runtime_dir.join(dir);
         fs::create_dir_all(&d)?;
-        let f = d.join("bwrap");
-        fs::write(&f, &script)?;
-        fs::set_permissions(&f, fs::Permissions::from_mode(0o755))?;
+        // Every start has a new, empty runtime folder (see prepare), so
+        // no stand-in is in the way. The link leads nowhere outside the
+        // sandbox; inside, it leads to SAM's helper.
+        std::os::unix::fs::symlink(STANDIN_TARGET, d.join(STANDIN_NAME))?;
+        // The app reads it as the same user, whatever the umask.
+        fs::write(d.join(STANDIN_VERSION_FILE), &version)?;
     }
     Ok(())
 }

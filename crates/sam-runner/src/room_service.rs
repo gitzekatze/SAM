@@ -33,6 +33,20 @@ use crate::room_rules::{self, AppFacts, DeviceAccess, Entry, FloorPlan, RoomPlan
 
 /// Where the service listens inside the app's sandbox.
 pub const SOCKET_INSIDE: &str = "/run/sam/rooms";
+/// The stand-in (`bwrap` in SAM's helper folder, first on the app's PATH)
+/// is a link to SAM's helper at this place inside the app's sandbox. No
+/// script and no shell in between: a shell can leave its script's file
+/// open in the program it starts (dash, /bin/sh on Debian and Ubuntu, does
+/// once 10 or more files are open), and the stand-in passes every open
+/// file to the room, so the room would get one its program never had.
+pub const STANDIN_TARGET: &str = "/run/sam/sam-jail-run";
+/// The name the stand-in is started under, as Bubblewrap is.
+pub const STANDIN_NAME: &str = "bwrap";
+/// The file beside the stand-in that holds the computer's Bubblewrap
+/// version line, which the stand-in answers to `--version`.
+pub const STANDIN_VERSION_FILE: &str = "bwrap.version";
+/// SAM's helper folder inside the app's sandbox, holding the stand-in.
+const STANDIN_FOLDER_INSIDE: &str = "/run/sam/bin";
 /// At most this many rooms of one app at once; more requests wait.
 pub const MAX_ROOMS: usize = 16;
 /// At most this many connections open at once (requests being read and
@@ -1609,6 +1623,57 @@ fn send_with_fds(stream: &UnixStream, data: &[u8], fds: &[RawFd]) -> std::io::Re
         rest = &rest[k..];
     }
     Ok(())
+}
+
+/// A Bubblewrap version line as the stand-in may answer it: only plain
+/// characters (letters, digits, space, `.`, `_`, `-`), at most 60.
+pub fn plain_version(line: &str) -> String {
+    line.trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || " ._-".contains(*c))
+        .take(60)
+        .collect()
+}
+
+/// Is SAM's helper started as the stand-in? Yes when it was started under
+/// Bubblewrap's name: the file name of the path the program started
+/// (`exec_path`, the kernel's record of it) or of the name it gave the
+/// program (`argv0`). The path counts too because a program may give any
+/// name (`argv0`) when it starts `bwrap`.
+pub fn is_standin_start(
+    argv0: Option<&std::ffi::OsStr>,
+    exec_path: Option<&std::ffi::OsStr>,
+) -> bool {
+    [argv0, exec_path]
+        .into_iter()
+        .flatten()
+        .any(|p| Path::new(p).file_name() == Some(std::ffi::OsStr::new(STANDIN_NAME)))
+}
+
+/// [`is_standin_start`] for this process: its first argument and the path
+/// it was started by.
+pub fn started_as_standin() -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    // SAFETY: getauxval only reads the process's start record; AT_EXECFN
+    // is the address of a NUL-terminated path that lives as long as the
+    // process (0 when the kernel gave none).
+    let exec_path = unsafe {
+        let p = libc::getauxval(libc::AT_EXECFN) as *const libc::c_char;
+        (!p.is_null()).then(|| std::ffi::CStr::from_ptr(p))
+    };
+    let argv0 = std::env::args_os().next();
+    is_standin_start(
+        argv0.as_deref(),
+        exec_path.map(|p| std::ffi::OsStr::from_bytes(p.to_bytes())),
+    )
+}
+
+/// The computer's Bubblewrap version line, from the file beside the
+/// stand-in (empty when it is missing), as plain characters only.
+pub fn standin_version() -> String {
+    std::fs::read_to_string(Path::new(STANDIN_FOLDER_INSIDE).join(STANDIN_VERSION_FILE))
+        .map(|v| plain_version(&v))
+        .unwrap_or_default()
 }
 
 /// The stand-in: `bwrap ARGS…` inside an app's sandbox, served by Room
@@ -3770,5 +3835,43 @@ mod message_tests {
         })
         .join()
         .unwrap();
+    }
+
+    /// SAM's helper is the stand-in exactly when it is started under
+    /// Bubblewrap's name: by the path the program started (whatever name
+    /// it gave) or by the name it gave (whatever path), never under its
+    /// own name or a name that only contains Bubblewrap's.
+    #[test]
+    fn the_helper_is_the_stand_in_only_under_bubblewraps_name() {
+        let o = |s: &'static str| Some(std::ffi::OsStr::new(s));
+        for (argv0, path) in [
+            (o("bwrap"), o("/run/sam/bin/bwrap")),
+            (o("loader"), o("/run/sam/bin/bwrap")),
+            (o("bwrap"), o("/run/sam/sam-jail-run")),
+            (o("/usr/bin/bwrap"), None),
+            (None, o("bwrap")),
+        ] {
+            assert!(is_standin_start(argv0, path), "{argv0:?} {path:?}");
+        }
+        for (argv0, path) in [
+            (o("sam-jail-run"), o("/run/sam/sam-jail-run")),
+            (None, None),
+            (o("bwrap2"), o("/run/sam/bin/bwrap.version")),
+            (o("/bwrap/sam-jail-run"), o("xbwrap")),
+        ] {
+            assert!(!is_standin_start(argv0, path), "{argv0:?} {path:?}");
+        }
+    }
+
+    /// The Bubblewrap version line the stand-in answers keeps only plain
+    /// characters (letters, digits, space, `.`, `_`, `-`), at most 60, and
+    /// no space or line end around it.
+    #[test]
+    fn a_version_line_keeps_only_plain_characters_and_at_most_60() {
+        assert_eq!(plain_version("bwrap 0.11.0\n"), "bwrap 0.11.0");
+        assert_eq!(plain_version("  bwrap 0.9.0-rc_1 \n"), "bwrap 0.9.0-rc_1");
+        assert_eq!(plain_version("bwrap '$(x)`;\"\\\n1ü"), "bwrap x1");
+        assert_eq!(plain_version(&"a".repeat(80)), "a".repeat(60));
+        assert_eq!(plain_version(&"b".repeat(60)), "b".repeat(60));
     }
 }

@@ -139,7 +139,10 @@ app would crash.
 rule: **no more than the app, no less than asked.**
 
 - **The stand-in.** `bwrap` on the app's `PATH` is SAM's helper in a
-  stand-in mode (`/run/sam/bin/bwrap`). It reads Bubblewrap's arguments
+  stand-in mode (`/run/sam/bin/bwrap`, a link to the helper: no script and
+  no shell in between, which could leave a file of its own open; the
+  computer's Bubblewrap version it answers to `--version` lies read-only
+  beside it). It reads Bubblewrap's arguments
   inside the app's sandbox and sends a small fixed form, with the program's
   open connections (up to 253, as Bubblewrap passes them all), to SAM's
   launcher. Programs need no change.
