@@ -46,7 +46,15 @@ pub struct LaunchOptions {
     /// This is SAM's one automatic restart after the app was refused a
     /// bus name it may now own; never restart again.
     pub name_retry: bool,
+    /// Called at once, while the app runs, when this start lacks a
+    /// protection layer its settings ask for (app id, app name, the missing
+    /// layers): a start from the menu has no terminal for the warning, and
+    /// the app may run for hours (review K-4).
+    pub on_missing_layers: Option<MissingLayersHook>,
 }
+
+/// See [`LaunchOptions::on_missing_layers`].
+pub type MissingLayersHook = fn(&str, &str, &[String]);
 
 /// Everything needed to start a sandbox, plus the explanation for the user.
 /// Left in a launch's runtime folder by `Sam::stop` before it signals the app.
@@ -1101,9 +1109,43 @@ fn run_once(
     let bwrap_status_reader = channels
         .bwrap_status
         .map(|r| read_fd_in_thread(r, child_done.clone()));
-    let helper_status_reader = channels
-        .helper_status
-        .map(|r| read_fd_in_thread(r, child_done.clone()));
+    // What the start lacks is told as soon as it is known: at once without
+    // a report from SAM's helper, else when the helper has reported (right
+    // before the app starts). A helper that never reported has not started
+    // the app, which the start's failure says.
+    let tell = opts
+        .on_missing_layers
+        .map(|f| (f, app.id.clone(), app.display_name().to_string()));
+    let asked = (
+        prepared.wanted_landlock,
+        prepared.wanted_seccomp,
+        prepared.wanted_fence,
+        prepared.wayland_context_failed,
+    );
+    let tell_missing = move |report: Option<&str>| {
+        if let Some((f, id, name)) = &tell {
+            let missing = layers_missing(report, asked.0, asked.1, asked.2, asked.3);
+            if !missing.is_empty() {
+                f(id, name, &missing);
+            }
+        }
+    };
+    let helper_status_reader = match channels.helper_status {
+        Some(r) => {
+            let reader = read_fd_in_thread(r, child_done.clone());
+            Some(std::thread::spawn(move || {
+                let report = reader.join().unwrap_or_default();
+                if !report.trim().is_empty() {
+                    tell_missing(Some(report.trim()));
+                }
+                report
+            }))
+        }
+        None => {
+            tell_missing(None);
+            None
+        }
+    };
 
     // Collect its output while it runs. The first part of each stream:
     // stderr decides whether the sandbox failed; both are searched for known

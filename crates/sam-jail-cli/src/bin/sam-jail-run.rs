@@ -188,6 +188,39 @@ fn main() {
     }
 }
 
+/// How a start from the menu runs: with the files it was given, and told
+/// at once when it lacks a protection layer.
+fn launch_options(args: Vec<String>) -> LaunchOptions {
+    LaunchOptions {
+        args,
+        on_missing_layers: Some(tell_missing_layers),
+        ..Default::default()
+    }
+}
+
+/// A start from the menu has no terminal for the warning that it lacks a
+/// protection layer its settings ask for (Landlock that could not be
+/// applied, SAM's helper not found): a notification says it while the app
+/// runs, with a button to SAM's page for the app (review K-4).
+fn tell_missing_layers(app_id: &str, app_name: &str, missing: &[String]) {
+    let (title, body) = missing_layers_notice(app_name, missing);
+    notify_with_fix(&title, &body, app_id);
+}
+
+/// The notification's title and text for [`tell_missing_layers`].
+fn missing_layers_notice(app_name: &str, missing: &[String]) -> (String, String) {
+    (
+        sam_core::i18n::trf(
+            "{app} is running without some of its protection",
+            &[("app", &app_name)],
+        ),
+        sam_core::i18n::trf(
+            "This start runs without {layers}, which its settings ask for. It still runs in its sandbox. SAM's page for the app says why.",
+            &[("layers", &missing.join(", "))],
+        ),
+    )
+}
+
 fn launch(args: Vec<String>) -> Result<i32> {
     let (id, rest) = match args.first().map(String::as_str) {
         Some("--app-id") => (
@@ -231,10 +264,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
     }
     let rec = run(
         &mut entry,
-        &LaunchOptions {
-            args: rest,
-            ..Default::default()
-        },
+        &launch_options(rest),
         &app.config,
         &app.paths,
         &host,
@@ -321,5 +351,20 @@ mod tests {
         let odd = std::ffi::OsString::from_vec(b"/home/j\xffo.txt".to_vec());
         let e = text_args(vec!["--app-id".into(), "x".into(), odd].into_iter()).unwrap_err();
         assert_eq!(e, "/home/j\u{FFFD}o.txt");
+    }
+
+    /// Review K-4: a start from the menu is told at once when it lacks a
+    /// protection layer, and the notification names each missing layer.
+    #[test]
+    fn a_menu_start_is_told_when_a_protection_layer_is_missing() {
+        let opts = launch_options(vec!["a.txt".into()]);
+        assert_eq!(opts.args, ["a.txt"]);
+        assert!(
+            opts.on_missing_layers.is_some(),
+            "the menu start asks to be told"
+        );
+        let (title, body) = missing_layers_notice("Notes", &["Landlock".into(), "seccomp".into()]);
+        assert!(title.contains("Notes"), "{title}");
+        assert!(body.contains("Landlock, seccomp"), "{body}");
     }
 }
