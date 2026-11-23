@@ -251,6 +251,31 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     )
     .unwrap();
     assert!(prep.preview().command.contains("--unshare-net"));
+    drop(prep);
+
+    // Review K-1: a start that shares the computer's network, on a kernel
+    // whose Landlock fences abstract sockets (Linux 6.12, Landlock 6),
+    // relies on that fence: it then counts as missing unless the helper
+    // reports it in place. The kernel's Landlock version is set here, so
+    // every computer checks both sides; nothing is started.
+    let fence = |mode: &str, abi: u32| {
+        let e = app.set_permission(&id, "network.mode", mode).unwrap();
+        let mut h = host.clone();
+        h.landlock_abi = Some(abi);
+        let p = sam_runner::launch::prepare(
+            &e,
+            &LaunchOptions::default(),
+            &app.config,
+            &app.paths,
+            &h,
+        )
+        .unwrap();
+        (p.wanted_landlock, p.wanted_fence)
+    };
+    assert_eq!(fence("full", 6), (true, true), "full network");
+    assert_eq!(fence("full", 5), (true, false), "a kernel without it");
+    assert_eq!(fence("none", 6), (true, false), "no network");
+    assert_eq!(fence("localhost", 6), (true, false), "a network of its own");
 
     // Staleness: customize the profile, then modify the source.
     app.set_permission(&id, "filesystem.music", "ro").unwrap();
