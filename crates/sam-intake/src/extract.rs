@@ -86,6 +86,14 @@ fn with_filter(c: &mut Command, filter: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Nothing inside an unpack sandbox may make a user namespace of its own:
+/// one gives the program inside full rights over a fresh network namespace
+/// and with it the kernel's netfilter, the usual way into kernel bugs
+/// (review K-2). The syscall filter refuses it too; this holds even where
+/// a call slips past the filter. App sandboxes do the same
+/// (sam-sandbox, `--disable-userns`).
+const NO_NESTED_USERNS: [&str; 2] = ["--unshare-user", "--disable-userns"];
+
 /// `bwrap … --` prefix for running an extractor on untrusted input.
 /// `tool` is the program that will run; one installed outside `/usr` (for
 /// example in `~/.local/bin`) is added read-only so it exists inside.
@@ -96,16 +104,9 @@ pub(crate) fn isolated(
     tool: &Path,
 ) -> Result<Command> {
     let mut c = Command::new(&iso.bwrap);
-    c.args([
-        "--die-with-parent",
-        "--new-session",
-        "--unshare-all",
-        "--cap-drop",
-        "ALL",
-        "--clearenv",
-        "--tmpfs",
-        "/",
-    ]);
+    c.args(["--die-with-parent", "--new-session", "--unshare-all"]);
+    c.args(NO_NESTED_USERNS);
+    c.args(["--cap-drop", "ALL", "--clearenv", "--tmpfs", "/"]);
     c.args(&iso.system);
     if let Some(f) = &iso.filter {
         with_filter(&mut c, f)?;
@@ -800,14 +801,10 @@ fn self_extract_sandboxed(
     };
     let src = src.as_path();
     let mut cmd = Command::new(&iso.bwrap);
-    cmd.args([
-        "--unshare-all",
-        "--die-with-parent",
-        "--new-session",
-        "--cap-drop",
-        "ALL",
-    ])
-    .args(&iso.system);
+    cmd.args(["--unshare-all", "--die-with-parent", "--new-session"])
+        .args(NO_NESTED_USERNS)
+        .args(["--cap-drop", "ALL"])
+        .args(&iso.system);
     if let Some(f) = &iso.filter {
         with_filter(&mut cmd, f)?;
     }

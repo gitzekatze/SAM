@@ -88,7 +88,16 @@ the sandbox, just before the app starts.
   the start.
 - With kernel 6.12+ (Landlock ABI 6), connections to abstract sockets outside
   the sandbox are blocked too, for example XWayland's
-  `@/tmp/.X11-unix/X0`.
+  `@/tmp/.X11-unix/X0`. These sockets have a name but no file, and they
+  belong to the network: an app with full network shares the computer's
+  and could reach them, even with X11 off. SAM's helper reports this fence
+  on its own (`abstract sockets: scoped` or `NOT scoped`), not folded into
+  "Landlock partially enforced"; a start with full network that should
+  have had it but did not is marked *Protection missing*
+  (`a_missing_socket_fence_is_reported_when_the_start_relies_on_it`).
+  Diagnostics warn when the kernel is older than 6.12, and the sandbox
+  check tries to connect to the X server's and an abstract session bus's
+  socket (`the_check_tries_the_hosts_abstract_sockets_the_app_must_not_reach`).
 
 ### Syscall filter
 
@@ -100,7 +109,10 @@ blocks:
 - `io_uring`, a frequent source of kernel exploits (programs fall back to
   ordinary I/O);
 - terminal injection (`TIOCSTI`, `TIOCLINUX`);
-- namespaces and mounts, unless the app needs nested sandboxes;
+- namespaces and mounts, unless the app needs nested sandboxes: also
+  `clone` into a new user namespace, and `clone3`, whose flags no filter
+  can read, answers "not implemented" so programs fall back to `clone`, as
+  in Flatpak (`without_nested_sandboxes_clone_cannot_make_a_user_namespace`);
 - every socket type except local, internet and netlink (the kernel's status
   channel): no virtual-machine (`AF_VSOCK`, which no network setting
   stops), raw-packet or kernel-crypto sockets. Bluetooth sockets only with
@@ -109,8 +121,16 @@ blocks:
 - every call through the x32 ABI (a niche x86-64 mode with its own call
   numbers, which no AppImage uses).
 
-32-bit system calls (`int 0x80`) end the process, so 32-bit AppImages get
-the filter turned off in their recommendation, and SAM says so.
+32-bit system calls (`int 0x80`) end the process, except for an app whose
+start program is a 32-bit program: its filter answers 32-bit calls like
+their 64-bit twins, so the filter stays on for 32-bit AppImages
+(`a_32_bit_app_gets_its_calls_filtered_not_switched_off`). It used to be
+switched off for them, which let any app choose to run without it by
+making its start program 32-bit. One gap remains, as in Flatpak: a 32-bit
+socket opened through the old `socketcall` call is not limited to the
+listed types, because its type sits where no filter can read it. Other
+apps keep ending at a 32-bit call, so a 64-bit program cannot use the
+32-bit doors.
 
 The same filter applies while SAM unpacks an AppImage, to its own reader
 and to the AppImage's own extractor (`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`).
@@ -167,7 +187,9 @@ the app only that one (`sound_never_loads_code_into_the_sound_server`).
 
 The relay itself runs in a sandbox of its own: it sees the system's
 programs, your PipeWire socket and its own folder, but not your home, SAM's
-folders or the network. That matters on PipeWire before 1.2 (Ubuntu 24.04
+folders or the network, and nothing in it can make a user namespace of its
+own (`nothing_in_the_sound_relay_can_make_a_user_namespace`). That matters
+on PipeWire before 1.2 (Ubuntu 24.04
 LTS, Debian 12), which ignores the setting: there a module the app asks for
 loads, but only inside the relay's sandbox, where it can reach none of your
 files. `sam-jail doctor --contracts` checks both on your computer.
@@ -660,6 +682,12 @@ through. SAM itself writes those files without following links.
 Running the AppImage's own `--appimage-extract` is a fallback that needs your
 consent, and also runs in a sandbox.
 
+Nothing in an unpack sandbox can make a user namespace of its own
+(Bubblewrap's `--disable-userns` and the syscall filter): one would give
+the program inside full rights over a fresh network namespace, the usual
+way into kernel bugs
+(`nothing_in_the_unpack_sandbox_can_make_a_user_namespace`).
+
 **Before you agree to anything.** The overview shows the name and icon of
 every AppImage in the folders SAM searches, so it reads them before anyone
 chose to trust them. That reading happens in the same kind of sandbox,
@@ -720,7 +748,10 @@ was easily misread.
   filtered D-Bus gets no session bus at all.
 - **Abstract sockets** are blocked only on kernel 6.12+. On older kernels,
   XWayland's socket is reachable for apps with full network (X11
-  authorization still applies).
+  authorization still applies; many desktops let every program of the
+  same user in), and so is a session bus on an abstract socket. Diagnostics
+  and the sandbox check say so; such a start is not marked *Protection
+  missing*, because the kernel has nothing SAM could apply.
 - **No filtering by domain.** An app gets no network, only this computer
   (*This computer only*), or the full network.
 - **File dialogs:** a file picked outside the folders an app may use is not

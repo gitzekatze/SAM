@@ -81,7 +81,7 @@ repository.
   the reason for each), and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-20<!-- /fact -->](docs/reports/real-apps-2026-11-20.md)).
-- **<!-- fact:tests -->499<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
+- **<!-- fact:tests -->502<!-- /fact --> automated tests guard <!-- fact:functions -->40<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
 - **Every security promise is attacked from inside a real sandbox.**
@@ -126,7 +126,7 @@ report it privately ([SECURITY.md](SECURITY.md)).
 | Layer | What it does |
 |---|---|
 | Bubblewrap | Private home per app, read-only system, no capabilities, private `/dev/shm`. There is no unsandboxed mode: if Bubblewrap cannot run, SAM says why and starts nothing. |
-| Landlock | Writes are allowed only where the profile allows them, even if a mount were wrong. Also blocks abstract sockets outside the sandbox (kernel 6.12+). |
+| Landlock | Writes are allowed only where the profile allows them, even if a mount were wrong. Also blocks abstract sockets outside the sandbox (kernel 6.12+; on older kernels Diagnostics warns). |
 | Syscall filter | A baseline filter, on by default (similar to Flatpak's), plus an optional strict filter. |
 | D-Bus filter | The session bus goes through `xdg-dbus-proxy`; the app sees only the names it is allowed to. The system bus cannot be filtered, so it is either hidden or fully open (dangerous, off by default). |
 | Portal filter | Opening links, file dialogs, notifications and printing work. Screenshots, autostart, menu-entry installation, location and remote desktop are blocked. |

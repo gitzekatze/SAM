@@ -241,6 +241,17 @@ pub struct DependencyReport {
     pub notes: Vec<String>,
 }
 
+impl DependencyReport {
+    /// The program the app starts is a 32-bit x86 program itself, not a
+    /// script: only then does its syscall filter take 32-bit calls (review
+    /// K-3). The architecture of an app started by a script is that of
+    /// most of its files, so 32-bit decoys next to a 64-bit program would
+    /// otherwise open the 32-bit kernel interface to it (audit M5/I-F4).
+    pub fn starts_32_bit_program(&self) -> bool {
+        self.arch == "i686" && !self.entry_is_script && self.entry_binary.is_some()
+    }
+}
+
 /// Outcome of a sandbox check: the sandbox was started with a probe
 /// instead of the app, and every setting was checked from inside.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

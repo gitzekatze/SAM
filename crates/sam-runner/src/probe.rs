@@ -73,6 +73,14 @@ pub enum ProbeTest {
     X11 {
         expect: bool,
     },
+    /// An abstract UNIX socket of the host (a name, not a file, e.g. the X
+    /// server's `@/tmp/.X11-unix/X0`) answers a connection. Abstract
+    /// sockets live in the network namespace, so an app that shares the
+    /// host's can reach them unless Landlock fences them (review K-1).
+    AbstractSocket {
+        name: String,
+        expect: bool,
+    },
     /// The PulseAudio socket in $XDG_RUNTIME_DIR.
     Audio {
         expect: bool,
@@ -312,6 +320,20 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
                     "X11 socket present".into()
                 } else {
                     "no X11 socket".to_string()
+                },
+            )
+        }
+        ProbeTest::AbstractSocket { name, expect } => {
+            use std::os::linux::net::SocketAddrExt;
+            let there = std::os::unix::net::SocketAddr::from_abstract_name(name.as_bytes())
+                .and_then(|a| std::os::unix::net::UnixStream::connect_addr(&a))
+                .is_ok();
+            (
+                Some(there == *expect),
+                if there {
+                    sam_core::i18n::n_("reachable").into()
+                } else {
+                    sam_core::i18n::n_("not reachable").to_string()
                 },
             )
         }
@@ -785,6 +807,32 @@ mod tests {
             std::fs::read_dir(t.path()).unwrap().count(),
             0,
             "write test leaves nothing behind"
+        );
+    }
+
+    /// Review K-1: the check for an abstract socket of the host really
+    /// connects. One that answers is found reachable (a failure where it
+    /// must be hidden); a name nobody listens on is not.
+    #[test]
+    fn an_abstract_socket_that_answers_is_found_reachable() {
+        use std::os::linux::net::SocketAddrExt;
+        let name = format!("sam-probe-test-{}", std::process::id());
+        let addr = std::os::unix::net::SocketAddr::from_abstract_name(name.as_bytes()).unwrap();
+        let _listener = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
+        let t = |name: &str, expect| {
+            check(
+                &ProbeTest::AbstractSocket {
+                    name: name.into(),
+                    expect,
+                },
+                "",
+            )
+        };
+        assert_eq!(t(&name, false), (Some(false), "reachable".to_string()));
+        assert_eq!(t(&name, true).0, Some(true));
+        assert_eq!(
+            t(&format!("{name}-nobody"), false),
+            (Some(true), "not reachable".to_string())
         );
     }
 }
