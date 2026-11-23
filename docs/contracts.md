@@ -352,7 +352,7 @@ The compositor offers wp_security_context_manager_v1, so SAM can mark the app's 
 - **When it breaks:** the start goes ahead with a visible warning.
 - **SAM functions that rely on it:** [14](functions.md#14)
 - **Quick check:** `wayland-security-context`
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Asserted in CI's desktop session (tests/gui/desktop-sandbox.sh): where the compositor offers security contexts, the permission matrix requires the app's connection to carry one. A compositor without them (older KWin) is listed as not here. What the compositor withholds inside a context is not tested.)
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Asserted in CI's desktop session (tests/gui/desktop-sandbox.sh), with KWin only: where the compositor offers security contexts, the permission matrix requires the app's connection to carry one and to lack every protocol for the clipboard in the background, screen capture, fake input and other windows that a client of the compositor's own socket gets. A compositor without them (older KWin) is listed as not here. Sway, Hyprland and GNOME are not tested.)
 - **Covers:** `wayland:wp_security_context_manager_v1`
 - **If it breaks:** Without it SAM warns that the app can use every Wayland function the desktop offers. A new protocol version: update the wayland-protocols crate.
 

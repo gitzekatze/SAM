@@ -329,9 +329,16 @@ the system. SAM never changes it itself.
 Every app gets its own Wayland socket, created through the compositor's
 security-context protocol (`wp_security_context_v1`) and marked with SAM as
 the sandbox engine plus the app id. The compositor then hides privileged
-functions from the app, as it does for Flatpak apps. On KDE Plasma these
-include background clipboard access (`ext_data_control`) and fake input. The
-launch log and `sam-jail doctor` say whether the desktop supports it.
+functions from the app, as it does for Flatpak apps. On KDE Plasma (KWin
+6.8) these are background clipboard access (`ext_data_control`), fake
+input, screen casting, the list of other windows, the lock screen overlay,
+start-up feedback and security contexts of its own; a test compares what
+the app gets with what an unsandboxed client gets. What a compositor hides
+is its own choice, not SAM's: KWin still offers sandboxed apps a few
+functions of the desktop shell, such as drawing a panel or overlay above
+other windows (`zwlr_layer_shell_v1`, `org_kde_plasma_shell`) and changing
+the screen layout (`kde_output_management_v2`). The launch log and `sam-jail doctor` say whether the desktop supports
+it.
 
 *Privileged Wayland protocols* (advanced, High risk) gives the compositor's
 own socket instead, for clipboard managers and screenshot tools. Desktops

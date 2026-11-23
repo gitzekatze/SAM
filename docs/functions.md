@@ -26,7 +26,7 @@
 | 11 | [Keys, passwords and the files of your other apps stay hidden, even with full home access.](#11) | sam-sandbox, sam-core | 18 | ✅ 🆕 5 new tests since the report |
 | 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | sam-runner, sam-sandbox | 8 | ✅ |
 | 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 41 | ✅ 🆕 10 new tests since the report |
-| 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
+| 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 5 | ✅ |
 | 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 16 | ✅ 🆕 2 new tests since the report |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox, sam-core | 29 | ✅ 🆕 10 new tests since the report |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ |
@@ -311,7 +311,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_loaders_extra_library_folders_are_shown_read_only`](../crates/sam-sandbox/src/lib.rs#L2800) | Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | ✅ |
 | [`each_permission_adds_exactly_its_part_to_the_command`](../crates/sam-sandbox/src/lib.rs#L3023) | Each granted permission adds exactly its part to the Bubblewrap command. | ✅ |
 | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L65) | Inside a real sandbox, each profile shows exactly the files and services it allows. | ✅ |
-| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L105) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
+| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L165) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L4437) | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | ✅ |
 | [`user_folders_come_from_user_dirs_dirs`](../crates/sam-core/src/host.rs#L754) | The user folders come from user-dirs.dirs, with the usual names as fallbacks; a folder set to $HOME is disabled (contract xdg-folders). | ✅ |
 
@@ -353,7 +353,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_apps_ports_listen_on_loopback_only`](../crates/sam-runner/src/netns.rs#L204) | The app's ports are offered on this computer's loopback addresses only, for IPv4 and IPv6 alike, never on every address (audit L-F7). | ✅ |
 | [`well_known_local_services_are_never_taken_over`](../crates/sam-runner/src/netns.rs#L237) | Local services whose clients would hand an app control or secrets are never taken over automatically. | ✅ |
 | [`the_apps_ports_are_offered_on_this_computer_only`](../crates/sam-jail-cli/tests/local_network.rs#L106) | The apps ports are offered on this computer only. | ✅ |
-| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L105) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
+| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L165) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 | [`a_pasta_command_ending_in_the_separator_is_refused_not_a_panic`](../crates/sam-runner/src/launch.rs#L2232) | A pasta command ending in the separator is refused not a panic. | ✅ |
 | [`the_status_shell_goes_between_the_separator_and_the_program`](../crates/sam-runner/src/launch.rs#L2239) | The status shell goes between the separator and the program. | ✅ |
 
@@ -417,6 +417,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`xauthority_gets_the_sandbox_display_number`](../crates/sam-sandbox/src/lib.rs#L2966) | The X11 login cookie is rewritten for the display number inside the sandbox. | ✅ |
 | [`the_x11_display_number_is_read_from_every_display_form`](../crates/sam-core/src/host.rs#L788) | The X11 display number is read from every common DISPLAY form, and remote displays are refused. | ✅ |
 | [`the_x11_key_copy_is_private_and_follows_no_link`](../crates/sam-sandbox/src/lib.rs#L3100) | The app runs with the user's IDs, and host tools that could leave the sandbox (systemd-run) are replaced by harmless stand-ins. | ✅ |
+| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L165) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/wayland_ctx.rs`](../crates/sam-runner/src/wayland_ctx.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
@@ -439,7 +440,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`sdl_gets_its_silent_driver_without_sound_access`](../crates/sam-sandbox/src/lib.rs#L2751) | Games built with SDL get a silent sound driver when they have no sound, so they start instead of failing: sound off, or on but with SAM's relay not running (audit S-F1); not when sound reaches them. | ✅ |
 | [`gamepads_only_exposes_joysticks`](../crates/sam-sandbox/src/lib.rs#L3288) | "Game controllers" exposes only joysticks, never keyboards or mice. | ✅ |
 | [`nvidia_modules_are_exposed_with_the_gpu`](../crates/sam-sandbox/src/lib.rs#L3306) | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | ✅ |
-| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L105) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
+| [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L165) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 | [`the_input_switch_names_every_device_it_shows`](../crates/sam-sandbox/src/lib.rs#L3262) | "All input devices" names every device it shows the app, and says what the virtual one allows: typing and moving the mouse as the person (audit: /dev/uinput was shown without being named). | 🆕 new |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs)

@@ -63,10 +63,70 @@ if [ -n "${SAM_MATRIX_PORT_LISTED:-}" ]; then
   yn 'tcp "$SAM_MATRIX_PORT_LISTED"' PORT_LISTED
   yn 'tcp "$SAM_MATRIX_PORT_UNLISTED"' PORT_UNLISTED
 fi
+# The Wayland protocols the compositor offers the app (WL_GLOBALS).
+if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v python3 >/dev/null; then
+  python3 "$APPDIR/usr/bin/wl-globals"
+fi
 echo "END=1"
 [ "$1" = sleep ] && sleep 3
 exit 0
 "#;
+
+/// Prints `WL_GLOBALS=` and the names of the protocols the Wayland
+/// display offers (`$WAYLAND_DISPLAY`, below `$XDG_RUNTIME_DIR` unless a
+/// whole path), sorted: a client of the Wayland wire protocol in a few
+/// lines, so neither side needs a Wayland library.
+const WL_GLOBALS: &str = r#"import os, socket, struct, sys
+d = os.environ["WAYLAND_DISPLAY"]
+s = socket.socket(socket.AF_UNIX)
+s.connect(d if d.startswith("/") else os.path.join(os.environ["XDG_RUNTIME_DIR"], d))
+# wl_display.get_registry(new id 2), then wl_display.sync(new id 3).
+s.sendall(struct.pack("<IHHI", 1, 1, 12, 2) + struct.pack("<IHHI", 1, 0, 12, 3))
+buf, names = b"", set()
+while True:
+    chunk = s.recv(65536)
+    if not chunk:
+        sys.exit("WL_GLOBALS=closed")
+    buf += chunk
+    while len(buf) >= 8:
+        obj, op, size = struct.unpack("<IHH", buf[:8])
+        if len(buf) < size:
+            break
+        body, buf = buf[8:size], buf[size:]
+        if obj == 2 and op == 0:  # wl_registry.global(name, interface, version)
+            n = struct.unpack("<I", body[4:8])[0]
+            names.add(body[8:8 + n - 1].decode())
+        elif obj == 1 and op == 0:  # wl_display.error
+            sys.exit("WL_GLOBALS=error")
+        elif obj == 3:  # the sync's callback: every global was sent
+            print("WL_GLOBALS=" + ",".join(sorted(names)))
+            sys.exit(0)
+"#;
+
+/// Protocols that let a client watch or steer the rest of the desktop:
+/// read the clipboard in the background, capture the screen, type or move
+/// the mouse for the person, list and steer other windows, read keystrokes
+/// as an input method, make security contexts of its own. A client of a
+/// security context must get none of them (threat model: "an app watches
+/// your other windows or keystrokes"). Each compositor offers some.
+const PRIVILEGED_WAYLAND: &[&str] = &[
+    "wp_security_context_manager_v1",
+    "zwlr_data_control_manager_v1",
+    "ext_data_control_manager_v1",
+    "zwlr_screencopy_manager_v1",
+    "zwlr_export_dmabuf_manager_v1",
+    "ext_image_copy_capture_manager_v1",
+    "ext_output_image_capture_source_manager_v1",
+    "ext_foreign_toplevel_image_capture_source_manager_v1",
+    "zkde_screencast_unstable_v1",
+    "zwp_virtual_keyboard_manager_v1",
+    "zwlr_virtual_pointer_manager_v1",
+    "org_kde_kwin_fake_input",
+    "zwp_input_method_manager_v2",
+    "zwlr_foreign_toplevel_manager_v1",
+    "ext_foreign_toplevel_list_v1",
+    "org_kde_plasma_window_management",
+];
 
 fn bwrap_works() -> bool {
     let host = HostInfo::probe();
@@ -150,6 +210,11 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
     let mut spec = FixtureSpec::hello("Matrix");
     spec.apprun = PROBE.into();
     spec.categories = "Utility;".into();
+    spec.files.push(sam_intake::testkit::FixtureFile {
+        path: "usr/bin/wl-globals".into(),
+        data: WL_GLOBALS.as_bytes().to_vec(),
+        mode: 0o644,
+    });
     build(&img, &spec).unwrap();
 
     let paths = Paths::rooted(&root.join("sam"));
@@ -414,6 +479,50 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
                     log.contains("wayland security context: true"),
                     "the compositor offers security contexts, but the app's Wayland connection carries none: {}",
                     log.lines().take(3).collect::<Vec<_>>().join(" | ")
+                );
+                // What the security context is for: the compositor withholds
+                // its privileged protocols from the app, which a client of
+                // the compositor's own socket gets (audit D-M10: only the
+                // log line above was checked).
+                let script = root.join("wl-globals.py");
+                fs::write(&script, WL_GLOBALS).unwrap();
+                let socket = host.sockets.wayland.clone().unwrap();
+                let out = std::process::Command::new("python3")
+                    .arg(&script)
+                    .env("WAYLAND_DISPLAY", &socket)
+                    .output()
+                    .unwrap();
+                let list = |v: &str| -> std::collections::BTreeSet<String> {
+                    v.split(',').filter(|g| !g.is_empty()).map(str::to_string).collect()
+                };
+                let printed = String::from_utf8_lossy(&out.stdout).into_owned();
+                let outside = list(
+                    printed
+                        .trim()
+                        .strip_prefix("WL_GLOBALS=")
+                        .unwrap_or_else(|| panic!("no list of protocols outside: {printed:?} {}", String::from_utf8_lossy(&out.stderr))),
+                );
+                let inside = list(
+                    r.get("WL_GLOBALS")
+                        .unwrap_or_else(|| panic!("no list of protocols from the app: {r:?}")),
+                );
+                let withheld: Vec<&&str> = PRIVILEGED_WAYLAND
+                    .iter()
+                    .filter(|g| outside.contains(**g))
+                    .collect();
+                assert!(
+                    !withheld.is_empty(),
+                    "the compositor's own socket offers none of the privileged protocols, so nothing shows the security context at work: {outside:?}"
+                );
+                for g in &withheld {
+                    assert!(
+                        !inside.contains(**g),
+                        "the app gets the privileged protocol {g} through its security context: {inside:?}"
+                    );
+                }
+                assert!(
+                    inside.contains("wl_compositor") && inside.is_subset(&outside),
+                    "the app gets the ordinary protocols and nothing more: {inside:?} of {outside:?}"
                 );
             } else {
                 sam_runner::contracts::not_here("this compositor offers no Wayland security contexts");

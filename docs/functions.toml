@@ -223,7 +223,7 @@ id = 14
 area = "C"
 promise = "Display: Wayland with a security context; X11 only when allowed, with its cost explained."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/wayland_ctx.rs", "sam-core/src/host.rs"]
-tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox_display_number", "the_x11_display_number_is_read_from_every_display_form", "the_x11_key_copy_is_private_and_follows_no_link"]
+tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox_display_number", "the_x11_display_number_is_read_from_every_display_form", "the_x11_key_copy_is_private_and_follows_no_link", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
 
 [[function]]
 id = 15
