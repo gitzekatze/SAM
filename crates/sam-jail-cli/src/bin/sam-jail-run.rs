@@ -138,6 +138,11 @@ fn main() {
         }
         std::process::exit(sam_runner::room_service::standin(&version, &args));
     }
+    // What this program inherited (a menu launcher's or terminal's open
+    // descriptors) never reaches the app, from the menu or inside the
+    // sandbox (review F6). Not as Room service's stand-in above: the
+    // descriptors a program hands to it are its request.
+    sam_core::util::close_inherited_on_exec();
     let args = match text_args(std::env::args_os().skip(1)) {
         Ok(a) => a,
         Err(name) => {
