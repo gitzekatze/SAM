@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-92 tests.
+101 tests.
 
 | Promise | Test |
 |---|---|
@@ -21,6 +21,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L451) |
 | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L464) |
 | Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L490) |
+| `sam-jail config get` reads back what is set; an unknown key is an error. | [`settings_read_back_by_key_and_text_is_taken_literally`](../crates/sam-core/src/config.rs#L517) |
+| A settings file that exists but cannot be read (not text, or a folder) is an error that names it, and it stays as it is: the stricter settings in it are never silently replaced by the defaults, which a later save would write over it. | [`a_settings_file_that_cannot_be_read_is_an_error_and_stays`](../crates/sam-core/src/config.rs#L548) |
+| A file already in the current format is not migrated again: an old theme name in it is an invalid value and is reset to System, and a theme that is no text makes the file damaged (moved aside). | [`a_current_settings_file_is_not_migrated_again`](../crates/sam-core/src/config.rs#L573) |
+| The extraction folder is a folder of its own: never the root, never the home folder itself (however it is written), never relative and never with `..`. | [`the_extraction_folder_is_never_the_root_or_the_home_folder`](../crates/sam-core/src/config.rs#L596) |
 | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L113) |
 | An error code survives added context. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L137) |
 | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) |
@@ -45,18 +49,23 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Rooted paths (tests) keep their runtime folders apart from SAM's real one and from every other root, and short enough for SAM's sockets. | [`rooted_paths_have_a_runtime_folder_of_their_own`](../crates/sam-core/src/paths.rs#L182) |
 | A root inside a test whose runtime folder is already one of these gets its folder next to it, never in /tmp (16,304 were left there by one mutation run, 2026-11-20); a long runtime folder still falls back to /tmp. | [`a_test_inside_a_test_keeps_its_runtime_folder_out_of_tmp`](../crates/sam-core/src/paths.rs#L219) |
 | ⟲ Regression: sandboxed windows carried the app's id as their app ID while SAM's menu entry is "sam-<id>.desktop", so the taskbar found no entry and showed a generic icon. | [`the_window_id_matches_the_name_of_sams_menu_entry`](../crates/sam-core/src/paths.rs#L245) |
-| The catalogue is the one list of permissions: it names every setting an app's permissions have, and every name in it can be read. | [`the_catalogue_names_every_setting`](../crates/sam-core/src/permissions.rs#L1181) |
-| The permissions page of the documentation names every permission. | [`the_documentation_names_every_permission`](../crates/sam-core/src/permissions.rs#L1224) |
-| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`bus_names_follow_the_rules_of_the_bus`](../crates/sam-core/src/permissions.rs#L1257) |
-| Media controls let the app talk to the screen saver and power services; they no longer ask for the media-player wildcard, which was always refused (audit L-Q1): the app's own player name is learned instead. | [`media_controls_talk_but_ask_for_no_wildcard_name`](../crates/sam-core/src/permissions.rs#L1280) |
-| Own names that are refused. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1301) |
-| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1316) |
-| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L1329) |
-| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1348) |
-| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1366) |
-| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1381) |
-| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1394) |
-| Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1403) |
+| The catalogue is the one list of permissions: it names every setting an app's permissions have, and every name in it can be read. | [`the_catalogue_names_every_setting`](../crates/sam-core/src/permissions.rs#L1188) |
+| The permissions page of the documentation names every permission. | [`the_documentation_names_every_permission`](../crates/sam-core/src/permissions.rs#L1231) |
+| An app may not own a bus name of a desktop service or of a service that starts on demand; its own application names stay allowed. | [`bus_names_follow_the_rules_of_the_bus`](../crates/sam-core/src/permissions.rs#L1264) |
+| Media controls let the app talk to the screen saver and power services; they no longer ask for the media-player wildcard, which was always refused (audit L-Q1): the app's own player name is learned instead. | [`media_controls_talk_but_ask_for_no_wildcard_name`](../crates/sam-core/src/permissions.rs#L1287) |
+| Own names that are refused. | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1308) |
+| Folder access is read from both the old form (true/false) and the current form ("ro", "rw"). | [`access_from_bool_and_str`](../crates/sam-core/src/permissions.rs#L1323) |
+| Permissions can be read and set by key, and unknown keys or values are refused. | [`set_and_get_keys`](../crates/sam-core/src/permissions.rs#L1336) |
+| A list the saved form leaves out while it is empty (function and signal rules) takes comma-separated input like every other list, also while it is still empty. | [`an_empty_list_left_out_of_the_saved_form_takes_comma_separated_input`](../crates/sam-core/src/permissions.rs#L1373) |
+| Each user-folder switch grants exactly its own folder, read-only or writable, and no other. | [`every_user_folder_switch_grants_exactly_its_folder`](../crates/sam-core/src/permissions.rs#L1399) |
+| "This computer only" forwards exactly the ports the user listed: each once, sorted, without port 0, and never DNS (port 53) from the host. | [`only_the_ports_the_user_listed_are_forwarded`](../crates/sam-core/src/permissions.rs#L1421) |
+| Wildcards and versioned names of dangerous desktop services count as dangerous (warned about, rated Dangerous, never owned), and so does any wildcard over the portal's names; ordinary names do not. | [`wildcards_and_versions_of_dangerous_services_are_dangerous`](../crates/sam-core/src/permissions.rs#L1446) |
+| A switched-on integration reaches the enforced bus filter: every one of its names is allowed, next to the user's own entries, and each name only once. | [`switched_on_integrations_reach_the_bus_filter_once`](../crates/sam-core/src/permissions.rs#L1482) |
+| A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it. | [`blocked_names_win_over_wildcards`](../crates/sam-core/src/permissions.rs#L1509) |
+| Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1527) |
+| Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1542) |
+| Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1555) |
+| Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1564) |
 | Every switch says the same risk word in the window (its catalogue entry) as in the risk assessment that decides the badges and which changes ask first (audit D-M12: raw ALSA was "Think twice" in one and "Dangerous" in the other, so the window did not ask). | [`every_switch_has_one_risk_word`](../crates/sam-core/src/risk.rs#L816) |
 | Single functions and signals of a service count in the risk word: a function of a service that can act outside the sandbox is Dangerous, any other function Think twice, a signal Harmless (audit D-H2: they counted for nothing). | [`function_and_signal_rules_count_in_the_risk_word`](../crates/sam-core/src/risk.rs#L861) |
 | The command line and the window name risk with the same three words, and the command line's filter understands both names. | [`risk_has_the_same_three_words_everywhere`](../crates/sam-core/src/risk.rs#L887) |
@@ -742,4 +751,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 656 automated Rust tests plus 7 scripted checks.
+Total: 665 automated Rust tests plus 7 scripted checks.
