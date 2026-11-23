@@ -322,7 +322,7 @@ tests = ["records_changed_outside_sam_are_recognized", "an_app_changed_outside_s
 [[function]]
 id = 28
 area = "F"
-promise = "Updates use HTTPS only, keep the old version so it can be restored, and refuse a changed signing key until you accept it."
+promise = "Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, and refuse a changed signing key until you accept it."
 code = ["sam-runner/src/updates.rs", "sam-runner/src/zsync.rs", "sam-runner/src/release_key.rs", "sam-detect/src/update_info.rs", "sam-detect/src/signature.rs"]
 tests = ["both_forms_of_update_information_are_understood", "update_wildcards_match_only_the_right_build", "signed_appimage_is_checked", "key_changes_are_noticed", "an_update_signed_with_another_key_waits_for_consent", "sam_updates_itself_only_with_its_release_key", "release_keys_are_full_fingerprints", "signing_a_file_without_signature_sections_is_refused", "without_a_release_key_sam_never_updates_itself", "the_zsync_header_is_read", "update_download_addresses_are_resolved_and_http_refused", "updates_are_downloaded_over_https_only", "an_update_is_rebuilt_from_the_old_version_and_changed_blocks", "the_rolling_checksum_matches_a_direct_computation", "refuses_compressed_and_broken_files", "undo_puts_the_previous_version_back", "undoing_an_update_never_moves_files_outside_sams_backup_folder", "block_checksums_match_the_zsync_definition", "the_download_checksum_is_sha1_of_the_whole_file", "updates_download_only_changes_check_them_and_refuse_tampering", "the_weak_hashes_stay_in_the_zsync_update_code", "an_update_never_comes_over_plain_http", "a_download_from_plain_http_is_refused_before_curl_runs",
   "an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature",
@@ -344,6 +344,16 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "a_hostile_update_description_cannot_crash_or_stall_sam",
   "kept_data_goes_back_only_to_its_own_appimage",
   "changed_zsync_controls_never_crash_planning_or_assembly",
+  "an_appimage_swapped_before_an_update_is_not_updated_into_its_sandbox",
+  "an_update_unpacks_the_checked_download_even_if_the_placed_file_is_swapped",
+  "going_back_refuses_a_current_version_swapped_outside_sam",
+  "going_back_to_a_version_kept_without_its_checksum_needs_a_review",
+  "an_update_never_takes_a_published_name_that_is_not_an_appimage_name",
+  "only_a_plain_appimage_name_is_taken_from_an_update",
+  "an_update_compares_keys_even_when_the_installed_signature_was_never_checked",
+  "a_signature_that_was_never_checked_lets_no_key_through",
+  "going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change",
+  "going_back_works_when_the_update_could_not_be_unpacked",
 ]
 
 [[function]]

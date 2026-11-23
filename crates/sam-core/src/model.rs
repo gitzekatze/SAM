@@ -464,6 +464,16 @@ pub struct UpdateBackup {
     pub original_path: PathBuf,
     /// When the update ran (Unix seconds).
     pub replaced_at: i64,
+    /// SHA-256 of the kept file, checked by SAM in its own folder when it
+    /// kept it. Going back to a file without it (kept by an older SAM, or
+    /// changed since) asks for a review like any file SAM did not check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    /// SHA-256 of the version SAM put in the AppImage's place when it kept
+    /// this one. Going back accepts that file also when unpacking it failed
+    /// (then the sandbox still holds the kept version).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placed_sha256: Option<String>,
 }
 
 /// Whether a newer version of an AppImage is published.

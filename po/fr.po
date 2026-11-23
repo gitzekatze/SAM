@@ -8384,6 +8384,29 @@ msgstr ""
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:712
+msgid ""
+"{file} changed outside SAM since it was last unpacked, so SAM does not "
+"update it: another program may have replaced it. Use Unpack Again and look "
+"at the app first."
+msgstr ""
+"{file} a été modifié en dehors de SAM depuis sa dernière décompression, donc "
+"SAM ne le met pas à jour : un autre programme l’a peut-être remplacé. "
+"Utilise « Décompresser à nouveau » et examine d’abord l’application."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:912
+msgid ""
+"{file} changed outside SAM since it was last unpacked, so SAM does not go "
+"back: another program may have replaced it. Use Unpack Again and look at the "
+"app first."
+msgstr ""
+"{file} a été modifié en dehors de SAM depuis sa dernière décompression, donc "
+"SAM ne revient pas à la version précédente : un autre programme l’a peut-"
+"être remplacé. Utilise « Décompresser à nouveau » et examine d’abord "
+"l’application."
+
 #~ msgid ""
 #~ "32-bit app: the baseline syscall filter is off, because it only supports "
 #~ "64-bit programs and would stop the app"

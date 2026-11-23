@@ -562,6 +562,12 @@ downloaded or installed.
 
 **Updating** (*Update Now*, `sam-jail update`) is the one time SAM
 downloads a file, and only when you ask:
+- SAM updates only the AppImage it unpacked. It first copies the installed
+  file into its own data folder and compares it with what it unpacked last;
+  a file replaced outside SAM (for example by another app with access to
+  that folder) is not updated, because its update information would decide
+  what then runs with this app's permissions. Use *Unpack Again* and look
+  at the app first. The update address is read from that checked copy.
 - The new AppImage comes from the address its update description names,
   over HTTPS. It is downloaded and checked in SAM's own data folder, which
   no app can reach, never in the AppImage's folder, where another app could
@@ -569,7 +575,10 @@ downloads a file, and only when you ask:
   and the move.
 - It must match the published SHA-1 and be an AppImage.
 - It must be signed like the installed version. A new or missing key stops
-  the update unless you accept it. A signed update that was signed earlier
+  the update unless you accept it. When the installed version's signature
+  could not be checked when it was added (GnuPG missing), SAM checks the
+  installed file again now; a signature that still cannot be checked lets
+  no other key, missing or bad signature through without a question. A signed update that was signed earlier
   than the installed version is an older version and is refused: whoever
   controls the download cannot hand out an old release with holes fixed
   since. For unsigned apps SAM cannot tell versions apart this way.
@@ -578,10 +587,25 @@ downloads a file, and only when you ask:
   update addresses are never expanded as patterns, and working out which
   parts of the old file can be reused stops after a minute (the rest is
   downloaded).
-- The old file moves into SAM's data folder, so you can go back; going back
-  keeps the newer version, also when both have the same file name.
-- The new file is put in place by renaming, or, across drives, by copying
-  into a new file; SAM never writes through a link it finds there.
+- The new file keeps its published name only when that is a plain
+  AppImage name (letters, digits and `._+-`, ending in `.AppImage`) that no
+  other file in the folder has; otherwise it takes the old name. The update
+  server chooses that name, and in a folder on the command search path
+  (`~/.local/bin`) a name like `sudo` would replace a command, outside any
+  sandbox.
+- The checked copy of the old file is kept in SAM's data folder, so you can
+  go back; going back keeps the newer version, also when both have the same
+  file name. Going back checks the current file like an update does: SAM
+  keeps a copy of it in its own folder (never the file itself, which
+  another app could still hold under a second name) and accepts it only
+  when it is what SAM unpacked, or what the update put there when
+  unpacking that failed. A version kept by an older SAM (without its
+  recorded checksum) asks for a review once it is back.
+- The new file is put in place as a copy in a new file; SAM never writes
+  through a link it finds there. The sandbox is unpacked from the checked
+  download in SAM's own folder, not from the AppImage's folder, where
+  another app could swap the file in that moment; a file swapped there
+  afterwards is noticed like any changed AppImage.
 - The app keeps its sandbox. When the new version asks for more (another
   category, the network, a folder), the app page shows it, and nothing
   changes until you switch it on yourself.
@@ -643,7 +667,9 @@ the file.
 Because the key comes with the file, a valid signature shows that the file
 is unchanged since signing, not who made it. What it adds is continuity:
 SAM remembers the key, and when an updated AppImage is signed with another
-key, or no longer signed, the app page shows a warning.
+key, or no longer signed, the app page shows a warning. A signature that
+could not be checked (GnuPG missing) is no remembered key: SAM checks the
+installed file again when it updates.
 
 The signer is the key that `gpgv` itself reports for the signature it
 checked (its `VALIDSIG` status line), never simply a key found in the file.

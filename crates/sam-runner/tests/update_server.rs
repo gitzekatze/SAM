@@ -793,3 +793,361 @@ fn an_update_signed_with_another_key_waits_for_consent() {
         .args(["--kill", "all"])
         .status();
 }
+
+/// Adds `file` to a fresh SAM in `tmp/sam`, with its settings confirmed.
+fn add_reviewed(tmp: &Path, file: &Path) -> (Sam, String) {
+    let sam = Sam::with_paths(Paths::rooted(&tmp.join("sam"))).unwrap();
+    let id = sam
+        .add(
+            file,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    (sam, id)
+}
+
+/// The version file inside the app's unpacked folder (what runs).
+fn unpacked_version(sam: &Sam, id: &str) -> String {
+    let x = sam.resolve(id).unwrap().extraction.unwrap();
+    fs::read_to_string(x.appdir.join("usr/share/tool/version")).unwrap_or_default()
+}
+
+/// Regression (review 2026-11-23, U-1): an update trusted whatever file was
+/// in the AppImage's place. Another app with write access to that folder
+/// could put its own AppImage there, naming its own update server; SAM then
+/// "updated" the app to the other app's program, unpacked it without the
+/// review a replaced file needs, and the next start ran it with the old
+/// app's permissions. Now an update refuses a file that is not the one SAM
+/// unpacked, before asking any server.
+#[test]
+fn an_appimage_swapped_before_an_update_is_not_updated_into_its_sandbox() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Downloads");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+    let unpacked = sam.resolve(&id).unwrap().extraction.unwrap().source.sha256;
+
+    // Another app puts its own AppImage in the place of this one; it names
+    // the other app's update server, which publishes a newer version.
+    let evil_url = format!("https://127.0.0.1:{}/evil.zsync", server.port);
+    let planted = tmp.path().join("planted.AppImage");
+    appimage(&planted, &evil_url, "evil-1");
+    let evil_next = tmp.path().join("evil-2.AppImage");
+    appimage(&evil_next, &evil_url, "evil-2");
+    fs::copy(&evil_next, server.root.join("Evil.AppImage")).unwrap();
+    let z = sam_runner::zsync::make(
+        &evil_next,
+        "Tool-1.0-x86_64.AppImage",
+        "Evil.AppImage",
+        "Tue, 10 Nov 2026 10:00:00 +0000",
+    )
+    .unwrap();
+    fs::write(server.root.join("evil.zsync"), z).unwrap();
+    fs::copy(&planted, &installed).unwrap();
+    let swapped = fs::read(&installed).unwrap();
+
+    let Err(err) = sam.update(&id, false) else {
+        panic!("the swapped file was updated");
+    };
+    assert!(
+        format!("{err:#}").contains("changed outside SAM"),
+        "{err:#}"
+    );
+    assert_eq!(
+        unpacked_version(&sam, &id),
+        "1.0",
+        "the sandbox still holds the version that was looked at"
+    );
+    let e = sam.resolve(&id).unwrap();
+    assert_eq!(e.extraction.unwrap().source.sha256, unpacked);
+    assert_eq!(
+        fs::read(&installed).unwrap(),
+        swapped,
+        "nothing was replaced"
+    );
+    let log = fs::read_to_string(&server.log).unwrap_or_default();
+    assert!(
+        !log.contains("evil") && !log.contains("Evil"),
+        "the swapped file's update server was not even asked:\n{log}"
+    );
+    // The normal way still works: unpacking it again asks for a review.
+    let e = sam.reextract(&id, false).unwrap();
+    assert!(
+        e.content_changed_outside,
+        "the replaced file waits for a review"
+    );
+}
+
+/// Regression (review 2026-11-23, U-1): after putting the checked download
+/// in the AppImage's folder, SAM read it from there again to unpack it. An
+/// app with write access to that folder could swap it in that moment, and
+/// its program was unpacked as the update, without a review. Now SAM
+/// unpacks the copy it checked in its own folder; whatever lands in the
+/// AppImage's folder afterwards is noticed as a changed file.
+#[test]
+fn an_update_unpacks_the_checked_download_even_if_the_placed_file_is_swapped() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Downloads");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let v2 = tmp.path().join("v2.AppImage");
+    appimage(&v2, &url, "2.0");
+    publish(&server, &v2, "Tool-2.0-x86_64.AppImage");
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+
+    // Another app waits for the new file and swaps its own in at once.
+    let evil = apps.join(".evil");
+    appimage(&evil, &url, "evil");
+    let target = apps.join("Tool-2.0-x86_64.AppImage");
+    let stop = Arc::new(AtomicBool::new(false));
+    let swapper = {
+        let (stop, evil, target) = (stop.clone(), evil.clone(), target.clone());
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                if fs::symlink_metadata(&target).is_ok() {
+                    fs::rename(&evil, &target).unwrap();
+                    return true;
+                }
+            }
+            false
+        })
+    };
+    let result = sam.update(&id, false);
+    stop.store(true, Ordering::Relaxed);
+    assert!(swapper.join().unwrap(), "the swap happened");
+    let e = result.unwrap();
+    assert_eq!(
+        unpacked_version(&sam, &id),
+        "2.0",
+        "the checked download was unpacked, not the swapped file"
+    );
+    assert!(!e.content_changed_outside);
+    // The swapped file in the folder is noticed as changed.
+    let items = sam.refresh(Some(&id), false).unwrap();
+    assert_eq!(items[0].status, "stale", "{:?}", items[0].reasons);
+    let e = sam.reextract(&id, false).unwrap();
+    assert!(
+        e.content_changed_outside,
+        "and unpacking it asks for a review"
+    );
+}
+
+/// Regression (review 2026-11-23, U-2): the update server chose the new
+/// file's name in the AppImage's folder, and SAM made it executable. In a
+/// folder on the command search path (~/.local/bin, ~/bin) a name such as
+/// `sudo` put the server's program in place of a command, run outside any
+/// sandbox. Now only a plain name ending in `.AppImage` is taken; anything
+/// else keeps the old name.
+#[test]
+fn an_update_never_takes_a_published_name_that_is_not_an_appimage_name() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let bin = tmp.path().join(".local/bin");
+    fs::create_dir_all(&bin).unwrap();
+    let installed = bin.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let v2 = tmp.path().join("v2.AppImage");
+    appimage(&v2, &url, "2.0");
+    publish(&server, &v2, "sudo");
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+
+    let e = sam.update(&id, false).unwrap();
+    assert!(
+        !bin.join("sudo").exists(),
+        "no `sudo` was put in the folder"
+    );
+    assert_eq!(e.source_path, fs::canonicalize(&installed).unwrap());
+    assert_eq!(
+        fs::read(&installed).unwrap(),
+        fs::read(&v2).unwrap(),
+        "the new version took the old name"
+    );
+}
+
+/// Regression (review 2026-11-23, U-3): an app added while GnuPG was missing
+/// has its signature recorded as "not checked", and every key comparison
+/// needed a checked record, so an update signed with another key was
+/// installed without a question even after GnuPG was installed. Now the
+/// installed file (the one SAM unpacked) is checked again at update time:
+/// another key is refused, the same key goes through. With the real GnuPG
+/// (SAM_TEST_GPG=1).
+#[test]
+fn an_update_compares_keys_even_when_the_installed_signature_was_never_checked() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
+        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
+        return;
+    }
+    assert!(
+        ["gpg", "gpgv", "objcopy"].iter().all(|t| have(t)),
+        "SAM_TEST_GPG=1, but gpg, gpgv or objcopy is not installed"
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let gpg_home = tmp.path().join("gnupg");
+    fs::create_dir(&gpg_home).unwrap();
+    fs::set_permissions(
+        &gpg_home,
+        std::os::unix::fs::PermissionsExt::from_mode(0o700),
+    )
+    .unwrap();
+    for signer in [
+        "First Key <first@example.invalid>",
+        "Second Key <second@example.invalid>",
+    ] {
+        let st = Command::new("gpg")
+            .arg("--homedir")
+            .arg(&gpg_home)
+            .args(["--batch", "--quiet", "--passphrase", ""])
+            .args(["--pinentry-mode", "loopback", "--quick-gen-key", signer])
+            .args(["ed25519", "sign", "never"])
+            .status()
+            .unwrap();
+        assert!(st.success(), "gpg could not make a key");
+    }
+    let signed = |path: &Path, version: &str, key: &str| {
+        let mut spec = FixtureSpec::hello("Tool");
+        spec.comment = format!("Tool, version {version}");
+        spec.files.push(FixtureFile {
+            path: "usr/share/tool/version".into(),
+            data: version.as_bytes().to_vec(),
+            mode: 0o644,
+        });
+        spec.update_info = Some(format!("zsync|{url}"));
+        spec.signature_sections = true;
+        build(path, &spec).unwrap();
+        sam_detect::signature::sign_for_test(path, &gpg_home, key).unwrap();
+    };
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    signed(&installed, "1.0", "first@example.invalid");
+    let v2 = tmp.path().join("v2.AppImage");
+    signed(&v2, "2.0", "second@example.invalid");
+    publish(&server, &v2, "Tool-2.0-x86_64.AppImage");
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+
+    // The record as SAM writes it when GnuPG is missing at add time.
+    let mut e = sam.resolve(&id).unwrap();
+    e.signature = Some(sam_core::model::SignatureInfo {
+        state: sam_core::model::SignatureState::Unchecked,
+        fingerprint: None,
+        detail: "signed; install GnuPG (gpgv) to check the signature".into(),
+        signed_at: None,
+    });
+    sam.registry().save(&mut e).unwrap();
+    let before = fs::read(&installed).unwrap();
+
+    let err = sam.update(&id, false).unwrap_err();
+    assert!(
+        format!("{err:#}").contains("signing key changed"),
+        "refused for the new key: {err:#}"
+    );
+    assert_eq!(fs::read(&installed).unwrap(), before, "nothing changed");
+    assert_eq!(unpacked_version(&sam, &id), "1.0");
+
+    // Checked now, the installed file is a trusted baseline: an update
+    // signed with the same key goes through without a question.
+    let same_key = tmp.path().join("v2-first.AppImage");
+    signed(&same_key, "2.0", "first@example.invalid");
+    publish(&server, &same_key, "Tool-2.0-x86_64.AppImage");
+    let e = sam.update(&id, false).unwrap();
+    assert_eq!(unpacked_version(&sam, &id), "2.0");
+    let sig = e.signature.unwrap();
+    assert_eq!(sig.state, sam_core::model::SignatureState::Valid, "{sig:?}");
+    assert_eq!(e.signing_key_changed, None);
+    let _ = Command::new("gpgconf")
+        .arg("--homedir")
+        .arg(&gpg_home)
+        .args(["--kill", "all"])
+        .status();
+}
+
+/// Regression (review check 2026-11-23, U-1): the way back is recorded
+/// before the new version is unpacked, so that the old one can be put back
+/// when unpacking fails (audit U-L2). Going back then also checked the
+/// current file against what SAM unpacked last, which is still the old
+/// version, so it refused the very file the update had put there. Now going
+/// back also accepts the file the update itself put in place.
+#[test]
+fn going_back_works_when_the_update_could_not_be_unpacked() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Downloads");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let (mut sam, id) = add_reviewed(tmp.path(), &installed);
+    let unpacked = sam.resolve(&id).unwrap().extraction.unwrap().source.sha256;
+    // The new version has more files than SAM is set to unpack.
+    let files = walkdir_count(&sam.resolve(&id).unwrap().extraction.unwrap().appdir);
+    sam.config.extraction.max_files = files as u64 + 5;
+    let v2 = tmp.path().join("v2.AppImage");
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "Tool, version 2.0".into();
+    for i in 0..40 {
+        spec.files.push(FixtureFile {
+            path: format!("usr/share/tool/part{i}"),
+            data: vec![b'x'; 10],
+            mode: 0o644,
+        });
+    }
+    spec.update_info = Some(format!("zsync|{url}"));
+    build(&v2, &spec).unwrap();
+    publish(&server, &v2, "Tool-2.0-x86_64.AppImage");
+
+    let err = sam.update(&id, false).unwrap_err();
+    assert!(format!("{err:#}").contains("max_files"), "{err:#}");
+    assert!(sam.resolve(&id).unwrap().update_backup.is_some());
+
+    let e = sam
+        .undo_update(&id)
+        .unwrap_or_else(|e| panic!("going back was refused: {e:#}"));
+    assert_eq!(e.source_path, fs::canonicalize(&installed).unwrap());
+    assert_eq!(e.extraction.unwrap().source.sha256, unpacked);
+    assert_eq!(unpacked_version(&sam, &id), "1.0");
+    assert!(!e.content_changed_outside, "the old version is SAM's own");
+}
+
+/// How many files and folders are below `dir`.
+fn walkdir_count(dir: &Path) -> usize {
+    fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| {
+            let t = e.file_type().unwrap();
+            1 + if t.is_dir() {
+                walkdir_count(&e.path())
+            } else {
+                0
+            }
+        })
+        .sum()
+}
