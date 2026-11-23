@@ -562,13 +562,19 @@ pub(crate) fn sig_words(s: &sam_core::model::SignatureInfo) -> String {
 
 /// What the earlier signature was, when the new file is signed with another
 /// key or no longer signed. An unsigned app that stays unsigned, or a first
-/// signature, is no change worth a warning.
+/// signature, is no change worth a warning. An earlier signature that was
+/// never checked (GnuPG missing) is no trusted key either: once the new
+/// file's signature can be read, SAM cannot tell whether it is the same
+/// key, so it counts as a change (review 2026-11-23, U-3).
 pub(crate) fn signing_key_change(
     old: Option<&sam_core::model::SignatureInfo>,
     new: &sam_core::model::SignatureInfo,
 ) -> Option<String> {
     use sam_core::model::SignatureState as S;
     let old = old?;
+    if old.state == S::Unchecked {
+        return (new.state != S::Unchecked).then(|| sig_words(old));
+    }
     let old_fp = old
         .fingerprint
         .as_deref()
@@ -691,6 +697,30 @@ mod signature_tests {
             "first signature"
         );
         assert_eq!(signing_key_change(None, &sig(S::Unsigned, None)), None);
+    }
+
+    /// A signature recorded as "not checked" (GnuPG was missing) lets no key
+    /// through: once the new file's signature can be read, whatever it is
+    /// (another key, none, a bad one) counts as a change; both unchecked is
+    /// no news (review 2026-11-23, U-3).
+    #[test]
+    fn a_signature_that_was_never_checked_lets_no_key_through() {
+        let unchecked = sig(S::Unchecked, None);
+        for new in [
+            sig(S::Valid, Some("BBBB")),
+            sig(S::Unsigned, None),
+            sig(S::Invalid, None),
+        ] {
+            assert_eq!(
+                signing_key_change(Some(&unchecked), &new).as_deref(),
+                Some("signed (not checked)"),
+                "{new:?}"
+            );
+        }
+        assert_eq!(
+            signing_key_change(Some(&unchecked), &sig(S::Unchecked, None)),
+            None
+        );
     }
 
     /// A signed app whose update cannot be checked (GnuPG missing) is not
