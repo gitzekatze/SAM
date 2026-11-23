@@ -291,7 +291,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-338 tests.
+344 tests.
 
 | Promise | Test |
 |---|---|
@@ -567,6 +567,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Saving an app's settings as a preset keeps them exactly. | [`saving_an_apps_settings_as_a_preset_keeps_them_exactly`](../crates/sam-runner/tests/groups.rs#L193) |
 | Grants of parts of the home never reach start places or secrets. | [`grants_of_parts_of_the_home_never_reach_start_places_or_secrets`](../crates/sam-runner/tests/home_grants.rs#L65) |
 | The home protections hold whatever else is granted. | [`the_home_protections_hold_whatever_else_is_granted`](../crates/sam-runner/tests/home_guards.rs#L51) |
+| The Landlock version SAM reads is the kernel's: none where Landlock is not active, and at least the version this kernel brings where it is (a wrong one turns layers on that do not exist, or switches off the check that Landlock fences abstract sockets). | [`the_landlock_version_is_the_kernels`](../crates/sam-runner/tests/host_probe.rs#L42) |
+| The kernel release gives the least landlock version. | [`the_kernel_release_gives_the_least_landlock_version`](../crates/sam-runner/tests/host_probe.rs#L61) |
+| Where Landlock's version query answers 0 (no version at all; a filter SAM runs under that fakes success), SAM counts no Landlock: it must never report or plan on a protection layer that is not there. | [`a_landlock_answer_of_zero_is_no_landlock`](../crates/sam-runner/tests/host_probe.rs#L90) |
+| SAM offers the writable app folder exactly where the real Bubblewrap can give it: overlays only from a Bubblewrap that has them (it lists `--overlay-src`), and only on a folder where a real overlay works. | [`the_overlay_checks_match_the_real_bubblewrap`](../crates/sam-runner/tests/host_probe.rs#L157) |
+| The loader's library folders SAM shows are this computer's: every existing folder its ld.so.conf.d files list, and /usr/local/lib, which is outside the folders a sandbox shows anyway. | [`the_loaders_folders_on_this_computer_are_found`](../crates/sam-runner/tests/host_probe.rs#L193) |
+| The graphics devices SAM can give an app are this computer's: every entry of /dev/dri and every /dev/nvidia* entry, and nothing else. | [`the_graphics_devices_on_this_computer_are_found`](../crates/sam-runner/tests/host_probe.rs#L223) |
 | A download that broke off is refused and nothing is kept. | [`a_download_that_broke_off_is_refused_and_nothing_is_kept`](../crates/sam-runner/tests/incomplete.rs#L9) |
 | An app cannot open the kernels rarely used doors. | [`an_app_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L104) |
 | An unpacking tool cannot open the kernels rarely used doors. | [`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L153) |
@@ -751,4 +757,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 665 automated Rust tests plus 7 scripted checks.
+Total: 671 automated Rust tests plus 7 scripted checks.

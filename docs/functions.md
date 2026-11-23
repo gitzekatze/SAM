@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 25 proven by passing tests, 15 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 665 tests in all.
+**41 functions:** 25 proven by passing tests, 15 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 671 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -22,15 +22,15 @@
 | 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 26 | ✅ 🆕 8 new tests since the report |
 | 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 25 | ✅ |
 | 9 | [Things an app printed can never grant it access on their own; SAM always asks.](#9) | sam-runner | 4 | ✅ 🆕 1 new test since the report |
-| 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox, sam-core | 14 | ✅ 🆕 3 new tests since the report |
+| 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox, sam-core | 15 | ✅ 🆕 4 new tests since the report |
 | 11 | [Keys, passwords and the files of your other apps stay hidden, even with full home access.](#11) | sam-sandbox, sam-core | 18 | ✅ 🆕 5 new tests since the report |
 | 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | sam-runner, sam-sandbox | 8 | ✅ |
 | 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 42 | ✅ 🆕 11 new tests since the report |
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
-| 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox, sam-core | 16 | ✅ 🆕 2 new tests since the report |
+| 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox, sam-core | 17 | ✅ 🆕 3 new tests since the report |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox, sam-core | 29 | ✅ 🆕 10 new tests since the report |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ |
-| 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 5 | ✅ 🆕 1 new test since the report |
+| 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 6 | ✅ 🆕 2 new tests since the report |
 | 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 118 | ✅ 🆕 118 new tests since the report |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 23 | ✅ 🆕 1 new test since the report |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 18 | ✅ 🆕 4 new tests since the report |
@@ -46,7 +46,7 @@
 | 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 6 | ✅ |
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 1 | ✅ |
 | 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | sam-runner, sam-intake | 2 | ✅ |
-| 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 19 | ✅ 🆕 3 new tests since the report |
+| 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 22 | ✅ 🆕 6 new tests since the report |
 | 34 | [Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.](#34) | sam-runner | 9 | ✅ |
 | 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-storage, sam-core | 5 | ✅ |
 | 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 12 | ✅ |
@@ -304,6 +304,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_user_folders_are_read_from_the_users_config_folder`](../crates/sam-core/src/host.rs#L868) | `$XDG_CONFIG_HOME` decides where user-dirs.dirs is read, so which real folder a Documents or Downloads permission shows; an empty one counts as unset, never as the current folder. | 🆕 new |
 | [`only_library_folders_outside_the_home_and_system_areas_are_shown`](../crates/sam-core/src/host.rs#L946) | Only library folders a sandbox does not show anyway and that may be shown are kept: below /opt or /usr/local, never below the home folder (also where the home is itself below /opt) or in /etc, /var or /run. | 🆕 new |
 | [`the_loaders_folders_come_from_its_config_files`](../crates/sam-core/src/host.rs#L976) | The loader's folders come from the files in ld.so.conf.d in the order of their names, after /usr/local/lib: only lines that name a folder, and only folders that exist. | 🆕 new |
+| [`the_loaders_folders_on_this_computer_are_found`](../crates/sam-runner/tests/host_probe.rs#L193) | The loader's library folders SAM shows are this computer's: every existing folder its ld.so.conf.d files list, and /usr/local/lib, which is outside the folders a sandbox shows anyway. | 🆕 new |
 | [`links_in_etc_never_bring_sockets_or_devices`](../crates/sam-sandbox/src/lib.rs#L2638) | A link in /etc never brings a socket or a device into the sandbox, wherever it points; plain files and folders of the system's data and settings do, and in /run only plain files (regression: Debian's `/etc/alternatives/php-fpm.sock` showed the PHP server's socket). | ✅ |
 | [`a_user_folder_that_shows_more_is_not_shown`](../crates/sam-sandbox/src/lib.rs#L4156) | A user folder set to the root, the folder above the home, a link to it, a key folder or SAM's folder is never shown; a usual one is, at its real place with a link where the app looks (audit S-F11). | ✅ |
 | [`a_writable_folder_stays_writable_in_a_read_only_home`](../crates/sam-sandbox/src/lib.rs#L2605) | With the home read-only, a folder set to read/write stays writable; one set to read-only adds nothing (the home shows it read-only). | ✅ |
@@ -428,6 +429,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Test | Promise | Result |
 |---|---|---|
 | [`the_graphics_devices_are_found_in_the_device_folder`](../crates/sam-core/src/host.rs#L1010) | The graphics devices are everything in dri/ and the nvidia* entries, sorted, and nothing else of the device folder. | 🆕 new |
+| [`the_graphics_devices_on_this_computer_are_found`](../crates/sam-runner/tests/host_probe.rs#L223) | The graphics devices SAM can give an app are this computer's: every entry of /dev/dri and every /dev/nvidia* entry, and nothing else. | 🆕 new |
 | [`a_helper_sees_the_apps_system_and_nothing_else`](../crates/sam-sandbox/src/lib.rs#L2668) | A helper's sandbox (the sound relay) shows the same system as an app's (with the whole /usr), and nothing outside the system's own folders: no home, no runtime folder, no devices. | ✅ |
 | [`a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay`](../crates/sam-runner/src/sound_relay.rs#L339) | A relay that never opens its socket stops the start's sound within moments instead of holding the start; one that does is stopped, and its socket removed, when the start ends. | ✅ |
 | [`nothing_in_the_sound_relay_can_make_a_user_namespace`](../crates/sam-runner/src/sound_relay.rs#L382) | Nothing in the relay's sandbox can make a user namespace: the relay reads what the app sends and, on PipeWire before 1.2, loads the modules the app asks for, and its sandbox let it make one (found while checking review K-2). | 🆕 new |
@@ -541,6 +543,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Test | Promise | Result |
 |---|---|---|
 | [`the_overlay_check_believes_bubblewraps_answer`](../crates/sam-core/src/host.rs#L238) | The overlay check believes Bubblewrap's answer: a Bubblewrap that fails means no overlay, even though the check's folders could be made (NFS, eCryptfs, another overlay), and one that succeeds means a working overlay. | 🆕 new |
+| [`the_overlay_checks_match_the_real_bubblewrap`](../crates/sam-runner/tests/host_probe.rs#L157) | SAM offers the writable app folder exactly where the real Bubblewrap can give it: overlays only from a Bubblewrap that has them (it lists `--overlay-src`), and only on a folder where a real overlay works. | 🆕 new |
 | [`writable_appdir_uses_overlay`](../crates/sam-sandbox/src/lib.rs#L3182) | A writable app folder uses an overlay; the unpacked app itself stays unchanged. | ✅ |
 | [`an_app_starts_read_only_when_its_writable_app_folder_cannot_work`](../crates/sam-runner/tests/overlay_fallback.rs#L37) | When the folder for the writable app folder's changes cannot hold an overlay, the app still starts, with a read-only app folder and a warning that says why (regression: on Fedora in a container, SAM's data folder was on an overlay, and the app failed with a raw Bubblewrap error). | ✅ |
 | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L1362) | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | ✅ |
@@ -971,6 +974,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`a_setuid_bubblewrap_is_told_from_a_normal_one`](../crates/sam-core/src/host.rs#L1050) | A setuid Bubblewrap is told from a normal one by its file's setuid bit: only a setuid one works where user namespaces are switched off. | 🆕 new |
 | [`the_user_namespace_knobs_are_read_as_meant`](../crates/sam-core/src/host.rs#L1067) | The kernel's user namespace knobs are read as they are meant: "1" is on, "0" off, a missing file unknown (the AppArmor restriction of Ubuntu 24.04 and later included). | 🆕 new |
+| [`the_landlock_version_is_the_kernels`](../crates/sam-runner/tests/host_probe.rs#L42) | The Landlock version SAM reads is the kernel's: none where Landlock is not active, and at least the version this kernel brings where it is (a wrong one turns layers on that do not exist, or switches off the check that Landlock fences abstract sockets). | 🆕 new |
+| [`the_kernel_release_gives_the_least_landlock_version`](../crates/sam-runner/tests/host_probe.rs#L61) | The kernel release gives the least landlock version. | 🆕 new |
+| [`a_landlock_answer_of_zero_is_no_landlock`](../crates/sam-runner/tests/host_probe.rs#L90) | Where Landlock's version query answers 0 (no version at all; a filter SAM runs under that fakes success), SAM counts no Landlock: it must never report or plan on a protection layer that is not there. | 🆕 new |
 | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L55) | Without Bubblewrap, the message says which package to install. | ✅ |
 | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L69) | When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | ✅ |
 | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L96) | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | ✅ |

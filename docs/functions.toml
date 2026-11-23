@@ -144,7 +144,7 @@ id = 10
 area = "C"
 promise = "The app sees only a private home folder and the folders you grant."
 code = ["sam-sandbox/src/lib.rs", "sam-core/src/host.rs"]
-tests = ["the_user_folders_are_read_from_the_users_config_folder", "only_library_folders_outside_the_home_and_system_areas_are_shown", "the_loaders_folders_come_from_its_config_files", "links_in_etc_never_bring_sockets_or_devices", "a_user_folder_that_shows_more_is_not_shown", "a_writable_folder_stays_writable_in_a_read_only_home", "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "only_proper_variable_names_are_set", "user_folders_come_from_user_dirs_dirs"]
+tests = ["the_user_folders_are_read_from_the_users_config_folder", "only_library_folders_outside_the_home_and_system_areas_are_shown", "the_loaders_folders_come_from_its_config_files", "the_loaders_folders_on_this_computer_are_found", "links_in_etc_never_bring_sockets_or_devices", "a_user_folder_that_shows_more_is_not_shown", "a_writable_folder_stays_writable_in_a_read_only_home", "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "only_proper_variable_names_are_set", "user_folders_come_from_user_dirs_dirs"]
 
 [[function]]
 id = 11
@@ -229,7 +229,7 @@ id = 15
 area = "C"
 promise = "Sound, GPU, camera and game controllers only when allowed."
 code = ["sam-sandbox/src/lib.rs", "sam-core/src/host.rs"]
-tests = ["the_graphics_devices_are_found_in_the_device_folder", "a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "nothing_in_the_sound_relay_can_make_a_user_namespace", "a_relay_outside_a_sandbox_is_not_held", "a_too_long_socket_path_is_named_before_the_relay_starts", "a_launchs_sockets_fit_even_for_the_longest_app_id", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
+tests = ["the_graphics_devices_are_found_in_the_device_folder", "the_graphics_devices_on_this_computer_are_found", "a_helper_sees_the_apps_system_and_nothing_else", "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay", "nothing_in_the_sound_relay_can_make_a_user_namespace", "a_relay_outside_a_sandbox_is_not_held", "a_too_long_socket_path_is_named_before_the_relay_starts", "a_launchs_sockets_fit_even_for_the_longest_app_id", "the_sound_relay_check_needs_pipewire", "sound_comes_from_the_relay_or_only_when_allowed_from_the_server", "sound_never_loads_code_into_the_sound_server", "the_relay_cannot_load_modules_and_listens_only_on_its_socket", "sound_reaches_the_app_through_the_relay_or_only_when_allowed", "sdl_gets_its_silent_driver_without_sound_access", "gamepads_only_exposes_joysticks", "nvidia_modules_are_exposed_with_the_gpu", "each_permission_grants_exactly_its_access_in_a_real_sandbox"]
 
 [[function]]
 id = 16
@@ -274,7 +274,7 @@ id = 18
 area = "C"
 promise = "Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/launch.rs", "sam-core/src/host.rs"]
-tests = ["the_overlay_check_believes_bubblewraps_answer", "writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted"]
+tests = ["the_overlay_check_believes_bubblewraps_answer", "the_overlay_checks_match_the_real_bubblewrap", "writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted"]
 
 [[function]]
 id = 41
@@ -573,7 +573,7 @@ id = 33
 area = "G"
 promise = "The doctor check finds problems with the system or an app."
 code = ["sam-runner/src/doctor.rs", "sam-runner/src/bwrap.rs", "sam-runner/src/dbus_check.rs", "sam-core/src/host.rs"]
-tests = ["a_setuid_bubblewrap_is_told_from_a_normal_one", "the_user_namespace_knobs_are_read_as_meant", "missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "the_login_files_check_looks_for_shadow", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
+tests = ["a_setuid_bubblewrap_is_told_from_a_normal_one", "the_user_namespace_knobs_are_read_as_meant", "the_landlock_version_is_the_kernels", "the_kernel_release_gives_the_least_landlock_version", "a_landlock_answer_of_zero_is_no_landlock", "missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "the_login_files_check_looks_for_shadow", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
   "a_broken_contract_ends_with_not_passed",
   "doctor_ends_with_what_it_reports",
   "the_install_hint_fits_the_distribution",
