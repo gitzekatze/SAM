@@ -149,6 +149,7 @@ A preset is a named set of permissions you saved yourself. SAM ships no ready-ma
 - On an app's page, **My Presets** → *Name for the new preset* saves the app's current settings under that name.
 - **☰ → My Presets** lists your presets. From the menu of a preset you can apply it to an app, edit, duplicate, export or delete it; the buttons in the header create a new preset or import one.
 - Before a preset is applied, SAM compares it with what the app likely needs and asks if the preset would remove something important.
+- A preset's risk word is worked out from its permissions, also for a preset file you put into the folder yourself. An imported preset never replaces one of the same name: it is imported as "NAME (imported)".
 
 ---
 

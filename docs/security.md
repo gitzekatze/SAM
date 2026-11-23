@@ -44,7 +44,9 @@ proves it, is in [threat-model.md](threat-model.md).
 
 ### Processes
 
-- **Namespaces:** user, PID, UTS and cgroup are always separate. IPC is
+- **Namespaces:** user, PID and UTS are always separate, and the cgroup
+  namespace wherever the kernel has one (every kernel since 4.6; Bubblewrap's
+  `--unshare-cgroup-try` leaves it shared on an older or restricted one). IPC is
   separate too, except for apps with X11 access: X11's shared-memory
   extension needs the X server to see the app's shared memory (Flatpak
   does the same). X11 itself already exposes far more than that. The
@@ -728,7 +730,8 @@ metadata. SAM treats both as untrusted.
   back to running an app without a sandbox.
 - **Repair suggestions** based on app output are marked as such and always
   ask first. They never offer services that can act outside the sandbox
-  (systemd, Flatpak, KWin/Plasma scripting, dconf, …) or protected places
+  (systemd, Flatpak, KWin/Plasma scripting, dconf, terminals that run any
+  command they are sent such as GNOME Terminal and Konsole, …) or protected places
   (`~/.ssh`, keyrings, the whole home). Adding such a D-Bus service by hand
   is rated *Dangerous* and asks first.
 - **Names, descriptions and file names** are cleaned (no markup, no control
@@ -942,7 +945,7 @@ The preview and the unpacked app use the same desktop file
 | **Low** | Harmless | fonts, icons, locales, time zone (read-only), Wayland, filtered D-Bus, "This computer only", the app's own ports |
 | **Medium** | Harmless | GPU, sound, folder access, all of `/usr`, nested namespaces, names the app may own, passed-through variables |
 | **High** | Think twice | network, X11, whole home read-only, webcam, SSH agent, keyring (also a password service allowed by name), direct PipeWire, raw sound devices (ALSA), local services the app may reach, a passed-through variable that holds a secret, the syscall filter or Landlock switched off, single functions of a service |
-| **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, sound without SAM's relay (also the sound server's socket as an extra socket), a function of a service that can act outside the sandbox, a wildcard over the portal, an extra folder that is a system folder, the home, a folder above it or `/tmp` (however it is written), and the network together with your home, keys or passwords (it can send what it reads) |
+| **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, sound without SAM's relay (also the sound server's socket as an extra socket), a service that can act outside the sandbox allowed by name or one of its functions (a terminal that runs any command it is sent included), a wildcard over the portal, an extra folder that is a system folder, the home, a folder above it or `/tmp` (however it is written), and the network together with your home, keys or passwords (it can send what it reads) |
 
 An app's risk is the level of its riskiest permission. SAM shows the level
 with the permission that sets it, for example *High risk · Network +1*. The
@@ -955,13 +958,18 @@ switch with the same word the assessment uses (a test compares them,
 Permission Manager for several apps at once, a preset, or the command line
 (`sam-jail set`, `profile set`, `group set` refuse it without `--yes`). The
 rule is worked out from the settings themselves, so it holds even when the
-window's list of permissions fails to load.
+window's list of permissions fails to load. Raw Bubblewrap arguments count
+by what they say: other arguments ask again, even when the app already had
+some.
 
 **Settings nobody has confirmed** do not start. SAM's recommendation is
 partly chosen from what the app says about itself (its name and
 description decide its category, and with that for example the network),
 so an app added on the command line without `--accept` starts only after
-`sam-jail review APP` or confirming its settings in the window.
+`sam-jail review APP` or confirming its settings in the window. Changing
+one switch (`sam-jail set`, a group change, a repair step, a switch in the
+window) confirms nothing about the others; applying a preset or setting the
+whole profile (`profile set`) replaces them all and does.
 
 For scripts, the JSON output still has a weighted score (`risk.score`, at
 most 100). The window does not show it, because a number next to the level

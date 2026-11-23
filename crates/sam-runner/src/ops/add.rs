@@ -340,7 +340,13 @@ impl Sam {
             entry.name = entry.metadata.name.clone();
         }
         // Written outside any sandbox, so never through a link that might
-        // be there (audit I-F2).
+        // be there (audit I-F2). These three copies (the metadata, the
+        // unpack tools' messages, the menu entry as the app ships it) are
+        // for people looking into the unpacked folder; nothing in SAM reads
+        // them, so one that cannot be written (refused because the unpack
+        // left something in its place) is left out rather than stopping the
+        // add. The record and the logs SAM reads are written with errors
+        // checked.
         let _ = sam_core::util::write_new(
             &x.root.join("metadata.json"),
             &serde_json::to_vec_pretty(&entry.metadata)?,

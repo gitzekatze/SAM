@@ -115,16 +115,24 @@ fn item(items: &mut Vec<RiskItem>, key: &str, title: &str, level: RiskLevel) {
 /// in the window, the Permission Manager, the command line and presets
 /// (audit G-F2, G-F11, D-M9: each decided differently, and the window did
 /// not ask at all when its permission list failed to load).
+///
+/// An item is the same as before when its key, title and level are: the
+/// titles of list entries name the entry ("Socket …", "Calls …"). The raw
+/// Bubblewrap arguments are one item whatever they say, so a change of
+/// them is new as well (review F7: `--setenv A 1` accepted once let
+/// `--bind / /` through without a question).
 pub fn new_risks(before: &PermissionSet, after: &PermissionSet) -> Vec<RiskItem> {
     let had = assess(before).items;
+    let same_args = before.advanced.extra_bwrap_args == after.advanced.extra_bwrap_args;
     assess(after)
         .items
         .into_iter()
         .filter(|i| {
             i.level >= RiskLevel::High
-                && !had
-                    .iter()
-                    .any(|b| b.key == i.key && b.title == i.title && b.level >= i.level)
+                && ((i.key == "advanced.extra_bwrap_args" && !same_args)
+                    || !had
+                        .iter()
+                        .any(|b| b.key == i.key && b.title == i.title && b.level >= i.level))
         })
         .collect()
 }
@@ -829,13 +837,20 @@ mod tests {
             // A folder list gets a folder: "true" would be a relative
             // path, which is rated Dangerous (where it leads depends on
             // where SAM was started).
+            // A choice gets its widest value, a map an entry (review F8:
+            // a key that could not be set was skipped, which hid that the
+            // function and signal rules could not be set while empty).
             let value = match i.key {
                 "filesystem.custom_read" | "filesystem.custom_write" => "/srv/data",
+                "network.mode"
+                | "dbus.session.mode"
+                | "dbus.system.mode"
+                | "advanced.host_runtime" => "full",
+                "environment.set" => r#"{"A":"1"}"#,
                 _ => "true",
             };
-            if p.set_key(i.key, value).is_err() {
-                continue;
-            }
+            p.set_key(i.key, value)
+                .unwrap_or_else(|e| panic!("{}: {e:#}", i.key));
             let got = assess(&p)
                 .items
                 .into_iter()
@@ -945,6 +960,28 @@ mod tests {
         let added = new_risks(&one, &two);
         assert_eq!(added.len(), 1, "{added:#?}");
         assert!(added[0].title.contains("AWS_SECRET_ACCESS_KEY"));
+        // Other raw Bubblewrap arguments ask again: accepted once for
+        // `--setenv A 1`, they let `--bind / /` through (review F7), and
+        // taking one of several away can undo a protection the others
+        // gave (`--remount-ro /` after a bind).
+        let mut args = before.clone();
+        args.advanced.extra_bwrap_args = vec!["--setenv".into(), "A".into(), "1".into()];
+        let mut bind = args.clone();
+        bind.advanced.extra_bwrap_args = vec!["--bind".into(), "/".into(), "/".into()];
+        let added = new_risks(&args, &bind);
+        assert_eq!(added.len(), 1, "{added:#?}");
+        assert_eq!(added[0].key, "advanced.extra_bwrap_args");
+        assert_eq!(added[0].level, RiskLevel::Dangerous);
+        let mut both = bind.clone();
+        both.advanced
+            .extra_bwrap_args
+            .extend(["--remount-ro".to_string(), "/".to_string()]);
+        assert_eq!(new_risks(&both, &bind).len(), 1, "taking one away asks");
+        assert!(new_risks(&bind, &bind).is_empty(), "the same ones do not");
+        assert!(
+            new_risks(&bind, &before).is_empty(),
+            "taking all away does not"
+        );
     }
 
     /// Settings that take a protection away count in the risk word, and a
@@ -1287,6 +1324,51 @@ mod tests {
             assert_eq!(assess(&p).level, RiskLevel::Dangerous, "{w}");
         }
         assert!(dangerous_bus_name(PORTAL_NAME).is_none());
+    }
+
+    /// A terminal that runs any command it is sent is Dangerous to reach,
+    /// by name, a wildcard over it or a function rule, so adding it asks
+    /// first (audit D-M6: `set APP dbus.session.allow org.gnome.Terminal`
+    /// added no risk and asked nothing). Owning such a name is left to the
+    /// own-name rules, as before.
+    #[test]
+    fn a_terminal_that_runs_commands_is_dangerous_to_reach() {
+        let mut before = PermissionSet::strict_gui();
+        before.dbus.session.mode = DbusMode::Filtered;
+        for name in [
+            "org.gnome.Terminal",
+            "org.gnome.Terminal.Factory0",
+            "org.kde.konsole",
+            "org.kde.konsole-4242",
+            "org.kde.yakuake",
+            "org.xfce.Terminal5",
+            "org.guake3.RemoteControl",
+            "org.gnome.Console",
+            "org.gnome.Ptyxis",
+            "com.gexperts.Tilix",
+            "org.xfce.*",
+        ] {
+            let mut after = before.clone();
+            after.dbus.session.allow.push(name.into());
+            assert_eq!(assess(&after).level, RiskLevel::Dangerous, "{name}");
+            assert!(!new_risks(&before, &after).is_empty(), "{name} asks first");
+            let mut call = before.clone();
+            call.dbus.session.calls.push(format!("{name}=*"));
+            assert_eq!(assess(&call).level, RiskLevel::Dangerous, "{name}");
+        }
+        let none = std::collections::BTreeSet::new();
+        assert!(crate::permissions::refuse_own_name("org.gnome.Terminal", &none).is_none());
+        assert!(crate::permissions::refuse_own_name("org.kde.konsole", &none).is_none());
+        // Still refused as its own name, as before.
+        assert!(crate::permissions::refuse_own_name("org.kde.KWin", &none).is_some());
+        assert!(crate::permissions::refuse_own_name("*", &none).is_some());
+        let mut ordinary = before.clone();
+        ordinary
+            .dbus
+            .session
+            .allow
+            .push("org.example.Viewer".into());
+        assert!(new_risks(&before, &ordinary).is_empty());
     }
 
     /// The sound server's own socket listed as an extra socket is as

@@ -931,6 +931,42 @@ mod tests {
         }
     }
 
+    /// What the app prints never gets it a terminal to talk to either: a
+    /// terminal runs any command it is sent, outside the sandbox (audit
+    /// D-M6, the TALK half: "Allow just this service" was offered as
+    /// harmless). An ordinary service is still offered, asking first.
+    #[test]
+    fn the_apps_own_words_never_give_it_a_terminal_to_talk_to() {
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Filtered;
+        for name in [
+            "org.gnome.Terminal",
+            "org.gnome.Terminal.Factory0",
+            "org.kde.konsole",
+            "org.kde.konsole-4242",
+            "org.kde.yakuake",
+            "org.xfce.Terminal5",
+            "org.guake3.RemoteControl",
+        ] {
+            let log = format!("GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name {name} was not provided by any .service files");
+            let out = analyze(&log, &p, None);
+            assert!(
+                !out.iter()
+                    .any(|s| matches!(&s.action, FixAction::Add { .. })),
+                "{name}: {out:#?}"
+            );
+            assert!(
+                out.iter().any(|s| s.id == "dbus-name-refused"),
+                "{name}: says why: {out:#?}"
+            );
+        }
+        let log = "The name org.example.Viewer was not provided by any .service files";
+        assert!(analyze(log, &p, None).iter().any(|s| matches!(
+            &s.action,
+            FixAction::Add { key, value } if key == "dbus.session.allow" && value == "org.example.Viewer"
+        )));
+    }
+
     #[test]
     fn analyzer_maps_errors_to_fixes() {
         let p = PermissionSet::strict_gui();

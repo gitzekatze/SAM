@@ -8,15 +8,19 @@ impl Sam {
 
     pub(super) fn save_profile(&self, entry: &mut AppEntry) -> Result<()> {
         entry.profile.user_modified = entry.profile.permissions != entry.recommended;
-        entry.reviewed = true;
         entry.pending_changes.clear();
         // A changed switch is no confirmation that the person looked at a
         // record or file changed outside SAM: only `mark_reviewed` clears
-        // those marks.
+        // those marks. Nor that they looked at the settings SAM chose from
+        // what the app says about itself (`reviewed`): one switch changed
+        // on the command line, in the window or for a group of apps leaves
+        // the others unconfirmed (review F5). Only flows that set the whole
+        // set confirm it: `mark_reviewed`, a preset, `set_permissions`.
         entry.clear_launch_failure();
         self.registry().save(entry)
     }
 
+    /// Changes one setting. Leaves the app unconfirmed when it was.
     pub fn set_permission(&self, query: &str, key: &str, value: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         e.profile.permissions.set_key(key, value)?;
@@ -25,10 +29,29 @@ impl Sam {
         Ok(e)
     }
 
+    /// Replaces the whole set with one the person chose (`profile set`):
+    /// none of SAM's choices is left unconfirmed, so this confirms them.
     pub fn set_permissions(&self, query: &str, perms: PermissionSet) -> Result<AppEntry> {
+        self.store_permissions(query, perms, true)
+    }
+
+    /// Stores settings worked out from a change of some of them (the
+    /// window's `profile change`, a group undo, SAM's own fixes): leaves the
+    /// app unconfirmed when it was.
+    pub fn change_permissions(&self, query: &str, perms: PermissionSet) -> Result<AppEntry> {
+        self.store_permissions(query, perms, false)
+    }
+
+    fn store_permissions(
+        &self,
+        query: &str,
+        perms: PermissionSet,
+        confirms: bool,
+    ) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         e.profile.permissions = perms;
         e.profile.preset = None;
+        e.reviewed |= confirms;
         self.save_profile(&mut e)?;
         Ok(e)
     }
@@ -400,6 +423,8 @@ impl Sam {
         }
         e.profile.permissions = preset.permissions.clone();
         e.profile.preset = Some(preset.name.clone());
+        // The whole set is the preset the person picked.
+        e.reviewed = true;
         self.save_profile(&mut e)?;
         Ok(PresetApply {
             preset: preset.name,
@@ -532,7 +557,7 @@ impl Sam {
         confirm(&added)?;
         let n = planned.len();
         for (id, perms) in planned {
-            self.set_permissions(&id, perms)?;
+            self.change_permissions(&id, perms)?;
         }
         Ok(n)
     }

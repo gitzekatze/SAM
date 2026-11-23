@@ -731,12 +731,6 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .current_dir(&host.home);
-    if cmd.clear_env {
-        command.env_clear();
-    }
-    for (k, v) in &cmd.env {
-        command.env(k, v);
-    }
     let mut child = command
         .spawn()
         .with_context(|| format!("starting {}", cmd.program.display()))?;
