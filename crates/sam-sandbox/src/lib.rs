@@ -457,7 +457,11 @@ impl HomeWatch {
                 .collect::<Option<Vec<u8>>>()?;
             Some(PathBuf::from(std::ffi::OsString::from_vec(bytes)))
         };
-        let rel = |p: PathBuf| p.to_str().map(String::from);
+        // A place is always below the home: `home.join` of an absolute
+        // path would leave it, and of an empty one is the home itself.
+        let rel = |p: PathBuf| {
+            (p.is_relative() && !p.as_os_str().is_empty()).then(|| p.to_str().map(String::from))?
+        };
         let mut home = None;
         let mut w = HomeWatch::default();
         for line in lines {
@@ -3261,6 +3265,36 @@ mod guard_tests {
         p.filesystem.home = true;
         p.filesystem.home_access = Access::Rw;
         p
+    }
+
+    /// The watch kept on disk while an app runs comes back as it was, odd
+    /// names included; a damaged record never names a place outside the
+    /// home or the home itself, which the last look would move aside.
+    #[test]
+    fn a_watch_read_back_from_disk_never_reaches_outside_the_home() {
+        use std::os::unix::ffi::OsStrExt;
+        let hex = |s: &[u8]| -> String { s.iter().map(|b| format!("{b:02x}")).collect() };
+        let w = HomeWatch {
+            home: PathBuf::from("/home/u"),
+            absent: vec![".bash_profile".into(), ".config/auto start\nx".into()],
+            links: vec![(".config/git".into(), PathBuf::from("/home/u/dots/git"))],
+        };
+        let lines = w.to_lines();
+        let back = HomeWatch::from_lines(lines.iter().map(String::as_str)).unwrap();
+        assert_eq!(back.home, w.home);
+        assert_eq!(back.absent, w.absent);
+        assert_eq!(back.links, w.links);
+        for bad in [b"/etc/profile".as_slice(), b"".as_slice()] {
+            let rec = [
+                format!("home {}", hex(Path::new("/home/u").as_os_str().as_bytes())),
+                format!("absent {}", hex(bad)),
+            ];
+            assert!(
+                HomeWatch::from_lines(rec.iter().map(String::as_str)).is_none(),
+                "{:?} was taken as a place",
+                String::from_utf8_lossy(bad)
+            );
+        }
     }
 
     /// A new start file is taken out of its place whatever happens, and

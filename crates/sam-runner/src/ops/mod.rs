@@ -528,8 +528,10 @@ fn signal_same(p: Proc, sig: i32) {
         }
         // SAFETY: closing the descriptor opened above, once.
         unsafe { libc::close(fd) };
-    } else if std::io::Error::last_os_error().raw_os_error() == Some(libc::ENOSYS) && same() {
-        // A kernel older than 5.3 has no pidfd.
+    } else if std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH) && same() {
+        // No pidfd: a kernel older than 5.3 (ENOSYS), or a seccomp filter
+        // around SAM that refuses the call (EPERM in some containers). The
+        // app must still be asked; the start time was checked just now.
         // SAFETY: kill takes plain integers; a process that is gone only makes it fail.
         unsafe { libc::kill(pid, sig) };
     }

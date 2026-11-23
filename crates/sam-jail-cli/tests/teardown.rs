@@ -540,6 +540,12 @@ fn closing_an_app_that_ignores_it_still_finishes_its_launch() {
         took >= Duration::from_secs(9),
         "the app got no time to save: closed after {took:?}"
     );
+    // The runner counts the grace time from when `stop` asked, so the app
+    // is ended right after those 10 seconds, not after another 10.
+    assert!(
+        took < Duration::from_secs(16),
+        "the grace time began again when the runner was signalled: closed after {took:?}"
+    );
     assert!(
         fs::symlink_metadata(home.join(".bash_profile")).is_err(),
         "the start file stayed"
