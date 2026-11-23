@@ -288,8 +288,14 @@ impl Draft {
     /// GitHub's build provenance for a file of the draft, made by the
     /// release workflow from `git_ref`.
     fn attest(&self, name: &str, git_ref: &str) {
+        self.attest_by(name, WORKFLOW, git_ref);
+    }
+
+    /// Build provenance made by `workflow` (another workflow of the
+    /// repository, say) from `git_ref`.
+    fn attest_by(&self, name: &str, workflow: &str, git_ref: &str) {
         let line = format!(
-            "{} {WORKFLOW} {git_ref}\n",
+            "{} {workflow} {git_ref}\n",
             sha256(&self.path("draft").join(name))
         );
         let mut all = fs::read_to_string(self.path("attestations")).unwrap();
@@ -336,16 +342,23 @@ impl Draft {
 /// provenance is what tells a changed file apart (audit P1).
 #[test]
 fn the_release_key_signs_no_appimage_the_release_build_did_not_make() {
-    let d = Draft::new();
-    d.attest(SBOM, &format!("refs/tags/{TAG}"));
-    // The draft's AppImage was replaced: no provenance matches its content.
-    let out = d.sign();
-    d.assert_nothing_signed(&out);
-    assert!(
-        text(&out.stderr).contains(&format!("{APPIMAGE} is not a file the release build")),
-        "{}",
-        text(&out.stderr)
-    );
+    // The draft's AppImage was replaced: no provenance matches its content;
+    // or another workflow of the repository vouches for it, not the
+    // release build.
+    for other in [None, Some("gitzekatze/SAM/.github/workflows/ci.yml")] {
+        let d = Draft::new();
+        d.attest(SBOM, &format!("refs/tags/{TAG}"));
+        if let Some(workflow) = other {
+            d.attest_by(APPIMAGE, workflow, &format!("refs/tags/{TAG}"));
+        }
+        let out = d.sign();
+        d.assert_nothing_signed(&out);
+        assert!(
+            text(&out.stderr).contains(&format!("{APPIMAGE} is not a file the release build")),
+            "{other:?}: {}",
+            text(&out.stderr)
+        );
+    }
 }
 
 /// An AppImage that the release build made for an older tag is refused:
@@ -449,9 +462,12 @@ struct Approval {
     tmp: tempfile::TempDir,
 }
 
-const BASE_VERIFIER: &str = r#"import os, sys
+const BASE_VERIFIER: &str = r#"import os, pathlib, sys
+# The real checker reads keeper.toml next to its own folder.
+keeper = (pathlib.Path(__file__).resolve().parent.parent / "keeper.toml").read_text().strip()
 with open(os.environ["CALLS"], "a") as f:
     f.write("base " + " ".join(sys.argv[1:]) + "\n")
+    f.write("keeper " + keeper + "\n")
 print("the base branch's verdict")
 sys.exit(0 if "--approved" in sys.argv else 1)
 "#;
@@ -492,12 +508,14 @@ impl Approval {
         git(&work, t, &["init", "-q"]);
         git(&work, t, &["remote", "add", "origin", "../origin.git"]);
         fs::write(work.join("scripts/contract-verifier.py"), BASE_VERIFIER).unwrap();
-        fs::write(work.join("keeper.toml"), "[verifier]\n").unwrap();
+        fs::write(work.join("keeper.toml"), "[verifier] # the base branch's\n").unwrap();
         git(&work, t, &["add", "-A"]);
         git(&work, t, &["commit", "-q", "-m", "base"]);
         git(&work, t, &["push", "-q", "origin", "main"]);
         git(&work, t, &["checkout", "-q", "-b", "pr"]);
         fs::write(work.join("scripts/contract-verifier.py"), PR_VERIFIER).unwrap();
+        // ... and its own settings, which protect nothing.
+        fs::write(work.join("keeper.toml"), "# the pull request's\n").unwrap();
         git(&work, t, &["commit", "-q", "-am", "a pull request"]);
         Approval { tmp }
     }
@@ -573,9 +591,10 @@ fn the_owners_label_counts_only_right_after_it_is_set() {
     );
 }
 
-/// The approval check runs the checker as the base branch has it, never the
-/// pull request's own copy: a change cannot rewrite the check that judges
-/// it (audit P2, the part a pull request's workflow run can keep).
+/// The approval check runs the checker, with its settings (keeper.toml), as
+/// the base branch has them, never the pull request's own copies: a change
+/// cannot rewrite the check that judges it (audit P2, the part a pull
+/// request's workflow run can keep).
 #[test]
 fn the_approval_check_runs_the_base_branchs_checker() {
     let a = Approval::new();
@@ -583,6 +602,10 @@ fn the_approval_check_runs_the_base_branchs_checker() {
     assert!(!passed, "the pull request's own checker decided:\n{calls}");
     assert!(calls.starts_with("base origin/main --head HEAD"), "{calls}");
     assert!(!calls.contains("pull-request"), "{calls}");
+    assert!(
+        calls.contains("keeper [verifier] # the base branch's\n"),
+        "the checker read the pull request's keeper.toml:\n{calls}"
+    );
 }
 
 /// A release whose build fails after the release commit leaves no tag
