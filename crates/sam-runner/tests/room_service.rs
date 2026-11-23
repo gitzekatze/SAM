@@ -568,13 +568,17 @@ const PDEATH_CODE: &str = "import ctypes, os, time; open(os.environ['HOME'] + '/
 /// seventeenth room built beside them would be counted by then, however
 /// busy the computer. The first room to leave says so ("done"), and the
 /// rooms built after it leave at once. If sixteen never gather, the rooms
-/// give up after 90 seconds. A slot frees only after its room has ended,
-/// so the count never runs ahead of the rooms really running.
+/// give up once no new room has come for a minute (each room also leaves a
+/// lasting "seen" mark): not after a fixed time from the start, which a
+/// busy computer may need just to build sixteen rooms. A slot frees only
+/// after its room has ended, so the count never runs ahead of the rooms
+/// really running.
 const SLOT_ROOM: &str = r#"me=$1
 d=$HOME/slots
+: > "$d/seen-$me"
 : > "$d/run-$me"
 read -r t0 < "$d/t0"
-most=0; full=0
+most=0; full=0; seen=0; came=$(/usr/bin/date +%s%N)
 while :; do
   set -- "$d"/run-*
   n=$#
@@ -582,9 +586,11 @@ while :; do
   [ "$n" -gt "$most" ] && most=$n
   [ -e "$d/done" ] && break
   now=$(/usr/bin/date +%s%N)
+  set -- "$d"/seen-*
+  [ "$#" != "$seen" ] && seen=$# && came=$now
   [ "$full" = 0 ] && [ "$n" -ge 16 ] && full=$now
   if [ "$full" != 0 ] && [ $((now - full)) -ge $((full - t0 + 2000000000)) ]; then : > "$d/done"; break; fi
-  if [ $((now - t0)) -ge 90000000000 ]; then : > "$d/done"; break; fi
+  if [ "$full" = 0 ] && [ $((now - came)) -ge 60000000000 ]; then : > "$d/done"; break; fi
   /usr/bin/sleep 0.1
 done
 echo "$most" > "$d/most-$me"
@@ -864,6 +870,21 @@ fn environment_only_in_the_program(
     out
 }
 
+/// How many threads of this process carry `name` (the name a thread
+/// gives itself, as /proc shows it).
+fn threads_named(name: &str) -> usize {
+    fs::read_dir("/proc/self/task")
+        .map(|tasks| {
+            tasks
+                .flatten()
+                .filter(|t| {
+                    fs::read_to_string(t.path().join("comm")).is_ok_and(|c| c.trim_end() == name)
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
 /// A room built for a connection that stays open ends when the service
 /// stops (the end of the app's start).
 fn rooms_end_with_the_service(w: &World) -> Vec<String> {
@@ -930,8 +951,16 @@ fn rooms_end_with_the_service(w: &World) -> Vec<String> {
     }
     // A request still being read when the service stops: it is recorded,
     // never lost.
+    // It is stopped only once the service has taken the request in (a
+    // thread of its own, named "sam-room", reads it): a fixed short wait
+    // may end before a busy computer has taken it, and a request never
+    // taken in is not one being read.
+    let serving = threads_named("sam-room");
     let idle = std::os::unix::net::UnixStream::connect(&service.socket).unwrap();
-    std::thread::sleep(Duration::from_millis(300));
+    let end = Instant::now() + Duration::from_secs(30);
+    while threads_named("sam-room") <= serving && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let lines = service.stop();
     drop(idle);
     let end = Instant::now() + Duration::from_secs(30);
