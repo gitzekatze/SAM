@@ -15,3 +15,8 @@
   downloads, every script linted, and every test run that may not skip the
   sandbox. A document the tests read (`docs/permissions.md`) now runs the
   tests when it changes, and the weekly fuzz runs require the sandbox.
+- `make test` and the scripts that run the whole suite (the flaky-test
+  check, the version report) now require the sandbox too, as CI does; CI's
+  rule check covers the Makefile and Python scripts. CI also runs
+  actionlint, a checker for the workflow files, pinned to a checked
+  release.
