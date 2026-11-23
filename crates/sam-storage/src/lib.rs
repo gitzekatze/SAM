@@ -78,6 +78,23 @@ impl Registry {
         Ok(out)
     }
 
+    /// The ids of every record file in the apps folder, also those SAM
+    /// cannot read: one from a newer SAM (left in place) or a damaged one
+    /// (moved aside as `<id>.json.damaged-…`). Their data still belongs to
+    /// an app, so it is no leftover to delete (audit U-L4).
+    pub fn record_ids(&self) -> std::collections::HashSet<String> {
+        fs::read_dir(self.paths.apps_dir())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let id = name.split_once(".json").map(|(id, _)| id.to_string())?;
+                valid_id(&id).then_some(id)
+            })
+            .collect()
+    }
+
     /// Reads one app record: migrated from older formats (original kept),
     /// an error for a newer one (left untouched).
     fn load_file(&self, p: &Path) -> Result<AppEntry> {

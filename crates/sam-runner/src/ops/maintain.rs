@@ -575,8 +575,11 @@ impl Sam {
     }
 
     pub fn leftover_data(&self) -> Result<Vec<LeftoverData>> {
-        let ids: std::collections::HashSet<String> =
+        let mut ids: std::collections::HashSet<String> =
             self.registry().list()?.into_iter().map(|a| a.id).collect();
+        // Apps whose record SAM cannot read (from a newer SAM, or damaged
+        // and moved aside) still own their data (audit U-L4).
+        ids.extend(self.registry().record_ids());
         let mut by_id: std::collections::BTreeMap<String, LeftoverData> = Default::default();
         for root in [
             self.paths.homes_dir(),
@@ -1407,6 +1410,49 @@ fn move_file(from: &Path, to: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    /// Regression (audit U-L4): the data of an app whose record SAM could
+    /// not read (damaged, or written by a newer SAM) was listed as left
+    /// over, and "remove leftover data" deleted the app's private home.
+    /// Only data without any record is offered now.
+    #[test]
+    fn data_of_an_unreadable_record_is_not_offered_for_deletion() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let apps = sam.paths.apps_dir();
+        fs::create_dir_all(&apps).unwrap();
+        fs::write(apps.join("appimage-broken-1234.json"), "{ damaged").unwrap();
+        fs::write(
+            apps.join("appimage-newer-1234.json"),
+            r#"{"format": 999999, "id": "appimage-newer-1234"}"#,
+        )
+        .unwrap();
+        for id in [
+            "appimage-broken-1234",
+            "appimage-newer-1234",
+            "appimage-gone-1234",
+        ] {
+            fs::create_dir_all(sam.paths.app_home(id).join("Documents")).unwrap();
+        }
+        let left: Vec<String> = sam
+            .leftover_data()
+            .unwrap()
+            .into_iter()
+            .map(|d| d.id)
+            .collect();
+        assert_eq!(left, vec!["appimage-gone-1234"]);
+        assert!(
+            fs::read_dir(&apps).unwrap().flatten().any(|e| e
+                .file_name()
+                .to_string_lossy()
+                .starts_with("appimage-broken-1234.json.damaged-")),
+            "the damaged record was moved aside"
+        );
+        sam.remove_leftover_data().unwrap();
+        assert!(sam.paths.app_home("appimage-broken-1234").exists());
+        assert!(sam.paths.app_home("appimage-newer-1234").exists());
+        assert!(!sam.paths.app_home("appimage-gone-1234").exists());
+    }
 
     /// An update keeps its published name only when that is a plain
     /// AppImage name no other file has: the update server chooses it, and a
