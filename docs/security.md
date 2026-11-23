@@ -461,7 +461,14 @@ and GitLab command line tools, npm, PyPI, Cargo, rclone, `~/.netrc`, Git
 credentials and others), mail and browser profiles (Thunderbird, Firefox,
 LibreWolf, Chrome, Chromium, Brave, Vivaldi, Edge, Opera and others), and
 the data of apps installed as Flatpak or Snap. The full list is in
-`crates/sam-core/src/places.rs`.
+`crates/sam-core/src/places.rs`. A folder becomes an empty one, and
+anything else (a file, but also a named pipe a password manager feeds, or a
+socket) an empty file. Where one is a link, it is hidden where the link
+leads too, also inside a place kept read-only (`~/.git-credentials` a link
+to `~/.config/git/credentials`): these are hidden after every other mount,
+so nothing bound later shows them again
+(`no_later_bind_shows_a_hidden_credential_again`,
+`credentials_behind_links_pipes_and_sockets_stay_hidden`).
 
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are), whether a
