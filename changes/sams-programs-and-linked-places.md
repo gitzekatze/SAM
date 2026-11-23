@@ -13,4 +13,6 @@
   granted only the folder the link points into. It is now hidden there too.
 - With `~/.config` (or `~/.local`) a link to another place, apps with full
   home access no longer fail to start, and when the link leads into a
-  folder granted read-only, that folder stays read-only.
+  folder granted read-only, that folder stays read-only. With the home
+  itself kept behind a link, links that name the home's real path are
+  covered too: autostart stays read-only and key folders hidden there.

@@ -875,11 +875,27 @@ impl Views {
         self.visible(p) || self.grants.iter().any(|(g, _)| g.starts_with(p))
     }
 
-    /// Every place in the sandbox where host path `p` is shown: its own path
-    /// and, when that differs, its resolved one.
+    /// Every place in the sandbox where host path `p` is shown: its own path,
+    /// its resolved one and, for a grant kept behind a link (the home, when
+    /// `/home/u` is a link to `/data/u`), the resolved one under the grant's
+    /// own name, where the sandbox mounts it. A link naming the home's real
+    /// path (`~/.config` to `/data/u/dots/config`) leads nowhere inside, yet
+    /// the app reaches its target as `/home/u/dots/config`: without that
+    /// place autostart there stayed writable and a linked key folder shown
+    /// (review of SB-6 and SB-2).
     pub fn seen_at(&self, p: &Path) -> Vec<PathBuf> {
+        let real = resolve(p);
+        let mut cands = vec![p.to_path_buf(), real.clone()];
+        for (g, _) in &self.grants {
+            let rg = resolve(g);
+            if rg != *g {
+                if let Ok(rel) = real.strip_prefix(&rg) {
+                    cands.push(g.join(rel));
+                }
+            }
+        }
         let mut out = Vec::new();
-        for c in [p.to_path_buf(), resolve(p)] {
+        for c in cands {
             if self.visible(&c) && !out.contains(&c) {
                 out.push(c);
             }
@@ -1052,26 +1068,14 @@ fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf], programs: &[PathBuf]) 
             pin(anc);
         }
     }
-    for p in programs.iter().flat_map(|p| program_names(home, p)) {
+    // Also under the home's name when the home is kept behind a link
+    // (`Views::seen_at`): SAM's own path names the real place.
+    for p in programs {
         for anc in p.ancestors().skip(1) {
             pin(anc);
         }
     }
     pins
-}
-
-/// SAM's program `p` as named and, when it lies in the home kept behind a
-/// link (`/home/u` a link to `/data/u`), under the home's name: the app
-/// sees the home there, while SAM's own path names the real place.
-fn program_names(home: &Path, p: &Path) -> Vec<PathBuf> {
-    let mut out = vec![p.to_path_buf()];
-    if let Ok(rel) = resolve(p).strip_prefix(resolve(home)) {
-        let named = home.join(rel);
-        if !out.contains(&named) {
-            out.push(named);
-        }
-    }
-    out
 }
 
 /// Step 3, after every mount: SAM's own programs (its AppImage file, the
@@ -1081,9 +1085,9 @@ fn program_names(home: &Path, p: &Path) -> Vec<PathBuf> {
 /// them are pinned (step 1): an app could otherwise put its own program in
 /// their place, run unsandboxed at the next click on any menu entry
 /// (security review 2026-11-23, SB-1).
-fn guard_programs(a: &mut Args, home: &Path, programs: &[PathBuf], views: &Views) {
-    for p in programs.iter().flat_map(|p| program_names(home, p)) {
-        for c in views.mount_points(&p) {
+fn guard_programs(a: &mut Args, programs: &[PathBuf], views: &Views) {
+    for p in programs {
+        for c in views.mount_points(p) {
             if views.writable(&c) && c.is_file() {
                 a.ro(&c);
             }
@@ -1710,7 +1714,7 @@ impl Section<'_> {
             a.bad.extend(m.bad);
         }
         guard_home(a, &home, fsp, views);
-        guard_programs(a, &home, &ctx.sam_programs, views);
+        guard_programs(a, &ctx.sam_programs, views);
         for (host_p, sb, rw) in &ctx.extra_binds {
             a.op2(if *rw { "--bind" } else { "--ro-bind" }, host_p, sb);
         }
@@ -3374,6 +3378,39 @@ mod guard_tests {
             v.mount_points(&named.join(".config")),
             vec![named.join("dots/config")]
         );
+    }
+
+    /// With the home kept behind a link (`/home/u` a link to `/data/u`),
+    /// a link in it that names the home's real path (`~/.config` to
+    /// `/data/u/dots/config`, as tools that resolve the folder they run in
+    /// write it) leads nowhere inside, where only `/home/u` is shown; yet
+    /// the app reaches the place it points to under the home's name
+    /// (`/home/u/dots/config`). The protections land there: autostart
+    /// read-only, the folder above it pinned, a key folder hidden.
+    #[test]
+    fn places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let real = base.join("data/u");
+        let named = base.join("home/u");
+        for d in ["dots/config/autostart", "Sync/gnupg"] {
+            fs::create_dir_all(real.join(d)).unwrap();
+        }
+        fs::create_dir_all(base.join("home")).unwrap();
+        std::os::unix::fs::symlink(&real, &named).unwrap();
+        std::os::unix::fs::symlink(real.join("dots/config"), real.join(".config")).unwrap();
+        std::os::unix::fs::symlink(real.join("Sync/gnupg"), real.join(".gnupg")).unwrap();
+        let a = args_of(&ctx_for(&full_rw(), &named));
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        let autostart = s(named.join("dots/config/autostart"));
+        assert!(
+            has_seq(&a, &["--ro-bind-try", &autostart, &autostart]),
+            "{a:?}"
+        );
+        let config = s(named.join("dots/config"));
+        assert!(has_seq(&a, &["--bind", &config, &config]), "{a:?}");
+        let gnupg = s(named.join("Sync/gnupg"));
+        assert!(has_seq(&a, &["--tmpfs", &gnupg]), "{a:?}");
     }
 
     /// SAM's own programs are bound read-only onto themselves where the app

@@ -11,7 +11,10 @@
 //!   afterwards;
 //! - with `~/.config` a link into a folder granted read-only, that folder
 //!   stays read-only (the folder above autostart, made a mount point of
-//!   its own, made it writable again).
+//!   its own, made it writable again);
+//! - with the home kept behind a link, a link in it that names the home's
+//!   real path is covered where the app reaches its target: under the
+//!   home's name.
 //!
 //! Controls show the attack would have been seen: an ordinary file the
 //! app may write is written.
@@ -39,6 +42,9 @@ mkdir -p "$H/.config/autostart" 2>/dev/null
 echo x > "$H/.config/autostart/evil.desktop" 2>/dev/null && echo AUTOSTART=written || echo AUTOSTART=refused
 echo written > "$H/dotfiles/config/app.conf" 2>/dev/null && echo DOTFILES=written || echo DOTFILES=refused
 echo written > "$H/work.txt" 2>/dev/null
+if [ "$1" = direct ]; then
+  echo x > "$H/dotfiles/config/autostart/evil.desktop" 2>/dev/null && echo DIRECT=written || echo DIRECT=refused
+fi
 if [ "$1" = replace ]; then
   rm -f "$H/.config" && mkdir -p "$H/.config/autostart" && echo x > "$H/.config/autostart/evil.desktop"
 fi
@@ -99,15 +105,17 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
         .unwrap()
         .entry
         .id;
-    let start = |p: PermissionSet, args: &[&str]| {
+    // `seen`: the home as the app sees it (the start's home).
+    let start_in = |p: PermissionSet, args: &[&str], seen: &Path| {
         let mut e = app.set_permissions(&id, p).unwrap();
         let mut h = sam_runner::testenv::test_host(HostInfo::probe());
+        h.home = seen.to_path_buf();
         h.xdg_dirs.clear();
         let rec = run(
             &mut e,
             &LaunchOptions {
                 quiet: true,
-                owd: Some(home.clone()),
+                owd: Some(seen.to_path_buf()),
                 args: args.iter().map(|a| a.to_string()).collect(),
                 ..Default::default()
             },
@@ -124,6 +132,7 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
         );
         r
     };
+    let start = |p: PermissionSet, args: &[&str]| start_in(p, args, &home);
     let read = |p: &Path| fs::read_to_string(p).unwrap_or_default();
 
     // SB-2: only ~/Sync granted, writable; ~/.gnupg is a link into it.
@@ -185,4 +194,24 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
     assert_eq!(r["DOTFILES"], "refused", "{r:?}");
     assert!(!home.join("dotfiles/config/app.conf").exists());
     assert_eq!(r["AUTOSTART"], "refused", "{r:?}");
+
+    // The home kept behind a link (the app sees `/…/linked`), and links in
+    // it that name the home's real path, as tools that resolve the folder
+    // they run in write them: inside, `~/.config` and `~/.gnupg` lead
+    // nowhere, yet the app reaches the same folders under the home's name.
+    // Autostart stays read-only there and the key folder hidden (the start
+    // used to fail here; with links followed, both were open).
+    fs::remove_file(home.join(".config")).unwrap();
+    symlink(home.join("dotfiles/config"), home.join(".config")).unwrap();
+    let linked = root.join("home/linked");
+    symlink(&home, &linked).unwrap();
+    let r = start_in(full(), &["direct"], &linked);
+    assert_eq!(r["DIRECT"], "refused", "{r:?}");
+    assert!(!home.join("dotfiles/config/autostart/evil.desktop").exists());
+    assert_eq!(r["GPGKEY"], "hidden", "{r:?}");
+    assert_eq!(
+        read(&home.join("Sync/gnupg/gpg-agent.conf")),
+        "# mine\n",
+        "the key folder's settings were changed through the linked home"
+    );
 }

@@ -360,7 +360,10 @@ How these stay protected with the home writable:
   mounted where the app reaches the place, never through a link: with
   `~/.config` a link (to `~/dotfiles/config` or to another drive), apps
   start as usual, and a folder granted read-only that the link leads into
-  stays read-only.
+  stays read-only. With the home itself kept behind a link (`/home/u` a
+  link to `/data/u`), a link that names the home's real path
+  (`/data/u/dots/config`) is covered where the app reaches that place:
+  under the home's own name.
 
 **What full home access does not cover.** With read and write access to the
 home, an app can still change other files that programs outside the sandbox
