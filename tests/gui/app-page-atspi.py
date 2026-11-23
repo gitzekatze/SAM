@@ -62,6 +62,15 @@ for _ in range(60):
 check("window reachable through AT-SPI", app is not None)
 if not app:
     sys.exit(1)
+if sys.argv[1:] == ["finding"]:
+    # A finding from the last start applies its fix and starts the app
+    # again; the row says so (audit G-F12/13: it started the app without
+    # a word).
+    row = wait(lambda: find(app, lambda s: s == "A library is not visible"), 20)
+    check("the failed start shows its finding", row is not None)
+    check("…which says it fixes and starts the app", wait(lambda: find(app, lambda s: s == "Fix and start")) is not None)
+    print("RESULT", "pass" if ok else "fail")
+    sys.exit(0 if ok else 1)
 def entry():
     out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "info", os.environ["SAM_TEST_APP"]],
                          capture_output=True, text=True).stdout
