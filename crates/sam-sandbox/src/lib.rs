@@ -1391,7 +1391,6 @@ impl Bubblewrap {
             ctx,
             a: Args::default(),
             notes: Vec::new(),
-            keep_fds: Vec::new(),
             opened,
             views,
         };
@@ -1423,9 +1422,6 @@ impl Bubblewrap {
         Ok(SandboxCommand {
             program: bwrap.path.clone(),
             args: s.a.v,
-            env: vec![],
-            clear_env: false,
-            keep_fds: s.keep_fds,
             notes: s.notes,
             generated_files,
         })
@@ -1437,7 +1433,6 @@ struct Section<'c> {
     ctx: &'c LaunchContext,
     a: Args,
     notes: Vec<String>,
-    keep_fds: Vec<i32>,
     /// The files named on the command line that are granted, worked out
     /// once per start (audit S-F13: four times before).
     opened: Vec<(PathBuf, bool)>,
@@ -2192,14 +2187,13 @@ impl Section<'_> {
         }
     }
 
-    /// Working directory, seccomp, SAM's helper (Landlock, syscall filter, the app's start), extra arguments, and the command itself.
+    /// Working directory, SAM's helper (Landlock, syscall filter, the app's start), extra arguments, and the command itself.
     fn finish_command(&mut self) {
         let ctx = self.ctx;
         let p = &ctx.permissions;
         let h = &ctx.host;
         let home = h.home.clone();
         let a = &mut self.a;
-        let keep_fds = &mut self.keep_fds;
         // Working directory.
         // The folder it was started in, if the app sees it: granted, or
         // holding a file named on the command line (`hx notes.txt`), so that
@@ -2215,12 +2209,6 @@ impl Section<'_> {
             home.clone()
         };
         a.push("--chdir").push(chdir.to_string_lossy());
-
-        // Seccomp.
-        if let Some(fd) = ctx.seccomp_fd {
-            a.push("--seccomp").push(fd.to_string());
-            keep_fds.push(fd);
-        }
 
         // Room service's socket.
         if let Some(socket) = &ctx.room_socket {

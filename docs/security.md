@@ -44,7 +44,9 @@ proves it, is in [threat-model.md](threat-model.md).
 
 ### Processes
 
-- **Namespaces:** user, PID, UTS and cgroup are always separate. IPC is
+- **Namespaces:** user, PID and UTS are always separate, and the cgroup
+  namespace wherever the kernel has one (every kernel since 4.6; Bubblewrap's
+  `--unshare-cgroup-try` leaves it shared on an older or restricted one). IPC is
   separate too, except for apps with X11 access: X11's shared-memory
   extension needs the X server to see the app's shared memory (Flatpak
   does the same). X11 itself already exposes far more than that. The

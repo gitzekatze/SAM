@@ -420,9 +420,7 @@ pub fn prepare(
         sound_socket: None,
         wayland_socket: None,
         helper: None,
-        seccomp_fd: None,
         own_terminal: terminal != TerminalMode::None,
-        compatibility_mode: app.profile.compatibility_mode,
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
         appdir_overlay: None,
@@ -1024,12 +1022,6 @@ fn run_once(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     }
-    if prepared.command.clear_env {
-        cmd.env_clear();
-    }
-    for (k, v) in &prepared.command.env {
-        cmd.env(k, v);
-    }
     cmd.current_dir(&host.home);
     // Held until this launch is over: `Sam::running` sees the app as running.
     let _running = hold_lock(&prepared.context.runtime_dir.join("running.lock"))?;
@@ -1057,11 +1049,7 @@ fn run_once(
         .spawn()
         .with_context(|| format!("starting {}", prepared.command.program.display()));
     // Close our copies of the write ends so the readers see EOF.
-    for fd in channels
-        .close_after_spawn
-        .iter()
-        .chain(prepared.context.seccomp_fd.as_ref())
-    {
+    for fd in channels.close_after_spawn.iter() {
         // SAFETY: the descriptor belongs to this launch and is closed exactly once here.
         unsafe { libc::close(*fd) };
     }
