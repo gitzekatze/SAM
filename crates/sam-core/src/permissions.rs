@@ -651,6 +651,14 @@ pub struct AdvancedPerms {
     pub seccomp_baseline: bool,
     /// Allow nested user namespaces (required by Chromium/Electron's own sandbox).
     pub allow_userns: bool,
+    /// Room service: a program that builds a Bubblewrap sandbox of its own
+    /// (GTK's image loader) gets it from SAM, never with more than the app.
+    /// Off: such programs fail inside SAM, or run without their sandbox.
+    /// Written only when off: a record saved before Room service existed
+    /// keeps its checksum, so no app looks changed outside SAM after an
+    /// update.
+    #[serde(default = "room_service_on", skip_serializing_if = "is_on")]
+    pub room_service: bool,
     /// Expose host theme configuration (GTK/Qt/KDE settings, read-only).
     pub host_themes: bool,
     /// Writable app folder: changes the app makes to its own files go to a
@@ -770,6 +778,7 @@ impl Default for AdvancedPerms {
             // Off: namespaces add kernel attack surface. Turned on by the
             // recommendation only for apps that start their own sandbox.
             allow_userns: false,
+            room_service: true,
             host_themes: true,
             writable_appdir: false,
             extra_bwrap_args: vec![],
@@ -895,7 +904,7 @@ impl PermissionSet {
             )
         })?;
         let existing = obj.get(*last);
-        if existing.is_none() && !(*last == "landlock" && parents == ["advanced"]) {
+        if existing.is_none() && !LEFT_OUT_WHEN_EMPTY.iter().any(|(k, _)| *k == key) {
             bail!(
                 "{}",
                 crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
@@ -953,7 +962,26 @@ const LEFT_OUT_WHEN_EMPTY: &[(&str, &str)] = &[
     ("dbus.session.calls", "[]"),
     ("dbus.session.broadcasts", "[]"),
     ("advanced.landlock", "null"),
+    ("advanced.room_service", "true"),
 ];
+
+/// The value of a key the saved form leaves out while it has its default
+/// (readers of the raw form, such as the window, use it for a missing key).
+pub fn left_out_default(key: &str) -> Option<serde_json::Value> {
+    LEFT_OUT_WHEN_EMPTY
+        .iter()
+        .find(|(k, _)| *k == key)
+        .and_then(|(_, v)| serde_json::from_str(v).ok())
+}
+
+fn room_service_on() -> bool {
+    true
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+fn is_on(v: &bool) -> bool {
+    *v
+}
 
 macro_rules! perm {
     ($key:expr, $cat:expr, $title:expr, $desc:expr, $risk:ident) => {
@@ -1086,6 +1114,8 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
             "Blocks kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection). Turn off only if an app fails because of it.", Low, advanced),
         perm!("advanced.allow_userns", "Advanced", "Nested namespaces",
             "Lets Chromium/Electron apps start their own internal sandbox.", Medium, advanced),
+        perm!("advanced.room_service", "Advanced", "Room service",
+            "Programs that build a sandbox of their own (such as GTK's image loader) get it from SAM, never with more than the app. Turned off, they run without their own sandbox or fail.", Low, advanced),
         perm!("advanced.host_themes", "Advanced", "Host theme settings",
             "Read-only access to GTK/Qt/KDE theme configuration so apps match your desktop.", Low, advanced),
         perm!("advanced.writable_appdir", "Advanced", "Writable app folder",

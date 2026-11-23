@@ -48,6 +48,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `integrations.screen_sharing` | `true` / `false`: screen sharing through the portal (asks each time) |
 | `advanced.seccomp_baseline` | `true` / `false`: baseline syscall filter for this app |
 | `advanced.writable_appdir` | `true` / `false`: overlay on the app folder, changes kept per app |
+| `advanced.room_service` | `true` / `false`: Room service, programs that build a sandbox of their own get it from SAM (on by default; see security.md) |
 | `integrations.keyring` | `true` / `false`: Secret Service / KWallet (exposes every stored password) |
 | `integrations.media_controls` | `true` / `false`: MPRIS media keys, screen-saver inhibit |
 | `integrations.input_method` | `true` / `false` (default `true`): Fcitx5 and IBus through their sandbox frontends |

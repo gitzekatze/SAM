@@ -77,6 +77,8 @@ pub struct Prepared {
     /// read/write); looked at again when the app has ended.
     pub home_watch: Option<sam_sandbox::HomeWatch>,
     wayland: Option<crate::wayland_ctx::WaylandContext>,
+    /// Room service for this start, if the app has it.
+    rooms: Option<crate::room_service::RoomService>,
     _runtime: RuntimeDir,
 }
 
@@ -149,6 +151,57 @@ impl Prepared {
 /// has it; the syscall filter where the baseline is on in both the
 /// configuration and the app, or the app's own strict switch is on. The
 /// strict switch decides by itself (audit D-M13: it did nothing unless a
+/// Whether the app gets Room service, and whether SAM's helper goes into
+/// its sandbox: for Landlock, the syscall filter, a probe, or Room service
+/// (its stand-in), each on its own. A probe start has no rooms.
+fn helper_wanted(landlock: bool, seccomp: bool, room_service: bool, probe: bool) -> Wanted {
+    let rooms = room_service && !probe;
+    let layers = landlock || seccomp || probe;
+    Wanted {
+        rooms,
+        layers,
+        helper: layers || rooms,
+    }
+}
+
+/// What a start wants SAM's helper for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Wanted {
+    /// Room service (never on a probe start).
+    rooms: bool,
+    /// Landlock, the syscall filter or a probe.
+    layers: bool,
+    /// The helper in the sandbox at all.
+    helper: bool,
+}
+
+/// The warnings when SAM's helper is missing: each names only what is
+/// really lost (the kernel layers the app wanted, Room service).
+fn helper_missing_warnings(want_layers: bool, want_rooms: bool) -> Vec<Warning> {
+    let mut out = Vec::new();
+    if want_layers {
+        out.push(Warning::warn(
+            "helper-missing",
+            "Kernel restrictions unavailable",
+            "sam-jail-run was not found next to sam-jail; Landlock and seccomp are not applied.",
+        ));
+    }
+    if want_rooms {
+        out.push(Warning::warn(
+            "room-service-failed",
+            "Room service unavailable",
+            sam_core::i18n::trf(
+                "{error}; programs in this app that build a sandbox of their own fail this time",
+                &[(
+                    "error",
+                    &"sam-jail-run was not found next to sam-jail".to_string(),
+                )],
+            ),
+        ));
+    }
+    out
+}
+
 /// second, global setting was on).
 fn wanted_layers(
     perms: &sam_core::permissions::PermissionSet,
@@ -346,6 +399,7 @@ pub fn prepare(
             paths.data_dir.clone(),
             paths.extracted_root(&cfg.extraction.location),
         ],
+        room_socket: None,
     };
     if perms.advanced.writable_appdir && !sam_core::host::bwrap_supports_overlay() {
         warnings.push(Warning::warn(
@@ -488,30 +542,127 @@ pub fn prepare(
         let strict = perms.advanced.seccomp_strict;
         wanted_landlock = want_landlock;
         wanted_seccomp = want_seccomp;
-        if want_landlock || want_seccomp || opts.probe.is_some() {
+        // Room service needs SAM's helper in the sandbox (its stand-in for
+        // Bubblewrap), even where the app itself gets no layer from it.
+        let wanted = helper_wanted(
+            want_landlock,
+            want_seccomp,
+            perms.advanced.room_service,
+            opts.probe.is_some(),
+        );
+        if wanted.helper {
             match crate::find_helper() {
                 Some(helper) => {
                     let spec = kernel::SandboxSpec {
-                        landlock: want_landlock.then(|| kernel::landlock_spec(perms, host, &format!("/run/user/{}", host.uid), &launch_writable_paths(&ctx))),
-                        seccomp: want_seccomp.then_some(kernel::SeccompSpec { strict, allow_userns: perms.advanced.allow_userns, bluetooth: perms.devices.bluetooth }),
+                        landlock: want_landlock.then(|| {
+                            kernel::landlock_spec(
+                                perms,
+                                host,
+                                &format!("/run/user/{}", host.uid),
+                                &launch_writable_paths(&ctx),
+                            )
+                        }),
+                        seccomp: want_seccomp.then_some(kernel::SeccompSpec {
+                            strict,
+                            allow_userns: perms.advanced.allow_userns,
+                            bluetooth: perms.devices.bluetooth,
+                        }),
                         probe: opts.probe.clone(),
                     };
                     let spec_path = runtime_dir.join("sandbox.json");
                     fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
-                    ctx.helper = Some(sam_core::sandbox::SandboxHelper { binary: helper, spec: spec_path });
+                    ctx.helper = Some(sam_core::sandbox::SandboxHelper {
+                        binary: helper,
+                        spec: spec_path,
+                    });
                     landlock = want_landlock;
                     seccomp = want_seccomp;
                 }
-                None => warnings.push(Warning::warn(
-                    "helper-missing",
-                    "Kernel restrictions unavailable",
-                    "sam-jail-run was not found next to sam-jail; Landlock and seccomp are not applied.",
-                )),
+                None => warnings.extend(helper_missing_warnings(wanted.layers, wanted.rooms)),
             }
         }
     }
 
+    // Room service: its socket exists before the sandbox is built (the
+    // sandbox shows it), its rules come from the sandbox once built. It
+    // needs SAM's helper in the app's sandbox (the stand-in for bwrap).
+    let mut rooms = None;
+    if let (true, true, Some(bwrap)) = (
+        helper_wanted(
+            false,
+            false,
+            perms.advanced.room_service,
+            opts.probe.is_some(),
+        )
+        .rooms,
+        ctx.helper.is_some(),
+        host.tools.bwrap.as_ref().map(|t| t.path.clone()),
+    ) {
+        if !crate::room_service::bwrap_builds_rooms(&bwrap) {
+            // No room could be built: programs keep the computer's own
+            // Bubblewrap, as before Room service.
+            warnings.push(Warning::warn(
+                "room-service-failed",
+                "Room service unavailable",
+                "This Bubblewrap cannot show places by handle (--ro-bind-fd, Bubblewrap 0.10 or newer); programs in this app that build a sandbox of their own use it as before Room service.",
+            ));
+        } else {
+            match crate::room_service::RoomService::open(&runtime_dir)
+            .and_then(|r| write_room_standin(&runtime_dir, &bwrap).map(|()| r))
+        {
+            Ok(r) => {
+                ctx.room_socket = Some(r.socket.clone());
+                rooms = Some((r, bwrap));
+            }
+            Err(e) => warnings.push(Warning::warn(
+                "room-service-failed",
+                "Room service unavailable",
+                sam_core::i18n::trf(
+                    "{error}; programs in this app that build a sandbox of their own fail this time",
+                    &[("error", &format!("{e:#}"))],
+                ),
+            )),
+        }
+        }
+    }
     let mut command = sam_sandbox::Bubblewrap.build(&ctx)?;
+    let rooms = rooms.map(|(mut service, bwrap)| {
+        let plan = crate::room_rules::FloorPlan::from_bwrap_args(&command.args);
+        let room_ctx = crate::room_service::RoomContext {
+            plan: plan.clone().unwrap_or_default(),
+            facts: crate::room_rules::AppFacts {
+                full_network: perms.network.mode == sam_core::permissions::NetworkMode::Full,
+            },
+            bwrap,
+            landlock: kernel::landlock_spec(
+                perms,
+                host,
+                &format!("/run/user/{}", host.uid),
+                &launch_writable_paths(&ctx),
+            ),
+            seccomp: kernel::SeccompSpec {
+                strict: perms.advanced.seccomp_strict,
+                allow_userns: false,
+                bluetooth: perms.devices.bluetooth,
+            },
+        };
+        match plan {
+            Ok(_) => service.serve(room_ctx),
+            Err(e) => {
+                warnings.push(Warning::warn(
+                    "room-service-failed",
+                    "Room service unavailable",
+                    sam_core::i18n::trf(
+                        "{error}; programs in this app that build a sandbox of their own fail this time",
+                        &[("error", &e)],
+                    ),
+                ));
+                // The sandbox shows the socket: it stays, and refuses.
+                service.serve_refusing(room_ctx, e);
+            }
+        }
+        service
+    });
     if perms.network.mode == sam_core::permissions::NetworkMode::Localhost {
         if let Err(e) = crate::netns::wrap_localhost(
             &mut command,
@@ -544,8 +695,41 @@ pub fn prepare(
         wayland_context_failed,
         home_watch,
         wayland,
+        rooms,
         _runtime: runtime_guard,
     })
+}
+
+/// Room service's stand-in for Bubblewrap, first on the app's PATH: a link
+/// named `bwrap` to SAM's helper (its place inside the sandbox), which
+/// serves as the stand-in when started under that name, and beside it the
+/// computer's Bubblewrap version line, which the stand-in answers to
+/// `--version`. No script: a shell in between could leave its script's
+/// file open in the helper, and the room would get it (see
+/// room_service::STANDIN_TARGET). In `bin` (with the link openers) and in
+/// `bin-rooms` (for apps without the session bus, which get no link
+/// openers).
+fn write_room_standin(runtime_dir: &Path, bwrap: &Path) -> Result<()> {
+    use crate::room_service::{plain_version, STANDIN_NAME, STANDIN_TARGET, STANDIN_VERSION_FILE};
+    let version = Command::new(bwrap)
+        .arg("--version")
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    // Only plain characters go into the file.
+    let version = plain_version(&version);
+    for dir in ["bin", "bin-rooms"] {
+        let d = runtime_dir.join(dir);
+        fs::create_dir_all(&d)?;
+        // Every start has a new, empty runtime folder (see prepare), so
+        // no stand-in is in the way. The link leads nowhere outside the
+        // sandbox; inside, it leads to SAM's helper.
+        std::os::unix::fs::symlink(STANDIN_TARGET, d.join(STANDIN_NAME))?;
+        // The app reads it as the same user, whatever the umask.
+        fs::write(d.join(STANDIN_VERSION_FILE), &version)?;
+    }
+    Ok(())
 }
 
 /// Paths mounted writable only for this launch: files and folders named on
@@ -684,7 +868,7 @@ fn run_once(
         format_ts(started_at)
     )?;
 
-    let prepared = match prepare(app, opts, cfg, paths, host) {
+    let mut prepared = match prepare(app, opts, cfg, paths, host) {
         Ok(p) => p,
         Err(e) => {
             writeln!(log, "# preparation failed: {e:#}")?;
@@ -874,6 +1058,11 @@ fn run_once(
         (mode == TerminalMode::None).then_some(prepared.context.runtime_dir.as_path()),
     )?;
     child_done.store(true, std::sync::atomic::Ordering::SeqCst);
+    // Every room ends with the app's start, before SAM waits for the app's
+    // output: a room holds the program's output, and one left running must
+    // not hold up the end of the start. What was built or refused goes into
+    // the start record (never a room's environment).
+    let room_lines = prepared.rooms.take().map(|r| r.stop()).unwrap_or_default();
     for t in pumps {
         let _ = t.join();
     }
@@ -886,6 +1075,11 @@ fn run_once(
     drop(prepared.proxy);
     drop(prepared.sound);
     drop(prepared.wayland);
+    if let Ok(mut l) = log.lock() {
+        for line in room_lines {
+            let _ = writeln!(l, "{line}");
+        }
+    }
 
     // Judge the outcome.
     let err_head = err_head.lock().map(|h| h.clone()).unwrap_or_default();
@@ -2175,5 +2369,49 @@ mod tests {
         assert_eq!(launch_dir_pid("l12-3"), Some(12));
         assert_eq!(launch_dir_pid("12-3"), None);
         assert_eq!(launch_dir_pid("lx-3"), None);
+    }
+}
+
+#[cfg(test)]
+mod helper_missing_tests {
+    use super::*;
+
+    /// SAM's helper goes into the sandbox for each of its jobs on its own
+    /// (Landlock, the syscall filter, a probe, Room service), so an app
+    /// with Room service off still gets its layers; a probe has no rooms.
+    #[test]
+    fn the_helper_comes_for_each_of_its_jobs() {
+        for l in [false, true] {
+            for s in [false, true] {
+                for r in [false, true] {
+                    for p in [false, true] {
+                        let w = helper_wanted(l, s, r, p);
+                        assert_eq!(w.rooms, r && !p, "{l} {s} {r} {p}");
+                        assert_eq!(w.layers, l || s || p, "{l} {s} {r} {p}");
+                        assert_eq!(w.helper, l || s || (r && !p) || p, "{l} {s} {r} {p}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Without SAM's helper, each warning names only what is really lost:
+    /// no word about Landlock and seccomp when the app wanted neither, and
+    /// Room service named when it is lost.
+    #[test]
+    fn a_missing_helper_names_only_what_is_lost() {
+        let codes = |l, r| -> Vec<String> {
+            helper_missing_warnings(l, r)
+                .into_iter()
+                .map(|w| w.code)
+                .collect()
+        };
+        assert_eq!(codes(false, true), vec!["room-service-failed"]);
+        assert_eq!(codes(true, false), vec!["helper-missing"]);
+        assert_eq!(
+            codes(true, true),
+            vec!["helper-missing", "room-service-failed"]
+        );
+        assert!(codes(false, false).is_empty());
     }
 }

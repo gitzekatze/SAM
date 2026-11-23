@@ -182,12 +182,16 @@ proxy socket, the Landlock helper, the seccomp fd, the tracer and extra binds.
 2. **Bubblewrap check:** `bwrap.rs` verifies Bubblewrap can run here (installed,
    user namespaces allowed) or stops with a hint.
 3. **Runtime dir:** generated `passwd` and `group`, an `xdg-dbus-proxy` for a
-   filtered bus, and the Landlock spec.
+   filtered bus, the Landlock spec, and Room service's socket and stand-in
+   (`room_service.rs`).
 4. **Build and spawn:** `Bubblewrap::build` produces the command, and stdout and
-   stderr are teed into `~/.config/sam/logs/<id>/launch-*.log`.
+   stderr are teed into `~/.config/sam/logs/<id>/launch-*.log`. The command
+   is also the app's *floor plan* for Room service (`room_rules.rs`), which
+   then serves the app's requests for rooms until the start ends.
 5. **Record:** exit code or signal, plus a sandbox-failure classification (a
-   `bwrap:` error, exit 126 or 127). The result goes into
-   `AppEntry.last_launch` and the badge.
+   `bwrap:` error, exit 126 or 127), and a line per room built or refused.
+   Every room ends before SAM waits for the app's output. The result goes
+   into `AppEntry.last_launch` and the badge.
 
 ## Data model
 

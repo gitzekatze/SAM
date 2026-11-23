@@ -473,9 +473,10 @@ jobs:
         run: |
           docker run --rm --privileged -v "$PWD:/src" registry.fedoraproject.org/fedora:latest bash -euxc '
             dnf install -y --setopt=install_weak_deps=False \
-              rust cargo gcc pkgconf-pkg-config \
+              rust cargo gcc glibc-static pkgconf-pkg-config \
               bubblewrap xdg-dbus-proxy passt bsdtar squashfs-tools \
               python3 python3-gobject glib2 dbus-daemon \
+              gdk-pixbuf2 glycin-loaders \
               pipewire pipewire-pulseaudio pulseaudio-utils \
               util-linux shadow-utils
             useradd -m tester
@@ -487,7 +488,7 @@ jobs:
             # in teardown, part of verify), and only PipeWire 1.2 and newer
             # refuses module loading (sound_relay). There they are listed as
             # not here (tests/expected-not-here.toml); here every one runs.
-            su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 SAM_SKIP_LOG=/src/target/fedora-skips.log PATH=/src/target/debug:\$PATH cargo test --locked -p sam-runner --test breakout --test evil --test matrix --test sandbox --test overlay_fallback --test fuzz --test verify --test sound_relay"
+            su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 SAM_SKIP_LOG=/src/target/fedora-skips.log PATH=/src/target/debug:\$PATH cargo test --locked -p sam-runner --test breakout --test evil --test matrix --test sandbox --test overlay_fallback --test fuzz --test verify --test sound_relay --test room_service --test room_service_compare --test room_service_local --test room_service_glycin --test room_service_fd_limit --test room_service_fd_wait --test room_service_identity"
             su tester -c "cd /src && SAM_REQUIRE_SANDBOX=1 SAM_SKIP_LOG=/src/target/fedora-skips.log cargo test --locked -p sam-jail-cli --test teardown --test layers --test start_check --test local_network"
           '
       - name: Tests that did not run on Fedora

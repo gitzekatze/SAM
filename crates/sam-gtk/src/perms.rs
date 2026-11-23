@@ -179,11 +179,7 @@ impl Editor {
     // ------------------------------------------------------------ helpers
 
     fn value(&self, key: &str) -> Value {
-        self.perms
-            .borrow()
-            .as_ref()
-            .and_then(|p| util::get(p, key).cloned())
-            .unwrap_or(Value::Null)
+        value_of(self.perms.borrow().as_ref(), key)
     }
     fn info(&self, key: &str) -> Info {
         self.catalog.get(key).cloned().unwrap_or(Info {
@@ -843,6 +839,7 @@ impl Editor {
         self.switch(&g, "advanced.writable_appdir", Always);
         self.switch(&g, "advanced.host_themes", Always);
         self.switch(&g, "advanced.allow_userns", Always);
+        self.switch(&g, "advanced.room_service", Always);
         self.list(
             &g,
             "advanced.extra_bwrap_args",
@@ -1268,6 +1265,15 @@ fn set_usable(row: &gtk::Widget, on: bool) {
     row.set_can_focus(on);
 }
 
+/// A permission's value in the saved form, or its default when the saved
+/// form leaves it out (Room service is written only when off).
+fn value_of(perms: Option<&Value>, key: &str) -> Value {
+    perms
+        .and_then(|p| util::get(p, key).cloned())
+        .or_else(|| sam_core::permissions::left_out_default(key))
+        .unwrap_or(Value::Null)
+}
+
 #[cfg(test)]
 mod tests {
     /// The editor (the app's page and the Permission Manager for one app)
@@ -1282,5 +1288,26 @@ mod tests {
             .filter(|k| !src.contains(&format!("\"{k}\"")))
             .collect();
         assert!(missing.is_empty(), "not in the editor: {missing:?}");
+    }
+
+    /// A switch whose key the saved form leaves out while it is at its
+    /// default shows that default: Room service shows on for an app that
+    /// has it on (every app, unless turned off), off once turned off.
+    #[test]
+    fn a_left_out_setting_shows_its_default() {
+        use serde_json::json;
+        let on = serde_json::to_value(sam_core::permissions::PermissionSet::default()).unwrap();
+        assert!(on["advanced"].get("room_service").is_none());
+        assert_eq!(
+            super::value_of(Some(&on), "advanced.room_service"),
+            json!(true)
+        );
+        let mut off = sam_core::permissions::PermissionSet::default();
+        off.set_key("advanced.room_service", "false").unwrap();
+        let off = serde_json::to_value(off).unwrap();
+        assert_eq!(
+            super::value_of(Some(&off), "advanced.room_service"),
+            json!(false)
+        );
     }
 }
