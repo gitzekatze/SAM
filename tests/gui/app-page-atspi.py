@@ -84,11 +84,24 @@ def entry():
 # and Cancel keeps it blocked (audit G-F12/13: one click confirmed them).
 confirm = wait(lambda: find(app, lambda s: s == "Confirm Settings", "button"))
 check("a record changed outside SAM offers Confirm Settings", confirm is not None)
+# The note of an update's needs confirms the settings too ("review"): it
+# waits until they are confirmed, or its "Got It" would start the app
+# without the question.
+check("…and nothing else that confirms them (no Got It)", find(app, lambda s: s == "Got It", "button") is None)
 if confirm:
+    # Changed again while the page is open: the question names the
+    # settings as they are now, not as the page read them.
+    rec = os.path.join(os.environ["SAM_DATA_DIR"], "apps", os.environ["SAM_TEST_APP"] + ".json")
+    with open(rec) as f:
+        d = json.load(f)
+    d["profile"]["permissions"]["devices"]["usb"] = True
+    with open(rec, "w") as f:
+        json.dump(d, f)
     confirm.get_action_iface().do_action(0)
     asks = wait(lambda: find(app, lambda s: s == "Confirm These Settings?"))
     check("Confirm Settings asks first", asks is not None)
     check("…and names X11, which the change added", find(app, lambda s: "These settings let the app use:" in s and "X11" in s) is not None)
+    check("…and raw USB, added after the page was shown", find(app, lambda s: "These settings let the app use:" in s and "Raw USB" in s) is not None)
     cancel = find(app, lambda s: s == "Cancel", "button")
     if cancel:
         cancel.get_action_iface().do_action(0)

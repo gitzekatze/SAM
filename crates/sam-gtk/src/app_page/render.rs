@@ -477,15 +477,16 @@ impl AppPage {
                     let Some(me) = w.upgrade() else { return };
                     let Some(app) = me.app() else { return };
                     // One click is no look at the settings: the question
-                    // names what they let the app do (audit G-F12/13).
-                    let entry = me.entry();
-                    let (body, risky) = confirm_outside_text(
-                        entry
-                            .as_ref()
-                            .and_then(|e| util::get(e, "profile.permissions")),
-                        file,
-                    );
+                    // names what they let the app do (audit G-F12/13), as
+                    // they are now: they may have changed again since the
+                    // page read them. Unreadable ones count as risky.
                     glib::spawn_future_local(async move {
+                        let now = app.backend.call(&["info", &me.app_id], None).await.ok();
+                        let (body, risky) = confirm_outside_text(
+                            now.as_ref()
+                                .and_then(|i| util::get(i, "entry.profile.permissions")),
+                            file,
+                        );
                         if window::confirm(
                             &app.window,
                             &crate::i18n::tr("Confirm These Settings?"),
@@ -532,7 +533,10 @@ impl AppPage {
                 row.add_suffix(&btn);
                 self.add_dynamic(&self.notices, &row);
             }
-            if !pending.is_empty() {
+            // "Got It" confirms through `review` too, which also confirms
+            // settings changed outside SAM: it waits until those are
+            // confirmed with their question.
+            if !pending.is_empty() && badge != "changed-outside" {
                 let row = adw::ActionRow::builder()
                     .title(esc(&crate::i18n::trf(
                         "The updated AppImage likely needs: {needs}. Your settings were kept.",

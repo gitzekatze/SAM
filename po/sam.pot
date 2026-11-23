@@ -1523,7 +1523,7 @@ msgstr ""
 msgid "Start"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/data.rs:102 crates/sam-gtk/src/app_page/render.rs:1210 crates/sam-gtk/src/pages.rs:351 crates/sam-runner/src/progress.rs:36
+#: crates/sam-gtk/src/app_page/data.rs:102 crates/sam-gtk/src/app_page/render.rs:1214 crates/sam-gtk/src/pages.rs:351 crates/sam-runner/src/progress.rs:36
 msgid "Unpacking"
 msgstr ""
 
@@ -1597,7 +1597,7 @@ msgstr ""
 msgid "Close and Free Space"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/data.rs:353 crates/sam-gtk/src/app_page/render.rs:1264
+#: crates/sam-gtk/src/app_page/data.rs:353 crates/sam-gtk/src/app_page/render.rs:1268
 msgid "Free Space"
 msgstr ""
 
@@ -1768,7 +1768,7 @@ msgstr ""
 msgid "Launching"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/mod.rs:289 crates/sam-gtk/src/app_page/render.rs:710
+#: crates/sam-gtk/src/app_page/mod.rs:289 crates/sam-gtk/src/app_page/render.rs:714
 msgid "How SAM starts this app."
 msgstr ""
 
@@ -2143,303 +2143,303 @@ msgstr ""
 msgid "Confirm Settings"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:491
+#: crates/sam-gtk/src/app_page/render.rs:492
 msgid "Confirm These Settings?"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:493
+#: crates/sam-gtk/src/app_page/render.rs:494
 msgid "Confirm"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:500
+#: crates/sam-gtk/src/app_page/render.rs:501
 msgid "Settings confirmed; the app starts again"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:511
+#: crates/sam-gtk/src/app_page/render.rs:512
 msgid "Settings not reviewed yet"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:512
+#: crates/sam-gtk/src/app_page/render.rs:513
 msgid "SAM chose these settings for you. Look through them, then confirm."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:518
+#: crates/sam-gtk/src/app_page/render.rs:519
 msgid "Mark as Reviewed"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:528
+#: crates/sam-gtk/src/app_page/render.rs:529
 msgid "Marked as reviewed"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:537
+#: crates/sam-gtk/src/app_page/render.rs:541
 #. Keep the {placeholders}; their order may change.
 msgid "The updated AppImage likely needs: {needs}. Your settings were kept."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:544
+#: crates/sam-gtk/src/app_page/render.rs:548
 msgid "Got It"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:615
+#: crates/sam-gtk/src/app_page/render.rs:619
 msgid "What the repair steps cost together"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:635
+#: crates/sam-gtk/src/app_page/render.rs:639
 msgid "Repair steps that did not help were switched off"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:636
+#: crates/sam-gtk/src/app_page/render.rs:640
 #. Keep the {placeholders}; their order may change.
 msgid "The last start failed with them too, so SAM put back what they changed and does not offer them again: {steps}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:712
+#: crates/sam-gtk/src/app_page/render.rs:716
 msgid "How SAM starts this app. Available once the sandbox exists."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:756
+#: crates/sam-gtk/src/app_page/render.rs:760
 msgid "Broad access for apps that work no other way. For these settings it changes nothing more."
-msgstr ""
-
-#: crates/sam-gtk/src/app_page/render.rs:757
-#. Keep the {placeholders}; their order may change.
-msgid "Turned on: {changes}. Each weakens the sandbox. Turning the mode off restores your previous settings."
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/render.rs:761
 #. Keep the {placeholders}; their order may change.
+msgid "Turned on: {changes}. Each weakens the sandbox. Turning the mode off restores your previous settings."
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/render.rs:765
+#. Keep the {placeholders}; their order may change.
 msgid "For apps that work no other way. Turns on: {changes}. Each weakens the sandbox. Turning it off again restores your settings."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:777
+#: crates/sam-gtk/src/app_page/render.rs:781
 #. Keep the {placeholders}; their order may change.
 msgid "Settings and files the app saved outside the folders you granted stay in its private folder: {folder}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:796
+#: crates/sam-gtk/src/app_page/render.rs:800
 #. Keep the {placeholders}; their order may change.
 msgid "Starts the app through SAM: {entry}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:800
+#: crates/sam-gtk/src/app_page/render.rs:804
 msgid "No menu entry: start the app from SAM."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:833
+#: crates/sam-gtk/src/app_page/render.rs:837
 #. Keep the {placeholders}; their order may change.
 msgid "Another menu entry starts it without any sandbox: {entries}. Hide it, so the app always starts in its sandbox; the switch under Menu Entries shows it again."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:841 crates/sam-gtk/src/app_page/render.rs:872
+#: crates/sam-gtk/src/app_page/render.rs:845 crates/sam-gtk/src/app_page/render.rs:876
 msgid "No other menu entry starts this AppImage."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:843
+#: crates/sam-gtk/src/app_page/render.rs:847
 #. Keep the {placeholders}; their order may change.
 msgid "These start the AppImage without a sandbox: {entries}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:845
+#: crates/sam-gtk/src/app_page/render.rs:849
 #. Keep the {placeholders}; their order may change.
 msgid "Hidden by SAM, shown again when you turn this off or remove the sandbox: {entries}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:851
+#: crates/sam-gtk/src/app_page/render.rs:855
 msgid "Created together with the sandbox (see Preferences → Menu Entries)."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:874
+#: crates/sam-gtk/src/app_page/render.rs:878
 #. Keep the {placeholders}; their order may change.
 msgid "These start the AppImage without a sandbox; SAM hides them when it creates the sandbox: {entries}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:909
+#: crates/sam-gtk/src/app_page/render.rs:913
 #. Keep the {placeholders}; their order may change.
 msgid "Repair step: {step}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:927
+#: crates/sam-gtk/src/app_page/render.rs:931
 msgid "Repair step switched off"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:958
+#: crates/sam-gtk/src/app_page/render.rs:962
 msgid "Fix and start"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1016
+#: crates/sam-gtk/src/app_page/render.rs:1020
 #. Keep the {placeholders}; their order may change.
 msgid "Enforced: {what}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1021
+#: crates/sam-gtk/src/app_page/render.rs:1025
 msgid "Not started yet"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1024
+#: crates/sam-gtk/src/app_page/render.rs:1028
 msgid "Last start"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1034
+#: crates/sam-gtk/src/app_page/render.rs:1038
 msgid "Go back to the previous version"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1035
+#: crates/sam-gtk/src/app_page/render.rs:1039
 #. Keep the {placeholders}; their order may change.
 msgid "Puts {prev} back in place of the updated AppImage. The updated file is kept, so you can switch again."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1036
+#: crates/sam-gtk/src/app_page/render.rs:1040
 msgid "Back to the previous version"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1043
+#: crates/sam-gtk/src/app_page/render.rs:1047
 msgid "Check the setup"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1044
+#: crates/sam-gtk/src/app_page/render.rs:1048
 msgid "Is the AppImage still there, unpacked and intact, is the menu entry valid, and how did the last start end."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1077
+#: crates/sam-gtk/src/app_page/render.rs:1081
 msgid "Switch off all repair steps"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1078
+#: crates/sam-gtk/src/app_page/render.rs:1082
 #. Keep the {placeholders}; their order may change.
 msgid "Puts back the settings from before the first step. Applied: {applied}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1085
+#: crates/sam-gtk/src/app_page/render.rs:1089
 msgid "Repairs undone"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1094
+#: crates/sam-gtk/src/app_page/render.rs:1098
 msgid "Inspects the app again and updates SAM's recommendation. Your settings are kept; anything new is listed above."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1096
+#: crates/sam-gtk/src/app_page/render.rs:1100
 msgid "Detection finished"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1102
+#: crates/sam-gtk/src/app_page/render.rs:1106
 msgid "Diagnose missing resources"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1103
+#: crates/sam-gtk/src/app_page/render.rs:1107
 msgid "Runs the app once under strace (if installed) and suggests fixes."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1106
+#: crates/sam-gtk/src/app_page/render.rs:1110
 msgid "Starting a diagnostic run (closes after 30 s)…"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1109
+#: crates/sam-gtk/src/app_page/render.rs:1113
 msgid "Diagnostic run finished"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1117
+#: crates/sam-gtk/src/app_page/render.rs:1121
 msgid "Copy bug report"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1118
+#: crates/sam-gtk/src/app_page/render.rs:1122
 msgid "A redacted report (home path, user and host names removed)."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1126
+#: crates/sam-gtk/src/app_page/render.rs:1130
 msgid "Bug report copied"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1153
+#: crates/sam-gtk/src/app_page/render.rs:1157
 msgid "Setup check: everything is in order"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1155
+#: crates/sam-gtk/src/app_page/render.rs:1159
 #. Keep the {placeholders}; their order may change.
 msgid "Setup check: {bad} things to look at"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1181
+#: crates/sam-gtk/src/app_page/render.rs:1185
 msgid "Recognized as"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1184
+#: crates/sam-gtk/src/app_page/render.rs:1188
 msgid "SAM's recommendation starts from what apps of this kind usually need, then adjusts it to what it found in this app."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1192
+#: crates/sam-gtk/src/app_page/render.rs:1196
 msgid "AppImage type"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1201
+#: crates/sam-gtk/src/app_page/render.rs:1205
 #. Keep the {placeholders}; their order may change.
 msgid "{n} file via {method}"
 msgid_plural "{n} files via {method}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1208
+#: crates/sam-gtk/src/app_page/render.rs:1212
 msgid "Not unpacked"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1213
+#: crates/sam-gtk/src/app_page/render.rs:1217
 msgid "Not checked"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1216
+#: crates/sam-gtk/src/app_page/render.rs:1220
 msgid "Signature"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1223 crates/sam-gtk/src/pages.rs:316
+#: crates/sam-gtk/src/app_page/render.rs:1227 crates/sam-gtk/src/pages.rs:316
 msgid "Updates"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1225
+#: crates/sam-gtk/src/app_page/render.rs:1229
 msgid "Not checked yet. Checking contacts the update source this AppImage names (GitHub or its own server)."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1227
+#: crates/sam-gtk/src/app_page/render.rs:1231
 #. Keep the {placeholders}; their order may change.
 msgid "{detail} (checked {time})"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1238
+#: crates/sam-gtk/src/app_page/render.rs:1242
 msgid "Check for Updates"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1240
+#: crates/sam-gtk/src/app_page/render.rs:1244
 msgid "Ask the update source whether a newer version is published"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1252
+#: crates/sam-gtk/src/app_page/render.rs:1256
 msgid "Update check done"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1259
+#: crates/sam-gtk/src/app_page/render.rs:1263
 msgid "Disk space"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1260 crates/sam-gtk/src/pages.rs:1069 crates/sam-gtk/src/pages.rs:1116
+#: crates/sam-gtk/src/app_page/render.rs:1264 crates/sam-gtk/src/pages.rs:1069 crates/sam-gtk/src/pages.rs:1116
 msgid "Checking…"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1267
+#: crates/sam-gtk/src/app_page/render.rs:1271
 msgid "Delete the unpacked copy. Settings and files stay; the next start unpacks the AppImage again."
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1276
+#: crates/sam-gtk/src/app_page/render.rs:1280
 msgid "Space freed; the next start unpacks the AppImage again"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1291
+#: crates/sam-gtk/src/app_page/render.rs:1295
 #. Keep the {placeholders}; their order may change.
 msgid "{total} in total: unpacked app {unpacked}, private home {home}, logs {logs}"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1316
+#: crates/sam-gtk/src/app_page/render.rs:1320
 msgid "Locate the AppImage"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:1326
+#: crates/sam-gtk/src/app_page/render.rs:1330
 msgid "Location updated"
 msgstr ""
 

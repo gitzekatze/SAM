@@ -11,6 +11,8 @@
 - "Confirm Settings" for an app whose settings changed outside SAM now asks,
   and names what the settings let the app do (*Think twice* and
   *Dangerous*), because SAM can tell that they changed, not what changed.
+  It names them as they are when you press it, and the "Got It" of an
+  update's note, which also confirms, waits until then.
 - The app page's header is no longer green "Sandboxed" when the last start
   lacked a protection layer; it shows "Protection missing", as the list does.
 - A finding of a failed start says "Fix and start": it applies the fix and

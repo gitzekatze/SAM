@@ -20,8 +20,9 @@ export SAM_CONFIG_DIR="$out/data-set/config" SAM_DATA_DIR="$out/data-set/data" S
 printf '[general]\nscan_directories = ["%s"]\n' "$out/data-set/apps-folder" > "$SAM_CONFIG_DIR/config.toml"
 "$bin/sam-jail" dev make-fixture --name Tool "$out/data-set/apps-folder/Tool.AppImage" >/dev/null
 id=$("$bin/sam-jail" --json add "$out/data-set/apps-folder/Tool.AppImage" --no-launcher --accept | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d=d.get("data",d); print(d["entry"]["id"])')
-# Something other than SAM turns X11 on in the app's record.
-python3 -I -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["profile"]["permissions"]["display"]["x11"]=True; json.dump(d,open(p,"w"))' "$SAM_DATA_DIR/apps/$id.json"
+# Something other than SAM turns X11 on in the app's record, and adds a
+# note of an update's needs, whose "Got It" must not confirm the change.
+python3 -I -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["profile"]["permissions"]["display"]["x11"]=True; d["pending_changes"]=["sound"]; json.dump(d,open(p,"w"))' "$SAM_DATA_DIR/apps/$id.json"
 "${ATSPI_LAUNCHER:-/usr/lib/at-spi-bus-launcher}" --launch-immediately >/dev/null 2>&1 & launcher=$!
 sleep 1
 "${ATSPI_REGISTRY:-/usr/lib/at-spi2-registryd}" >/dev/null 2>&1 & registry=$!
