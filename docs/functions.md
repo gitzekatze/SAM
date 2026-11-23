@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 27 proven by passing tests, 13 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 656 tests in all.
+**41 functions:** 25 proven by passing tests, 15 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 667 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -18,8 +18,8 @@
 | 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 32 | ✅ 🆕 1 new test since the report |
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 10 | ✅ |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 11 | ✅ |
-| 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 16 | ✅ |
-| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 26 | ✅ 🆕 8 new tests since the report |
+| 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-jail-cli, sam-detect, sam-profile | 19 | ✅ 🆕 3 new tests since the report |
+| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-jail-cli, sam-core | 31 | ✅ 🆕 13 new tests since the report |
 | 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 25 | ✅ |
 | 9 | [Things an app printed can never grant it access on their own; SAM always asks.](#9) | sam-runner | 4 | ✅ 🆕 1 new test since the report |
 | 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox | 11 | ✅ |
@@ -32,7 +32,7 @@
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
 | 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 118 | ✅ 🆕 118 new tests since the report |
-| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 23 | ✅ 🆕 1 new test since the report |
+| 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-jail-cli, sam-runner, sam-intake, sam-core | 25 | ✅ 🆕 3 new tests since the report |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 18 | ✅ 🆕 4 new tests since the report |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 11 | ✅ 🆕 3 new tests since the report |
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 3 | ✅ |
@@ -48,7 +48,7 @@
 | 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | sam-runner, sam-intake | 2 | ✅ |
 | 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 17 | ✅ 🆕 1 new test since the report |
 | 34 | [Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.](#34) | sam-runner | 9 | ✅ |
-| 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-storage, sam-core | 5 | ✅ |
+| 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-jail-cli, sam-storage, sam-core | 8 | ✅ 🆕 3 new tests since the report |
 | 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 12 | ✅ |
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 6 | ✅ |
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
@@ -62,7 +62,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | Component | Functions it carries |
 |---|---|
 | sam-gtk | [1](#1), [7](#7), [23](#23), [35](#35), [36](#36), [37](#37), [40](#40) |
-| sam-jail-cli | [41](#41), [39](#39) |
+| sam-jail-cli | [6](#6), [7](#7), [41](#41), [19](#19), [35](#35), [39](#39) |
 | sam-runner | [1](#1), [2](#2), [3](#3), [8](#8), [9](#9), [12](#12), [13](#13), [14](#14), [16](#16), [17](#17), [18](#18), [41](#41), [19](#19), [20](#20), [21](#21), [22](#22), [23](#23), [24](#24), [25](#25), [26](#26), [27](#27), [28](#28), [29](#29), [30](#30), [31](#31), [32](#32), [33](#33), [34](#34) |
 | sam-intake | [1](#1), [2](#2), [3](#3), [4](#4), [5](#5), [19](#19), [29](#29), [32](#32) |
 | sam-detect | [2](#2), [5](#5), [6](#6), [28](#28) |
@@ -208,8 +208,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`electron_markers_and_bundled_symlinks`](../crates/sam-detect/src/elf.rs#L1469) | Electron apps are recognized by their markers, and bundled library symlinks are followed. | ✅ |
 | [`origin_relative_needed_paths`](../crates/sam-detect/src/elf.rs#L1482) | Libraries an app finds relative to its own folder ($ORIGIN) are counted as bundled, not as missing. | ✅ |
 | [`the_c_library_version_an_app_needs_is_read`](../crates/sam-detect/src/elf.rs#L1498) | The C library version an app needs is read from its symbol versions. | ✅ |
+| [`the_dependency_report_shows_what_is_missing_and_still_needed`](../crates/sam-jail-cli/src/output.rs#L592) | The dependency report shows the system libraries on one line, every other missing library on its own (NOT FOUND when the host lacks it), only what the user still has to grant, and the notes. | 🆕 new |
+| [`redetect_shows_the_dependency_report`](../crates/sam-jail-cli/tests/human_views.rs#L151) | `redetect` shows the dependency report it made. | 🆕 new |
+| [`info_shows_comment_reasons_dependencies_and_warnings`](../crates/sam-jail-cli/src/output.rs#L620) | `info` shows the app's comment, why its profile is what it is, its dependency report and its warnings when it has them, and no empty sections when it has none. | 🆕 new |
 
-**Code:** [`sam-profile/src/lib.rs`](../crates/sam-profile/src/lib.rs), [`sam-detect/src/elf.rs`](../crates/sam-detect/src/elf.rs), [`sam-detect/src/classify.rs`](../crates/sam-detect/src/classify.rs)
+**Code:** [`sam-profile/src/lib.rs`](../crates/sam-profile/src/lib.rs), [`sam-detect/src/elf.rs`](../crates/sam-detect/src/elf.rs), [`sam-detect/src/classify.rs`](../crates/sam-detect/src/classify.rs), [`sam-jail-cli/src/output.rs`](../crates/sam-jail-cli/src/output.rs)
 
 **Also tried by:** [`tests/real-apps/run.sh`](../tests/real-apps/run.sh)
 
@@ -234,7 +237,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_catalogue_names_every_setting`](../crates/sam-core/src/permissions.rs#L1181) | The catalogue is the one list of permissions: it names every setting an app's permissions have, and every name in it can be read. | ✅ |
 | [`the_documentation_names_every_permission`](../crates/sam-core/src/permissions.rs#L1224) | The permissions page of the documentation names every permission. | ✅ |
 | [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1282) | The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | ✅ |
-| [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L313) | `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | ✅ |
+| [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L355) | `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | ✅ |
 | [`info_on_the_terminal_shows_every_permission_once`](../crates/sam-jail-cli/tests/exit_codes.rs#L167) | `sam-jail info` shows every permission with its value, each group of permissions under one heading (audit G-F14). | ✅ |
 | [`a_path_with_dots_or_double_slashes_is_rated_where_it_leads`](../crates/sam-core/src/risk.rs#L1113) | A path is rated where it leads, not as it is written: `.`, `..` and repeated `/` count for nothing, so `/.` is the whole computer and `~/..` the folder above the home, and a folder that holds the home counts as the home. | 🆕 new |
 | [`an_extra_folder_that_leads_to_the_whole_computer_asks_first`](../crates/sam-core/src/risk.rs#L1147) | An extra folder written so that it mounts the whole computer, the whole home or a place found through `..` is Dangerous, warned about and asks first (review F1: `/.` read Harmless and a preset applied it without a question). | 🆕 new |
@@ -244,8 +247,13 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_sound_servers_own_socket_is_dangerous_as_an_extra_socket`](../crates/sam-core/src/risk.rs#L1295) | The sound server's own socket listed as an extra socket is as dangerous as "Sound without SAM's relay" (review SB-4); PipeWire's stays at the level of "Direct PipeWire access". | 🆕 new |
 | [`a_function_of_a_password_service_counts_with_the_network`](../crates/sam-core/src/risk.rs#L1257) | A function rule of a password service reaches the stored passwords as the allowed name does: with full network the app "can send what it reads" (review 2026-11-23). | 🆕 new |
 | [`a_dangerous_socket_is_known_however_it_is_written`](../crates/sam-core/src/risk.rs#L1308) | A dangerous socket is known however its path is written: `.` and doubled `/` count for nothing, as for the kernel (review 2026-11-23: `/run/dbus//system_bus_socket` read as an ordinary extra socket). | 🆕 new |
+| [`every_state_risk_and_severity_is_shown_in_its_own_words`](../crates/sam-jail-cli/src/output.rs#L419) | Every state, risk level and warning severity is shown in its own words: `list`, `info`, `add`, `set` and `evaluate` tell the user an app is Unsafe, Dangerous or lacks its protection only through these. | 🆕 new |
+| [`the_risk_line_names_the_level_and_what_sets_it`](../crates/sam-jail-cli/src/output.rs#L450) | The risk line names the level and the permissions that set it. | 🆕 new |
+| [`every_warning_is_shown_with_its_severity_title_and_message`](../crates/sam-jail-cli/src/output.rs#L468) | Every warning is shown with its severity, title and message. | 🆕 new |
+| [`evaluate_and_info_show_the_risk_and_every_warning`](../crates/sam-jail-cli/tests/human_views.rs#L105) | `evaluate` and `info` show the risk with what sets it and every warning, as their JSON has them. | 🆕 new |
+| [`info_shows_comment_reasons_dependencies_and_warnings`](../crates/sam-jail-cli/src/output.rs#L620) | `info` shows the app's comment, why its profile is what it is, its dependency report and its warnings when it has them, and no empty sections when it has none. | 🆕 new |
 
-**Code:** [`sam-core/src/permissions.rs`](../crates/sam-core/src/permissions.rs), [`sam-core/src/risk.rs`](../crates/sam-core/src/risk.rs), [`sam-core/src/warnings.rs`](../crates/sam-core/src/warnings.rs), [`sam-gtk/src/all_perms.rs`](../crates/sam-gtk/src/all_perms.rs)
+**Code:** [`sam-core/src/permissions.rs`](../crates/sam-core/src/permissions.rs), [`sam-core/src/risk.rs`](../crates/sam-core/src/risk.rs), [`sam-core/src/warnings.rs`](../crates/sam-core/src/warnings.rs), [`sam-gtk/src/all_perms.rs`](../crates/sam-gtk/src/all_perms.rs), [`sam-jail-cli/src/output.rs`](../crates/sam-jail-cli/src/output.rs)
 
 <a id="8"></a>
 ### 8. You can change permissions per app, for several apps at once, or through your own presets.
@@ -697,8 +705,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_percent_sign_in_sams_path_stays_a_percent_sign`](../crates/sam-intake/src/desktop.rs#L404) | A `%` in SAM's own path is written `%%` in the menu entry, where a single one would start a field code like `%F` (audit G-F17). | ✅ |
 | [`blocked_file_types_hold_in_any_case_and_old_names`](../crates/sam-intake/src/desktop.rs#L444) | SAM's menu entry never claims links, folders or desktop files, so a sandboxed app cannot take over opening them. | ✅ |
 | [`an_app_can_never_replace_the_programs_that_menu_entries_run`](../crates/sam-runner/tests/own_programs.rs#L53) | An app can never replace the programs that menu entries run. | 🆕 new |
+| [`the_shown_command_is_the_one_that_runs`](../crates/sam-jail-cli/src/output.rs#L512) | `sam-jail command` shows the sandbox command one option with its values per line, every token in order, and after the real `--` the program with its arguments; joined again it is exactly the command that runs. | 🆕 new |
+| [`command_shows_exactly_the_command_that_runs`](../crates/sam-jail-cli/tests/human_views.rs#L177) | `command` shows exactly the command that runs: joined again, its lines are the argument list of `--json command`, the program's own arguments included. | 🆕 new |
 
-**Code:** [`sam-intake/src/desktop.rs`](../crates/sam-intake/src/desktop.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-core/src/paths.rs`](../crates/sam-core/src/paths.rs)
+**Code:** [`sam-intake/src/desktop.rs`](../crates/sam-intake/src/desktop.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-core/src/paths.rs`](../crates/sam-core/src/paths.rs), [`sam-jail-cli/src/output.rs`](../crates/sam-jail-cli/src/output.rs)
 
 **Also tried by:** [`tests/gui/flow-atspi.sh`](../tests/gui/flow-atspi.sh), [`tests/gui/taskbar-kwin.sh`](../tests/gui/taskbar-kwin.sh)
 
@@ -1011,8 +1021,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L863) | Apps are found by name or ID, and an ambiguous name is refused. | ✅ |
 | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L351) | The user guide keeps the text of a list item that has a nested list below it. | ✅ |
 | [`links_to_other_pages_open_on_github`](../crates/sam-gtk/src/guide.rs#L375) | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | ✅ |
+| [`every_state_risk_and_severity_is_shown_in_its_own_words`](../crates/sam-jail-cli/src/output.rs#L419) | Every state, risk level and warning severity is shown in its own words: `list`, `info`, `add`, `set` and `evaluate` tell the user an app is Unsafe, Dangerous or lacks its protection only through these. | 🆕 new |
+| [`a_long_name_is_cut_to_its_column`](../crates/sam-jail-cli/src/output.rs#L495) | A name longer than its column is cut to the column with "…", so an app cannot push SAM's real risk and state out of their columns with a long name of its own (a fake "Harmless  Ready" in the name would line up under them). | 🆕 new |
+| [`a_long_app_name_cannot_push_risk_and_state_out_of_their_columns`](../crates/sam-jail-cli/tests/human_views.rs#L238) | A long name with columns of its own cannot push SAM's real risk and state out of their columns in `list`, nor the permission tags in `group list`: the name is cut to its column. | 🆕 new |
 
-**Code:** [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs), [`sam-gtk/src/pages.rs`](../crates/sam-gtk/src/pages.rs), [`sam-core/src/model.rs`](../crates/sam-core/src/model.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs)
+**Code:** [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs), [`sam-gtk/src/pages.rs`](../crates/sam-gtk/src/pages.rs), [`sam-core/src/model.rs`](../crates/sam-core/src/model.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-jail-cli/src/output.rs`](../crates/sam-jail-cli/src/output.rs)
 
 **Also tried by:** [`tests/gui/session.sh`](../tests/gui/session.sh)
 
