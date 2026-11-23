@@ -8,6 +8,9 @@
   sandbox at all ("Glycin running without sandbox"), or the app crashed.
 - No setting to change: Room service is on for every app.
   `advanced.room_service` turns it off for one app.
+- Rooms asked for at the same moment wait a moment for each other when
+  the launcher's descriptor limit is low (most desktops: 1024), instead of
+  being refused; only a room that could never fit is refused at once.
 - The start record names each room, the protection layers SAM's room
   helper confirmed, and what was capped or refused.
 - With a Bubblewrap older than 0.10 (no `--ro-bind-fd`), Room service

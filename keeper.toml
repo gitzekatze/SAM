@@ -114,6 +114,7 @@ protected_tests = [
   "crates/sam-runner/tests/room_service_local.rs",
   "crates/sam-runner/tests/room_service_glycin.rs",
   "crates/sam-runner/tests/room_service_fd_limit.rs",
+  "crates/sam-runner/tests/room_service_fd_wait.rs",
   "crates/sam-runner/tests/room_service_identity.rs",
   "crates/sam-runner/tests/rooms_common/mod.rs",
   "crates/sam-jail-cli/tests/room_teardown.rs",
