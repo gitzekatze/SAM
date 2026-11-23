@@ -24,7 +24,10 @@
 #   there), the tests' own temporary folders in /tmp as always (Cargo's env
 #   setting): a test that must not run below /tmp (the breakout test) failed
 #   in every copy and made 257 of 695 changes look caught (2026-11-22), and
-#   a longer temporary path breaks socket tests (108 characters at most).
+#   a longer temporary path breaks socket tests (108 characters at most);
+# - ten minutes per change (--timeout 600): with six changes at once the
+#   whole suite took about 240 s, so changes that make no difference were
+#   cut off and counted as caught (2026-11-23).
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 out="$here/target/mutants"
@@ -60,7 +63,7 @@ if ! cargo test --workspace --no-fail-fast --config "env.TMPDIR.value=\"$tests_t
     exit 1
 fi
 # shellcheck disable=SC2086 # $sel is a list of options on purpose
-cargo mutants $sel --test-workspace=true --baseline=skip --timeout 240 --build-timeout 600 \
+cargo mutants $sel --test-workspace=true --baseline=skip --timeout 600 --build-timeout 600 \
     --cargo-arg=--config --cargo-arg="env.TMPDIR.value=\"$tests_tmp\"" \
     --cargo-arg=--config --cargo-arg='env.TMPDIR.force=true' \
     -j "${JOBS:-2}" -o "$out" || true

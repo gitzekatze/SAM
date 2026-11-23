@@ -1455,7 +1455,10 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     let left = format!("{}.5", 3000 + std::process::id() % 1000);
     let id = w.add("RoomLifetime", &lifetime_script(&left));
     let started = Instant::now();
-    let log = w.start(&id, |_| {}, 40);
+    // The script ends by itself in a few seconds; the limit is only for a
+    // hang, and generous: on a computer under heavy load (a mutation run
+    // runs six whole test suites at once) 40 rooms took over 40 s to start.
+    let log = w.start(&id, |_| {}, 120);
     eprintln!(
         "lifetime: the start took {:.1} s",
         started.elapsed().as_secs_f64()
@@ -1477,7 +1480,10 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         .get("sixteen_at_once")
         .and_then(|v| v.parse::<u32>().ok())
     {
-        Some(t) if (4..20).contains(&t) => {}
+        // At least two rounds of 2 s (no more than 16 at once); below 40 s,
+        // which rooms one at a time would take at the least, whatever the
+        // load.
+        Some(t) if (4..36).contains(&t) => {}
         t => failures.push(format!(
             "lifetime: 20 rooms of 2 s took {t:?} s: more than 16 ran at once, some were refused, or they hung"
         )),
