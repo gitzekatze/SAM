@@ -3768,4 +3768,50 @@ mod guard_tests {
             assert!(!has_seq(&a, &["--setenv", bad]), "{bad} is refused");
         }
     }
+
+    /// SAM's helper folder /run/sam/bin comes first on the app's PATH only
+    /// when there is something in it for the app: the link openers (they
+    /// need the desktop bus) and Room service's stand-in for Bubblewrap.
+    /// With the bus the app gets the full folder; without the bus but with
+    /// Room service only the stand-in's folder; with neither, no folder
+    /// and a PATH without it.
+    #[test]
+    fn the_helper_folder_comes_first_on_path_only_where_it_holds_helpers() {
+        const WITH: &str = "/run/sam/bin:/usr/local/bin:/usr/bin:/bin";
+        const WITHOUT: &str = "/usr/local/bin:/usr/bin:/bin";
+        // The two folders SAM prepares in the app's own runtime folder.
+        let run = sample_context().runtime_dir;
+        let full = run.join("bin").to_string_lossy().into_owned();
+        let rooms_only = run.join("bin-rooms").to_string_lossy().into_owned();
+        for bus in [DbusMode::None, DbusMode::Filtered, DbusMode::Full] {
+            for rooms in [false, true] {
+                let mut ctx = sample_context();
+                ctx.permissions.dbus.session.mode = bus;
+                ctx.room_socket = rooms.then(|| "/run/user/1000/sam/x/rooms".into());
+                let a = args_of(&ctx);
+                let case = format!("bus {bus:?}, Room service {rooms}");
+                let (folder, path) = match (bus, rooms) {
+                    (DbusMode::None, false) => (None, WITHOUT),
+                    (DbusMode::None, true) => (Some(rooms_only.as_str()), WITH),
+                    _ => (Some(full.as_str()), WITH),
+                };
+                // PATH is set exactly once, so no later value can win.
+                let paths: Vec<&str> = a
+                    .windows(3)
+                    .filter(|w| w[0] == "--setenv" && w[1] == "PATH")
+                    .map(|w| w[2].as_str())
+                    .collect();
+                assert_eq!(paths, [path], "{case}: PATH");
+                let shown: Vec<&str> = a
+                    .windows(3)
+                    .filter(|w| w[2] == "/run/sam/bin")
+                    .map(|w| {
+                        assert_eq!(w[0], "--ro-bind-try", "{case}: shown read-only");
+                        w[1].as_str()
+                    })
+                    .collect();
+                assert_eq!(shown, folder.into_iter().collect::<Vec<_>>(), "{case}");
+            }
+        }
+    }
 }

@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 39 proven by passing tests, 1 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 595 tests in all.
+**41 functions:** 39 proven by passing tests, 1 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 596 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -31,7 +31,7 @@
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 19 | ✅ |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
-| 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 104 | ✅ 🆕 104 new tests since the report |
+| 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 105 | ✅ 🆕 105 new tests since the report |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-runner, sam-intake, sam-core | 22 | ✅ |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-runner | 14 | ✅ |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 8 | ✅ |
@@ -530,6 +530,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_first_unusable_option_is_found_where_bubblewrap_reads_options`](../crates/sam-runner/src/room_rules.rs#L1403) | The first option a room never gets is found where the stand-in looks for it: up to the end of the options, `--` or the command, never past the end of the arguments. | 🆕 new |
 | [`an_answer_to_a_stand_in_that_left_never_ends_the_launcher`](../crates/sam-runner/src/room_service.rs#L2594) | An answer to a stand-in that has already gone never ends SAM's launcher, also with SIGPIPE at its default (as `sam-jail run` has it). | 🆕 new |
 | [`a_receive_keeps_no_more_connections_than_counted`](../crates/sam-runner/src/room_service.rs#L2623) | A receive keeps at most the connections it has room for: one more is refused, never kept uncounted (CMSG_SPACE's rounding would fit it). | 🆕 new |
+| [`the_helper_folder_comes_first_on_path_only_where_it_holds_helpers`](../crates/sam-sandbox/src/lib.rs#L3778) | SAM's helper folder /run/sam/bin comes first on the app's PATH only when there is something in it for the app: the link openers (they need the desktop bus) and Room service's stand-in for Bubblewrap. | 🆕 new |
 | [`a_program_needs_a_loader_only_when_a_program_header_asks_for_one`](../crates/sam-runner/src/room_service.rs#L1860) | A program asks for a loader when any of its program headers says so, first or later; a program without one (as SAM's static room helper) needs none, also when it is as short as it can be. | 🆕 new |
 | [`the_launcher_keeps_two_descriptors_for_each_connection_for_itself`](../crates/sam-runner/src/room_service.rs#L1886) | What the launcher keeps for itself is never given to rooms: 128 of its own, and two for each connection it may have open (the connection itself, and a second one while its room runs). | 🆕 new |
 | [`a_room_sam_ends_is_killed_and_ends_with_the_killed_code`](../crates/sam-runner/src/room_service.rs#L1915) | A room SAM ends is killed at once and ends as killed (exit code 137, as a shell shows it); its status stays known, and ending it again changes nothing. | 🆕 new |

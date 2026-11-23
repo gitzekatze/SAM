@@ -210,7 +210,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-sandbox: Building the Bubblewrap command from the permissions
 
-46 tests.
+47 tests.
 
 | Promise | Test |
 |---|---|
@@ -260,6 +260,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | With the whole home granted, credential files are replaced by an empty file and credential folders by an empty folder. | [`credential_files_and_folders_in_the_home_are_masked`](../crates/sam-sandbox/src/lib.rs#L3707) |
 | Protected folders are created in the real home only before a start that can write the home, never otherwise. | [`home_protection_is_prepared_only_for_a_writable_home`](../crates/sam-sandbox/src/lib.rs#L3734) |
 | Only proper variable names are set inside the sandbox, and no value with a NUL byte. | [`only_proper_variable_names_are_set`](../crates/sam-sandbox/src/lib.rs#L3753) |
+| SAM's helper folder /run/sam/bin comes first on the app's PATH only when there is something in it for the app: the link openers (they need the desktop bus) and Room service's stand-in for Bubblewrap. | [`the_helper_folder_comes_first_on_path_only_where_it_holds_helpers`](../crates/sam-sandbox/src/lib.rs#L3778) |
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
@@ -681,4 +682,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 595 automated Rust tests plus 7 scripted checks.
+Total: 596 automated Rust tests plus 7 scripted checks.
