@@ -675,7 +675,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (found by the fuzzer): one damaged AppImage in a searched folder made `sam-jail discover` crash, so the window's list stayed empty. | [`one_damaged_appimage_does_not_stop_the_list`](../crates/sam-jail-cli/tests/interface.rs#L299) |
 | The command line speaks german when asked. | [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L18) |
 | A start without the helper reports its missing layers. | [`a_start_without_the_helper_reports_its_missing_layers`](../crates/sam-jail-cli/tests/layers.rs#L32) |
-| Threat model row 52: "a syscall filter that fails to load stops the start". | [`a_syscall_filter_that_fails_to_load_stops_the_start`](../crates/sam-jail-cli/tests/layers.rs#L212) |
+| Threat model row 52: "a syscall filter that fails to load stops the start". | [`a_syscall_filter_that_fails_to_load_stops_the_start`](../crates/sam-jail-cli/tests/layers.rs#L214) |
 | The apps ports are offered on this computer only. | [`the_apps_ports_are_offered_on_this_computer_only`](../crates/sam-jail-cli/tests/local_network.rs#L106) |
 | A start file left in the home is moved aside and named. | [`a_start_file_left_in_the_home_is_moved_aside_and_named`](../crates/sam-jail-cli/tests/moved_aside_message.rs#L25) |
 | An AppImage file called like one of SAM's own files in the sandbox (`bin`) starts, and finds itself at `$APPIMAGE`. | [`an_appimage_called_bin_starts_and_finds_itself`](../crates/sam-jail-cli/tests/odd_names.rs#L84) |
