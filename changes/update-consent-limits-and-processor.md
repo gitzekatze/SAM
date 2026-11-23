@@ -12,6 +12,10 @@
 - Updates from GitHub releases with hundreds of files work: the release
   description may now be up to 16 MiB, and one that is longer is reported
   as an error instead of failing as "GitHub's answer".
+- Where SAM can build no sandbox (Bubblewrap cannot run), an update now
+  stops at once and says so, before downloading anything. Before, it was
+  downloaded, and for a signed app SAM asked you to install GnuPG, which
+  was not the cause.
 - An update built for another processor (for example the ARM build on an
   Intel or AMD computer) is refused, and nothing changes. Release files
   that name this computer's processor are tried first.
