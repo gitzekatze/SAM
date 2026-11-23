@@ -40,15 +40,27 @@ fn progress_lines() -> sam_runner::progress::ProgressSink {
     let last = std::sync::Mutex::new((0usize, std::time::Instant::now()));
     sam_runner::progress::ProgressSink::new(move |p| {
         let Ok(mut l) = last.lock() else { return };
-        if l.0 == p.step
-            && l.1.elapsed() < std::time::Duration::from_millis(100)
-            && p.fraction < 1.0
-        {
+        let now = std::time::Instant::now();
+        if !progress_passes(*l, p, now) {
             return;
         }
-        *l = (p.step, std::time::Instant::now());
+        *l = (p.step, now);
         errln!("{}", json!({ "progress": p }));
     })
+}
+
+/// Whether a progress report is printed at `now`, after the last printed
+/// one (`last`: its step and time): the first report of each step and the
+/// last one (all done) always, others of the same step at most every
+/// 100 ms.
+fn progress_passes(
+    last: (usize, std::time::Instant),
+    p: &sam_runner::progress::Progress,
+    now: std::time::Instant,
+) -> bool {
+    !(last.0 == p.step
+        && now.saturating_duration_since(last.1) < std::time::Duration::from_millis(100)
+        && p.fraction < 1.0)
 }
 
 fn main() {
@@ -382,29 +394,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 };
                 let (status, detail, findings) =
                     match run(&mut e, &opts, &app.config, &app.paths, &app.host()) {
-                        Ok(rec) => {
-                            let ran = rec.finished_at - rec.started_at;
-                            if rec.sandbox_failure {
-                                ("fail", rec.summary.clone(), rec.findings.clone())
-                            } else if rec.success
-                                || (rec.signal == Some(9) && ran + 1 >= seconds as i64)
-                            {
-                                let detail = match (rec.signal, e.metadata.terminal) {
-                                    (Some(_), _) => sam_core::i18n::trf(
-                                        "kept running for {seconds}s",
-                                        &[("seconds", &seconds)],
-                                    ),
-                                    (None, true) => trf(
-                                        "ran in its sandbox and ended by itself ({summary})",
-                                        &[("summary", &rec.summary)],
-                                    ),
-                                    (None, false) => rec.summary.clone(),
-                                };
-                                ("ok", detail, vec![])
-                            } else {
-                                ("fail", rec.summary.clone(), rec.findings.clone())
-                            }
-                        }
+                        Ok(rec) => selftest_verdict(&rec, seconds, e.metadata.terminal),
                         Err(err) => ("fail", format!("{err:#}"), vec![]),
                     };
                 results.push(json!({"id": e.id, "name": e.display_name(), "status": status, "detail": detail, "findings": findings}));
@@ -1687,6 +1677,158 @@ fn may_apply(sug: &sam_core::model::Suggestion, yes: bool) -> anyhow::Result<()>
         .into());
     }
     Ok(())
+}
+
+/// What `selftest` says about one start that `seconds` long: status, the
+/// detail shown and, for a failure, what the app's output suggests. "ok"
+/// when the app started in its sandbox and ended well or kept running
+/// until SAM ended it; a kill from outside counts as kept running when it
+/// came at most a second before the time was up.
+fn selftest_verdict(
+    rec: &LaunchRecord,
+    seconds: u64,
+    terminal: bool,
+) -> (&'static str, String, Vec<Suggestion>) {
+    let ran = rec.finished_at - rec.started_at;
+    if rec.sandbox_failure {
+        ("fail", rec.summary.clone(), rec.findings.clone())
+    } else if rec.success || (rec.signal == Some(9) && ran + 1 >= seconds as i64) {
+        let detail = match (rec.signal, terminal) {
+            (Some(_), _) => {
+                sam_core::i18n::trf("kept running for {seconds}s", &[("seconds", &seconds)])
+            }
+            (None, true) => trf(
+                "ran in its sandbox and ended by itself ({summary})",
+                &[("summary", &rec.summary)],
+            ),
+            (None, false) => rec.summary.clone(),
+        };
+        ("ok", detail, vec![])
+    } else {
+        ("fail", rec.summary.clone(), rec.findings.clone())
+    }
+}
+
+#[cfg(test)]
+mod main_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// Each command's errors name the SAM function it carries out
+    /// (docs/functions.md), and the commands outside SAM's functions name
+    /// none (mutation run: every answer could be dropped or be any number).
+    #[test]
+    fn each_command_names_its_sam_function() {
+        for (args, want) in [
+            (&["info", "x"][..], Some(7)),
+            (&["run", "x"][..], Some(19)),
+            (&["verify", "x"][..], Some(20)),
+            (&["scan"][..], Some(1)),
+            (&["list"][..], Some(35)),
+            (&["uninstall"][..], Some(32)),
+            (&["version"][..], None),
+            (&["dev", "make-fixture", "f.AppImage"][..], None),
+        ] {
+            let cli = Cli::try_parse_from(std::iter::once("sam-jail").chain(args.iter().copied()))
+                .unwrap_or_else(|e| panic!("{args:?}: {e}"));
+            assert_eq!(function_for(&cli.cmd), want, "{args:?}");
+        }
+    }
+
+    fn report(step: usize, fraction: f64) -> sam_runner::progress::Progress {
+        sam_runner::progress::Progress {
+            step,
+            steps: 5,
+            title: "Unpacking".into(),
+            detail: String::new(),
+            fraction,
+        }
+    }
+
+    /// The progress lines: the first report of each step and the last one
+    /// always pass, more reports of the same step only every 100 ms (the
+    /// window's bar moves, and the per-file reports do not flood it).
+    #[test]
+    fn progress_lines_pass_new_steps_and_the_end_and_thin_out_the_rest() {
+        let t = Instant::now();
+        let ms = |n| t + Duration::from_millis(n);
+        assert!(
+            progress_passes((0, t), &report(1, 0.0), t),
+            "the very first report"
+        );
+        assert!(
+            progress_passes((1, t), &report(2, 0.3), ms(10)),
+            "the first report of a new step, however soon"
+        );
+        assert!(
+            !progress_passes((1, t), &report(1, 0.5), ms(10)),
+            "the same step again within 100 ms"
+        );
+        assert!(
+            progress_passes((1, t), &report(1, 0.5), ms(150)),
+            "the same step after 100 ms"
+        );
+        assert!(
+            progress_passes((5, t), &report(5, 1.0), ms(10)),
+            "the last report, however soon"
+        );
+    }
+
+    fn start(success: bool, signal: Option<i32>, ran: i64) -> LaunchRecord {
+        LaunchRecord {
+            started_at: 1000,
+            finished_at: 1000 + ran,
+            success,
+            signal,
+            exit_code: if success || signal.is_some() {
+                None
+            } else {
+                Some(7)
+            },
+            summary: "the summary".into(),
+            ..Default::default()
+        }
+    }
+
+    /// `selftest` passes a start that ended well or kept running until the
+    /// time was up, and fails one that ended badly or was killed early,
+    /// with a second's grace for a kill from outside SAM (mutation run:
+    /// every comparison here could be turned around unnoticed).
+    #[test]
+    fn selftest_passes_starts_that_ended_well_or_kept_running() {
+        for (rec, seconds, terminal, want, detail) in [
+            (start(true, None, 0), 5, false, "ok", "the summary"),
+            (start(true, None, 0), 5, true, "ok", "ended by itself"),
+            (
+                start(true, Some(9), 5),
+                5,
+                false,
+                "ok",
+                "kept running for 5s",
+            ),
+            // An error code after a while is still an error.
+            (start(false, None, 5), 1, false, "fail", "the summary"),
+            (start(false, None, 0), 5, false, "fail", "the summary"),
+            // Killed from outside (the out-of-memory killer): early is a
+            // failure, at the end (with a second's grace) it kept running.
+            (start(false, Some(9), 1), 10, false, "fail", "the summary"),
+            (
+                start(false, Some(9), 9),
+                10,
+                false,
+                "ok",
+                "kept running for 10s",
+            ),
+            (start(false, Some(9), 30), 30, false, "ok", "kept running"),
+        ] {
+            let (status, text, _) = selftest_verdict(&rec, seconds, terminal);
+            assert_eq!(status, want, "{rec:?} for {seconds} s");
+            assert!(text.contains(detail), "{text:?} for {rec:?}");
+        }
+        let mut broken = start(true, None, 5);
+        broken.sandbox_failure = true;
+        assert_eq!(selftest_verdict(&broken, 5, false).0, "fail");
+    }
 }
 
 #[cfg(test)]
