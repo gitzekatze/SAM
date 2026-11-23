@@ -837,13 +837,20 @@ mod tests {
             // A folder list gets a folder: "true" would be a relative
             // path, which is rated Dangerous (where it leads depends on
             // where SAM was started).
+            // A choice gets its widest value, a map an entry (review F8:
+            // a key that could not be set was skipped, which hid that the
+            // function and signal rules could not be set while empty).
             let value = match i.key {
                 "filesystem.custom_read" | "filesystem.custom_write" => "/srv/data",
+                "network.mode"
+                | "dbus.session.mode"
+                | "dbus.system.mode"
+                | "advanced.host_runtime" => "full",
+                "environment.set" => r#"{"A":"1"}"#,
                 _ => "true",
             };
-            if p.set_key(i.key, value).is_err() {
-                continue;
-            }
+            p.set_key(i.key, value)
+                .unwrap_or_else(|e| panic!("{}: {e:#}", i.key));
             let got = assess(&p)
                 .items
                 .into_iter()
