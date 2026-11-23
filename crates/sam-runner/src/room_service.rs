@@ -3645,7 +3645,8 @@ mod message_tests {
             });
             let mut held = Held::new(&state);
             let got = read_message(&b, &mut held);
-            drop(b);
+            // Ends the sender's write when the request was refused.
+            b.shutdown(std::net::Shutdown::Both).unwrap();
             drop(sender.join().unwrap());
             if ok {
                 assert_eq!(got.expect("the largest request").0, body);
@@ -3664,7 +3665,9 @@ mod message_tests {
     fn an_empty_send_succeeds_and_a_send_to_a_closed_connection_fails() {
         let (a, b) = UnixStream::pair().unwrap();
         send_with_fds(&a, b"", &[]).expect("nothing to send");
-        drop(b);
+        // The other end is done (a shutdown, not a close: a copy another
+        // test's new process holds for a moment would keep it open).
+        b.shutdown(std::net::Shutdown::Both).unwrap();
         let e = send_with_fds(&a, b"x", &[]).expect_err("the other end is gone");
         assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
     }
