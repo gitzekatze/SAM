@@ -46,7 +46,15 @@ pub struct LaunchOptions {
     /// This is SAM's one automatic restart after the app was refused a
     /// bus name it may now own; never restart again.
     pub name_retry: bool,
+    /// Called at once, while the app runs, when this start lacks a
+    /// protection layer its settings ask for (app id, app name, the missing
+    /// layers): a start from the menu has no terminal for the warning, and
+    /// the app may run for hours (review K-4).
+    pub on_missing_layers: Option<MissingLayersHook>,
 }
+
+/// See [`LaunchOptions::on_missing_layers`].
+pub type MissingLayersHook = fn(&str, &str, &[String]);
 
 /// Everything needed to start a sandbox, plus the explanation for the user.
 /// Left in a launch's runtime folder by `Sam::stop` before it signals the app.
@@ -55,6 +63,9 @@ pub const STOP_MARKER: &str = "stop-requested";
 /// started (Bubblewrap, or pasta with "This computer only"). `Sam::stop`
 /// asks only the processes below it to quit (`ops::ask_to_quit`).
 pub const SANDBOX_PID: &str = "sandbox-pid";
+/// In SAM's data folder: what an app left in places that make the computer
+/// run something, moved aside (one folder per app and start).
+const MOVED_ASIDE: &str = "moved-aside";
 
 pub struct Prepared {
     pub sandbox: SandboxInfo,
@@ -142,6 +153,11 @@ pub struct CommandPreview {
     pub landlock: bool,
     pub seccomp: bool,
     pub dbus_proxy: Option<Vec<String>>,
+    /// The app's own variables when SAM's helper sets them for the app,
+    /// once its layers are in place: they are then not in `argv` (review
+    /// SB-5), and a preview without them would hide what the app gets.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub app_variables: Vec<(String, String)>,
 }
 
 impl Prepared {
@@ -158,6 +174,7 @@ impl Prepared {
             landlock: self.landlock,
             seccomp: self.seccomp,
             dbus_proxy: self.proxy.as_ref().map(|p| p.args.clone()),
+            app_variables: self.command.exec_env.clone(),
         }
     }
 }
@@ -374,7 +391,6 @@ pub fn prepare(
     };
     let mut app_env: Vec<(String, String)> = vec![
         ("APPDIR".into(), "@APPDIR@".into()),
-        ("OWD".into(), owd.display().to_string()),
         (
             "ARGV0".into(),
             app.source_path
@@ -432,6 +448,17 @@ pub fn prepare(
         sam_programs: sam_core::util::own_programs(),
         room_socket: None,
     };
+    // The folders that hold apps' data are for this user only, also when
+    // an older SAM made them readable for everyone (review F4).
+    for d in [
+        paths.homes_dir(),
+        paths.overlays_dir(),
+        paths.data_dir.join(MOVED_ASIDE),
+    ] {
+        if d.is_dir() {
+            let _ = sam_core::util::private_dirs(&paths.data_dir, &d);
+        }
+    }
     if perms.advanced.writable_appdir && !sam_core::host::bwrap_supports_overlay() {
         warnings.push(Warning::warn(
             "writable-appdir-unavailable",
@@ -451,13 +478,16 @@ pub fn prepare(
         ));
     } else if perms.advanced.writable_appdir {
         let base = paths.overlays_dir().join(&app.id);
+        // Its own layers inside stay as made: the upper one is the app
+        // folder's top as the app sees it.
+        sam_core::util::private_dirs(&paths.data_dir, &base)?;
         fs::create_dir_all(base.join("upper"))?;
         fs::create_dir_all(base.join("work"))?;
         ctx.appdir_overlay = Some(base);
     }
 
     if perms.advanced.persistent_home {
-        fs::create_dir_all(&ctx.private_home).with_context(|| {
+        sam_core::util::private_dirs(&paths.data_dir, &ctx.private_home).with_context(|| {
             sam_core::i18n::trf(
                 "creating the private home {folder}",
                 &[("folder", &ctx.private_home.display())],
@@ -474,11 +504,14 @@ pub fn prepare(
     let mut moved_at_start = Vec::new();
     let home_aside = paths
         .data_dir
-        .join("moved-aside")
+        .join(MOVED_ASIDE)
         .join(&app.id)
         .join(now().to_string());
     let mut landlock = false;
     let mut seccomp = false;
+    // SAM's helper's file, written once the sandbox is built (it holds the
+    // app's own variables from the build).
+    let mut helper_spec: Option<kernel::SandboxSpec> = None;
     let wanted_landlock: bool;
     let wanted_seccomp: bool;
     {
@@ -487,6 +520,10 @@ pub fn prepare(
         // over what the running ones saw at their start and keeps its own
         // record on disk (`home_shared`, review 2026-11-23 F1 and F2).
         let shared = if sam_sandbox::writes_start_places(&ctx) {
+            // What is moved aside comes from the person's home: for them
+            // only (review F4).
+            let _ =
+                sam_core::util::private_dirs(&paths.data_dir, &paths.data_dir.join(MOVED_ASIDE));
             Some(crate::home_shared::Shared::open(paths)?)
         } else {
             None
@@ -542,7 +579,9 @@ pub fn prepare(
                     }
                 }
             });
-            match DbusProxy::start(host, &bus, &runtime_dir, &app.id) {
+            match DbusProxy::start(host, &bus, &runtime_dir, &app.id, &|n| {
+                check.refused(n).is_none()
+            }) {
                 Ok(p) => {
                     ctx.dbus_proxy_socket = Some(p.socket.clone());
                     for (name, why) in &p.refused {
@@ -628,12 +667,12 @@ pub fn prepare(
                         }),
                         seccomp: want_seccomp.then(|| seccomp_spec(app)),
                         probe: opts.probe.clone(),
+                        env: Vec::new(),
                     };
-                    let spec_path = runtime_dir.join("sandbox.json");
-                    fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
+                    helper_spec = Some(spec);
                     ctx.helper = Some(sam_core::sandbox::SandboxHelper {
                         binary: helper,
-                        spec: spec_path,
+                        spec: runtime_dir.join("sandbox.json"),
                     });
                     landlock = want_landlock;
                     seccomp = want_seccomp;
@@ -686,6 +725,10 @@ pub fn prepare(
         }
     }
     let mut command = sam_sandbox::Bubblewrap.build(&ctx)?;
+    if let (Some(mut spec), Some(helper)) = (helper_spec, &ctx.helper) {
+        spec.env = command.exec_env.clone();
+        fs::write(&helper.spec, serde_json::to_vec_pretty(&spec)?)?;
+    }
     let rooms = rooms.map(|(mut service, bwrap)| {
         let plan = crate::room_rules::FloorPlan::from_bwrap_args(&command.args);
         let room_ctx = crate::room_service::RoomContext {
@@ -1065,9 +1108,43 @@ fn run_once(
     let bwrap_status_reader = channels
         .bwrap_status
         .map(|r| read_fd_in_thread(r, child_done.clone()));
-    let helper_status_reader = channels
-        .helper_status
-        .map(|r| read_fd_in_thread(r, child_done.clone()));
+    // What the start lacks is told as soon as it is known: at once without
+    // a report from SAM's helper, else when the helper has reported (right
+    // before the app starts). A helper that never reported has not started
+    // the app, which the start's failure says.
+    let tell = opts
+        .on_missing_layers
+        .map(|f| (f, app.id.clone(), app.display_name().to_string()));
+    let asked = (
+        prepared.wanted_landlock,
+        prepared.wanted_seccomp,
+        prepared.wanted_fence,
+        prepared.wayland_context_failed,
+    );
+    let tell_missing = move |report: Option<&str>| {
+        if let Some((f, id, name)) = &tell {
+            let missing = layers_missing(report, asked.0, asked.1, asked.2, asked.3);
+            if !missing.is_empty() {
+                f(id, name, &missing);
+            }
+        }
+    };
+    let helper_status_reader = match channels.helper_status {
+        Some(r) => {
+            let reader = read_fd_in_thread(r, child_done.clone());
+            Some(std::thread::spawn(move || {
+                let report = reader.join().unwrap_or_default();
+                if !report.trim().is_empty() {
+                    tell_missing(Some(report.trim()));
+                }
+                report
+            }))
+        }
+        None => {
+            tell_missing(None);
+            None
+        }
+    };
 
     // Collect its output while it runs. The first part of each stream:
     // stderr decides whether the sandbox failed; both are searched for known
@@ -1418,6 +1495,26 @@ fn write_log_header(log: &mut fs::File, prepared: &Prepared) -> Result<()> {
         "# command: {}",
         prepared.command.display_hiding(&given)
     )?;
+    if !prepared.command.exec_env.is_empty() {
+        let shown: Vec<String> = prepared
+            .command
+            .exec_env
+            .iter()
+            .map(|(k, v)| {
+                let v = if given.contains(&k.as_str()) {
+                    "<hidden>"
+                } else {
+                    v.as_str()
+                };
+                shell_join([format!("{k}={v}")])
+            })
+            .collect();
+        writeln!(
+            log,
+            "# set by SAM's helper for the app, after its layers: {}",
+            shown.join(" ")
+        )?;
+    }
     writeln!(log, "# ---- output ----")?;
     log.flush()?;
     Ok(())
@@ -1574,8 +1671,12 @@ fn with_status_options(
     let mut args = vec!["--json-status-fd".to_string(), status_fd.to_string()];
     args.extend(bwrap_args.iter().cloned());
     if let Some(hw) = helper_fd {
-        // After --clearenv: right before bwrap's "--" separator.
-        let sep = args.iter().position(|a| a == "--").unwrap_or(args.len());
+        // After --clearenv: right before bwrap's own "--" separator, found
+        // the way Bubblewrap reads its options, so an option's value that
+        // reads "--" is never taken for it (review F5).
+        let sep = crate::room_rules::options_end(&args)
+            .or_else(|| args.iter().position(|a| a == "--"))
+            .unwrap_or(args.len());
         args.splice(
             sep..sep,
             [
@@ -2237,6 +2338,63 @@ mod pasta_status_tests {
         assert_eq!(out[7], "", "no helper pipe");
         assert_eq!(out[8], "bwrap");
         assert!(out[9..].contains(&"--unshare-all".to_string()));
+    }
+
+    /// Review F5: the helper's status channel goes right before
+    /// Bubblewrap's own separator, never into an option whose value reads
+    /// `--` (an AppImage file called `--`, a variable set to it), and the
+    /// helper's own `--` after the separator stays where it is.
+    #[test]
+    fn the_status_channel_goes_before_bubblewraps_own_separator() {
+        let bwrap = v(&[
+            "--clearenv",
+            "--setenv",
+            "ARGV0",
+            "--",
+            "--setenv",
+            "TERM",
+            "--",
+            "--chdir",
+            "/home/u",
+            "--",
+            "/run/sam/sam-jail-run",
+            "--sandbox-exec",
+            "/run/sam/sandbox.json",
+            "--",
+            "/opt/app/AppRun",
+        ]);
+        let out = with_status_options(&bwrap, 3, Some(4));
+        assert_eq!(&out[..2], &v(&["--json-status-fd", "3"]));
+        assert_eq!(
+            &out[2..],
+            &v(&[
+                "--clearenv",
+                "--setenv",
+                "ARGV0",
+                "--",
+                "--setenv",
+                "TERM",
+                "--",
+                "--chdir",
+                "/home/u",
+                "--setenv",
+                "SAM_STATUS_FD",
+                "4",
+                "--",
+                "/run/sam/sam-jail-run",
+                "--sandbox-exec",
+                "/run/sam/sandbox.json",
+                "--",
+                "/opt/app/AppRun",
+            ])[..]
+        );
+        // Bubblewrap ends its options at the first word that is not one.
+        assert_eq!(
+            crate::room_rules::options_end(&v(&["--die-with-parent", "app", "--"])),
+            Some(1)
+        );
+        // An option without its values is no end at all.
+        assert_eq!(crate::room_rules::options_end(&v(&["--setenv", "A"])), None);
     }
 }
 

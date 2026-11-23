@@ -138,6 +138,11 @@ fn main() {
         }
         std::process::exit(sam_runner::room_service::standin(&version, &args));
     }
+    // What this program inherited (a menu launcher's or terminal's open
+    // descriptors) never reaches the app, from the menu or inside the
+    // sandbox (review F6). Not as Room service's stand-in above: the
+    // descriptors a program hands to it are its request.
+    sam_core::util::close_inherited_on_exec();
     let args = match text_args(std::env::args_os().skip(1)) {
         Ok(a) => a,
         Err(name) => {
@@ -181,6 +186,39 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// How a start from the menu runs: with the files it was given, and told
+/// at once when it lacks a protection layer.
+fn launch_options(args: Vec<String>) -> LaunchOptions {
+    LaunchOptions {
+        args,
+        on_missing_layers: Some(tell_missing_layers),
+        ..Default::default()
+    }
+}
+
+/// A start from the menu has no terminal for the warning that it lacks a
+/// protection layer its settings ask for (Landlock that could not be
+/// applied, SAM's helper not found): a notification says it while the app
+/// runs, with a button to SAM's page for the app (review K-4).
+fn tell_missing_layers(app_id: &str, app_name: &str, missing: &[String]) {
+    let (title, body) = missing_layers_notice(app_name, missing);
+    notify_with_fix(&title, &body, app_id);
+}
+
+/// The notification's title and text for [`tell_missing_layers`].
+fn missing_layers_notice(app_name: &str, missing: &[String]) -> (String, String) {
+    (
+        sam_core::i18n::trf(
+            "{app} is running without some of its protection",
+            &[("app", &app_name)],
+        ),
+        sam_core::i18n::trf(
+            "This start runs without {layers}, which its settings ask for. It still runs in its sandbox. SAM's page for the app says why.",
+            &[("layers", &missing.join(", "))],
+        ),
+    )
 }
 
 /// The app's id and the arguments for the app, from `--app-id <id>
@@ -238,10 +276,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
     }
     let rec = run(
         &mut entry,
-        &LaunchOptions {
-            args: rest,
-            ..Default::default()
-        },
+        &launch_options(rest),
         &app.config,
         &app.paths,
         &host,
@@ -420,5 +455,20 @@ mod tests {
         assert_eq!(found, Some(gui));
         assert_eq!(missing, None, "a missing AppImage file is no SAM window");
         assert_eq!(unset, None);
+    }
+
+    /// Review K-4: a start from the menu is told at once when it lacks a
+    /// protection layer, and the notification names each missing layer.
+    #[test]
+    fn a_menu_start_is_told_when_a_protection_layer_is_missing() {
+        let opts = launch_options(vec!["a.txt".into()]);
+        assert_eq!(opts.args, ["a.txt"]);
+        assert!(
+            opts.on_missing_layers.is_some(),
+            "the menu start asks to be told"
+        );
+        let (title, body) = missing_layers_notice("Notes", &["Landlock".into(), "seccomp".into()]);
+        assert!(title.contains("Notes"), "{title}");
+        assert!(body.contains("Landlock, seccomp"), "{body}");
     }
 }

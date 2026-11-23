@@ -70,6 +70,8 @@ fn main() {
     // from std::process::Command either way.
     // SAFETY: called first in main, before any other thread exists.
     unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+    // What this program inherited never reaches an app (review F6).
+    sam_core::util::close_inherited_on_exec();
     // Messages in the user's language (before any other thread starts).
     sam_core::i18n::init(true);
     let cli = Cli::parse();
@@ -884,6 +886,14 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
                 for n in &pv.notes {
                     outln!("# note: {n}");
+                }
+                if !pv.app_variables.is_empty() {
+                    outln!(
+                        "# set by SAM's helper for the app, after its layers: {}",
+                        sam_core::util::shell_join(
+                            pv.app_variables.iter().map(|(k, v)| format!("{k}={v}"))
+                        )
+                    );
                 }
                 outln!("{}", pretty_command(&pv.argv));
             });

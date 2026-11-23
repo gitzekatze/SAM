@@ -141,6 +141,25 @@ fn option(name: &str) -> Option<(Kind, usize)> {
     })
 }
 
+/// Where Bubblewrap's own options end in `argv`, read the way Bubblewrap
+/// reads them, each option with its values: the index of the `--` that
+/// ends them, or of the first word that is not an option. A value that
+/// reads `--` (an AppImage file called `--`, a variable set to it) is a
+/// value, never the end (review F5). `None` for an option Bubblewrap does
+/// not know or one whose values are missing.
+pub fn options_end(argv: &[String]) -> Option<usize> {
+    let mut i = 0;
+    while i < argv.len() {
+        let a = argv[i].as_str();
+        if a == "--" || !a.starts_with("--") {
+            return Some(i);
+        }
+        let (_, n) = option(a)?;
+        i += 1 + n;
+    }
+    (i == argv.len()).then_some(i)
+}
+
 /// Reads `bwrap`'s arguments the way Bubblewrap does: options until `--`
 /// or the first word that is not an option, then the command. Refuses an
 /// option a room never gets and any it does not know.

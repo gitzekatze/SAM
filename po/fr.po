@@ -8537,6 +8537,25 @@ msgstr ""
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:213
+msgid "{app} is running without some of its protection"
+msgstr "{app} fonctionne sans une partie de sa protection"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:217
+msgid ""
+"This start runs without {layers}, which its settings ask for. It still runs "
+"in its sandbox. SAM's page for the app says why."
+msgstr ""
+"Ce lancement se fait sans {layers}, que ses réglages demandent. L'app reste "
+"dans son bac à sable. La page de l'app dans SAM dit pourquoi."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/wayland_ctx.rs:112
+msgid "the compositor did not answer within {seconds} seconds"
+msgstr "le compositeur n'a pas répondu en {seconds} secondes"
+
 #~ msgid "Additional folders the app can read but not change."
 #~ msgstr ""
 #~ "Dossiers supplémentaires que l’application peut lire, mais pas modifier."

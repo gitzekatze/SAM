@@ -581,6 +581,68 @@ pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Creates `dir` for this user only (0700), with the folders between `base`
+/// and it, and makes those that exist already (an older SAM made them
+/// readable for everyone) private too: an app's private home, its own
+/// layer of the app folder and what SAM moved aside hold its data, which
+/// other users on the computer must not read (review F4; Flatpak does the
+/// same for `~/.var/app`). A folder whose mode cannot be changed (a
+/// filesystem without modes) stays as it is.
+pub fn private_dirs(base: &Path, dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)?;
+    for d in dir
+        .ancestors()
+        .take_while(|d| *d != base && d.starts_with(base))
+    {
+        let _ = fs::set_permissions(d, fs::Permissions::from_mode(0o700));
+    }
+    Ok(())
+}
+
+/// Marks every open descriptor from 3 up close-on-exec, so a descriptor
+/// this program inherited without that mark (a terminal's or launcher's
+/// leak, a shell's `exec 3<>/dev/tty`) never reaches a program it starts,
+/// an app's sandbox above all: Bubblewrap passes on what it gets (review
+/// F6). This program can still use them. Called first thing by SAM's
+/// programs that start apps. Linux 5.11 marks them all at once; older
+/// kernels go through `/proc/self/fd`.
+pub fn close_inherited_on_exec() {
+    // SAFETY: close_range with CLOSE_RANGE_CLOEXEC only sets a flag on this
+    // process's own descriptors; it closes nothing.
+    let marked = unsafe {
+        libc::syscall(
+            libc::SYS_close_range,
+            3u32,
+            u32::MAX,
+            libc::CLOSE_RANGE_CLOEXEC,
+        )
+    };
+    if marked == 0 {
+        return;
+    }
+    let open: Vec<i32> = fs::read_dir("/proc/self/fd")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_str()?.parse().ok())
+        .filter(|fd| *fd > 2)
+        .collect();
+    for fd in open {
+        // SAFETY: fcntl on a descriptor number only reads and sets its
+        // flags; one closed in between gives EBADF, which is ignored.
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags >= 0 {
+                libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

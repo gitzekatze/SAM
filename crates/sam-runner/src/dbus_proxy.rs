@@ -44,12 +44,78 @@ pub fn wanted_name(line: &str) -> Option<String> {
     sam_core::permissions::is_bus_name(name).then(|| name.to_string())
 }
 
+/// The proxy's filter for `perms`: what the app may talk to and own, and
+/// the names the settings allow that SAM refused (name, why).
+/// `may_own` is the start's full check of a name ([`crate::own_names::NameCheck`]).
+///
+/// The tray's item names are exempt from the check only as the exact names
+/// SAM chose ([`DbusBusPerms::tray_own_names`]), never as anything that
+/// starts like one. The numbered instance names SAM adds for KDE apps
+/// (`org.kde.kdenlive-3`) pass the same checks as the name itself; one that
+/// fails is left out without a word, as nobody asked for it (audit L-F13).
+fn filter_args(
+    perms: &DbusBusPerms,
+    activatable: &std::collections::BTreeSet<String>,
+    app_id: &str,
+    may_own: &dyn Fn(&str) -> bool,
+) -> (Vec<String>, Vec<(String, String)>) {
+    let mut args = vec!["--filter".to_string()];
+    for name in &perms.allow {
+        if perms.deny.iter().any(|d| d == name) {
+            continue;
+        }
+        args.push(format!("--talk={name}"));
+    }
+    let tray_names = perms.tray_own_names();
+    let mut refused = Vec::new();
+    for name in &perms.own {
+        // The tray's item names are SAM's own choice, never refused.
+        let tray = tray_names.contains(name);
+        if let Some(why) = (!tray)
+            .then(|| sam_core::permissions::refuse_own_name(name, activatable))
+            .flatten()
+        {
+            refused.push((name.clone(), why));
+            continue;
+        }
+        args.push(format!("--own={name}"));
+        if !tray && !name.ends_with('*') {
+            // KDE apps that allow several instances register their name
+            // with the process number ("org.kde.kdenlive-3"); in the
+            // sandbox's own process list it is small.
+            args.extend(
+                (2..=16)
+                    .map(|pid| format!("{name}-{pid}"))
+                    .filter(|n| {
+                        sam_core::permissions::refuse_own_name(n, activatable).is_none()
+                            && may_own(n)
+                    })
+                    .map(|n| format!("--own={n}")),
+            );
+        }
+    }
+    for rule in &perms.calls {
+        args.push(format!("--call={rule}"));
+    }
+    for rule in &perms.broadcasts {
+        args.push(format!("--broadcast={rule}"));
+    }
+    // Let the app own names under its own id.
+    args.push(format!(
+        "--own=io.github.gitzekatze.SAM.{}.*",
+        app_id.replace('-', "_")
+    ));
+    (args, refused)
+}
+
 impl DbusProxy {
+    /// `may_own`: see [`filter_args`].
     pub fn start(
         host: &HostInfo,
         perms: &DbusBusPerms,
         runtime_dir: &Path,
         app_id: &str,
+        may_own: &dyn Fn(&str) -> bool,
     ) -> Result<DbusProxy> {
         let tool = host.tools.xdg_dbus_proxy.as_ref().context(sam_core::i18n::tr("xdg-dbus-proxy is not installed, so SAM cannot give the app filtered access to desktop services (file dialogs, notifications, the tray). Install the package xdg-dbus-proxy, or turn the app's session bus to No access."))?;
         let address = host
@@ -65,49 +131,10 @@ impl DbusProxy {
             .context(sam_core::i18n::tr("no session bus address"))?;
         let socket = runtime_dir.join("bus");
         let _ = std::fs::remove_file(&socket);
-        let mut args = vec![
-            address,
-            socket.to_string_lossy().into_owned(),
-            "--filter".into(),
-        ];
-        for name in &perms.allow {
-            if perms.deny.iter().any(|d| d == name) {
-                continue;
-            }
-            args.push(format!("--talk={name}"));
-        }
         let activatable = sam_core::host::activatable_bus_names(&host.home);
-        let mut refused = Vec::new();
-        for name in &perms.own {
-            // The tray's item names are SAM's own choice, never refused.
-            let tray = name.starts_with("org.kde.StatusNotifierItem-")
-                || name.starts_with("org.freedesktop.StatusNotifierItem-");
-            if let Some(why) = (!tray)
-                .then(|| sam_core::permissions::refuse_own_name(name, &activatable))
-                .flatten()
-            {
-                refused.push((name.clone(), why));
-                continue;
-            }
-            args.push(format!("--own={name}"));
-            if !tray && !name.ends_with('*') {
-                // KDE apps that allow several instances register their name
-                // with the process number ("org.kde.kdenlive-3"); in the
-                // sandbox's own process list it is small.
-                args.extend((2..=16).map(|pid| format!("--own={name}-{pid}")));
-            }
-        }
-        for rule in &perms.calls {
-            args.push(format!("--call={rule}"));
-        }
-        for rule in &perms.broadcasts {
-            args.push(format!("--broadcast={rule}"));
-        }
-        // Let the app own names under its own id.
-        args.push(format!(
-            "--own=io.github.gitzekatze.SAM.{}.*",
-            app_id.replace('-', "_")
-        ));
+        let (filter, refused) = filter_args(perms, &activatable, app_id, may_own);
+        let mut args = vec![address, socket.to_string_lossy().into_owned()];
+        args.extend(filter);
         // Diagnostics: with SAM_DBUS_LOG set to a file, the proxy logs every
         // call it passes, filters or answers itself (for finding calls an
         // app waits on, such as a blocked service it expects to exist).
@@ -252,6 +279,37 @@ mod tests {
         assert!(names.contains(&"org.freedesktop.StatusNotifierItem-2-1".to_string()));
         p.allow.retain(|n| n != "org.kde.StatusNotifierWatcher");
         assert!(p.tray_own_names().is_empty());
+    }
+
+    /// Audit L-F13: the numbered instance names SAM adds to an allowed name
+    /// (`org.example.App-3`) pass the same checks as the name itself, so an
+    /// on-demand service or another app's name among them is never granted
+    /// unchecked; and only the exact tray names SAM chose skip the check,
+    /// not every name that starts like one.
+    #[test]
+    fn added_instance_names_and_tray_look_alikes_are_checked() {
+        let mut p = DbusPerms::default().session;
+        let tray = p.tray_own_names();
+        p.own = vec!["org.example.App".into()];
+        p.own.extend(tray.iter().cloned());
+        // Not SAM's: a look-alike of a tray name in the desktop's protocol.
+        p.own.push("org.freedesktop.StatusNotifierItem-evil".into());
+        let activatable: std::collections::BTreeSet<String> =
+            ["org.example.App-3".to_string()].into();
+        // The start's check refuses another SAM app's name.
+        let may_own = |n: &str| n != "org.example.App-5";
+        let (args, refused) = super::filter_args(&p, &activatable, "appimage-x", &may_own);
+        let owns = |n: &str| args.contains(&format!("--own={n}"));
+        assert!(owns("org.example.App") && owns("org.example.App-2") && owns("org.example.App-16"));
+        assert!(!owns("org.example.App-3"), "an on-demand service: {args:?}");
+        assert!(!owns("org.example.App-5"), "another app's name: {args:?}");
+        assert!(tray.iter().all(|t| owns(t)), "SAM's tray names: {args:?}");
+        assert!(!owns("org.freedesktop.StatusNotifierItem-evil"), "{args:?}");
+        assert_eq!(
+            refused.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+            ["org.freedesktop.StatusNotifierItem-evil"],
+            "only names someone asked for are reported"
+        );
     }
 }
 

@@ -88,7 +88,7 @@ impl PrivateServices {
     /// Starts what is installed here (dbus-daemon, ssh-agent), below the
     /// runtime folder of `Paths::rooted(root)` (short socket paths).
     pub fn start(root: &std::path::Path) -> Self {
-        use std::process::{Command, Stdio};
+        use std::process::Stdio;
         let dir = test_runtime(root).join("services");
         let _ = std::fs::create_dir_all(&dir);
         let mut me = PrivateServices {
@@ -108,7 +108,7 @@ impl PrivateServices {
                     socket.display()
                 ),
             );
-            if let Ok(mut child) = Command::new("dbus-daemon")
+            if let Ok(mut child) = service("dbus-daemon")
                 .arg(format!("--config-file={}", conf.display()))
                 .args(["--nofork", "--print-address=1"])
                 .stdout(Stdio::piped())
@@ -129,7 +129,7 @@ impl PrivateServices {
         }
         if sam_core::util::which("ssh-agent").is_some() {
             let socket = dir.join("agent");
-            if let Ok(child) = Command::new("ssh-agent")
+            if let Ok(child) = service("ssh-agent")
                 .arg("-D")
                 .arg("-a")
                 .arg(&socket)
@@ -172,11 +172,211 @@ impl PrivateServices {
     }
 }
 
+/// A private service's command: the service ends with the test process
+/// however that ends (killed, a closed output pipe, an abort), when no
+/// `Drop` runs, and it inherits no descriptor above the standard three.
+/// On 2026-11-23 a dbus-daemon and an ssh-agent that outlived their test
+/// held a build slot's lock for 5.5 hours.
+fn service(program: &str) -> std::process::Command {
+    use std::os::unix::process::CommandExt;
+    let mut c = std::process::Command::new(program);
+    // SAFETY: getpid has no preconditions.
+    let parent = unsafe { libc::getpid() };
+    // SAFETY: runs between fork and exec and calls only prctl, getppid,
+    // syscall(close_range), fcntl and _exit, which are async-signal-safe.
+    unsafe {
+        c.pre_exec(move || {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+            // The test process may have ended before prctl took effect.
+            if libc::getppid() != parent {
+                libc::_exit(1);
+            }
+            let marked = libc::syscall(
+                libc::SYS_close_range,
+                3u32,
+                u32::MAX,
+                libc::CLOSE_RANGE_CLOEXEC,
+            );
+            if marked != 0 {
+                // Before Linux 5.11: one by one.
+                for fd in 3..65536 {
+                    let flags = libc::fcntl(fd, libc::F_GETFD);
+                    if flags >= 0 {
+                        libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+                    }
+                }
+            }
+            Ok(())
+        });
+    }
+    c
+}
+
 impl Drop for PrivateServices {
     fn drop(&mut self) {
         for c in &mut self.children {
             let _ = c.kill();
             let _ = c.wait();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PrivateServices;
+    use std::fs;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::time::{Duration, Instant};
+
+    const NAME: &str =
+        "testenv::tests::private_services_end_with_the_test_process_that_started_them";
+    const CHILD: &str = "SAM_TEST_SERVICES_HOLDER";
+
+    /// Gone, or only a zombie waiting for its parent to collect it.
+    fn ended(pid: u32) -> bool {
+        match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+            Err(_) => true,
+            Ok(s) => s
+                .rsplit_once(')')
+                .is_some_and(|(_, rest)| rest.trim_start().starts_with('Z')),
+        }
+    }
+
+    /// TEST-LEAK (2026-11-23): a test process killed while it holds private
+    /// services takes them along, and they never held one of its
+    /// descriptors: a pipe the test process inherited reaches its end
+    /// once the test process is gone, and both services have ended. (A
+    /// service that outlived its test held a build lock for hours.)
+    #[test]
+    fn private_services_end_with_the_test_process_that_started_them() {
+        if let Some(dir) = std::env::var_os(CHILD) {
+            let services = PrivateServices::start(std::path::Path::new(&dir));
+            let pids: Vec<String> = services
+                .children
+                .iter()
+                .map(|c| c.id().to_string())
+                .collect();
+            sam_core::outln!("pids: {}", pids.join(" "));
+            loop {
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        }
+        if sam_core::util::which("dbus-daemon").is_none()
+            || sam_core::util::which("ssh-agent").is_none()
+        {
+            crate::contracts::skip("dbus-daemon and ssh-agent are needed")
+                .unwrap_or_else(|e| panic!("{e}"));
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        // A pipe whose write end the test process inherits, as it inherits
+        // a build lock (only it: other tests here start programs too).
+        let mut ends = [0; 2];
+        // SAFETY: pipe2 writes two descriptors into the array.
+        let made = unsafe { libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC) };
+        assert_eq!(made, 0);
+        // SAFETY: both descriptors were just made and belong to this test.
+        let (read, write) =
+            unsafe { (OwnedFd::from_raw_fd(ends[0]), OwnedFd::from_raw_fd(ends[1])) };
+        let inherited = write.as_raw_fd();
+        let mut holder = std::process::Command::new(std::env::current_exe().unwrap());
+        holder
+            .args(["--exact", NAME, "--nocapture", "--test-threads=1"])
+            .env(CHILD, root.path())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+        // SAFETY: between fork and exec only dup2, which is
+        // async-signal-safe; the copy has no close-on-exec mark.
+        unsafe {
+            std::os::unix::process::CommandExt::pre_exec(&mut holder, move || {
+                if libc::dup2(inherited, 10) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        // Ended however this test ends, a failed assertion too.
+        struct Holder(std::process::Child);
+        impl Drop for Holder {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let mut holder = Holder(holder.spawn().unwrap());
+        // From now on only the holder holds the write end.
+        drop(write);
+        let out = holder.0.stdout.take().unwrap();
+        // The holder's line with the services' numbers, within a minute.
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for l in std::io::BufRead::lines(std::io::BufReader::new(out)).map_while(Result::ok) {
+                // After the test harness's "test NAME ... " on the same line.
+                if let Some((_, rest)) = l.split_once("pids: ") {
+                    let _ = tx.send(rest.to_string());
+                    return;
+                }
+            }
+        });
+        let line = rx
+            .recv_timeout(Duration::from_secs(60))
+            .unwrap_or_else(|_| panic!("the holder never said which services it started"));
+        let pids: Vec<u32> = line
+            .split_whitespace()
+            .map(|p| p.parse().unwrap())
+            .collect();
+        assert_eq!(pids.len(), 2, "both services started: {line:?}");
+        // While they run, neither holds the pipe the holder inherited.
+        let pipe = {
+            use std::os::unix::fs::MetadataExt;
+            let ino = fs::metadata(format!("/proc/self/fd/{}", read.as_raw_fd()))
+                .unwrap()
+                .ino();
+            format!("pipe:[{ino}]")
+        };
+        // (ssh-agent hides its descriptors from everyone: it makes itself
+        // non-dumpable. dbus-daemon shows them.)
+        let mut looked = 0;
+        for p in &pids {
+            let Ok(fds) = fs::read_dir(format!("/proc/{p}/fd")) else {
+                continue;
+            };
+            let held: Vec<String> = fds
+                .flatten()
+                .filter_map(|e| fs::read_link(e.path()).ok())
+                .map(|t| t.display().to_string())
+                .collect();
+            assert!(!held.contains(&pipe), "service {p} holds {pipe}: {held:?}");
+            looked += 1;
+        }
+        assert!(looked > 0, "at least one service shows its descriptors");
+        holder.0.kill().unwrap();
+        holder.0.wait().unwrap();
+        // The pipe ends when nobody holds its write end any more.
+        let fd = read.as_raw_fd();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut buf = [0u8; 1];
+        let at_end = loop {
+            let mut pfd = libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // SAFETY: one valid pollfd.
+            if unsafe { libc::poll(&mut pfd, 1, 200) } > 0 {
+                // SAFETY: reads at most one byte into `buf`.
+                break unsafe { libc::read(fd, buf.as_mut_ptr().cast(), 1) } == 0;
+            }
+            if Instant::now() > deadline {
+                break false;
+            }
+        };
+        assert!(at_end, "no service kept the test process's descriptor");
+        while !pids.iter().all(|p| ended(*p)) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        for p in &pids {
+            assert!(ended(*p), "service {p} ended with the test process");
         }
     }
 }

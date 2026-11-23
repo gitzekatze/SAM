@@ -59,9 +59,22 @@ fn the_sandbox_check_passes_and_catches_mismatches() {
         .id;
 
     // 1. A correct sandbox: nothing fails.
-    app.set_permissions(&id, PermissionSet::strict_gui())
-        .unwrap();
+    // A variable of the app's own: SAM's helper sets it only after its
+    // layers (review SB-5), and the check, which runs there, still sees it.
+    let mut given = PermissionSet::strict_gui();
+    given
+        .environment
+        .set
+        .insert("SAM_TEST_GIVEN".into(), "a given value".into());
+    app.set_permissions(&id, given).unwrap();
     let out = app.verify(&id).unwrap();
+    assert!(
+        out.report
+            .results
+            .iter()
+            .any(|r| r.title == "Variable SAM_TEST_GIVEN" && r.ok == Some(true)),
+        "the app's variable is checked where the app gets it"
+    );
     let failed: Vec<_> = out
         .report
         .failed()

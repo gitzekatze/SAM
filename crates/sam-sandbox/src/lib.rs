@@ -1404,6 +1404,7 @@ impl Bubblewrap {
             ctx,
             a: Args::default(),
             notes: Vec::new(),
+            exec_env: Vec::new(),
             opened,
             views,
         };
@@ -1435,6 +1436,7 @@ impl Bubblewrap {
         Ok(SandboxCommand {
             program: bwrap.path.clone(),
             args: s.a.v,
+            exec_env: s.exec_env,
             notes: s.notes,
             generated_files,
         })
@@ -1446,6 +1448,8 @@ struct Section<'c> {
     ctx: &'c LaunchContext,
     a: Args,
     notes: Vec<String>,
+    /// The app's own variables, for SAM's helper to set ([`SandboxCommand::exec_env`]).
+    exec_env: Vec<(String, String)>,
     /// The files named on the command line that are granted, worked out
     /// once per start (audit S-F13: four times before).
     opened: Vec<(PathBuf, bool)>,
@@ -2141,6 +2145,10 @@ impl Section<'_> {
         let h = &ctx.host;
         let home = h.home.clone();
         let run = Bubblewrap::runtime_dir(ctx);
+        // Where the app starts, never a folder it cannot see (audit L-F16:
+        // `cd ~/private/clientX && sam-jail run app` told the app that
+        // path, even without access to the home).
+        let start_dir = self.start_dir().to_string_lossy().into_owned();
         let a = &mut self.a;
         // Environment.
         a.setenv("HOME", home.to_string_lossy());
@@ -2175,18 +2183,27 @@ impl Section<'_> {
             a.setenv("SDL_AUDIODRIVER", "dummy");
             a.setenv("SDL_AUDIO_DRIVER", "dummy");
         }
-        for k in ENV_FORWARD
-            .iter()
-            .map(|s| s.to_string())
-            .chain(p.environment.passthrough.iter().cloned())
-        {
-            if let Some(v) = forwarded_value(&k, |n| std::env::var(n).ok()) {
-                a.setenv(&k, v);
+        for k in ENV_FORWARD {
+            if let Some(v) = forwarded_value(k, |n| std::env::var(n).ok()) {
+                a.setenv(k, v);
+            }
+        }
+        // The app's own variables, last, so they win as before. With SAM's
+        // helper they go to the helper's file instead: it sets them for the
+        // app alone once its layers are in place. Its own loader never sees
+        // them, so `LD_PRELOAD=/opt/app/lib/x.so` or `LD_LIBRARY_PATH` cannot
+        // run the app's code before Landlock and the syscall filter (review
+        // SB-5).
+        let mut own: Vec<(String, String)> = Vec::new();
+        for k in &p.environment.passthrough {
+            if let Some(v) = forwarded_value(k, |n| std::env::var(n).ok()) {
+                own.push((k.clone(), v));
             }
         }
         for (k, v) in ctx.resolved_app_env(&ctx.appdir_in_sandbox()) {
-            a.setenv(&k, v);
+            own.push((k, v));
         }
+        own.push(("OWD".into(), start_dir));
         for (k, v) in &p.environment.set {
             // Only proper variable names; values may be anything but NUL.
             let valid = k
@@ -2195,8 +2212,32 @@ impl Section<'_> {
                 .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
                 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
             if valid && !v.contains('\0') {
-                a.setenv(k, v);
+                own.push((k.clone(), v.clone()));
             }
+        }
+        if ctx.helper.is_some() {
+            self.exec_env = own;
+        } else {
+            for (k, v) in own {
+                a.setenv(&k, v);
+            }
+        }
+    }
+
+    /// The folder the app starts in: the one it was started from, if the app
+    /// sees it (granted, or holding a file named on the command line, `hx
+    /// notes.txt`, so that relative names find the file); else its home.
+    fn start_dir(&self) -> PathBuf {
+        let ctx = self.ctx;
+        let in_owd = self
+            .opened
+            .iter()
+            .any(|(p, _)| p.starts_with(&ctx.owd) || ctx.owd.starts_with(p));
+        let views = &self.views;
+        if views.visible(&ctx.owd) || views.visible(&resolve(&ctx.owd)) || in_owd {
+            ctx.owd.clone()
+        } else {
+            ctx.host.home.clone()
         }
     }
 
@@ -2204,23 +2245,9 @@ impl Section<'_> {
     fn finish_command(&mut self) {
         let ctx = self.ctx;
         let p = &ctx.permissions;
-        let h = &ctx.host;
-        let home = h.home.clone();
+        // Working directory: the same folder as `$OWD`.
+        let chdir = self.start_dir();
         let a = &mut self.a;
-        // Working directory.
-        // The folder it was started in, if the app sees it: granted, or
-        // holding a file named on the command line (`hx notes.txt`), so that
-        // relative names find the file.
-        let in_owd = self
-            .opened
-            .iter()
-            .any(|(p, _)| p.starts_with(&ctx.owd) || ctx.owd.starts_with(p));
-        let views = &self.views;
-        let chdir = if views.visible(&ctx.owd) || views.visible(&resolve(&ctx.owd)) || in_owd {
-            ctx.owd.clone()
-        } else {
-            home.clone()
-        };
         a.push("--chdir").push(chdir.to_string_lossy());
 
         // Room service's socket.
@@ -4462,6 +4489,56 @@ mod guard_tests {
         for bad in ["9BAD", "A-B", "NUL"] {
             assert!(!has_seq(&a, &["--setenv", bad]), "{bad} is refused");
         }
+    }
+
+    /// Review SB-5: with SAM's helper, the app's own variables (set ones,
+    /// its AppImage variables, `$OWD`) are not given to Bubblewrap, whose
+    /// first program is the helper, but handed to the helper to set for the
+    /// app alone; SAM's own variables stay with Bubblewrap. Without the
+    /// helper, Bubblewrap sets them all, as before. Audit L-F16: `$OWD` is
+    /// the folder the app starts in.
+    #[test]
+    fn the_apps_variables_go_to_the_helper_never_to_its_start() {
+        let mut ctx = sample_context();
+        ctx.permissions
+            .environment
+            .set
+            .insert("LD_PRELOAD".into(), "/opt/app/usr/lib/libx.so".into());
+        ctx.owd = "/home/u/private/clientX".into();
+        let direct = Bubblewrap.build(&ctx).unwrap();
+        assert!(has_seq(
+            &direct.args,
+            &["--setenv", "LD_PRELOAD", "/opt/app/usr/lib/libx.so"]
+        ));
+        assert!(direct.exec_env.is_empty());
+        ctx.helper = Some(sam_core::sandbox::SandboxHelper {
+            binary: "/usr/bin/sam-jail-run".into(),
+            spec: "/tmp/spec.json".into(),
+        });
+        let helped = Bubblewrap.build(&ctx).unwrap();
+        for own in ["LD_PRELOAD", "APPDIR", "OWD"] {
+            assert!(
+                !has_seq(&helped.args, &["--setenv", own]),
+                "{own} not for the helper's start"
+            );
+            assert!(
+                helped.exec_env.iter().any(|(k, _)| k == own),
+                "{own} for the app"
+            );
+        }
+        assert!(has_seq(
+            &helped.args,
+            &["--setenv", "SAM_SANDBOX", "bubblewrap"]
+        ));
+        let owd: Vec<&str> = helped
+            .exec_env
+            .iter()
+            .filter(|(k, _)| k == "OWD")
+            .map(|(_, v)| v.as_str())
+            .collect();
+        let home = ctx.host.home.to_string_lossy();
+        assert_eq!(owd, [home.as_ref()], "the folder the app starts in");
+        assert!(has_seq(&helped.args, &["--chdir", &home]));
     }
 
     /// SAM's helper folder /run/sam/bin comes first on the app's PATH only

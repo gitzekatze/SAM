@@ -688,14 +688,47 @@ fn list_dev(dir: &str, prefix: &str) -> Vec<PathBuf> {
 }
 
 /// What a check result applies to: the settings, SAM's version, the
-/// relevant preferences and what this computer offers. A passing check with
-/// the same key needs no repeat.
+/// relevant preferences and what this computer offers, with the kernel and
+/// the programs that build the sandbox (Bubblewrap, SAM's helper, pasta). A
+/// passing check with the same key needs no repeat. An updated kernel or
+/// Bubblewrap, or a rebuilt SAM (all development builds carry the same
+/// version number), is checked again (audit: the key left them out).
 pub fn check_key(app: &AppEntry, cfg: &Config, host: &HostInfo) -> String {
+    check_key_with(
+        app,
+        cfg,
+        host,
+        crate::find_helper(),
+        sam_core::util::which("pasta"),
+    )
+}
+
+/// [`check_key`] with SAM's helper and pasta given.
+fn check_key_with(
+    app: &AppEntry,
+    cfg: &Config,
+    host: &HostInfo,
+    helper: Option<PathBuf>,
+    pasta: Option<PathBuf>,
+) -> String {
+    // Which build of a program: its size and time, which an update or a
+    // new build changes (not its path: SAM's AppImage shows it at a new
+    // place every time it runs).
+    let build = |p: Option<&Path>| {
+        p.and_then(|p| std::fs::metadata(p).ok()).map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            (m.size(), m.mtime(), m.mtime_nsec())
+        })
+    };
     let host_state = serde_json::json!({
         "sockets": &host.sockets,
         "landlock": host.landlock_abi,
         "proxy": host.tools.xdg_dbus_proxy.is_some(),
         "gpu": host.gpu_devices,
+        "kernel": host.kernel,
+        "bwrap": build(host.tools.bwrap.as_ref().map(|t| t.path.as_path())),
+        "helper": build(helper.as_deref()),
+        "pasta": build(pasta.as_deref()),
     });
     let data = serde_json::json!({
         "sam": env!("CARGO_PKG_VERSION"),
@@ -1272,6 +1305,45 @@ mod tests {
             let mut h = host.clone();
             change(&mut h);
             assert_ne!(key(&h), same, "{what}");
+        }
+    }
+
+    /// Audit: a passing check is repeated when the kernel changed or a
+    /// program that builds the sandbox is another build (an updated
+    /// Bubblewrap, a rebuilt SAM helper, a new pasta), not only when SAM's
+    /// version number or the settings did. A check of the same computer
+    /// keeps its key.
+    #[test]
+    fn the_check_is_repeated_after_the_kernel_or_a_sandbox_program_changed() {
+        let t = tempfile::tempdir().unwrap();
+        let mut h = host_in(t.path());
+        let (cfg, app) = (Config::default(), AppEntry::default());
+        let file = |name: &str, body: &str| {
+            let p = t.path().join(name);
+            fs::write(&p, body).unwrap();
+            p
+        };
+        let (bwrap, helper, pasta) = (
+            file("bwrap", "1"),
+            file("sam-jail-run", "1"),
+            file("pasta", "1"),
+        );
+        h.tools.bwrap = Some(sam_core::host::Tool {
+            path: bwrap.clone(),
+            version: None,
+        });
+        let key =
+            |h: &HostInfo| check_key_with(&app, &cfg, h, Some(helper.clone()), Some(pasta.clone()));
+        let before = key(&h);
+        assert_eq!(key(&h), before, "the same computer, the same key");
+        let mut newer = h.clone();
+        newer.kernel = format!("{}-updated", h.kernel);
+        assert_ne!(key(&newer), before, "another kernel");
+        for p in [&bwrap, &helper, &pasta] {
+            let base = key(&h);
+            // A build of another size (its time may not change in a test).
+            fs::write(p, "a new build").unwrap();
+            assert_ne!(key(&h), base, "another build of {}", p.display());
         }
     }
 

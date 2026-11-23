@@ -47,7 +47,6 @@ where to look.
 | [audio-sockets](#audio-sockets) | PipeWire and PulseAudio | Loses a feature | partly |
 | [dbus-buses](#dbus-buses) | D-Bus and desktop services | Loses a feature | partly |
 | [dbus-dangerous-names](#dbus-dangerous-names) | D-Bus and desktop services | Nothing breaks | fully |
-| [dbus-command-terminals](#dbus-command-terminals) | D-Bus and desktop services | Nothing breaks | partly |
 | [dbus-integrations](#dbus-integrations) | D-Bus and desktop services | Loses a feature | partly |
 | [portal-openuri-ask](#portal-openuri-ask) | xdg-desktop-portal | Warns | partly |
 | [portal-interfaces](#portal-interfaces) | xdg-desktop-portal | Loses a feature | partly |
@@ -56,7 +55,7 @@ where to look.
 | [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 | [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 
-16 of 37 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
+16 of 36 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
 
 ## bwrap-core
 
@@ -67,7 +66,7 @@ Bubblewrap builds the sandbox with these options and behaves as documented: sepa
 - **SAM functions that rely on it:** [10](functions.md#10), [11](functions.md#11), [19](functions.md#19), [20](functions.md#20)
 - **Quick check:** `bwrap-runs`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (fully)
-- **Checked first by:** `breakout.rs`, `evil.rs`, `exit_codes.rs`, `full_home.rs`, `layers.rs`, `local_network.rs`, `matrix.rs`, `menu_notice.rs`, `moved_aside_message.rs`, `odd_names.rs`, `overlay_fallback.rs`, `pipes.rs`, `room_service.rs`, `room_service_compare.rs`, `room_service_fd_limit.rs`, `room_service_fd_wait.rs`, `room_service_glycin.rs`, `room_service_identity.rs`, `room_service_local.rs`, `room_teardown.rs`, `sandbox.rs`, `start_check.rs`, `starts.rs`, `stop.rs`, `teardown.rs`, `terminal.rs`, `trusted_helpers.rs`, `unpack.rs`, `verify.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `exit_codes.rs`, `full_home.rs`, `launch_hygiene.rs`, `layers.rs`, `local_network.rs`, `matrix.rs`, `missing_layers_told.rs`, `moved_aside_message.rs`, `odd_names.rs`, `overlay_fallback.rs`, `pipes.rs`, `room_service.rs`, `room_service_compare.rs`, `room_service_fd_limit.rs`, `room_service_fd_wait.rs`, `room_service_glycin.rs`, `room_service_identity.rs`, `room_service_local.rs`, `room_teardown.rs`, `sandbox.rs`, `start_check.rs`, `stop.rs`, `teardown.rs`, `terminal.rs`, `trusted_helpers.rs`, `unpack.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:bwrap`, `path:/usr/bin/bwrap`, `option:--unshare-user`, `option:--unshare-pid`, `option:--unshare-uts`, `option:--unshare-ipc`, `option:--unshare-cgroup-try`, `option:--unshare-net`, `option:--unshare-all`, `option:--uid`, `option:--gid`, `option:--die-with-parent`, `option:--new-session`, `option:--cap-drop`, `option:--clearenv`, `option:--setenv`, `option:--chdir`, `option:--proc`, `option:--dev`, `option:--tmpfs`, `option:--dir`, `option:--perms`, `option:--symlink`, `option:--bind`, `option:--bind-try`, `option:--ro-bind`, `option:--ro-bind-try`, `option:--dev-bind`, `option:--dev-bind-try`, `option:--remount-ro`, `option:--hostname`, `option:--json-status-fd`, `option:--seccomp`, `option:--version`, `option:-V`
 - **If it breaks:** Read the Bubblewrap release notes for the options above. A renamed option: build the old or new form from the version `bwrap --version` reports (sam-sandbox). A changed behavior: the breakout and matrix tests name the permission; fix the command in sam-sandbox/src/lib.rs.
 
@@ -253,7 +252,7 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 - **SAM functions that rely on it:** [16](functions.md#16), [17](functions.md#17)
 - **Quick check:** `seccomp`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `every_known_syscall_has_been_reviewed` (fully)
-- **Checked first by:** `breakout.rs`, `evil.rs`, `room_service.rs`, `room_service_compare.rs`, `room_service_glycin.rs`, `room_service_local.rs`, `verify.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `launch_hygiene.rs`, `room_service.rs`, `room_service_compare.rs`, `room_service_glycin.rs`, `room_service_local.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `syscall:*`
 - **If it breaks:** A filter that fails to load stops the start. When the syscall review check reports a new syscall, decide whether the baseline blocks it (kernel.rs) and add it to docs/syscalls-reviewed.txt.
 
@@ -329,7 +328,7 @@ Devices appear under these names: GPUs as /dev/dri/card* and renderD*, NVIDIA as
 - **SAM functions that rely on it:** [15](functions.md#15)
 - **Quick check:** none (only the tests below)
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Device checks only assert where the computer has the device; CI has no GPU, sound card, camera or gamepad.)
-- **Covers:** `path:/dev/bus/usb`, `path:/dev/dri`, `path:/dev/dri/card0`, `path:/dev/dri/renderD128`, `path:/dev/input`, `path:/dev/nvidia`, `path:/dev/nvidia0`, `path:/dev/nvidiactl`, `path:/dev/snd`, `path:/dev/uinput`, `path:/dev/video`, `path:/run/udev/data`, `path:/sys/bus`, `path:/sys/class`, `path:/sys/dev`, `path:/sys/devices`, `path:/sys/devices/system/cpu`, `path:/sys/module`
+- **Covers:** `path:/dev/bus/usb`, `path:/dev/dri`, `path:/dev/dri/card0`, `path:/dev/dri/renderD128`, `path:/dev/input`, `path:/dev/nvidia`, `path:/dev/snd`, `path:/dev/uinput`, `path:/dev/video`, `path:/run/udev/data`, `path:/sys/bus`, `path:/sys/class`, `path:/sys/dev`, `path:/sys/devices`, `path:/sys/devices/system/cpu`, `path:/sys/module`
 - **If it breaks:** A renamed device is simply not passed in: the app loses that device, never gains another. Add the new name in sam-sandbox (devices) and host.rs (gpu_devices).
 
 ## wayland-socket
@@ -415,18 +414,6 @@ These desktop services can start programs outside the sandbox, control the deskt
 - **Tests:** `every_hostile_appimage_fails_to_escape`, `a_password_service_allowed_by_name_counts_as_the_keyring_switch` (fully)
 - **Covers:** `dbus:org.freedesktop.[*]`, `dbus:org.freedesktop.DBus`, `dbus:org.freedesktop.systemd1`, `dbus:org.freedesktop.Flatpak`, `dbus:org.freedesktop.portal.Flatpak`, `dbus:org.freedesktop.secrets`, `dbus:org.gnome.Shell`, `dbus:org.gnome.SessionManager`, `dbus:org.kde.KWin`, `dbus:org.kde.kded`, `dbus:org.kde.kglobalaccel`, `dbus:org.kde.klauncher`, `dbus:org.kde.krunner`, `dbus:org.kde.ksmserver`, `dbus:org.kde.kwalletd`, `dbus:org.kde.kwalletd5`, `dbus:org.kde.kwalletd6`, `dbus:org.kde.plasmashell`, `dbus:ca.desrt.dconf`, `dbus:org.gnome.keyring`, `dbus:org.gnome.OnlineAccounts`
 - **If it breaks:** A desktop that adds a new launcher service: add it to DANGEROUS_BUS_NAMES (sam-core permissions.rs) and to the evil suite.
-
-## dbus-command-terminals
-
-These terminals open a window running any command they are sent over the session bus (GNOME Terminal's Factory0.CreateInstance and Terminal0.Exec, Konsole's and Yakuake's runCommand, Xfce Terminal's Launch, Guake's execute_command, a GApplication's forwarded command line for Console, Ptyxis and Tilix). The filtered bus blocks them unless allowed by name; this list rates allowing one, or a function of it, Dangerous, and repair never offers one from what the app printed.
-
-- **Component:** D-Bus and desktop services ([releases](https://gitlab.freedesktop.org/dbus/dbus/-/tags))
-- **When it breaks:** nothing breaks: the assumption only ever narrows access.
-- **SAM functions that rely on it:** [7](functions.md#7), [9](functions.md#9), [13](functions.md#13)
-- **Quick check:** none (only the tests below)
-- **Tests:** `a_terminal_that_runs_commands_is_dangerous_to_reach`, `the_apps_own_words_never_give_it_a_terminal_to_talk_to` (partly: The tests check the rating and the repair offer, not the terminals themselves: whether a terminal runs a command it is sent is read from its documentation. A terminal not on the list is blocked by the filter, but rated as an ordinary service when someone allows it.)
-- **Covers:** `dbus:org.gnome.Terminal`, `dbus:org.gnome.Console`, `dbus:org.gnome.Ptyxis`, `dbus:com.gexperts.Tilix`, `dbus:org.kde.konsole`, `dbus:org.kde.yakuake`, `dbus:org.xfce.Terminal`, `dbus:org.guake3.RemoteControl`
-- **If it breaks:** A terminal or another program that runs commands for whoever asks over D-Bus: add its bus name to COMMAND_TERMINAL_BUS_NAMES (sam-core permissions.rs).
 
 ## dbus-integrations
 
