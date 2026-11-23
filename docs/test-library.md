@@ -644,21 +644,22 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-68 tests.
+69 tests.
 
 | Promise | Test |
 |---|---|
 | A file name with bytes that are not text is named in the message, never passed on changed and never a crash (audit S-F15). | [`a_file_name_that_is_not_text_is_refused_by_name`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L305) |
 | Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1698) |
 | A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1710) |
-| `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L355) |
-| Every state, risk level and warning severity is shown in its own words: `list`, `info`, `add`, `set` and `evaluate` tell the user an app is Unsafe, Dangerous or lacks its protection only through these. | [`every_state_risk_and_severity_is_shown_in_its_own_words`](../crates/sam-jail-cli/src/output.rs#L419) |
-| The risk line names the level and the permissions that set it. | [`the_risk_line_names_the_level_and_what_sets_it`](../crates/sam-jail-cli/src/output.rs#L450) |
-| Every warning is shown with its severity, title and message. | [`every_warning_is_shown_with_its_severity_title_and_message`](../crates/sam-jail-cli/src/output.rs#L468) |
-| A name longer than its column is cut to the column with "…", so an app cannot push SAM's real risk and state out of their columns with a long name of its own (a fake "Harmless  Ready" in the name would line up under them). | [`a_long_name_is_cut_to_its_column`](../crates/sam-jail-cli/src/output.rs#L495) |
-| `sam-jail command` shows the sandbox command one option with its values per line, every token in order, and after the real `--` the program with its arguments; joined again it is exactly the command that runs. | [`the_shown_command_is_the_one_that_runs`](../crates/sam-jail-cli/src/output.rs#L512) |
-| The dependency report shows the system libraries on one line, every other missing library on its own (NOT FOUND when the host lacks it), only what the user still has to grant, and the notes. | [`the_dependency_report_shows_what_is_missing_and_still_needed`](../crates/sam-jail-cli/src/output.rs#L592) |
-| `info` shows the app's comment, why its profile is what it is, its dependency report and its warnings when it has them, and no empty sections when it has none. | [`info_shows_comment_reasons_dependencies_and_warnings`](../crates/sam-jail-cli/src/output.rs#L620) |
+| `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L361) |
+| Every state, risk level and warning severity is shown in its own words: `list`, `info`, `add`, `set` and `evaluate` tell the user an app is Unsafe, Dangerous or lacks its protection only through these. | [`every_state_risk_and_severity_is_shown_in_its_own_words`](../crates/sam-jail-cli/src/output.rs#L425) |
+| The risk line names the level and the permissions that set it. | [`the_risk_line_names_the_level_and_what_sets_it`](../crates/sam-jail-cli/src/output.rs#L456) |
+| Every warning is shown with its severity, title and message. | [`every_warning_is_shown_with_its_severity_title_and_message`](../crates/sam-jail-cli/src/output.rs#L474) |
+| A name longer than its column is cut to the column with "…", so an app cannot push SAM's real risk and state out of their columns with a long name of its own (a fake "Harmless  Ready" in the name would line up under them). | [`a_long_name_is_cut_to_its_column`](../crates/sam-jail-cli/src/output.rs#L501) |
+| `sam-jail command` shows the sandbox command one option with its values per line, every token in order, and after the real `--` the program with its arguments; joined again it is exactly the command that runs. | [`the_shown_command_is_the_one_that_runs`](../crates/sam-jail-cli/src/output.rs#L518) |
+| Every option of Bubblewrap stays on one line with its values, also those SAM's own command has that were split across lines before (`--uid 1000`, `--overlay-src`, `--overlay` with three values, `--remount-ro /`, `--json-status-fd 3`). | [`every_option_keeps_its_values_on_its_line`](../crates/sam-jail-cli/src/output.rs#L572) |
+| The dependency report shows the system libraries on one line, every other missing library on its own (NOT FOUND when the host lacks it), only what the user still has to grant, and the notes. | [`the_dependency_report_shows_what_is_missing_and_still_needed`](../crates/sam-jail-cli/src/output.rs#L634) |
+| `info` shows the app's comment, why its profile is what it is, its dependency report and its warnings when it has them, and no empty sections when it has none. | [`info_shows_comment_reasons_dependencies_and_warnings`](../crates/sam-jail-cli/src/output.rs#L662) |
 | The permission model is the base: it depends on no other SAM part, so every other part can use it without creating a cycle. | [`the_permission_model_depends_on_no_other_part`](../crates/sam-jail-cli/tests/architecture.rs#L59) |
 | The window contains no sandbox logic: it depends only on the permission model and reaches everything else through `sam-jail --json`, so the window and the command line always behave the same. | [`the_window_reaches_sam_only_through_the_command_line`](../crates/sam-jail-cli/tests/architecture.rs#L67) |
 | The parts that handle untrusted AppImage content or build the sandbox depend only on the parts below them, never on the operations layer, the command line or the window. | [`lower_parts_never_depend_on_higher_ones`](../crates/sam-jail-cli/tests/architecture.rs#L75) |
@@ -753,4 +754,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 667 automated Rust tests plus 7 scripted checks.
+Total: 668 automated Rust tests plus 7 scripted checks.

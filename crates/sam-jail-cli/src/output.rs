@@ -90,14 +90,20 @@ pub(crate) fn truncate(s: &str, n: usize) -> String {
     }
 }
 
-/// How many values follow a Bubblewrap option, so an option and its
-/// values stay on one line.
+/// How many values follow a Bubblewrap option, as bwrap 0.13's `--help`
+/// lists them, so an option and its values stay on one line.
 fn bwrap_arity(option: &str) -> usize {
     match option {
+        "--overlay" => 3,
         "--bind" | "--bind-try" | "--ro-bind" | "--ro-bind-try" | "--dev-bind"
-        | "--dev-bind-try" | "--symlink" | "--setenv" => 2,
-        "--proc" | "--dev" | "--tmpfs" | "--dir" | "--perms" | "--hostname" | "--chdir"
-        | "--cap-drop" | "--seccomp" => 1,
+        | "--dev-bind-try" | "--bind-fd" | "--ro-bind-fd" | "--symlink" | "--setenv" | "--file"
+        | "--bind-data" | "--ro-bind-data" | "--chmod" => 2,
+        "--proc" | "--dev" | "--tmpfs" | "--mqueue" | "--dir" | "--perms" | "--size"
+        | "--hostname" | "--chdir" | "--unsetenv" | "--uid" | "--gid" | "--userns"
+        | "--userns2" | "--pidns" | "--args" | "--argv0" | "--lock-file" | "--sync-fd"
+        | "--remount-ro" | "--overlay-src" | "--tmp-overlay" | "--ro-overlay" | "--exec-label"
+        | "--file-label" | "--cap-add" | "--cap-drop" | "--seccomp" | "--add-seccomp-fd"
+        | "--block-fd" | "--userns-block-fd" | "--info-fd" | "--json-status-fd" => 1,
         _ => 0,
     }
 }
@@ -557,6 +563,42 @@ mod tests {
             .map(|s| s.to_string())
             .collect();
         assert_eq!(pretty_command(&short), "bwrap \\\n  --ro-bind /usr");
+    }
+
+    /// Every option of Bubblewrap stays on one line with its values, also
+    /// those SAM's own command has that were split across lines before
+    /// (`--uid 1000`, `--overlay-src`, `--overlay` with three values,
+    /// `--remount-ro /`, `--json-status-fd 3`).
+    #[test]
+    fn every_option_keeps_its_values_on_its_line() {
+        let groups: [&[&str]; 10] = [
+            &["--uid", "1000"],
+            &["--gid", "1000"],
+            &["--overlay-src", "/app"],
+            &["--overlay", "/rw", "/work", "/app"],
+            &["--remount-ro", "/"],
+            &["--json-status-fd", "3"],
+            &["--unsetenv", "X"],
+            &["--chmod", "0700", "/x"],
+            &["--ro-bind-data", "4", "/etc/x"],
+            &["--add-seccomp-fd", "5"],
+        ];
+        for group in groups {
+            let argv: Vec<String> = ["bwrap"]
+                .iter()
+                .chain(group)
+                .chain(&["--new-session", "--", "/app/AppRun"])
+                .map(|s| s.to_string())
+                .collect();
+            assert_eq!(
+                pretty_command(&argv),
+                format!(
+                    "bwrap \\\n  {} \\\n  --new-session \\\n  -- /app/AppRun",
+                    group.join(" ")
+                ),
+                "{group:?}"
+            );
+        }
     }
 
     fn report() -> DependencyReport {
