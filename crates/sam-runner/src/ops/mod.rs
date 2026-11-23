@@ -411,7 +411,10 @@ fn holds_open(pid: u32, file: &Path) -> bool {
 /// such a namespace (Bubblewrap's own). So SAM's helpers are never asked:
 /// pasta quits on SIGTERM and Bubblewrap then takes the whole sandbox down
 /// at once, with no time to save; the sound relay and the D-Bus proxy are
-/// not below `sandbox` at all (review 2026-11-23 F3). Chosen by where a
+/// not below `sandbox` at all (review 2026-11-23 F3). Programs in Room
+/// service's rooms are not below it either: each room's stand-in, one of
+/// the app's processes, is asked and passes it on, so they get the same
+/// time ([`ask_room_to_quit`]). Chosen by where a
 /// process sits, not by its name, which any process can change. Each
 /// process is signalled through a pidfd, after checking it is still the
 /// one listed: a process id reused meanwhile is never hit.
@@ -424,7 +427,32 @@ pub(crate) fn ask_to_quit(runner: u32, sandbox: u32) {
     let Some((base, _)) = ns_pid(runner) else {
         return;
     };
-    for p in below(&procs, sandbox) {
+    ask_inside_to_quit(&procs, sandbox, base);
+}
+
+/// Asks the program in a room of Room service to quit, as its app was
+/// asked: the room's stand-in, one of the app's own processes, got SIGTERM
+/// and passed it on to the service (`room_service::standin`). `room` is
+/// the room's Bubblewrap, a child of this process (the service runs in the
+/// app's launcher); the same rule as for the app: only processes below it
+/// in the room's own process namespace, never its first process
+/// (Bubblewrap's own, which every room keeps).
+pub(crate) fn ask_room_to_quit(room: u32) {
+    let procs = processes();
+    let me = std::process::id();
+    if !procs.iter().any(|p| p.pid == room && p.ppid == me) {
+        return;
+    }
+    let Some((base, _)) = ns_pid(me) else {
+        return;
+    };
+    ask_inside_to_quit(&procs, room, base);
+}
+
+/// SIGTERM to the processes below `top` that live in a deeper process
+/// namespace than `base`, except the first process of such a namespace.
+fn ask_inside_to_quit(procs: &[Proc], top: u32, base: usize) {
+    for p in below(procs, top) {
         match ns_pid(p.pid) {
             Some((depth, inner)) if depth > base && inner != 1 => {
                 signal_same(p, libc::SIGTERM);

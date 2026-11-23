@@ -15,7 +15,10 @@
 //!   layers in place before anything of the request runs and confirms them.
 //!
 //! Lifetime: a room ends when its stand-in goes (its program ended or was
-//! killed), and every room ends with the app's start.
+//! killed), and every room ends with the app's start. A stand-in asked to
+//! quit (SIGTERM, as SAM asks an app's processes at Close and at logout)
+//! passes it on: the program in its room is asked too and gets the same
+//! time to save as the app, and the stand-in keeps waiting for its room.
 
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
@@ -33,6 +36,10 @@ use crate::room_rules::{self, AppFacts, DeviceAccess, Entry, FloorPlan, RoomPlan
 
 /// Where the service listens inside the app's sandbox.
 pub const SOCKET_INSIDE: &str = "/run/sam/rooms";
+/// What a stand-in sends, after its request, when it is asked to quit: the
+/// service then asks its room's program to quit ([`RoomProcess::ask_to_quit`]).
+/// Anything else after the request, or the connection's end, ends the room.
+const QUIT_ASK: u8 = b'q';
 /// The stand-in (`bwrap` in SAM's helper folder, first on the app's PATH)
 /// is a link to SAM's helper at this place inside the app's sandbox. No
 /// script and no shell in between: a shell can leave its script's file
@@ -1032,12 +1039,21 @@ fn run_room(
         std::thread::Builder::new()
             .name("sam-room-watch".into())
             .spawn(move || {
-                let mut b = [0u8; 1];
-                // A signal that interrupts the wait is not the stand-in
-                // leaving (the launcher handles terminal resizes, say).
-                while let Err(e) = peer.read(&mut b) {
-                    if e.kind() != std::io::ErrorKind::Interrupted {
-                        break;
+                let mut b = [0u8; 64];
+                loop {
+                    match peer.read(&mut b) {
+                        // The stand-in was asked to quit: so is the room's
+                        // program, which keeps its time to save.
+                        Ok(n) if n > 0 && b[..n].iter().all(|c| *c == QUIT_ASK) => {
+                            if let Ok(c) = child.lock() {
+                                c.ask_to_quit();
+                            }
+                        }
+                        // A signal that interrupts the wait is not the
+                        // stand-in leaving (the launcher handles terminal
+                        // resizes, say).
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                        _ => break,
                     }
                 }
                 if let Ok(mut c) = child.lock() {
@@ -1134,6 +1150,16 @@ pub(crate) struct RoomProcess {
 }
 
 impl RoomProcess {
+    /// Asks the program in the room to quit (SIGTERM), as SAM asks an app:
+    /// while the room is not waited for, its number cannot name another
+    /// process.
+    fn ask_to_quit(&self) {
+        if self.status.is_none() {
+            if let Ok(pid) = u32::try_from(self.pid) {
+                crate::ops::ask_room_to_quit(pid);
+            }
+        }
+    }
     fn kill(&mut self) -> std::io::Result<()> {
         if self.status.is_none() {
             // SAFETY: a signal to our own child, not yet waited for (so
@@ -1851,6 +1877,41 @@ pub fn standin_version() -> String {
         .unwrap_or_default()
 }
 
+/// The stand-in's connection to the service once its request is sent
+/// (-1 before), for [`pass_quit_on`].
+static QUIT_TO: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+/// Set when the stand-in was asked to quit, also before its request was sent.
+static QUIT_ASKED: AtomicBool = AtomicBool::new(false);
+
+/// Sends [`QUIT_ASK`] on `fd`, never waiting and never raising SIGPIPE.
+fn send_quit_ask(fd: RawFd) {
+    if fd >= 0 {
+        // SAFETY: send is async-signal-safe; one byte from a live buffer.
+        unsafe {
+            libc::send(
+                fd,
+                [QUIT_ASK].as_ptr().cast(),
+                1,
+                libc::MSG_NOSIGNAL | libc::MSG_DONTWAIT,
+            )
+        };
+    }
+}
+
+/// The stand-in's SIGTERM handler: SAM asks the app's processes to quit
+/// (Close, logout), the stand-in among them; it passes that on to the
+/// service, which asks its room's program, and keeps waiting for the room.
+/// Ending here instead ended the room at once, with no time to save
+/// (review of PR 95). Only atomics and send: async-signal-safe.
+extern "C" fn pass_quit_on(_: libc::c_int) {
+    // SAFETY: errno of this thread, read and put back around the send.
+    let errno = unsafe { *libc::__errno_location() };
+    QUIT_ASKED.store(true, Ordering::SeqCst);
+    send_quit_ask(QUIT_TO.load(Ordering::SeqCst));
+    // SAFETY: as above.
+    unsafe { *libc::__errno_location() = errno };
+}
+
 /// The stand-in: `bwrap ARGS…` inside an app's sandbox, served by Room
 /// service; `version` is the computer's Bubblewrap version line. Returns
 /// the exit code to end with.
@@ -1900,6 +1961,16 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
         Ok(s) => s,
         Err(e) => return fail(&format!("no Room service here ({e})")),
     };
+    // Asked to quit from now on: passed on once the request is sent.
+    // SAFETY: sigaction with a zeroed struct whose handler is the
+    // async-signal-safe function above; restarted calls go on waiting.
+    unsafe {
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = pass_quit_on as *const () as usize;
+        sa.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut sa.sa_mask);
+        libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
+    }
     fds.retain(|fd| *fd != stream.as_raw_fd());
     if fds.len() > room_rules::MAX_FDS {
         return fail("too many open connections to pass to a room");
@@ -1967,6 +2038,20 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
     msg.extend(body);
     if let Err(e) = send_with_fds(&stream, &msg, &fds) {
         return fail(&format!("Room service did not take the request ({e})"));
+    }
+    // Asked before the request went out: passed on now (passed twice when
+    // the signal comes just between, which asks the room once more).
+    QUIT_TO.store(stream.as_raw_fd(), Ordering::SeqCst);
+    // Forgotten before the connection closes: its number is then free.
+    struct Forget;
+    impl Drop for Forget {
+        fn drop(&mut self) {
+            QUIT_TO.store(-1, Ordering::SeqCst);
+        }
+    }
+    let _forget = Forget;
+    if QUIT_ASKED.load(Ordering::SeqCst) {
+        send_quit_ask(stream.as_raw_fd());
     }
     let mut s = &stream;
     let mut head = [0u8; 4];

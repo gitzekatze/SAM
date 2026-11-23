@@ -133,23 +133,6 @@ say fds_over "$(rv python3 -c "$KEEP_FDS" 254 bwrap --ro-bind /usr /usr $SYS -- 
 # A name found on PATH (the default /bin:/usr/bin without one).
 say on_path "$(rv room --setenv PATH /usr/bin -- echo ok)"
 say default_path "$(rv room --clearenv -- echo ok)"
-# The stand-in is named as Bubblewrap is, so SAM's "please quit" spares it
-# as it spares Bubblewrap (the program in the room gets its time to quit).
-# Its name is read once its room runs (the stand-in has then sent its
-# request), not after a fixed time a busy computer may not keep to.
-bwrap --ro-bind /usr /usr $SYS --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'echo up > "$HOME/standin-up"; exec /usr/bin/sleep 30' </dev/null >/dev/null 2>&1 &
-standin=$!
-i=0; while [ ! -s "$HOME/standin-up" ] && [ $i -lt 300 ]; do sleep 0.2; i=$((i+1)); done
-say standin_name "$(cat /proc/$standin/comm 2>/dev/null)"
-kill -9 "$standin" 2>/dev/null
-# Also when the program starts SAM's helper by its own path under
-# Bubblewrap's name (the kernel names it after the helper's file then).
-# shellcheck disable=SC2086
-python3 -c 'import os, sys; os.execv("/run/sam/sam-jail-run", ["bwrap"] + sys.argv[1:])' --ro-bind /usr /usr $SYS --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'echo up > "$HOME/standin-up-by-name"; exec /usr/bin/sleep 30' </dev/null >/dev/null 2>&1 &
-standin=$!
-i=0; while [ ! -s "$HOME/standin-up-by-name" ] && [ $i -lt 300 ]; do sleep 0.2; i=$((i+1)); done
-say standin_name_by_name "$(cat /proc/$standin/comm 2>/dev/null)"
-kill -9 "$standin" 2>/dev/null
 # A variable that is not text: the request is refused, never run without it.
 SAM_ROOM_NOT_TEXT="$(printf 'x\377')"
 export SAM_ROOM_NOT_TEXT
@@ -616,6 +599,22 @@ while :; do
 done
 echo "$most" > "$d/most-$me"
 /usr/bin/rm -f "$d/run-$me""#;
+
+/// Closing the app (Close in SAM's window, `sam-jail stop`, logout) gives
+/// a room's program its time to save, as the app gets: the program traps
+/// SIGTERM, takes two seconds and only then writes `room-saved`. The app
+/// itself quits on SIGTERM at once; its room keeps it going until the
+/// room's program has quit. The room's program says when it is ready
+/// (`room-up`), and the test then closes the app.
+const CLOSE: &str = r#"
+cat > "$HOME/saver" <<'EOF'
+trap 'trap "" TERM; /usr/bin/sleep 2; echo saved > "$HOME/room-saved"; exit 0' TERM
+echo up > "$HOME/room-up"
+while :; do /usr/bin/sleep 0.1; done
+EOF
+room --bind "$HOME" "$HOME" -- /usr/bin/sh "$HOME/saver" </dev/null >/dev/null 2>&1 &
+wait
+"#;
 
 /// Many rooms at once all finish, and no more than sixteen run at a time
 /// (counted by the rooms themselves, not timed). A stand-in killed outright
@@ -1111,8 +1110,6 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("dev_without_devices", "blocked"),
                 ("dev_links", "links"),
                 ("env_not_text", "refused"),
-                ("standin_name", "bwrap"),
-                ("standin_name_by_name", "bwrap"),
             ],
         )
         .into_iter()
@@ -1682,6 +1679,49 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             "lifetime: a room's program that dropped its tie to the room outlived its app's start"
                 .into(),
         );
+    }
+
+    // Closing the app gives a room's program its time to save, as the app
+    // gets (review of PR 95: the stand-in died of SAM's SIGTERM and its
+    // room was killed at once, and the room's program was never asked).
+    let id = w.add("RoomClose", CLOSE);
+    let up = w.app_home(&id).join("room-up");
+    let saved = w.app_home(&id).join("room-saved");
+    let ended = std::sync::atomic::AtomicBool::new(false);
+    let sam = &w.sam;
+    let (log, closed) = std::thread::scope(|s| {
+        let closer = s.spawn(|| {
+            while !up.exists() {
+                if ended.load(std::sync::atomic::Ordering::SeqCst) {
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            // As SAM's window closes an app.
+            Some(sam.stop(&id).map_err(|e| format!("{e:#}")))
+        });
+        let log = w.start(&id, |_| {}, 120);
+        ended.store(true, std::sync::atomic::Ordering::SeqCst);
+        (log, closer.join().unwrap())
+    });
+    let before = failures.len();
+    if !matches!(closed, Some(Ok(1))) {
+        failures.push(format!(
+            "close: the app was not closed as one running start ({closed:?})"
+        ));
+    }
+    if !log
+        .lines()
+        .any(|l| l.starts_with("sam-room: built sh (layers:"))
+    {
+        failures.push("close: the room was not built".into());
+    }
+    if fs::read_to_string(&saved).ok().as_deref() != Some("saved\n") {
+        failures
+            .push("close: the room's program got no time to save when its app was closed".into());
+    }
+    if failures.len() > before {
+        failures.push(record_dump("close", &log));
     }
 
     // A room whose stand-in stays connected still ends when the start ends

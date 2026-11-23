@@ -104,9 +104,13 @@ fn main() {
     // every argument is Bubblewrap's, and the version it answers comes
     // from the file beside the link, never from the program.
     if sam_runner::room_service::started_as_standin() {
-        // Named as Bubblewrap is: SAM's "please quit" spares Bubblewrap
-        // by its name, so the program in the room gets its time to save
-        // and quit, and its room ends when it has.
+        // Named as Bubblewrap is, also when started by this helper's own
+        // path, as the program that started it expects of its `bwrap`. The
+        // name decides nothing for SAM: SAM's "please quit" (Close, logout)
+        // asks the stand-in like any process of the app, and the stand-in
+        // passes it on to its room (room_service::standin), so the program
+        // in the room gets its time to save and quit, and its room ends
+        // when it has.
         // SAFETY: PR_SET_NAME reads a NUL-terminated name of at most 16
         // bytes, which this static string is.
         unsafe {
