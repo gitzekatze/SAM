@@ -213,7 +213,7 @@ impl Backend {
         let (out, err) = proc
             .communicate_utf8_future(input)
             .await
-            .map_err(|e| format!("sam-jail failed: {e}"))?;
+            .map_err(|e| crate::i18n::trf("sam-jail failed: {error}", &[("error", &e)]))?;
         let out = out.map(|s| s.to_string()).unwrap_or_default();
         if let Some(r) = envelope(&out) {
             return r;

@@ -480,7 +480,9 @@ impl AppPage {
                     // names what they let the app do (audit G-F12/13).
                     let entry = me.entry();
                     let (body, risky) = confirm_outside_text(
-                        entry.as_ref().and_then(|e| util::get(e, "profile.permissions")),
+                        entry
+                            .as_ref()
+                            .and_then(|e| util::get(e, "profile.permissions")),
                         file,
                     );
                     glib::spawn_future_local(async move {
@@ -1222,10 +1224,12 @@ impl AppPage {
             .subtitle(esc(&if checked == 0 {
                 crate::i18n::tr("Not checked yet. Checking contacts the update source this AppImage names (GitHub or its own server).")
             } else {
-                format!(
-                    "{} (checked {})",
-                    util::str_of(e, "update.detail"),
-                    glib::DateTime::from_unix_local(checked).and_then(|d| d.format("%x %H:%M")).map(|s| s.to_string()).unwrap_or_default()
+                crate::i18n::trf(
+                    "{detail} (checked {time})",
+                    &[
+                        ("detail", &util::str_of(e, "update.detail")),
+                        ("time", &glib::DateTime::from_unix_local(checked).and_then(|d| d.format("%x %H:%M")).map(|s| s.to_string()).unwrap_or_default()),
+                    ],
                 )
             }))
             .build();
@@ -1284,12 +1288,14 @@ impl AppPage {
                         glib::format_size(util::get(u, k).and_then(Value::as_u64).unwrap_or(0))
                             .to_string()
                     };
-                    space.set_subtitle(&format!(
-                        "{} in total: unpacked app {}, private home {}, logs {}",
-                        size("total"),
-                        size("unpacked"),
-                        size("home"),
-                        size("logs")
+                    space.set_subtitle(&crate::i18n::trf(
+                        "{total} in total: unpacked app {unpacked}, private home {home}, logs {logs}",
+                        &[
+                            ("total", &size("total")),
+                            ("unpacked", &size("unpacked")),
+                            ("home", &size("home")),
+                            ("logs", &size("logs")),
+                        ],
                     ));
                     free.set_visible(
                         util::get(u, "can_free")

@@ -718,9 +718,11 @@ fn confirm_outside_text(perms: Option<&Value>, file: bool) -> (String, bool) {
     } else {
         crate::i18n::tr("Something other than SAM changed these settings. SAM can tell that they changed, not what changed. Confirm only if you made the change yourself or know who did.")
     };
-    body.push_str("
+    body.push_str(
+        "
 
-");
+",
+    );
     let parsed = perms.and_then(|p| {
         serde_json::from_value::<sam_core::permissions::PermissionSet>(p.clone()).ok()
     });
@@ -791,7 +793,9 @@ fn status_label(sandboxed: bool, missing: &[String]) -> (String, &'static str, S
         (
             crate::i18n::tr("Sandboxed"),
             "good",
-            crate::i18n::tr("SAM runs this app in its sandbox, with exactly the access listed below"),
+            crate::i18n::tr(
+                "SAM runs this app in its sandbox, with exactly the access listed below",
+            ),
         )
     }
 }
@@ -940,8 +944,7 @@ mod tests {
         assert!(risky);
         assert!(body.contains("X11"), "{body}");
         assert!(body.contains("Dangerous"), "{body}");
-        let (file, _) =
-            super::confirm_outside_text(Some(&serde_json::to_value(&p).unwrap()), true);
+        let (file, _) = super::confirm_outside_text(Some(&serde_json::to_value(&p).unwrap()), true);
         assert!(file.contains("AppImage file was replaced"), "{file}");
         // Settings it cannot read are never called harmless.
         assert!(super::confirm_outside_text(Some(&json!({"filesystem": 3})), false).1);

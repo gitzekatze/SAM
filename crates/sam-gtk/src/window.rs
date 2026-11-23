@@ -1608,10 +1608,15 @@ impl App {
             {
                 return
             }
-            Ok(v) => format!(
-                "version {} (interface {})",
-                util::str_of(v, "version"),
-                v.get("interface").and_then(Value::as_u64).unwrap_or(0)
+            Ok(v) => crate::i18n::trf(
+                "version {version} (interface {interface})",
+                &[
+                    ("version", &util::str_of(v, "version")),
+                    (
+                        "interface",
+                        &v.get("interface").and_then(Value::as_u64).unwrap_or(0),
+                    ),
+                ],
             ),
             Err(e) if e.is("cli-not-started") => {
                 self.report_error(e);
@@ -1624,7 +1629,7 @@ impl App {
             Some(&crate::i18n::tr("SAM's Parts Do Not Match")),
             Some(&body),
         );
-        d.add_response("ok", "OK");
+        d.add_response("ok", &crate::i18n::tr("OK"));
         d.present(Some(&self.window));
     }
 

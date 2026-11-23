@@ -176,17 +176,17 @@ impl Registry {
                 "{}",
                 sam_core::i18n::trf(
                     "'{query}' names more than one app: {apps}. Use the app's ID.",
-                    &[(
-                        "query",
-                        &query
-                    ), (
-                        "apps",
-                        &many
-                            .iter()
-                            .map(|a| format!("{} ({})", a.id, a.name))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )]
+                    &[
+                        ("query", &query),
+                        (
+                            "apps",
+                            &many
+                                .iter()
+                                .map(|a| format!("{} ({})", a.id, a.name))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    ]
                 )
             ),
         }

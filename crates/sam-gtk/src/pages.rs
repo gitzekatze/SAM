@@ -116,7 +116,6 @@ pub(crate) fn weakening(key: &str, on: bool) -> Option<(String, String, String)>
     }
 }
 
-
 pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let pref = adw::PreferencesPage::new();
     let header = adw::HeaderBar::new();
@@ -356,7 +355,10 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
     let loc = util::str_of(&cfg, "extraction.location").to_string();
     let loc_text = |l: &str| {
         if l.trim().is_empty() {
-            "Default: ~/.local/share/sam/extracted".to_string()
+            crate::i18n::trf(
+                "Default: {folder}",
+                &[("folder", &"~/.local/share/sam/extracted")],
+            )
         } else {
             l.to_string()
         }
@@ -698,10 +700,10 @@ impl Presets {
             .iter()
             .map(|p| util::str_of(p, "name").to_string())
             .collect();
-        let mut name = format!("{base} (copy)");
+        let mut name = crate::i18n::trf("{name} (copy)", &[("name", &base)]);
         let mut n = 2;
         while names.contains(&name) {
-            name = format!("{base} (copy {n})");
+            name = crate::i18n::trf("{name} (copy {n})", &[("name", &base), ("n", &n)]);
             n += 1;
         }
         let me = self.clone();
@@ -1209,7 +1211,10 @@ mod tests {
         let d = sam_core::config::Config::default().security;
         // Both protect every sandbox unless turned off.
         assert!(d.experimental_landlock && d.baseline_seccomp);
-        for key in ["security.experimental_landlock", "security.baseline_seccomp"] {
+        for key in [
+            "security.experimental_landlock",
+            "security.baseline_seccomp",
+        ] {
             assert!(super::weakening(key, false).is_some(), "{key} off");
             assert!(super::weakening(key, true).is_none(), "{key} on");
         }

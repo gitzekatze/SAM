@@ -549,7 +549,12 @@ impl AppPage {
             .collect();
         if !passed.is_empty() {
             let exp = adw::ExpanderRow::builder()
-                .title(format!("{} confirmed settings", passed.len()))
+                .title(crate::i18n::trn(
+                    "{n} confirmed setting",
+                    "{n} confirmed settings",
+                    passed.len() as u64,
+                    &[],
+                ))
                 .subtitle(tr("What the test program found inside the sandbox"))
                 .build();
             exp.add_prefix(&{
