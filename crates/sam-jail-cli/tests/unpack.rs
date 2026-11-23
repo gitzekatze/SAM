@@ -235,3 +235,101 @@ fn an_unpacking_limit_inside_the_sandbox_stops_unpacking() {
         "the reason is shown: {info}"
     );
 }
+
+/// The host's unpacking tools unpack what SAM's own reader cannot, inside
+/// the unpack sandbox, with the options SAM gives them (contract
+/// unpack-tools; audit D-M10: its tests saw only SAM's own reader). A
+/// SquashFS image compressed with lzo, which SAM's reader leaves to
+/// `unsquashfs`, and an old type 1 AppImage (an ISO 9660 image), which only
+/// `bsdtar` unpacks, both go through `sam-jail add` and come out whole.
+#[test]
+fn the_host_tools_unpack_what_sams_own_reader_cannot() {
+    let tools = ["mksquashfs", "unsquashfs", "bsdtar"];
+    if !bwrap_works() || tools.iter().any(|t| sam_core::util::which(t).is_none()) {
+        sam_runner::contracts::skip("bubblewrap, mksquashfs, unsquashfs or bsdtar is missing here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "unpack-tools"])
+        .unwrap_or_else(|e| panic!("{e}"));
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    fs::create_dir_all(root.join("bin")).unwrap();
+    fs::create_dir_all(root.join("run")).unwrap();
+    fs::copy(env!("CARGO_BIN_EXE_sam-jail"), root.join("bin/sam-jail")).unwrap();
+    // An ordinary test AppImage, taken apart: its runtime and its files.
+    let plain = root.join("Plain-1.0-x86_64.AppImage");
+    let plain_s = plain.to_str().unwrap();
+    assert!(sam(root, "sam-jail", &["dev", "make-fixture", "--name", "Plain", plain_s])
+        .status
+        .success());
+    let off = sam_detect::inspect(&plain).unwrap().payload_offset.unwrap() as usize;
+    let tree = root.join("tree");
+    let st = Command::new("unsquashfs")
+        .args(["-quiet", "-no-progress", "-o", &off.to_string(), "-d"])
+        .arg(&tree)
+        .arg(&plain)
+        .stdout(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(st.success(), "the test AppImage's files");
+    // The test image's top folder has no permissions of its own.
+    fs::set_permissions(&tree, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let app_run = fs::read(tree.join("AppRun")).unwrap();
+    let runtime = fs::read(&plain).unwrap()[..off].to_vec();
+
+    // Type 2 with an lzo image: the runtime, then the image.
+    let lzo = root.join("lzo.squashfs");
+    let st = Command::new("mksquashfs")
+        .arg(&tree)
+        .arg(&lzo)
+        .args(["-comp", "lzo", "-all-root", "-noappend", "-quiet", "-no-progress"])
+        .stdout(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(st.success(), "mksquashfs made an lzo image");
+    let type2 = root.join("Lzo-1.0-x86_64.AppImage");
+    fs::write(&type2, [runtime.clone(), fs::read(&lzo).unwrap()].concat()).unwrap();
+
+    // Type 1: an ISO 9660 image whose unused first sectors start with the
+    // runtime's ELF header, marked as type 1 ("AI" and 1 at offset 8).
+    let iso = root.join("old.iso");
+    let st = Command::new("bsdtar")
+        .args(["--format", "iso9660", "-cf"])
+        .arg(&iso)
+        .arg("-C")
+        .arg(&tree)
+        .arg(".")
+        .status()
+        .unwrap();
+    assert!(st.success(), "bsdtar made an ISO 9660 image");
+    let mut data = fs::read(&iso).unwrap();
+    assert!(data[..64].iter().all(|b| *b == 0), "the system area is unused");
+    data[..64].copy_from_slice(&runtime[..64]);
+    data[10] = 1;
+    let type1 = root.join("Old-1.0-x86_64.AppImage");
+    fs::write(&type1, data).unwrap();
+
+    for (img, tool) in [(&type2, "unsquashfs"), (&type1, "bsdtar")] {
+        let img_s = img.to_str().unwrap();
+        let added = sam(root, "sam-jail", &["--json", "add", img_s, "--accept", "--no-launcher"]);
+        let v = json(&added);
+        assert!(added.status.success(), "{tool}: {v}");
+        let entry = &v["data"]["entry"];
+        let id = entry["id"].as_str().unwrap_or_else(|| panic!("{tool}: {v}"));
+        let log = unpacked_log(root, id).unwrap_or_default();
+        assert_eq!(
+            entry["extraction"]["method"].as_str(),
+            Some(tool),
+            "unpacked by {tool}:\n{log}"
+        );
+        assert!(log.contains("[extract] isolated"), "{tool} ran in the sandbox:\n{log}");
+        let appdir = Path::new(entry["extraction"]["appdir"].as_str().unwrap());
+        assert_eq!(fs::read(appdir.join("AppRun")).unwrap(), app_run, "{tool}");
+        let mode = fs::metadata(appdir.join("AppRun")).unwrap().permissions();
+        assert!(
+            std::os::unix::fs::PermissionsExt::mode(&mode) & 0o111 != 0,
+            "{tool}: AppRun stays a program"
+        );
+    }
+}

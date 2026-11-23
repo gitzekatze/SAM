@@ -645,7 +645,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-57 tests.
+58 tests.
 
 | Promise | Test |
 |---|---|
@@ -706,6 +706,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A menu start after free space unpacks inside a sandbox. | [`a_menu_start_after_free_space_unpacks_inside_a_sandbox`](../crates/sam-jail-cli/tests/unpack.rs#L104) |
 | Without the command line a menu start refuses to unpack. | [`without_the_command_line_a_menu_start_refuses_to_unpack`](../crates/sam-jail-cli/tests/unpack.rs#L127) |
 | ⟲ Unpacking limits hold inside the unpack sandbox too. | [`an_unpacking_limit_inside_the_sandbox_stops_unpacking`](../crates/sam-jail-cli/tests/unpack.rs#L169) |
+| The host's unpacking tools unpack what SAM's own reader cannot, inside the unpack sandbox, with the options SAM gives them (contract unpack-tools; audit D-M10: its tests saw only SAM's own reader). | [`the_host_tools_unpack_what_sams_own_reader_cannot`](../crates/sam-jail-cli/tests/unpack.rs#L245) |
 
 ## sam-gtk: The window (logic that runs without a display)
 
@@ -743,4 +744,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 657 automated Rust tests plus 7 scripted checks.
+Total: 658 automated Rust tests plus 7 scripted checks.

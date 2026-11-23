@@ -81,7 +81,7 @@ repository.
   the reason for each), and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-20<!-- /fact -->](docs/reports/real-apps-2026-11-20.md)).
-- **<!-- fact:tests -->657<!-- /fact --> automated tests guard <!-- fact:functions -->41<!-- /fact --> functions.**
+- **<!-- fact:tests -->658<!-- /fact --> automated tests guard <!-- fact:functions -->41<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
 - **Every security promise is attacked from inside a real sandbox.**
@@ -171,9 +171,11 @@ warning before they apply.
 ### Safe intake
 
 - Type 2 AppImages (gzip, xz, zstd and lz4), unpacked by SAM's own SquashFS
-  reader inside a minimal sandbox. DwarFS-based AppImages are unpacked with
-  `dwarfsextract` when it is installed. The old, rare Type 1 format is
-  unpacked with `bsdtar`; no automated test covers it yet.
+  reader inside a minimal sandbox; the rare lzo ones by `unsquashfs`, in the
+  same sandbox. DwarFS-based AppImages are unpacked with `dwarfsextract`
+  when it is installed. The old, rare Type 1 format is unpacked with
+  `bsdtar`; its test uses a type 1 AppImage SAM's test makes, not one
+  published by an app.
 - Setuid bits, links that point outside the app and special files are
   removed. Size, file-count and time limits apply.
 - Names, descriptions and file names from an AppImage are shown as plain

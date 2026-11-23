@@ -142,7 +142,8 @@ unsquashfs and bsdtar unpack SquashFS images (and bsdtar the ISO 9660 image of a
 - **When it breaks:** SAM falls back to less access.
 - **SAM functions that rely on it:** [3](functions.md#3), [5](functions.md#5)
 - **Quick check:** `program:unsquashfs`
-- **Tests:** `appimages_with_every_compression_unpack`, `without_consent_the_appimages_own_unpacker_never_runs` (fully)
+- **Tests:** `the_host_tools_unpack_what_sams_own_reader_cannot`, `appimages_with_every_compression_unpack`, `without_consent_the_appimages_own_unpacker_never_runs` (fully)
+- **Checked first by:** `unpack.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:unsquashfs`, `program:bsdtar`, `option:-d`, `option:-f`, `option:-C`, `option:-o`, `option:-O`, `option:-i`, `option:--no-same-owner`, `option:--no-acls`, `option:--no-xattrs`
 - **If it breaks:** SAM has its own SquashFS reader and tries the tools only after it; when all fail, it asks before running the AppImage's own unpacker. A changed option shows as a failing unpack test.
 

@@ -9,13 +9,13 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 27 proven by passing tests, 13 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 657 tests in all.
+**41 functions:** 26 proven by passing tests, 14 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 658 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
 | 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 8 | ✅ |
-| 2 | [SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image; the old, rare type 1 is unpacked with bsdtar but not tested) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 9 | ✅ |
-| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 32 | ✅ 🆕 1 new test since the report |
+| 2 | [SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image, and the old, rare type 1, which bsdtar unpacks) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 10 | ✅ 🆕 1 new test since the report |
+| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 33 | ✅ 🆕 2 new tests since the report |
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 10 | ✅ |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 11 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 16 | ✅ |
@@ -90,7 +90,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 **Code:** [`sam-intake/src/peek.rs`](../crates/sam-intake/src/peek.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-intake/src/id.rs`](../crates/sam-intake/src/id.rs), [`sam-runner/src/ops/overview.rs`](../crates/sam-runner/src/ops/overview.rs), [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs)
 
 <a id="2"></a>
-### 2. SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image; the old, rare type 1 is unpacked with bsdtar but not tested) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.
+### 2. SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image, and the old, rare type 1, which bsdtar unpacks) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.
 
 | Test | Promise | Result |
 |---|---|---|
@@ -103,6 +103,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L14) | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | ✅ |
 | [`an_appimage_shorter_than_its_image_is_incomplete`](../crates/sam-detect/src/appimage.rs#L431) | A download that broke off is recognized: the file is shorter than its SquashFS image says, and a complete one is not. | ✅ |
 | [`a_download_that_broke_off_is_refused_and_nothing_is_kept`](../crates/sam-runner/tests/incomplete.rs#L9) | A download that broke off is refused and nothing is kept. | ✅ |
+| [`the_host_tools_unpack_what_sams_own_reader_cannot`](../crates/sam-jail-cli/tests/unpack.rs#L245) | The host's unpacking tools unpack what SAM's own reader cannot, inside the unpack sandbox, with the options SAM gives them (contract unpack-tools; audit D-M10: its tests saw only SAM's own reader). | 🆕 new |
 
 **Code:** [`sam-detect/src/appimage.rs`](../crates/sam-detect/src/appimage.rs), [`sam-intake/src/extract.rs`](../crates/sam-intake/src/extract.rs), [`sam-runner/src/ops/add.rs`](../crates/sam-runner/src/ops/add.rs)
 
@@ -145,6 +146,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L491) | A menu start unpacks in a sandbox with the cli next to it. | ✅ |
 | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L541) | Tests and benchmarks may unpack in their own process. | ✅ |
 | [`two_unpacks_at_once_get_their_own_error_files`](../crates/sam-intake/src/extract.rs#L886) | Error files opened at the same moment in one process are separate files: an unpack running beside another no longer fails with "File exists" (it did on CI when two tests unpacked at once). | ✅ |
+| [`the_host_tools_unpack_what_sams_own_reader_cannot`](../crates/sam-jail-cli/tests/unpack.rs#L245) | The host's unpacking tools unpack what SAM's own reader cannot, inside the unpack sandbox, with the options SAM gives them (contract unpack-tools; audit D-M10: its tests saw only SAM's own reader). | 🆕 new |
 
 **Code:** [`sam-intake/src/extract.rs`](../crates/sam-intake/src/extract.rs), [`sam-intake/src/normalize.rs`](../crates/sam-intake/src/normalize.rs), [`sam-runner/src/progress.rs`](../crates/sam-runner/src/progress.rs)
 
