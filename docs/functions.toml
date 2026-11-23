@@ -78,15 +78,19 @@ about = "SAM recommends the least access each app needs, explains every permissi
 id = 6
 area = "B"
 promise = "SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible."
-code = ["sam-profile/src/lib.rs", "sam-detect/src/elf.rs", "sam-detect/src/classify.rs"]
-tests = ["a_development_tool_gets_no_project_folder_on_its_own_word", "terminal_programs_get_no_display", "the_app_category_is_recognized_from_its_desktop_categories", "recommendations_fit_the_category", "what_sam_finds_in_the_app_adjusts_the_recommendation", "bundled_libraries_are_sorted_by_what_they_reach", "programs_that_load_graphics_at_run_time", "missing_optional_libraries_name_the_feature", "programs_that_choose_the_qt_platform", "qt_wayland_plugin_needs_its_client_library", "start_scripts_that_force_x11", "the_program_behind_a_start_script_is_found", "an_appimage_asking_for_admin_rights_is_unsafe_to_sandbox", "electron_markers_and_bundled_symlinks", "origin_relative_needed_paths", "the_c_library_version_an_app_needs_is_read"]
+code = ["sam-profile/src/lib.rs", "sam-detect/src/elf.rs", "sam-detect/src/classify.rs", "sam-jail-cli/src/output.rs"]
+tests = ["a_development_tool_gets_no_project_folder_on_its_own_word", "terminal_programs_get_no_display", "the_app_category_is_recognized_from_its_desktop_categories", "recommendations_fit_the_category", "what_sam_finds_in_the_app_adjusts_the_recommendation", "bundled_libraries_are_sorted_by_what_they_reach", "programs_that_load_graphics_at_run_time", "missing_optional_libraries_name_the_feature", "programs_that_choose_the_qt_platform", "qt_wayland_plugin_needs_its_client_library", "start_scripts_that_force_x11", "the_program_behind_a_start_script_is_found", "an_appimage_asking_for_admin_rights_is_unsafe_to_sandbox", "electron_markers_and_bundled_symlinks", "origin_relative_needed_paths", "the_c_library_version_an_app_needs_is_read",
+  "the_dependency_report_shows_what_is_missing_and_still_needed",
+  "redetect_shows_the_dependency_report",
+  "info_shows_comment_reasons_dependencies_and_warnings",
+]
 checks = ["tests/real-apps/run.sh"]
 
 [[function]]
 id = 7
 area = "B"
 promise = "SAM explains every permission in plain language and shows how risky it is."
-code = ["sam-core/src/permissions.rs", "sam-core/src/risk.rs", "sam-core/src/warnings.rs", "sam-gtk/src/all_perms.rs"]
+code = ["sam-core/src/permissions.rs", "sam-core/src/risk.rs", "sam-core/src/warnings.rs", "sam-gtk/src/all_perms.rs", "sam-jail-cli/src/output.rs"]
 tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "network_and_x11_high", "each_dangerous_setting_produces_its_warning", "strict_has_no_danger", "x11_warning_can_be_disabled", "tags_and_the_risk_list_use_the_same_words", "folder_explanations_name_the_path",
   "risk_has_the_same_three_words_everywhere",
   "the_full_session_bus_is_rated_dangerous",
@@ -108,6 +112,11 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "a_dangerous_socket_is_known_however_it_is_written",
   "a_terminal_that_runs_commands_is_dangerous_to_reach",
   "a_presets_risk_word_comes_from_its_permissions",
+  "every_state_risk_and_severity_is_shown_in_its_own_words",
+  "the_risk_line_names_the_level_and_what_sets_it",
+  "every_warning_is_shown_with_its_severity_title_and_message",
+  "evaluate_and_info_show_the_risk_and_every_warning",
+  "info_shows_comment_reasons_dependencies_and_warnings",
 ]
 
 [[function]]
@@ -420,8 +429,12 @@ about = "Every way of starting an app goes through its sandbox, the sandbox chec
 id = 19
 area = "D"
 promise = "Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox."
-code = ["sam-intake/src/desktop.rs", "sam-intake/src/menu.rs", "sam-runner/src/launch.rs", "sam-core/src/paths.rs"]
-tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "a_hostile_name_adds_no_line_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign", "blocked_file_types_hold_in_any_case_and_old_names", "an_app_can_never_replace_the_programs_that_menu_entries_run"]
+code = ["sam-intake/src/desktop.rs", "sam-intake/src/menu.rs", "sam-runner/src/launch.rs", "sam-core/src/paths.rs", "sam-jail-cli/src/output.rs"]
+tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "a_hostile_name_adds_no_line_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign", "blocked_file_types_hold_in_any_case_and_old_names", "an_app_can_never_replace_the_programs_that_menu_entries_run",
+  "the_shown_command_is_the_one_that_runs",
+  "command_shows_exactly_the_command_that_runs",
+  "every_option_keeps_its_values_on_its_line",
+]
 checks = ["tests/gui/flow-atspi.sh", "tests/gui/taskbar-kwin.sh"]
 
 [[function]]
@@ -608,8 +621,12 @@ about = "The window: overview, Permission Manager, translations, and use with ke
 id = 35
 area = "H"
 promise = "The overview of all apps, with clear status badges."
-code = ["sam-gtk/src/window.rs", "sam-gtk/src/pages.rs", "sam-core/src/model.rs", "sam-storage/src/lib.rs"]
-tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text", "links_to_other_pages_open_on_github"]
+code = ["sam-gtk/src/window.rs", "sam-gtk/src/pages.rs", "sam-core/src/model.rs", "sam-storage/src/lib.rs", "sam-jail-cli/src/output.rs"]
+tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text", "links_to_other_pages_open_on_github",
+  "every_state_risk_and_severity_is_shown_in_its_own_words",
+  "a_long_name_is_cut_to_its_column",
+  "a_long_app_name_cannot_push_risk_and_state_out_of_their_columns",
+]
 checks = ["tests/gui/session.sh"]
 
 [[function]]
