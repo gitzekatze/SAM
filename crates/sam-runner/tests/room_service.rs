@@ -527,25 +527,36 @@ say final_control "$(rv room -- /usr/bin/printf ok)"
 /// A folder the room asks for is exchanged, as fast as the kernel allows,
 /// with a link out of the app's view (absolute and relative) while rooms
 /// are built: no room may ever show what the link points to.
+/// The exchanges come in bursts with short pauses between them: on a slow
+/// computer nonstop swapping outpaced every room's build, so all 400 were
+/// refused, which is safe but proves nothing about the build (CI,
+/// 2026-11-23). Rooms are asked for until at least one was built (at least
+/// 400, at most 3000), and the swapping runs until they are done.
 const RACE: &str = r#"
 mkdir -p "$HOME/race/d"
 echo inside > "$HOME/race/d/f"
 ln -sfn "$SECRET_DIR" "$HOME/race/abs"
 ln -sfn "../../../../../../../../../../../../..$SECRET_DIR" "$HOME/race/rel"
 python3 - <<'PY' &
-import ctypes, os, time
+import ctypes, os, random, time
 libc = ctypes.CDLL(None, use_errno=True)
 AT, EXCHANGE = -100, 2
 h = os.environ["HOME"] + "/race/"
 d, a, r = (h + "d").encode(), (h + "abs").encode(), (h + "rel").encode()
-end = time.monotonic() + 90
+end = time.monotonic() + 900
 while time.monotonic() < end:
-    for other in (a, a, r, r):
-        libc.renameat2(AT, d, AT, other, EXCHANGE)
+    # Bursts of exchanges as fast as the kernel allows, then a short pause
+    # with the real folder in place: rooms built in a burst meet the race,
+    # and on any computer some fall into a pause and are built.
+    burst = time.monotonic() + random.uniform(0.02, 0.08)
+    while time.monotonic() < burst:
+        for other in (a, a, r, r):
+            libc.renameat2(AT, d, AT, other, EXCHANGE)
+    time.sleep(random.uniform(0, 0.3))
 PY
 swapper=$!
 inside=0; leaked=0; other=0; i=0
-while [ $i -lt 400 ]; do
+while [ $i -lt 400 ] || { [ $inside -eq 0 ] && [ $i -lt 3000 ]; }; do
   r=$(room --ro-bind-try "$HOME/race/d" "$HOME/race/d" -- /usr/bin/cat "$HOME/race/d/f" 2>/dev/null)
   case "$r" in
     inside) inside=$((inside+1)) ;;
@@ -1597,7 +1608,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
 
     // A folder exchanged for a link while rooms are built.
     let id = w.add("RoomRace", RACE);
-    let log = w.start(&id, |_| {}, 240);
+    let log = w.start(&id, |_| {}, 900);
     let c = cases(&log);
     let n = |k: &str| c.get(k).and_then(|v| v.parse::<u32>().ok());
     eprintln!(
