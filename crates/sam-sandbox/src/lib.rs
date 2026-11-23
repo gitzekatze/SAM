@@ -13,8 +13,9 @@
 //! $HOME                 private per-app home (or tmpfs), plus granted folders
 //! ```
 
+use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result};
 use sam_core::permissions::*;
@@ -874,13 +875,98 @@ impl Views {
         self.visible(p) || self.grants.iter().any(|(g, _)| g.starts_with(p))
     }
 
-    /// Every place in the sandbox where host path `p` is shown: its own path
-    /// and, when that differs, its resolved one.
+    /// Every place in the sandbox where host path `p` is shown: its own path,
+    /// its resolved one and, for a grant kept behind a link (the home, when
+    /// `/home/u` is a link to `/data/u`), the resolved one under the grant's
+    /// own name, where the sandbox mounts it. A link naming the home's real
+    /// path (`~/.config` to `/data/u/dots/config`) leads nowhere inside, yet
+    /// the app reaches its target as `/home/u/dots/config`: without that
+    /// place autostart there stayed writable and a linked key folder shown
+    /// (review of SB-6 and SB-2).
     pub fn seen_at(&self, p: &Path) -> Vec<PathBuf> {
+        let real = resolve(p);
+        let mut cands = vec![p.to_path_buf(), real.clone()];
+        for (g, _) in &self.grants {
+            let rg = resolve(g);
+            if rg != *g {
+                if let Ok(rel) = real.strip_prefix(&rg) {
+                    cands.push(g.join(rel));
+                }
+            }
+        }
         let mut out = Vec::new();
-        for c in [p.to_path_buf(), resolve(p)] {
+        for c in cands {
             if self.visible(&c) && !out.contains(&c) {
                 out.push(c);
+            }
+        }
+        out
+    }
+
+    /// Where the app reaches host path `p` inside the sandbox, one part
+    /// after the other as Linux reads a path: a link is followed where a
+    /// grant shows the folder it lies in (a grant's own place is a mount
+    /// point inside, never a link). `None` when the way ends outside what
+    /// the sandbox shows, or loops.
+    fn reached_at(&self, p: &Path) -> Option<PathBuf> {
+        if !p.is_absolute() {
+            return None;
+        }
+        // The parts still to read, the next one last.
+        let mut todo: Vec<OsString> = Vec::new();
+        let add = |todo: &mut Vec<OsString>, path: &Path| {
+            for c in path.components().rev() {
+                match c {
+                    Component::Normal(n) => todo.push(n.to_os_string()),
+                    Component::ParentDir => todo.push("..".into()),
+                    _ => {}
+                }
+            }
+        };
+        add(&mut todo, p);
+        let mut at = PathBuf::from("/");
+        // As many links as Linux follows in one path.
+        let mut links = 0;
+        while let Some(c) = todo.pop() {
+            if c == ".." {
+                at.pop();
+                continue;
+            }
+            at.push(&c);
+            let inside = self.grant_of(&at).is_some_and(|(g, _)| at != *g);
+            if !inside {
+                continue;
+            }
+            if let Ok(target) = fs::read_link(&at) {
+                links += 1;
+                if links > 40 {
+                    return None;
+                }
+                at.pop();
+                if target.is_absolute() {
+                    at = PathBuf::from("/");
+                }
+                add(&mut todo, &target);
+            }
+        }
+        self.visible(&at).then_some(at)
+    }
+
+    /// The places to mount on to cover host path `p` inside the sandbox:
+    /// every place the app reaches it ([`Views::seen_at`], with links
+    /// followed as the app follows them). None of them is or leads through
+    /// a link: Bubblewrap refuses to mount on a link, or through one that
+    /// leads nowhere inside, so `~/.config` as a link stopped every start
+    /// with the whole home granted; and a pin through a relative one landed
+    /// on the folder it points to, writable over a read-only grant
+    /// (security review 2026-11-23, SB-6).
+    fn mount_points(&self, p: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for c in self.seen_at(p) {
+            if let Some(r) = self.reached_at(&c) {
+                if !out.contains(&r) {
+                    out.push(r);
+                }
             }
         }
         out
@@ -951,15 +1037,19 @@ fn resolve(p: &Path) -> PathBuf {
 }
 
 /// Step 1 of the protections inside the shown parts of the real home: the
-/// folders above protected places and above SAM's own folders that the
-/// sandbox shows writable. Each becomes a mount point of its own (bound onto
-/// itself, in the depth order of the other mounts), so it cannot be renamed
-/// away together with the protection (`mv ~/.local/share ~/.local/s2` moved
-/// SAM's records; regression, audit S-F4).
-fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf]) -> Vec<PathBuf> {
+/// folders above protected places, above SAM's own folders and above SAM's
+/// own programs that the sandbox shows writable. Each becomes a mount point
+/// of its own (bound onto itself, in the depth order of the other mounts),
+/// so it cannot be renamed away together with the protection (`mv
+/// ~/.local/share ~/.local/s2` moved SAM's records; regression, audit
+/// S-F4). Each where the app reaches it, never through a link
+/// ([`Views::mount_points`]): a link itself is no folder to pin, and a pin
+/// through a relative one landed on the folder it points to, writable,
+/// over a read-only grant (security review 2026-11-23, SB-6).
+fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf], programs: &[PathBuf]) -> Vec<PathBuf> {
     let mut pins: Vec<PathBuf> = Vec::new();
     let mut pin = |p: &Path| {
-        for c in views.seen_at(p) {
+        for c in views.mount_points(p) {
             // Never `/` or one folder below it: those are not renamed.
             if views.writable(&c)
                 && c.components().count() > 2
@@ -978,7 +1068,44 @@ fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf]) -> Vec<PathBuf> {
             pin(anc);
         }
     }
+    // Also under the home's name when the home is kept behind a link
+    // (`Views::seen_at`): SAM's own path names the real place.
+    for p in programs {
+        for anc in p.ancestors().skip(1) {
+            pin(anc);
+        }
+    }
     pins
+}
+
+/// Step 3, after every mount: SAM's own programs (its AppImage file, the
+/// `sam-jail-run` that menu entries run) read-only wherever the sandbox
+/// shows them writable. Bound onto themselves, they can be neither
+/// written nor renamed or deleted (a mount point), and the folders above
+/// them are pinned (step 1): an app could otherwise put its own program in
+/// their place, run unsandboxed at the next click on any menu entry
+/// (security review 2026-11-23, SB-1).
+fn guard_programs(a: &mut Args, programs: &[PathBuf], views: &Views) {
+    for p in programs {
+        for c in views.mount_points(p) {
+            if views.writable(&c) && c.is_file() {
+                a.ro(&c);
+            }
+        }
+    }
+}
+
+/// Where to bind host path `at` of the home onto itself: where the app
+/// reaches it when a grant shows it, never through a link
+/// ([`Views::mount_points`]; with `~/.config` a link to a place not
+/// granted, the read-only fonts settings stopped every start, security
+/// review 2026-11-23, SB-6), or where it lies when the link leads out of
+/// what is shown. In a private home, where it is named.
+fn bind_place(views: &Views, at: &Path) -> PathBuf {
+    if !views.visible(at) {
+        return at.to_path_buf();
+    }
+    views.reached_at(at).unwrap_or_else(|| resolve(at))
 }
 
 /// Step 2 of the protections, after every mount (a later mount covers an
@@ -1003,15 +1130,17 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
             continue;
         };
         // A link (dotfiles kept elsewhere, `stow`): hidden where it points,
-        // which the app could reach through the link otherwise.
-        let places = if md.file_type().is_symlink() {
-            if !views.visible(&path) {
-                continue;
+        // also when only the folder it points into is granted (security
+        // review 2026-11-23, SB-2: `~/.gnupg` a link to `~/Sync/gnupg` and
+        // `~/Sync` granted showed the keys, writable).
+        let mut places = views.mount_points(&path);
+        if md.file_type().is_symlink() && views.visible(&path) {
+            if let Ok(target) = fs::canonicalize(&path) {
+                if !places.contains(&target) {
+                    places.push(target);
+                }
             }
-            fs::canonicalize(&path).into_iter().collect()
-        } else {
-            views.seen_at(&path)
-        };
+        }
         for c in places {
             match fs::metadata(&c) {
                 Ok(t) if t.is_dir() => {
@@ -1024,15 +1153,12 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
     }
     for prot in protected_places(home) {
         let path = home.join(&prot);
-        for c in views.seen_at(&path) {
-            // A link (dotfiles kept elsewhere) cannot be mounted on: what it
-            // points to is locked (also in `seen_at`), and the link itself
-            // is put back after the start if the app replaces it
-            // (regression: with `~/.bashrc` a link and the whole home
-            // granted, Bubblewrap refused and no app started).
-            if fs::symlink_metadata(&c).is_ok_and(|m| m.file_type().is_symlink()) {
-                continue;
-            }
+        // Never on a link (dotfiles kept elsewhere): what it points to is
+        // locked, and the link itself is put back after the start if the
+        // app replaces it (regression: with `~/.bashrc` a link and the
+        // whole home granted, Bubblewrap refused and no app started; the
+        // same with `~/.config` a link, SB-6).
+        for c in views.mount_points(&path) {
             if matches!(prot.as_str(), ".config/sam" | ".local/share/sam") {
                 if c.is_dir() {
                     a.push("--tmpfs").push(c.to_string_lossy());
@@ -1536,12 +1662,12 @@ impl Section<'_> {
         }
         // Safe read-only user resources.
         for r in [".local/share/fonts", ".fonts", ".config/fontconfig"] {
-            let at = home.join(r);
+            let at = bind_place(&self.views, &home.join(r));
             mount(&at, &|m| m.ro(&at));
         }
         if p.advanced.host_themes && !fsp.home {
             for t in THEME_FILES {
-                let at = home.join(t);
+                let at = bind_place(&self.views, &home.join(t));
                 mount(&at, &|m| m.ro(&at));
             }
         }
@@ -1576,7 +1702,7 @@ impl Section<'_> {
             });
         }
         let views = &self.views;
-        for p in pins(&home, views, &ctx.sam_dirs) {
+        for p in pins(&home, views, &ctx.sam_dirs, &ctx.sam_programs) {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
         // Stable: at equal depth, the order above stays (a pin after the
@@ -1588,6 +1714,7 @@ impl Section<'_> {
             a.bad.extend(m.bad);
         }
         guard_home(a, &home, fsp, views);
+        guard_programs(a, &ctx.sam_programs, views);
         for (host_p, sb, rw) in &ctx.extra_binds {
             a.op2(if *rw { "--bind" } else { "--ro-bind" }, host_p, sb);
         }
@@ -1856,11 +1983,17 @@ impl Section<'_> {
             if nested || !d.is_dir() {
                 continue;
             }
-            // Also where a grant shows only something inside it (audit
-            // S-F13: a folder granted inside SAM's moved folder was shown).
-            let mut places = views.seen_at(d);
+            // Where the app reaches it, never through a link
+            // (`Views::mount_points`): with `~/.config` a link to a place
+            // nothing grants, the empty folder on `~/.config/sam` stopped
+            // every start with the whole home granted (security review
+            // 2026-11-23, SB-6). Also where a grant shows only something
+            // inside it (audit S-F13: a folder granted inside SAM's moved
+            // folder was shown); no grant shows a folder above that place,
+            // so the way there leads through no link inside.
+            let mut places = views.mount_points(d);
             for c in [d.clone(), resolve(d)] {
-                if views.shows_any_of(&c) && !places.contains(&c) {
+                if !views.visible(&c) && views.shows_any_of(&c) && !places.contains(&c) {
                     places.push(c);
                 }
             }
@@ -3168,6 +3301,216 @@ mod guard_tests {
         ctx.permissions.filesystem.home_access = Access::Ro;
         let c = home.join(".config").to_string_lossy().into_owned();
         assert!(!has_seq(&args_of(&ctx), &["--bind", &c, &c]));
+    }
+
+    /// A key folder kept behind a link is hidden where it points also when
+    /// only the folder it points into is granted, not the home (security
+    /// review 2026-11-23, SB-2: `~/.gnupg` a link into a granted `~/Sync`
+    /// showed the keys, writable).
+    #[test]
+    fn a_linked_key_folder_is_hidden_also_when_only_its_target_is_granted() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap();
+        fs::create_dir_all(home.join("Sync/gnupg")).unwrap();
+        std::os::unix::fs::symlink(home.join("Sync/gnupg"), home.join(".gnupg")).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec![home.join("Sync").display().to_string()];
+        let a = args_of(&ctx_for(&p, &home));
+        let target = home.join("Sync/gnupg").to_string_lossy().into_owned();
+        assert!(has_seq(&a, &["--tmpfs", &target]), "{a:?}");
+        // Given the key folder, the app sees it.
+        p.filesystem.gnupg = true;
+        let a = args_of(&ctx_for(&p, &home));
+        assert!(!has_seq(&a, &["--tmpfs", &target]), "{a:?}");
+    }
+
+    /// The app's way to a host path is followed link by link as Linux
+    /// reads it inside the sandbox: a relative link or one with a whole
+    /// path, also behind another link and with `..`, ends where the
+    /// sandbox shows the place; a link at a grant's own place is a mount
+    /// point inside and not followed; a link out of what is shown, or a
+    /// loop, ends nowhere (security review 2026-11-23, SB-6).
+    #[test]
+    fn the_way_to_a_place_is_followed_link_by_link_as_the_app_follows_it() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let real = base.join("data/u");
+        let named = base.join("home/u");
+        for d in ["dots/config/autostart", "dots/local"] {
+            fs::create_dir_all(real.join(d)).unwrap();
+        }
+        fs::create_dir_all(base.join("home")).unwrap();
+        fs::create_dir_all(base.join("outside/x")).unwrap();
+        // The home itself behind a link, as on some systems.
+        std::os::unix::fs::symlink(&real, &named).unwrap();
+        std::os::unix::fs::symlink("dots/config", real.join(".config")).unwrap();
+        std::os::unix::fs::symlink(named.join("dots/local"), real.join(".local")).unwrap();
+        std::os::unix::fs::symlink("../config/autostart", real.join("dots/local/as")).unwrap();
+        std::os::unix::fs::symlink(base.join("outside/x"), real.join("out")).unwrap();
+        std::os::unix::fs::symlink("loop", real.join("loop")).unwrap();
+        let mut ctx = ctx_for(&full_rw(), &named);
+        let v = Views::of(&ctx);
+        assert_eq!(
+            v.reached_at(&named.join(".config/autostart")),
+            Some(named.join("dots/config/autostart")),
+            "relative link"
+        );
+        assert_eq!(
+            v.reached_at(&named.join(".local/as/f")),
+            Some(named.join("dots/config/autostart/f")),
+            "a link with a whole path, then a relative one with `..`"
+        );
+        assert_eq!(
+            v.reached_at(&named.join("dots")),
+            Some(named.join("dots")),
+            "the home's own link is a mount point inside"
+        );
+        assert_eq!(
+            v.reached_at(&named.join("out/f")),
+            None,
+            "out of the grants"
+        );
+        assert_eq!(v.reached_at(&named.join("loop/f")), None, "a loop");
+        assert_eq!(v.reached_at(&base.join("outside/x")), None, "not shown");
+        // Shown also where the link leads: reached there.
+        ctx.permissions.filesystem.custom_read = vec![base.join("outside").display().to_string()];
+        let v = Views::of(&ctx);
+        assert_eq!(
+            v.reached_at(&named.join("out/f")),
+            Some(base.join("outside/x/f"))
+        );
+        // The places to mount on lead through no link.
+        assert_eq!(
+            v.mount_points(&named.join(".config")),
+            vec![named.join("dots/config")]
+        );
+    }
+
+    /// With the home kept behind a link (`/home/u` a link to `/data/u`),
+    /// a link in it that names the home's real path (`~/.config` to
+    /// `/data/u/dots/config`, as tools that resolve the folder they run in
+    /// write it) leads nowhere inside, where only `/home/u` is shown; yet
+    /// the app reaches the place it points to under the home's name
+    /// (`/home/u/dots/config`). The protections land there: autostart
+    /// read-only, the folder above it pinned, a key folder hidden.
+    #[test]
+    fn places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let real = base.join("data/u");
+        let named = base.join("home/u");
+        for d in ["dots/config/autostart", "Sync/gnupg"] {
+            fs::create_dir_all(real.join(d)).unwrap();
+        }
+        fs::create_dir_all(base.join("home")).unwrap();
+        std::os::unix::fs::symlink(&real, &named).unwrap();
+        std::os::unix::fs::symlink(real.join("dots/config"), real.join(".config")).unwrap();
+        std::os::unix::fs::symlink(real.join("Sync/gnupg"), real.join(".gnupg")).unwrap();
+        let a = args_of(&ctx_for(&full_rw(), &named));
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        let autostart = s(named.join("dots/config/autostart"));
+        assert!(
+            has_seq(&a, &["--ro-bind-try", &autostart, &autostart]),
+            "{a:?}"
+        );
+        let config = s(named.join("dots/config"));
+        assert!(has_seq(&a, &["--bind", &config, &config]), "{a:?}");
+        let gnupg = s(named.join("Sync/gnupg"));
+        assert!(has_seq(&a, &["--tmpfs", &gnupg]), "{a:?}");
+    }
+
+    /// SAM's own folders kept behind a link (`~/.config` a link, SAM's
+    /// settings in `~/.config/sam`) are hidden where the app reaches them,
+    /// never through the link: with the link leading to a place nothing
+    /// grants, the empty folder on `~/.config/sam` stopped every start with
+    /// the whole home writable (Bubblewrap could not make the folders above
+    /// it); with the link leading into the home, the folder is hidden where
+    /// it points (security review 2026-11-23, SB-6).
+    #[test]
+    fn sams_own_folders_behind_a_link_are_hidden_where_the_app_reaches_them() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        fs::create_dir_all(home.join("dots/config/sam")).unwrap();
+        fs::create_dir_all(base.join("elsewhere/config/sam")).unwrap();
+        std::os::unix::fs::symlink(base.join("elsewhere/config"), home.join(".config")).unwrap();
+        let mut ctx = ctx_for(&full_rw(), &home);
+        ctx.sam_dirs = vec![home.join(".config/sam")];
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        let through_link = s(home.join(".config/sam"));
+        let a = args_of(&ctx);
+        assert!(!has_seq(&a, &["--tmpfs", &through_link]), "{a:?}");
+        assert!(
+            !has_seq(&a, &["--tmpfs", &s(base.join("elsewhere/config/sam"))]),
+            "nothing shows the place the link leads to: {a:?}"
+        );
+        // The link leads into the home: hidden there.
+        fs::remove_file(home.join(".config")).unwrap();
+        std::os::unix::fs::symlink(home.join("dots/config"), home.join(".config")).unwrap();
+        let a = args_of(&ctx);
+        assert!(!has_seq(&a, &["--tmpfs", &through_link]), "{a:?}");
+        assert!(
+            has_seq(&a, &["--tmpfs", &s(home.join("dots/config/sam"))]),
+            "{a:?}"
+        );
+    }
+
+    /// SAM's own programs are bound read-only onto themselves where the app
+    /// could write them, also where the app sees them under the home's own
+    /// name, and the folders above them are pinned; where the app sees them
+    /// read-only or not at all, nothing is added (security review
+    /// 2026-11-23, SB-1).
+    #[test]
+    fn sams_own_programs_are_read_only_wherever_an_app_could_write_them() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let real = base.join("data/u");
+        let named = base.join("home/u");
+        fs::create_dir_all(real.join("Downloads")).unwrap();
+        fs::create_dir_all(real.join("Applications")).unwrap();
+        fs::create_dir_all(base.join("home")).unwrap();
+        std::os::unix::fs::symlink(&real, &named).unwrap();
+        let sam = real.join("Applications/SAM.AppImage");
+        let run = real.join("Downloads/sam-jail-run");
+        fs::write(&sam, "").unwrap();
+        fs::write(&run, "").unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let ro = |a: &[String], p: &Path| has_seq(a, &["--ro-bind-try", &s(p), &s(p)]);
+        let pinned = |a: &[String], p: &Path| has_seq(a, &["--bind", &s(p), &s(p)]);
+
+        // The whole home writable, under its own name.
+        let mut ctx = ctx_for(&full_rw(), &named);
+        ctx.sam_programs = vec![sam.clone(), run.clone()];
+        let a = args_of(&ctx);
+        let seen = named.join("Applications/SAM.AppImage");
+        assert!(ro(&a, &seen), "{a:?}");
+        assert!(ro(&a, &named.join("Downloads/sam-jail-run")));
+        assert!(pinned(&a, &named.join("Applications")));
+        assert!(pinned(&a, &named.join("Downloads")));
+        // After the home and the pins (a later mount would cover it).
+        let at = |v: &str| a.iter().position(|x| x == v).unwrap();
+        let pin = a
+            .windows(3)
+            .position(|w| w[0] == "--bind" && w[1] == s(&named.join("Applications")))
+            .unwrap();
+        assert!(at(&s(&named)) < pin && pin < at(&s(&seen)), "{a:?}");
+
+        // Only Downloads, writable, as a user folder.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.downloads = Access::Rw;
+        let mut ctx = ctx_for(&p, &named);
+        ctx.host
+            .xdg_dirs
+            .insert("downloads".into(), named.join("Downloads"));
+        ctx.sam_programs = vec![sam.clone(), run.clone()];
+        let a = args_of(&ctx);
+        assert!(ro(&a, &run), "{a:?}");
+        assert!(!a.contains(&s(&sam)), "not shown, nothing added: {a:?}");
+
+        // Read-only: nothing to add.
+        ctx.permissions.filesystem.downloads = Access::Ro;
+        let a = args_of(&ctx);
+        assert!(!ro(&a, &run), "{a:?}");
     }
 
     /// A start of `p` with `home` as the home and no user folders.

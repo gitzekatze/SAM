@@ -181,6 +181,40 @@ pub fn own_appimage() -> Option<PathBuf> {
     (exe.starts_with(&appdir) && appimage.is_file()).then_some(appimage)
 }
 
+/// SAM's own programs that run outside the sandbox: SAM's AppImage file,
+/// this program, and SAM's programs next to it (menu entries call
+/// `sam-jail-run` there, the window `sam-jail` and `sam-jail-run`). Every
+/// start shows them read-only at most: an app that replaced one would run
+/// its own code unsandboxed at the next click on a menu entry (security
+/// review 2026-11-23, SB-1: SAM kept in `~/Downloads`, or `cargo install`ed
+/// into `~/.cargo/bin`).
+pub fn own_programs() -> Vec<PathBuf> {
+    programs_beside(std::env::current_exe().ok().as_deref(), own_appimage())
+}
+
+/// [`own_programs`] for the running program `exe` and SAM's AppImage.
+fn programs_beside(exe: Option<&Path>, appimage: Option<PathBuf>) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = appimage.into_iter().collect();
+    if let Some(exe) = exe {
+        out.push(exe.to_path_buf());
+        if let Some(dir) = exe.parent() {
+            for name in ["sam-jail", "sam-jail-run", "sam-jail-gui"] {
+                let p = dir.join(name);
+                if p.is_file() {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    let mut seen = Vec::new();
+    out.retain(|p| {
+        let new = !seen.contains(p);
+        seen.push(p.clone());
+        new
+    });
+    out
+}
+
 /// Finds a program SAM may run: the first one on `$PATH` that the user
 /// cannot change. Every program SAM starts
 /// runs outside the sandbox, and an app with write access to the home could
@@ -518,6 +552,30 @@ pub fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// SAM's own programs are its AppImage, the running program and SAM's
+    /// programs next to it, each once; other files there are not (security
+    /// review 2026-11-23, SB-1).
+    #[test]
+    fn sams_own_programs_are_its_appimage_and_the_programs_beside_it() {
+        let t = tempfile::tempdir().unwrap();
+        let bin = t.path().join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        for f in ["sam-jail-gui", "sam-jail-run", "unrelated"] {
+            fs::write(bin.join(f), "").unwrap();
+        }
+        let gui = bin.join("sam-jail-gui");
+        let appimage = t.path().join("SAM.AppImage");
+        assert_eq!(
+            programs_beside(Some(&gui), Some(appimage.clone())),
+            vec![appimage, gui.clone(), bin.join("sam-jail-run")]
+        );
+        assert_eq!(
+            programs_beside(Some(&gui), None),
+            vec![gui.clone(), bin.join("sam-jail-run")]
+        );
+        assert!(programs_beside(None, None).is_empty());
+    }
 
     /// Reading a file from an untrusted app returns at once for anything
     /// that is not a regular file: a named pipe made SAM wait forever
