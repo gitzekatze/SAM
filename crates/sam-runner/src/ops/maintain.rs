@@ -426,6 +426,11 @@ impl Sam {
                 remove_tree(&previous)?;
             }
         }
+        // A download that waited for an answer about its signature.
+        let waiting = self.paths.data_dir.join("update-consent").join(&entry.id);
+        if waiting.exists() {
+            remove_tree(&waiting)?;
+        }
         self.registry().remove(&entry.id)?;
         Ok((entry, problems))
     }
@@ -683,8 +688,11 @@ impl Sam {
     ///    swapped outside SAM is not updated (its update source would decide
     ///    what runs with this app's permissions);
     /// 2. download and check it against the published SHA-1;
-    /// 3. it must be an AppImage, signed like the installed one (or
-    ///    `accept_key_change`);
+    /// 3. it must be an AppImage for this computer's processor, signed like
+    ///    the installed one. If not, the download waits in
+    ///    `<data>/update-consent/<id>/`, and `accept_key_change` installs
+    ///    exactly that file (when it is still the published one), never a
+    ///    new download;
     /// 4. the checked copy of the old file is kept in
     ///    `<data>/update-backups/<id>/` (so it is not listed as a second
     ///    AppImage), a copy of the new one takes its new name in the
@@ -759,7 +767,27 @@ impl Sam {
         let name = update_file_name(p.filename.as_deref(), &old_name, &dir);
         let target = dir.join(&name);
         let tmp = work.join(&name);
-        let fetched = crate::updates::download_update(&p, &installed, &tmp)?;
+        // A consent covers exactly the file it was asked for: a download
+        // refused for a changed or unchecked signature waits in SAM's own
+        // folder, and accepting installs that file. Downloading again let a
+        // server hand out another file, signed with any key, under the same
+        // "yes" (review 2026-11-23, U-4).
+        let waiting_dir = self.paths.data_dir.join("update-consent").join(&entry.id);
+        let waiting = take_waiting(&waiting_dir, work).filter(|(w, _)| {
+            accept_key_change
+                && w.installed_sha256 == installed_sha256
+                && w.published_sha1 == p.sha1
+        });
+        let (fetched, consented) = match waiting {
+            Some((w, file))
+                if fingerprint::sha256_file(&file).ok().as_deref() == Some(w.sha256.as_str()) =>
+            {
+                fs::rename(&file, &tmp)?;
+                let total = fs::metadata(&tmp)?.len();
+                (crate::updates::Fetched::Full { total }, Some(w))
+            }
+            _ => (crate::updates::download_update(&p, &installed, &tmp)?, None),
+        };
         let info = inspect(&tmp)?;
         if !info.is_appimage() {
             bail!(
@@ -793,16 +821,33 @@ impl Sam {
         };
         let new_sha256 = fingerprint::sha256_file(&tmp)?;
         let new_sig = sam_detect::signature::check(&tmp);
+        // Accepted earlier: this very file, for this very question.
+        let consented_to = |code: &str| {
+            consented
+                .as_ref()
+                .is_some_and(|w| w.code == code && w.sha256 == new_sha256)
+        };
+        // Asks, and keeps the download for the answer.
+        let ask = |code: &'static str, message: String| -> anyhow::Error {
+            let w = Waiting {
+                code: code.to_string(),
+                sha256: new_sha256.clone(),
+                installed_sha256: installed_sha256.clone(),
+                published_sha1: p.sha1.clone(),
+            };
+            // Not kept (no space): accepting then downloads and asks again.
+            let _ = keep_waiting(&waiting_dir, &tmp, &w);
+            sam_core::error::CodedError::new(code, message).into()
+        };
         if let Some(before) = signing_key_change(Some(&before_sig), &new_sig) {
-            if !accept_key_change {
-                return Err(sam_core::error::CodedError::new(
+            if !consented_to("signing-key-changed") {
+                return Err(ask(
                     "signing-key-changed",
                     sam_core::i18n::trf(
-                        "The signing key changed: the installed version was {before}, the new file is {now}. The download was deleted; update again and accept the change only if you trust it.",
+                        "The signing key changed: the installed version was {before}, the new file is {now}. Accept the change only if you trust it: SAM then installs exactly this file, never one downloaded later.",
                         &[("before", &before), ("now", &sig_words(&new_sig))],
                     ),
-                )
-                .into());
+                ));
             }
         }
         if let Some((was, now)) = older_signed_version(Some(&before_sig), &new_sig) {
@@ -813,15 +858,14 @@ impl Sam {
         // asks like for a changed key (threat model: a key change is
         // refused until you accept it).
         if let Some(before) = signature_unconfirmed(Some(&before_sig), &new_sig) {
-            if !accept_key_change {
-                return Err(sam_core::error::CodedError::new(
+            if !consented_to("signature-unchecked") {
+                return Err(ask(
                     "signature-unchecked",
                     sam_core::i18n::trf(
-                        "The installed version was {before}, but the signature of the new file cannot be checked, so SAM cannot tell whether it comes from the same developer. Install GnuPG (gpg and gpgv) and update again; accept the update without the check only if you trust its source. The download was deleted.",
+                        "The installed version was {before}, but the signature of the new file cannot be checked, so SAM cannot tell whether it comes from the same developer. Install GnuPG (gpg and gpgv) and update again; accept the update without the check only if you trust its source: SAM then installs exactly this file, never one downloaded later.",
                         &[("before", &before)],
                     ),
-                )
-                .into());
+                ));
             }
         }
         let old_mode = fs::metadata(&old)
@@ -1216,6 +1260,51 @@ fn unpacked_sha256(entry: &AppEntry) -> &str {
         .extraction
         .as_ref()
         .map_or(&entry.source.sha256, |x| &x.source.sha256)
+}
+
+/// An update download that waits for the person's answer (review
+/// 2026-11-23, U-4): which question, which file, for which installed
+/// version and which published one.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct Waiting {
+    code: String,
+    sha256: String,
+    installed_sha256: String,
+    published_sha1: String,
+}
+
+/// The download waiting in `dir`, moved into `work`. `dir` is emptied in
+/// any case: a consent is used once, or not at all.
+fn take_waiting(dir: &Path, work: &Path) -> Option<(Waiting, PathBuf)> {
+    let found = (|| {
+        let w: Waiting = serde_json::from_slice(&fs::read(dir.join("waiting.json")).ok()?).ok()?;
+        let file = dir.join("download");
+        if !fs::symlink_metadata(&file).ok()?.file_type().is_file() {
+            return None;
+        }
+        let to = work.join(".waiting");
+        fs::rename(&file, &to).ok()?;
+        Some((w, to))
+    })();
+    if dir.exists() {
+        let _ = remove_tree(dir);
+    }
+    found
+}
+
+/// Keeps `file` (in SAM's download folder) in `dir` until the answer.
+fn keep_waiting(dir: &Path, file: &Path, w: &Waiting) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    if dir.exists() {
+        remove_tree(dir)?;
+    }
+    fs::create_dir_all(dir)?;
+    for d in [dir.parent().unwrap_or(dir), dir] {
+        fs::set_permissions(d, fs::Permissions::from_mode(0o700))?;
+    }
+    fs::rename(file, dir.join("download"))?;
+    fs::write(dir.join("waiting.json"), serde_json::to_vec(w)?)?;
+    Ok(())
 }
 
 /// Whether `name` is a plain AppImage file name: letters, digits and

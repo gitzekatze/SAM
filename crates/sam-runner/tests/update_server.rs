@@ -1284,3 +1284,137 @@ fn a_server_that_sends_more_than_announced_cannot_fill_the_disk() {
         .join(&id);
     assert!(!downloads.exists(), "what came was deleted");
 }
+
+/// Regression (review 2026-11-23, U-4): "Update Anyway" ran the update a
+/// second time with a blanket "accept any key change". The second request
+/// could bring another file: the dialog said "signed (key …X)", which
+/// looks like a normal key change, and the next download, signed with any
+/// other key, went through under the same yes. Now the refused download
+/// waits in SAM's own folder and the consent covers exactly that file: a
+/// different file published meanwhile is asked about again, and the file
+/// that was shown is installed without being downloaded again. With the
+/// real GnuPG (SAM_TEST_GPG=1).
+#[test]
+fn consent_to_a_new_key_covers_only_the_file_that_was_shown() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
+        eprintln!("skipping: set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)");
+        return;
+    }
+    assert!(
+        ["gpg", "gpgv", "objcopy"].iter().all(|t| have(t)),
+        "SAM_TEST_GPG=1, but gpg, gpgv or objcopy is not installed"
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let gpg_home = tmp.path().join("gnupg");
+    fs::create_dir(&gpg_home).unwrap();
+    fs::set_permissions(
+        &gpg_home,
+        std::os::unix::fs::PermissionsExt::from_mode(0o700),
+    )
+    .unwrap();
+    for signer in [
+        "First Key <first@example.invalid>",
+        "Second Key <second@example.invalid>",
+        "Third Key <third@example.invalid>",
+    ] {
+        let st = Command::new("gpg")
+            .arg("--homedir")
+            .arg(&gpg_home)
+            .args([
+                "--batch",
+                "--quiet",
+                "--passphrase",
+                "",
+                "--pinentry-mode",
+                "loopback",
+            ])
+            .args(["--quick-gen-key", signer, "ed25519", "sign", "never"])
+            .status()
+            .unwrap();
+        assert!(st.success(), "gpg could not make a key");
+    }
+    let signed = |path: &Path, version: &str, key: &str| {
+        let mut spec = FixtureSpec::hello("Tool");
+        spec.comment = format!("Tool, version {version}");
+        spec.files.push(FixtureFile {
+            path: "usr/share/tool/data.bin".into(),
+            data: vec![7u8; 300_000],
+            mode: 0o644,
+        });
+        spec.files.push(FixtureFile {
+            path: "usr/share/tool/version".into(),
+            data: version.as_bytes().to_vec(),
+            mode: 0o644,
+        });
+        spec.update_info = Some(format!("zsync|{url}"));
+        spec.signature_sections = true;
+        build(path, &spec).unwrap();
+        sam_detect::signature::sign_for_test(path, &gpg_home, key).unwrap();
+    };
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let v1 = apps.join("Tool-1.0-x86_64.AppImage");
+    signed(&v1, "1.0", "first@example.invalid");
+    let shown = tmp.path().join("v2.AppImage");
+    signed(&shown, "2.0", "second@example.invalid");
+    let other = tmp.path().join("v2b.AppImage");
+    signed(&other, "2.0b", "third@example.invalid");
+    publish(&server, &shown, "Tool-2.0-x86_64.AppImage");
+
+    let (sam, id) = add_reviewed(tmp.path(), &v1);
+    let before = fs::read(&v1).unwrap();
+    let code = |e: &anyhow::Error| sam_core::error::code_of(e);
+
+    // Asked about the second key.
+    let err = sam.update(&id, false).unwrap_err();
+    assert_eq!(code(&err), Some("signing-key-changed"), "{err:#}");
+
+    // Before the person answers, the server publishes another file, signed
+    // with a third key. "Update Anyway" does not install it: it is asked
+    // about again, and nothing changes.
+    publish(&server, &other, "Tool-2.0-x86_64.AppImage");
+    let err = sam.update(&id, true).unwrap_err();
+    assert_eq!(code(&err), Some("signing-key-changed"), "{err:#}");
+    assert_eq!(
+        fs::read(&v1).unwrap(),
+        before,
+        "the installed version is untouched"
+    );
+    assert!(sam.resolve(&id).unwrap().update_backup.is_none());
+
+    // Accepting what was shown last installs exactly that file, taken from
+    // SAM's own folder, not downloaded again.
+    fs::write(&server.log, "").unwrap();
+    let e = sam.update(&id, true).unwrap();
+    assert_eq!(fs::read(&e.source_path).unwrap(), fs::read(&other).unwrap());
+    assert_eq!(unpacked_version(&sam, &id), "2.0b");
+    let log = fs::read_to_string(&server.log).unwrap();
+    assert!(
+        !log.lines().any(|l| l.contains("Tool-2.0-x86_64.AppImage ")),
+        "the accepted file was not downloaded again:\n{log}"
+    );
+    assert!(
+        !tmp.path()
+            .join("sam")
+            .join("data")
+            .join("update-consent")
+            .join(&id)
+            .exists(),
+        "the consent was used up"
+    );
+    // A consent is used once: the next update asks again.
+    let v3 = tmp.path().join("v3.AppImage");
+    signed(&v3, "3.0", "first@example.invalid");
+    publish(&server, &v3, "Tool-3.0-x86_64.AppImage");
+    let err = sam.update(&id, true).unwrap_err();
+    assert_eq!(code(&err), Some("signing-key-changed"), "{err:#}");
+    let _ = Command::new("gpgconf")
+        .arg("--homedir")
+        .arg(&gpg_home)
+        .args(["--kill", "all"])
+        .status();
+}
