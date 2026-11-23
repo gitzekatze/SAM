@@ -552,6 +552,11 @@ tests = [
   "the_command_preview_ends_with_the_arguments_given",
   "run_hands_the_app_the_arguments_given",
   "desktop_installs_removes_and_refreshes_launchers",
+  "the_app_gets_its_arguments_without_the_separator",
+  "the_files_from_the_menu_reach_the_app",
+  "a_refused_menu_start_is_told_in_a_notice",
+  "a_menu_start_the_sandbox_check_refuses_points_to_test",
+  "only_a_failed_terminal_app_keeps_its_window_open",
 ]
 checks = ["tests/gui/flow-atspi.sh", "tests/gui/taskbar-kwin.sh"]
 
@@ -614,6 +619,10 @@ tests = [
   "fake_bwrap_error_is_not_a_sandbox_failure",
   "only_a_failed_start_leaves_a_last_problem",
   "a_hint_applies_only_what_was_asked_for",
+  "a_quick_failure_gets_a_notice_with_the_fix_button",
+  "the_fix_button_opens_sam_only_when_sam_is_found",
+  "only_a_quick_failure_counts_as_stopped_right_after_start",
+  "a_refused_menu_start_is_told_in_a_notice",
 ]
 checks = ["tests/gui/app-page-atspi.sh", "tests/real-apps/run.sh"]
 
@@ -849,4 +858,5 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
   "runtime_folders_go_into_the_sessions_runtime_folder",
   "the_first_run_guide_is_marked_done_and_reset",
   "each_command_names_its_sam_function",
+  "man_writes_a_page_per_visible_command_and_none_for_hidden_ones",
 ]
