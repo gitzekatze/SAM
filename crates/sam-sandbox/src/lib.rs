@@ -3392,16 +3392,20 @@ mod tests {
         let mut ctx = sample_context();
         ctx.appdir = tmp.path().to_path_buf();
         fs::create_dir_all(tmp.path().join("usr/lib")).unwrap();
-        // A library every Linux system has, bundled by the "app".
-        let libc = [
-            "/usr/lib/libc.so.6",
-            "/usr/lib64/libc.so.6",
-            "/usr/lib/x86_64-linux-gnu/libc.so.6",
-            "/lib/x86_64-linux-gnu/libc.so.6",
-        ]
-        .into_iter()
-        .find(|p| Path::new(p).exists());
-        let Some(_) = libc else { return };
+        // A library every Linux system has, bundled by the "app". Never a
+        // silent skip: a run that must prove everything fails without it.
+        let libc = SYSTEM_LIB_DIRS
+            .iter()
+            .map(|d| Path::new(d).join("libc.so.6"))
+            .find(|p| p.exists());
+        let Some(_) = libc else {
+            assert!(
+                std::env::var("SAM_REQUIRE_SANDBOX").as_deref() != Ok("1"),
+                "SAM_REQUIRE_SANDBOX=1, but no libc.so.6 in {SYSTEM_LIB_DIRS:?}"
+            );
+            sam_core::errln!("skipped: no libc.so.6 in {SYSTEM_LIB_DIRS:?}");
+            return;
+        };
         fs::write(tmp.path().join("usr/lib/libc.so.6"), "old").unwrap();
         ctx.permissions.advanced.system_libraries = vec![
             "libc.so.6".into(),

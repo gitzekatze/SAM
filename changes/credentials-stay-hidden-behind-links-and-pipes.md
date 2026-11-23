@@ -14,3 +14,7 @@
   devices and host themes; the display variables and the X11 cookie; the
   notes about a missing bus; files named on the command line; and moving
   new start files aside.
+- The test that system libraries replace only bundled ones by plain name
+  looks for the C library in every folder SAM itself searches (also on
+  64-bit ARM), and no longer skips silently where it finds none: a run
+  that must prove everything fails instead.
