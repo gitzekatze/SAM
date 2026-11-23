@@ -120,6 +120,17 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "the_reason_names_exactly_the_riskiest_permissions",
   "game_controllers_count_unless_all_input_is_granted",
   "a_risk_level_shows_as_its_name",
+  "each_credential_store_in_a_full_home_is_named_as_exposed_keys",
+  "only_the_full_session_bus_is_named_as_an_escape",
+  "dangerous_bus_names_and_a_missing_proxy_are_named_for_the_filtered_bus_only",
+  "a_wildcard_over_a_blocked_name_is_named_for_the_filtered_bus_only",
+  "each_raw_device_gives_the_raw_device_danger",
+  "raw_backend_arguments_are_named_when_there_are_some",
+  "no_display_is_named_only_without_any_display",
+  "network_advice_fits_the_setting_and_the_apps_need",
+  "unusable_user_namespaces_are_named_only_where_they_are",
+  "missing_display_and_sound_are_named_only_when_the_app_would_miss_them",
+  "missing_sound_names_pipewire_pulse_when_pipewire_runs",
 ]
 
 [[function]]
