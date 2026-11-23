@@ -106,6 +106,7 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "the_sound_servers_own_socket_is_dangerous_as_an_extra_socket",
   "a_function_of_a_password_service_counts_with_the_network",
   "a_dangerous_socket_is_known_however_it_is_written",
+  "turning_a_protection_off_for_every_app_asks_first",
 ]
 
 [[function]]
@@ -120,6 +121,8 @@ tests = ["set_and_get_keys", "change_check_flags_removals_and_additions", "folde
   "undo_takes_back_only_its_own_change",
   "a_preset_not_applied_ends_with_not_passed",
   "presets_keep_their_own_files_and_any_name",
+  "an_apps_own_name_never_captures_a_reference_to_another_app",
+  "a_preset_changed_after_the_question_is_not_applied",
 ]
 checks = ["tests/gui/permissions-atspi.sh"]
 
@@ -494,7 +497,8 @@ id = 27
 area = "F"
 promise = "SAM notices app settings that something else changed and asks before starting the app."
 code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs"]
-tests = ["records_changed_outside_sam_are_recognized", "an_app_changed_outside_sam_starts_only_after_confirmation", "a_changed_record_stays_blocked_until_it_is_confirmed", "a_late_save_keeps_a_change_made_meanwhile"]
+tests = ["records_changed_outside_sam_are_recognized", "an_app_changed_outside_sam_starts_only_after_confirmation", "a_changed_record_stays_blocked_until_it_is_confirmed", "a_late_save_keeps_a_change_made_meanwhile",
+  "confirming_changed_settings_names_what_they_allow"]
 
 [[function]]
 id = 28
@@ -531,6 +535,7 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "a_signature_that_was_never_checked_lets_no_key_through",
   "going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change",
   "going_back_works_when_the_update_could_not_be_unpacked",
+  "only_an_https_release_page_is_opened",
 ]
 
 [[function]]
@@ -596,7 +601,8 @@ id = 35
 area = "H"
 promise = "The overview of all apps, with clear status badges."
 code = ["sam-gtk/src/window.rs", "sam-gtk/src/pages.rs", "sam-core/src/model.rs", "sam-storage/src/lib.rs"]
-tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text", "links_to_other_pages_open_on_github"]
+tests = ["profile_change_clears_broken_launch", "apps_with_compatibility_risk_are_marked_until_they_start", "apps_are_found_by_name_or_id_and_ambiguous_names_are_refused", "nested_items_keep_their_text", "links_to_other_pages_open_on_github",
+  "the_header_is_not_green_while_a_protection_layer_was_missing"]
 checks = ["tests/gui/session.sh"]
 
 [[function]]
@@ -612,7 +618,8 @@ id = 37
 area = "H"
 promise = "SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's."
 code = ["sam-core/src/i18n.rs", "sam-gtk/src/i18n.rs", "scripts/i18n.py", "po/de.po", "po/es.po", "po/fr.po"]
-tests = ["texts_without_a_translation_come_back_with_their_values", "the_command_line_speaks_german_when_asked", "every_translated_language_can_be_chosen", "the_language_is_the_system_or_one_sam_speaks", "the_chosen_language_and_the_systems_are_kept_apart", "apps_keep_the_system_language_whatever_sams_window_shows"]
+tests = ["texts_without_a_translation_come_back_with_their_values", "the_command_line_speaks_german_when_asked", "every_translated_language_can_be_chosen", "the_language_is_the_system_or_one_sam_speaks", "the_chosen_language_and_the_systems_are_kept_apart", "apps_keep_the_system_language_whatever_sams_window_shows",
+  "every_text_the_window_builds_is_translated"]
 checks = ["tests/gui/flow-atspi.sh", "scripts/i18n.py"]
 
 [[function]]

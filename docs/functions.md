@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**41 functions:** 27 proven by passing tests, 13 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 656 tests in all.
+**41 functions:** 23 proven by passing tests, 17 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 663 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -19,8 +19,8 @@
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 10 | ✅ |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 11 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-detect, sam-profile | 16 | ✅ |
-| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 26 | ✅ 🆕 8 new tests since the report |
-| 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 25 | ✅ |
+| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-core | 27 | ✅ 🆕 9 new tests since the report |
+| 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 27 | ✅ 🆕 2 new tests since the report |
 | 9 | [Things an app printed can never grant it access on their own; SAM always asks.](#9) | sam-runner | 4 | ✅ 🆕 1 new test since the report |
 | 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox | 11 | ✅ |
 | 11 | [Keys, passwords and the files of your other apps stay hidden, even with full home access.](#11) | sam-sandbox, sam-core | 18 | ✅ 🆕 5 new tests since the report |
@@ -40,17 +40,17 @@
 | 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | sam-runner, sam-sandbox | 17 | ✅ |
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 9 | ✅ |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 3 | ✅ |
-| 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | sam-runner, sam-storage | 4 | ✅ |
-| 28 | [Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 52 | ✅ 🆕 10 new tests since the report |
+| 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | sam-runner, sam-storage | 5 | ✅ 🆕 1 new test since the report |
+| 28 | [Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, and refuse a changed signing key until you accept it.](#28) | sam-runner, sam-detect | 53 | ✅ 🆕 11 new tests since the report |
 | 29 | [SAM notices AppImages that were moved or changed.](#29) | sam-runner, sam-intake | 6 | ✅ |
 | 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 6 | ✅ |
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 1 | ✅ |
 | 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | sam-runner, sam-intake | 2 | ✅ |
 | 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 17 | ✅ 🆕 1 new test since the report |
 | 34 | [Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.](#34) | sam-runner | 9 | ✅ |
-| 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-storage, sam-core | 5 | ✅ |
+| 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-storage, sam-core | 6 | ✅ 🆕 1 new test since the report |
 | 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 12 | ✅ |
-| 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 6 | ✅ |
+| 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 7 | ✅ 🆕 1 new test since the report |
 | 40 | [The window can be used with the keyboard alone and with a screen reader: every control has a name it can say and takes keyboard focus.](#40) | sam-gtk | 0 | scripted check |
 | 38 | [SAM's own files survive: files from older versions are migrated, files from newer versions stay untouched, and damaged files are moved aside without stopping SAM.](#38) | sam-storage, sam-core | 13 | ✅ |
 | 39 | [SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones.](#39) | sam-jail-cli | 20 | ✅ |
@@ -82,10 +82,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_appimage_behind_a_foreign_menu_entry_is_found`](../crates/sam-intake/src/menu.rs#L295) | The AppImage a foreign menu entry starts is found in its Exec line, also behind env and with quotes. | ✅ |
 | [`app_ids_stay_unique_when_names_collide`](../crates/sam-intake/src/id.rs#L98) | App IDs are stable and unique, also when two AppImages have the same name. | ✅ |
 | [`found_appimages_get_a_menu_entry_only_with_a_sandbox`](../crates/sam-runner/tests/overview.rs#L13) | AppImages are listed before they have a sandbox; only creating the sandbox adds SAM's menu entry and hides unsandboxed ones, and removing it puts them back. | ✅ |
-| [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1931) | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | ✅ |
+| [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1981) | The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | ✅ |
 | [`a_reader_gone_wrong_comes_to_nothing`](../crates/sam-intake/tests/preview_sandbox.rs#L50) | A reader gone wrong comes to nothing. | ✅ |
 | [`the_overview_reads_names_inside_a_sandbox`](../crates/sam-jail-cli/tests/odd_names.rs#L252) | The overview reads an AppImage's name inside the preview sandbox, not in SAM's own process (audit I-F7): a recording stand-in in front of the real Bubblewrap sees the reader start, and the name still arrives. | ✅ |
-| [`dropped_pipes_and_icon_bombs_never_reach_gtk`](../crates/sam-gtk/src/window.rs#L1887) | A named pipe dropped on the window is no AppImage, and checking it does not block the window until something writes to it (audit G-F16). | ✅ |
+| [`dropped_pipes_and_icon_bombs_never_reach_gtk`](../crates/sam-gtk/src/window.rs#L1913) | A named pipe dropped on the window is no AppImage, and checking it does not block the window until something writes to it (audit G-F16). | ✅ |
 
 **Code:** [`sam-intake/src/peek.rs`](../crates/sam-intake/src/peek.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs), [`sam-intake/src/id.rs`](../crates/sam-intake/src/id.rs), [`sam-runner/src/ops/overview.rs`](../crates/sam-runner/src/ops/overview.rs), [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs)
 
@@ -225,7 +225,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`strict_has_no_danger`](../crates/sam-core/src/warnings.rs#L334) | SAM's strictest window profile produces no danger warning. | ✅ |
 | [`x11_warning_can_be_disabled`](../crates/sam-core/src/warnings.rs#L341) | The X11 warning disappears when the user turns it off in the preferences. | ✅ |
 | [`tags_and_the_risk_list_use_the_same_words`](../crates/sam-profile/src/tags.rs#L262) | One name per permission: where the risk list names a permission that also has a tag, both use the same words (regression: "Audio" vs "Sound", "GPU" vs "GPU acceleration", "Show in folder"). | ✅ |
-| [`folder_explanations_name_the_path`](../crates/sam-gtk/src/all_perms.rs#L1494) | Personal folders explain where they are; other permissions keep their description unchanged. | ✅ |
+| [`folder_explanations_name_the_path`](../crates/sam-gtk/src/all_perms.rs#L1508) | Personal folders explain where they are; other permissions keep their description unchanged. | ✅ |
 | [`risk_has_the_same_three_words_everywhere`](../crates/sam-core/src/risk.rs#L887) | The command line and the window name risk with the same three words, and the command line's filter understands both names. | ✅ |
 | [`the_full_session_bus_is_rated_dangerous`](../crates/sam-core/src/risk.rs#L1034) | The full session bus reaches systemd, which can start programs outside the sandbox, so it is rated like allowing systemd by name. | ✅ |
 | [`every_switch_has_one_risk_word`](../crates/sam-core/src/risk.rs#L816) | Every switch says the same risk word in the window (its catalogue entry) as in the risk assessment that decides the badges and which changes ask first (audit D-M12: raw ALSA was "Think twice" in one and "Dangerous" in the other, so the window did not ask). | ✅ |
@@ -233,7 +233,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`reading_and_sending_together_is_dangerous`](../crates/sam-core/src/risk.rs#L999) | The network together with your home, keys or passwords is Dangerous: each alone is Think twice, but together the app can send what it reads (audit U-M10). | ✅ |
 | [`the_catalogue_names_every_setting`](../crates/sam-core/src/permissions.rs#L1181) | The catalogue is the one list of permissions: it names every setting an app's permissions have, and every name in it can be read. | ✅ |
 | [`the_documentation_names_every_permission`](../crates/sam-core/src/permissions.rs#L1224) | The permissions page of the documentation names every permission. | ✅ |
-| [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1282) | The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | ✅ |
+| [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1285) | The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | ✅ |
 | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L313) | `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | ✅ |
 | [`info_on_the_terminal_shows_every_permission_once`](../crates/sam-jail-cli/tests/exit_codes.rs#L167) | `sam-jail info` shows every permission with its value, each group of permissions under one heading (audit G-F14). | ✅ |
 | [`a_path_with_dots_or_double_slashes_is_rated_where_it_leads`](../crates/sam-core/src/risk.rs#L1113) | A path is rated where it leads, not as it is written: `.`, `..` and repeated `/` count for nothing, so `/.` is the whole computer and `~/..` the folder above the home, and a folder that holds the home counts as the home. | 🆕 new |
@@ -244,6 +244,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_sound_servers_own_socket_is_dangerous_as_an_extra_socket`](../crates/sam-core/src/risk.rs#L1295) | The sound server's own socket listed as an extra socket is as dangerous as "Sound without SAM's relay" (review SB-4); PipeWire's stays at the level of "Direct PipeWire access". | 🆕 new |
 | [`a_function_of_a_password_service_counts_with_the_network`](../crates/sam-core/src/risk.rs#L1257) | A function rule of a password service reaches the stored passwords as the allowed name does: with full network the app "can send what it reads" (review 2026-11-23). | 🆕 new |
 | [`a_dangerous_socket_is_known_however_it_is_written`](../crates/sam-core/src/risk.rs#L1308) | A dangerous socket is known however its path is written: `.` and doubled `/` count for nothing, as for the kernel (review 2026-11-23: `/run/dbus//system_bus_socket` read as an ordinary extra socket). | 🆕 new |
+| [`turning_a_protection_off_for_every_app_asks_first`](../crates/sam-gtk/src/pages.rs#L1209) | Turning Landlock or the syscall filter off for every app asks first; turning them on, and every other preference, does not (audit G-F11). | 🆕 new |
 
 **Code:** [`sam-core/src/permissions.rs`](../crates/sam-core/src/permissions.rs), [`sam-core/src/risk.rs`](../crates/sam-core/src/risk.rs), [`sam-core/src/warnings.rs`](../crates/sam-core/src/warnings.rs), [`sam-gtk/src/all_perms.rs`](../crates/sam-gtk/src/all_perms.rs)
 
@@ -257,16 +258,16 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`folders_are_not_breakage_but_lost_local_network_and_bus_are`](../crates/sam-profile/src/lib.rs#L1116) | A hidden folder is not a reason to warn that an app stops working: it is listed apart (regression for the group warning, which only interrupts for breakage). | ✅ |
 | [`lost_sound_is_named_sound`](../crates/sam-profile/src/lib.rs#L1146) | An app that needs sound is warned about in the switch's word. | ✅ |
 | [`preset_template_is_strict`](../crates/sam-profile/src/lib.rs#L1164) | A new preset starts without home, network or system bus access. | ✅ |
-| [`only_a_damaged_preset_is_moved_aside`](../crates/sam-storage/src/lib.rs#L894) | A damaged preset is moved aside once; a preset from a newer SAM is only skipped and stays where it is, for when SAM is updated (mutation run P14: moving every unreadable preset aside went unnoticed). | ✅ |
-| [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L612) | When SAM's recommendation improves, the user's own changes are kept. | ✅ |
+| [`only_a_damaged_preset_is_moved_aside`](../crates/sam-storage/src/lib.rs#L956) | A damaged preset is moved aside once; a preset from a newer SAM is only skipped and stays where it is, for when SAM is updated (mutation run P14: moving every unreadable preset aside went unnoticed). | ✅ |
+| [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L615) | When SAM's recommendation improves, the user's own changes are kept. | ✅ |
 | [`a_dry_run_changes_nothing_and_names_what_would_stop_working`](../crates/sam-runner/tests/groups.rs#L56) | A dry run of a group change saves nothing and names what each app would lose. | ✅ |
 | [`only_changed_apps_are_saved_and_one_undo_restores_all_of_them`](../crates/sam-runner/tests/groups.rs#L82) | A group change saves only the apps whose value changes, and one undo restores all of them. | ✅ |
 | [`an_invalid_value_or_unknown_app_changes_no_app`](../crates/sam-runner/tests/groups.rs#L118) | A group change with an invalid value or an unknown app changes no app. | ✅ |
 | [`sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user`](../crates/sam-runner/tests/groups.rs#L157) | SAM ships no presets; old built-in names are free for the user, and applying a preset asks before it removes something an app needs. | ✅ |
-| [`saving_an_apps_settings_as_a_preset_keeps_them_exactly`](../crates/sam-runner/tests/groups.rs#L193) | Saving an app's settings as a preset keeps them exactly. | ✅ |
+| [`saving_an_apps_settings_as_a_preset_keeps_them_exactly`](../crates/sam-runner/tests/groups.rs#L235) | Saving an app's settings as a preset keeps them exactly. | ✅ |
 | [`reset_to_recommendation_brings_back_the_recommended_settings`](../crates/sam-runner/tests/settings.rs#L147) | "Reset to recommendation" brings back SAM's recommended settings and turns compatibility mode off. | ✅ |
-| [`preset_names_cannot_place_files_outside_the_presets_folder`](../crates/sam-storage/src/lib.rs#L781) | A preset is always stored inside the presets folder, whatever its name: names like "../../evil" or "/etc/x" (typed, or from an imported file) cannot place a file elsewhere. | ✅ |
-| [`a_saved_preset_loads_back_unchanged`](../crates/sam-storage/src/lib.rs#L947) | A saved preset loads back unchanged, found by its name in any letter case. | ✅ |
+| [`preset_names_cannot_place_files_outside_the_presets_folder`](../crates/sam-storage/src/lib.rs#L804) | A preset is always stored inside the presets folder, whatever its name: names like "../../evil" or "/etc/x" (typed, or from an imported file) cannot place a file elsewhere. | ✅ |
+| [`a_saved_preset_loads_back_unchanged`](../crates/sam-storage/src/lib.rs#L1009) | A saved preset loads back unchanged, found by its name in any letter case. | ✅ |
 | [`group_list_set_and_restore_round_trip`](../crates/sam-jail-cli/tests/interface.rs#L79) | The JSON interface lists apps with their tags, changes a permission for several apps, and restores them with the returned "previous" object. | ✅ |
 | [`group_set_refuses_bad_input_without_changing_anything`](../crates/sam-jail-cli/tests/interface.rs#L236) | A group change with an invalid value, an unknown key or no app is refused, and no app changes. | ✅ |
 | [`presets_are_the_users_own_only`](../crates/sam-jail-cli/tests/interface.rs#L259) | The command line lists only the user's own presets; the template is strict, and saved presets carry no built-in flag. | ✅ |
@@ -277,6 +278,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`undo_takes_back_only_its_own_change`](../crates/sam-jail-cli/tests/interface.rs#L158) | Undo takes back only its own change: a change made to an app since stays, and a later change to the same setting refuses the whole undo instead of being overwritten (audit G-F4: the whole sets from before were written back). | ✅ |
 | [`a_preset_not_applied_ends_with_not_passed`](../crates/sam-jail-cli/tests/exit_codes.rs#L210) | A preset that is not applied (it needs a confirmation) ends with 3 and still says what it would change; applied, it ends with 0. | ✅ |
 | [`presets_keep_their_own_files_and_any_name`](../crates/sam-jail-cli/tests/odd_names.rs#L173) | Two presets whose names share a file ("My Preset" and "my-preset") never overwrite each other without a word (audit G-F19), and a preset called `-x` is a name like any other when it comes after `--`, as the window passes it (G-F20). | ✅ |
+| [`an_apps_own_name_never_captures_a_reference_to_another_app`](../crates/sam-storage/src/lib.rs#L919) | An AppImage chooses its own name: an app named `vlc` does not capture a command meant for "VLC media player", which `vlc` also names; the reference is refused as naming more than one app, and each app is still found by its ID or a reference only it matches (audit G-F7: the exact name won, so `sam-jail set vlc network.mode full` changed the hostile app without a word). | 🆕 new |
+| [`a_preset_changed_after_the_question_is_not_applied`](../crates/sam-runner/tests/groups.rs#L196) | The window asks about a preset, then applies it by name: a preset changed while the question was open is refused, and only the preset as it was asked about is applied (audit G-F12/13: the changed one was applied unseen). | 🆕 new |
 
 **Code:** [`sam-core/src/permissions.rs`](../crates/sam-core/src/permissions.rs), [`sam-profile/src/lib.rs`](../crates/sam-profile/src/lib.rs), [`sam-runner/src/ops/profiles.rs`](../crates/sam-runner/src/ops/profiles.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs)
 
@@ -623,7 +626,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`nothing_of_the_room_lies_inside_a_device_place`](../crates/sam-runner/src/room_rules.rs#L2104) | A device place the app has (perhaps a folder it or the person can write) is shown only as a whole too: nothing of the room's own lies inside it in any order, and an own place inside it gets no Landlock write right. | 🆕 new |
 | [`read_only_places_inside_a_writable_request_are_recorded`](../crates/sam-runner/src/room_rules.rs#L2144) | Places inside a request's place that the app has read-only are recorded as capped when the request asked for them writable. | 🆕 new |
 | [`rooms_keep_their_first_process_and_their_order`](../crates/sam-runner/src/room_rules.rs#L2075) | --as-pid-1 is not passed into a room (Bubblewrap's own first process stays, and the room ends with SAM), and says so; a request's --remount-ro comes after its own links, as Bubblewrap would apply them; a link to a folder holding SAM's place is refused. | 🆕 new |
-| [`a_left_out_setting_shows_its_default`](../crates/sam-gtk/src/perms.rs#L1296) | A switch whose key the saved form leaves out while it is at its default shows that default: Room service shows on for an app that has it on (every app, unless turned off), off once turned off. | 🆕 new |
+| [`a_left_out_setting_shows_its_default`](../crates/sam-gtk/src/perms.rs#L1299) | A switch whose key the saved form leaves out while it is at its default shows that default: Room service shows on for an app that has it on (every app, unless turned off), off once turned off. | 🆕 new |
 | [`a_room_link_named_first_is_never_made_inside_a_later_place`](../crates/sam-runner/src/room_rules.rs#L2008) | The room's own link is never made inside a place shown from the app, also when it was named before that place (links are made last, after every mount, so a link in a read-only place of the app would lead it onto the computer). | 🆕 new |
 | [`read_only_asks_and_unwritable_own_places_are_kept_and_said`](../crates/sam-runner/src/room_rules.rs#L2031) | A place asked for read-only keeps what the room makes for it (the app's hiding places, its /dev) read-only; own new places that cannot be written are recorded. | 🆕 new |
 | [`the_apps_remount_is_not_recursive`](../crates/sam-runner/src/room_rules.rs#L1985) | The app's own --remount-ro makes read-only only the mount at its place, as Bubblewrap's (not recursive): a place mounted below it before keeps its rights, in the app as in its rooms. | 🆕 new |
@@ -744,7 +747,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`logging_out_closes_a_menu_started_app_properly`](../crates/sam-jail-cli/tests/teardown.rs#L194) | Logging out sends SIGTERM to the launcher of an app started from the menu (audit L-F9). | ✅ |
 | [`an_app_that_ignores_logout_is_ended_after_the_grace_time`](../crates/sam-jail-cli/tests/teardown.rs#L291) | An app that ignores the request to quit at logout does not keep the launcher waiting: after the grace time (10 s) its sandbox is ended, and the start is still recorded as closed. | ✅ |
 | [`closing_a_this_computer_only_app_gives_it_time_to_save`](../crates/sam-jail-cli/tests/teardown.rs#L425) | Review 2026-11-23 F3: closing an app whose network is "This computer only" gives it its time to save, like any other. | 🆕 new |
-| [`only_the_apps_own_processes_are_asked_to_quit`](../crates/sam-runner/src/ops/mod.rs#L848) | Review 2026-11-23 F3: asking an app to quit reaches the app's own processes, also one whose program is called `bwrap`, and nothing of SAM's: not the program the launcher started (here a stand-in for pasta that quits on SIGTERM, which would take the sandbox down at once), not a helper beside the sandbox (as the sound relay). | 🆕 new |
+| [`only_the_apps_own_processes_are_asked_to_quit`](../crates/sam-runner/src/ops/mod.rs#L851) | Review 2026-11-23 F3: asking an app to quit reaches the app's own processes, also one whose program is called `bwrap`, and nothing of SAM's: not the program the launcher started (here a stand-in for pasta that quits on SIGTERM, which would take the sandbox down at once), not a helper beside the sandbox (as the sound relay). | 🆕 new |
 | [`closing_an_app_that_ignores_it_still_finishes_its_launch`](../crates/sam-jail-cli/tests/teardown.rs#L484) | Review 2026-11-23 F2: closing an app that ignores the request to quit still finishes its launch. | 🆕 new |
 
 **Code:** [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-runner/src/ops/mod.rs`](../crates/sam-runner/src/ops/mod.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
@@ -756,8 +759,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`the_newest_log_survives_pruning_within_one_second`](../crates/sam-storage/src/lib.rs#L658) | With more launches in one second than logs are kept, the newest log survives the pruning after its launch (regression: on a fast machine a pruned name was reused, sorted as the oldest and deleted at once). | ✅ |
-| [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L840) | The newest log is found even when two logs start within the same second. | ✅ |
+| [`the_newest_log_survives_pruning_within_one_second`](../crates/sam-storage/src/lib.rs#L681) | With more launches in one second than logs are kept, the newest log survives the pruning after its launch (regression: on a fast machine a pruned name was reused, sorted as the oldest and deleted at once). | ✅ |
+| [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L863) | The newest log is found even when two logs start within the same second. | ✅ |
 | [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L2117) | An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | ✅ |
 
 **Code:** [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs)
@@ -841,10 +844,11 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`records_changed_outside_sam_are_recognized`](../crates/sam-storage/src/lib.rs#L679) | A record SAM saved loads as unchanged; a record changed afterwards by something else is recognized as changed outside SAM, and stays marked through SAM's own saves until it is confirmed; a record without SAM's checksum (removed, or from before the checksum) is marked too. | ✅ |
+| [`records_changed_outside_sam_are_recognized`](../crates/sam-storage/src/lib.rs#L702) | A record SAM saved loads as unchanged; a record changed afterwards by something else is recognized as changed outside SAM, and stays marked through SAM's own saves until it is confirmed; a record without SAM's checksum (removed, or from before the checksum) is marked too. | ✅ |
 | [`an_app_changed_outside_sam_starts_only_after_confirmation`](../crates/sam-runner/tests/tamper.rs#L107) | An app whose settings were changed outside SAM does not start until the user has confirmed them; changes SAM makes itself never count as such. | ✅ |
 | [`a_changed_record_stays_blocked_until_it_is_confirmed`](../crates/sam-runner/tests/tamper.rs#L146) ⟲ | Regression (audit U-H1): the mark "changed outside SAM" was erased by the next save of the record. | ✅ |
-| [`a_late_save_keeps_a_change_made_meanwhile`](../crates/sam-storage/src/lib.rs#L741) | `update` changes the record as it is on disk now, so work that took a while does not undo a change made meanwhile (audit U-M8: the update check turned a switch back on). | ✅ |
+| [`a_late_save_keeps_a_change_made_meanwhile`](../crates/sam-storage/src/lib.rs#L764) | `update` changes the record as it is on disk now, so work that took a while does not undo a change made meanwhile (audit U-M8: the update check turned a switch back on). | ✅ |
+| [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L931) | "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | 🆕 new |
 
 **Code:** [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs)
 
@@ -856,7 +860,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`both_forms_of_update_information_are_understood`](../crates/sam-detect/src/update_info.rs#L143) | Both forms of update information (a direct zsync address and GitHub releases) are understood. | ✅ |
 | [`update_wildcards_match_only_the_right_build`](../crates/sam-detect/src/update_info.rs#L183) | Wildcards in update information match the right file name and not the build for another processor. | ✅ |
 | [`signed_appimage_is_checked`](../crates/sam-detect/tests/signature.rs#L139) | The signature of a signed AppImage is checked with GnuPG: unsigned, valid with the signer's fingerprint and name, invalid after one changed byte. | ✅ |
-| [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L759) | An update signed with another key, or not signed at all, is noticed. | ✅ |
+| [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L762) | An update signed with another key, or not signed at all, is noticed. | ✅ |
 | [`an_update_signed_with_another_key_waits_for_consent`](../crates/sam-runner/tests/update_server.rs#L682) | A new signing key: refused until the person accepts it (audit B24; verification audit 2026-11-19: only a unit test of the comparison showed this). | ✅ |
 | [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L105) | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | ✅ |
 | [`release_keys_are_full_fingerprints`](../crates/sam-runner/src/release_key.rs#L77) | Every built-in release key is a full fingerprint (40 hex characters), never a short key id that another key could share. | ✅ |
@@ -876,7 +880,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_weak_hashes_stay_in_the_zsync_update_code`](../crates/sam-jail-cli/tests/architecture.rs#L206) | SHA-1 and MD4 are broken as protection against tampering. | ✅ |
 | [`an_update_never_comes_over_plain_http`](../crates/sam-runner/tests/update_server.rs#L594) | Updates come over HTTPS only, wherever the address comes from (audit B22, verification audit 2026-11-19: no test noticed the download's own check gone, and none tried a redirect). | ✅ |
 | [`a_download_from_plain_http_is_refused_before_curl_runs`](../crates/sam-runner/src/updates.rs#L537) | The download itself refuses an address that is not HTTPS, before curl runs: the check of the update description is one layer, this is the second (verification audit 2026-11-19: no test noticed it gone, as curl then failed with a different error). | ✅ |
-| [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L809) | A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | ✅ |
+| [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L812) | A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | ✅ |
 | [`a_second_key_in_the_file_cannot_borrow_a_trusted_name`](../crates/sam-detect/tests/signature.rs#L174) | The attack of audit finding C1: a file carries a trusted key (here it stands for SAM's release key, which is public) first and the attacker's key second, and is signed with the attacker's key. | ✅ |
 | [`a_signature_by_a_subkey_names_its_primary_key`](../crates/sam-detect/tests/signature.rs#L217) | A key whose signatures come from a signing subkey: SAM names the primary key (the fingerprint people publish and SAM compares), not the subkey. | ✅ |
 | [`gnupg_names_the_real_signer`](../crates/sam-detect/tests/signature.rs#L240) | The contract with GnuPG (docs/contracts.toml, `signatures-gnupg`) holds with the GnuPG installed here: gpgv accepts a signature by any key in its keyring, and its status output names the key that really signed. | ✅ |
@@ -890,7 +894,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1425) | Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | ✅ |
 | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1445) | Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | ✅ |
 | [`an_older_signed_version_is_not_installed_as_an_update`](../crates/sam-runner/tests/update_server.rs#L510) ⟲ | Regression (audit U-M6): whoever controls the download could hand out an older, validly signed release (with holes fixed since) as the update: any file other than the installed one counted as newer. | ✅ |
-| [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L718) | An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | ✅ |
+| [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L721) | An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | ✅ |
 | [`the_signing_time_is_read_from_the_one_good_signature`](../crates/sam-detect/src/signature.rs#L568) | The signing time is the one good signature's own (seconds since 1970); nothing unclear gives a time. | ✅ |
 | [`a_hostile_update_description_cannot_crash_or_stall_sam`](../crates/sam-runner/src/zsync.rs#L521) | A description from a hostile server cannot crash SAM or keep it busy (audit U-M7): an absurd length is refused, a block count that would overflow the size computation is refused instead of wrapping, and thousands of blocks whose quick checksum matches a stretch of identical bytes end at the time limit, with those blocks left for downloading. | ✅ |
 | [`kept_data_goes_back_only_to_its_own_appimage`](../crates/sam-runner/tests/tamper.rs#L199) ⟲ | Regression (audit I-F5): an id is the app's name plus four hex digits of its file's checksum, so a crafted AppImage can get the id of a removed app whose data was kept, and it inherited that private home. | ✅ |
@@ -902,9 +906,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`an_update_never_takes_a_published_name_that_is_not_an_appimage_name`](../crates/sam-runner/tests/update_server.rs#L960) ⟲ | Regression (review 2026-11-23, U-2): the update server chose the new file's name in the AppImage's folder, and SAM made it executable. | 🆕 new |
 | [`only_a_plain_appimage_name_is_taken_from_an_update`](../crates/sam-runner/src/ops/maintain.rs#L1303) | An update keeps its published name only when that is a plain AppImage name no other file has: the update server chooses it, and a name like `sudo` in ~/.local/bin would replace a command outside any sandbox (review 2026-11-23, U-2). | 🆕 new |
 | [`an_update_compares_keys_even_when_the_installed_signature_was_never_checked`](../crates/sam-runner/tests/update_server.rs#L996) ⟲ | Regression (review 2026-11-23, U-3): an app added while GnuPG was missing has its signature recorded as "not checked", and every key comparison needed a checked record, so an update signed with another key was installed without a question even after GnuPG was installed. | 🆕 new |
-| [`a_signature_that_was_never_checked_lets_no_key_through`](../crates/sam-runner/src/ops/mod.rs#L787) | A signature recorded as "not checked" (GnuPG was missing) lets no key through: once the new file's signature can be read, whatever it is (another key, none, a bad one) counts as a change; both unchecked is no news (review 2026-11-23, U-3). | 🆕 new |
+| [`a_signature_that_was_never_checked_lets_no_key_through`](../crates/sam-runner/src/ops/mod.rs#L790) | A signature recorded as "not checked" (GnuPG was missing) lets no key through: once the new file's signature can be read, whatever it is (another key, none, a bad one) counts as a change; both unchecked is no news (review 2026-11-23, U-3). | 🆕 new |
 | [`going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change`](../crates/sam-runner/tests/update.rs#L200) ⟲ | Regression (review check 2026-11-23, U-1): going back moved the current file from the AppImage's folder into SAM's backup folder and checked it there. | 🆕 new |
 | [`going_back_works_when_the_update_could_not_be_unpacked`](../crates/sam-runner/tests/update_server.rs#L1096) ⟲ | Regression (review check 2026-11-23, U-1): the way back is recorded before the new version is unpacked, so that the old one can be put back when unpacking fails (audit U-L2). | 🆕 new |
+| [`only_an_https_release_page_is_opened`](../crates/sam-gtk/src/window.rs#L1959) | The release page of SAM's own update opens only when it is an https page: another scheme could open a local file or start a program through its handler (audit G-F12/13). | 🆕 new |
 
 **Code:** [`sam-runner/src/updates.rs`](../crates/sam-runner/src/updates.rs), [`sam-runner/src/zsync.rs`](../crates/sam-runner/src/zsync.rs), [`sam-runner/src/release_key.rs`](../crates/sam-runner/src/release_key.rs), [`sam-detect/src/update_info.rs`](../crates/sam-detect/src/update_info.rs), [`sam-detect/src/signature.rs`](../crates/sam-detect/src/signature.rs)
 
@@ -931,7 +936,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`removing_a_sandbox_never_deletes_outside_sams_unpack_folder`](../crates/sam-runner/tests/tamper.rs#L34) ⟲ | Regression: the unpack folder in a record was only checked with Path::starts_with, which does not resolve "..": "extracted/../../victim" passed, and removing the sandbox deleted the victim folder. | ✅ |
 | [`a_record_with_a_climbing_id_reaches_nothing`](../crates/sam-runner/tests/tamper.rs#L66) | A record whose id climbs out of SAM's folders cannot be loaded, so no operation can reach the folders that id would name. | ✅ |
-| [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L810) ⟲ | Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | ✅ |
+| [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L833) ⟲ | Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | ✅ |
 | [`removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it`](../crates/sam-runner/tests/settings.rs#L189) | Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted. | ✅ |
 | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L168) | A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | ✅ |
 | [`names_become_safe_identifiers`](../crates/sam-core/src/util.rs#L754) | Names become safe identifiers made of lowercase letters, digits and dashes. | ✅ |
@@ -1008,9 +1013,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L733) | Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | ✅ |
 | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L831) | An app with compatibility risk carries a warning badge until it has started successfully once. | ✅ |
-| [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L863) | Apps are found by name or ID, and an ambiguous name is refused. | ✅ |
+| [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L886) | Apps are found by name or ID, and an ambiguous name is refused. | ✅ |
 | [`nested_items_keep_their_text`](../crates/sam-gtk/src/guide.rs#L351) | The user guide keeps the text of a list item that has a nested list below it. | ✅ |
 | [`links_to_other_pages_open_on_github`](../crates/sam-gtk/src/guide.rs#L375) | Links in the guide to other documentation pages open on GitHub, since relative file names lead nowhere inside the window (regression: the link to "Terminal programs" pointed to security.md and did nothing). | ✅ |
+| [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L957) | The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | 🆕 new |
 
 **Code:** [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs), [`sam-gtk/src/pages.rs`](../crates/sam-gtk/src/pages.rs), [`sam-core/src/model.rs`](../crates/sam-core/src/model.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs)
 
@@ -1026,10 +1032,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`dangerous_access_is_red_and_filtered_bus_has_no_tag`](../crates/sam-profile/src/tags.rs#L209) | Dangerous access gets red tags, and the filtered desktop bus, which every app has, gets none. | ✅ |
 | [`tags_and_the_risk_list_use_the_same_words`](../crates/sam-profile/src/tags.rs#L262) | One name per permission: where the risk list names a permission that also has a tag, both use the same words (regression: "Audio" vs "Sound", "GPU" vs "GPU acceleration", "Show in folder"). | ✅ |
 | [`the_overview_lists_every_sandboxed_app_with_tags_and_states`](../crates/sam-runner/tests/groups.rs#L139) | The Permissions overview lists every sandboxed app with its tags and states. | ✅ |
-| [`group_switches_offer_only_valid_values`](../crates/sam-gtk/src/all_perms.rs#L1388) | The group switches offer only permissions and values SAM accepts (`sam-jail group set` would refuse anything else), and each value of a permission appears once. | ✅ |
-| [`shift_click_selects_the_apps_between_two_clicks`](../crates/sam-gtk/src/all_perms.rs#L1421) | Shift-click selects every app between the app clicked before and the app clicked now, in either direction; without an earlier click, only the app clicked now. | ✅ |
-| [`a_tag_filter_cycles_through_has_has_not_and_off`](../crates/sam-gtk/src/all_perms.rs#L1436) | A tag filter cycles through three states with each click: only apps with the permission, only apps without it, and off. | ✅ |
-| [`the_list_shows_only_apps_that_pass_every_filter`](../crates/sam-gtk/src/all_perms.rs#L1445) | The list shows an app only when it passes every filter at once: the search text, each state filter, and each tag filter in its state. | ✅ |
+| [`group_switches_offer_only_valid_values`](../crates/sam-gtk/src/all_perms.rs#L1402) | The group switches offer only permissions and values SAM accepts (`sam-jail group set` would refuse anything else), and each value of a permission appears once. | ✅ |
+| [`shift_click_selects_the_apps_between_two_clicks`](../crates/sam-gtk/src/all_perms.rs#L1435) | Shift-click selects every app between the app clicked before and the app clicked now, in either direction; without an earlier click, only the app clicked now. | ✅ |
+| [`a_tag_filter_cycles_through_has_has_not_and_off`](../crates/sam-gtk/src/all_perms.rs#L1450) | A tag filter cycles through three states with each click: only apps with the permission, only apps without it, and off. | ✅ |
+| [`the_list_shows_only_apps_that_pass_every_filter`](../crates/sam-gtk/src/all_perms.rs#L1459) | The list shows an app only when it passes every filter at once: the search text, each state filter, and each tag filter in its state. | ✅ |
 | [`the_style_sheet_handler_is_connected_before_register`](../crates/sam-gtk/src/main.rs#L601) ⟲ | Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | ✅ |
 | [`a_new_icon_marks_its_folders_as_changed`](../crates/sam-gtk/src/main.rs#L549) | A new icon is noticed by the desktop's icon caches: the folders from the icon up to the theme are marked as changed, also when an earlier version had replaced the icon in place; once they are newer than the icon, nothing is touched again (regression: the taskbar kept SAM's old icon). | ✅ |
 | [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L615) | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | ✅ |
@@ -1047,8 +1053,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_command_line_speaks_german_when_asked`](../crates/sam-jail-cli/tests/language.rs#L18) | The command line speaks german when asked. | ✅ |
 | [`every_translated_language_can_be_chosen`](../crates/sam-core/src/i18n.rs#L179) | Without a translation, texts come back as written, placeholders are filled in by name (so a translation may reorder them), and the plural form follows the number. | ✅ |
 | [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L464) | The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | ✅ |
-| [`the_chosen_language_and_the_systems_are_kept_apart`](../crates/sam-gtk/src/i18n.rs#L90) | Choosing a language sets it for the window and remembers the system's; going back to the system restores exactly what it had, also after several restarts. | ✅ |
+| [`the_chosen_language_and_the_systems_are_kept_apart`](../crates/sam-gtk/src/i18n.rs#L197) | Choosing a language sets it for the window and remembers the system's; going back to the system restores exactly what it had, also after several restarts. | ✅ |
 | [`apps_keep_the_system_language_whatever_sams_window_shows`](../crates/sam-sandbox/src/lib.rs#L3415) | An app started from SAM's window keeps the system's language, even when the window itself shows another one. | ✅ |
+| [`every_text_the_window_builds_is_translated`](../crates/sam-gtk/src/i18n.rs#L158) | Every text the window shows goes through the translations (audit part 5: "1 app selected", "{n} apps selected" and the Permission Manager's switch names stayed English in every language). | 🆕 new |
 
 **Code:** [`sam-core/src/i18n.rs`](../crates/sam-core/src/i18n.rs), [`sam-gtk/src/i18n.rs`](../crates/sam-gtk/src/i18n.rs), [`scripts/i18n.py`](../scripts/i18n.py), [`po/de.po`](../po/de.po), [`po/es.po`](../po/es.po), [`po/fr.po`](../po/fr.po)
 
@@ -1075,7 +1082,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`old_profiles_with_removed_options_still_load`](../crates/sam-core/src/permissions.rs#L1366) | Settings saved with options SAM no longer has still load, with the removed options mapped to their safe meaning. | ✅ |
 | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1381) | Permissions saved as TOML load back unchanged. | ✅ |
 | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1394) | Raw sandbox arguments saved under their old name still load. | ✅ |
-| [`presets_in_the_older_flat_format_still_load`](../crates/sam-storage/src/lib.rs#L918) | Presets in the older flat format still load. | ✅ |
+| [`presets_in_the_older_flat_format_still_load`](../crates/sam-storage/src/lib.rs#L980) | Presets in the older flat format still load. | ✅ |
 | [`old_formats_are_migrated_and_kept`](../crates/sam-jail-cli/tests/robustness.rs#L65) | Files from older SAM versions are migrated to the current format, and the originals are kept. | ✅ |
 | [`newer_formats_are_left_untouched`](../crates/sam-jail-cli/tests/robustness.rs#L106) | Files from a newer SAM are never changed by an older one. | ✅ |
 | [`damaged_files_are_moved_aside_and_reported`](../crates/sam-jail-cli/tests/robustness.rs#L151) | Damaged files are moved aside and reported, and SAM carries on. | ✅ |

@@ -148,7 +148,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `selftest [APP…]` | `{results}` |
 | `menu list/hide/restore APP` | `{visible, hidden}` |
 | `reextract`, `redetect`, `refresh`, `relocate` | app summary plus what changed |
-| `desktop APP create/remove/refresh` | `{desktop_entry}`; `desktop all refresh` → `{refreshed}` |
+| `desktop APP install/remove` | `{desktop_entry}`; `desktop all refresh` → `{refreshed}` |
 | `diagnose APP` | the diagnostic run (`strace`) result |
 | `logs APP [--list/--file/--kind]` | file list, or `{file, kind, text}` |
 | `doctor [APP]` | `{checks: [{id, label, status, detail, hint}], …}` |

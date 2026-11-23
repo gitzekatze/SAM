@@ -66,7 +66,10 @@ proves it, is in [threat-model.md](threat-model.md).
 ### Landlock
 
 On by default where the kernel supports it. SAM's runner applies it inside
-the sandbox, just before the app starts.
+the sandbox, just before the app starts. Turning it off for every app in
+Preferences asks first, as turning it off on one app's page does; so does
+turning off the syscall filter (`turning_a_protection_off_for_every_app_asks_first`,
+`tests/gui/flow-atspi.sh`).
 
 - Writes are allowed only in the app's home, its temporary folders and the
   folders granted read/write. Even if a mount were more permissive than
@@ -736,6 +739,18 @@ metadata. SAM treats both as untrusted.
   inject formatting or remote images into SAM's window or notifications.
 - **File types** a menu entry registers are filtered: never URL schemes
   (`https`, `mailto`, …), folders, programs or catch-all types.
+- **An app's name never picks the app a command means.** `sam-jail set vlc …`
+  changes an app only when `vlc` names that one app alone, by any rule (an
+  ID prefix, its name, part of its name): an AppImage named `vlc` next to
+  "VLC media player" makes the command fail with both IDs, instead of
+  taking the app whose name matches exactly
+  (`an_apps_own_name_never_captures_a_reference_to_another_app`).
+- **Links the window opens** are https pages only, for an app's update and
+  for SAM's own (`only_an_https_release_page_is_opened`).
+- **What a question was about** is what is applied: the window asks about a
+  preset, then applies it with its fingerprint, and a preset changed while
+  the question was open is refused
+  (`a_preset_changed_after_the_question_is_not_applied`).
 - **What was enforced** (Landlock, seccomp) is reported by SAM's runner over
   a private channel that closes before the app starts. It appears in the
   launch log and on the app page.
