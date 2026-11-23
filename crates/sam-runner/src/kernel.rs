@@ -1024,6 +1024,8 @@ mod tests {
             || call32(359, libc::AF_ALG as u32, libc::SOCK_SEQPACKET as u32, 0),
             || call32(359, libc::AF_UNIX as u32, libc::SOCK_STREAM as u32, 0),
             || raw(libc::SYS_keyctl, 0, -3), // the 64-bit twin
+            || call32(54, 0, 0x541C, 0),     // ioctl(0, TIOCLINUX)
+            || call32(26, 1, 0, 0),          // ptrace(PEEKTEXT, pid 0): ESRCH
         ];
         let (control, status) = errnos_and_status(None, &calls);
         if status != 0 {
@@ -1064,10 +1066,22 @@ mod tests {
                 eperm,
                 libc::EAFNOSUPPORT,
                 0,
-                eperm
+                eperm,
+                eperm,
+                libc::ESRCH
             ],
             "control: {control:?}"
         );
+        assert_ne!(control[12], eperm, "TIOCLINUX is refused by the filter");
+        assert_eq!(control[13], libc::ESRCH, "no process 0 to trace");
+        // The strict filter's calls are refused through their 32-bit
+        // numbers too.
+        let strict = SeccompSpec {
+            i386: true,
+            strict: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(errnos(Some(&strict), &calls[13..]), [eperm], "strict");
         // Nested sandboxes: the namespace calls as without the filter.
         let nested = SeccompSpec {
             i386: true,

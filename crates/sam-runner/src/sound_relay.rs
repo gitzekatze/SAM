@@ -52,14 +52,14 @@ fn relay_command(
     conf: &Path,
 ) -> Command {
     let mut c = Command::new(bwrap);
-    c.args([
-        "--unshare-all",
-        "--die-with-parent",
-        "--new-session",
-        "--cap-drop",
-        "ALL",
-        "--clearenv",
-    ]);
+    c.args(["--unshare-all", "--die-with-parent", "--new-session"]);
+    // Nothing in the relay may make a user namespace of its own: it reads
+    // what the app sends, and on PipeWire before 1.2 loads the modules the
+    // app asks for. A user namespace would give it full rights over a
+    // fresh network namespace, the usual way into kernel bugs (as in the
+    // unpack sandboxes, review K-2).
+    c.args(["--unshare-user", "--disable-userns"]);
+    c.args(["--cap-drop", "ALL", "--clearenv"]);
     c.args(sam_sandbox::helper_system_args(host));
     c.args(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]);
     c.arg("--ro-bind").arg(program).arg(program);
@@ -372,6 +372,39 @@ mod tests {
             std::os::unix::net::UnixStream::connect(&socket).is_err(),
             "relay ended"
         );
+    }
+
+    /// Nothing in the relay's sandbox can make a user namespace: the relay
+    /// reads what the app sends and, on PipeWire before 1.2, loads the
+    /// modules the app asks for, and its sandbox let it make one (found
+    /// while checking review K-2). The stand-in for PipeWire tries and
+    /// writes what happened into the relay's folder.
+    #[test]
+    fn nothing_in_the_sound_relay_can_make_a_user_namespace() {
+        let bwrap_ok = HostInfo::probe().tools.bwrap.is_some();
+        let outside = Command::new("unshare")
+            .args(["--user", "true"])
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        if !(bwrap_ok && outside) {
+            // The control: without both, a "refused" would prove nothing.
+            crate::contracts::skip("no Bubblewrap, or no user namespaces for ordinary users")
+                .unwrap_or_else(|e| panic!("{e}"));
+            return;
+        }
+        let t = tempfile::tempdir().unwrap();
+        let h = host_with(
+            t.path(),
+            r#"d=$(dirname "$2"); if unshare --user true 2>/dev/null; then echo made; else echo refused; fi > "$d/userns"; exit 1"#,
+        );
+        let run = t.path().join("run");
+        let e = SoundRelay::start(&h, &run)
+            .err()
+            .expect("the stand-in ends");
+        let got = std::fs::read_to_string(run.join("sound/userns"))
+            .unwrap_or_else(|r| panic!("the stand-in did not run: {r}; {e:#}"));
+        assert_eq!(got.trim(), "refused", "the relay made a user namespace");
     }
 
     /// Sound reaches the app through the relay where PipeWire runs; without

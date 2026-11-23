@@ -262,7 +262,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-207 tests.
+208 tests.
 
 | Promise | Test |
 |---|---|
@@ -310,8 +310,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The syscall filter compiles in every variant and always blocks mount and io_uring. | [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L912) |
 | Review K-2: without nested sandboxes the filter refused unshare() but let clone() and clone3() make a new user namespace, which the unpack sandbox did not stop otherwise. | [`without_nested_sandboxes_clone_cannot_make_a_user_namespace`](../crates/sam-runner/src/kernel.rs#L951) |
 | A 32 bit app gets its calls filtered not switched off. | [`a_32_bit_app_gets_its_calls_filtered_not_switched_off`](../crates/sam-runner/src/kernel.rs#L1012) |
-| Review K-1: the abstract-socket fence is its own item in the helper's report. | [`the_helper_reports_the_socket_fence_on_its_own`](../crates/sam-runner/src/kernel.rs#L1083) |
-| Every call the filter blocks by name has its 32-bit numbers in [`I386_CALLS`] (kexec_file_load has none), and every name there is one the filter blocks: a call added to the list is not forgotten for 32-bit apps. | [`every_blocked_call_is_blocked_for_32_bit_apps_too`](../crates/sam-runner/src/kernel.rs#L1098) |
+| Review K-1: the abstract-socket fence is its own item in the helper's report. | [`the_helper_reports_the_socket_fence_on_its_own`](../crates/sam-runner/src/kernel.rs#L1097) |
+| Every call the filter blocks by name has its 32-bit numbers in [`I386_CALLS`] (kexec_file_load has none), and every name there is one the filter blocks: a call added to the list is not forgotten for 32-bit apps. | [`every_blocked_call_is_blocked_for_32_bit_apps_too`](../crates/sam-runner/src/kernel.rs#L1112) |
 | A log written before SAM kept only the text, or edited by hand, still shows only text (audit L-F3): `sam-jail logs` and bug reports read it through `tail`. | [`an_old_log_shows_only_its_text`](../crates/sam-runner/src/launch.rs#L1829) |
 | An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L1845) |
 | Review K-1: a start that relies on Landlock's abstract-socket fence (it shares the host's network, the kernel has the fence) counts it as missing unless the helper reported it in place, also when Landlock itself reads "fully enforced" (a helper too old to report it). | [`a_missing_socket_fence_is_reported_when_the_start_relies_on_it`](../crates/sam-runner/src/launch.rs#L1902) |
@@ -383,7 +383,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The lock check fails a relay that runs outside a sandbox: it sees the person's folder (mutation run P14: an answer of always "held" went unnoticed, so `sam-jail doctor` would not see such a relay). | [`a_relay_outside_a_sandbox_is_not_held`](../crates/sam-runner/src/sound_relay.rs#L250) |
 | A socket path too long for Linux is refused with a clear reason before PipeWire starts (it ended with an unclear crash: the 240-app run of 2026-11-20). | [`a_too_long_socket_path_is_named_before_the_relay_starts`](../crates/sam-runner/src/sound_relay.rs#L292) |
 | A relay that never opens its socket stops the start's sound within moments instead of holding the start; one that does is stopped, and its socket removed, when the start ends. | [`a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay`](../crates/sam-runner/src/sound_relay.rs#L339) |
-| Sound reaches the app through the relay where PipeWire runs; without PipeWire only when the person allowed sound without the relay. | [`sound_reaches_the_app_through_the_relay_or_only_when_allowed`](../crates/sam-runner/src/sound_relay.rs#L379) |
+| Nothing in the relay's sandbox can make a user namespace: the relay reads what the app sends and, on PipeWire before 1.2, loads the modules the app asks for, and its sandbox let it make one (found while checking review K-2). | [`nothing_in_the_sound_relay_can_make_a_user_namespace`](../crates/sam-runner/src/sound_relay.rs#L382) |
+| Sound reaches the app through the relay where PipeWire runs; without PipeWire only when the person allowed sound without the relay. | [`sound_reaches_the_app_through_the_relay_or_only_when_allowed`](../crates/sam-runner/src/sound_relay.rs#L412) |
 | The download itself refuses an address that is not HTTPS, before curl runs: the check of the update description is one layer, this is the second (verification audit 2026-11-19: no test noticed it gone, as curl then failed with a different error). | [`a_download_from_plain_http_is_refused_before_curl_runs`](../crates/sam-runner/src/updates.rs#L537) |
 | The checksum of a downloaded update is SHA-1 of the whole file, read in pieces; a file larger than one piece gives the same result. | [`the_download_checksum_is_sha1_of_the_whole_file`](../crates/sam-runner/src/updates.rs#L567) |
 | The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L587) |
@@ -587,4 +588,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 501 automated Rust tests plus 7 scripted checks.
+Total: 502 automated Rust tests plus 7 scripted checks.

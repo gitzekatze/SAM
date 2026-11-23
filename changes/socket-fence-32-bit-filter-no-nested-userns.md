@@ -12,5 +12,6 @@
   Apps already added keep their current setting.
 - While SAM unpacks an AppImage, nothing inside can make a user namespace
   of its own, neither the AppImage's own extractor nor an unpacking tool.
+  The same now holds for SAM's sound relay.
   The syscall filter also stops `clone` and `clone3` from doing it in
   every sandbox without nested sandboxes.

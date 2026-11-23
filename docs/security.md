@@ -187,7 +187,9 @@ the app only that one (`sound_never_loads_code_into_the_sound_server`).
 
 The relay itself runs in a sandbox of its own: it sees the system's
 programs, your PipeWire socket and its own folder, but not your home, SAM's
-folders or the network. That matters on PipeWire before 1.2 (Ubuntu 24.04
+folders or the network, and nothing in it can make a user namespace of its
+own (`nothing_in_the_sound_relay_can_make_a_user_namespace`). That matters
+on PipeWire before 1.2 (Ubuntu 24.04
 LTS, Debian 12), which ignores the setting: there a module the app asks for
 loads, but only inside the relay's sandbox, where it can reach none of your
 files. `sam-jail doctor --contracts` checks both on your computer.

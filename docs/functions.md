@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**40 functions:** 35 proven by passing tests, 4 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 501 tests in all.
+**40 functions:** 34 proven by passing tests, 5 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 502 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -27,7 +27,7 @@
 | 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | sam-runner, sam-sandbox | 8 | ✅ |
 | 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 36 | ✅ 🆕 5 new tests since the report |
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
-| 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 14 | ✅ |
+| 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-sandbox | 15 | ✅ 🆕 1 new test since the report |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox | 19 | ✅ |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox | 44 | ✅ |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 4 | ✅ |
@@ -350,7 +350,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_32_bit_start_program_keeps_the_syscall_filter_on`](../crates/sam-profile/src/lib.rs#L987) | The syscall filter stays on for every app: a 32-bit start program switched it off, so an app could choose to run without it (review K-3; the filter now covers 32-bit calls). | 🆕 new |
 | [`without_nested_sandboxes_clone_cannot_make_a_user_namespace`](../crates/sam-runner/src/kernel.rs#L951) | Review K-2: without nested sandboxes the filter refused unshare() but let clone() and clone3() make a new user namespace, which the unpack sandbox did not stop otherwise. | 🆕 new |
 | [`a_32_bit_app_gets_its_calls_filtered_not_switched_off`](../crates/sam-runner/src/kernel.rs#L1012) | A 32 bit app gets its calls filtered not switched off. | 🆕 new |
-| [`every_blocked_call_is_blocked_for_32_bit_apps_too`](../crates/sam-runner/src/kernel.rs#L1098) | Every call the filter blocks by name has its 32-bit numbers in [`I386_CALLS`] (kexec_file_load has none), and every name there is one the filter blocks: a call added to the list is not forgotten for 32-bit apps. | 🆕 new |
+| [`every_blocked_call_is_blocked_for_32_bit_apps_too`](../crates/sam-runner/src/kernel.rs#L1112) | Every call the filter blocks by name has its 32-bit numbers in [`I386_CALLS`] (kexec_file_load has none), and every name there is one the filter blocks: a call added to the list is not forgotten for 32-bit apps. | 🆕 new |
 | [`a_32_bit_start_program_gets_the_filters_32_bit_part`](../crates/sam-runner/src/launch.rs#L2079) | A 32-bit start program gets the filter's 32-bit part (review K-3); a script among 32-bit files, or an app nobody analyzed, does not. | 🆕 new |
 | [`links_to_other_programs_ask_first`](../crates/sam-sandbox/src/lib.rs#L3351) | Links leave the sandbox through the portal: web and mail links go to the person's browser or mail program as asked; any other kind (`steam://`, `vscode://`, a program's own scheme) makes the portal ask first with its app chooser, so an app cannot start another program by a link (audit L-F14). | ✅ |
 | [`the_link_portal_check_finds_the_ask_option`](../crates/sam-runner/src/contracts.rs#L734) | The link portal's ask option is found in its description, and its absence is reported (stand-in descriptions; the real one is checked by `sam-jail doctor --contracts` and on CI). | ✅ |
@@ -405,6 +405,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 |---|---|---|
 | [`a_helper_sees_the_apps_system_and_nothing_else`](../crates/sam-sandbox/src/lib.rs#L2357) | A helper's sandbox (the sound relay) shows the same system as an app's (with the whole /usr), and nothing outside the system's own folders: no home, no runtime folder, no devices. | ✅ |
 | [`a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay`](../crates/sam-runner/src/sound_relay.rs#L339) | A relay that never opens its socket stops the start's sound within moments instead of holding the start; one that does is stopped, and its socket removed, when the start ends. | ✅ |
+| [`nothing_in_the_sound_relay_can_make_a_user_namespace`](../crates/sam-runner/src/sound_relay.rs#L382) | Nothing in the relay's sandbox can make a user namespace: the relay reads what the app sends and, on PipeWire before 1.2, loads the modules the app asks for, and its sandbox let it make one (found while checking review K-2). | 🆕 new |
 | [`a_relay_outside_a_sandbox_is_not_held`](../crates/sam-runner/src/sound_relay.rs#L250) | The lock check fails a relay that runs outside a sandbox: it sees the person's folder (mutation run P14: an answer of always "held" went unnoticed, so `sam-jail doctor` would not see such a relay). | ✅ |
 | [`a_too_long_socket_path_is_named_before_the_relay_starts`](../crates/sam-runner/src/sound_relay.rs#L292) | A socket path too long for Linux is refused with a clear reason before PipeWire starts (it ended with an unclear crash: the 240-app run of 2026-11-20). | ✅ |
 | [`a_launchs_sockets_fit_even_for_the_longest_app_id`](../crates/sam-runner/src/launch.rs#L2238) | Every socket SAM makes for a launch fits a Unix socket path (107 characters), even for the longest app id (one that grew twice for names that were taken), the highest process number Linux hands out and the longest user number (the 240-app run of 2026-11-20: apps with long ids lost their sound, bus and Wayland security context). | ✅ |
@@ -412,7 +413,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`sound_comes_from_the_relay_or_only_when_allowed_from_the_server`](../crates/sam-sandbox/src/lib.rs#L2424) | Sound comes from SAM's relay, never from the sound server's own socket; that one only when the person allowed sound without the relay (audit S-F1). | ✅ |
 | [`sound_never_loads_code_into_the_sound_server`](../crates/sam-runner/tests/sound_relay.rs#L98) | Sound never loads code into the sound server. | ✅ |
 | [`the_relay_cannot_load_modules_and_listens_only_on_its_socket`](../crates/sam-runner/src/sound_relay.rs#L235) | The relay's settings switch module loading off, listen only on SAM's socket, take no D-Bus name and load no modules at start; a path cannot break out of its quotes. | ✅ |
-| [`sound_reaches_the_app_through_the_relay_or_only_when_allowed`](../crates/sam-runner/src/sound_relay.rs#L379) | Sound reaches the app through the relay where PipeWire runs; without PipeWire only when the person allowed sound without the relay. | ✅ |
+| [`sound_reaches_the_app_through_the_relay_or_only_when_allowed`](../crates/sam-runner/src/sound_relay.rs#L412) | Sound reaches the app through the relay where PipeWire runs; without PipeWire only when the person allowed sound without the relay. | ✅ |
 | [`sdl_gets_its_silent_driver_without_sound_access`](../crates/sam-sandbox/src/lib.rs#L2406) | Games built with SDL get a silent sound driver when they have no sound, so they start instead of failing: sound off, or on but with SAM's relay not running (audit S-F1); not when sound reaches them. | ✅ |
 | [`gamepads_only_exposes_joysticks`](../crates/sam-sandbox/src/lib.rs#L2915) | "Game controllers" exposes only joysticks, never keyboards or mice. | ✅ |
 | [`nvidia_modules_are_exposed_with_the_gpu`](../crates/sam-sandbox/src/lib.rs#L2933) | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | ✅ |
@@ -563,7 +564,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_syscall_filter_that_fails_to_load_stops_the_start`](../crates/sam-jail-cli/tests/layers.rs#L153) | Threat model row 52: "a syscall filter that fails to load stops the start". | ✅ |
 | [`sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply`](../crates/sam-jail-cli/tests/start_check.rs#L49) | Sam jail run refuses a sandbox whose settings do not apply. | ✅ |
 | [`the_wanted_layers_follow_the_apps_switches`](../crates/sam-runner/src/launch.rs#L2042) | Landlock is wanted only where the app's switch wants it and the kernel has it; the app's strict filter switch works by itself, without a global setting (audit D-M13). | ✅ |
-| [`the_helper_reports_the_socket_fence_on_its_own`](../crates/sam-runner/src/kernel.rs#L1083) | Review K-1: the abstract-socket fence is its own item in the helper's report. | 🆕 new |
+| [`the_helper_reports_the_socket_fence_on_its_own`](../crates/sam-runner/src/kernel.rs#L1097) | Review K-1: the abstract-socket fence is its own item in the helper's report. | 🆕 new |
 | [`a_missing_socket_fence_is_reported_when_the_start_relies_on_it`](../crates/sam-runner/src/launch.rs#L1902) | Review K-1: a start that relies on Landlock's abstract-socket fence (it shares the host's network, the kernel has the fence) counts it as missing unless the helper reported it in place, also when Landlock itself reads "fully enforced" (a helper too old to report it). | 🆕 new |
 | [`an_abstract_socket_that_answers_is_found_reachable`](../crates/sam-runner/src/probe.rs#L816) | Review K-1: the check for an abstract socket of the host really connects. | 🆕 new |
 | [`the_check_tries_the_hosts_abstract_sockets_the_app_must_not_reach`](../crates/sam-runner/src/verify.rs#L1261) | Review K-1: with X11 off, the check tries the X server's abstract socket, which needs no file; with a session bus on an abstract socket, it tries that too unless the app may use the whole bus. | 🆕 new |
