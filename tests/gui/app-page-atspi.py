@@ -72,7 +72,7 @@ check("Files This App Saved is visible on the page", find(app, lambda s: s == "F
 # agent did not ask); Cancel leaves the app without it.
 def info():
     out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "info", os.environ["SAM_TEST_APP"]],
-                         capture_output=True, text=True).stdout
+                         check=False, capture_output=True, text=True).stdout
     d = json.loads(out)
     return d.get("data", d)["entry"]["profile"]["permissions"]
 cam = find(app, lambda s: s == "Webcam", "switch")
@@ -102,7 +102,7 @@ if pads:
 # --yes, so turning it on failed after the person had confirmed).
 def compat_on():
     out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "info", os.environ["SAM_TEST_APP"]],
-                         capture_output=True, text=True).stdout
+                         check=False, capture_output=True, text=True).stdout
     try:
         d = json.loads(out)
         d = d.get("data", d)

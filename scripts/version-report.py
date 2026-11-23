@@ -36,7 +36,7 @@ MIN_MS = 2.0  # ... and at least this much longer in absolute terms
 
 
 def sh(cmd, **kw):
-    return subprocess.run(cmd, cwd=kw.pop("cwd", ROOT), text=True, capture_output=True, **kw)
+    return subprocess.run(cmd, cwd=kw.pop("cwd", ROOT), text=True, check=False, capture_output=True, **kw)
 
 
 def version_and_commit():
@@ -89,7 +89,7 @@ def run_tests(bins, env):
     results = []
     for part, target, kind, exe, pkgdir in bins:
         t0 = datetime.datetime.now()
-        r = subprocess.run([exe], cwd=pkgdir, env=env, text=True, capture_output=True)
+        r = subprocess.run([exe], cwd=pkgdir, env=env, text=True, check=False, capture_output=True)
         secs = (datetime.datetime.now() - t0).total_seconds()
         for m in re.finditer(r"^test (\S+) \.\.\. (ok|FAILED|ignored)", r.stdout, re.M):
             name = m.group(1).split("::")[-1]
