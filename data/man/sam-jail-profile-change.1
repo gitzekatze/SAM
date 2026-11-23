@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-profile-change 1 2026-11-23 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.SH NAME
+sam\-jail\-profile\-change \- Change permissions: reads {"from": …, "to": …} (two PermissionSets) on stdin and applies only what differs between them, so changes made elsewhere in the meantime stay. A setting changed elsewhere to another value is refused (code changed\-meanwhile)
+.SH SYNOPSIS
+\fBsam\-jail profile change\fR [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
+.SH DESCRIPTION
+Change permissions: reads {"from": …, "to": …} (two PermissionSets) on stdin and applies only what differs between them, so changes made elsewhere in the meantime stay. A setting changed elsewhere to another value is refused (code changed\-meanwhile)
+.SH OPTIONS
+.TP
+\fB\-\-yes\fR
+Confirm a change that adds something rated Think twice or Dangerous
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIAPP\fR>
+

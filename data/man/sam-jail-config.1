@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-config 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-config 1 2026-11-23 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-config \- Read or change configuration
 .SH SYNOPSIS
@@ -14,15 +14,16 @@ Print help
 .SH SUBCOMMANDS
 .TP
 sam\-jail\-config\-show(1)
+Print the whole configuration
 .TP
 sam\-jail\-config\-get(1)
+Print one setting (for example extraction.max_files)
 .TP
 sam\-jail\-config\-set(1)
+Change one setting
 .TP
 sam\-jail\-config\-put(1)
 Replace the whole configuration from JSON on stdin
 .TP
 sam\-jail\-config\-path(1)
-.TP
-sam\-jail\-config\-help(1)
-Print this message or the help of the given subcommand(s)
+Print where SAM keeps its configuration, data and logs

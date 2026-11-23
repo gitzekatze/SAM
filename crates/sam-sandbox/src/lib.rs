@@ -29,7 +29,7 @@ pub struct Bubblewrap;
 /// Host programs that ask a service outside the sandbox to start a program
 /// (which would then run unsandboxed). Inside every sandbox each is
 /// replaced by a stand-in from `TOOL_SHIMS` (see the /usr binding).
-const HIDDEN_HOST_TOOLS: &[&str] = &["/usr/bin/systemd-run", "/usr/bin/flatpak-spawn"];
+pub const HIDDEN_HOST_TOOLS: &[&str] = &["/usr/bin/systemd-run", "/usr/bin/flatpak-spawn"];
 
 /// For each host tool that exists: its name and the file to cover with
 /// the stand-in, which is the file a link (or a chain of links) leads to.
@@ -41,6 +41,23 @@ fn hidden_tool_targets(tools: &[&str]) -> Vec<(std::ffi::OsString, PathBuf)> {
             Some((Path::new(t).file_name()?.to_os_string(), real))
         })
         .collect()
+}
+
+/// Covers each of `tools` that exists with its stand-in from
+/// `<runtime_dir>/tools` (written by [`write_identity_files`]).
+fn cover_host_tools(a: &mut Args, runtime_dir: &Path, tools: &[&str]) {
+    for (name, target) in hidden_tool_targets(tools) {
+        a.op2("--ro-bind", runtime_dir.join("tools").join(name), target);
+    }
+}
+
+/// The Bubblewrap arguments with which every sandbox covers the host tools
+/// `tools` by their stand-ins ([`HIDDEN_HOST_TOOLS`] in every sandbox; a
+/// test passes tools of its own, since not every computer has them all).
+pub fn host_tool_stand_in_args(runtime_dir: &Path, tools: &[&str]) -> Vec<String> {
+    let mut a = Args::default();
+    cover_host_tools(&mut a, runtime_dir, tools);
+    a.v
 }
 
 /// Stand-ins, written by `write_identity_files` into `<runtime>/tools`.
@@ -608,6 +625,18 @@ const THEME_FILES: &[&str] = &[
     ".local/share/themes",
     ".config/xsettingsd",
     ".local/share/color-schemes",
+];
+
+/// Files inside the theme folders above that are not theme settings: the
+/// file chooser's bookmarks and server list name the person's folders and
+/// servers. With only the theme settings shown, they stay out (an empty
+/// file); a grant that shows them anyway (the whole home, the folder
+/// itself) keeps them.
+const THEME_PRIVATE_FILES: &[&str] = &[
+    ".config/gtk-3.0/bookmarks",
+    ".config/gtk-3.0/servers",
+    ".config/gtk-4.0/bookmarks",
+    ".config/gtk-4.0/servers",
 ];
 
 /// The value a forwarded variable gets inside the sandbox. When SAM's
@@ -1555,13 +1584,7 @@ impl Section<'_> {
         // Bubblewrap cannot mount over a link, so the stand-in goes over the
         // file a link leads to (audit S-F14: a systemd-run that was a link
         // stayed the real one).
-        for (name, target) in hidden_tool_targets(HIDDEN_HOST_TOOLS) {
-            a.op2(
-                "--ro-bind",
-                ctx.runtime_dir.join("tools").join(name),
-                target,
-            );
-        }
+        cover_host_tools(a, &ctx.runtime_dir, HIDDEN_HOST_TOOLS);
 
         // /etc, beyond the basic files of `common_system`.
         let mut etc: Vec<&str> = Vec::new();
@@ -1762,6 +1785,17 @@ impl Section<'_> {
             for t in THEME_FILES {
                 let at = bind_place(&self.views, &home.join(t));
                 mount(&at, &|m| m.ro(&at));
+            }
+            // Deeper than its folder, so mounted after it. Only a plain
+            // file: a link inside leads where the sandbox shows nothing,
+            // and Bubblewrap cannot mount over a link.
+            for f in THEME_PRIVATE_FILES {
+                let at = home.join(f);
+                if !self.views.visible(&at)
+                    && fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_file())
+                {
+                    mount(&at, &|m| m.op2("--ro-bind", "/dev/null", &at));
+                }
             }
         }
         // Extra folders, at their resolved place: what the app sees there.
@@ -3316,6 +3350,34 @@ mod tests {
                 "/opt/app/AppRun"
             ]
         ));
+    }
+
+    /// "All input devices" names every device it shows the app, and says
+    /// what the virtual one allows: typing and moving the mouse as the
+    /// person (audit: /dev/uinput was shown without being named).
+    #[test]
+    fn the_input_switch_names_every_device_it_shows() {
+        let devices = |input: bool| -> std::collections::BTreeSet<String> {
+            let mut ctx = sample_context();
+            ctx.permissions.devices.input = input;
+            ctx.permissions.devices.gamepads = false;
+            args_of(&ctx)
+                .windows(3)
+                .filter(|w| w[0].starts_with("--dev-bind"))
+                .map(|w| w[2].clone())
+                .collect()
+        };
+        let shown: Vec<String> = devices(true).difference(&devices(false)).cloned().collect();
+        assert!(shown.contains(&"/dev/uinput".to_string()), "{shown:?}");
+        let text = sam_core::permissions::permission_catalog()
+            .into_iter()
+            .find(|i| i.key == "devices.input")
+            .unwrap()
+            .description;
+        for d in &shown {
+            assert!(text.contains(d.as_str()), "{d} is not named in: {text}");
+        }
+        assert!(text.contains("type or move the mouse"), "{text}");
     }
 
     /// "Game controllers" exposes only joysticks, never keyboards or mice.

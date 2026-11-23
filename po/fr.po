@@ -5591,7 +5591,9 @@ msgstr[1] "{n} lancements en cours fermés"
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-jail-cli/src/main.rs:931 crates/sam-runner/src/launch.rs:1524
 msgid "set by SAM's helper for the app, after its layers: {variables}"
-msgstr "définies par l’assistant de SAM pour l’application, après ses couches de protection : {variables}"
+msgstr ""
+"définies par l’assistant de SAM pour l’application, après ses couches de "
+"protection : {variables}"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-jail-cli/src/main.rs:1015
@@ -8285,7 +8287,9 @@ msgstr "sortie de curl"
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/updates.rs:684
 msgid "the update source answered with more than {size}, more than SAM reads"
-msgstr "la source de mises à jour a répondu avec plus de {size}, plus que ce que SAM lit"
+msgstr ""
+"la source de mises à jour a répondu avec plus de {size}, plus que ce que SAM "
+"lit"
 
 #: crates/sam-runner/src/verify.rs:66
 msgid "Your home folder"

@@ -32,7 +32,7 @@ proves it, is in [threat-model.md](threat-model.md).
 
 | Path in the sandbox | What it is |
 |---|---|
-| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus only the folders you granted |
+| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus the folders you granted. Also shown, read-only: your fonts (`~/.local/share/fonts`, `~/.fonts`, `~/.config/fontconfig`) and, with *Host theme settings* (on by default), your desktop's look: the GTK, Qt and KDE settings (`~/.config/gtk-3.0`, `~/.config/gtk-4.0`, `~/.config/kdeglobals` and similar), icons and themes. The file chooser's bookmarks and server list in the GTK folders stay out, unless you grant their folder |
 | `/opt/app` | the unpacked app, read-only |
 | `/usr/lib`, `/usr/bin` | the system's libraries and programs, read-only (all of `/usr` with `advanced.host_runtime full` or compatibility mode) |
 | `/usr/share/…` | selected shared data (fonts, icons, locales, themes), read-only |
@@ -73,8 +73,8 @@ proves it, is in [threat-model.md](threat-model.md).
   app folder and what SAM moved aside are readable by your user only
   (0700), launch logs by you only (0600), also when an older SAM made them
   readable for everyone.
-- **Your ids:** the app runs with your user and group id, also with *Local
-  network only*, where it would otherwise appear as root.
+- **Your ids:** the app runs with your user and group id, also with *This
+  computer only*, where it would otherwise appear as root.
 
 ---
 
@@ -348,9 +348,16 @@ the system. SAM never changes it itself.
 Every app gets its own Wayland socket, created through the compositor's
 security-context protocol (`wp_security_context_v1`) and marked with SAM as
 the sandbox engine plus the app id. The compositor then hides privileged
-functions from the app, as it does for Flatpak apps. On KDE Plasma these
-include background clipboard access (`ext_data_control`) and fake input. The
-launch log and `sam-jail doctor` say whether the desktop supports it.
+functions from the app, as it does for Flatpak apps. On KDE Plasma (KWin
+6.8) these are background clipboard access (`ext_data_control`), fake
+input, screen casting, the list of other windows, the lock screen overlay,
+start-up feedback and security contexts of its own; a test compares what
+the app gets with what an unsandboxed client gets. What a compositor hides
+is its own choice, not SAM's: KWin still offers sandboxed apps a few
+functions of the desktop shell, such as drawing a panel or overlay above
+other windows (`zwlr_layer_shell_v1`, `org_kde_plasma_shell`) and changing
+the screen layout (`kde_output_management_v2`). The launch log and `sam-jail doctor` say whether the desktop supports
+it.
 
 *Privileged Wayland protocols* (advanced, High risk) gives the compositor's
 own socket instead, for clipboard managers and screenshot tools. Desktops

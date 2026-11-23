@@ -37,11 +37,12 @@ tests = [
 [[function]]
 id = 2
 area = "A"
-promise = "SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image; the old, rare type 1 is unpacked with bsdtar but not tested) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message."
+promise = "SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image, and the old, rare type 1, which bsdtar unpacks) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message."
 code = ["sam-detect/src/appimage.rs", "sam-intake/src/extract.rs", "sam-runner/src/ops/add.rs"]
 tests = ["plain_elf_is_not_appimage", "a_type_2_appimage_is_recognized", "an_appimage_with_a_dwarfs_image_is_recognized", "a_file_that_is_no_program_is_not_an_appimage", "appimages_run_only_on_a_matching_processor", "appimages_with_every_compression_unpack", "an_appimage_for_another_processor_gets_no_sandbox",
   "an_appimage_shorter_than_its_image_is_incomplete",
   "a_download_that_broke_off_is_refused_and_nothing_is_kept",
+  "the_host_tools_unpack_what_sams_own_reader_cannot",
 ]
 checks = ["tests/real-apps/run.sh"]
 
@@ -67,6 +68,7 @@ tests = ["an_appimages_own_extractor_cannot_open_the_kernels_rarely_used_doors",
   "two_unpacks_at_once_get_their_own_error_files",
   "add_with_progress_reports_from_the_first_step_to_the_end",
   "progress_lines_pass_new_steps_and_the_end_and_thin_out_the_rest",
+  "the_host_tools_unpack_what_sams_own_reader_cannot",
 ]
 
 [[function]]
@@ -306,6 +308,7 @@ tests = [
   "the_status_names_a_missing_dbus_proxy",
   "the_app_gets_the_users_own_user_and_group_ids",
   "added_instance_names_and_tray_look_alikes_are_checked",
+  "host_tools_that_start_programs_outside_meet_their_stand_ins",
 ]
 
 [[function]]
@@ -323,6 +326,7 @@ tests = [
   "the_sandbox_display_number_is_never_the_hosts",
   "every_cookie_for_the_display_is_copied",
   "a_compositor_that_never_answers_does_not_hold_up_the_start",
+  "each_permission_grants_exactly_its_access_in_a_real_sandbox",
 ]
 
 [[function]]
@@ -352,6 +356,7 @@ tests = [
   "the_gpu_brings_exactly_the_render_and_nvidia_nodes",
   "the_graphics_devices_are_found_in_the_device_folder",
   "the_graphics_devices_on_this_computer_are_found",
+  "the_input_switch_names_every_device_it_shows",
 ]
 
 [[function]]
@@ -927,7 +932,7 @@ id = 39
 area = "I"
 internal = true
 promise = "SAM's parts stay cleanly separated: the window reaches the core only through the command line and decides by codes, never by reading messages, and the parts that handle untrusted content never depend on the higher ones."
-code = ["sam-jail-cli/tests/architecture.rs", "docs/architecture.md"]
+code = ["sam-jail-cli/tests/architecture.rs", "docs/architecture.md", "sam-jail-cli/src/man.rs"]
 tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends_on_no_other_part", "the_window_reaches_sam_only_through_the_command_line", "lower_parts_never_depend_on_higher_ones", "the_sandbox_builder_depends_only_on_the_permission_model", "the_component_diagram_shows_the_real_dependencies", "diagram_labels_are_quoted_so_github_draws_them", "version_reports_the_json_interface", "an_error_code_survives_added_context", "a_required_run_does_not_skip", "skips_are_refused_in_ci_and_always_written_down", "a_failing_section_is_named_and_the_next_still_runs",
   "a_skipped_test_is_recorded_with_its_reason",
   "tests_find_the_helper_of_their_own_build",
@@ -942,6 +947,7 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
   "man_writes_a_page_per_visible_command_and_none_for_hidden_ones",
   "private_services_end_with_the_test_process_that_started_them",
   "a_test_that_fails_partway_leaves_no_gpg_agent_running",
+  "every_man_page_named_is_written",
 ]
 
 [[function]]

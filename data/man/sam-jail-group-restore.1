@@ -1,0 +1,16 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-group-restore 1 2026-11-23 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.SH NAME
+sam\-jail\-group\-restore \- Undo a `group set`: reads the "undo" object it printed (JSON on stdin) and takes back only that change
+.SH SYNOPSIS
+\fBsam\-jail group restore\fR [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Undo a `group set`: reads the "undo" object it printed (JSON on stdin) and takes back only that change
+.SH OPTIONS
+.TP
+\fB\-\-yes\fR
+Confirm an undo that adds something rated Think twice or Dangerous back
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
