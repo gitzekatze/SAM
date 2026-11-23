@@ -106,6 +106,12 @@ fn try_overlay_in(dir: &std::path::Path) -> bool {
     let Some(bwrap) = crate::util::which("bwrap") else {
         return false;
     };
+    try_overlay_with(&bwrap, dir)
+}
+
+/// [`try_overlay_in`] with the Bubblewrap at `bwrap`: true only when its
+/// folders could be made and `bwrap` ran the overlay successfully.
+fn try_overlay_with(bwrap: &std::path::Path, dir: &std::path::Path) -> bool {
     let probe = dir.join(format!(".overlay-check-{}", std::process::id()));
     remove_stale_probes(dir);
     let made = std::fs::create_dir_all(dir).is_ok()
@@ -222,6 +228,26 @@ mod probe_tests {
         assert!(running.exists());
         assert!(other.exists(), "only the checks' own folders are touched");
     }
+
+    /// The overlay check believes Bubblewrap's answer: a Bubblewrap that
+    /// fails means no overlay, even though the check's folders could be
+    /// made (NFS, eCryptfs, another overlay), and one that succeeds means
+    /// a working overlay. Stand-ins for Bubblewrap; the real one is
+    /// compared in sam-runner's host_probe tests. Either way the check's
+    /// folder is gone afterwards.
+    #[test]
+    fn the_overlay_check_believes_bubblewraps_answer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let probe = tmp
+            .path()
+            .join(format!(".overlay-check-{}", std::process::id()));
+        let fails = crate::util::which("false").expect("false is installed");
+        let works = crate::util::which("true").expect("true is installed");
+        assert!(!super::try_overlay_with(&fails, tmp.path()));
+        assert!(!probe.exists(), "the check's folder is removed");
+        assert!(super::try_overlay_with(&works, tmp.path()));
+        assert!(!probe.exists(), "the check's folder is removed");
+    }
 }
 
 #[cfg(test)]
@@ -317,11 +343,7 @@ impl HostInfo {
         // SAFETY: getgid has no preconditions and cannot fail.
         let gid = unsafe { libc::getgid() };
         let home = home_dir();
-        let user = std::env::var("USER")
-            .ok()
-            .filter(|u| !u.is_empty())
-            .or_else(|| home.file_name().map(|n| n.to_string_lossy().into_owned()))
-            .unwrap_or_else(|| "user".into());
+        let user = user_name(std::env::var("USER").ok(), &home);
         let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
@@ -346,15 +368,7 @@ impl HostInfo {
             pipewire: tool("pipewire", &["--version"]),
         };
 
-        let bwrap_setuid = tools
-            .bwrap
-            .as_ref()
-            .and_then(|t| fs::metadata(&t.path).ok())
-            .map(|m| {
-                use std::os::unix::fs::PermissionsExt;
-                m.permissions().mode() & 0o4000 != 0
-            })
-            .unwrap_or(false);
+        let bwrap_setuid = tools.bwrap.as_ref().is_some_and(|t| is_setuid(&t.path));
 
         HostInfo {
             uid,
@@ -367,17 +381,7 @@ impl HostInfo {
             arch: std::env::consts::ARCH.into(),
             kernel: read_trim("/proc/sys/kernel/osrelease").unwrap_or_default(),
             distro: os_release_name(),
-            userns: UsernsStatus {
-                max_user_namespaces: read_trim("/proc/sys/user/max_user_namespaces")
-                    .and_then(|s| s.parse().ok()),
-                unprivileged_clone: read_trim("/proc/sys/kernel/unprivileged_userns_clone")
-                    .map(|s| s == "1"),
-                apparmor_restricted: read_trim(
-                    "/proc/sys/kernel/apparmor_restrict_unprivileged_userns",
-                )
-                .map(|s| s == "1"),
-                bwrap_setuid,
-            },
+            userns: userns_status(read_trim, bwrap_setuid),
             landlock_abi: landlock_abi(),
             seccomp: read_trim("/proc/self/status")
                 .map(|s| s.lines().any(|l| l.starts_with("Seccomp:")))
@@ -392,6 +396,36 @@ impl HostInfo {
 
     pub fn xdg_dir(&self, key: &str) -> Option<&Path> {
         self.xdg_dirs.get(key).map(PathBuf::as_path)
+    }
+}
+
+/// The user's name: `$USER` when it is set and not empty, else the home
+/// folder's name, else "user". It becomes the sandbox's `USER`, `LOGNAME`
+/// and the name in its passwd and group files.
+fn user_name(env_user: Option<String>, home: &Path) -> String {
+    env_user
+        .filter(|u| !u.is_empty())
+        .or_else(|| home.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "user".into())
+}
+
+/// Whether the file at `path` carries the setuid bit (a missing file does
+/// not).
+fn is_setuid(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(path).is_ok_and(|m| m.permissions().mode() & 0o4000 != 0)
+}
+
+/// The kernel's user namespace settings, each read by `read` (a file's
+/// trimmed text, `None` where the file is missing).
+fn userns_status(read: impl Fn(&str) -> Option<String>, bwrap_setuid: bool) -> UsernsStatus {
+    UsernsStatus {
+        max_user_namespaces: read("/proc/sys/user/max_user_namespaces")
+            .and_then(|s| s.parse().ok()),
+        unprivileged_clone: read("/proc/sys/kernel/unprivileged_userns_clone").map(|s| s == "1"),
+        apparmor_restricted: read("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+            .map(|s| s == "1"),
+        bwrap_setuid,
     }
 }
 
@@ -478,7 +512,17 @@ fn socket(p: PathBuf) -> Option<PathBuf> {
 }
 
 fn probe_sockets(runtime: Option<&Path>, home: &Path) -> Sockets {
-    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    probe_sockets_with(&|k| std::env::var(k).ok(), runtime, home)
+}
+
+/// [`probe_sockets`] with the session's variables read by `var`; an empty
+/// variable counts as unset.
+fn probe_sockets_with(
+    var: &dyn Fn(&str) -> Option<String>,
+    runtime: Option<&Path>,
+    home: &Path,
+) -> Sockets {
+    let env = |k: &str| var(k).filter(|v| !v.is_empty());
     let mut s = Sockets::default();
 
     // Wayland
@@ -595,8 +639,17 @@ pub fn activatable_bus_names(home: &Path) -> std::collections::BTreeSet<String> 
 /// Library folders listed in `/etc/ld.so.conf.d` (the loader's search
 /// path, set up by packages such as CUDA or ROCm), plus `/usr/local/lib`.
 pub fn loader_lib_dirs() -> Vec<PathBuf> {
-    let mut dirs = vec![PathBuf::from("/usr/local/lib")];
-    if let Ok(rd) = fs::read_dir("/etc/ld.so.conf.d") {
+    loader_lib_dirs_from(
+        Path::new("/etc/ld.so.conf.d"),
+        PathBuf::from("/usr/local/lib"),
+    )
+}
+
+/// [`loader_lib_dirs`] from the files in `conf_d`, in the order of their
+/// names, after `local`; only folders that exist.
+fn loader_lib_dirs_from(conf_d: &Path, local: PathBuf) -> Vec<PathBuf> {
+    let mut dirs = vec![local];
+    if let Ok(rd) = fs::read_dir(conf_d) {
         let mut files: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
         files.sort();
         for f in files {
@@ -619,8 +672,12 @@ pub fn loader_lib_dirs() -> Vec<PathBuf> {
 /// `/usr/lib*` and `/lib*`) and that may be shown read-only: never below the
 /// home folder or a system area like `/etc`, `/var` or `/run`.
 pub fn extra_lib_dirs(home: &Path) -> Vec<PathBuf> {
-    loader_lib_dirs()
-        .into_iter()
+    keep_extra_lib_dirs(loader_lib_dirs(), home)
+}
+
+/// The folders of `dirs` that [`extra_lib_dirs`] keeps.
+fn keep_extra_lib_dirs(dirs: Vec<PathBuf>, home: &Path) -> Vec<PathBuf> {
+    dirs.into_iter()
         .filter(|d| {
             let shown = [
                 "/usr/lib",
@@ -639,13 +696,19 @@ pub fn extra_lib_dirs(home: &Path) -> Vec<PathBuf> {
 }
 
 fn gpu_devices() -> Vec<PathBuf> {
+    gpu_devices_in(Path::new("/dev"))
+}
+
+/// The graphics devices in the device folder `dev`: everything in `dri/`
+/// and the `nvidia*` entries, sorted.
+fn gpu_devices_in(dev: &Path) -> Vec<PathBuf> {
     let mut v = Vec::new();
-    if let Ok(rd) = fs::read_dir("/dev/dri") {
+    if let Ok(rd) = fs::read_dir(dev.join("dri")) {
         for e in rd.flatten() {
             v.push(e.path());
         }
     }
-    if let Ok(rd) = fs::read_dir("/dev") {
+    if let Ok(rd) = fs::read_dir(dev) {
         for e in rd.flatten() {
             let n = e.file_name();
             let n = n.to_string_lossy();
@@ -660,12 +723,17 @@ fn gpu_devices() -> Vec<PathBuf> {
 
 /// Parse `~/.config/user-dirs.dirs` with sensible fallbacks.
 pub fn xdg_user_dirs(home: &Path) -> BTreeMap<String, PathBuf> {
-    let cfg_home = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".config"));
+    let cfg_home = config_home(std::env::var_os("XDG_CONFIG_HOME"), home);
     let text = fs::read_to_string(cfg_home.join("user-dirs.dirs")).unwrap_or_default();
     parse_user_dirs(&text, home)
+}
+
+/// The user's config folder: `$XDG_CONFIG_HOME` when it is set and not
+/// empty, else `~/.config`.
+fn config_home(var: Option<std::ffi::OsString>, home: &Path) -> PathBuf {
+    var.filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"))
 }
 
 /// The user folders from the text of `user-dirs.dirs`, with the usual
@@ -731,8 +799,80 @@ pub fn landlock_abi() -> Option<u32> {
 
 #[cfg(test)]
 mod socket_tests {
-    use super::{activatable_bus_names, parse_user_dirs, socket};
+    use super::{activatable_bus_names, parse_user_dirs, probe_sockets_with, socket};
     use std::path::Path;
+
+    /// The sockets given to a sandbox follow the user's session: a set
+    /// variable names the socket (WAYLAND_DISPLAY=wayland-7 is not
+    /// wayland-0, which may be another compositor's), and an empty one
+    /// counts as unset, so the usual places are used.
+    #[test]
+    fn the_sockets_follow_the_sessions_variables() {
+        use std::os::unix::net::UnixListener;
+        let tmp = tempfile::tempdir().unwrap();
+        let t = tmp.path();
+        let run = t.join("run");
+        let home = t.join("home");
+        std::fs::create_dir_all(run.join("pulse")).unwrap();
+        std::fs::create_dir_all(&home).unwrap();
+        let _listeners = [
+            run.join("wayland-0"),
+            run.join("wayland-7"),
+            run.join("pulse/native"),
+            run.join("bus"),
+            t.join("pulse-other"),
+            t.join("bus-other"),
+            t.join("agent"),
+        ]
+        .map(|p| UnixListener::bind(p).unwrap());
+        let xauth = t.join("xauth");
+        std::fs::write(&xauth, "").unwrap();
+        std::fs::write(home.join(".Xauthority"), "").unwrap();
+        let bus_address = format!("unix:path={}", t.join("bus-other").display());
+        let set = |k: &str| -> Option<String> {
+            Some(match k {
+                "WAYLAND_DISPLAY" => "wayland-7".into(),
+                "DISPLAY" => ":5".into(),
+                "XAUTHORITY" => xauth.display().to_string(),
+                "PULSE_SERVER" => format!("unix:{}", t.join("pulse-other").display()),
+                "DBUS_SESSION_BUS_ADDRESS" => bus_address.clone(),
+                "SSH_AUTH_SOCK" => t.join("agent").display().to_string(),
+                _ => return None,
+            })
+        };
+        let s = probe_sockets_with(&set, Some(&run), &home);
+        assert_eq!(s.wayland_display, "wayland-7");
+        assert_eq!(s.wayland, Some(run.join("wayland-7")));
+        assert_eq!(s.x11_display.as_deref(), Some(":5"));
+        assert_eq!(s.xauthority, Some(xauth.clone()));
+        assert_eq!(s.pulse, Some(t.join("pulse-other")));
+        assert_eq!(s.dbus_session_address, Some(bus_address.clone()));
+        assert_eq!(s.dbus_session, Some(t.join("bus-other")));
+        assert_eq!(s.ssh_agent, Some(t.join("agent")));
+
+        let empty = |_: &str| Some(String::new());
+        let s = probe_sockets_with(&empty, Some(&run), &home);
+        assert_eq!(s.wayland_display, "wayland-0");
+        assert_eq!(s.wayland, Some(run.join("wayland-0")));
+        assert_eq!(s.x11_display, None);
+        assert_eq!(s.xauthority, None, "no display, no X11 key");
+        assert_eq!(s.pulse, Some(run.join("pulse/native")));
+        assert_eq!(s.dbus_session_address, None);
+        assert_eq!(s.dbus_session, Some(run.join("bus")));
+        assert_eq!(s.ssh_agent, None);
+    }
+
+    /// `$XDG_CONFIG_HOME` decides where user-dirs.dirs is read, so which
+    /// real folder a Documents or Downloads permission shows; an empty one
+    /// counts as unset, never as the current folder.
+    #[test]
+    fn the_user_folders_are_read_from_the_users_config_folder() {
+        let home = Path::new("/home/u");
+        let c = |v: Option<&str>| super::config_home(v.map(Into::into), home);
+        assert_eq!(c(Some("/x/cfg")), Path::new("/x/cfg"));
+        assert_eq!(c(Some("")), home.join(".config"));
+        assert_eq!(c(None), home.join(".config"));
+    }
 
     /// Services that start on demand are recognized from their folders,
     /// including the user's own (contract dbus-activatable).
@@ -791,6 +931,176 @@ mod tests {
         assert_eq!(x11_display_number(":1.0").as_deref(), Some("1"));
         assert_eq!(x11_display_number("unix:2").as_deref(), Some("2"));
         assert_eq!(x11_display_number("remote:0"), None);
+        // Only digits make a display number: it names a socket in the
+        // world-writable /tmp/.X11-unix.
+        assert_eq!(x11_display_number(":"), None);
+        assert_eq!(x11_display_number(":abc"), None);
+        assert_eq!(x11_display_number(":0x"), None);
+        assert_eq!(x11_display_number(":1/../X0"), None);
+    }
+
+    /// Only library folders a sandbox does not show anyway and that may be
+    /// shown are kept: below /opt or /usr/local, never below the home
+    /// folder (also where the home is itself below /opt) or in /etc, /var
+    /// or /run.
+    #[test]
+    fn only_library_folders_outside_the_home_and_system_areas_are_shown() {
+        let dirs = [
+            "/opt/cuda/lib64",
+            "/usr/local/lib",
+            "/usr/lib/x86_64-linux-gnu",
+            "/usr/lib32",
+            "/lib64",
+            "/etc/foo",
+            "/var/lib/x",
+            "/run/x",
+            "/home/u/lib",
+            "/opt/home/u/lib",
+        ];
+        let keep = |home: &str| -> Vec<String> {
+            keep_extra_lib_dirs(dirs.iter().map(PathBuf::from).collect(), Path::new(home))
+                .iter()
+                .map(|d| d.display().to_string())
+                .collect()
+        };
+        assert_eq!(keep("/opt/home/u"), ["/opt/cuda/lib64", "/usr/local/lib"]);
+        assert_eq!(
+            keep("/home/u"),
+            ["/opt/cuda/lib64", "/usr/local/lib", "/opt/home/u/lib"]
+        );
+    }
+
+    /// The loader's folders come from the files in ld.so.conf.d in the
+    /// order of their names, after /usr/local/lib: only lines that name a
+    /// folder, and only folders that exist.
+    #[test]
+    fn the_loaders_folders_come_from_its_config_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let t = tmp.path();
+        let conf = t.join("ld.so.conf.d");
+        for d in ["local", "x/lib", "y", "z", "ld.so.conf.d"] {
+            std::fs::create_dir_all(t.join(d)).unwrap();
+        }
+        let p = |d: &str| t.join(d).display().to_string();
+        std::fs::write(
+            conf.join("b.conf"),
+            format!(
+                "{}\n  {}  \n# {}\ninclude other.conf\n{}\n",
+                p("x/lib"),
+                p("y"),
+                p("z"),
+                p("missing")
+            ),
+        )
+        .unwrap();
+        std::fs::write(conf.join("c.conf"), format!("{}\n", p("z"))).unwrap();
+        std::fs::write(conf.join("a.conf"), "relative/lib\n").unwrap();
+        assert_eq!(
+            loader_lib_dirs_from(&conf, t.join("local")),
+            [t.join("local"), t.join("x/lib"), t.join("y"), t.join("z")]
+        );
+        assert_eq!(
+            loader_lib_dirs_from(&t.join("none"), t.join("missing")),
+            Vec::<PathBuf>::new()
+        );
+    }
+
+    /// The graphics devices are everything in dri/ and the nvidia* entries,
+    /// sorted, and nothing else of the device folder.
+    #[test]
+    fn the_graphics_devices_are_found_in_the_device_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dev = tmp.path();
+        std::fs::create_dir_all(dev.join("dri")).unwrap();
+        for f in [
+            "dri/renderD128",
+            "dri/card0",
+            "nvidiactl",
+            "nvidia0",
+            "null",
+            "video0",
+        ] {
+            std::fs::write(dev.join(f), "").unwrap();
+        }
+        assert_eq!(
+            gpu_devices_in(dev),
+            [
+                dev.join("dri/card0"),
+                dev.join("dri/renderD128"),
+                dev.join("nvidia0"),
+                dev.join("nvidiactl")
+            ]
+        );
+        assert_eq!(gpu_devices_in(&dev.join("none")), Vec::<PathBuf>::new());
+    }
+
+    /// The sandbox's user name is `$USER`; where that is empty or unset,
+    /// the home folder's name, and "user" where there is none.
+    #[test]
+    fn the_user_name_is_users_or_the_home_folders() {
+        let bob = Path::new("/home/bob");
+        assert_eq!(user_name(Some("alice".into()), bob), "alice");
+        assert_eq!(user_name(Some(String::new()), bob), "bob");
+        assert_eq!(user_name(None, bob), "bob");
+        assert_eq!(user_name(None, Path::new("/")), "user");
+    }
+
+    /// A setuid Bubblewrap is told from a normal one by its file's setuid
+    /// bit: only a setuid one works where user namespaces are switched off.
+    #[test]
+    fn a_setuid_bubblewrap_is_told_from_a_normal_one() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("bwrap");
+        std::fs::write(&f, "").unwrap();
+        let mode = |m: u32| std::fs::set_permissions(&f, std::fs::Permissions::from_mode(m));
+        mode(0o755).unwrap();
+        assert!(!is_setuid(&f));
+        mode(0o4755).unwrap();
+        assert!(is_setuid(&f));
+        assert!(!is_setuid(&tmp.path().join("missing")));
+    }
+
+    /// The kernel's user namespace knobs are read as they are meant: "1"
+    /// is on, "0" off, a missing file unknown (the AppArmor restriction
+    /// of Ubuntu 24.04 and later included).
+    #[test]
+    fn the_user_namespace_knobs_are_read_as_meant() {
+        let read = |values: &'static [(&'static str, &'static str)]| {
+            move |p: &str| {
+                values
+                    .iter()
+                    .find(|(k, _)| p.ends_with(k))
+                    .map(|(_, v)| v.to_string())
+            }
+        };
+        let on = userns_status(
+            read(&[
+                ("max_user_namespaces", "0"),
+                ("unprivileged_userns_clone", "1"),
+                ("apparmor_restrict_unprivileged_userns", "1"),
+            ]),
+            false,
+        );
+        assert_eq!(on.max_user_namespaces, Some(0));
+        assert_eq!(on.unprivileged_clone, Some(true));
+        assert_eq!(on.apparmor_restricted, Some(true));
+        let off = userns_status(
+            read(&[
+                ("max_user_namespaces", "63000"),
+                ("unprivileged_userns_clone", "0"),
+                ("apparmor_restrict_unprivileged_userns", "0"),
+            ]),
+            true,
+        );
+        assert_eq!(off.max_user_namespaces, Some(63000));
+        assert_eq!(off.unprivileged_clone, Some(false));
+        assert_eq!(off.apparmor_restricted, Some(false));
+        assert!(off.bwrap_setuid);
+        let none = userns_status(read(&[]), false);
+        assert_eq!(none.max_user_namespaces, None);
+        assert_eq!(none.unprivileged_clone, None);
+        assert_eq!(none.apparmor_restricted, None);
     }
 
     /// Only real socket paths are taken from a D-Bus address; abstract sockets are not.

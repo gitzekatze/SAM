@@ -160,10 +160,35 @@ jobs:
           name: sbom
           path: sam-*.spdx.json
 
+  # Build provenance for the SBOM, as for every other file of the draft: the
+  # signing script lets the release key sign only files the release build of
+  # this tag made. In a job of its own, without the third-party action that
+  # wrote the file: that action never holds the right to vouch for files.
+  sbom-provenance:
+    needs: sbom
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: sbom
+          path: sbom
+      # GitHub offers it for public repositories only (as in the build job).
+      - name: Build provenance
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: sbom/*
+
   # The only job that may write: it makes the draft release from the files
   # the build jobs made and attested, and the SBOM.
   draft:
-    needs: [appimage, test-shipped, sbom]
+    needs: [appimage, test-shipped, sbom, sbom-provenance]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     permissions:

@@ -137,6 +137,9 @@ pub struct PresetApply {
     pub preset: String,
     pub check: ChangeCheck,
     pub applied: bool,
+    /// The fingerprint of the preset's permissions as checked; passed back
+    /// with `--expect`, only these are applied.
+    pub fingerprint: String,
 }
 
 /// A sandboxed app as the Permissions page shows it.
@@ -211,6 +214,7 @@ impl Sam {
             max_files: e.max_files,
             max_bytes: e.max_size_mb.saturating_mul(1024 * 1024),
             max_seconds: e.max_seconds,
+            max_memory: e.max_memory_mb.saturating_mul(1024 * 1024),
         }
     }
 
@@ -402,58 +406,167 @@ fn holds_open(pid: u32, file: &Path) -> bool {
         .any(|fd| fs::read_link(fd.path()).is_ok_and(|t| t == want))
 }
 
-/// Asks an app to quit the way logging out does: SIGTERM to every process
-/// below its launcher `runner`, so it can save and close. Not Bubblewrap
-/// itself (that would kill the app at once) and not the D-Bus proxy the app
-/// may still need while quitting.
-pub(crate) fn ask_to_quit(runner: u32) {
-    for pid in descendants(runner) {
-        let comm = fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
-        if !matches!(comm.trim(), "bwrap" | "xdg-dbus-proxy") {
-            if let Ok(pid) = libc::pid_t::try_from(pid) {
-                // SAFETY: kill takes plain integers; a process that is
-                // already gone only makes it fail.
-                unsafe { libc::kill(pid, libc::SIGTERM) };
+/// Asks an app to quit the way logging out does: SIGTERM to the app's own
+/// processes, so it can save and close. `sandbox` is the program its
+/// launcher `runner` started (Bubblewrap, or pasta with "This computer
+/// only"); only processes below it that live in a process namespace of
+/// their own (inside the sandbox) are asked, never the first process of
+/// such a namespace (Bubblewrap's own). So SAM's helpers are never asked:
+/// pasta quits on SIGTERM and Bubblewrap then takes the whole sandbox down
+/// at once, with no time to save; the sound relay and the D-Bus proxy are
+/// not below `sandbox` at all (review 2026-11-23 F3). Programs in Room
+/// service's rooms are not below it either: each room's stand-in, one of
+/// the app's processes, is asked and passes it on, so they get the same
+/// time ([`ask_room_to_quit`]). Chosen by where a
+/// process sits, not by its name, which any process can change. Each
+/// process is signalled through a pidfd, after checking it is still the
+/// one listed: a process id reused meanwhile is never hit.
+pub(crate) fn ask_to_quit(runner: u32, sandbox: u32) {
+    let procs = processes();
+    // `sandbox` must be the runner's own child.
+    if !procs.iter().any(|p| p.pid == sandbox && p.ppid == runner) {
+        return;
+    }
+    let Some((base, _)) = ns_pid(runner) else {
+        return;
+    };
+    ask_inside_to_quit(&procs, sandbox, base);
+}
+
+/// Asks the program in a room of Room service to quit, as its app was
+/// asked: the room's stand-in, one of the app's own processes, got SIGTERM
+/// and passed it on to the service (`room_service::standin`). `room` is
+/// the room's Bubblewrap, a child of this process (the service runs in the
+/// app's launcher); the same rule as for the app: only processes below it
+/// in the room's own process namespace, never its first process
+/// (Bubblewrap's own, which every room keeps).
+pub(crate) fn ask_room_to_quit(room: u32) {
+    let procs = processes();
+    let me = std::process::id();
+    if !procs.iter().any(|p| p.pid == room && p.ppid == me) {
+        return;
+    }
+    let Some((base, _)) = ns_pid(me) else {
+        return;
+    };
+    ask_inside_to_quit(&procs, room, base);
+}
+
+/// SIGTERM to the processes below `top` that live in a deeper process
+/// namespace than `base`, except the first process of such a namespace.
+fn ask_inside_to_quit(procs: &[Proc], top: u32, base: usize) {
+    for p in below(procs, top) {
+        match ns_pid(p.pid) {
+            Some((depth, inner)) if depth > base && inner != 1 => {
+                signal_same(p, libc::SIGTERM);
             }
+            _ => {}
         }
     }
 }
 
-/// All processes below `root`, children before grandchildren.
-fn descendants(root: u32) -> Vec<u32> {
-    let mut parent_of = Vec::new();
+/// One process as `/proc` lists it.
+#[derive(Debug, Clone, Copy)]
+struct Proc {
+    pid: u32,
+    ppid: u32,
+    /// When it started (clock ticks since boot): with `pid`, it names one
+    /// process for good.
+    start: u64,
+}
+
+/// The parent and start time from `/proc/<pid>/stat`.
+fn stat_of(pid: u32) -> Option<(u32, u64)> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // "pid (comm) state ppid ...": comm may contain spaces or ')'.
+    let rest: Vec<&str> = stat
+        .get(stat.rfind(')')? + 1..)?
+        .split_whitespace()
+        .collect();
+    // After comm: state is field 3, ppid 4, starttime 22.
+    Some((rest.get(1)?.parse().ok()?, rest.get(19)?.parse().ok()?))
+}
+
+/// Every process on the computer.
+fn processes() -> Vec<Proc> {
+    let mut out = Vec::new();
     if let Ok(rd) = fs::read_dir("/proc") {
         for e in rd.flatten() {
             let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
                 continue;
             };
-            let Ok(stat) = fs::read_to_string(e.path().join("stat")) else {
-                continue;
-            };
-            // "pid (comm) state ppid ...": comm may contain spaces or ')'.
-            let Some(rest) = stat.rfind(')').map(|i| &stat[i + 1..]) else {
-                continue;
-            };
-            if let Some(ppid) = rest
-                .split_whitespace()
-                .nth(1)
-                .and_then(|p| p.parse::<u32>().ok())
-            {
-                parent_of.push((pid, ppid));
-            }
-        }
-    }
-    let mut out = Vec::new();
-    let mut frontier = vec![root];
-    while let Some(p) = frontier.pop() {
-        for &(child, parent) in &parent_of {
-            if parent == p && !out.contains(&child) {
-                out.push(child);
-                frontier.push(child);
+            if let Some((ppid, start)) = stat_of(pid) {
+                out.push(Proc { pid, ppid, start });
             }
         }
     }
     out
+}
+
+/// All processes below `root`, children before grandchildren.
+fn below(procs: &[Proc], root: u32) -> Vec<Proc> {
+    let mut out: Vec<Proc> = Vec::new();
+    let mut frontier = vec![root];
+    while let Some(p) = frontier.pop() {
+        for c in procs.iter().filter(|c| c.ppid == p) {
+            if !out.iter().any(|o| o.pid == c.pid) {
+                out.push(*c);
+                frontier.push(c.pid);
+            }
+        }
+    }
+    out
+}
+
+/// How many process namespaces deep `pid` lives (as seen from here), and
+/// its number in the innermost one (`NSpid` in `/proc/<pid>/status`).
+fn ns_pid(pid: u32) -> Option<(usize, u32)> {
+    let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    let ids: Vec<u32> = status
+        .lines()
+        .find_map(|l| l.strip_prefix("NSpid:"))?
+        .split_whitespace()
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    Some((ids.len(), *ids.last()?))
+}
+
+/// Sends `sig` to `p` if it is still the same process.
+fn signal_same(p: Proc, sig: i32) {
+    let Ok(pid) = libc::pid_t::try_from(p.pid) else {
+        return;
+    };
+    // SAFETY: pidfd_open takes a process id and flags; it returns a new
+    // descriptor or -1.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+    let same = || stat_of(p.pid).is_some_and(|(_, start)| start == p.start);
+    if fd >= 0 {
+        let Ok(fd) = i32::try_from(fd) else {
+            return;
+        };
+        // Checked after the pidfd is open: it holds that very process.
+        if same() {
+            // SAFETY: `fd` is the pidfd opened above; no siginfo, no flags.
+            unsafe {
+                libc::syscall(
+                    libc::SYS_pidfd_send_signal,
+                    fd,
+                    sig,
+                    std::ptr::null::<libc::siginfo_t>(),
+                    0,
+                )
+            };
+        }
+        // SAFETY: closing the descriptor opened above, once.
+        unsafe { libc::close(fd) };
+    } else if std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH) && same() {
+        // No pidfd: a kernel older than 5.3 (ENOSYS), or a seccomp filter
+        // around SAM that refuses the call (EPERM in some containers). The
+        // app must still be asked; the start time was checked just now.
+        // SAFETY: kill takes plain integers; a process that is gone only makes it fail.
+        unsafe { libc::kill(pid, sig) };
+    }
 }
 
 /// `remove_dir_all` that also handles folders without permissions, such as
@@ -562,13 +675,19 @@ pub(crate) fn sig_words(s: &sam_core::model::SignatureInfo) -> String {
 
 /// What the earlier signature was, when the new file is signed with another
 /// key or no longer signed. An unsigned app that stays unsigned, or a first
-/// signature, is no change worth a warning.
+/// signature, is no change worth a warning. An earlier signature that was
+/// never checked (GnuPG missing) is no trusted key either: once the new
+/// file's signature can be read, SAM cannot tell whether it is the same
+/// key, so it counts as a change (review 2026-11-23, U-3).
 pub(crate) fn signing_key_change(
     old: Option<&sam_core::model::SignatureInfo>,
     new: &sam_core::model::SignatureInfo,
 ) -> Option<String> {
     use sam_core::model::SignatureState as S;
     let old = old?;
+    if old.state == S::Unchecked {
+        return (new.state != S::Unchecked).then(|| sig_words(old));
+    }
     let old_fp = old
         .fingerprint
         .as_deref()
@@ -693,6 +812,30 @@ mod signature_tests {
         assert_eq!(signing_key_change(None, &sig(S::Unsigned, None)), None);
     }
 
+    /// A signature recorded as "not checked" (GnuPG was missing) lets no key
+    /// through: once the new file's signature can be read, whatever it is
+    /// (another key, none, a bad one) counts as a change; both unchecked is
+    /// no news (review 2026-11-23, U-3).
+    #[test]
+    fn a_signature_that_was_never_checked_lets_no_key_through() {
+        let unchecked = sig(S::Unchecked, None);
+        for new in [
+            sig(S::Valid, Some("BBBB")),
+            sig(S::Unsigned, None),
+            sig(S::Invalid, None),
+        ] {
+            assert_eq!(
+                signing_key_change(Some(&unchecked), &new).as_deref(),
+                Some("signed (not checked)"),
+                "{new:?}"
+            );
+        }
+        assert_eq!(
+            signing_key_change(Some(&unchecked), &sig(S::Unchecked, None)),
+            None
+        );
+    }
+
     /// A signed app whose update cannot be checked (GnuPG missing) is not
     /// waved through: SAM cannot tell whether the key changed.
     #[test]
@@ -719,5 +862,76 @@ mod signature_tests {
             "never checked before"
         );
         assert_eq!(signature_unconfirmed(None, &sig(S::Unchecked, None)), None);
+    }
+}
+
+#[cfg(test)]
+mod quit_tests {
+    #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+    use super::ask_to_quit;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    /// Review 2026-11-23 F3: asking an app to quit reaches the app's own
+    /// processes, also one whose program is called `bwrap`, and nothing of
+    /// SAM's: not the program the launcher started (here a stand-in for
+    /// pasta that quits on SIGTERM, which would take the sandbox down at
+    /// once), not a helper beside the sandbox (as the sound relay).
+    #[test]
+    fn only_the_apps_own_processes_are_asked_to_quit() {
+        let host = sam_core::HostInfo::probe();
+        if host.tools.bwrap.is_none() || crate::doctor::bwrap_functional(&host).is_err() {
+            crate::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+            return;
+        }
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path().display().to_string();
+        // The app's program file is named bwrap, so its process is too.
+        std::fs::copy("/bin/sh", t.path().join("bwrap")).unwrap();
+        let mut helper = Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "trap 'touch {d}/helper-asked; exit' TERM; while :; do sleep 0.1; done"
+            ))
+            .stdin(Stdio::null())
+            .spawn()
+            .unwrap();
+        let app = format!(
+            "trap 'echo saved > {d}/saved; exit 0' TERM; touch {d}/ready; while :; do sleep 0.1; done"
+        );
+        let mut root = Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "trap 'touch {d}/root-asked; exit' TERM; \
+                 bwrap --unshare-user --unshare-pid --die-with-parent --ro-bind / / \
+                 --dev /dev --proc /proc --bind {d} {d} -- {d}/bwrap -c \"$0\" & wait",
+            ))
+            .arg(&app)
+            .stdin(Stdio::null())
+            .spawn()
+            .unwrap();
+        let wait_for = |name: &str| {
+            let end = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < end {
+                if t.path().join(name).exists() {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            false
+        };
+        assert!(wait_for("ready"), "the app did not start");
+        ask_to_quit(std::process::id(), root.id());
+        let saved = wait_for("saved");
+        std::thread::sleep(Duration::from_millis(300));
+        let root_asked = t.path().join("root-asked").exists();
+        let helper_asked = t.path().join("helper-asked").exists();
+        for c in [&mut helper, &mut root] {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        assert!(saved, "the app was not asked to quit");
+        assert!(!root_asked, "the program the launcher started was asked");
+        assert!(!helper_asked, "a helper beside the sandbox was asked");
     }
 }

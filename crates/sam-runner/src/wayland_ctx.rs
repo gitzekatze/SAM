@@ -17,6 +17,7 @@ use std::io::PipeWriter;
 use std::os::fd::AsFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
@@ -36,16 +37,20 @@ pub struct WaylandContext {
     _close: PipeWriter,
 }
 
+/// How long the compositor may take to answer. Its answers take
+/// milliseconds; a compositor that hangs must not hold up the start for
+/// ever (audit: the start waited without end).
+const ANSWER_LIMIT: Duration = Duration::from_secs(10);
+
 /// Whether the compositor behind `display` offers security contexts.
 pub fn supported(display: &Path) -> bool {
-    connect(display)
-        .map(|(_, globals, _)| {
-            globals.contents().with_list(|l| {
-                l.iter()
-                    .any(|g| g.interface == "wp_security_context_manager_v1")
-            })
-        })
-        .unwrap_or(false)
+    talk(display, ANSWER_LIMIT, |(_, globals, _)| {
+        Ok(globals.contents().with_list(|l| {
+            l.iter()
+                .any(|g| g.interface == "wp_security_context_manager_v1")
+        }))
+    })
+    .unwrap_or(false)
 }
 
 /// Creates `<runtime_dir>/wayland-0`, a socket whose clients the compositor
@@ -57,7 +62,69 @@ pub fn start(
     app_id: &str,
     instance: &str,
 ) -> Result<Option<WaylandContext>> {
-    let (_conn, globals, mut queue) = connect(display)?;
+    start_within(display, runtime_dir, app_id, instance, ANSWER_LIMIT)
+}
+
+/// [`start`], with the compositor's time to answer given.
+fn start_within(
+    display: &Path,
+    runtime_dir: &Path,
+    app_id: &str,
+    instance: &str,
+    limit: Duration,
+) -> Result<Option<WaylandContext>> {
+    let (runtime_dir, app_id, instance) = (
+        runtime_dir.to_path_buf(),
+        app_id.to_string(),
+        instance.to_string(),
+    );
+    talk(display, limit, move |connected| {
+        make_context(connected, &runtime_dir, &app_id, &instance)
+    })
+}
+
+/// Talks to the compositor behind `display` with `work`, for at most
+/// `limit`: the Wayland library waits for answers without a limit of its
+/// own, so `work` runs beside, and when the time is up the connection is
+/// shut, which ends its wait with an error.
+fn talk<T: Send + 'static>(
+    display: &Path,
+    limit: Duration,
+    work: impl FnOnce(Connected) -> Result<T> + Send + 'static,
+) -> Result<T> {
+    let stream = UnixStream::connect(display)
+        .with_context(|| format!("connecting to {}", display.display()))?;
+    let hang_up = stream.try_clone()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let _ = tx.send(connected(stream).and_then(work));
+    });
+    match rx.recv_timeout(limit) {
+        Ok(result) => {
+            let _ = worker.join();
+            result
+        }
+        Err(_) => {
+            let _ = hang_up.shutdown(std::net::Shutdown::Both);
+            let _ = worker.join();
+            anyhow::bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the compositor did not answer within {seconds} seconds",
+                    &[("seconds", &limit.as_secs())]
+                )
+            )
+        }
+    }
+}
+
+/// The security context on a connection to the compositor.
+fn make_context(
+    (_conn, globals, mut queue): Connected,
+    runtime_dir: &Path,
+    app_id: &str,
+    instance: &str,
+) -> Result<Option<WaylandContext>> {
     let qh = queue.handle();
     let Ok(manager) = globals.bind::<WpSecurityContextManagerV1, _, _>(&qh, 1..=1, ()) else {
         return Ok(None);
@@ -96,9 +163,7 @@ type Connected = (
     wayland_client::EventQueue<State>,
 );
 
-fn connect(display: &Path) -> Result<Connected> {
-    let stream = UnixStream::connect(display)
-        .with_context(|| format!("connecting to {}", display.display()))?;
+fn connected(stream: UnixStream) -> Result<Connected> {
     let conn = Connection::from_socket(stream).context(sam_core::i18n::tr("Wayland connection"))?;
     let (globals, queue) = registry_queue_init::<State>(&conn)
         .context(sam_core::i18n::tr("reading the compositor's globals"))?;
@@ -140,5 +205,33 @@ impl Dispatch<WpSecurityContextV1, ()> for State {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A compositor that takes the connection and never answers ends the
+    /// attempt with an error once the time is up, instead of holding up
+    /// the app's start for ever (audit: no time limit). The test waits far
+    /// longer than the limit, so a slow computer cannot fail it.
+    #[test]
+    fn a_compositor_that_never_answers_does_not_hold_up_the_start() {
+        let t = tempfile::tempdir().unwrap();
+        let display = t.path().join("wayland-hung");
+        // Listens, and never says a word.
+        let _hung = UnixListener::bind(&display).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (d, run) = (display.clone(), t.path().to_path_buf());
+        std::thread::spawn(move || {
+            let r = start_within(&d, &run, "x.desktop", "1", Duration::from_millis(500));
+            let _ = tx.send(r.map(|c| c.is_some()).map_err(|e| format!("{e:#}")));
+        });
+        let got = rx
+            .recv_timeout(Duration::from_secs(60))
+            .expect("the attempt ended within the time limit");
+        let e = got.expect_err("no security context from a compositor that never answered");
+        assert!(e.contains("did not answer"), "{e}");
     }
 }

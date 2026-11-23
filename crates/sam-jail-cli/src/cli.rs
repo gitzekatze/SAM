@@ -200,9 +200,15 @@ pub(crate) enum Cmd {
         /// Go back to the version the last update replaced.
         #[arg(long, conflicts_with = "accept_key_change")]
         undo: bool,
-        /// Accept a new file signed with another key than the installed one.
+        /// Install the download the last run refused because its signing
+        /// key changed or its signature could not be checked: exactly that
+        /// file, while it is still the published one (never a new download).
         #[arg(long)]
         accept_key_change: bool,
+        /// Delete the download the last run kept for that answer, without
+        /// installing it (one never answered is deleted after a week).
+        #[arg(long, conflicts_with_all = ["accept_key_change", "undo"])]
+        decline_key_change: bool,
     },
     /// Update SAM itself, when it runs from its AppImage ($APPIMAGE).
     SelfUpdate {
@@ -385,15 +391,18 @@ pub(crate) enum GroupCmd {
 pub(crate) enum PresetCmd {
     /// List your own presets.
     List,
-    Show {
-        name: String,
-    },
+    /// Print a preset (built-in or your own) as TOML.
+    Show { name: String },
     /// Apply a preset to an app (asks for confirmation when it conflicts).
     Apply {
         name: String,
         app: String,
         #[arg(long, short)]
         yes: bool,
+        /// Apply only if the preset is still the one checked: the
+        /// `fingerprint` of an earlier `preset apply` reply.
+        #[arg(long)]
+        expect: Option<String>,
     },
     /// Print a starting point for a new preset (SAM's strictest settings).
     Template,
@@ -404,29 +413,22 @@ pub(crate) enum PresetCmd {
         #[arg(long, default_value = "")]
         description: String,
     },
-    Delete {
-        name: String,
-    },
-    Duplicate {
-        name: String,
-        new_name: String,
-    },
-    Import {
-        file: PathBuf,
-    },
-    Export {
-        name: String,
-        file: Option<PathBuf>,
-    },
+    /// Delete one of your own presets.
+    Delete { name: String },
+    /// Copy a preset under a new name, as a preset of your own.
+    Duplicate { name: String, new_name: String },
+    /// Add a preset from a TOML file.
+    Import { file: PathBuf },
+    /// Write a preset as TOML to a file, or print it.
+    Export { name: String, file: Option<PathBuf> },
     /// Create or replace a user preset from JSON on stdin.
     Put,
 }
 
 #[derive(Subcommand)]
 pub(crate) enum ProfileCmd {
-    Get {
-        app: String,
-    },
+    /// Print an app's permissions as JSON.
+    Get { app: String },
     /// Replace permissions from JSON (a PermissionSet) on stdin.
     Set {
         app: String,
@@ -448,23 +450,20 @@ pub(crate) enum ProfileCmd {
         yes: bool,
     },
     /// Reset to the recommended profile.
-    Reset {
-        app: String,
-    },
+    Reset { app: String },
 }
 
 #[derive(Subcommand)]
 pub(crate) enum ConfigCmd {
+    /// Print the whole configuration.
     Show,
-    Get {
-        key: String,
-    },
-    Set {
-        key: String,
-        value: String,
-    },
+    /// Print one setting (for example extraction.max_files).
+    Get { key: String },
+    /// Change one setting.
+    Set { key: String, value: String },
     /// Replace the whole configuration from JSON on stdin.
     Put,
+    /// Print where SAM keeps its configuration, data and logs.
     Path,
 }
 

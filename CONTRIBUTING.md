@@ -42,9 +42,11 @@ cargo fmt --all      # the code format (rustfmt.toml); CI checks it
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Every security promise in `docs/security.md` has a test in
-`crates/sam-runner/tests/breakout.rs`; a change to the sandbox needs one
-too. More in [docs/testing.md](docs/testing.md) and
+Every security promise in `docs/security.md` has a test, which
+[docs/threat-model.md](docs/threat-model.md) names; most of them attack a
+real sandbox (`crates/sam-runner/tests/breakout.rs`, `evil.rs`,
+`matrix.rs` and others). A change to the sandbox needs one too. More in
+[docs/testing.md](docs/testing.md) and
 [docs/architecture.md](docs/architecture.md).
 
 **Window tests** (`tests/gui/smoke.sh`) run in an invisible session of

@@ -106,33 +106,41 @@ pub fn home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// Write a file atomically (write to temp file in same dir, then rename).
+/// Opens `path` for reading only if it is a regular file, without waiting:
+/// opening a named pipe for reading blocks until someone writes to it, so
+/// a menu entry or a scanned folder that names one would hang SAM (audit
+/// I-F9, I-F15). For a regular file the flag changes nothing; anything else
+/// (a pipe, a device, a folder) is refused after opening, so a file swapped
+/// for one between a check and the open is refused too.
+pub fn open_regular(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)?;
+    if !f.metadata()?.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    Ok(f)
+}
+
 /// Reads at most `limit` bytes of a regular file. Files inside an unpacked
 /// AppImage are the AppImage's choice: a link to `/dev/zero` or a huge file
 /// must not fill SAM's memory. The type is checked on the opened file, so a
 /// swap between check and read changes nothing.
 pub fn read_regular(path: &Path, limit: u64) -> std::io::Result<Vec<u8>> {
     use std::io::Read;
-    use std::os::unix::fs::OpenOptionsExt;
-    // Without waiting: opening a named pipe for reading would block until
-    // someone writes to it (audit I-F9, I-F15). For a regular file the
-    // flag changes nothing; anything else is refused below.
-    let f = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK)
-        .open(path)?;
+    let f = open_regular(path)?;
     let meta = f.metadata()?;
-    if !meta.is_file() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "not a regular file",
-        ));
-    }
     let mut data = Vec::with_capacity(meta.len().min(limit) as usize);
     f.take(limit).read_to_end(&mut data)?;
     Ok(data)
 }
 
+/// Write a file atomically (write to temp file in same dir, then rename).
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     let dir = path
         .parent()
@@ -175,10 +183,60 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
 /// the program lies inside `$APPDIR`). Menu entries must then call the
 /// AppImage file: the folder it is mounted at changes on every start.
 pub fn own_appimage() -> Option<PathBuf> {
-    let appimage = PathBuf::from(std::env::var_os("APPIMAGE")?);
-    let appdir = PathBuf::from(std::env::var_os("APPDIR")?);
-    let exe = std::env::current_exe().ok()?;
+    appimage_running(
+        std::env::var_os("APPIMAGE"),
+        std::env::var_os("APPDIR"),
+        std::env::current_exe().ok(),
+    )
+}
+
+/// [`own_appimage`] for the values of `$APPIMAGE` and `$APPDIR` and the
+/// running program `exe`: the AppImage file only when it exists and the
+/// program lies inside `$APPDIR`. Values inherited from another AppImage
+/// (a terminal shipped as one) point elsewhere and are not SAM's.
+fn appimage_running(
+    appimage: Option<std::ffi::OsString>,
+    appdir: Option<std::ffi::OsString>,
+    exe: Option<PathBuf>,
+) -> Option<PathBuf> {
+    let appimage = PathBuf::from(appimage?);
+    let appdir = PathBuf::from(appdir?);
+    let exe = exe?;
     (exe.starts_with(&appdir) && appimage.is_file()).then_some(appimage)
+}
+
+/// SAM's own programs that run outside the sandbox: SAM's AppImage file,
+/// this program, and SAM's programs next to it (menu entries call
+/// `sam-jail-run` there, the window `sam-jail` and `sam-jail-run`). Every
+/// start shows them read-only at most: an app that replaced one would run
+/// its own code unsandboxed at the next click on a menu entry (security
+/// review 2026-11-23, SB-1: SAM kept in `~/Downloads`, or `cargo install`ed
+/// into `~/.cargo/bin`).
+pub fn own_programs() -> Vec<PathBuf> {
+    programs_beside(std::env::current_exe().ok().as_deref(), own_appimage())
+}
+
+/// [`own_programs`] for the running program `exe` and SAM's AppImage.
+fn programs_beside(exe: Option<&Path>, appimage: Option<PathBuf>) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = appimage.into_iter().collect();
+    if let Some(exe) = exe {
+        out.push(exe.to_path_buf());
+        if let Some(dir) = exe.parent() {
+            for name in ["sam-jail", "sam-jail-run", "sam-jail-gui"] {
+                let p = dir.join(name);
+                if p.is_file() {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    let mut seen = Vec::new();
+    out.retain(|p| {
+        let new = !seen.contains(p);
+        seen.push(p.clone());
+        new
+    });
+    out
 }
 
 /// Finds a program SAM may run: the first one on `$PATH` that the user
@@ -262,16 +320,32 @@ fn unchanged_by_user(real: &Path) -> bool {
         let Ok(m) = fs::metadata(a) else {
             return false;
         };
-        if me == 0 {
-            return only_root_can_change(m.uid(), m.gid(), m.mode());
-        }
-        let Ok(c) = std::ffi::CString::new(a.as_os_str().as_encoded_bytes()) else {
-            return false;
+        // A path that cannot be handed to access() counts as writable.
+        let writable = || {
+            std::ffi::CString::new(a.as_os_str().as_encoded_bytes()).map_or(true, |c| {
+                // SAFETY: `c` is a valid NUL-terminated path; access only reads it.
+                unsafe { libc::access(c.as_ptr(), libc::W_OK) == 0 }
+            })
         };
-        // SAFETY: `c` is a valid NUL-terminated path; access only reads it.
-        let writable = unsafe { libc::access(c.as_ptr(), libc::W_OK) } == 0;
-        m.uid() != me && !writable
+        user_cannot_change(me, m.uid(), m.gid(), m.mode(), writable)
     })
+}
+
+/// For one file or folder with owner `uid`, group `gid` and `mode`: whether
+/// user `me` cannot change it. Root goes by [`only_root_can_change`];
+/// anyone else neither owns it nor may write it (`writable`, which asks the
+/// system and so also counts ACLs and the user's groups, root's among them).
+fn user_cannot_change(
+    me: u32,
+    uid: u32,
+    gid: u32,
+    mode: u32,
+    writable: impl FnOnce() -> bool,
+) -> bool {
+    if me == 0 {
+        return only_root_can_change(uid, gid, mode);
+    }
+    uid != me && !writable()
 }
 
 /// For SAM run as root: a file or folder only root can change, owned by
@@ -515,9 +589,95 @@ pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Creates `dir` for this user only (0700), with the folders between `base`
+/// and it, and makes those that exist already (an older SAM made them
+/// readable for everyone) private too: an app's private home, its own
+/// layer of the app folder and what SAM moved aside hold its data, which
+/// other users on the computer must not read (review F4; Flatpak does the
+/// same for `~/.var/app`). A folder whose mode cannot be changed (a
+/// filesystem without modes) stays as it is.
+pub fn private_dirs(base: &Path, dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)?;
+    for d in dir
+        .ancestors()
+        .take_while(|d| *d != base && d.starts_with(base))
+    {
+        let _ = fs::set_permissions(d, fs::Permissions::from_mode(0o700));
+    }
+    Ok(())
+}
+
+/// Marks every open descriptor from 3 up close-on-exec, so a descriptor
+/// this program inherited without that mark (a terminal's or launcher's
+/// leak, a shell's `exec 3<>/dev/tty`) never reaches a program it starts,
+/// an app's sandbox above all: Bubblewrap passes on what it gets (review
+/// F6). This program can still use them. Called first thing by SAM's
+/// programs that start apps. Linux 5.11 marks them all at once; older
+/// kernels go through `/proc/self/fd`.
+pub fn close_inherited_on_exec() {
+    // SAFETY: close_range with CLOSE_RANGE_CLOEXEC only sets a flag on this
+    // process's own descriptors; it closes nothing.
+    let marked = unsafe {
+        libc::syscall(
+            libc::SYS_close_range,
+            3u32,
+            u32::MAX,
+            libc::CLOSE_RANGE_CLOEXEC,
+        )
+    };
+    if marked == 0 {
+        return;
+    }
+    let open: Vec<i32> = fs::read_dir("/proc/self/fd")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_str()?.parse().ok())
+        .filter(|fd| *fd > 2)
+        .collect();
+    for fd in open {
+        // SAFETY: fcntl on a descriptor number only reads and sets its
+        // flags; one closed in between gives EBADF, which is ignored.
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags >= 0 {
+                libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// SAM's own programs are its AppImage, the running program and SAM's
+    /// programs next to it, each once; other files there are not (security
+    /// review 2026-11-23, SB-1).
+    #[test]
+    fn sams_own_programs_are_its_appimage_and_the_programs_beside_it() {
+        let t = tempfile::tempdir().unwrap();
+        let bin = t.path().join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        for f in ["sam-jail-gui", "sam-jail-run", "unrelated"] {
+            fs::write(bin.join(f), "").unwrap();
+        }
+        let gui = bin.join("sam-jail-gui");
+        let appimage = t.path().join("SAM.AppImage");
+        assert_eq!(
+            programs_beside(Some(&gui), Some(appimage.clone())),
+            vec![appimage, gui.clone(), bin.join("sam-jail-run")]
+        );
+        assert_eq!(
+            programs_beside(Some(&gui), None),
+            vec![gui.clone(), bin.join("sam-jail-run")]
+        );
+        assert!(programs_beside(None, None).is_empty());
+    }
 
     /// Reading a file from an untrusted app returns at once for anything
     /// that is not a regular file: a named pipe made SAM wait forever
@@ -707,6 +867,55 @@ mod tests {
         assert_eq!(shell_quote("it's"), "'it'\\''s'");
         assert_eq!(shell_quote(""), "''");
     }
+
+    /// SAM's own AppImage is the one whose mounted folder holds this
+    /// program, and only while the file exists: values inherited from
+    /// another AppImage (a terminal shipped as one), or a stale `APPDIR`
+    /// with its file gone, never make menu entries run another program.
+    #[test]
+    fn only_the_appimage_this_program_runs_from_is_sams_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mount = tmp.path().join(".mount_SAM");
+        fs::create_dir(&mount).unwrap();
+        let exe = mount.join("usr/bin/sam-jail");
+        let file = tmp.path().join("SAM.AppImage");
+        fs::write(&file, "AppImage").unwrap();
+        let other = tmp.path().join(".mount_Term");
+        fs::create_dir(&other).unwrap();
+        let got = |img: &Path, dir: &Path, exe: Option<&Path>| {
+            appimage_running(
+                Some(img.as_os_str().into()),
+                Some(dir.as_os_str().into()),
+                exe.map(Path::to_path_buf),
+            )
+        };
+        assert_eq!(got(&file, &mount, Some(&exe)), Some(file.clone()));
+        assert_eq!(got(&file, &other, Some(&exe)), None, "another AppImage's");
+        assert_eq!(
+            got(&tmp.path().join("gone.AppImage"), &mount, Some(&exe)),
+            None,
+            "its file is gone"
+        );
+        assert_eq!(got(&mount, &mount, Some(&exe)), None, "a folder");
+        assert_eq!(got(&file, &mount, None), None);
+        assert_eq!(
+            appimage_running(None, Some(mount.into()), Some(exe.clone())),
+            None
+        );
+        assert_eq!(appimage_running(Some(file.into()), None, Some(exe)), None);
+    }
+
+    /// Sizes are shown in the largest unit up to TiB, also for sizes far
+    /// beyond (a sparse file can claim any size): no unit past the table.
+    #[test]
+    fn sizes_beyond_a_tebibyte_stay_in_tebibytes() {
+        assert_eq!(human_size(0), "0 B");
+        assert_eq!(human_size(1023), "1023 B");
+        assert_eq!(human_size(1024), "1.0 KiB");
+        assert_eq!(human_size(1 << 40), "1.0 TiB");
+        assert_eq!(human_size(1 << 50), "1024.0 TiB");
+        assert_eq!(human_size(u64::MAX), "16777216.0 TiB");
+    }
 }
 
 #[cfg(test)]
@@ -726,6 +935,68 @@ mod may_run_tests {
         assert!(!only_root_can_change(0, 0, 0o777));
         assert!(!only_root_can_change(1000, 0, 0o755), "owned by a user");
         assert!(!only_root_can_change(1000, 1000, 0o555));
+    }
+
+    /// A normal user may run only what they neither own nor can write:
+    /// write access through root's group or an ACL is still write access
+    /// (the system's answer counts, not the owner), and a program owned by
+    /// another user that the user cannot write may run. Root is judged by
+    /// owner and mode alone.
+    #[test]
+    fn a_user_may_run_only_what_they_neither_own_nor_can_write() {
+        assert!(
+            !user_cannot_change(1000, 0, 0, 0o775, || true),
+            "writable through root's group"
+        );
+        assert!(
+            !user_cannot_change(1000, 0, 0, 0o755, || true),
+            "writable through an ACL"
+        );
+        assert!(user_cannot_change(1000, 0, 0, 0o755, || false));
+        assert!(
+            user_cannot_change(1000, 65534, 65534, 0o755, || false),
+            "owned by another user who alone may write it"
+        );
+        assert!(
+            !user_cannot_change(1000, 1000, 1000, 0o555, || false),
+            "owned by the user"
+        );
+        let unasked = || -> bool { panic!("root is not asked about access") };
+        assert!(user_cannot_change(0, 0, 0, 0o755, unasked));
+        assert!(!user_cannot_change(0, 65534, 0, 0o755, unasked));
+        assert!(!user_cannot_change(0, 0, 50, 0o775, unasked));
+    }
+
+    /// Only regular files with an execute bit count as programs: not a
+    /// file without one (a tool an admin switched off with `chmod -x`),
+    /// not a folder, not a missing path. `which` skips such a copy and
+    /// finds the working one further on.
+    #[test]
+    fn only_executable_files_count_as_programs() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let mode =
+            |p: &Path, m: u32| fs::set_permissions(p, fs::Permissions::from_mode(m)).unwrap();
+        let f = tmp.path().join("tool");
+        fs::write(&f, "#!/bin/sh\n").unwrap();
+        for m in [0o644, 0o600, 0o666] {
+            mode(&f, m);
+            assert!(!is_executable(&f), "mode {m:o}");
+        }
+        for m in [0o755, 0o700, 0o744, 0o701, 0o710, 0o100] {
+            mode(&f, m);
+            assert!(is_executable(&f), "mode {m:o}");
+        }
+        let d = tmp.path().join("dir");
+        fs::create_dir(&d).unwrap();
+        mode(&d, 0o755);
+        assert!(!is_executable(&d), "a folder");
+        assert!(!is_executable(&tmp.path().join("missing")));
+        mode(&f, 0o644);
+        assert!(
+            candidates(f.to_str().unwrap()).is_empty(),
+            "a path to a non-program"
+        );
     }
 
     /// SAM runs only programs the user cannot change: one in a folder the
@@ -781,11 +1052,18 @@ mod may_run_tests {
 mod display_safe_tests {
     use super::display_safe;
 
-    /// Text from an app is shown without markup or control characters, and long text is shortened.
+    /// Text from an app is shown without markup or control characters, and
+    /// only text longer than allowed is shortened.
     #[test]
     fn neutralizes_markup_and_controls() {
         assert_eq!(display_safe("<b>X</b>\u{7}", 100), "‹b›X‹/b›");
         assert_eq!(display_safe("abcdef", 3), "abc…");
+        assert_eq!(display_safe("abc", 3), "abc", "exactly as long as allowed");
+        assert_eq!(
+            display_safe("a\u{202E}bc", 3),
+            "abc",
+            "hidden characters do not count"
+        );
     }
 
     /// Names that would show other than they are lose the characters that

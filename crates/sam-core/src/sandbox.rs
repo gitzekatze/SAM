@@ -51,7 +51,8 @@ pub struct LaunchContext {
     pub private_home: PathBuf,
     /// Host scratch directory for this launch.
     pub runtime_dir: PathBuf,
-    /// AppImage runtime variables computed by the runner (APPDIR, OWD, ...).
+    /// AppImage runtime variables computed by the runner (APPDIR, ARGV0, ...;
+    /// the builder adds OWD, the folder the app really starts in).
     /// Values may reference `@APPDIR@`, which the command builder replaces with the AppDir path.
     pub app_env: Vec<(String, String)>,
     /// Host path of a filtered D-Bus session proxy socket, if one is running.
@@ -64,14 +65,11 @@ pub struct LaunchContext {
     /// (privileged protocols hidden); `None` = the compositor's own socket.
     pub wayland_socket: Option<PathBuf>,
     pub helper: Option<SandboxHelper>,
-    /// File descriptor holding a compiled seccomp program (bwrap `--seccomp`).
-    pub seccomp_fd: Option<i32>,
     /// The app's standard streams are a terminal of SAM's own (`sam_runner::pty`),
     /// never the user's: the sandbox keeps the session, so resizing and
     /// Ctrl+C reach the app. Otherwise it gets a new session, cut off from
     /// any terminal (Bubblewrap's protection against typed-in commands).
     pub own_terminal: bool,
-    pub compatibility_mode: bool,
     /// Diagnostic mode: wrap the entry point with this tracer command.
     pub tracer: Option<Vec<String>>,
     /// Extra bind mounts requested by the runner: (host, sandbox, writable).
@@ -83,6 +81,11 @@ pub struct LaunchContext {
     /// granted folder would make them visible, so an app cannot change its
     /// own permissions or another app's files.
     pub sam_dirs: Vec<PathBuf>,
+    /// SAM's own programs outside the sandbox (`util::own_programs`): its
+    /// AppImage file and `sam-jail-run`, which every menu entry runs.
+    /// Never writable inside, and the folders above them cannot be renamed
+    /// away, so an app cannot put its own program in their place.
+    pub sam_programs: Vec<PathBuf>,
     /// Room service's socket for this start (shown at /run/sam/rooms).
     pub room_socket: Option<PathBuf>,
 }
@@ -124,12 +127,14 @@ pub fn appimage_inside(name: &std::ffi::OsStr) -> PathBuf {
 pub struct SandboxCommand {
     pub program: PathBuf,
     pub args: Vec<String>,
-    /// Environment for the Bubblewrap process itself.
-    pub env: Vec<(String, String)>,
-    /// Start Bubblewrap with an empty environment plus `env`.
-    pub clear_env: bool,
-    /// File descriptors that must survive exec.
-    pub keep_fds: Vec<i32>,
+    /// The app's own variables (its AppImage variables, the passed-through
+    /// and the set ones) when SAM's helper starts the app: the helper sets
+    /// them for the app alone, once Landlock and the syscall filter are in
+    /// place. Never for the helper's own start, whose loader would act on
+    /// `LD_PRELOAD`, `LD_LIBRARY_PATH` and the like before any of its layers
+    /// (review SB-5). Empty without the helper: Bubblewrap sets them then.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exec_env: Vec<(String, String)>,
     /// Human readable notes (e.g. features that were downgraded).
     pub notes: Vec<String>,
     /// Files the sandbox builder generated.
@@ -183,7 +188,8 @@ pub fn sample_context() -> LaunchContext {
     }
     let host = HostInfo {
         uid: 1000,
-        gid: 1000,
+        // Not the same number as the user's, so a mix-up shows.
+        gid: 1001,
         user: "tester".into(),
         home: "/home/tester".into(),
         runtime_dir: Some("/run/user/1000".into()),
@@ -215,7 +221,13 @@ pub fn sample_context() -> LaunchContext {
             }),
             ..Default::default()
         },
-        gpu_devices: vec!["/dev/dri/card0".into(), "/dev/dri/renderD128".into()],
+        // As the host lists them: the render nodes and NVIDIA's own nodes.
+        gpu_devices: vec![
+            "/dev/dri/card0".into(),
+            "/dev/dri/renderD128".into(),
+            "/dev/nvidia0".into(),
+            "/dev/nvidiactl".into(),
+        ],
         xdg_dirs: xdg,
         ..Default::default()
     };
@@ -237,13 +249,12 @@ pub fn sample_context() -> LaunchContext {
         sound_socket: None,
         wayland_socket: None,
         helper: None,
-        seccomp_fd: None,
         own_terminal: false,
-        compatibility_mode: false,
         tracer: None,
         extra_binds: vec![],
         appdir_overlay: None,
         sam_dirs: vec![],
+        sam_programs: vec![],
         room_socket: None,
     }
 }
@@ -271,9 +282,8 @@ mod display_tests {
             .iter()
             .map(|s| s.to_string())
             .collect(),
-            env: vec![],
-            clear_env: false,
-            keep_fds: vec![],
+
+            exec_env: vec![],
             notes: vec![],
             generated_files: vec![],
         };

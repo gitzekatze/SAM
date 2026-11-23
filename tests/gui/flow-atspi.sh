@@ -1,7 +1,9 @@
 #!/bin/sh
 # SAM's main flow and the language switch through the accessibility
 # interface (AT-SPI), in an invisible KWin session: Create Sandbox, the app
-# page, Launch; then the window in German and back in English.
+# page, Launch; Preferences (turning Landlock off for every app asks first,
+# a failed save leaves the switch where the setting is); then the window in
+# German and back in English.
 # Prints one line per check and "RESULT pass" or "RESULT fail".
 #
 #   tests/gui/flow-atspi.sh OUTDIR
@@ -32,6 +34,14 @@ if [ "$started" = True ]; then echo "ok   the sandbox was created and the app st
 
 # The language: gettext ignores a chosen language in the C locale, so the
 # window gets a real one (CI runners default to C).
+# Preferences: a protection switched off for every app asks first, and a
+# failed save leaves the switch where the setting is.
+"$bin/sam-jail-gui" --screenshot "$out/preferences.png" --size 1180x800 --delay 30000 --page preferences > "$out/preferences.log" 2>&1 & gui=$!
+SAM_TEST_BIN="$bin" python3 -I "$here/tests/gui/flow-atspi.py" preferences || rc=1
+kill $gui 2>/dev/null || true; wait $gui 2>/dev/null || true
+chmod 755 "$SAM_CONFIG_DIR"
+"$bin/sam-jail" config set security.experimental_landlock true >/dev/null
+
 real=$(locale -a 2>/dev/null | grep -i '^en_' | head -n1)
 [ -n "$real" ] || real=$(locale -a 2>/dev/null | grep -v -e '^C' -e '^POSIX' | head -n1)
 [ -n "$real" ] && export LANG="$real" && unset LC_ALL LC_MESSAGES LANGUAGE
@@ -47,6 +57,6 @@ for lang in de ""; do
 done
 
 kill $registry $launcher 2>/dev/null || true
-if grep -E 'CRITICAL|panicked' "$out"/flow.log "$out"/language-*.log; then rc=1; fi
+if grep -E 'CRITICAL|panicked' "$out"/flow.log "$out"/preferences.log "$out"/language-*.log; then rc=1; fi
 [ $rc = 0 ] && echo "RESULT pass" || echo "RESULT fail"
 exit $rc

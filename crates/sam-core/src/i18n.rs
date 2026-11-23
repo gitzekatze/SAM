@@ -82,17 +82,33 @@ pub fn locale_dir() -> PathBuf {
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf))
     {
-        for c in [
-            d.join("../share/locale"),
-            d.join("../locale"),
-            d.join("../../target/locale"),
-        ] {
+        for c in program_locale_dirs(&d) {
             if has_catalogs(&c) {
                 return c;
             }
         }
     }
     PathBuf::from("/usr/share/locale")
+}
+
+/// Where translations may lie next to a program in `dir`. A source
+/// checkout's `target/locale` only for a program that cargo built there
+/// (`target/debug`, `target/release`): an installed SAM in ~/.local/bin
+/// read `~/target/locale`, a folder any program with access to the home
+/// could fill with its own wording for SAM's questions (audit U-L11).
+fn program_locale_dirs(dir: &Path) -> Vec<PathBuf> {
+    let mut out = vec![dir.join("../share/locale"), dir.join("../locale")];
+    let built_by_cargo = dir
+        .file_name()
+        .is_some_and(|n| n == "debug" || n == "release")
+        && dir
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|n| n == "target");
+    if built_by_cargo {
+        out.push(dir.join("../../target/locale"));
+    }
+    out
 }
 
 /// Whether `dir` holds at least one compiled SAM translation.
@@ -133,15 +149,14 @@ pub fn trf(s: &str, args: &[(&str, &dyn Display)]) -> String {
 /// The singular or plural translation for `n`, with `{n}` and the other
 /// placeholders filled in.
 pub fn trn(singular: &str, plural: &str, n: u64, args: &[(&str, &dyn Display)]) -> String {
+    let mut all: Vec<(&str, &dyn Display)> = vec![("n", &n)];
+    all.extend_from_slice(args);
     let (Ok(d), Ok(s1), Ok(p1)) = (
         CString::new(DOMAIN),
         CString::new(singular),
         CString::new(plural),
     ) else {
-        return fill(
-            &fill(if n == 1 { singular } else { plural }, &[("n", &n)]),
-            args,
-        );
+        return fill(if n == 1 { singular } else { plural }, &all);
     };
     // SAFETY: all strings are NUL-terminated and live until the result is
     // copied; dngettext returns one of them or a catalogue string.
@@ -155,15 +170,37 @@ pub fn trn(singular: &str, plural: &str, n: u64, args: &[(&str, &dyn Display)]) 
     }
     .to_string_lossy()
     .into_owned();
-    fill(&fill(&text, &[("n", &n)]), args)
+    fill(&text, &all)
 }
 
-/// Replaces `{name}` with the value given for `name`.
+/// Replaces `{name}` with the value given for `name`, in one pass: a value
+/// is never read for placeholders itself. Filling them one after another
+/// filled a `{other}` inside a value (a file name, an app's own name)
+/// again (audit U-L11). An unknown `{…}` stays as written.
 fn fill(text: &str, args: &[(&str, &dyn Display)]) -> String {
-    let mut out = text.to_string();
-    for (k, v) in args {
-        out = out.replace(&format!("{{{k}}}"), &v.to_string());
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let value = after.find('}').and_then(|close| {
+            let name = &after[..close];
+            args.iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| (v.to_string(), close))
+        });
+        match value {
+            Some((v, close)) => {
+                out.push_str(&v);
+                rest = &after[close + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = after;
+            }
+        }
     }
+    out.push_str(rest);
     out
 }
 
@@ -188,6 +225,70 @@ mod tests {
             );
         }
         assert!(LANGUAGES.iter().any(|(c, _)| *c == "en"));
+    }
+
+    /// A folder counts as holding SAM's translations only with a compiled
+    /// catalogue for at least one language: an empty folder, or one with
+    /// language folders but no `sam.mo` (another program's), is passed
+    /// over for the next place to look.
+    #[test]
+    fn only_a_folder_with_a_compiled_catalogue_holds_translations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        assert!(!has_catalogs(&d.join("missing")));
+        assert!(!has_catalogs(d), "empty");
+        let msgs = d.join("de/LC_MESSAGES");
+        std::fs::create_dir_all(&msgs).unwrap();
+        assert!(!has_catalogs(d), "no catalogue");
+        std::fs::write(msgs.join("other.mo"), b"x").unwrap();
+        assert!(!has_catalogs(d), "another program's catalogue");
+        std::fs::create_dir(msgs.join("sam.mo")).unwrap();
+        assert!(!has_catalogs(d), "a folder named like one");
+        std::fs::remove_dir(msgs.join("sam.mo")).unwrap();
+        std::fs::write(msgs.join("sam.mo"), b"x").unwrap();
+        assert!(has_catalogs(d));
+    }
+
+    /// Regression (audit U-L11): placeholders were filled one after
+    /// another, so a value holding `{other}` (a file or app name from
+    /// outside) was filled again with the next value. Each value now goes
+    /// in as it is; a name without a value stays as written.
+    #[test]
+    fn a_value_is_never_filled_in_again() {
+        assert_eq!(
+            trf(
+                "{app} cannot open {file}",
+                &[("app", &"Evil {file}"), ("file", &"notes.txt")]
+            ),
+            "Evil {file} cannot open notes.txt"
+        );
+        assert_eq!(
+            trn(
+                "{n} file in {dir}",
+                "{n} files in {dir}",
+                2,
+                &[("dir", &"{n}")]
+            ),
+            "2 files in {n}"
+        );
+        assert_eq!(fill("{a} {b} {", &[("a", &"{b}")]), "{b} {b} {");
+        assert_eq!(fill("{{a}}", &[("a", &"x")]), "{x}");
+    }
+
+    /// Regression (audit U-L11): every build also looked for translations
+    /// in `../../target/locale` next to the program, so SAM installed in
+    /// ~/.local/bin read `~/target/locale`. Only a program cargo built in
+    /// a source checkout looks there now.
+    #[test]
+    fn only_a_program_cargo_built_reads_a_checkouts_translations() {
+        let installed = program_locale_dirs(Path::new("/home/ann/.local/bin"));
+        assert!(
+            !installed.iter().any(|d| d.ends_with("target/locale")),
+            "{installed:?}"
+        );
+        assert!(installed.contains(&PathBuf::from("/home/ann/.local/bin/../share/locale")));
+        let built = program_locale_dirs(Path::new("/src/sam/target/debug"));
+        assert!(built.contains(&PathBuf::from("/src/sam/target/debug/../../target/locale")));
     }
 
     #[test]

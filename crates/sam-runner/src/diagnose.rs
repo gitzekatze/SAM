@@ -341,6 +341,36 @@ pub fn classify(path: &str, err: &str, host: &HostInfo) -> Option<Finding> {
     None
 }
 
+/// The most of a trace SAM reads.
+const MAX_TRACE: u64 = 32 << 20;
+
+/// The trace of a diagnose run, at most `max` bytes. It lies in a folder
+/// the app can write, so the app may have put something else there: only
+/// a plain file is read, never through a link (to `/dev/zero`, which would
+/// fill SAM's memory, or to a private file, which SAM would copy into the
+/// app's log folder), never a named pipe (SAM would wait forever), and
+/// never a second name of another file (audit U-M3).
+fn read_trace(path: &Path, max: u64) -> String {
+    use std::io::Read;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let Ok(f) = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    else {
+        return String::new();
+    };
+    if !f
+        .metadata()
+        .is_ok_and(|m| m.file_type().is_file() && m.nlink() == 1)
+    {
+        return String::new();
+    }
+    let mut text = Vec::new();
+    let _ = f.take(max).read_to_end(&mut text);
+    String::from_utf8_lossy(&text).into_owned()
+}
+
 pub fn diagnose(
     sam: &Sam,
     entry: &mut AppEntry,
@@ -386,7 +416,7 @@ pub fn diagnose(
         ..Default::default()
     };
     let rec = run(entry, &opts, &sam.config, &sam.paths, &host)?;
-    let trace = fs::read_to_string(diag_dir.join("trace.log")).unwrap_or_default();
+    let trace = read_trace(&diag_dir.join("trace.log"), MAX_TRACE);
     let mut findings: Vec<Finding> = parse_trace(&trace)
         .into_iter()
         .filter_map(|(p, (e, line))| {
@@ -432,7 +462,7 @@ pub fn diagnose(
             }
         }
         if applied > 0 {
-            *entry = sam.set_permissions(&entry.id, perms)?;
+            *entry = sam.change_permissions(&entry.id, perms)?;
         }
     }
     let _ = fs::remove_dir_all(&diag_dir);
@@ -492,6 +522,39 @@ pub fn mark_already_granted(findings: &mut [Finding], perms: &PermissionSet) {
 mod tests {
     use super::*;
     use sam_core::sandbox::sample_context;
+
+    /// Regression (audit U-M3): SAM read the trace, which lies in a folder
+    /// the app can write, with `read_to_string` through links. The app
+    /// could replace it with a link to a private file (SAM copied it into
+    /// the log folder), to /dev/zero (SAM's memory filled up) or with a
+    /// named pipe (SAM waited forever). Only a plain file is read, at most
+    /// a set size.
+    #[test]
+    fn the_trace_is_read_only_as_a_plain_file_of_limited_size() {
+        let t = tempfile::tempdir().unwrap();
+        let secret = t.path().join("secret");
+        fs::write(&secret, "private").unwrap();
+        let trace = t.path().join("trace.log");
+        std::os::unix::fs::symlink(&secret, &trace).unwrap();
+        assert_eq!(read_trace(&trace, 1 << 20), "", "not through a link");
+        fs::remove_file(&trace).unwrap();
+        std::os::unix::fs::symlink("/dev/zero", &trace).unwrap();
+        assert_eq!(read_trace(&trace, 1 << 20), "", "not a device");
+        fs::remove_file(&trace).unwrap();
+        fs::hard_link(&secret, &trace).unwrap();
+        assert_eq!(read_trace(&trace, 1 << 20), "", "not a second name");
+        fs::remove_file(&trace).unwrap();
+        let c = std::ffi::CString::new(trace.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: creates a named pipe at a NUL-terminated path; no memory
+        // is shared with the call.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert_eq!(read_trace(&trace, 1 << 20), "", "not a named pipe");
+        fs::remove_file(&trace).unwrap();
+        fs::write(&trace, "x".repeat(5000)).unwrap();
+        assert_eq!(read_trace(&trace, 1000).len(), 1000, "at most the limit");
+        fs::write(&trace, "1 openat() = -1 ENOENT").unwrap();
+        assert_eq!(read_trace(&trace, 1000), "1 openat() = -1 ENOENT");
+    }
 
     /// Failed file and socket accesses are read from a diagnostic trace.
     #[test]

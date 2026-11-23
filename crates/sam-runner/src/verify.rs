@@ -298,6 +298,21 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
             expect: p.display.x11 && s.x11.is_some(),
         },
     ));
+    // The X server also listens on an abstract socket of the same name,
+    // which needs no file: an app that shares the host's network can
+    // reach it with X11 off unless Landlock fences abstract sockets (Linux
+    // 6.12; review K-1). The check tries to connect.
+    if let Some(x) = s.x11.as_ref().filter(|_| !p.display.x11) {
+        v.push(c(
+            "x11-abstract",
+            "Display",
+            "X server outside the sandbox unreachable",
+            ProbeTest::AbstractSocket {
+                name: x.display().to_string(),
+                expect: false,
+            },
+        ));
+    }
     v.push(c(
         "audio",
         "Sound and devices",
@@ -471,6 +486,21 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
             }
         }
     }
+    // A session bus on an abstract socket (unix:abstract=…) is reachable
+    // without its file the same way, past the D-Bus filter (review K-1).
+    if bus_mode != DbusMode::Full {
+        for name in abstract_bus_names(s.dbus_session_address.as_deref()) {
+            v.push(c(
+                "bus-abstract",
+                "D-Bus",
+                "Unfiltered session bus unreachable",
+                ProbeTest::AbstractSocket {
+                    name,
+                    expect: false,
+                },
+            ));
+        }
+    }
     if s.dbus_system.is_some() {
         v.push(c(
             "sysbus",
@@ -609,6 +639,41 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     ProbePlan { checks: v }
 }
 
+/// The abstract socket names in a D-Bus address (`unix:abstract=NAME`,
+/// several addresses separated by `;`), with D-Bus's %XX escapes undone.
+fn abstract_bus_names(address: Option<&str>) -> Vec<String> {
+    let unescape = |v: &str| -> String {
+        let b = v.as_bytes();
+        let mut out = Vec::with_capacity(b.len());
+        let mut i = 0;
+        while i < b.len() {
+            let hex = b
+                .get(i + 1..i + 3)
+                .and_then(|h| std::str::from_utf8(h).ok())
+                .and_then(|h| u8::from_str_radix(h, 16).ok());
+            match (b[i], hex) {
+                (b'%', Some(x)) => {
+                    out.push(x);
+                    i += 3;
+                }
+                (c, _) => {
+                    out.push(c);
+                    i += 1;
+                }
+            }
+        }
+        String::from_utf8_lossy(&out).into_owned()
+    };
+    address
+        .unwrap_or_default()
+        .split(';')
+        .filter_map(|a| a.strip_prefix("unix:"))
+        .flat_map(|a| a.split(','))
+        .filter_map(|kv| kv.strip_prefix("abstract="))
+        .map(unescape)
+        .collect()
+}
+
 fn list_dev(dir: &str, prefix: &str) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
         .map(|rd| {
@@ -623,14 +688,47 @@ fn list_dev(dir: &str, prefix: &str) -> Vec<PathBuf> {
 }
 
 /// What a check result applies to: the settings, SAM's version, the
-/// relevant preferences and what this computer offers. A passing check with
-/// the same key needs no repeat.
+/// relevant preferences and what this computer offers, with the kernel and
+/// the programs that build the sandbox (Bubblewrap, SAM's helper, pasta). A
+/// passing check with the same key needs no repeat. An updated kernel or
+/// Bubblewrap, or a rebuilt SAM (all development builds carry the same
+/// version number), is checked again (audit: the key left them out).
 pub fn check_key(app: &AppEntry, cfg: &Config, host: &HostInfo) -> String {
+    check_key_with(
+        app,
+        cfg,
+        host,
+        crate::find_helper(),
+        sam_core::util::which("pasta"),
+    )
+}
+
+/// [`check_key`] with SAM's helper and pasta given.
+fn check_key_with(
+    app: &AppEntry,
+    cfg: &Config,
+    host: &HostInfo,
+    helper: Option<PathBuf>,
+    pasta: Option<PathBuf>,
+) -> String {
+    // Which build of a program: its size and time, which an update or a
+    // new build changes (not its path: SAM's AppImage shows it at a new
+    // place every time it runs).
+    let build = |p: Option<&Path>| {
+        p.and_then(|p| std::fs::metadata(p).ok()).map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            (m.size(), m.mtime(), m.mtime_nsec())
+        })
+    };
     let host_state = serde_json::json!({
         "sockets": &host.sockets,
         "landlock": host.landlock_abi,
         "proxy": host.tools.xdg_dbus_proxy.is_some(),
         "gpu": host.gpu_devices,
+        "kernel": host.kernel,
+        "bwrap": build(host.tools.bwrap.as_ref().map(|t| t.path.as_path())),
+        "helper": build(helper.as_deref()),
+        "pasta": build(pasta.as_deref()),
     });
     let data = serde_json::json!({
         "sam": env!("CARGO_PKG_VERSION"),
@@ -666,12 +764,6 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .current_dir(&host.home);
-    if cmd.clear_env {
-        command.env_clear();
-    }
-    for (k, v) in &cmd.env {
-        command.env(k, v);
-    }
     let mut child = command
         .spawn()
         .with_context(|| format!("starting {}", cmd.program.display()))?;
@@ -1188,5 +1280,111 @@ mod tests {
             .iter()
             .any(|c| matches!(c.test, ProbeTest::BusName { .. })));
         drop(services);
+    }
+
+    /// A passed check is reused only on the same computer as it was then:
+    /// other GPU devices, the D-Bus proxy installed or removed, other
+    /// sockets or another Landlock each make the check run again.
+    #[test]
+    fn a_passed_check_is_repeated_when_the_computer_changes() {
+        let app = AppEntry::default();
+        let cfg = Config::default();
+        let host = sam_core::sandbox::sample_context().host;
+        let key = |h: &HostInfo| check_key(&app, &cfg, h);
+        let same = key(&host);
+        assert_eq!(key(&host.clone()), same, "the same computer");
+        type Change = fn(&mut HostInfo);
+        let changes: [(&str, Change); 5] = [
+            ("no GPU", |h| h.gpu_devices.clear()),
+            ("another GPU", |h| h.gpu_devices.truncate(2)),
+            ("no D-Bus proxy", |h| h.tools.xdg_dbus_proxy = None),
+            ("no Wayland socket", |h| h.sockets.wayland = None),
+            ("another Landlock", |h| h.landlock_abi = Some(99)),
+        ];
+        for (what, change) in changes {
+            let mut h = host.clone();
+            change(&mut h);
+            assert_ne!(key(&h), same, "{what}");
+        }
+    }
+
+    /// Audit: a passing check is repeated when the kernel changed or a
+    /// program that builds the sandbox is another build (an updated
+    /// Bubblewrap, a rebuilt SAM helper, a new pasta), not only when SAM's
+    /// version number or the settings did. A check of the same computer
+    /// keeps its key.
+    #[test]
+    fn the_check_is_repeated_after_the_kernel_or_a_sandbox_program_changed() {
+        let t = tempfile::tempdir().unwrap();
+        let mut h = host_in(t.path());
+        let (cfg, app) = (Config::default(), AppEntry::default());
+        let file = |name: &str, body: &str| {
+            let p = t.path().join(name);
+            fs::write(&p, body).unwrap();
+            p
+        };
+        let (bwrap, helper, pasta) = (
+            file("bwrap", "1"),
+            file("sam-jail-run", "1"),
+            file("pasta", "1"),
+        );
+        h.tools.bwrap = Some(sam_core::host::Tool {
+            path: bwrap.clone(),
+            version: None,
+        });
+        let key =
+            |h: &HostInfo| check_key_with(&app, &cfg, h, Some(helper.clone()), Some(pasta.clone()));
+        let before = key(&h);
+        assert_eq!(key(&h), before, "the same computer, the same key");
+        let mut newer = h.clone();
+        newer.kernel = format!("{}-updated", h.kernel);
+        assert_ne!(key(&newer), before, "another kernel");
+        for p in [&bwrap, &helper, &pasta] {
+            let base = key(&h);
+            // A build of another size (its time may not change in a test).
+            fs::write(p, "a new build").unwrap();
+            assert_ne!(key(&h), base, "another build of {}", p.display());
+        }
+    }
+
+    /// Review K-1: with X11 off, the check tries the X server's abstract
+    /// socket, which needs no file; with a session bus on an abstract
+    /// socket, it tries that too unless the app may use the whole bus.
+    #[test]
+    fn the_check_tries_the_hosts_abstract_sockets_the_app_must_not_reach() {
+        let t = tempfile::tempdir().unwrap();
+        let mut h = host_in(t.path());
+        let cfg = Config::default();
+        let mut p = PermissionSet::strict_gui();
+        let abstract_names = |p: &PermissionSet, h: &HostInfo| -> Vec<(String, String)> {
+            plan(p, &cfg, h)
+                .checks
+                .into_iter()
+                .filter_map(|c| match c.test {
+                    ProbeTest::AbstractSocket {
+                        name,
+                        expect: false,
+                    } => Some((c.id, name)),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert!(abstract_names(&p, &h).is_empty(), "no X server, no bus");
+        h.sockets.x11 = Some("/tmp/.X11-unix/X1".into());
+        h.sockets.dbus_session_address =
+            Some("unix:abstract=/tmp/dbus-AbC%2d1,guid=0123;unix:path=/run/user/1000/bus".into());
+        p.display.x11 = false;
+        p.dbus.session.mode = DbusMode::Filtered;
+        assert_eq!(
+            abstract_names(&p, &h),
+            [
+                ("x11-abstract".to_string(), "/tmp/.X11-unix/X1".to_string()),
+                ("bus-abstract".to_string(), "/tmp/dbus-AbC-1".to_string()),
+            ]
+        );
+        // X11 granted, the whole bus granted: nothing to keep out.
+        p.display.x11 = true;
+        p.dbus.session.mode = DbusMode::Full;
+        assert!(abstract_names(&p, &h).is_empty());
     }
 }

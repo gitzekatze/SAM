@@ -209,8 +209,8 @@ The complete list, with what each test proves, is the
 - `crates/sam-runner/tests/sandbox.rs`: the end-to-end test. It builds a
   probe AppImage, adds it, launches it under several profiles, and checks from
   inside the sandbox what is visible and writable. Where Bubblewrap cannot
-  run it skips itself, except in CI, where `SAM_REQUIRE_SANDBOX=1` turns
-  that skip into a failure.
+  run it skips itself, except in CI and `make test`, where
+  `SAM_REQUIRE_SANDBOX=1` turns that skip into a failure.
 - `sam-jail dev make-fixture <path> [--name] [--categories] [--apprun file]`
   builds synthetic AppImages for manual testing.
 - `sam-jail-gui --screenshot out.png --page <page>` (with

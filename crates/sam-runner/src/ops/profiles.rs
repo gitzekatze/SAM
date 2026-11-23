@@ -8,15 +8,19 @@ impl Sam {
 
     pub(super) fn save_profile(&self, entry: &mut AppEntry) -> Result<()> {
         entry.profile.user_modified = entry.profile.permissions != entry.recommended;
-        entry.reviewed = true;
         entry.pending_changes.clear();
         // A changed switch is no confirmation that the person looked at a
         // record or file changed outside SAM: only `mark_reviewed` clears
-        // those marks.
+        // those marks. Nor that they looked at the settings SAM chose from
+        // what the app says about itself (`reviewed`): one switch changed
+        // on the command line, in the window or for a group of apps leaves
+        // the others unconfirmed (review F5). Only flows that set the whole
+        // set confirm it: `mark_reviewed`, a preset, `set_permissions`.
         entry.clear_launch_failure();
         self.registry().save(entry)
     }
 
+    /// Changes one setting. Leaves the app unconfirmed when it was.
     pub fn set_permission(&self, query: &str, key: &str, value: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         e.profile.permissions.set_key(key, value)?;
@@ -25,10 +29,29 @@ impl Sam {
         Ok(e)
     }
 
+    /// Replaces the whole set with one the person chose (`profile set`):
+    /// none of SAM's choices is left unconfirmed, so this confirms them.
     pub fn set_permissions(&self, query: &str, perms: PermissionSet) -> Result<AppEntry> {
+        self.store_permissions(query, perms, true)
+    }
+
+    /// Stores settings worked out from a change of some of them (the
+    /// window's `profile change`, a group undo, SAM's own fixes): leaves the
+    /// app unconfirmed when it was.
+    pub fn change_permissions(&self, query: &str, perms: PermissionSet) -> Result<AppEntry> {
+        self.store_permissions(query, perms, false)
+    }
+
+    fn store_permissions(
+        &self,
+        query: &str,
+        perms: PermissionSet,
+        confirms: bool,
+    ) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         e.profile.permissions = perms;
         e.profile.preset = None;
+        e.reviewed |= confirms;
         self.save_profile(&mut e)?;
         Ok(e)
     }
@@ -222,6 +245,12 @@ impl Sam {
                 permissions,
                 ..Default::default()
             },
+            // Nothing of the app runs here, only SAM's stand-in above and its
+            // test program, with the settings the person is looking at. The
+            // start gate for unconfirmed settings (audit U-M11) keeps the
+            // app's own code from running; for this scratch record nobody
+            // could confirm it, so it refused every check before adding.
+            reviewed: true,
             ..Default::default()
         };
         let out = crate::verify::verify(&entry, &self.config, &paths, &self.host());
@@ -381,30 +410,50 @@ impl Sam {
         Ok(e)
     }
 
+    /// Applies a preset; asks (returns it not applied) when it removes
+    /// what the app needs or adds risk, unless `confirm`. With `expect`,
+    /// only the preset as it was when the question was asked is applied:
+    /// the window asks, then applies by name, and a preset changed in
+    /// between would otherwise be applied unseen (audit G-F12/13).
     pub fn apply_preset(
         &self,
         query: &str,
         preset_name: &str,
         confirm: bool,
+        expect: Option<&str>,
     ) -> Result<PresetApply> {
         let mut e = self.resolve(query)?;
         let preset = find_preset(&self.paths, preset_name)?
             .with_context(|| format!("unknown preset '{preset_name}'"))?;
+        let fingerprint = sam_storage::fingerprint(&preset.permissions)?;
+        if expect.is_some_and(|x| x != fingerprint) {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the preset “{preset}” changed after it was checked; nothing was applied. Check it again.",
+                    &[("preset", &preset.name)]
+                )
+            );
+        }
         let check = check_change(&e, &preset.permissions);
         if check.needs_confirmation() && !confirm {
             return Ok(PresetApply {
                 preset: preset.name,
                 check,
                 applied: false,
+                fingerprint,
             });
         }
         e.profile.permissions = preset.permissions.clone();
         e.profile.preset = Some(preset.name.clone());
+        // The whole set is the preset the person picked.
+        e.reviewed = true;
         self.save_profile(&mut e)?;
         Ok(PresetApply {
             preset: preset.name,
             check,
             applied: true,
+            fingerprint,
         })
     }
 
@@ -532,7 +581,7 @@ impl Sam {
         confirm(&added)?;
         let n = planned.len();
         for (id, perms) in planned {
-            self.set_permissions(&id, perms)?;
+            self.change_permissions(&id, perms)?;
         }
         Ok(n)
     }

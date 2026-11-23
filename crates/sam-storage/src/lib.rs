@@ -44,6 +44,10 @@ fn damaged_record(p: &Path, err: &anyhow::Error) {
     }
 }
 
+/// The first record format that carries SAM's checksum (`integrity`).
+const CHECKSUM_SINCE: u32 = 1;
+const _: () = assert!(CHECKSUM_SINCE <= sam_core::format::CURRENT);
+
 impl Registry {
     pub fn new(paths: &Paths) -> Self {
         Registry {
@@ -78,6 +82,23 @@ impl Registry {
         Ok(out)
     }
 
+    /// The ids of every record file in the apps folder, also those SAM
+    /// cannot read: one from a newer SAM (left in place) or a damaged one
+    /// (moved aside as `<id>.json.damaged-…`). Their data still belongs to
+    /// an app, so it is no leftover to delete (audit U-L4).
+    pub fn record_ids(&self) -> std::collections::HashSet<String> {
+        fs::read_dir(self.paths.apps_dir())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let id = name.split_once(".json").map(|(id, _)| id.to_string())?;
+                valid_id(&id).then_some(id)
+            })
+            .collect()
+    }
+
     /// Reads one app record: migrated from older formats (original kept),
     /// an error for a newer one (left untouched).
     fn load_file(&self, p: &Path) -> Result<AppEntry> {
@@ -107,10 +128,17 @@ impl Registry {
         // any change). Records from SAM versions before the checksum are
         // marked once and confirmed once. A checksum is compared only in the
         // current format: a record migrated from an older one is
-        // re-serialized differently. A mark found earlier stays until it is
-        // confirmed.
+        // re-serialized differently. No record from before the checksum's
+        // format carries one, so one that does had its format lowered
+        // (review F4: `"format": 0` hid any change). A genuine record of a
+        // format between that one and the current one (once there is a
+        // newer format) is migrated, not marked. A mark found earlier stays
+        // until it is confirmed.
         let mismatch = match e.integrity.clone() {
-            Some(stored) => found == sam_core::format::CURRENT && integrity_of(&e)? != stored,
+            Some(stored) => {
+                found < CHECKSUM_SINCE
+                    || (found == sam_core::format::CURRENT && integrity_of(&e)? != stored)
+            }
             None => true,
         };
         e.changed_outside = e.changed_outside || mismatch;
@@ -140,8 +168,17 @@ impl Registry {
         valid_id(id) && self.paths.app_file(id).exists()
     }
 
-    /// Resolve a user-supplied reference: exact id, unique id prefix,
-    /// slug match or case-insensitive name match.
+    /// Resolve a user-supplied reference: the exact id, or the one app
+    /// that the reference names by any rule: an id prefix, its name slug,
+    /// its name (case-insensitive) or a part of its name. The rules count
+    /// together, never one before the other: an AppImage chooses its own
+    /// name, so an app named `vlc` must not capture a command meant for
+    /// "VLC media player", which `vlc` names too (audit G-F7). Of several
+    /// apps named, one whose name is exactly the reference wins only if it
+    /// was added before all the others: a name that was there first keeps
+    /// its meaning when "Foo Pro" comes after "Foo", and an app added later
+    /// can never take a reference over (audit U-L7). Otherwise the
+    /// reference names more than one app and is refused.
     pub fn resolve(&self, query: &str) -> Result<AppEntry> {
         if let Some(a) = self.get(query)? {
             return Ok(a);
@@ -149,33 +186,56 @@ impl Registry {
         let all = self.list()?;
         let q = query.to_lowercase();
         let qslug = slugify(query);
-        let tiers: [&dyn Fn(&AppEntry) -> bool; 4] = [
-            &|a| a.name.to_lowercase() == q,
-            &|a| a.id.starts_with(&q),
-            &|a| !qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")),
-            &|a| a.name.to_lowercase().contains(&q),
-        ];
-        for tier in tiers {
-            let m: Vec<&AppEntry> = all.iter().filter(|a| tier(a)).collect();
-            match m.len() {
-                0 => continue,
-                1 => return Ok(m[0].clone()),
-                _ => bail!(
-                    "'{query}' is ambiguous: {}",
-                    m.iter()
-                        .map(|a| a.id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
+        let m: Vec<&AppEntry> = all
+            .iter()
+            .filter(|a| {
+                let name = a.name.to_lowercase();
+                a.id.starts_with(&q)
+                    || (!qslug.is_empty() && a.id.starts_with(&format!("appimage-{qslug}")))
+                    || name.contains(&q)
+            })
+            .collect();
+        // Of several, the app named exactly so, if it came before all the
+        // others (equal times, as in records from before `added_at`, do
+        // not count as before).
+        if let [named] = m
+            .iter()
+            .filter(|a| a.name.to_lowercase() == q)
+            .collect::<Vec<_>>()[..]
+        {
+            if m.iter()
+                .all(|a| a.id == named.id || a.added_at > named.added_at)
+            {
+                return Ok((*named).clone());
             }
         }
-        bail!(
-            "{}",
-            sam_core::i18n::trf(
-                "no registered app matches '{query}' (see `sam-jail list`)",
-                &[("query", &query)]
-            )
-        )
+        match m.as_slice() {
+            [one] => Ok((*one).clone()),
+            [] => bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "no registered app matches '{query}' (see `sam-jail list`)",
+                    &[("query", &query)]
+                )
+            ),
+            many => bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "'{query}' names more than one app: {apps}. Use the app's ID.",
+                    &[
+                        ("query", &query),
+                        (
+                            "apps",
+                            &many
+                                .iter()
+                                .map(|a| format!("{} ({})", a.id, a.name))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    ]
+                )
+            ),
+        }
     }
 
     pub fn save(&self, entry: &mut AppEntry) -> Result<()> {
@@ -233,6 +293,15 @@ pub fn integrity_of(e: &AppEntry) -> Result<String> {
         o.remove("integrity");
     }
     let digest = Sha256::digest(serde_json::to_vec(&v)?);
+    Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// A fingerprint of a set of permissions (SHA-256 over its saved form):
+/// what a question was asked about, so that only that is applied after the
+/// answer (`preset apply --expect`).
+pub fn fingerprint(p: &PermissionSet) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(serde_json::to_vec(p)?);
     Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -358,6 +427,35 @@ impl PresetStore {
         Ok(path)
     }
 
+    /// Saves a preset from a file under a name no preset has yet: the file's
+    /// own name when it is free, otherwise "NAME (imported)", "NAME
+    /// (imported 2)", … An imported file never replaces a preset of the same
+    /// name, which would later be applied as the person's own (review F9).
+    pub fn import(&self, preset: &mut Preset) -> Result<PathBuf> {
+        let taken = |name: &str| -> Result<bool> {
+            Ok(self.get(name)?.is_some() || self.file_for(name).exists())
+        };
+        // An empty name is refused by `save`, as before.
+        if !preset.name.trim().is_empty() && taken(&preset.name)? {
+            let base = preset.name.trim().to_string();
+            let mut n = 1u32;
+            loop {
+                let candidate = match n {
+                    1 => sam_core::i18n::trf("{name} (imported)", &[("name", &base)]),
+                    _ => {
+                        sam_core::i18n::trf("{name} (imported {n})", &[("name", &base), ("n", &n)])
+                    }
+                };
+                if !taken(&candidate)? {
+                    preset.name = candidate.trim().to_string();
+                    break;
+                }
+                n += 1;
+            }
+        }
+        self.save(preset)
+    }
+
     pub fn delete(&self, name: &str) -> Result<bool> {
         let p = self.file_for(name);
         match fs::remove_file(&p) {
@@ -415,8 +513,12 @@ pub fn parse_preset_toml(s: &str) -> Result<Preset> {
     Ok(Preset {
         name: file.preset.name,
         description: file.preset.description,
+        // Worked out from the permissions, never taken from the file: a
+        // preset file placed in the folder (copied, synced, written by a
+        // script) said "low" for full home and network, and the lists showed
+        // it as Harmless (review F6). The stored word is only written.
+        risk: sam_core::risk::assess(&permissions).level,
         permissions,
-        risk: file.preset.risk,
         created_at: file.preset.created_at,
         modified_at: file.preset.modified_at,
         compatibility_notes: file.preset.compatibility_notes,
@@ -733,6 +835,29 @@ mod tests {
             ok.changed_outside = false;
             reg.save(&mut ok).unwrap();
         }
+        // Regression (review F4): lowering the format number with the old
+        // checksum left in place (`0`, or no number, which reads as 0)
+        // skipped the comparison and hid the change. (`1.0` is no number a
+        // record can have: such a record is moved aside as damaged.)
+        for format in [Some(serde_json::json!(0)), None] {
+            let mut v: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+            assert!(v["integrity"].is_string(), "SAM's save wrote a checksum");
+            v["profile"]["permissions"]["network"]["mode"] = "full".into();
+            match &format {
+                Some(f) => v["format"] = f.clone(),
+                None => drop(v.as_object_mut().unwrap().remove("format")),
+            }
+            fs::write(&file, v.to_string()).unwrap();
+            assert!(
+                reg.get("appimage-x-1").unwrap().unwrap().changed_outside,
+                "with format {format:?}"
+            );
+            let mut ok = reg.get("appimage-x-1").unwrap().unwrap();
+            ok.changed_outside = false;
+            reg.save(&mut ok).unwrap();
+            assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside);
+        }
     }
 
     /// `update` changes the record as it is on disk now, so work that took a
@@ -887,6 +1012,94 @@ mod tests {
         assert!(reg.get("../etc/passwd").unwrap().is_none());
     }
 
+    /// Regression (audit U-L7): the name an AppImage gives itself came
+    /// first, so one added later calling itself "firefox" was started for
+    /// `sam-jail run firefox` instead of "Firefox Web Browser", with its own
+    /// permissions. Now a later app's name cannot take a query over: it is
+    /// ambiguous. A name that was there first keeps its meaning when
+    /// another app with a longer name is added.
+    #[test]
+    fn a_name_an_app_chose_cannot_take_over_another_apps_query() {
+        let tmp = tempfile::tempdir().unwrap();
+        let reg = Registry::new(&Paths::rooted(tmp.path()));
+        let mut real = AppEntry {
+            id: "appimage-firefox-web-browser-9f3c".into(),
+            name: "Firefox Web Browser".into(),
+            added_at: 100,
+            ..Default::default()
+        };
+        reg.save(&mut real).unwrap();
+        assert_eq!(reg.resolve("firefox").unwrap().id, real.id);
+        let mut other = AppEntry {
+            id: "appimage-firefox-1234".into(),
+            name: "firefox".into(),
+            added_at: 200,
+            ..Default::default()
+        };
+        reg.save(&mut other).unwrap();
+        let e = reg.resolve("firefox").unwrap_err().to_string();
+        assert!(e.contains(&real.id) && e.contains(&other.id), "{e}");
+        assert_eq!(reg.resolve("Firefox Web Browser").unwrap().id, real.id);
+        assert_eq!(reg.resolve(&other.id).unwrap().id, other.id);
+
+        // The other way round: "Foo" was there first, "Foo Pro" came later.
+        let mut foo = AppEntry {
+            id: "appimage-foo-1111".into(),
+            name: "Foo".into(),
+            added_at: 300,
+            ..Default::default()
+        };
+        reg.save(&mut foo).unwrap();
+        let mut pro = AppEntry {
+            id: "appimage-foo-pro-2222".into(),
+            name: "Foo Pro".into(),
+            added_at: 400,
+            ..Default::default()
+        };
+        reg.save(&mut pro).unwrap();
+        assert_eq!(reg.resolve("foo").unwrap().id, foo.id);
+        assert_eq!(reg.resolve("foo pro").unwrap().id, pro.id);
+    }
+
+    /// An AppImage chooses its own name: an app named `vlc` does not
+    /// capture a command meant for "VLC media player", which `vlc` also
+    /// names; the reference is refused as naming more than one app, and
+    /// each app is still found by its ID or a reference only it matches
+    /// (audit G-F7: the exact name won, so `sam-jail set vlc network.mode
+    /// full` changed the hostile app without a word).
+    #[test]
+    fn an_apps_own_name_never_captures_a_reference_to_another_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let reg = Registry::new(&Paths::rooted(tmp.path()));
+        let mut real = AppEntry {
+            id: "appimage-vlc-media-player-9f3c".into(),
+            name: "VLC media player".into(),
+            ..Default::default()
+        };
+        reg.save(&mut real).unwrap();
+        // Before the hostile app arrives, `vlc` names the real one.
+        assert_eq!(reg.resolve("vlc").unwrap().id, real.id);
+        let mut hostile = AppEntry {
+            id: "appimage-vlc-1234".into(),
+            name: "vlc".into(),
+            ..Default::default()
+        };
+        reg.save(&mut hostile).unwrap();
+        let err = reg.resolve("vlc").unwrap_err().to_string();
+        assert!(
+            err.contains(&real.id) && err.contains(&hostile.id),
+            "not refused as naming both: {err}"
+        );
+        // A name the hostile app copies from part of the real one is
+        // refused too ("media" names both).
+        hostile.name = "media".into();
+        reg.save(&mut hostile).unwrap();
+        assert!(reg.resolve("media").is_err());
+        assert_eq!(reg.resolve("vlc media player").unwrap().id, real.id);
+        assert_eq!(reg.resolve(&real.id).unwrap().id, real.id);
+        assert_eq!(reg.resolve("appimage-vlc-1").unwrap().id, hostile.id);
+    }
+
     /// A damaged preset is moved aside once; a preset from a newer SAM is
     /// only skipped and stays where it is, for when SAM is updated
     /// (mutation run P14: moving every unreadable preset aside went
@@ -941,6 +1154,78 @@ dbus_system = "none"
         assert!(
             p.permissions.devices.gpu && p.permissions.audio.enabled && p.permissions.display.x11
         );
+    }
+
+    /// The risk word of a preset is worked out from its permissions, never
+    /// taken from the file: a file placed in the presets folder that says
+    /// "low" for full home and network is listed as Dangerous (review F6).
+    #[test]
+    fn a_presets_risk_word_comes_from_its_permissions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let store = PresetStore::new(&paths);
+        let mut perms = PermissionSet::strict_gui();
+        perms.filesystem.home = true;
+        perms.filesystem.home_access = sam_core::permissions::Access::Rw;
+        perms.network.mode = sam_core::permissions::NetworkMode::Full;
+        let mut p = Preset {
+            name: "Looks Harmless".into(),
+            permissions: perms.clone(),
+            ..Default::default()
+        };
+        // The file claims the lowest word.
+        p.risk = sam_core::RiskLevel::Low;
+        let claimed = preset_to_toml(&p).unwrap();
+        assert!(claimed.contains("risk = \"low\""), "{claimed}");
+        fs::create_dir_all(paths.presets_dir()).unwrap();
+        fs::write(store.file_for(&p.name), &claimed).unwrap();
+        let want = sam_core::risk::assess(&perms).level;
+        assert_eq!(want, sam_core::RiskLevel::Dangerous);
+        assert_eq!(store.get("Looks Harmless").unwrap().unwrap().risk, want);
+        assert_eq!(parse_preset_toml(&claimed).unwrap().risk, want);
+    }
+
+    /// Importing a preset file never replaces a preset of the same name: it
+    /// gets a free name instead, and the person's own stays as it was
+    /// (review F9).
+    #[test]
+    fn an_imported_preset_never_replaces_one_of_the_same_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = PresetStore::new(&Paths::rooted(tmp.path()));
+        let mut own = Preset {
+            name: "Browser".into(),
+            permissions: PermissionSet::strict_gui(),
+            ..Default::default()
+        };
+        store.save(&mut own).unwrap();
+        let mut wide = PermissionSet::strict_gui();
+        wide.filesystem.home = true;
+        let imported = |name: &str| Preset {
+            name: name.into(),
+            permissions: wide.clone(),
+            ..Default::default()
+        };
+        // Same name, other letter case and the same file name: all kept.
+        for (i, name) in ["Browser", "BROWSER", "browser!"].iter().enumerate() {
+            let mut p = imported(name);
+            let path = store.import(&mut p).unwrap();
+            assert_ne!(path, store.file_for("Browser"), "{name}");
+            assert_ne!(p.name.to_lowercase(), "browser", "{name}");
+            assert!(p.name.contains("(imported"), "{name}: {}", p.name);
+            assert_eq!(store.list().unwrap().len(), i + 2);
+        }
+        let kept = store.get("Browser").unwrap().unwrap();
+        assert_eq!(kept.name, "Browser");
+        assert_eq!(
+            kept.permissions, own.permissions,
+            "the own preset is unchanged"
+        );
+        assert!(store.get("Browser (imported)").unwrap().is_some());
+        assert!(store.get("Browser (imported 2)").unwrap().is_some());
+        // A free name is kept as it is.
+        let mut fresh = imported("Editor");
+        store.import(&mut fresh).unwrap();
+        assert_eq!(fresh.name, "Editor");
     }
 
     /// A saved preset loads back unchanged, found by its name in any letter case.

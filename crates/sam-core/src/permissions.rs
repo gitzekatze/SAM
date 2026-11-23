@@ -171,7 +171,7 @@ pub struct NetworkPerms {
 }
 
 impl NetworkPerms {
-    /// Valid ports from `host_ports` (DNS, port 53, is never forwarded).
+    /// Valid ports from `app_ports`, sorted, each once (port 0 is no port).
     pub fn valid_app_ports(&self) -> Vec<u16> {
         let mut v: Vec<u16> = self
             .app_ports
@@ -184,6 +184,8 @@ impl NetworkPerms {
         v
     }
 
+    /// Valid ports from `host_ports`, sorted, each once (DNS, port 53, is
+    /// never forwarded; port 0 is no port).
     pub fn valid_host_ports(&self) -> Vec<u16> {
         let mut v: Vec<u16> = self
             .host_ports
@@ -341,13 +343,84 @@ const DANGEROUS_BUS_NAMES: &[(&str, &str)] = &[
     ),
 ];
 
-/// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
-/// Wildcards (`org.kde.*`, `*`) count when they cover a dangerous name, and
-/// any wildcard over the portal namespace would bypass SAM's portal filter.
+/// Terminals that open a window running any command they are sent
+/// (GNOME Terminal's `Factory0.CreateInstance` and `Terminal0.Exec`,
+/// Konsole's and Yakuake's `runCommand`, a GApplication's command line):
+/// reached from the sandbox, a command runs outside it (audit D-M6, the
+/// TALK half: repair offered them as a harmless service). They count as
+/// dangerous to reach, not to own: an app owning one of these names is a
+/// terminal of its own, which the own-name rules decide.
+const COMMAND_TERMINAL_BUS_NAMES: &[(&str, &str)] = &[
+    (
+        "org.gnome.Terminal",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.gnome.Console",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.gnome.Ptyxis",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "com.gexperts.Tilix",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.kde.konsole",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.kde.yakuake",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.xfce.Terminal",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+    (
+        "org.guake3.RemoteControl",
+        crate::i18n::n_("can run any command in a terminal outside the sandbox"),
+    ),
+];
+
+/// Session-bus services that hand out stored passwords and logins: the
+/// names of the keyring switch (`integrations.keyring`, rated Think twice)
+/// and the stores beside them. Allowing one by name is that switch by
+/// another door (review F2).
+const SECRET_BUS_NAMES: &[&str] = &[
+    "org.freedesktop.secrets",
+    "org.kde.kwalletd6",
+    "org.kde.kwalletd5",
+    "org.kde.kwalletd",
+    "org.gnome.keyring",
+    "org.gnome.OnlineAccounts",
+];
+
+/// Whether an allow entry (a name or a wildcard) reaches a service that
+/// hands out stored passwords and logins.
+pub fn secret_bus_name(name: &str) -> bool {
+    let name = name.trim();
+    SECRET_BUS_NAMES
+        .iter()
+        .any(|s| bus_pattern_matches(name, s) || name.starts_with(&format!("{s}.")))
+}
+
 /// Sockets that give whoever can connect control over the computer or
-/// a way around the sandbox's D-Bus filter.
+/// a way around the sandbox's D-Bus filter. Compared without `.` and
+/// repeated `/`, which the kernel skips: `/run/dbus//system_bus_socket` is
+/// the system bus (review 2026-11-23).
 pub fn dangerous_socket(path: &str) -> Option<String> {
     let p = path.trim();
+    let lead = if p.starts_with('/') { "/" } else { "" };
+    let norm = format!(
+        "{lead}{}",
+        p.split('/')
+            .filter(|c| !c.is_empty() && *c != ".")
+            .collect::<Vec<_>>()
+            .join("/")
+    );
     let bad: &[(&str, &str)] = &[
         (
             "docker.sock",
@@ -371,9 +444,15 @@ pub fn dangerous_socket(path: &str) -> Option<String> {
             crate::i18n::n_("is a D-Bus socket, which bypasses SAM's D-Bus filter"),
         ),
         ("libvirt", crate::i18n::n_("controls virtual machines")),
+        // The sound server's own connection, as with "Sound without SAM's
+        // relay": the app can make it load modules (review SB-4).
+        (
+            "pulse/native",
+            crate::i18n::n_("is the sound server's own connection, through which the app could make it load code outside the sandbox"),
+        ),
     ];
     bad.iter()
-        .find(|(needle, _)| p.contains(needle))
+        .find(|(needle, _)| norm.contains(needle))
         .map(|(_, why)| format!("{p} {}", crate::i18n::tr(why)))
 }
 
@@ -443,7 +522,7 @@ pub fn refuse_own_name(
             &[("name", &name)],
         ));
     }
-    if let Some(why) = dangerous_bus_name(name) {
+    if let Some(why) = dangerous_service(name) {
         return Some(why);
     }
     // A wildcard covers every on-demand service under it (audit L-F13).
@@ -457,20 +536,43 @@ pub fn refuse_own_name(
         .then(|| crate::i18n::trf("{name} is a service on this computer that starts on demand; owning it would intercept its requests", &[("name", &name)]))
 }
 
+/// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
+/// Wildcards (`org.kde.*`, `*`) count when they cover a dangerous name, and
+/// any wildcard over the portal namespace would bypass SAM's portal filter.
+/// Terminals that run any command they are sent count too.
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
+    dangerous_service(name).or_else(|| listed_bus_name(name, COMMAND_TERMINAL_BUS_NAMES))
+}
+
+/// [`dangerous_bus_name`] without the terminals: the services no app may
+/// reach or own.
+fn dangerous_service(name: &str) -> Option<String> {
     let name = name.trim();
+    // Any wildcard that covers the portal's own name: xdg-dbus-proxy then
+    // lets every call to the portal through, not only the interfaces SAM
+    // picks (`org.freedesktop.portal.Desktop.*` covers the name itself;
+    // review F2).
     if name == "*"
         || name == "org.*"
         || name == "org.freedesktop.*"
         || name.starts_with("org.freedesktop.portal.*")
+        || (name.ends_with('*') && bus_pattern_matches(name, PORTAL_NAME))
     {
         return Some(crate::i18n::trf(
             "{name} covers services that can act outside the sandbox",
             &[("name", &name)],
         ));
     }
+    listed_bus_name(name, DANGEROUS_BUS_NAMES)
+}
+
+/// Why `name` (or a wildcard) is one of `list`, if it is: the name itself,
+/// a name under it, its numbered (`5`, `6`) and per-process (`-1234`, as
+/// Konsole's) variants, and wildcards that cover it.
+fn listed_bus_name(name: &str, list: &[(&str, &str)]) -> Option<String> {
+    let name = name.trim();
     let wildcard = name.strip_suffix(".*").or_else(|| name.strip_suffix('*'));
-    for (d, why) in DANGEROUS_BUS_NAMES {
+    for (d, why) in list {
         let hit = match wildcard {
             Some(prefix) => d.starts_with(prefix) || prefix.starts_with(d.trim_end_matches('.')),
             None => {
@@ -479,6 +581,7 @@ pub fn dangerous_bus_name(name: &str) -> Option<String> {
                 } else {
                     name == *d
                         || name.starts_with(&format!("{d}."))
+                        || name.starts_with(&format!("{d}-"))
                         || name.starts_with(&format!("{d}5"))
                         || name.starts_with(&format!("{d}6"))
                 }
@@ -903,14 +1006,20 @@ impl PermissionSet {
                 crate::i18n::trf("'{key}' is not a settable key", &[("key", &key)])
             )
         })?;
-        let existing = obj.get(*last);
-        if existing.is_none() && !LEFT_OUT_WHEN_EMPTY.iter().any(|(k, _)| *k == key) {
-            bail!(
-                "{}",
-                crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
-            );
-        }
-        let new_val = parse_value(raw, existing);
+        // A setting the saved form leaves out while empty is read as its
+        // empty value, so a comma list goes into it as into any other list
+        // (review F8: `set APP dbus.session.calls 'org.x=Foo'` was refused
+        // while the list was empty).
+        let existing = match obj.get(*last) {
+            Some(v) => v.clone(),
+            None => left_out_default(key).ok_or_else(|| {
+                anyhow!(
+                    "{}",
+                    crate::i18n::trf("unknown permission key '{key}'", &[("key", &key)])
+                )
+            })?,
+        };
+        let new_val = parse_value(raw, Some(&existing));
         obj.insert((*last).to_string(), new_val);
         *self = serde_json::from_value(v).with_context(|| {
             crate::i18n::trf(
@@ -1033,7 +1142,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("filesystem.opened_files", "Filesystem", "Files you open with the app",
             "Files you open with this app (for example with 'Open with' in the file manager). Read & write lets it save them; read-only lets it only view them.", Low),
         perm!("filesystem.custom_read", "Filesystem", "Extra read-only folders",
-            "Additional folders the app can read but not change.", Medium, advanced),
+            "Additional folders the app can read but not change. Programs that listen in them stay reachable: read-only does not stop the app from connecting to them (for example to a terminal session in /tmp).", Medium, advanced),
         perm!("filesystem.custom_write", "Filesystem", "Extra read/write folders",
             "Additional folders the app can read and change.", High, advanced),
         perm!("network.mode", "Network", "Network access",
@@ -1299,6 +1408,160 @@ mod tests {
         assert!(p.set_key("network.bogus", "1").is_err());
         assert!(p.set_key("network.mode", "sideways").is_err());
         assert_eq!(p.get_key("network.mode").unwrap(), "full");
+        // A key the saved form may leave out is known only by its full
+        // name: a misspelt hardening switch, or `landlock` in another
+        // group, is refused instead of reported as set and dropped.
+        for unknown in [
+            "advanced.bogus",
+            "advanced.seccomp_strct",
+            "network.landlock",
+            "filesystem.room_service",
+            "dbus.system.calls",
+        ] {
+            let before = p.clone();
+            assert!(p.set_key(unknown, "true").is_err(), "{unknown}");
+            assert_eq!(p, before, "{unknown} changed nothing");
+        }
+        p.set_key("advanced.room_service", "false").unwrap();
+        assert!(!p.advanced.room_service);
+    }
+
+    /// A list the saved form leaves out while it is empty (function and
+    /// signal rules) takes comma-separated input like every other list,
+    /// also while it is still empty.
+    #[test]
+    fn an_empty_list_left_out_of_the_saved_form_takes_comma_separated_input() {
+        let mut p = PermissionSet::default();
+        p.set_key("dbus.session.calls", "org.example.App=*")
+            .unwrap();
+        assert_eq!(p.dbus.session.calls, vec!["org.example.App=*"]);
+        p.set_key(
+            "dbus.session.broadcasts",
+            "org.example.App=@/a, org.example.B=*",
+        )
+        .unwrap();
+        assert_eq!(
+            p.dbus.session.broadcasts,
+            vec!["org.example.App=@/a", "org.example.B=*"]
+        );
+        p.set_key("dbus.session.calls", "").unwrap();
+        assert!(p.dbus.session.calls.is_empty());
+        p.set_key("dbus.session.calls", r#"["org.example.C=*"]"#)
+            .unwrap();
+        assert_eq!(p.dbus.session.calls, vec!["org.example.C=*"]);
+        p.set_key("advanced.landlock", "true").unwrap();
+        assert_eq!(p.advanced.landlock, Some(true));
+    }
+
+    /// Each user-folder switch grants exactly its own folder, read-only or
+    /// writable, and no other.
+    #[test]
+    fn every_user_folder_switch_grants_exactly_its_folder() {
+        for (raw, level) in [("ro", Access::Ro), ("rw", Access::Rw)] {
+            for key in XDG_DIR_KEYS {
+                let mut p = PermissionSet::default();
+                p.set_key(&format!("filesystem.{key}"), raw).unwrap();
+                for other in XDG_DIR_KEYS {
+                    let want = if other == key { level } else { Access::None };
+                    assert_eq!(p.filesystem.xdg_access(other), want, "{key}={raw}: {other}");
+                }
+            }
+        }
+        assert_eq!(
+            FilesystemPerms::default().xdg_access("templates"),
+            Access::None
+        );
+    }
+
+    /// "This computer only" forwards exactly the ports the user listed:
+    /// each once, sorted, without port 0, and never DNS (port 53) from the
+    /// host. An empty list would mean "every port the app opens" (pasta's
+    /// automatic forwarding), so dropping listed ports widens access.
+    #[test]
+    fn only_the_ports_the_user_listed_are_forwarded() {
+        let n = NetworkPerms {
+            mode: NetworkMode::Localhost,
+            app_ports: ["8080", " 3000 ", "x", "0", "8080", "70000"]
+                .map(String::from)
+                .into(),
+            host_ports: ["53", "0", " 11434 ", "11434", "x", "631"]
+                .map(String::from)
+                .into(),
+        };
+        assert_eq!(n.valid_app_ports(), vec![3000, 8080]);
+        assert_eq!(n.valid_host_ports(), vec![631, 11434]);
+        let only_zero = NetworkPerms {
+            app_ports: vec!["0".into()],
+            host_ports: vec!["0".into(), "53".into()],
+            ..n
+        };
+        assert!(only_zero.valid_app_ports().is_empty());
+        assert!(only_zero.valid_host_ports().is_empty());
+    }
+
+    /// Wildcards and versioned names of dangerous desktop services count
+    /// as dangerous (warned about, rated Dangerous, never owned), and so
+    /// does any wildcard over the portal's names; ordinary names do not.
+    #[test]
+    fn wildcards_and_versions_of_dangerous_services_are_dangerous() {
+        let none = std::collections::BTreeSet::new();
+        for bad in [
+            // Wildcards that cover a dangerous name.
+            "org.kde.*",
+            "org.kde*",
+            "org.gnome.*",
+            "org.kde.KWin.Scripting.*",
+            // Wildcards over the portal namespace.
+            "org.freedesktop.portal.*.*",
+            "org.freedesktop.portal.**",
+            // Sub-names and versioned names of dangerous services.
+            "org.gnome.Shell.Screencast",
+            "org.kde.KWin.Scripting",
+            "org.freedesktop.systemd1.Manager",
+            "org.kde.kded5",
+            "org.kde.kded6",
+            "org.kde.klauncher5",
+        ] {
+            assert!(dangerous_bus_name(bad).is_some(), "{bad}");
+            assert!(refuse_own_name(bad, &none).is_some(), "own {bad}");
+        }
+        for ok in [
+            "org.example.*",
+            "org.example.App",
+            "org.kde.kdenlive",
+            "org.kde.kdeconnect",
+        ] {
+            assert!(dangerous_bus_name(ok).is_none(), "{ok}");
+        }
+    }
+
+    /// A switched-on integration reaches the enforced bus filter: every
+    /// one of its names is allowed, next to the user's own entries, and
+    /// each name only once.
+    #[test]
+    fn switched_on_integrations_reach_the_bus_filter_once() {
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.allow = vec!["org.example.App".into()];
+        p.integrations.keyring = true;
+        p.integrations.file_manager = true;
+        let count = |b: &DbusBusPerms, n: &str| b.allow.iter().filter(|a| *a == n).count();
+        let b = p.effective_session_bus();
+        for n in [
+            "org.example.App",
+            "org.freedesktop.secrets",
+            "org.kde.kwalletd6",
+            "org.kde.kwalletd5",
+            "org.freedesktop.FileManager1",
+        ] {
+            assert_eq!(count(&b, n), 1, "{n} in {:?}", b.allow);
+        }
+        p.dbus.session.allow = vec![];
+        assert_eq!(count(&p.effective_session_bus(), "org.kde.kwalletd5"), 1);
+        p.dbus.session.allow = vec!["org.freedesktop.FileManager1".into()];
+        assert_eq!(
+            count(&p.effective_session_bus(), "org.freedesktop.FileManager1"),
+            1
+        );
     }
 
     /// A bus name the user blocks stays blocked even when a wildcard in the allowed list would match it.
@@ -1332,6 +1595,44 @@ mod tests {
         let full: PermissionSet =
             serde_json::from_str(r#"{"dbus": {"system": {"mode": "full"}}}"#).unwrap();
         assert_eq!(full.dbus.system.mode, DbusMode::Full);
+    }
+
+    /// The function and signal rules can be set by name while they are
+    /// empty, as a comma list like every other list (review F8: the saved
+    /// form leaves them out while empty, and `sam-jail set` and `group set`
+    /// refused them), and every setting of the catalogue can be set to the
+    /// value it reads.
+    #[test]
+    fn every_setting_can_be_set_by_name_also_while_left_out() {
+        for key in ["dbus.session.calls", "dbus.session.broadcasts"] {
+            let mut p = PermissionSet::strict_gui();
+            assert_eq!(p.get_key(key).unwrap(), serde_json::json!([]), "{key}");
+            p.set_key(key, "org.example.A=Foo")
+                .unwrap_or_else(|e| panic!("{key}: {e:#}"));
+            assert_eq!(
+                p.get_key(key).unwrap(),
+                serde_json::json!(["org.example.A=Foo"])
+            );
+            let mut q = PermissionSet::strict_gui();
+            q.set_key(key, "org.example.A=Foo, org.example.B=@/b")
+                .unwrap();
+            assert_eq!(
+                q.get_key(key).unwrap(),
+                serde_json::json!(["org.example.A=Foo", "org.example.B=@/b"])
+            );
+            q.set_key(key, "").unwrap();
+            assert_eq!(q.get_key(key).unwrap(), serde_json::json!([]), "{key}");
+        }
+        let p = PermissionSet::strict_gui();
+        for i in permission_catalog() {
+            let v = p
+                .get_key(i.key)
+                .unwrap_or_else(|e| panic!("{}: {e:#}", i.key));
+            let mut q = p.clone();
+            q.set_key(i.key, &v.to_string())
+                .unwrap_or_else(|e| panic!("{}: {e:#}", i.key));
+            assert_eq!(q, p, "{}", i.key);
+        }
     }
 
     /// Permissions saved as TOML load back unchanged.

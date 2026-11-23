@@ -29,9 +29,10 @@ version (tests, line coverage, timings, dependencies) is in the
 [version reports](reports/), made with `make report`.
 
 **No silent skips in CI:** a sandbox test that cannot run (no working
-Bubblewrap, no kernel headers) skips on your computer with a note, but CI
-sets `SAM_REQUIRE_SANDBOX=1`, which turns such a skip into a failure: a
-green run always tested the sandbox.
+Bubblewrap, no kernel headers) skips with a note when you start `cargo test`
+yourself, but CI, `make test` and the scripts that run the suite set
+`SAM_REQUIRE_SANDBOX=1`, which turns such a skip into a failure: a green
+run always tested the sandbox.
 
 **"Not here" is listed, never hidden:** a test that does not apply to a
 machine at all (another processor; a component SAM itself would not use,

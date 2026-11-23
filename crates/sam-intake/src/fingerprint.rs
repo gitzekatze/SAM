@@ -44,6 +44,57 @@ pub fn sha256_file(path: &Path) -> Result<String> {
     Ok(hex(&h.finalize()))
 }
 
+/// Copies `from` into the new file `to` (which must not exist and is never
+/// opened through a link) and returns the fingerprint of what was copied:
+/// the checksum of the bytes written, with the size, time and inode the
+/// file had when SAM opened it. The file is read once, so what is
+/// unpacked, checked and recorded afterwards from the copy are the same
+/// bytes, whatever another program does to `from` meanwhile (audit I-F6);
+/// a change to `from` during the copy shows later as a changed file.
+pub fn copy_with_fingerprint(from: &Path, to: &Path, mode: u32) -> Result<Fingerprint> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let src = sam_core::util::open_regular(from)
+        .with_context(|| format!("reading {}", from.display()))?;
+    let m = src.metadata()?;
+    let mut dst = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .mode(mode)
+        .open(to)
+        .with_context(|| format!("creating {}", to.display()))?;
+    let copied = (|| -> Result<String> {
+        let mut r = BufReader::with_capacity(1 << 20, src);
+        let mut h = Sha256::new();
+        let mut buf = vec![0u8; 1 << 20];
+        loop {
+            let n = r.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            h.update(&buf[..n]);
+            dst.write_all(&buf[..n])?;
+        }
+        dst.flush()?;
+        Ok(hex(&h.finalize()))
+    })();
+    let sha256 = match copied {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = fs::remove_file(to);
+            return Err(e.context(format!("copying {}", from.display())));
+        }
+    };
+    Ok(Fingerprint {
+        size: m.len(),
+        mtime: m.mtime(),
+        inode: m.ino(),
+        device: m.dev(),
+        sha256,
+    })
+}
+
 pub fn compute(path: &Path) -> Result<Fingerprint> {
     let mut fp = quick(path)?;
     fp.sha256 = sha256_file(path)?;

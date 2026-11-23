@@ -109,11 +109,16 @@ impl Paths {
         if let Some(r) = &self.runtime_root {
             return r.join(id);
         }
-        let base = std::env::var_os("XDG_RUNTIME_DIR")
-            .filter(|v| !v.is_empty())
+        self.runtime_base(std::env::var_os("XDG_RUNTIME_DIR").as_deref())
+            .join(id)
+    }
+    /// The folder of [`runtime_dir`](Self::runtime_dir)s for the runtime
+    /// folder `xdg` (`$XDG_RUNTIME_DIR`): `sam` in it, or SAM's data folder
+    /// when there is none.
+    fn runtime_base(&self, xdg: Option<&std::ffi::OsStr>) -> PathBuf {
+        xdg.filter(|v| !v.is_empty())
             .map(|v| PathBuf::from(v).join("sam"))
-            .unwrap_or_else(|| self.data_dir.join("runtime"));
-        base.join(id)
+            .unwrap_or_else(|| self.data_dir.join("runtime"))
     }
     /// The desktop file ID of SAM's menu entry for an app ("sam-<id>"). The
     /// sandboxed app's windows carry the same ID, so the taskbar finds the
@@ -236,6 +241,27 @@ mod tests {
         assert!(rooted_runtime_below(long, None)
             .to_string_lossy()
             .starts_with("/tmp/samt-"));
+    }
+
+    /// Runtime folders (sockets, the passwd file of each start) go into
+    /// the session's runtime folder when there is one, never onto the disk
+    /// or into the folder SAM was started in; only without one into SAM's
+    /// data folder.
+    #[test]
+    fn runtime_folders_go_into_the_sessions_runtime_folder() {
+        let p = Paths {
+            config_dir: "/c".into(),
+            data_dir: "/d".into(),
+            applications_dir: "/a".into(),
+            runtime_root: None,
+        };
+        let base = |x: Option<&str>| p.runtime_base(x.map(std::ffi::OsStr::new));
+        assert_eq!(
+            base(Some("/run/user/1000")),
+            Path::new("/run/user/1000/sam")
+        );
+        assert_eq!(base(Some("")), Path::new("/d/runtime"));
+        assert_eq!(base(None), Path::new("/d/runtime"));
     }
 
     /// Regression: sandboxed windows carried the app's id as their app ID

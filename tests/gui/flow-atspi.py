@@ -5,7 +5,7 @@ the chosen language. GTK 4 check and radio buttons offer no AT-SPI action,
 so the language is chosen through the setting and ticking a choice stays a
 manual check (docs/testing.md). Prints one line per check; the shell part
 checks SAM's records."""
-import sys, time
+import json, os, subprocess, sys, time
 import gi
 gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi
@@ -82,5 +82,63 @@ elif step in ("german", "english"):
     check(f"the window shows “{word}”", wait(lambda: find(app, lambda s: s == word, "button"), 30) is not None)
     title = "Sprache von SAM" if step == "german" else "Language of SAM"
     check(f"the language page is titled “{title}”", wait(lambda: find(app, lambda s: s == title)) is not None)
+elif step == "preferences":
+    # Turning a protection off for every app asks first, and Cancel keeps
+    # it on (audit G-F11: the switch wrote the setting at once).
+    def setting(key):
+        out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "config", "show"],
+                             check=False, capture_output=True, text=True).stdout.strip().splitlines()[-1]
+        d = json.loads(out)
+        d = d.get("data", d)
+        for part in key.split("."):
+            d = d[part]
+        return d
+    def is_on(n):
+        return n.get_state_set().contains(Atspi.StateType.CHECKED)
+    def switch(title):
+        # A switch row shows up as the row and as its switch; the one
+        # with an action is the one a person flips.
+        for n in walk(app, []):
+            try:
+                if (n.get_name() or "") == title and role_is(n, "switch") \
+                        and n.get_action_iface() is not None and n.get_action_iface().get_n_actions() > 0:
+                    return n
+            except Exception:  # noqa: S110 -- an element that vanished while walking; one not found fails the check
+                pass
+    ll = wait(lambda: switch("Landlock write protection"), 30)
+    check("the Landlock switch is on the page and on", ll is not None and is_on(ll))
+    if ll:
+        press(ll)
+        turn_off = wait(lambda: find(app, lambda s: s == "Turn Off", "button"))
+        check("turning Landlock off for every app asks first",
+              turn_off is not None and find(app, lambda s: s == "Turn Off Landlock for Every App?") is not None)
+        cancel = find(app, lambda s: s == "Cancel", "button")
+        if cancel:
+            press(cancel)
+        # The switch goes back once the answer is in; only then is a
+        # save that Cancel should have stopped finished too.
+        check("…after Cancel the switch shows it on", wait(lambda: is_on(ll)) is True)
+        check("…and Landlock stays on", setting("security.experimental_landlock") is True)
+        press(ll)
+        turn_off = wait(lambda: find(app, lambda s: s == "Turn Off", "button"))
+        if turn_off:
+            press(turn_off)
+        check("…after Turn Off it is off", wait(lambda: setting("security.experimental_landlock") is False) is True)
+    # A save that fails leaves the switch where the setting is (audit
+    # G-F15: it kept the new position although nothing was saved).
+    sc = switch("Check the sandbox before each start")
+    check("the start check switch is on the page and off", sc is not None and not is_on(sc))
+    if sc:
+        cfg = os.environ["SAM_CONFIG_DIR"]
+        os.chmod(cfg, 0o555)
+        try:
+            press(sc)
+            # The window reports the refused write; the switch then goes
+            # back once the stored settings are read again.
+            check("…the save fails and the window says so", wait(lambda: find(app, lambda s: "os error 13" in s)) is not None)
+            check("…a failed save leaves it off", setting("security.check_before_launch") is False)
+            check("…and the switch shows it off", wait(lambda: not is_on(sc)) is True)
+        finally:
+            os.chmod(cfg, 0o755)
 print("RESULT " + ("pass" if ok else "fail"))
 sys.exit(0 if ok else 1)

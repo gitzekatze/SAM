@@ -46,11 +46,26 @@ pub struct LaunchOptions {
     /// This is SAM's one automatic restart after the app was refused a
     /// bus name it may now own; never restart again.
     pub name_retry: bool,
+    /// Called at once, while the app runs, when this start lacks a
+    /// protection layer its settings ask for (app id, app name, the missing
+    /// layers): a start from the menu has no terminal for the warning, and
+    /// the app may run for hours (review K-4).
+    pub on_missing_layers: Option<MissingLayersHook>,
 }
+
+/// See [`LaunchOptions::on_missing_layers`].
+pub type MissingLayersHook = fn(&str, &str, &[String]);
 
 /// Everything needed to start a sandbox, plus the explanation for the user.
 /// Left in a launch's runtime folder by `Sam::stop` before it signals the app.
 pub const STOP_MARKER: &str = "stop-requested";
+/// In a launch's runtime folder: the process id of the program the launcher
+/// started (Bubblewrap, or pasta with "This computer only"). `Sam::stop`
+/// asks only the processes below it to quit (`ops::ask_to_quit`).
+pub const SANDBOX_PID: &str = "sandbox-pid";
+/// In SAM's data folder: what an app left in places that make the computer
+/// run something, moved aside (one folder per app and start).
+const MOVED_ASIDE: &str = "moved-aside";
 
 pub struct Prepared {
     pub sandbox: SandboxInfo,
@@ -63,6 +78,11 @@ pub struct Prepared {
     /// helper they cannot be): what a start is checked against.
     pub wanted_landlock: bool,
     pub wanted_seccomp: bool,
+    /// The start relies on Landlock's fence around abstract sockets: the
+    /// app shares the host's network namespace, where the X server's and
+    /// other abstract sockets of the desktop live, and the kernel has the
+    /// fence (Linux 6.12, Landlock ABI 6). Checked like a layer (review K-1).
+    pub wanted_fence: bool,
     /// How the app's terminal is handled (see `pty`).
     pub terminal: TerminalMode,
     proxy: Option<DbusProxy>,
@@ -76,6 +96,13 @@ pub struct Prepared {
     /// The writable home's protected places before the start (full home
     /// read/write); looked at again when the app has ended.
     pub home_watch: Option<sam_sandbox::HomeWatch>,
+    /// The same, kept on disk while the launch runs (`home_shared`).
+    home_record: Option<crate::home_shared::Registration>,
+    /// Where what the app leaves in those places is moved.
+    home_aside: PathBuf,
+    /// What another running app had left in those places, moved aside
+    /// before this start.
+    moved_at_start: Vec<sam_sandbox::MovedAside>,
     wayland: Option<crate::wayland_ctx::WaylandContext>,
     /// Room service for this start, if the app has it.
     rooms: Option<crate::room_service::RoomService>,
@@ -126,6 +153,11 @@ pub struct CommandPreview {
     pub landlock: bool,
     pub seccomp: bool,
     pub dbus_proxy: Option<Vec<String>>,
+    /// The app's own variables when SAM's helper sets them for the app,
+    /// once its layers are in place: they are then not in `argv` (review
+    /// SB-5), and a preview without them would hide what the app gets.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub app_variables: Vec<(String, String)>,
 }
 
 impl Prepared {
@@ -142,6 +174,7 @@ impl Prepared {
             landlock: self.landlock,
             seccomp: self.seccomp,
             dbus_proxy: self.proxy.as_ref().map(|p| p.args.clone()),
+            app_variables: self.command.exec_env.clone(),
         }
     }
 }
@@ -216,6 +249,22 @@ fn wanted_layers(
     let seccomp = (cfg.security.baseline_seccomp && perms.advanced.seccomp_baseline)
         || perms.advanced.seccomp_strict;
     (landlock, seccomp)
+}
+
+/// The syscall filter for a start of `app`: its switches, and whether the
+/// program it starts is 32-bit, whose 32-bit calls the filter then takes
+/// instead of ending the app (review K-3).
+fn seccomp_spec(app: &AppEntry) -> kernel::SeccompSpec {
+    let perms = &app.profile.permissions;
+    kernel::SeccompSpec {
+        strict: perms.advanced.seccomp_strict,
+        allow_userns: perms.advanced.allow_userns,
+        bluetooth: perms.devices.bluetooth,
+        i386: app
+            .detection
+            .as_ref()
+            .is_some_and(sam_core::DependencyReport::starts_32_bit_program),
+    }
 }
 
 /// Environment checks before launching. Returns blocking errors
@@ -342,7 +391,6 @@ pub fn prepare(
     };
     let mut app_env: Vec<(String, String)> = vec![
         ("APPDIR".into(), "@APPDIR@".into()),
-        ("OWD".into(), owd.display().to_string()),
         (
             "ARGV0".into(),
             app.source_path
@@ -388,9 +436,7 @@ pub fn prepare(
         sound_socket: None,
         wayland_socket: None,
         helper: None,
-        seccomp_fd: None,
         own_terminal: terminal != TerminalMode::None,
-        compatibility_mode: app.profile.compatibility_mode,
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
         appdir_overlay: None,
@@ -399,8 +445,20 @@ pub fn prepare(
             paths.data_dir.clone(),
             paths.extracted_root(&cfg.extraction.location),
         ],
+        sam_programs: sam_core::util::own_programs(),
         room_socket: None,
     };
+    // The folders that hold apps' data are for this user only, also when
+    // an older SAM made them readable for everyone (review F4).
+    for d in [
+        paths.homes_dir(),
+        paths.overlays_dir(),
+        paths.data_dir.join(MOVED_ASIDE),
+    ] {
+        if d.is_dir() {
+            let _ = sam_core::util::private_dirs(&paths.data_dir, &d);
+        }
+    }
     if perms.advanced.writable_appdir && !sam_core::host::bwrap_supports_overlay() {
         warnings.push(Warning::warn(
             "writable-appdir-unavailable",
@@ -420,13 +478,16 @@ pub fn prepare(
         ));
     } else if perms.advanced.writable_appdir {
         let base = paths.overlays_dir().join(&app.id);
+        // Its own layers inside stay as made: the upper one is the app
+        // folder's top as the app sees it.
+        sam_core::util::private_dirs(&paths.data_dir, &base)?;
         fs::create_dir_all(base.join("upper"))?;
         fs::create_dir_all(base.join("work"))?;
         ctx.appdir_overlay = Some(base);
     }
 
     if perms.advanced.persistent_home {
-        fs::create_dir_all(&ctx.private_home).with_context(|| {
+        sam_core::util::private_dirs(&paths.data_dir, &ctx.private_home).with_context(|| {
             sam_core::i18n::trf(
                 "creating the private home {folder}",
                 &[("folder", &ctx.private_home.display())],
@@ -439,15 +500,56 @@ pub fn prepare(
     let mut wayland = None;
     let mut wayland_context_failed = false;
     let home_watch;
+    let mut home_record = None;
+    let mut moved_at_start = Vec::new();
+    let home_aside = paths
+        .data_dir
+        .join(MOVED_ASIDE)
+        .join(&app.id)
+        .join(now().to_string());
     let mut landlock = false;
     let mut seccomp = false;
+    // SAM's helper's file, written once the sandbox is built (it holds the
+    // app's own variables from the build).
+    let mut helper_spec: Option<kernel::SandboxSpec> = None;
     let wanted_landlock: bool;
     let wanted_seccomp: bool;
     {
         sam_sandbox::write_identity_files(&ctx)?;
+        // Launches that can write start places take turns here: each takes
+        // over what the running ones saw at their start and keeps its own
+        // record on disk (`home_shared`, review 2026-11-23 F1 and F2).
+        let shared = if sam_sandbox::writes_start_places(&ctx) {
+            // What is moved aside comes from the person's home: for them
+            // only (review F4).
+            let _ =
+                sam_core::util::private_dirs(&paths.data_dir, &paths.data_dir.join(MOVED_ASIDE));
+            Some(crate::home_shared::Shared::open(paths)?)
+        } else {
+            None
+        };
+        let others = shared
+            .as_ref()
+            .map(crate::home_shared::Shared::running)
+            .unwrap_or_default();
         sam_sandbox::prepare_home_protection(&ctx);
         // After the folders above are made, so they do not count as new.
-        home_watch = sam_sandbox::HomeWatch::before(&ctx);
+        home_watch = sam_sandbox::HomeWatch::before_alongside(&ctx, &others);
+        if let (Some(s), Some(w)) = (&shared, &home_watch) {
+            let name = format!(
+                "{}-{}",
+                runtime_dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                app.id
+            );
+            home_record = Some(s.register(&name, w, &home_aside)?);
+            // What a running app planted in a place this launch takes over
+            // as empty, or in place of a link, goes before this one starts.
+            moved_at_start = w.settle(&home_aside);
+        }
+        drop(shared);
         if perms.dbus.session.mode == DbusMode::Filtered
             && host.tools.xdg_dbus_proxy.is_some()
             && host.sockets.dbus_session.is_some()
@@ -477,7 +579,9 @@ pub fn prepare(
                     }
                 }
             });
-            match DbusProxy::start(host, &bus, &runtime_dir, &app.id) {
+            match DbusProxy::start(host, &bus, &runtime_dir, &app.id, &|n| {
+                check.refused(n).is_none()
+            }) {
                 Ok(p) => {
                     ctx.dbus_proxy_socket = Some(p.socket.clone());
                     for (name, why) in &p.refused {
@@ -539,7 +643,6 @@ pub fn prepare(
         }
         // Landlock and seccomp are applied by SAM's helper inside the sandbox.
         let (want_landlock, want_seccomp) = wanted_layers(perms, cfg, host);
-        let strict = perms.advanced.seccomp_strict;
         wanted_landlock = want_landlock;
         wanted_seccomp = want_seccomp;
         // Room service needs SAM's helper in the sandbox (its stand-in for
@@ -562,18 +665,14 @@ pub fn prepare(
                                 &launch_writable_paths(&ctx),
                             )
                         }),
-                        seccomp: want_seccomp.then_some(kernel::SeccompSpec {
-                            strict,
-                            allow_userns: perms.advanced.allow_userns,
-                            bluetooth: perms.devices.bluetooth,
-                        }),
+                        seccomp: want_seccomp.then(|| seccomp_spec(app)),
                         probe: opts.probe.clone(),
+                        env: Vec::new(),
                     };
-                    let spec_path = runtime_dir.join("sandbox.json");
-                    fs::write(&spec_path, serde_json::to_vec_pretty(&spec)?)?;
+                    helper_spec = Some(spec);
                     ctx.helper = Some(sam_core::sandbox::SandboxHelper {
                         binary: helper,
-                        spec: spec_path,
+                        spec: runtime_dir.join("sandbox.json"),
                     });
                     landlock = want_landlock;
                     seccomp = want_seccomp;
@@ -626,6 +725,10 @@ pub fn prepare(
         }
     }
     let mut command = sam_sandbox::Bubblewrap.build(&ctx)?;
+    if let (Some(mut spec), Some(helper)) = (helper_spec, &ctx.helper) {
+        spec.env = command.exec_env.clone();
+        fs::write(&helper.spec, serde_json::to_vec_pretty(&spec)?)?;
+    }
     let rooms = rooms.map(|(mut service, bwrap)| {
         let plan = crate::room_rules::FloorPlan::from_bwrap_args(&command.args);
         let room_ctx = crate::room_service::RoomContext {
@@ -644,6 +747,9 @@ pub fn prepare(
                 strict: perms.advanced.seccomp_strict,
                 allow_userns: false,
                 bluetooth: perms.devices.bluetooth,
+                // A room's program gets no 32-bit branch: a 32-bit call
+                // there ends it, never passes unfiltered.
+                i386: false,
             },
         };
         match plan {
@@ -688,12 +794,18 @@ pub fn prepare(
         seccomp,
         wanted_landlock,
         wanted_seccomp,
+        wanted_fence: wanted_landlock
+            && perms.network.mode == sam_core::permissions::NetworkMode::Full
+            && host.landlock_abi.is_some_and(|v| v >= 6),
         terminal,
         proxy,
         sound,
         wayland_context,
         wayland_context_failed,
         home_watch,
+        home_record,
+        home_aside,
+        moved_at_start,
         wayland,
         rooms,
         _runtime: runtime_guard,
@@ -819,7 +931,11 @@ pub fn run(
     paths: &Paths,
     host: &HostInfo,
 ) -> Result<LaunchRecord> {
-    let rec = run_once(app, opts, cfg, paths, host)?;
+    // What this start has told about missing layers: the restart below
+    // tells it again only when it lacks something more, so a start from
+    // the menu shows its notification once.
+    let told = Arc::new(Mutex::new(Vec::new()));
+    let rec = run_once(app, opts, cfg, paths, host, &told)?;
     // Refused a name it may now own and did not run: one restart, at once,
     // so the person does not have to start it again (option D). After the
     // first start has ended and given back its folder and lock.
@@ -837,18 +953,20 @@ pub fn run(
             name_retry: true,
             ..opts.clone()
         };
-        return run_once(app, &again, cfg, paths, host);
+        return run_once(app, &again, cfg, paths, host, &told);
     }
     Ok(rec)
 }
 
-/// One start of the app: prepare, run, judge, record.
+/// One start of the app: prepare, run, judge, record. `told` holds the
+/// missing layers already told for this start (by an earlier try).
 fn run_once(
     app: &mut AppEntry,
     opts: &LaunchOptions,
     cfg: &Config,
     paths: &Paths,
     host: &HostInfo,
+    told: &Arc<Mutex<Vec<String>>>,
 ) -> Result<LaunchRecord> {
     let logs = Logs::new(paths);
     let (log_path, mut log) = logs.create(
@@ -953,23 +1071,16 @@ fn run_once(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     }
-    if prepared.command.clear_env {
-        cmd.env_clear();
-    }
-    for (k, v) in &prepared.command.env {
-        cmd.env(k, v);
-    }
     cmd.current_dir(&host.home);
     // Held until this launch is over: `Sam::running` sees the app as running.
     let _running = hold_lock(&prepared.context.runtime_dir.join("running.lock"))?;
     // What the app leaves in places that make the computer run something is
     // moved aside while it runs (Linux reports each change), and once more
     // after it ends.
-    let aside = paths
-        .data_dir
-        .join("moved-aside")
-        .join(&app.id)
-        .join(started_at.to_string());
+    let aside = prepared.home_aside.clone();
+    if let Some(r) = prepared.home_record.as_mut() {
+        r.arm(&log_path);
+    }
     let (live_watch, watch_warning) = match prepared.home_watch.as_ref() {
         Some(w) => crate::home_live::LiveWatch::start(w, aside.clone()),
         None => (None, None),
@@ -987,15 +1098,15 @@ fn run_once(
         .spawn()
         .with_context(|| format!("starting {}", prepared.command.program.display()));
     // Close our copies of the write ends so the readers see EOF.
-    for fd in channels
-        .close_after_spawn
-        .iter()
-        .chain(prepared.context.seccomp_fd.as_ref())
-    {
+    for fd in channels.close_after_spawn.iter() {
         // SAFETY: the descriptor belongs to this launch and is closed exactly once here.
         unsafe { libc::close(*fd) };
     }
     let mut child = spawned?;
+    let _ = fs::write(
+        prepared.context.runtime_dir.join(SANDBOX_PID),
+        child.id().to_string(),
+    );
     // `cmd` holds copies of the app's terminal: without them, the relay
     // sees when the app's side is closed.
     drop(cmd);
@@ -1003,9 +1114,46 @@ fn run_once(
     let bwrap_status_reader = channels
         .bwrap_status
         .map(|r| read_fd_in_thread(r, child_done.clone()));
-    let helper_status_reader = channels
-        .helper_status
-        .map(|r| read_fd_in_thread(r, child_done.clone()));
+    // What the start lacks is told as soon as it is known: at once without
+    // a report from SAM's helper, else when the helper has reported (right
+    // before the app starts). A helper that never reported has not started
+    // the app, which the start's failure says.
+    let tell = opts
+        .on_missing_layers
+        .map(|f| (f, app.id.clone(), app.display_name().to_string()));
+    let asked = (
+        prepared.wanted_landlock,
+        prepared.wanted_seccomp,
+        prepared.wanted_fence,
+        prepared.wayland_context_failed,
+    );
+    let told = told.clone();
+    let tell_missing = move |report: Option<&str>| {
+        if let Some((f, id, name)) = &tell {
+            let missing = layers_missing(report, asked.0, asked.1, asked.2, asked.3);
+            let mut told = told.lock().unwrap_or_else(|e| e.into_inner());
+            if missing.iter().any(|m| !told.contains(m)) {
+                f(id, name, &missing);
+                told.extend(missing);
+            }
+        }
+    };
+    let helper_status_reader = match channels.helper_status {
+        Some(r) => {
+            let reader = read_fd_in_thread(r, child_done.clone());
+            Some(std::thread::spawn(move || {
+                let report = reader.join().unwrap_or_default();
+                if !report.trim().is_empty() {
+                    tell_missing(Some(report.trim()));
+                }
+                report
+            }))
+        }
+        None => {
+            tell_missing(None);
+            None
+        }
+    };
 
     // Collect its output while it runs. The first part of each stream:
     // stderr decides whether the sandbox failed; both are searched for known
@@ -1055,7 +1203,8 @@ fn run_once(
     let (status, timed_out) = wait_until(
         &mut child,
         opts.timeout_secs,
-        (mode == TerminalMode::None).then_some(prepared.context.runtime_dir.as_path()),
+        &prepared.context.runtime_dir,
+        mode,
     )?;
     child_done.store(true, std::sync::atomic::Ordering::SeqCst);
     // Every room ends with the app's start, before SAM waits for the app's
@@ -1113,31 +1262,15 @@ fn run_once(
     // What the app left in places that make the computer run something:
     // moved aside before anything can act on it. The live watch caught what
     // appeared while it ran; one last look now catches the rest.
-    let mut found = live_watch.map(|l| l.finish()).unwrap_or_default();
+    let mut found = std::mem::take(&mut prepared.moved_at_start);
+    found.extend(live_watch.map(|l| l.finish()).unwrap_or_default());
     if let Some(w) = &prepared.home_watch {
         found.extend(w.settle(&aside));
     }
-    let moved: Vec<String> = found
-        .into_iter()
-        .map(|m| {
-            let to = sam_core::util::tildify(&m.to);
-            match m.how {
-                sam_sandbox::Aside::Moved => format!("~/{} → {to}", m.place),
-                sam_sandbox::Aside::Renamed => sam_core::i18n::trf(
-                    "~/{place} → {to} (renamed in place: SAM's folder could not take it)",
-                    &[("place", &m.place), ("to", &to)],
-                ),
-                sam_sandbox::Aside::Deleted => sam_core::i18n::trf(
-                    "~/{place}: deleted (it could not be moved)",
-                    &[("place", &m.place)],
-                ),
-                sam_sandbox::Aside::Failed => sam_core::i18n::trf(
-                    "~/{place}: COULD NOT BE REMOVED; it may run outside the sandbox: remove it yourself",
-                    &[("place", &m.place)],
-                ),
-            }
-        })
-        .collect();
+    if let Some(r) = prepared.home_record.take() {
+        r.finish();
+    }
+    let moved: Vec<String> = found.iter().map(describe_moved).collect();
     // Best effort: a full disk (which the app may have caused on purpose)
     // must not stop the record below, with what the start was missing and
     // what was moved aside, from being saved (regression, audit L-F5).
@@ -1207,6 +1340,7 @@ fn run_once(
             enforcement.as_deref(),
             prepared.wanted_landlock,
             prepared.wanted_seccomp,
+            prepared.wanted_fence,
             prepared.wayland_context_failed,
         ),
         moved_aside: moved,
@@ -1370,6 +1504,29 @@ fn write_log_header(log: &mut fs::File, prepared: &Prepared) -> Result<()> {
         "# command: {}",
         prepared.command.display_hiding(&given)
     )?;
+    if !prepared.command.exec_env.is_empty() {
+        let shown: Vec<String> = prepared
+            .command
+            .exec_env
+            .iter()
+            .map(|(k, v)| {
+                let v = if given.contains(&k.as_str()) {
+                    "<hidden>"
+                } else {
+                    v.as_str()
+                };
+                shell_join([format!("{k}={v}")])
+            })
+            .collect();
+        writeln!(
+            log,
+            "# {}",
+            sam_core::i18n::trf(
+                "set by SAM's helper for the app, after its layers: {variables}",
+                &[("variables", &shown.join(" "))]
+            )
+        )?;
+    }
     writeln!(log, "# ---- output ----")?;
     log.flush()?;
     Ok(())
@@ -1443,8 +1600,16 @@ impl StatusChannels {
 /// The kernel layers a start asked for but did not get, judged from what
 /// SAM's helper reported from inside the sandbox. No report while layers
 /// were wanted means none of them was applied (the helper did not run).
-/// A partly enforced Landlock (an older kernel) counts as applied.
-pub fn missing_layers(enforcement: Option<&str>, landlock: bool, seccomp: bool) -> Vec<String> {
+/// A partly enforced Landlock (an older kernel) counts as applied. `fence`:
+/// the start relies on Landlock's abstract-socket fence (see
+/// [`Prepared::wanted_fence`]), which then must be reported in place on
+/// its own (review K-1: "partially enforced" hid that it was not).
+pub fn missing_layers(
+    enforcement: Option<&str>,
+    landlock: bool,
+    seccomp: bool,
+    fence: bool,
+) -> Vec<String> {
     let report = enforcement.unwrap_or("");
     let mut missing = Vec::new();
     if landlock
@@ -1452,6 +1617,8 @@ pub fn missing_layers(enforcement: Option<&str>, landlock: bool, seccomp: bool) 
             || report.contains("landlock: partially enforced"))
     {
         missing.push("Landlock".to_string());
+    } else if landlock && fence && !report.contains(crate::kernel::ABSTRACT_SCOPED) {
+        missing.push("Landlock socket fence".to_string());
     }
     if seccomp && !report.contains("seccomp: ") {
         missing.push("seccomp".to_string());
@@ -1466,9 +1633,10 @@ pub fn layers_missing(
     enforcement: Option<&str>,
     landlock: bool,
     seccomp: bool,
+    fence: bool,
     wayland_failed: bool,
 ) -> Vec<String> {
-    let mut m = missing_layers(enforcement, landlock, seccomp);
+    let mut m = missing_layers(enforcement, landlock, seccomp, fence);
     if wayland_failed {
         m.push("Wayland security context".to_string());
     }
@@ -1515,8 +1683,12 @@ fn with_status_options(
     let mut args = vec!["--json-status-fd".to_string(), status_fd.to_string()];
     args.extend(bwrap_args.iter().cloned());
     if let Some(hw) = helper_fd {
-        // After --clearenv: right before bwrap's "--" separator.
-        let sep = args.iter().position(|a| a == "--").unwrap_or(args.len());
+        // After --clearenv: right before bwrap's own "--" separator, found
+        // the way Bubblewrap reads its options, so an option's value that
+        // reads "--" is never taken for it (review F5).
+        let sep = crate::room_rules::options_end(&args)
+            .or_else(|| args.iter().position(|a| a == "--"))
+            .unwrap_or(args.len());
         args.splice(
             sep..sep,
             [
@@ -1643,20 +1815,48 @@ fn for_terminal(filter: Option<&mut pty::OutputFilter>, piece: &[u8]) -> Vec<u8>
     }
 }
 
-/// Waits for the child; with a time limit, ends it when the time is up
-/// (a test start or diagnostic run). Returns whether SAM ended it.
+/// One line for something moved out of a start place: where it went, or
+/// that it could not be removed.
+pub(crate) fn describe_moved(m: &sam_sandbox::MovedAside) -> String {
+    let to = sam_core::util::tildify(&m.to);
+    match m.how {
+        sam_sandbox::Aside::Moved => format!("~/{} → {to}", m.place),
+        sam_sandbox::Aside::Renamed => sam_core::i18n::trf(
+            "~/{place} → {to} (renamed in place: SAM's folder could not take it)",
+            &[("place", &m.place), ("to", &to)],
+        ),
+        sam_sandbox::Aside::Deleted => sam_core::i18n::trf(
+            "~/{place}: deleted (it could not be moved)",
+            &[("place", &m.place)],
+        ),
+        sam_sandbox::Aside::Failed => sam_core::i18n::trf(
+            "~/{place}: COULD NOT BE REMOVED; it may run outside the sandbox: remove it yourself",
+            &[("place", &m.place)],
+        ),
+    }
+}
+
 /// How long an app asked to quit (SIGTERM) may take before its sandbox is
 /// ended.
-const QUIT_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+pub const QUIT_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Waits for the sandbox to end. After `timeout_secs` it is ended and
-/// reported as timed out. With `runtime_dir` (a launch without SAM's
-/// terminal relay), SIGTERM or SIGHUP to SAM asks the app to quit, marks the
-/// launch as closed and ends the sandbox after [`QUIT_GRACE`].
+/// reported as timed out. Without SAM's terminal relay (`mode` None),
+/// SIGTERM or SIGHUP to SAM asks the app to quit, marks the launch as
+/// closed and ends the sandbox after [`QUIT_GRACE`]. With the relay, the
+/// relay hangs up the app's terminal instead.
+///
+/// When `Sam::stop` had asked the app already (its [`STOP_MARKER`]), the
+/// grace time runs from then, not again from now: `stop` signals the
+/// launcher only once that time is over, and before, the launcher began a
+/// new 10 seconds that `stop` cut short with SIGKILL 3 seconds later. The
+/// last look at the start places, the record and the end of the log never
+/// came (review 2026-11-23 F2).
 fn wait_until(
     child: &mut std::process::Child,
     timeout_secs: Option<u64>,
-    runtime_dir: Option<&Path>,
+    runtime_dir: &Path,
+    mode: TerminalMode,
 ) -> Result<(std::process::ExitStatus, bool)> {
     let start = std::time::Instant::now();
     let deadline = timeout_secs.map(|s| start + std::time::Duration::from_secs(s));
@@ -1665,11 +1865,25 @@ fn wait_until(
         if let Some(st) = child.try_wait()? {
             return Ok((st, false));
         }
-        if let (Some(dir), None) = (runtime_dir, asked) {
-            if pty::end_requested() {
-                let _ = fs::write(dir.join(STOP_MARKER), b"");
-                crate::ops::ask_to_quit(std::process::id());
-                asked = Some(std::time::Instant::now());
+        if asked.is_none() && mode != TerminalMode::Headless && pty::end_requested() {
+            let marker = runtime_dir.join(STOP_MARKER);
+            // When `Sam::stop` asked the app to quit.
+            let stop_asked = fs::metadata(&marker)
+                .and_then(|m| m.modified())
+                .ok()
+                .map(|t| t.elapsed().unwrap_or_default())
+                .and_then(|age| std::time::Instant::now().checked_sub(age));
+            if mode == TerminalMode::None {
+                if stop_asked.is_none() {
+                    let _ = fs::write(&marker, b"");
+                }
+                // Asked (again) only while the app still has time to save.
+                if stop_asked.is_none_or(|t| t.elapsed() < QUIT_GRACE) {
+                    crate::ops::ask_to_quit(std::process::id(), child.id());
+                }
+                asked = Some(stop_asked.unwrap_or_else(std::time::Instant::now));
+            } else {
+                asked = stop_asked;
             }
         }
         if asked.is_some_and(|t| t.elapsed() > QUIT_GRACE) {
@@ -2053,19 +2267,45 @@ mod log_limit_tests {
 mod pasta_status_tests {
     use super::*;
 
+    /// Review K-1: a start that relies on Landlock's abstract-socket fence
+    /// (it shares the host's network, the kernel has the fence) counts it
+    /// as missing unless the helper reported it in place, also when
+    /// Landlock itself reads "fully enforced" (a helper too old to report
+    /// it). One that does not rely on it is not warned about.
+    #[test]
+    fn a_missing_socket_fence_is_reported_when_the_start_relies_on_it() {
+        let fenced = "landlock: fully enforced; abstract sockets: scoped; seccomp: baseline loaded";
+        let unfenced = "landlock: partially enforced; abstract sockets: NOT scoped (needs Linux 6.12); seccomp: baseline loaded";
+        let unreported = "landlock: fully enforced; seccomp: baseline loaded";
+        assert!(missing_layers(Some(fenced), true, true, true).is_empty());
+        for report in [unfenced, unreported] {
+            assert_eq!(
+                missing_layers(Some(report), true, true, true),
+                vec!["Landlock socket fence"],
+                "{report}"
+            );
+            assert!(
+                missing_layers(Some(report), true, true, false).is_empty(),
+                "not relied on: {report}"
+            );
+        }
+    }
+
     #[test]
     fn a_wanted_layer_that_was_not_applied_is_reported_missing() {
         let full = "landlock: fully enforced; seccomp: baseline loaded";
-        assert!(missing_layers(Some(full), true, true).is_empty());
+        assert!(missing_layers(Some(full), true, true, false).is_empty());
         assert!(missing_layers(
             Some("landlock: partially enforced; seccomp: strict loaded"),
             true,
-            true
+            true,
+            false
         )
         .is_empty());
         assert_eq!(
             missing_layers(
                 Some("landlock: NOT applied (no kernel support); seccomp: baseline loaded"),
+                true,
                 true,
                 true
             ),
@@ -2073,17 +2313,17 @@ mod pasta_status_tests {
         );
         // No report at all: the helper did not run, nothing was applied.
         assert_eq!(
-            missing_layers(None, true, true),
+            missing_layers(None, true, true, false),
             vec!["Landlock", "seccomp"]
         );
         // Layers that were not asked for are never missing.
-        assert!(missing_layers(None, false, false).is_empty());
+        assert!(missing_layers(None, false, false, false).is_empty());
         // A Wayland security context that could not be made is missing too.
         assert_eq!(
-            layers_missing(Some(full), true, true, true),
+            layers_missing(Some(full), true, true, false, true),
             vec!["Wayland security context"]
         );
-        assert!(layers_missing(Some(full), true, true, false).is_empty());
+        assert!(layers_missing(Some(full), true, true, false, false).is_empty());
     }
 
     fn v(a: &[&str]) -> Vec<String> {
@@ -2110,6 +2350,63 @@ mod pasta_status_tests {
         assert_eq!(out[7], "", "no helper pipe");
         assert_eq!(out[8], "bwrap");
         assert!(out[9..].contains(&"--unshare-all".to_string()));
+    }
+
+    /// Review F5: the helper's status channel goes right before
+    /// Bubblewrap's own separator, never into an option whose value reads
+    /// `--` (an AppImage file called `--`, a variable set to it), and the
+    /// helper's own `--` after the separator stays where it is.
+    #[test]
+    fn the_status_channel_goes_before_bubblewraps_own_separator() {
+        let bwrap = v(&[
+            "--clearenv",
+            "--setenv",
+            "ARGV0",
+            "--",
+            "--setenv",
+            "TERM",
+            "--",
+            "--chdir",
+            "/home/u",
+            "--",
+            "/run/sam/sam-jail-run",
+            "--sandbox-exec",
+            "/run/sam/sandbox.json",
+            "--",
+            "/opt/app/AppRun",
+        ]);
+        let out = with_status_options(&bwrap, 3, Some(4));
+        assert_eq!(&out[..2], &v(&["--json-status-fd", "3"]));
+        assert_eq!(
+            &out[2..],
+            &v(&[
+                "--clearenv",
+                "--setenv",
+                "ARGV0",
+                "--",
+                "--setenv",
+                "TERM",
+                "--",
+                "--chdir",
+                "/home/u",
+                "--setenv",
+                "SAM_STATUS_FD",
+                "4",
+                "--",
+                "/run/sam/sam-jail-run",
+                "--sandbox-exec",
+                "/run/sam/sandbox.json",
+                "--",
+                "/opt/app/AppRun",
+            ])[..]
+        );
+        // Bubblewrap ends its options at the first word that is not one.
+        assert_eq!(
+            crate::room_rules::options_end(&v(&["--die-with-parent", "app", "--"])),
+            Some(1)
+        );
+        // An option without its values is no end at all.
+        assert_eq!(crate::room_rules::options_end(&v(&["--setenv", "A"])), None);
     }
 }
 
@@ -2205,6 +2502,28 @@ mod tests {
             !wanted_layers(&p, &cfg, &host).1,
             "the baseline off for this app"
         );
+    }
+
+    /// A 32-bit start program gets the filter's 32-bit part (review K-3);
+    /// a script among 32-bit files, or an app nobody analyzed, does not.
+    #[test]
+    fn a_32_bit_start_program_gets_the_filters_32_bit_part() {
+        let app = |arch: &str, script: bool| AppEntry {
+            detection: Some(sam_core::DependencyReport {
+                arch: arch.into(),
+                entry_is_script: script,
+                entry_binary: Some("usr/bin/game".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(seccomp_spec(&app("i686", false)).i386);
+        assert!(!seccomp_spec(&app("i686", true)).i386, "a script");
+        assert!(
+            !seccomp_spec(&app("x86_64", false)).i386,
+            "a 64-bit program"
+        );
+        assert!(!seccomp_spec(&AppEntry::default()).i386, "not analyzed");
     }
 
     /// Without Bubblewrap, starting an app stops while it is being prepared,

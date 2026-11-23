@@ -335,3 +335,18 @@ fn one_damaged_appimage_does_not_stop_the_list() {
         "{names:?}"
     );
 }
+
+/// The window's first-run guide is shown until it is marked done, and
+/// again after a reset: the mark is kept in SAM's settings folder.
+#[test]
+fn the_first_run_guide_is_marked_done_and_reset() {
+    let env = Env::new();
+    let marker = env.tmp.path().join("config/.onboarding-done");
+    assert_eq!(env.json(&["onboarding"], None)["done"], false);
+    assert_eq!(env.json(&["onboarding", "done"], None)["done"], true);
+    assert!(marker.is_file(), "{}", marker.display());
+    assert_eq!(env.json(&["onboarding"], None)["done"], true, "stays done");
+    assert_eq!(env.json(&["onboarding", "reset"], None)["done"], false);
+    assert!(!marker.exists());
+    assert_eq!(env.json(&["onboarding"], None)["done"], false);
+}

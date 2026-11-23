@@ -65,9 +65,16 @@ All of them run in CI and block a merge when they fail:
   check, the test environment and the builder of hostile test AppImages
   need the owner too: a change there
   could empty every proof while all checks stay green.
-- **Workflow safety** (`scripts/workflow-check.py`): no workflow runs a
-  pull request's code with the repository's secrets, and no text from
-  issues or pull requests goes straight into a shell command.
+- **Workflow rules** (`scripts/workflow-check.py`, in the required test
+  job): no workflow runs a pull request's code with the repository's
+  secrets; no text from issues or pull requests, no input, step output or
+  computed matrix value goes straight into a shell command; every action is
+  pinned to a full commit and no checkout keeps its token; workflows are
+  read-only by default and only listed jobs may write; every download is
+  checked against a fixed checksum; every shell and Python file is linted;
+  every document the code reads counts as code in CI's change filter; and
+  every `cargo test` a workflow, script or the Makefile runs fails instead
+  of skipping where it cannot build a sandbox (`SAM_REQUIRE_SANDBOX=1`).
 
 A weakening, a protected test with a line removed or changed (adding to it
 is fine), or a new dependency passes only when the owner sets the label
@@ -91,6 +98,13 @@ marked as needing the owner, but it is the rewritten workflow that says
 so. Closing this needs the workflow to run from the base branch
 (`pull_request_target`), which the owner switches on together with the
 required-check setting.
+
+A second one is a race: right after a push, the label is still on the pull
+request until the small job takes it off (seconds), and setting or removing
+*another* label in that moment makes a run that still sees
+`owner-approved`. Its workflow-wide `cancel-in-progress` can even cancel the
+job that takes the label off. Closing it is also the owner's decision (the
+label would count only when it is itself the label just set).
 
 ## Where the rules live
 

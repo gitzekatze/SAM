@@ -262,8 +262,11 @@ impl Editor {
             if let Some(rv) = util::get(rec, key) {
                 if !rv.is_object() && !rv.is_array() && *rv != self.value(key) {
                     s.push_str(&format!(
-                        "\n<i>SAM recommends: {}</i>",
-                        esc(&Self::value_label(rv))
+                        "\n<i>{}</i>",
+                        esc(&crate::i18n::trf(
+                            "SAM recommends: {value}",
+                            &[("value", &Self::value_label(rv))]
+                        ))
                     ));
                 }
             }

@@ -13,15 +13,64 @@ impl Sam {
     /// folder could have swapped the file, which would otherwise inherit the
     /// old app's permissions.
     pub fn reextract(&self, query: &str, consent_fallback: bool) -> Result<AppEntry> {
-        self.reextract_as(query, consent_fallback, false)
+        self.reextract_as(query, consent_fallback, None)
     }
 
-    /// [`reextract`](Self::reextract); `by_update` for SAM's own updates.
+    /// [`reextract`](Self::reextract); `checked` for SAM's own updates and
+    /// going back: the content then comes from the file SAM checked in its
+    /// own folder, never from the AppImage's folder, where another app
+    /// could swap the file between SAM's check and the unpacking (review
+    /// 2026-11-23, U-1). Without it, SAM first copies the AppImage into its
+    /// own folder and works from that copy alone, for the same reason: the
+    /// file was checksummed, its signature checked and then opened again
+    /// for unpacking, so a swap in between went unnoticed (audit I-F6).
     pub(super) fn reextract_as(
         &self,
         query: &str,
         consent_fallback: bool,
-        by_update: bool,
+        checked: Option<&Checked<'_>>,
+    ) -> Result<AppEntry> {
+        if let Some(c) = checked {
+            return self.reextract_from(query, consent_fallback, c);
+        }
+        let entry = self.resolve(query)?;
+        self.ensure_not_running(&entry, &sam_core::i18n::tr("unpack it again"))?;
+        if !entry.source_path.exists() {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the AppImage {file} no longer exists; use `sam-jail relocate` to point SAM at its new location",
+                    &[("file", &tildify(&entry.source_path))]
+                )
+            );
+        }
+        let work = self.download_folder(&format!("{}.unpack", entry.id))?;
+        let copy = work.join("app.AppImage");
+        let result = fingerprint::copy_with_fingerprint(&entry.source_path, &copy, 0o700).and_then(
+            |placed| {
+                self.reextract_from(
+                    query,
+                    consent_fallback,
+                    &Checked {
+                        file: &copy,
+                        placed,
+                        sams_update: false,
+                    },
+                )
+            },
+        );
+        let _ = remove_tree(&work);
+        result
+    }
+
+    /// [`reextract_as`](Self::reextract_as) from `checked.file`. Only SAM's
+    /// own updates and going back (not a copy of the AppImage's file) leave
+    /// a changed file unmarked.
+    fn reextract_from(
+        &self,
+        query: &str,
+        consent_fallback: bool,
+        checked: &Checked<'_>,
     ) -> Result<AppEntry> {
         let mut entry = self.resolve(query)?;
         self.ensure_not_running(&entry, &sam_core::i18n::tr("unpack it again"))?;
@@ -34,7 +83,8 @@ impl Sam {
                 )
             );
         }
-        let info = inspect(&entry.source_path)?;
+        let source = checked.file.to_path_buf();
+        let info = inspect(&source)?;
         if !info.is_appimage() {
             bail!(
                 "{}",
@@ -44,11 +94,20 @@ impl Sam {
                 )
             );
         }
-        let fp = fingerprint::compute(&entry.source_path)?;
+        // The checksum of what is unpacked, with the details of the file in
+        // the AppImage's folder (so a later swap there is noticed).
+        let fp = Fingerprint {
+            sha256: if checked.placed.sha256.is_empty() {
+                fingerprint::sha256_file(&source)?
+            } else {
+                checked.placed.sha256.clone()
+            },
+            ..checked.placed.clone()
+        };
         let root = self.unpack_root()?.join(&entry.id);
         let mut log = Vec::new();
         let req = ExtractRequest {
-            source: &entry.source_path,
+            source: &source,
             info: &info,
             root: &root,
             limits: self.limits(),
@@ -62,15 +121,11 @@ impl Sam {
                 // last seen checksum: the change check and relocate update
                 // that one, so a swapped file looked known (regression,
                 // audit U-H2).
-                let unpacked = entry
-                    .extraction
-                    .as_ref()
-                    .map_or(&entry.source.sha256, |x| &x.source.sha256);
-                if *unpacked != fp.sha256 {
-                    if !by_update {
+                if unpacked_sha256(&entry) != fp.sha256 {
+                    if !checked.sams_update {
                         entry.content_changed_outside = true;
                     }
-                    let new_sig = sam_detect::signature::check(&entry.source_path);
+                    let new_sig = self.check_signature(&source, false);
                     entry.signing_key_changed =
                         signing_key_change(entry.signature.as_ref(), &new_sig);
                     entry.signature = Some(new_sig);
@@ -204,12 +259,15 @@ impl Sam {
     /// not stop the removal (e.g. a hidden menu entry that could not be put back).
     /// Launches of this app that are running now. Each launch keeps
     /// `<runtime>/l<pid>-<n>/running.lock` locked while it runs;
-    /// folders left by a killed runner are removed here.
+    /// folders left by a killed runner are removed here, and what its app
+    /// left in start places is moved aside first (review 2026-11-23 F2:
+    /// the runner's own last look never came).
     pub fn running(&self, id: &str) -> Vec<u32> {
         let mut pids = Vec::new();
         let Ok(rd) = fs::read_dir(self.paths.runtime_dir(id)) else {
             return pids;
         };
+        let mut killed = false;
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
             let Some(pid) = crate::launch::launch_dir_pid(&name) else {
@@ -221,15 +279,22 @@ impl Sam {
             } else if lock.exists() && !Path::new(&format!("/proc/{pid}")).exists() {
                 // The runner was killed before it could clean up.
                 let _ = fs::remove_dir_all(e.path());
+                killed = true;
             }
+        }
+        if killed {
+            crate::home_shared::settle_left_behind(&self.paths);
         }
         pids
     }
 
     /// Closes every running launch of this app. The app's own processes get
     /// SIGTERM first, so it can save and quit like on logout; launches still
-    /// running after 10 seconds are ended by stopping their runner (Bubblewrap
-    /// then takes the whole sandbox down). Returns how many launches ran.
+    /// running after 10 seconds are ended by stopping their runner, which
+    /// ends the sandbox at once (its grace time is over) and then finishes
+    /// the launch: the last look at the start places, the record, the log.
+    /// Only a runner that is still there 15 seconds later is killed.
+    /// Returns how many launches ran.
     pub fn stop(&self, query: &str) -> Result<usize> {
         let entry = self.resolve(query)?;
         // Only processes that really hold their launch's lock open: a process
@@ -241,9 +306,13 @@ impl Sam {
                 if crate::launch::launch_dir_pid(&e.file_name().to_string_lossy()) == Some(p)
                     && holds_open(p, &e.path().join("running.lock"))
                 {
-                    // So the launch is recorded as closed, not as a failed start.
+                    let sandbox = fs::read_to_string(e.path().join(crate::launch::SANDBOX_PID))
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok());
+                    // So the launch is recorded as closed, not as a failed
+                    // start; its time tells the runner when the app was asked.
                     let _ = fs::write(e.path().join(crate::launch::STOP_MARKER), b"");
-                    runners.push(p);
+                    runners.push((p, sandbox));
                     break;
                 }
             }
@@ -255,8 +324,12 @@ impl Sam {
         let signal = |pid: u32, sig: i32| unsafe {
             libc::kill(pid as libc::pid_t, sig);
         };
-        for &r in &runners {
-            super::ask_to_quit(r);
+        for &(r, sandbox) in &runners {
+            match sandbox {
+                Some(s) => super::ask_to_quit(r, s),
+                // Not started yet: the runner asks the app itself.
+                None => signal(r, libc::SIGTERM),
+            }
         }
         let wait = |secs: u64| {
             let end = std::time::Instant::now() + std::time::Duration::from_secs(secs);
@@ -268,12 +341,15 @@ impl Sam {
             }
             false
         };
-        if !wait(10) {
-            for &r in &runners {
+        let grace = crate::launch::QUIT_GRACE.as_secs();
+        if !wait(grace) {
+            for &(r, _) in &runners {
                 signal(r, libc::SIGTERM);
             }
-            if !wait(3) {
-                for &r in &runners {
+            // Longer than the runner's own grace time, in case it began
+            // one anew (review 2026-11-23 F2: SIGKILL came after 3 seconds).
+            if !wait(grace + 5) {
+                for &(r, _) in &runners {
                     signal(r, libc::SIGKILL);
                 }
                 if !wait(3) {
@@ -309,7 +385,7 @@ impl Sam {
 
     /// A fresh folder for one download, `<data>/downloads/<name>`, that only
     /// SAM's user can enter. Apps never see SAM's data folder.
-    fn download_folder(&self, name: &str) -> Result<PathBuf> {
+    pub(super) fn download_folder(&self, name: &str) -> Result<PathBuf> {
         use std::os::unix::fs::PermissionsExt;
         let base = self.paths.data_dir.join("downloads");
         let d = base.join(name);
@@ -395,6 +471,11 @@ impl Sam {
             if previous.exists() {
                 remove_tree(&previous)?;
             }
+        }
+        // A download that waited for an answer about its signature.
+        let waiting = self.paths.data_dir.join("update-consent").join(&entry.id);
+        if waiting.exists() {
+            remove_tree(&waiting)?;
         }
         self.registry().remove(&entry.id)?;
         Ok((entry, problems))
@@ -540,8 +621,11 @@ impl Sam {
     }
 
     pub fn leftover_data(&self) -> Result<Vec<LeftoverData>> {
-        let ids: std::collections::HashSet<String> =
+        let mut ids: std::collections::HashSet<String> =
             self.registry().list()?.into_iter().map(|a| a.id).collect();
+        // Apps whose record SAM cannot read (from a newer SAM, or damaged
+        // and moved aside) still own their data (audit U-L4).
+        ids.extend(self.registry().record_ids());
         let mut by_id: std::collections::BTreeMap<String, LeftoverData> = Default::default();
         for root in [
             self.paths.homes_dir(),
@@ -621,6 +705,7 @@ impl Sam {
         if if_due && !self.config.updates.check_on_start {
             return Ok(vec![]);
         }
+        self.forget_old_waiting();
         let entries = match query {
             Some(q) => vec![self.resolve(q)?],
             None => self.registry().list()?,
@@ -647,28 +732,99 @@ impl Sam {
     }
 
     /// Downloads the newest published version of an app's AppImage and
-    /// puts it in place of the old one:
-    /// 1. download next to the old file (hidden, `.….sam-download`) and
-    ///    check it against the published SHA-1;
-    /// 2. it must be an AppImage, signed like the old one (or
-    ///    `accept_key_change`);
-    /// 3. the old file moves to `<data>/update-backups/<id>/` (so it is not
-    ///    listed as a second AppImage), the new one takes its new name next
-    ///    to it, and the sandbox is unpacked again with its settings kept.
+    /// puts it in place of the old one. Everything is checked in SAM's own
+    /// folder, which no app can reach:
+    /// 1. a copy of the installed file must be what SAM unpacked last: a file
+    ///    swapped outside SAM is not updated (its update source would decide
+    ///    what runs with this app's permissions);
+    /// 2. download and check it against the published SHA-1;
+    /// 3. it must be an AppImage for this computer's processor, signed like
+    ///    the installed one. If not, the download waits in
+    ///    `<data>/update-consent/<id>/`, and `accept_key_change` installs
+    ///    exactly that file (when it is still the published one), never a
+    ///    new download;
+    /// 4. the checked copy of the old file is kept in
+    ///    `<data>/update-backups/<id>/` (so it is not listed as a second
+    ///    AppImage), a copy of the new one takes its new name in the
+    ///    AppImage's folder, and the sandbox is unpacked again from the checked
+    ///    download, with its settings kept.
     pub fn update(&self, query: &str, accept_key_change: bool) -> Result<AppEntry> {
         let entry = self.resolve(query)?;
+        self.forget_old_waiting();
         self.ensure_not_running(&entry, "update it")?;
-        let old = entry.source_path.clone();
-        if !old.exists() {
+        if !entry.source_path.exists() {
             bail!(
                 "{}",
                 sam_core::i18n::trf(
                     "the AppImage {file} is missing; relocate it first",
+                    &[("file", &tildify(&entry.source_path))]
+                )
+            );
+        }
+        // Where SAM can build no sandbox, the new version could be neither
+        // unpacked nor its signature checked: stop here with that reason,
+        // before anything is downloaded or asked. Before, the update was
+        // downloaded and the question about its signature said to install
+        // GnuPG, which was not the cause (review of PR 95).
+        self.extract_isolation()?;
+        // Downloaded and checked in SAM's own folder: in the AppImage's
+        // folder (often Downloads) another app could plant a link under the
+        // download's name, or swap the file between the check and its use
+        // (regression, audit U-H4; review 2026-11-23, U-1).
+        let work = self.download_folder(&entry.id)?;
+        let result = self.update_in(&entry, &work, accept_key_change);
+        let _ = remove_tree(&work);
+        result
+    }
+
+    /// The person said no to the question about an update's signature:
+    /// the download kept for that answer is deleted now, not left in SAM's
+    /// folder until the app's next update. Whether one was waiting.
+    pub fn decline_update(&self, query: &str) -> Result<(AppEntry, bool)> {
+        let entry = self.resolve(query)?;
+        let waiting = self.paths.data_dir.join("update-consent").join(&entry.id);
+        let was = fs::symlink_metadata(&waiting).is_ok();
+        if was {
+            remove_waiting(&waiting)?;
+        }
+        Ok((entry, was))
+    }
+
+    /// Deletes the downloads that have waited for an answer longer than
+    /// [`WAITING_KEPT_FOR`] (a question never answered: the window was
+    /// closed, or the command line was not run again).
+    fn forget_old_waiting(&self) {
+        forget_waiting_older_than(
+            &self.paths.data_dir.join("update-consent"),
+            std::time::Duration::from_secs(WAITING_KEPT_FOR),
+        );
+    }
+
+    fn update_in(
+        &self,
+        entry: &AppEntry,
+        work: &Path,
+        accept_key_change: bool,
+    ) -> Result<AppEntry> {
+        use std::os::unix::fs::PermissionsExt;
+        let old = entry.source_path.clone();
+        // The installed version as SAM checked it. Its update information
+        // names where updates come from, so it must be the file SAM
+        // unpacked: another app could have put its own AppImage there,
+        // naming its own server (review 2026-11-23, U-1).
+        let installed = work.join(".installed");
+        fs::copy(&old, &installed)?;
+        let installed_sha256 = fingerprint::sha256_file(&installed)?;
+        if installed_sha256 != unpacked_sha256(entry) {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "{file} changed outside SAM since it was last unpacked, so SAM does not update it: another program may have replaced it. Use Unpack Again and look at the app first.",
                     &[("file", &tildify(&old))]
                 )
             );
         }
-        let Some(p) = crate::updates::newest(&old)? else {
+        let Some(p) = crate::updates::newest(&installed)? else {
             bail!(
                 "{}",
                 sam_core::i18n::trf(
@@ -688,98 +844,157 @@ impl Sam {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        // The new file keeps its published name, if that is a plain name and
-        // does not clash with another file.
-        let name = p
-            .filename
-            .clone()
-            .filter(|n| !n.is_empty() && !n.starts_with('.') && !n.contains('/') && n.len() < 200)
-            .filter(|n| *n == old_name || !dir.join(n).exists())
-            .unwrap_or(old_name.clone());
+        let name = update_file_name(p.filename.as_deref(), &old_name, &dir);
         let target = dir.join(&name);
-        // Downloaded and checked in SAM's own folder, which no app can
-        // reach: in the AppImage's folder (often Downloads) another app
-        // could plant a link under the download's name, or swap the file
-        // between the check and the move (regression, audit U-H4).
-        let tmp = self.download_folder(&entry.id)?.join(&name);
-        let fetched = crate::updates::download_update(&p, &old, &tmp)?;
-        // From here on, any error removes the download again.
-        let placed = (|| -> Result<PathBuf> {
-            if !inspect(&tmp)?.is_appimage() {
-                bail!(
-                    "{}",
-                    sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted")
-                );
-            }
-            let new_sig = sam_detect::signature::check(&tmp);
-            if let Some(before) = signing_key_change(entry.signature.as_ref(), &new_sig) {
-                if !accept_key_change {
-                    return Err(sam_core::error::CodedError::new(
-                        "signing-key-changed",
-                        sam_core::i18n::trf(
-                            "The signing key changed: the installed version was {before}, the new file is {now}. The download was deleted; update again and accept the change only if you trust it.",
-                            &[("before", &before), ("now", &sig_words(&new_sig))],
-                        ),
-                    )
-                    .into());
-                }
-            }
-            if let Some((was, now)) = older_signed_version(entry.signature.as_ref(), &new_sig) {
-                return Err(older_version_error(was, now).into());
-            }
-            // Signed and checked before, but the new file cannot be checked
-            // (GnuPG missing): SAM cannot tell whether the key changed, so it
-            // asks like for a changed key (threat model: a key change is
-            // refused until you accept it).
-            if let Some(before) = signature_unconfirmed(entry.signature.as_ref(), &new_sig) {
-                if !accept_key_change {
-                    return Err(sam_core::error::CodedError::new(
-                        "signature-unchecked",
-                        sam_core::i18n::trf(
-                            "The installed version was {before}, but the signature of the new file cannot be checked, so SAM cannot tell whether it comes from the same developer. Install GnuPG (gpg and gpgv) and update again; accept the update without the check only if you trust its source. The download was deleted.",
-                            &[("before", &before)],
-                        ),
-                    )
-                    .into());
-                }
-            }
+        let tmp = work.join(&name);
+        // A consent covers exactly the file it was asked for: a download
+        // refused for a changed or unchecked signature waits in SAM's own
+        // folder, and accepting installs that file. Downloading again let a
+        // server hand out another file, signed with any key, under the same
+        // "yes" (review 2026-11-23, U-4).
+        let waiting_dir = self.paths.data_dir.join("update-consent").join(&entry.id);
+        let waiting = take_waiting(&waiting_dir, work).filter(|(w, _)| {
+            accept_key_change
+                && w.installed_sha256 == installed_sha256
+                && w.published_sha1 == p.sha1
+        });
+        let (fetched, consented) = match waiting {
+            Some((w, file))
+                if fingerprint::sha256_file(&file).ok().as_deref() == Some(w.sha256.as_str()) =>
             {
-                use std::os::unix::fs::PermissionsExt;
-                let mode = fs::metadata(&old)
-                    .map(|m| m.permissions().mode())
-                    .unwrap_or(0o755)
-                    | 0o500;
-                fs::set_permissions(&tmp, fs::Permissions::from_mode(mode & 0o777))?;
+                fs::rename(&file, &tmp)?;
+                let total = fs::metadata(&tmp)?.len();
+                (crate::updates::Fetched::Full { total }, Some(w))
             }
-            // Keep the old version, then put the new one in place.
-            let backup_dir = self.paths.data_dir.join("update-backups").join(&entry.id);
-            if backup_dir.exists() {
-                remove_tree(&backup_dir)?;
+            _ => (crate::updates::download_update(&p, &installed, &tmp)?, None),
+        };
+        let info = inspect(&tmp)?;
+        if !info.is_appimage() {
+            bail!(
+                "{}",
+                sam_core::i18n::tr("the downloaded file is not an AppImage; it was deleted")
+            );
+        }
+        // A build for another processor would not start: the working version
+        // would be in the backups and the app broken until Undo (review
+        // 2026-11-23, U-8). Adding an app refuses it the same way.
+        if let Some(why) = sam_detect::appimage::wrong_processor(&info) {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the downloaded update was not installed and was deleted: {reason}",
+                    &[("reason", &why)]
+                )
+            );
+        }
+        // What the new file is compared with: the recorded signature when it
+        // was checked, otherwise the installed file checked now. A record
+        // made while GnuPG was missing would otherwise let any key through
+        // for good (review 2026-11-23, U-3).
+        let before_sig = match &entry.signature {
+            Some(s)
+                if s.state == sam_core::model::SignatureState::Valid && s.fingerprint.is_some() =>
+            {
+                s.clone()
             }
-            fs::create_dir_all(&backup_dir)?;
-            let backup = backup_dir.join(&old_name);
-            move_file(&old, &backup)?;
-            if let Err(e) = move_file(&tmp, &target) {
-                let _ = move_file(&backup, &old);
+            _ => self.check_signature(&installed, false),
+        };
+        let new_sha256 = fingerprint::sha256_file(&tmp)?;
+        let new_sig = self.check_signature(&tmp, false);
+        // Accepted earlier: this very file, for this very question.
+        let consented_to = |code: &str| {
+            consented
+                .as_ref()
+                .is_some_and(|w| w.code == code && w.sha256 == new_sha256)
+        };
+        // Asks, and keeps the download for the answer.
+        let ask = |code: &'static str, message: String| -> anyhow::Error {
+            let w = Waiting {
+                code: code.to_string(),
+                sha256: new_sha256.clone(),
+                installed_sha256: installed_sha256.clone(),
+                published_sha1: p.sha1.clone(),
+            };
+            // Not kept (no space): accepting then downloads and asks again.
+            let _ = keep_waiting(&waiting_dir, &tmp, &w);
+            sam_core::error::CodedError::new(code, message).into()
+        };
+        if let Some(before) = signing_key_change(Some(&before_sig), &new_sig) {
+            if !consented_to("signing-key-changed") {
+                return Err(ask(
+                    "signing-key-changed",
+                    sam_core::i18n::trf(
+                        "The signing key changed: the installed version was {before}, the new file is {now}. Accept the change only if you trust it: SAM then installs exactly this file, never one downloaded later.",
+                        &[("before", &before), ("now", &sig_words(&new_sig))],
+                    ),
+                ));
+            }
+        }
+        if let Some((was, now)) = older_signed_version(Some(&before_sig), &new_sig) {
+            return Err(older_version_error(was, now).into());
+        }
+        // Signed and checked before, but the new file cannot be checked
+        // (GnuPG missing): SAM cannot tell whether the key changed, so it
+        // asks like for a changed key (threat model: a key change is
+        // refused until you accept it).
+        if let Some(before) = signature_unconfirmed(Some(&before_sig), &new_sig) {
+            if !consented_to("signature-unchecked") {
+                return Err(ask(
+                    "signature-unchecked",
+                    sam_core::i18n::trf(
+                        "The installed version was {before}, but the signature of the new file cannot be checked, so SAM cannot tell whether it comes from the same developer. Install GnuPG (gpg and gpgv) and update again; accept the update without the check only if you trust its source: SAM then installs exactly this file, never one downloaded later.",
+                        &[("before", &before)],
+                    ),
+                ));
+            }
+        }
+        let old_mode = fs::metadata(&old)
+            .map(|m| m.permissions().mode())
+            .unwrap_or(0o755)
+            & 0o777;
+        // Keep the checked copy of the old version, then put a copy of the
+        // new one in place. Copies, never moves: what is unpacked below is
+        // the checked download in SAM's own folder.
+        let backup_dir = self.paths.data_dir.join("update-backups").join(&entry.id);
+        if backup_dir.exists() {
+            remove_tree(&backup_dir)?;
+        }
+        fs::create_dir_all(&backup_dir)?;
+        let backup = backup_dir.join(&old_name);
+        move_file(&installed, &backup)?;
+        fs::remove_file(&old)?;
+        let placed = match place_copy(&tmp, &target, old_mode | 0o500) {
+            Ok(fp) => fp,
+            Err(e) => {
+                if place_copy(&backup, &old, old_mode).is_ok() {
+                    let _ = remove_tree(&backup_dir);
+                }
                 return Err(e.context(sam_core::i18n::tr("putting the new version in place")));
             }
-            Ok(backup)
-        })();
-        if let Some(d) = tmp.parent() {
-            let _ = remove_tree(d);
-        }
-        let backup = placed?;
-        self.relocate(&entry.id, &target)?;
+        };
         // The way back is recorded before unpacking: if unpacking the new
         // version fails, the old one can still be put back (audit U-L2).
         let way_back = UpdateBackup {
             file: backup,
             original_path: old,
             replaced_at: now(),
+            sha256: Some(installed_sha256),
+            placed_sha256: Some(new_sha256),
         };
-        self.registry()
-            .update(&entry.id, |f| f.update_backup = Some(way_back.clone()))?;
-        let mut e = self.reextract_as(&entry.id, false, true)?;
+        self.registry().update(&entry.id, |f| {
+            f.source_path = target.clone();
+            f.signature = Some(before_sig.clone());
+            f.update_backup = Some(way_back.clone());
+        })?;
+        let mut e = self.reextract_as(
+            &entry.id,
+            false,
+            Some(&Checked {
+                file: &tmp,
+                placed,
+                sams_update: true,
+            }),
+        )?;
         e.update_backup = Some(way_back);
         e.update = Some(UpdateStatus {
             state: sam_core::model::UpdateState::Current,
@@ -828,12 +1043,22 @@ impl Sam {
                 sam_core::i18n::trf("the earlier version is not in SAM's backup folder ({file}); SAM does not move it", &[("file", &tildify(&b.file))])
             );
         }
-        if b.original_path.exists() && b.original_path != entry.source_path {
+        // Where the earlier version goes: the app's folder, under the name
+        // its kept copy carries (the name it had there). Not the place the
+        // record names: a record changed outside SAM could put the old
+        // AppImage anywhere under any name, for example as a command in
+        // ~/.local/bin (audit U-L10).
+        let back_to = entry
+            .source_path
+            .parent()
+            .context(sam_core::i18n::tr("no folder"))?
+            .join(b.file.file_name().context(sam_core::i18n::tr("no name"))?);
+        if back_to.exists() && back_to != entry.source_path {
             bail!(
                 "{}",
                 sam_core::i18n::trf(
                     "{file} exists again; move it away first",
-                    &[("file", &tildify(&b.original_path))]
+                    &[("file", &tildify(&back_to))]
                 )
             );
         }
@@ -847,24 +1072,116 @@ impl Sam {
         // success (regression, audit U-H5).
         let earlier = b.file.with_file_name(".going-back");
         move_file(&b.file, &earlier)?;
+        // The current file is kept as the newer version, and going forward
+        // again unpacks it as SAM's own: so it must be what SAM unpacked (or
+        // what the update put there, when unpacking that failed), checked
+        // once it is in SAM's own folder (review 2026-11-23, U-1). A copy,
+        // never a move: another app that can write to the AppImage's folder
+        // may hold the file under a second name (a hard link) or open for
+        // writing, and could change a moved file after SAM checked it.
+        let current_mode = {
+            use std::os::unix::fs::PermissionsExt;
+            fs::metadata(&current)
+                .map(|m| m.permissions().mode())
+                .unwrap_or(0o755)
+                & 0o777
+        };
+        let mut kept_sha256 = None;
         if current.exists() {
-            if let Err(e) = move_file(&current, &keep) {
+            if keep != earlier {
+                // Left over from an interrupted run; never the earlier version.
+                let _ = fs::remove_file(&keep);
+            }
+            if let Err(e) = place_copy(&current, &keep, current_mode) {
                 let _ = move_file(&earlier, &b.file);
                 return Err(e);
             }
+            let sha = fingerprint::sha256_file(&keep).ok();
+            let known = sha.as_deref().is_some_and(|s| {
+                s == unpacked_sha256(&entry) || Some(s) == b.placed_sha256.as_deref()
+            });
+            if !known {
+                let _ = fs::remove_file(&keep);
+                let _ = move_file(&earlier, &b.file);
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "{file} changed outside SAM since it was last unpacked, so SAM does not go back: another program may have replaced it. Use Unpack Again and look at the app first.",
+                        &[("file", &tildify(&current))]
+                    )
+                );
+            }
+            if let Err(e) = fs::remove_file(&current) {
+                let _ = fs::remove_file(&keep);
+                let _ = move_file(&earlier, &b.file);
+                return Err(e.into());
+            }
+            kept_sha256 = sha;
         }
-        if let Err(e) = move_file(&earlier, &b.original_path) {
-            let _ = move_file(&keep, &current);
-            let _ = move_file(&earlier, &b.file);
-            return Err(e);
-        }
-        self.relocate(&entry.id, &b.original_path)?;
-        let mut e = self.reextract_as(&entry.id, false, true)?;
-        e.update_backup = Some(UpdateBackup {
+        // Only a version SAM checked when it kept it counts as SAM's own; one
+        // kept by an older SAM (or changed since) asks for a review.
+        let earlier_checked = b.sha256.is_some()
+            && fingerprint::sha256_file(&earlier).ok().as_deref() == b.sha256.as_deref();
+        let mode = {
+            use std::os::unix::fs::PermissionsExt;
+            fs::metadata(&earlier)
+                .map(|m| m.permissions().mode())
+                .unwrap_or(0o755)
+                & 0o777
+        };
+        let placed = match place_copy(&earlier, &back_to, mode) {
+            Ok(fp) => fp,
+            Err(e) => {
+                // Put the current file back; the kept copy is never
+                // overwritten while it is the only one.
+                let mut restored = kept_sha256.is_none();
+                if !restored && place_copy(&keep, &current, current_mode).is_ok() {
+                    let _ = fs::remove_file(&keep);
+                    restored = true;
+                }
+                if restored || keep != b.file {
+                    let _ = move_file(&earlier, &b.file);
+                }
+                return Err(e);
+            }
+        };
+        let back_at = match (back_to.parent(), back_to.file_name()) {
+            (Some(dir), Some(name)) => fs::canonicalize(dir)
+                .map(|d| d.join(name))
+                .unwrap_or_else(|_| back_to.clone()),
+            _ => back_to.clone(),
+        };
+        let way_forward = UpdateBackup {
             file: keep,
             original_path: current,
             replaced_at: now(),
-        });
+            sha256: kept_sha256,
+            placed_sha256: if earlier_checked {
+                b.sha256.clone()
+            } else {
+                None
+            },
+        };
+        self.registry().update(&entry.id, |f| {
+            f.source_path = back_at.clone();
+            f.update_backup = Some(way_forward.clone());
+        })?;
+        let unpacked = if earlier_checked {
+            self.reextract_as(
+                &entry.id,
+                false,
+                Some(&Checked {
+                    file: &earlier,
+                    placed,
+                    sams_update: true,
+                }),
+            )
+        } else {
+            self.reextract_as(&entry.id, false, None)
+        };
+        let _ = fs::remove_file(&earlier);
+        let mut e = unpacked?;
+        e.update_backup = Some(way_forward);
         e.update = None;
         self.registry().save(&mut e)?;
         Ok(e)
@@ -943,12 +1260,7 @@ impl Sam {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let name = p
-            .filename
-            .clone()
-            .filter(|n| !n.is_empty() && !n.starts_with('.') && !n.contains('/') && n.len() < 200)
-            .filter(|n| *n == old_name || !dir.join(n).exists())
-            .unwrap_or(old_name.clone());
+        let name = update_file_name(p.filename.as_deref(), &old_name, dir);
         let target = dir.join(&name);
         let tmp = self.download_folder("sam")?.join(&name);
         let fetched = crate::updates::download_update(&p, appimage, &tmp)?;
@@ -961,9 +1273,9 @@ impl Sam {
             }
             // Only SAM's makers may replace SAM (see release_key), and never
             // with an older release than the one running.
-            let new_sig = sam_detect::signature::check(&tmp);
+            let new_sig = self.check_signature(&tmp, true);
             crate::release_key::check(&new_sig, keys)?;
-            let running = sam_detect::signature::check(appimage);
+            let running = self.check_signature(appimage, true);
             if let Some((was, now)) = older_signed_version(Some(&running), &new_sig) {
                 return Err(older_version_error(was, now).into());
             }
@@ -1030,6 +1342,169 @@ fn older_version_error(was: i64, now: i64) -> sam_core::error::CodedError {
     )
 }
 
+/// A file SAM checked in its own folder, which no app can reach, and the
+/// details of the copy it put in the AppImage's folder: what is unpacked
+/// comes from `file`, what is recorded describes the copy.
+pub(super) struct Checked<'a> {
+    pub file: &'a Path,
+    /// Size, time and inode of the copy; its checksum, when not empty, is
+    /// that of `file`.
+    pub placed: Fingerprint,
+    /// The content comes from a SAM update or going back, not from the
+    /// AppImage's folder: a changed checksum is then no swap to look at.
+    pub sams_update: bool,
+}
+
+/// The checksum of the AppImage SAM unpacked last. Not the file's last seen
+/// checksum: the change check and relocate update that one, so a swapped
+/// file looked known (regression, audit U-H2).
+fn unpacked_sha256(entry: &AppEntry) -> &str {
+    entry
+        .extraction
+        .as_ref()
+        .map_or(&entry.source.sha256, |x| &x.source.sha256)
+}
+
+/// An update download that waits for the person's answer (review
+/// 2026-11-23, U-4): which question, which file, for which installed
+/// version and which published one.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct Waiting {
+    code: String,
+    sha256: String,
+    installed_sha256: String,
+    published_sha1: String,
+}
+
+/// The download waiting in `dir`, moved into `work`. `dir` is emptied in
+/// any case: a consent is used once, or not at all.
+fn take_waiting(dir: &Path, work: &Path) -> Option<(Waiting, PathBuf)> {
+    let found = (|| {
+        let w: Waiting = serde_json::from_slice(&fs::read(dir.join("waiting.json")).ok()?).ok()?;
+        let file = dir.join("download");
+        if !fs::symlink_metadata(&file).ok()?.file_type().is_file() {
+            return None;
+        }
+        let to = work.join(".waiting");
+        fs::rename(&file, &to).ok()?;
+        Some((w, to))
+    })();
+    if dir.exists() {
+        let _ = remove_tree(dir);
+    }
+    found
+}
+
+/// How long an update download waits for the person's answer: a week.
+/// The question comes right when the person updates, so an answer later
+/// than that is unlikely; each waiting download can be as large as the
+/// AppImage (up to 8 GiB), and a later yes only means downloading and
+/// asking again, never anything less safe.
+const WAITING_KEPT_FOR: u64 = 7 * 24 * 3600;
+
+/// Deletes one waiting download's folder (or whatever else has its name).
+fn remove_waiting(path: &Path) -> Result<()> {
+    if fs::symlink_metadata(path)?.is_dir() {
+        remove_tree(path)
+    } else {
+        Ok(fs::remove_file(path)?)
+    }
+}
+
+/// Deletes what waits in `root` (`<data>/update-consent`) and was last
+/// changed more than `max_age` ago; what it deleted. A time in the future
+/// counts as new.
+fn forget_waiting_older_than(root: &Path, max_age: std::time::Duration) -> Vec<PathBuf> {
+    let mut removed = Vec::new();
+    let Ok(rd) = fs::read_dir(root) else {
+        return removed;
+    };
+    for e in rd.flatten() {
+        let old = fs::symlink_metadata(e.path())
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > max_age);
+        if old && remove_waiting(&e.path()).is_ok() {
+            removed.push(e.path());
+        }
+    }
+    removed
+}
+
+/// Keeps `file` (in SAM's download folder) in `dir` until the answer.
+fn keep_waiting(dir: &Path, file: &Path, w: &Waiting) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    if dir.exists() {
+        remove_tree(dir)?;
+    }
+    fs::create_dir_all(dir)?;
+    for d in [dir.parent().unwrap_or(dir), dir] {
+        fs::set_permissions(d, fs::Permissions::from_mode(0o700))?;
+    }
+    fs::rename(file, dir.join("download"))?;
+    fs::write(dir.join("waiting.json"), serde_json::to_vec(w)?)?;
+    Ok(())
+}
+
+/// Whether `name` is a plain AppImage file name: letters, digits and
+/// `._+-` only, not hidden, ending in `.AppImage` (any case).
+fn plain_appimage_name(name: &str) -> bool {
+    const END: &str = ".appimage";
+    name.len() > END.len()
+        && name.len() < 200
+        && !name.starts_with('.')
+        && name.to_ascii_lowercase().ends_with(END)
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-'))
+}
+
+/// The name an update gets in the AppImage's folder: the published name
+/// when it is a plain AppImage name that no other file in `dir` has,
+/// otherwise the old name. The update server chooses the published name, and
+/// SAM makes the file executable: a name such as `sudo` in a folder on the
+/// command search path (~/.local/bin) would put the server's program in
+/// place of a command, outside any sandbox (review 2026-11-23, U-2).
+pub(crate) fn update_file_name(published: Option<&str>, old_name: &str, dir: &Path) -> String {
+    published
+        .filter(|n| plain_appimage_name(n))
+        .filter(|n| *n == old_name || fs::symlink_metadata(dir.join(n)).is_err())
+        .map_or_else(|| old_name.to_string(), str::to_string)
+}
+
+/// Copies `from` to `to`, which must not exist yet, never through a link,
+/// with `mode`. Returns the copy's size, time and inode as SAM records them
+/// (from the file it wrote, whatever is at `to` by then).
+fn place_copy(from: &Path, to: &Path, mode: u32) -> Result<Fingerprint> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let mut src = fs::File::open(from)?;
+    let mut dst = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .mode(mode)
+        .open(to)
+        .with_context(|| format!("creating {}", to.display()))?;
+    let copied = (|| -> Result<Fingerprint> {
+        std::io::copy(&mut src, &mut dst)?;
+        dst.set_permissions(fs::Permissions::from_mode(mode))?;
+        dst.sync_all()?;
+        let m = dst.metadata()?;
+        Ok(Fingerprint {
+            size: m.len(),
+            mtime: m.mtime(),
+            inode: m.ino(),
+            device: m.dev(),
+            sha256: String::new(),
+        })
+    })();
+    if copied.is_err() {
+        let _ = fs::remove_file(to);
+    }
+    copied.with_context(|| format!("copying {} to {}", from.display(), to.display()))
+}
+
 /// Moves a file. Within one file system a rename, which replaces whatever
 /// is at `to` (also a link) and never writes through it. Across file
 /// systems a copy into a new file that must not exist yet and is never
@@ -1062,6 +1537,118 @@ fn move_file(from: &Path, to: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    /// Regression (audit U-L4): the data of an app whose record SAM could
+    /// not read (damaged, or written by a newer SAM) was listed as left
+    /// over, and "remove leftover data" deleted the app's private home.
+    /// Only data without any record is offered now.
+    #[test]
+    fn data_of_an_unreadable_record_is_not_offered_for_deletion() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let apps = sam.paths.apps_dir();
+        fs::create_dir_all(&apps).unwrap();
+        fs::write(apps.join("appimage-broken-1234.json"), "{ damaged").unwrap();
+        fs::write(
+            apps.join("appimage-newer-1234.json"),
+            r#"{"format": 999999, "id": "appimage-newer-1234"}"#,
+        )
+        .unwrap();
+        for id in [
+            "appimage-broken-1234",
+            "appimage-newer-1234",
+            "appimage-gone-1234",
+        ] {
+            fs::create_dir_all(sam.paths.app_home(id).join("Documents")).unwrap();
+        }
+        let left: Vec<String> = sam
+            .leftover_data()
+            .unwrap()
+            .into_iter()
+            .map(|d| d.id)
+            .collect();
+        assert_eq!(left, vec!["appimage-gone-1234"]);
+        assert!(
+            fs::read_dir(&apps).unwrap().flatten().any(|e| e
+                .file_name()
+                .to_string_lossy()
+                .starts_with("appimage-broken-1234.json.damaged-")),
+            "the damaged record was moved aside"
+        );
+        sam.remove_leftover_data().unwrap();
+        assert!(sam.paths.app_home("appimage-broken-1234").exists());
+        assert!(sam.paths.app_home("appimage-newer-1234").exists());
+        assert!(!sam.paths.app_home("appimage-gone-1234").exists());
+    }
+
+    /// A download that waited for an answer about an update for more
+    /// than a week (the question was never answered) is deleted when
+    /// updates are checked; a younger one stays for its answer. Before,
+    /// it stayed until that app's next update or its removal.
+    #[test]
+    fn a_download_never_answered_is_deleted_after_a_week() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let root = sam.paths.data_dir.join("update-consent");
+        let day = std::time::Duration::from_secs(24 * 3600);
+        for (id, days) in [("appimage-old-1234", 8), ("appimage-young-1234", 6)] {
+            let d = root.join(id);
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join("download"), "the update").unwrap();
+            fs::File::open(&d)
+                .unwrap()
+                .set_modified(std::time::SystemTime::now() - day * days)
+                .unwrap();
+        }
+        sam.check_updates(None, false).unwrap();
+        assert!(!root.join("appimage-old-1234").exists(), "never answered");
+        assert!(root.join("appimage-young-1234/download").exists());
+    }
+
+    /// An update keeps its published name only when that is a plain
+    /// AppImage name no other file has: the update server chooses it, and a
+    /// name like `sudo` in ~/.local/bin would replace a command outside any
+    /// sandbox (review 2026-11-23, U-2).
+    #[test]
+    fn only_a_plain_appimage_name_is_taken_from_an_update() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        fs::write(dir.join("Other-2.0.AppImage"), "").unwrap();
+        std::os::unix::fs::symlink(dir.join("nowhere"), dir.join("Link-2.0.AppImage")).unwrap();
+        let name = |published: &str| update_file_name(Some(published), "Tool-1.0.AppImage", dir);
+        for good in [
+            "Tool-2.0-x86_64.AppImage",
+            "tool_2.0+git.appimage",
+            "Tool-1.0.AppImage",
+        ] {
+            assert_eq!(name(good), good);
+        }
+        for bad in [
+            "sudo",
+            "git",
+            "python3",
+            "Tool.AppImage.sh",
+            ".AppImage",
+            ".Tool.AppImage",
+            "Tool 2.0.AppImage",
+            "Tool;rm.AppImage",
+            "../Tool.AppImage",
+            "Tool\u{202e}.AppImage",
+            "Other-2.0.AppImage",
+            "Link-2.0.AppImage",
+            "",
+        ] {
+            assert_eq!(name(bad), "Tool-1.0.AppImage", "{bad:?}");
+        }
+        assert_eq!(
+            name(&format!("{}.AppImage", "a".repeat(200))),
+            "Tool-1.0.AppImage"
+        );
+        assert_eq!(
+            update_file_name(None, "Tool-1.0.AppImage", dir),
+            "Tool-1.0.AppImage"
+        );
+    }
 
     /// The unpack location can be any folder, for example `~/Documents`.
     /// Cleaning up deleted every folder in it that was not an app, and

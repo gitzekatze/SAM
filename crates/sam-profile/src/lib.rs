@@ -487,16 +487,16 @@ pub fn recommend(
             p.advanced.allow_userns = true;
             notes.push(sam_core::i18n::tr("Nested namespaces allowed: the app's web engine (Chromium or WebKit) starts its own sandbox"));
         }
-        // Only when the program the app starts is 32-bit itself: the
-        // architecture of an app started by a script is that of most of its
-        // files, so 32-bit decoys next to a 64-bit program switched the
-        // filter off (audit M5/I-F4). Otherwise the filter stays on, and a
-        // real 32-bit app that fails gets the step in its repair ladder.
-        if r.arch == "i686" && !r.entry_is_script && r.entry_binary.is_some() {
-            // The syscall filter is built for 64-bit programs; a 32-bit one
-            // is stopped by its architecture check at the first call.
-            p.advanced.seccomp_baseline = false;
-            notes.push(sam_core::i18n::tr("32-bit app: the baseline syscall filter is off, because it only supports 64-bit programs and would stop the app"));
+        // The syscall filter stays on for a 32-bit app: when the program it
+        // starts is 32-bit itself, the filter takes its 32-bit calls too
+        // (sam-runner kernel.rs, i386_branch). Switching the filter off
+        // here let any app choose to run without it by making its start
+        // program 32-bit (review K-3). A 32-bit app started by a script
+        // that fails still gets the step in its repair ladder.
+        if r.starts_32_bit_program() {
+            notes.push(sam_core::i18n::tr(
+                "32-bit app: the syscall filter also covers its 32-bit calls",
+            ));
         }
         if r.compatibility != sam_core::Compatibility::Good {
             notes.push(sam_core::i18n::tr(
@@ -860,6 +860,40 @@ mod tests {
         assert!(merged.devices.webcam);
     }
 
+    /// The last function rule, the last signal rule and a set variable can
+    /// be taken away through a change (the window's switches, the undo of
+    /// a group change): the saved form leaves empty rule lists out, and a
+    /// removed variable is missing from the map, which used to come back as
+    /// null and refuse the whole change (review F3: a Dangerous rule to
+    /// systemd could not be taken back from the window).
+    #[test]
+    fn the_last_rule_and_a_variable_can_be_taken_away() {
+        let mut from = PermissionSet::strict_gui();
+        from.dbus.session.mode = sam_core::permissions::DbusMode::Filtered;
+        from.dbus.session.calls = vec!["org.freedesktop.systemd1=*".into()];
+        from.dbus.session.broadcasts = vec!["org.example.A=@/a".into()];
+        from.environment.set.insert("FOO".into(), "1".into());
+        from.environment.set.insert("KEEP".into(), "2".into());
+        let mut to = from.clone();
+        to.dbus.session.calls.clear();
+        to.dbus.session.broadcasts.clear();
+        to.environment.set.remove("FOO");
+        let current = from.clone();
+        let merged = apply_change(&current, &from, &to)
+            .expect("the change is not refused")
+            .expect("nothing changed meanwhile");
+        assert!(merged.dbus.session.calls.is_empty());
+        assert!(merged.dbus.session.broadcasts.is_empty());
+        assert_eq!(merged.environment.set.get("FOO"), None);
+        assert_eq!(
+            merged.environment.set.get("KEEP").map(String::as_str),
+            Some("2")
+        );
+        // And back again (the undo of the change).
+        let undone = apply_change(&merged, &to, &from).unwrap().unwrap();
+        assert_eq!(undone, from);
+    }
+
     /// Terminal programs get no display, GPU or desktop bus access.
     #[test]
     fn terminal_programs_get_no_display() {
@@ -1015,11 +1049,13 @@ mod tests {
         assert_eq!(r.permissions.network.mode, NetworkMode::None);
     }
 
-    /// The syscall filter is switched off only for an app whose start
-    /// program is 32-bit itself: 32-bit files next to a script that starts
-    /// a 64-bit program do not switch it off (audit M5/I-F4).
+    /// The syscall filter stays on for every app: a 32-bit start program
+    /// switched it off, so an app could choose to run without it (review
+    /// K-3; the filter now covers 32-bit calls). Only a 32-bit start
+    /// program counts as a 32-bit app, not 32-bit files next to a script
+    /// (audit M5/I-F4).
     #[test]
-    fn only_a_32_bit_start_program_switches_the_filter_off() {
+    fn a_32_bit_start_program_keeps_the_syscall_filter_on() {
         let report = |script: bool, entry: Option<&str>| DependencyReport {
             arch: "i686".into(),
             entry_is_script: script,
@@ -1033,7 +1069,7 @@ mod tests {
                 .seccomp_baseline
         };
         assert!(
-            !filter(report(false, Some("usr/bin/game32"))),
+            filter(report(false, Some("usr/bin/game32"))),
             "a 32-bit program"
         );
         assert!(
@@ -1041,6 +1077,9 @@ mod tests {
             "a script, mostly 32-bit files"
         );
         assert!(filter(report(false, None)), "no start program known");
+        assert!(report(false, Some("usr/bin/game32")).starts_32_bit_program());
+        assert!(!report(true, Some("AppRun")).starts_32_bit_program());
+        assert!(!report(false, None).starts_32_bit_program());
     }
 
     /// The change check names what an app would lose that it needs, and the dangerous access it would gain.

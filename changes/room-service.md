@@ -13,6 +13,10 @@
   being refused; only a room that could never fit is refused at once.
 - The start record names each room, the protection layers SAM's room
   helper confirmed, and what was capped or refused.
+- Closing an app (Close, `sam-jail stop`, logging out) gives a program
+  running in a room the same time to save and quit as the app: it is
+  asked to quit, and its room ends only once it has quit or the time is
+  over.
 - With a Bubblewrap older than 0.10 (no `--ro-bind-fd`), Room service
   stays off and every start says so; programs keep the computer's own
   Bubblewrap as before.

@@ -74,7 +74,7 @@ def image(path, fmt):
         pass
     if shutil.which("magick"):
         return subprocess.run(["magick", "-size", "320x200", "gradient:blue-yellow", path],
-                              capture_output=True).returncode == 0
+                              check=False, capture_output=True).returncode == 0
     return False
 
 
@@ -82,7 +82,7 @@ def ffmpeg(path, *args):
     if not shutil.which("ffmpeg"):
         return False
     return subprocess.run(["ffmpeg", "-loglevel", "error", "-y", *args, path],
-                          capture_output=True).returncode == 0
+                          check=False, capture_output=True).returncode == 0
 
 
 def make(d):

@@ -4,9 +4,19 @@
 //! put them back when the sandbox is removed.
 //!
 //! - A user-level entry (`~/.local/share/applications`) is edited in place:
-//!   `NoDisplay=true` plus an `X-SAM-HiddenBy=<app id>` marker.
+//!   `NoDisplay=true`, `Hidden=true` plus an `X-SAM-HiddenBy=<app id>`
+//!   marker.
 //! - A system-level entry is never touched; SAM writes a user-level override
 //!   with the same file name instead, which the desktop prefers.
+//!
+//! `NoDisplay=true` alone takes an entry out of the menu only: it still
+//! opens the files it names in `MimeType=`, and stays the default where
+//! `mimeapps.list` names it, so a double-click on such a file started the
+//! AppImage without its sandbox (review 2026-11-23, F4). `Hidden=true`
+//! counts as if the entry did not exist, for the menu and for opening files
+//! alike. For the same reason, an entry another tool marked `NoDisplay`
+//! while it still opens files counts as a way to start the app without its
+//! sandbox, not as hidden.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,6 +29,8 @@ use crate::desktop::refresh_desktop_database;
 
 const GROUP: &str = "[Desktop Entry]";
 const MARKER: &str = "X-SAM-HiddenBy";
+const NO_DISPLAY: &str = "NoDisplay";
+const HIDDEN: &str = "Hidden";
 
 /// A menu entry that starts an AppImage directly.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,9 +38,12 @@ pub struct ForeignEntry {
     pub file: PathBuf,
     pub appimage: PathBuf,
     pub name: String,
-    /// Already hidden by SAM (for this app id).
+    /// Already hidden by SAM (for this app id), from the menu and from
+    /// opening files. An entry an older SAM took out of the menu only
+    /// (`NoDisplay` without `Hidden`) does not count: it still opens files.
     pub hidden_by: Option<String>,
-    /// Hidden by the user or the tool that made it (not by SAM).
+    /// Hidden by the user or the tool that made it (not by SAM): deleted
+    /// (`Hidden=true`), or out of the menu and opening no files.
     pub hidden_elsewhere: bool,
 }
 
@@ -85,10 +100,13 @@ pub fn foreign_entries(user_dir: &Path) -> Vec<ForeignEntry> {
             else {
                 continue;
             };
-            let hidden_by = get(MARKER).map(str::to_string);
+            let is_true = |k: &str| get(k).is_some_and(|v| v.trim().eq_ignore_ascii_case("true"));
+            let opens_files =
+                get("MimeType").is_some_and(|v| v.split(';').any(|t| !t.trim().is_empty()));
+            let hidden_by = get(MARKER).filter(|_| is_true(HIDDEN)).map(str::to_string);
             let hidden_elsewhere = hidden_by.is_none()
-                && (get("NoDisplay").is_some_and(|v| v.eq_ignore_ascii_case("true"))
-                    || get("Hidden").is_some_and(|v| v.eq_ignore_ascii_case("true")));
+                && get(MARKER).is_none()
+                && (is_true(HIDDEN) || (is_true(NO_DISPLAY) && !opens_files));
             out.push(ForeignEntry {
                 file,
                 appimage,
@@ -166,12 +184,20 @@ fn group_keys(text: &str) -> Vec<(String, String)> {
     out
 }
 
-/// Rewrite the `[Desktop Entry]` group: drop `NoDisplay` and SAM's marker,
-/// then insert `extra` lines right after the group header.
-fn rewrite(text: &str, extra: &[String]) -> (String, Option<String>) {
+/// What [`rewrite`] took out of the `[Desktop Entry]` group.
+#[derive(Default)]
+struct Removed {
+    no_display: Option<String>,
+    hidden: Option<String>,
+    marker: bool,
+}
+
+/// Rewrite the `[Desktop Entry]` group: drop `NoDisplay`, `Hidden` and SAM's
+/// marker, then insert `extra` lines right after the group header.
+fn rewrite(text: &str, extra: &[String]) -> (String, Removed) {
     let mut out = String::new();
     let mut in_group = false;
-    let mut previous = None;
+    let mut previous = Removed::default();
     for line in text.lines() {
         let t = line.trim();
         if t.starts_with('[') {
@@ -189,11 +215,18 @@ fn rewrite(text: &str, extra: &[String]) -> (String, Option<String>) {
         if in_group {
             if let Some((k, v)) = t.split_once('=') {
                 match k.trim() {
-                    "NoDisplay" => {
-                        previous = Some(v.trim().to_string());
+                    NO_DISPLAY => {
+                        previous.no_display = Some(v.trim().to_string());
                         continue;
                     }
-                    MARKER => continue,
+                    HIDDEN => {
+                        previous.hidden = Some(v.trim().to_string());
+                        continue;
+                    }
+                    MARKER => {
+                        previous.marker = true;
+                        continue;
+                    }
                     _ => {}
                 }
             }
@@ -204,7 +237,10 @@ fn rewrite(text: &str, extra: &[String]) -> (String, Option<String>) {
     (out, previous)
 }
 
-/// Hide a foreign entry from the menu on behalf of `app_id`.
+/// Hide a foreign entry on behalf of `app_id`: from the menu and from
+/// opening files. On an entry an older SAM took out of the menu only, the
+/// `NoDisplay` there is SAM's own, so the value from before is not known
+/// here: the earlier record has it (see [`merge_hidden`]).
 pub fn hide(entry: &Path, user_dir: &Path, app_id: &str) -> Result<HiddenEntry> {
     let text = fs::read_to_string(entry).with_context(|| format!("reading {}", entry.display()))?;
     if !text.contains(GROUP) {
@@ -213,7 +249,11 @@ pub fn hide(entry: &Path, user_dir: &Path, app_id: &str) -> Result<HiddenEntry> 
             sam_core::i18n::trf("{file} is not a menu entry", &[("file", &entry.display())])
         );
     }
-    let extra = vec!["NoDisplay=true".to_string(), format!("{MARKER}={app_id}")];
+    let extra = vec![
+        format!("{NO_DISPLAY}=true"),
+        format!("{HIDDEN}=true"),
+        format!("{MARKER}={app_id}"),
+    ];
     let (new_text, previous) = rewrite(&text, &extra);
     let in_user_dir = entry.parent().is_some_and(|d| same_dir(d, user_dir));
     let modified = if in_user_dir {
@@ -237,12 +277,35 @@ pub fn hide(entry: &Path, user_dir: &Path, app_id: &str) -> Result<HiddenEntry> 
     fs::create_dir_all(user_dir)?;
     atomic_write(&modified, new_text.as_bytes())?;
     refresh_desktop_database(user_dir);
+    let (previous_nodisplay, previous_hidden) = match (in_user_dir, previous.marker) {
+        (true, false) => (previous.no_display, previous.hidden),
+        // Hidden by an older SAM: its NoDisplay is SAM's, its Hidden the
+        // entry's own (that SAM did not set one).
+        (true, true) => (None, previous.hidden),
+        (false, _) => (None, None),
+    };
     Ok(HiddenEntry {
         original: entry.to_path_buf(),
         modified,
         created_override: !in_user_dir,
-        previous_nodisplay: if in_user_dir { previous } else { None },
+        previous_nodisplay,
+        previous_hidden,
     })
+}
+
+/// Adds what [`hide`] returned to an app's records. An entry hidden again
+/// (an older SAM had taken it out of the menu only) keeps its earlier
+/// record, which knows the `NoDisplay` from before SAM, and gains the
+/// `Hidden` from before.
+pub fn merge_hidden(records: &mut Vec<HiddenEntry>, h: HiddenEntry) {
+    match records.iter_mut().find(|r| r.modified == h.modified) {
+        Some(r) => {
+            if !r.created_override {
+                r.previous_hidden = h.previous_hidden;
+            }
+        }
+        None => records.push(h),
+    }
 }
 
 /// Undo [`hide`]. Leaves files alone that no longer carry SAM's marker for
@@ -263,7 +326,8 @@ pub fn restore(h: &HiddenEntry, app_id: &str) -> Result<()> {
         let extra: Vec<String> = h
             .previous_nodisplay
             .iter()
-            .map(|v| format!("NoDisplay={v}"))
+            .map(|v| format!("{NO_DISPLAY}={v}"))
+            .chain(h.previous_hidden.iter().map(|v| format!("{HIDDEN}={v}")))
             .collect();
         atomic_write(&h.modified, rewrite(&text, &extra).0.as_bytes())?;
     }
@@ -284,6 +348,7 @@ fn same_dir(a: &Path, b: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::OpenOptionsExt;
 
     fn fake_appimage(dir: &Path) -> PathBuf {
         let p = dir.join("Tool.AppImage");
@@ -302,6 +367,45 @@ mod tests {
         assert_eq!(
             appimage_in("env FOO=1 /nope/X.AppImage %U"),
             Some(PathBuf::from("/nope/X.AppImage"))
+        );
+    }
+
+    /// Regression (audit I-F15): a menu entry whose `Exec=` names a named
+    /// pipe hung the overview, which opened it to look for an AppImage and
+    /// waited for a writer that never came. Now it is passed over at once.
+    #[test]
+    fn a_menu_entry_naming_a_pipe_does_not_hang_the_search() {
+        use std::os::unix::ffi::OsStrExt;
+        let d = tempfile::tempdir().unwrap();
+        let apps = d.path().join("applications");
+        fs::create_dir_all(&apps).unwrap();
+        let pipe = d.path().join("tool");
+        let c = std::ffi::CString::new(pipe.as_os_str().as_bytes()).unwrap();
+        // SAFETY: `c` is a NUL-terminated path; mkfifo only creates the pipe.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        fs::write(
+            apps.join("tool.desktop"),
+            format!("[Desktop Entry]\nName=Tool\nExec={} %F\n", pipe.display()),
+        )
+        .unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let dir = apps.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(foreign_entries(&dir));
+        });
+        // Generous: without the fix it never returns at all.
+        let got = rx.recv_timeout(std::time::Duration::from_secs(30));
+        if got.is_err() {
+            // Let the stuck search go before failing.
+            let _ = fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&pipe);
+        }
+        let found = got.expect("the search waited on the named pipe");
+        assert!(
+            found.iter().all(|f| f.appimage != pipe),
+            "a pipe is no AppImage: {found:?}"
         );
     }
 
@@ -324,7 +428,7 @@ mod tests {
         let h = hide(&entry, &apps, "appimage-tool-1").unwrap();
         assert!(!h.created_override);
         let hidden = fs::read_to_string(&entry).unwrap();
-        assert!(hidden.contains("NoDisplay=true\nX-SAM-HiddenBy=appimage-tool-1"));
+        assert!(hidden.contains("NoDisplay=true\nHidden=true\nX-SAM-HiddenBy=appimage-tool-1"));
         assert!(
             hidden.contains("[Desktop Action New]\nName=New\nNoDisplay=x"),
             "other groups untouched"
@@ -345,6 +449,163 @@ mod tests {
             back.contains("NoDisplay=false")
                 && !back.contains("NoDisplay=true")
                 && !back.contains(MARKER),
+            "{back}"
+        );
+    }
+
+    /// Which programs `gio`, the desktop's own file opener (GLib), would
+    /// offer for `mime`, with only `data` as the desktop's data folder.
+    /// GLib finds them through the file-type cache that
+    /// `update-desktop-database` writes, as SAM does after every change.
+    fn openers(data: &Path, mime: &str) -> Option<String> {
+        let gio = sam_core::util::which("gio")?;
+        sam_core::util::which("update-desktop-database")?;
+        let out = std::process::Command::new(gio)
+            .args(["mime", mime])
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", data)
+            .env("XDG_DATA_HOME", data)
+            .env("XDG_DATA_DIRS", data.join("none"))
+            .env("XDG_CONFIG_HOME", data.join("config"))
+            .env("XDG_CONFIG_DIRS", data.join("none"))
+            .output()
+            .ok()?;
+        Some(String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+
+    /// Regression (review 2026-11-23, F4): hiding an unsandboxed entry set
+    /// only `NoDisplay=true`, which takes it out of the menu but leaves it
+    /// a handler for its file types, so opening a file still started the
+    /// AppImage without its sandbox. Checked with GLib's own `gio`: a
+    /// hidden entry opens nothing, and restoring makes it a handler again,
+    /// with the file as it was.
+    #[test]
+    fn a_hidden_entry_no_longer_opens_files() {
+        let d = tempfile::tempdir().unwrap();
+        let data = d.path().join("data");
+        let apps = data.join("applications");
+        fs::create_dir_all(&apps).unwrap();
+        let img = fake_appimage(d.path());
+        fs::set_permissions(&img, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let entry = apps.join("appimagekit_x-Editor.desktop");
+        let original = format!(
+            "[Desktop Entry]\nType=Application\nName=Editor\nExec={} %F\nMimeType=text/markdown;\n",
+            img.display()
+        );
+        fs::write(&entry, &original).unwrap();
+        refresh_desktop_database(&apps);
+        let Some(before) = openers(&data, "text/markdown") else {
+            assert!(
+                std::env::var("SAM_REQUIRE_SANDBOX").as_deref() != Ok("1"),
+                "SAM_REQUIRE_SANDBOX=1, but GLib's gio or update-desktop-database is not installed"
+            );
+            sam_core::errln!("skipped: GLib's gio or update-desktop-database is not installed");
+            return;
+        };
+        let name = "appimagekit_x-Editor.desktop";
+        assert!(
+            before.contains(name),
+            "the control: it opens files: {before}"
+        );
+
+        // Why NoDisplay alone is not enough: out of the menu, still opening.
+        fs::write(
+            &entry,
+            original.replace("Name=Editor\n", "Name=Editor\nNoDisplay=true\n"),
+        )
+        .unwrap();
+        refresh_desktop_database(&apps);
+        let menu_only = openers(&data, "text/markdown").unwrap();
+        assert!(menu_only.contains(name), "{menu_only}");
+        fs::write(&entry, &original).unwrap();
+        refresh_desktop_database(&apps);
+
+        let h = hide(&entry, &apps, "appimage-editor-1").unwrap();
+        let hidden = openers(&data, "text/markdown").unwrap();
+        assert!(
+            !hidden.contains(name),
+            "a hidden entry still opens files: {hidden}"
+        );
+        let found = foreign_entries(&apps);
+        let f = found.iter().find(|f| f.file == entry).unwrap();
+        assert_eq!(f.hidden_by.as_deref(), Some("appimage-editor-1"));
+
+        restore(&h, "appimage-editor-1").unwrap();
+        assert_eq!(fs::read_to_string(&entry).unwrap(), original);
+        let back = openers(&data, "text/markdown").unwrap();
+        assert!(back.contains(name), "{back}");
+    }
+
+    /// An entry out of the menu that still opens files is a way to start
+    /// the AppImage without its sandbox, so it is offered for hiding; one
+    /// deleted (`Hidden=true`) or opening nothing counts as hidden
+    /// elsewhere. An entry an older SAM took out of the menu only is
+    /// offered again, and hiding it again keeps what is needed to put back
+    /// the file as it was before SAM (review 2026-11-23, F4).
+    #[test]
+    fn entries_that_still_open_files_are_not_taken_for_hidden() {
+        let d = tempfile::tempdir().unwrap();
+        let apps = d.path().join("applications");
+        fs::create_dir_all(&apps).unwrap();
+        let img = fake_appimage(d.path());
+        let write = |name: &str, extra: &str| {
+            let p = apps.join(name);
+            let text = format!(
+                "[Desktop Entry]\nName=Tool\nExec={} %F\n{extra}",
+                img.display()
+            );
+            fs::write(&p, &text).unwrap();
+            (p, text)
+        };
+        let (files_only, _) = write("a.desktop", "NoDisplay=true\nMimeType=text/markdown;\n");
+        let (nothing, _) = write("b.desktop", "NoDisplay=true\nMimeType=;\n");
+        let (deleted, _) = write("c.desktop", "Hidden=true\nMimeType=text/markdown;\n");
+        let (old_sam, _) = write(
+            "d.desktop",
+            "NoDisplay=true\nX-SAM-HiddenBy=appimage-tool-1\nMimeType=text/markdown;\n",
+        );
+        let found = foreign_entries(&apps);
+        let get = |p: &Path| found.iter().find(|f| f.file == p).unwrap().clone();
+        assert!(!get(&files_only).hidden_elsewhere && get(&files_only).hidden_by.is_none());
+        assert!(get(&nothing).hidden_elsewhere);
+        assert!(get(&deleted).hidden_elsewhere);
+        let old = get(&old_sam);
+        assert!(old.hidden_by.is_none() && !old.hidden_elsewhere, "{old:?}");
+
+        // The older SAM's record knows the NoDisplay from before it.
+        let mut records = vec![HiddenEntry {
+            original: old_sam.clone(),
+            modified: old_sam.clone(),
+            created_override: false,
+            previous_nodisplay: Some("false".into()),
+            previous_hidden: None,
+        }];
+        let h = hide(&old_sam, &apps, "appimage-tool-1").unwrap();
+        assert_eq!(
+            h.previous_nodisplay, None,
+            "SAM's own NoDisplay is not the entry's"
+        );
+        merge_hidden(&mut records, h);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].previous_nodisplay.as_deref(), Some("false"));
+        let found = foreign_entries(&apps);
+        assert_eq!(
+            found
+                .iter()
+                .find(|f| f.file == old_sam)
+                .unwrap()
+                .hidden_by
+                .as_deref(),
+            Some("appimage-tool-1")
+        );
+        restore(&records[0], "appimage-tool-1").unwrap();
+        let back = fs::read_to_string(&old_sam).unwrap();
+        assert!(
+            back.contains("NoDisplay=false")
+                && !back.contains("Hidden")
+                && !back.contains(MARKER)
+                && back.contains("MimeType=text/markdown;"),
             "{back}"
         );
     }

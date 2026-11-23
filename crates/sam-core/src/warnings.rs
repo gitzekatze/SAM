@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::host::HostInfo;
 use crate::permissions::*;
-use crate::risk::is_sensitive_path;
+use crate::risk::is_dangerous_grant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -131,13 +131,15 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             )
             .with_key("filesystem.home"),
         );
-        if p.filesystem.ssh || p.filesystem.gnupg || p.filesystem.hidden_files {
-            w.push(Warning::danger(
-                "secrets-exposed",
-                "Private keys exposed",
-                "SSH keys, GnuPG keys or other credential stores are visible to the app.",
-            ));
-        }
+    }
+    // Its own warning: switching off the full-home warning silenced this
+    // one too (audit U-M10).
+    if p.filesystem.home && (p.filesystem.ssh || p.filesystem.gnupg || p.filesystem.hidden_files) {
+        w.push(Warning::danger(
+            "secrets-exposed",
+            "Private keys exposed",
+            "SSH keys, GnuPG keys or other credential stores are visible to the app.",
+        ));
     }
     for path in p
         .filesystem
@@ -145,7 +147,16 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
         .iter()
         .chain(p.filesystem.custom_read.iter())
     {
-        if is_sensitive_path(path) {
+        if crate::risk::shows_host_sockets(path) {
+            w.push(
+                Warning::danger(
+                    "socket-folder",
+                    "Connections to other programs exposed",
+                    crate::i18n::trf("'{path}' holds connections to programs outside the sandbox (terminal sessions, SSH connections, the X server). The app can use them to run commands outside the sandbox, even with read-only access.", &[("path", &path)]),
+                )
+                .with_key("filesystem.custom_write"),
+            );
+        } else if is_dangerous_grant(path) {
             w.push(
                 Warning::danger(
                     "sensitive-path",
@@ -187,9 +198,10 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             .with_key("dbus.system.mode"),
         ),
     }
+    // Dangerous, as the risk words rate it (audit U-M10: a plain warning here).
     if p.dbus.session.mode == DbusMode::Full {
         w.push(
-            Warning::warn(
+            Warning::danger(
                 "session-dbus-full",
                 "Full session D-Bus",
                 "Unfiltered session bus access lets the app control other desktop applications and services, and can be used to escape the sandbox.",
@@ -226,6 +238,78 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             "Raw device access",
             "Raw input, USB or sound devices are exposed. Input devices can be used to log keystrokes.",
         ));
+    }
+    // Grants the risk words rate "Think twice" or higher had no warning at
+    // all (audit U-M10).
+    if p.integrations.keyring {
+        w.push(
+            Warning::warn(
+                "keyring",
+                "Passwords & keyring",
+                "The app can read every password and secret stored in your keyring, also those of other apps.",
+            )
+            .with_key("integrations.keyring"),
+        );
+    }
+    if p.devices.webcam {
+        w.push(
+            Warning::warn(
+                "webcam",
+                "Webcam",
+                "The app can switch on your camera and record what it sees.",
+            )
+            .with_key("devices.webcam"),
+        );
+    }
+    if p.sockets.ssh_agent {
+        w.push(
+            Warning::warn(
+                "ssh-agent",
+                "SSH agent",
+                "While it runs, the app can use your SSH keys through the agent to log in to other computers as you.",
+            )
+            .with_key("sockets.ssh_agent"),
+        );
+    }
+    if p.display.wayland && p.display.wayland_privileged {
+        w.push(
+            Warning::warn(
+                "wayland-privileged",
+                "Privileged Wayland protocols",
+                "The app can use desktop functions meant for trusted tools, such as capturing the screen, reading the clipboard history or typing into other windows.",
+            )
+            .with_key("display.wayland_privileged"),
+        );
+    }
+    if !p.advanced.seccomp_baseline {
+        w.push(
+            Warning::warn(
+                "seccomp-off",
+                "Syscall filter off",
+                "The kernel functions SAM normally blocks are within the app's reach, so a flaw in the kernel is easier to use from inside the sandbox.",
+            )
+            .with_key("advanced.seccomp_baseline"),
+        );
+    }
+    if p.advanced.landlock == Some(false) {
+        w.push(
+            Warning::warn(
+                "landlock-off",
+                "Landlock off",
+                "The second barrier around your files (Landlock) is off; only the sandbox's own view of the files protects them.",
+            )
+            .with_key("advanced.landlock"),
+        );
+    }
+    if p.advanced.allow_userns {
+        w.push(
+            Warning::info(
+                "nested-namespaces",
+                "Nested namespaces",
+                "The app may build sandboxes of its own, which brings more of the kernel within its reach. Browsers built on Chromium need this for their own sandbox.",
+            )
+            .with_key("advanced.allow_userns"),
+        );
     }
     if p.devices.bluetooth {
         w.push(
@@ -321,11 +405,486 @@ mod tests {
         }
     }
 
+    /// Regression (audit U-M10): grants the risk words rate "Think twice"
+    /// had no warning at all, the private-keys warning was silenced by
+    /// switching off the full-home warning, and the full session bus was a
+    /// plain warning while the risk words call it Dangerous.
+    #[test]
+    fn every_grant_the_risk_words_question_is_warned_about() {
+        let mut p = PermissionSet::strict_gui();
+        p.integrations.keyring = true;
+        p.devices.webcam = true;
+        p.sockets.ssh_agent = true;
+        p.display.wayland = true;
+        p.display.wayland_privileged = true;
+        p.advanced.seccomp_baseline = false;
+        p.advanced.landlock = Some(false);
+        p.advanced.allow_userns = true;
+        let w = evaluate(&p, &WarningContext::default());
+        let c = codes(&w);
+        for code in [
+            "keyring",
+            "webcam",
+            "ssh-agent",
+            "wayland-privileged",
+            "seccomp-off",
+            "landlock-off",
+            "nested-namespaces",
+        ] {
+            assert!(c.contains(&code), "missing {code} in {c:?}");
+        }
+
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.ssh = true;
+        let quiet = WarningContext::default();
+        assert!(!quiet.warn_full_home);
+        let w = evaluate(&p, &quiet);
+        let c = codes(&w);
+        assert!(c.contains(&"secrets-exposed"), "{c:?}");
+        assert!(!c.contains(&"full-home"), "that warning is switched off");
+
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Full;
+        let w = evaluate(&p, &quiet);
+        let bus = w.iter().find(|w| w.code == "session-dbus-full").unwrap();
+        assert_eq!(bus.severity, Severity::Danger);
+        assert_eq!(
+            crate::risk::assess(&p)
+                .items
+                .iter()
+                .find(|i| i.key == "dbus.session.mode")
+                .map(|i| i.level),
+            Some(crate::risk::RiskLevel::Dangerous),
+            "the same as the risk words"
+        );
+    }
+
     /// SAM's strictest window profile produces no danger warning.
     #[test]
     fn strict_has_no_danger() {
         let w = evaluate(&PermissionSet::strict_gui(), &WarningContext::all_enabled());
         assert!(w.iter().all(|w| w.severity != Severity::Danger));
+    }
+
+    /// A filtered session bus on a computer without xdg-dbus-proxy (where
+    /// SAM then gives the app no session bus) says so; with the proxy
+    /// installed, or without a filtered bus, it does not.
+    #[test]
+    fn a_missing_dbus_proxy_is_named_only_where_the_filter_needs_it() {
+        let mut host = crate::sandbox::sample_context().host;
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Filtered;
+        let named = |p: &PermissionSet, h: &crate::host::HostInfo| {
+            let ctx = WarningContext {
+                host: Some(h),
+                ..WarningContext::all_enabled()
+            };
+            codes(&evaluate(p, &ctx)).contains(&"dbus-proxy-missing")
+        };
+        assert!(!named(&p, &host), "installed");
+        host.tools.xdg_dbus_proxy = None;
+        assert!(named(&p, &host), "missing");
+        p.dbus.session.mode = DbusMode::None;
+        assert!(!named(&p, &host), "no filtered bus asked for");
+    }
+
+    fn find<'a>(w: &'a [Warning], code: &str) -> Option<&'a Warning> {
+        w.iter().find(|w| w.code == code)
+    }
+
+    /// A host where everything works: sockets for Wayland, X11 and sound,
+    /// usable user namespaces and xdg-dbus-proxy installed.
+    fn working_host() -> HostInfo {
+        let mut h = HostInfo::default();
+        h.sockets.wayland = Some("/run/user/1000/wayland-0".into());
+        h.sockets.x11 = Some("/tmp/.X11-unix/X0".into());
+        h.sockets.pulse = Some("/run/user/1000/pulse/native".into());
+        h.tools.xdg_dbus_proxy = Some(crate::host::Tool::default());
+        h
+    }
+
+    /// With the whole home granted, each credential store on its own (SSH
+    /// keys, GnuPG keys, the other hidden files) gives the danger warning
+    /// that private keys are visible; with all three off there is none.
+    #[test]
+    fn each_credential_store_in_a_full_home_is_named_as_exposed_keys() {
+        type Flag = fn(&mut PermissionSet);
+        let cases: [(&str, Flag); 3] = [
+            ("ssh", |p| p.filesystem.ssh = true),
+            ("gnupg", |p| p.filesystem.gnupg = true),
+            ("hidden_files", |p| p.filesystem.hidden_files = true),
+        ];
+        for (name, set) in cases {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            set(&mut p);
+            let w = evaluate(&p, &WarningContext::all_enabled());
+            let hit = find(&w, "secrets-exposed")
+                .unwrap_or_else(|| panic!("{name} alone: no secrets-exposed in {:?}", codes(&w)));
+            assert_eq!(hit.severity, Severity::Danger, "{name}");
+        }
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        let w = evaluate(&p, &WarningContext::all_enabled());
+        assert!(find(&w, "secrets-exposed").is_none(), "{:?}", codes(&w));
+    }
+
+    /// Only an unfiltered session bus is named as a way out of the sandbox;
+    /// a filtered bus or none is not.
+    #[test]
+    fn only_the_full_session_bus_is_named_as_an_escape() {
+        for (mode, expected) in [
+            (DbusMode::Full, true),
+            (DbusMode::Filtered, false),
+            (DbusMode::None, false),
+        ] {
+            let mut p = PermissionSet::strict_gui();
+            p.dbus.session.mode = mode;
+            let w = evaluate(&p, &WarningContext::all_enabled());
+            let hit = find(&w, "session-dbus-full");
+            assert_eq!(hit.is_some(), expected, "{mode:?}: {:?}", codes(&w));
+            if let Some(hit) = hit {
+                assert_eq!(hit.key.as_deref(), Some("dbus.session.mode"));
+            }
+        }
+    }
+
+    /// On a filtered session bus, an allowed name that reaches outside the
+    /// sandbox gives a danger warning, and a missing xdg-dbus-proxy is
+    /// named. With the bus off, the same list says nothing: it is not used.
+    #[test]
+    fn dangerous_bus_names_and_a_missing_proxy_are_named_for_the_filtered_bus_only() {
+        let no_proxy = HostInfo::default();
+        for (mode, expected) in [(DbusMode::Filtered, true), (DbusMode::None, false)] {
+            let mut p = PermissionSet::strict_gui();
+            p.dbus.session.mode = mode;
+            p.dbus.session.allow = vec!["org.freedesktop.portal.*".into()];
+            let ctx = WarningContext {
+                host: Some(&no_proxy),
+                ..WarningContext::all_enabled()
+            };
+            let w = evaluate(&p, &ctx);
+            let hit = find(&w, "dbus-dangerous-name");
+            assert_eq!(hit.is_some(), expected, "{mode:?}: {:?}", codes(&w));
+            if let Some(hit) = hit {
+                assert_eq!(hit.severity, Severity::Danger);
+            }
+            assert_eq!(
+                find(&w, "dbus-proxy-missing").is_some(),
+                expected,
+                "{mode:?}: {:?}",
+                codes(&w)
+            );
+        }
+    }
+
+    /// A wildcard that also covers a blocked name is named only when the
+    /// filtered bus would use it: not for a filter without such a wildcard,
+    /// and not for a full or no session bus, where the lists do not apply.
+    #[test]
+    fn a_wildcard_over_a_blocked_name_is_named_for_the_filtered_bus_only() {
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Filtered;
+        p.dbus.session.allow = vec![];
+        p.dbus.session.deny = vec![];
+        let w = evaluate(&p, &WarningContext::all_enabled());
+        assert!(
+            find(&w, "dbus-wildcard-ignored").is_none(),
+            "{:?}",
+            codes(&w)
+        );
+
+        p.dbus.session.allow = vec!["org.example.*".into()];
+        p.dbus.session.deny = vec!["org.example.Foo".into()];
+        for (mode, expected) in [
+            (DbusMode::Filtered, true),
+            (DbusMode::Full, false),
+            (DbusMode::None, false),
+        ] {
+            p.dbus.session.mode = mode;
+            let w = evaluate(&p, &WarningContext::all_enabled());
+            let hit = find(&w, "dbus-wildcard-ignored");
+            assert_eq!(hit.is_some(), expected, "{mode:?}: {:?}", codes(&w));
+            if let Some(hit) = hit {
+                assert!(hit.message.contains("org.example.*"), "{}", hit.message);
+            }
+        }
+    }
+
+    /// Raw input devices (keystrokes), raw USB and raw sound devices each
+    /// give the danger warning on their own; the strict profile none.
+    #[test]
+    fn each_raw_device_gives_the_raw_device_danger() {
+        type Flag = fn(&mut PermissionSet);
+        let cases: [(&str, Flag); 3] = [
+            ("input", |p| p.devices.input = true),
+            ("usb", |p| p.devices.usb = true),
+            ("alsa_raw", |p| p.audio.alsa_raw = true),
+        ];
+        for (name, set) in cases {
+            let mut p = PermissionSet::strict_gui();
+            set(&mut p);
+            let w = evaluate(&p, &WarningContext::all_enabled());
+            let hit = find(&w, "raw-devices")
+                .unwrap_or_else(|| panic!("{name} alone: no raw-devices in {:?}", codes(&w)));
+            assert_eq!(hit.severity, Severity::Danger, "{name}");
+        }
+        let w = evaluate(&PermissionSet::strict_gui(), &WarningContext::all_enabled());
+        assert!(find(&w, "raw-devices").is_none(), "{:?}", codes(&w));
+    }
+
+    /// Unchecked Bubblewrap arguments are named when there are some, and
+    /// only then.
+    #[test]
+    fn raw_backend_arguments_are_named_when_there_are_some() {
+        let mut p = PermissionSet::strict_gui();
+        let w = evaluate(&p, &WarningContext::all_enabled());
+        assert!(find(&w, "raw-backend-args").is_none(), "{:?}", codes(&w));
+        p.advanced.extra_bwrap_args = vec!["--share-net".into()];
+        let w = evaluate(&p, &WarningContext::all_enabled());
+        assert!(find(&w, "raw-backend-args").is_some(), "{:?}", codes(&w));
+    }
+
+    /// "Cannot open windows" is said only with neither Wayland nor X11; a
+    /// terminal program gets its own notice instead.
+    #[test]
+    fn no_display_is_named_only_without_any_display() {
+        for (wayland, x11, expected) in [
+            (true, false, false),
+            (false, true, false),
+            (true, true, false),
+            (false, false, true),
+        ] {
+            let mut p = PermissionSet::strict_gui();
+            p.display.wayland = wayland;
+            p.display.x11 = x11;
+            let w = evaluate(&p, &WarningContext::default());
+            assert_eq!(
+                find(&w, "no-display").is_some(),
+                expected,
+                "wayland={wayland} x11={x11}: {:?}",
+                codes(&w)
+            );
+        }
+        let mut p = PermissionSet::strict_gui();
+        p.display.wayland = false;
+        let ctx = WarningContext {
+            terminal_program: true,
+            ..Default::default()
+        };
+        let c = evaluate(&p, &ctx);
+        assert!(find(&c, "terminal-program").is_some(), "{:?}", codes(&c));
+        assert!(find(&c, "no-display").is_none(), "{:?}", codes(&c));
+    }
+
+    /// The network advice fits both the setting and what the app seems to
+    /// need: "may not be needed" only for network on and not needed,
+    /// "network is off" only for network off and needed.
+    #[test]
+    fn network_advice_fits_the_setting_and_the_apps_need() {
+        for (mode, needs, unneeded, needed) in [
+            (NetworkMode::Full, Some(false), true, false),
+            (NetworkMode::Full, Some(true), false, false),
+            (NetworkMode::Full, None, false, false),
+            (NetworkMode::None, Some(true), false, true),
+            (NetworkMode::None, Some(false), false, false),
+            (NetworkMode::None, None, false, false),
+        ] {
+            let mut p = PermissionSet::strict_gui();
+            p.network.mode = mode;
+            let ctx = WarningContext {
+                app_needs_network: needs,
+                ..WarningContext::all_enabled()
+            };
+            let w = evaluate(&p, &ctx);
+            assert_eq!(
+                find(&w, "network-unneeded").is_some(),
+                unneeded,
+                "{mode:?} {needs:?}: {:?}",
+                codes(&w)
+            );
+            assert_eq!(
+                find(&w, "network-needed").is_some(),
+                needed,
+                "{mode:?} {needs:?}: {:?}",
+                codes(&w)
+            );
+        }
+    }
+
+    /// Unusable user namespaces are a danger notice on such a computer
+    /// only; setuid Bubblewrap makes them usable again.
+    #[test]
+    fn unusable_user_namespaces_are_named_only_where_they_are() {
+        let mut host = working_host();
+        let p = PermissionSet::strict_gui();
+        let on = |h: &HostInfo| {
+            let ctx = WarningContext {
+                host: Some(h),
+                ..WarningContext::all_enabled()
+            };
+            evaluate(&p, &ctx)
+        };
+        let w = on(&host);
+        assert!(find(&w, "userns-unavailable").is_none(), "{:?}", codes(&w));
+
+        host.userns.max_user_namespaces = Some(0);
+        let w = on(&host);
+        let hit = find(&w, "userns-unavailable").expect("max_user_namespaces = 0");
+        assert_eq!(hit.severity, Severity::Danger);
+
+        host.userns.max_user_namespaces = None;
+        host.userns.unprivileged_clone = Some(false);
+        host.userns.bwrap_setuid = true;
+        let w = on(&host);
+        assert!(find(&w, "userns-unavailable").is_none(), "{:?}", codes(&w));
+    }
+
+    /// A missing Wayland socket, X11 display or sound server is named only
+    /// when the app uses it, the host lacks it and no fallback is there.
+    #[test]
+    fn missing_display_and_sound_are_named_only_when_the_app_would_miss_them() {
+        struct Case {
+            name: &'static str,
+            wayland: bool,
+            x11: bool,
+            audio: bool,
+            host_wayland: bool,
+            host_x11: bool,
+            host_pulse: bool,
+            missing: &'static [&'static str],
+        }
+        let cases = [
+            Case {
+                name: "all there",
+                wayland: true,
+                x11: true,
+                audio: true,
+                host_wayland: true,
+                host_x11: true,
+                host_pulse: true,
+                missing: &[],
+            },
+            Case {
+                name: "wayland app, no wayland",
+                wayland: true,
+                x11: false,
+                audio: false,
+                host_wayland: false,
+                host_x11: true,
+                host_pulse: true,
+                missing: &["wayland-missing"],
+            },
+            Case {
+                name: "wayland app with x11 fallback, no wayland",
+                wayland: true,
+                x11: true,
+                audio: false,
+                host_wayland: false,
+                host_x11: true,
+                host_pulse: true,
+                missing: &[],
+            },
+            Case {
+                name: "x11 app, no display at all",
+                wayland: false,
+                x11: true,
+                audio: false,
+                host_wayland: false,
+                host_x11: false,
+                host_pulse: true,
+                missing: &["x11-missing"],
+            },
+            Case {
+                name: "x11 app, x11 there, no wayland",
+                wayland: false,
+                x11: true,
+                audio: false,
+                host_wayland: false,
+                host_x11: true,
+                host_pulse: true,
+                missing: &[],
+            },
+            Case {
+                name: "x11 app, xwayland through wayland",
+                wayland: false,
+                x11: true,
+                audio: false,
+                host_wayland: true,
+                host_x11: false,
+                host_pulse: true,
+                missing: &[],
+            },
+            Case {
+                name: "no display app, nothing on the host",
+                wayland: false,
+                x11: false,
+                audio: false,
+                host_wayland: false,
+                host_x11: false,
+                host_pulse: false,
+                missing: &[],
+            },
+            Case {
+                name: "sound app, no sound server",
+                wayland: true,
+                x11: false,
+                audio: true,
+                host_wayland: true,
+                host_x11: false,
+                host_pulse: false,
+                missing: &["audio-missing"],
+            },
+        ];
+        let all = ["wayland-missing", "x11-missing", "audio-missing"];
+        for c in cases {
+            let mut host = working_host();
+            if !c.host_wayland {
+                host.sockets.wayland = None;
+            }
+            if !c.host_x11 {
+                host.sockets.x11 = None;
+            }
+            if !c.host_pulse {
+                host.sockets.pulse = None;
+            }
+            let mut p = PermissionSet::strict_gui();
+            p.display.wayland = c.wayland;
+            p.display.x11 = c.x11;
+            p.audio.enabled = c.audio;
+            let ctx = WarningContext {
+                host: Some(&host),
+                ..WarningContext::all_enabled()
+            };
+            let w = evaluate(&p, &ctx);
+            for code in all {
+                assert_eq!(
+                    find(&w, code).is_some(),
+                    c.missing.contains(&code),
+                    "{}: {code} in {:?}",
+                    c.name,
+                    codes(&w)
+                );
+            }
+        }
+    }
+
+    /// Without pipewire-pulse the sound notice names it when PipeWire runs.
+    #[test]
+    fn missing_sound_names_pipewire_pulse_when_pipewire_runs() {
+        let mut host = working_host();
+        host.sockets.pulse = None;
+        host.sockets.pipewire = Some("/run/user/1000/pipewire-0".into());
+        let mut p = PermissionSet::strict_gui();
+        p.audio.enabled = true;
+        let ctx = WarningContext {
+            host: Some(&host),
+            ..WarningContext::all_enabled()
+        };
+        let w = evaluate(&p, &ctx);
+        let hit = find(&w, "audio-missing").expect("audio-missing");
+        assert!(hit.message.contains("pipewire-pulse"), "{}", hit.message);
     }
 
     /// The X11 warning disappears when the user turns it off in the preferences.

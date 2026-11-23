@@ -1,6 +1,7 @@
 #!/usr/bin/python3 -I
 """The app page through AT-SPI: the Test button and its state, the advice
-group, the visible "Files This App Saved" row, compatibility mode turned on
+group, the visible "Files This App Saved" row, Confirm Settings for a record
+changed outside SAM, a failed save, compatibility mode turned on
 through its dialog, and the remove dialog with three choices of which none
 is preselected. Prints one line per check."""
 import json, os, subprocess, sys, time
@@ -26,7 +27,10 @@ def walk(n, out):
         return out
     out.append(n)
     for i in range(c):
-        ch = n.get_child_at_index(i)
+        try:
+            ch = n.get_child_at_index(i)
+        except Exception:  # noqa: S112 -- a child that vanished while walking; one not found fails the check
+            continue
         if ch is not None:
             walk(ch, out)
     return out
@@ -61,6 +65,55 @@ for _ in range(60):
 check("window reachable through AT-SPI", app is not None)
 if not app:
     sys.exit(1)
+if sys.argv[1:] == ["finding"]:
+    # A finding from the last start applies its fix and starts the app
+    # again; the row says so (audit G-F12/13: it started the app without
+    # a word).
+    row = wait(lambda: find(app, lambda s: s == "A library is not visible"), 20)
+    check("the failed start shows its finding", row is not None)
+    check("…which says it fixes and starts the app", wait(lambda: find(app, lambda s: s == "Fix and start")) is not None)
+    print("RESULT", "pass" if ok else "fail")
+    sys.exit(0 if ok else 1)
+def entry():
+    out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "info", os.environ["SAM_TEST_APP"]],
+                         check=False, capture_output=True, text=True).stdout
+    d = json.loads(out)
+    return d.get("data", d)["entry"]
+# The shell part turned X11 on in the record from outside SAM. "Confirm
+# Settings" names what the settings allow before the app may start again,
+# and Cancel keeps it blocked (audit G-F12/13: one click confirmed them).
+confirm = wait(lambda: find(app, lambda s: s == "Confirm Settings", "button"))
+check("a record changed outside SAM offers Confirm Settings", confirm is not None)
+# The note of an update's needs confirms the settings too ("review"): it
+# waits until they are confirmed, or its "Got It" would start the app
+# without the question.
+check("…and nothing else that confirms them (no Got It)", find(app, lambda s: s == "Got It", "button") is None)
+if confirm:
+    # Changed again while the page is open: the question names the
+    # settings as they are now, not as the page read them.
+    rec = os.path.join(os.environ["SAM_DATA_DIR"], "apps", os.environ["SAM_TEST_APP"] + ".json")
+    with open(rec) as f:
+        d = json.load(f)
+    d["profile"]["permissions"]["devices"]["usb"] = True
+    with open(rec, "w") as f:
+        json.dump(d, f)
+    confirm.get_action_iface().do_action(0)
+    asks = wait(lambda: find(app, lambda s: s == "Confirm These Settings?"))
+    check("Confirm Settings asks first", asks is not None)
+    check("…and names X11, which the change added", find(app, lambda s: "These settings let the app use:" in s and "X11" in s) is not None)
+    check("…and raw USB, added after the page was shown", find(app, lambda s: "These settings let the app use:" in s and "Raw USB" in s) is not None)
+    cancel = find(app, lambda s: s == "Cancel", "button")
+    if cancel:
+        cancel.get_action_iface().do_action(0)
+    time.sleep(1.5)
+    check("…after Cancel the app stays blocked", entry().get("changed_outside") is True)
+    confirm = find(app, lambda s: s == "Confirm Settings", "button")
+    if confirm:
+        confirm.get_action_iface().do_action(0)
+        ok_button = wait(lambda: find(app, lambda s: s == "Confirm", "button"))
+        if ok_button:
+            ok_button.get_action_iface().do_action(0)
+    check("…after Confirm it may start", wait(lambda: entry().get("changed_outside", False) is False) is True)
 test = wait(lambda: find(app, lambda s: s == "Test", "button"))
 check("the header has one Test button", test is not None)
 check("there is no separate Check button", find(app, lambda s: s == "Check", "button") is None)
@@ -72,7 +125,7 @@ check("Files This App Saved is visible on the page", find(app, lambda s: s == "F
 # agent did not ask); Cancel leaves the app without it.
 def info():
     out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "info", os.environ["SAM_TEST_APP"]],
-                         capture_output=True, text=True).stdout
+                         check=False, capture_output=True, text=True).stdout
     d = json.loads(out)
     return d.get("data", d)["entry"]["profile"]["permissions"]
 cam = find(app, lambda s: s == "Webcam", "switch")
@@ -97,12 +150,31 @@ if pads:
     pads.get_action_iface().do_action(0)
     check("…and the page saves it", wait(lambda: info()["devices"]["gamepads"] is True) is True)
     check("…and the change made elsewhere stays", info()["filesystem"]["music"] == "ro")
+# A save that fails leaves the page showing the stored settings, not the
+# switch as it was flipped (audit G-F3).
+printing = find(app, lambda s: s == "Printing", "switch")
+check("the printing switch is on the page, off", printing is not None and not printing.get_state_set().contains(Atspi.StateType.CHECKED))
+if printing:
+    apps = os.path.join(os.environ["SAM_DATA_DIR"], "apps")
+    os.chmod(apps, 0o555)
+    try:
+        printing.get_action_iface().do_action(0)
+        # The window reports the refused write, then shows the stored
+        # settings again once they are read back.
+        check("…the save fails and the window says so", wait(lambda: find(app, lambda s: "os error 13" in s)) is not None)
+        check("…a failed save leaves the app without printing", info()["sockets"]["cups"] is False)
+        def shown_off():
+            again = find(app, lambda s: s == "Printing", "switch")
+            return again is not None and not again.get_state_set().contains(Atspi.StateType.CHECKED)
+        check("…and the page shows it off", wait(shown_off) is True)
+    finally:
+        os.chmod(apps, 0o755)
 # Compatibility mode: the switch asks first, and after "Turn On" the app
 # really has it (regression: the window called the command line without
 # --yes, so turning it on failed after the person had confirmed).
 def compat_on():
     out = subprocess.run([os.environ["SAM_TEST_BIN"] + "/sam-jail", "--json", "info", os.environ["SAM_TEST_APP"]],
-                         capture_output=True, text=True).stdout
+                         check=False, capture_output=True, text=True).stdout
     try:
         d = json.loads(out)
         d = d.get("data", d)

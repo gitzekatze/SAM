@@ -104,9 +104,13 @@ fn main() {
     // every argument is Bubblewrap's, and the version it answers comes
     // from the file beside the link, never from the program.
     if sam_runner::room_service::started_as_standin() {
-        // Named as Bubblewrap is: SAM's "please quit" spares Bubblewrap
-        // by its name, so the program in the room gets its time to save
-        // and quit, and its room ends when it has.
+        // Named as Bubblewrap is, also when started by this helper's own
+        // path, as the program that started it expects of its `bwrap`. The
+        // name decides nothing for SAM: SAM's "please quit" (Close, logout)
+        // asks the stand-in like any process of the app, and the stand-in
+        // passes it on to its room (room_service::standin), so the program
+        // in the room gets its time to save and quit, and its room ends
+        // when it has.
         // SAFETY: PR_SET_NAME reads a NUL-terminated name of at most 16
         // bytes, which this static string is.
         unsafe {
@@ -138,6 +142,11 @@ fn main() {
         }
         std::process::exit(sam_runner::room_service::standin(&version, &args));
     }
+    // What this program inherited (a menu launcher's or terminal's open
+    // descriptors) never reaches the app, from the menu or inside the
+    // sandbox (review F6). Not as Room service's stand-in above: the
+    // descriptors a program hands to it are its request.
+    sam_core::util::close_inherited_on_exec();
     let args = match text_args(std::env::args_os().skip(1)) {
         Ok(a) => a,
         Err(name) => {
@@ -183,13 +192,46 @@ fn main() {
     }
 }
 
-fn launch(args: Vec<String>) -> Result<i32> {
-    let (id, rest) = match args.first().map(String::as_str) {
-        Some("--app-id") => (
-            args.get(1).cloned().unwrap_or_else(|| usage()),
-            args[2.min(args.len())..].to_vec(),
+/// How a start from the menu runs: with the files it was given, and told
+/// at once when it lacks a protection layer.
+fn launch_options(args: Vec<String>) -> LaunchOptions {
+    LaunchOptions {
+        args,
+        on_missing_layers: Some(tell_missing_layers),
+        ..Default::default()
+    }
+}
+
+/// A start from the menu has no terminal for the warning that it lacks a
+/// protection layer its settings ask for (Landlock that could not be
+/// applied, SAM's helper not found): a notification says it while the app
+/// runs, with a button to SAM's page for the app (review K-4).
+fn tell_missing_layers(app_id: &str, app_name: &str, missing: &[String]) {
+    let (title, body) = missing_layers_notice(app_name, missing);
+    notify_with_fix(&title, &body, app_id);
+}
+
+/// The notification's title and text for [`tell_missing_layers`].
+fn missing_layers_notice(app_name: &str, missing: &[String]) -> (String, String) {
+    (
+        sam_core::i18n::trf(
+            "{app} is running without some of its protection",
+            &[("app", &app_name)],
         ),
-        Some("-h") | Some("--help") | None => usage(),
+        sam_core::i18n::trf(
+            "This start runs without {layers}, which its settings ask for. It still runs in its sandbox. SAM's page for the app says why.",
+            &[("layers", &missing.join(", "))],
+        ),
+    )
+}
+
+/// The app's id and the arguments for the app, from `--app-id <id>
+/// [files...]` or `<id> [args...]`; one leading `--` before them is a
+/// separator, not an argument. None asks for the usage.
+fn parse_launch_args(args: &[String]) -> Option<(String, Vec<String>)> {
+    let (id, rest) = match args.first().map(String::as_str) {
+        Some("--app-id") => (args.get(1)?.clone(), args[2.min(args.len())..].to_vec()),
+        Some("-h") | Some("--help") | None => return None,
         Some(_) => (args[0].clone(), args[1..].to_vec()),
     };
     // Strip a leading "--" separator.
@@ -197,6 +239,18 @@ fn launch(args: Vec<String>) -> Result<i32> {
         Some("--") => rest[1..].to_vec(),
         _ => rest,
     };
+    Some((id, rest))
+}
+
+/// A terminal program from the menu: its window closes with it, so a
+/// failure would flash by unread. Only then (a terminal app, a failed end,
+/// someone at the terminal) does the window wait for Enter.
+fn hold_terminal_window(terminal: bool, exit_code: Option<i32>, stdin_tty: bool) -> bool {
+    terminal && exit_code != Some(0) && stdin_tty
+}
+
+fn launch(args: Vec<String>) -> Result<i32> {
+    let (id, rest) = parse_launch_args(&args).unwrap_or_else(|| usage());
     let app = Sam::open()?;
     let mut entry = app
         .registry()
@@ -226,17 +280,16 @@ fn launch(args: Vec<String>) -> Result<i32> {
     }
     let rec = run(
         &mut entry,
-        &LaunchOptions {
-            args: rest,
-            ..Default::default()
-        },
+        &launch_options(rest),
         &app.config,
         &app.paths,
         &host,
     )?;
-    // A terminal program from the menu: its window closes with it, so a
-    // failure would flash by unread.
-    if entry.metadata.terminal && rec.exit_code != Some(0) && sam_runner::pty::is_tty(0) {
+    if hold_terminal_window(
+        entry.metadata.terminal,
+        rec.exit_code,
+        sam_runner::pty::is_tty(0),
+    ) {
         if rec.success {
             errln!(
                 "\n{}",
@@ -278,7 +331,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
     }
     // A crash within the first seconds usually means the sandbox is missing
     // something: say what the output suggests.
-    if !rec.success && rec.finished_at - rec.started_at <= 10 {
+    if rec.stopped_right_after_start() {
         let hint = match rec.findings.first() {
             Some(f) => sam_core::i18n::trf("SAM found a likely fix: {fix}.", &[("fix", &f.title)]),
             None => sam_core::i18n::tr("SAM's repair steps may help."),
@@ -316,5 +369,110 @@ mod tests {
         let odd = std::ffi::OsString::from_vec(b"/home/j\xffo.txt".to_vec());
         let e = text_args(vec!["--app-id".into(), "x".into(), odd].into_iter()).unwrap_err();
         assert_eq!(e, "/home/j\u{FFFD}o.txt");
+    }
+
+    fn strings(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The files from the menu and the arguments typed after the id reach
+    /// the app as given; only one leading `--` is a separator (the app never
+    /// sees it as its first argument), a later one is the app's.
+    #[test]
+    fn the_app_gets_its_arguments_without_the_separator() {
+        let parse = |a: &[&str]| parse_launch_args(&strings(a));
+        for (given, id, rest) in [
+            (&["ID"][..], "ID", &[][..]),
+            (&["ID", "--", "a", "b"], "ID", &["a", "b"]),
+            (&["ID", "a", "--"], "ID", &["a", "--"]),
+            (&["ID", "--", "--"], "ID", &["--"]),
+            (&["--app-id", "ID", "--", "f"], "ID", &["f"]),
+            (
+                &["--app-id", "ID", "/home/a b.txt"],
+                "ID",
+                &["/home/a b.txt"],
+            ),
+        ] {
+            assert_eq!(
+                parse(given),
+                Some((id.to_string(), strings(rest))),
+                "{given:?}"
+            );
+        }
+        for usage in [&[][..], &["-h"], &["--help"], &["--app-id"]] {
+            assert_eq!(parse(usage), None, "{usage:?} asks for the usage");
+        }
+    }
+
+    /// A terminal app's window waits for Enter only after a failed end, and
+    /// only with someone at the terminal; a clean end closes it at once, and
+    /// a graphical app never waits.
+    #[test]
+    fn only_a_failed_terminal_app_keeps_its_window_open() {
+        for (terminal, exit_code, stdin_tty, hold) in [
+            (true, Some(1), true, true),
+            (true, None, true, true),
+            (true, Some(0), true, false),
+            (true, Some(1), false, false),
+            (false, Some(1), true, false),
+            (false, Some(0), true, false),
+            (false, Some(1), false, false),
+        ] {
+            assert_eq!(
+                hold_terminal_window(terminal, exit_code, stdin_tty),
+                hold,
+                "terminal {terminal}, exit code {exit_code:?}, at a terminal {stdin_tty}"
+            );
+        }
+    }
+
+    /// "Show the fix" opens SAM's own AppImage when SAM runs from one; with
+    /// no SAM window anywhere there is no button (a plain notice), never a
+    /// button that runs nothing. The only test here that changes the
+    /// environment, and the others do not read it.
+    #[test]
+    fn the_fix_button_opens_sam_only_when_sam_is_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let gui = tmp.path().join("SAM-x86_64.AppImage");
+        std::fs::write(&gui, "").unwrap();
+        let empty = tmp.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+        assert!(
+            !std::env::current_exe()
+                .unwrap()
+                .with_file_name("sam-jail-gui")
+                .exists(),
+            "no SAM window next to the test program"
+        );
+        let path = std::env::var_os("PATH");
+        std::env::set_var("PATH", &empty);
+        std::env::set_var("APPIMAGE", &gui);
+        let found = sam_gui();
+        std::env::set_var("APPIMAGE", tmp.path().join("gone.AppImage"));
+        let missing = sam_gui();
+        std::env::remove_var("APPIMAGE");
+        let unset = sam_gui();
+        match path {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+        assert_eq!(found, Some(gui));
+        assert_eq!(missing, None, "a missing AppImage file is no SAM window");
+        assert_eq!(unset, None);
+    }
+
+    /// Review K-4: a start from the menu is told at once when it lacks a
+    /// protection layer, and the notification names each missing layer.
+    #[test]
+    fn a_menu_start_is_told_when_a_protection_layer_is_missing() {
+        let opts = launch_options(vec!["a.txt".into()]);
+        assert_eq!(opts.args, ["a.txt"]);
+        assert!(
+            opts.on_missing_layers.is_some(),
+            "the menu start asks to be told"
+        );
+        let (title, body) = missing_layers_notice("Notes", &["Landlock".into(), "seccomp".into()]);
+        assert!(title.contains("Notes"), "{title}");
+        assert!(body.contains("Landlock, seccomp"), "{body}");
     }
 }

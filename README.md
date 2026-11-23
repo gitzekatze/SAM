@@ -37,8 +37,11 @@ the same tool Flatpak uses, and its window works like Flatseal's.
   went wrong and offers the one change that helps, from mild to strong. You
   can undo every change.
 - **Sandboxed apps fit into your desktop.** They appear in your application
-  menu and always start through SAM. Menu entries that would start an app
-  without its sandbox are hidden.
+  menu, and SAM's menu entries always start them through the sandbox. Menu
+  entries from other tools that would start an app without its sandbox are
+  shown as a warning, and SAM offers to hide them, from the menu and from
+  opening files (on by default in SAM's window, `--hide-duplicates` on the
+  command line).
 - **SAM is built on proven parts.** Bubblewrap, Landlock, a system-call
   filter and filtered desktop services do the work. SAM adds no new code that
   runs with special privileges.
@@ -81,10 +84,10 @@ repository.
   the reason for each), and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-20<!-- /fact -->](docs/reports/real-apps-2026-11-20.md)).
-- **<!-- fact:tests -->609<!-- /fact --> automated tests guard <!-- fact:functions -->41<!-- /fact --> functions.**
+- **<!-- fact:tests -->850<!-- /fact --> automated tests guard <!-- fact:functions -->42<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
-- **Every security promise is attacked from inside a real sandbox.**
+- **Every security promise is attacked by a test, most from inside a real sandbox.**
   Breakout tests run on every change, on Ubuntu and on Fedora. The
   [threat model](docs/threat-model.md) lists each threat with what stops it,
   the test that proves it, and just as clearly what SAM does *not* protect
@@ -126,7 +129,7 @@ report it privately ([SECURITY.md](SECURITY.md)).
 | Layer | What it does |
 |---|---|
 | Bubblewrap | Private home per app, read-only system, no capabilities, private `/dev/shm`. There is no unsandboxed mode: if Bubblewrap cannot run, SAM says why and starts nothing. |
-| Landlock | Writes are allowed only where the profile allows them, even if a mount were wrong. Also blocks abstract sockets outside the sandbox (kernel 6.12+). |
+| Landlock | Writes are allowed only where the profile allows them, even if a mount were wrong. Also blocks abstract sockets outside the sandbox (kernel 6.12+; on older kernels Diagnostics warns). |
 | Syscall filter | A baseline filter, on by default (similar to Flatpak's), plus an optional strict filter. |
 | D-Bus filter | The session bus goes through `xdg-dbus-proxy`; the app sees only the names it is allowed to. The system bus cannot be filtered, so it is either hidden or fully open (dangerous, off by default). |
 | Portal filter | Opening links, file dialogs, notifications and printing work. Screenshots, autostart, menu-entry installation, location and remote desktop are blocked. |
@@ -171,9 +174,11 @@ warning before they apply.
 ### Safe intake
 
 - Type 2 AppImages (gzip, xz, zstd and lz4), unpacked by SAM's own SquashFS
-  reader inside a minimal sandbox. DwarFS-based AppImages are unpacked with
-  `dwarfsextract` when it is installed. The old, rare Type 1 format is
-  unpacked with `bsdtar`; no automated test covers it yet.
+  reader inside a minimal sandbox; the rare lzo ones by `unsquashfs`, in the
+  same sandbox. DwarFS-based AppImages are unpacked with `dwarfsextract`
+  when it is installed. The old, rare Type 1 format is unpacked with
+  `bsdtar`; its test uses a type 1 AppImage SAM's test makes, not one
+  published by an app.
 - Setuid bits, links that point outside the app and special files are
   removed. Size, file-count and time limits apply.
 - Names, descriptions and file names from an AppImage are shown as plain

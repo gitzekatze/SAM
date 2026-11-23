@@ -1,0 +1,28 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH sam-jail-group-set 1 2026-11-23 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.SH NAME
+sam\-jail\-group\-set \- Set one permission to the same value for several apps. Prints the settings from before as "previous", for `group restore`
+.SH SYNOPSIS
+\fBsam\-jail group set\fR [\fB\-\-dry\-run\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIKEY\fR> <\fIVALUE\fR> <\fIAPPS\fR> 
+.SH DESCRIPTION
+Set one permission to the same value for several apps. Prints the settings from before as "previous", for `group restore`
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+Only report what each app would lose; change nothing
+.TP
+\fB\-\-yes\fR
+Confirm a change that adds something rated Think twice or Dangerous to any of the apps
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIKEY\fR>
+Permission key, e.g. network.mode or filesystem.documents
+.TP
+<\fIVALUE\fR>
+New value, e.g. none, ro, rw, true or false
+.TP
+<\fIAPPS\fR>
+

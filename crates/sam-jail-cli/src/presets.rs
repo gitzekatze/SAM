@@ -21,8 +21,13 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                 .with_context(|| format!("unknown preset '{name}'"))?;
             out.emit(&p, || out!("{}", preset_to_toml(&p).unwrap_or_default()));
         }
-        PresetCmd::Apply { name, app: q, yes } => {
-            let r = app.apply_preset(&q, &name, yes)?;
+        PresetCmd::Apply {
+            name,
+            app: q,
+            yes,
+            expect,
+        } => {
+            let r = app.apply_preset(&q, &name, yes, expect.as_deref())?;
             if !r.applied {
                 crate::exit_with(crate::EXIT_NOT_PASSED);
             }
@@ -119,8 +124,19 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
         }
         PresetCmd::Import { file } => {
             let mut p = read_preset_file(&file)?;
-            let path = store.save(&mut p)?;
+            let asked = p.name.clone();
+            // Never over a preset of the same name (review F9).
+            let path = store.import(&mut p)?;
             out.emit(&p, || {
+                if p.name != asked {
+                    outln!(
+                        "{}",
+                        sam_core::i18n::trf(
+                            "A preset named “{asked}” already exists; the file was imported as “{name}”.",
+                            &[("asked", &asked), ("name", &p.name)]
+                        )
+                    );
+                }
                 outln!(
                     "{}",
                     sam_core::i18n::trf(

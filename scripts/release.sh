@@ -71,7 +71,9 @@ if [ "${SKIP_TESTS:-}" != 1 ]; then
     echo "== clippy and tests"
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo build --locked -p sam-jail-cli >/dev/null
-    PATH="$root/target/debug:$PATH" cargo test --workspace --locked -q
+    # A sandbox test that cannot build its sandbox here fails instead of
+    # passing without testing: a release is tested with its sandbox.
+    SAM_REQUIRE_SANDBOX=1 PATH="$root/target/debug:$PATH" cargo test --workspace --locked -q
 fi
 
 # 4. Commit. The tag comes last, after the build (step 6).

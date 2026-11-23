@@ -13,8 +13,9 @@
 //! $HOME                 private per-app home (or tmpfs), plus granted folders
 //! ```
 
+use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result};
 use sam_core::permissions::*;
@@ -28,7 +29,7 @@ pub struct Bubblewrap;
 /// Host programs that ask a service outside the sandbox to start a program
 /// (which would then run unsandboxed). Inside every sandbox each is
 /// replaced by a stand-in from `TOOL_SHIMS` (see the /usr binding).
-const HIDDEN_HOST_TOOLS: &[&str] = &["/usr/bin/systemd-run", "/usr/bin/flatpak-spawn"];
+pub const HIDDEN_HOST_TOOLS: &[&str] = &["/usr/bin/systemd-run", "/usr/bin/flatpak-spawn"];
 
 /// For each host tool that exists: its name and the file to cover with
 /// the stand-in, which is the file a link (or a chain of links) leads to.
@@ -40,6 +41,23 @@ fn hidden_tool_targets(tools: &[&str]) -> Vec<(std::ffi::OsString, PathBuf)> {
             Some((Path::new(t).file_name()?.to_os_string(), real))
         })
         .collect()
+}
+
+/// Covers each of `tools` that exists with its stand-in from
+/// `<runtime_dir>/tools` (written by [`write_identity_files`]).
+fn cover_host_tools(a: &mut Args, runtime_dir: &Path, tools: &[&str]) {
+    for (name, target) in hidden_tool_targets(tools) {
+        a.op2("--ro-bind", runtime_dir.join("tools").join(name), target);
+    }
+}
+
+/// The Bubblewrap arguments with which every sandbox covers the host tools
+/// `tools` by their stand-ins ([`HIDDEN_HOST_TOOLS`] in every sandbox; a
+/// test passes tools of its own, since not every computer has them all).
+pub fn host_tool_stand_in_args(runtime_dir: &Path, tools: &[&str]) -> Vec<String> {
+    let mut a = Args::default();
+    cover_host_tools(&mut a, runtime_dir, tools);
+    a.v
 }
 
 /// Stand-ins, written by `write_identity_files` into `<runtime>/tools`.
@@ -376,6 +394,16 @@ impl HomeWatch {
     /// The snapshot before a start that can write a start place
     /// ([`writes_start_places`]); `None` otherwise.
     pub fn before(ctx: &LaunchContext) -> Option<HomeWatch> {
+        HomeWatch::before_alongside(ctx, &[])
+    }
+
+    /// [`HomeWatch::before`] while other launches that watch the same home
+    /// are running (`running`, oldest first). What they saw at their start
+    /// is taken over, not what is there now: a place that was empty then
+    /// stays empty, a link stays the link it was. Otherwise a second launch
+    /// took a link another app had planted while it ran for the user's own,
+    /// and put it back each time it was moved aside (review 2026-11-23 F1).
+    pub fn before_alongside(ctx: &LaunchContext, running: &[HomeWatch]) -> Option<HomeWatch> {
         if !writes_start_places(ctx) {
             return None;
         }
@@ -384,7 +412,19 @@ impl HomeWatch {
             home: home.to_path_buf(),
             ..Default::default()
         };
+        let running: Vec<&HomeWatch> = running.iter().filter(|r| &r.home == home).collect();
         for rel in watched_places(&ctx.permissions, home) {
+            if running.iter().any(|r| r.absent.contains(&rel)) {
+                w.absent.push(rel);
+                continue;
+            }
+            if let Some(t) = running
+                .iter()
+                .find_map(|r| r.links.iter().find(|(l, _)| l == &rel).map(|(_, t)| t))
+            {
+                w.links.push((rel, t.clone()));
+                continue;
+            }
             let path = home.join(&rel);
             match fs::symlink_metadata(&path) {
                 Err(_) => w.absent.push(rel),
@@ -396,6 +436,65 @@ impl HomeWatch {
                 Ok(_) => {}
             }
         }
+        Some(w)
+    }
+
+    /// The watch as lines of text, for keeping it on disk while the app
+    /// runs: SAM can then still look again when its launcher was killed.
+    /// Paths are written as hex, so any name survives.
+    pub fn to_lines(&self) -> Vec<String> {
+        use std::os::unix::ffi::OsStrExt;
+        let hex = |p: &Path| -> String {
+            p.as_os_str()
+                .as_bytes()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect()
+        };
+        let mut out = vec![format!("home {}", hex(&self.home))];
+        for a in &self.absent {
+            out.push(format!("absent {}", hex(Path::new(a))));
+        }
+        for (l, t) in &self.links {
+            out.push(format!("link {} {}", hex(Path::new(l)), hex(t)));
+        }
+        out
+    }
+
+    /// A watch read back from [`HomeWatch::to_lines`]; lines of other kinds
+    /// are left out. `None` without a home or with a line that is damaged.
+    pub fn from_lines<'a>(lines: impl IntoIterator<Item = &'a str>) -> Option<HomeWatch> {
+        use std::os::unix::ffi::OsStringExt;
+        let unhex = |s: &str| -> Option<PathBuf> {
+            if !s.len().is_multiple_of(2) {
+                return None;
+            }
+            let bytes = (0..s.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
+                .collect::<Option<Vec<u8>>>()?;
+            Some(PathBuf::from(std::ffi::OsString::from_vec(bytes)))
+        };
+        // A place is always below the home: `home.join` of an absolute
+        // path would leave it, and of an empty one is the home itself.
+        let rel = |p: PathBuf| {
+            (p.is_relative() && !p.as_os_str().is_empty()).then(|| p.to_str().map(String::from))?
+        };
+        let mut home = None;
+        let mut w = HomeWatch::default();
+        for line in lines {
+            let mut parts = line.split(' ');
+            match (parts.next(), parts.next(), parts.next(), parts.next()) {
+                (Some("home"), Some(h), None, None) => home = Some(unhex(h)?),
+                (Some("absent"), Some(a), None, None) => w.absent.push(rel(unhex(a)?)?),
+                (Some("link"), Some(l), Some(t), None) => {
+                    w.links.push((rel(unhex(l)?)?, unhex(t)?));
+                }
+                (Some("home" | "absent" | "link"), ..) => return None,
+                _ => {}
+            }
+        }
+        w.home = home.filter(|h| h.is_absolute())?;
         Some(w)
     }
 
@@ -455,12 +554,7 @@ impl HomeWatch {
                     }
                 }
             }
-            let gone = match fs::symlink_metadata(&from) {
-                Ok(m) if m.is_dir() => fs::remove_dir_all(&from).is_ok(),
-                Ok(_) => fs::remove_file(&from).is_ok(),
-                Err(_) => true,
-            };
-            Some(if gone {
+            Some(if remove_any(&from) {
                 (from, Aside::Deleted)
             } else {
                 (from, Aside::Failed)
@@ -503,6 +597,16 @@ impl HomeWatch {
     }
 }
 
+/// Removes whatever is at `p`: a folder with all in it, a file, or a link
+/// (never what it points to). True when nothing is left there.
+fn remove_any(p: &Path) -> bool {
+    match fs::symlink_metadata(p) {
+        Ok(m) if m.is_dir() => fs::remove_dir_all(p).is_ok(),
+        Ok(_) => fs::remove_file(p).is_ok(),
+        Err(_) => true,
+    }
+}
+
 /// Host theme configuration (read-only) when `advanced.host_themes` is on.
 const THEME_FILES: &[&str] = &[
     ".config/gtk-3.0",
@@ -521,6 +625,18 @@ const THEME_FILES: &[&str] = &[
     ".local/share/themes",
     ".config/xsettingsd",
     ".local/share/color-schemes",
+];
+
+/// Files inside the theme folders above that are not theme settings: the
+/// file chooser's bookmarks and server list name the person's folders and
+/// servers. With only the theme settings shown, they stay out (an empty
+/// file); a grant that shows them anyway (the whole home, the folder
+/// itself) keeps them.
+const THEME_PRIVATE_FILES: &[&str] = &[
+    ".config/gtk-3.0/bookmarks",
+    ".config/gtk-3.0/servers",
+    ".config/gtk-4.0/bookmarks",
+    ".config/gtk-4.0/servers",
 ];
 
 /// The value a forwarded variable gets inside the sandbox. When SAM's
@@ -874,13 +990,98 @@ impl Views {
         self.visible(p) || self.grants.iter().any(|(g, _)| g.starts_with(p))
     }
 
-    /// Every place in the sandbox where host path `p` is shown: its own path
-    /// and, when that differs, its resolved one.
+    /// Every place in the sandbox where host path `p` is shown: its own path,
+    /// its resolved one and, for a grant kept behind a link (the home, when
+    /// `/home/u` is a link to `/data/u`), the resolved one under the grant's
+    /// own name, where the sandbox mounts it. A link naming the home's real
+    /// path (`~/.config` to `/data/u/dots/config`) leads nowhere inside, yet
+    /// the app reaches its target as `/home/u/dots/config`: without that
+    /// place autostart there stayed writable and a linked key folder shown
+    /// (review of SB-6 and SB-2).
     pub fn seen_at(&self, p: &Path) -> Vec<PathBuf> {
+        let real = resolve(p);
+        let mut cands = vec![p.to_path_buf(), real.clone()];
+        for (g, _) in &self.grants {
+            let rg = resolve(g);
+            if rg != *g {
+                if let Ok(rel) = real.strip_prefix(&rg) {
+                    cands.push(g.join(rel));
+                }
+            }
+        }
         let mut out = Vec::new();
-        for c in [p.to_path_buf(), resolve(p)] {
+        for c in cands {
             if self.visible(&c) && !out.contains(&c) {
                 out.push(c);
+            }
+        }
+        out
+    }
+
+    /// Where the app reaches host path `p` inside the sandbox, one part
+    /// after the other as Linux reads a path: a link is followed where a
+    /// grant shows the folder it lies in (a grant's own place is a mount
+    /// point inside, never a link). `None` when the way ends outside what
+    /// the sandbox shows, or loops.
+    fn reached_at(&self, p: &Path) -> Option<PathBuf> {
+        if !p.is_absolute() {
+            return None;
+        }
+        // The parts still to read, the next one last.
+        let mut todo: Vec<OsString> = Vec::new();
+        let add = |todo: &mut Vec<OsString>, path: &Path| {
+            for c in path.components().rev() {
+                match c {
+                    Component::Normal(n) => todo.push(n.to_os_string()),
+                    Component::ParentDir => todo.push("..".into()),
+                    _ => {}
+                }
+            }
+        };
+        add(&mut todo, p);
+        let mut at = PathBuf::from("/");
+        // As many links as Linux follows in one path.
+        let mut links = 0;
+        while let Some(c) = todo.pop() {
+            if c == ".." {
+                at.pop();
+                continue;
+            }
+            at.push(&c);
+            let inside = self.grant_of(&at).is_some_and(|(g, _)| at != *g);
+            if !inside {
+                continue;
+            }
+            if let Ok(target) = fs::read_link(&at) {
+                links += 1;
+                if links > 40 {
+                    return None;
+                }
+                at.pop();
+                if target.is_absolute() {
+                    at = PathBuf::from("/");
+                }
+                add(&mut todo, &target);
+            }
+        }
+        self.visible(&at).then_some(at)
+    }
+
+    /// The places to mount on to cover host path `p` inside the sandbox:
+    /// every place the app reaches it ([`Views::seen_at`], with links
+    /// followed as the app follows them). None of them is or leads through
+    /// a link: Bubblewrap refuses to mount on a link, or through one that
+    /// leads nowhere inside, so `~/.config` as a link stopped every start
+    /// with the whole home granted; and a pin through a relative one landed
+    /// on the folder it points to, writable over a read-only grant
+    /// (security review 2026-11-23, SB-6).
+    fn mount_points(&self, p: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for c in self.seen_at(p) {
+            if let Some(r) = self.reached_at(&c) {
+                if !out.contains(&r) {
+                    out.push(r);
+                }
             }
         }
         out
@@ -951,15 +1152,19 @@ fn resolve(p: &Path) -> PathBuf {
 }
 
 /// Step 1 of the protections inside the shown parts of the real home: the
-/// folders above protected places and above SAM's own folders that the
-/// sandbox shows writable. Each becomes a mount point of its own (bound onto
-/// itself, in the depth order of the other mounts), so it cannot be renamed
-/// away together with the protection (`mv ~/.local/share ~/.local/s2` moved
-/// SAM's records; regression, audit S-F4).
-fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf]) -> Vec<PathBuf> {
+/// folders above protected places, above SAM's own folders and above SAM's
+/// own programs that the sandbox shows writable. Each becomes a mount point
+/// of its own (bound onto itself, in the depth order of the other mounts),
+/// so it cannot be renamed away together with the protection (`mv
+/// ~/.local/share ~/.local/s2` moved SAM's records; regression, audit
+/// S-F4). Each where the app reaches it, never through a link
+/// ([`Views::mount_points`]): a link itself is no folder to pin, and a pin
+/// through a relative one landed on the folder it points to, writable,
+/// over a read-only grant (security review 2026-11-23, SB-6).
+fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf], programs: &[PathBuf]) -> Vec<PathBuf> {
     let mut pins: Vec<PathBuf> = Vec::new();
     let mut pin = |p: &Path| {
-        for c in views.seen_at(p) {
+        for c in views.mount_points(p) {
             // Never `/` or one folder below it: those are not renamed.
             if views.writable(&c)
                 && c.components().count() > 2
@@ -978,15 +1183,74 @@ fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf]) -> Vec<PathBuf> {
             pin(anc);
         }
     }
+    // Also under the home's name when the home is kept behind a link
+    // (`Views::seen_at`): SAM's own path names the real place.
+    for p in programs {
+        for anc in p.ancestors().skip(1) {
+            pin(anc);
+        }
+    }
     pins
+}
+
+/// Step 3, after every mount: SAM's own programs (its AppImage file, the
+/// `sam-jail-run` that menu entries run) read-only wherever the sandbox
+/// shows them writable. Bound onto themselves, they can be neither
+/// written nor renamed or deleted (a mount point), and the folders above
+/// them are pinned (step 1): an app could otherwise put its own program in
+/// their place, run unsandboxed at the next click on any menu entry
+/// (security review 2026-11-23, SB-1).
+fn guard_programs(a: &mut Args, programs: &[PathBuf], views: &Views) {
+    for p in programs {
+        for c in views.mount_points(p) {
+            if views.writable(&c) && c.is_file() {
+                a.ro(&c);
+            }
+        }
+    }
+}
+
+/// Where to bind host path `at` of the home onto itself: where the app
+/// reaches it when a grant shows it, never through a link
+/// ([`Views::mount_points`]; with `~/.config` a link to a place not
+/// granted, the read-only fonts settings stopped every start, security
+/// review 2026-11-23, SB-6), or where it lies when the link leads out of
+/// what is shown. In a private home, where it is named.
+fn bind_place(views: &Views, at: &Path) -> PathBuf {
+    if !views.visible(at) {
+        return at.to_path_buf();
+    }
+    views.reached_at(at).unwrap_or_else(|| resolve(at))
 }
 
 /// Step 2 of the protections, after every mount (a later mount covers an
 /// earlier one: a grant of `/home` or `~/.local` after them showed `~/.ssh`
-/// and made autostart writable again; regression, audit S-F2): credential
-/// stores hidden, start files and menu entries read-only, SAM's own folders
-/// replaced by an empty folder, at every place the sandbox shows them.
+/// and made autostart writable again; regression, audit S-F2): start files
+/// and menu entries read-only, SAM's own folders replaced by an empty
+/// folder, and last the credential stores hidden, whatever kind of file
+/// they are, at every place the sandbox shows them.
 fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
+    for prot in protected_places(home) {
+        let path = home.join(&prot);
+        // Never on a link (dotfiles kept elsewhere): what it points to is
+        // locked, and the link itself is put back after the start if the
+        // app replaces it (regression: with `~/.bashrc` a link and the
+        // whole home granted, Bubblewrap refused and no app started; the
+        // same with `~/.config` a link, SB-6).
+        for c in views.mount_points(&path) {
+            if matches!(prot.as_str(), ".config/sam" | ".local/share/sam") {
+                if c.is_dir() {
+                    a.push("--tmpfs").push(c.to_string_lossy());
+                }
+            } else if views.writable(&c) && c.exists() {
+                a.ro(&c);
+            }
+        }
+    }
+    // The credential stores last: a later bind of a folder above one
+    // covers the hiding. With `~/.git-credentials` a link into
+    // `~/.config/git`, the protected place bound read-only after it showed
+    // the real file again (mutation run 2026-11-23).
     let mut masks: Vec<&str> = Vec::new();
     if !fsp.ssh {
         masks.push(".ssh");
@@ -1003,42 +1267,27 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
             continue;
         };
         // A link (dotfiles kept elsewhere, `stow`): hidden where it points,
-        // which the app could reach through the link otherwise.
-        let places = if md.file_type().is_symlink() {
-            if !views.visible(&path) {
-                continue;
+        // also when only the folder it points into is granted (security
+        // review 2026-11-23, SB-2: `~/.gnupg` a link to `~/Sync/gnupg` and
+        // `~/Sync` granted showed the keys, writable).
+        let mut places = views.mount_points(&path);
+        if md.file_type().is_symlink() && views.visible(&path) {
+            if let Ok(target) = fs::canonicalize(&path) {
+                if !places.contains(&target) {
+                    places.push(target);
+                }
             }
-            fs::canonicalize(&path).into_iter().collect()
-        } else {
-            views.seen_at(&path)
-        };
+        }
         for c in places {
             match fs::metadata(&c) {
                 Ok(t) if t.is_dir() => {
                     a.push("--tmpfs").push(c.to_string_lossy());
                 }
-                Ok(t) if t.is_file() => a.op2("--ro-bind", "/dev/null", &c),
-                _ => {}
-            }
-        }
-    }
-    for prot in protected_places(home) {
-        let path = home.join(&prot);
-        for c in views.seen_at(&path) {
-            // A link (dotfiles kept elsewhere) cannot be mounted on: what it
-            // points to is locked (also in `seen_at`), and the link itself
-            // is put back after the start if the app replaces it
-            // (regression: with `~/.bashrc` a link and the whole home
-            // granted, Bubblewrap refused and no app started).
-            if fs::symlink_metadata(&c).is_ok_and(|m| m.file_type().is_symlink()) {
-                continue;
-            }
-            if matches!(prot.as_str(), ".config/sam" | ".local/share/sam") {
-                if c.is_dir() {
-                    a.push("--tmpfs").push(c.to_string_lossy());
-                }
-            } else if views.writable(&c) && c.exists() {
-                a.ro(&c);
+                // A file, and also a named pipe or a socket: `~/.netrc` as
+                // a pipe a password manager feeds stayed readable
+                // (mutation run 2026-11-23).
+                Ok(_) => a.op2("--ro-bind", "/dev/null", &c),
+                Err(_) => {}
             }
         }
     }
@@ -1184,7 +1433,7 @@ impl Bubblewrap {
             ctx,
             a: Args::default(),
             notes: Vec::new(),
-            keep_fds: Vec::new(),
+            exec_env: Vec::new(),
             opened,
             views,
         };
@@ -1216,9 +1465,7 @@ impl Bubblewrap {
         Ok(SandboxCommand {
             program: bwrap.path.clone(),
             args: s.a.v,
-            env: vec![],
-            clear_env: false,
-            keep_fds: s.keep_fds,
+            exec_env: s.exec_env,
             notes: s.notes,
             generated_files,
         })
@@ -1230,7 +1477,8 @@ struct Section<'c> {
     ctx: &'c LaunchContext,
     a: Args,
     notes: Vec<String>,
-    keep_fds: Vec<i32>,
+    /// The app's own variables, for SAM's helper to set ([`SandboxCommand::exec_env`]).
+    exec_env: Vec<(String, String)>,
     /// The files named on the command line that are granted, worked out
     /// once per start (audit S-F13: four times before).
     opened: Vec<(PathBuf, bool)>,
@@ -1336,13 +1584,7 @@ impl Section<'_> {
         // Bubblewrap cannot mount over a link, so the stand-in goes over the
         // file a link leads to (audit S-F14: a systemd-run that was a link
         // stayed the real one).
-        for (name, target) in hidden_tool_targets(HIDDEN_HOST_TOOLS) {
-            a.op2(
-                "--ro-bind",
-                ctx.runtime_dir.join("tools").join(name),
-                target,
-            );
-        }
+        cover_host_tools(a, &ctx.runtime_dir, HIDDEN_HOST_TOOLS);
 
         // /etc, beyond the basic files of `common_system`.
         let mut etc: Vec<&str> = Vec::new();
@@ -1536,13 +1778,24 @@ impl Section<'_> {
         }
         // Safe read-only user resources.
         for r in [".local/share/fonts", ".fonts", ".config/fontconfig"] {
-            let at = home.join(r);
+            let at = bind_place(&self.views, &home.join(r));
             mount(&at, &|m| m.ro(&at));
         }
         if p.advanced.host_themes && !fsp.home {
             for t in THEME_FILES {
-                let at = home.join(t);
+                let at = bind_place(&self.views, &home.join(t));
                 mount(&at, &|m| m.ro(&at));
+            }
+            // Deeper than its folder, so mounted after it. Only a plain
+            // file: a link inside leads where the sandbox shows nothing,
+            // and Bubblewrap cannot mount over a link.
+            for f in THEME_PRIVATE_FILES {
+                let at = home.join(f);
+                if !self.views.visible(&at)
+                    && fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_file())
+                {
+                    mount(&at, &|m| m.op2("--ro-bind", "/dev/null", &at));
+                }
             }
         }
         // Extra folders, at their resolved place: what the app sees there.
@@ -1576,7 +1829,7 @@ impl Section<'_> {
             });
         }
         let views = &self.views;
-        for p in pins(&home, views, &ctx.sam_dirs) {
+        for p in pins(&home, views, &ctx.sam_dirs, &ctx.sam_programs) {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
         // Stable: at equal depth, the order above stays (a pin after the
@@ -1588,6 +1841,7 @@ impl Section<'_> {
             a.bad.extend(m.bad);
         }
         guard_home(a, &home, fsp, views);
+        guard_programs(a, &ctx.sam_programs, views);
         for (host_p, sb, rw) in &ctx.extra_binds {
             a.op2(if *rw { "--bind" } else { "--ro-bind" }, host_p, sb);
         }
@@ -1828,17 +2082,51 @@ impl Section<'_> {
             a.ro("/run/cups/cups.sock");
         }
         // Extra sockets: only real socket files, so this setting can never
-        // grant access to a folder or an ordinary file.
+        // grant access to a folder or an ordinary file. Bound from where
+        // their links lead, checked there (review SB-4: an app that could
+        // write the socket's folder replaced the socket with a link to the
+        // real session bus, and the bind followed it).
+        let views = &self.views;
+        // Writable for the app: its grants (seen at their real place),
+        // SAM's folders (its private home among them) and the host side of
+        // a writable extra bind (the views know only where those are shown).
+        let app_can_change = |d: &Path| {
+            views.writable(d)
+                || inside_sam(ctx, d)
+                || ctx
+                    .extra_binds
+                    .iter()
+                    .any(|(h, _, rw)| *rw && d.starts_with(resolve(h)))
+        };
         for s in &p.sockets.custom {
             let sp = expand_home(s);
-            if is_socket(&sp) {
-                a.op2("--bind-try", &sp, &sp);
-            } else {
+            if link_the_app_can_change(&sp, &app_can_change) {
+                notes.push(sam_core::i18n::trf(
+                    "{path} is reached through a link in a folder the app can change; it is not passed into the sandbox. List the socket by its real place.",
+                    &[("path", &sp.display())],
+                ));
+                continue;
+            }
+            let real = resolve(&sp);
+            if !is_socket(&real) {
                 notes.push(sam_core::i18n::trf(
                     "{path} is not a socket; it is not passed into the sandbox",
                     &[("path", &sp.display())],
                 ));
+                continue;
             }
+            let shown = sp.to_string_lossy();
+            let lands = real.to_string_lossy();
+            if let Some(why) = sam_core::permissions::dangerous_socket(&lands)
+                .filter(|_| sam_core::permissions::dangerous_socket(&shown).is_none())
+            {
+                notes.push(sam_core::i18n::trf(
+                    "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that socket by its real place if the app needs it.",
+                    &[("path", &sp.display()), ("why", &why)],
+                ));
+                continue;
+            }
+            a.op2("--bind-try", &real, &sp);
         }
 
         // SAM's own folders, wherever they are: an empty, throwaway folder
@@ -1856,11 +2144,17 @@ impl Section<'_> {
             if nested || !d.is_dir() {
                 continue;
             }
-            // Also where a grant shows only something inside it (audit
-            // S-F13: a folder granted inside SAM's moved folder was shown).
-            let mut places = views.seen_at(d);
+            // Where the app reaches it, never through a link
+            // (`Views::mount_points`): with `~/.config` a link to a place
+            // nothing grants, the empty folder on `~/.config/sam` stopped
+            // every start with the whole home granted (security review
+            // 2026-11-23, SB-6). Also where a grant shows only something
+            // inside it (audit S-F13: a folder granted inside SAM's moved
+            // folder was shown); no grant shows a folder above that place,
+            // so the way there leads through no link inside.
+            let mut places = views.mount_points(d);
             for c in [d.clone(), resolve(d)] {
-                if views.shows_any_of(&c) && !places.contains(&c) {
+                if !views.visible(&c) && views.shows_any_of(&c) && !places.contains(&c) {
                     places.push(c);
                 }
             }
@@ -1885,6 +2179,10 @@ impl Section<'_> {
         let h = &ctx.host;
         let home = h.home.clone();
         let run = Bubblewrap::runtime_dir(ctx);
+        // Where the app starts, never a folder it cannot see (audit L-F16:
+        // `cd ~/private/clientX && sam-jail run app` told the app that
+        // path, even without access to the home).
+        let start_dir = self.start_dir().to_string_lossy().into_owned();
         let a = &mut self.a;
         // Environment.
         a.setenv("HOME", home.to_string_lossy());
@@ -1919,18 +2217,27 @@ impl Section<'_> {
             a.setenv("SDL_AUDIODRIVER", "dummy");
             a.setenv("SDL_AUDIO_DRIVER", "dummy");
         }
-        for k in ENV_FORWARD
-            .iter()
-            .map(|s| s.to_string())
-            .chain(p.environment.passthrough.iter().cloned())
-        {
-            if let Some(v) = forwarded_value(&k, |n| std::env::var(n).ok()) {
-                a.setenv(&k, v);
+        for k in ENV_FORWARD {
+            if let Some(v) = forwarded_value(k, |n| std::env::var(n).ok()) {
+                a.setenv(k, v);
+            }
+        }
+        // The app's own variables, last, so they win as before. With SAM's
+        // helper they go to the helper's file instead: it sets them for the
+        // app alone once its layers are in place. Its own loader never sees
+        // them, so `LD_PRELOAD=/opt/app/lib/x.so` or `LD_LIBRARY_PATH` cannot
+        // run the app's code before Landlock and the syscall filter (review
+        // SB-5).
+        let mut own: Vec<(String, String)> = Vec::new();
+        for k in &p.environment.passthrough {
+            if let Some(v) = forwarded_value(k, |n| std::env::var(n).ok()) {
+                own.push((k.clone(), v));
             }
         }
         for (k, v) in ctx.resolved_app_env(&ctx.appdir_in_sandbox()) {
-            a.setenv(&k, v);
+            own.push((k, v));
         }
+        own.push(("OWD".into(), start_dir));
         for (k, v) in &p.environment.set {
             // Only proper variable names; values may be anything but NUL.
             let valid = k
@@ -1939,40 +2246,43 @@ impl Section<'_> {
                 .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
                 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
             if valid && !v.contains('\0') {
-                a.setenv(k, v);
+                own.push((k.clone(), v.clone()));
+            }
+        }
+        if ctx.helper.is_some() {
+            self.exec_env = own;
+        } else {
+            for (k, v) in own {
+                a.setenv(&k, v);
             }
         }
     }
 
-    /// Working directory, seccomp, SAM's helper (Landlock, syscall filter, the app's start), extra arguments, and the command itself.
-    fn finish_command(&mut self) {
+    /// The folder the app starts in: the one it was started from, if the app
+    /// sees it (granted, or holding a file named on the command line, `hx
+    /// notes.txt`, so that relative names find the file); else its home.
+    fn start_dir(&self) -> PathBuf {
         let ctx = self.ctx;
-        let p = &ctx.permissions;
-        let h = &ctx.host;
-        let home = h.home.clone();
-        let a = &mut self.a;
-        let keep_fds = &mut self.keep_fds;
-        // Working directory.
-        // The folder it was started in, if the app sees it: granted, or
-        // holding a file named on the command line (`hx notes.txt`), so that
-        // relative names find the file.
         let in_owd = self
             .opened
             .iter()
             .any(|(p, _)| p.starts_with(&ctx.owd) || ctx.owd.starts_with(p));
         let views = &self.views;
-        let chdir = if views.visible(&ctx.owd) || views.visible(&resolve(&ctx.owd)) || in_owd {
+        if views.visible(&ctx.owd) || views.visible(&resolve(&ctx.owd)) || in_owd {
             ctx.owd.clone()
         } else {
-            home.clone()
-        };
-        a.push("--chdir").push(chdir.to_string_lossy());
-
-        // Seccomp.
-        if let Some(fd) = ctx.seccomp_fd {
-            a.push("--seccomp").push(fd.to_string());
-            keep_fds.push(fd);
+            ctx.host.home.clone()
         }
+    }
+
+    /// Working directory, SAM's helper (Landlock, syscall filter, the app's start), extra arguments, and the command itself.
+    fn finish_command(&mut self) {
+        let ctx = self.ctx;
+        let p = &ctx.permissions;
+        // Working directory: the same folder as `$OWD`.
+        let chdir = self.start_dir();
+        let a = &mut self.a;
+        a.push("--chdir").push(chdir.to_string_lossy());
 
         // Room service's socket.
         if let Some(socket) = &ctx.room_socket {
@@ -2040,7 +2350,7 @@ pub fn system_library_binds(ctx: &LaunchContext) -> Vec<(PathBuf, PathBuf)> {
         let Some(host) = SYSTEM_LIB_DIRS
             .iter()
             .filter_map(|d| fs::canonicalize(Path::new(d).join(name)).ok())
-            .find(|p| p.is_file() && (p.starts_with("/usr") || p.starts_with("/lib")))
+            .find(|p| system_copy_ok(p))
         else {
             continue;
         };
@@ -2054,7 +2364,12 @@ pub fn system_library_binds(ctx: &LaunchContext) -> Vec<(PathBuf, PathBuf)> {
     out
 }
 
-/// Write the synthetic passwd/group files referenced by the command.
+/// Whether `p` (a resolved path) may replace a bundled library: a plain
+/// file of the system's, under /usr or /lib.
+fn system_copy_ok(p: &Path) -> bool {
+    p.is_file() && (p.starts_with("/usr") || p.starts_with("/lib"))
+}
+
 /// Display number of X11 inside every sandbox.
 ///
 /// X11 libraries look for the display's *abstract* socket first. SAM's
@@ -2143,6 +2458,7 @@ fn rewrite_xauthority(data: &[u8], from: &str, to: &str) -> Vec<u8> {
 pub const LOCALHOST_ONLY_HOSTS: &str =
     "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n";
 
+/// Write the synthetic passwd/group files referenced by the command.
 pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
     fs::create_dir_all(&ctx.runtime_dir)?;
     let h = &ctx.host;
@@ -2185,6 +2501,55 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Whether reaching `p` passes a link that sits in a folder the app can
+/// change (`app_can_change`, asked with the folder's real place): the app
+/// could have put that link there, pointing anywhere. Followed the way the
+/// kernel does, link by link; a path with too many links counts as one.
+fn link_the_app_can_change(p: &Path, app_can_change: &dyn Fn(&Path) -> bool) -> bool {
+    use std::ffi::OsString;
+    use std::path::Component;
+    // The parts still to walk, as owned names ("/" for the root).
+    let parts = |p: &Path| -> Vec<OsString> {
+        p.components()
+            .map(|c| match c {
+                Component::RootDir | Component::Prefix(_) => OsString::from("/"),
+                other => other.as_os_str().to_os_string(),
+            })
+            .collect()
+    };
+    let p = match p.is_absolute() {
+        true => p.to_path_buf(),
+        false => std::env::current_dir().unwrap_or_default().join(p),
+    };
+    let mut todo: std::collections::VecDeque<OsString> = parts(&p).into();
+    let mut at = PathBuf::from("/");
+    let mut links = 0;
+    while let Some(c) = todo.pop_front() {
+        if c == "/" {
+            at = PathBuf::from("/");
+        } else if c == ".." {
+            at.pop();
+        } else if c != "." {
+            let next = at.join(&c);
+            if !fs::symlink_metadata(&next).is_ok_and(|m| m.file_type().is_symlink()) {
+                at = next;
+                continue;
+            }
+            links += 1;
+            if app_can_change(&at) || links > 40 {
+                return true;
+            }
+            let Ok(target) = fs::read_link(&next) else {
+                return true;
+            };
+            for t in parts(&target).into_iter().rev() {
+                todo.push_front(t);
+            }
+        }
+    }
+    false
 }
 
 /// True for an existing Unix socket (not a folder, file or device).
@@ -2824,6 +3189,68 @@ mod tests {
         );
     }
 
+    /// The app's user and group are the person's own, each where it
+    /// belongs: on bwrap's command line and in the passwd and group files
+    /// the sandbox shows (the group is never the user's number, nor root's).
+    #[test]
+    fn the_app_gets_the_users_own_user_and_group_ids() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ctx = sample_context();
+        assert_ne!(ctx.host.uid, ctx.host.gid, "the sample tells them apart");
+        ctx.runtime_dir = tmp.path().join("run");
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--uid", "1000", "--gid", "1001"]), "{a:?}");
+        write_identity_files(&ctx).unwrap();
+        assert_eq!(
+            fs::read_to_string(ctx.runtime_dir.join("passwd")).unwrap(),
+            "tester:x:1000:1001:tester:/home/tester:/bin/sh\n\
+             nobody:x:65534:65534:Nobody:/:/usr/bin/nologin\n"
+        );
+        assert_eq!(
+            fs::read_to_string(ctx.runtime_dir.join("group")).unwrap(),
+            "tester:x:1001:\nnobody:x:65534:\n"
+        );
+    }
+
+    /// With the GPU allowed the app gets the render nodes (`/dev/dri` as a
+    /// whole) and NVIDIA's own device nodes; no other device the host
+    /// lists is bound on its own. Without it, none of them.
+    #[test]
+    fn the_gpu_brings_exactly_the_render_and_nvidia_nodes() {
+        let mut ctx = sample_context();
+        let binds = |a: &[String]| -> Vec<String> {
+            a.windows(2)
+                .filter(|w| w[0] == "--dev-bind-try")
+                .map(|w| w[1].clone())
+                .filter(|d| d.starts_with("/dev/dri") || d.starts_with("/dev/nvidia"))
+                .collect()
+        };
+        ctx.permissions.devices.gpu = true;
+        assert_eq!(
+            binds(&args_of(&ctx)),
+            ["/dev/dri", "/dev/nvidia0", "/dev/nvidiactl"]
+        );
+        ctx.permissions.devices.gpu = false;
+        assert!(binds(&args_of(&ctx)).is_empty());
+    }
+
+    /// Bubblewrap's status says when xdg-dbus-proxy is missing (the
+    /// filtered session bus is then off), and only then.
+    #[test]
+    fn the_status_names_a_missing_dbus_proxy() {
+        let mut host = sample_context().host;
+        let named = |h: &HostInfo| {
+            Bubblewrap
+                .status(h)
+                .notes
+                .iter()
+                .any(|n| n.contains("xdg-dbus-proxy"))
+        };
+        assert!(!named(&host), "installed");
+        host.tools.xdg_dbus_proxy = None;
+        assert!(named(&host), "missing");
+    }
+
     #[test]
     fn the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins() {
         let ctx = sample_context();
@@ -2925,6 +3352,34 @@ mod tests {
         ));
     }
 
+    /// "All input devices" names every device it shows the app, and says
+    /// what the virtual one allows: typing and moving the mouse as the
+    /// person (audit: /dev/uinput was shown without being named).
+    #[test]
+    fn the_input_switch_names_every_device_it_shows() {
+        let devices = |input: bool| -> std::collections::BTreeSet<String> {
+            let mut ctx = sample_context();
+            ctx.permissions.devices.input = input;
+            ctx.permissions.devices.gamepads = false;
+            args_of(&ctx)
+                .windows(3)
+                .filter(|w| w[0].starts_with("--dev-bind"))
+                .map(|w| w[2].clone())
+                .collect()
+        };
+        let shown: Vec<String> = devices(true).difference(&devices(false)).cloned().collect();
+        assert!(shown.contains(&"/dev/uinput".to_string()), "{shown:?}");
+        let text = sam_core::permissions::permission_catalog()
+            .into_iter()
+            .find(|i| i.key == "devices.input")
+            .unwrap()
+            .description;
+        for d in &shown {
+            assert!(text.contains(d.as_str()), "{d} is not named in: {text}");
+        }
+        assert!(text.contains("type or move the mouse"), "{text}");
+    }
+
     /// "Game controllers" exposes only joysticks, never keyboards or mice.
     #[test]
     fn gamepads_only_exposes_joysticks() {
@@ -2981,6 +3436,91 @@ mod tests {
         );
     }
 
+    /// An extra socket the app could have swapped for a link (it sits in a
+    /// folder the app may write) is not passed in when it is a link: the
+    /// bind followed the link to whatever socket it named, such as the
+    /// real session bus (review SB-4). The same link in a folder the app
+    /// cannot change is followed, and the socket it leads to is bound at
+    /// the listed place.
+    #[test]
+    fn an_extra_socket_swapped_for_a_link_by_the_app_is_not_passed_in() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let (shared, other) = (root.join("shared"), root.join("other"));
+        fs::create_dir(&shared).unwrap();
+        fs::create_dir(&other).unwrap();
+        let target = other.join("target.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&target).unwrap();
+        let listed = shared.join("app.sock");
+        std::os::unix::fs::symlink("../other/target.sock", &listed).unwrap();
+        let (listed_s, target_s) = (listed.display().to_string(), target.display().to_string());
+        let mut ctx = sample_context();
+        ctx.permissions.sockets.custom = vec![listed_s.clone()];
+        ctx.permissions.filesystem.custom_write = vec![shared.display().to_string()];
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            !cmd.args.iter().any(|a| a == &target_s),
+            "the link's target is bound: {:?}",
+            cmd.args
+        );
+        assert!(
+            !has_seq(&cmd.args, &["--bind-try", &listed_s, &listed_s]),
+            "the link is bound"
+        );
+        assert!(
+            cmd.notes
+                .iter()
+                .any(|n| n.contains(&listed_s) && n.contains("link")),
+            "{:?}",
+            cmd.notes
+        );
+        // Read-only: the app cannot have made the link.
+        ctx.permissions.filesystem.custom_write.clear();
+        ctx.permissions.filesystem.custom_read = vec![shared.display().to_string()];
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--bind-try", &target_s, &listed_s]), "{a:?}");
+        // Also when the link is a folder on the way.
+        let dir_link = shared.join("dir");
+        std::os::unix::fs::symlink("../other", &dir_link).unwrap();
+        ctx.permissions.filesystem.custom_read.clear();
+        ctx.permissions.filesystem.custom_write = vec![shared.display().to_string()];
+        ctx.permissions.sockets.custom = vec![dir_link.join("target.sock").display().to_string()];
+        assert!(!args_of(&ctx).iter().any(|a| a == &target_s));
+        // Also when the folder is writable through an extra bind (shown
+        // elsewhere in the sandbox, as for the diagnosis run).
+        ctx.permissions.filesystem.custom_write.clear();
+        ctx.permissions.sockets.custom = vec![listed_s.clone()];
+        ctx.extra_binds = vec![(shared.clone(), "/run/x".into(), true)];
+        assert!(!args_of(&ctx).iter().any(|a| a == &target_s));
+    }
+
+    /// An extra socket whose link leads to a socket SAM calls dangerous
+    /// (here a D-Bus socket) is not passed in: what the app gets is rated,
+    /// not the name it was listed by (review SB-4). Listed by its real
+    /// name, it is passed in (that name was rated Dangerous when added).
+    #[test]
+    fn an_extra_socket_that_leads_to_a_dangerous_one_is_not_passed_in() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        fs::create_dir(root.join("d")).unwrap();
+        let bus = root.join("d/bus");
+        let _l = std::os::unix::net::UnixListener::bind(&bus).unwrap();
+        let listed = root.join("helper.sock");
+        std::os::unix::fs::symlink(&bus, &listed).unwrap();
+        let (listed_s, bus_s) = (listed.display().to_string(), bus.display().to_string());
+        let mut ctx = sample_context();
+        ctx.permissions.sockets.custom = vec![listed_s.clone()];
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(!cmd.args.iter().any(|a| a == &bus_s), "{:?}", cmd.args);
+        assert!(
+            cmd.notes.iter().any(|n| n.contains(&listed_s)),
+            "{:?}",
+            cmd.notes
+        );
+        ctx.permissions.sockets.custom = vec![bus_s.clone()];
+        assert!(has_seq(&args_of(&ctx), &["--bind-try", &bus_s, &bus_s]));
+    }
+
     /// A bundled library listed in advanced.system_libraries is replaced by
     /// the system's copy at its place in the app folder; names with folders
     /// or `..`, libraries the app does not bundle and libraries the system
@@ -2991,16 +3531,20 @@ mod tests {
         let mut ctx = sample_context();
         ctx.appdir = tmp.path().to_path_buf();
         fs::create_dir_all(tmp.path().join("usr/lib")).unwrap();
-        // A library every Linux system has, bundled by the "app".
-        let libc = [
-            "/usr/lib/libc.so.6",
-            "/usr/lib64/libc.so.6",
-            "/usr/lib/x86_64-linux-gnu/libc.so.6",
-            "/lib/x86_64-linux-gnu/libc.so.6",
-        ]
-        .into_iter()
-        .find(|p| Path::new(p).exists());
-        let Some(_) = libc else { return };
+        // A library every Linux system has, bundled by the "app". Never a
+        // silent skip: a run that must prove everything fails without it.
+        let libc = SYSTEM_LIB_DIRS
+            .iter()
+            .map(|d| Path::new(d).join("libc.so.6"))
+            .find(|p| p.exists());
+        let Some(_) = libc else {
+            assert!(
+                std::env::var("SAM_REQUIRE_SANDBOX").as_deref() != Ok("1"),
+                "SAM_REQUIRE_SANDBOX=1, but no libc.so.6 in {SYSTEM_LIB_DIRS:?}"
+            );
+            sam_core::errln!("skipped: no libc.so.6 in {SYSTEM_LIB_DIRS:?}");
+            return;
+        };
         fs::write(tmp.path().join("usr/lib/libc.so.6"), "old").unwrap();
         ctx.permissions.advanced.system_libraries = vec![
             "libc.so.6".into(),
@@ -3184,6 +3728,216 @@ mod guard_tests {
         assert!(!has_seq(&args_of(&ctx), &["--bind", &c, &c]));
     }
 
+    /// A key folder kept behind a link is hidden where it points also when
+    /// only the folder it points into is granted, not the home (security
+    /// review 2026-11-23, SB-2: `~/.gnupg` a link into a granted `~/Sync`
+    /// showed the keys, writable).
+    #[test]
+    fn a_linked_key_folder_is_hidden_also_when_only_its_target_is_granted() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap();
+        fs::create_dir_all(home.join("Sync/gnupg")).unwrap();
+        std::os::unix::fs::symlink(home.join("Sync/gnupg"), home.join(".gnupg")).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec![home.join("Sync").display().to_string()];
+        let a = args_of(&ctx_for(&p, &home));
+        let target = home.join("Sync/gnupg").to_string_lossy().into_owned();
+        assert!(has_seq(&a, &["--tmpfs", &target]), "{a:?}");
+        // Given the key folder, the app sees it.
+        p.filesystem.gnupg = true;
+        let a = args_of(&ctx_for(&p, &home));
+        assert!(!has_seq(&a, &["--tmpfs", &target]), "{a:?}");
+    }
+
+    /// The app's way to a host path is followed link by link as Linux
+    /// reads it inside the sandbox: a relative link or one with a whole
+    /// path, also behind another link and with `..`, ends where the
+    /// sandbox shows the place; a link at a grant's own place is a mount
+    /// point inside and not followed; a link out of what is shown, or a
+    /// loop, ends nowhere (security review 2026-11-23, SB-6).
+    #[test]
+    fn the_way_to_a_place_is_followed_link_by_link_as_the_app_follows_it() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let real = base.join("data/u");
+        let named = base.join("home/u");
+        for d in ["dots/config/autostart", "dots/local"] {
+            fs::create_dir_all(real.join(d)).unwrap();
+        }
+        fs::create_dir_all(base.join("home")).unwrap();
+        fs::create_dir_all(base.join("outside/x")).unwrap();
+        // The home itself behind a link, as on some systems.
+        std::os::unix::fs::symlink(&real, &named).unwrap();
+        std::os::unix::fs::symlink("dots/config", real.join(".config")).unwrap();
+        std::os::unix::fs::symlink(named.join("dots/local"), real.join(".local")).unwrap();
+        std::os::unix::fs::symlink("../config/autostart", real.join("dots/local/as")).unwrap();
+        std::os::unix::fs::symlink(base.join("outside/x"), real.join("out")).unwrap();
+        std::os::unix::fs::symlink("loop", real.join("loop")).unwrap();
+        let mut ctx = ctx_for(&full_rw(), &named);
+        let v = Views::of(&ctx);
+        assert_eq!(
+            v.reached_at(&named.join(".config/autostart")),
+            Some(named.join("dots/config/autostart")),
+            "relative link"
+        );
+        assert_eq!(
+            v.reached_at(&named.join(".local/as/f")),
+            Some(named.join("dots/config/autostart/f")),
+            "a link with a whole path, then a relative one with `..`"
+        );
+        assert_eq!(
+            v.reached_at(&named.join("dots")),
+            Some(named.join("dots")),
+            "the home's own link is a mount point inside"
+        );
+        assert_eq!(
+            v.reached_at(&named.join("out/f")),
+            None,
+            "out of the grants"
+        );
+        assert_eq!(v.reached_at(&named.join("loop/f")), None, "a loop");
+        assert_eq!(v.reached_at(&base.join("outside/x")), None, "not shown");
+        // Shown also where the link leads: reached there.
+        ctx.permissions.filesystem.custom_read = vec![base.join("outside").display().to_string()];
+        let v = Views::of(&ctx);
+        assert_eq!(
+            v.reached_at(&named.join("out/f")),
+            Some(base.join("outside/x/f"))
+        );
+        // The places to mount on lead through no link.
+        assert_eq!(
+            v.mount_points(&named.join(".config")),
+            vec![named.join("dots/config")]
+        );
+    }
+
+    /// With the home kept behind a link (`/home/u` a link to `/data/u`),
+    /// a link in it that names the home's real path (`~/.config` to
+    /// `/data/u/dots/config`, as tools that resolve the folder they run in
+    /// write it) leads nowhere inside, where only `/home/u` is shown; yet
+    /// the app reaches the place it points to under the home's name
+    /// (`/home/u/dots/config`). The protections land there: autostart
+    /// read-only, the folder above it pinned, a key folder hidden.
+    #[test]
+    fn places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let real = base.join("data/u");
+        let named = base.join("home/u");
+        for d in ["dots/config/autostart", "Sync/gnupg"] {
+            fs::create_dir_all(real.join(d)).unwrap();
+        }
+        fs::create_dir_all(base.join("home")).unwrap();
+        std::os::unix::fs::symlink(&real, &named).unwrap();
+        std::os::unix::fs::symlink(real.join("dots/config"), real.join(".config")).unwrap();
+        std::os::unix::fs::symlink(real.join("Sync/gnupg"), real.join(".gnupg")).unwrap();
+        let a = args_of(&ctx_for(&full_rw(), &named));
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        let autostart = s(named.join("dots/config/autostart"));
+        assert!(
+            has_seq(&a, &["--ro-bind-try", &autostart, &autostart]),
+            "{a:?}"
+        );
+        let config = s(named.join("dots/config"));
+        assert!(has_seq(&a, &["--bind", &config, &config]), "{a:?}");
+        let gnupg = s(named.join("Sync/gnupg"));
+        assert!(has_seq(&a, &["--tmpfs", &gnupg]), "{a:?}");
+    }
+
+    /// SAM's own folders kept behind a link (`~/.config` a link, SAM's
+    /// settings in `~/.config/sam`) are hidden where the app reaches them,
+    /// never through the link: with the link leading to a place nothing
+    /// grants, the empty folder on `~/.config/sam` stopped every start with
+    /// the whole home writable (Bubblewrap could not make the folders above
+    /// it); with the link leading into the home, the folder is hidden where
+    /// it points (security review 2026-11-23, SB-6).
+    #[test]
+    fn sams_own_folders_behind_a_link_are_hidden_where_the_app_reaches_them() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        fs::create_dir_all(home.join("dots/config/sam")).unwrap();
+        fs::create_dir_all(base.join("elsewhere/config/sam")).unwrap();
+        std::os::unix::fs::symlink(base.join("elsewhere/config"), home.join(".config")).unwrap();
+        let mut ctx = ctx_for(&full_rw(), &home);
+        ctx.sam_dirs = vec![home.join(".config/sam")];
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        let through_link = s(home.join(".config/sam"));
+        let a = args_of(&ctx);
+        assert!(!has_seq(&a, &["--tmpfs", &through_link]), "{a:?}");
+        assert!(
+            !has_seq(&a, &["--tmpfs", &s(base.join("elsewhere/config/sam"))]),
+            "nothing shows the place the link leads to: {a:?}"
+        );
+        // The link leads into the home: hidden there.
+        fs::remove_file(home.join(".config")).unwrap();
+        std::os::unix::fs::symlink(home.join("dots/config"), home.join(".config")).unwrap();
+        let a = args_of(&ctx);
+        assert!(!has_seq(&a, &["--tmpfs", &through_link]), "{a:?}");
+        assert!(
+            has_seq(&a, &["--tmpfs", &s(home.join("dots/config/sam"))]),
+            "{a:?}"
+        );
+    }
+
+    /// SAM's own programs are bound read-only onto themselves where the app
+    /// could write them, also where the app sees them under the home's own
+    /// name, and the folders above them are pinned; where the app sees them
+    /// read-only or not at all, nothing is added (security review
+    /// 2026-11-23, SB-1).
+    #[test]
+    fn sams_own_programs_are_read_only_wherever_an_app_could_write_them() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let real = base.join("data/u");
+        let named = base.join("home/u");
+        fs::create_dir_all(real.join("Downloads")).unwrap();
+        fs::create_dir_all(real.join("Applications")).unwrap();
+        fs::create_dir_all(base.join("home")).unwrap();
+        std::os::unix::fs::symlink(&real, &named).unwrap();
+        let sam = real.join("Applications/SAM.AppImage");
+        let run = real.join("Downloads/sam-jail-run");
+        fs::write(&sam, "").unwrap();
+        fs::write(&run, "").unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let ro = |a: &[String], p: &Path| has_seq(a, &["--ro-bind-try", &s(p), &s(p)]);
+        let pinned = |a: &[String], p: &Path| has_seq(a, &["--bind", &s(p), &s(p)]);
+
+        // The whole home writable, under its own name.
+        let mut ctx = ctx_for(&full_rw(), &named);
+        ctx.sam_programs = vec![sam.clone(), run.clone()];
+        let a = args_of(&ctx);
+        let seen = named.join("Applications/SAM.AppImage");
+        assert!(ro(&a, &seen), "{a:?}");
+        assert!(ro(&a, &named.join("Downloads/sam-jail-run")));
+        assert!(pinned(&a, &named.join("Applications")));
+        assert!(pinned(&a, &named.join("Downloads")));
+        // After the home and the pins (a later mount would cover it).
+        let at = |v: &str| a.iter().position(|x| x == v).unwrap();
+        let pin = a
+            .windows(3)
+            .position(|w| w[0] == "--bind" && w[1] == s(&named.join("Applications")))
+            .unwrap();
+        assert!(at(&s(&named)) < pin && pin < at(&s(&seen)), "{a:?}");
+
+        // Only Downloads, writable, as a user folder.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.downloads = Access::Rw;
+        let mut ctx = ctx_for(&p, &named);
+        ctx.host
+            .xdg_dirs
+            .insert("downloads".into(), named.join("Downloads"));
+        ctx.sam_programs = vec![sam.clone(), run.clone()];
+        let a = args_of(&ctx);
+        assert!(ro(&a, &run), "{a:?}");
+        assert!(!a.contains(&s(&sam)), "not shown, nothing added: {a:?}");
+
+        // Read-only: nothing to add.
+        ctx.permissions.filesystem.downloads = Access::Ro;
+        let a = args_of(&ctx);
+        assert!(!ro(&a, &run), "{a:?}");
+    }
+
     /// A start of `p` with `home` as the home and no user folders.
     fn ctx_for(p: &PermissionSet, home: impl AsRef<Path>) -> LaunchContext {
         let mut c = sample_context();
@@ -3198,6 +3952,36 @@ mod guard_tests {
         p.filesystem.home = true;
         p.filesystem.home_access = Access::Rw;
         p
+    }
+
+    /// The watch kept on disk while an app runs comes back as it was, odd
+    /// names included; a damaged record never names a place outside the
+    /// home or the home itself, which the last look would move aside.
+    #[test]
+    fn a_watch_read_back_from_disk_never_reaches_outside_the_home() {
+        use std::os::unix::ffi::OsStrExt;
+        let hex = |s: &[u8]| -> String { s.iter().map(|b| format!("{b:02x}")).collect() };
+        let w = HomeWatch {
+            home: PathBuf::from("/home/u"),
+            absent: vec![".bash_profile".into(), ".config/auto start\nx".into()],
+            links: vec![(".config/git".into(), PathBuf::from("/home/u/dots/git"))],
+        };
+        let lines = w.to_lines();
+        let back = HomeWatch::from_lines(lines.iter().map(String::as_str)).unwrap();
+        assert_eq!(back.home, w.home);
+        assert_eq!(back.absent, w.absent);
+        assert_eq!(back.links, w.links);
+        for bad in [b"/etc/profile".as_slice(), b"".as_slice()] {
+            let rec = [
+                format!("home {}", hex(Path::new("/home/u").as_os_str().as_bytes())),
+                format!("absent {}", hex(bad)),
+            ];
+            assert!(
+                HomeWatch::from_lines(rec.iter().map(String::as_str)).is_none(),
+                "{:?} was taken as a place",
+                String::from_utf8_lossy(bad)
+            );
+        }
     }
 
     /// A new start file is taken out of its place whatever happens, and
@@ -3769,6 +4553,56 @@ mod guard_tests {
         }
     }
 
+    /// Review SB-5: with SAM's helper, the app's own variables (set ones,
+    /// its AppImage variables, `$OWD`) are not given to Bubblewrap, whose
+    /// first program is the helper, but handed to the helper to set for the
+    /// app alone; SAM's own variables stay with Bubblewrap. Without the
+    /// helper, Bubblewrap sets them all, as before. Audit L-F16: `$OWD` is
+    /// the folder the app starts in.
+    #[test]
+    fn the_apps_variables_go_to_the_helper_never_to_its_start() {
+        let mut ctx = sample_context();
+        ctx.permissions
+            .environment
+            .set
+            .insert("LD_PRELOAD".into(), "/opt/app/usr/lib/libx.so".into());
+        ctx.owd = "/home/u/private/clientX".into();
+        let direct = Bubblewrap.build(&ctx).unwrap();
+        assert!(has_seq(
+            &direct.args,
+            &["--setenv", "LD_PRELOAD", "/opt/app/usr/lib/libx.so"]
+        ));
+        assert!(direct.exec_env.is_empty());
+        ctx.helper = Some(sam_core::sandbox::SandboxHelper {
+            binary: "/usr/bin/sam-jail-run".into(),
+            spec: "/tmp/spec.json".into(),
+        });
+        let helped = Bubblewrap.build(&ctx).unwrap();
+        for own in ["LD_PRELOAD", "APPDIR", "OWD"] {
+            assert!(
+                !has_seq(&helped.args, &["--setenv", own]),
+                "{own} not for the helper's start"
+            );
+            assert!(
+                helped.exec_env.iter().any(|(k, _)| k == own),
+                "{own} for the app"
+            );
+        }
+        assert!(has_seq(
+            &helped.args,
+            &["--setenv", "SAM_SANDBOX", "bubblewrap"]
+        ));
+        let owd: Vec<&str> = helped
+            .exec_env
+            .iter()
+            .filter(|(k, _)| k == "OWD")
+            .map(|(_, v)| v.as_str())
+            .collect();
+        let home = ctx.host.home.to_string_lossy();
+        assert_eq!(owd, [home.as_ref()], "the folder the app starts in");
+        assert!(has_seq(&helped.args, &["--chdir", &home]));
+    }
+
     /// SAM's helper folder /run/sam/bin comes first on the app's PATH only
     /// when there is something in it for the app: the link openers (they
     /// need the desktop bus) and Room service's stand-in for Bubblewrap.
@@ -3813,5 +4647,568 @@ mod guard_tests {
                 assert_eq!(shown, folder.into_iter().collect::<Vec<_>>(), "{case}");
             }
         }
+    }
+
+    /// The value of the last `--setenv key` in `a`: the one the app sees.
+    fn env_in(a: &[String], key: &str) -> Option<String> {
+        a.windows(3)
+            .rev()
+            .find(|w| w[0] == "--setenv" && w[1] == key)
+            .map(|w| w[2].clone())
+    }
+
+    /// The last way out of a start place, when SAM can neither move nor
+    /// rename what an app put there, deletes it: a file, a folder with
+    /// everything in it, and a link (never what it points to).
+    #[test]
+    fn what_cannot_be_moved_aside_is_deleted_whatever_it_is() {
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join("evil.desktop");
+        fs::write(&file, "x").unwrap();
+        let dir = t.path().join("autostart");
+        fs::create_dir_all(dir.join("deep/er")).unwrap();
+        fs::write(dir.join("deep/er/evil.desktop"), "x").unwrap();
+        let kept = t.path().join("kept");
+        fs::create_dir(&kept).unwrap();
+        fs::write(kept.join("mine"), "x").unwrap();
+        let link = t.path().join("link");
+        std::os::unix::fs::symlink(&kept, &link).unwrap();
+        for p in [&file, &dir, &link] {
+            assert!(remove_any(p), "{p:?} reported as still there");
+            assert!(fs::symlink_metadata(p).is_err(), "{p:?} is still there");
+        }
+        assert!(
+            kept.join("mine").is_file(),
+            "the link's target is left alone"
+        );
+        assert!(remove_any(&t.path().join("never-was")), "nothing there");
+    }
+
+    /// A start place that appears with the folder above it (`~/.config`
+    /// and `~/.config/autostart` both new) is moved aside once, inside the
+    /// folder above, not once more on its own.
+    #[test]
+    fn a_new_folder_above_start_places_is_moved_aside_once_as_a_whole() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let w = HomeWatch::before(&ctx_for(&full_rw(), &home)).unwrap();
+        assert!(w.absent.iter().any(|a| a == ".config/autostart"));
+        fs::create_dir_all(home.join(".config/autostart")).unwrap();
+        fs::write(home.join(".config/autostart/evil.desktop"), "x").unwrap();
+        let aside = t.path().join("aside");
+        let m = w.settle(&aside);
+        let places: Vec<&str> = m.iter().map(|m| m.place.as_str()).collect();
+        assert_eq!(places, [".config"], "{m:?}");
+        assert!(aside.join(".config/autostart/evil.desktop").is_file());
+        assert!(!home.join(".config").exists());
+    }
+
+    /// Next to a shown system path, links to the system's data and settings
+    /// are shown too (`/usr/share/X11/xkb` → `xkeyboard-config-2`), once;
+    /// links to anywhere else are not, and neither are links that stay
+    /// inside the path (shown already).
+    #[test]
+    fn links_beside_a_shown_system_path_bring_only_allowed_targets() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let shown = root.join("shown");
+        let elsewhere = root.join("elsewhere");
+        fs::create_dir_all(shown.join("sub")).unwrap();
+        fs::create_dir_all(&elsewhere).unwrap();
+        let link = |to: &Path, at: &Path| std::os::unix::fs::symlink(to, at).unwrap();
+        link(Path::new("/etc"), &shown.join("settings"));
+        link(Path::new("/etc"), &shown.join("settings-again"));
+        link(&elsewhere, &shown.join("out"));
+        link(&shown.join("sub"), &shown.join("inner"));
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let ro = |p: &str| ["--ro-bind-try".to_string(), p.into(), p.into()];
+        let mut a = Args::default();
+        ro_follow(&mut a, &shown);
+        assert_eq!(a.v, [ro(&s(&shown)), ro("/etc")].concat());
+        // The path itself a link: to an allowed place, or anywhere else.
+        link(Path::new("/etc"), &root.join("to-etc"));
+        link(&elsewhere, &root.join("to-elsewhere"));
+        let mut a = Args::default();
+        ro_follow(&mut a, &root.join("to-etc"));
+        ro_follow(&mut a, &root.join("to-elsewhere"));
+        assert_eq!(
+            a.v,
+            [
+                ro(&s(&root.join("to-etc"))),
+                ro("/etc"),
+                ro(&s(&root.join("to-elsewhere")))
+            ]
+            .concat()
+        );
+    }
+
+    /// A top-level path of the system is copied as it is on the host: a
+    /// link stays a link, a real folder is shown read-only, and anything
+    /// else (a file, nothing) is left out.
+    #[test]
+    fn top_level_system_paths_are_copied_as_they_are() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("lib64");
+        fs::create_dir(&dir).unwrap();
+        let link = t.path().join("lib");
+        std::os::unix::fs::symlink("usr/lib", &link).unwrap();
+        let file = t.path().join("lib32");
+        fs::write(&file, "").unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let of = |p: &Path| {
+            let mut a = Args::default();
+            mirror(&mut a, &s(p));
+            a.v
+        };
+        assert_eq!(of(&dir), ["--ro-bind-try", &s(&dir), &s(&dir)]);
+        assert_eq!(of(&link), ["--symlink", "usr/lib", &s(&link)]);
+        assert!(of(&file).is_empty(), "a file");
+        assert!(of(&t.path().join("libx32")).is_empty(), "nothing there");
+    }
+
+    /// An empty argument (the folder the app was started in) and options
+    /// are never taken as files to share, even where a file of that name
+    /// exists.
+    #[test]
+    fn empty_arguments_and_options_open_nothing() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap();
+        let proj = home.join("proj");
+        fs::create_dir(&proj).unwrap();
+        fs::write(proj.join("-v"), "").unwrap();
+        fs::write(proj.join("notes.txt"), "").unwrap();
+        let mut ctx = ctx_for(&PermissionSet::strict_gui(), &home);
+        ctx.owd = proj.clone();
+        for arg in ["", "-v"] {
+            ctx.args = vec![arg.into()];
+            assert_eq!(opened_paths(&ctx), [], "{arg:?}");
+        }
+        // Control: a plain name there is shared.
+        ctx.args = vec!["notes.txt".into()];
+        assert_eq!(opened_paths(&ctx), [(proj.join("notes.txt"), true)]);
+    }
+
+    /// The host's name server settings are shown with the network only:
+    /// an app without it sees none of them.
+    #[test]
+    fn name_server_settings_are_shown_with_the_network_only() {
+        for mode in [NetworkMode::None, NetworkMode::Localhost, NetworkMode::Full] {
+            let mut ctx = sample_context();
+            ctx.permissions.network.mode = mode;
+            let a = args_of(&ctx);
+            let full = mode == NetworkMode::Full;
+            for p in ["/etc/resolv.conf", "/etc/services", "/run/systemd/resolve"] {
+                assert_eq!(
+                    has_seq(&a, &["--ro-bind-try", p, p]),
+                    full,
+                    "{p} with network {mode:?}"
+                );
+            }
+        }
+    }
+
+    /// The host's theme settings in the home are shown, read-only, only
+    /// when asked for and the home is not shown anyway.
+    #[test]
+    fn host_themes_are_shown_only_when_asked_for_without_the_home() {
+        for (themes, home, shown) in [
+            (false, false, false),
+            (true, false, true),
+            (true, true, false),
+            (false, true, false),
+        ] {
+            let mut ctx = sample_context();
+            ctx.permissions.advanced.host_themes = themes;
+            ctx.permissions.filesystem.home = home;
+            ctx.permissions.filesystem.home_access = Access::Rw;
+            let a = args_of(&ctx);
+            for t in [".config/gtk-3.0", ".config/kdeglobals", ".icons"] {
+                let p = format!("/home/tester/{t}");
+                assert_eq!(
+                    has_seq(&a, &["--ro-bind-try", &p, &p]),
+                    shown,
+                    "{t}: themes {themes}, home {home}"
+                );
+                if !shown {
+                    assert!(!a.contains(&p), "{t} is not named at all: {a:?}");
+                }
+            }
+        }
+    }
+
+    /// A bundled library is replaced only by a plain file of the system's
+    /// own (the copy found is checked by
+    /// `system_copies_replace_only_bundled_libraries_by_plain_name`):
+    /// never by a file elsewhere, nor by a folder.
+    #[test]
+    fn only_a_system_file_replaces_a_bundled_library() {
+        let t = tempfile::tempdir().unwrap();
+        let elsewhere = t.path().join("libc.so.6");
+        fs::write(&elsewhere, "").unwrap();
+        assert!(!system_copy_ok(&elsewhere), "a file outside /usr and /lib");
+        assert!(!system_copy_ok(Path::new("/usr/lib")), "a folder");
+        assert!(!system_copy_ok(Path::new("/usr/lib/no-such-lib.so.1")));
+    }
+
+    /// What SAM says about Bubblewrap names what is wrong, and only that.
+    #[test]
+    fn the_bubblewrap_status_says_what_is_missing_and_nothing_else() {
+        let ok = sample_context().host;
+        let s = Bubblewrap.status(&ok);
+        assert!(s.installed && s.usable && s.notes.is_empty(), "{s:?}");
+
+        let mut none = ok.clone();
+        none.tools.bwrap = None;
+        let s = Bubblewrap.status(&none);
+        let hint =
+            sam_core::i18n::tr("Bubblewrap is not installed. Install the 'bubblewrap' package.");
+        assert!(!s.installed && !s.usable);
+        assert_eq!(s.notes, [hint]);
+
+        let mut closed = ok.clone();
+        closed.userns.max_user_namespaces = Some(0);
+        let s = Bubblewrap.status(&closed);
+        assert!(s.installed && !s.usable);
+        assert_eq!(s.notes, [closed.userns.explain()]);
+    }
+
+    /// Without the whole system (`host_runtime` Minimal), the shared data
+    /// of sound and of D-Bus is shown with their permissions, and only
+    /// then; the sound settings in /etc in any case. Either sound
+    /// permission is enough.
+    #[test]
+    fn sound_and_bus_data_come_with_their_permissions() {
+        for (sound, raw, bus) in [
+            (false, false, DbusMode::None),
+            (true, false, DbusMode::None),
+            (false, true, DbusMode::None),
+            (false, false, DbusMode::Filtered),
+        ] {
+            let mut ctx = sample_context();
+            let p = &mut ctx.permissions;
+            p.advanced.host_runtime = HostRuntime::Minimal;
+            p.audio.enabled = sound;
+            p.audio.alsa_raw = raw;
+            p.dbus.session.mode = bus;
+            let a = args_of(&ctx);
+            let case = format!("sound {sound}, raw {raw}, bus {bus:?}");
+            let ro = |p: &str| has_seq(&a, &["--ro-bind-try", p, p]);
+            assert_eq!(ro("/usr/share/alsa"), sound || raw, "{case}");
+            assert_eq!(ro("/usr/share/pipewire"), sound || raw, "{case}");
+            assert_eq!(ro("/etc/asound.conf"), sound || raw, "{case}");
+            assert_eq!(ro("/etc/pulse"), sound || raw, "{case}");
+            assert_eq!(ro("/usr/share/dbus-1"), bus != DbusMode::None, "{case}");
+        }
+    }
+
+    /// The device trees in /sys and udev's device data are shown with any
+    /// one device permission that needs them, and never without one.
+    #[test]
+    fn device_information_comes_with_each_device_permission() {
+        type Grant = fn(&mut DevicePerms);
+        let grants: [(&str, Grant); 6] = [
+            ("none", |_| {}),
+            ("gpu", |d| d.gpu = true),
+            ("usb", |d| d.usb = true),
+            ("input", |d| d.input = true),
+            ("gamepads", |d| d.gamepads = true),
+            ("webcam", |d| d.webcam = true),
+        ];
+        for (name, grant) in grants {
+            let mut ctx = sample_context();
+            grant(&mut ctx.permissions.devices);
+            let a = args_of(&ctx);
+            for p in [
+                "/sys/dev",
+                "/sys/devices",
+                "/sys/bus",
+                "/sys/class",
+                "/run/udev/data",
+            ] {
+                assert_eq!(
+                    has_seq(&a, &["--ro-bind-try", p, p]),
+                    name != "none",
+                    "{p} with {name}"
+                );
+            }
+        }
+    }
+
+    /// The X11 cookie is passed on only when the host has one and SAM
+    /// wrote the sandbox's copy: a cookie bind of a missing file stops the
+    /// start, and a copy left from before is not the host's.
+    #[test]
+    fn the_x11_cookie_is_passed_on_only_when_both_are_there() {
+        let t = tempfile::tempdir().unwrap();
+        for (host_cookie, written) in [(true, false), (false, true), (true, true)] {
+            let run = t.path().join(format!("{host_cookie}-{written}"));
+            fs::create_dir_all(&run).unwrap();
+            if written {
+                fs::write(run.join("Xauthority"), "cookie").unwrap();
+            }
+            let mut ctx = sample_context();
+            ctx.permissions.display.x11 = true;
+            ctx.runtime_dir = run.clone();
+            if !host_cookie {
+                ctx.host.sockets.xauthority = None;
+            }
+            let a = args_of(&ctx);
+            let both = host_cookie && written;
+            let cookie = run.join("Xauthority").to_string_lossy().into_owned();
+            assert_eq!(
+                has_seq(&a, &["--ro-bind", &cookie, "/run/user/1000/Xauthority"]),
+                both,
+                "host cookie {host_cookie}, written {written}"
+            );
+            assert_eq!(
+                env_in(&a, "XAUTHORITY").is_some(),
+                both,
+                "host cookie {host_cookie}, written {written}"
+            );
+        }
+    }
+
+    /// The display kind and the toolkits' backends follow what the app may
+    /// use and what the host has: never a display the sandbox does not
+    /// show, and none at all without a display.
+    #[test]
+    fn display_variables_name_only_displays_the_sandbox_shows() {
+        // (Wayland allowed, X11 allowed, host has Wayland, host has X11)
+        // → (XDG_SESSION_TYPE, QT_QPA_PLATFORM, GDK_BACKEND = SDL_VIDEODRIVER)
+        type Want = (&'static str, Option<&'static str>, Option<&'static str>);
+        let cases: [((bool, bool, bool, bool), Want); 7] = [
+            (
+                (true, true, true, true),
+                ("wayland", None, Some("wayland,x11")),
+            ),
+            (
+                (true, false, true, true),
+                ("wayland", Some("wayland"), Some("wayland")),
+            ),
+            ((false, true, true, true), ("x11", Some("xcb"), Some("x11"))),
+            ((false, false, true, true), ("tty", Some("offscreen"), None)),
+            ((true, true, false, true), ("x11", Some("xcb"), Some("x11"))),
+            (
+                (true, true, true, false),
+                ("wayland", Some("wayland"), Some("wayland")),
+            ),
+            ((true, true, false, false), ("tty", Some("offscreen"), None)),
+        ];
+        for ((wl, x, host_wl, host_x), (session, qt, gdk)) in cases {
+            let mut ctx = sample_context();
+            ctx.permissions.display.wayland = wl;
+            ctx.permissions.display.x11 = x;
+            if !host_wl {
+                ctx.host.sockets.wayland = None;
+            }
+            if !host_x {
+                ctx.host.sockets.x11 = None;
+            }
+            let a = args_of(&ctx);
+            let case = format!("allowed {wl}/{x}, host {host_wl}/{host_x}");
+            assert_eq!(
+                env_in(&a, "XDG_SESSION_TYPE").as_deref(),
+                Some(session),
+                "{case}"
+            );
+            assert_eq!(env_in(&a, "QT_QPA_PLATFORM").as_deref(), qt, "{case}");
+            assert_eq!(env_in(&a, "GDK_BACKEND").as_deref(), gdk, "{case}");
+            assert_eq!(env_in(&a, "SDL_VIDEODRIVER").as_deref(), gdk, "{case}");
+        }
+    }
+
+    /// The notes that a device or input method needs a bus come only when
+    /// it is asked for and the bus is not granted.
+    #[test]
+    fn notes_about_a_missing_bus_come_only_when_it_is_missing() {
+        let bt = sam_core::i18n::tr("Bluetooth needs the system D-Bus; not granted");
+        let im = sam_core::i18n::tr("Input method needs the session D-Bus; not granted");
+        for asked in [false, true] {
+            for bus in [DbusMode::None, DbusMode::Filtered] {
+                let mut ctx = sample_context();
+                ctx.permissions.devices.bluetooth = asked;
+                ctx.permissions.dbus.system.mode = bus;
+                let notes = Bubblewrap.build(&ctx).unwrap().notes;
+                let want = asked && bus == DbusMode::None;
+                assert_eq!(notes.contains(&bt), want, "Bluetooth {asked}, bus {bus:?}");
+
+                let mut ctx = sample_context();
+                ctx.permissions.integrations.input_method = asked;
+                ctx.permissions.dbus.session.mode = bus;
+                let c = Bubblewrap.build(&ctx).unwrap();
+                assert_eq!(
+                    c.notes.contains(&im),
+                    want,
+                    "input method {asked}, bus {bus:?}"
+                );
+                assert_eq!(
+                    env_in(&c.args, "IBUS_USE_PORTAL").is_some(),
+                    asked,
+                    "input method {asked}"
+                );
+            }
+        }
+    }
+
+    /// An app started in a folder it reaches only through a link (`~/link`
+    /// to a granted `/data/proj`) starts there, so relative names work.
+    #[test]
+    fn the_start_folder_reached_through_a_link_is_kept() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let real = root.join("proj");
+        fs::create_dir(&real).unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let mut ctx = sample_context();
+        ctx.permissions.filesystem.custom_read = vec![real.to_string_lossy().into_owned()];
+        ctx.owd = link.clone();
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--chdir", &link.to_string_lossy()]), "{a:?}");
+        // Control: a folder not shown at all falls back to the home.
+        ctx.owd = root.clone();
+        assert!(has_seq(&args_of(&ctx), &["--chdir", "/home/tester"]));
+    }
+
+    /// The sandbox's X11 display number is never the host's: 99, or 100
+    /// when the host's display is :99 itself.
+    #[test]
+    fn the_sandbox_display_number_is_never_the_hosts() {
+        let with = |d: Option<&str>| sam_core::host::Sockets {
+            x11_display: d.map(String::from),
+            ..Default::default()
+        };
+        assert_eq!(sandbox_x11_display(&with(Some(":99"))), 100);
+        assert_eq!(sandbox_x11_display(&with(Some(":99.0"))), 100);
+        assert_eq!(sandbox_x11_display(&with(Some(":0"))), 99);
+        assert_eq!(sandbox_x11_display(&with(None)), 99);
+    }
+
+    /// The cookie copy keeps every record for the host's display, wherever
+    /// it stands in the file, and an empty file gives an empty copy.
+    #[test]
+    fn every_cookie_for_the_display_is_copied() {
+        assert!(rewrite_xauthority(&[], "0", "99").is_empty());
+        let rec = |num: &str, cookie: &[u8]| {
+            let mut r = vec![0x01, 0x00];
+            for f in [
+                b"host".as_slice(),
+                num.as_bytes(),
+                b"MIT-MAGIC-COOKIE-1",
+                cookie,
+            ] {
+                r.extend_from_slice(&(f.len() as u16).to_be_bytes());
+                r.extend_from_slice(f);
+            }
+            r
+        };
+        let data = [rec("1", b"a"), rec("2", b"b"), rec("0", b"c")].concat();
+        assert_eq!(rewrite_xauthority(&data, "0", "99"), rec("99", b"c"));
+        let data = [
+            rec("0", b"a"),
+            rec("1", b"b"),
+            rec("2", b"c"),
+            rec("0", b"d"),
+        ]
+        .concat();
+        assert_eq!(
+            rewrite_xauthority(&data, "0", "99"),
+            [rec("99", b"a"), rec("99", b"d")].concat()
+        );
+    }
+
+    /// Device numbers are split as the kernel numbers them: udev's data
+    /// for a game controller is found under `c<major>:<minor>`.
+    #[test]
+    fn device_numbers_split_into_major_and_minor() {
+        use std::os::unix::fs::MetadataExt;
+        // Fixed by the kernel's list of devices: /dev/null is 1:3, /dev/tty 5:0.
+        for (dev, major, minor) in [("/dev/null", 1, 3), ("/dev/tty", 5, 0)] {
+            let rdev = fs::metadata(dev).unwrap().rdev();
+            assert_eq!(
+                (libc_major(rdev), libc_minor(rdev)),
+                (major, minor),
+                "{dev}"
+            );
+        }
+        // An input event node 13:300 and a large major (259:5), encoded as
+        // glibc's makedev does: minor bits 0-7 and 20-43, major bits 8-19
+        // and 44-63.
+        assert_eq!(
+            (libc_major(0x0010_0d2c), libc_minor(0x0010_0d2c)),
+            (13, 300)
+        );
+        assert_eq!((libc_major(0x0001_0305), libc_minor(0x0001_0305)), (259, 5));
+    }
+
+    /// A hidden credential is never shown again by a bind after it: with
+    /// `~/.git-credentials` a link into `~/.config/git` (a protected place,
+    /// bound read-only onto itself), the protected place came after the
+    /// hiding and showed the real file (mutation run 2026-11-23). No hidden
+    /// place has a bind of itself or of a folder above it later on, with the
+    /// home writable or read-only.
+    #[test]
+    fn no_later_bind_shows_a_hidden_credential_again() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap();
+        fs::create_dir_all(home.join(".config/git")).unwrap();
+        fs::write(home.join(".config/git/credentials"), "secret").unwrap();
+        std::os::unix::fs::symlink(
+            home.join(".config/git/credentials"),
+            home.join(".git-credentials"),
+        )
+        .unwrap();
+        fs::write(home.join(".netrc"), "secret").unwrap();
+        fs::create_dir(home.join(".ssh")).unwrap();
+        for access in [Access::Rw, Access::Ro] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = access;
+            let a = args_of(&ctx_for(&p, &home));
+            let s = |n: &str| home.join(n).to_string_lossy().into_owned();
+            let hidden: Vec<(usize, PathBuf)> = a
+                .windows(3)
+                .enumerate()
+                .filter_map(|(i, w)| match (w[0].as_str(), w[1].as_str()) {
+                    ("--ro-bind", "/dev/null") => Some((i, PathBuf::from(&w[2]))),
+                    ("--tmpfs", _) => Some((i, PathBuf::from(&w[1]))),
+                    _ => None,
+                })
+                .filter(|(_, p)| p.starts_with(&home) && *p != home)
+                .collect();
+            for want in [".config/git/credentials", ".netrc", ".ssh"] {
+                assert!(
+                    hidden.iter().any(|(_, p)| p == Path::new(&s(want))),
+                    "{want} hidden, home {access:?}: {a:?}"
+                );
+            }
+            for (i, place) in &hidden {
+                let later = a[i + 1..].windows(3).find(|w| {
+                    w[0].contains("bind") && w[1] != "/dev/null" && place.starts_with(&w[2])
+                });
+                assert!(
+                    later.is_none(),
+                    "{place:?} is shown again by {later:?}, home {access:?}"
+                );
+            }
+        }
+    }
+
+    /// A credential place that is neither a file nor a folder is hidden
+    /// too: `~/.netrc` as a named pipe a password manager feeds (so the
+    /// secret never lies on disk) or a socket was left showing, and the app
+    /// could read the secret from it.
+    #[test]
+    fn credential_places_of_any_kind_are_hidden() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap();
+        let _socket = std::os::unix::net::UnixListener::bind(home.join(".netrc")).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        let a = args_of(&ctx_for(&p, &home));
+        let netrc = home.join(".netrc").to_string_lossy().into_owned();
+        assert!(has_seq(&a, &["--ro-bind", "/dev/null", &netrc]), "{a:?}");
     }
 }

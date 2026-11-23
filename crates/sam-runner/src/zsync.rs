@@ -8,7 +8,6 @@
 //! reused; the rest is fetched with HTTP range requests. The result must
 //! match the published SHA-1, or it is thrown away.
 
-use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
@@ -30,15 +29,31 @@ pub struct Control {
     pub seq_matches: usize,
     pub rsum_bytes: usize,
     pub checksum_bytes: usize,
-    /// Per block: the stored part of the rolling checksum, and of the MD4.
-    pub blocks: Vec<(u32, Vec<u8>)>,
+    /// Per block: the stored part of the rolling checksum.
+    pub rsums: Vec<u32>,
+    /// Per block, one after another: the stored `checksum_bytes` of the MD4.
+    /// One buffer, not one per block: a description with millions of
+    /// blocks took a heap allocation for each (review 2026-11-23, U-6).
+    pub checksums: Vec<u8>,
 }
 
 impl Control {
     pub fn block_count(&self) -> usize {
         self.length.div_ceil(self.blocksize as u64) as usize
     }
+
+    /// The stored part of block `i`'s MD4.
+    fn checksum(&self, i: usize) -> &[u8] {
+        &self.checksums[i * self.checksum_bytes..(i + 1) * self.checksum_bytes]
+    }
 }
+
+/// The smallest block size SAM uses for a delta (zsyncmake uses 2048 or
+/// 4096): with `Blocksize: 1` a 64 MiB description lists millions of blocks.
+pub const MIN_BLOCKSIZE: usize = 512;
+/// The most blocks SAM plans with: 8 GiB (its largest download) in blocks
+/// of 2048 bytes. More, and the update is downloaded whole.
+pub const MAX_BLOCKS: usize = 1 << 22;
 
 /// How many blocks with the same quick checksum are tried at one offset.
 const MAX_SAME_CHECKSUM: usize = 16;
@@ -97,7 +112,8 @@ pub fn parse(data: &[u8]) -> Result<Control> {
         seq_matches: 1,
         rsum_bytes: 4,
         checksum_bytes: 16,
-        blocks: vec![],
+        rsums: vec![],
+        checksums: vec![],
     };
     for line in header.lines() {
         let Some((k, v)) = line.split_once(": ") else {
@@ -145,23 +161,35 @@ pub fn parse(data: &[u8]) -> Result<Control> {
             sam_core::i18n::tr("the update description (.zsync) names an impossible length")
         );
     }
-    let per = c.rsum_bytes + c.checksum_bytes;
+    // Checked before anything is allocated for the blocks: tiny blocks
+    // make a small description list millions of them (review 2026-11-23,
+    // U-6). Such an update is downloaded whole instead.
     let n = c.block_count();
+    if c.blocksize < MIN_BLOCKSIZE || n > MAX_BLOCKS {
+        bail!(
+            "{}",
+            sam_core::i18n::tr(
+                "the update description (.zsync) lists too many small blocks for a partial download"
+            )
+        );
+    }
+    let per = c.rsum_bytes + c.checksum_bytes;
     if n.checked_mul(per).is_none_or(|need| body.len() < need) {
         bail!(
             "{}",
             sam_core::i18n::tr("the update description (.zsync) is cut short")
         );
     }
-    c.blocks = (0..n)
-        .map(|i| {
-            let e = &body[i * per..(i + 1) * per];
-            let r = e[..c.rsum_bytes]
+    c.rsums = Vec::with_capacity(n);
+    c.checksums = Vec::with_capacity(n * c.checksum_bytes);
+    for e in body[..n * per].chunks_exact(per) {
+        c.rsums.push(
+            e[..c.rsum_bytes]
                 .iter()
-                .fold(0u32, |acc, &b| (acc << 8) | b as u32);
-            (r, e[c.rsum_bytes..].to_vec())
-        })
-        .collect();
+                .fold(0u32, |acc, &b| (acc << 8) | b as u32),
+        );
+        c.checksums.extend_from_slice(&e[c.rsum_bytes..]);
+    }
     Ok(c)
 }
 
@@ -216,29 +244,44 @@ pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<O
     if old.len() < bs {
         return found;
     }
-    let mut by_rsum: HashMap<u32, Vec<usize>> = HashMap::new();
-    for (i, (r, _)) in c.blocks.iter().enumerate() {
-        by_rsum.entry(*r).or_default().push(i);
-    }
+    // Blocks by quick checksum, in block order within one checksum: one
+    // flat sorted list, not a list per checksum (review 2026-11-23, U-6).
+    let mut by_rsum: Vec<(u32, u32)> = c
+        .rsums
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (*r, i as u32))
+        .collect();
+    by_rsum.sort_unstable();
+    let candidates = |key: u32| -> &[(u32, u32)] {
+        let from = by_rsum.partition_point(|(r, _)| *r < key);
+        let to = by_rsum.partition_point(|(r, _)| *r <= key);
+        &by_rsum[from..to]
+    };
     let strong = |i: usize, off: usize| -> bool {
         if off + bs > old.len() {
             return false;
         }
-        md4_of(&old[off..off + bs], bs)[..c.checksum_bytes] == c.blocks[i].1[..]
+        md4_of(&old[off..off + bs], bs)[..c.checksum_bytes] == *c.checksum(i)
     };
     let weak = |i: usize, off: usize| -> bool {
-        off + bs <= old.len() && rsum_key(rsum(&old[off..off + bs]), c.rsum_bytes) == c.blocks[i].0
+        off + bs <= old.len() && rsum_key(rsum(&old[off..off + bs]), c.rsum_bytes) == c.rsums[i]
     };
     let mut off = 0usize;
     let mut r = rsum(&old[..bs]);
     loop {
         let mut matched = false;
-        if let Some(cands) = by_rsum.get(&rsum_key(r, c.rsum_bytes)) {
+        {
+            let cands = candidates(rsum_key(r, c.rsum_bytes));
             // A description can give thousands of blocks the same quick
             // checksum, which would make SAM compare each one at every byte
             // of the old file (practically endless). Beyond a few, the
             // blocks are simply downloaded (audit U-M7).
-            for &i in cands.iter().take(MAX_SAME_CHECKSUM) {
+            for i in cands
+                .iter()
+                .take(MAX_SAME_CHECKSUM)
+                .map(|(_, i)| *i as usize)
+            {
                 if found[i].is_some() {
                     continue;
                 }
@@ -285,8 +328,8 @@ pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<O
         if tail < bs && old.len() >= tail {
             let start = old.len() - tail;
             let blk = &old[start..];
-            if md4_of(blk, bs)[..c.checksum_bytes] == c.blocks[n - 1].1[..]
-                && rsum_key(rsum(&pad(blk, bs)), c.rsum_bytes) == c.blocks[n - 1].0
+            if md4_of(blk, bs)[..c.checksum_bytes] == *c.checksum(n - 1)
+                && rsum_key(rsum(&pad(blk, bs)), c.rsum_bytes) == c.rsums[n - 1]
             {
                 found[n - 1] = Some(start as u64);
             }
@@ -457,7 +500,8 @@ mod tests {
         .unwrap();
         let c = parse(&ctl).unwrap();
         assert_eq!(c.length, new.len() as u64);
-        assert_eq!(c.block_count(), c.blocks.len());
+        assert_eq!(c.block_count(), c.rsums.len());
+        assert_eq!(c.block_count() * c.checksum_bytes, c.checksums.len());
 
         let p = plan(&c, &old);
         let reused = p.iter().filter(|x| x.is_some()).count();
@@ -512,6 +556,35 @@ mod tests {
         assert!(parse(b"zsync: 0.6.2\nBlocksize: 2048\n\n").is_err());
     }
 
+    /// Regression (review 2026-11-23, U-6): `Blocksize: 1` and the
+    /// shortest checksums made a description of 64 MiB (the most SAM
+    /// fetches) list about 16 million blocks, and SAM allocated some 2 GB
+    /// for them before giving up on the delta. Blocks smaller than 512
+    /// bytes, or more than SAM plans with, are refused before anything is
+    /// allocated; the update is then downloaded whole.
+    #[test]
+    fn a_description_with_tiny_or_countless_blocks_is_refused_before_allocating() {
+        let make = |bs: usize, len: usize| {
+            let mut z = format!(
+                "zsync: 0.6.2\nBlocksize: {bs}\nLength: {len}\nHash-Lengths: 1,1,3\nSHA-1: {}\n\n",
+                "0".repeat(40)
+            )
+            .into_bytes();
+            z.resize(z.len() + len.div_ceil(bs) * 4, 0);
+            z
+        };
+        for (bs, len) in [
+            (1, 100_000),
+            (256, 100_000),
+            (MIN_BLOCKSIZE, (MAX_BLOCKS + 1) * MIN_BLOCKSIZE),
+        ] {
+            let e = parse(&make(bs, len)).unwrap_err().to_string();
+            assert!(e.contains("too many small blocks"), "{bs} {len}: {e}");
+        }
+        let c = parse(&make(MIN_BLOCKSIZE, 100_000)).unwrap();
+        assert_eq!(c.rsums.len(), 100_000usize.div_ceil(MIN_BLOCKSIZE));
+    }
+
     /// A description from a hostile server cannot crash SAM or keep it busy
     /// (audit U-M7): an absurd length is refused, a block count that would
     /// overflow the size computation is refused instead of wrapping, and
@@ -551,9 +624,8 @@ mod tests {
             seq_matches: 1,
             rsum_bytes: 4,
             checksum_bytes: 16,
-            blocks: (0..n)
-                .map(|i| (zero, vec![(i % 251) as u8 + 1; 16]))
-                .collect(),
+            rsums: vec![zero; n],
+            checksums: (0..n).flat_map(|i| [(i % 251) as u8 + 1; 16]).collect(),
         };
         let t = std::time::Instant::now();
         let p = plan_within(&c, &old, std::time::Duration::from_millis(500));

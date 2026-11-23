@@ -12,7 +12,9 @@
 //! when an update comes signed with another key, or unsigned.
 //!
 //! Checking uses `gpgv` with a throwaway keyring in a temporary folder; the
-//! user's own GnuPG folder is never touched.
+//! user's own GnuPG folder is never touched. The key and the signature are
+//! the file's (an attacker's) data, so GnuPG reads them inside SAM's unpack
+//! sandbox, like every other parser of an AppImage's bytes ([`GnuPg`]).
 
 use std::fs::File;
 use std::io::{Read, Write};
@@ -28,10 +30,32 @@ const MAX_SECTION: u64 = 64 * 1024;
 /// How much of the file is read to find the sections.
 const HEAD: u64 = 8 * 1024 * 1024;
 
+/// Where GnuPG runs when it reads a file's key and signature.
+pub enum GnuPg<'a> {
+    /// In a sandbox: the function returns the command that starts the
+    /// program (its first argument) with the folder (its second) as the
+    /// only place it can write, and nothing of the home, no network.
+    /// GnuPG's packet parsers then meet the attacker's bytes there, not as
+    /// the user (review 2026-11-23, F6; audit I-F18).
+    Sandboxed(&'a dyn Fn(&Path, &Path) -> Result<Command>),
+    /// As the user: only for files that are SAM's own (its tests, signing
+    /// its own release), never for an AppImage someone added.
+    Direct,
+}
+
+impl GnuPg<'_> {
+    fn command(&self, program: &Path, home: &Path) -> Result<Command> {
+        match self {
+            GnuPg::Sandboxed(wrap) => wrap(program, home),
+            GnuPg::Direct => Ok(Command::new(program)),
+        }
+    }
+}
+
 /// Checks the embedded signature of `path`. Never fails: problems are
 /// reported in the result.
-pub fn check(path: &Path) -> SignatureInfo {
-    match check_inner(path) {
+pub fn check(path: &Path, gnupg: &GnuPg) -> SignatureInfo {
+    match check_inner(path, gnupg) {
         Ok(i) => i,
         Err(e) => SignatureInfo {
             state: SignatureState::Unchecked,
@@ -42,7 +66,7 @@ pub fn check(path: &Path) -> SignatureInfo {
     }
 }
 
-fn check_inner(path: &Path) -> Result<SignatureInfo> {
+fn check_inner(path: &Path, gnupg: &GnuPg) -> Result<SignatureInfo> {
     // The sections live in the runtime (the ELF in front of the payload),
     // which is well under this size.
     let mut head = Vec::new();
@@ -86,7 +110,7 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
         "GnuPG (gpg) is needed to read the signer's key",
     ))?;
     let keyring = home.join("keyring.gpg");
-    let Some(listing) = import_keys(&gpg, home, &keyring, &home.join("key.asc"))? else {
+    let Some(listing) = import_keys(gnupg, &gpg, home, &keyring, &home.join("key.asc"))? else {
         return Ok(SignatureInfo {
             state: SignatureState::Invalid,
             fingerprint: None,
@@ -118,6 +142,7 @@ fn check_inner(path: &Path) -> Result<SignatureInfo> {
         .map(|u| sam_core::util::display_safe(u, 80));
     // The signer is what gpgv itself reports for the signature it checked.
     let signed = verify(
+        gnupg,
         &gpgv,
         home,
         &keyring,
@@ -162,22 +187,28 @@ const GPG_OUTPUT: usize = 64 * 1024;
 /// Imports the armoured keys in `keys` into a fresh `keyring` (GnuPG's
 /// folder is the throwaway `home`) and returns GnuPG's listing of them in
 /// `--with-colons` form, or `None` when the keys cannot be read.
-fn import_keys(gpg: &Path, home: &Path, keyring: &Path, keys: &Path) -> Result<Option<String>> {
-    let base = || {
-        let mut c = Command::new(gpg);
+fn import_keys(
+    gnupg: &GnuPg,
+    gpg: &Path,
+    home: &Path,
+    keyring: &Path,
+    keys: &Path,
+) -> Result<Option<String>> {
+    let base = || -> Result<Command> {
+        let mut c = gnupg.command(gpg, home)?;
         c.args(["--batch", "--quiet", "--no-options", "--homedir"])
             .arg(home)
             .args(["--no-default-keyring", "--keyring"])
             .arg(keyring);
-        c
+        Ok(c)
     };
     let (st, _) =
-        sam_core::util::output_within(base().arg("--import").arg(keys), GPG_LIMIT, GPG_OUTPUT)?;
+        sam_core::util::output_within(base()?.arg("--import").arg(keys), GPG_LIMIT, GPG_OUTPUT)?;
     if !st.success() {
         return Ok(None);
     }
     let (st, out) = sam_core::util::output_within(
-        base().args(["--with-colons", "--list-keys", "--fingerprint"]),
+        base()?.args(["--with-colons", "--list-keys", "--fingerprint"]),
         GPG_LIMIT,
         GPG_OUTPUT,
     )?;
@@ -210,6 +241,7 @@ fn primary_fingerprints(listing: &str) -> Vec<String> {
 /// fingerprint of the key that made the signature and when it was made, as
 /// gpgv reports them, or `None` when the signature is not good.
 fn verify(
+    gnupg: &GnuPg,
     gpgv: &Path,
     home: &Path,
     keyring: &Path,
@@ -217,7 +249,8 @@ fn verify(
     data: &Path,
 ) -> Result<Option<(String, Option<i64>)>> {
     let (st, out) = sam_core::util::output_within(
-        Command::new(gpgv)
+        gnupg
+            .command(gpgv, home)?
             .arg("--homedir")
             .arg(home)
             .arg("--keyring")
@@ -308,7 +341,9 @@ pub fn gnupg_contract(msg: &str, expected: &str) -> std::result::Result<(), Stri
         std::fs::write(home.join("msg"), msg)?;
         std::fs::write(home.join("msg.sig"), CONTRACT_SIG)?;
         let keyring = home.join("keyring.gpg");
-        let Some(listing) = import_keys(&gpg, home, &keyring, &home.join("keys.asc"))? else {
+        let Some(listing) =
+            import_keys(&GnuPg::Direct, &gpg, home, &keyring, &home.join("keys.asc"))?
+        else {
             return Ok(Err("gpg could not import two plain public keys".into()));
         };
         if primary_fingerprints(&listing).len() != 2 {
@@ -318,6 +353,7 @@ pub fn gnupg_contract(msg: &str, expected: &str) -> std::result::Result<(), Stri
         }
         Ok(
             match verify(
+                &GnuPg::Direct,
                 &gpgv,
                 home,
                 &keyring,

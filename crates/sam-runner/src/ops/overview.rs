@@ -133,6 +133,38 @@ impl Sam {
         unpack_isolation(&exe, bwrap, &host)
     }
 
+    /// The signature embedded in `path`, checked with GnuPG inside the
+    /// unpack sandbox: the key and the signature are the file's, so a bug
+    /// in GnuPG's packet parsing would otherwise run an attacker's code as
+    /// the user (review 2026-11-23, F6; audit I-F18). Where SAM can build
+    /// no sandbox, the signature counts as not checked, which asks before
+    /// an update; only SAM's own update (`own_update`) is then checked as
+    /// before, so SAM can still update itself there. Only a program that is
+    /// not SAM's (a test) runs GnuPG directly.
+    pub(crate) fn check_signature(
+        &self,
+        path: &Path,
+        own_update: bool,
+    ) -> sam_core::model::SignatureInfo {
+        use sam_detect::signature::{check, GnuPg};
+        match self.extract_isolation() {
+            Ok(Some(iso)) => check(
+                path,
+                &GnuPg::Sandboxed(&|program, home| {
+                    sam_intake::extract::isolated_program(&iso, home, program)
+                }),
+            ),
+            Ok(None) => check(path, &GnuPg::Direct),
+            Err(_) if own_update => check(path, &GnuPg::Direct),
+            Err(e) => sam_core::model::SignatureInfo {
+                state: sam_core::model::SignatureState::Unchecked,
+                fingerprint: None,
+                detail: format!("{e:#}"),
+                signed_at: None,
+            },
+        }
+    }
+
     /// An AppImage's name and icon, read in the preview sandbox (audit
     /// I-F7). Where SAM can build no sandbox, nothing is read: the file
     /// name has to do. Only a program that is not SAM's (a test) reads in
@@ -338,7 +370,7 @@ impl Sam {
     pub(super) fn hide_menu_entries(&self, entry: &mut AppEntry) {
         for f in self.menu_duplicates(entry) {
             match menu::hide(&f.file, &self.paths.applications_dir, &entry.id) {
-                Ok(h) => entry.hidden_entries.push(h),
+                Ok(h) => menu::merge_hidden(&mut entry.hidden_entries, h),
                 Err(e) => errln!(
                     "sam-jail: {}",
                     sam_core::i18n::trf(
@@ -454,6 +486,7 @@ fn unpack_isolation(
                 strict: false,
                 allow_userns: false,
                 bluetooth: false,
+                i386: false,
             })?;
             Ok(Some(sam_intake::extract::Isolation {
                 bwrap,

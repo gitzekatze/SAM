@@ -40,7 +40,7 @@ def gh(*args, dry, read=False):
     if dry and not read:
         print("  gh", " ".join(a if len(a) < 60 else a[:57] + "..." for a in args))
         return ""
-    r = subprocess.run(["gh", *args], capture_output=True, text=True)
+    r = subprocess.run(["gh", *args], check=False, capture_output=True, text=True)
     if r.returncode != 0:
         if dry:
             return ""
@@ -118,7 +118,7 @@ def pulls(dry):
     out += [f"\nMerged in the last 7 days: {len(merged)}"]
     out += [f"- #{p['number']} {p['title']}" for p in merged]
     reverts = subprocess.run(["git", "-C", str(ROOT), "log", "--since=7.days", "--oneline", "--grep=^Revert"],
-                             capture_output=True, text=True).stdout.strip()
+                             check=False, capture_output=True, text=True).stdout.strip()
     out += ["\nReverts on main in the last 7 days: " + (str(len(reverts.splitlines())) if reverts else "none")]
     return "\n".join(out)
 

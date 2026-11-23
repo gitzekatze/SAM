@@ -37,10 +37,10 @@ a `code`, which stays the same in every language:
 
 | Code | Meaning |
 |---|---|
-| `signing-key-changed` | `update`: the new file is signed with another key; run again with `--accept-key-change` only if you trust it |
+| `signing-key-changed` | `update`: the new file is signed with another key; it waits in SAM's folder, and running again with `--accept-key-change` installs exactly that file (only if you trust it). Another file published meanwhile is asked about again with the same code |
 | `extraction-limit` | unpacking stopped at a size, file-count or time limit; the message says which one |
 | `unpack-needs-sandbox` | SAM unpacks only inside a sandbox, and none can be built here (no Bubblewrap, or SAM's `sam-jail` is not next to the program) |
-| `signature-unchecked` | `update`: the installed version was signed and checked, but the new file's signature cannot be checked (GnuPG missing); `--accept-key-change` installs it anyway |
+| `signature-unchecked` | `update`: the installed version was signed and checked, but the new file's signature cannot be checked (GnuPG missing); `--accept-key-change` installs exactly that file anyway |
 
 Every error also names the **SAM function** it happened in, as `function`:
 the number in [SAM's functions](functions.md), so a script or a bug report
@@ -148,13 +148,14 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `selftest [APP…]` | `{results}` |
 | `menu list/hide/restore APP` | `{visible, hidden}` |
 | `reextract`, `redetect`, `refresh`, `relocate` | app summary plus what changed |
-| `desktop APP create/remove/refresh` | `{desktop_entry}`; `desktop all refresh` → `{refreshed}` |
+| `desktop APP install/remove` | `{desktop_entry}`; `desktop all refresh` → `{refreshed}` |
 | `diagnose APP` | the diagnostic run (`strace`) result |
 | `logs APP [--list/--file/--kind]` | file list, or `{file, kind, text}` |
 | `doctor [APP]` | `{checks: [{id, label, status, detail, hint}], …}` |
 | `doctor --contracts` | `{contracts: [{id, component, state, detail, on_break, assumes, playbook}], components: [{id, name, version}]}`; `state` is `holds`, `broken`, `absent` or `not-here` ([contracts](contracts.md)) |
 | `report APP` | `{report}`: redacted text for a bug report |
-| `preset list/show/template/apply/save/delete/duplicate/import/export/put` | the user's preset objects; `put` reads one on stdin |
+| `preset list/show/template/apply/save/delete/duplicate/import/export/put` | the user's preset objects; `put` reads one on stdin; `import` never replaces a preset of the same name: the object it returns carries the name it got (`NAME (imported)`) |
+| `preset apply NAME APP [--yes] [--expect FINGERPRINT]` | `{preset, check, applied, fingerprint}`; `fingerprint` names the preset's permissions as checked, and `--expect` applies only that preset: one changed since is refused and nothing is applied |
 | `info APP` | the app's record; its `last_launch` has `missing_layers` (protection layers the last start lacked, for example `["Landlock"]`) and `moved_aside` (what the app left in places that would run something later, and where SAM moved it); also `repair_effects` (step id → what the step changes and costs) and `compat_changes` (the switches compatibility mode turns on, or turned on) |
 | `repair APP [--apply ID / --next / --undo / --undo-step ID] [--yes]` | `--undo-step` switches off one applied step and keeps the others; a step suggested by what the app printed is refused with the code `repair-needs-yes` unless `--yes` is given |
 | `group list` | every sandboxed app: the app summary plus `permissions`, `tags: [{key, label, family, level, read_only}]`, `running`, `needs_review`, `may_not_start` |
@@ -163,7 +164,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `config show/get/set/put/path` | configuration; `put` reads it on stdin |
 | `permissions` | the catalogue: every key with title, explanation, risk |
 | `updates [APP] [--if-due]` | `{apps: [{id, update: {state, latest, download_page, detail, checked_at}}]}`; `state` is `available`, `current`, `failed` or `unsupported` |
-| `update APP [--undo] [--accept-key-change]` | app summary; the error code `signing-key-changed` means the new file is signed with another key |
+| `update APP [--undo] [--accept-key-change \| --decline-key-change]` | app summary; the error code `signing-key-changed` means the new file is signed with another key. With `--decline-key-change`: the app summary and `deleted` (whether a download waited for the answer and was deleted) |
 | `self-update [--check]` | `{state, latest, path, detail, page}`; `state` is `current`, `available` or `updated` (only from SAM's AppImage) |
 | `space [APP]` | `{apps: [{id, name, unpacked, home, overlay, logs, previous, total, can_free}], total}` (bytes) |
 | `free-space APP` | `{freed}` (bytes) |

@@ -153,6 +153,17 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
         ));
     }
     c.push(match host.landlock_abi {
+        // Before Linux 6.12 (ABI 6) Landlock cannot fence abstract sockets
+        // (review K-1): said here once, not hidden in "partially enforced".
+        Some(v) if v < 6 && cfg.security.experimental_landlock => check(
+            "landlock",
+            "Landlock",
+            CheckStatus::Warn,
+            sam_core::i18n::trf(
+                "ABI v{abi} available, enabled. It cannot fence abstract sockets (that needs Linux 6.12): an app with full network can reach services of your desktop through them, such as the X server, even with X11 off. Apps without network or with 'This computer only' are not affected.",
+                &[("abi", &v)],
+            ),
+        ),
         Some(v) => check(
             "landlock",
             "Landlock",
@@ -987,6 +998,65 @@ mod tests {
             text.contains("~/Documents/x.png"),
             "paths stay readable: {text}"
         );
+    }
+
+    /// Review K-1: before Linux 6.12 Landlock cannot fence abstract
+    /// sockets, and diagnostics say so (it read "available" as if all was
+    /// well); from 6.12 on it is fine.
+    #[test]
+    fn diagnostics_say_when_landlock_cannot_fence_abstract_sockets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(sam_core::Paths::rooted(tmp.path())).unwrap();
+        let mut host = sam_core::sandbox::sample_context().host;
+        let landlock = |host: &HostInfo| {
+            system_report(&sam, host)
+                .checks
+                .into_iter()
+                .find(|c| c.id == "landlock")
+                .unwrap()
+        };
+        host.landlock_abi = Some(4);
+        let c = landlock(&host);
+        assert_eq!(c.status, CheckStatus::Warn, "{}", c.detail);
+        assert!(
+            c.detail.contains("6.12") && c.detail.contains("X server"),
+            "{}",
+            c.detail
+        );
+        host.landlock_abi = Some(6);
+        assert_eq!(landlock(&host).status, CheckStatus::Ok);
+    }
+
+    /// Diagnostics warn about a missing Wayland socket on a Wayland
+    /// session and only mention it elsewhere; they list the GPU devices
+    /// found, and warn when there are none.
+    #[test]
+    fn diagnostics_warn_about_what_this_session_lacks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(sam_core::Paths::rooted(tmp.path())).unwrap();
+        let mut host = sam_core::sandbox::sample_context().host;
+        // No socket to look into on this computer.
+        host.sockets.wayland = None;
+        let check = |host: &HostInfo, id: &str| {
+            system_report(&sam, host)
+                .checks
+                .into_iter()
+                .find(|c| c.id == id)
+                .unwrap()
+        };
+        let gpu = check(&host, "gpu");
+        assert_eq!(gpu.status, CheckStatus::Ok, "{}", gpu.detail);
+        assert_eq!(
+            gpu.detail,
+            "/dev/dri/card0, /dev/dri/renderD128, /dev/nvidia0, /dev/nvidiactl"
+        );
+        assert_eq!(check(&host, "wayland").status, CheckStatus::Warn);
+        host.session_type = "x11".into();
+        assert_eq!(check(&host, "wayland").status, CheckStatus::Info);
+        host.gpu_devices.clear();
+        let gpu = check(&host, "gpu");
+        assert_eq!(gpu.status, CheckStatus::Warn);
+        assert_eq!(gpu.detail, "no /dev/dri devices");
     }
 
     /// A whole bug report (the system part) is produced and redacted: it

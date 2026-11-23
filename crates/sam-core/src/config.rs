@@ -35,6 +35,56 @@ fn migrate(mut v: serde_json::Value, from: u32) -> serde_json::Value {
     v
 }
 
+/// The configuration `v` with every setting that cannot be read in its
+/// default, and the names of those settings (`extraction.max_files`).
+/// Each value is tried on its own against the defaults, so one unreadable
+/// value never costs the others.
+fn readable_settings(v: &serde_json::Value) -> (Config, Vec<String>) {
+    let mut good = serde_json::to_value(Config::default()).unwrap_or_default();
+    let mut reset = Vec::new();
+    keep_readable(&mut good, &[], v, &mut reset);
+    let c = serde_json::from_value(good).unwrap_or_default();
+    (c, reset)
+}
+
+fn keep_readable(
+    good: &mut serde_json::Value,
+    at: &[&str],
+    user: &serde_json::Value,
+    reset: &mut Vec<String>,
+) {
+    let Some(fields) = user.as_object() else {
+        return;
+    };
+    for (k, value) in fields {
+        let here: Vec<&str> = at.iter().copied().chain([k.as_str()]).collect();
+        let section_is_object = |root: &serde_json::Value| {
+            here.iter()
+                .try_fold(root, |cur, p| cur.get(*p))
+                .is_some_and(serde_json::Value::is_object)
+        };
+        if value.is_object() && section_is_object(good) {
+            keep_readable(good, &here, value, reset);
+            continue;
+        }
+        let mut trial = good.clone();
+        let parent = here[..here.len() - 1]
+            .iter()
+            .try_fold(&mut trial, |cur, p| cur.get_mut(*p))
+            .and_then(serde_json::Value::as_object_mut);
+        let Some(parent) = parent else {
+            reset.push(here.join("."));
+            continue;
+        };
+        parent.insert(k.clone(), value.clone());
+        if serde_json::from_value::<Config>(trial.clone()).is_ok() {
+            *good = trial;
+        } else {
+            reset.push(here.join("."));
+        }
+    }
+}
+
 /// Theme names of format 0, mapped to the current ones.
 fn migrate_theme(t: &str) -> &'static str {
     match t {
@@ -141,6 +191,8 @@ pub struct Extraction {
     pub max_files: u64,
     pub max_size_mb: u64,
     pub max_seconds: u64,
+    /// How much memory each unpacking program may use (MiB; 0: no limit).
+    pub max_memory_mb: u64,
     /// Allow `--appimage-extract` fallback (always asks for consent per app).
     pub allow_fallback: bool,
 }
@@ -152,6 +204,7 @@ impl Default for Extraction {
             max_files: 200_000,
             max_size_mb: 8192,
             max_seconds: 600,
+            max_memory_mb: 4096,
             allow_fallback: true,
         }
     }
@@ -220,8 +273,23 @@ impl Config {
         let found = crate::format::of_json(&v);
         crate::format::check_not_newer(&file, found)?;
         let v = migrate(v, found);
-        let Ok(mut c) = serde_json::from_value::<Config>(v) else {
-            return Ok(Self::damaged(&file));
+        let mut c = match serde_json::from_value::<Config>(v.clone()) {
+            Ok(c) => c,
+            // A value of the wrong kind (`max_files = "x"`) or an unknown
+            // word: only that setting is reset. Resetting the whole file
+            // lost stricter choices such as compatibility.behavior = never
+            // (audit U-L4).
+            Err(_) => {
+                let (c, reset) = readable_settings(&v);
+                crate::errln!(
+                    "sam-jail: {}",
+                    crate::i18n::trf(
+                        "{file}: {settings} could not be read and went back to the default; the other settings stay",
+                        &[("file", &file.display()), ("settings", &reset.join(", "))]
+                    )
+                );
+                c
+            }
         };
         // A single invalid value is reset, not the whole file.
         if let Err(e) = c.validate() {
@@ -486,6 +554,61 @@ cleanup_stale = true
         assert_eq!(loaded.general.theme, "dark", "the other settings stay");
     }
 
+    /// Regression (audit U-L4): one value of the wrong kind
+    /// (`max_files = "x"`) or an unknown word made the whole file
+    /// unreadable, and SAM used the defaults for everything, losing
+    /// stricter choices such as "never offer compatibility mode". Now only
+    /// the unreadable settings go back to their defaults; the file stays.
+    #[test]
+    fn one_unreadable_setting_does_not_cost_the_others() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = crate::paths::Paths::rooted(t.path());
+        std::fs::create_dir_all(paths.config_file().parent().unwrap()).unwrap();
+        let file = "format = 1\n[extraction]\nmax_files = \"x\"\nmax_size_mb = 123\n[security]\ncheck_before_launch = true\n[compatibility]\nbehavior = \"never\"\n[dependencies]\nautomatic_low_risk_fixes = false\n[updates]\ncheck_on_start = \"sometimes\"\n";
+        std::fs::write(paths.config_file(), file).unwrap();
+        let c = Config::load(&paths).unwrap();
+        assert_eq!(
+            c.compatibility.behavior,
+            CompatBehavior::Never,
+            "a stricter choice stays"
+        );
+        assert!(
+            !c.dependencies.automatic_low_risk_fixes,
+            "a stricter choice stays"
+        );
+        assert_eq!(
+            c.extraction.max_size_mb, 123,
+            "the same section keeps its other values"
+        );
+        assert!(c.security.check_before_launch, "a stricter choice stays");
+        assert_eq!(
+            c.extraction.max_files,
+            Config::default().extraction.max_files
+        );
+        assert!(!c.updates.check_on_start);
+        assert_eq!(
+            std::fs::read_to_string(paths.config_file()).unwrap(),
+            file,
+            "the file is not moved aside"
+        );
+        // An unknown word for a choice: only that choice is reset.
+        std::fs::write(
+            paths.config_file(),
+            "format = 1\n[compatibility]\nbehavior = \"sometimes\"\n[dependencies]\nautomatic_low_risk_fixes = false\n",
+        )
+        .unwrap();
+        let c = Config::load(&paths).unwrap();
+        assert_eq!(c.compatibility.behavior, CompatBehavior::Ask);
+        assert!(!c.dependencies.automatic_low_risk_fixes);
+        assert_eq!(
+            readable_settings(
+                &serde_json::json!({"extraction": {"max_files": "x"}, "general": "y"})
+            )
+            .1,
+            vec!["extraction.max_files", "general"]
+        );
+    }
+
     /// Settings can be changed by key, and old theme names are migrated to Light, Dark or System.
     #[test]
     fn settings_change_by_key_and_old_theme_names_are_migrated() {
@@ -509,5 +632,133 @@ cleanup_stale = true
             .contains(&PathBuf::from("/x/Downloads")));
         assert!(c.set_key("general.theme", "pink").is_err());
         assert!(c.set_key("nope.key", "1").is_err());
+    }
+
+    /// `sam-jail config get` reads back what is set; an unknown key is an
+    /// error. Text settings take the typed text literally: quotes are part
+    /// of the value, not JSON.
+    #[test]
+    fn settings_read_back_by_key_and_text_is_taken_literally() {
+        let mut c = Config::default();
+        assert_eq!(
+            c.get_key("general.theme").unwrap(),
+            serde_json::json!("system")
+        );
+        c.set_key("security.warn_x11", "false").unwrap();
+        assert_eq!(
+            c.get_key("security.warn_x11").unwrap(),
+            serde_json::json!(false)
+        );
+        assert_eq!(
+            c.get_key("extraction.max_files").unwrap(),
+            serde_json::json!(200_000)
+        );
+        assert!(c.get_key("no.such").is_err());
+        assert!(c.get_key("general.nope").is_err());
+        assert!(
+            c.set_key("general.theme", "\"dark\"").is_err(),
+            "the quotes belong to the value, which is no theme"
+        );
+        assert_eq!(c.general.theme, "system", "a refused value changes nothing");
+        c.set_key("compatibility.behavior", "never").unwrap();
+        assert_eq!(c.compatibility.behavior, CompatBehavior::Never);
+    }
+
+    /// A settings file that exists but cannot be read (not text, or a
+    /// folder) is an error that names it, and it stays as it is: the
+    /// stricter settings in it are never silently replaced by the
+    /// defaults, which a later save would write over it.
+    #[test]
+    fn a_settings_file_that_cannot_be_read_is_an_error_and_stays() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = crate::paths::Paths::rooted(t.path());
+        let file = paths.config_file();
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let bytes = b"format = 1\n[security]\ncheck_before_launch = true\n# \xff\n";
+        std::fs::write(&file, bytes).unwrap();
+        assert!(Config::load(&paths).is_err(), "not text");
+        assert_eq!(std::fs::read(&file).unwrap(), bytes, "left unchanged");
+        std::fs::remove_file(&file).unwrap();
+        std::fs::create_dir(&file).unwrap();
+        assert!(Config::load(&paths).is_err(), "a folder");
+        assert!(file.is_dir(), "left in place");
+        std::fs::remove_dir(&file).unwrap();
+        assert_eq!(
+            Config::load(&paths).unwrap(),
+            Config::default(),
+            "only a missing file means the defaults"
+        );
+    }
+
+    /// A file already in the current format is not migrated again: an old
+    /// theme name in it is an invalid value and is reset to System. A theme
+    /// that is no text resets only the theme and the file stays (audit
+    /// U-L4: one unreadable value costs nothing else); a file that is no
+    /// TOML at all is damaged (moved aside, the defaults apply).
+    #[test]
+    fn a_current_settings_file_is_not_migrated_again() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = crate::paths::Paths::rooted(t.path());
+        let file = paths.config_file();
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "format = 1\n[general]\ntheme = \"breeze-dark\"\n").unwrap();
+        assert_eq!(Config::load(&paths).unwrap().general.theme, "system");
+        std::fs::write(&file, "format = 0\n[general]\ntheme = \"breeze-dark\"\n").unwrap();
+        assert_eq!(
+            Config::load(&paths).unwrap().general.theme,
+            "dark",
+            "format 0 is migrated"
+        );
+        std::fs::write(
+            &file,
+            "format = 1\n[general]\ntheme = 5\n[compatibility]\nbehavior = \"never\"\n",
+        )
+        .unwrap();
+        let c = Config::load(&paths).unwrap();
+        assert_eq!(c.general.theme, "system", "only the theme is reset");
+        assert_ne!(
+            c.compatibility,
+            Config::default().compatibility,
+            "the other settings stay"
+        );
+        assert!(
+            file.exists(),
+            "one unreadable value does not move the file aside"
+        );
+        std::fs::write(&file, "format = 1\n[general\ntheme = ").unwrap();
+        assert_eq!(Config::load(&paths).unwrap(), Config::default());
+        assert!(!file.exists(), "the damaged file was moved aside");
+    }
+
+    /// The extraction folder is a folder of its own: never the root, never
+    /// the home folder itself (however it is written), never relative and
+    /// never with `..`. SAM unpacks into it and later removes what it put
+    /// there.
+    #[test]
+    fn the_extraction_folder_is_never_the_root_or_the_home_folder() {
+        let home = expand_home("~");
+        let home_s = home.to_string_lossy().into_owned();
+        for bad in [
+            "/".to_string(),
+            "~".to_string(),
+            "~/".to_string(),
+            home_s.clone(),
+            format!("{home_s}/"),
+            format!("{home_s}/x/.."),
+            "/tmp/a/..".to_string(),
+            "relative/dir".to_string(),
+        ] {
+            let mut c = Config::default();
+            c.extraction.location = bad.clone();
+            assert!(c.validate().is_err(), "{bad}");
+            let mut c = Config::default();
+            assert!(c.set_key("extraction.location", &bad).is_err(), "{bad}");
+            assert_eq!(c.extraction.location, "", "{bad} changed nothing");
+        }
+        for ok in ["/tmp/sam-x", "~/x", ""] {
+            let mut c = Config::default();
+            c.set_key("extraction.location", ok).unwrap();
+            assert_eq!(c.extraction.location, ok);
+        }
     }
 }

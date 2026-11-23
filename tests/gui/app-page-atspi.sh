@@ -1,8 +1,10 @@
 #!/bin/sh
 # The app page through the accessibility interface (AT-SPI), in an
 # invisible KWin session: one sandboxed test app; checks the Test button and
-# its state, the advice group, "Files This App Saved", turning on
-# compatibility mode through its dialog, and the remove dialog.
+# its state, the advice group, "Files This App Saved", Confirm Settings for
+# a record changed outside SAM, a failed save, turning on compatibility
+# mode through its dialog, and the remove dialog; then a finding of a failed
+# start, which says it also starts the app.
 # Prints one line per check and "RESULT pass" or "RESULT fail".
 #
 #   tests/gui/app-page-atspi.sh OUTDIR
@@ -18,12 +20,26 @@ export SAM_CONFIG_DIR="$out/data-set/config" SAM_DATA_DIR="$out/data-set/data" S
 printf '[general]\nscan_directories = ["%s"]\n' "$out/data-set/apps-folder" > "$SAM_CONFIG_DIR/config.toml"
 "$bin/sam-jail" dev make-fixture --name Tool "$out/data-set/apps-folder/Tool.AppImage" >/dev/null
 id=$("$bin/sam-jail" --json add "$out/data-set/apps-folder/Tool.AppImage" --no-launcher --accept | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d=d.get("data",d); print(d["entry"]["id"])')
+# Something other than SAM turns X11 on in the app's record, and adds a
+# note of an update's needs, whose "Got It" must not confirm the change.
+python3 -I -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["profile"]["permissions"]["display"]["x11"]=True; d["pending_changes"]=["sound"]; json.dump(d,open(p,"w"))' "$SAM_DATA_DIR/apps/$id.json"
 "${ATSPI_LAUNCHER:-/usr/lib/at-spi-bus-launcher}" --launch-immediately >/dev/null 2>&1 & launcher=$!
 sleep 1
 "${ATSPI_REGISTRY:-/usr/lib/at-spi2-registryd}" >/dev/null 2>&1 & registry=$!
-"$bin/sam-jail-gui" --screenshot "$out/app-page.png" --size 1180x800 --delay 30000 --page app --app "$id" > "$out/gui.log" 2>&1 & gui=$!
+"$bin/sam-jail-gui" --screenshot "$out/app-page.png" --size 1180x800 --delay 45000 --page app --app "$id" > "$out/gui.log" 2>&1 & gui=$!
 rc=0; SAM_TEST_BIN="$bin" SAM_TEST_APP="$id" python3 -I "$here/tests/gui/app-page-atspi.py" || rc=$?
 wait $gui || true
+chmod 755 "$SAM_DATA_DIR/apps"
+# An app whose start failed: its finding says it applies the fix and starts
+# the app again.
+printf '#!/bin/sh\necho "./app: error while loading shared libraries: libfoo.so.1: cannot open shared object file" >&2\nexit 127\n' > "$out/data-set/broken-apprun"
+"$bin/sam-jail" dev make-fixture --name Broken --apprun "$out/data-set/broken-apprun" "$out/data-set/apps-folder/Broken.AppImage" >/dev/null
+broken=$("$bin/sam-jail" --json add "$out/data-set/apps-folder/Broken.AppImage" --no-launcher --accept | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d=d.get("data",d); print(d["entry"]["id"])')
+"$bin/sam-jail" run "$broken" >"$out/broken-run.log" 2>&1 || true
+"$bin/sam-jail-gui" --screenshot "$out/app-page-broken.png" --size 1180x800 --delay 60000 --page app --app "$broken" > "$out/gui-broken.log" 2>&1 & gui=$!
+SAM_TEST_BIN="$bin" SAM_TEST_APP="$broken" python3 -I "$here/tests/gui/app-page-atspi.py" finding || rc=1
+# The window stays open longer than the checks wait; it is closed here.
+kill $gui 2>/dev/null || true; wait $gui 2>/dev/null || true
 kill $registry $launcher 2>/dev/null || true
-if grep -E 'CRITICAL|panicked' "$out/gui.log"; then rc=1; fi
+if grep -E 'CRITICAL|panicked' "$out/gui.log" "$out/gui-broken.log"; then rc=1; fi
 exit $rc

@@ -136,7 +136,7 @@ def screen(base):
     if shutil.which("tesseract") and out["window"] == "content":
         crop = base + ".window.png"
         shot.save(crop)
-        r = subprocess.run(["tesseract", crop, "-", "-l", "eng"], capture_output=True, text=True, timeout=60)
+        r = subprocess.run(["tesseract", crop, "-", "-l", "eng"], check=False, capture_output=True, text=True, timeout=60)
         os.remove(crop)
         for l in r.stdout.splitlines():
             if ERROR_WORDS.search(l):

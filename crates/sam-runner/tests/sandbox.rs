@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use sam_core::permissions::*;
 use sam_core::{AppState, Badge, HostInfo, Paths};
@@ -251,6 +252,26 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     )
     .unwrap();
     assert!(prep.preview().command.contains("--unshare-net"));
+    drop(prep);
+
+    // Review K-1: a start that shares the computer's network, on a kernel
+    // whose Landlock fences abstract sockets (Linux 6.12, Landlock 6),
+    // relies on that fence: it then counts as missing unless the helper
+    // reports it in place. The kernel's Landlock version is set here, so
+    // every computer checks both sides; nothing is started.
+    let fence = |mode: &str, abi: u32| {
+        let e = app.set_permission(&id, "network.mode", mode).unwrap();
+        let mut h = host.clone();
+        h.landlock_abi = Some(abi);
+        let p =
+            sam_runner::launch::prepare(&e, &LaunchOptions::default(), &app.config, &app.paths, &h)
+                .unwrap();
+        (p.wanted_landlock, p.wanted_fence)
+    };
+    assert_eq!(fence("full", 6), (true, true), "full network");
+    assert_eq!(fence("full", 5), (true, false), "a kernel without it");
+    assert_eq!(fence("none", 6), (true, false), "no network");
+    assert_eq!(fence("localhost", 6), (true, false), "a network of its own");
 
     // Staleness: customize the profile, then modify the source.
     app.set_permission(&id, "filesystem.music", "ro").unwrap();
@@ -279,4 +300,103 @@ fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
     assert!(!launcher.exists(), "launcher removed");
     assert!(!paths.app_home(&id).exists());
     assert!(app.registry().list().unwrap().is_empty());
+}
+
+/// Inside a real sandbox, the host tools that ask a service outside it to
+/// start a program (`systemd-run`, `flatpak-spawn`) are SAM's stand-ins:
+/// `flatpak-spawn` refuses, `systemd-run` runs the command right there,
+/// also where the tool is a link (contract host-escape-tools; audit D-M10:
+/// nothing ran `flatpak-spawn` inside a sandbox). CI machines have no
+/// `flatpak-spawn`, so the "host tools" here are programs of the test, in
+/// a folder of its own, that print ESCAPED when they run; SAM covers them
+/// with the same arguments it gives every sandbox for the real ones.
+#[test]
+fn host_tools_that_start_programs_outside_meet_their_stand_ins() {
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "host-escape-tools"])
+        .unwrap_or_else(|e| panic!("{e}"));
+    use std::os::unix::fs::PermissionsExt;
+    // Every tool SAM covers in its sandboxes gets a stand-in here.
+    let names: Vec<&str> = sam_sandbox::HIDDEN_HOST_TOOLS
+        .iter()
+        .map(|t| t.rsplit('/').next().unwrap())
+        .collect();
+    assert_eq!(names, ["systemd-run", "flatpak-spawn"]);
+    let tmp = tempfile::tempdir().unwrap();
+    let (bin, lib) = (
+        tmp.path().join("usr/bin"),
+        tmp.path().join("usr/lib/systemd"),
+    );
+    fs::create_dir_all(&bin).unwrap();
+    fs::create_dir_all(&lib).unwrap();
+    let real = "#!/bin/sh\necho ESCAPED\n";
+    // systemd-run as a link, as some distributions install it.
+    fs::write(lib.join("systemd-run"), real).unwrap();
+    std::os::unix::fs::symlink("../lib/systemd/systemd-run", bin.join("systemd-run")).unwrap();
+    fs::write(bin.join("flatpak-spawn"), real).unwrap();
+    for f in [lib.join("systemd-run"), bin.join("flatpak-spawn")] {
+        fs::set_permissions(&f, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let tools: Vec<String> = names
+        .iter()
+        .map(|n| bin.join(n).display().to_string())
+        .collect();
+    let tools: Vec<&str> = tools.iter().map(String::as_str).collect();
+    // The control: outside a sandbox the "host tools" run.
+    for t in &tools {
+        let out = Command::new(t).output().unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "ESCAPED",
+            "{t}"
+        );
+    }
+
+    // SAM's stand-ins, as every start writes them, and its arguments.
+    let mut ctx = sam_core::sandbox::sample_context();
+    ctx.runtime_dir = tmp.path().join("run");
+    sam_sandbox::write_identity_files(&ctx).unwrap();
+    let cover = sam_sandbox::host_tool_stand_in_args(&ctx.runtime_dir, &tools);
+    let inside = |cmd: &[&str]| {
+        Command::new("bwrap")
+            .args(["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"])
+            .args(["--unshare-all", "--die-with-parent"])
+            .args(&cover)
+            .arg("--")
+            .args(cmd)
+            .output()
+            .unwrap()
+    };
+    let spawn = inside(&[tools[1], "--host", "sh", "-c", "echo ESCAPED"]);
+    let (stdout, stderr) = (
+        String::from_utf8_lossy(&spawn.stdout),
+        String::from_utf8_lossy(&spawn.stderr),
+    );
+    assert!(
+        !spawn.status.success(),
+        "flatpak-spawn refuses: {stdout} {stderr}"
+    );
+    assert!(
+        stderr.contains("flatpak-spawn: not available in SAM's sandbox") && stdout.is_empty(),
+        "the stand-in answered: {stdout} {stderr}"
+    );
+    let run = inside(&[
+        tools[0],
+        "--user",
+        "--scope",
+        "--unit=x.scope",
+        "sh",
+        "-c",
+        "echo ran",
+    ]);
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout).trim(),
+        "ran",
+        "systemd-run runs the command in the sandbox: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
 }

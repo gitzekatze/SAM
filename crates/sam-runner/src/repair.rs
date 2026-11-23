@@ -322,8 +322,11 @@ fn analyze_with(
             let home = sam_core::util::home_dir();
             let too_broad = std::path::Path::new(&dir) == home
                 || !std::path::Path::new(&dir).starts_with(&home);
-            if sam_core::risk::is_sensitive_path(&dir)
-                || sam_core::risk::is_sensitive_path(&path)
+            // Judged as a folder grant, where it leads: the path comes from
+            // the app's own output, and `~/x/../../../tmp` would otherwise
+            // be offered as an ordinary folder in the home (review 2026-11-23).
+            if sam_core::risk::is_dangerous_grant(&dir)
+                || sam_core::risk::is_dangerous_grant(&path)
                 || too_broad
             {
                 push(s("grant-folder-refused", "The app asked for a protected location", sam_core::i18n::trf("The app reported that it could not open {shown_path}. SAM does not offer access to {shown_dir}: it holds keys, passwords or your whole home.", &[("shown_path", &shown_path), ("shown_dir", &shown_dir)]), FixAction::None, RiskLevel::Dangerous));
@@ -452,8 +455,13 @@ fn analyze_with(
                 "dbus-name",
                 "A desktop service is blocked",
                 sam_core::i18n::trf("The app tried to use {name}, which the D-Bus filter blocks. Allow just this service.", &[("name", &name)]),
-                FixAction::Add { key: "dbus.session.allow".into(), value: name },
-                RiskLevel::Medium,
+                FixAction::Add { key: "dbus.session.allow".into(), value: name.clone() },
+                // A password store counts as the keyring switch does.
+                if sam_core::permissions::secret_bus_name(&name) {
+                    RiskLevel::High
+                } else {
+                    RiskLevel::Medium
+                },
             ));
         }
     }
@@ -923,6 +931,42 @@ mod tests {
         }
     }
 
+    /// What the app prints never gets it a terminal to talk to either: a
+    /// terminal runs any command it is sent, outside the sandbox (audit
+    /// D-M6, the TALK half: "Allow just this service" was offered as
+    /// harmless). An ordinary service is still offered, asking first.
+    #[test]
+    fn the_apps_own_words_never_give_it_a_terminal_to_talk_to() {
+        let mut p = PermissionSet::strict_gui();
+        p.dbus.session.mode = DbusMode::Filtered;
+        for name in [
+            "org.gnome.Terminal",
+            "org.gnome.Terminal.Factory0",
+            "org.kde.konsole",
+            "org.kde.konsole-4242",
+            "org.kde.yakuake",
+            "org.xfce.Terminal5",
+            "org.guake3.RemoteControl",
+        ] {
+            let log = format!("GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name {name} was not provided by any .service files");
+            let out = analyze(&log, &p, None);
+            assert!(
+                !out.iter()
+                    .any(|s| matches!(&s.action, FixAction::Add { .. })),
+                "{name}: {out:#?}"
+            );
+            assert!(
+                out.iter().any(|s| s.id == "dbus-name-refused"),
+                "{name}: says why: {out:#?}"
+            );
+        }
+        let log = "The name org.example.Viewer was not provided by any .service files";
+        assert!(analyze(log, &p, None).iter().any(|s| matches!(
+            &s.action,
+            FixAction::Add { key, value } if key == "dbus.session.allow" && value == "org.example.Viewer"
+        )));
+    }
+
     #[test]
     fn analyzer_maps_errors_to_fixes() {
         let p = PermissionSet::strict_gui();
@@ -1028,6 +1072,32 @@ mod tests {
         nested.advanced.allow_userns = true;
         assert_eq!(zygote(&nested, true), vec!["chromium-no-sandbox"]);
         assert!(zygote(&nested, false).is_empty(), "not where it works");
+    }
+
+    /// A folder the app names in its output is judged where it leads: with
+    /// `..` it can name `/tmp`, another home or the whole computer while
+    /// it still starts with the home, so it is never offered. A password
+    /// store the app asks for is offered at the keyring switch's level
+    /// (review 2026-11-23).
+    #[test]
+    fn a_folder_or_password_store_from_the_apps_words_is_judged_where_it_leads() {
+        let p = PermissionSet::strict_gui();
+        let home = sam_core::util::home_dir().display().to_string();
+        for out in [
+            format!("EACCES: permission denied, open '{home}/x/../../../tmp/f'"),
+            format!("EACCES: permission denied, open '{home}/x/../../other/f'"),
+        ] {
+            let got: Vec<_> = analyze(&out, &p, None).into_iter().map(|s| s.id).collect();
+            assert_eq!(got, vec!["grant-folder-refused"], "{out}");
+        }
+        let step = analyze(
+            "org.freedesktop.DBus.Error.ServiceUnknown: The name org.gnome.OnlineAccounts was not provided",
+            &p,
+            None,
+        );
+        assert_eq!(step.len(), 1, "{step:?}");
+        assert_eq!(step[0].id, "dbus-name");
+        assert_eq!(step[0].risk, RiskLevel::High);
     }
 
     /// The repair ladder leaves out steps already applied and steps that would change nothing.

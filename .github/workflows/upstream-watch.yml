@@ -9,15 +9,18 @@ on:
     - cron: "41 4 * * 1"
   workflow_dispatch:
 
+# Read-only by default; the one job that opens issues says so itself.
 permissions:
   contents: read
-  issues: write
 
 jobs:
   watch:
     # The kill switch (AUTOMATION.md): `off` stops the watch.
     if: vars.SAM_AUTOMATION != 'off'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

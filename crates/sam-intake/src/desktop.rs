@@ -136,10 +136,17 @@ pub fn launcher_contents(entry: &AppEntry, runner: &str) -> String {
 /// (untrusted) AppImage, so URL schemes (`x-scheme-handler/https`, `mailto`),
 /// directories, executables, desktop files and AppImages are dropped: an app
 /// must not make itself the handler for web links or the file manager, or
-/// receive the user's files by declaring broad types.
+/// receive the user's files by declaring broad types. `all/all` and
+/// `all/allfiles` are the desktops' names for "every file" (and folder).
 pub fn launcher_mime_types(declared: &[String]) -> Vec<String> {
     // `x-directory/normal` is an old name of `inode/directory`.
-    const BLOCKED_PREFIX: &[&str] = &["x-scheme-handler/", "inode/", "x-content/", "x-directory/"];
+    const BLOCKED_PREFIX: &[&str] = &[
+        "x-scheme-handler/",
+        "inode/",
+        "x-content/",
+        "x-directory/",
+        "all/",
+    ];
     const BLOCKED: &[&str] = &[
         "application/x-desktop",
         "application/x-executable",
@@ -440,10 +447,14 @@ mod tests {
     /// The blocked file types hold in any letter case and under their old
     /// names, so an app cannot claim web links, folders or programs by
     /// writing `X-Scheme-Handler/https`, `Text/HTML` or
-    /// `x-directory/normal` (audit I-F10).
+    /// `x-directory/normal` (audit I-F10), and cannot claim every file with
+    /// the desktops' catch-all types `all/all` and `all/allfiles` (audit
+    /// 2026-11-18, low).
     #[test]
     fn blocked_file_types_hold_in_any_case_and_old_names() {
         let declared: Vec<String> = [
+            "all/all",
+            "All/AllFiles",
             "X-Scheme-Handler/https",
             "Text/HTML",
             "x-directory/normal",

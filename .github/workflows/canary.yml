@@ -51,7 +51,7 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           for p in /etc/apparmor.d/*passt* /etc/apparmor.d/*pasta*; do
-            [ -f "$p" ] && sudo apparmor_parser -R "$p" || true
+            if [ -f "$p" ]; then sudo apparmor_parser -R "$p" || true; fi
           done
 
       - name: Check the contracts on ${{ matrix.name }}

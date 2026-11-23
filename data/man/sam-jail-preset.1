@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-preset 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-preset 1 2026-11-23 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-preset \- Manage your own presets
 .SH SYNOPSIS
@@ -17,6 +17,7 @@ sam\-jail\-preset\-list(1)
 List your own presets
 .TP
 sam\-jail\-preset\-show(1)
+Print a preset (built\-in or your own) as TOML
 .TP
 sam\-jail\-preset\-apply(1)
 Apply a preset to an app (asks for confirmation when it conflicts)
@@ -28,15 +29,16 @@ sam\-jail\-preset\-save(1)
 Save an app\*(Aqs current permissions as a new preset
 .TP
 sam\-jail\-preset\-delete(1)
+Delete one of your own presets
 .TP
 sam\-jail\-preset\-duplicate(1)
+Copy a preset under a new name, as a preset of your own
 .TP
 sam\-jail\-preset\-import(1)
+Add a preset from a TOML file
 .TP
 sam\-jail\-preset\-export(1)
+Write a preset as TOML to a file, or print it
 .TP
 sam\-jail\-preset\-put(1)
 Create or replace a user preset from JSON on stdin
-.TP
-sam\-jail\-preset\-help(1)
-Print this message or the help of the given subcommand(s)

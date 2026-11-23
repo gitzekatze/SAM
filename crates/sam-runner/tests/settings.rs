@@ -203,6 +203,29 @@ fn removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it() {
     assert!(!home2.exists(), "deleted without keep my data");
 }
 
+/// The app's icon is copied into SAM's own icon folder, named after the
+/// app, and goes with its sandbox; nothing lands in the folder SAM was
+/// started in.
+#[test]
+fn an_apps_icon_is_kept_in_sams_icon_folder_and_goes_with_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = named_app(tmp.path(), "Painter");
+    let icon = sam.resolve(&id).unwrap().metadata.icon_path.unwrap();
+    assert_eq!(
+        icon,
+        sam.paths.data_dir.join(format!("icons/sam-{id}.svg")),
+        "{}",
+        icon.display()
+    );
+    assert!(icon.is_file());
+    let here = std::env::current_dir()
+        .unwrap()
+        .join(format!("sam-{id}.svg"));
+    assert!(!here.exists(), "{}", here.display());
+    sam.remove(&id, false).unwrap();
+    assert!(!icon.exists(), "removed with the sandbox");
+}
+
 /// When a sandboxed app's AppImage is moved to another searched folder, SAM
 /// recognizes it by its content and offers to follow it.
 #[test]

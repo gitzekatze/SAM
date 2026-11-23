@@ -32,7 +32,7 @@ def note_files(root):
 
     def added(p):
         r = subprocess.run(["git", "-C", str(root), "log", "--diff-filter=A", "--format=%ct", "--", str(p.relative_to(root))],
-                           capture_output=True, text=True)
+                           check=False, capture_output=True, text=True)
         stamps = r.stdout.split()
         return int(stamps[-1]) if r.returncode == 0 and stamps else 2**62
 

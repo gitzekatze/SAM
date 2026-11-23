@@ -32,7 +32,7 @@ proves it, is in [threat-model.md](threat-model.md).
 
 | Path in the sandbox | What it is |
 |---|---|
-| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus only the folders you granted |
+| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus the folders you granted. Also shown, read-only: your fonts (`~/.local/share/fonts`, `~/.fonts`, `~/.config/fontconfig`) and, with *Host theme settings* (on by default), your desktop's look: the GTK, Qt and KDE settings (`~/.config/gtk-3.0`, `~/.config/gtk-4.0`, `~/.config/kdeglobals` and similar), icons and themes. The file chooser's bookmarks and server list in the GTK folders stay out, unless you grant their folder |
 | `/opt/app` | the unpacked app, read-only |
 | `/usr/lib`, `/usr/bin` | the system's libraries and programs, read-only (all of `/usr` with `advanced.host_runtime full` or compatibility mode) |
 | `/usr/share/…` | selected shared data (fonts, icons, locales, themes), read-only |
@@ -44,7 +44,9 @@ proves it, is in [threat-model.md](threat-model.md).
 
 ### Processes
 
-- **Namespaces:** user, PID, UTS and cgroup are always separate. IPC is
+- **Namespaces:** user, PID and UTS are always separate, and the cgroup
+  namespace wherever the kernel has one (every kernel since 4.6; Bubblewrap's
+  `--unshare-cgroup-try` leaves it shared on an older or restricted one). IPC is
   separate too, except for apps with X11 access: X11's shared-memory
   extension needs the X server to see the app's shared memory (Flatpak
   does the same). X11 itself already exposes far more than that. The
@@ -55,9 +57,24 @@ proves it, is in [threat-model.md](threat-model.md).
   session, cut off from any terminal. An app started from a terminal gets a
   terminal of SAM's own instead (see [Terminal programs](#terminal-programs)).
   Either way it cannot type commands into your shell (`TIOCSTI`).
-- **Clean environment:** cleared, then only safe variables are set.
-- **Your ids:** the app runs with your user and group id, also with *Local
-  network only*, where it would otherwise appear as root.
+- **Clean environment:** cleared, then only safe variables are set. The
+  app's own variables (its AppImage variables, those passed through and
+  those set in its settings) are set by SAM's helper for the app alone,
+  once Landlock and the syscall filter are in place: the helper's own start
+  never sees them, so a setting such as `LD_PRELOAD` or `LD_LIBRARY_PATH`
+  cannot run the app's code before those layers. `$OWD` names the folder
+  the app started from only when the app can see it; otherwise it is the
+  app's home, where the app starts.
+- **No inherited descriptors:** SAM's programs mark every open descriptor
+  they inherited (a terminal's or a launcher's) close-on-exec before they
+  start anything, so an app gets only its standard input, output and error
+  (Flatpak does the same).
+- **Private folders:** an app's private home, its own layer of a writable
+  app folder and what SAM moved aside are readable by your user only
+  (0700), launch logs by you only (0600), also when an older SAM made them
+  readable for everyone.
+- **Your ids:** the app runs with your user and group id, also with *This
+  computer only*, where it would otherwise appear as root.
 
 ---
 
@@ -66,7 +83,10 @@ proves it, is in [threat-model.md](threat-model.md).
 ### Landlock
 
 On by default where the kernel supports it. SAM's runner applies it inside
-the sandbox, just before the app starts.
+the sandbox, just before the app starts. Turning it off for every app in
+Preferences asks first, as turning it off on one app's page does; so does
+turning off the syscall filter (`turning_a_protection_off_for_every_app_asks_first`,
+`tests/gui/flow-atspi.sh`).
 
 - Writes are allowed only in the app's home, its temporary folders and the
   folders granted read/write. Even if a mount were more permissive than
@@ -80,7 +100,9 @@ the sandbox, just before the app starts.
 - If Landlock (or the syscall filter) cannot be applied at a start, for
   example because SAM's helper `sam-jail-run` is missing, the app still
   starts in its Bubblewrap sandbox, but never silently: the command line
-  warns, the app's page says which layer was missing, and the overview marks
+  warns, a start from the menu shows a notification while the app runs
+  (with a button to the app's page), the app's page says which layer was
+  missing, and the overview marks
   the app *Protection missing* until a start has every layer again. The same
   holds for the Wayland security context: when the desktop offers it but
   making one fails, the app gets the normal Wayland socket, and the start is
@@ -88,7 +110,16 @@ the sandbox, just before the app starts.
   the start.
 - With kernel 6.12+ (Landlock ABI 6), connections to abstract sockets outside
   the sandbox are blocked too, for example XWayland's
-  `@/tmp/.X11-unix/X0`.
+  `@/tmp/.X11-unix/X0`. These sockets have a name but no file, and they
+  belong to the network: an app with full network shares the computer's
+  and could reach them, even with X11 off. SAM's helper reports this fence
+  on its own (`abstract sockets: scoped` or `NOT scoped`), not folded into
+  "Landlock partially enforced"; a start with full network that should
+  have had it but did not is marked *Protection missing*
+  (`a_missing_socket_fence_is_reported_when_the_start_relies_on_it`).
+  Diagnostics warn when the kernel is older than 6.12, and the sandbox
+  check tries to connect to the X server's and an abstract session bus's
+  socket (`the_check_tries_the_hosts_abstract_sockets_the_app_must_not_reach`).
 
 ### Syscall filter
 
@@ -100,7 +131,10 @@ blocks:
 - `io_uring`, a frequent source of kernel exploits (programs fall back to
   ordinary I/O);
 - terminal injection (`TIOCSTI`, `TIOCLINUX`);
-- namespaces and mounts, unless the app needs nested sandboxes;
+- namespaces and mounts, unless the app needs nested sandboxes: also
+  `clone` into a new user namespace, and `clone3`, whose flags no filter
+  can read, answers "not implemented" so programs fall back to `clone`, as
+  in Flatpak (`without_nested_sandboxes_clone_cannot_make_a_user_namespace`);
 - every socket type except local, internet and netlink (the kernel's status
   channel): no virtual-machine (`AF_VSOCK`, which no network setting
   stops), raw-packet or kernel-crypto sockets. Bluetooth sockets only with
@@ -109,8 +143,16 @@ blocks:
 - every call through the x32 ABI (a niche x86-64 mode with its own call
   numbers, which no AppImage uses).
 
-32-bit system calls (`int 0x80`) end the process, so 32-bit AppImages get
-the filter turned off in their recommendation, and SAM says so.
+32-bit system calls (`int 0x80`) end the process, except for an app whose
+start program is a 32-bit program: its filter answers 32-bit calls like
+their 64-bit twins, so the filter stays on for 32-bit AppImages
+(`a_32_bit_app_gets_its_calls_filtered_not_switched_off`). It used to be
+switched off for them, which let any app choose to run without it by
+making its start program 32-bit. One gap remains, as in Flatpak: a 32-bit
+socket opened through the old `socketcall` call is not limited to the
+listed types, because its type sits where no filter can read it. Other
+apps keep ending at a 32-bit call, so a 64-bit program cannot use the
+32-bit doors.
 
 The same filter applies while SAM unpacks an AppImage, to its own reader
 and to the AppImage's own extractor (`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`).
@@ -309,9 +351,16 @@ the system. SAM never changes it itself.
 Every app gets its own Wayland socket, created through the compositor's
 security-context protocol (`wp_security_context_v1`) and marked with SAM as
 the sandbox engine plus the app id. The compositor then hides privileged
-functions from the app, as it does for Flatpak apps. On KDE Plasma these
-include background clipboard access (`ext_data_control`) and fake input. The
-launch log and `sam-jail doctor` say whether the desktop supports it.
+functions from the app, as it does for Flatpak apps. On KDE Plasma (KWin
+6.8) these are background clipboard access (`ext_data_control`), fake
+input, screen casting, the list of other windows, the lock screen overlay,
+start-up feedback and security contexts of its own; a test compares what
+the app gets with what an unsandboxed client gets. What a compositor hides
+is its own choice, not SAM's: KWin still offers sandboxed apps a few
+functions of the desktop shell, such as drawing a panel or overlay above
+other windows (`zwlr_layer_shell_v1`, `org_kde_plasma_shell`) and changing
+the screen layout (`kde_output_management_v2`). The launch log and `sam-jail doctor` say whether the desktop supports
+it.
 
 *Privileged Wayland protocols* (advanced, High risk) gives the compositor's
 own socket instead, for clipboard managers and screenshot tools. Desktops
@@ -333,7 +382,9 @@ the app only that one (`sound_never_loads_code_into_the_sound_server`).
 
 The relay itself runs in a sandbox of its own: it sees the system's
 programs, your PipeWire socket and its own folder, but not your home, SAM's
-folders or the network. That matters on PipeWire before 1.2 (Ubuntu 24.04
+folders or the network, and nothing in it can make a user namespace of its
+own (`nothing_in_the_sound_relay_can_make_a_user_namespace`). That matters
+on PipeWire before 1.2 (Ubuntu 24.04
 LTS, Debian 12), which ignores the setting: there a module the app asks for
 loads, but only inside the relay's sandbox, where it can reach none of your
 files. `sam-jail doctor --contracts` checks both on your computer.
@@ -437,13 +488,29 @@ and GitLab command line tools, npm, PyPI, Cargo, rclone, `~/.netrc`, Git
 credentials and others), mail and browser profiles (Thunderbird, Firefox,
 LibreWolf, Chrome, Chromium, Brave, Vivaldi, Edge, Opera and others), and
 the data of apps installed as Flatpak or Snap. The full list is in
-`crates/sam-core/src/places.rs`.
+`crates/sam-core/src/places.rs`. A folder becomes an empty one, and
+anything else (a file, but also a named pipe a password manager feeds, or a
+socket) an empty file. Where one is a link, it is hidden where the link
+leads too, also inside a place kept read-only (`~/.git-credentials` a link
+to `~/.config/git/credentials`): these are hidden after every other mount,
+so nothing bound later shows them again
+(`no_later_bind_shows_a_hidden_credential_again`,
+`credentials_behind_links_pipes_and_sockets_stay_hidden`).
 
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are), whether a
 permission, a folder you open with the app or a path on its command line
 would show them. They are replaced by an empty, throwaway folder, so an app
 cannot change its own permissions or another app's files.
+
+**Read-only whenever anything would show them writable:** SAM's own
+programs, which every menu entry runs outside the sandbox: SAM's AppImage
+file and the `sam-jail-run`, `sam-jail` and `sam-jail-gui` next to the
+running program, wherever you keep them (`~/Downloads`, `~/Applications`,
+`~/.cargo/bin`). An app with write access to that folder can neither
+change, rename nor delete them, nor rename the folders above them to put
+its own program in their place: the next click on a menu entry would have
+run its program unsandboxed.
 
 **Read-only, even with write access** (each of these can make your system
 run a program the next time you log in or open a file):
@@ -492,6 +559,26 @@ How these stay protected with the home writable:
   they really lead: a granted link (or a home folder that is itself a link)
   is followed, and the protections apply wherever the app sees these
   places.
+- **Extra folders are rated where they lead.** `.`, `..` and doubled `/`
+  count for nothing, so `/.` is the whole computer and `~/..` the folder
+  above the home, both *Dangerous*; a folder that holds the home counts as
+  the home, and a relative path or one with `..` is *Dangerous* too
+  (`a_path_with_dots_or_double_slashes_is_rated_where_it_leads`).
+- **A folder hands over the programs listening in it.** Connecting to a
+  socket file needs no write access, so even a read-only folder lets the
+  app talk to the programs that listen there: `/tmp` holds the sockets of
+  tmux, SSH connections and the X server (without systemd also the session
+  bus and the sound server), and a tmux socket runs commands
+  outside the sandbox. A grant of `/tmp`, or of those places in it, is
+  rated *Dangerous* and warned about
+  (`a_grant_of_tmp_or_its_listening_places_is_dangerous_even_read_only`).
+- **Extra sockets** (`sockets.custom`) are passed in from where their links
+  lead. One reached through a link in a folder the app may change is left
+  out (the app could have made that link, to the session bus or another
+  program's socket), and so is one whose link leads to a socket SAM rates
+  *Dangerous* (Docker, the system or session bus, the sound server's own
+  socket) unless you listed that socket by name
+  (`an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one`).
 - **Files whose mere presence changes behaviour** (`.bash_profile`, `.zshrc`,
   `.xprofile`, `.vimrc`, `.pam_environment` and the like) cannot be protected
   by a mount before they exist: making one would create the file. So SAM
@@ -508,9 +595,29 @@ How these stay protected with the home writable:
   The watch costs nothing while nothing changes: it waits for Linux to
   report, without a timer.
   The same holds for `~/.ssh` and `~/.gnupg` when the app was not given them.
+- **What SAM watches is kept on disk** while the app runs, in
+  `~/.local/share/sam/home-watch/` (one record per launch, which no app can
+  see). A launch that starts while another watched app runs takes over
+  what that launch saw at its start, not what is there now: a link an app
+  planted meanwhile is never taken for yours and put back. If SAM's
+  launcher is ended before its last look (killed, or a crash), the next
+  time SAM looks at the running apps (the window, `sam-jail stop`, any
+  start) it takes that look and writes what it moved into that launch's
+  log. A record from before the computer was restarted is dropped without
+  that look.
 - **Key folders that are links** (dotfiles managed with `stow`, for example)
-  are hidden where they point; **start files that are links** are locked
-  where they point, and a replaced link is put back.
+  are hidden where they point, also when only the folder they point into is
+  granted (`~/.gnupg` a link to `~/Sync/gnupg`, and `~/Sync` granted);
+  **start files that are links** are locked where they point, and a
+  replaced link is put back.
+- **Links are followed as the app follows them.** Each protection is
+  mounted where the app reaches the place, never through a link: with
+  `~/.config` a link (to `~/dotfiles/config` or to another drive), apps
+  start as usual, and a folder granted read-only that the link leads into
+  stays read-only. With the home itself kept behind a link (`/home/u` a
+  link to `/data/u`), a link that names the home's real path
+  (`/data/u/dots/config`) is covered where the app reaches that place:
+  under the home's own name.
 
 **What full home access does not cover.** With read and write access to the
 home, an app can still change other files that programs outside the sandbox
@@ -566,6 +673,15 @@ app started from the menu is asked to quit when you log out (SAM passes the
 request on, as `sam-jail stop` does) and has 10 seconds to save before its
 sandbox is ended; the start is recorded as closed and leaves nothing behind
 (`logging_out_closes_a_menu_started_app_properly`).
+
+Asking an app to quit (Close, `sam-jail stop`, logging out) reaches only
+the app's own processes inside its sandbox, chosen by where they run, not
+by their names. SAM's helpers are never asked: pasta ("This computer
+only") would quit at once and end the whole sandbox with it, with no time
+to save (`closing_a_this_computer_only_app_gives_it_time_to_save`). An app
+that does not quit within the 10 seconds is ended, and SAM still finishes
+its launch: the last look at the start places, the record and the log
+(`closing_an_app_that_ignores_it_still_finishes_its_launch`).
 
 An app started with its input from a pipe or a file (`cat data.json |
 sam-jail run jq .`, `< file`, a script), or with its output going to a
@@ -644,11 +760,18 @@ An app controls what it prints, and an AppImage controls its own name and
 metadata. SAM treats both as untrusted.
 
 - **Sandbox errors** count only when Bubblewrap itself reports them (through
-  `--json-status-fd`), never because of text the app printed. SAM never falls
-  back to running an app without a sandbox.
+  `--json-status-fd`), never because of text the app printed. One exception:
+  when the program SAM started ends with code 126 or 127, the codes shells
+  and the system's loader use for "cannot be run" and "not found", SAM reads
+  the start as failed in the sandbox (a library or program the app needs is
+  missing there), marks the app as not working and suggests repair steps.
+  An app can use this only to make itself look broken: the message is SAM's
+  own, and every repair step asks first. SAM never falls back to running an
+  app without a sandbox.
 - **Repair suggestions** based on app output are marked as such and always
   ask first. They never offer services that can act outside the sandbox
-  (systemd, Flatpak, KWin/Plasma scripting, dconf, …) or protected places
+  (systemd, Flatpak, KWin/Plasma scripting, dconf, terminals that run any
+  command they are sent such as GNOME Terminal and Konsole, …) or protected places
   (`~/.ssh`, keyrings, the whole home). Adding such a D-Bus service by hand
   is rated *Dangerous* and asks first.
 - **Names, descriptions and file names** are cleaned (no markup, no control
@@ -656,6 +779,18 @@ metadata. SAM treats both as untrusted.
   inject formatting or remote images into SAM's window or notifications.
 - **File types** a menu entry registers are filtered: never URL schemes
   (`https`, `mailto`, …), folders, programs or catch-all types.
+- **An app's name never picks the app a command means.** `sam-jail set vlc …`
+  changes an app only when `vlc` names that one app alone, by any rule (an
+  ID prefix, its name, part of its name): an AppImage named `vlc` next to
+  "VLC media player" makes the command fail with both IDs, instead of
+  taking the app whose name matches exactly
+  (`an_apps_own_name_never_captures_a_reference_to_another_app`).
+- **Links the window opens** are https pages only, for an app's update and
+  for SAM's own (`only_an_https_release_page_is_opened`).
+- **What a question was about** is what is applied: the window asks about a
+  preset, then applies it with its fingerprint, and a preset changed while
+  the question was open is refused
+  (`a_preset_changed_after_the_question_is_not_applied`).
 - **What was enforced** (Landlock, seccomp) is reported by SAM's runner over
   a private channel that closes before the app starts. It appears in the
   launch log and on the app page.
@@ -687,26 +822,67 @@ downloaded or installed.
 
 **Updating** (*Update Now*, `sam-jail update`) is the one time SAM
 downloads a file, and only when you ask:
+- SAM updates only the AppImage it unpacked. It first copies the installed
+  file into its own data folder and compares it with what it unpacked last;
+  a file replaced outside SAM (for example by another app with access to
+  that folder) is not updated, because its update information would decide
+  what then runs with this app's permissions. Use *Unpack Again* and look
+  at the app first. The update address is read from that checked copy.
 - The new AppImage comes from the address its update description names,
   over HTTPS. It is downloaded and checked in SAM's own data folder, which
   no app can reach, never in the AppImage's folder, where another app could
   plant a link under the download's name or swap the file between the check
   and the move.
-- It must match the published SHA-1 and be an AppImage.
+- It must match the published SHA-1, be an AppImage, and be built for this
+  computer's processor: a build for another one would leave the app unable
+  to start. Among the files of a GitHub release, those that name this
+  computer's processor are tried first.
 - It must be signed like the installed version. A new or missing key stops
-  the update unless you accept it. A signed update that was signed earlier
+  the update unless you accept it. The refused download waits in SAM's own
+  folder, and accepting it (*Update Anyway*, `sam-jail update --accept-key-change`)
+  installs exactly that file, as long as it is still the published one;
+  SAM never downloads again for that answer, so a server cannot hand out a
+  different file under your yes. A yes counts once. Saying no (*Cancel*,
+  `sam-jail update --decline-key-change`) deletes the waiting download; one
+  never answered is deleted after a week, when updates are checked or run. When the installed version's signature
+  could not be checked when it was added (GnuPG missing), SAM checks the
+  installed file again now; a signature that still cannot be checked lets
+  no other key, missing or bad signature through without a question. A signed update that was signed earlier
   than the installed version is an older version and is refused: whoever
   controls the download cannot hand out an old release with holes fixed
   since. For unsigned apps SAM cannot tell versions apart this way.
-- A server cannot keep SAM busy or crash it: every request has a time
-  limit, a download at most the published length (8 GiB without one),
-  update addresses are never expanded as patterns, and working out which
-  parts of the old file can be reused stops after a minute (the rest is
-  downloaded).
-- The old file moves into SAM's data folder, so you can go back; going back
-  keeps the newer version, also when both have the same file name.
-- The new file is put in place by renaming, or, across drives, by copying
-  into a new file; SAM never writes through a link it finds there.
+- A server cannot keep SAM busy, crash it or fill the disk: every request
+  has a time limit; SAM itself counts what a download writes and stops at
+  the published length (8 GiB without one), whatever the server sends and
+  whichever curl is installed; a release description may be up to 16 MiB,
+  and a longer one is an error, never read as if complete; update addresses
+  are never expanded as patterns; a description whose blocks are smaller
+  than 512 bytes or number more than about four million is not used for a
+  partial download (the file is downloaded whole); the old version is
+  mapped, not read into memory; and working out which parts of the old
+  file can be reused stops after a minute (the rest is downloaded).
+- The new file keeps its published name only when that is a plain
+  AppImage name (letters, digits and `._+-`, ending in `.AppImage`) that no
+  other file in the folder has; otherwise it takes the old name. The update
+  server chooses that name, and in a folder on the command search path
+  (`~/.local/bin`) a name like `sudo` would replace a command, outside any
+  sandbox.
+- The checked copy of the old file is kept in SAM's data folder, so you can
+  go back; going back keeps the newer version, also when both have the same
+  file name. The earlier version goes back into the app's folder under the
+  name it had, never to a place an app record names: a record changed
+  outside SAM cannot make it a command in `~/.local/bin`. Going back checks
+  the current file like an update does: SAM
+  keeps a copy of it in its own folder (never the file itself, which
+  another app could still hold under a second name) and accepts it only
+  when it is what SAM unpacked, or what the update put there when
+  unpacking that failed. A version kept by an older SAM (without its
+  recorded checksum) asks for a review once it is back.
+- The new file is put in place as a copy in a new file; SAM never writes
+  through a link it finds there. The sandbox is unpacked from the checked
+  download in SAM's own folder, not from the AppImage's folder, where
+  another app could swap the file in that moment; a file swapped there
+  afterwards is noticed like any changed AppImage.
 - The app keeps its sandbox. When the new version asks for more (another
   category, the network, a folder), the app page shows it, and nothing
   changes until you switch it on yourself.
@@ -768,7 +944,9 @@ the file.
 Because the key comes with the file, a valid signature shows that the file
 is unchanged since signing, not who made it. What it adds is continuity:
 SAM remembers the key, and when an updated AppImage is signed with another
-key, or no longer signed, the app page shows a warning.
+key, or no longer signed, the app page shows a warning. A signature that
+could not be checked (GnuPG missing) is no remembered key: SAM checks the
+installed file again when it updates.
 
 The signer is the key that `gpgv` itself reports for the signature it
 checked (its `VALIDSIG` status line), never simply a key found in the file.
@@ -777,6 +955,16 @@ by any key it is given, so a second key could otherwise borrow the name of a
 trusted one, for example SAM's public release key. Every GnuPG step has a
 time limit of 20 seconds, and `sam-jail doctor` checks that the installed
 GnuPG still names the real signer.
+
+The key and the signature are the file's own bytes, written by whoever
+made it, so GnuPG reads them inside the unpack sandbox, like every other
+program that reads an AppImage: no network, nothing of the home, the
+throwaway GnuPG folder as the only writable place, the baseline syscall
+filter, and anything GnuPG leaves running (a gpg-agent) ends with the
+sandbox (`gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox`).
+Where SAM can build no sandbox, an added AppImage's signature counts as not
+checked (an update then asks first); only SAM's own update is still checked
+directly there, as before.
 
 ---
 
@@ -801,11 +989,28 @@ through. SAM itself writes those files without following links.
 | a start file that names a program outside the app (`Exec=/usr/bin/…`, `../`) | never used as the app's entry point |
 | named pipes and other special files | removed while unpacking; SAM's own reads refuse them without waiting |
 | device nodes, FIFOs, sockets | removed |
-| huge or endless archives | file-count, size and time limits stop the unpacking and remove partial output; a limit reached inside the unpack sandbox stops it too, without trying other tools or the AppImage's own unpacker |
+| huge or endless archives | file-count, size and time limits stop the unpacking and remove partial output; a limit reached inside the unpack sandbox stops it too, without trying other tools or the AppImage's own unpacker. They hold for every unpacking program while it runs (SAM's reader, `unsquashfs`, `bsdtar`, `dwarfsextract`, the AppImage's own unpacker): SAM counts the files it wrote as it goes, also in folders the image makes unreadable, and stops it once it passes a limit, and the kernel lets no single file grow past the size limit (`every_unpacking_tool_meets_the_limits_while_it_runs`). The partial output is removed, folders nobody may enter included (`an_unpack_box_with_locked_folders_is_removed`). The AppImage's own unpacker is the AppImage's code: it can hide what it writes from the count (a file deleted while it keeps it open still takes space), so for it the time limit, the size limit per file and the stop at a full disk are what hold |
+| an archive built to use up memory | every unpacking program may use at most `extraction.max_memory_mb` (4 GiB by default) of memory; SAM's reader reaching it stops the unpacking like a limit |
+| a full disk | SAM stops at once, removes what was unpacked and says the disk is full; it does not try the next tool or offer the AppImage's own unpacker (`a_full_disk_in_the_unpack_sandbox_stops_unpacking`) |
+| replacing the earlier unpacked app | the new one takes its place in one step, or the old one stays (`a_failed_swap_keeps_the_old_app`) |
 | reading outside the sandbox | SAM itself reads only icon and desktop files, and never follows a link out of the app |
 
 Running the AppImage's own `--appimage-extract` is a fallback that needs your
 consent, and also runs in a sandbox.
+
+Adding an AppImage and *Unpack Again* first copy the file into SAM's own
+data folder, reading it once; its checksum, its signature and what is
+unpacked all come from that copy. Another program with access to the
+AppImage's folder can no longer swap the file between SAM's check and the
+unpacking, so SAM never records one file and unpacks another
+(`what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped`). A
+file swapped there afterwards is noticed like any changed AppImage.
+
+Nothing in an unpack sandbox can make a user namespace of its own
+(Bubblewrap's `--disable-userns` and the syscall filter): one would give
+the program inside full rights over a fresh network namespace, the usual
+way into kernel bugs
+(`nothing_in_the_unpack_sandbox_can_make_a_user_namespace`).
 
 **Before you agree to anything.** The overview shows the name and icon of
 every AppImage in the folders SAM searches, so it reads them before anyone
@@ -816,8 +1021,13 @@ reader hang, run out of memory or crash ends only that sandbox
 `the_overview_reads_names_inside_a_sandbox`). Where no sandbox can be
 built, SAM shows only the file name. Icons are taken only as PNG of at most
 1024×1024 pixels (read from the header, before anything decodes them) or
-small SVG, at most 1 MiB; XPM is not taken. The window checks this again
-before it shows an icon (`only_icons_that_are_safe_to_decode_are_taken`).
+small SVG, at most 1 MiB; XPM is not taken. The format is read from the
+file's start only: a PNG starts with the PNG signature, and an SVG is text
+whose first element is `<svg`, so an XPM, ICO or other image that merely
+contains the text `<svg` is not installed as an SVG for the desktop to
+decode with its own loader (`only_a_real_svg_counts_as_one`). The window
+checks this again before it shows an icon
+(`only_icons_that_are_safe_to_decode_are_taken`).
 The preview and the unpacked app use the same desktop file
 (`preview_and_unpack_take_the_same_desktop_file`).
 
@@ -829,8 +1039,8 @@ The preview and the unpacked app use the same desktop file
 |---|---|---|
 | **Low** | Harmless | fonts, icons, locales, time zone (read-only), Wayland, filtered D-Bus, "This computer only", the app's own ports |
 | **Medium** | Harmless | GPU, sound, folder access, all of `/usr`, nested namespaces, names the app may own, passed-through variables |
-| **High** | Think twice | network, X11, whole home read-only, webcam, SSH agent, keyring, direct PipeWire, raw sound devices (ALSA), local services the app may reach, a passed-through variable that holds a secret, the syscall filter or Landlock switched off, single functions of a service |
-| **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, sound without SAM's relay, a function of a service that can act outside the sandbox, and the network together with your home, keys or passwords (it can send what it reads) |
+| **High** | Think twice | network, X11, whole home read-only, webcam, SSH agent, keyring (also a password service allowed by name), direct PipeWire, raw sound devices (ALSA), local services the app may reach, a passed-through variable that holds a secret, the syscall filter or Landlock switched off, single functions of a service |
+| **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, sound without SAM's relay (also the sound server's socket as an extra socket), a service that can act outside the sandbox allowed by name or one of its functions (a terminal that runs any command it is sent included), a wildcard over the portal, an extra folder that is a system folder, the home, a folder above it or `/tmp` (however it is written), and the network together with your home, keys or passwords (it can send what it reads) |
 
 An app's risk is the level of its riskiest permission. SAM shows the level
 with the permission that sets it, for example *High risk · Network +1*. The
@@ -843,13 +1053,21 @@ switch with the same word the assessment uses (a test compares them,
 Permission Manager for several apps at once, a preset, or the command line
 (`sam-jail set`, `profile set`, `group set` refuse it without `--yes`). The
 rule is worked out from the settings themselves, so it holds even when the
-window's list of permissions fails to load.
+window's list of permissions fails to load. Raw Bubblewrap arguments count
+by what they say: other arguments ask again, even when the app already had
+some.
 
 **Settings nobody has confirmed** do not start. SAM's recommendation is
 partly chosen from what the app says about itself (its name and
 description decide its category, and with that for example the network),
 so an app added on the command line without `--accept` starts only after
-`sam-jail review APP` or confirming its settings in the window.
+`sam-jail review APP` or confirming its settings in the window. Changing
+one switch (`sam-jail set`, a group change, a repair step, a switch in the
+window) confirms nothing about the others; applying a preset or setting the
+whole profile (`profile set`) replaces them all and does. The check before
+adding (`sam-jail verify FILE`) is not held back by this: it runs only
+SAM's stand-in and test program with the settings shown, never the app's
+own code (`verify_checks_an_appimage_without_a_sandbox`).
 
 For scripts, the JSON output still has a weighted score (`risk.score`, at
 most 100). The window does not show it, because a number next to the level
@@ -860,14 +1078,17 @@ was easily misread.
 ## Known limitations
 
 - **Icons are drawn outside the sandbox.** SAM copies an AppImage's icon
-  (PNG, SVG or XPM, at most 10 MB) into its cache. The window and the menu
+  (PNG or SVG, checked as above, at most 1 MiB) into its cache. The window and the menu
   draw it with the system's image libraries, as every AppImage integration
   tool does.
 - **D-Bus filtering needs `xdg-dbus-proxy`.** Without it, an app with
   filtered D-Bus gets no session bus at all.
 - **Abstract sockets** are blocked only on kernel 6.12+. On older kernels,
   XWayland's socket is reachable for apps with full network (X11
-  authorization still applies).
+  authorization still applies; many desktops let every program of the
+  same user in), and so is a session bus on an abstract socket. Diagnostics
+  and the sandbox check say so; such a start is not marked *Protection
+  missing*, because the kernel has nothing SAM could apply.
 - **No filtering by domain.** An app gets no network, only this computer
   (*This computer only*), or the full network.
 - **File dialogs:** a file picked outside the folders an app may use is not
