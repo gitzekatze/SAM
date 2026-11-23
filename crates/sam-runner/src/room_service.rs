@@ -2096,12 +2096,10 @@ mod service_tests {
     /// right here. The command `unconfirmed` ends it with exit code 3
     /// before it confirms anything, as a room whose helper never reported.
     fn fake_bwrap(dir: &Path) -> (PathBuf, PathBuf) {
-        use std::os::unix::fs::PermissionsExt;
         let bwrap = dir.join("bwrap");
         let log = dir.join("bwrap-args");
         let script = format!(
-            r#"#!/bin/sh
-export PATH=/usr/bin:/bin
+            r#"export PATH=/usr/bin:/bin
 printf '%s\n' "$@" > '{log}'
 spec=; p2=; p1=
 for a in "$@"; do
@@ -2117,9 +2115,38 @@ exec "$@"
 "#,
             log = log.display()
         );
-        std::fs::write(&bwrap, script).unwrap();
-        std::fs::set_permissions(&bwrap, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_program(&bwrap, &script);
         (bwrap, log)
+    }
+
+    /// Writes a shell script at `p` and makes it runnable. A program
+    /// another test starts at that moment may hold the new file open for
+    /// an instant, and Linux then refuses to run it ("Text file busy"); so
+    /// this waits until the script runs (it ends at once when
+    /// SAM_TEST_PROBE is set), for at most ten seconds.
+    fn write_program(p: &Path, body: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        let script = format!("#!/bin/sh\n[ -n \"$SAM_TEST_PROBE\" ] && exit 0\n{body}");
+        std::fs::write(p, script).unwrap();
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let end = Instant::now() + Duration::from_secs(10);
+        loop {
+            let probe = std::process::Command::new(p)
+                .env("SAM_TEST_PROBE", "1")
+                .status();
+            match probe {
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::ExecutableFileBusy
+                        && Instant::now() < end =>
+                {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                probe => {
+                    assert!(probe.unwrap().success(), "{} does not run", p.display());
+                    return;
+                }
+            }
+        }
     }
 
     fn write_request(conn: &UnixStream, req: &Request) {
@@ -2309,16 +2336,19 @@ exec "$@"
     /// place by handle builds no room either.
     #[test]
     fn rooms_need_both_options_that_show_places_by_handle() {
-        use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().unwrap();
-        for (name, help) in [
-            ("only-ro", "usage: bwrap\n    --ro-bind-fd FD DEST"),
-            ("only-rw", "usage: bwrap\n    --bind-fd FD DEST"),
+        for (name, help, builds) in [
+            ("only-ro", "usage: bwrap\n    --ro-bind-fd FD DEST", false),
+            ("only-rw", "usage: bwrap\n    --bind-fd FD DEST", false),
+            (
+                "both",
+                "usage: bwrap\n    --bind-fd FD DEST\n    --ro-bind-fd FD DEST",
+                true,
+            ),
         ] {
             let p = tmp.path().join(name);
-            std::fs::write(&p, format!("#!/bin/sh\ncat <<'EOF'\n{help}\nEOF\n")).unwrap();
-            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-            assert!(!bwrap_builds_rooms(&p), "{name}");
+            write_program(&p, &format!("cat <<'EOF'\n{help}\nEOF\n"));
+            assert_eq!(bwrap_builds_rooms(&p), builds, "{name}");
         }
     }
 
