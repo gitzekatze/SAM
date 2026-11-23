@@ -771,6 +771,59 @@ mod tests {
 }
 
 #[cfg(test)]
+mod old_record_tests {
+    use super::*;
+
+    /// A record saved before Room service existed (no `room_service` key)
+    /// reads with Room service on and writes back exactly as it was, so its
+    /// checksum holds and no app looks changed outside SAM after an update.
+    /// Turned off, the switch is written and read back.
+    #[test]
+    fn a_record_from_before_room_service_keeps_its_checksum() {
+        let e = AppEntry {
+            reviewed: true,
+            extraction: Some(Default::default()),
+            ..Default::default()
+        };
+        let old = serde_json::to_value(&e).unwrap();
+        assert!(
+            old["profile"]["permissions"]["advanced"]
+                .get("room_service")
+                .is_none(),
+            "not written while on"
+        );
+        let read: AppEntry = serde_json::from_value(old.clone()).unwrap();
+        assert!(read.profile.permissions.advanced.room_service);
+        assert_eq!(serde_json::to_value(&read).unwrap(), old);
+        let mut off = read;
+        off.profile
+            .permissions
+            .set_key("advanced.room_service", "false")
+            .unwrap();
+        let v = serde_json::to_value(&off).unwrap();
+        assert_eq!(
+            v["profile"]["permissions"]["advanced"]["room_service"],
+            false
+        );
+        let back: AppEntry = serde_json::from_value(v).unwrap();
+        assert!(!back.profile.permissions.advanced.room_service);
+        let mut on = back;
+        on.profile
+            .permissions
+            .set_key("advanced.room_service", "true")
+            .unwrap();
+        assert!(on.profile.permissions.advanced.room_service);
+        assert_eq!(
+            on.profile
+                .permissions
+                .get_key("advanced.room_service")
+                .unwrap(),
+            serde_json::json!(true)
+        );
+    }
+}
+
+#[cfg(test)]
 mod badge_tests {
     use super::*;
 

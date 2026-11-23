@@ -27,6 +27,8 @@ pub mod progress;
 pub mod pty;
 pub mod release_key;
 pub mod repair;
+pub mod room_rules;
+pub mod room_service;
 pub mod sound_relay;
 pub mod testenv;
 pub mod updates;

@@ -183,6 +183,28 @@ coverage = "full"
 playbook = "Bubblewrap rejects an option it does not know, so the start fails instead of running without the protection. Raise the minimum version in install.md, or offer allow_userns only where the option is missing."
 
 [[contract]]
+id = "bwrap-rooms"
+component = "bubblewrap"
+assumes = "Bubblewrap shows a folder or file SAM opened (--bind-fd, --ro-bind-fd) as exactly that opened object and refuses when it changed on the way, writes data from a connection into a file (--ro-bind-data), shares the network only with --share-net, and has exactly the options Room service knows (0.11 to 0.13). Room service builds rooms with the first and refuses every option of the rest that could give a room more than its app."
+covers = [
+  "option:--bind-fd", "option:--ro-bind-fd", "option:--ro-bind-data", "option:--share-net",
+  "option:--size", "option:--unsetenv", "option:--chmod", "option:--mqueue", "option:--level-prefix",
+  "option:--unshare-cgroup", "option:--unshare-user-try", "option:--block-fd", "option:--cap-add",
+  "option:--exec-label", "option:--file", "option:--file-label", "option:--info-fd", "option:--lock-file",
+  "option:--not-a-security-boundary", "option:--pidns", "option:--ro-overlay", "option:--sync-fd",
+  "option:--tmp-overlay", "option:--userns", "option:--userns-block-fd", "option:--userns2",
+  "option:--add-seccomp-fd", "option:--args", "option:--argv0", "option:--as-pid-1",
+  "option:--assert-userns-disabled", "option:--bind-data",
+]
+functions = [41]
+probe = "bwrap-option:--ro-bind-fd"
+tests = ["room_service_builds_working_rooms_that_never_get_more_than_their_app", "every_room_is_a_subset_of_its_app", "options_a_room_never_gets_are_refused_by_name", "a_room_dies_with_sams_launcher"]
+on_break = "feature"
+coverage = "partial"
+gaps = "The options a room uses (--bind-fd, --ro-bind-fd, --ro-bind-data with --perms, --share-net) are checked by real rooms in every test. Of the options a room refuses, the tests try each against a real stand-in and service, but not what each would do if Bubblewrap changed its meaning: a refused option is never passed on, so a changed meaning cannot reach a room."
+playbook = "A Bubblewrap without these options builds no room: a program that asks fails as it would without Room service, and the app itself is unaffected. A new Bubblewrap option is refused in rooms until it is reviewed and added to option() in room_rules.rs; a changed meaning shows in the Room service tests (the mount comparison names the place)."
+
+[[contract]]
 id = "bwrap-overlay"
 component = "bubblewrap"
 assumes = "Bubblewrap 0.10 or newer offers overlays (--overlay-src, --overlay) for a writable app folder whose changes go to a separate layer."
@@ -346,7 +368,7 @@ playbook = "A filter that fails to load stops the start. When the syscall review
 id = "kernel-procfs"
 component = "kernel"
 assumes = "/proc shows process status, network tables and kernel facts at these paths; the sandbox check reads them from inside."
-covers = ["path:/proc", "path:/proc/", "path:/proc/self/status", "path:/proc/net/*", "path:/proc/sys/kernel/hostname", "path:/proc/sys/kernel/osrelease", "path:/proc/sys/kernel/random/boot_id"]
+covers = ["path:/proc", "path:/proc/", "path:/proc/self/status", "path:/proc/self/fd", "path:/proc/self/fd/0", "path:/proc/self/fd/1", "path:/proc/self/fd/2", "path:/proc/net/*", "path:/proc/sys/kernel/hostname", "path:/proc/sys/kernel/osrelease", "path:/proc/sys/kernel/random/boot_id"]
 functions = [16, 20, 33]
 probe = "none"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox", "a_start_file_left_by_a_killed_launcher_is_still_moved_aside"]
@@ -575,7 +597,7 @@ playbook = "A new tool of this kind still needs a blocked D-Bus service to act; 
 id = "printing-ssh-drives"
 component = "freedesktop"
 assumes = "Printing is at /run/cups/cups.sock, the SSH agent at SSH_AUTH_SOCK, and removable drives under /media, /mnt and /run/media."
-covers = ["path:/run/cups/cups.sock", "env:SSH_AUTH_SOCK", "path:/media", "path:/media/", "path:/mnt", "path:/run/media", "path:/run/media/"]
+covers = ["path:/run/cups/cups.sock", "env:SSH_AUTH_SOCK", "path:/media", "path:/media/", "path:/mnt", "path:/mnt/", "path:/run/media", "path:/run/media/"]
 functions = [10, 15]
 probe = "none"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox", "files_and_folders_named_on_the_command_line"]
@@ -600,7 +622,7 @@ playbook = "These are long-stable standards; a change would show in SAM's own fo
 # --------------------------------------------- SAM's own names (not contracts)
 
 [[own]]
-covers = ["env:SAM_*", "program:sam-jail-run", "program:sam-jail-gui", "option:--sandbox-exec", "option:--app-id", "option:--help", "option:-h", "option:--max-bytes", "option:--max-files", "option:--max-seconds"]
+covers = ["env:SAM_*", "program:sam-jail-run", "program:sam-jail-gui", "option:--sandbox-exec", "option:--not-text", "option:--app-id", "option:--help", "option:-h", "option:--max-bytes", "option:--max-files", "option:--max-seconds"]
 why = "SAM's own programs, their options and SAM's own variables."
 
 [[own]]

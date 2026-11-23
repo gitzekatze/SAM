@@ -88,6 +88,8 @@ pub struct LaunchContext {
     /// Never writable inside, and the folders above them cannot be renamed
     /// away, so an app cannot put its own program in their place.
     pub sam_programs: Vec<PathBuf>,
+    /// Room service's socket for this start (shown at /run/sam/rooms).
+    pub room_socket: Option<PathBuf>,
 }
 
 impl LaunchContext {
@@ -107,7 +109,7 @@ impl LaunchContext {
 }
 
 /// Names SAM itself uses in `/run/sam` inside the sandbox.
-const RUN_SAM_OWN: &[&str] = &["bin", "sam-jail-run", "sandbox.json", "app"];
+const RUN_SAM_OWN: &[&str] = &["bin", "sam-jail-run", "sandbox.json", "app", "rooms"];
 
 /// Where the AppImage file `name` is shown inside the sandbox (`$APPIMAGE`):
 /// `/run/sam/<name>`, or `/run/sam/app/<name>` for a name SAM uses there
@@ -248,6 +250,7 @@ pub fn sample_context() -> LaunchContext {
         appdir_overlay: None,
         sam_dirs: vec![],
         sam_programs: vec![],
+        room_socket: None,
     }
 }
 
@@ -309,7 +312,7 @@ mod appimage_place_tests {
             appimage_inside(OsStr::new("Krita.AppImage")),
             Path::new("/run/sam/Krita.AppImage")
         );
-        for own in ["bin", "sam-jail-run", "sandbox.json", "app"] {
+        for own in ["bin", "sam-jail-run", "sandbox.json", "app", "rooms"] {
             assert_eq!(
                 appimage_inside(OsStr::new(own)),
                 Path::new("/run/sam/app").join(own)

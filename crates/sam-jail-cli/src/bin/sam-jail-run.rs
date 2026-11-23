@@ -96,6 +96,48 @@ fn main() {
     // A file name that is not valid text (Linux allows any bytes) ends the
     // start with a message: std::env::args() would panic on it, and a
     // replaced character would name another file (audit S-F15).
+    // Inside an app's sandbox in place of `bwrap` (Room service's stand-in),
+    // before anything else: its arguments are a program's, not file names
+    // given to SAM (one that is not text is refused like any bad option).
+    // The stand-in is a link named `bwrap` to this helper (no shell in
+    // between, see room_service::STANDIN_TARGET): started under that name,
+    // every argument is Bubblewrap's, and the version it answers comes
+    // from the file beside the link, never from the program.
+    if sam_runner::room_service::started_as_standin() {
+        // Named as Bubblewrap is: SAM's "please quit" spares Bubblewrap
+        // by its name, so the program in the room gets its time to save
+        // and quit, and its room ends when it has.
+        // SAFETY: PR_SET_NAME reads a NUL-terminated name of at most 16
+        // bytes, which this static string is.
+        unsafe {
+            libc::prctl(
+                libc::PR_SET_NAME,
+                c"bwrap".as_ptr() as libc::c_ulong,
+                0,
+                0,
+                0,
+            );
+        }
+        let mut args: Vec<String> = Vec::new();
+        let mut not_text = false;
+        for a in std::env::args_os().skip(1) {
+            match a.into_string() {
+                Ok(a) => args.push(a),
+                Err(_) => {
+                    not_text = true;
+                    args.push("--not-text".into());
+                }
+            }
+        }
+        let version = sam_runner::room_service::standin_version();
+        // An argument that is not text is never replaced and passed on: the
+        // request starts with an option no room accepts, so it is refused
+        // (and recorded) as a whole.
+        if not_text {
+            args.insert(0, "--not-text".into());
+        }
+        std::process::exit(sam_runner::room_service::standin(&version, &args));
+    }
     let args = match text_args(std::env::args_os().skip(1)) {
         Ok(a) => a,
         Err(name) => {

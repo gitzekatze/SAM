@@ -429,3 +429,495 @@ fn the_preview_reader_panics_only_inside_the_squashfs_library() {
     assert!(ours.is_empty(), "{}", ours.join("\n"));
     let _ = Path::new("");
 }
+
+/// Room service's readers: changed messages and changed Bubblewrap argument
+/// lists never crash the service's reader, the stand-in's reader or the
+/// rules, and whatever the rules accept stays within them (every place a
+/// plain absolute path, shown at the same place, from beneath a folder of
+/// the app's floor plan).
+#[test]
+fn changed_room_requests_never_crash_the_readers() {
+    use sam_runner::room_rules::{plan_room, read_bwrap_args, read_request, AppFacts, FloorPlan};
+    watch_panics();
+    let words = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+    let plan = FloorPlan::from_bwrap_args(&words(&[
+        "--ro-bind",
+        "/usr/lib",
+        "/usr/lib",
+        "--ro-bind-try",
+        "/usr/bin",
+        "/usr/bin",
+        "--symlink",
+        "usr/lib",
+        "/lib64",
+        "--bind",
+        "/data/w",
+        "/w",
+        // Read-only, with a hidden place inside and a place covered later.
+        "--ro-bind",
+        "/data/share",
+        "/share",
+        "--tmpfs",
+        "/share/hidden",
+        "--ro-bind",
+        "/data/x",
+        "/share/x",
+        "--tmpfs",
+        "/share/x",
+        "--bind",
+        "/data/homes/app",
+        "/home/me",
+        "--ro-bind",
+        "/data/homes/app/.config/autostart",
+        "/home/me/.config/autostart",
+        "--dev",
+        "/dev",
+        "--dev-bind-try",
+        "/dev/dri",
+        "/dev/dri",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/home/me/.ssh",
+        "--ro-bind",
+        "/data/sam/apps",
+        "/data/sam/apps",
+        "--tmpfs",
+        "/data/sam",
+        "--bind",
+        "/run/l1/rooms",
+        "/run/sam/rooms",
+    ]))
+    .unwrap();
+    let base = r#"{"v":1,"ops":[["--ro-bind","/usr","/usr"],["--bind","/home/me","/home/me"],["--tmpfs","/tmp-home"],["--perms","0700"],["--dir","/d"],["--setenv","HOME","/tmp-home"],["--seccomp","11"],["--share-net"],["--chmod","0755","/tmp-home"]],"flags":[],"command":["/usr/lib/glycin-loaders/2+/glycin-svg"],"env":{"A":"b"},"cwd":"/home/me","fds":[0,1,2,11]}"#;
+    let pieces: [&[u8]; 22] = [
+        b"\"",
+        b"[",
+        b"]",
+        b"{",
+        b"}",
+        b",",
+        b":",
+        b"\\",
+        b"\\u0000",
+        b"..",
+        b"/",
+        b"//",
+        b"--bind",
+        b"--chmod",
+        b"--ro-bind-try",
+        b"--dev-bind",
+        b"-1",
+        b"99999999999",
+        b"\xff",
+        b"null",
+        b"\"/\"",
+        b"/home/me/../..",
+    ];
+    let mut r = rng(0x200f_0001);
+    let mut problems = Vec::new();
+    for round in 0..rounds() {
+        let mut d = base.as_bytes().to_vec();
+        for _ in 0..1 + r.below(8) {
+            let at = r.below(d.len() + 1);
+            match r.below(3) {
+                0 => {
+                    let p = pieces[r.below(pieces.len())];
+                    d.splice(at..at, p.iter().copied());
+                }
+                1 if at < d.len() => {
+                    d.remove(at);
+                }
+                _ if at < d.len() => d[at] = (r.below(256)) as u8,
+                _ => {}
+            }
+        }
+        let full_network = r.below(2) == 0;
+        let text = String::from_utf8_lossy(&d).into_owned();
+        let argv: Vec<String> = text
+            .split([' ', '"', ','])
+            .filter(|w| !w.is_empty())
+            .map(str::to_string)
+            .collect();
+        if let Some(at) = panicked(|| {
+            let _ = read_bwrap_args(&argv);
+            let Ok(req) = read_request(&d) else { return };
+            let Ok(room) = plan_room(&plan, &req, AppFacts { full_network }) else {
+                return;
+            };
+            if let Err(e) = room_within_plan(&plan, &room, full_network) {
+                panic!("{e}");
+            }
+        }) {
+            problems.push(format!("round {round}: {at}: {text:?}"));
+        }
+    }
+    // Well-formed requests built from every option with tricky values: the
+    // rules decide them all without a crash and within themselves.
+    // Each option with its usual number of values (sometimes another), and
+    // mostly the same path twice, as a same-place request is.
+    let names: [(&str, usize); 36] = [
+        ("--bind", 2),
+        ("--bind-try", 2),
+        ("--ro-bind", 2),
+        ("--ro-bind-try", 2),
+        ("--dev-bind", 2),
+        ("--dev-bind-try", 2),
+        ("--symlink", 2),
+        ("--tmpfs", 1),
+        ("--dir", 1),
+        ("--dev", 1),
+        ("--proc", 1),
+        ("--mqueue", 1),
+        ("--perms", 1),
+        ("--size", 1),
+        ("--chmod", 2),
+        ("--setenv", 2),
+        ("--unsetenv", 1),
+        ("--chdir", 1),
+        ("--hostname", 1),
+        ("--seccomp", 1),
+        ("--add-seccomp-fd", 1),
+        ("--share-net", 0),
+        ("--unshare-net", 0),
+        ("--unshare-all", 0),
+        ("--clearenv", 0),
+        ("--remount-ro", 1),
+        ("--as-pid-1", 0),
+        ("--cap-drop", 1),
+        ("--die-with-parent", 0),
+        ("--bind-fd", 2),
+        ("--userns", 1),
+        ("--file", 2),
+        ("--cap-add", 1),
+        ("--overlay", 3),
+        ("--args", 1),
+        ("--made-up", 0),
+    ];
+    let values = [
+        "/",
+        "/usr",
+        "/usr/lib",
+        "/usr/lib/x86_64",
+        "/home/me",
+        "/home/me/.config",
+        "/home/me/.config/autostart",
+        "/dev",
+        "/dev/dri",
+        "/dev/null",
+        "/dev/input",
+        "/tmp",
+        "/tmp-home",
+        "/run/sam/rooms",
+        "/run/sam",
+        "/proc",
+        "/secret",
+        "/usr/../etc",
+        "usr",
+        "//",
+        "/home/me/",
+        "11",
+        "3",
+        "-1",
+        "0700",
+        "0777",
+        "99999",
+        "x",
+        "",
+    ];
+    let real = [
+        "/usr",
+        "/usr/lib",
+        "/usr/bin",
+        "/home/me",
+        "/home/me/.config/autostart",
+        "/dev/dri",
+        "/dev/null",
+        "/tmp",
+        "/w",
+        "/w/sub",
+        "/share",
+        "/share/hidden",
+        "/share/x",
+    ];
+    // How often the rules got as far as each kind of step: the control that
+    // the generated requests reach them at all.
+    let (shown, devices) = (std::cell::Cell::new(0usize), std::cell::Cell::new(0usize));
+    // Rooms with a writable place: the control that the "nothing inside a
+    // writable place" invariant sees any.
+    let writable_rooms = std::cell::Cell::new(0usize);
+    // Rooms that rebuilt a hiding mount below a shown place: the control
+    // that "hidden stays hidden" is ever checked.
+    let hiding_rooms = std::cell::Cell::new(0usize);
+    for round in 0..rounds() * 5 {
+        let mut ops: Vec<Vec<String>> = Vec::new();
+        for _ in 0..1 + r.below(4) {
+            let (name, arity) = names[r.below(names.len())];
+            let n = if r.below(10) == 0 { r.below(4) } else { arity };
+            // Half the time a place of the app's: the rules decide whole
+            // rooms often enough, not only the first broken value.
+            let first = if r.below(2) == 0 {
+                real[r.below(real.len())]
+            } else {
+                values[r.below(values.len())]
+            };
+            let mut op = vec![name.to_string()];
+            for k in 0..n {
+                let same = k == 0 || (k == 1 && r.below(4) != 0);
+                op.push(
+                    if same {
+                        first
+                    } else {
+                        values[r.below(values.len())]
+                    }
+                    .to_string(),
+                );
+            }
+            ops.push(op);
+        }
+        let req = sam_runner::room_rules::Request {
+            v: sam_runner::room_rules::VERSION,
+            ops,
+            flags: vec![],
+            command: vec!["/usr/bin/true".into()],
+            env: Default::default(),
+            cwd: values[r.below(values.len())].to_string(),
+            fds: vec![0, 1, 2, 11],
+            limits: vec![],
+            umask: None,
+        };
+        let full_network = r.below(2) == 0;
+        let text = format!("{:?}", req.ops);
+        if let Some(at) = panicked(|| {
+            let Ok(room) = plan_room(&plan, &req, AppFacts { full_network }) else {
+                return;
+            };
+            if room.steps.iter().any(|st| {
+                matches!(
+                    st,
+                    sam_runner::room_rules::Step::Show { writable: true, .. }
+                )
+            }) {
+                writable_rooms.set(writable_rooms.get() + 1);
+            }
+            let shown_at: Vec<&std::path::Path> = room
+                .steps
+                .iter()
+                .filter_map(|st| match st {
+                    sam_runner::room_rules::Step::Show { dst, .. } => Some(dst.as_path()),
+                    _ => None,
+                })
+                .collect();
+            if room.steps.iter().any(|st| match st {
+                sam_runner::room_rules::Step::Mask(at) => {
+                    shown_at.iter().any(|d| at.starts_with(d) && at != *d)
+                }
+                _ => false,
+            }) {
+                hiding_rooms.set(hiding_rooms.get() + 1);
+            }
+            for step in &room.steps {
+                match step {
+                    sam_runner::room_rules::Step::Show { .. } => shown.set(shown.get() + 1),
+                    sam_runner::room_rules::Step::Device { .. } => devices.set(devices.get() + 1),
+                    _ => {}
+                }
+            }
+            if let Err(e) = room_within_plan(&plan, &room, full_network) {
+                panic!("{e}");
+            }
+        }) {
+            problems.push(format!("built round {round}: {at}: {text}"));
+        }
+    }
+    assert!(
+        shown.get() > rounds() / 10 && devices.get() > rounds() / 100,
+        "the generated requests hardly reach the rules: {} places, {} devices",
+        shown.get(),
+        devices.get()
+    );
+    assert!(
+        writable_rooms.get() > 0,
+        "no generated room had a writable place, so its invariant was never checked"
+    );
+    assert!(
+        hiding_rooms.get() > 0,
+        "no generated room rebuilt a hiding mount, so \"hidden stays hidden\" was never checked"
+    );
+    // A remount inside a writable place is no place of its own: the rules
+    // accept it, and so does the invariant.
+    let req = sam_runner::room_rules::Request {
+        v: sam_runner::room_rules::VERSION,
+        ops: vec![
+            vec!["--bind".into(), "/w".into(), "/w".into()],
+            vec!["--remount-ro".into(), "/w/sub".into()],
+        ],
+        flags: vec![],
+        command: vec!["/usr/bin/true".into()],
+        env: Default::default(),
+        cwd: "/".into(),
+        fds: vec![],
+        limits: vec![],
+        umask: None,
+    };
+    let room = plan_room(&plan, &req, AppFacts::default()).unwrap();
+    room_within_plan(&plan, &room, false).unwrap();
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+/// What every room the rules decide keeps to, whatever was asked: each
+/// place comes from a floor-plan source, at the same place as in the app,
+/// writable only where the app's is, and not under a mount the app laid
+/// over it later (hidden stays hidden); devices only the app's, at their
+/// place; nothing shown through raw arguments; never Room service's socket
+/// or SAM's own place; nothing inside a place the app can write; the
+/// network only with the app's full network.
+fn room_within_plan(
+    plan: &sam_runner::room_rules::FloorPlan,
+    room: &sam_runner::room_rules::RoomPlan,
+    full_network: bool,
+) -> Result<(), String> {
+    use sam_runner::room_rules::{is_clean_absolute, Entry, Source, Step, RESERVED};
+    use std::path::Path;
+    for step in &room.steps {
+        match step {
+            Step::Show {
+                source: Source { entry, rel },
+                dst,
+                writable,
+                ..
+            } => {
+                let e = plan
+                    .entries
+                    .get(*entry)
+                    .ok_or("a source outside the floor plan")?;
+                if e.source().is_none() {
+                    return Err(format!("{dst:?} from an entry without a source: {e:?}"));
+                }
+                if *dst != e.at().join(rel) || !is_clean_absolute(&dst.to_string_lossy()) {
+                    return Err(format!("{dst:?} not at its place ({e:?} + {rel:?})"));
+                }
+                if *writable && !matches!(e, Entry::Rw { .. }) {
+                    return Err(format!("{dst:?} writable from a read-only place"));
+                }
+                let hidden_later = plan.entries.iter().skip(entry + 1).any(|m| {
+                    !matches!(m, Entry::Link { .. } | Entry::Dir { .. }) && dst.starts_with(m.at())
+                });
+                if hidden_later {
+                    return Err(format!("{dst:?} is hidden in the app by a later mount"));
+                }
+                if dst == Path::new("/run/sam/rooms") || dst.starts_with(RESERVED) {
+                    return Err(format!("{dst:?} is Room service's own"));
+                }
+            }
+            Step::Device { src, dst, .. } => {
+                if !src.starts_with("/dev") || src.starts_with("/dev/input") || src != dst {
+                    return Err(format!("a device {src:?} at {dst:?}"));
+                }
+            }
+            Step::Mask(_) => {}
+            Step::Args(a) => {
+                let bad = [
+                    "--bind-fd",
+                    "--ro-bind-fd",
+                    "--userns",
+                    "--file",
+                    "--cap-add",
+                    "--overlay",
+                    "--args",
+                    "--made-up",
+                    "--info-fd",
+                    "--json-status-fd",
+                    "--sync-fd",
+                    "--block-fd",
+                    "--userns-block-fd",
+                    "--userns2",
+                    "--pidns",
+                    "--bind-data",
+                    "--bind",
+                    "--ro-bind",
+                    "--dev-bind",
+                    "--bind-try",
+                    "--ro-bind-try",
+                    "--dev-bind-try",
+                ];
+                if bad.contains(&a[0].as_str()) {
+                    return Err(format!("passed on as it is: {a:?}"));
+                }
+                if a.iter().skip(1).any(|v| Path::new(v).starts_with(RESERVED)) {
+                    return Err(format!("SAM's own place in {a:?}"));
+                }
+            }
+        }
+    }
+    // Hidden stays hidden: every hiding mount of the app below a place the
+    // room shows (and mounted after that place's source) is in the room
+    // too, after it.
+    for (k, step) in room.steps.iter().enumerate() {
+        if let Step::Show {
+            source: Source { entry, .. },
+            dst,
+            ..
+        } = step
+        {
+            for (i, m) in plan.entries.iter().enumerate().skip(entry + 1) {
+                if let Entry::Mask { at } = m {
+                    let later_cover = plan.entries.iter().skip(i + 1).any(|l| {
+                        !matches!(l, Entry::Link { .. } | Entry::Dir { .. })
+                            && at.starts_with(l.at())
+                    });
+                    if at.starts_with(dst)
+                        && at != dst
+                        && !later_cover
+                        && !room.steps[k + 1..].contains(&Step::Mask(at.clone()))
+                    {
+                        return Err(format!(
+                            "{at:?} is hidden in the app but not in the room shown at {dst:?}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    // A place the app can write is shown only as a whole: nothing of the
+    // room (a place, a device, a hiding mount, a thing of its own) lies
+    // below it, in any order.
+    let writable: Vec<&Path> = room
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Show {
+                source: Source { entry, .. },
+                dst,
+                ..
+            } if matches!(plan.entries.get(*entry), Some(Entry::Rw { .. })) => Some(dst.as_path()),
+            _ => None,
+        })
+        .collect();
+    for step in &room.steps {
+        let places: Vec<&Path> = match step {
+            Step::Show { dst, .. } | Step::Device { dst, .. } => vec![dst.as_path()],
+            Step::Mask(at) => vec![at.as_path()],
+            // Only what makes or changes a place counts (a link's target is
+            // only text; --remount-ro only takes rights away).
+            Step::Args(a) => match a[0].as_str() {
+                "--tmpfs" | "--dir" | "--proc" | "--dev" | "--mqueue" => {
+                    a.get(1).map(Path::new).into_iter().collect()
+                }
+                "--symlink" | "--chmod" => a.get(2).map(Path::new).into_iter().collect(),
+                _ => Vec::new(),
+            },
+        };
+        for p in places {
+            if let Some(w) = writable.iter().find(|w| p.starts_with(w) && p != **w) {
+                return Err(format!(
+                    "{p:?} lies inside {w:?}, a place the app can write"
+                ));
+            }
+        }
+    }
+    if room.share_net && !full_network {
+        return Err("the network without the app's full network".into());
+    }
+    Ok(())
+}

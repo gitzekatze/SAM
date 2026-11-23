@@ -20,6 +20,7 @@ where to look.
 |---|---|---|---|
 | [bwrap-core](#bwrap-core) | Bubblewrap | Refuses | fully |
 | [bwrap-disable-userns](#bwrap-disable-userns) | Bubblewrap | Refuses | fully |
+| [bwrap-rooms](#bwrap-rooms) | Bubblewrap | Loses a feature | partly |
 | [bwrap-overlay](#bwrap-overlay) | Bubblewrap | Loses a feature | fully |
 | [pasta-splice-only](#pasta-splice-only) | passt / pasta | Falls back to less | fully |
 | [dbus-proxy-filter](#dbus-proxy-filter) | xdg-dbus-proxy | Falls back to less | fully |
@@ -54,7 +55,7 @@ where to look.
 | [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 | [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 
-16 of 35 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
+16 of 36 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
 
 ## bwrap-core
 
@@ -65,7 +66,7 @@ Bubblewrap builds the sandbox with these options and behaves as documented: sepa
 - **SAM functions that rely on it:** [10](functions.md#10), [11](functions.md#11), [19](functions.md#19), [20](functions.md#20)
 - **Quick check:** `bwrap-runs`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `each_permission_grants_exactly_its_access_in_a_real_sandbox` (fully)
-- **Checked first by:** `breakout.rs`, `evil.rs`, `exit_codes.rs`, `full_home.rs`, `layers.rs`, `local_network.rs`, `matrix.rs`, `moved_aside_message.rs`, `odd_names.rs`, `overlay_fallback.rs`, `pipes.rs`, `sandbox.rs`, `start_check.rs`, `stop.rs`, `teardown.rs`, `terminal.rs`, `trusted_helpers.rs`, `unpack.rs`, `verify.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `exit_codes.rs`, `full_home.rs`, `layers.rs`, `local_network.rs`, `matrix.rs`, `moved_aside_message.rs`, `odd_names.rs`, `overlay_fallback.rs`, `pipes.rs`, `room_service.rs`, `room_service_compare.rs`, `room_service_fd_limit.rs`, `room_service_fd_wait.rs`, `room_service_glycin.rs`, `room_service_identity.rs`, `room_service_local.rs`, `room_teardown.rs`, `sandbox.rs`, `start_check.rs`, `stop.rs`, `teardown.rs`, `terminal.rs`, `trusted_helpers.rs`, `unpack.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:bwrap`, `path:/usr/bin/bwrap`, `option:--unshare-user`, `option:--unshare-pid`, `option:--unshare-uts`, `option:--unshare-ipc`, `option:--unshare-cgroup-try`, `option:--unshare-net`, `option:--unshare-all`, `option:--uid`, `option:--gid`, `option:--die-with-parent`, `option:--new-session`, `option:--cap-drop`, `option:--clearenv`, `option:--setenv`, `option:--chdir`, `option:--proc`, `option:--dev`, `option:--tmpfs`, `option:--dir`, `option:--perms`, `option:--symlink`, `option:--bind`, `option:--bind-try`, `option:--ro-bind`, `option:--ro-bind-try`, `option:--dev-bind`, `option:--dev-bind-try`, `option:--remount-ro`, `option:--hostname`, `option:--json-status-fd`, `option:--seccomp`, `option:--version`, `option:-V`
 - **If it breaks:** Read the Bubblewrap release notes for the options above. A renamed option: build the old or new form from the version `bwrap --version` reports (sam-sandbox). A changed behavior: the breakout and matrix tests name the permission; fix the command in sam-sandbox/src/lib.rs.
 
@@ -81,6 +82,19 @@ Bubblewrap 0.8 or newer understands --disable-userns, which stops an app from cr
 - **Checked first by:** `breakout.rs` (a broken contract stops these tests with its name)
 - **Covers:** `option:--disable-userns`
 - **If it breaks:** Bubblewrap rejects an option it does not know, so the start fails instead of running without the protection. Raise the minimum version in install.md, or offer allow_userns only where the option is missing.
+
+## bwrap-rooms
+
+Bubblewrap shows a folder or file SAM opened (--bind-fd, --ro-bind-fd) as exactly that opened object and refuses when it changed on the way, writes data from a connection into a file (--ro-bind-data), shares the network only with --share-net, and has exactly the options Room service knows (0.11 to 0.13). Room service builds rooms with the first and refuses every option of the rest that could give a room more than its app.
+
+- **Component:** Bubblewrap ([releases](https://github.com/containers/bubblewrap/releases))
+- **When it breaks:** one feature is unavailable; the sandbox is unaffected.
+- **SAM functions that rely on it:** [41](functions.md#41)
+- **Quick check:** `bwrap-option:--ro-bind-fd`
+- **Tests:** `room_service_builds_working_rooms_that_never_get_more_than_their_app`, `every_room_is_a_subset_of_its_app`, `options_a_room_never_gets_are_refused_by_name`, `a_room_dies_with_sams_launcher` (partly: The options a room uses (--bind-fd, --ro-bind-fd, --ro-bind-data with --perms, --share-net) are checked by real rooms in every test. Of the options a room refuses, the tests try each against a real stand-in and service, but not what each would do if Bubblewrap changed its meaning: a refused option is never passed on, so a changed meaning cannot reach a room.)
+- **Checked first by:** `room_service.rs`, `room_service_compare.rs`, `room_service_fd_limit.rs`, `room_service_fd_wait.rs`, `room_service_glycin.rs`, `room_service_identity.rs`, `room_service_local.rs`, `room_teardown.rs` (a broken contract stops these tests with its name)
+- **Covers:** `option:--bind-fd`, `option:--ro-bind-fd`, `option:--ro-bind-data`, `option:--share-net`, `option:--size`, `option:--unsetenv`, `option:--chmod`, `option:--mqueue`, `option:--level-prefix`, `option:--unshare-cgroup`, `option:--unshare-user-try`, `option:--block-fd`, `option:--cap-add`, `option:--exec-label`, `option:--file`, `option:--file-label`, `option:--info-fd`, `option:--lock-file`, `option:--not-a-security-boundary`, `option:--pidns`, `option:--ro-overlay`, `option:--sync-fd`, `option:--tmp-overlay`, `option:--userns`, `option:--userns-block-fd`, `option:--userns2`, `option:--add-seccomp-fd`, `option:--args`, `option:--argv0`, `option:--as-pid-1`, `option:--assert-userns-disabled`, `option:--bind-data`
+- **If it breaks:** A Bubblewrap without these options builds no room: a program that asks fails as it would without Room service, and the app itself is unaffected. A new Bubblewrap option is refused in rooms until it is reviewed and added to option() in room_rules.rs; a changed meaning shows in the Room service tests (the mount comparison names the place).
 
 ## bwrap-overlay
 
@@ -103,7 +117,7 @@ pasta --splice-only creates a network namespace with only loopback, forwards onl
 - **SAM functions that rely on it:** [12](functions.md#12)
 - **Quick check:** `pasta-splice-only`
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `with_this_computer_only_the_sandbox_dies_with_its_launcher`, `the_apps_ports_are_offered_on_this_computer_only` (fully)
-- **Checked first by:** `local_network.rs`, `matrix.rs`, `teardown.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `local_network.rs`, `matrix.rs`, `room_service_local.rs`, `teardown.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:pasta`, `option:--splice-only`, `option:-t`, `option:-T`, `option:-u`, `option:-U`, `option:--quiet`
 - **If it breaks:** A pasta without --splice-only is never used: the app starts with no network at all and a warning says why (tested in the matrix). If options change, adapt netns.rs and check that an unlisted host port stays unreachable.
 
@@ -238,7 +252,7 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 - **SAM functions that rely on it:** [16](functions.md#16), [17](functions.md#17)
 - **Quick check:** `seccomp`
 - **Tests:** `every_breakout_attempt_from_a_real_sandbox_fails`, `every_known_syscall_has_been_reviewed` (fully)
-- **Checked first by:** `breakout.rs`, `evil.rs`, `verify.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `breakout.rs`, `evil.rs`, `room_service.rs`, `room_service_compare.rs`, `room_service_glycin.rs`, `room_service_local.rs`, `verify.rs` (a broken contract stops these tests with its name)
 - **Covers:** `syscall:*`
 - **If it breaks:** A filter that fails to load stops the start. When the syscall review check reports a new syscall, decide whether the baseline blocks it (kernel.rs) and add it to docs/syscalls-reviewed.txt.
 
@@ -251,7 +265,7 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 - **SAM functions that rely on it:** [16](functions.md#16), [20](functions.md#20), [33](functions.md#33)
 - **Quick check:** none (only the tests below)
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `a_start_file_left_by_a_killed_launcher_is_still_moved_aside` (partly: Checked only indirectly, through the sandbox check in the matrix test.)
-- **Covers:** `path:/proc`, `path:/proc/`, `path:/proc/self/status`, `path:/proc/net/*`, `path:/proc/sys/kernel/hostname`, `path:/proc/sys/kernel/osrelease`, `path:/proc/sys/kernel/random/boot_id`
+- **Covers:** `path:/proc`, `path:/proc/`, `path:/proc/self/status`, `path:/proc/self/fd`, `path:/proc/self/fd/0`, `path:/proc/self/fd/1`, `path:/proc/self/fd/2`, `path:/proc/net/*`, `path:/proc/sys/kernel/hostname`, `path:/proc/sys/kernel/osrelease`, `path:/proc/sys/kernel/random/boot_id`
 - **If it breaks:** The sandbox check then reports the setting as unknown instead of passed.
 
 ## fs-layout
@@ -470,7 +484,7 @@ Printing is at /run/cups/cups.sock, the SSH agent at SSH_AUTH_SOCK, and removabl
 - **SAM functions that rely on it:** [10](functions.md#10), [15](functions.md#15)
 - **Quick check:** none (only the tests below)
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `files_and_folders_named_on_the_command_line` (partly: Printing and removable drives are not tested in CI. The SSH agent is, everywhere: the permission matrix starts its own (sam_runner::testenv::PrivateServices).)
-- **Covers:** `path:/run/cups/cups.sock`, `env:SSH_AUTH_SOCK`, `path:/media`, `path:/media/`, `path:/mnt`, `path:/run/media`, `path:/run/media/`
+- **Covers:** `path:/run/cups/cups.sock`, `env:SSH_AUTH_SOCK`, `path:/media`, `path:/media/`, `path:/mnt`, `path:/mnt/`, `path:/run/media`, `path:/run/media/`
 - **If it breaks:** A moved socket or mount point only loses that feature.
 
 ## xdg-folders

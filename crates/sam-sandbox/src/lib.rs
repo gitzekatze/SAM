@@ -2140,8 +2140,18 @@ impl Section<'_> {
         a.setenv("LOGNAME", &h.user);
         a.setenv("SHELL", "/bin/sh");
         if p.dbus.session.mode != DbusMode::None {
-            // Link opener shims (see OPEN_SHIM), written by write_identity_files.
+            // Link opener shims (see OPEN_SHIM), written by write_identity_files,
+            // and Room service's stand-in for Bubblewrap.
             a.op2("--ro-bind-try", ctx.runtime_dir.join("bin"), "/run/sam/bin");
+            a.setenv("PATH", "/run/sam/bin:/usr/local/bin:/usr/bin:/bin");
+        } else if ctx.room_socket.is_some() {
+            // Without the bus, no link openers (they need it): only Room
+            // service's stand-in for Bubblewrap.
+            a.op2(
+                "--ro-bind-try",
+                ctx.runtime_dir.join("bin-rooms"),
+                "/run/sam/bin",
+            );
             a.setenv("PATH", "/run/sam/bin:/usr/local/bin:/usr/bin:/bin");
         } else {
             a.setenv("PATH", "/usr/local/bin:/usr/bin:/bin");
@@ -2212,6 +2222,10 @@ impl Section<'_> {
             keep_fds.push(fd);
         }
 
+        // Room service's socket.
+        if let Some(socket) = &ctx.room_socket {
+            a.op2("--bind", socket, "/run/sam/rooms");
+        }
         // Landlock helper.
         let mut cmd: Vec<String> = Vec::new();
         if let Some(helper) = &ctx.helper {
@@ -4374,6 +4388,52 @@ mod guard_tests {
         assert!(has_seq(&a, &["--setenv", "_OK", "1"]) && has_seq(&a, &["--setenv", "Z9", "2"]));
         for bad in ["9BAD", "A-B", "NUL"] {
             assert!(!has_seq(&a, &["--setenv", bad]), "{bad} is refused");
+        }
+    }
+
+    /// SAM's helper folder /run/sam/bin comes first on the app's PATH only
+    /// when there is something in it for the app: the link openers (they
+    /// need the desktop bus) and Room service's stand-in for Bubblewrap.
+    /// With the bus the app gets the full folder; without the bus but with
+    /// Room service only the stand-in's folder; with neither, no folder
+    /// and a PATH without it.
+    #[test]
+    fn the_helper_folder_comes_first_on_path_only_where_it_holds_helpers() {
+        const WITH: &str = "/run/sam/bin:/usr/local/bin:/usr/bin:/bin";
+        const WITHOUT: &str = "/usr/local/bin:/usr/bin:/bin";
+        // The two folders SAM prepares in the app's own runtime folder.
+        let run = sample_context().runtime_dir;
+        let full = run.join("bin").to_string_lossy().into_owned();
+        let rooms_only = run.join("bin-rooms").to_string_lossy().into_owned();
+        for bus in [DbusMode::None, DbusMode::Filtered, DbusMode::Full] {
+            for rooms in [false, true] {
+                let mut ctx = sample_context();
+                ctx.permissions.dbus.session.mode = bus;
+                ctx.room_socket = rooms.then(|| "/run/user/1000/sam/x/rooms".into());
+                let a = args_of(&ctx);
+                let case = format!("bus {bus:?}, Room service {rooms}");
+                let (folder, path) = match (bus, rooms) {
+                    (DbusMode::None, false) => (None, WITHOUT),
+                    (DbusMode::None, true) => (Some(rooms_only.as_str()), WITH),
+                    _ => (Some(full.as_str()), WITH),
+                };
+                // PATH is set exactly once, so no later value can win.
+                let paths: Vec<&str> = a
+                    .windows(3)
+                    .filter(|w| w[0] == "--setenv" && w[1] == "PATH")
+                    .map(|w| w[2].as_str())
+                    .collect();
+                assert_eq!(paths, [path], "{case}: PATH");
+                let shown: Vec<&str> = a
+                    .windows(3)
+                    .filter(|w| w[2] == "/run/sam/bin")
+                    .map(|w| {
+                        assert_eq!(w[0], "--ro-bind-try", "{case}: shown read-only");
+                        w[1].as_str()
+                    })
+                    .collect();
+                assert_eq!(shown, folder.into_iter().collect::<Vec<_>>(), "{case}");
+            }
         }
     }
 }
