@@ -544,7 +544,9 @@ pub fn prepare(
                     }
                 }
             });
-            match DbusProxy::start(host, &bus, &runtime_dir, &app.id) {
+            match DbusProxy::start(host, &bus, &runtime_dir, &app.id, &|n| {
+                check.refused(n).is_none()
+            }) {
                 Ok(p) => {
                     ctx.dbus_proxy_socket = Some(p.socket.clone());
                     for (name, why) in &p.refused {
