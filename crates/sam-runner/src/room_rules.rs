@@ -1354,6 +1354,71 @@ mod tests {
             assert!(read_bwrap_args(&argv).is_err(), "{o:?} was accepted");
             assert!(refused(&[o]), "{o:?} was planned");
         }
+        // By name: every option a room never gets is refused as such (not
+        // as merely unknown), with its usual number of values.
+        let named: [(&str, usize); 27] = [
+            ("--args", 1),
+            ("--argv0", 1),
+            ("--userns", 1),
+            ("--userns2", 1),
+            ("--pidns", 1),
+            ("--uid", 1),
+            ("--gid", 1),
+            ("--lock-file", 1),
+            ("--sync-fd", 1),
+            ("--overlay-src", 1),
+            ("--tmp-overlay", 1),
+            ("--ro-overlay", 1),
+            ("--exec-label", 1),
+            ("--file-label", 1),
+            ("--block-fd", 1),
+            ("--userns-block-fd", 1),
+            ("--info-fd", 1),
+            ("--json-status-fd", 1),
+            ("--cap-add", 1),
+            ("--bind-fd", 2),
+            ("--ro-bind-fd", 2),
+            ("--file", 2),
+            ("--bind-data", 2),
+            ("--ro-bind-data", 2),
+            ("--overlay", 3),
+            ("--not-a-security-boundary", 0),
+            ("--help", 0),
+        ];
+        for (name, n) in named {
+            let mut argv = vec![name.to_string()];
+            argv.extend((0..n).map(|i| format!("/v{i}")));
+            argv.push("/usr/bin/true".into());
+            let e = read_bwrap_args(&argv).unwrap_err();
+            assert!(e.contains("is not allowed in a room"), "{name}: {e}");
+            assert_eq!(first_unusable_option(&argv).as_deref(), Some(name));
+        }
+        let e = read_bwrap_args(&s(&["--made-up", "/usr/bin/true"])).unwrap_err();
+        assert!(e.contains("is not supported in a room"), "{e}");
+    }
+
+    /// The first option a room never gets is found where the stand-in
+    /// looks for it: up to the end of the options, `--` or the command,
+    /// never past the end of the arguments.
+    #[test]
+    fn the_first_unusable_option_is_found_where_bubblewrap_reads_options() {
+        let first = |v: &[&str]| first_unusable_option(&s(v));
+        assert_eq!(first(&["--ro-bind", "/a", "/a"]), None);
+        assert_eq!(first(&["--ro-bind", "/a", "/a", "--", "--cap-add"]), None);
+        assert_eq!(first(&["--ro-bind", "/a", "/a", "prog", "--cap-add"]), None);
+        assert_eq!(
+            first(&["--ro-bind", "/a", "/a", "--cap-add", "X", "prog"]).as_deref(),
+            Some("--cap-add")
+        );
+        assert_eq!(first(&[]), None);
+        // Places but no command: said as such, not as missing values.
+        let e = read_bwrap_args(&s(&["--ro-bind", "/a", "/a"])).unwrap_err();
+        assert_eq!(e, "no command to run in the room");
+        // A message one byte over the limit is refused for its size.
+        let big = vec![b' '; MAX_MESSAGE + 1];
+        assert_eq!(read_request(&big).unwrap_err(), "the request is too large");
+        let at_limit = vec![b' '; MAX_MESSAGE];
+        assert!(read_request(&at_limit).unwrap_err().contains("not valid"));
     }
 
     #[test]
