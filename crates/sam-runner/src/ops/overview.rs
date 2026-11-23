@@ -338,7 +338,7 @@ impl Sam {
     pub(super) fn hide_menu_entries(&self, entry: &mut AppEntry) {
         for f in self.menu_duplicates(entry) {
             match menu::hide(&f.file, &self.paths.applications_dir, &entry.id) {
-                Ok(h) => entry.hidden_entries.push(h),
+                Ok(h) => menu::merge_hidden(&mut entry.hidden_entries, h),
                 Err(e) => errln!(
                     "sam-jail: {}",
                     sam_core::i18n::trf(
