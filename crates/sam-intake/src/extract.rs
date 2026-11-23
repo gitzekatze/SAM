@@ -273,7 +273,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     let staging = unpack_box.join("out");
     let fresh_box = || -> Result<()> {
         if fs::symlink_metadata(&unpack_box).is_ok() {
-            fs::remove_dir_all(&unpack_box)?;
+            remove_box(&unpack_box)?;
         }
         fs::create_dir(&unpack_box)?;
         Ok(())
@@ -472,13 +472,13 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
             Err(e) => {
                 writeln!(log, "[extract] {name} failed: {e:#}")?;
                 if is_limit_error(&e) {
-                    let _ = fs::remove_dir_all(&unpack_box);
+                    let _ = remove_box(&unpack_box);
                     return Err(explain_limit(e));
                 }
                 // A full disk: remove what was unpacked so far and say so;
                 // the next method would fail the same way.
                 if is_disk_full(&e) {
-                    let _ = fs::remove_dir_all(&unpack_box);
+                    let _ = remove_box(&unpack_box);
                     return Err(disk_full(req.root));
                 }
                 attempts.push(format!("{name}: {e:#}"));
@@ -488,7 +488,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
 
     if method_used.is_none() {
         if !req.allow_fallback {
-            let _ = fs::remove_dir_all(&unpack_box);
+            let _ = remove_box(&unpack_box);
             return Err(anyhow!(NeedsFallbackConsent { attempts }));
         }
         writeln!(
@@ -506,7 +506,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
         ) {
             Ok(()) => method_used = Some("appimage-extract (sandboxed)".into()),
             Err(e) => {
-                let _ = fs::remove_dir_all(&unpack_box);
+                let _ = remove_box(&unpack_box);
                 if is_limit_error(&e) {
                     return Err(explain_limit(e));
                 }
@@ -527,7 +527,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
 
     // What the tool left must be a real folder, not a link to elsewhere.
     if !fs::symlink_metadata(&staging).is_ok_and(|m| m.is_dir()) {
-        let _ = fs::remove_dir_all(&unpack_box);
+        let _ = remove_box(&unpack_box);
         bail!(
             "{}",
             sam_core::i18n::tr("the unpacked app is not a plain folder; it was removed")
@@ -536,7 +536,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     let report = match normalize(&staging, &req.limits, started) {
         Ok(r) => r,
         Err(e) => {
-            let _ = fs::remove_dir_all(&unpack_box);
+            let _ = remove_box(&unpack_box);
             return Err(if is_limit_error(&e) {
                 explain_limit(e)
             } else {
@@ -557,7 +557,7 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
     let appdir = req.root.join("AppDir");
     let old = req.root.join(format!(".old-{}", std::process::id()));
     let swapped = swap_into_place(&staging, &appdir, &old, true);
-    let _ = fs::remove_dir_all(&unpack_box);
+    let _ = remove_box(&unpack_box);
     swapped?;
     if fs::symlink_metadata(&old).is_ok() {
         let _ = fs::remove_dir_all(&old);
@@ -843,12 +843,27 @@ fn over_limits(dir: &Path, limits: &Limits) -> Option<anyhow::Error> {
     let (mut entries, mut bytes) = (0u64, 0u64);
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
-        let Ok(rd) = fs::read_dir(&d) else { continue };
+        let rd = match fs::read_dir(&d) {
+            Ok(rd) => rd,
+            // Removed or replaced by the tool meanwhile.
+            Err(e) if matches!(e.raw_os_error(), Some(libc::ENOENT | libc::ENOTDIR)) => continue,
+            // A folder the tool made unreadable: `unsquashfs` gives each
+            // folder its mode from the image once its files are written, so
+            // passing over it let an image hide any amount there.
+            Err(_) => match read_dir_inside(dir, &d) {
+                Some(rd) => rd,
+                None => {
+                    return Some(limit_error(sam_core::i18n::tr(
+                        "unpacking limit exceeded: some unpacked files cannot be counted",
+                    )))
+                }
+            },
+        };
         for e in rd.flatten() {
             entries += 1;
             let Ok(m) = e.metadata() else { continue };
             if m.is_dir() {
-                stack.push(e.path());
+                stack.push(d.join(e.file_name()));
             } else if m.is_file() {
                 bytes = bytes.saturating_add(m.len());
             }
@@ -869,6 +884,50 @@ fn over_limits(dir: &Path, limits: &Limits) -> Option<anyhow::Error> {
         }
     }
     None
+}
+
+/// Reads the folder `d` of the unpack box `top` that SAM may not read,
+/// after making it readable for SAM (SAM's user owns everything in the
+/// box; `normalize` opens every folder afterwards anyway). The tool is
+/// still running, so the folder is opened without following a link and
+/// changed only when the opened folder really lies inside `top`: swapping
+/// a folder for a link cannot make SAM change anything outside the box.
+fn read_dir_inside(top: &Path, d: &Path) -> Option<fs::ReadDir> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+    let f = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW)
+        .open(d)
+        .ok()?;
+    let fd = Path::new("/proc/self/fd").join(f.as_raw_fd().to_string());
+    let top = fs::canonicalize(top).ok()?;
+    if !fs::read_link(&fd).ok()?.starts_with(&top) {
+        return None;
+    }
+    fs::set_permissions(&fd, fs::Permissions::from_mode(0o700)).ok()?;
+    fs::read_dir(&fd).ok()
+}
+
+/// Removes an unpack box, also where the tool left folders that nobody may
+/// enter (their modes come from the image), which `remove_dir_all` cannot
+/// empty: the partial output stayed on the disk. Only after the tool has
+/// ended, so nothing changes the folders meanwhile.
+fn remove_box(b: &Path) -> io::Result<()> {
+    if fs::remove_dir_all(b).is_ok() || fs::symlink_metadata(b).is_err() {
+        return Ok(());
+    }
+    let mut stack = vec![b.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        if !fs::symlink_metadata(&d).is_ok_and(|m| m.is_dir()) {
+            continue;
+        }
+        let _ = fs::set_permissions(&d, fs::Permissions::from_mode(0o700));
+        if let Ok(rd) = fs::read_dir(&d) {
+            stack.extend(rd.flatten().map(|e| e.path()));
+        }
+    }
+    fs::remove_dir_all(b)
 }
 
 /// Limits the kernel holds for an unpacking program and everything it
@@ -937,7 +996,10 @@ fn run_tool(
             .trim_start_matches("error: ");
         return Err(limit_error(why.to_string()));
     }
-    if died_of(&st, libc::SIGXFSZ) {
+    // A file reached the size limit: the kernel stopped the tool, or, where
+    // it ignores that signal, its write failed (EFBIG, in the C locale of
+    // the sandbox).
+    if died_of(&st, libc::SIGXFSZ) || (!st.success() && err.contains("File too large")) {
         return Err(limit_error(sam_core::i18n::trf(
             "unpacking limit exceeded: more than {size} unpacked",
             &[("size", &sam_core::util::human_size(limits.max_bytes))],
@@ -1211,6 +1273,38 @@ mod space_tests {
             assert_eq!(fs::read_to_string(old.join("AppRun")).unwrap(), "old");
             assert!(fs::symlink_metadata(&new).is_err());
         }
+    }
+
+    /// Regression (review 2026-11-23, F1): a stopped unpack left folders
+    /// that nobody may enter (modes from the image), which `remove_dir_all`
+    /// cannot empty, so the partial output stayed on the disk. The box goes
+    /// completely, and a link in it is removed, not followed.
+    #[test]
+    fn an_unpack_box_with_locked_folders_is_removed() {
+        let d = tempfile::tempdir().unwrap();
+        let outside = d.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("keep"), "x").unwrap();
+        let b = d.path().join(".unpack-1");
+        let locked = b.join("out/locked");
+        fs::create_dir_all(locked.join("deeper")).unwrap();
+        fs::write(locked.join("deeper/f"), vec![0u8; 4096]).unwrap();
+        symlink(&outside, b.join("out/link")).unwrap();
+        for p in [locked.join("deeper"), locked.clone()] {
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        fs::set_permissions(&outside, fs::Permissions::from_mode(0o750)).unwrap();
+        let removed = remove_box(&b);
+        let outside_mode = fs::metadata(&outside).unwrap().permissions().mode() & 0o777;
+        // The test's own folder can be removed whatever happened above.
+        let _ = Command::new("chmod")
+            .args(["-R", "u+rwx"])
+            .arg(d.path())
+            .status();
+        removed.unwrap();
+        assert!(fs::symlink_metadata(&b).is_err(), "the box is still there");
+        assert!(outside.join("keep").exists());
+        assert_eq!(outside_mode, 0o750, "the link's target was changed");
     }
 
     /// Only an exceeded limit counts as one: other errors are not explained

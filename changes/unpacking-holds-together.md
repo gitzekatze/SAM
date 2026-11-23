@@ -5,7 +5,9 @@
   `unsquashfs`, `bsdtar` or `dwarfsextract` took over and were checked only
   after they had finished, so a crafted AppImage could fill the disk first.
   Now SAM stops any unpacking program as soon as it passes a limit, and no
-  single file can grow past the size limit.
+  single file can grow past the size limit. Files in folders the image
+  makes unreadable are counted too, and what a stopped unpack left behind
+  is removed even from such folders.
 - Every unpacking program may now use at most 4 GiB of memory
   (`extraction.max_memory_mb`), so a crafted image cannot use up the
   memory and freeze the desktop while it unpacks.

@@ -177,4 +177,46 @@ fn every_unpacking_tool_meets_the_limits_while_it_runs() {
     let e = format!("{:#}", r.unwrap_err());
     assert!(e.contains("of memory"), "{e}\n{log}");
     assert!(!log.contains("trying unsquashfs"), "{log}");
+    script(&reader, "exit 1");
+
+    // 5. One file larger than the size limit: the kernel stops the tool
+    //    (SIGXFSZ), or, where the tool ignores that signal, its write fails
+    //    ("File too large"). Either is the size limit, not a failure that
+    //    leads on to letting the AppImage unpack itself.
+    for write in [
+        "exec head -c 9437184 /dev/zero > \"$dst/big\"",
+        "trap '' XFSZ\nhead -c 9437184 /dev/zero > \"$dst/big\"\nexit 1",
+    ] {
+        script(&tool, &format!("{DEST}\n{write}"));
+        let (r, log) = unpack(limits);
+        let e = format!("{:#}", r.unwrap_err());
+        assert!(
+            e.contains("more than 8.0 MiB unpacked"),
+            "{write:?}: {e}\n{log}"
+        );
+    }
+
+    // 6. Folders the tool makes unreadable once their files are written
+    //    (`unsquashfs` sets each folder's mode from the image then) still
+    //    count: 180 files in three such folders pass the file limit.
+    script(
+        &tool,
+        &format!(
+            "{DEST}\nfor f in a b c; do mkdir \"$dst/$f\"; i=0; while [ $i -lt 60 ]; do : > \"$dst/$f/f$i\"; i=$((i+1)); done; chmod 000 \"$dst/$f\"; done\nsleep 600"
+        ),
+    );
+    let (r, log) = unpack(limits);
+    let e = format!("{:#}", r.unwrap_err());
+    assert!(e.contains("more than 100 files"), "{e}\n{log}");
+    // The unpack box is gone, unreadable folders and all.
+    let left: Vec<_> = fs::read_dir(d.join("extracted"))
+        .unwrap()
+        .flatten()
+        .flat_map(|app| fs::read_dir(app.path()).into_iter().flatten().flatten())
+        .map(|e| e.path())
+        .filter(|p| p.to_string_lossy().contains(".unpack-"))
+        .collect();
+    // The test's own folder can be removed whatever happened above.
+    let _ = Command::new("chmod").args(["-R", "u+rwx"]).arg(d).status();
+    assert!(left.is_empty(), "left behind: {left:?}");
 }
