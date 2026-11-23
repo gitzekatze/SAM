@@ -1010,7 +1010,6 @@ dbus_system = "none"
         );
     }
 
-    /// A saved preset loads back unchanged, found by its name in any letter case.
     /// The risk word of a preset is worked out from its permissions, never
     /// taken from the file: a file placed in the presets folder that says
     /// "low" for full home and network is listed as Dangerous (review F6).
@@ -1083,6 +1082,7 @@ dbus_system = "none"
         assert_eq!(fresh.name, "Editor");
     }
 
+    /// A saved preset loads back unchanged, found by its name in any letter case.
     #[test]
     fn a_saved_preset_loads_back_unchanged() {
         let tmp = tempfile::tempdir().unwrap();
