@@ -55,7 +55,22 @@ proves it, is in [threat-model.md](threat-model.md).
   session, cut off from any terminal. An app started from a terminal gets a
   terminal of SAM's own instead (see [Terminal programs](#terminal-programs)).
   Either way it cannot type commands into your shell (`TIOCSTI`).
-- **Clean environment:** cleared, then only safe variables are set.
+- **Clean environment:** cleared, then only safe variables are set. The
+  app's own variables (its AppImage variables, those passed through and
+  those set in its settings) are set by SAM's helper for the app alone,
+  once Landlock and the syscall filter are in place: the helper's own start
+  never sees them, so a setting such as `LD_PRELOAD` or `LD_LIBRARY_PATH`
+  cannot run the app's code before those layers. `$OWD` names the folder
+  the app started from only when the app can see it; otherwise it is the
+  app's home, where the app starts.
+- **No inherited descriptors:** SAM's programs mark every open descriptor
+  they inherited (a terminal's or a launcher's) close-on-exec before they
+  start anything, so an app gets only its standard input, output and error
+  (Flatpak does the same).
+- **Private folders:** an app's private home, its own layer of a writable
+  app folder and what SAM moved aside are readable by your user only
+  (0700), launch logs by you only (0600), also when an older SAM made them
+  readable for everyone.
 - **Your ids:** the app runs with your user and group id, also with *Local
   network only*, where it would otherwise appear as root.
 
@@ -80,7 +95,9 @@ the sandbox, just before the app starts.
 - If Landlock (or the syscall filter) cannot be applied at a start, for
   example because SAM's helper `sam-jail-run` is missing, the app still
   starts in its Bubblewrap sandbox, but never silently: the command line
-  warns, the app's page says which layer was missing, and the overview marks
+  warns, a start from the menu shows a notification while the app runs
+  (with a button to the app's page), the app's page says which layer was
+  missing, and the overview marks
   the app *Protection missing* until a start has every layer again. The same
   holds for the Wayland security context: when the desktop offers it but
   making one fails, the app gets the normal Wayland socket, and the start is
@@ -724,8 +741,14 @@ An app controls what it prints, and an AppImage controls its own name and
 metadata. SAM treats both as untrusted.
 
 - **Sandbox errors** count only when Bubblewrap itself reports them (through
-  `--json-status-fd`), never because of text the app printed. SAM never falls
-  back to running an app without a sandbox.
+  `--json-status-fd`), never because of text the app printed. One exception:
+  when the program SAM started ends with code 126 or 127, the codes shells
+  and the system's loader use for "cannot be run" and "not found", SAM reads
+  the start as failed in the sandbox (a library or program the app needs is
+  missing there), marks the app as not working and suggests repair steps.
+  An app can use this only to make itself look broken: the message is SAM's
+  own, and every repair step asks first. SAM never falls back to running an
+  app without a sandbox.
 - **Repair suggestions** based on app output are marked as such and always
   ask first. They never offer services that can act outside the sandbox
   (systemd, Flatpak, KWin/Plasma scripting, dconf, …) or protected places

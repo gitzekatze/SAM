@@ -143,8 +143,11 @@ about = "Inside the sandbox an app sees only what you allowed: files, network, d
 id = 10
 area = "C"
 promise = "The app sees only a private home folder and the folders you grant."
-code = ["sam-sandbox/src/lib.rs"]
-tests = ["links_in_etc_never_bring_sockets_or_devices", "a_user_folder_that_shows_more_is_not_shown", "a_writable_folder_stays_writable_in_a_read_only_home", "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "only_proper_variable_names_are_set", "user_folders_come_from_user_dirs_dirs"]
+code = ["sam-sandbox/src/lib.rs", "sam-core/src/util.rs"]
+tests = ["links_in_etc_never_bring_sockets_or_devices", "a_user_folder_that_shows_more_is_not_shown", "a_writable_folder_stays_writable_in_a_read_only_home", "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only", "files_and_folders_named_on_the_command_line", "the_loaders_extra_library_folders_are_shown_read_only", "each_permission_adds_exactly_its_part_to_the_command", "a_real_sandbox_shows_exactly_what_each_profile_allows", "each_permission_grants_exactly_its_access_in_a_real_sandbox", "only_proper_variable_names_are_set", "user_folders_come_from_user_dirs_dirs",
+  "an_app_is_never_told_a_folder_it_cannot_see",
+  "private_folders_and_logs_are_for_the_user_only",
+]
 
 [[function]]
 id = 11
@@ -213,6 +216,7 @@ tests = [
   "an_extra_socket_that_leads_to_a_dangerous_one_is_not_passed_in",
   "an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one",
   "a_wildcard_over_the_portal_is_dangerous",
+  "added_instance_names_and_tray_look_alikes_are_checked",
 ]
 
 [[function]]
@@ -220,7 +224,9 @@ id = 14
 area = "C"
 promise = "Display: Wayland with a security context; X11 only when allowed, with its cost explained."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/wayland_ctx.rs", "sam-core/src/host.rs"]
-tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox_display_number", "the_x11_display_number_is_read_from_every_display_form", "the_x11_key_copy_is_private_and_follows_no_link"]
+tests = ["wayland_security_context_socket_is_used", "xauthority_gets_the_sandbox_display_number", "the_x11_display_number_is_read_from_every_display_form", "the_x11_key_copy_is_private_and_follows_no_link",
+  "a_compositor_that_never_answers_does_not_hold_up_the_start",
+]
 
 [[function]]
 id = 15
@@ -240,7 +246,7 @@ tests = ["a_second_launch_never_takes_a_link_planted_meanwhile_for_the_users_own
 id = 17
 area = "C"
 promise = "The app can't type into your terminal."
-code = ["sam-runner/src/pty.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs"]
+code = ["sam-runner/src/pty.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs", "sam-core/src/util.rs"]
 tests = ["output_shown_in_a_terminal_is_filtered_without_the_relay", "a_pipe_into_a_terminal_program_passes_through_unchanged", "plain_text_survives_unfinished_and_odd_codes", "the_terminal_connection_passes_typing_and_filtered_output", "ctrl_c_reaches_the_app", "closing_the_users_terminal_hangs_up_the_app", "the_log_stays_within_its_limit", "something_left_on_the_apps_terminal_does_not_keep_sam_waiting", "the_output_is_still_logged_when_the_terminal_cannot_show_it", "leading_zeros_do_not_smuggle_a_code", "a_new_session_unless_the_app_is_on_sams_own_terminal", "ordinary_output_passes_unchanged", "clipboard_codes_are_removed", "title_reports_and_tmux_passthrough_are_removed", "an_escape_inside_a_removed_code_starts_a_new_sequence", "plain_text_for_the_log", "terminal_apps_get_sams_terminal_relay", "typing_and_output_pass_and_leftover_replies_are_discarded", "the_app_cannot_reach_the_outer_terminal", "every_hostile_appimage_fails_to_escape", "a_doubled_escape_does_not_smuggle_a_clipboard_code",
   "only_tmux_itself_counts_as_tmux_passthrough",
   "a_slow_terminals_late_replies_do_not_reach_the_shell",
@@ -265,6 +271,7 @@ tests = ["output_shown_in_a_terminal_is_filtered_without_the_relay", "a_pipe_int
   "what_sam_prints_about_an_app_cannot_reach_past_the_terminal",
   "every_printed_line_goes_through_the_screen_filter",
   "an_old_log_shows_only_its_text",
+  "a_descriptor_sam_inherited_never_reaches_the_app",
 ]
 
 [[function]]
@@ -410,14 +417,17 @@ id = 19
 area = "D"
 promise = "Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox."
 code = ["sam-intake/src/desktop.rs", "sam-intake/src/menu.rs", "sam-runner/src/launch.rs", "sam-core/src/paths.rs"]
-tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "a_hostile_name_adds_no_line_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign", "blocked_file_types_hold_in_any_case_and_old_names", "an_app_can_never_replace_the_programs_that_menu_entries_run"]
+tests = ["sams_menu_entry_starts_the_app_only_through_sam", "app_metadata_cannot_add_lines_to_sams_menu_entry", "a_hostile_name_adds_no_line_to_sams_menu_entry", "menu_entry_paths_are_quoted_against_spaces_and_dollar_signs", "launcher_mime_types_drop_hijack_targets", "launcher_drops_hijack_mime_types", "hide_and_restore_user_entry", "system_entry_gets_override", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "shell_quoting_keeps_spaces_and_quotes_intact", "the_window_id_matches_the_name_of_sams_menu_entry", "sam_never_runs_a_helper_the_user_can_change", "only_programs_the_user_cannot_change_may_run", "as_root_only_what_no_one_else_can_change_may_run", "menu_entries_name_sams_launcher_by_its_whole_path", "an_installed_window_runs_only_the_tool_next_to_it", "a_file_name_that_is_not_text_is_refused_by_name", "a_folder_name_that_is_not_text_stops_the_start", "an_appimage_never_covers_sams_own_files", "an_appimage_called_bin_starts_and_finds_itself", "a_percent_sign_in_sams_path_stays_a_percent_sign", "blocked_file_types_hold_in_any_case_and_old_names", "an_app_can_never_replace_the_programs_that_menu_entries_run",
+  "values_that_read_like_the_separator_break_no_start",
+  "the_status_channel_goes_before_bubblewraps_own_separator",
+]
 checks = ["tests/gui/flow-atspi.sh", "tests/gui/taskbar-kwin.sh"]
 
 [[function]]
 id = 20
 area = "D"
 promise = "SAM checks from inside the sandbox that every setting applies (the sandbox check)."
-code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs"]
+code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs", "sam-jail-cli/src/bin/sam-jail-run.rs"]
 tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_each_desktop_service_as_the_filter_shows_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked", "a_syscall_filter_that_fails_to_load_stops_the_start",
   "sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply",
   "the_wanted_layers_follow_the_apps_switches",
@@ -426,6 +436,11 @@ tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_
   "an_abstract_socket_that_answers_is_found_reachable",
   "the_check_tries_the_hosts_abstract_sockets_the_app_must_not_reach",
   "checks_that_do_not_pass_end_with_not_passed",
+  "the_apps_variables_reach_it_only_after_the_helpers_layers",
+  "the_apps_variables_go_to_the_helper_never_to_its_start",
+  "a_missing_layer_is_told_while_the_app_runs",
+  "a_menu_start_is_told_when_a_protection_layer_is_missing",
+  "the_check_is_repeated_after_the_kernel_or_a_sandbox_program_changed",
 ]
 checks = ["tests/real-apps/run.sh"]
 
@@ -444,6 +459,8 @@ promise = "Logs of every start are kept, with old ones removed automatically."
 code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs"]
 tests = ["the_newest_log_survives_pruning_within_one_second", "the_newest_log_is_found_even_within_one_second",
   "a_launch_log_stops_growing_at_its_limit",
+  "private_folders_and_logs_are_for_the_user_only",
+  "a_full_log_never_loses_the_starts_record",
 ]
 
 [[area]]
@@ -650,4 +667,5 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
   "an_error_names_its_sam_function_and_keeps_its_message",
   "json_run_keeps_its_reply_alone_on_standard_output",
   "preset_names_are_never_read_as_options",
+  "private_services_end_with_the_test_process_that_started_them",
 ]
