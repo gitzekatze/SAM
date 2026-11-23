@@ -282,6 +282,12 @@ tests = [
   "permissions_only_on_the_rooms_own_new_places",
   "the_rooms_folder_is_asked_or_safe",
   "a_floor_plan_with_an_unknown_option_gives_no_rooms",
+  "a_request_is_read_up_to_each_limit_and_refused_one_beyond_it",
+  "modes_sizes_and_host_names_of_the_rooms_own_places_are_checked_each_in_its_form",
+  "sams_own_arguments_are_read_into_the_floor_plan_as_bubblewrap_reads_them",
+  "sams_own_place_is_out_of_reach_through_the_apps_places_too",
+  "a_mode_change_named_first_never_lies_inside_a_place_the_app_can_write",
+  "only_places_given_with_fewer_rights_than_asked_are_recorded",
 ]
 
 [[area]]

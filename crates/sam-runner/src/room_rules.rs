@@ -2320,4 +2320,269 @@ mod tests {
         assert!(FloorPlan::from_bwrap_args(&s(&["--made-up", "/x"])).is_err());
         assert!(FloorPlan::from_bwrap_args(&s(&["--cap-add", "ALL"])).is_err());
     }
+
+    /// Why the default floor plan gets no room for these options.
+    fn why(ops: &[&[&str]]) -> String {
+        plan_room(&plan(), &req(ops, &["x"]), AppFacts::default()).unwrap_err()
+    }
+
+    /// Every limit of a request holds at exactly its size: a request right
+    /// at a limit is read, one a step over it is refused for that reason.
+    /// Options of the older form count together with the others; a text
+    /// with a zero byte in it is refused however short it is.
+    #[test]
+    fn a_request_is_read_up_to_each_limit_and_refused_one_beyond_it() {
+        let read = |r: Request| read_request(&serde_json::to_vec(&r).unwrap());
+        let base = || req(&[], &["x"]);
+        // Options: both forms together.
+        let options = |ops: usize, flags: usize| Request {
+            ops: (0..ops).map(|i| s(&["--dir", &format!("/d{i}")])).collect(),
+            flags: vec!["--die-with-parent".into(); flags],
+            ..base()
+        };
+        assert!(read(options(200, MAX_OPS - 200)).is_ok());
+        assert_eq!(
+            read(options(200, MAX_OPS - 200 + 1)).unwrap_err(),
+            "the request has too many options"
+        );
+        // The command's words.
+        let command = |n: usize| Request {
+            command: vec!["x".into(); n],
+            ..base()
+        };
+        assert!(read(command(MAX_ARGS)).is_ok());
+        assert_eq!(
+            read(command(MAX_ARGS + 1)).unwrap_err(),
+            "the request has no command, or too long a one"
+        );
+        // One text (here a variable's value).
+        let text = |t: String| Request {
+            env: BTreeMap::from([("A".to_string(), t)]),
+            ..base()
+        };
+        assert!(read(text("a".repeat(MAX_TEXT))).is_ok());
+        for long_or_cut in ["a".repeat(MAX_TEXT + 1), "a\0b".to_string()] {
+            assert_eq!(
+                read(text(long_or_cut)).unwrap_err(),
+                "the request holds too long a text"
+            );
+        }
+        // The environment's size.
+        let env = |n: usize| Request {
+            env: (0..n).map(|i| (format!("V{i}"), "1".to_string())).collect(),
+            ..base()
+        };
+        assert!(read(env(MAX_ARGS)).is_ok());
+        assert_eq!(
+            read(env(MAX_ARGS + 1)).unwrap_err(),
+            "the request's environment is too large"
+        );
+        // Resource limits: at most 64, each naming a resource below 64.
+        let limits = |l: Vec<[u64; 3]>| Request {
+            limits: l,
+            ..base()
+        };
+        assert!(read(limits(vec![[0, 1, 1]; 64])).is_ok());
+        assert!(read(limits(vec![[63, 1, 1]])).is_ok());
+        for bad in [vec![[0, 1, 1]; 65], vec![[64, 1, 1]]] {
+            assert_eq!(
+                read(limits(bad)).unwrap_err(),
+                "the request's resource limits are not valid"
+            );
+        }
+        // The umask: permission bits only.
+        let umask = |m: u32| Request {
+            umask: Some(m),
+            ..base()
+        };
+        assert!(read(umask(0o777)).is_ok());
+        assert_eq!(
+            read(umask(0o1000)).unwrap_err(),
+            "the request's umask is not valid"
+        );
+    }
+
+    /// The room's own new places take a mode (--perms, for the next --tmpfs
+    /// or --dir) and a size (--size, for the next --tmpfs only) as
+    /// Bubblewrap does, each checked in its own form; --chmod takes a mode
+    /// up to 7777; a host name is passed on as asked.
+    #[test]
+    fn modes_sizes_and_host_names_of_the_rooms_own_places_are_checked_each_in_its_form() {
+        let room = ok(&[&["--hostname", "box"]]);
+        assert!(
+            room.steps.contains(&Step::Args(s(&["--hostname", "box"]))),
+            "{:?}",
+            room.steps
+        );
+        for good in [
+            &[&["--perms", "0700"][..], &["--dir", "/work"]][..],
+            &[&["--perms", "7777"], &["--tmpfs", "/scratch"]],
+            &[&["--size", "1048576"], &["--tmpfs", "/scratch"]],
+            &[&["--tmpfs", "/scratch"], &["--chmod", "7777", "/scratch"]],
+        ] {
+            let room = plan_room(&plan(), &req(good, &["x"]), AppFacts::default());
+            assert!(room.is_ok(), "{good:?}: {room:?}");
+        }
+        for (bad, e) in [
+            (
+                &[&["--size", "1048576"][..], &["--dir", "/work"]][..],
+                "--size only for the room's own new places",
+            ),
+            (
+                &[&["--size", "lots"], &["--tmpfs", "/scratch"]],
+                "--size needs a number",
+            ),
+            (
+                &[&["--perms", "9"], &["--tmpfs", "/scratch"]],
+                "--perms needs an octal mode",
+            ),
+            (
+                &[&["--perms", "10000"], &["--tmpfs", "/scratch"]],
+                "--perms needs an octal mode",
+            ),
+            (
+                &[&["--tmpfs", "/scratch"], &["--chmod", "10000", "/scratch"]],
+                "--chmod needs an octal mode",
+            ),
+        ] {
+            assert_eq!(why(bad), e, "{bad:?}");
+        }
+    }
+
+    /// SAM's own arguments are read as Bubblewrap reads them: the app
+    /// folder laid as an overlay is shown to rooms from its unchanged
+    /// source, read-only; the last of the network options counts; an
+    /// option a room never gets leaves the app without rooms.
+    #[test]
+    fn sams_own_arguments_are_read_into_the_floor_plan_as_bubblewrap_reads_them() {
+        let fp = |a: &[&str]| FloorPlan::from_bwrap_args(&s(a));
+        let p = fp(&[
+            "--overlay-src",
+            "/apps/x",
+            "--overlay",
+            "/layers/x/upper",
+            "/layers/x/work",
+            "/app",
+            "--",
+            "x",
+        ])
+        .unwrap();
+        assert_eq!(
+            p.entries,
+            vec![Entry::Ro {
+                src: "/apps/x".into(),
+                dst: "/app".into()
+            }]
+        );
+        let e = fp(&["--overlay", "/u", "/w", "/app", "--", "x"]).unwrap_err();
+        assert_eq!(e, "an overlay without its source");
+        assert!(
+            !fp(&["--unshare-net", "--share-net", "--", "x"])
+                .unwrap()
+                .no_network
+        );
+        assert!(
+            fp(&["--share-net", "--unshare-net", "--", "x"])
+                .unwrap()
+                .no_network
+        );
+        for never in ["--not-a-security-boundary", "--help"] {
+            assert!(fp(&[never, "--", "x"]).is_err(), "{never}");
+        }
+    }
+
+    /// SAM's own place stays out of reach also where a request reaches it
+    /// only through the app's places (an app place over the root, or one
+    /// inside SAM's place), and a refusal for it names it before anything
+    /// else wrong in the request.
+    #[test]
+    fn sams_own_place_is_out_of_reach_through_the_apps_places_too() {
+        let room_of = |args: &[&str]| {
+            let p = FloorPlan::from_bwrap_args(&s(args)).unwrap();
+            plan_room(
+                &p,
+                &req(&[&["--ro-bind", "/", "/"]], &["x"]),
+                AppFacts::default(),
+            )
+        };
+        assert_eq!(
+            room_of(&["--ro-bind", "/", "/", "--", "x"]).unwrap_err(),
+            "/ is SAM's own place in a room"
+        );
+        assert_eq!(
+            room_of(&[
+                "--ro-bind",
+                "/usr",
+                "/usr",
+                "--ro-bind",
+                "/srv/x",
+                "/.sam-room/x",
+                "--",
+                "x"
+            ])
+            .unwrap_err(),
+            "/.sam-room/x is SAM's own place in a room"
+        );
+        assert!(room_of(&["--ro-bind", "/usr", "/usr", "--", "x"]).is_ok());
+        // Named first, before what else is wrong.
+        assert_eq!(
+            why(&[&["--chmod", "0755", "/.sam-room/x"]]),
+            "/.sam-room/x is SAM's own place in a room"
+        );
+        for first in [&["--dir", "/.sam-room/x"][..], &["--tmpfs", "/"]] {
+            assert_eq!(
+                why(&[first, &["--ro-bind", "/secret", "/secret"]]),
+                format!("{} is SAM's own place in a room", first[1]),
+                "{first:?}"
+            );
+        }
+    }
+
+    /// A mode change the room asks for never lies inside a place the app
+    /// can write, also when it was named before that place.
+    #[test]
+    fn a_mode_change_named_first_never_lies_inside_a_place_the_app_can_write() {
+        let p = FloorPlan::from_bwrap_args(&s(&["--bind", "/data/w", "/w", "--", "x"])).unwrap();
+        let ask = |ops: &[&[&str]]| plan_room(&p, &req(ops, &["x"]), AppFacts::default());
+        assert!(ask(&[&["--tmpfs", "/w"], &["--bind", "/w", "/w"]]).is_ok());
+        let e = ask(&[
+            &["--tmpfs", "/w"],
+            &["--chmod", "0755", "/w/c"],
+            &["--bind", "/w", "/w"],
+        ])
+        .unwrap_err();
+        assert!(e.contains("a place the app can write"), "{e}");
+    }
+
+    /// Only a place asked for writable and given read-only is recorded as
+    /// given with fewer rights: one asked for read-only, or given writable
+    /// as asked, is not.
+    #[test]
+    fn only_places_given_with_fewer_rights_than_asked_are_recorded() {
+        let fewer = |ops: &[&[&str]]| -> Vec<String> {
+            ok(ops)
+                .capped
+                .into_iter()
+                .filter(|c| c.contains("read-only for the app"))
+                .collect()
+        };
+        assert_eq!(
+            fewer(&[&["--bind", "/usr/lib", "/usr/lib"]]),
+            ["/usr/lib: read-only for the app, so read-only here"]
+        );
+        assert_eq!(
+            fewer(&[&["--bind", "/usr", "/usr"]]),
+            [
+                "/usr/lib: read-only for the app, so read-only here",
+                "/usr/bin: read-only for the app, so read-only here"
+            ]
+        );
+        for as_asked in [
+            &["--ro-bind", "/usr/lib", "/usr/lib"][..],
+            &["--ro-bind", "/usr", "/usr"],
+            &["--bind", "/home/me/.cache", "/home/me/.cache"],
+        ] {
+            assert_eq!(fewer(&[as_asked]), Vec::<String>::new(), "{as_asked:?}");
+        }
+    }
 }
