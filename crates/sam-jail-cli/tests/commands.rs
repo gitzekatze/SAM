@@ -291,7 +291,11 @@ fn list_filters_and_sorts_the_apps() {
     assert!(tool.contains("my-tool"), "{tool}");
 
     assert_eq!(e.list(&["--search", "my t"]), vec![tool.clone()], "by name");
-    assert_eq!(e.list(&["--search", "my-tool"]), vec![tool.clone()], "by id");
+    assert_eq!(
+        e.list(&["--search", "my-tool"]),
+        vec![tool.clone()],
+        "by id"
+    );
     assert_eq!(e.list(&["--search", "pictures"]), vec![tool.clone()]);
 
     let all = e.json(&["list"], None);
