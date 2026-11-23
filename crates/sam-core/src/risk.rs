@@ -403,15 +403,23 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             RiskLevel::Dangerous,
         ),
     }
+    // A service that hands out stored passwords counts as the keyring
+    // switch does, whichever way it is reached (review F2: in the list of
+    // allowed names it counted for nothing, so nothing asked first).
     for name in &p.dbus.session.allow {
-        if crate::permissions::dangerous_bus_name(name).is_some() {
-            item(
-                &mut items,
-                "dbus.session.allow",
-                &format!("Session service {name}"),
-                RiskLevel::Dangerous,
-            );
-        }
+        let level = if crate::permissions::dangerous_bus_name(name).is_some() {
+            RiskLevel::Dangerous
+        } else if crate::permissions::secret_bus_name(name) {
+            RiskLevel::High
+        } else {
+            continue;
+        };
+        item(
+            &mut items,
+            "dbus.session.allow",
+            &format!("Session service {name}"),
+            level,
+        );
     }
     if p.dbus.session.mode == DbusMode::Filtered {
         // Method and signal rules (`NAME=[METHOD][@PATH]`) reach a service
@@ -563,8 +571,16 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
     // Together worse than apart: what the app can read, it can send with
     // the network (audit U-M10: full home and full network read the same as
     // the network alone).
-    let reads_secrets =
-        fs.home || fs.ssh || fs.gnupg || p.sockets.ssh_agent || p.integrations.keyring;
+    let reads_secrets = fs.home
+        || fs.ssh
+        || fs.gnupg
+        || p.sockets.ssh_agent
+        || p.integrations.keyring
+        || p.dbus
+            .session
+            .allow
+            .iter()
+            .any(|n| crate::permissions::secret_bus_name(n));
     if p.network.mode == NetworkMode::Full && reads_secrets {
         item(
             &mut items,
@@ -637,12 +653,24 @@ pub fn is_sensitive_path(path: &str) -> bool {
 }
 
 /// [`is_sensitive_path`] for the home folder `home`: the system folders,
-/// the home itself, its key folders and credential stores, and the places
-/// that make the computer run something (start files, menu entries, SAM's
-/// own settings; the same lists the sandbox locks, so a grant of
-/// `~/.bash_profile` is as dangerous as one of `~/.bashrc`; audit D-M3).
-/// Drives under `/run/media` are user files, not system ones.
+/// the home itself and every folder that holds it, its key folders and
+/// credential stores, and the places that make the computer run something
+/// (start files, menu entries, SAM's own settings; the same lists the
+/// sandbox locks, so a grant of `~/.bash_profile` is as dangerous as one of
+/// `~/.bashrc`; audit D-M3). Compared as the path is reached: `.`, `..` and
+/// repeated `/` count for nothing, so `/.` is `/` and `~/..` the folder
+/// above the home (review F1: they were rated as harmless text). A
+/// relative path is sensitive: what it names depends on where SAM was
+/// started. Drives under `/run/media` are user files, not system ones.
 pub fn is_sensitive_path_in(path: &str, home: &std::path::Path) -> bool {
+    let home_abs = lexical_path(&home.to_string_lossy());
+    let abs = lexical_path(&expand_home_text(path, &home_abs));
+    if !abs.starts_with('/') {
+        return true;
+    }
+    if home_abs == abs || home_abs.starts_with(&format!("{}/", abs.trim_end_matches('/'))) {
+        return true;
+    }
     let norm = normalize_display_path(path, home);
     if norm == "/run/media" || norm.starts_with("/run/media/") {
         return false;
@@ -661,11 +689,91 @@ pub fn is_sensitive_path_in(path: &str, home: &std::path::Path) -> bool {
         })
 }
 
+/// Folders in `/tmp` where programs outside the sandbox listen: terminal
+/// multiplexers, SSH connections and agents, the X server, editors.
+const SOCKET_FOLDERS_IN_TMP: &[&str] = &[
+    "tmux-",
+    "ssh-",
+    ".X11-unix",
+    ".ICE-unix",
+    ".XIM-unix",
+    "emacs",
+];
+
+/// Whether a folder grant of `path` shows the places in `/tmp` where
+/// programs outside the sandbox listen. Connecting to them needs no write
+/// access, so even a read-only grant hands them over: `tmux -S
+/// /tmp/tmux-1000/default new-window …` runs a command outside the
+/// sandbox (review SB-3). Only folder grants count: a file in `/tmp`
+/// opened with the app shows no socket.
+pub fn shows_host_sockets(path: &str) -> bool {
+    let home = crate::util::home_dir();
+    let abs = lexical_path(&expand_home_text(
+        path,
+        &lexical_path(&home.to_string_lossy()),
+    ));
+    match abs.strip_prefix("/tmp") {
+        Some("") => true,
+        Some(rest) => rest.strip_prefix('/').is_some_and(|first| {
+            let first = first.split('/').next().unwrap_or("");
+            SOCKET_FOLDERS_IN_TMP.iter().any(|s| first.starts_with(s))
+        }),
+        None => false,
+    }
+}
+
+/// Whether a folder grant of `path` is dangerous by its name: a sensitive
+/// path, a folder where outside programs listen, or a path with `..`. The
+/// sandbox mounts a grant where its links lead, and `..` after a link goes
+/// back from where the link leads, not from where it is written, so the
+/// text alone cannot tell where such a grant ends up (review F1).
+pub fn is_dangerous_grant(path: &str) -> bool {
+    is_sensitive_path(path) || shows_host_sockets(path) || path.trim().split('/').any(|c| c == "..")
+}
+
+/// `p` with a leading `~` or `$HOME` written out as `home`.
+fn expand_home_text(p: &str, home: &str) -> String {
+    let t = p.trim();
+    if t == "~" || t == "$HOME" {
+        return home.to_string();
+    }
+    match t.strip_prefix("~/").or_else(|| t.strip_prefix("$HOME/")) {
+        Some(rest) => format!("{}/{rest}", home.trim_end_matches('/')),
+        None => t.to_string(),
+    }
+}
+
+/// An absolute path as the kernel reaches it when no link is on the way:
+/// without `.`, repeated `/` and trailing `/`, with `..` taking back the
+/// folder before it (never above `/`). A relative path comes back
+/// unchanged, without a trailing `/`.
+fn lexical_path(p: &str) -> String {
+    let p = p.trim();
+    if !p.starts_with('/') {
+        return p.trim_end_matches('/').to_string();
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    for c in p.split('/') {
+        match c {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            c => parts.push(c),
+        }
+    }
+    format!("/{}", parts.join("/"))
+}
+
 fn normalize_display_path(p: &str, home: &std::path::Path) -> String {
-    let home_s = home.to_string_lossy();
-    let mut p = p.trim().trim_end_matches('/').to_string();
-    if p.is_empty() {
-        p = "/".into();
+    let home_s = lexical_path(&home.to_string_lossy());
+    let t = p.trim();
+    if t.is_empty() {
+        return "/".into();
+    }
+    let p = lexical_path(&expand_home_text(t, &home_s));
+    if home_s == "/" {
+        return p;
     }
     if p == home_s {
         return "~".into();
@@ -673,14 +781,11 @@ fn normalize_display_path(p: &str, home: &std::path::Path) -> String {
     if let Some(rest) = p.strip_prefix(&format!("{home_s}/")) {
         return format!("~/{rest}");
     }
-    if let Some(rest) = p.strip_prefix("$HOME") {
-        return format!("~{rest}");
-    }
     p
 }
 
 fn path_risk(path: &str, write: bool) -> RiskLevel {
-    if is_sensitive_path(path) {
+    if is_dangerous_grant(path) {
         RiskLevel::Dangerous
     } else if write {
         RiskLevel::High
@@ -710,7 +815,14 @@ mod tests {
                 .filter(|x| x.key == i.key)
                 .map(|x| x.title.clone())
                 .collect();
-            if p.set_key(i.key, "true").is_err() {
+            // A folder list gets a folder: "true" would be a relative
+            // path, which is rated Dangerous (where it leads depends on
+            // where SAM was started).
+            let value = match i.key {
+                "filesystem.custom_read" | "filesystem.custom_write" => "/srv/data",
+                _ => "true",
+            };
+            if p.set_key(i.key, value).is_err() {
                 continue;
             }
             let got = assess(&p)
@@ -979,5 +1091,180 @@ mod tests {
         for p in ["/run/media/ann/stick/a.txt", "/mnt/disk/home/ann/Documents"] {
             assert!(!s(p), "{p}");
         }
+    }
+
+    /// A path is rated where it leads, not as it is written: `.`, `..`
+    /// and repeated `/` count for nothing, so `/.` is the whole computer
+    /// and `~/..` the folder above the home, and a folder that holds the
+    /// home counts as the home. A relative path is sensitive (what it
+    /// names depends on where SAM was started); `..` inside the home that
+    /// stays inside it is not (review F1).
+    #[test]
+    fn a_path_with_dots_or_double_slashes_is_rated_where_it_leads() {
+        let home = std::path::Path::new("/home/ann");
+        let s = |p: &str| is_sensitive_path_in(p, home);
+        for p in [
+            "/.",
+            "/tmp/..",
+            "//run",
+            "/run/./user",
+            "~/..",
+            "~/.",
+            "~/./.ssh",
+            "/home/ann/Music/../../..",
+            "/home",
+            "$HOME/../ann",
+            ".",
+            "Documents",
+        ] {
+            assert!(s(p), "{p}");
+        }
+        for p in [
+            "~/Projects/./notes",
+            "/home/ann/Projects/../Music",
+            "/mnt//data/",
+            "/run/media/ann/../ann/stick",
+        ] {
+            assert!(!s(p), "{p}");
+        }
+    }
+
+    /// An extra folder written so that it mounts the whole computer, the
+    /// whole home or a place found through `..` is Dangerous, warned about
+    /// and asks first (review F1: `/.` read Harmless and a preset applied
+    /// it without a question).
+    #[test]
+    fn an_extra_folder_that_leads_to_the_whole_computer_asks_first() {
+        let before = PermissionSet::strict_gui();
+        for (read, write) in [
+            (vec!["/."], vec![]),
+            (vec!["//run"], vec![]),
+            (vec!["/tmp/.."], vec![]),
+            (vec![], vec!["~/."]),
+            (vec!["/mnt/data/link/.."], vec![]),
+        ] {
+            let mut after = before.clone();
+            after.filesystem.custom_read = read.iter().map(|s| s.to_string()).collect();
+            after.filesystem.custom_write = write.iter().map(|s| s.to_string()).collect();
+            assert_eq!(
+                assess(&after).level,
+                RiskLevel::Dangerous,
+                "{read:?} {write:?}"
+            );
+            assert!(!new_risks(&before, &after).is_empty(), "{read:?} {write:?}");
+            let w = crate::warnings::evaluate(&after, &crate::warnings::WarningContext::default());
+            assert!(
+                w.iter().any(|w| w.code == "sensitive-path"),
+                "{read:?} {write:?}: {w:?}"
+            );
+        }
+    }
+
+    /// A folder grant of /tmp, or of a place in it where outside programs
+    /// listen, is Dangerous and warned about even read-only: connecting to
+    /// a terminal session or an SSH connection there needs no write access
+    /// (review SB-3). An ordinary folder in /tmp is not.
+    #[test]
+    fn a_grant_of_tmp_or_its_listening_places_is_dangerous_even_read_only() {
+        let before = PermissionSet::strict_gui();
+        for path in [
+            "/tmp",
+            "/tmp/",
+            "/tmp/tmux-1000",
+            "/tmp/ssh-XXXXabcd",
+            "/tmp/.X11-unix",
+        ] {
+            let mut after = before.clone();
+            after.filesystem.custom_read = vec![path.to_string()];
+            assert_eq!(assess(&after).level, RiskLevel::Dangerous, "{path}");
+            assert!(!new_risks(&before, &after).is_empty(), "{path}");
+            let w = crate::warnings::evaluate(&after, &crate::warnings::WarningContext::default());
+            assert!(w.iter().any(|w| w.code == "socket-folder"), "{path}: {w:?}");
+        }
+        let mut after = before.clone();
+        after.filesystem.custom_read = vec!["/tmp/exchange".into()];
+        assert!(!shows_host_sockets("/tmp/exchange"));
+        assert_eq!(
+            assess(&after)
+                .items
+                .iter()
+                .find(|i| i.key == "filesystem.custom_read")
+                .map(|i| i.level),
+            Some(RiskLevel::Medium)
+        );
+    }
+
+    /// A password service allowed by name counts as the keyring switch:
+    /// Think twice, asks first, and with full network the app "can send
+    /// what it reads". The default allowed names add nothing (review F2).
+    #[test]
+    fn a_password_service_allowed_by_name_counts_as_the_keyring_switch() {
+        let mut before = PermissionSet::strict_gui();
+        before.dbus.session.mode = DbusMode::Filtered;
+        assert!(!assess(&before)
+            .items
+            .iter()
+            .any(|i| i.key == "dbus.session.allow"));
+        let (keyring, _) = IntegrationPerms {
+            keyring: true,
+            media_controls: false,
+            file_manager: false,
+            screen_sharing: false,
+            input_method: false,
+        }
+        .bus_names();
+        assert!(!keyring.is_empty());
+        for name in keyring
+            .into_iter()
+            .chain(["org.freedesktop.secret*", "org.gnome.OnlineAccounts"])
+        {
+            let mut after = before.clone();
+            after.dbus.session.allow.push(name.to_string());
+            let added = new_risks(&before, &after);
+            assert!(
+                added
+                    .iter()
+                    .any(|i| i.key == "dbus.session.allow" && i.level == RiskLevel::High),
+                "{name}: {added:?}"
+            );
+            after.network.mode = NetworkMode::Full;
+            assert!(
+                assess(&after)
+                    .items
+                    .iter()
+                    .any(|i| i.key == "combination.read_and_send"),
+                "{name}"
+            );
+        }
+    }
+
+    /// A wildcard that covers the portal's own name lets every portal call
+    /// through, past SAM's choice of interfaces: Dangerous. The portal's
+    /// plain name stays allowed by default (review F2).
+    #[test]
+    fn a_wildcard_over_the_portal_is_dangerous() {
+        for w in [
+            "org.freedesktop.portal.Desktop.*",
+            "org.freedesktop.portal.Desktop*",
+            "org.freedesktop.portal.De*",
+        ] {
+            assert!(dangerous_bus_name(w).is_some(), "{w}");
+            let mut p = PermissionSet::strict_gui();
+            p.dbus.session.allow.push(w.into());
+            assert_eq!(assess(&p).level, RiskLevel::Dangerous, "{w}");
+        }
+        assert!(dangerous_bus_name(PORTAL_NAME).is_none());
+    }
+
+    /// The sound server's own socket listed as an extra socket is as
+    /// dangerous as "Sound without SAM's relay" (review SB-4); PipeWire's
+    /// stays at the level of "Direct PipeWire access".
+    #[test]
+    fn the_sound_servers_own_socket_is_dangerous_as_an_extra_socket() {
+        let mut p = PermissionSet::strict_gui();
+        p.sockets.custom = vec!["/run/user/1000/pulse/native".into()];
+        assert_eq!(assess(&p).level, RiskLevel::Dangerous);
+        p.sockets.custom = vec!["/run/user/1000/pipewire-0".into()];
+        assert_eq!(assess(&p).level, RiskLevel::High);
     }
 }

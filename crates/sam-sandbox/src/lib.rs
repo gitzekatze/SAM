@@ -1828,17 +1828,41 @@ impl Section<'_> {
             a.ro("/run/cups/cups.sock");
         }
         // Extra sockets: only real socket files, so this setting can never
-        // grant access to a folder or an ordinary file.
+        // grant access to a folder or an ordinary file. Bound from where
+        // their links lead, checked there (review SB-4: an app that could
+        // write the socket's folder replaced the socket with a link to the
+        // real session bus, and the bind followed it).
+        let views = &self.views;
+        let app_can_change = |d: &Path| views.writable(d) || inside_sam(ctx, d);
         for s in &p.sockets.custom {
             let sp = expand_home(s);
-            if is_socket(&sp) {
-                a.op2("--bind-try", &sp, &sp);
-            } else {
+            if link_the_app_can_change(&sp, &app_can_change) {
+                notes.push(sam_core::i18n::trf(
+                    "{path} is reached through a link in a folder the app can change; it is not passed into the sandbox. List the socket by its real place.",
+                    &[("path", &sp.display())],
+                ));
+                continue;
+            }
+            let real = resolve(&sp);
+            if !is_socket(&real) {
                 notes.push(sam_core::i18n::trf(
                     "{path} is not a socket; it is not passed into the sandbox",
                     &[("path", &sp.display())],
                 ));
+                continue;
             }
+            let shown = sp.to_string_lossy();
+            let lands = real.to_string_lossy();
+            if let Some(why) = sam_core::permissions::dangerous_socket(&lands)
+                .filter(|_| sam_core::permissions::dangerous_socket(&shown).is_none())
+            {
+                notes.push(sam_core::i18n::trf(
+                    "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that socket by its real place if the app needs it.",
+                    &[("path", &sp.display()), ("why", &why)],
+                ));
+                continue;
+            }
+            a.op2("--bind-try", &real, &sp);
         }
 
         // SAM's own folders, wherever they are: an empty, throwaway folder
@@ -2171,6 +2195,55 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Whether reaching `p` passes a link that sits in a folder the app can
+/// change (`app_can_change`, asked with the folder's real place): the app
+/// could have put that link there, pointing anywhere. Followed the way the
+/// kernel does, link by link; a path with too many links counts as one.
+fn link_the_app_can_change(p: &Path, app_can_change: &dyn Fn(&Path) -> bool) -> bool {
+    use std::ffi::OsString;
+    use std::path::Component;
+    // The parts still to walk, as owned names ("/" for the root).
+    let parts = |p: &Path| -> Vec<OsString> {
+        p.components()
+            .map(|c| match c {
+                Component::RootDir | Component::Prefix(_) => OsString::from("/"),
+                other => other.as_os_str().to_os_string(),
+            })
+            .collect()
+    };
+    let p = match p.is_absolute() {
+        true => p.to_path_buf(),
+        false => std::env::current_dir().unwrap_or_default().join(p),
+    };
+    let mut todo: std::collections::VecDeque<OsString> = parts(&p).into();
+    let mut at = PathBuf::from("/");
+    let mut links = 0;
+    while let Some(c) = todo.pop_front() {
+        if c == "/" {
+            at = PathBuf::from("/");
+        } else if c == ".." {
+            at.pop();
+        } else if c != "." {
+            let next = at.join(&c);
+            if !fs::symlink_metadata(&next).is_ok_and(|m| m.file_type().is_symlink()) {
+                at = next;
+                continue;
+            }
+            links += 1;
+            if app_can_change(&at) || links > 40 {
+                return true;
+            }
+            let Ok(target) = fs::read_link(&next) else {
+                return true;
+            };
+            for t in parts(&target).into_iter().rev() {
+                todo.push_front(t);
+            }
+        }
+    }
+    false
 }
 
 /// True for an existing Unix socket (not a folder, file or device).
@@ -2965,6 +3038,85 @@ mod tests {
                 .any(|a| a == &t.path().display().to_string()),
             "folder not bound"
         );
+    }
+
+    /// An extra socket the app could have swapped for a link (it sits in a
+    /// folder the app may write) is not passed in when it is a link: the
+    /// bind followed the link to whatever socket it named, such as the
+    /// real session bus (review SB-4). The same link in a folder the app
+    /// cannot change is followed, and the socket it leads to is bound at
+    /// the listed place.
+    #[test]
+    fn an_extra_socket_swapped_for_a_link_by_the_app_is_not_passed_in() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let (shared, other) = (root.join("shared"), root.join("other"));
+        fs::create_dir(&shared).unwrap();
+        fs::create_dir(&other).unwrap();
+        let target = other.join("target.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&target).unwrap();
+        let listed = shared.join("app.sock");
+        std::os::unix::fs::symlink("../other/target.sock", &listed).unwrap();
+        let (listed_s, target_s) = (listed.display().to_string(), target.display().to_string());
+        let mut ctx = sample_context();
+        ctx.permissions.sockets.custom = vec![listed_s.clone()];
+        ctx.permissions.filesystem.custom_write = vec![shared.display().to_string()];
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            !cmd.args.iter().any(|a| a == &target_s),
+            "the link's target is bound: {:?}",
+            cmd.args
+        );
+        assert!(
+            !has_seq(&cmd.args, &["--bind-try", &listed_s, &listed_s]),
+            "the link is bound"
+        );
+        assert!(
+            cmd.notes
+                .iter()
+                .any(|n| n.contains(&listed_s) && n.contains("link")),
+            "{:?}",
+            cmd.notes
+        );
+        // Read-only: the app cannot have made the link.
+        ctx.permissions.filesystem.custom_write.clear();
+        ctx.permissions.filesystem.custom_read = vec![shared.display().to_string()];
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--bind-try", &target_s, &listed_s]), "{a:?}");
+        // Also when the link is a folder on the way.
+        let dir_link = shared.join("dir");
+        std::os::unix::fs::symlink("../other", &dir_link).unwrap();
+        ctx.permissions.filesystem.custom_read.clear();
+        ctx.permissions.filesystem.custom_write = vec![shared.display().to_string()];
+        ctx.permissions.sockets.custom = vec![dir_link.join("target.sock").display().to_string()];
+        assert!(!args_of(&ctx).iter().any(|a| a == &target_s));
+    }
+
+    /// An extra socket whose link leads to a socket SAM calls dangerous
+    /// (here a D-Bus socket) is not passed in: what the app gets is rated,
+    /// not the name it was listed by (review SB-4). Listed by its real
+    /// name, it is passed in (that name was rated Dangerous when added).
+    #[test]
+    fn an_extra_socket_that_leads_to_a_dangerous_one_is_not_passed_in() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        fs::create_dir(root.join("d")).unwrap();
+        let bus = root.join("d/bus");
+        let _l = std::os::unix::net::UnixListener::bind(&bus).unwrap();
+        let listed = root.join("helper.sock");
+        std::os::unix::fs::symlink(&bus, &listed).unwrap();
+        let (listed_s, bus_s) = (listed.display().to_string(), bus.display().to_string());
+        let mut ctx = sample_context();
+        ctx.permissions.sockets.custom = vec![listed_s.clone()];
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(!cmd.args.iter().any(|a| a == &bus_s), "{:?}", cmd.args);
+        assert!(
+            cmd.notes.iter().any(|n| n.contains(&listed_s)),
+            "{:?}",
+            cmd.notes
+        );
+        ctx.permissions.sockets.custom = vec![bus_s.clone()];
+        assert!(has_seq(&args_of(&ctx), &["--bind-try", &bus_s, &bus_s]));
     }
 
     /// A bundled library listed in advanced.system_libraries is replaced by

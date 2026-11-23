@@ -341,6 +341,28 @@ const DANGEROUS_BUS_NAMES: &[(&str, &str)] = &[
     ),
 ];
 
+/// Session-bus services that hand out stored passwords and logins: the
+/// names of the keyring switch (`integrations.keyring`, rated Think twice)
+/// and the stores beside them. Allowing one by name is that switch by
+/// another door (review F2).
+const SECRET_BUS_NAMES: &[&str] = &[
+    "org.freedesktop.secrets",
+    "org.kde.kwalletd6",
+    "org.kde.kwalletd5",
+    "org.kde.kwalletd",
+    "org.gnome.keyring",
+    "org.gnome.OnlineAccounts",
+];
+
+/// Whether an allow entry (a name or a wildcard) reaches a service that
+/// hands out stored passwords and logins.
+pub fn secret_bus_name(name: &str) -> bool {
+    let name = name.trim();
+    SECRET_BUS_NAMES
+        .iter()
+        .any(|s| bus_pattern_matches(name, s) || name.starts_with(&format!("{s}.")))
+}
+
 /// Why a bus name (or wildcard) in an allow list is dangerous, if it is.
 /// Wildcards (`org.kde.*`, `*`) count when they cover a dangerous name, and
 /// any wildcard over the portal namespace would bypass SAM's portal filter.
@@ -371,6 +393,12 @@ pub fn dangerous_socket(path: &str) -> Option<String> {
             crate::i18n::n_("is a D-Bus socket, which bypasses SAM's D-Bus filter"),
         ),
         ("libvirt", crate::i18n::n_("controls virtual machines")),
+        // The sound server's own connection, as with "Sound without SAM's
+        // relay": the app can make it load modules (review SB-4).
+        (
+            "pulse/native",
+            crate::i18n::n_("is the sound server's own connection, through which the app could make it load code outside the sandbox"),
+        ),
     ];
     bad.iter()
         .find(|(needle, _)| p.contains(needle))
@@ -459,10 +487,15 @@ pub fn refuse_own_name(
 
 pub fn dangerous_bus_name(name: &str) -> Option<String> {
     let name = name.trim();
+    // Any wildcard that covers the portal's own name: xdg-dbus-proxy then
+    // lets every call to the portal through, not only the interfaces SAM
+    // picks (`org.freedesktop.portal.Desktop.*` covers the name itself;
+    // review F2).
     if name == "*"
         || name == "org.*"
         || name == "org.freedesktop.*"
         || name.starts_with("org.freedesktop.portal.*")
+        || (name.ends_with('*') && bus_pattern_matches(name, PORTAL_NAME))
     {
         return Some(crate::i18n::trf(
             "{name} covers services that can act outside the sandbox",
@@ -1005,7 +1038,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("filesystem.opened_files", "Filesystem", "Files you open with the app",
             "Files you open with this app (for example with 'Open with' in the file manager). Read & write lets it save them; read-only lets it only view them.", Low),
         perm!("filesystem.custom_read", "Filesystem", "Extra read-only folders",
-            "Additional folders the app can read but not change.", Medium, advanced),
+            "Additional folders the app can read but not change. Programs that listen in them stay reachable: read-only does not stop the app from connecting to them (for example to a terminal session in /tmp).", Medium, advanced),
         perm!("filesystem.custom_write", "Filesystem", "Extra read/write folders",
             "Additional folders the app can read and change.", High, advanced),
         perm!("network.mode", "Network", "Network access",
