@@ -37,8 +37,11 @@ the same tool Flatpak uses, and its window works like Flatseal's.
   went wrong and offers the one change that helps, from mild to strong. You
   can undo every change.
 - **Sandboxed apps fit into your desktop.** They appear in your application
-  menu and always start through SAM. Menu entries that would start an app
-  without its sandbox are hidden.
+  menu, and SAM's menu entries always start them through the sandbox. Menu
+  entries from other tools that would start an app without its sandbox are
+  shown as a warning, and SAM offers to hide them, from the menu and from
+  opening files (on by default in SAM's window, `--hide-duplicates` on the
+  command line).
 - **SAM is built on proven parts.** Bubblewrap, Landlock, a system-call
   filter and filtered desktop services do the work. SAM adds no new code that
   runs with special privileges.
@@ -81,7 +84,7 @@ repository.
   the reason for each), and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-20<!-- /fact -->](docs/reports/real-apps-2026-11-20.md)).
-- **<!-- fact:tests -->672<!-- /fact --> automated tests guard <!-- fact:functions -->41<!-- /fact --> functions.**
+- **<!-- fact:tests -->666<!-- /fact --> automated tests guard <!-- fact:functions -->41<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
 - **Every security promise is attacked from inside a real sandbox.**

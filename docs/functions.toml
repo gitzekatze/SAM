@@ -20,9 +20,18 @@ id = 1
 area = "A"
 promise = "SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything."
 code = ["sam-intake/src/peek.rs", "sam-intake/src/menu.rs", "sam-intake/src/id.rs", "sam-runner/src/ops/overview.rs", "sam-gtk/src/window.rs"]
-tests = ["peeks_name_and_icon_without_extracting", "the_appimage_behind_a_foreign_menu_entry_is_found", "app_ids_stay_unique_when_names_collide", "found_appimages_get_a_menu_entry_only_with_a_sandbox", "the_folder_watcher_ignores_hidden_files_and_unfinished_downloads", "a_reader_gone_wrong_comes_to_nothing", "the_overview_reads_names_inside_a_sandbox", "dropped_pipes_and_icon_bombs_never_reach_gtk",
+tests = [
+  "peeks_name_and_icon_without_extracting",
+  "the_appimage_behind_a_foreign_menu_entry_is_found",
+  "app_ids_stay_unique_when_names_collide",
+  "found_appimages_get_a_menu_entry_only_with_a_sandbox",
+  "the_folder_watcher_ignores_hidden_files_and_unfinished_downloads",
+  "a_reader_gone_wrong_comes_to_nothing",
+  "the_overview_reads_names_inside_a_sandbox",
+  "dropped_pipes_and_icon_bombs_never_reach_gtk",
   "scan_and_discover_say_which_appimages_have_a_sandbox",
   "onboarding_is_changed_only_by_done_and_reset",
+  "a_menu_entry_naming_a_pipe_does_not_hang_the_search",
 ]
 
 [[function]]
@@ -41,7 +50,7 @@ id = 3
 area = "A"
 promise = "SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space."
 code = ["sam-intake/src/extract.rs", "sam-intake/src/normalize.rs", "sam-runner/src/progress.rs"]
-tests = ["an_appimages_own_extractor_cannot_open_the_kernels_rarely_used_doors", "the_self_unpack_question_names_the_sandbox_and_the_reason", "an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors", "unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_during_unpacking_is_recognized", "unpacking_stops_at_the_time_limit", "symlinks_pointing_outside_the_app_are_recognized", "paths_climbing_out_of_the_image_are_refused", "an_entry_named_dot_dot_writes_nothing_outside_the_app", "unpacking_removes_setuid_bits", "unpacking_stops_at_the_file_limit", "a_built_appimage_is_detected_and_unpacked_safely", "size_limit_aborts_and_cleans_up", "fractions_follow_the_step_weights", "bytes_written_are_counted", "unpacking_stops_exactly_at_its_limits", "only_an_exceeded_limit_counts_as_one", "without_consent_the_appimages_own_unpacker_never_runs",
+tests = ["an_appimages_own_extractor_cannot_open_the_kernels_rarely_used_doors", "the_self_unpack_question_names_the_sandbox_and_the_reason", "an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors", "unpacking_refuses_to_start_without_enough_free_space", "a_full_disk_during_unpacking_is_recognized", "a_failed_swap_keeps_the_old_app", "an_unpack_box_with_locked_folders_is_removed", "every_unpacking_tool_meets_the_limits_while_it_runs", "a_full_disk_in_the_unpack_sandbox_stops_unpacking", "unpacking_stops_at_the_time_limit", "symlinks_pointing_outside_the_app_are_recognized", "paths_climbing_out_of_the_image_are_refused", "an_entry_named_dot_dot_writes_nothing_outside_the_app", "unpacking_removes_setuid_bits", "unpacking_stops_at_the_file_limit", "a_built_appimage_is_detected_and_unpacked_safely", "size_limit_aborts_and_cleans_up", "fractions_follow_the_step_weights", "bytes_written_are_counted", "unpacking_stops_exactly_at_its_limits", "only_an_exceeded_limit_counts_as_one", "without_consent_the_appimages_own_unpacker_never_runs",
   "a_menu_start_after_free_space_unpacks_inside_a_sandbox",
   "without_the_command_line_a_menu_start_refuses_to_unpack",
   "sams_programs_never_unpack_without_a_sandbox",
@@ -65,7 +74,7 @@ id = 4
 area = "A"
 promise = "SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them."
 code = ["sam-intake/src/metadata.rs", "sam-intake/src/peek.rs", "sam-intake/src/id.rs", "sam-core/src/util.rs"]
-tests = ["the_desktop_file_inside_an_appimage_is_read", "reads_metadata_and_icon", "a_readable_name_is_taken_from_the_file_name", "icon_paths_cannot_climb_out_of_the_app", "neutralizes_markup_and_controls", "markup_in_metadata_is_neutralized", "only_icons_that_are_safe_to_decode_are_taken", "preview_and_unpack_take_the_same_desktop_file", "changed_desktop_files_never_crash_the_reader", "a_byte_order_mark_does_not_hide_the_desktop_entry"]
+tests = ["the_desktop_file_inside_an_appimage_is_read", "reads_metadata_and_icon", "a_readable_name_is_taken_from_the_file_name", "icon_paths_cannot_climb_out_of_the_app", "neutralizes_markup_and_controls", "markup_in_metadata_is_neutralized", "only_icons_that_are_safe_to_decode_are_taken", "only_a_real_svg_counts_as_one", "preview_and_unpack_take_the_same_desktop_file", "changed_desktop_files_never_crash_the_reader", "a_byte_order_mark_does_not_hide_the_desktop_entry"]
 
 [[function]]
 id = 5
@@ -574,6 +583,8 @@ tests = [
   "only_a_failed_terminal_app_keeps_its_window_open",
   "values_that_read_like_the_separator_break_no_start",
   "the_status_channel_goes_before_bubblewraps_own_separator",
+  "a_hidden_entry_no_longer_opens_files",
+  "entries_that_still_open_files_are_not_taken_for_hidden",
 ]
 checks = ["tests/gui/flow-atspi.sh", "tests/gui/taskbar-kwin.sh"]
 
@@ -698,7 +709,7 @@ id = 28
 area = "F"
 promise = "Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, refuse a changed signing key until you accept it (the yes covers only the file you were shown), and never install a build for another processor."
 code = ["sam-runner/src/updates.rs", "sam-runner/src/zsync.rs", "sam-runner/src/release_key.rs", "sam-detect/src/update_info.rs", "sam-detect/src/signature.rs"]
-tests = ["both_forms_of_update_information_are_understood", "update_wildcards_match_only_the_right_build", "signed_appimage_is_checked", "key_changes_are_noticed", "an_update_signed_with_another_key_waits_for_consent", "sam_updates_itself_only_with_its_release_key", "release_keys_are_full_fingerprints", "signing_a_file_without_signature_sections_is_refused", "without_a_release_key_sam_never_updates_itself", "the_zsync_header_is_read", "update_download_addresses_are_resolved_and_http_refused", "updates_are_downloaded_over_https_only", "an_update_is_rebuilt_from_the_old_version_and_changed_blocks", "the_rolling_checksum_matches_a_direct_computation", "refuses_compressed_and_broken_files", "undo_puts_the_previous_version_back", "undoing_an_update_never_moves_files_outside_sams_backup_folder", "block_checksums_match_the_zsync_definition", "the_download_checksum_is_sha1_of_the_whole_file", "updates_download_only_changes_check_them_and_refuse_tampering", "the_weak_hashes_stay_in_the_zsync_update_code", "an_update_never_comes_over_plain_http", "a_download_from_plain_http_is_refused_before_curl_runs",
+tests = ["both_forms_of_update_information_are_understood", "update_wildcards_match_only_the_right_build", "signed_appimage_is_checked", "gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox", "key_changes_are_noticed", "an_update_signed_with_another_key_waits_for_consent", "sam_updates_itself_only_with_its_release_key", "release_keys_are_full_fingerprints", "signing_a_file_without_signature_sections_is_refused", "without_a_release_key_sam_never_updates_itself", "the_zsync_header_is_read", "update_download_addresses_are_resolved_and_http_refused", "updates_are_downloaded_over_https_only", "an_update_is_rebuilt_from_the_old_version_and_changed_blocks", "the_rolling_checksum_matches_a_direct_computation", "refuses_compressed_and_broken_files", "undo_puts_the_previous_version_back", "undoing_an_update_never_moves_files_outside_sams_backup_folder", "block_checksums_match_the_zsync_definition", "the_download_checksum_is_sha1_of_the_whole_file", "updates_download_only_changes_check_them_and_refuse_tampering", "the_weak_hashes_stay_in_the_zsync_update_code", "an_update_never_comes_over_plain_http", "a_download_from_plain_http_is_refused_before_curl_runs",
   "an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature",
   "a_second_key_in_the_file_cannot_borrow_a_trusted_name",
   "a_signature_by_a_subkey_names_its_primary_key",
@@ -745,7 +756,7 @@ id = 29
 area = "F"
 promise = "SAM notices AppImages that were moved or changed."
 code = ["sam-intake/src/fingerprint.rs", "sam-runner/src/ops/maintain.rs"]
-tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
+tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content"]
 
 [[area]]
 id = "G"

@@ -178,6 +178,7 @@ fn changed_appimages_never_crash_or_escape_the_unpacker() {
                     max_files: 2000,
                     max_bytes: 64 * 1024 * 1024,
                     max_seconds: 20,
+                    ..Default::default()
                 };
                 let req = ExtractRequest {
                     source: &img,

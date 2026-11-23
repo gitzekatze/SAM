@@ -3,6 +3,17 @@
 use super::*;
 use sam_core::error::InFunctionExt;
 
+/// Numbers the copies that adds running at the same time work from.
+static ADDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A folder of SAM's own that is removed when this goes, on every way out.
+struct RemovedAtEnd(PathBuf);
+impl Drop for RemovedAtEnd {
+    fn drop(&mut self) {
+        let _ = remove_tree(&self.0);
+    }
+}
+
 impl Sam {
     // ------------------------------------------------------------------ add
 
@@ -42,9 +53,21 @@ impl Sam {
                 )
             );
         }
+        // Everything below reads one copy in SAM's own folder: the file was
+        // checksummed, its signature checked and then opened again for
+        // unpacking, so another program could swap it in between, and SAM
+        // recorded one file and unpacked another (audit I-F6).
+        let work = self.download_folder(&format!(
+            "add-{}-{}",
+            std::process::id(),
+            ADDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ))?;
+        let _work = RemovedAtEnd(work.clone());
+        let copy = work.join("app.AppImage");
+        let fp = fingerprint::copy_with_fingerprint(&source, &copy, 0o700)?;
         // Recognizing the file is function 2; unpacking (below) is function 3.
         let info = (|| -> Result<_> {
-            let info = inspect(&source)?;
+            let info = inspect(&copy)?;
             if !info.is_appimage() {
                 bail!(
                     "{}",
@@ -82,7 +105,6 @@ impl Sam {
             Ok(info)
         })()
         .in_function(2)?;
-        let fp = fingerprint::compute(&source)?;
 
         // Same content as a registered app whose file went missing: relocate.
         if let Some(mut moved) = all
@@ -115,7 +137,7 @@ impl Sam {
             source: fp.clone(),
             added_at: t,
             state: AppState::Registered,
-            signature: Some(sam_detect::signature::check(&source)),
+            signature: Some(self.check_signature(&copy, false)),
             ..Default::default()
         };
         // Extract into a temporary root; the final id depends on metadata.
@@ -126,7 +148,7 @@ impl Sam {
         }
         let mut log = Vec::new();
         let req = ExtractRequest {
-            source: &source,
+            source: &copy,
             info: &info,
             root: &incoming,
             limits: self.limits(),

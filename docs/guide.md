@@ -125,7 +125,7 @@ Programs that run in a terminal (Helix, Neovim, command-line tools) open in your
 
 ### Menu Entries
 
-**Menu entry from SAM** adds or removes SAM's entry in your application menu. **Hide other menu entries for this AppImage** hides entries made by tools like AppImageLauncher or Gear Lever that would start the app *without* a sandbox, and shows them again when you turn it off or remove the sandbox.
+**Menu entry from SAM** adds or removes SAM's entry in your application menu. **Hide other menu entries for this AppImage** hides entries made by tools like AppImageLauncher or Gear Lever that would start the app *without* a sandbox, from the menu and from opening files (double-clicking one of the app's file types no longer starts it without its sandbox), and shows them again when you turn it off or remove the sandbox.
 
 ---
 

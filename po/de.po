@@ -8589,6 +8589,36 @@ msgstr ""
 "die Update-Beschreibung (.zsync) listet zu viele kleine Blöcke für einen "
 "Teil-Download"
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-intake/src/extract.rs:235
+msgid ""
+"SAM stopped unpacking this AppImage: {reason}. The limits protect your "
+"computer from AppImages built to fill the disk or keep SAM busy. If you "
+"trust this AppImage, raise the limit, for example with `sam-jail config set "
+"extraction.max_files 400000` (also extraction.max_size_mb, "
+"extraction.max_seconds and extraction.max_memory_mb), then create the "
+"sandbox again."
+msgstr ""
+"SAM hat das Entpacken dieses AppImages gestoppt: {reason}. Die Grenzen "
+"schützen deinen Computer vor AppImages, die gebaut sind, um die Festplatte "
+"zu füllen oder SAM zu beschäftigen. Wenn du diesem AppImage vertraust, "
+"erhöhe die Grenze, zum Beispiel mit `sam-jail config set "
+"extraction.max_files 400000` (auch extraction.max_size_mb, "
+"extraction.max_seconds und extraction.max_memory_mb), und erstelle die "
+"Sandbox erneut."
+
+#: crates/sam-intake/src/extract.rs:856
+msgid "unpacking limit exceeded: some unpacked files cannot be counted"
+msgstr ""
+"Entpack-Grenze überschritten: einige entpackte Dateien lassen sich nicht "
+"zählen"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-intake/src/extract.rs:1011
+msgid "unpacking limit exceeded: it needed more than {size} of memory"
+msgstr ""
+"Entpack-Grenze überschritten: es brauchte mehr als {size} Arbeitsspeicher"
+
 #~ msgid "Additional folders the app can read but not change."
 #~ msgstr "Zusätzliche Ordner, die die App lesen, aber nicht ändern darf."
 

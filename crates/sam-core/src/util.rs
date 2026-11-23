@@ -106,33 +106,41 @@ pub fn home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// Write a file atomically (write to temp file in same dir, then rename).
+/// Opens `path` for reading only if it is a regular file, without waiting:
+/// opening a named pipe for reading blocks until someone writes to it, so
+/// a menu entry or a scanned folder that names one would hang SAM (audit
+/// I-F9, I-F15). For a regular file the flag changes nothing; anything else
+/// (a pipe, a device, a folder) is refused after opening, so a file swapped
+/// for one between a check and the open is refused too.
+pub fn open_regular(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)?;
+    if !f.metadata()?.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    Ok(f)
+}
+
 /// Reads at most `limit` bytes of a regular file. Files inside an unpacked
 /// AppImage are the AppImage's choice: a link to `/dev/zero` or a huge file
 /// must not fill SAM's memory. The type is checked on the opened file, so a
 /// swap between check and read changes nothing.
 pub fn read_regular(path: &Path, limit: u64) -> std::io::Result<Vec<u8>> {
     use std::io::Read;
-    use std::os::unix::fs::OpenOptionsExt;
-    // Without waiting: opening a named pipe for reading would block until
-    // someone writes to it (audit I-F9, I-F15). For a regular file the
-    // flag changes nothing; anything else is refused below.
-    let f = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK)
-        .open(path)?;
+    let f = open_regular(path)?;
     let meta = f.metadata()?;
-    if !meta.is_file() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "not a regular file",
-        ));
-    }
     let mut data = Vec::with_capacity(meta.len().min(limit) as usize);
     f.take(limit).read_to_end(&mut data)?;
     Ok(data)
 }
 
+/// Write a file atomically (write to temp file in same dir, then rename).
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     let dir = path
         .parent()

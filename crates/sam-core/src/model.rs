@@ -558,6 +558,9 @@ pub struct HiddenEntry {
     pub created_override: bool,
     /// `NoDisplay=` value before SAM changed it, if there was one.
     pub previous_nodisplay: Option<String>,
+    /// `Hidden=` value before SAM changed it, if there was one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_hidden: Option<String>,
 }
 
 impl AppEntry {

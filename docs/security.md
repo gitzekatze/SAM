@@ -932,6 +932,16 @@ trusted one, for example SAM's public release key. Every GnuPG step has a
 time limit of 20 seconds, and `sam-jail doctor` checks that the installed
 GnuPG still names the real signer.
 
+The key and the signature are the file's own bytes, written by whoever
+made it, so GnuPG reads them inside the unpack sandbox, like every other
+program that reads an AppImage: no network, nothing of the home, the
+throwaway GnuPG folder as the only writable place, the baseline syscall
+filter, and anything GnuPG leaves running (a gpg-agent) ends with the
+sandbox (`gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox`).
+Where SAM can build no sandbox, an added AppImage's signature counts as not
+checked (an update then asks first); only SAM's own update is still checked
+directly there, as before.
+
 ---
 
 ## Safe unpacking
@@ -955,11 +965,22 @@ through. SAM itself writes those files without following links.
 | a start file that names a program outside the app (`Exec=/usr/bin/…`, `../`) | never used as the app's entry point |
 | named pipes and other special files | removed while unpacking; SAM's own reads refuse them without waiting |
 | device nodes, FIFOs, sockets | removed |
-| huge or endless archives | file-count, size and time limits stop the unpacking and remove partial output; a limit reached inside the unpack sandbox stops it too, without trying other tools or the AppImage's own unpacker |
+| huge or endless archives | file-count, size and time limits stop the unpacking and remove partial output; a limit reached inside the unpack sandbox stops it too, without trying other tools or the AppImage's own unpacker. They hold for every unpacking program while it runs (SAM's reader, `unsquashfs`, `bsdtar`, `dwarfsextract`, the AppImage's own unpacker): SAM counts the files it wrote as it goes, also in folders the image makes unreadable, and stops it once it passes a limit, and the kernel lets no single file grow past the size limit (`every_unpacking_tool_meets_the_limits_while_it_runs`). The partial output is removed, folders nobody may enter included (`an_unpack_box_with_locked_folders_is_removed`). The AppImage's own unpacker is the AppImage's code: it can hide what it writes from the count (a file deleted while it keeps it open still takes space), so for it the time limit, the size limit per file and the stop at a full disk are what hold |
+| an archive built to use up memory | every unpacking program may use at most `extraction.max_memory_mb` (4 GiB by default) of memory; SAM's reader reaching it stops the unpacking like a limit |
+| a full disk | SAM stops at once, removes what was unpacked and says the disk is full; it does not try the next tool or offer the AppImage's own unpacker (`a_full_disk_in_the_unpack_sandbox_stops_unpacking`) |
+| replacing the earlier unpacked app | the new one takes its place in one step, or the old one stays (`a_failed_swap_keeps_the_old_app`) |
 | reading outside the sandbox | SAM itself reads only icon and desktop files, and never follows a link out of the app |
 
 Running the AppImage's own `--appimage-extract` is a fallback that needs your
 consent, and also runs in a sandbox.
+
+Adding an AppImage and *Unpack Again* first copy the file into SAM's own
+data folder, reading it once; its checksum, its signature and what is
+unpacked all come from that copy. Another program with access to the
+AppImage's folder can no longer swap the file between SAM's check and the
+unpacking, so SAM never records one file and unpacks another
+(`what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped`). A
+file swapped there afterwards is noticed like any changed AppImage.
 
 Nothing in an unpack sandbox can make a user namespace of its own
 (Bubblewrap's `--disable-userns` and the syscall filter): one would give
@@ -976,8 +997,13 @@ reader hang, run out of memory or crash ends only that sandbox
 `the_overview_reads_names_inside_a_sandbox`). Where no sandbox can be
 built, SAM shows only the file name. Icons are taken only as PNG of at most
 1024×1024 pixels (read from the header, before anything decodes them) or
-small SVG, at most 1 MiB; XPM is not taken. The window checks this again
-before it shows an icon (`only_icons_that_are_safe_to_decode_are_taken`).
+small SVG, at most 1 MiB; XPM is not taken. The format is read from the
+file's start only: a PNG starts with the PNG signature, and an SVG is text
+whose first element is `<svg`, so an XPM, ICO or other image that merely
+contains the text `<svg` is not installed as an SVG for the desktop to
+decode with its own loader (`only_a_real_svg_counts_as_one`). The window
+checks this again before it shows an icon
+(`only_icons_that_are_safe_to_decode_are_taken`).
 The preview and the unpacked app use the same desktop file
 (`preview_and_unpack_take_the_same_desktop_file`).
 
@@ -1028,7 +1054,7 @@ was easily misread.
 ## Known limitations
 
 - **Icons are drawn outside the sandbox.** SAM copies an AppImage's icon
-  (PNG, SVG or XPM, at most 10 MB) into its cache. The window and the menu
+  (PNG or SVG, checked as above, at most 1 MiB) into its cache. The window and the menu
   draw it with the system's image libraries, as every AppImage integration
   tool does.
 - **D-Bus filtering needs `xdg-dbus-proxy`.** Without it, an app with

@@ -20,12 +20,57 @@ impl Sam {
     /// going back: the content then comes from the file SAM checked in its
     /// own folder, never from the AppImage's folder, where another app
     /// could swap the file between SAM's check and the unpacking (review
-    /// 2026-11-23, U-1).
+    /// 2026-11-23, U-1). Without it, SAM first copies the AppImage into its
+    /// own folder and works from that copy alone, for the same reason: the
+    /// file was checksummed, its signature checked and then opened again
+    /// for unpacking, so a swap in between went unnoticed (audit I-F6).
     pub(super) fn reextract_as(
         &self,
         query: &str,
         consent_fallback: bool,
         checked: Option<&Checked<'_>>,
+    ) -> Result<AppEntry> {
+        if let Some(c) = checked {
+            return self.reextract_from(query, consent_fallback, c);
+        }
+        let entry = self.resolve(query)?;
+        self.ensure_not_running(&entry, &sam_core::i18n::tr("unpack it again"))?;
+        if !entry.source_path.exists() {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the AppImage {file} no longer exists; use `sam-jail relocate` to point SAM at its new location",
+                    &[("file", &tildify(&entry.source_path))]
+                )
+            );
+        }
+        let work = self.download_folder(&format!("{}.unpack", entry.id))?;
+        let copy = work.join("app.AppImage");
+        let result = fingerprint::copy_with_fingerprint(&entry.source_path, &copy, 0o700).and_then(
+            |placed| {
+                self.reextract_from(
+                    query,
+                    consent_fallback,
+                    &Checked {
+                        file: &copy,
+                        placed,
+                        sams_update: false,
+                    },
+                )
+            },
+        );
+        let _ = remove_tree(&work);
+        result
+    }
+
+    /// [`reextract_as`](Self::reextract_as) from `checked.file`. Only SAM's
+    /// own updates and going back (not a copy of the AppImage's file) leave
+    /// a changed file unmarked.
+    fn reextract_from(
+        &self,
+        query: &str,
+        consent_fallback: bool,
+        checked: &Checked<'_>,
     ) -> Result<AppEntry> {
         let mut entry = self.resolve(query)?;
         self.ensure_not_running(&entry, &sam_core::i18n::tr("unpack it again"))?;
@@ -38,7 +83,7 @@ impl Sam {
                 )
             );
         }
-        let source = checked.map_or_else(|| entry.source_path.clone(), |c| c.file.to_path_buf());
+        let source = checked.file.to_path_buf();
         let info = inspect(&source)?;
         if !info.is_appimage() {
             bail!(
@@ -49,14 +94,15 @@ impl Sam {
                 )
             );
         }
-        let fp = match checked {
-            // The checksum of what is unpacked, with the details of the copy
-            // in the AppImage's folder (so a later swap there is noticed).
-            Some(c) => Fingerprint {
-                sha256: fingerprint::sha256_file(&source)?,
-                ..c.placed.clone()
+        // The checksum of what is unpacked, with the details of the file in
+        // the AppImage's folder (so a later swap there is noticed).
+        let fp = Fingerprint {
+            sha256: if checked.placed.sha256.is_empty() {
+                fingerprint::sha256_file(&source)?
+            } else {
+                checked.placed.sha256.clone()
             },
-            None => fingerprint::compute(&source)?,
+            ..checked.placed.clone()
         };
         let root = self.unpack_root()?.join(&entry.id);
         let mut log = Vec::new();
@@ -76,10 +122,10 @@ impl Sam {
                 // that one, so a swapped file looked known (regression,
                 // audit U-H2).
                 if unpacked_sha256(&entry) != fp.sha256 {
-                    if checked.is_none() {
+                    if !checked.sams_update {
                         entry.content_changed_outside = true;
                     }
-                    let new_sig = sam_detect::signature::check(&source);
+                    let new_sig = self.check_signature(&source, false);
                     entry.signing_key_changed =
                         signing_key_change(entry.signature.as_ref(), &new_sig);
                     entry.signature = Some(new_sig);
@@ -339,7 +385,7 @@ impl Sam {
 
     /// A fresh folder for one download, `<data>/downloads/<name>`, that only
     /// SAM's user can enter. Apps never see SAM's data folder.
-    fn download_folder(&self, name: &str) -> Result<PathBuf> {
+    pub(super) fn download_folder(&self, name: &str) -> Result<PathBuf> {
         use std::os::unix::fs::PermissionsExt;
         let base = self.paths.data_dir.join("downloads");
         let d = base.join(name);
@@ -820,10 +866,10 @@ impl Sam {
             {
                 s.clone()
             }
-            _ => sam_detect::signature::check(&installed),
+            _ => self.check_signature(&installed, false),
         };
         let new_sha256 = fingerprint::sha256_file(&tmp)?;
-        let new_sig = sam_detect::signature::check(&tmp);
+        let new_sig = self.check_signature(&tmp, false);
         // Accepted earlier: this very file, for this very question.
         let consented_to = |code: &str| {
             consented
@@ -909,7 +955,15 @@ impl Sam {
             f.signature = Some(before_sig.clone());
             f.update_backup = Some(way_back.clone());
         })?;
-        let mut e = self.reextract_as(&entry.id, false, Some(&Checked { file: &tmp, placed }))?;
+        let mut e = self.reextract_as(
+            &entry.id,
+            false,
+            Some(&Checked {
+                file: &tmp,
+                placed,
+                sams_update: true,
+            }),
+        )?;
         e.update_backup = Some(way_back);
         e.update = Some(UpdateStatus {
             state: sam_core::model::UpdateState::Current,
@@ -1088,6 +1142,7 @@ impl Sam {
                 Some(&Checked {
                     file: &earlier,
                     placed,
+                    sams_update: true,
                 }),
             )
         } else {
@@ -1187,9 +1242,9 @@ impl Sam {
             }
             // Only SAM's makers may replace SAM (see release_key), and never
             // with an older release than the one running.
-            let new_sig = sam_detect::signature::check(&tmp);
+            let new_sig = self.check_signature(&tmp, true);
             crate::release_key::check(&new_sig, keys)?;
-            let running = sam_detect::signature::check(appimage);
+            let running = self.check_signature(appimage, true);
             if let Some((was, now)) = older_signed_version(Some(&running), &new_sig) {
                 return Err(older_version_error(was, now).into());
             }
@@ -1261,8 +1316,12 @@ fn older_version_error(was: i64, now: i64) -> sam_core::error::CodedError {
 /// comes from `file`, what is recorded describes the copy.
 pub(super) struct Checked<'a> {
     pub file: &'a Path,
-    /// Size, time and inode of the copy; its checksum is that of `file`.
+    /// Size, time and inode of the copy; its checksum, when not empty, is
+    /// that of `file`.
     pub placed: Fingerprint,
+    /// The content comes from a SAM update or going back, not from the
+    /// AppImage's folder: a changed checksum is then no swap to look at.
+    pub sams_update: bool,
 }
 
 /// The checksum of the AppImage SAM unpacked last. Not the file's last seen

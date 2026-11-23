@@ -66,7 +66,9 @@ pub fn looks_like_appimage(path: &Path) -> bool {
         return true;
     }
     let mut buf = [0u8; 11];
-    match File::open(path).and_then(|mut f| f.read_exact(&mut buf)) {
+    // Never waits: a named pipe in a menu entry's `Exec=` or in the list of
+    // added files would otherwise hang the overview (audit I-F15).
+    match sam_core::util::open_regular(path).and_then(|mut f| f.read_exact(&mut buf)) {
         Ok(()) => {
             &buf[0..4] == b"\x7fELF" && &buf[8..10] == b"AI" && (buf[10] == 1 || buf[10] == 2)
         }
@@ -75,7 +77,8 @@ pub fn looks_like_appimage(path: &Path) -> bool {
 }
 
 pub fn inspect(path: &Path) -> Result<AppImageInfo> {
-    let mut f = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    let mut f = sam_core::util::open_regular(path)
+        .with_context(|| format!("opening {}", path.display()))?;
     let size = f.metadata()?.len();
     let mut head = vec![0u8; 64.min(size as usize)];
     f.read_exact(&mut head)?;
